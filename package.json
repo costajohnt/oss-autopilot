@@ -1,0 +1,56 @@
+{
+  "name": "oss-autopilot",
+  "version": "0.1.0",
+  "description": "AI-powered autopilot for managing open source contributions with Claude Code",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "oss-autopilot": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "daily": "tsx src/index.ts daily",
+    "search": "tsx src/index.ts search",
+    "status": "tsx src/index.ts status",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "open-source",
+    "github",
+    "contributions",
+    "ai-agent",
+    "cli",
+    "claude-code"
+  ],
+  "author": "John Costa",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/johncosta/oss-autopilot.git"
+  },
+  "homepage": "https://github.com/johncosta/oss-autopilot#readme",
+  "bugs": {
+    "url": "https://github.com/johncosta/oss-autopilot/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "examples"
+  ],
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  },
+  "dependencies": {
+    "@octokit/plugin-throttling": "^11.0.3",
+    "@octokit/rest": "^22.0.1",
+    "dotenv": "^17.2.3"
+  }
+}
