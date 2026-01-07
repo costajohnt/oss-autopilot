@@ -1,6 +1,6 @@
 ---
 description: Run OSS autopilot - check PRs, draft responses, find new issues
-allowed-tools: Bash(npm:*), Bash(cd:*), Bash(gh:*), Read, Grep, WebFetch, Edit, Write, AskUserQuestion
+allowed-tools: Bash(npm:*), Bash(cd:*), Read, Grep, WebFetch, Edit, Write, AskUserQuestion
 ---
 
 # OSS Autopilot
@@ -38,12 +38,24 @@ Based on the output:
    npm start -- comments https://github.com/owner/repo/pull/123
    ```
 2. Read the relevant code files mentioned in the comments
-3. Draft a response addressing each comment
-4. Present the draft to the user for approval before posting
+3. Draft a response addressing the most recent comment(s)
+4. Use AskUserQuestion to present the draft and get approval:
+   - Question: "Post this response to [repo]#[number]?"
+   - Options: "Post it", "Edit first", "Skip"
+5. If approved, post the comment:
+   ```bash
+   npm start -- post https://github.com/owner/repo/pull/123 "Your approved message here"
+   ```
+6. If user wants to edit, ask what changes they'd like, then re-present for approval
 
 ### If PRs are approaching dormant (25+ days):
-- Suggest a polite follow-up comment to bump the PR
-- Example: "Hi! Just checking in on this PR. Is there anything else needed from my side?"
+1. Suggest a polite follow-up comment, for example:
+   > "Hi! Just checking in on this PR. Is there anything else needed from my side?"
+2. Use AskUserQuestion to get approval before posting the follow-up
+3. If approved:
+   ```bash
+   npm start -- post https://github.com/owner/repo/pull/123 "Your follow-up message"
+   ```
 
 ### If PRs went dormant (30+ days):
 - Ask the user if they want to close it or try one more follow-up
@@ -60,6 +72,16 @@ npm start -- search 3
 
 Present interesting issues and offer to vet them further.
 
+If the user wants to claim an issue after vetting:
+```bash
+npm start -- claim https://github.com/owner/repo/issues/123
+```
+
+Or with a custom message:
+```bash
+npm start -- claim https://github.com/owner/repo/issues/123 "I'd like to take this on. I have experience with X and think I can have a PR ready by Y."
+```
+
 ## Response Format
 
 Always provide a clear summary:
@@ -71,6 +93,7 @@ Always provide a clear summary:
 - [repo#123] - Comment from @maintainer needs response
   > Their comment summary
   > **Draft response:** Your suggested response
+  > [Awaiting your approval to post]
 
 ### Approaching Dormant (need follow-up)
 - [repo#456] - 27 days inactive
@@ -82,9 +105,21 @@ Always provide a clear summary:
 - [repo#issue] - Good first issue that matches your skills
 ```
 
+## Step 4: Offer Dashboard
+
+At the end of the report, use AskUserQuestion to ask:
+- Question: "Would you like to see your stats dashboard?"
+- Options: "Yes, open it", "No thanks"
+
+If yes:
+```bash
+npm start -- dashboard --open
+```
+
 ## Important Rules
 
 1. NEVER post comments without explicit user approval
-2. Always show draft responses and wait for "approved" or edits
+2. Always show draft responses and use AskUserQuestion before posting
 3. Keep responses professional and concise
 4. If unsure about technical details, ask before drafting
+5. After posting, the PR is automatically marked as read

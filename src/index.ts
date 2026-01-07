@@ -5,6 +5,8 @@
  */
 
 import 'dotenv/config';
+import * as fs from 'fs';
+import * as path from 'path';
 import { getStateManager } from './state.js';
 import { PRMonitor, PRUpdate } from './pr-monitor.js';
 import { IssueDiscovery } from './issue-discovery.js';
@@ -15,7 +17,7 @@ const VERSION = '0.1.0';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 // Commands that don't require GitHub API access
-const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', '-v', '--version', 'setup', 'checkSetup'];
+const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', '-v', '--version', 'setup', 'checkSetup', 'dashboard'];
 
 const command = process.argv[2] || 'help';
 if (!GITHUB_TOKEN && !LOCAL_ONLY_COMMANDS.includes(command)) {
@@ -436,6 +438,393 @@ const commands: Record<string, () => Promise<void>> = {
   },
 
   /**
+   * Post a comment to a PR or issue
+   * Usage: post <url> <message>
+   * The message can be passed as remaining args or via stdin
+   */
+  async post() {
+    const url = process.argv[3];
+    if (!url) {
+      console.error('Usage: oss-autopilot post <pr-or-issue-url> <message>');
+      console.error('  or:  echo "message" | oss-autopilot post <url> --stdin');
+      process.exit(1);
+    }
+
+    // Get message from args or stdin
+    let message: string;
+    if (process.argv.includes('--stdin')) {
+      // Read from stdin
+      const chunks: Buffer[] = [];
+      for await (const chunk of process.stdin) {
+        chunks.push(chunk);
+      }
+      message = Buffer.concat(chunks).toString('utf-8').trim();
+    } else {
+      // Message is remaining args
+      message = process.argv.slice(4).join(' ');
+    }
+
+    if (!message) {
+      console.error('Error: No message provided');
+      process.exit(1);
+    }
+
+    // Parse URL
+    const parsed = parseGitHubUrl(url);
+    if (!parsed) {
+      console.error('Invalid GitHub URL format');
+      process.exit(1);
+    }
+
+    const { owner, repo, number } = parsed;
+
+    // Show what we're about to post
+    console.log('\n📝 Posting comment to:', url);
+    console.log('---');
+    console.log(message);
+    console.log('---\n');
+
+    // Post the comment using GitHub API
+    const { getOctokit } = await import('./github.js');
+    const octokit = getOctokit(GITHUB_TOKEN!);
+
+    try {
+      const { data: comment } = await octokit.issues.createComment({
+        owner,
+        repo,
+        issue_number: number,
+        body: message,
+      });
+
+      console.log('✅ Comment posted successfully!');
+      console.log(`   ${comment.html_url}`);
+
+      // Mark PR as read since we just responded
+      const sm = getState();
+      if (sm.markPRAsRead(url)) {
+        sm.save();
+      }
+    } catch (error) {
+      console.error('❌ Failed to post comment:', error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  },
+
+  /**
+   * Claim an issue by posting a comment
+   * Usage: claim <issue-url> [custom-message]
+   */
+  async claim() {
+    const url = process.argv[3];
+    if (!url) {
+      console.error('Usage: oss-autopilot claim <issue-url> [custom-message]');
+      process.exit(1);
+    }
+
+    // Parse URL
+    const parsed = parseGitHubUrl(url);
+    if (!parsed || parsed.type !== 'issues') {
+      console.error('Invalid issue URL format (must be an issue, not a PR)');
+      process.exit(1);
+    }
+
+    const { owner, repo, number } = parsed;
+
+    // Default claim message or custom
+    const customMessage = process.argv.slice(4).join(' ');
+    const message = customMessage ||
+      "Hi! I'd like to work on this issue. Could you assign it to me?";
+
+    // Show what we're about to post
+    console.log('\n🙋 Claiming issue:', url);
+    console.log('---');
+    console.log(message);
+    console.log('---\n');
+
+    // Post the comment
+    const { getOctokit } = await import('./github.js');
+    const octokit = getOctokit(GITHUB_TOKEN!);
+
+    try {
+      const { data: comment } = await octokit.issues.createComment({
+        owner,
+        repo,
+        issue_number: number,
+        body: message,
+      });
+
+      console.log('✅ Issue claimed!');
+      console.log(`   ${comment.html_url}`);
+
+      // Add to tracked issues
+      const sm = getState();
+      sm.addIssue({
+        id: number,
+        url,
+        repo: `${owner}/${repo}`,
+        number,
+        title: '(claimed)', // Will be updated on next check
+        status: 'claimed',
+        labels: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        vetted: false,
+      });
+      sm.save();
+    } catch (error) {
+      console.error('❌ Failed to claim issue:', error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  },
+
+  /**
+   * Generate stats dashboard HTML
+   */
+  async dashboard() {
+    const sm = getState();
+    const state = sm.getState();
+    const stats = sm.getStats();
+
+    // Gather data for charts
+    const prsByRepo: Record<string, { active: number; merged: number; closed: number }> = {};
+
+    // Count PRs by repo
+    for (const pr of [...state.activePRs, ...state.dormantPRs]) {
+      if (!prsByRepo[pr.repo]) prsByRepo[pr.repo] = { active: 0, merged: 0, closed: 0 };
+      prsByRepo[pr.repo].active++;
+    }
+    for (const pr of state.mergedPRs) {
+      if (!prsByRepo[pr.repo]) prsByRepo[pr.repo] = { active: 0, merged: 0, closed: 0 };
+      prsByRepo[pr.repo].merged++;
+    }
+    for (const pr of state.closedPRs) {
+      if (!prsByRepo[pr.repo]) prsByRepo[pr.repo] = { active: 0, merged: 0, closed: 0 };
+      prsByRepo[pr.repo].closed++;
+    }
+
+    // Sort repos by total merged
+    const topRepos = Object.entries(prsByRepo)
+      .sort((a, b) => b[1].merged - a[1].merged)
+      .slice(0, 10);
+
+    // Monthly activity (merged PRs by month)
+    const monthlyMerged: Record<string, number> = {};
+    for (const pr of state.mergedPRs) {
+      if (pr.mergedAt) {
+        const month = pr.mergedAt.slice(0, 7); // YYYY-MM
+        monthlyMerged[month] = (monthlyMerged[month] || 0) + 1;
+      }
+    }
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OSS Autopilot Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+      color: #333;
+    }
+    h1 { margin-bottom: 0.5rem; }
+    .subtitle { color: #666; margin-bottom: 2rem; }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 2.5rem;
+      font-weight: bold;
+      color: #2563eb;
+    }
+    .stat-label { color: #666; margin-top: 0.25rem; }
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 1.5rem;
+    }
+    .chart-card {
+      background: white;
+      padding: 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .chart-card h3 { margin-bottom: 1rem; }
+    canvas { max-height: 300px; }
+    .pr-list { margin-top: 2rem; }
+    .pr-list h3 { margin-bottom: 1rem; }
+    .pr-item {
+      background: white;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .pr-item a { color: #2563eb; text-decoration: none; }
+    .pr-item a:hover { text-decoration: underline; }
+    .pr-meta { color: #666; font-size: 0.9rem; margin-top: 0.25rem; }
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-success { background: #d1fae5; color: #065f46; }
+  </style>
+</head>
+<body>
+  <h1>OSS Autopilot Dashboard</h1>
+  <p class="subtitle">Generated ${new Date().toLocaleString()}</p>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-value">${stats.activePRs}</div>
+      <div class="stat-label">Active PRs</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${stats.dormantPRs}</div>
+      <div class="stat-label">Dormant PRs</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${stats.mergedPRs}</div>
+      <div class="stat-label">Merged PRs</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${stats.closedPRs}</div>
+      <div class="stat-label">Closed PRs</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${stats.mergeRate}</div>
+      <div class="stat-label">Merge Rate</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${stats.needsResponse}</div>
+      <div class="stat-label">Need Response</div>
+    </div>
+  </div>
+
+  <div class="charts-grid">
+    <div class="chart-card">
+      <h3>PR Status Distribution</h3>
+      <canvas id="statusChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Top Repositories</h3>
+      <canvas id="reposChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Monthly Merged PRs</h3>
+      <canvas id="monthlyChart"></canvas>
+    </div>
+  </div>
+
+  ${state.activePRs.length > 0 ? `
+  <div class="pr-list">
+    <h3>Active PRs</h3>
+    ${state.activePRs.map(pr => {
+      const needsResponseBadge = pr.hasUnreadComments ? '<span class="badge badge-warning">Needs Response</span>' : '';
+      const inactiveBadge = pr.daysSinceActivity > 20 ? '<span class="badge badge-warning">' + pr.daysSinceActivity + 'd inactive</span>' : '';
+      return `
+    <div class="pr-item">
+      <a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - ${pr.title}
+      <div class="pr-meta">
+        ${needsResponseBadge}
+        ${inactiveBadge}
+        Last activity: ${pr.daysSinceActivity} days ago
+      </div>
+    </div>`;
+    }).join('')}
+  </div>
+  ` : ''}
+
+  <script>
+    // Status pie chart
+    new Chart(document.getElementById('statusChart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Active', 'Dormant', 'Merged', 'Closed'],
+        datasets: [{
+          data: [${stats.activePRs}, ${stats.dormantPRs}, ${stats.mergedPRs}, ${stats.closedPRs}],
+          backgroundColor: ['#3b82f6', '#f59e0b', '#10b981', '#ef4444']
+        }]
+      },
+      options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+    });
+
+    // Top repos bar chart
+    new Chart(document.getElementById('reposChart'), {
+      type: 'bar',
+      data: {
+        labels: ${JSON.stringify(topRepos.map(([repo]) => repo.split('/')[1] || repo))},
+        datasets: [
+          { label: 'Merged', data: ${JSON.stringify(topRepos.map(([, data]) => data.merged))}, backgroundColor: '#10b981' },
+          { label: 'Active', data: ${JSON.stringify(topRepos.map(([, data]) => data.active))}, backgroundColor: '#3b82f6' },
+          { label: 'Closed', data: ${JSON.stringify(topRepos.map(([, data]) => data.closed))}, backgroundColor: '#ef4444' }
+        ]
+      },
+      options: { responsive: true, scales: { x: { stacked: true }, y: { stacked: true } }, plugins: { legend: { position: 'bottom' } } }
+    });
+
+    // Monthly line chart
+    const months = ${JSON.stringify(Object.keys(monthlyMerged).sort())};
+    new Chart(document.getElementById('monthlyChart'), {
+      type: 'line',
+      data: {
+        labels: months,
+        datasets: [{
+          label: 'Merged PRs',
+          data: months.map(m => ${JSON.stringify(monthlyMerged)}[m] || 0),
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: { responsive: true, plugins: { legend: { display: false } } }
+    });
+  </script>
+</body>
+</html>`;
+
+    // Write to file
+    const dataDir = path.join(process.cwd(), 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    const dashboardPath = path.join(dataDir, 'dashboard.html');
+    fs.writeFileSync(dashboardPath, html);
+
+    console.log(`\n📊 Dashboard generated: ${dashboardPath}`);
+
+    // Open in browser if --open flag
+    if (process.argv.includes('--open')) {
+      const { exec } = await import('child_process');
+      const openCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+      exec(`${openCmd} "${dashboardPath}"`);
+      console.log('Opening in browser...');
+    } else {
+      console.log('Run with --open to open in browser');
+    }
+  },
+
+  /**
    * Show version
    */
   async version() {
@@ -594,6 +983,8 @@ Commands:
   init <username>     Initialize with your GitHub username and import open PRs
   daily               Run daily check on all tracked PRs
   comments <pr-url>   Show all comments on a PR (for drafting responses)
+  post <url> <msg>    Post a comment to a PR or issue
+  claim <issue-url>   Claim an issue (posts "I'd like to work on this")
   search [count]      Search for new issues to work on (default: 5)
   vet <issue-url>     Vet a specific issue before working on it
   track <pr-url>      Add a PR to track
@@ -601,6 +992,7 @@ Commands:
   read <pr-url>       Mark PR comments as read
   read --all          Mark all PR comments as read
   status              Show current status and stats
+  dashboard           Generate HTML stats dashboard (--open to view)
   config              Show or update configuration
   help                Show this help message
 
@@ -608,13 +1000,13 @@ Examples:
   oss-autopilot init costajohnt
   oss-autopilot daily
   oss-autopilot comments https://github.com/owner/repo/pull/123
+  oss-autopilot post https://github.com/owner/repo/pull/123 "Thanks for the review!"
+  oss-autopilot claim https://github.com/owner/repo/issues/456
   oss-autopilot search 10
   oss-autopilot vet https://github.com/owner/repo/issues/123
   oss-autopilot track https://github.com/owner/repo/pull/456
   oss-autopilot untrack https://github.com/owner/repo/pull/456
-  oss-autopilot read https://github.com/owner/repo/pull/456
   oss-autopilot config username costajohnt
-  oss-autopilot config add-language ruby
 `);
   },
 };
