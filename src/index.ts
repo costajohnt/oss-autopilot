@@ -627,12 +627,12 @@ const commands: Record<string, () => Promise<void>> = {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #f5f5f5;
+      background: #F0832F;
       padding: 2rem;
-      color: #333;
+      color: #1E2B35;
     }
-    h1 { margin-bottom: 0.5rem; }
-    .subtitle { color: #666; margin-bottom: 2rem; }
+    h1 { margin-bottom: 0.5rem; color: #1E2B35; }
+    .subtitle { color: #1E2B35; opacity: 0.8; margin-bottom: 2rem; }
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -640,43 +640,43 @@ const commands: Record<string, () => Promise<void>> = {
       margin-bottom: 2rem;
     }
     .stat-card {
-      background: white;
+      background: #EAF6FE;
       padding: 1.5rem;
       border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
       text-align: center;
     }
     .stat-value {
       font-size: 2.5rem;
       font-weight: bold;
-      color: #2563eb;
+      color: #1E2B35;
     }
-    .stat-label { color: #666; margin-top: 0.25rem; }
+    .stat-label { color: #1E2B35; opacity: 0.8; margin-top: 0.25rem; }
     .charts-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
       gap: 1.5rem;
     }
     .chart-card {
-      background: white;
+      background: #EAF6FE;
       padding: 1.5rem;
       border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
     }
-    .chart-card h3 { margin-bottom: 1rem; }
+    .chart-card h3 { margin-bottom: 1rem; color: #1E2B35; }
     canvas { max-height: 300px; }
     .pr-list { margin-top: 2rem; }
-    .pr-list h3 { margin-bottom: 1rem; }
+    .pr-list h3 { margin-bottom: 1rem; color: #EAF6FE; }
     .pr-item {
-      background: white;
+      background: #EAF6FE;
       padding: 1rem;
       border-radius: 8px;
       margin-bottom: 0.5rem;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
     }
-    .pr-item a { color: #2563eb; text-decoration: none; }
+    .pr-item a { color: #1E2B35; text-decoration: none; font-weight: 500; }
     .pr-item a:hover { text-decoration: underline; }
-    .pr-meta { color: #666; font-size: 0.9rem; margin-top: 0.25rem; }
+    .pr-meta { color: #1E2B35; opacity: 0.7; font-size: 0.9rem; margin-top: 0.25rem; }
     .badge {
       display: inline-block;
       padding: 0.2rem 0.5rem;
@@ -684,8 +684,8 @@ const commands: Record<string, () => Promise<void>> = {
       font-size: 0.8rem;
       font-weight: 500;
     }
-    .badge-warning { background: #fef3c7; color: #92400e; }
-    .badge-success { background: #d1fae5; color: #065f46; }
+    .badge-warning { background: #F0832F; color: #EAF6FE; }
+    .badge-success { background: #1E2B35; color: #EAF6FE; }
   </style>
 </head>
 <body>
@@ -761,7 +761,7 @@ const commands: Record<string, () => Promise<void>> = {
         labels: ['Active', 'Dormant', 'Merged', 'Closed'],
         datasets: [{
           data: [${stats.activePRs}, ${stats.dormantPRs}, ${stats.mergedPRs}, ${stats.closedPRs}],
-          backgroundColor: ['#3b82f6', '#f59e0b', '#10b981', '#ef4444']
+          backgroundColor: ['#1E2B35', '#F0832F', '#5A9BD4', '#8B4513']
         }]
       },
       options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
@@ -773,9 +773,9 @@ const commands: Record<string, () => Promise<void>> = {
       data: {
         labels: ${JSON.stringify(topRepos.map(([repo]) => repo.split('/')[1] || repo))},
         datasets: [
-          { label: 'Merged', data: ${JSON.stringify(topRepos.map(([, data]) => data.merged))}, backgroundColor: '#10b981' },
-          { label: 'Active', data: ${JSON.stringify(topRepos.map(([, data]) => data.active))}, backgroundColor: '#3b82f6' },
-          { label: 'Closed', data: ${JSON.stringify(topRepos.map(([, data]) => data.closed))}, backgroundColor: '#ef4444' }
+          { label: 'Merged', data: ${JSON.stringify(topRepos.map(([, data]) => data.merged))}, backgroundColor: '#5A9BD4' },
+          { label: 'Active', data: ${JSON.stringify(topRepos.map(([, data]) => data.active))}, backgroundColor: '#1E2B35' },
+          { label: 'Closed', data: ${JSON.stringify(topRepos.map(([, data]) => data.closed))}, backgroundColor: '#F0832F' }
         ]
       },
       options: { responsive: true, scales: { x: { stacked: true }, y: { stacked: true } }, plugins: { legend: { position: 'bottom' } } }
@@ -790,8 +790,8 @@ const commands: Record<string, () => Promise<void>> = {
         datasets: [{
           label: 'Merged PRs',
           data: months.map(m => ${JSON.stringify(monthlyMerged)}[m] || 0),
-          borderColor: '#10b981',
-          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          borderColor: '#1E2B35',
+          backgroundColor: 'rgba(30, 43, 53, 0.1)',
           fill: true,
           tension: 0.3
         }]
