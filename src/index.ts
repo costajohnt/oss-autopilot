@@ -10,6 +10,7 @@ import * as path from 'path';
 import { getStateManager } from './state.js';
 import { PRMonitor, PRUpdate } from './pr-monitor.js';
 import { IssueDiscovery } from './issue-discovery.js';
+import { PRComplianceChecker } from './pr-compliance.js';
 import { parseGitHubUrl } from './utils.js';
 import { DailyDigest, TrackedPR } from './types.js';
 
@@ -30,6 +31,7 @@ if (!GITHUB_TOKEN && !LOCAL_ONLY_COMMANDS.includes(command)) {
 let _stateManager: ReturnType<typeof getStateManager> | null = null;
 let _prMonitor: PRMonitor | null = null;
 let _issueDiscovery: IssueDiscovery | null = null;
+let _prComplianceChecker: PRComplianceChecker | null = null;
 
 function getState() {
   if (!_stateManager) _stateManager = getStateManager();
@@ -44,6 +46,11 @@ function getPRMonitor() {
 function getIssueDiscovery() {
   if (!_issueDiscovery) _issueDiscovery = new IssueDiscovery(GITHUB_TOKEN!);
   return _issueDiscovery;
+}
+
+function getPRComplianceChecker() {
+  if (!_prComplianceChecker) _prComplianceChecker = new PRComplianceChecker(GITHUB_TOKEN!);
+  return _prComplianceChecker;
 }
 
 // CLI Commands
@@ -107,6 +114,37 @@ const commands: Record<string, () => Promise<void>> = {
     const discovery = getIssueDiscovery();
     const candidate = await discovery.vetIssue(issueUrl);
     console.log(discovery.formatCandidate(candidate));
+  },
+
+  /**
+   * Check PR compliance against opensource.guide best practices
+   * Usage: check-pr <pr-url>
+   */
+  'check-pr': async function checkPR() {
+    const prUrl = process.argv[3];
+    if (!prUrl) {
+      console.error('Usage: oss-autopilot check-pr <pr-url>');
+      console.error('\nChecks a PR against opensource.guide best practices:');
+      console.error('  - Issue reference (Closes #X)');
+      console.error('  - Description quality');
+      console.error('  - Focused changes');
+      console.error('  - Tests included');
+      console.error('  - Title quality');
+      console.error('  - Branch naming');
+      console.error('\nSee: https://opensource.guide/how-to-contribute/');
+      process.exit(1);
+    }
+
+    console.log(`\n📋 Checking PR compliance: ${prUrl}\n`);
+
+    const checker = getPRComplianceChecker();
+    const result = await checker.checkPR(prUrl);
+    console.log(checker.formatResult(result));
+
+    // Exit with non-zero if compliance failed
+    if (!result.overallPassed) {
+      process.exit(1);
+    }
   },
 
   /**
@@ -987,6 +1025,7 @@ Commands:
   claim <issue-url>   Claim an issue (posts "I'd like to work on this")
   search [count]      Search for new issues to work on (default: 5)
   vet <issue-url>     Vet a specific issue before working on it
+  check-pr <pr-url>   Check PR against opensource.guide best practices
   track <pr-url>      Add a PR to track
   untrack <pr-url>    Stop tracking a PR
   read <pr-url>       Mark PR comments as read
@@ -996,9 +1035,14 @@ Commands:
   config              Show or update configuration
   help                Show this help message
 
+Best Practices:
+  This tool follows opensource.guide recommendations:
+  https://opensource.guide/how-to-contribute/
+
 Examples:
   oss-autopilot init costajohnt
   oss-autopilot daily
+  oss-autopilot check-pr https://github.com/owner/repo/pull/123
   oss-autopilot comments https://github.com/owner/repo/pull/123
   oss-autopilot post https://github.com/owner/repo/pull/123 "Thanks for the review!"
   oss-autopilot claim https://github.com/owner/repo/issues/456

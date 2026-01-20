@@ -200,3 +200,47 @@ export const INITIAL_STATE: AgentState = {
   config: DEFAULT_CONFIG,
   lastRunAt: new Date().toISOString(),
 };
+
+/**
+ * PR Compliance - opensource.guide best practices
+ */
+
+export interface PRComplianceCheck {
+  name: string;
+  passed: boolean;
+  message: string;
+  severity: 'error' | 'warning' | 'info';
+}
+
+export interface PRComplianceResult {
+  prUrl: string;
+  repo: string;
+  number: number;
+  title: string;
+  overallPassed: boolean;
+  checks: PRComplianceCheck[];
+  score: number; // 0-100
+  suggestions: string[];
+}
+
+export const OPENSOURCE_GUIDE_CHECKLIST = {
+  beforeContributing: [
+    'Search for existing issues/PRs before starting work',
+    'Read the project\'s CONTRIBUTING.md if it exists',
+    'Check that the project is actively maintained',
+    'For significant changes, open an issue first to discuss',
+  ],
+  prQuality: [
+    'PR references the issue it addresses (Closes #X or Fixes #X)',
+    'PR description explains the what and why of the changes',
+    'Changes are focused and atomic (one logical change per PR)',
+    'Tests are included if the project requires them',
+    'Code follows the project\'s style guidelines',
+  ],
+  communication: [
+    'Be patient - maintainers are often volunteers',
+    'Respond promptly to review feedback',
+    'Keep discussions public and constructive',
+    'Thank maintainers for their time',
+  ],
+} as const;
