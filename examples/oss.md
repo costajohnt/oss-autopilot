@@ -123,3 +123,6 @@ npm start -- dashboard --open
 3. Keep responses professional and concise
 4. If unsure about technical details, ask before drafting
 5. After posting, the PR is automatically marked as read
+6. NEVER add "Co-Authored-By: Claude" or any AI co-author to commit messages
+7. NEVER add "Generated with Claude Code" or similar AI attribution to PR descriptions
+8. All contributions should appear as solely from the user - no AI fingerprints

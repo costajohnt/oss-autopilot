@@ -12,6 +12,9 @@
 - Do NOT merge PRs - the maintainer will handle merging
 - Do NOT push directly to main
 - Keep PRs focused and atomic
+- Do NOT add "Co-Authored-By: Claude" to commit messages
+- Do NOT add "Generated with Claude Code" or similar AI attribution to PR descriptions
+- Contributions should appear as solely from the user
 
 ## Project Overview
 
