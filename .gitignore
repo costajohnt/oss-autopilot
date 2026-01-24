@@ -1,5 +1,19 @@
-node_modules/
-dist/
-.env
-data/
+# Plugin state (user-specific, created at runtime)
+.claude/oss-autopilot/
+
+# Local settings
+.claude/*.local.md
+
+# Logs
 *.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
