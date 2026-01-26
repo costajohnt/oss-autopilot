@@ -31,8 +31,7 @@ Contributing to open source is rewarding but hard to sustain. PRs get lost, main
 - **PR monitoring**: Checks all your open PRs for new comments, CI failures, merge conflicts
 - **Smart response drafting**: Claude reads maintainer feedback and drafts responses for your approval
 - **Adaptive issue discovery**: Finds issues matching your skills and learns from your contribution history
-- **Repository scoring**: Tracks which repos merge PRs vs let them languish
-- **Repository evaluation**: Analyzes repo health before you contribute
+- **Repository scoring**: Tracks repo responsiveness and analyzes health before you contribute
 - **Human-in-the-loop**: Claude never posts anything without your explicit approval
 
 ## Usage
@@ -174,21 +173,6 @@ Settings are stored in `~/.oss-autopilot/data/state.json`:
 
 ---
 
-## Data Storage
-
-All data is stored locally in `~/.oss-autopilot/`:
-
-```
-~/.oss-autopilot/
-├── cli/                  # The plugin code (this repo)
-├── data/
-│   └── state.json        # PR tracking state
-├── dashboard.html        # Visual dashboard (auto-generated)
-└── events.jsonl          # Activity log
-```
-
----
-
 ## Tips for Effective Use
 
 **Start small:** Set `maxActivePRs` to 3-5 when starting out. Better to maintain fewer PRs actively than let many go stale.
@@ -203,30 +187,9 @@ All data is stored locally in `~/.oss-autopilot/`:
 
 ---
 
-## Development
-
-```bash
-cd ~/.oss-autopilot/cli
-
-# Run tests
-npm test
-
-# Build
-npm run build
-
-# Run CLI directly (for debugging)
-GITHUB_TOKEN=$(gh auth token) npm start -- daily --json
-```
-
----
-
 ## Contributing
 
-Contributions welcome! Please:
-1. Fork the repo
-2. Create a feature branch
-3. Run tests (`npm test`)
-4. Submit a PR
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
 
 ---
 
