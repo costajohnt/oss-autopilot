@@ -5,6 +5,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { execFileSync } from 'child_process';
+
+// Cached GitHub token (fetched once per session)
+let cachedGitHubToken: string | null = null;
+let tokenFetchAttempted = false;
 
 /**
  * Get the data directory for oss-autopilot.
@@ -148,4 +153,81 @@ export function byDateDescending<T>(getDate: (item: T) => string | number | null
     const dateB = new Date(getDate(b) || 0).getTime();
     return dateB - dateA;
   };
+}
+
+/**
+ * Get GitHub token from environment or gh CLI.
+ *
+ * Priority:
+ * 1. GITHUB_TOKEN environment variable
+ * 2. gh auth token (from gh CLI)
+ *
+ * Result is cached for the session.
+ * Returns null if no token is available.
+ */
+export function getGitHubToken(): string | null {
+  // Return cached token if we already have one
+  if (cachedGitHubToken) {
+    return cachedGitHubToken;
+  }
+
+  // Don't retry if we already tried and failed
+  if (tokenFetchAttempted) {
+    return null;
+  }
+
+  tokenFetchAttempted = true;
+
+  // 1. Check environment variable first
+  if (process.env.GITHUB_TOKEN) {
+    cachedGitHubToken = process.env.GITHUB_TOKEN;
+    return cachedGitHubToken;
+  }
+
+  // 2. Try gh CLI (using execFileSync to avoid shell injection - no user input here anyway)
+  try {
+    const token = execFileSync('gh', ['auth', 'token'], {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'], // Suppress stderr
+      timeout: 5000, // 5 second timeout
+    }).trim();
+
+    if (token && token.length > 0) {
+      cachedGitHubToken = token;
+      console.error('Using GitHub token from gh CLI');
+      return cachedGitHubToken;
+    }
+  } catch {
+    // gh CLI not available or not authenticated - fall through
+  }
+
+  return null;
+}
+
+/**
+ * Get GitHub token or throw an error with helpful message.
+ * Use this when a token is required for the operation.
+ */
+export function requireGitHubToken(): string {
+  const token = getGitHubToken();
+
+  if (!token) {
+    throw new Error(
+      'GitHub authentication required.\n\n' +
+      'Options:\n' +
+      '  1. Use gh CLI: gh auth login\n' +
+      '  2. Set GITHUB_TOKEN environment variable\n\n' +
+      'The gh CLI is recommended - install from https://cli.github.com'
+    );
+  }
+
+  return token;
+}
+
+/**
+ * Reset the cached token (for testing)
+ */
+export function resetGitHubTokenCache(): void {
+  cachedGitHubToken = null;
+  tokenFetchAttempted = false;
 }

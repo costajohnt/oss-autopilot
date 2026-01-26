@@ -8,6 +8,7 @@
 
 import 'dotenv/config';
 import { Command } from 'commander';
+import { getGitHubToken } from './core/index.js';
 import { runDaily } from './commands/daily.js';
 import { runStatus } from './commands/status.js';
 import { runSearch } from './commands/search.js';
@@ -181,9 +182,13 @@ program.hook('preAction', async (thisCommand, actionCommand) => {
   const commandName = actionCommand.name();
 
   if (!LOCAL_ONLY_COMMANDS.includes(commandName)) {
-    if (!process.env.GITHUB_TOKEN) {
-      console.error('Error: GITHUB_TOKEN environment variable is required');
-      console.error('Set it in .env file or export GITHUB_TOKEN=your_token');
+    const token = getGitHubToken();
+    if (!token) {
+      console.error('Error: GitHub authentication required.');
+      console.error('');
+      console.error('Options:');
+      console.error('  1. Use gh CLI: gh auth login');
+      console.error('  2. Set GITHUB_TOKEN environment variable');
       process.exit(1);
     }
   }

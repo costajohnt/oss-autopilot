@@ -177,13 +177,17 @@ describe('StateManager', () => {
       expect(stats.mergeRate).toBe('0.0%');
     });
 
-    it('should count needs response PRs', () => {
+    it('should return 0 for needsResponse in v2 (PRs fetched fresh from GitHub)', () => {
+      // In v2, PRs are not tracked locally - they're fetched fresh
+      // So needsResponse is always 0 in getStats()
+      // The actual count comes from the fresh fetch in daily command
       const pr1 = createMockPR({ hasUnreadComments: true });
       const pr2 = createMockPR({ id: 456, url: 'https://github.com/owner/repo/pull/2', number: 2, hasUnreadComments: false });
       stateManager.addActivePR(pr1);
       stateManager.addActivePR(pr2);
       const stats = stateManager.getStats();
-      expect(stats.needsResponse).toBe(1);
+      // v2: needsResponse is 0 because we don't track PRs locally anymore
+      expect(stats.needsResponse).toBe(0);
     });
   });
 

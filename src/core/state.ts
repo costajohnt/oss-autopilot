@@ -5,12 +5,86 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, StateEvent, StateEventType } from './types.js';
+import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, StateEvent, StateEventType, DailyDigest } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
+
+// Current state version
+const CURRENT_STATE_VERSION = 2;
 
 // Legacy path for migration
 const LEGACY_STATE_FILE = path.join(process.cwd(), 'data', 'state.json');
 const LEGACY_BACKUP_DIR = path.join(process.cwd(), 'data', 'backups');
+
+/**
+ * Migrate state from v1 (local PR tracking) to v2 (fresh GitHub fetching)
+ * - Preserves repoScores (used for search prioritization)
+ * - Preserves config
+ * - Drops PR/issue arrays (no longer needed - fetched fresh from GitHub)
+ */
+function migrateV1ToV2(state: AgentState): AgentState {
+  console.error('Migrating state from v1 to v2 (fresh GitHub fetching)...');
+
+  // Extract merged PR count per repo for scoring
+  const mergedPRs = state.mergedPRs || [];
+  const closedPRs = state.closedPRs || [];
+
+  // Update repo scores from historical PR data if not already present
+  const repoScores = { ...state.repoScores };
+
+  for (const pr of mergedPRs) {
+    if (!repoScores[pr.repo]) {
+      repoScores[pr.repo] = {
+        repo: pr.repo,
+        score: 5,
+        mergedPRCount: 0,
+        closedWithoutMergeCount: 0,
+        avgResponseDays: null,
+        lastEvaluatedAt: new Date().toISOString(),
+        signals: {
+          hasActiveMaintainers: true,
+          isResponsive: false,
+          hasHostileComments: false,
+        },
+      };
+    }
+    // Note: Don't increment here as the score may already reflect these PRs
+  }
+
+  for (const pr of closedPRs) {
+    if (!repoScores[pr.repo]) {
+      repoScores[pr.repo] = {
+        repo: pr.repo,
+        score: 5,
+        mergedPRCount: 0,
+        closedWithoutMergeCount: 0,
+        avgResponseDays: null,
+        lastEvaluatedAt: new Date().toISOString(),
+        signals: {
+          hasActiveMaintainers: true,
+          isResponsive: false,
+          hasHostileComments: false,
+        },
+      };
+    }
+  }
+
+  const migratedState: AgentState = {
+    version: 2,
+    // Keep PR arrays for history but don't actively track
+    activePRs: [], // Clear active - will be fetched fresh
+    activeIssues: state.activeIssues || [],
+    dormantPRs: state.dormantPRs || [],
+    mergedPRs: state.mergedPRs || [],
+    closedPRs: state.closedPRs || [],
+    repoScores,
+    config: state.config,
+    events: state.events || [],
+    lastRunAt: new Date().toISOString(),
+  };
+
+  console.error(`Migration complete. Preserved ${Object.keys(repoScores).length} repo scores.`);
+  return migratedState;
+}
 
 export class StateManager {
   private state: AgentState;
@@ -22,11 +96,11 @@ export class StateManager {
   }
 
   /**
-   * Create a fresh state with new array instances (deep copy)
+   * Create a fresh state (v2: fresh GitHub fetching)
    */
   private createFreshState(): AgentState {
     return {
-      version: INITIAL_STATE.version,
+      version: CURRENT_STATE_VERSION,
       activePRs: [],
       activeIssues: [],
       dormantPRs: [],
@@ -168,7 +242,7 @@ export class StateManager {
     try {
       if (fs.existsSync(statePath)) {
         const data = fs.readFileSync(statePath, 'utf-8');
-        const state = JSON.parse(data) as AgentState;
+        let state = JSON.parse(data) as AgentState;
 
         // Validate required fields exist
         if (!this.isValidState(state)) {
@@ -181,7 +255,17 @@ export class StateManager {
           return this.createFreshState();
         }
 
-        console.error(`Loaded state: ${state.activePRs.length} active PRs, ${state.mergedPRs.length} merged`);
+        // Migrate from v1 to v2 if needed
+        if (state.version === 1) {
+          state = migrateV1ToV2(state);
+          // Save the migrated state immediately
+          fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+          console.error('Migrated state saved');
+        }
+
+        // Log appropriate message based on version
+        const repoCount = Object.keys(state.repoScores).length;
+        console.error(`Loaded state v${state.version}: ${repoCount} repo scores tracked`);
         return state;
       }
     } catch (error) {
@@ -219,11 +303,18 @@ export class StateManager {
       const backupPath = path.join(backupDir, backupFile);
       try {
         const data = fs.readFileSync(backupPath, 'utf-8');
-        const state = JSON.parse(data) as AgentState;
+        let state = JSON.parse(data) as AgentState;
 
         if (this.isValidState(state)) {
           console.error(`Successfully restored state from backup: ${backupFile}`);
-          console.error(`Restored state: ${state.activePRs.length} active PRs, ${state.mergedPRs.length} merged`);
+
+          // Migrate from v1 to v2 if needed
+          if (state.version === 1) {
+            state = migrateV1ToV2(state);
+          }
+
+          const repoCount = Object.keys(state.repoScores).length;
+          console.error(`Restored state v${state.version}: ${repoCount} repo scores`);
 
           // Overwrite the corrupted main state file with the restored backup
           const statePath = getStatePath();
@@ -243,6 +334,7 @@ export class StateManager {
 
   /**
    * Validate that a loaded state has the required structure
+   * Handles both v1 (with PR arrays) and v2 (without)
    */
   private isValidState(state: unknown): state is AgentState {
     if (!state || typeof state !== 'object') return false;
@@ -258,19 +350,31 @@ export class StateManager {
       s.events = [];
     }
 
-    return (
+    // Base requirements for all versions
+    const hasBaseFields = (
       typeof s.version === 'number' &&
-      Array.isArray(s.activePRs) &&
-      Array.isArray(s.activeIssues) &&
-      Array.isArray(s.dormantPRs) &&
-      Array.isArray(s.mergedPRs) &&
-      Array.isArray(s.closedPRs) &&
       typeof s.repoScores === 'object' &&
       s.repoScores !== null &&
       Array.isArray(s.events) &&
       typeof s.config === 'object' &&
       s.config !== null
     );
+
+    if (!hasBaseFields) return false;
+
+    // v1 requires PR arrays
+    if (s.version === 1) {
+      return (
+        Array.isArray(s.activePRs) &&
+        Array.isArray(s.activeIssues) &&
+        Array.isArray(s.dormantPRs) &&
+        Array.isArray(s.mergedPRs) &&
+        Array.isArray(s.closedPRs)
+      );
+    }
+
+    // v2+ doesn't require PR arrays
+    return true;
   }
 
   /**
@@ -329,6 +433,14 @@ export class StateManager {
    */
   getState(): Readonly<AgentState> {
     return this.state;
+  }
+
+  /**
+   * Store the latest digest for dashboard rendering (v2)
+   */
+  setLastDigest(digest: DailyDigest): void {
+    this.state.lastDigest = digest;
+    this.state.lastDigestAt = digest.generatedAt;
   }
 
   /**
@@ -809,26 +921,32 @@ export class StateManager {
   // === Statistics ===
 
   getStats(): Stats {
-    // Merge rate = merged / (merged + closed + dormant)
-    // Dormant PRs are effectively "pending" outcomes, but we include them
-    // to show a conservative rate
-    const completed = this.state.mergedPRs.length + this.state.closedPRs.length;
+    // v2: Calculate from repoScores (no local PR tracking)
+    let totalMerged = 0;
+    let totalClosed = 0;
+
+    for (const score of Object.values(this.state.repoScores)) {
+      totalMerged += score.mergedPRCount;
+      totalClosed += score.closedWithoutMergeCount;
+    }
+
+    const completed = totalMerged + totalClosed;
     const mergeRate = completed > 0
-      ? (this.state.mergedPRs.length / completed) * 100
+      ? (totalMerged / completed) * 100
       : 0;
 
     return {
-      activePRs: this.state.activePRs.length,
-      dormantPRs: this.state.dormantPRs.length,
-      mergedPRs: this.state.mergedPRs.length,
-      closedPRs: this.state.closedPRs.length,
-      activeIssues: this.state.activeIssues.length,
+      // v2: These are calculated from fresh GitHub data, not stored locally
+      // Return 0 for legacy fields - actual counts come from fresh fetch
+      activePRs: 0,
+      dormantPRs: 0,
+      mergedPRs: totalMerged,
+      closedPRs: totalClosed,
+      activeIssues: 0,
       trustedProjects: this.state.config.trustedProjects.length,
       mergeRate: mergeRate.toFixed(1) + '%',
-      // Additional stats
-      totalTracked: this.state.activePRs.length + this.state.dormantPRs.length +
-                    this.state.mergedPRs.length + this.state.closedPRs.length,
-      needsResponse: this.state.activePRs.filter(p => p.hasUnreadComments).length,
+      totalTracked: Object.keys(this.state.repoScores).length,
+      needsResponse: 0,
     };
   }
 }

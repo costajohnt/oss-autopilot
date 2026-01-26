@@ -3,7 +3,7 @@
  * Handles GitHub comment interactions
  */
 
-import { getStateManager, getOctokit, parseGitHubUrl, formatRelativeTime } from '../core/index.js';
+import { getStateManager, getOctokit, parseGitHubUrl, formatRelativeTime, getGitHubToken } from '../core/index.js';
 import { outputJson, outputJsonError } from '../formatters/json.js';
 
 interface CommentsOptions {
@@ -26,13 +26,16 @@ interface ClaimOptions {
 }
 
 export async function runComments(options: CommentsOptions): Promise<void> {
-  const token = process.env.GITHUB_TOKEN;
+  const token = getGitHubToken();
   if (!token) {
     if (options.json) {
-      outputJsonError('GITHUB_TOKEN environment variable is required');
+      outputJsonError('GitHub authentication required. Run "gh auth login" or set GITHUB_TOKEN.');
     } else {
-      console.error('Error: GITHUB_TOKEN environment variable is required');
-      console.error('Set it with: export GITHUB_TOKEN=$(gh auth token)');
+      console.error('Error: GitHub authentication required.');
+      console.error('');
+      console.error('Options:');
+      console.error('  1. Use gh CLI: gh auth login');
+      console.error('  2. Set GITHUB_TOKEN environment variable');
     }
     process.exit(1);
   }
@@ -192,13 +195,16 @@ export async function runComments(options: CommentsOptions): Promise<void> {
 }
 
 export async function runPost(options: PostOptions): Promise<void> {
-  const token = process.env.GITHUB_TOKEN;
+  const token = getGitHubToken();
   if (!token) {
     if (options.json) {
-      outputJsonError('GITHUB_TOKEN environment variable is required');
+      outputJsonError('GitHub authentication required. Run "gh auth login" or set GITHUB_TOKEN.');
     } else {
-      console.error('Error: GITHUB_TOKEN environment variable is required');
-      console.error('Set it with: export GITHUB_TOKEN=$(gh auth token)');
+      console.error('Error: GitHub authentication required.');
+      console.error('');
+      console.error('Options:');
+      console.error('  1. Use gh CLI: gh auth login');
+      console.error('  2. Set GITHUB_TOKEN environment variable');
     }
     process.exit(1);
   }
@@ -279,13 +285,16 @@ export async function runPost(options: PostOptions): Promise<void> {
 }
 
 export async function runClaim(options: ClaimOptions): Promise<void> {
-  const token = process.env.GITHUB_TOKEN;
+  const token = getGitHubToken();
   if (!token) {
     if (options.json) {
-      outputJsonError('GITHUB_TOKEN environment variable is required');
+      outputJsonError('GitHub authentication required. Run "gh auth login" or set GITHUB_TOKEN.');
     } else {
-      console.error('Error: GITHUB_TOKEN environment variable is required');
-      console.error('Set it with: export GITHUB_TOKEN=$(gh auth token)');
+      console.error('Error: GitHub authentication required.');
+      console.error('');
+      console.error('Options:');
+      console.error('  1. Use gh CLI: gh auth login');
+      console.error('  2. Set GITHUB_TOKEN environment variable');
     }
     process.exit(1);
   }

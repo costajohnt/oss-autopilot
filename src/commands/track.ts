@@ -3,7 +3,7 @@
  * Manages PR tracking
  */
 
-import { getStateManager, PRMonitor } from '../core/index.js';
+import { getStateManager, PRMonitor, getGitHubToken } from '../core/index.js';
 import { outputJson, outputJsonError, type TrackOutput } from '../formatters/json.js';
 
 interface TrackOptions {
@@ -17,13 +17,16 @@ interface UntrackOptions {
 }
 
 export async function runTrack(options: TrackOptions): Promise<void> {
-  const token = process.env.GITHUB_TOKEN;
+  const token = getGitHubToken();
   if (!token) {
     if (options.json) {
-      outputJsonError('GITHUB_TOKEN environment variable is required');
+      outputJsonError('GitHub authentication required. Run "gh auth login" or set GITHUB_TOKEN.');
     } else {
-      console.error('Error: GITHUB_TOKEN environment variable is required');
-      console.error('Set it with: export GITHUB_TOKEN=$(gh auth token)');
+      console.error('Error: GitHub authentication required.');
+      console.error('');
+      console.error('Options:');
+      console.error('  1. Use gh CLI: gh auth login');
+      console.error('  2. Set GITHUB_TOKEN environment variable');
     }
     process.exit(1);
   }

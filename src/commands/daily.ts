@@ -1,9 +1,10 @@
 /**
  * Daily check command
- * Monitors all tracked PRs and generates a digest
+ * Fetches all open PRs fresh from GitHub and generates a digest
+ * v2: No local state tracking - everything is fetched fresh
  */
 
-import { getStateManager, PRMonitor, type PRUpdate, type DailyDigest, type TrackedPR, type CheckAllPRsResult } from '../core/index.js';
+import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type PRCheckFailure } from '../core/index.js';
 import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue } from '../formatters/json.js';
 
 interface DailyOptions {
@@ -11,12 +12,16 @@ interface DailyOptions {
 }
 
 export async function runDaily(options: DailyOptions): Promise<void> {
-  const token = process.env.GITHUB_TOKEN;
+  const token = getGitHubToken();
   if (!token) {
     if (options.json) {
-      outputJsonError('GITHUB_TOKEN environment variable is required');
+      outputJsonError('GitHub authentication required. Run "gh auth login" or set GITHUB_TOKEN.');
     } else {
-      console.error('Error: GITHUB_TOKEN environment variable is required');
+      console.error('Error: GitHub authentication required.');
+      console.error('');
+      console.error('Options:');
+      console.error('  1. Use gh CLI: gh auth login');
+      console.error('  2. Set GITHUB_TOKEN environment variable');
     }
     process.exit(1);
   }
@@ -24,38 +29,33 @@ export async function runDaily(options: DailyOptions): Promise<void> {
   const stateManager = getStateManager();
   const prMonitor = new PRMonitor(token);
 
-  // First, sync PRs from GitHub (fetch new ones, detect closed ones)
-  const syncResult = await prMonitor.syncPRs();
-
-  if (!options.json && syncResult.added > 0) {
-    console.log(`Found ${syncResult.added} new PRs`);
-  }
-
-  // Then check all PRs for updates
-  const checkResult = await prMonitor.checkAllPRs();
-  const { updates, failures } = checkResult;
+  // Fetch all open PRs fresh from GitHub
+  const { prs, failures } = await prMonitor.fetchUserOpenPRs();
 
   // Log any failures (but continue with successful checks)
   if (failures.length > 0) {
-    console.error(`Warning: ${failures.length} PR check(s) failed`);
+    console.error(`Warning: ${failures.length} PR fetch(es) failed`);
   }
 
-  // Generate digest
-  const digest = generateDigest(updates, stateManager);
+  // Generate digest from fresh data
+  const digest = prMonitor.generateDigest(prs);
 
-  // Save state
+  // Store digest in state so dashboard can render it
+  stateManager.setLastDigest(digest);
+
+  // Save state (updates lastRunAt, lastDigest)
   stateManager.save();
 
   // Assess capacity for new work
-  const capacity = assessCapacity(stateManager, updates);
+  const capacity = assessCapacity(prs, stateManager.getState().config.maxActivePRs);
 
   if (options.json) {
-    // Include pre-formatted summary for Claude to display verbatim (deprecated but kept for compatibility)
+    // Include pre-formatted summary for Claude to display verbatim
     const summary = formatSummary(digest, capacity);
     // New action-first flow fields
-    const actionableIssues = collectActionableIssues(stateManager, digest);
+    const actionableIssues = collectActionableIssues(prs);
     const briefSummary = formatBriefSummary(digest, actionableIssues.length);
-    outputJson<DailyOutput>({ digest, updates, capacity, summary, briefSummary, actionableIssues });
+    outputJson<DailyOutput>({ digest, updates: [], capacity, summary, briefSummary, actionableIssues, failures });
   } else {
     // Simple console output for non-JSON mode
     printDigest(digest, capacity);
@@ -75,25 +75,19 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
   lines.push('✓ Dashboard generated — say "open dashboard" to view in browser');
   lines.push('');
 
-  // Health Issues (CI failing, merge conflicts)
-  const healthIssues = [...digest.prsNeedingResponse, ...digest.approachingDormant, ...digest.dormantPRs]
-    .filter(pr => pr.ciStatus === 'failing' || pr.hasMergeConflict);
-  if (healthIssues.length > 0) {
-    lines.push('### ❌ Health Issues');
-    for (const pr of healthIssues) {
-      const issues = [];
-      if (pr.ciStatus === 'failing') issues.push('CI failing');
-      if (pr.hasMergeConflict) issues.push('merge conflict');
+  // CI Failing
+  if (digest.ciFailingPRs.length > 0) {
+    lines.push('### ❌ CI Failing');
+    for (const pr of digest.ciFailingPRs) {
       lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-      lines.push(`  └─ ${issues.join(', ')}`);
     }
     lines.push('');
   }
 
-  // Merged PRs
-  if (digest.mergedPRs.length > 0) {
-    lines.push('### 🎉 Recently Merged');
-    for (const pr of digest.mergedPRs) {
+  // Merge Conflicts
+  if (digest.mergeConflictPRs.length > 0) {
+    lines.push('### ⚠️ Merge Conflicts');
+    for (const pr of digest.mergeConflictPRs) {
       lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
     }
     lines.push('');
@@ -103,16 +97,16 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
   if (digest.prsNeedingResponse.length > 0) {
     lines.push('### 💬 Needs Response');
     for (const pr of digest.prsNeedingResponse) {
-      const status = pr.reviewDecision === 'approved' ? '✅ Approved' : '';
+      const maintainer = pr.lastMaintainerComment?.author || 'maintainer';
       lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-      if (status) lines.push(`  └─ ${status}`);
+      lines.push(`  └─ @${maintainer} commented`);
     }
     lines.push('');
   }
 
   // Approaching Dormant
   if (digest.approachingDormant.length > 0) {
-    lines.push('### ⚠️ Approaching Dormant');
+    lines.push('### ⏰ Approaching Dormant');
     for (const pr of digest.approachingDormant) {
       lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title} (${pr.daysSinceActivity} days)`);
     }
@@ -121,9 +115,19 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
 
   // Dormant
   if (digest.dormantPRs.length > 0) {
-    lines.push('### ⏰ Dormant');
+    lines.push('### 💤 Dormant');
     for (const pr of digest.dormantPRs) {
       lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title} (${pr.daysSinceActivity} days)`);
+    }
+    lines.push('');
+  }
+
+  // Healthy PRs
+  if (digest.healthyPRs.length > 0) {
+    lines.push('### ✅ Healthy');
+    for (const pr of digest.healthyPRs) {
+      const status = pr.reviewDecision === 'approved' ? ' (approved)' : '';
+      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}${status}`);
     }
     lines.push('');
   }
@@ -142,10 +146,27 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
 function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
   console.log('\n📊 OSS Daily Check\n');
   console.log(`Active PRs: ${digest.summary.totalActivePRs}`);
-  console.log(`Merged: ${digest.summary.totalMergedAllTime}`);
+  console.log(`Needing Attention: ${digest.summary.totalNeedingAttention}`);
+  console.log(`Merged (all time): ${digest.summary.totalMergedAllTime}`);
   console.log(`Merge Rate: ${digest.summary.mergeRate}%`);
   console.log(`\nCapacity: ${capacity.hasCapacity ? '✅ Ready for new work' : '⚠️  Focus on existing work'}`);
   console.log(`  ${capacity.reason}\n`);
+
+  if (digest.ciFailingPRs.length > 0) {
+    console.log('❌ CI Failing:');
+    for (const pr of digest.ciFailingPRs) {
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+    }
+    console.log('');
+  }
+
+  if (digest.mergeConflictPRs.length > 0) {
+    console.log('⚠️ Merge Conflicts:');
+    for (const pr of digest.mergeConflictPRs) {
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+    }
+    console.log('');
+  }
 
   if (digest.prsNeedingResponse.length > 0) {
     console.log('💬 Needs Response:');
@@ -155,26 +176,18 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
     console.log('');
   }
 
-  if (digest.mergedPRs.length > 0) {
-    console.log('🎉 Recently Merged:');
-    for (const pr of digest.mergedPRs) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
-    }
-    console.log('');
-  }
-
   if (digest.approachingDormant.length > 0) {
-    console.log('⚠️  Approaching Dormant:');
+    console.log('⏰ Approaching Dormant:');
     for (const pr of digest.approachingDormant) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (${pr.daysSinceActivity} days)`);
     }
     console.log('');
   }
 
   if (digest.dormantPRs.length > 0) {
-    console.log('⏰ Dormant:');
+    console.log('💤 Dormant:');
     for (const pr of digest.dormantPRs) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (${pr.daysSinceActivity} days)`);
     }
     console.log('');
   }
@@ -185,29 +198,13 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
 
 /**
  * Assess whether user has capacity for new issues
- * Critical issues: ci_failing, merge_conflict, new_comment, changes_requested
  */
-function assessCapacity(
-  stateManager: ReturnType<typeof getStateManager>,
-  updates: PRUpdate[]
-): CapacityAssessment {
-  const state = stateManager.getState();
-  const { maxActivePRs } = state.config;
-  const activePRCount = state.activePRs.length;
+function assessCapacity(prs: FetchedPR[], maxActivePRs: number): CapacityAssessment {
+  const activePRCount = prs.length;
 
-  // Count critical issues from updates
-  const criticalTypes = new Set(['new_comment', 'review', 'ci_failing', 'merge_conflict', 'changes_requested']);
-  const criticalUpdates = updates.filter(u => criticalTypes.has(u.type));
-
-  // Also count PRs that need response (may not have fresh updates)
-  const prsNeedingResponse = state.activePRs.filter(pr => pr.hasUnreadComments || pr.activityStatus === 'needs_response');
-
-  // Deduplicate: some PRs may have both an update and be in needsResponse
-  const criticalPRUrls = new Set([
-    ...criticalUpdates.map(u => u.pr.url),
-    ...prsNeedingResponse.map(pr => pr.url),
-  ]);
-  const criticalIssueCount = criticalPRUrls.size;
+  // Count critical issues
+  const criticalStatuses = new Set(['needs_response', 'failing_ci', 'merge_conflict']);
+  const criticalIssueCount = prs.filter(pr => criticalStatuses.has(pr.status)).length;
 
   // Has capacity if: under PR limit AND no critical issues
   const underPRLimit = activePRCount < maxActivePRs;
@@ -250,82 +247,38 @@ function formatBriefSummary(digest: DailyDigest, issueCount: number): string {
 
 /**
  * Collect all actionable issues across PRs for the action-first flow
- * Order: CI failing → Merge conflicts → Needs response → Approaching dormant
+ * Order: Needs response → CI failing → Merge conflicts → Approaching dormant
  */
-function collectActionableIssues(
-  stateManager: ReturnType<typeof getStateManager>,
-  digest: DailyDigest
-): ActionableIssue[] {
+function collectActionableIssues(prs: FetchedPR[]): ActionableIssue[] {
   const issues: ActionableIssue[] = [];
-  const state = stateManager.getState();
-  const seenUrls = new Set<string>();
 
-  // Helper to add an issue if not already added
-  const addIssue = (type: ActionableIssue['type'], pr: TrackedPR, label: string) => {
-    if (!seenUrls.has(pr.url)) {
-      seenUrls.add(pr.url);
-      issues.push({ type, pr, label });
-    }
-  };
-
-  // 1. CI Failing (highest priority)
-  for (const pr of state.activePRs) {
-    if (pr.ciStatus === 'failing') {
-      addIssue('ci_failing', pr, '[CI Failing]');
+  // 1. Needs Response (highest priority - someone is waiting for you)
+  for (const pr of prs) {
+    if (pr.status === 'needs_response') {
+      issues.push({ type: 'needs_response', pr, label: '[Needs Response]' });
     }
   }
 
-  // 2. Merge Conflicts
-  for (const pr of state.activePRs) {
-    if (pr.hasMergeConflict && !seenUrls.has(pr.url)) {
-      addIssue('merge_conflict', pr, '[Merge Conflict]');
+  // 2. CI Failing
+  for (const pr of prs) {
+    if (pr.status === 'failing_ci') {
+      issues.push({ type: 'ci_failing', pr, label: '[CI Failing]' });
     }
   }
 
-  // 3. Needs Response
-  for (const pr of digest.prsNeedingResponse) {
-    if (!seenUrls.has(pr.url)) {
-      addIssue('needs_response', pr, '[Needs Response]');
+  // 3. Merge Conflicts
+  for (const pr of prs) {
+    if (pr.status === 'merge_conflict') {
+      issues.push({ type: 'merge_conflict', pr, label: '[Merge Conflict]' });
     }
   }
 
   // 4. Approaching Dormant
-  for (const pr of digest.approachingDormant) {
-    if (!seenUrls.has(pr.url)) {
-      addIssue('approaching_dormant', pr, '[Approaching Dormant]');
+  for (const pr of prs) {
+    if (pr.status === 'approaching_dormant') {
+      issues.push({ type: 'approaching_dormant', pr, label: '[Approaching Dormant]' });
     }
   }
 
   return issues;
 }
-
-function generateDigest(
-  updates: PRUpdate[],
-  stateManager: ReturnType<typeof getStateManager>
-): DailyDigest {
-  const state = stateManager.getState();
-  const now = new Date().toISOString();
-
-  const mergedPRs = updates.filter(u => u.type === 'merged').map(u => u.pr);
-  const prsNeedingResponse = state.activePRs.filter(pr => pr.hasUnreadComments);
-  const dormantPRs = updates.filter(u => u.type === 'dormant').map(u => u.pr);
-  const approachingDormant = updates.filter(u => u.type === 'approaching_dormant').map(u => u.pr);
-
-  const stats = stateManager.getStats();
-
-  return {
-    generatedAt: now,
-    mergedPRs,
-    prsNeedingResponse,
-    dormantPRs,
-    approachingDormant,
-    newIssueCandidates: [],
-    summary: {
-      totalActivePRs: stats.activePRs,
-      totalDormantPRs: stats.dormantPRs,
-      totalMergedAllTime: stats.mergedPRs,
-      mergeRate: parseFloat(stats.mergeRate),
-    },
-  };
-}
-
