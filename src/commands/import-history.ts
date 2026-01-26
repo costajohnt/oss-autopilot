@@ -3,7 +3,7 @@
  * Import historical merged PRs with rate limiting
  */
 
-import { getStateManager, getOctokit, daysBetween, type TrackedPR } from '../core/index.js';
+import { getStateManager, getOctokit, daysBetween, isRepoExcluded, type TrackedPR } from '../core/index.js';
 import { outputJson, outputJsonError } from '../formatters/json.js';
 
 // Rate limiting configuration
@@ -130,7 +130,14 @@ export async function runImportHistory(options: ImportHistoryOptions): Promise<v
       }
 
       const [, owner, repo] = match;
+      const repoFullName = `${owner}/${repo}`;
       const prNumber = parseInt(match[3], 10);
+
+      // Check if repo is excluded
+      if (isRepoExcluded(repoFullName, config.excludeRepos)) {
+        skipped++;
+        continue;
+      }
 
       // Check if already tracked
       const existingPR = stateManager.findPR(item.html_url);

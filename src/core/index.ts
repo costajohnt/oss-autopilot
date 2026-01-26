@@ -19,5 +19,6 @@ export {
   byDateDescending,
   isTestUsername,
   detectGitHubUsername,
+  isRepoExcluded,
 } from './utils.js';
 export * from './types.js';

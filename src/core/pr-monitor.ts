@@ -6,7 +6,7 @@
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
-import { parseGitHubUrl, daysBetween, splitRepo } from './utils.js';
+import { parseGitHubUrl, daysBetween, splitRepo, isRepoExcluded } from './utils.js';
 import { TrackedPR, CIStatus, ReviewDecision } from './types.js';
 
 // Concurrency limit for parallel API calls
@@ -461,6 +461,15 @@ export class PRMonitor {
       if (item.pull_request) {
         githubPRUrls.add(item.html_url);
 
+        // Check if repo is excluded
+        const parsed = parseGitHubUrl(item.html_url);
+        if (parsed) {
+          const repoFullName = `${parsed.owner}/${parsed.repo}`;
+          if (isRepoExcluded(repoFullName, config.excludeRepos)) {
+            continue;
+          }
+        }
+
         const existingPR = this.stateManager.findPR(item.html_url);
         if (!existingPR) {
           try {
@@ -516,6 +525,12 @@ export class PRMonitor {
         removed++;
       }
     }
+
+    // Clean up PRs from excluded repos (e.g., user's own repos, work repos)
+    const excludedRemoved = this.stateManager.cleanupExcludedRepos(
+      (repo) => isRepoExcluded(repo, config.excludeRepos)
+    );
+    removed += excludedRemoved;
 
     // Refresh state reference after immutable updates
     const updatedState = this.stateManager.getState();

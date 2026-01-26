@@ -186,3 +186,29 @@ export function detectGitHubUsername(): string | null {
     return null;
   }
 }
+
+/**
+ * Check if a repo should be excluded based on the excludeRepos config.
+ * Supports:
+ *   - Exact match: "owner/repo"
+ *   - Owner wildcard: "owner" or "owner/*" matches all repos from that owner
+ *
+ * @param repoFullName - The full repo name (e.g., "owner/repo")
+ * @param excludePatterns - Array of patterns to check against
+ */
+export function isRepoExcluded(repoFullName: string, excludePatterns: string[]): boolean {
+  const [owner] = repoFullName.split('/');
+
+  return excludePatterns.some(pattern => {
+    // Exact match: "owner/repo"
+    if (pattern === repoFullName) {
+      return true;
+    }
+    // Owner wildcard: "owner" or "owner/*"
+    const ownerPattern = pattern.replace(/\/\*$/, ''); // Remove trailing /*
+    if (!ownerPattern.includes('/') && ownerPattern === owner) {
+      return true;
+    }
+    return false;
+  });
+}

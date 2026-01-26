@@ -561,6 +561,63 @@ export class StateManager {
   }
 
   /**
+   * Remove all PRs from repos matching the exclude patterns (immutable)
+   * Returns count of PRs removed
+   */
+  cleanupExcludedRepos(isExcluded: (repo: string) => boolean): number {
+    let removed = 0;
+
+    const originalActive = this.state.activePRs.length;
+    this.state.activePRs = this.state.activePRs.filter(pr => {
+      if (isExcluded(pr.repo)) {
+        console.error(`Removed excluded active PR: ${pr.repo}#${pr.number}`);
+        return false;
+      }
+      return true;
+    });
+    removed += originalActive - this.state.activePRs.length;
+
+    const originalDormant = this.state.dormantPRs.length;
+    this.state.dormantPRs = this.state.dormantPRs.filter(pr => {
+      if (isExcluded(pr.repo)) {
+        console.error(`Removed excluded dormant PR: ${pr.repo}#${pr.number}`);
+        return false;
+      }
+      return true;
+    });
+    removed += originalDormant - this.state.dormantPRs.length;
+
+    const originalMerged = this.state.mergedPRs.length;
+    this.state.mergedPRs = this.state.mergedPRs.filter(pr => {
+      if (isExcluded(pr.repo)) {
+        console.error(`Removed excluded merged PR: ${pr.repo}#${pr.number}`);
+        return false;
+      }
+      return true;
+    });
+    removed += originalMerged - this.state.mergedPRs.length;
+
+    const originalClosed = this.state.closedPRs.length;
+    this.state.closedPRs = this.state.closedPRs.filter(pr => {
+      if (isExcluded(pr.repo)) {
+        console.error(`Removed excluded closed PR: ${pr.repo}#${pr.number}`);
+        return false;
+      }
+      return true;
+    });
+    removed += originalClosed - this.state.closedPRs.length;
+
+    // Also clean up repo scores for excluded repos
+    for (const repo of Object.keys(this.state.repoScores)) {
+      if (isExcluded(repo)) {
+        this.removeRepoScore(repo);
+      }
+    }
+
+    return removed;
+  }
+
+  /**
    * Add a merged PR directly (for importing historical data)
    * Skips if already tracked
    */

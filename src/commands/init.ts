@@ -3,7 +3,7 @@
  * Initialize with existing open PRs from GitHub
  */
 
-import { getStateManager, PRMonitor, getOctokit, isTestUsername, detectGitHubUsername } from '../core/index.js';
+import { getStateManager, PRMonitor, getOctokit, isTestUsername, detectGitHubUsername, isRepoExcluded, parseGitHubUrl } from '../core/index.js';
 import { outputJson, outputJsonError } from '../formatters/json.js';
 
 interface InitOptions {
@@ -69,9 +69,21 @@ export async function runInit(options: InitOptions): Promise<void> {
 
   const imported: Array<{ repo: string; number: number; title: string }> = [];
   const errors: Array<{ url: string; error: string }> = [];
+  const config = stateManager.getState().config;
+  let skipped = 0;
 
   for (const item of data.items) {
     if (item.pull_request) {
+      // Check if repo is excluded
+      const parsed = parseGitHubUrl(item.html_url);
+      if (parsed) {
+        const repoFullName = `${parsed.owner}/${parsed.repo}`;
+        if (isRepoExcluded(repoFullName, config.excludeRepos)) {
+          skipped++;
+          continue;
+        }
+      }
+
       try {
         const pr = await prMonitor.trackPR(item.html_url);
         imported.push({ repo: pr.repo, number: pr.number, title: pr.title });
