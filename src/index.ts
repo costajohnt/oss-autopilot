@@ -1059,24 +1059,22 @@ function generateDigest(updates: PRUpdate[]): DailyDigest {
   const sm = getState();
   const state = sm.getState();
   const now = new Date().toISOString();
-
-  const mergedPRs = updates.filter(u => u.type === 'merged').map(u => u.pr);
-  const prsNeedingResponse = state.activePRs.filter(pr => pr.hasUnreadComments);
-  const dormantPRs = updates.filter(u => u.type === 'dormant').map(u => u.pr);
-  const approachingDormant = updates.filter(u => u.type === 'approaching_dormant').map(u => u.pr);
-
   const stats = sm.getStats();
 
+  // Note: This is legacy code - the actual CLI uses commands/daily.ts
+  // which fetches PRs fresh from GitHub instead of using local state
   return {
     generatedAt: now,
-    mergedPRs,
-    prsNeedingResponse,
-    dormantPRs,
-    approachingDormant,
-    newIssueCandidates: [],
+    openPRs: [], // v2: fetched fresh, not from state
+    prsNeedingResponse: [],
+    ciFailingPRs: [],
+    mergeConflictPRs: [],
+    approachingDormant: [],
+    dormantPRs: [],
+    healthyPRs: [],
     summary: {
       totalActivePRs: stats.activePRs,
-      totalDormantPRs: stats.dormantPRs,
+      totalNeedingAttention: 0,
       totalMergedAllTime: stats.mergedPRs,
       mergeRate: parseFloat(stats.mergeRate),
     },
@@ -1089,9 +1087,16 @@ function printDigest(digest: DailyDigest): void {
   console.log(`Generated: ${new Date(digest.generatedAt).toLocaleString()}`);
   console.log('═'.repeat(60));
 
-  if (digest.mergedPRs.length > 0) {
-    console.log('\n🎉 MERGED PRs:');
-    for (const pr of digest.mergedPRs) {
+  if (digest.ciFailingPRs.length > 0) {
+    console.log('\n❌ CI FAILING:');
+    for (const pr of digest.ciFailingPRs) {
+      console.log(`   ${pr.repo}#${pr.number} - ${pr.title}`);
+    }
+  }
+
+  if (digest.mergeConflictPRs.length > 0) {
+    console.log('\n⚠️ MERGE CONFLICTS:');
+    for (const pr of digest.mergeConflictPRs) {
       console.log(`   ${pr.repo}#${pr.number} - ${pr.title}`);
     }
   }
@@ -1105,14 +1110,14 @@ function printDigest(digest: DailyDigest): void {
   }
 
   if (digest.approachingDormant.length > 0) {
-    console.log('\n⚠️ APPROACHING DORMANT (25+ days):');
+    console.log('\n⏰ APPROACHING DORMANT (25+ days):');
     for (const pr of digest.approachingDormant) {
       console.log(`   ${pr.repo}#${pr.number} - ${pr.daysSinceActivity} days`);
     }
   }
 
   if (digest.dormantPRs.length > 0) {
-    console.log('\n⏰ NEWLY DORMANT (30+ days):');
+    console.log('\n💤 DORMANT (30+ days):');
     for (const pr of digest.dormantPRs) {
       console.log(`   ${pr.repo}#${pr.number} - ${pr.title}`);
     }
@@ -1120,7 +1125,7 @@ function printDigest(digest: DailyDigest): void {
 
   console.log('\n📊 SUMMARY:');
   console.log(`   Active PRs: ${digest.summary.totalActivePRs}`);
-  console.log(`   Dormant PRs: ${digest.summary.totalDormantPRs}`);
+  console.log(`   Needing Attention: ${digest.summary.totalNeedingAttention}`);
   console.log(`   Merged (all time): ${digest.summary.totalMergedAllTime}`);
   console.log(`   Merge Rate: ${digest.summary.mergeRate}%`);
   console.log('═'.repeat(60));

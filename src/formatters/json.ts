@@ -3,8 +3,7 @@
  * Provides structured output that can be consumed by scripts and plugins
  */
 
-import type { TrackedPR, DailyDigest, AgentState } from '../core/types.js';
-import type { PRUpdate } from '../core/pr-monitor.js';
+import type { TrackedPR, FetchedPR, DailyDigest, AgentState } from '../core/types.js';
 
 export interface JsonOutput<T = unknown> {
   success: boolean;
@@ -25,15 +24,15 @@ export type ActionableIssueType = 'ci_failing' | 'merge_conflict' | 'needs_respo
 
 export interface ActionableIssue {
   type: ActionableIssueType;
-  pr: TrackedPR;
+  pr: FetchedPR;
   label: string; // e.g., "[CI Failing]"
 }
 
 export interface DailyOutput {
   digest: DailyDigest;
-  updates: PRUpdate[];
+  updates: unknown[]; // Legacy field, always empty in v2
   capacity: CapacityAssessment;
-  summary: string; // Pre-formatted markdown for Claude to display verbatim (deprecated, kept for compatibility)
+  summary: string; // Pre-formatted markdown for Claude to display verbatim
   briefSummary: string; // One-liner for action-first flow
   actionableIssues: ActionableIssue[]; // Structured list for AskUserQuestion
 }
