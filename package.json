@@ -5,43 +5,39 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "oss-autopilot": "./dist/index.js"
+    "oss-autopilot": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
-    "start": "tsx src/index.ts",
-    "dev": "tsx watch src/index.ts",
-    "daily": "tsx src/index.ts daily",
-    "search": "tsx src/index.ts search",
-    "status": "tsx src/index.ts status",
+    "start": "tsx src/cli.ts",
+    "dev": "tsx watch src/cli.ts",
+    "daily": "tsx src/cli.ts daily",
+    "search": "tsx src/cli.ts search",
+    "status": "tsx src/cli.ts status",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "keywords": [
+    "claude-code-plugin",
     "open-source",
     "github",
     "contributions",
     "ai-agent",
-    "cli",
-    "claude-code"
+    "cli"
   ],
   "author": "John Costa",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/johncosta/oss-autopilot.git"
+    "url": "git+https://github.com/costajohnt/oss-autopilot.git"
   },
-  "homepage": "https://github.com/johncosta/oss-autopilot#readme",
+  "homepage": "https://github.com/costajohnt/oss-autopilot#readme",
   "bugs": {
-    "url": "https://github.com/johncosta/oss-autopilot/issues"
+    "url": "https://github.com/costajohnt/oss-autopilot/issues"
   },
   "engines": {
     "node": ">=18.0.0"
   },
-  "files": [
-    "dist",
-    "examples"
-  ],
   "devDependencies": {
     "@types/node": "^25.0.3",
     "tsx": "^4.21.0",
@@ -51,6 +47,7 @@
   "dependencies": {
     "@octokit/plugin-throttling": "^11.0.3",
     "@octokit/rest": "^22.0.1",
+    "commander": "^14.0.2",
     "dotenv": "^17.2.3"
   }
 }
