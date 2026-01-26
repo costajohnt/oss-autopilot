@@ -474,14 +474,66 @@ export class PRMonitor {
     }
 
     // Remove PRs that are no longer open on GitHub
+    // This handles both closed/merged PRs AND stale mock/test data
     const state = this.stateManager.getState();
     let removed = 0;
 
+    // Clean up active PRs not in GitHub response
     for (const pr of [...state.activePRs]) {
       if (!githubPRUrls.has(pr.url)) {
-        // PR is no longer open - it was merged or closed
-        // We'll let the check step handle moving it to the right place
+        // PR is no longer open - could be merged, closed, or invalid/stale data
+        this.stateManager.untrackPR(pr.url);
         removed++;
+      }
+    }
+
+    // Also clean up dormant PRs not in GitHub response
+    // (dormant PRs are still open, just inactive - they should appear in the search)
+    for (const pr of [...state.dormantPRs]) {
+      if (!githubPRUrls.has(pr.url)) {
+        this.stateManager.untrackPR(pr.url);
+        removed++;
+      }
+    }
+
+    // Clean up merged/closed PRs with suspiciously low IDs (likely mock/test data)
+    // Real GitHub PR IDs are large numbers (billions), mock IDs are typically small
+    const MIN_REAL_PR_ID = 10000;
+
+    for (const pr of [...state.mergedPRs]) {
+      if (pr.id < MIN_REAL_PR_ID) {
+        const index = state.mergedPRs.findIndex(p => p.url === pr.url);
+        if (index !== -1) {
+          state.mergedPRs.splice(index, 1);
+          console.error(`Removed invalid merged PR: ${pr.repo}#${pr.number} (id=${pr.id})`);
+          removed++;
+        }
+      }
+    }
+
+    for (const pr of [...state.closedPRs]) {
+      if (pr.id < MIN_REAL_PR_ID) {
+        const index = state.closedPRs.findIndex(p => p.url === pr.url);
+        if (index !== -1) {
+          state.closedPRs.splice(index, 1);
+          console.error(`Removed invalid closed PR: ${pr.repo}#${pr.number} (id=${pr.id})`);
+          removed++;
+        }
+      }
+    }
+
+    // Clean up repo scores for repos with no remaining PRs
+    const reposWithPRs = new Set([
+      ...state.activePRs.map(p => p.repo),
+      ...state.dormantPRs.map(p => p.repo),
+      ...state.mergedPRs.map(p => p.repo),
+      ...state.closedPRs.map(p => p.repo),
+    ]);
+
+    for (const repo of Object.keys(state.repoScores)) {
+      if (!reposWithPRs.has(repo)) {
+        delete state.repoScores[repo];
+        console.error(`Removed orphaned repo score: ${repo}`);
       }
     }
 

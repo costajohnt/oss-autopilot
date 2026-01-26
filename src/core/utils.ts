@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { execFileSync } from 'child_process';
 
 /**
  * Get the data directory for oss-autopilot.
@@ -148,4 +149,40 @@ export function byDateDescending<T>(getDate: (item: T) => string | number | null
     const dateB = new Date(getDate(b) || 0).getTime();
     return dateB - dateA;
   };
+}
+
+/**
+ * Known test/placeholder usernames that should trigger auto-detection
+ */
+const TEST_USERNAMES = ['contributor', 'test', 'demo', 'example', 'user'];
+
+/**
+ * Check if a username looks like test/placeholder data
+ */
+export function isTestUsername(username: string | undefined): boolean {
+  if (!username) return true;
+  return TEST_USERNAMES.includes(username.toLowerCase());
+}
+
+/**
+ * Detect GitHub username using the gh CLI.
+ * Returns the username or null if detection fails.
+ * Uses execFileSync for safety (no shell injection risk).
+ */
+export function detectGitHubUsername(): string | null {
+  try {
+    // Use execFileSync with separate args array to avoid shell injection
+    const result = execFileSync('gh', ['api', 'user', '--jq', '.login'], {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const username = result.trim();
+    if (username && username.length > 0) {
+      return username;
+    }
+    return null;
+  } catch {
+    // gh CLI not available or not authenticated
+    return null;
+  }
 }

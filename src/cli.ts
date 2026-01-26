@@ -138,8 +138,8 @@ program
 
 // Init command
 program
-  .command('init <username>')
-  .description('Initialize with your GitHub username and import open PRs')
+  .command('init [username]')
+  .description('Initialize with your GitHub username and import open PRs (auto-detects if not provided)')
   .option('--json', 'Output as JSON')
   .action(async (username, options) => {
     await runInit({ username, json: options.json });

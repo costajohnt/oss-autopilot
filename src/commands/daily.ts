@@ -3,7 +3,7 @@
  * Monitors all tracked PRs and generates a digest
  */
 
-import { getStateManager, PRMonitor, type PRUpdate, type DailyDigest, type TrackedPR, type CheckAllPRsResult } from '../core/index.js';
+import { getStateManager, PRMonitor, type PRUpdate, type DailyDigest, type TrackedPR, type CheckAllPRsResult, isTestUsername, detectGitHubUsername } from '../core/index.js';
 import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue } from '../formatters/json.js';
 
 interface DailyOptions {
@@ -22,6 +22,25 @@ export async function runDaily(options: DailyOptions): Promise<void> {
   }
 
   const stateManager = getStateManager();
+  const config = stateManager.getState().config;
+
+  // Auto-detect and update username if it's missing or is a test value
+  if (isTestUsername(config.githubUsername)) {
+    const detected = detectGitHubUsername();
+    if (detected) {
+      console.error(`Auto-detected GitHub user: @${detected}`);
+      stateManager.updateConfig({ githubUsername: detected });
+    } else if (!config.githubUsername) {
+      if (options.json) {
+        outputJsonError('No GitHub username configured. Run: init <username>');
+      } else {
+        console.error('Error: No GitHub username configured.');
+        console.error('Run: init <username>');
+      }
+      process.exit(1);
+    }
+  }
+
   const prMonitor = new PRMonitor(token);
 
   // First, sync PRs from GitHub (fetch new ones, detect closed ones)

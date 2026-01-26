@@ -17,5 +17,7 @@ export {
   getDashboardPath,
   formatRelativeTime,
   byDateDescending,
+  isTestUsername,
+  detectGitHubUsername,
 } from './utils.js';
 export * from './types.js';

@@ -519,6 +519,30 @@ export class StateManager {
     return true;
   }
 
+  /**
+   * Add a merged PR directly (for importing historical data)
+   * Skips if already tracked
+   */
+  addMergedPR(pr: TrackedPR): boolean {
+    // Check if already tracked anywhere
+    const existingActive = this.state.activePRs.find(p => p.url === pr.url);
+    const existingDormant = this.state.dormantPRs.find(p => p.url === pr.url);
+    const existingMerged = this.state.mergedPRs.find(p => p.url === pr.url);
+    const existingClosed = this.state.closedPRs.find(p => p.url === pr.url);
+
+    if (existingActive || existingDormant || existingMerged || existingClosed) {
+      return false; // Already tracked
+    }
+
+    pr.status = 'merged';
+    this.state.mergedPRs.push(pr);
+    console.error(`Imported merged PR: ${pr.repo}#${pr.number}`);
+
+    // Update repo score
+    this.incrementMergedCount(pr.repo);
+    return true;
+  }
+
   // === Issue Management ===
 
   addIssue(issue: TrackedIssue): void {
