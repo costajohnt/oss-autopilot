@@ -17,6 +17,7 @@ import { runConfig } from './commands/config.js';
 import { runComments, runPost, runClaim } from './commands/comments.js';
 import { runSetup, runCheckSetup } from './commands/setup.js';
 import { runInit } from './commands/init.js';
+import { runImportHistory } from './commands/import-history.js';
 import { runRead } from './commands/read.js';
 import { runDashboard } from './commands/dashboard.js';
 
@@ -143,6 +144,16 @@ program
   .option('--json', 'Output as JSON')
   .action(async (username, options) => {
     await runInit({ username, json: options.json });
+  });
+
+// Import history command
+program
+  .command('import-history')
+  .description('Import historical merged PRs with rate limiting')
+  .option('--months <number>', 'How many months of history to import (default: 12)')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    await runImportHistory({ months: options.months ? parseInt(options.months) : undefined, json: options.json });
   });
 
 // Setup command

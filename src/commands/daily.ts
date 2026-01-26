@@ -30,7 +30,8 @@ export async function runDaily(options: DailyOptions): Promise<void> {
     if (detected) {
       console.error(`Auto-detected GitHub user: @${detected}`);
       stateManager.updateConfig({ githubUsername: detected });
-    } else if (!config.githubUsername) {
+    } else {
+      // Detection failed - error out since we don't have a valid username
       if (options.json) {
         outputJsonError('No GitHub username configured. Run: init <username>');
       } else {
