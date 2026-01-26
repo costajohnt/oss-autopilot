@@ -2,6 +2,8 @@
 
 An AI-powered plugin for [Claude Code](https://claude.ai/claude-code) that helps you manage open source contributions. Track PRs, respond to maintainers, discover issues, and maintain contribution velocity — all through natural conversation with Claude.
 
+![OSS Autopilot Dashboard](docs/images/dashboard.png)
+
 ## Quick Start
 
 **In Claude Code, run:**
@@ -26,7 +28,7 @@ Contributing to open source is rewarding but hard to sustain. PRs get lost, main
 - Tracking multiple contributions across repos is tedious
 
 **How OSS Autopilot helps:**
-- **Daily PR monitoring** — Checks all your open PRs for new comments, CI failures, merge conflicts
+- **PR monitoring** — Checks all your open PRs for new comments, CI failures, merge conflicts
 - **Smart response drafting** — Claude reads maintainer feedback and drafts responses for your approval
 - **Issue discovery** — Finds issues matching your skills, vets them before you invest time
 - **Repository evaluation** — Analyzes repo health before you contribute
@@ -59,7 +61,7 @@ Which issues would you like to address?
 
 | Command | Description |
 |---------|-------------|
-| `/oss` | Daily check — monitor PRs, see what needs attention, take action |
+| `/oss` | Check your PRs, see what needs attention, take action |
 | `/setup-oss` | Configure preferences and import existing PRs |
 
 ### Specialized Agents
