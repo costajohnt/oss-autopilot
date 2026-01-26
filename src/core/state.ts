@@ -520,6 +520,47 @@ export class StateManager {
   }
 
   /**
+   * Remove a merged PR by URL (immutable - creates new array)
+   */
+  removeMergedPR(url: string): boolean {
+    const index = this.state.mergedPRs.findIndex(p => p.url === url);
+    if (index === -1) {
+      return false;
+    }
+    const pr = this.state.mergedPRs[index];
+    this.state.mergedPRs = this.state.mergedPRs.filter(p => p.url !== url);
+    console.error(`Removed merged PR: ${pr.repo}#${pr.number}`);
+    return true;
+  }
+
+  /**
+   * Remove a closed PR by URL (immutable - creates new array)
+   */
+  removeClosedPR(url: string): boolean {
+    const index = this.state.closedPRs.findIndex(p => p.url === url);
+    if (index === -1) {
+      return false;
+    }
+    const pr = this.state.closedPRs[index];
+    this.state.closedPRs = this.state.closedPRs.filter(p => p.url !== url);
+    console.error(`Removed closed PR: ${pr.repo}#${pr.number}`);
+    return true;
+  }
+
+  /**
+   * Remove a repo score (immutable - creates new object)
+   */
+  removeRepoScore(repo: string): boolean {
+    if (!(repo in this.state.repoScores)) {
+      return false;
+    }
+    const { [repo]: _, ...rest } = this.state.repoScores;
+    this.state.repoScores = rest;
+    console.error(`Removed repo score: ${repo}`);
+    return true;
+  }
+
+  /**
    * Add a merged PR directly (for importing historical data)
    * Skips if already tracked
    */

@@ -498,43 +498,39 @@ export class PRMonitor {
 
     // Clean up merged/closed PRs with suspiciously low IDs (likely mock/test data)
     // Real GitHub PR IDs are large numbers (billions), mock IDs are typically small
+    // This heuristic catches test fixtures that use sequential IDs like 1, 2, 3...
     const MIN_REAL_PR_ID = 10000;
 
-    for (const pr of [...state.mergedPRs]) {
-      if (pr.id < MIN_REAL_PR_ID) {
-        const index = state.mergedPRs.findIndex(p => p.url === pr.url);
-        if (index !== -1) {
-          state.mergedPRs.splice(index, 1);
-          console.error(`Removed invalid merged PR: ${pr.repo}#${pr.number} (id=${pr.id})`);
-          removed++;
-        }
+    // Get PRs to remove (snapshot before removal to avoid mutation during iteration)
+    const invalidMergedPRs = state.mergedPRs.filter(pr => pr.id < MIN_REAL_PR_ID);
+    const invalidClosedPRs = state.closedPRs.filter(pr => pr.id < MIN_REAL_PR_ID);
+
+    for (const pr of invalidMergedPRs) {
+      if (this.stateManager.removeMergedPR(pr.url)) {
+        removed++;
       }
     }
 
-    for (const pr of [...state.closedPRs]) {
-      if (pr.id < MIN_REAL_PR_ID) {
-        const index = state.closedPRs.findIndex(p => p.url === pr.url);
-        if (index !== -1) {
-          state.closedPRs.splice(index, 1);
-          console.error(`Removed invalid closed PR: ${pr.repo}#${pr.number} (id=${pr.id})`);
-          removed++;
-        }
+    for (const pr of invalidClosedPRs) {
+      if (this.stateManager.removeClosedPR(pr.url)) {
+        removed++;
       }
     }
+
+    // Refresh state reference after immutable updates
+    const updatedState = this.stateManager.getState();
 
     // Clean up repo scores for repos with no remaining PRs
     const reposWithPRs = new Set([
-      ...state.activePRs.map(p => p.repo),
-      ...state.dormantPRs.map(p => p.repo),
-      ...state.mergedPRs.map(p => p.repo),
-      ...state.closedPRs.map(p => p.repo),
+      ...updatedState.activePRs.map(p => p.repo),
+      ...updatedState.dormantPRs.map(p => p.repo),
+      ...updatedState.mergedPRs.map(p => p.repo),
+      ...updatedState.closedPRs.map(p => p.repo),
     ]);
 
-    for (const repo of Object.keys(state.repoScores)) {
-      if (!reposWithPRs.has(repo)) {
-        delete state.repoScores[repo];
-        console.error(`Removed orphaned repo score: ${repo}`);
-      }
+    const orphanedRepos = Object.keys(updatedState.repoScores).filter(repo => !reposWithPRs.has(repo));
+    for (const repo of orphanedRepos) {
+      this.stateManager.removeRepoScore(repo);
     }
 
     return { added, removed, total: data.total_count };
