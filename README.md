@@ -1,6 +1,6 @@
 # OSS Autopilot
 
-An AI-powered plugin for [Claude Code](https://claude.ai/claude-code) that helps you manage open source contributions. Track PRs, respond to maintainers, discover issues, and maintain contribution velocity — all through natural conversation with Claude.
+Discover issues worth contributing to, track your PRs across repos, and draft responses to maintainer feedback. An AI copilot for your open source journey.
 
 ![OSS Autopilot Dashboard](docs/images/dashboard.png)
 
@@ -28,11 +28,12 @@ Contributing to open source is rewarding but hard to sustain. PRs get lost, main
 - Tracking multiple contributions across repos is tedious
 
 **How OSS Autopilot helps:**
-- **PR monitoring** — Checks all your open PRs for new comments, CI failures, merge conflicts
-- **Smart response drafting** — Claude reads maintainer feedback and drafts responses for your approval
-- **Issue discovery** — Finds issues matching your skills, vets them before you invest time
-- **Repository evaluation** — Analyzes repo health before you contribute
-- **Human-in-the-loop** — Claude never posts anything without your explicit approval
+- **PR monitoring**: Checks all your open PRs for new comments, CI failures, merge conflicts
+- **Smart response drafting**: Claude reads maintainer feedback and drafts responses for your approval
+- **Adaptive issue discovery**: Finds issues matching your skills and learns from your contribution history
+- **Repository scoring**: Tracks which repos merge PRs vs let them languish
+- **Repository evaluation**: Analyzes repo health before you contribute
+- **Human-in-the-loop**: Claude never posts anything without your explicit approval
 
 ## Usage
 
@@ -125,7 +126,7 @@ In Claude Code:
 
 - [Claude Code](https://claude.ai/claude-code) (latest version)
 - Node.js 18+
-- GitHub CLI (`gh`) — for GitHub API access
+- GitHub CLI (`gh`): for GitHub API access
 
 ---
 
@@ -194,7 +195,7 @@ All data is stored locally in `~/.oss-autopilot/`:
 
 **Check in regularly:** Run `/oss` every few days. Stale PRs are hard to revive.
 
-**Trust but verify:** Claude's draft responses are good starting points, but review them — you know the technical context.
+**Trust but verify:** Claude's draft responses are good starting points, but review them: you know the technical context.
 
 **Use dormant warnings:** When a PR approaches your threshold, send a polite follow-up. Maintainers are busy.
 
