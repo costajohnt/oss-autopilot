@@ -1,164 +1,230 @@
-# oss-autopilot
+# OSS Autopilot
 
-An AI-powered assistant for managing open source contributions, designed to work with Claude Code.
+An AI-powered plugin for [Claude Code](https://claude.ai/claude-code) that helps you manage open source contributions. Track PRs, respond to maintainers, discover issues, and maintain contribution velocity — all through natural conversation with Claude.
+
+## Quick Start
+
+**Open Claude Code and paste this repo URL:**
+
+```
+https://github.com/costajohnt/oss-autopilot
+```
+
+Claude will guide you through installation and setup. That's it.
+
+---
 
 ## What It Does
 
-Contributing to open source is rewarding but hard to sustain. PRs get lost, maintainer comments go unnoticed, and promising issues slip away. oss-autopilot solves this by giving Claude Code the tools to be your OSS contribution manager.
+Contributing to open source is rewarding but hard to sustain. PRs get lost, maintainer comments go unnoticed, and promising issues slip away.
 
-**The problem it solves:**
+**The problem:**
 - You forget to check on PRs you submitted weeks ago
 - Maintainer comments sit unanswered, PRs go stale
 - You want to contribute more but don't know where to start
 - Tracking multiple contributions across repos is tedious
 
-**How it helps:**
-- **Daily PR monitoring** - Checks all your open PRs for new comments, flags ones approaching dormancy
-- **Smart response drafting** - Claude reads maintainer feedback, understands the context, and drafts responses for your approval
-- **Issue discovery** - Finds issues matching your skills and interests, vets them for viability before you invest time
-- **Human-in-the-loop** - Claude never posts anything without your explicit approval
+**How OSS Autopilot helps:**
+- **Daily PR monitoring** — Checks all your open PRs for new comments, CI failures, merge conflicts
+- **Smart response drafting** — Claude reads maintainer feedback and drafts responses for your approval
+- **Issue discovery** — Finds issues matching your skills, vets them before you invest time
+- **Repository evaluation** — Analyzes repo health before you contribute
+- **Human-in-the-loop** — Claude never posts anything without your explicit approval
 
-## How It Works
+## Usage
 
-oss-autopilot is a CLI tool that Claude Code orchestrates through slash commands. When you run `/oss`, Claude:
+Once installed, just run:
 
-1. Runs `npm start -- daily` to sync your PR status with GitHub
-2. Identifies PRs with new comments or approaching dormancy
-3. Fetches the full comment thread for PRs needing response
-4. Reads relevant code files to understand the context
-5. Drafts a response addressing the maintainer's feedback
-6. Presents the draft for your approval before posting
+```
+/oss
+```
 
-State is persisted in `data/state.json`, tracking:
-- Active PRs you're working on
-- Comment counts (to detect new activity)
-- Last activity timestamps (to detect dormancy)
-- Merged/closed history (for stats)
-- Your configuration preferences
+Claude will check your PRs and present actionable options:
 
-## Installation
+```
+📊 16 Active PRs | 3 need attention | Dashboard opened in browser
+
+Which issues would you like to address?
+
+1. [CI Failing] shadcn/ui#9263 - fix(docs): use yarn dlx for npx
+2. [Merge Conflict] ink#861 - Fix emoji border alignment
+3. [Needs Response] ink#858 - Remove create-ink-app from README
+4. Address all issues above
+5. Find new issues to work on
+6. Done for now
+```
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `/oss` | Daily check — monitor PRs, see what needs attention, take action |
+| `/setup-oss` | Configure preferences and import existing PRs |
+
+### Specialized Agents
+
+Claude automatically uses these agents based on context:
+
+| Agent | Purpose |
+|-------|---------|
+| **pr-responder** | Drafts responses to maintainer feedback |
+| **pr-health-checker** | Diagnoses CI failures, merge conflicts, stale reviews |
+| **pr-compliance-checker** | Validates PRs against [opensource.guide](https://opensource.guide) best practices |
+| **issue-scout** | Finds and vets new issues to work on |
+| **repo-evaluator** | Analyzes repository health before contributing |
+| **contribution-strategist** | Strategic advice for your OSS journey |
+
+---
+
+## Manual Installation
+
+If you prefer to install manually instead of letting Claude guide you:
+
+### 1. Clone and build
 
 ```bash
-git clone https://github.com/costajohnt/oss-autopilot
-cd oss-autopilot
+# Clone to the standard location
+git clone https://github.com/costajohnt/oss-autopilot.git ~/.oss-autopilot/cli
+cd ~/.oss-autopilot/cli
 npm install
 npm run build
 ```
 
-Create a `.env` file with your GitHub token:
+### 2. Install the plugin
+
+Add to your Claude Code settings (`~/.claude/settings.json`):
+
+```json
+{
+  "plugins": ["~/.oss-autopilot/cli"]
+}
+```
+
+Or add to a specific project's `.claude/settings.json`.
+
+### 3. Set up GitHub access
+
 ```bash
-cp .env.example .env
-# Edit .env and add: GITHUB_TOKEN=your_token_here
+# Install GitHub CLI from https://cli.github.com/
+gh auth login
 ```
 
-The token needs `repo` scope to read PR comments and search issues.
+### 4. Run setup
 
-### Install Slash Commands
-
-```bash
-cp examples/oss.md ~/.claude/commands/
-cp examples/setup-oss.md ~/.claude/commands/
+In Claude Code:
+```
+/setup-oss
 ```
 
-Restart Claude Code to load the commands.
+---
 
-## Usage
+## Requirements
 
-### First-Time Setup
+- [Claude Code](https://claude.ai/claude-code) (latest version)
+- Node.js 18+
+- GitHub CLI (`gh`) — for GitHub API access
 
-Run `/setup-oss` in Claude Code. It guides you through configuring:
+---
 
-- **GitHub username** - So it can find your open PRs
-- **Max active PRs** - Capacity limit (default: 10)
-- **Dormant threshold** - Days before flagging stale PRs (default: 30)
-- **Languages** - What you want to contribute to (TypeScript, Python, Go, etc.)
-- **Issue labels** - What to search for (good first issue, help wanted, bug, etc.)
+## How It Works
 
-### Daily Workflow
-
-Run `/oss` once a day (or whenever you have time for OSS work). Claude will:
-
-1. **Report PR status** - Which PRs have new comments, which are going stale
-2. **Draft responses** - For PRs with maintainer feedback, Claude reads the comments, understands what's being asked, and drafts a response
-3. **Flag dormant PRs** - PRs with no activity for 25+ days get a warning; 30+ days and you're prompted to follow up or close
-4. **Celebrate merges** - Tracks your merged PRs and success rate
-5. **Find opportunities** - If you have capacity, searches for issues matching your criteria
-
-### Effective Usage Tips
-
-**Start small:** Set `maxActivePRs` to 3-5 when starting out. It's better to have fewer PRs you actively maintain than many that go dormant.
-
-**Run it regularly:** The tool works best when you check in every few days. Stale PRs are hard to revive.
-
-**Trust but verify:** Claude's draft responses are good starting points but review them. You know the technical context better.
-
-**Use the dormant warnings:** When a PR hits 25 days, send a polite follow-up. Maintainers are busy and PRs get lost.
-
-**Vet before you commit:** Before claiming an issue, run the vetting process. It checks for existing PRs, claimed status, and project activity.
-
-### Example Session
+OSS Autopilot uses a hybrid architecture for reliability and speed:
 
 ```
-You: /oss
-
-Claude: ## OSS Daily Report
-
-### PRs Needing Response (1)
-**eslint-plugin-react#2847** - Comment from @ljharb (2 hours ago)
-> "This looks good overall, but can you add a test for the case
-> where the prop is undefined?"
-
-I've reviewed the PR and the test file. Here's a draft response:
-
-> Thanks for the review! I've added a test case for the undefined
-> prop scenario in `tests/rules/no-unused-prop-types.js`. The test
-> verifies that the rule correctly handles components where props
-> may be undefined.
-
-[Approve] [Edit] [Skip]
-
-### Approaching Dormant (1)
-**typescript#51234** - 27 days since last activity
-> Awaiting review from @RyanCavanaugh
-
-Want me to draft a polite follow-up comment?
-
-### Merged This Week (1)
-**vite#9182** - Merged 2 days ago
-
-### Capacity: 4/10 PRs active
-Found 3 issues matching your criteria. Want me to vet them?
+┌─────────────────────────────────────────────────┐
+│  Claude Code Plugin Layer                       │
+│  - /oss and /setup-oss commands                 │
+│  - Specialized agents for different tasks       │
+│  - Natural language interface                   │
+├─────────────────────────────────────────────────┤
+│  TypeScript CLI (deterministic, fast)           │
+│  - Syncs PR state from GitHub API               │
+│  - Outputs structured JSON for Claude to parse  │
+│  - Generates HTML dashboard                     │
+├─────────────────────────────────────────────────┤
+│  Core Logic (tested, type-safe)                 │
+│  - State management                             │
+│  - PR health monitoring                         │
+│  - Capacity assessment                          │
+└─────────────────────────────────────────────────┘
 ```
+
+**Why this architecture?**
+- **Reliability**: Deterministic TypeScript code handles GitHub API calls and state management
+- **Speed**: CLI operations complete in seconds, not minutes
+- **Testability**: Core logic has unit tests, plugin layer focuses on UX
+- **Transparency**: JSON output means you can see exactly what data Claude receives
+
+---
 
 ## Configuration
 
-Settings are stored in `data/state.json`:
+Settings are stored in `~/.oss-autopilot/data/state.json`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `maxActivePRs` | 10 | Capacity limit for active PRs |
-| `dormantThresholdDays` | 30 | Days until PR marked dormant |
-| `approachingDormantDays` | 25 | Days until dormancy warning |
-| `languages` | typescript, javascript | Languages to search |
-| `labels` | good first issue, help wanted | Issue labels to match |
+| `githubUsername` | (detected) | Your GitHub username |
+| `maxActivePRs` | 10 | Capacity limit before suggesting focus |
+| `dormantDays` | 30 | Days until PR marked dormant |
+| `approachingDormantDays` | 14 | Days until dormancy warning |
 
-Reconfigure anytime with `/setup-oss`.
+---
 
-## CLI Reference
+## Data Storage
 
-The slash commands use these commands internally:
+All data is stored locally in `~/.oss-autopilot/`:
+
+```
+~/.oss-autopilot/
+├── cli/                  # The plugin code (this repo)
+├── data/
+│   └── state.json        # PR tracking state
+├── dashboard.html        # Visual dashboard (auto-generated)
+└── events.jsonl          # Activity log
+```
+
+---
+
+## Tips for Effective Use
+
+**Start small:** Set `maxActivePRs` to 3-5 when starting out. Better to maintain fewer PRs actively than let many go stale.
+
+**Check in regularly:** Run `/oss` every few days. Stale PRs are hard to revive.
+
+**Trust but verify:** Claude's draft responses are good starting points, but review them — you know the technical context.
+
+**Use dormant warnings:** When a PR approaches your threshold, send a polite follow-up. Maintainers are busy.
+
+**Evaluate repos first:** Before claiming an issue, let the repo-evaluator check if the project is actively maintained.
+
+---
+
+## Development
 
 ```bash
-npm start -- setup          # Configure settings
-npm start -- daily          # Run daily PR check
-npm start -- status         # Portfolio overview
-npm start -- init <user>    # Import your open PRs
-npm start -- search [n]     # Find matching issues
-npm start -- vet <url>      # Vet an issue
-npm start -- comments <url> # Fetch PR comments
-npm start -- track <url>    # Track a PR
-npm start -- untrack <url>  # Stop tracking
+cd ~/.oss-autopilot/cli
+
+# Run tests
+npm test
+
+# Build
+npm run build
+
+# Run CLI directly (for debugging)
+GITHUB_TOKEN=$(gh auth token) npm start -- daily --json
 ```
+
+---
+
+## Contributing
+
+Contributions welcome! Please:
+1. Fork the repo
+2. Create a feature branch
+3. Run tests (`npm test`)
+4. Submit a PR
+
+---
 
 ## License
 

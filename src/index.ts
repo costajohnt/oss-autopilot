@@ -6,15 +6,26 @@
 
 import 'dotenv/config';
 import * as fs from 'fs';
-import * as path from 'path';
-import { getStateManager } from './state.js';
-import { PRMonitor, PRUpdate } from './pr-monitor.js';
-import { IssueDiscovery } from './issue-discovery.js';
-import { parseGitHubUrl } from './utils.js';
-import { DailyDigest, TrackedPR } from './types.js';
+import { getStateManager } from './core/state.js';
+import { PRMonitor, PRUpdate } from './core/pr-monitor.js';
+import { IssueDiscovery } from './core/issue-discovery.js';
+import { parseGitHubUrl, getDashboardPath } from './core/utils.js';
+import { DailyDigest, TrackedPR } from './core/types.js';
 
 const VERSION = '0.1.0';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+
+/**
+ * Escape HTML special characters to prevent XSS attacks
+ */
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
 
 // Commands that don't require GitHub API access
 const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', '-v', '--version', 'setup', 'checkSetup', 'dashboard'];
@@ -55,7 +66,17 @@ const commands: Record<string, () => Promise<void>> = {
     console.log('\n📊 Running daily check...\n');
 
     // Check all PRs
-    const updates = await getPRMonitor().checkAllPRs();
+    const checkResult = await getPRMonitor().checkAllPRs();
+    const { updates, failures } = checkResult;
+
+    // Log any failures (but continue with successful checks)
+    if (failures.length > 0) {
+      console.log(`\n⚠️  ${failures.length} PR check(s) failed:`);
+      for (const failure of failures) {
+        console.log(`   - ${failure.prUrl}: ${failure.error}`);
+      }
+      console.log('');
+    }
 
     // Generate digest
     const digest = generateDigest(updates);
@@ -306,7 +327,7 @@ const commands: Record<string, () => Promise<void>> = {
 
     console.log(`\n💬 Fetching comments for: ${prUrl}\n`);
 
-    const { getOctokit } = await import('./github.js');
+    const { getOctokit } = await import('./core/github.js');
     const octokit = getOctokit(GITHUB_TOKEN!);
 
     // Parse PR URL
@@ -485,7 +506,7 @@ const commands: Record<string, () => Promise<void>> = {
     console.log('---\n');
 
     // Post the comment using GitHub API
-    const { getOctokit } = await import('./github.js');
+    const { getOctokit } = await import('./core/github.js');
     const octokit = getOctokit(GITHUB_TOKEN!);
 
     try {
@@ -542,7 +563,7 @@ const commands: Record<string, () => Promise<void>> = {
     console.log('---\n');
 
     // Post the comment
-    const { getOctokit } = await import('./github.js');
+    const { getOctokit } = await import('./core/github.js');
     const octokit = getOctokit(GITHUB_TOKEN!);
 
     try {
@@ -742,7 +763,7 @@ const commands: Record<string, () => Promise<void>> = {
       const inactiveBadge = pr.daysSinceActivity > 20 ? '<span class="badge badge-warning">' + pr.daysSinceActivity + 'd inactive</span>' : '';
       return `
     <div class="pr-item">
-      <a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - ${pr.title}
+      <a href="${escapeHtml(pr.url)}" target="_blank">${escapeHtml(pr.repo)}#${pr.number}</a> - ${escapeHtml(pr.title)}
       <div class="pr-meta">
         ${needsResponseBadge}
         ${inactiveBadge}
@@ -802,22 +823,18 @@ const commands: Record<string, () => Promise<void>> = {
 </body>
 </html>`;
 
-    // Write to file
-    const dataDir = path.join(process.cwd(), 'data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-
-    const dashboardPath = path.join(dataDir, 'dashboard.html');
+    // Write to file in ~/.oss-autopilot/
+    const dashboardPath = getDashboardPath();
     fs.writeFileSync(dashboardPath, html);
 
     console.log(`\n📊 Dashboard generated: ${dashboardPath}`);
 
     // Open in browser if --open flag
     if (process.argv.includes('--open')) {
-      const { exec } = await import('child_process');
-      const openCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-      exec(`${openCmd} "${dashboardPath}"`);
+      const { spawn } = await import('child_process');
+      const openCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
+      const args = process.platform === 'win32' ? ['/c', 'start', '', dashboardPath] : [dashboardPath];
+      spawn(openCmd, args, { detached: true, stdio: 'ignore' }).unref();
       console.log('Opening in browser...');
     } else {
       console.log('Run with --open to open in browser');
@@ -1012,7 +1029,7 @@ Examples:
 };
 
 async function importUserPRs(username: string): Promise<void> {
-  const { getOctokit } = await import('./github.js');
+  const { getOctokit } = await import('./core/github.js');
   const octokit = getOctokit(GITHUB_TOKEN!);
 
   // Search for open PRs by this user

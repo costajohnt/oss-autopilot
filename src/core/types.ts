@@ -5,6 +5,9 @@
 export type PRStatus = 'open' | 'merged' | 'closed' | 'draft';
 export type PRActivityStatus = 'active' | 'needs_response' | 'waiting' | 'dormant';
 export type IssueStatus = 'candidate' | 'claimed' | 'in_progress' | 'pr_submitted';
+export type CIStatus = 'passing' | 'failing' | 'pending' | 'unknown';
+export type ReviewDecision = 'approved' | 'changes_requested' | 'review_required' | 'unknown';
+export type PRHealthStatus = 'ci_failing' | 'conflict' | 'changes_requested' | 'approved' | 'none';
 
 export interface TrackedPR {
   // Identity
@@ -39,6 +42,17 @@ export interface TrackedPR {
   // Metrics
   reviewCommentCount: number;
   commitCount: number;
+
+  // CI and merge status
+  ciStatus?: CIStatus;
+  hasMergeConflict?: boolean;
+  reviewDecision?: ReviewDecision;
+
+  // Computed health status (derived from ciStatus, hasMergeConflict, reviewDecision)
+  healthStatus?: PRHealthStatus;
+
+  // Repo score (1-10 scale, from repo-evaluator)
+  repoScore?: number;
 }
 
 export interface TrackedIssue {
@@ -112,6 +126,38 @@ export interface ProjectHealth {
   avgIssueResponseDays: number;
   ciStatus: 'passing' | 'failing' | 'unknown';
   isActive: boolean;
+  checkFailed?: boolean;
+  failureReason?: string;
+}
+
+export interface RepoScore {
+  repo: string;
+  score: number; // 1-10 scale
+  mergedPRCount: number;
+  closedWithoutMergeCount: number;
+  avgResponseDays: number | null;
+  lastMergedAt?: string;
+  lastEvaluatedAt: string;
+  signals: {
+    hasActiveMaintainers: boolean;
+    isResponsive: boolean;
+    hasHostileComments: boolean;
+  };
+}
+
+export type StateEventType =
+  | 'pr_tracked'
+  | 'pr_merged'
+  | 'pr_closed'
+  | 'pr_dormant'
+  | 'daily_check'
+  | 'comment_posted';
+
+export interface StateEvent {
+  id: string;
+  type: StateEventType;
+  at: string; // ISO timestamp
+  data: Record<string, unknown>;
 }
 
 export interface DailyDigest {
@@ -148,8 +194,14 @@ export interface AgentState {
   mergedPRs: TrackedPR[];
   closedPRs: TrackedPR[];
 
+  // Repository scores
+  repoScores: Record<string, RepoScore>;
+
   // Configuration
   config: AgentConfig;
+
+  // Event log
+  events: StateEvent[];
 
   // Metadata
   lastRunAt: string;
@@ -165,6 +217,7 @@ export interface AgentConfig {
   maxActivePRs: number; // default 10
   dormantThresholdDays: number; // default 30
   approachingDormantDays: number; // default 25
+  maxIssueAgeDays: number; // default 90 - filter out issues older than this by updated_at
 
   // Search preferences
   languages: string[]; // e.g., ["typescript", "javascript", "ruby"]
@@ -176,6 +229,13 @@ export interface AgentConfig {
 
   // GitHub username
   githubUsername: string;
+
+  // Repository scoring threshold
+  minRepoScoreThreshold: number; // default 4
+
+  // Starred repositories for prioritized issue discovery
+  starredRepos: string[]; // e.g., ["owner/repo", "owner2/repo2"]
+  starredReposLastFetched?: string; // ISO timestamp of last fetch
 }
 
 export const DEFAULT_CONFIG: AgentConfig = {
@@ -183,11 +243,14 @@ export const DEFAULT_CONFIG: AgentConfig = {
   maxActivePRs: 10,
   dormantThresholdDays: 30,
   approachingDormantDays: 25,
+  maxIssueAgeDays: 90,
   languages: ['typescript', 'javascript'],
   labels: ['good first issue', 'help wanted'],
   excludeRepos: [],
   trustedProjects: [],
   githubUsername: '',
+  minRepoScoreThreshold: 4,
+  starredRepos: [],
 };
 
 export const INITIAL_STATE: AgentState = {
@@ -197,6 +260,8 @@ export const INITIAL_STATE: AgentState = {
   dormantPRs: [],
   mergedPRs: [],
   closedPRs: [],
+  repoScores: {},
   config: DEFAULT_CONFIG,
+  events: [],
   lastRunAt: new Date().toISOString(),
 };
