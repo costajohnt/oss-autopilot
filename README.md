@@ -4,13 +4,14 @@ An AI-powered plugin for [Claude Code](https://claude.ai/claude-code) that helps
 
 ## Quick Start
 
-**Open Claude Code and paste this repo URL:**
+**In Claude Code, run:**
 
 ```
-https://github.com/costajohnt/oss-autopilot
+/plugin marketplace add costajohnt/oss-autopilot
+/plugin install oss-autopilot
 ```
 
-Claude will guide you through installation and setup. That's it.
+Then run `/setup-oss` to configure your preferences. That's it.
 
 ---
 

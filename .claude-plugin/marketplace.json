@@ -1,0 +1,11 @@
+{
+  "name": "OSS Autopilot Marketplace",
+  "description": "Claude Code plugins for open source contribution management",
+  "plugins": [
+    {
+      "name": "oss-autopilot",
+      "repository": "https://github.com/costajohnt/oss-autopilot",
+      "description": "Track PRs, respond to maintainers, and discover new issues to contribute to"
+    }
+  ]
+}
