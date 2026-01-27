@@ -4,7 +4,7 @@
  */
 
 export { StateManager, getStateManager, resetStateManager } from './state.js';
-export { PRMonitor, type PRUpdate, type PRCheckFailure, type CheckAllPRsResult } from './pr-monitor.js';
+export { PRMonitor, type PRCheckFailure, type FetchPRsResult, type PRUpdate, type CheckAllPRsResult } from './pr-monitor.js';
 export { IssueDiscovery, type IssueCandidate } from './issue-discovery.js';
 export { getOctokit } from './github.js';
 export {
@@ -17,5 +17,8 @@ export {
   getDashboardPath,
   formatRelativeTime,
   byDateDescending,
+  getGitHubToken,
+  requireGitHubToken,
+  resetGitHubTokenCache,
 } from './utils.js';
 export * from './types.js';

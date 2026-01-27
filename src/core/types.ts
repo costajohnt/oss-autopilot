@@ -9,6 +9,44 @@ export type CIStatus = 'passing' | 'failing' | 'pending' | 'unknown';
 export type ReviewDecision = 'approved' | 'changes_requested' | 'review_required' | 'unknown';
 export type PRHealthStatus = 'ci_failing' | 'conflict' | 'changes_requested' | 'approved' | 'none';
 
+/**
+ * FetchedPR - Ephemeral PR data fetched fresh from GitHub
+ * This is NOT persisted in state - it's fetched on each daily run
+ */
+export type FetchedPRStatus = 'needs_response' | 'failing_ci' | 'merge_conflict' | 'waiting' | 'healthy' | 'approaching_dormant' | 'dormant';
+
+export interface FetchedPR {
+  // Identity
+  id: number;
+  url: string;
+  repo: string; // "owner/repo"
+  number: number;
+  title: string;
+
+  // Computed status (derived from checks below)
+  status: FetchedPRStatus;
+
+  // Timestamps
+  createdAt: string;
+  updatedAt: string;
+
+  // Activity
+  daysSinceActivity: number;
+
+  // CI and merge status
+  ciStatus: CIStatus;
+  hasMergeConflict: boolean;
+  reviewDecision: ReviewDecision;
+
+  // Response detection
+  hasUnrespondedComment: boolean; // Maintainer commented after user's last comment
+  lastMaintainerComment?: {
+    author: string;
+    body: string;
+    createdAt: string;
+  };
+}
+
 export interface TrackedPR {
   // Identity
   id: number;
@@ -163,49 +201,60 @@ export interface StateEvent {
 export interface DailyDigest {
   generatedAt: string;
 
-  // PR updates
-  mergedPRs: TrackedPR[];
-  prsNeedingResponse: TrackedPR[];
-  dormantPRs: TrackedPR[];
-  approachingDormant: TrackedPR[]; // 25+ days
+  // All open PRs (fetched fresh from GitHub)
+  openPRs: FetchedPR[];
 
-  // Issue candidates
-  newIssueCandidates: TrackedIssue[];
+  // Categorized PRs (subsets of openPRs)
+  prsNeedingResponse: FetchedPR[];
+  ciFailingPRs: FetchedPR[];
+  mergeConflictPRs: FetchedPR[];
+  approachingDormant: FetchedPR[]; // 25+ days
+  dormantPRs: FetchedPR[];
+  healthyPRs: FetchedPR[];
 
   // Summary
   summary: {
     totalActivePRs: number;
-    totalDormantPRs: number;
-    totalMergedAllTime: number;
+    totalNeedingAttention: number;
+    totalMergedAllTime: number; // From repo scores
     mergeRate: number; // percentage
   };
 }
 
+/**
+ * AgentState v2 - Simplified state without active PR tracking
+ * PRs are fetched fresh from GitHub on each run, not stored locally
+ *
+ * Legacy PR arrays are kept for backward compatibility but:
+ * - v1: PRs are tracked in arrays
+ * - v2: Arrays are preserved as historical data but not actively used
+ */
 export interface AgentState {
-  // Version for migrations
+  // Version for migrations (v2 = fresh fetching)
   version: number;
 
-  // Active work
-  activePRs: TrackedPR[];
-  activeIssues: TrackedIssue[];
-
-  // Historical
-  dormantPRs: TrackedPR[];
-  mergedPRs: TrackedPR[];
-  closedPRs: TrackedPR[];
-
-  // Repository scores
+  // Repository scores - tracks merge history for search prioritization
   repoScores: Record<string, RepoScore>;
 
   // Configuration
   config: AgentConfig;
 
-  // Event log
+  // Event log (audit trail)
   events: StateEvent[];
 
   // Metadata
   lastRunAt: string;
   lastDigestAt?: string;
+
+  // Last fetched digest (v2) - stored so dashboard can render fresh data
+  lastDigest?: DailyDigest;
+
+  // PR arrays - v1 uses these actively, v2 preserves for history
+  activePRs: TrackedPR[];
+  activeIssues: TrackedIssue[];
+  dormantPRs: TrackedPR[];
+  mergedPRs: TrackedPR[];
+  closedPRs: TrackedPR[];
 }
 
 export interface AgentConfig {
@@ -254,7 +303,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
 };
 
 export const INITIAL_STATE: AgentState = {
-  version: 1,
+  version: 2, // v2: Fresh GitHub fetching
   activePRs: [],
   activeIssues: [],
   dormantPRs: [],
