@@ -1,12 +1,14 @@
 /**
  * Dashboard command
- * Generates HTML stats dashboard
+ * Generates HTML stats dashboard from latest digest
+ * v2: Uses lastDigest stored by daily command
  */
 
 import * as fs from 'fs';
 import { execFile } from 'child_process';
 import { getStateManager, getDashboardPath } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
+import type { FetchedPR, DailyDigest, AgentState, RepoScore } from '../core/types.js';
 
 interface DashboardOptions {
   open?: boolean;
@@ -16,23 +18,33 @@ interface DashboardOptions {
 export async function runDashboard(options: DashboardOptions): Promise<void> {
   const stateManager = getStateManager();
   const state = stateManager.getState();
-  const stats = stateManager.getStats();
+  const digest = state.lastDigest;
 
-  // Gather data for charts
+  // Check if we have a digest to display
+  if (!digest) {
+    if (options.json) {
+      outputJson({ error: 'No data available. Run daily check first.' });
+    } else {
+      console.error('No dashboard data available. Run the daily check first:');
+      console.error('  GITHUB_TOKEN=$(gh auth token) npm start -- daily');
+    }
+    return;
+  }
+
+  // Gather data for charts from digest
   const prsByRepo: Record<string, { active: number; merged: number; closed: number }> = {};
 
-  // Count PRs by repo
-  for (const pr of [...state.activePRs, ...state.dormantPRs]) {
+  // Count active PRs by repo from digest
+  for (const pr of digest.openPRs) {
     if (!prsByRepo[pr.repo]) prsByRepo[pr.repo] = { active: 0, merged: 0, closed: 0 };
     prsByRepo[pr.repo].active++;
   }
-  for (const pr of state.mergedPRs) {
-    if (!prsByRepo[pr.repo]) prsByRepo[pr.repo] = { active: 0, merged: 0, closed: 0 };
-    prsByRepo[pr.repo].merged++;
-  }
-  for (const pr of state.closedPRs) {
-    if (!prsByRepo[pr.repo]) prsByRepo[pr.repo] = { active: 0, merged: 0, closed: 0 };
-    prsByRepo[pr.repo].closed++;
+
+  // Add merged/closed counts from repo scores (historical data)
+  for (const [repo, score] of Object.entries(state.repoScores)) {
+    if (!prsByRepo[repo]) prsByRepo[repo] = { active: 0, merged: 0, closed: 0 };
+    prsByRepo[repo].merged = score.mergedPRCount;
+    prsByRepo[repo].closed = score.closedWithoutMergeCount;
   }
 
   // Sort repos by total merged
@@ -40,14 +52,24 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
     .sort((a, b) => b[1].merged - a[1].merged)
     .slice(0, 10);
 
-  // Monthly activity (merged PRs by month)
+  // Monthly activity from repo scores (approximation based on lastMergedAt)
   const monthlyMerged: Record<string, number> = {};
-  for (const pr of state.mergedPRs) {
-    if (pr.mergedAt) {
-      const month = pr.mergedAt.slice(0, 7);
+  for (const score of Object.values(state.repoScores)) {
+    if (score.lastMergedAt) {
+      const month = score.lastMergedAt.slice(0, 7);
       monthlyMerged[month] = (monthlyMerged[month] || 0) + 1;
     }
   }
+
+  // Build stats from digest
+  const stats = {
+    activePRs: digest.summary.totalActivePRs,
+    dormantPRs: digest.dormantPRs.length,
+    mergedPRs: digest.summary.totalMergedAllTime,
+    closedPRs: Object.values(state.repoScores).reduce((sum, s) => sum + s.closedWithoutMergeCount, 0),
+    mergeRate: `${digest.summary.mergeRate.toFixed(1)}%`,
+    needsResponse: digest.prsNeedingResponse.length,
+  };
 
   if (options.json) {
     outputJson({
@@ -55,12 +77,12 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       prsByRepo,
       topRepos: topRepos.map(([repo, data]) => ({ repo, ...data })),
       monthlyMerged,
-      activePRs: state.activePRs,
+      activePRs: digest.openPRs,
     });
     return;
   }
 
-  const html = generateDashboardHtml(stats, topRepos, monthlyMerged, state);
+  const html = generateDashboardHtml(stats, topRepos, monthlyMerged, digest, state.config.approachingDormantDays);
 
   // Write to file in ~/.oss-autopilot/
   const dashboardPath = getDashboardPath();
@@ -87,23 +109,28 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
   }
 }
 
+interface DashboardStats {
+  activePRs: number;
+  dormantPRs: number;
+  mergedPRs: number;
+  closedPRs: number;
+  mergeRate: string;
+  needsResponse: number;
+}
+
 function generateDashboardHtml(
-  stats: ReturnType<typeof getStateManager>['getStats'] extends () => infer R ? R : never,
+  stats: DashboardStats,
   topRepos: Array<[string, { active: number; merged: number; closed: number }]>,
   monthlyMerged: Record<string, number>,
-  state: ReturnType<typeof getStateManager>['getState'] extends () => infer R ? R : never
+  digest: DailyDigest,
+  approachingDormantDays: number = 25
 ): string {
-  // Analyze health issues
-  const healthIssues = state.activePRs.filter(pr =>
-    pr.ciStatus === 'failing' || pr.hasMergeConflict || pr.hasUnreadComments
-  );
-
-  const ciFailingPRs = state.activePRs.filter(pr => pr.ciStatus === 'failing');
-  const conflictPRs = state.activePRs.filter(pr => pr.hasMergeConflict);
-  const needsResponsePRs = state.activePRs.filter(pr => pr.hasUnreadComments);
-  // Use config threshold for approaching dormant (not hardcoded 20)
-  const approachingDormantDays = state.config?.approachingDormantDays ?? 14;
-  const dormantPRs = state.activePRs.filter(pr => pr.daysSinceActivity >= approachingDormantDays);
+  // Health issues from digest
+  const healthIssues = [
+    ...digest.ciFailingPRs,
+    ...digest.mergeConflictPRs,
+    ...digest.prsNeedingResponse,
+  ];
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -152,14 +179,10 @@ function generateDashboardHtml(
       line-height: 1.5;
     }
 
-    /* Subtle grid background pattern */
     body::before {
       content: '';
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      top: 0; left: 0; right: 0; bottom: 0;
       background-image:
         linear-gradient(rgba(88, 166, 255, 0.02) 1px, transparent 1px),
         linear-gradient(90deg, rgba(88, 166, 255, 0.02) 1px, transparent 1px);
@@ -176,7 +199,6 @@ function generateDashboardHtml(
       z-index: 1;
     }
 
-    /* Header */
     .header {
       display: flex;
       align-items: center;
@@ -245,7 +267,6 @@ function generateDashboardHtml(
       50% { opacity: 0.8; box-shadow: 0 0 0 8px rgba(35, 134, 54, 0); }
     }
 
-    /* Stats Grid */
     .stats-grid {
       display: grid;
       grid-template-columns: repeat(6, 1fr);
@@ -253,13 +274,8 @@ function generateDashboardHtml(
       margin-bottom: 2rem;
     }
 
-    @media (max-width: 1200px) {
-      .stats-grid { grid-template-columns: repeat(3, 1fr); }
-    }
-
-    @media (max-width: 768px) {
-      .stats-grid { grid-template-columns: repeat(2, 1fr); }
-    }
+    @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
 
     .stat-card {
       background: var(--bg-surface);
@@ -279,9 +295,7 @@ function generateDashboardHtml(
     .stat-card::before {
       content: '';
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
+      top: 0; left: 0; right: 0;
       height: 3px;
       background: var(--accent-color, var(--border));
       opacity: 0.8;
@@ -316,7 +330,6 @@ function generateDashboardHtml(
       letter-spacing: 0.05em;
     }
 
-    /* Health Issues Alert Section */
     .health-section {
       background: var(--bg-surface);
       border: 1px solid var(--border-muted);
@@ -364,9 +377,7 @@ function generateDashboardHtml(
       transition: transform 0.15s ease;
     }
 
-    .health-item:hover {
-      transform: translateX(4px);
-    }
+    .health-item:hover { transform: translateX(4px); }
 
     .health-item.ci-failing {
       border-left-color: var(--accent-error);
@@ -398,10 +409,7 @@ function generateDashboardHtml(
     .health-item.conflict .health-icon { background: rgba(218, 54, 51, 0.15); color: var(--accent-conflict); }
     .health-item.needs-response .health-icon { background: var(--accent-warning-dim); color: var(--accent-warning); }
 
-    .health-content {
-      flex: 1;
-      min-width: 0;
-    }
+    .health-content { flex: 1; min-width: 0; }
 
     .health-title {
       font-size: 0.85rem;
@@ -412,14 +420,8 @@ function generateDashboardHtml(
       text-overflow: ellipsis;
     }
 
-    .health-title a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    .health-title a:hover {
-      color: var(--accent-info);
-    }
+    .health-title a { color: inherit; text-decoration: none; }
+    .health-title a:hover { color: var(--accent-info); }
 
     .health-meta {
       font-family: 'Geist Mono', monospace;
@@ -450,7 +452,6 @@ function generateDashboardHtml(
       font-weight: bold;
     }
 
-    /* Main Layout Grid */
     .main-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -458,11 +459,8 @@ function generateDashboardHtml(
       margin-bottom: 2rem;
     }
 
-    @media (max-width: 1024px) {
-      .main-grid { grid-template-columns: 1fr; }
-    }
+    @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
 
-    /* Cards */
     .card {
       background: var(--bg-surface);
       border: 1px solid var(--border-muted);
@@ -484,17 +482,13 @@ function generateDashboardHtml(
       color: var(--text-primary);
     }
 
-    .card-body {
-      padding: 1.25rem;
-    }
+    .card-body { padding: 1.25rem; }
 
-    /* Chart styling */
     .chart-container {
       position: relative;
       height: 280px;
     }
 
-    /* PR List */
     .pr-list-section {
       background: var(--bg-surface);
       border: 1px solid var(--border-muted);
@@ -510,10 +504,7 @@ function generateDashboardHtml(
       border-bottom: 1px solid var(--border-muted);
     }
 
-    .pr-list-title {
-      font-size: 1rem;
-      font-weight: 600;
-    }
+    .pr-list-title { font-size: 1rem; font-weight: 600; }
 
     .pr-count {
       font-family: 'Geist Mono', monospace;
@@ -529,18 +520,9 @@ function generateDashboardHtml(
       overflow-y: auto;
     }
 
-    .pr-list::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    .pr-list::-webkit-scrollbar-track {
-      background: var(--bg-elevated);
-    }
-
-    .pr-list::-webkit-scrollbar-thumb {
-      background: var(--border);
-      border-radius: 3px;
-    }
+    .pr-list::-webkit-scrollbar { width: 6px; }
+    .pr-list::-webkit-scrollbar-track { background: var(--bg-elevated); }
+    .pr-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
     .pr-item {
       display: flex;
@@ -551,13 +533,8 @@ function generateDashboardHtml(
       transition: background 0.15s ease;
     }
 
-    .pr-item:last-child {
-      border-bottom: none;
-    }
-
-    .pr-item:hover {
-      background: var(--bg-elevated);
-    }
+    .pr-item:last-child { border-bottom: none; }
+    .pr-item:hover { background: var(--bg-elevated); }
 
     .pr-status-indicator {
       width: 40px;
@@ -588,10 +565,7 @@ function generateDashboardHtml(
       50% { box-shadow: 0 0 0 6px rgba(248, 81, 73, 0); }
     }
 
-    .pr-content {
-      flex: 1;
-      min-width: 0;
-    }
+    .pr-content { flex: 1; min-width: 0; }
 
     .pr-title-row {
       display: flex;
@@ -610,24 +584,13 @@ function generateDashboardHtml(
       text-overflow: ellipsis;
     }
 
-    .pr-title:hover {
-      color: var(--accent-info);
-    }
+    .pr-title:hover { color: var(--accent-info); }
 
     .pr-repo {
       font-family: 'Geist Mono', monospace;
       font-size: 0.75rem;
       color: var(--text-muted);
       flex-shrink: 0;
-    }
-
-    .pr-description {
-      font-size: 0.8rem;
-      color: var(--text-secondary);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin-bottom: 0.5rem;
     }
 
     .pr-badges {
@@ -646,45 +609,14 @@ function generateDashboardHtml(
       letter-spacing: 0.03em;
     }
 
-    .badge-ci-failing {
-      background: var(--accent-error-dim);
-      color: var(--accent-error);
-    }
-
-    .badge-conflict {
-      background: rgba(218, 54, 51, 0.15);
-      color: var(--accent-conflict);
-    }
-
-    .badge-needs-response {
-      background: var(--accent-warning-dim);
-      color: var(--accent-warning);
-    }
-
-    .badge-stale {
-      background: var(--accent-warning-dim);
-      color: var(--accent-warning);
-    }
-
-    .badge-passing {
-      background: var(--accent-open-dim);
-      color: var(--accent-open);
-    }
-
-    .badge-pending {
-      background: var(--accent-info-dim);
-      color: var(--accent-info);
-    }
-
-    .badge-days {
-      background: var(--bg-elevated);
-      color: var(--text-muted);
-    }
-
-    .badge-changes-requested {
-      background: var(--accent-warning-dim);
-      color: var(--accent-warning);
-    }
+    .badge-ci-failing { background: var(--accent-error-dim); color: var(--accent-error); }
+    .badge-conflict { background: rgba(218, 54, 51, 0.15); color: var(--accent-conflict); }
+    .badge-needs-response { background: var(--accent-warning-dim); color: var(--accent-warning); }
+    .badge-stale { background: var(--accent-warning-dim); color: var(--accent-warning); }
+    .badge-passing { background: var(--accent-open-dim); color: var(--accent-open); }
+    .badge-pending { background: var(--accent-info-dim); color: var(--accent-info); }
+    .badge-days { background: var(--bg-elevated); color: var(--text-muted); }
+    .badge-changes-requested { background: var(--accent-warning-dim); color: var(--accent-warning); }
 
     .pr-activity {
       font-family: 'Geist Mono', monospace;
@@ -695,7 +627,6 @@ function generateDashboardHtml(
       flex-shrink: 0;
     }
 
-    /* Empty state */
     .empty-state {
       display: flex;
       flex-direction: column;
@@ -711,7 +642,6 @@ function generateDashboardHtml(
       opacity: 0.5;
     }
 
-    /* Footer */
     .footer {
       text-align: center;
       padding-top: 2rem;
@@ -725,16 +655,9 @@ function generateDashboardHtml(
       color: var(--text-muted);
     }
 
-    /* Animations */
     @keyframes fadeInUp {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     .stat-card { animation: fadeInUp 0.4s ease forwards; }
@@ -770,7 +693,7 @@ function generateDashboardHtml(
         </div>
       </div>
       <div class="timestamp">
-        ${new Date().toLocaleString('en-US', {
+        ${new Date(digest.generatedAt).toLocaleString('en-US', {
           weekday: 'short',
           month: 'short',
           day: 'numeric',
@@ -820,7 +743,7 @@ function generateDashboardHtml(
         <span class="health-badge">${healthIssues.length} issue${healthIssues.length !== 1 ? 's' : ''}</span>
       </div>
       <div class="health-items">
-        ${ciFailingPRs.map(pr => `
+        ${digest.ciFailingPRs.map(pr => `
         <div class="health-item ci-failing">
           <div class="health-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -835,7 +758,7 @@ function generateDashboardHtml(
           </div>
         </div>
         `).join('')}
-        ${conflictPRs.map(pr => `
+        ${digest.mergeConflictPRs.map(pr => `
         <div class="health-item conflict">
           <div class="health-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -851,7 +774,7 @@ function generateDashboardHtml(
           </div>
         </div>
         `).join('')}
-        ${needsResponsePRs.map(pr => `
+        ${digest.prsNeedingResponse.map(pr => `
         <div class="health-item needs-response">
           <div class="health-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -860,7 +783,7 @@ function generateDashboardHtml(
           </div>
           <div class="health-content">
             <div class="health-title"><a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - Needs Response</div>
-            <div class="health-meta">${pr.title.slice(0, 50)}${pr.title.length > 50 ? '...' : ''}</div>
+            <div class="health-meta">${pr.lastMaintainerComment ? `@${pr.lastMaintainerComment.author}: ${pr.lastMaintainerComment.body.slice(0, 40)}...` : pr.title.slice(0, 50)}</div>
           </div>
         </div>
         `).join('')}
@@ -916,15 +839,15 @@ function generateDashboardHtml(
       </div>
     </div>
 
-    ${state.activePRs.length > 0 ? `
+    ${digest.openPRs.length > 0 ? `
     <section class="pr-list-section">
       <div class="pr-list-header">
         <h2 class="pr-list-title">Active Pull Requests</h2>
-        <span class="pr-count">${state.activePRs.length} open</span>
+        <span class="pr-count">${digest.openPRs.length} open</span>
       </div>
       <div class="pr-list">
-        ${state.activePRs.map(pr => {
-          const hasIssues = pr.ciStatus === 'failing' || pr.hasMergeConflict || pr.hasUnreadComments;
+        ${digest.openPRs.map(pr => {
+          const hasIssues = pr.ciStatus === 'failing' || pr.hasMergeConflict || pr.hasUnrespondedComment;
           const isStale = pr.daysSinceActivity >= approachingDormantDays;
           const itemClass = hasIssues ? 'has-issues' : (isStale ? 'stale' : '');
 
@@ -955,10 +878,9 @@ function generateDashboardHtml(
               ${pr.ciStatus === 'passing' ? '<span class="badge badge-passing">CI Passing</span>' : ''}
               ${pr.ciStatus === 'pending' ? '<span class="badge badge-pending">CI Pending</span>' : ''}
               ${pr.hasMergeConflict ? '<span class="badge badge-conflict">Merge Conflict</span>' : ''}
-              ${pr.hasUnreadComments ? '<span class="badge badge-needs-response">Needs Response</span>' : ''}
+              ${pr.hasUnrespondedComment ? '<span class="badge badge-needs-response">Needs Response</span>' : ''}
               ${pr.reviewDecision === 'changes_requested' ? '<span class="badge badge-changes-requested">Changes Requested</span>' : ''}
-              ${isStale ? '<span class="badge badge-stale">' + pr.daysSinceActivity + 'd inactive</span>' : ''}
-              <span class="badge badge-days">${pr.commitCount} commit${pr.commitCount !== 1 ? 's' : ''}</span>
+              ${isStale ? `<span class="badge badge-stale">${pr.daysSinceActivity}d inactive</span>` : ''}
             </div>
           </div>
           <div class="pr-activity">
@@ -992,12 +914,10 @@ function generateDashboardHtml(
   </div>
 
   <script>
-    // Chart.js dark theme configuration
     Chart.defaults.color = '#8b949e';
     Chart.defaults.borderColor = '#30363d';
     Chart.defaults.font.family = "'Geist', sans-serif";
 
-    // Status Distribution Doughnut
     new Chart(document.getElementById('statusChart'), {
       type: 'doughnut',
       data: {
@@ -1017,70 +937,35 @@ function generateDashboardHtml(
         plugins: {
           legend: {
             position: 'bottom',
-            labels: {
-              padding: 20,
-              usePointStyle: true,
-              pointStyle: 'circle'
-            }
+            labels: { padding: 20, usePointStyle: true, pointStyle: 'circle' }
           }
         }
       }
     });
 
-    // Top Repositories Bar Chart
     new Chart(document.getElementById('reposChart'), {
       type: 'bar',
       data: {
         labels: ${JSON.stringify(topRepos.map(([repo]) => repo.split('/')[1] || repo))},
         datasets: [
-          {
-            label: 'Merged',
-            data: ${JSON.stringify(topRepos.map(([, data]) => data.merged))},
-            backgroundColor: '#a855f7',
-            borderRadius: 4
-          },
-          {
-            label: 'Active',
-            data: ${JSON.stringify(topRepos.map(([, data]) => data.active))},
-            backgroundColor: '#238636',
-            borderRadius: 4
-          },
-          {
-            label: 'Closed',
-            data: ${JSON.stringify(topRepos.map(([, data]) => data.closed))},
-            backgroundColor: '#6e7681',
-            borderRadius: 4
-          }
+          { label: 'Merged', data: ${JSON.stringify(topRepos.map(([, data]) => data.merged))}, backgroundColor: '#a855f7', borderRadius: 4 },
+          { label: 'Active', data: ${JSON.stringify(topRepos.map(([, data]) => data.active))}, backgroundColor: '#238636', borderRadius: 4 },
+          { label: 'Closed', data: ${JSON.stringify(topRepos.map(([, data]) => data.closed))}, backgroundColor: '#6e7681', borderRadius: 4 }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: {
-            stacked: true,
-            grid: { display: false }
-          },
-          y: {
-            stacked: true,
-            grid: { color: '#21262d' },
-            ticks: { stepSize: 1 }
-          }
+          x: { stacked: true, grid: { display: false } },
+          y: { stacked: true, grid: { color: '#21262d' }, ticks: { stepSize: 1 } }
         },
         plugins: {
-          legend: {
-            position: 'bottom',
-            labels: {
-              padding: 20,
-              usePointStyle: true,
-              pointStyle: 'circle'
-            }
-          }
+          legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true, pointStyle: 'circle' } }
         }
       }
     });
 
-    // Monthly Activity Line Chart
     const months = ${JSON.stringify(Object.keys(monthlyMerged).sort())};
     const monthlyData = ${JSON.stringify(monthlyMerged)};
     new Chart(document.getElementById('monthlyChart'), {
@@ -1105,22 +990,11 @@ function generateDashboardHtml(
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: {
-            grid: { display: false }
-          },
-          y: {
-            grid: { color: '#21262d' },
-            beginAtZero: true,
-            ticks: { stepSize: 1 }
-          }
+          x: { grid: { display: false } },
+          y: { grid: { color: '#21262d' }, beginAtZero: true, ticks: { stepSize: 1 } }
         },
-        plugins: {
-          legend: { display: false }
-        },
-        interaction: {
-          intersect: false,
-          mode: 'index'
-        }
+        plugins: { legend: { display: false } },
+        interaction: { intersect: false, mode: 'index' }
       }
     });
   </script>

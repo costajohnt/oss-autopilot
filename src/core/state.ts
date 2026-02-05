@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, StateEvent, StateEventType } from './types.js';
+import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, StateEvent, StateEventType, DailyDigest } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
 
 // Current state version
@@ -433,6 +433,14 @@ export class StateManager {
    */
   getState(): Readonly<AgentState> {
     return this.state;
+  }
+
+  /**
+   * Store the latest digest for dashboard rendering (v2)
+   */
+  setLastDigest(digest: DailyDigest): void {
+    this.state.lastDigest = digest;
+    this.state.lastDigestAt = digest.generatedAt;
   }
 
   /**

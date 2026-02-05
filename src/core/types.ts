@@ -246,6 +246,9 @@ export interface AgentState {
   lastRunAt: string;
   lastDigestAt?: string;
 
+  // Last fetched digest (v2) - stored so dashboard can render fresh data
+  lastDigest?: DailyDigest;
+
   // PR arrays - v1 uses these actively, v2 preserves for history
   activePRs: TrackedPR[];
   activeIssues: TrackedIssue[];
@@ -268,7 +271,8 @@ export interface AgentConfig {
   // Search preferences
   languages: string[]; // e.g., ["typescript", "javascript", "ruby"]
   labels: string[]; // e.g., ["good first issue", "help wanted"]
-  excludeRepos: string[]; // repos to skip
+  excludeRepos: string[]; // repos to skip (e.g., "owner/repo")
+  excludeOrgs?: string[]; // orgs to skip (e.g., "ClearMatch")
 
   // Trusted projects (where we've had PRs merged)
   trustedProjects: string[];

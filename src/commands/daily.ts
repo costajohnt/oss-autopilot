@@ -33,10 +33,25 @@ export async function runDaily(options: DailyOptions): Promise<void> {
     console.error(`Warning: ${failures.length} PR fetch(es) failed`);
   }
 
+  // Fetch merged PR counts to populate repo scores for accurate statistics
+  // Reset all existing merged counts first (so excluded/stale repos get zeroed)
+  const mergedCounts = await prMonitor.fetchUserMergedPRCounts();
+  for (const score of Object.values(stateManager.getState().repoScores)) {
+    if (!mergedCounts.has(score.repo)) {
+      stateManager.updateRepoScore(score.repo, { mergedPRCount: 0 });
+    }
+  }
+  for (const [repo, count] of mergedCounts) {
+    stateManager.updateRepoScore(repo, { mergedPRCount: count });
+  }
+
   // Generate digest from fresh data
   const digest = prMonitor.generateDigest(prs);
 
-  // Save state (updates lastRunAt)
+  // Store digest in state so dashboard can render it
+  stateManager.setLastDigest(digest);
+
+  // Save state (updates lastRunAt, lastDigest)
   stateManager.save();
 
   // Assess capacity for new work
