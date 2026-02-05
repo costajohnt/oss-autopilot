@@ -418,6 +418,63 @@ export class PRMonitor {
   }
 
   /**
+   * Fetch merged PR counts per repository for the configured user.
+   * Used to populate repoScores for accurate dashboard statistics.
+   */
+  async fetchUserMergedPRCounts(): Promise<Map<string, number>> {
+    const config = this.stateManager.getState().config;
+
+    if (!config.githubUsername) {
+      return new Map();
+    }
+
+    console.error(`Fetching merged PR counts for @${config.githubUsername}...`);
+
+    const counts = new Map<string, number>();
+    let page = 1;
+    let fetched = 0;
+
+    while (true) {
+      const { data } = await this.octokit.search.issuesAndPullRequests({
+        q: `is:pr is:merged author:${config.githubUsername}`,
+        sort: 'updated',
+        order: 'desc',
+        per_page: 100,
+        page,
+      });
+
+      for (const item of data.items) {
+        const repoMatch = item.html_url.match(/github\.com\/([^/]+\/[^/]+)\//);
+        if (!repoMatch) continue;
+
+        const repo = repoMatch[1];
+        const owner = repo.split('/')[0];
+
+        // Skip own repos (PRs to your own repos aren't OSS contributions)
+        if (owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
+
+        // Skip excluded repos and orgs
+        if (config.excludeRepos.includes(repo)) continue;
+        if (config.excludeOrgs?.some(org => owner.toLowerCase() === org.toLowerCase())) continue;
+
+        counts.set(repo, (counts.get(repo) || 0) + 1);
+      }
+
+      fetched += data.items.length;
+
+      // Stop if we've fetched all results or hit the API limit (1000)
+      if (fetched >= data.total_count || fetched >= 1000 || data.items.length === 0) {
+        break;
+      }
+
+      page++;
+    }
+
+    console.error(`Found ${fetched} merged PRs across ${counts.size} repos`);
+    return counts;
+  }
+
+  /**
    * Generate a daily digest from fetched PRs
    */
   generateDigest(prs: FetchedPR[]): DailyDigest {
