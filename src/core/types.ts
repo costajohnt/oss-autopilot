@@ -13,7 +13,18 @@ export type PRHealthStatus = 'ci_failing' | 'conflict' | 'changes_requested' | '
  * FetchedPR - Ephemeral PR data fetched fresh from GitHub
  * This is NOT persisted in state - it's fetched on each daily run
  */
-export type FetchedPRStatus = 'needs_response' | 'failing_ci' | 'merge_conflict' | 'waiting' | 'healthy' | 'approaching_dormant' | 'dormant';
+export type FetchedPRStatus =
+  | 'needs_response'
+  | 'failing_ci'
+  | 'ci_blocked'
+  | 'ci_not_running'
+  | 'merge_conflict'
+  | 'needs_rebase'
+  | 'missing_required_files'
+  | 'waiting'
+  | 'healthy'
+  | 'approaching_dormant'
+  | 'dormant';
 
 export interface FetchedPR {
   // Identity
@@ -37,6 +48,17 @@ export interface FetchedPR {
   ciStatus: CIStatus;
   hasMergeConflict: boolean;
   reviewDecision: ReviewDecision;
+
+  // Branch freshness
+  commitsBehindUpstream?: number; // How many commits behind the base branch
+  headRefName?: string; // PR branch name
+  baseRefName?: string; // Target branch name (e.g., "main", "master")
+
+  // Local repo info
+  localRepoPath?: string; // Path to local clone, if available
+
+  // Missing requirements
+  missingRequiredFiles?: string[]; // e.g., ["changeset", "CLA"]
 
   // Response detection
   hasUnrespondedComment: boolean; // Maintainer commented after user's last comment
@@ -207,7 +229,11 @@ export interface DailyDigest {
   // Categorized PRs (subsets of openPRs)
   prsNeedingResponse: FetchedPR[];
   ciFailingPRs: FetchedPR[];
+  ciBlockedPRs: FetchedPR[];
+  ciNotRunningPRs: FetchedPR[];
   mergeConflictPRs: FetchedPR[];
+  needsRebasePRs: FetchedPR[];
+  missingRequiredFilesPRs: FetchedPR[];
   approachingDormant: FetchedPR[]; // 25+ days
   dormantPRs: FetchedPR[];
   healthyPRs: FetchedPR[];

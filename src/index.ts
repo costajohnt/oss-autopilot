@@ -1068,7 +1068,11 @@ function generateDigest(updates: PRUpdate[]): DailyDigest {
     openPRs: [], // v2: fetched fresh, not from state
     prsNeedingResponse: [],
     ciFailingPRs: [],
+    ciBlockedPRs: [],
+    ciNotRunningPRs: [],
     mergeConflictPRs: [],
+    needsRebasePRs: [],
+    missingRequiredFilesPRs: [],
     approachingDormant: [],
     dormantPRs: [],
     healthyPRs: [],
