@@ -113,11 +113,15 @@ export class PRMonitor {
       const statusPriority: Record<FetchedPRStatus, number> = {
         'needs_response': 0,
         'failing_ci': 1,
-        'merge_conflict': 2,
-        'approaching_dormant': 3,
-        'dormant': 4,
-        'waiting': 5,
-        'healthy': 6,
+        'ci_blocked': 2,
+        'ci_not_running': 3,
+        'merge_conflict': 4,
+        'needs_rebase': 5,
+        'missing_required_files': 6,
+        'approaching_dormant': 7,
+        'dormant': 8,
+        'waiting': 9,
+        'healthy': 10,
       };
       return statusPriority[a.status] - statusPriority[b.status];
     });
@@ -491,18 +495,27 @@ export class PRMonitor {
     // Get stats from state manager (historical data from repo scores)
     const stats = this.stateManager.getStats();
 
+    const ciBlockedPRs = prs.filter(pr => pr.status === 'ci_blocked');
+    const ciNotRunningPRs = prs.filter(pr => pr.status === 'ci_not_running');
+    const needsRebasePRs = prs.filter(pr => pr.status === 'needs_rebase');
+    const missingRequiredFilesPRs = prs.filter(pr => pr.status === 'missing_required_files');
+
     return {
       generatedAt: now,
       openPRs: prs,
       prsNeedingResponse,
       ciFailingPRs,
+      ciBlockedPRs,
+      ciNotRunningPRs,
       mergeConflictPRs,
+      needsRebasePRs,
+      missingRequiredFilesPRs,
       approachingDormant,
       dormantPRs,
       healthyPRs,
       summary: {
         totalActivePRs: prs.length,
-        totalNeedingAttention: prsNeedingResponse.length + ciFailingPRs.length + mergeConflictPRs.length,
+        totalNeedingAttention: prsNeedingResponse.length + ciFailingPRs.length + mergeConflictPRs.length + needsRebasePRs.length + missingRequiredFilesPRs.length,
         totalMergedAllTime: stats.mergedPRs,
         mergeRate: parseFloat(stats.mergeRate),
       },

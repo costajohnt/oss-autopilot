@@ -34,7 +34,7 @@ The CLI returns structured data with new fields for the action-first flow:
 {
   "success": true,
   "data": {
-    "briefSummary": "📊 16 Active PRs | 3 need attention | Dashboard opened in browser",
+    "briefSummary": "16 Active PRs | 3 need attention | Dashboard opened in browser",
     "actionableIssues": [
       {
         "type": "ci_failing",
@@ -55,7 +55,7 @@ data.briefSummary
 ```
 
 Example output:
-> 📊 16 Active PRs | 3 need attention | Dashboard opened in browser
+> 16 Active PRs | 3 need attention | Dashboard opened in browser
 
 Then proceed to Step 3 (Present Action Choices).
 
@@ -67,7 +67,7 @@ Then proceed to Step 3 (Present Action Choices).
 
 When `data.actionableIssues` is empty, display:
 ```
-✅ All PRs are healthy! No issues need attention.
+All PRs are healthy! No issues need attention.
 ```
 
 Then use AskUserQuestion with:
@@ -80,7 +80,7 @@ Then use AskUserQuestion with:
 **Before asking the user anything**, display all actionable issues as formatted text:
 
 ```
-📋 {count} PRs Need Attention:
+{count} PRs Need Attention:
 
 1. {issue.label} {issue.pr.repo}#{issue.pr.number}
    {issue.pr.title} ({daysSinceActivity}d inactive)
@@ -90,31 +90,37 @@ Then use AskUserQuestion with:
 
 ... (list ALL actionable issues, no limit)
 
-───────────────────────────────────────────────────
+---
 ```
 
 Calculate `daysSinceActivity` from the PR's `updatedAt` field.
 
 Example output:
 ```
-📋 5 PRs Need Attention:
+7 PRs Need Attention:
 
-1. [CI Failing] shadcn-ui/ui#9263
-   fix(docs): use yarn dlx for npx command (23d inactive)
+1. [Needs Rebase] shadcn-ui/ui#9263 (160 behind)
+   fix(docs): use yarn dlx for npx command (35d inactive)
 
-2. [CI Failing] shadcn-ui/ui#9262
-   fix(cli): use 'bun x' instead of 'bunx' (23d inactive)
+2. [Needs Rebase] shadcn-ui/ui#9262 (160 behind)
+   fix(cli): use 'bun x' instead of 'bunx' (35d inactive)
 
-3. [Merge Conflict] vadimdemedes/ink#861
-   Fix emoji box border alignment issue (5d inactive)
+3. [Needs Rebase] oven-sh/bun#25791 (233 behind)
+   fix(console): route console.trace() to stderr (14d inactive)
 
-4. [Merge Conflict] cline/cline#8362
-   fix: update button text after deleting history item (2d inactive)
+4. [CI Blocked] oven-sh/bun#25791
+   CI needs maintainer to trigger Buildkite
 
-5. [Needs Response] vadimdemedes/ink#858
+5. [Changes Requested] ghostfolio/ghostfolio#6223
+   feat(api): add groupBy=year support (2d inactive)
+
+6. [Merge Conflict] cline/cline#8362
+   fix: update button text after deleting history item (10d inactive)
+
+7. [Needs Response] vadimdemedes/ink#858
    Remove create-ink-app from README (10d inactive)
 
-───────────────────────────────────────────────────
+---
 ```
 
 ### Ask for Action (4-Option Limit)
@@ -125,7 +131,7 @@ Use AskUserQuestion with **action-focused options**, not PR-specific options.
 
 | Option | Condition | Label | Description |
 |--------|-----------|-------|-------------|
-| 1 | Always (if actionable issues exist) | "Address all {count} issues in parallel (Recommended)" | "Launch agents simultaneously to fix CI, conflicts, and respond" |
+| 1 | Always (if actionable issues exist) | "Address all {count} issues in parallel (Recommended)" | "Launch agents simultaneously to check status, rebase, fix CI, and respond" |
 | 2 | If `capacity.hasCapacity === true` | "Search for new issues" | "Look for new contribution opportunities" |
 | 2 | If `capacity.hasCapacity === false` | "View healthy PRs" | "See status of PRs not needing attention" |
 | 3 | Always | "Done for now" | "End session with summary" |
@@ -139,8 +145,8 @@ Question: "What would you like to do?"
 Header: "Action"
 
 Options:
-1. Label: "Address all 5 issues in parallel (Recommended)"
-   Description: "Launch agents simultaneously to fix CI, conflicts, and respond"
+1. Label: "Address all 7 issues in parallel (Recommended)"
+   Description: "Launch agents simultaneously to check status, rebase, fix CI, and respond"
 
 2. Label: "Search for new issues"
    Description: "Look for new contribution opportunities"
@@ -210,19 +216,29 @@ gh search prs --author USERNAME --state open --json repository,number,title,url,
 
 For each PR, get detailed status:
 ```bash
-gh pr view NUMBER --repo OWNER/REPO --json state,title,updatedAt,reviews,comments,statusCheckRollup,mergeable,reviewDecision
+gh pr view NUMBER --repo OWNER/REPO --json state,title,updatedAt,reviews,comments,statusCheckRollup,mergeable,reviewDecision,headRefName
 ```
 
 ### Determine PR Status
 
-For each PR, categorize as:
-- **CI Failing**: statusCheckRollup shows failures
+For each PR, categorize as (checked in priority order):
+- **CI Failing**: statusCheckRollup shows failures (excluding expected fork limitations like Vercel auth)
+- **CI Blocked**: CI is pending/blocked and requires maintainer action to trigger (e.g., Buildkite on external PRs)
+- **CI Not Running**: No CI checks have been reported at all
 - **Merge Conflict**: mergeable is false
-- **Needs Response**: has new comments from maintainers
+- **Needs Response**: has new comments from maintainers (changes_requested or unresponded comments)
+- **Needs Rebase**: branch is significantly behind upstream (check via `gh pr view --json baseRefName,headRefName` and compare)
+- **Missing Required Files**: changeset bot or CLA bot has flagged missing files
 - **Approaching Dormant**: no activity past `approachingDormantDays`
 - **Merged**: state is "MERGED"
 - **Closed**: state is "CLOSED" (without merge)
 - **Healthy**: everything looks good
+
+**Distinguishing CI failures from expected fork limitations:**
+Some CI failures are expected for external forks and not actionable by the contributor:
+- Vercel deploy previews requiring team authorization
+- Internal CI systems that don't run on fork PRs
+These should be labeled `[Fork Limitation]` rather than `[CI Failing]` and treated as informational, not actionable.
 
 Then format and present action choices similar to Step 3.
 
@@ -230,95 +246,169 @@ Then format and present action choices similar to Step 3.
 
 ## Step 4: Action Handlers
 
-### CRITICAL: Human-in-the-Loop for ALL Write Actions
+### Action Tiers: Routine Maintenance vs Code Changes
 
-**Agents INVESTIGATE and RECOMMEND only. They NEVER:**
-- Push code changes
-- Post comments or responses
-- Create commits
-- Modify remote repositories
+Actions are divided into two tiers based on risk:
 
-**All write actions require explicit user approval via AskUserQuestion.**
+**Tier 1: Routine Maintenance (auto-safe with user consent)**
+These are non-destructive operations that don't change code logic:
+- Rebasing onto upstream (replay existing commits on new base)
+- Cloning repos that aren't available locally
+- Fetching upstream changes
+
+For Tier 1 actions, agents CAN execute directly (rebase + force push) when the user
+selects "Address all issues" or explicitly approves maintenance. No separate investigation
+step is needed — just do the rebase and report the result.
+
+**Tier 2: Code Changes (investigate first, then approve)**
+These change code or post public content:
+- Fixing CI failures (code changes)
+- Resolving merge conflicts (code changes)
+- Responding to review comments (public communication)
+- Adding missing files (changesets, CLA)
+
+For Tier 2 actions, agents INVESTIGATE and RECOMMEND. All write actions require
+explicit user approval via AskUserQuestion.
+
+### Same-Repo PR Grouping
+
+**CRITICAL: When multiple PRs exist in the same repository, handle them in a single agent.**
+
+Before dispatching agents, group PRs by repository. For each repo with multiple PRs,
+dispatch ONE agent that handles all PRs for that repo sequentially (to avoid branch
+checkout conflicts).
+
+Example: If ink has PRs #855, #856, #863:
+```
+Task(general-purpose, "Check all 3 PRs in vadimdemedes/ink: #855, #856, #863.
+  For each PR:
+  1. git checkout the branch
+  2. Fetch upstream, check commits behind
+  3. Rebase if behind, force push if clean
+  4. Check CI status and review comments
+  Report results for all 3 PRs.")
+```
+
+NOT:
+```
+Task(general-purpose, "Check ink#855...")
+Task(general-purpose, "Check ink#856...")  // Will conflict with branch checkout!
+Task(general-purpose, "Check ink#863...")
+```
+
+### Local Repo Registry
+
+Before dispatching agents, check which repos are available locally:
+
+```bash
+# Check common OSS working directories
+for dir in ~/Documents/oss ~/dev ~/projects ~/code; do
+  ls "$dir" 2>/dev/null
+done
+```
+
+Build a map of `repo → local_path`. Pass this to agents so they know:
+- Which repos they can rebase directly
+- Which repos need to be cloned first
+
+If a repo isn't cloned locally and a rebase is needed, the agent should clone it
+(to `~/Documents/oss/<repo-name>` by default) as part of the maintenance action.
 
 ### Handle "Address All Issues in Parallel"
 
 **CRITICAL: Dispatch ALL agents in a SINGLE message for true parallelism.**
+**CRITICAL: Group PRs by repository — one agent per repo, not per PR.**
 
-For each issue in `actionableIssues`, include a Task tool call. Agents **investigate and return recommendations**:
+For each issue in `actionableIssues`, include a Task tool call:
 
-| Issue Type | Agent | Prompt Template |
-|------------|-------|-----------------|
-| CI Failing | `pr-health-checker` | "Investigate CI failures on {repo}#{number}. Analyze logs, identify root cause, and recommend fixes. DO NOT push any changes." |
-| Merge Conflict | `pr-health-checker` | "Investigate merge conflict on {repo}#{number}. Identify conflicting files and recommend resolution strategy. DO NOT push any changes." |
-| Needs Response | `pr-responder` | "Analyze maintainer feedback on {repo}#{number} and draft a response. DO NOT post the response - return it for user approval." |
-| Approaching Dormant | `pr-health-checker` | "Assess dormant PR {repo}#{number}. Check if it's still relevant and recommend follow-up action." |
+| Issue Type | Tier | Agent Action |
+|------------|------|--------------|
+| Needs Rebase | Tier 1 | Clone if needed, fetch upstream, rebase, force push. Report result. |
+| CI Failing | Tier 2 | Investigate CI failures. Analyze logs, identify root cause, recommend fixes. DO NOT push. |
+| CI Blocked | Info | Report that CI needs maintainer trigger. Suggest commenting to request it. |
+| CI Not Running | Info | Investigate why CI isn't running. Check if workflows exist, if fork has actions enabled. |
+| Fork Limitation | Info | Note as expected — no action needed. |
+| Merge Conflict | Tier 2 | Identify conflicting files, recommend resolution strategy. DO NOT push. |
+| Needs Response | Tier 2 | Analyze maintainer feedback, draft a response. DO NOT post — return for approval. |
+| Changes Requested | Tier 2 | Analyze requested changes, investigate what needs to change, recommend approach. |
+| Missing Required Files | Tier 2 | Identify what's missing (changeset, CLA, etc.), draft the file. DO NOT push. |
+| Approaching Dormant | Tier 2 | Assess if still relevant, recommend follow-up action. |
 
-**Example: 5 PRs needing attention**
-
-In ONE message, dispatch:
-```
-Task(pr-health-checker, "Investigate CI failures on shadcn-ui/ui#9263. Analyze logs, identify root cause, recommend fixes. DO NOT push changes.")
-Task(pr-health-checker, "Investigate CI failures on shadcn-ui/ui#9262. Analyze logs, identify root cause, recommend fixes. DO NOT push changes.")
-Task(pr-health-checker, "Investigate merge conflict on vadimdemedes/ink#861. Identify conflicts, recommend resolution. DO NOT push changes.")
-Task(pr-health-checker, "Investigate merge conflict on cline/cline#8362. Identify conflicts, recommend resolution. DO NOT push changes.")
-Task(pr-responder, "Analyze feedback on vadimdemedes/ink#858 and draft response. DO NOT post - return for approval.")
-```
-
-All 5 agents run simultaneously. Wait for all to complete.
-
-### Present Investigation Results
-
-After all agents complete, present a summary:
+**Agent dispatch prompt template for comprehensive PR check:**
 
 ```
-## Investigation Results
+Check PR status for {repo}: {list of PR numbers}.
+Local repo path: {path or "not cloned"}.
 
-### 1. shadcn-ui/ui#9263 - CI Failing
-**Root cause:** ESLint error on line 42 - unused import
-**Recommended fix:** Remove unused import of `useState`
-**Action needed:** Push 1-line fix
+For each PR:
+1. If not cloned, clone to ~/Documents/oss/{repo-name}
+2. git checkout the PR branch
+3. Fetch upstream, check how many commits behind
+4. If behind and rebase is clean, rebase and force push (Tier 1 - auto-safe)
+5. If rebase has conflicts, abort and report the conflicts (Tier 2 - needs manual resolution)
+6. Check CI status: gh pr checks {number} --repo {repo}
+7. Check for review comments and changes requested
+8. Check for bot comments (changeset-bot, CLA bot, etc.)
 
-### 2. vadimdemedes/ink#861 - Merge Conflict
-**Conflicts:** src/components/Box.tsx (3 conflicts)
-**Recommended resolution:** Accept incoming changes, manually merge line 156
-**Action needed:** Resolve conflicts and push
-
-### 3. vadimdemedes/ink#858 - Needs Response
-**Maintainer asked:** "Can you add a test for this?"
-**Draft response:** "Good point! I've added a test case for..."
-**Action needed:** Post response (and optionally add test)
-
-───────────────────────────────────────────────────
+Report back:
+(a) Commits behind / rebase result
+(b) CI status (passing/failing/blocked/not running)
+(c) Review comments and their status
+(d) Any missing required files
+(e) Whether force push was performed
 ```
 
-### Ask User to Approve Actions
+### Present Results
+
+After all agents complete, present a consolidated summary table:
+
+```
+## PR Status Dashboard
+
+### Routine Maintenance Completed
+| PR | Repo | Action | Result |
+|---|---|---|---|
+| #856 | ink | Rebased (5 behind) | Clean, force pushed |
+| #8362 | cline | Rebased (129 behind) | Clean, force pushed |
+| #9263 | shadcn-ui/ui | Rebased (160 behind) | Clean, force pushed |
+
+### Needs Attention
+| PR | Repo | Issue | Action Needed |
+|---|---|---|---|
+| #6223 | ghostfolio | Changes requested | Address reviewer feedback |
+| #858 | ink | Needs response | Reply to maintainer |
+
+### No Action Needed
+| PR | Repo | Status |
+|---|---|---|
+| #863 | ink | CI green, awaiting review |
+| #2857 | eslint-plugin-unicorn | CI green, awaiting review |
+```
+
+### Ask User About Remaining Issues
+
+If there are Tier 2 issues remaining after maintenance:
 
 Use AskUserQuestion:
 
 ```
-Question: "Which actions would you like me to take?"
-Header: "Approve"
+Question: "Which issues would you like me to investigate?"
+Header: "Investigate"
 multiSelect: true
 
 Options:
-1. "Push fix for #9263 (remove unused import)"
-2. "Resolve conflicts on #861"
-3. "Post response to #858"
-4. "All of the above"
-5. "None - I'll handle manually"
+1. "Address changes requested on ghostfolio#6223"
+2. "Draft response for ink#858"
+3. "All of the above"
+4. "None - I'll handle manually"
 ```
 
 ### Execute Approved Actions Only
 
-Only after user explicitly approves:
+Only after user explicitly approves Tier 2 actions:
 - Push code changes
 - Post comments
-- Mark PRs as read
-
-```bash
-# Only run after user approval
-cd ~/.oss-autopilot/cli && npm run --silent start -- read <pr-url> --json
-```
+- Add missing files
 
 ### CRITICAL: Continue the Flow
 
@@ -327,7 +417,8 @@ cd ~/.oss-autopilot/cli && npm run --silent start -- read <pr-url> --json
 Never end with just a summary. Always prompt:
 
 ```
-✅ Actions completed:
+Actions completed:
+- Rebased 4 PRs (all clean)
 - Pushed fix for #9263
 - Posted response to #858
 
@@ -344,7 +435,7 @@ Then use AskUserQuestion:
 ### Handle Specific PR Selection (from "Other" input)
 
 When user selects specific PRs (e.g., "1 and 3"), dispatch only those agents in parallel.
-Follow the same investigation-first approach: agents analyze and recommend, then present results for user approval.
+Still group by repo if selected PRs share a repository.
 
 ### Handle "View Healthy PRs"
 
@@ -352,7 +443,7 @@ Show when `capacity.hasCapacity === false` (user has critical issues to address 
 
 Display healthy PRs from `data.digest.healthy`:
 ```
-✅ Healthy PRs (no action needed):
+Healthy PRs (no action needed):
 
 - owner/repo#123 - Title here (approved, CI passing)
 - owner/repo#456 - Title here (waiting for review)
@@ -394,8 +485,9 @@ When user selects "Done for now":
 
 Today's session:
 - Checked X PRs
+- Rebased Y PRs
 - Capacity: [hasCapacity ? "Ready for new work" : "X critical issues remaining"]
-- [List any actions taken: "Posted response to repo#123", "Investigated CI on repo#456"]
+- [List any actions taken: "Rebased 4 PRs", "Posted response to repo#123"]
 
 Your PRs are tracked. Run /oss anytime to check again.
 ```
@@ -450,7 +542,7 @@ npm run --silent start -- post <url> "message" --json
 | Agent | Purpose |
 |-------|---------|
 | `pr-responder` | Draft responses to maintainer feedback |
-| `pr-health-checker` | Diagnose CI failures, merge conflicts |
+| `pr-health-checker` | Diagnose CI failures, merge conflicts, rebase status |
 | `pr-compliance-checker` | Validate PRs against opensource.guide |
 | `issue-scout` | Find and vet new issues |
 | `repo-evaluator` | Analyze repository health |
@@ -460,26 +552,25 @@ npm run --silent start -- post <url> "message" --json
 
 ## Important Rules
 
-### Human-in-the-Loop (CRITICAL)
-1. **NEVER push code without explicit user approval**
-2. **NEVER post comments without explicit user approval**
-3. **NEVER modify remote repositories without explicit user approval**
-4. **Agents INVESTIGATE and RECOMMEND only** - present findings, let user approve actions
-5. Always use AskUserQuestion with multiSelect before executing write actions
+### Human-in-the-Loop
+1. **Tier 1 (maintenance)**: Rebase + force push is allowed after user selects "Address all issues" or explicitly approves
+2. **Tier 2 (code/comments)**: NEVER push code or post comments without explicit per-action approval
+3. **Agents report results** for Tier 1, **investigate and recommend** for Tier 2
+4. Always use AskUserQuestion with multiSelect before executing Tier 2 write actions
 
 ### Workflow Control (CRITICAL)
-6. **NEVER end without asking what's next** - after ANY action, always prompt user
-7. **Drive the conversation** - Claude controls the flow, user responds to prompts
-8. **Session ends ONLY when user selects "Done for now"** - never assume user is finished
-9. **ALWAYS include "Done for now"** in every AskUserQuestion
+5. **NEVER end without asking what's next** - after ANY action, always prompt user
+6. **Drive the conversation** - Claude controls the flow, user responds to prompts
+7. **Session ends ONLY when user selects "Done for now"** - never assume user is finished
+8. **ALWAYS include "Done for now"** in every AskUserQuestion
 
 ### UX Guidelines
-10. Keep responses professional and concise
-11. **NEVER add AI attribution** to commits, comments, or PRs
-12. **Display information before prompting** - show all PRs as text FIRST, then ask for action
-13. **Parse "Other" input flexibly** - accept PR numbers, URLs, repo refs like "ink#861"
+9. Keep responses professional and concise
+10. **NEVER add AI attribution** to commits, comments, or PRs
+11. **Display information before prompting** - show all PRs as text FIRST, then ask for action
+12. **Parse "Other" input flexibly** - accept PR numbers, URLs, repo refs like "ink#861"
 
 ### Parallel Execution
-12. Use parallel agents when investigating multiple PRs
-13. **Parallel execution** - when addressing multiple PRs, launch ALL agents in a SINGLE message
-14. After parallel investigation, present consolidated results and ask for approval
+13. **Group PRs by repository** - one agent per repo, not per PR, to avoid branch checkout conflicts
+14. **Parallel execution** - when addressing multiple repos, launch ALL agents in a SINGLE message
+15. After parallel execution, present consolidated results table

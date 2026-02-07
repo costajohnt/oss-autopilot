@@ -155,7 +155,11 @@ function generateDashboardHtml(
   // Health issues from digest
   const healthIssues = [
     ...digest.ciFailingPRs,
+    ...digest.ciBlockedPRs,
+    ...digest.ciNotRunningPRs,
     ...digest.mergeConflictPRs,
+    ...digest.needsRebasePRs,
+    ...digest.missingRequiredFilesPRs,
     ...digest.prsNeedingResponse,
   ];
 
@@ -798,6 +802,50 @@ function generateDashboardHtml(
           <div class="health-content">
             <div class="health-title"><a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - Merge Conflict</div>
             <div class="health-meta">${pr.title.slice(0, 50)}${pr.title.length > 50 ? '...' : ''}</div>
+          </div>
+        </div>
+        `).join('')}
+        ${digest.needsRebasePRs.map(pr => `
+        <div class="health-item needs-rebase">
+          <div class="health-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="1 4 1 10 7 10"/>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+            </svg>
+          </div>
+          <div class="health-content">
+            <div class="health-title"><a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - Needs Rebase${pr.commitsBehindUpstream ? ` (${pr.commitsBehindUpstream} behind)` : ''}</div>
+            <div class="health-meta">${pr.title.slice(0, 50)}${pr.title.length > 50 ? '...' : ''}</div>
+          </div>
+        </div>
+        `).join('')}
+        ${digest.ciBlockedPRs.map(pr => `
+        <div class="health-item ci-blocked">
+          <div class="health-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <div class="health-content">
+            <div class="health-title"><a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - CI Blocked</div>
+            <div class="health-meta">${pr.title.slice(0, 50)}${pr.title.length > 50 ? '...' : ''}</div>
+          </div>
+        </div>
+        `).join('')}
+        ${digest.missingRequiredFilesPRs.map(pr => `
+        <div class="health-item missing-files">
+          <div class="health-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/>
+              <line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+          </div>
+          <div class="health-content">
+            <div class="health-title"><a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - Missing Required Files</div>
+            <div class="health-meta">${pr.missingRequiredFiles?.join(', ') || pr.title.slice(0, 50)}</div>
           </div>
         </div>
         `).join('')}
