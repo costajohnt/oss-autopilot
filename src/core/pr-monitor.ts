@@ -332,6 +332,8 @@ export class PRMonitor {
       for (const check of checkRuns) {
         if (check.conclusion === 'failure' || check.conclusion === 'cancelled' || check.conclusion === 'timed_out') {
           hasFailingChecks = true;
+        } else if (check.conclusion === 'action_required') {
+          hasPendingChecks = true; // Maintainer approval gate, not a real failure
         } else if (check.status === 'in_progress' || check.status === 'queued') {
           hasPendingChecks = true;
         } else if (check.conclusion === 'success') {
@@ -340,20 +342,37 @@ export class PRMonitor {
       }
 
       // Analyze combined status (Travis, CircleCI, etc.)
-      const combinedState = combinedStatus.state;
+      // Filter out authorization-gate statuses (e.g., Vercel "Authorization required to deploy")
+      // These are permission gates, not real CI failures
+      const realStatuses = combinedStatus.statuses.filter(s => {
+        const desc = (s.description || '').toLowerCase();
+        return !(s.state === 'failure' && (
+          desc.includes('authorization required') ||
+          desc.includes('authorize')
+        ));
+      });
+
+      const hasRealFailure = realStatuses.some(s => s.state === 'failure' || s.state === 'error');
+      const hasRealPending = realStatuses.some(s => s.state === 'pending');
+      const hasRealSuccess = realStatuses.some(s => s.state === 'success');
+      const effectiveCombinedState = hasRealFailure ? 'failure'
+        : hasRealPending ? 'pending'
+        : hasRealSuccess ? 'success'
+        : realStatuses.length === 0 ? 'success' // All statuses were auth gates; don't inherit original failure
+        : combinedStatus.state;
       const hasStatuses = combinedStatus.statuses.length > 0;
 
       // Priority: failing > pending > passing > unknown
       // Safety net: If we have ANY failing checks, report as failing
-      if (hasFailingChecks || combinedState === 'failure' || combinedState === 'error') {
+      if (hasFailingChecks || effectiveCombinedState === 'failure' || effectiveCombinedState === 'error') {
         return 'failing';
       }
 
-      if (hasPendingChecks || combinedState === 'pending') {
+      if (hasPendingChecks || effectiveCombinedState === 'pending') {
         return 'pending';
       }
 
-      if (hasSuccessfulChecks || combinedState === 'success') {
+      if (hasSuccessfulChecks || effectiveCombinedState === 'success') {
         return 'passing';
       }
 
