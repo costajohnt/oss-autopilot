@@ -244,6 +244,15 @@ export interface StateEvent {
   data: Record<string, unknown>;
 }
 
+export interface ClosedPR {
+  url: string;
+  repo: string; // "owner/repo"
+  number: number;
+  title: string;
+  closedAt: string;
+  closedBy?: string;
+}
+
 export interface DailyDigest {
   generatedAt: string;
 
@@ -263,6 +272,9 @@ export interface DailyDigest {
   approachingDormant: FetchedPR[]; // 25+ days
   dormantPRs: FetchedPR[];
   healthyPRs: FetchedPR[];
+
+  // Recently closed PRs (closed without merge in last 7 days)
+  recentlyClosedPRs: ClosedPR[];
 
   // Summary
   summary: {

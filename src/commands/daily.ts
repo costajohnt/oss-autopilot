@@ -4,7 +4,7 @@
  * v2: No local state tracking - everything is fetched fresh
  */
 
-import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type PRCheckFailure, type MaintainerActionHint } from '../core/index.js';
+import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type PRCheckFailure, type MaintainerActionHint, type ClosedPR } from '../core/index.js';
 import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue } from '../formatters/json.js';
 
 interface DailyOptions {
@@ -37,9 +37,16 @@ export async function runDaily(options: DailyOptions): Promise<void> {
     console.error(`Warning: ${failures.length} PR fetch(es) failed`);
   }
 
-  // Fetch merged PR counts to populate repo scores for accurate statistics
+  // Fetch merged PR counts, closed PR counts, and recently closed PRs in parallel
+  const [mergedResult, closedCounts, recentlyClosedPRs] = await Promise.all([
+    prMonitor.fetchUserMergedPRCounts(),
+    prMonitor.fetchUserClosedPRCounts(),
+    prMonitor.fetchRecentlyClosedPRs(),
+  ]);
+
+  const { repos: mergedCounts, monthlyCounts } = mergedResult;
+
   // Reset stale repos first (so excluded/removed repos get zeroed)
-  const { repos: mergedCounts, monthlyCounts } = await prMonitor.fetchUserMergedPRCounts();
   for (const score of Object.values(stateManager.getState().repoScores)) {
     if (!mergedCounts.has(score.repo)) {
       stateManager.updateRepoScore(score.repo, { mergedPRCount: 0 });
@@ -49,11 +56,16 @@ export async function runDaily(options: DailyOptions): Promise<void> {
     stateManager.updateRepoScore(repo, { mergedPRCount: count, lastMergedAt: lastMergedAt || undefined });
   }
 
+  // Populate closedWithoutMergeCount in repo scores
+  for (const [repo, count] of closedCounts) {
+    stateManager.updateRepoScore(repo, { closedWithoutMergeCount: count });
+  }
+
   // Store monthly merged counts for the contribution timeline chart
   stateManager.setMonthlyMergedCounts(monthlyCounts);
 
   // Generate digest from fresh data
-  const digest = prMonitor.generateDigest(prs);
+  const digest = prMonitor.generateDigest(prs, recentlyClosedPRs);
 
   // Store digest in state so dashboard can render it
   stateManager.setLastDigest(digest);
@@ -68,7 +80,7 @@ export async function runDaily(options: DailyOptions): Promise<void> {
     // Include pre-formatted summary for Claude to display verbatim
     const summary = formatSummary(digest, capacity);
     // New action-first flow fields
-    const actionableIssues = collectActionableIssues(prs);
+    const actionableIssues = collectActionableIssues(prs, recentlyClosedPRs);
     const briefSummary = formatBriefSummary(digest, actionableIssues.length);
     outputJson<DailyOutput>({ digest, updates: [], capacity, summary, briefSummary, actionableIssues, failures });
   } else {
@@ -172,6 +184,16 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
     lines.push('');
   }
 
+  // Recently Closed (closed without merge)
+  if (digest.recentlyClosedPRs.length > 0) {
+    lines.push('### 🚫 Recently Closed');
+    for (const pr of digest.recentlyClosedPRs) {
+      const closedDate = pr.closedAt ? new Date(pr.closedAt).toLocaleDateString() : '';
+      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}${closedDate ? ` (closed ${closedDate})` : ''}`);
+    }
+    lines.push('');
+  }
+
   // Capacity
   const capacityIcon = capacity.hasCapacity ? '✅' : '⚠️';
   const capacityLabel = capacity.hasCapacity ? 'Ready for new work' : 'Focus on existing PRs';
@@ -256,6 +278,15 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
     console.log('');
   }
 
+  if (digest.recentlyClosedPRs.length > 0) {
+    console.log('🚫 Recently Closed:');
+    for (const pr of digest.recentlyClosedPRs) {
+      const closedDate = pr.closedAt ? new Date(pr.closedAt).toLocaleDateString() : '';
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}${closedDate ? ` (closed ${closedDate})` : ''}`);
+    }
+    console.log('');
+  }
+
   console.log('Run with --json for structured output');
   console.log('Run "dashboard --open" for browser view');
 }
@@ -313,7 +344,7 @@ function formatBriefSummary(digest: DailyDigest, issueCount: number): string {
  * Collect all actionable issues across PRs for the action-first flow
  * Order: Needs response → CI failing → Merge conflicts → Approaching dormant
  */
-function collectActionableIssues(prs: FetchedPR[]): ActionableIssue[] {
+function collectActionableIssues(prs: FetchedPR[], recentlyClosedPRs: ClosedPR[] = []): ActionableIssue[] {
   const issues: ActionableIssue[] = [];
 
   // 1. Needs Response (highest priority - someone is waiting for you)
@@ -353,6 +384,30 @@ function collectActionableIssues(prs: FetchedPR[]): ActionableIssue[] {
     if (pr.status === 'approaching_dormant') {
       issues.push({ type: 'approaching_dormant', pr, label: '[Approaching Dormant]' });
     }
+  }
+
+  // 6. Recently Closed (informational - PRs closed without merge in last 7 days)
+  for (const closedPR of recentlyClosedPRs) {
+    // Create a minimal FetchedPR-like object for the ActionableIssue interface
+    const pr: FetchedPR = {
+      id: 0,
+      url: closedPR.url,
+      repo: closedPR.repo,
+      number: closedPR.number,
+      title: closedPR.title,
+      status: 'healthy', // placeholder
+      createdAt: '',
+      updatedAt: closedPR.closedAt || '',
+      daysSinceActivity: 0,
+      ciStatus: 'unknown',
+      failingCheckNames: [],
+      hasMergeConflict: false,
+      reviewDecision: 'unknown',
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      maintainerActionHints: [],
+    };
+    issues.push({ type: 'recently_closed', pr, label: '[Recently Closed]' });
   }
 
   return issues;
