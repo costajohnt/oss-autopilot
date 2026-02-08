@@ -93,6 +93,37 @@ If the TypeScript CLI is unavailable, fall back to `gh` CLI directly and read st
 
 ---
 
+**Curated Issue List Awareness:**
+
+When dispatched with an issue from the user's curated list (indicated by `Source: curated-list` in the dispatch prompt):
+
+1. **Apply a +2 score bonus** to the issue's base score. The user has already pre-vetted this issue, so it starts with higher confidence.
+
+2. **Still run full claimability vetting.** The list may be stale — always verify:
+   - Issue is still open
+   - Not assigned to someone else since the list was last updated
+   - No recent claim comments or linked PRs
+   - Repository is still active
+
+3. **Tag results appropriately.** In the vetting summary, include:
+   ```
+   Source: From your curated issue list
+   Pre-vetted: Yes (+2 score bonus applied)
+   Staleness check: [FRESH — matches list | STALE — situation changed since list was updated]
+   ```
+
+4. **If the issue is stale** (assigned, claimed, or has a linked PR since the list was last updated):
+   - Clearly report what changed
+   - Recommend updating the list to reflect the new status
+   - Suggest the next available issue from the list if one was provided
+
+5. **When searching alongside list items**, tag results to distinguish sources:
+   - Issues from the curated list: marked as "From your list"
+   - Issues from GitHub search: marked as "New discovery"
+   This helps the user understand which results they've already researched vs. fresh finds.
+
+---
+
 **Search Process:**
 
 1. **Use CLI Search (Primary Method)**

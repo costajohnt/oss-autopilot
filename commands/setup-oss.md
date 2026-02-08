@@ -106,6 +106,21 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set languages=typescrip
 node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set labels="good first issue,help wanted" --json
 ```
 
+**Question 6: Curated Issue List**
+- "Do you maintain a curated list of potential issues to work on?"
+- Options: "Yes", "No"
+
+If yes, ask for the file path:
+- "What's the path to your issue list file? (relative to your notes/project root)"
+- Options: "open-source/potential-issue-list.md (default)", "Enter custom path"
+
+If a path is provided, validate it exists:
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set issueListPath="PATH" --json
+```
+
+If the file doesn't exist at the given path, warn the user but still save the path (they may create it later).
+
 ## Step 4-CLI: Mark Setup Complete
 
 ```bash
@@ -136,6 +151,7 @@ Show summary:
 - **Dormant**: NUMBER days
 - **Languages**: list
 - **Labels**: list
+- **Issue List**: PATH or "Not configured"
 
 ### Imported PRs
 - X open PRs imported
@@ -237,6 +253,16 @@ Use AskUserQuestion to collect preferences. Ask these in sequence:
 - Options: "good first issue", "help wanted", "bug", "enhancement", "documentation"
 - Allow multiple selections
 
+**Question 6: Curated Issue List**
+- "Do you maintain a curated list of potential issues to work on?"
+- Options: "Yes", "No"
+
+If yes, ask for the file path:
+- "What's the path to your issue list file? (relative to your notes/project root)"
+- Options: "open-source/potential-issue-list.md (default)", "Enter custom path"
+
+If a path is provided, try to read it to verify it exists. If it doesn't exist, warn but continue — the user may create it later.
+
 ## Step 5: Create Directory Structure
 
 ```bash
@@ -269,6 +295,7 @@ languages:
 labels:
   - good first issue
   - help wanted
+issueListPath: PATH_OR_EMPTY
 githubAccess: gh|mcp
 setupComplete: true
 lastUpdated: YYYY-MM-DD
@@ -286,6 +313,7 @@ This file stores your OSS Autopilot preferences. Edit the YAML frontmatter above
 - **Warning Threshold**: NUMBER days before dormant
 - **Languages**: list
 - **Issue Labels**: list
+- **Issue List**: PATH or "Not configured"
 - **GitHub Access**: gh CLI / MCP server
 ```
 
@@ -372,6 +400,7 @@ Show summary:
 - **Languages**: list
 - **Labels**: list
 - **GitHub Access**: via [gh CLI / MCP server]
+- **Issue List**: PATH or "Not configured"
 
 ### Imported PRs
 - X open PRs imported
