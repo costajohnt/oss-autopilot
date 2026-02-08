@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-02-08
+
+### Added
+
+- Pre-commit hooks enforcing workflow rules from CLAUDE.md:
+  - **Version sync check** — blocks commits when `package.json`, `plugin.json`, and README badge versions don't match
+  - **No AI attribution** — blocks commits containing "Co-Authored-By: Claude" or similar attribution
+  - **No commits on main** — blocks direct commits to `main`/`master` branch
+  - **Conventional commit format** — blocks messages without `feat:`, `fix:`, `chore:` etc. prefix
+
+### Fixed
+
+- README version badge stuck at 0.4.1 while actual version was 0.6.1
+- CLAUDE.md versioning checklist missing README badge as a required update location
+
 ## [0.6.1] - 2026-02-08
 
 ### Added
@@ -113,6 +128,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.7.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.4.1...v0.5.0
