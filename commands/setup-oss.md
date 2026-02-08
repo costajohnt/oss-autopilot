@@ -8,9 +8,15 @@ allowed-tools: Bash, Write, Read, Glob, AskUserQuestion, mcp__*
 
 Guide the user through configuring their OSS autopilot preferences.
 
-## Step 0: Check CLI Availability
+## Step 0: Ensure CLI is Built and Check Availability
 
-Check if the bundled CLI is working:
+Build the CLI on first run (auto-installs deps):
+
+```bash
+[ -f "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ] || (cd "${CLAUDE_PLUGIN_ROOT}" && npm install --silent 2>&1 && npm run bundle --silent 2>&1) >/dev/null
+```
+
+Then check if it's working:
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" checkSetup --json 2>/dev/null
@@ -19,7 +25,7 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" checkSetup --json 2>/dev/null
 **If CLI returns valid JSON:**
 - Use CLI commands for all setup (Steps 1-CLI through 6-CLI below)
 
-**If CLI is NOT available:**
+**If CLI is NOT available (build failed or node unavailable):**
 - Fall back to markdown-based setup (Steps 1 through 9 below)
 
 ---

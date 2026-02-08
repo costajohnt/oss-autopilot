@@ -8,6 +8,16 @@ allowed-tools: Bash, Read, Write, Glob, Grep, AskUserQuestion, Task, mcp__*
 
 This command checks your open source PRs and provides a summary of what needs attention.
 
+## Step 0.5: Ensure CLI is Built
+
+Before running any CLI commands, ensure the bundle exists (auto-builds on first run):
+
+```bash
+[ -f "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ] || (cd "${CLAUDE_PLUGIN_ROOT}" && npm install --silent 2>&1 && npm run bundle --silent 2>&1) >/dev/null
+```
+
+If this fails, fall back to the gh CLI workflow (Step 1b).
+
 ## Step 1: Run Daily Check and Open Dashboard
 
 Run the daily check, generate dashboard, and open it in the background:

@@ -95,7 +95,7 @@ claude --plugin-dir ./oss-autopilot
 gh auth login
 ```
 
-No `npm install` or build step needed — the CLI is pre-bundled.
+The CLI auto-builds on first run (requires Node.js 18+ and npm).
 
 ---
 
