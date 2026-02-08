@@ -22,6 +22,7 @@ export type FetchedPRStatus =
   | 'needs_rebase'
   | 'missing_required_files'
   | 'incomplete_checklist'
+  | 'changes_addressed'
   | 'waiting'
   | 'waiting_on_maintainer'
   | 'healthy'
@@ -81,6 +82,9 @@ export interface FetchedPR {
     body: string;
     createdAt: string;
   };
+
+  // Latest commit timestamp (fetched when hasUnrespondedComment is true)
+  latestCommitDate?: string;
 
   // PR body analysis
   hasIncompleteChecklist: boolean; // PR body has unchecked required checkboxes
@@ -268,6 +272,7 @@ export interface DailyDigest {
   needsRebasePRs: FetchedPR[];
   missingRequiredFilesPRs: FetchedPR[];
   incompleteChecklistPRs: FetchedPR[];
+  changesAddressedPRs: FetchedPR[];
   waitingOnMaintainerPRs: FetchedPR[];
   approachingDormant: FetchedPR[]; // 25+ days
   dormantPRs: FetchedPR[];

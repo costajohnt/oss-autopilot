@@ -287,6 +287,7 @@ For each PR, categorize as (checked in priority order):
 - **CI Not Running**: No CI checks have been reported at all
 - **Merge Conflict**: mergeable is false
 - **Needs Response**: has new comments from maintainers (changes_requested or unresponded comments)
+- **Changes Addressed**: maintainer commented but contributor pushed newer commits (awaiting re-review)
 - **Needs Rebase**: branch is significantly behind upstream (check via `gh pr view --json baseRefName,headRefName` and compare)
 - **Missing Required Files**: changeset bot or CLA bot has flagged missing files
 - **Approaching Dormant**: no activity past `approachingDormantDays`
@@ -393,6 +394,7 @@ For each issue in `actionableIssues`, include a Task tool call:
 | Merge Conflict | Tier 2 | Identify conflicting files, recommend resolution strategy. DO NOT push. |
 | Needs Response | Tier 2 | Analyze maintainer feedback, draft a response. DO NOT post — return for approval. |
 | Changes Requested | Tier 2 | Analyze requested changes, investigate what needs to change, recommend approach. |
+| Changes Addressed | Info | Note that changes were pushed after maintainer review — no contributor action needed, awaiting re-review. |
 | Missing Required Files | Tier 2 | Identify what's missing (changeset, CLA, etc.), draft the file. DO NOT push. |
 | Approaching Dormant | Tier 2 | Assess if still relevant, recommend follow-up action. |
 
