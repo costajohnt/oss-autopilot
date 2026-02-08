@@ -56,7 +56,7 @@ You are a Contribution Strategist who helps developers maximize the impact and g
 
 Get comprehensive status via the CLI:
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- status --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" status --json
 ```
 
 This returns:

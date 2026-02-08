@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/cli.bundle.cjs",
     "start": "tsx src/cli.ts",
     "dev": "tsx watch src/cli.ts",
     "daily": "tsx src/cli.ts daily",
@@ -40,6 +41,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
+    "esbuild": "^0.27.3",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.16"

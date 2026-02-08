@@ -8,14 +8,23 @@ allowed-tools: Bash, Read, Write, Glob, Grep, AskUserQuestion, Task, mcp__*
 
 This command checks your open source PRs and provides a summary of what needs attention.
 
+## Step 0.5: Ensure CLI is Built
+
+Before running any CLI commands, ensure the bundle exists (auto-builds on first run):
+
+```bash
+[ -f "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ] || (cd "${CLAUDE_PLUGIN_ROOT}" && npm install --silent 2>&1 && npm run bundle --silent 2>&1) >/dev/null
+```
+
+If this fails, fall back to the gh CLI workflow (Step 1b).
+
 ## Step 1: Run Daily Check and Open Dashboard
 
 Run the daily check, generate dashboard, and open it in the background:
 
 ```bash
-cd ~/.oss-autopilot/cli && \
-  GITHUB_TOKEN=$(gh auth token) npm run --silent start -- daily --json 2>/dev/null && \
-  npm run --silent start -- dashboard 2>/dev/null && \
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/dev/null && \
+  node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" dashboard 2>/dev/null && \
   open ~/.oss-autopilot/dashboard.html
 ```
 
@@ -460,7 +469,7 @@ Only available if `capacity.hasCapacity === true`.
 
 Use the CLI:
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run --silent start -- search 10 --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" search 10 --json
 ```
 
 Or dispatch the `issue-scout` agent with language/label preferences.
@@ -517,22 +526,22 @@ All commands support `--json` flag for structured output:
 
 ```bash
 # Daily check (syncs and checks all PRs)
-GITHUB_TOKEN=$(gh auth token) npm run --silent start -- daily --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json
 
 # Status overview
-npm run --silent start -- status --json
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" status --json
 
 # Search for issues
-npm run --silent start -- search 10 --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" search 10 --json
 
 # Track a PR
-npm run --silent start -- track <pr-url> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" track <pr-url> --json
 
 # View comments
-npm run --silent start -- comments <pr-url> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" comments <pr-url> --json
 
 # Post comment
-npm run --silent start -- post <url> "message" --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" post <url> "message" --json
 ```
 
 ---

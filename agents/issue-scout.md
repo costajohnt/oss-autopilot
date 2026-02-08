@@ -42,7 +42,7 @@ The oss-autopilot CLI provides structured JSON output for all operations. Always
 
 **CLI Command Pattern:**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- <command> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" <command> --json
 ```
 
 **Available Commands for Issue Scouting:**
@@ -56,7 +56,7 @@ cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- <comma
 
 **Search for Issues:**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- search 15 --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" search 15 --json
 ```
 Returns structured data including:
 - Issue details (title, body, labels, assignees)
@@ -66,7 +66,7 @@ Returns structured data including:
 
 **Vet a Specific Issue:**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- vet https://github.com/owner/repo/issues/123 --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" vet https://github.com/owner/repo/issues/123 --json
 ```
 Returns:
 - Claimability status (assigned, recent claims, linked PRs)
@@ -76,7 +76,7 @@ Returns:
 
 **Get Current Status:**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- status --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" status --json
 ```
 Returns:
 - Tracked PRs with health indicators
@@ -85,7 +85,7 @@ Returns:
 
 **Claim an Issue (with user approval):**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- claim https://github.com/owner/repo/issues/123 "Your claim message here"
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" claim https://github.com/owner/repo/issues/123 "Your claim message here"
 ```
 
 **Fallback - gh CLI:**
@@ -98,7 +98,7 @@ If the TypeScript CLI is unavailable, fall back to `gh` CLI directly and read st
 1. **Use CLI Search (Primary Method)**
    The CLI handles all context loading and scoring automatically:
    ```bash
-   cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- search 15 --json
+   GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" search 15 --json
    ```
 
    The CLI automatically:
@@ -138,7 +138,7 @@ gh search issues --label "good first issue" --language typescript --state open -
 
 **Use CLI Vet Command (Primary):**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- vet https://github.com/owner/repo/issues/123 --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" vet https://github.com/owner/repo/issues/123 --json
 ```
 
 The CLI performs comprehensive vetting including:
@@ -394,7 +394,7 @@ When user wants to claim an issue:
 3. **Post and Track**
    If approved, use the CLI claim command:
    ```bash
-   cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- claim https://github.com/owner/repo/issues/123 "Your claim message"
+   GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" claim https://github.com/owner/repo/issues/123 "Your claim message"
    ```
 
    **Fallback (if CLI unavailable):**

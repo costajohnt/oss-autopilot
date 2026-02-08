@@ -59,6 +59,7 @@ export interface FetchedPR {
 
   // CI and merge status
   ciStatus: CIStatus;
+  failingCheckNames: string[]; // Names of failing CI checks (helps distinguish real CI from validation bots)
   hasMergeConflict: boolean;
   reviewDecision: ReviewDecision;
 

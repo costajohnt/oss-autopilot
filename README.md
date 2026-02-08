@@ -79,52 +79,30 @@ Claude automatically uses these agents based on context:
 
 ---
 
-## Manual Installation
+## Alternative Installation
 
-If you prefer to install manually instead of letting Claude guide you:
-
-### 1. Clone and build
+### For development/testing (per-session)
 
 ```bash
-# Clone to the standard location
-git clone https://github.com/costajohnt/oss-autopilot.git ~/.oss-autopilot/cli
-cd ~/.oss-autopilot/cli
-npm install
-npm run build
+git clone https://github.com/costajohnt/oss-autopilot.git
+claude --plugin-dir ./oss-autopilot
 ```
 
-### 2. Install the plugin
-
-Add to your Claude Code settings (`~/.claude/settings.json`):
-
-```json
-{
-  "plugins": ["~/.oss-autopilot/cli"]
-}
-```
-
-Or add to a specific project's `.claude/settings.json`.
-
-### 3. Set up GitHub access
+### Prerequisites
 
 ```bash
 # Install GitHub CLI from https://cli.github.com/
 gh auth login
 ```
 
-### 4. Run setup
-
-In Claude Code:
-```
-/setup-oss
-```
+The CLI auto-builds on first run (requires Node.js 18+ and npm).
 
 ---
 
 ## Requirements
 
 - [Claude Code](https://claude.ai/claude-code) (latest version)
-- Node.js 18+
+- Node.js 18+ (for running the bundled CLI)
 - GitHub CLI (`gh`): for GitHub API access
 
 ---
@@ -162,7 +140,7 @@ OSS Autopilot uses a hybrid architecture for reliability and speed:
 
 ## Configuration
 
-Settings are stored in `~/.oss-autopilot/data/state.json`:
+Settings are stored in `~/.oss-autopilot/state.json`:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
