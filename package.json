@@ -1,9 +1,9 @@
 {
   "name": "oss-autopilot",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "AI-powered autopilot for managing open source contributions with Claude Code",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/cli.js",
   "bin": {
     "oss-autopilot": "./dist/cli.js"
   },
@@ -49,7 +49,6 @@
   "dependencies": {
     "@octokit/plugin-throttling": "^11.0.3",
     "@octokit/rest": "^22.0.1",
-    "commander": "^14.0.2",
-    "dotenv": "^17.2.3"
+    "commander": "^14.0.2"
   }
 }

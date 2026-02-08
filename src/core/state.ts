@@ -11,6 +11,9 @@ import { getStatePath, getBackupDir, getDataDir } from './utils.js';
 // Current state version
 const CURRENT_STATE_VERSION = 2;
 
+// Maximum number of events to retain in the event log
+const MAX_EVENTS = 1000;
+
 // Legacy path for migration
 const LEGACY_STATE_FILE = path.join(process.cwd(), 'data', 'state.json');
 const LEGACY_BACKUP_DIR = path.join(process.cwd(), 'data', 'backups');
@@ -402,8 +405,8 @@ export class StateManager {
       this.cleanupBackups();
     }
 
-    // Save state
-    fs.writeFileSync(statePath, JSON.stringify(this.state, null, 2));
+    // Save state with restricted permissions (owner-only read/write)
+    fs.writeFileSync(statePath, JSON.stringify(this.state, null, 2), { mode: 0o600 });
     console.error('State saved successfully');
   }
 
@@ -470,7 +473,11 @@ export class StateManager {
       data,
     };
     this.state.events.push(event);
-    // Note: We don't call save() here - the caller should save when appropriate
+
+    // Cap the events array to prevent unbounded growth
+    if (this.state.events.length > MAX_EVENTS) {
+      this.state.events = this.state.events.slice(-MAX_EVENTS);
+    }
   }
 
   /**

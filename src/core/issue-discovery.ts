@@ -20,6 +20,14 @@ import {
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
 
+/** Minimal shape of a GitHub search result item (from octokit.search.issuesAndPullRequests) */
+interface GitHubSearchItem {
+  html_url: string;
+  repository_url: string;
+  updated_at: string;
+  [key: string]: unknown;
+}
+
 type SearchPriority = 'starred' | 'high_score' | 'normal';
 
 export interface IssueCandidate {
@@ -183,7 +191,7 @@ export class IssueDiscovery {
     const baseQuery = `is:issue is:open ${labelQuery} ${langQuery} no:assignee`;
 
     // Helper to filter issues
-    const filterIssues = (items: any[]) => {
+    const filterIssues = (items: GitHubSearchItem[]) => {
       return items.filter(item => {
         if (trackedUrls.has(item.html_url)) return false;
         const repoFullName = item.repository_url.split('/').slice(-2).join('/');
@@ -307,7 +315,7 @@ export class IssueDiscovery {
     baseQuery: string,
     maxResults: number,
     priority: SearchPriority,
-    filterFn: (items: any[]) => any[]
+    filterFn: (items: GitHubSearchItem[]) => GitHubSearchItem[]
   ): Promise<IssueCandidate[]> {
     const candidates: IssueCandidate[] = [];
 
@@ -557,7 +565,10 @@ export class IssueDiscovery {
       });
 
       const linkedPRs = timeline.filter(
-        (event: any) => event.event === 'cross-referenced' && event.source?.issue?.pull_request
+        (event) => {
+          const e = event as { event?: string; source?: { issue?: { pull_request?: unknown } } };
+          return e.event === 'cross-referenced' && e.source?.issue?.pull_request;
+        }
       );
 
       return data.total_count === 0 && linkedPRs.length === 0;
