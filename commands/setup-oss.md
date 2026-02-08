@@ -10,19 +10,17 @@ Guide the user through configuring their OSS autopilot preferences.
 
 ## Step 0: Check CLI Availability
 
-First, check if the TypeScript CLI is available:
+Check if the bundled CLI is working:
 
 ```bash
-cd ~/.oss-autopilot/cli && npm run start -- checkSetup --json 2>/dev/null
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" checkSetup --json 2>/dev/null
 ```
 
 **If CLI returns valid JSON:**
 - Use CLI commands for all setup (Steps 1-CLI through 6-CLI below)
-- State is stored in `data/state.json`
 
 **If CLI is NOT available:**
 - Fall back to markdown-based setup (Steps 1 through 9 below)
-- State is stored in `.claude/oss-autopilot/` directory
 
 ---
 
@@ -33,7 +31,7 @@ cd ~/.oss-autopilot/cli && npm run start -- checkSetup --json 2>/dev/null
 Run the setup command to see current configuration:
 
 ```bash
-cd ~/.oss-autopilot/cli && npm run start -- setup --json 2>/dev/null
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --json 2>/dev/null
 ```
 
 If `setupComplete: true`, ask:
@@ -55,7 +53,7 @@ Confirm with user:
 
 If confirmed, set it:
 ```bash
-cd ~/.oss-autopilot/cli && npm run start -- setup --set username=USERNAME --json
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set username=USERNAME --json
 ```
 
 ## Step 3-CLI: Gather Preferences
@@ -67,7 +65,7 @@ Use AskUserQuestion to collect preferences, then set each via CLI:
 - Options: "5 (light)", "10 (moderate)", "15 (active)", "20 (heavy)"
 
 ```bash
-npm run start -- setup --set maxActivePRs=NUMBER --json
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set maxActivePRs=NUMBER --json
 ```
 
 **Question 2: Dormant Threshold**
@@ -75,7 +73,7 @@ npm run start -- setup --set maxActivePRs=NUMBER --json
 - Options: "14 days", "21 days", "30 days (default)", "45 days"
 
 ```bash
-npm run start -- setup --set dormantDays=NUMBER --json
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set dormantDays=NUMBER --json
 ```
 
 **Question 3: Warning Threshold**
@@ -83,7 +81,7 @@ npm run start -- setup --set dormantDays=NUMBER --json
 - Options: "5 days before", "7 days before", "10 days before"
 
 ```bash
-npm run start -- setup --set approachingDays=NUMBER --json
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set approachingDays=NUMBER --json
 ```
 
 **Question 4: Languages** (multi-select)
@@ -91,7 +89,7 @@ npm run start -- setup --set approachingDays=NUMBER --json
 - Options: "TypeScript", "JavaScript", "Python", "Go", "Rust"
 
 ```bash
-npm run start -- setup --set languages=typescript,javascript,python --json
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set languages=typescript,javascript,python --json
 ```
 
 **Question 5: Issue Labels** (multi-select)
@@ -99,13 +97,13 @@ npm run start -- setup --set languages=typescript,javascript,python --json
 - Options: "good first issue", "help wanted", "bug", "enhancement", "documentation"
 
 ```bash
-npm run start -- setup --set labels="good first issue,help wanted" --json
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set labels="good first issue,help wanted" --json
 ```
 
 ## Step 4-CLI: Mark Setup Complete
 
 ```bash
-cd ~/.oss-autopilot/cli && npm run start -- setup --set complete=true --json
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set complete=true --json
 ```
 
 ## Step 5-CLI: Import Existing PRs
@@ -115,7 +113,7 @@ Ask user:
 
 If yes:
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- init USERNAME --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" init USERNAME --json
 ```
 
 This fetches all open PRs from GitHub and adds them to tracking.
@@ -380,8 +378,7 @@ Run `/oss` to check your PRs and find new contribution opportunities.
 
 ## Important Notes
 
-- **CLI path**: State is stored in `data/state.json`
-- **Fallback path**: State is stored in `.claude/oss-autopilot/` directory
+- State is stored in `~/.oss-autopilot/state.json` (separate from the plugin code)
 - Configuration can be edited manually or by running `/setup-oss` again
 - The plugin works with either `gh` CLI or GitHub MCP servers
 - **NEVER add AI attribution** to commits, comments, or PRs unless the repository explicitly requires disclosure of AI tool usage. Contributions should appear as solely from the user.

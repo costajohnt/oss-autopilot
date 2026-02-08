@@ -1,8 +1,9 @@
 # Dependencies
 node_modules/
 
-# Build output
+# Build output (except the committed bundle)
 dist/
+!dist/cli.bundle.cjs
 
 # Plugin state (user-specific, created at runtime)
 .claude/oss-autopilot/

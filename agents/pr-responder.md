@@ -40,7 +40,7 @@ The oss-autopilot CLI provides structured JSON output for PR comments and postin
 
 **CLI Command Pattern:**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- <command> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" <command> --json
 ```
 
 **Available Commands for PR Response:**
@@ -54,7 +54,7 @@ cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- <comma
 
 **Get PR Comments:**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- comments https://github.com/owner/repo/pull/123 --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" comments https://github.com/owner/repo/pull/123 --json
 ```
 Returns structured data including:
 - `issueComments`: General PR comments
@@ -64,13 +64,13 @@ Returns structured data including:
 
 **Post a Comment (with user approval):**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- post https://github.com/owner/repo/pull/123 "Your response message"
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" post https://github.com/owner/repo/pull/123 "Your response message"
 ```
 **IMPORTANT:** Never call this command without explicit user approval via AskUserQuestion.
 
 **Check for PRs Needing Response:**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- daily --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json
 ```
 Returns PRs with `hasUnreadComments: true` or recent maintainer activity.
 
@@ -83,7 +83,7 @@ If the TypeScript CLI is unavailable, use `gh` CLI directly (see commands below)
 
 1. **Fetch PR Comments via CLI (Primary)**
    ```bash
-   cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- comments https://github.com/owner/repo/pull/123 --json
+   GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" comments https://github.com/owner/repo/pull/123 --json
    ```
 
    Parse the JSON output to identify:
@@ -199,7 +199,7 @@ Always confirm with user via AskUserQuestion.
 
 **Post via CLI (Primary):**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- post https://github.com/owner/repo/pull/123 "Your approved response message"
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" post https://github.com/owner/repo/pull/123 "Your approved response message"
 ```
 
 **Fallback (if CLI unavailable):**

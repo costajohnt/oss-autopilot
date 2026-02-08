@@ -64,7 +64,7 @@ The oss-autopilot CLI provides structured JSON output with comprehensive PR heal
 
 **CLI Command Pattern:**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- <command> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" <command> --json
 ```
 
 **Available Commands for Health Checking:**
@@ -86,7 +86,7 @@ If the TypeScript CLI is unavailable, use `gh` CLI directly (see commands below)
 
 **Via CLI (Primary):**
 ```bash
-cd ~/.oss-autopilot/cli && GITHUB_TOKEN=$(gh auth token) npm run start -- status --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" status --json
 ```
 
 **Via gh CLI (Fallback):**
