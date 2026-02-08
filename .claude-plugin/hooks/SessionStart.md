@@ -41,6 +41,7 @@ if [ -f "$STATE_FILE" ]; then
     try {
       const s = require('fs').readFileSync('${HOME}/.oss-autopilot/state.json', 'utf8');
       const state = JSON.parse(s);
+      if (state.config && state.config.showHealthCheck === false) process.exit(0);
       const lastRun = state.lastDigestAt || state.lastRunAt;
       if (!lastRun || !state.lastDigest) process.exit(0);
       const ageMs = Date.now() - new Date(lastRun).getTime();

@@ -198,6 +198,7 @@ Settings are stored in `.claude/oss-autopilot/config.md` (YAML frontmatter). Run
 | `approachingDormantDays` | 7 | Days until dormancy warning |
 | `languages` | (chosen at setup) | Languages to filter issue search |
 | `labels` | (chosen at setup) | Issue labels to look for (e.g., `good first issue`, `help wanted`) |
+| `showHealthCheck` | `true` | Show PR health notification on session start |
 
 PR tracking state is stored separately in `~/.oss-autopilot/state.json`.
 

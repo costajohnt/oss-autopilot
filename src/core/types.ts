@@ -358,6 +358,9 @@ export interface AgentConfig {
   // Starred repositories for prioritized issue discovery
   starredRepos: string[]; // e.g., ["owner/repo", "owner2/repo2"]
   starredReposLastFetched?: string; // ISO timestamp of last fetch
+
+  // SessionStart health check notification (default: true)
+  showHealthCheck?: boolean;
 }
 
 export const DEFAULT_CONFIG: AgentConfig = {

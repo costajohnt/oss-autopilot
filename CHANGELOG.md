@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Proactive PR health check notification on session start — reads cached state to show "2 of 15 PRs need attention" without any network calls
+- Proactive PR health check notification on session start — reads cached state to show "2 of 15 PRs need attention" without any network calls; configurable via `showHealthCheck` setting
 - "Why OSS Autopilot?" competitive comparison section in README
 
 ## [0.7.2] - 2026-02-08
