@@ -129,11 +129,12 @@ export class PRMonitor {
         'needs_rebase': 5,
         'missing_required_files': 6,
         'incomplete_checklist': 7,
-        'approaching_dormant': 8,
-        'dormant': 9,
-        'waiting': 10,
-        'waiting_on_maintainer': 11,
-        'healthy': 12,
+        'changes_addressed': 8,
+        'approaching_dormant': 9,
+        'dormant': 10,
+        'waiting': 11,
+        'waiting_on_maintainer': 12,
+        'healthy': 13,
       };
       return statusPriority[a.status] - statusPriority[b.status];
     });
@@ -166,21 +167,33 @@ export class PRMonitor {
     const comments = commentsResponse.data;
     const reviews = reviewsResponse.data;
 
-    // Get CI status with the actual SHA (must be done after fetching PR data)
-    const { status: ciStatus, failingCheckNames } = await this.getCIStatus(owner, repo, ghPR.head.sha);
-
     // Determine review decision
     const reviewDecision = this.determineReviewDecision(reviews);
 
     // Check for merge conflict
     const hasMergeConflict = this.hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state);
 
-    // Check if there's an unresponded maintainer comment
+    // Check if there's an unresponded maintainer comment (pure computation, no API call)
     const { hasUnrespondedComment, lastMaintainerComment } = this.checkUnrespondedComments(
       comments,
       reviews,
       config.githubUsername
     );
+
+    // Fetch CI status and (conditionally) latest commit date in parallel
+    // We only need the commit date when hasUnrespondedComment is true, to distinguish
+    // "needs_response" from "changes_addressed" (contributor pushed after maintainer commented)
+    const ciPromise = this.getCIStatus(owner, repo, ghPR.head.sha);
+    const commitDatePromise = hasUnrespondedComment
+      ? this.octokit.repos.getCommit({ owner, repo, ref: ghPR.head.sha })
+          .then(res => res.data.commit.author?.date)
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
+
+    const [{ status: ciStatus, failingCheckNames }, latestCommitDate] = await Promise.all([
+      ciPromise,
+      commitDatePromise,
+    ]);
 
     // Analyze PR body for incomplete checklists
     const { hasIncompleteChecklist, checklistStats } = this.analyzeChecklist(ghPR.body || '');
@@ -203,7 +216,9 @@ export class PRMonitor {
       reviewDecision,
       daysSinceActivity,
       config.dormantThresholdDays,
-      config.approachingDormantDays
+      config.approachingDormantDays,
+      latestCommitDate,
+      lastMaintainerComment?.createdAt
     );
 
     return {
@@ -222,6 +237,7 @@ export class PRMonitor {
       reviewDecision,
       hasUnrespondedComment,
       lastMaintainerComment,
+      latestCommitDate,
       hasIncompleteChecklist,
       checklistStats,
       maintainerActionHints,
@@ -309,11 +325,18 @@ export class PRMonitor {
     reviewDecision: ReviewDecision,
     daysSinceActivity: number,
     dormantThreshold: number,
-    approachingThreshold: number
+    approachingThreshold: number,
+    latestCommitDate?: string,
+    lastMaintainerCommentDate?: string
   ): FetchedPRStatus {
-    // Priority order: needs_response > failing_ci > merge_conflict > incomplete_checklist > dormant > approaching_dormant > waiting_on_maintainer > waiting/healthy
+    // Priority order: needs_response/changes_addressed > failing_ci > merge_conflict > incomplete_checklist > dormant > approaching_dormant > waiting_on_maintainer > waiting/healthy
 
     if (hasUnrespondedComment) {
+      // If the contributor pushed a commit after the maintainer's comment,
+      // the changes have been addressed — waiting for maintainer re-review
+      if (latestCommitDate && lastMaintainerCommentDate && latestCommitDate > lastMaintainerCommentDate) {
+        return 'changes_addressed';
+      }
       return 'needs_response';
     }
 
@@ -793,6 +816,7 @@ export class PRMonitor {
     const needsRebasePRs = prs.filter(pr => pr.status === 'needs_rebase');
     const missingRequiredFilesPRs = prs.filter(pr => pr.status === 'missing_required_files');
     const incompleteChecklistPRs = prs.filter(pr => pr.status === 'incomplete_checklist');
+    const changesAddressedPRs = prs.filter(pr => pr.status === 'changes_addressed');
     const waitingOnMaintainerPRs = prs.filter(pr => pr.status === 'waiting_on_maintainer');
 
     return {
@@ -806,6 +830,7 @@ export class PRMonitor {
       needsRebasePRs,
       missingRequiredFilesPRs,
       incompleteChecklistPRs,
+      changesAddressedPRs,
       waitingOnMaintainerPRs,
       approachingDormant,
       dormantPRs,

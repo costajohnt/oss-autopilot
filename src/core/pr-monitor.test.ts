@@ -151,7 +151,7 @@ describe('PRMonitor CI status deduplication', () => {
     expect(result.failingCheckNames).toEqual([]);
   });
 
-  it('should report failing when one check passes but another still fails', async () => {
+  it('should report failing when one check passes but another still fails (multi-check)', async () => {
     mockOctokitInstance = {
       repos: {
         getCombinedStatusForRef: vi.fn().mockResolvedValue(emptyCombinedStatus),
@@ -183,5 +183,85 @@ describe('PRMonitor CI status deduplication', () => {
 
     expect(result.status).toBe('failing');
     expect(result.failingCheckNames).toEqual(['Test']);
+  });
+});
+
+describe('PRMonitor changes_addressed detection', () => {
+  beforeEach(() => {
+    mockOctokitInstance = {};
+  });
+
+  it('should return changes_addressed when commit is newer than maintainer comment', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus(
+      'passing',        // ciStatus
+      false,            // hasMergeConflict
+      true,             // hasUnrespondedComment
+      false,            // hasIncompleteChecklist
+      'changes_requested', // reviewDecision
+      2,                // daysSinceActivity
+      30,               // dormantThreshold
+      25,               // approachingThreshold
+      '2026-02-08T12:00:00Z',  // latestCommitDate (newer)
+      '2026-02-07T10:00:00Z'   // lastMaintainerCommentDate (older)
+    );
+
+    expect(result).toBe('changes_addressed');
+  });
+
+  it('should return needs_response when commit is older than maintainer comment', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus(
+      'passing',
+      false,
+      true,             // hasUnrespondedComment
+      false,
+      'changes_requested',
+      2,
+      30,
+      25,
+      '2026-02-06T10:00:00Z',  // latestCommitDate (older)
+      '2026-02-07T10:00:00Z'   // lastMaintainerCommentDate (newer)
+    );
+
+    expect(result).toBe('needs_response');
+  });
+
+  it('should fall back to needs_response when commit date is unavailable', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus(
+      'passing',
+      false,
+      true,             // hasUnrespondedComment
+      false,
+      'changes_requested',
+      2,
+      30,
+      25,
+      undefined,               // latestCommitDate (missing)
+      '2026-02-07T10:00:00Z'  // lastMaintainerCommentDate
+    );
+
+    expect(result).toBe('needs_response');
+  });
+
+  it('should not check commit date when hasUnrespondedComment is false', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus(
+      'passing',
+      false,
+      false,            // hasUnrespondedComment = false
+      false,
+      'approved',
+      2,
+      30,
+      25,
+      '2026-02-08T12:00:00Z',  // latestCommitDate (irrelevant)
+      '2026-02-07T10:00:00Z'   // lastMaintainerCommentDate (irrelevant)
+    );
+
+    // Should be healthy (not changes_addressed) since there's no unresponded comment
+    expect(result).not.toBe('changes_addressed');
+    expect(result).not.toBe('needs_response');
   });
 });

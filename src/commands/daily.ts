@@ -148,6 +148,17 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
     lines.push('');
   }
 
+  // Changes Addressed (waiting for maintainer re-review)
+  if (digest.changesAddressedPRs.length > 0) {
+    lines.push('### 📤 Changes Addressed');
+    for (const pr of digest.changesAddressedPRs) {
+      const maintainer = pr.lastMaintainerComment?.author || 'maintainer';
+      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
+      lines.push(`  └─ Waiting for @${maintainer} to re-review`);
+    }
+    lines.push('');
+  }
+
   // Approaching Dormant
   if (digest.approachingDormant.length > 0) {
     lines.push('### ⏰ Approaching Dormant');
@@ -250,6 +261,16 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
     for (const pr of digest.incompleteChecklistPRs) {
       const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total} checked)` : '';
       console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}${stats}`);
+    }
+    console.log('');
+  }
+
+  if (digest.changesAddressedPRs.length > 0) {
+    console.log('📤 Changes Addressed:');
+    for (const pr of digest.changesAddressedPRs) {
+      const maintainer = pr.lastMaintainerComment?.author || 'maintainer';
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+      console.log(`    Waiting for @${maintainer} to re-review`);
     }
     console.log('');
   }

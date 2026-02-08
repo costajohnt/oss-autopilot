@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-02-08
+
+### Fixed
+
+- Stale `needs_response` status when contributor has already pushed changes addressing maintainer feedback
+  - GitHub's `reviewDecision` stays `changes_requested` until maintainer re-approves, causing false positives
+  - Now compares latest commit timestamp against last maintainer comment — if the commit is newer, shows `changes_addressed` instead of `needs_response`
+  - New `changes_addressed` status shown in daily digest, dashboard, and JSON output
+  - Not counted in `totalNeedingAttention` (not actionable by contributor)
+
 ## [0.7.1] - 2026-02-08
 
 ### Removed
@@ -142,6 +152,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.7.2]: https://github.com/costajohnt/oss-autopilot/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.6.0...v0.6.1

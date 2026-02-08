@@ -426,6 +426,11 @@ function generateDashboardHtml(
       background: var(--accent-warning-dim);
     }
 
+    .health-item.changes-addressed {
+      border-left-color: var(--accent-info);
+      background: var(--accent-info-dim);
+    }
+
     .health-icon {
       width: 32px;
       height: 32px;
@@ -441,6 +446,7 @@ function generateDashboardHtml(
     .health-item.conflict .health-icon { background: rgba(218, 54, 51, 0.15); color: var(--accent-conflict); }
     .health-item.incomplete-checklist .health-icon { background: var(--accent-info-dim); color: var(--accent-info); }
     .health-item.needs-response .health-icon { background: var(--accent-warning-dim); color: var(--accent-warning); }
+    .health-item.changes-addressed .health-icon { background: var(--accent-info-dim); color: var(--accent-info); }
 
     .health-content { flex: 1; min-width: 0; }
 
@@ -650,6 +656,7 @@ function generateDashboardHtml(
     .badge-pending { background: var(--accent-info-dim); color: var(--accent-info); }
     .badge-days { background: var(--bg-elevated); color: var(--text-muted); }
     .badge-changes-requested { background: var(--accent-warning-dim); color: var(--accent-warning); }
+    .badge-changes-addressed { background: var(--accent-info-dim); color: var(--accent-info); }
 
     .pr-activity {
       font-family: 'Geist Mono', monospace;
@@ -865,6 +872,20 @@ function generateDashboardHtml(
           </div>
         </div>
         `).join('')}
+        ${digest.changesAddressedPRs.map(pr => `
+        <div class="health-item changes-addressed">
+          <div class="health-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <div class="health-content">
+            <div class="health-title"><a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - Changes Addressed</div>
+            <div class="health-meta">Awaiting re-review${pr.lastMaintainerComment ? ` from @${pr.lastMaintainerComment.author}` : ''}</div>
+          </div>
+        </div>
+        `).join('')}
         ${digest.prsNeedingResponse.map(pr => `
         <div class="health-item needs-response">
           <div class="health-icon">
@@ -969,7 +990,7 @@ function generateDashboardHtml(
       </div>
       <div class="pr-list">
         ${digest.openPRs.map(pr => {
-          const hasIssues = pr.ciStatus === 'failing' || pr.hasMergeConflict || pr.hasUnrespondedComment;
+          const hasIssues = pr.ciStatus === 'failing' || pr.hasMergeConflict || (pr.hasUnrespondedComment && pr.status !== 'changes_addressed');
           const isStale = pr.daysSinceActivity >= approachingDormantDays;
           const itemClass = hasIssues ? 'has-issues' : (isStale ? 'stale' : '');
 
@@ -1000,7 +1021,8 @@ function generateDashboardHtml(
               ${pr.ciStatus === 'passing' ? '<span class="badge badge-passing">CI Passing</span>' : ''}
               ${pr.ciStatus === 'pending' ? '<span class="badge badge-pending">CI Pending</span>' : ''}
               ${pr.hasMergeConflict ? '<span class="badge badge-conflict">Merge Conflict</span>' : ''}
-              ${pr.hasUnrespondedComment ? '<span class="badge badge-needs-response">Needs Response</span>' : ''}
+              ${pr.hasUnrespondedComment && pr.status === 'changes_addressed' ? '<span class="badge badge-changes-addressed">Changes Addressed</span>' : ''}
+              ${pr.hasUnrespondedComment && pr.status !== 'changes_addressed' ? '<span class="badge badge-needs-response">Needs Response</span>' : ''}
               ${pr.reviewDecision === 'changes_requested' ? '<span class="badge badge-changes-requested">Changes Requested</span>' : ''}
               ${isStale ? `<span class="badge badge-stale">${pr.daysSinceActivity}d inactive</span>` : ''}
             </div>
