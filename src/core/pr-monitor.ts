@@ -167,7 +167,7 @@ export class PRMonitor {
     const reviews = reviewsResponse.data;
 
     // Get CI status with the actual SHA (must be done after fetching PR data)
-    const ciStatus = await this.getCIStatus(owner, repo, ghPR.head.sha);
+    const { status: ciStatus, failingCheckNames } = await this.getCIStatus(owner, repo, ghPR.head.sha);
 
     // Determine review decision
     const reviewDecision = this.determineReviewDecision(reviews);
@@ -217,6 +217,7 @@ export class PRMonitor {
       updatedAt: ghPR.updated_at,
       daysSinceActivity,
       ciStatus,
+      failingCheckNames,
       hasMergeConflict,
       reviewDecision,
       hasUnrespondedComment,
@@ -250,10 +251,14 @@ export class PRMonitor {
 
     for (const review of reviews) {
       if (!review.submitted_at) continue;
+      // Skip reviews with empty bodies - these are state changes (approve/request changes)
+      // without actual comment text, and don't need a response
+      const body = (review.body || '').trim();
+      if (!body) continue;
       const author = review.user?.login || 'unknown';
       timeline.push({
         author,
-        body: review.body || '',
+        body,
         createdAt: review.submitted_at,
         isUser: author.toLowerCase() === username.toLowerCase(),
       });
@@ -423,10 +428,11 @@ export class PRMonitor {
   }
 
   /**
-   * Get CI status from combined status API and check runs
+   * Get CI status from combined status API and check runs.
+   * Returns status and names of failing checks for diagnostics.
    */
-  private async getCIStatus(owner: string, repo: string, sha: string): Promise<CIStatus> {
-    if (!sha) return 'unknown';
+  private async getCIStatus(owner: string, repo: string, sha: string): Promise<{ status: CIStatus; failingCheckNames: string[] }> {
+    if (!sha) return { status: 'unknown', failingCheckNames: [] };
 
     try {
       // Fetch both combined status and check runs in parallel
@@ -442,10 +448,12 @@ export class PRMonitor {
       let hasFailingChecks = false;
       let hasPendingChecks = false;
       let hasSuccessfulChecks = false;
+      const failingCheckNames: string[] = [];
 
       for (const check of checkRuns) {
         if (check.conclusion === 'failure' || check.conclusion === 'cancelled' || check.conclusion === 'timed_out') {
           hasFailingChecks = true;
+          failingCheckNames.push(check.name);
         } else if (check.conclusion === 'action_required') {
           hasPendingChecks = true; // Maintainer approval gate, not a real failure
         } else if (check.status === 'in_progress' || check.status === 'queued') {
@@ -476,26 +484,33 @@ export class PRMonitor {
         : combinedStatus.state;
       const hasStatuses = combinedStatus.statuses.length > 0;
 
+      // Collect failing status names from combined status API
+      for (const s of realStatuses) {
+        if (s.state === 'failure' || s.state === 'error') {
+          failingCheckNames.push(s.context);
+        }
+      }
+
       // Priority: failing > pending > passing > unknown
       // Safety net: If we have ANY failing checks, report as failing
       if (hasFailingChecks || effectiveCombinedState === 'failure' || effectiveCombinedState === 'error') {
-        return 'failing';
+        return { status: 'failing', failingCheckNames };
       }
 
       if (hasPendingChecks || effectiveCombinedState === 'pending') {
-        return 'pending';
+        return { status: 'pending', failingCheckNames: [] };
       }
 
       if (hasSuccessfulChecks || effectiveCombinedState === 'success') {
-        return 'passing';
+        return { status: 'passing', failingCheckNames: [] };
       }
 
       // No checks found at all - this is common for repos without CI
       if (!hasStatuses && checkRuns.length === 0) {
-        return 'unknown';
+        return { status: 'unknown', failingCheckNames: [] };
       }
 
-      return 'unknown';
+      return { status: 'unknown', failingCheckNames: [] };
     } catch (error) {
       const statusCode = (error as { status?: number }).status;
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -506,11 +521,11 @@ export class PRMonitor {
         console.error(`[RATE LIMIT] CI check failed for ${owner}/${repo}: Rate limit exceeded`);
       } else if (statusCode === 404) {
         // Repo might not have CI configured, this is normal
-        return 'unknown';
+        return { status: 'unknown', failingCheckNames: [] };
       } else {
         console.error(`[CI ERROR] Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage}`);
       }
-      return 'unknown';
+      return { status: 'unknown', failingCheckNames: [] };
     }
   }
 
@@ -715,7 +730,7 @@ export class PRMonitor {
     });
 
     const now = new Date();
-    const ciStatus = await this.getCIStatus(owner, repo, ghPR.head.sha);
+    const { status: ciStatus } = await this.getCIStatus(owner, repo, ghPR.head.sha);
     const hasMergeConflict = this.hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state);
 
     const { data: reviews } = await this.octokit.pulls.listReviews({
@@ -832,7 +847,7 @@ export class PRMonitor {
         }
 
         // Update PR with current state
-        const ciStatus = await this.getCIStatus(owner, repo, ghPR.head.sha);
+        const { status: ciStatus } = await this.getCIStatus(owner, repo, ghPR.head.sha);
         const hasMergeConflict = this.hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state);
         const daysSinceActivity = daysBetween(new Date(ghPR.updated_at), now);
 

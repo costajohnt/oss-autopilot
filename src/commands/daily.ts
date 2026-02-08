@@ -95,6 +95,9 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
     lines.push('### ❌ CI Failing');
     for (const pr of digest.ciFailingPRs) {
       lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
+      if (pr.failingCheckNames.length > 0) {
+        lines.push(`  └─ Failing: ${pr.failingCheckNames.join(', ')}`);
+      }
     }
     lines.push('');
   }
@@ -193,6 +196,9 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
     console.log('❌ CI Failing:');
     for (const pr of digest.ciFailingPRs) {
       console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+      if (pr.failingCheckNames.length > 0) {
+        console.log(`    Failing: ${pr.failingCheckNames.join(', ')}`);
+      }
     }
     console.log('');
   }
@@ -317,10 +323,13 @@ function collectActionableIssues(prs: FetchedPR[]): ActionableIssue[] {
     }
   }
 
-  // 2. CI Failing
+  // 2. CI Failing (include check names so user can distinguish real CI from validation bots)
   for (const pr of prs) {
     if (pr.status === 'failing_ci') {
-      issues.push({ type: 'ci_failing', pr, label: '[CI Failing]' });
+      const checkInfo = pr.failingCheckNames.length > 0
+        ? ` (${pr.failingCheckNames.join(', ')})`
+        : '';
+      issues.push({ type: 'ci_failing', pr, label: `[CI Failing${checkInfo}]` });
     }
   }
 

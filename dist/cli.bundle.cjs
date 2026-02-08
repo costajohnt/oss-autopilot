@@ -10113,7 +10113,7 @@ var PRMonitor = class {
     const ghPR = prResponse.data;
     const comments = commentsResponse.data;
     const reviews = reviewsResponse.data;
-    const ciStatus = await this.getCIStatus(owner, repo, ghPR.head.sha);
+    const { status: ciStatus, failingCheckNames } = await this.getCIStatus(owner, repo, ghPR.head.sha);
     const reviewDecision = this.determineReviewDecision(reviews);
     const hasMergeConflict = this.hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state);
     const { hasUnrespondedComment, lastMaintainerComment } = this.checkUnrespondedComments(
@@ -10148,6 +10148,7 @@ var PRMonitor = class {
       updatedAt: ghPR.updated_at,
       daysSinceActivity,
       ciStatus,
+      failingCheckNames,
       hasMergeConflict,
       reviewDecision,
       hasUnrespondedComment,
@@ -10173,10 +10174,12 @@ var PRMonitor = class {
     }
     for (const review of reviews) {
       if (!review.submitted_at) continue;
+      const body = (review.body || "").trim();
+      if (!body) continue;
       const author = review.user?.login || "unknown";
       timeline.push({
         author,
-        body: review.body || "",
+        body,
         createdAt: review.submitted_at,
         isUser: author.toLowerCase() === username.toLowerCase()
       });
@@ -10289,10 +10292,11 @@ var PRMonitor = class {
     return hints;
   }
   /**
-   * Get CI status from combined status API and check runs
+   * Get CI status from combined status API and check runs.
+   * Returns status and names of failing checks for diagnostics.
    */
   async getCIStatus(owner, repo, sha) {
-    if (!sha) return "unknown";
+    if (!sha) return { status: "unknown", failingCheckNames: [] };
     try {
       const [statusResponse, checksResponse] = await Promise.all([
         this.octokit.repos.getCombinedStatusForRef({ owner, repo, ref: sha }),
@@ -10303,9 +10307,11 @@ var PRMonitor = class {
       let hasFailingChecks = false;
       let hasPendingChecks = false;
       let hasSuccessfulChecks = false;
+      const failingCheckNames = [];
       for (const check of checkRuns) {
         if (check.conclusion === "failure" || check.conclusion === "cancelled" || check.conclusion === "timed_out") {
           hasFailingChecks = true;
+          failingCheckNames.push(check.name);
         } else if (check.conclusion === "action_required") {
           hasPendingChecks = true;
         } else if (check.status === "in_progress" || check.status === "queued") {
@@ -10323,19 +10329,24 @@ var PRMonitor = class {
       const hasRealSuccess = realStatuses.some((s) => s.state === "success");
       const effectiveCombinedState = hasRealFailure ? "failure" : hasRealPending ? "pending" : hasRealSuccess ? "success" : realStatuses.length === 0 ? "success" : combinedStatus.state;
       const hasStatuses = combinedStatus.statuses.length > 0;
+      for (const s of realStatuses) {
+        if (s.state === "failure" || s.state === "error") {
+          failingCheckNames.push(s.context);
+        }
+      }
       if (hasFailingChecks || effectiveCombinedState === "failure" || effectiveCombinedState === "error") {
-        return "failing";
+        return { status: "failing", failingCheckNames };
       }
       if (hasPendingChecks || effectiveCombinedState === "pending") {
-        return "pending";
+        return { status: "pending", failingCheckNames: [] };
       }
       if (hasSuccessfulChecks || effectiveCombinedState === "success") {
-        return "passing";
+        return { status: "passing", failingCheckNames: [] };
       }
       if (!hasStatuses && checkRuns.length === 0) {
-        return "unknown";
+        return { status: "unknown", failingCheckNames: [] };
       }
-      return "unknown";
+      return { status: "unknown", failingCheckNames: [] };
     } catch (error) {
       const statusCode = error.status;
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -10344,11 +10355,11 @@ var PRMonitor = class {
       } else if (statusCode === 403) {
         console.error(`[RATE LIMIT] CI check failed for ${owner}/${repo}: Rate limit exceeded`);
       } else if (statusCode === 404) {
-        return "unknown";
+        return { status: "unknown", failingCheckNames: [] };
       } else {
         console.error(`[CI ERROR] Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage}`);
       }
-      return "unknown";
+      return { status: "unknown", failingCheckNames: [] };
     }
   }
   /**
@@ -10508,7 +10519,7 @@ var PRMonitor = class {
       pull_number: number
     });
     const now = /* @__PURE__ */ new Date();
-    const ciStatus = await this.getCIStatus(owner, repo, ghPR.head.sha);
+    const { status: ciStatus } = await this.getCIStatus(owner, repo, ghPR.head.sha);
     const hasMergeConflict = this.hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state);
     const { data: reviews } = await this.octokit.pulls.listReviews({
       owner,
@@ -10603,7 +10614,7 @@ var PRMonitor = class {
           updates.push({ pr, type: "closed", message: `PR closed: ${pr.repo}#${pr.number}` });
           continue;
         }
-        const ciStatus = await this.getCIStatus(owner, repo, ghPR.head.sha);
+        const { status: ciStatus } = await this.getCIStatus(owner, repo, ghPR.head.sha);
         const hasMergeConflict = this.hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state);
         const daysSinceActivity = daysBetween(new Date(ghPR.updated_at), now);
         this.stateManager.updatePR(pr.url, {
@@ -11414,6 +11425,9 @@ function formatSummary(digest, capacity) {
     lines.push("### \u274C CI Failing");
     for (const pr of digest.ciFailingPRs) {
       lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
+      if (pr.failingCheckNames.length > 0) {
+        lines.push(`  \u2514\u2500 Failing: ${pr.failingCheckNames.join(", ")}`);
+      }
     }
     lines.push("");
   }
@@ -11492,6 +11506,9 @@ Capacity: ${capacity.hasCapacity ? "\u2705 Ready for new work" : "\u26A0\uFE0F  
     console.log("\u274C CI Failing:");
     for (const pr of digest.ciFailingPRs) {
       console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+      if (pr.failingCheckNames.length > 0) {
+        console.log(`    Failing: ${pr.failingCheckNames.join(", ")}`);
+      }
     }
     console.log("");
   }
@@ -11586,7 +11603,8 @@ function collectActionableIssues(prs) {
   }
   for (const pr of prs) {
     if (pr.status === "failing_ci") {
-      issues.push({ type: "ci_failing", pr, label: "[CI Failing]" });
+      const checkInfo = pr.failingCheckNames.length > 0 ? ` (${pr.failingCheckNames.join(", ")})` : "";
+      issues.push({ type: "ci_failing", pr, label: `[CI Failing${checkInfo}]` });
     }
   }
   for (const pr of prs) {
