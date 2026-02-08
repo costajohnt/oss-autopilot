@@ -79,33 +79,20 @@ Claude automatically uses these agents based on context:
 
 ---
 
-## Manual Installation
+## Alternative Installation
 
-If you prefer to install manually:
+### For development/testing (per-session)
 
-### 1. Register the plugin
-
-Add to your Claude Code settings (`~/.claude/settings.json`):
-
-```json
-{
-  "plugins": ["/path/to/oss-autopilot"]
-}
+```bash
+git clone https://github.com/costajohnt/oss-autopilot.git
+claude --plugin-dir ./oss-autopilot
 ```
 
-Use the absolute path to wherever you cloned the repo.
-
-### 2. Set up GitHub access
+### Prerequisites
 
 ```bash
 # Install GitHub CLI from https://cli.github.com/
 gh auth login
-```
-
-### 3. Restart Claude Code and run setup
-
-```
-/setup-oss
 ```
 
 No `npm install` or build step needed — the CLI is pre-bundled.
