@@ -21,7 +21,16 @@ import { runInit } from './commands/init.js';
 import { runRead } from './commands/read.js';
 import { runDashboard } from './commands/dashboard.js';
 
-const VERSION = '0.1.0';
+const VERSION = (() => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const pkgPath = path.join(path.dirname(process.argv[1]), '..', 'package.json');
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
+  } catch {
+    return '0.0.0';
+  }
+})();
 
 // Commands that don't require GitHub API access
 const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard'];

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-02-08
+
+### Added
+
+- SessionStart hook for automatic stale bundle rebuild after plugin updates
+- Daily update notification — shows when a newer version is available on GitHub
+- Version display in `/oss` summary output (e.g., "v0.6.1")
+
+### Fixed
+
+- CLI bundle not rebuilt after `/plugin update` — Step 0.5 only checked file existence, not staleness
+- CLI VERSION constant hardcoded at 0.1.0 — now reads from package.json at runtime
+
 ## [0.6.0] - 2026-02-08
 
 ### Added
@@ -100,6 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.6.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.4.0...v0.4.1
