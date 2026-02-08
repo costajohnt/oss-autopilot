@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-02-08
+
+### Fixed
+
+- SessionStart health check silently failing on Node.js 24 — `node -e` inline scripts break because the Bash tool escapes `!` to `\!`, which is invalid in Node 24's TypeScript parser. Moved health check logic to a `.cjs` script file that works on Node 18 through 24+.
+
 ## [0.8.0] - 2026-02-08
 
 ### Added
@@ -159,6 +165,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.8.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.7.2...v0.8.0
 [0.7.2]: https://github.com/costajohnt/oss-autopilot/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.7.0...v0.7.1
