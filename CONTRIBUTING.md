@@ -102,6 +102,19 @@ npm run test:watch
 npx vitest src/core/state.test.ts
 ```
 
+## Release Process
+
+When preparing a new release:
+
+1. **Decide version number** following [semver](https://semver.org/): new feature = minor bump, bug fix = patch bump
+2. **Update version** in both `.claude-plugin/plugin.json` and `package.json` (they must always match)
+3. **Update CHANGELOG.md** with the new version section (Added, Changed, Fixed as appropriate)
+4. **Update version badge** in `README.md` to reflect the new version
+5. **Commit**: `git commit -m "chore: release vX.Y.Z"`
+6. **Tag**: `git tag vX.Y.Z`
+7. **Push with tags**: `git push origin main --tags`
+8. **Optional**: Create a GitHub release with `gh release create vX.Y.Z --notes "See CHANGELOG.md"`
+
 ## Questions?
 
 Open an issue or start a discussion. We're happy to help!

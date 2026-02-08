@@ -2,9 +2,15 @@
 
 Discover issues worth contributing to, track your PRs across repos, and draft responses to maintainer feedback. An AI copilot for your open source journey.
 
+![Version](https://img.shields.io/badge/version-0.4.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
+
 ![OSS Autopilot Dashboard](docs/images/dashboard.png)
 
 ## Quick Start
+
+**Prerequisites:** [Claude Code](https://claude.ai/claude-code), Node.js 18+, and [GitHub CLI](https://cli.github.com/) (`gh auth login`).
 
 **In Claude Code, run:**
 
@@ -79,31 +85,19 @@ Claude automatically uses these agents based on context:
 
 ---
 
-## Alternative Installation
+## Updating
 
-### For development/testing (per-session)
+OSS Autopilot can be updated directly from Claude Code:
 
-```bash
-git clone https://github.com/costajohnt/oss-autopilot.git
-claude --plugin-dir ./oss-autopilot
+```
+/plugin update oss-autopilot
 ```
 
-### Prerequisites
+This pulls the latest version from the marketplace. Your configuration in `~/.oss-autopilot/` is preserved across updates.
 
-```bash
-# Install GitHub CLI from https://cli.github.com/
-gh auth login
-```
+To check your current version, look at `.claude-plugin/plugin.json` in the plugin directory.
 
-The CLI auto-builds on first run (requires Node.js 18+ and npm).
-
----
-
-## Requirements
-
-- [Claude Code](https://claude.ai/claude-code) (latest version)
-- Node.js 18+ (for running the bundled CLI)
-- GitHub CLI (`gh`): for GitHub API access
+See the [Changelog](CHANGELOG.md) for what's new in each release.
 
 ---
 
@@ -151,6 +145,34 @@ Settings are stored in `~/.oss-autopilot/state.json`:
 
 ---
 
+## Alternative Installation
+
+### For development/testing (per-session)
+
+```bash
+git clone https://github.com/costajohnt/oss-autopilot.git
+claude --plugin-dir ./oss-autopilot
+```
+
+### Prerequisites
+
+```bash
+# Install GitHub CLI from https://cli.github.com/
+gh auth login
+```
+
+The CLI auto-builds on first run (requires Node.js 18+ and npm).
+
+---
+
+## Requirements
+
+- [Claude Code](https://claude.ai/claude-code) (latest version)
+- Node.js 18+ (for running the bundled CLI)
+- GitHub CLI (`gh`): for GitHub API access
+
+---
+
 ## Tips for Effective Use
 
 **Start small:** Set `maxActivePRs` to 3-5 when starting out. Better to maintain fewer PRs actively than let many go stale.
@@ -162,6 +184,65 @@ Settings are stored in `~/.oss-autopilot/state.json`:
 **Use dormant warnings:** When a PR approaches your threshold, send a polite follow-up. Maintainers are busy.
 
 **Evaluate repos first:** Before claiming an issue, let the repo-evaluator check if the project is actively maintained.
+
+---
+
+## Troubleshooting
+
+### GitHub CLI authentication errors
+
+```
+Error: gh: command not found
+```
+
+Install [GitHub CLI](https://cli.github.com/) and authenticate:
+
+```bash
+brew install gh    # macOS
+gh auth login
+```
+
+### Build fails on first run
+
+The CLI bundles automatically on first use. If it fails:
+
+```bash
+cd ~/.claude/plugins/oss-autopilot   # or your plugin directory
+npm install
+npm run bundle
+```
+
+### Dashboard doesn't open
+
+The dashboard is generated at `~/.oss-autopilot/dashboard.html`. If it doesn't open automatically, open the file manually in your browser.
+
+### PRs not showing up
+
+- Run `/setup-oss` to ensure your GitHub username is configured
+- Check that `gh auth status` shows you're authenticated
+- The plugin only tracks PRs you authored — it won't show PRs from other users
+
+---
+
+## FAQ
+
+**Does Claude post comments or push code automatically?**
+No. OSS Autopilot is fully human-in-the-loop. Claude drafts responses and suggests actions, but nothing is posted to GitHub without your explicit approval.
+
+**Where is my data stored?**
+All data is stored locally in `~/.oss-autopilot/`. Nothing is sent to external servers beyond the GitHub API calls needed to fetch your PR data.
+
+**Does it work with private repositories?**
+Yes, as long as your GitHub CLI (`gh`) has access to those repos. The plugin uses your existing `gh` authentication.
+
+**Can I use this without the Claude Code plugin system?**
+The CLI can run standalone (`node dist/cli.bundle.cjs daily --json`), but it's designed to work with Claude Code for the best experience.
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a detailed history of changes.
 
 ---
 

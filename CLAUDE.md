@@ -118,6 +118,13 @@ The CLI bundle is gitignored and built automatically on first run. During develo
 - Keep PRs focused and atomic
 - Run tests before submitting
 
+### Versioning
+
+- `.claude-plugin/plugin.json` is the source of truth for the plugin version (the marketplace reads it)
+- `package.json` version must always match `plugin.json`
+- Follow [semver](https://semver.org/): new feature = minor bump, bug fix = patch bump
+- Update `CHANGELOG.md` with every release
+
 **AI Attribution Rule (CRITICAL):**
 NEVER add AI attribution to commits, comments, PRs, or any content submitted to external repositories unless explicitly required by that repo's contribution guidelines. This includes:
 - No "Co-Authored-By: Claude" in commit messages
