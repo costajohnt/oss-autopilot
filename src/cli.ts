@@ -6,7 +6,6 @@
  * Supports --json flag for structured output (used by Claude Code plugin)
  */
 
-import 'dotenv/config';
 import { Command } from 'commander';
 import { getGitHubToken } from './core/index.js';
 import { runDaily } from './commands/daily.js';
