@@ -35,32 +35,8 @@ fi
 **Step 3: Quick PR health check (from cached data)**
 
 ```bash
-STATE_FILE="${HOME}/.oss-autopilot/state.json"
-if [ -f "$STATE_FILE" ]; then
-  HEALTH=$(node -e "
-    try {
-      const s = require('fs').readFileSync('${HOME}/.oss-autopilot/state.json', 'utf8');
-      const state = JSON.parse(s);
-      if (state.config && state.config.showHealthCheck === false) process.exit(0);
-      const lastRun = state.lastDigestAt || state.lastRunAt;
-      if (!lastRun || !state.lastDigest) process.exit(0);
-      const ageMs = Date.now() - new Date(lastRun).getTime();
-      const ageDays = Math.floor(ageMs / 86400000);
-      const ageHours = Math.floor(ageMs / 3600000);
-      const ageLabel = ageDays >= 1 ? ageDays + 'd ago' : ageHours + 'h ago';
-      if (ageDays > 7) {
-        console.log('OSS: Haven\\'t checked your PRs in ' + ageDays + ' days. Run /oss to catch up.');
-      } else {
-        const need = state.lastDigest.summary.totalNeedingAttention || 0;
-        const total = state.lastDigest.summary.totalActivePRs || 0;
-        if (need > 0) {
-          console.log('OSS: ' + need + ' of ' + total + ' PRs need attention (' + ageLabel + '). Run /oss to address.');
-        }
-      }
-    } catch(e) {}
-  " 2>/dev/null)
-  [ -n "$HEALTH" ] && echo "$HEALTH"
-fi
+HEALTH=$(node "${CLAUDE_PLUGIN_ROOT}/scripts/health-check.cjs" 2>/dev/null)
+[ -n "$HEALTH" ] && echo "$HEALTH"
 ```
 
 If no checks trigger output, the hook is silent — no noise for the user.
