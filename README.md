@@ -2,7 +2,7 @@
 
 Discover issues worth contributing to, track your PRs across repos, and draft responses to maintainer feedback. An AI copilot for your open source journey.
 
-![Version](https://img.shields.io/badge/version-0.4.0-blue)
+![Version](https://img.shields.io/badge/version-0.4.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 
@@ -34,9 +34,10 @@ Contributing to open source is rewarding but hard to sustain. PRs get lost, main
 - Tracking multiple contributions across repos is tedious
 
 **How OSS Autopilot helps:**
-- **PR monitoring**: Checks all your open PRs for new comments, CI failures, merge conflicts
+- **PR monitoring**: Checks all your open PRs for new comments, CI failures, merge conflicts, incomplete checklists, and maintainer requests
 - **Smart response drafting**: Claude reads maintainer feedback and drafts responses for your approval
 - **Adaptive issue discovery**: Finds issues matching your skills and learns from your contribution history
+- **Curated issue lists**: Maintain a markdown file of issues you're interested in — `/oss` auto-detects and integrates it into your workflow
 - **Repository scoring**: Tracks repo responsiveness and analyzes health before you contribute
 - **Human-in-the-loop**: Claude never posts anything without your explicit approval
 
@@ -59,8 +60,9 @@ Which issues would you like to address?
 2. [Merge Conflict] ink#861 - Fix emoji border alignment
 3. [Needs Response] ink#858 - Remove create-ink-app from README
 4. Address all issues above
-5. Find new issues to work on
-6. Done for now
+5. Pick from issue list          ← if you have a curated list
+6. Find new issues to work on
+7. Done for now
 ```
 
 ### Available Commands
@@ -69,6 +71,15 @@ Which issues would you like to address?
 |---------|-------------|
 | `/oss` | Check your PRs, see what needs attention, take action |
 | `/setup-oss` | Configure preferences and import existing PRs |
+
+### Curated Issue Lists
+
+You can maintain a markdown file with issues you're interested in. `/oss` will auto-detect it and offer "Pick from issue list" as an action. As you complete issues, they're marked done in the file.
+
+Configure the path in `/setup-oss`, or place a file at one of the default locations:
+- `open-source/potential-issue-list.md`
+- `oss/issue-list.md`
+- `issues.md`
 
 ### Specialized Agents
 
@@ -110,7 +121,7 @@ OSS Autopilot uses a hybrid architecture for reliability and speed:
 │  Claude Code Plugin Layer                       │
 │  - /oss and /setup-oss commands                 │
 │  - Specialized agents for different tasks       │
-│  - Natural language interface                   │
+│  - Contribution best-practice skills            │
 ├─────────────────────────────────────────────────┤
 │  TypeScript CLI (deterministic, fast)           │
 │  - Syncs PR state from GitHub API               │
@@ -141,7 +152,7 @@ Settings are stored in `~/.oss-autopilot/state.json`:
 | `githubUsername` | (detected) | Your GitHub username |
 | `maxActivePRs` | 10 | Capacity limit before suggesting focus |
 | `dormantDays` | 30 | Days until PR marked dormant |
-| `approachingDormantDays` | 14 | Days until dormancy warning |
+| `approachingDormantDays` | 25 | Days until dormancy warning |
 
 ---
 
