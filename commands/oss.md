@@ -320,6 +320,8 @@ These change code or post public content:
 For Tier 2 actions, agents INVESTIGATE and RECOMMEND. All write actions require
 explicit user approval via AskUserQuestion.
 
+**After Tier 2 code changes are complete, ALWAYS proceed to Step 5.5 (Pre-Commit Code Review) before committing or pushing.**
+
 ### Same-Repo PR Grouping
 
 **CRITICAL: When multiple PRs exist in the same repository, handle them in a single agent.**
@@ -627,6 +629,217 @@ Your PRs are tracked. Run /oss anytime to check again.
 
 ---
 
+## Step 5.5: Pre-Commit Code Review
+
+**Trigger:** After ANY Tier 2 code changes are made (code modified but not yet committed/pushed). This includes CI fixes, conflict resolution, addressing review feedback, adding missing files, or any other code modification.
+
+This is a quality gate that catches issues before they reach the maintainer.
+
+### 0. Pre-flight: Verify Changes Exist
+
+```bash
+git status --porcelain
+```
+
+**If output is empty:** There are no pending changes to review. Report:
+> "No uncommitted changes detected. Changes may have already been committed, or you may be on the wrong branch."
+
+Then skip the rest of Step 5.5 and return to Step 4's action handler loop.
+
+### 1. Gather Change Context
+
+```bash
+git diff
+git diff --cached
+git status --porcelain
+```
+
+Save the `git diff` output — it will be passed to each review agent in sub-step 2.
+
+Identify changed files and their types (TypeScript, Python, etc.). Count files changed.
+
+Read the target repo's conventions if not already loaded:
+- `CONTRIBUTING.md`
+- Lint/format configs (`.eslintrc*`, `.prettierrc*`, `biome.json`, etc.)
+- Test directory structure (`test/`, `tests/`, `__tests__/`, `spec/`)
+
+### 2. Dispatch Review Agents in Parallel
+
+**CRITICAL: Dispatch ALL agents in a SINGLE message for true parallelism.**
+
+Capture the `git diff` output and pass it as context to each agent.
+
+**Always dispatch these 4 agents (include the full `git diff` output in each prompt):**
+
+```
+Task(pr-review-toolkit:code-reviewer,
+  "Review the following code changes for bugs, logic errors, security vulnerabilities,
+   and adherence to project conventions.
+   Repository: {repo name}
+   Convention notes: {any CONTRIBUTING.md or lint config findings}
+   Changed files: {changed files list}
+
+   Diff:
+   {git diff output}")
+
+Task(pr-review-toolkit:silent-failure-hunter,
+  "Review the following code changes for silent failures, inadequate error handling,
+   and inappropriate fallback behavior.
+   Changed files: {changed files list}
+
+   Diff:
+   {git diff output}")
+
+Task(pr-review-toolkit:code-simplifier,
+  "Review the following code changes for dead code, unnecessary complexity, and
+   simplification opportunities. Do NOT modify files — report findings only.
+   Changed files: {changed files list}
+
+   Diff:
+   {git diff output}")
+
+Task(pr-review-toolkit:pr-test-analyzer,
+  "Analyze test coverage for the following code changes. Check if modified code paths
+   have tests, identify gaps, and recommend what tests should be added.
+   Test directory: {test dir path}
+   Changed files: {changed files list}
+
+   Diff:
+   {git diff output}")
+```
+
+**Conditional agents (dispatch in the SAME message if applicable):**
+
+- **`pr-review-toolkit:type-design-analyzer`** — dispatch only if changed files include TypeScript (`.ts`, `.tsx`) or other typed languages
+  ```
+  Task(pr-review-toolkit:type-design-analyzer,
+    "Review type design in the following TypeScript changes. Check for proper
+     encapsulation, invariant expression, and type safety.
+     Changed files: {changed .ts/.tsx files}
+
+     Diff:
+     {git diff output for .ts/.tsx files}")
+  ```
+
+- **`pr-review-toolkit:comment-analyzer`** — dispatch only if 5+ files were changed (smaller changes rarely warrant dedicated comment review)
+  ```
+  Task(pr-review-toolkit:comment-analyzer,
+    "Review comments in the following code changes for accuracy, completeness,
+     and long-term maintainability.
+     Changed files: {changed files list}
+
+     Diff:
+     {git diff output}")
+  ```
+
+**Fallback:** If the PR review toolkit agents are unavailable (Task tool returns an error for those agent types), inform the user and dispatch the local `pre-commit-reviewer` agent instead:
+
+> "PR review toolkit agents are not available. Falling back to the built-in pre-commit reviewer. This provides a general code review but does not include specialized checks for silent failures, type design, or test coverage."
+
+```
+Task(pre-commit-reviewer,
+  "Review my pending code changes before committing.
+   Repository: {repo name}
+   Working directory: {path}")
+```
+
+**Partial failure:** If some toolkit agents succeed and others fail, consolidate the successful results and note which reviews were skipped:
+> "Note: The following specialized reviews could not be completed: {list}."
+
+### 3. Consolidate Findings
+
+After all agents complete, merge their outputs into a unified report. Deduplicate findings that multiple agents flagged.
+
+**If any agent did not complete or returned an error**, note it in the report:
+> "Warning: {agent-name} did not complete. Its findings are not included."
+
+```
+## Pre-Commit Review Summary
+
+### Critical ({count}) — Must fix before pushing
+- **{file}:{line}** — {description} (found by: {agent})
+  Suggestion: {fix}
+
+### Recommended ({count}) — Should fix
+- **{file}:{line}** — {description} (found by: {agent})
+  Suggestion: {fix}
+
+### Minor ({count}) — Nice to have
+- **{file}:{line}** — {description}
+
+### Test Coverage
+- {assessment from pr-test-analyzer}
+
+### Convention Alignment
+- {any style/convention mismatches}
+```
+
+If NO issues found across all agents:
+```
+## Pre-Commit Review Summary
+
+All agents passed. No issues found — changes are clean and ready to commit.
+```
+
+### 4. User Decision Point
+
+Use AskUserQuestion based on findings:
+
+**If Critical or Recommended issues exist:**
+```
+Question: "How would you like to proceed?"
+Header: "Review"
+
+Options:
+1. "Address findings" — "Fix issues, then re-review"
+2. "Show full diff" — "Display complete diff for manual review"
+3. "Commit and push anyway" — "Skip fixes and push current changes"
+```
+
+**If only Minor issues or no issues:**
+```
+Question: "Changes look clean. Ready to commit?"
+Header: "Review"
+
+Options:
+1. "Show full diff first" — "Review the complete diff before committing"
+2. "Commit and push (Recommended)" — "Stage, commit, and push changes"
+3. "Done for now" — "Cancel, return to main flow"
+```
+
+### 5. Handle User Choice
+
+**"Address findings":**
+- User makes fixes (with assistance as needed)
+- After fixes, loop back to "Gather Change Context" (sub-step 1 of Step 5.5) to re-gather changes and re-dispatch agents
+- Continue until user is satisfied or selects a different option
+
+**"Show full diff" / "Show full diff first":**
+- Display the full `git diff` output
+- Then ask:
+  ```
+  Question: "Diff reviewed. Ready to proceed?"
+  Header: "Diff"
+
+  Options:
+  1. "Commit and push (Recommended)" — "Stage and push these changes"
+  2. "Fix something first" — "Make additional changes before committing"
+  3. "Done for now" — "Cancel"
+  ```
+
+**"Commit and push anyway" / "Commit and push (Recommended)":**
+- Stage the specific changed files (not `git add -A`)
+- Commit following the repo's conventional commit format
+- **Do NOT add AI attribution** (no Co-Authored-By, no "Generated with" mentions)
+- Push to the PR branch
+- **If any git operation fails** (staging, commit, or push), report the specific error to the user and offer to retry or cancel
+- **Only proceed to Step 6 after confirming the push succeeded**
+
+**"Done for now":**
+- Return to Step 4's action handler loop without committing
+
+---
+
 ## Step 6: After Creating/Updating PRs
 
 **IMPORTANT:** After helping create or update a PR, always offer a compliance check:
@@ -746,6 +959,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" p
 | `pr-responder` | Draft responses to maintainer feedback |
 | `pr-health-checker` | Diagnose CI failures, merge conflicts, rebase status |
 | `pr-compliance-checker` | Validate PRs against opensource.guide |
+| `pre-commit-reviewer` | Review code changes before committing (fallback for PR review toolkit) |
 | `issue-scout` | Find and vet new issues |
 | `repo-evaluator` | Analyze repository health |
 | `contribution-strategist` | Strategic OSS advice |

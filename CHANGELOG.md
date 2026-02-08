@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-02-08
+
+### Added
+
+- Pre-commit code review step (Step 5.5) in `/oss` workflow — comprehensive quality gate before committing
+- New `pre-commit-reviewer` agent for standalone code review
+- Parallel dispatch of PR review toolkit agents (code-reviewer, silent-failure-hunter, code-simplifier, pr-test-analyzer) for thorough analysis
+- Target repository convention checking (CONTRIBUTING.md, lint configs, test patterns)
+- Fix-review-commit loop: address findings, re-review until clean, then commit (with optional manual diff review)
+- Conditional dispatch of type-design-analyzer and comment-analyzer for relevant changes
+- Fallback to local pre-commit-reviewer agent when PR review toolkit is unavailable
+
 ## [0.5.0] - 2026-02-08
 
 ### Added
@@ -88,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.6.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.3.0...v0.4.0
