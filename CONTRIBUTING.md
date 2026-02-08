@@ -61,7 +61,7 @@ git checkout -b fix/your-bug-fix
 - Add tests if applicable
 - Run `npm test` to ensure tests pass
 - Run `npm run build` to ensure it compiles
-- **Bump the version** in both `package.json` and `.claude-plugin/plugin.json` (they must match). Follow [semver](https://semver.org/): bug fix = patch, new feature = minor
+- **Bump the version** in all three places (they must match): `package.json`, `.claude-plugin/plugin.json`, and the `README.md` version badge. Follow [semver](https://semver.org/): bug fix = patch, new feature = minor
 - **Update `CHANGELOG.md`** with a new version section describing your changes (use `Added`, `Changed`, `Fixed` headings as appropriate). Add a comparison link at the bottom of the file
 
 ### 4. Commit

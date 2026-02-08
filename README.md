@@ -49,21 +49,31 @@ Once installed, just run:
 /oss
 ```
 
-Claude will check your PRs and present actionable options:
+Claude checks all your open PRs across GitHub, opens an HTML dashboard in your browser, and presents a summary:
 
 ```
-📊 16 Active PRs | 3 need attention | Dashboard opened in browser
+15 Active PRs | 2 need attention | Dashboard opened in browser | v0.7.0
 
-Which issues would you like to address?
+2 PRs Need Attention:
 
-1. [CI Failing] shadcn/ui#9263 - fix(docs): use yarn dlx for npx
-2. [Merge Conflict] ink#861 - Fix emoji border alignment
-3. [Needs Response] ink#858 - Remove create-ink-app from README
-4. Address all issues above
-5. Pick from issue list          ← if you have a curated list
-6. Find new issues to work on
-7. Done for now
+1. [Needs Response] vadimdemedes/ink#855
+   feat: Add kitty keyboard protocol support (0d inactive)
+
+2. [Incomplete Checklist (4/5)] rubyforgood/human-essentials#5492
+   Add item filter to donations index page (0d inactive)
 ```
+
+Then you choose what to do:
+
+- **Address all issues in parallel** — launches agents to investigate, rebase, and draft responses simultaneously
+- **Search for new issues** — find contribution opportunities matching your skills
+- **Done for now** — end with a session summary
+
+The session continues until you're done — after every action, Claude asks what's next.
+
+### Dashboard
+
+The dashboard (`~/.oss-autopilot/dashboard.html`) is an HTML page that auto-opens each time you run `/oss`. It shows your active PRs, merge rate, contribution history, and which PRs need attention — all at a glance.
 
 ### Available Commands
 
@@ -90,6 +100,7 @@ Claude automatically uses these agents based on context:
 | **pr-responder** | Drafts responses to maintainer feedback |
 | **pr-health-checker** | Diagnoses CI failures, merge conflicts, stale reviews |
 | **pr-compliance-checker** | Validates PRs against [opensource.guide](https://opensource.guide) best practices |
+| **pre-commit-reviewer** | Reviews code changes before committing (quality gate) |
 | **issue-scout** | Finds and vets new issues to work on |
 | **repo-evaluator** | Analyzes repository health before contributing |
 | **contribution-strategist** | Strategic advice for your OSS journey |
@@ -98,15 +109,13 @@ Claude automatically uses these agents based on context:
 
 ## Updating
 
-OSS Autopilot can be updated directly from Claude Code:
+OSS Autopilot notifies you when a newer version is available on GitHub. To update:
 
 ```
 /plugin update oss-autopilot
 ```
 
-This pulls the latest version from the marketplace. Your configuration in `~/.oss-autopilot/` is preserved across updates.
-
-To check your current version, look at `.claude-plugin/plugin.json` in the plugin directory.
+Your configuration is preserved across updates. The CLI bundle auto-rebuilds after upgrades.
 
 See the [Changelog](CHANGELOG.md) for what's new in each release.
 
@@ -120,17 +129,18 @@ OSS Autopilot uses a hybrid architecture for reliability and speed:
 ┌─────────────────────────────────────────────────┐
 │  Claude Code Plugin Layer                       │
 │  - /oss and /setup-oss commands                 │
-│  - Specialized agents for different tasks       │
+│  - 7 specialized agents for different tasks     │
+│  - Pre-commit hooks enforcing workflow rules    │
 │  - Contribution best-practice skills            │
 ├─────────────────────────────────────────────────┤
 │  TypeScript CLI (deterministic, fast)           │
-│  - Syncs PR state from GitHub API               │
+│  - Fetches all open PRs from GitHub Search API  │
 │  - Outputs structured JSON for Claude to parse  │
 │  - Generates HTML dashboard                     │
 ├─────────────────────────────────────────────────┤
 │  Core Logic (tested, type-safe)                 │
-│  - State management                             │
-│  - PR health monitoring                         │
+│  - State management with auto-backups           │
+│  - PR health monitoring and status detection    │
 │  - Capacity assessment                          │
 └─────────────────────────────────────────────────┘
 ```
@@ -141,38 +151,72 @@ OSS Autopilot uses a hybrid architecture for reliability and speed:
 - **Testability**: Core logic has unit tests, plugin layer focuses on UX
 - **Transparency**: JSON output means you can see exactly what data Claude receives
 
+### CLI
+
+The TypeScript CLI supports `--json` on every command for structured output:
+
+```bash
+# Run via the plugin (normal usage)
+/oss
+
+# Run CLI directly (scripting / debugging)
+GITHUB_TOKEN=$(gh auth token) node dist/cli.bundle.cjs daily --json
+GITHUB_TOKEN=$(gh auth token) node dist/cli.bundle.cjs search 10 --json
+node dist/cli.bundle.cjs status --json
+node dist/cli.bundle.cjs dashboard
+```
+
+All commands return `{ success, data, error, timestamp }` — useful if you want to build your own tooling on top.
+
 ---
 
 ## Configuration
 
-Settings are stored in `~/.oss-autopilot/state.json`:
+Settings are stored in `.claude/oss-autopilot/config.md` (YAML frontmatter). Run `/setup-oss` to configure interactively, or edit the file directly:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `githubUsername` | (detected) | Your GitHub username |
-| `maxActivePRs` | 10 | Capacity limit before suggesting focus |
+| `maxActivePRs` | 20 | Capacity limit before suggesting focus |
 | `dormantDays` | 30 | Days until PR marked dormant |
-| `approachingDormantDays` | 25 | Days until dormancy warning |
+| `approachingDormantDays` | 7 | Days until dormancy warning |
+| `languages` | (chosen at setup) | Languages to filter issue search |
+| `labels` | (chosen at setup) | Issue labels to look for (e.g., `good first issue`, `help wanted`) |
+
+PR tracking state is stored separately in `~/.oss-autopilot/state.json`.
 
 ---
 
-## Alternative Installation
+## Development
 
-### For development/testing (per-session)
+To work on OSS Autopilot itself:
 
 ```bash
 git clone https://github.com/costajohnt/oss-autopilot.git
+cd oss-autopilot
+npm install
+npm test                    # Run all tests (vitest)
+npm start -- daily --json   # Run CLI via tsx (no bundle needed)
+```
+
+To test with Claude Code as a local plugin:
+
+```bash
 claude --plugin-dir ./oss-autopilot
 ```
 
-### Prerequisites
+### Pre-commit Hooks
 
-```bash
-# Install GitHub CLI from https://cli.github.com/
-gh auth login
-```
+The repo includes Claude Code hooks (`.claude/hooks/`) that enforce workflow rules:
 
-The CLI auto-builds on first run (requires Node.js 18+ and npm).
+| Hook | What it blocks |
+|------|----------------|
+| `check-versions.sh` | Commits when `package.json`, `plugin.json`, and README badge versions don't match |
+| `no-ai-attribution.sh` | Commits containing AI attribution phrases |
+| `no-commit-on-main.sh` | Direct commits to `main` or `master` |
+| `conventional-commits.sh` | Commit messages without `feat:`/`fix:`/`chore:` prefix |
+
+These fire automatically as `PreToolUse` hooks when Claude Code runs `git commit`.
 
 ---
 
@@ -241,7 +285,7 @@ The dashboard is generated at `~/.oss-autopilot/dashboard.html`. If it doesn't o
 No. OSS Autopilot is fully human-in-the-loop. Claude drafts responses and suggests actions, but nothing is posted to GitHub without your explicit approval.
 
 **Where is my data stored?**
-All data is stored locally in `~/.oss-autopilot/`. Nothing is sent to external servers beyond the GitHub API calls needed to fetch your PR data.
+Configuration lives in `.claude/oss-autopilot/config.md`. PR tracking state and dashboard are in `~/.oss-autopilot/`. Nothing is sent to external servers beyond the GitHub API calls needed to fetch your PR data.
 
 **Does it work with private repositories?**
 Yes, as long as your GitHub CLI (`gh`) has access to those repos. The plugin uses your existing `gh` authentication.
@@ -259,7 +303,7 @@ See [CHANGELOG.md](CHANGELOG.md) for a detailed history of changes.
 
 ## Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
+Contributions welcome — bug fixes, new agents, CLI improvements, and documentation. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
 
 ---
 
