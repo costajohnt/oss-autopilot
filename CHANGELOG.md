@@ -11,7 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Proactive PR health check notification on session start — reads cached state to show "2 of 15 PRs need attention" without any network calls
 - "Why OSS Autopilot?" competitive comparison section in README
-- Demo recording guide for creating GIF showcase (`docs/demo-recording-guide.md`)
 
 ## [0.7.2] - 2026-02-08
 

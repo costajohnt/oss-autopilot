@@ -8,9 +8,6 @@ Discover issues worth contributing to, track your PRs across repos, and draft re
 
 ![OSS Autopilot Dashboard](docs/images/dashboard.png)
 
-<!-- TODO: Add demo GIF here once recorded -->
-> **See it in action:** [Demo video coming soon](docs/demo-recording-guide.md)
-
 ## Quick Start
 
 **Prerequisites:** [Claude Code](https://claude.ai/claude-code), Node.js 18+, and [GitHub CLI](https://cli.github.com/) (`gh auth login`).
