@@ -89,10 +89,23 @@ function migrateV1ToV2(state: AgentState): AgentState {
   return migratedState;
 }
 
+/**
+ * Singleton manager for persistent agent state stored in ~/.oss-autopilot/state.json.
+ *
+ * Handles loading, saving, backup/restore, and v1-to-v2 migration of state. Supports
+ * an in-memory mode (no disk I/O) for use in tests. In v2 architecture, PR arrays are
+ * legacy -- open PRs are fetched fresh from GitHub on each run rather than stored locally.
+ */
 export class StateManager {
   private state: AgentState;
   private readonly inMemoryOnly: boolean;
 
+  /**
+   * Create a new StateManager instance.
+   * @param inMemoryOnly - When true, state is held only in memory and never read from or
+   *   written to disk. Useful for unit tests that need isolated state without side effects.
+   *   Defaults to false (normal persistent mode).
+   */
   constructor(inMemoryOnly = false) {
     this.inMemoryOnly = inMemoryOnly;
     this.state = inMemoryOnly ? this.createFreshState() : this.load();
@@ -124,14 +137,15 @@ export class StateManager {
   }
 
   /**
-   * Check if initial setup has been completed
+   * Check if initial setup has been completed.
+   * @returns true if the user has run `/setup-oss` and completed configuration.
    */
   isSetupComplete(): boolean {
     return this.state.config.setupComplete === true;
   }
 
   /**
-   * Mark setup as complete
+   * Mark setup as complete and record the completion timestamp.
    */
   markSetupComplete(): void {
     this.state.config.setupComplete = true;
@@ -381,7 +395,9 @@ export class StateManager {
   }
 
   /**
-   * Save current state to file with backup
+   * Persist the current state to disk, creating a timestamped backup of the previous
+   * state file first. Updates `lastRunAt` to the current time. In in-memory mode,
+   * only updates `lastRunAt` without any file I/O. Retains at most 10 backup files.
    */
   save(): void {
     // Update lastRunAt
@@ -432,14 +448,17 @@ export class StateManager {
   }
 
   /**
-   * Get the current state (read-only)
+   * Get the current state as a read-only snapshot.
+   * @returns The full agent state. Callers should not mutate the returned object;
+   *   use the StateManager methods to make changes.
    */
   getState(): Readonly<AgentState> {
     return this.state;
   }
 
   /**
-   * Store the latest digest for dashboard rendering (v2)
+   * Store the latest daily digest for dashboard rendering.
+   * @param digest - The freshly generated digest from the current daily run.
    */
   setLastDigest(digest: DailyDigest): void {
     this.state.lastDigest = digest;
@@ -447,14 +466,16 @@ export class StateManager {
   }
 
   /**
-   * Store monthly merged PR counts for the contribution timeline chart
+   * Store monthly merged PR counts for the contribution timeline chart.
+   * @param counts - Map of "YYYY-MM" strings to merged PR counts for that month.
    */
   setMonthlyMergedCounts(counts: Record<string, number>): void {
     this.state.monthlyMergedCounts = counts;
   }
 
   /**
-   * Update configuration
+   * Shallow-merge partial configuration updates into the current config.
+   * @param config - Partial config object whose properties override existing values.
    */
   updateConfig(config: Partial<AgentState['config']>): void {
     this.state.config = { ...this.state.config, ...config };
@@ -463,7 +484,10 @@ export class StateManager {
   // === Event Logging ===
 
   /**
-   * Append an event to the event log
+   * Append an event to the event log. Events are capped at {@link MAX_EVENTS} (1000);
+   * when the cap is exceeded, the oldest events are trimmed to stay within the limit.
+   * @param type - The event type (e.g. 'pr_tracked', 'pr_merged').
+   * @param data - Arbitrary key-value payload for the event.
    */
   appendEvent(type: StateEventType, data: Record<string, unknown>): void {
     const event: StateEvent = {
@@ -481,14 +505,19 @@ export class StateManager {
   }
 
   /**
-   * Get events by type
+   * Filter the event log to events of a specific type.
+   * @param type - The event type to filter by.
+   * @returns All events matching the given type, in chronological order.
    */
   getEventsByType(type: StateEventType): StateEvent[] {
     return this.state.events.filter(e => e.type === type);
   }
 
   /**
-   * Get events within a time range
+   * Filter the event log to events within an inclusive time range.
+   * @param since - Start of the range (inclusive).
+   * @param until - End of the range (inclusive). Defaults to now.
+   * @returns Events whose timestamps fall within [since, until].
    */
   getEventsInRange(since: Date, until: Date = new Date()): StateEvent[] {
     return this.state.events.filter(e => {
@@ -499,6 +528,12 @@ export class StateManager {
 
   // === PR Management ===
 
+  /**
+   * Add a PR to the active tracking list. If a PR with the same URL is already
+   * tracked, the call is a no-op (logs a warning but does not duplicate).
+   * Also appends a 'pr_tracked' event.
+   * @param pr - The PR to begin tracking.
+   */
   addActivePR(pr: TrackedPR): void {
     // Check if already exists
     const existing = this.state.activePRs.find(p => p.url === pr.url);
@@ -518,7 +553,9 @@ export class StateManager {
   }
 
   /**
-   * Find a PR by URL across all states (active, dormant, merged, closed)
+   * Find a PR by URL across all lifecycle states (active, dormant, merged, closed).
+   * @param url - The full GitHub PR URL.
+   * @returns The matching TrackedPR, or undefined if not found in any list.
    */
   findPR(url: string): TrackedPR | undefined {
     return (
@@ -529,6 +566,11 @@ export class StateManager {
     );
   }
 
+  /**
+   * Apply partial updates to an active PR. No-op if the URL is not in the active list.
+   * @param url - The full GitHub PR URL.
+   * @param updates - Fields to merge into the existing TrackedPR.
+   */
   updatePR(url: string, updates: Partial<TrackedPR>): void {
     const index = this.state.activePRs.findIndex(p => p.url === url);
     if (index !== -1) {
@@ -536,6 +578,12 @@ export class StateManager {
     }
   }
 
+  /**
+   * Move an active PR to the merged list. Sets `status` to 'merged', records `mergedAt`,
+   * appends a 'pr_merged' event, and increments the repo's merged PR count in scoring.
+   * @param url - The full GitHub PR URL.
+   * @returns true if the PR was found and moved, false if not found in active PRs.
+   */
   movePRToMerged(url: string): boolean {
     const index = this.state.activePRs.findIndex(p => p.url === url);
     if (index === -1) {
@@ -560,6 +608,12 @@ export class StateManager {
     return true;
   }
 
+  /**
+   * Move an active PR to the closed list. Sets `status` to 'closed', records `closedAt`,
+   * appends a 'pr_closed' event, and increments the repo's closed-without-merge count.
+   * @param url - The full GitHub PR URL.
+   * @returns true if the PR was found and moved, false if not found in active PRs.
+   */
   movePRToClosed(url: string): boolean {
     const index = this.state.activePRs.findIndex(p => p.url === url);
     if (index === -1) {
@@ -584,6 +638,11 @@ export class StateManager {
     return true;
   }
 
+  /**
+   * Move an active PR to the dormant list. Sets `activityStatus` to 'dormant' and
+   * appends a 'pr_dormant' event. No-op if the PR is not in the active list.
+   * @param url - The full GitHub PR URL.
+   */
   movePRToDormant(url: string): void {
     const index = this.state.activePRs.findIndex(p => p.url === url);
     if (index !== -1) {
@@ -601,6 +660,11 @@ export class StateManager {
     }
   }
 
+  /**
+   * Move a dormant PR back to the active list. Sets `activityStatus` to 'active'.
+   * No-op if the PR is not in the dormant list.
+   * @param url - The full GitHub PR URL.
+   */
   reactivatePR(url: string): void {
     const index = this.state.dormantPRs.findIndex(p => p.url === url);
     if (index !== -1) {
@@ -611,6 +675,12 @@ export class StateManager {
     }
   }
 
+  /**
+   * Move a dormant PR directly to the merged list, skipping the active state.
+   * Increments the repo's merged PR count in scoring.
+   * @param url - The full GitHub PR URL.
+   * @returns true if the PR was found and moved, false if not found in dormant PRs.
+   */
   moveDormantPRToMerged(url: string): boolean {
     const index = this.state.dormantPRs.findIndex(p => p.url === url);
     if (index === -1) {
@@ -628,6 +698,12 @@ export class StateManager {
     return true;
   }
 
+  /**
+   * Move a dormant PR directly to the closed list, skipping the active state.
+   * Increments the repo's closed-without-merge count in scoring.
+   * @param url - The full GitHub PR URL.
+   * @returns true if the PR was found and moved, false if not found in dormant PRs.
+   */
   moveDormantPRToClosed(url: string): boolean {
     const index = this.state.dormantPRs.findIndex(p => p.url === url);
     if (index === -1) {
@@ -647,6 +723,11 @@ export class StateManager {
 
   // === Issue Management ===
 
+  /**
+   * Add an issue to the active tracking list. If an issue with the same URL is
+   * already tracked, the call is a no-op.
+   * @param issue - The issue to begin tracking.
+   */
   addIssue(issue: TrackedIssue): void {
     const existing = this.state.activeIssues.find(i => i.url === issue.url);
     if (existing) {
@@ -658,6 +739,11 @@ export class StateManager {
     console.error(`Added issue: ${issue.repo}#${issue.number}`);
   }
 
+  /**
+   * Apply partial updates to a tracked issue. No-op if the URL is not found.
+   * @param url - The full GitHub issue URL.
+   * @param updates - Fields to merge into the existing TrackedIssue.
+   */
   updateIssue(url: string, updates: Partial<TrackedIssue>): void {
     const index = this.state.activeIssues.findIndex(i => i.url === url);
     if (index !== -1) {
@@ -665,6 +751,10 @@ export class StateManager {
     }
   }
 
+  /**
+   * Remove an issue from the active tracking list. No-op if not found.
+   * @param url - The full GitHub issue URL.
+   */
   removeIssue(url: string): void {
     const index = this.state.activeIssues.findIndex(i => i.url === url);
     if (index !== -1) {
@@ -672,6 +762,12 @@ export class StateManager {
     }
   }
 
+  /**
+   * Link a tracked issue to a submitted PR by setting `linkedPRNumber` and
+   * updating the issue status to 'pr_submitted'. No-op if the issue is not found.
+   * @param issueUrl - The full GitHub issue URL.
+   * @param prNumber - The PR number that addresses this issue.
+   */
   linkIssueToPR(issueUrl: string, prNumber: number): void {
     const issue = this.state.activeIssues.find(i => i.url === issueUrl);
     if (issue) {
@@ -682,6 +778,11 @@ export class StateManager {
 
   // === Trusted Projects ===
 
+  /**
+   * Add a repository to the trusted projects list. Trusted projects are prioritized
+   * in issue search results. No-op if the repo is already trusted.
+   * @param repo - Repository in "owner/repo" format.
+   */
   addTrustedProject(repo: string): void {
     if (!this.state.config.trustedProjects.includes(repo)) {
       this.state.config.trustedProjects.push(repo);
@@ -692,14 +793,16 @@ export class StateManager {
   // === Starred Repos Management ===
 
   /**
-   * Get the list of starred repositories
+   * Get the cached list of the user's GitHub starred repositories.
+   * @returns Array of "owner/repo" strings, or an empty array if never fetched.
    */
   getStarredRepos(): string[] {
     return this.state.config.starredRepos || [];
   }
 
   /**
-   * Set the list of starred repositories and update the fetch timestamp
+   * Replace the cached starred repositories list and update the fetch timestamp.
+   * @param repos - Array of "owner/repo" strings from the user's GitHub stars.
    */
   setStarredRepos(repos: string[]): void {
     this.state.config.starredRepos = repos;
@@ -708,7 +811,8 @@ export class StateManager {
   }
 
   /**
-   * Check if the starred repos cache is stale (older than 24 hours)
+   * Check if the starred repos cache is stale (older than 24 hours) or has never been fetched.
+   * @returns true if the cache should be refreshed.
    */
   isStarredReposStale(): boolean {
     const lastFetched = this.state.config.starredReposLastFetched;
@@ -724,6 +828,12 @@ export class StateManager {
 
   // === PR Utilities ===
 
+  /**
+   * Remove a PR from tracking entirely (active or dormant list). Does not move it
+   * to merged/closed -- the PR is simply dropped from state.
+   * @param url - The full GitHub PR URL.
+   * @returns true if the PR was found and removed, false if not found.
+   */
   untrackPR(url: string): boolean {
     // Check active PRs
     let index = this.state.activePRs.findIndex(p => p.url === url);
@@ -745,6 +855,11 @@ export class StateManager {
     return false;
   }
 
+  /**
+   * Mark an active PR's comments as read and reset its activity status to 'active'.
+   * @param url - The full GitHub PR URL.
+   * @returns true if the PR was found and updated, false if not in the active list.
+   */
   markPRAsRead(url: string): boolean {
     const pr = this.state.activePRs.find(p => p.url === url);
     if (pr) {
@@ -756,6 +871,10 @@ export class StateManager {
     return false;
   }
 
+  /**
+   * Mark all active PRs with unread comments as read.
+   * @returns The number of PRs that were marked as read.
+   */
   markAllPRsAsRead(): number {
     let count = 0;
     for (const pr of this.state.activePRs) {
@@ -772,7 +891,9 @@ export class StateManager {
   // === Repository Scoring ===
 
   /**
-   * Get the score for a repository
+   * Get the score record for a repository.
+   * @param repo - Repository in "owner/repo" format.
+   * @returns The RepoScore if the repo has been scored, or undefined if never evaluated.
    */
   getRepoScore(repo: string): RepoScore | undefined {
     return this.state.repoScores[repo];
@@ -828,7 +949,13 @@ export class StateManager {
   }
 
   /**
-   * Update a repository's score with partial updates
+   * Update a repository's score with partial updates. If the repo has no existing score,
+   * a default score record is created first (base score 5). After applying updates, the
+   * numeric score is recalculated using the formula: base 5, +2 per merged PR (max +4),
+   * -1 per closed-without-merge (max -3), +1 if responsive, -2 if hostile, clamped to [1, 10].
+   * @param repo - Repository in "owner/repo" format.
+   * @param updates - Partial RepoScore fields to merge. The `score` field is ignored
+   *   since it is always recalculated.
    */
   updateRepoScore(repo: string, updates: Partial<RepoScore>): void {
     if (!this.state.repoScores[repo]) {
@@ -862,7 +989,9 @@ export class StateManager {
   }
 
   /**
-   * Increment merged PR count for a repository
+   * Increment the merged PR count for a repository and recalculate its score.
+   * Creates a default score record if the repo has not been scored yet.
+   * @param repo - Repository in "owner/repo" format.
    */
   incrementMergedCount(repo: string): void {
     if (!this.state.repoScores[repo]) {
@@ -879,7 +1008,9 @@ export class StateManager {
   }
 
   /**
-   * Increment closed without merge count for a repository
+   * Increment the closed-without-merge count for a repository and recalculate its score.
+   * Creates a default score record if the repo has not been scored yet.
+   * @param repo - Repository in "owner/repo" format.
    */
   incrementClosedCount(repo: string): void {
     if (!this.state.repoScores[repo]) {
@@ -895,7 +1026,9 @@ export class StateManager {
   }
 
   /**
-   * Mark a repository as having hostile comments
+   * Mark a repository as having hostile maintainer comments and recalculate its score.
+   * This applies a -2 penalty to the score. Creates a default score record if needed.
+   * @param repo - Repository in "owner/repo" format.
    */
   markRepoHostile(repo: string): void {
     if (!this.state.repoScores[repo]) {
@@ -911,7 +1044,9 @@ export class StateManager {
   }
 
   /**
-   * Get repositories with score at or above the threshold
+   * Get repositories with a score at or above the given threshold, sorted highest first.
+   * @param minScore - Minimum score (inclusive). Defaults to `config.minRepoScoreThreshold`.
+   * @returns Array of "owner/repo" strings for repos meeting the threshold.
    */
   getHighScoringRepos(minScore?: number): string[] {
     const threshold = minScore ?? this.state.config.minRepoScoreThreshold;
@@ -922,7 +1057,9 @@ export class StateManager {
   }
 
   /**
-   * Get repositories with score at or below the threshold
+   * Get repositories with a score at or below the given threshold, sorted lowest first.
+   * @param maxScore - Maximum score (inclusive). Defaults to `config.minRepoScoreThreshold`.
+   * @returns Array of "owner/repo" strings for repos at or below the threshold.
    */
   getLowScoringRepos(maxScore?: number): string[] {
     const threshold = maxScore ?? this.state.config.minRepoScoreThreshold;
@@ -934,6 +1071,14 @@ export class StateManager {
 
   // === Statistics ===
 
+  /**
+   * Compute aggregate statistics from the current state. In v2 architecture, `activePRs`,
+   * `dormantPRs`, `activeIssues`, and `needsResponse` always return 0 because those counts
+   * come from the fresh GitHub fetch (see PRMonitor), not from local state. The `mergedPRs`
+   * and `closedPRs` counts are summed from repo score records. `totalTracked` reflects the
+   * number of repositories with score records.
+   * @returns A Stats snapshot computed from the current state.
+   */
   getStats(): Stats {
     // v2: Calculate from repoScores (no local PR tracking)
     let totalMerged = 0;
@@ -966,23 +1111,40 @@ export class StateManager {
 }
 
 /**
- * Statistics returned by StateManager.getStats()
+ * Aggregate statistics returned by {@link StateManager.getStats}.
+ * In v2, fields that depend on live GitHub data return 0 from local state;
+ * actual counts are provided by the fresh-fetch layer (PRMonitor).
  */
 export interface Stats {
+  /** Number of active PRs. Always 0 in v2 (sourced from fresh fetch instead). */
   activePRs: number;
+  /** Number of dormant PRs. Always 0 in v2 (sourced from fresh fetch instead). */
   dormantPRs: number;
+  /** Total merged PRs across all scored repositories. */
   mergedPRs: number;
+  /** Total PRs closed without merge across all scored repositories. */
   closedPRs: number;
+  /** Number of active issues. Always 0 in v2 (sourced from fresh fetch instead). */
   activeIssues: number;
+  /** Number of repositories in the trusted projects list. */
   trustedProjects: number;
+  /** Merge success rate as a percentage string (e.g. "75.0%"). */
   mergeRate: string;
+  /** Number of repositories with score records. */
   totalTracked: number;
+  /** Number of PRs needing a response. Always 0 in v2 (sourced from fresh fetch instead). */
   needsResponse: number;
 }
 
 // Singleton instance
 let stateManager: StateManager | null = null;
 
+/**
+ * Get the singleton StateManager instance, creating it on first call.
+ * Subsequent calls return the same instance. Use {@link resetStateManager} to
+ * clear the singleton (primarily for testing).
+ * @returns The shared StateManager instance.
+ */
 export function getStateManager(): StateManager {
   if (!stateManager) {
     stateManager = new StateManager();
@@ -991,7 +1153,9 @@ export function getStateManager(): StateManager {
 }
 
 /**
- * Reset the singleton state manager (for testing)
+ * Reset the singleton StateManager instance to null. The next call to
+ * {@link getStateManager} will create a fresh instance. Intended for test
+ * isolation -- should not be called in production code.
  */
 export function resetStateManager(): void {
   stateManager = null;
