@@ -7,7 +7,7 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
 import { splitRepo, daysBetween } from './utils.js';
-import { FetchedPR, FetchedPRStatus, CIStatus, ReviewDecision, DailyDigest } from './types.js';
+import { FetchedPR, FetchedPRStatus, CIStatus, ReviewDecision, DailyDigest, MaintainerActionHint } from './types.js';
 
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
@@ -83,6 +83,16 @@ export class PRMonitor {
     for (const item of allItems) {
       if (!item.pull_request) continue;
 
+      // Skip PRs to repos owned by the user (not OSS contributions)
+      const repoMatch = item.html_url.match(/github\.com\/([^/]+)\/([^/]+)\//);
+      if (repoMatch) {
+        const repoOwner = repoMatch[1];
+        if (repoOwner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
+        const repoFullName = `${repoMatch[1]}/${repoMatch[2]}`;
+        if (config.excludeRepos.includes(repoFullName)) continue;
+        if (config.excludeOrgs?.some(org => repoOwner.toLowerCase() === org.toLowerCase())) continue;
+      }
+
       const task = this.fetchPRDetails(item.html_url)
         .then(pr => {
           if (pr) prs.push(pr);
@@ -118,10 +128,12 @@ export class PRMonitor {
         'merge_conflict': 4,
         'needs_rebase': 5,
         'missing_required_files': 6,
-        'approaching_dormant': 7,
-        'dormant': 8,
-        'waiting': 9,
-        'healthy': 10,
+        'incomplete_checklist': 7,
+        'approaching_dormant': 8,
+        'dormant': 9,
+        'waiting': 10,
+        'waiting_on_maintainer': 11,
+        'healthy': 12,
       };
       return statusPriority[a.status] - statusPriority[b.status];
     });
@@ -170,6 +182,15 @@ export class PRMonitor {
       config.githubUsername
     );
 
+    // Analyze PR body for incomplete checklists
+    const { hasIncompleteChecklist, checklistStats } = this.analyzeChecklist(ghPR.body || '');
+
+    // Extract maintainer action hints from comments
+    const maintainerActionHints = this.extractMaintainerActionHints(
+      lastMaintainerComment?.body,
+      reviewDecision
+    );
+
     // Calculate days since activity
     const daysSinceActivity = daysBetween(new Date(ghPR.updated_at), new Date());
 
@@ -178,6 +199,8 @@ export class PRMonitor {
       ciStatus,
       hasMergeConflict,
       hasUnrespondedComment,
+      hasIncompleteChecklist,
+      reviewDecision,
       daysSinceActivity,
       config.dormantThresholdDays,
       config.approachingDormantDays
@@ -198,6 +221,9 @@ export class PRMonitor {
       reviewDecision,
       hasUnrespondedComment,
       lastMaintainerComment,
+      hasIncompleteChecklist,
+      checklistStats,
+      maintainerActionHints,
     };
   }
 
@@ -274,11 +300,13 @@ export class PRMonitor {
     ciStatus: CIStatus,
     hasMergeConflict: boolean,
     hasUnrespondedComment: boolean,
+    hasIncompleteChecklist: boolean,
+    reviewDecision: ReviewDecision,
     daysSinceActivity: number,
     dormantThreshold: number,
     approachingThreshold: number
   ): FetchedPRStatus {
-    // Priority order: needs_response > failing_ci > merge_conflict > dormant > approaching_dormant > waiting/healthy
+    // Priority order: needs_response > failing_ci > merge_conflict > incomplete_checklist > dormant > approaching_dormant > waiting_on_maintainer > waiting/healthy
 
     if (hasUnrespondedComment) {
       return 'needs_response';
@@ -292,6 +320,10 @@ export class PRMonitor {
       return 'merge_conflict';
     }
 
+    if (hasIncompleteChecklist) {
+      return 'incomplete_checklist';
+    }
+
     if (daysSinceActivity >= dormantThreshold) {
       return 'dormant';
     }
@@ -300,12 +332,94 @@ export class PRMonitor {
       return 'approaching_dormant';
     }
 
+    // Approved and CI passing/unknown = waiting on maintainer to merge
+    if (reviewDecision === 'approved' && (ciStatus === 'passing' || ciStatus === 'unknown')) {
+      return 'waiting_on_maintainer';
+    }
+
     // CI pending means we're waiting
     if (ciStatus === 'pending') {
       return 'waiting';
     }
 
     return 'healthy';
+  }
+
+  /**
+   * Analyze PR body for incomplete checklists (unchecked markdown checkboxes).
+   * Looks for patterns like "- [ ]" (unchecked) vs "- [x]" (checked).
+   * Only flags if there ARE checkboxes and some are unchecked.
+   */
+  private analyzeChecklist(body: string): { hasIncompleteChecklist: boolean; checklistStats?: FetchedPR['checklistStats'] } {
+    if (!body) return { hasIncompleteChecklist: false };
+
+    const checkedPattern = /- \[x\]/gi;
+    const uncheckedPattern = /- \[ \]/g;
+
+    const checkedMatches = body.match(checkedPattern) || [];
+    const uncheckedMatches = body.match(uncheckedPattern) || [];
+
+    const checked = checkedMatches.length;
+    const total = checked + uncheckedMatches.length;
+
+    // No checkboxes at all - not a checklist PR
+    if (total === 0) return { hasIncompleteChecklist: false };
+
+    // All checked - checklist complete
+    if (uncheckedMatches.length === 0) return {
+      hasIncompleteChecklist: false,
+      checklistStats: { checked, total },
+    };
+
+    return {
+      hasIncompleteChecklist: true,
+      checklistStats: { checked, total },
+    };
+  }
+
+  /**
+   * Extract action hints from maintainer comments using keyword matching.
+   * Returns an array of hints about what the maintainer is asking for.
+   */
+  private extractMaintainerActionHints(
+    commentBody: string | undefined,
+    reviewDecision: ReviewDecision
+  ): MaintainerActionHint[] {
+    const hints: MaintainerActionHint[] = [];
+
+    if (reviewDecision === 'changes_requested') {
+      hints.push('changes_requested');
+    }
+
+    if (!commentBody) return hints;
+
+    const lower = commentBody.toLowerCase();
+
+    // Demo/screenshot requests
+    const demoKeywords = ['screenshot', 'demo', 'recording', 'screen recording', 'before/after', 'before and after', 'gif', 'video', 'screencast', 'show me', 'can you show'];
+    if (demoKeywords.some(kw => lower.includes(kw))) {
+      hints.push('demo_requested');
+    }
+
+    // Test requests
+    const testKeywords = ['add test', 'test coverage', 'unit test', 'missing test', 'add a test', 'write test', 'needs test', 'need test'];
+    if (testKeywords.some(kw => lower.includes(kw))) {
+      hints.push('tests_requested');
+    }
+
+    // Documentation requests
+    const docKeywords = ['documentation', 'readme', 'jsdoc', 'docstring', 'add docs', 'update docs', 'document this'];
+    if (docKeywords.some(kw => lower.includes(kw))) {
+      hints.push('docs_requested');
+    }
+
+    // Rebase requests
+    const rebaseKeywords = ['rebase', 'merge conflict', 'out of date', 'behind main', 'behind master'];
+    if (rebaseKeywords.some(kw => lower.includes(kw))) {
+      hints.push('rebase_requested');
+    }
+
+    return hints;
   }
 
   /**
@@ -441,19 +555,23 @@ export class PRMonitor {
   }
 
   /**
-   * Fetch merged PR counts per repository for the configured user.
-   * Used to populate repoScores for accurate dashboard statistics.
+   * Fetch merged PR counts and latest merge dates per repository for the configured user.
+   * Also builds a monthly histogram of all merges for the contribution timeline.
    */
-  async fetchUserMergedPRCounts(): Promise<Map<string, number>> {
+  async fetchUserMergedPRCounts(): Promise<{
+    repos: Map<string, { count: number; lastMergedAt: string }>;
+    monthlyCounts: Record<string, number>;
+  }> {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
-      return new Map();
+      return { repos: new Map(), monthlyCounts: {} };
     }
 
     console.error(`Fetching merged PR counts for @${config.githubUsername}...`);
 
-    const counts = new Map<string, number>();
+    const repos = new Map<string, { count: number; lastMergedAt: string }>();
+    const monthlyCounts: Record<string, number> = {};
     let page = 1;
     let fetched = 0;
 
@@ -480,7 +598,24 @@ export class PRMonitor {
         if (config.excludeRepos.includes(repo)) continue;
         if (config.excludeOrgs?.some(org => owner.toLowerCase() === org.toLowerCase())) continue;
 
-        counts.set(repo, (counts.get(repo) || 0) + 1);
+        const mergedAt = item.pull_request?.merged_at || item.closed_at || '';
+
+        // Per-repo tracking
+        const existing = repos.get(repo);
+        if (existing) {
+          existing.count += 1;
+          if (mergedAt && mergedAt > existing.lastMergedAt) {
+            existing.lastMergedAt = mergedAt;
+          }
+        } else {
+          repos.set(repo, { count: 1, lastMergedAt: mergedAt });
+        }
+
+        // Monthly histogram (every PR counted individually)
+        if (mergedAt) {
+          const month = mergedAt.slice(0, 7); // "YYYY-MM"
+          monthlyCounts[month] = (monthlyCounts[month] || 0) + 1;
+        }
       }
 
       fetched += data.items.length;
@@ -493,8 +628,8 @@ export class PRMonitor {
       page++;
     }
 
-    console.error(`Found ${fetched} merged PRs across ${counts.size} repos`);
-    return counts;
+    console.error(`Found ${fetched} merged PRs across ${repos.size} repos`);
+    return { repos, monthlyCounts };
   }
 
   /**
@@ -518,6 +653,8 @@ export class PRMonitor {
     const ciNotRunningPRs = prs.filter(pr => pr.status === 'ci_not_running');
     const needsRebasePRs = prs.filter(pr => pr.status === 'needs_rebase');
     const missingRequiredFilesPRs = prs.filter(pr => pr.status === 'missing_required_files');
+    const incompleteChecklistPRs = prs.filter(pr => pr.status === 'incomplete_checklist');
+    const waitingOnMaintainerPRs = prs.filter(pr => pr.status === 'waiting_on_maintainer');
 
     return {
       generatedAt: now,
@@ -529,12 +666,14 @@ export class PRMonitor {
       mergeConflictPRs,
       needsRebasePRs,
       missingRequiredFilesPRs,
+      incompleteChecklistPRs,
+      waitingOnMaintainerPRs,
       approachingDormant,
       dormantPRs,
       healthyPRs,
       summary: {
         totalActivePRs: prs.length,
-        totalNeedingAttention: prsNeedingResponse.length + ciFailingPRs.length + mergeConflictPRs.length + needsRebasePRs.length + missingRequiredFilesPRs.length,
+        totalNeedingAttention: prsNeedingResponse.length + ciFailingPRs.length + mergeConflictPRs.length + needsRebasePRs.length + missingRequiredFilesPRs.length + incompleteChecklistPRs.length,
         totalMergedAllTime: stats.mergedPRs,
         mergeRate: parseFloat(stats.mergeRate),
       },
