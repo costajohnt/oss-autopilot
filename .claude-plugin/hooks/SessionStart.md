@@ -35,7 +35,7 @@ fi
 **Step 3: Quick PR health check (from cached data)**
 
 ```bash
-HEALTH=$(node "${CLAUDE_PLUGIN_ROOT}/scripts/health-check.cjs" 2>/dev/null)
+HEALTH=$(node "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/scripts/health-check.cjs" 2>/dev/null)
 [ -n "$HEALTH" ] && echo "$HEALTH"
 ```
 
