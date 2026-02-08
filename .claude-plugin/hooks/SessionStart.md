@@ -45,13 +45,15 @@ if [ -f "$STATE_FILE" ]; then
       if (!lastRun || !state.lastDigest) process.exit(0);
       const ageMs = Date.now() - new Date(lastRun).getTime();
       const ageDays = Math.floor(ageMs / 86400000);
+      const ageHours = Math.floor(ageMs / 3600000);
+      const ageLabel = ageDays >= 1 ? ageDays + 'd ago' : ageHours + 'h ago';
       if (ageDays > 7) {
         console.log('OSS: Haven\\'t checked your PRs in ' + ageDays + ' days. Run /oss to catch up.');
       } else {
         const need = state.lastDigest.summary.totalNeedingAttention || 0;
         const total = state.lastDigest.summary.totalActivePRs || 0;
         if (need > 0) {
-          console.log('OSS: ' + need + ' of ' + total + ' PRs need attention. Run /oss to address.');
+          console.log('OSS: ' + need + ' of ' + total + ' PRs need attention (' + ageLabel + '). Run /oss to address.');
         }
       }
     } catch(e) {}
