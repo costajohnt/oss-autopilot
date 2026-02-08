@@ -9,7 +9,15 @@ import {
   splitRepo,
   formatRelativeTime,
   byDateDescending,
+  getGitHubToken,
+  requireGitHubToken,
+  resetGitHubTokenCache,
 } from './utils.js';
+import { execFileSync } from 'child_process';
+
+vi.mock('child_process', () => ({
+  execFileSync: vi.fn(),
+}));
 
 describe('parseGitHubUrl', () => {
   it('should parse a valid PR URL', () => {
@@ -218,5 +226,91 @@ describe('byDateDescending', () => {
     items.sort(byDateDescending(item => item.date));
     // Both have same date, order is stable (0 diff)
     expect(items.length).toBe(2);
+  });
+});
+
+describe('getGitHubToken', () => {
+  const mockedExecFileSync = vi.mocked(execFileSync);
+
+  beforeEach(() => {
+    resetGitHubTokenCache();
+    mockedExecFileSync.mockReset();
+    delete process.env.GITHUB_TOKEN;
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_TOKEN;
+  });
+
+  it('should return token from GITHUB_TOKEN env var', () => {
+    process.env.GITHUB_TOKEN = 'ghp_env_token_123';
+    const token = getGitHubToken();
+    expect(token).toBe('ghp_env_token_123');
+    expect(mockedExecFileSync).not.toHaveBeenCalled();
+  });
+
+  it('should fall back to gh CLI when no env var', () => {
+    mockedExecFileSync.mockReturnValue('ghp_faketoken\n');
+    const token = getGitHubToken();
+    expect(token).toBe('ghp_faketoken');
+    expect(mockedExecFileSync).toHaveBeenCalledWith('gh', ['auth', 'token'], {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 5000,
+    });
+  });
+
+  it('should cache the token on subsequent calls', () => {
+    mockedExecFileSync.mockReturnValue('ghp_cached_token\n');
+    const token1 = getGitHubToken();
+    const token2 = getGitHubToken();
+    expect(token1).toBe('ghp_cached_token');
+    expect(token2).toBe('ghp_cached_token');
+    expect(mockedExecFileSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('should return null when no token is available', () => {
+    mockedExecFileSync.mockImplementation(() => {
+      throw new Error('gh not found');
+    });
+    const token = getGitHubToken();
+    expect(token).toBeNull();
+  });
+
+  it('should return null on retry after failure without retrying', () => {
+    mockedExecFileSync.mockImplementation(() => {
+      throw new Error('gh not found');
+    });
+    const token1 = getGitHubToken();
+    expect(token1).toBeNull();
+    // Second call should not retry execFileSync
+    const token2 = getGitHubToken();
+    expect(token2).toBeNull();
+    expect(mockedExecFileSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('should allow re-fetch after resetGitHubTokenCache', () => {
+    process.env.GITHUB_TOKEN = 'ghp_first_token';
+    const token1 = getGitHubToken();
+    expect(token1).toBe('ghp_first_token');
+
+    resetGitHubTokenCache();
+    process.env.GITHUB_TOKEN = 'ghp_second_token';
+    const token2 = getGitHubToken();
+    expect(token2).toBe('ghp_second_token');
+  });
+
+  it('should return token from requireGitHubToken when available', () => {
+    process.env.GITHUB_TOKEN = 'ghp_required_token';
+    const token = requireGitHubToken();
+    expect(token).toBe('ghp_required_token');
+  });
+
+  it('should throw with helpful message from requireGitHubToken when no token', () => {
+    mockedExecFileSync.mockImplementation(() => {
+      throw new Error('gh not found');
+    });
+    expect(() => requireGitHubToken()).toThrow('GitHub authentication required.');
+    expect(() => requireGitHubToken()).toThrow('gh auth login');
   });
 });

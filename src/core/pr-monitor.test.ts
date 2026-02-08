@@ -19,6 +19,7 @@ vi.mock('./state.js', () => ({
 
 // Import after mocks are set up
 const { PRMonitor } = await import('./pr-monitor.js');
+const { getStateManager } = await import('./state.js');
 
 describe('PRMonitor CI status deduplication', () => {
   const emptyCombinedStatus = {
@@ -794,5 +795,273 @@ describe('PRMonitor checkUnrespondedComments', () => {
       'testuser' // lowercase
     );
     expect(result.hasUnrespondedComment).toBe(true);
+  });
+});
+
+describe('PRMonitor getCIStatus auth-gate filtering', () => {
+  it('should filter out Vercel authorization-gate statuses', async () => {
+    mockOctokitInstance = {
+      repos: {
+        getCombinedStatusForRef: vi.fn().mockResolvedValue({
+          data: {
+            state: 'failure',
+            statuses: [
+              {
+                state: 'failure',
+                description: 'Authorization required to deploy',
+                context: 'Vercel',
+              },
+            ],
+          },
+        }),
+      },
+      checks: {
+        listForRef: vi.fn().mockResolvedValue({
+          data: { check_runs: [] },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await (monitor as any).getCIStatus('owner', 'repo', 'abc123');
+
+    expect(result.status).toBe('passing');
+    expect(result.failingCheckNames).toEqual([]);
+  });
+
+  it('should still report real failures alongside auth gates', async () => {
+    mockOctokitInstance = {
+      repos: {
+        getCombinedStatusForRef: vi.fn().mockResolvedValue({
+          data: {
+            state: 'failure',
+            statuses: [
+              {
+                state: 'failure',
+                description: 'Authorization required to deploy',
+                context: 'Vercel',
+              },
+              {
+                state: 'failure',
+                description: 'The Travis CI build failed',
+                context: 'travis-ci',
+              },
+            ],
+          },
+        }),
+      },
+      checks: {
+        listForRef: vi.fn().mockResolvedValue({
+          data: { check_runs: [] },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await (monitor as any).getCIStatus('owner', 'repo', 'abc123');
+
+    expect(result.status).toBe('failing');
+    expect(result.failingCheckNames).toEqual(['travis-ci']);
+  });
+
+  it('should treat all-auth-gate statuses as success', async () => {
+    mockOctokitInstance = {
+      repos: {
+        getCombinedStatusForRef: vi.fn().mockResolvedValue({
+          data: {
+            state: 'failure',
+            statuses: [
+              {
+                state: 'failure',
+                description: 'Please authorize this app',
+                context: 'Vercel',
+              },
+              {
+                state: 'failure',
+                description: 'Authorization required',
+                context: 'Netlify',
+              },
+            ],
+          },
+        }),
+      },
+      checks: {
+        listForRef: vi.fn().mockResolvedValue({
+          data: { check_runs: [] },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await (monitor as any).getCIStatus('owner', 'repo', 'abc123');
+
+    expect(result.status).toBe('passing');
+    expect(result.failingCheckNames).toEqual([]);
+  });
+
+  it('should return unknown on 404 error', async () => {
+    mockOctokitInstance = {
+      repos: {
+        getCombinedStatusForRef: vi.fn().mockRejectedValue({ status: 404 }),
+      },
+      checks: {
+        listForRef: vi.fn().mockRejectedValue({ status: 404 }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await (monitor as any).getCIStatus('owner', 'repo', 'abc123');
+
+    expect(result.status).toBe('unknown');
+    expect(result.failingCheckNames).toEqual([]);
+  });
+
+  it('should return unknown when sha is empty', async () => {
+    mockOctokitInstance = {};
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await (monitor as any).getCIStatus('owner', 'repo', '');
+
+    expect(result.status).toBe('unknown');
+    expect(result.failingCheckNames).toEqual([]);
+  });
+});
+
+describe('PRMonitor generateDigest', () => {
+
+  function makeFetchedPR(overrides: Partial<import('./types.js').FetchedPR> = {}): import('./types.js').FetchedPR {
+    return {
+      id: 1,
+      url: 'https://github.com/owner/repo/pull/1',
+      repo: 'owner/repo',
+      number: 1,
+      title: 'Test PR',
+      status: 'healthy',
+      createdAt: '2026-02-01T00:00:00Z',
+      updatedAt: '2026-02-07T00:00:00Z',
+      daysSinceActivity: 1,
+      ciStatus: 'passing',
+      failingCheckNames: [],
+      hasMergeConflict: false,
+      reviewDecision: 'review_required',
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      maintainerActionHints: [],
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    mockOctokitInstance = {};
+    // Override the mock to include getStats
+    vi.mocked(getStateManager).mockReturnValue({
+      getState: () => ({ config: { githubUsername: 'testuser' } }),
+      getStats: () => ({
+        activePRs: 0,
+        dormantPRs: 0,
+        mergedPRs: 5,
+        closedPRs: 2,
+        activeIssues: 0,
+        trustedProjects: 0,
+        mergeRate: '71.4',
+        totalTracked: 7,
+        needsResponse: 0,
+      }),
+    } as any);
+  });
+
+  it('should categorize PRs by status', () => {
+    const prs = [
+      makeFetchedPR({ status: 'needs_response', number: 1 }),
+      makeFetchedPR({ status: 'failing_ci', number: 2 }),
+      makeFetchedPR({ status: 'merge_conflict', number: 3 }),
+      makeFetchedPR({ status: 'healthy', number: 4 }),
+      makeFetchedPR({ status: 'dormant', number: 5 }),
+      makeFetchedPR({ status: 'approaching_dormant', number: 6 }),
+      makeFetchedPR({ status: 'needs_changes', number: 7 }),
+      makeFetchedPR({ status: 'changes_addressed', number: 8 }),
+      makeFetchedPR({ status: 'waiting_on_maintainer', number: 9 }),
+      makeFetchedPR({ status: 'incomplete_checklist', number: 10 }),
+      makeFetchedPR({ status: 'waiting', number: 11 }),
+    ];
+
+    const monitor = new PRMonitor('fake-token');
+    const digest = monitor.generateDigest(prs);
+
+    expect(digest.prsNeedingResponse.map(p => p.number)).toEqual([1]);
+    expect(digest.ciFailingPRs.map(p => p.number)).toEqual([2]);
+    expect(digest.mergeConflictPRs.map(p => p.number)).toEqual([3]);
+    expect(digest.healthyPRs.map(p => p.number)).toEqual([4, 11]); // healthy + waiting
+    expect(digest.dormantPRs.map(p => p.number)).toEqual([5]);
+    expect(digest.approachingDormant.map(p => p.number)).toEqual([6]);
+    expect(digest.needsChangesPRs.map(p => p.number)).toEqual([7]);
+    expect(digest.changesAddressedPRs.map(p => p.number)).toEqual([8]);
+    expect(digest.waitingOnMaintainerPRs.map(p => p.number)).toEqual([9]);
+    expect(digest.incompleteChecklistPRs.map(p => p.number)).toEqual([10]);
+  });
+
+  it('should calculate totalNeedingAttention correctly', () => {
+    const prs = [
+      makeFetchedPR({ status: 'needs_response', number: 1 }),
+      makeFetchedPR({ status: 'needs_changes', number: 2 }),
+      makeFetchedPR({ status: 'failing_ci', number: 3 }),
+      makeFetchedPR({ status: 'merge_conflict', number: 4 }),
+      makeFetchedPR({ status: 'needs_rebase', number: 5 }),
+      makeFetchedPR({ status: 'missing_required_files', number: 6 }),
+      makeFetchedPR({ status: 'incomplete_checklist', number: 7 }),
+      // These should NOT count toward totalNeedingAttention
+      makeFetchedPR({ status: 'healthy', number: 8 }),
+      makeFetchedPR({ status: 'waiting', number: 9 }),
+      makeFetchedPR({ status: 'dormant', number: 10 }),
+      makeFetchedPR({ status: 'waiting_on_maintainer', number: 11 }),
+    ];
+
+    const monitor = new PRMonitor('fake-token');
+    const digest = monitor.generateDigest(prs);
+
+    expect(digest.summary.totalNeedingAttention).toBe(7);
+    expect(digest.summary.totalActivePRs).toBe(11);
+  });
+
+  it('should handle empty PR list', () => {
+    const monitor = new PRMonitor('fake-token');
+    const digest = monitor.generateDigest([]);
+
+    expect(digest.openPRs).toEqual([]);
+    expect(digest.prsNeedingResponse).toEqual([]);
+    expect(digest.ciFailingPRs).toEqual([]);
+    expect(digest.mergeConflictPRs).toEqual([]);
+    expect(digest.healthyPRs).toEqual([]);
+    expect(digest.dormantPRs).toEqual([]);
+    expect(digest.summary.totalActivePRs).toBe(0);
+    expect(digest.summary.totalNeedingAttention).toBe(0);
+    expect(digest.summary.totalMergedAllTime).toBe(5);
+    expect(digest.summary.mergeRate).toBe(71.4);
+  });
+
+  it('should include recentlyClosedPRs', () => {
+    const closedPRs: import('./types.js').ClosedPR[] = [
+      {
+        url: 'https://github.com/owner/repo/pull/100',
+        repo: 'owner/repo',
+        number: 100,
+        title: 'Closed PR 1',
+        closedAt: '2026-02-06T00:00:00Z',
+      },
+      {
+        url: 'https://github.com/owner/repo/pull/101',
+        repo: 'owner/repo',
+        number: 101,
+        title: 'Closed PR 2',
+        closedAt: '2026-02-05T00:00:00Z',
+      },
+    ];
+
+    const monitor = new PRMonitor('fake-token');
+    const digest = monitor.generateDigest([], closedPRs);
+
+    expect(digest.recentlyClosedPRs).toHaveLength(2);
+    expect(digest.recentlyClosedPRs[0].number).toBe(100);
+    expect(digest.recentlyClosedPRs[1].number).toBe(101);
   });
 });
