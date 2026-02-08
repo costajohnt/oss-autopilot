@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import { execFile } from 'child_process';
 import { getStateManager, getDashboardPath, PRMonitor, getGitHubToken } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
-import type { FetchedPR, DailyDigest, AgentState, RepoScore } from '../core/types.js';
+import type { FetchedPR, DailyDigest, AgentState, RepoScore, ClosedPR } from '../core/types.js';
 
 interface DashboardOptions {
   open?: boolean;
@@ -25,13 +25,16 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
     console.error('Fetching fresh data from GitHub...');
     try {
       const prMonitor = new PRMonitor(token);
-      const { prs, failures } = await prMonitor.fetchUserOpenPRs();
+      const [{ prs, failures }, recentlyClosedPRs] = await Promise.all([
+        prMonitor.fetchUserOpenPRs(),
+        prMonitor.fetchRecentlyClosedPRs(),
+      ]);
 
       if (failures.length > 0) {
         console.error(`Warning: ${failures.length} PR fetch(es) failed`);
       }
 
-      digest = prMonitor.generateDigest(prs);
+      digest = prMonitor.generateDigest(prs, recentlyClosedPRs);
       stateManager.setLastDigest(digest);
       stateManager.save();
       console.error(`Refreshed: ${prs.length} PRs fetched`);
@@ -891,6 +894,37 @@ function generateDashboardHtml(
       </div>
     </section>
     `}
+
+    ${digest.recentlyClosedPRs.length > 0 ? `
+    <section class="health-section" style="opacity: 0; animation-delay: 0.4s;">
+      <div class="health-header">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="15" y1="9" x2="9" y2="15"/>
+          <line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+        <h2>Recently Closed</h2>
+        <span class="health-badge" style="background: rgba(110, 118, 129, 0.15); color: var(--text-muted);">${digest.recentlyClosedPRs.length} closed</span>
+      </div>
+      <div class="health-items">
+        ${digest.recentlyClosedPRs.map(pr => `
+        <div class="health-item" style="border-left-color: var(--text-muted); opacity: 0.7;">
+          <div class="health-icon" style="background: rgba(110, 118, 129, 0.15); color: var(--text-muted);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+          </div>
+          <div class="health-content">
+            <div class="health-title"><a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - Closed</div>
+            <div class="health-meta">${pr.title.slice(0, 50)}${pr.title.length > 50 ? '...' : ''}${pr.closedAt ? ` · ${new Date(pr.closedAt).toLocaleDateString()}` : ''}</div>
+          </div>
+        </div>
+        `).join('')}
+      </div>
+    </section>
+    ` : ''}
 
     <div class="main-grid">
       <div class="card">

@@ -7,7 +7,7 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
 import { splitRepo, daysBetween } from './utils.js';
-import { FetchedPR, FetchedPRStatus, CIStatus, ReviewDecision, DailyDigest, MaintainerActionHint } from './types.js';
+import { FetchedPR, FetchedPRStatus, CIStatus, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR } from './types.js';
 
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
@@ -660,9 +660,121 @@ export class PRMonitor {
   }
 
   /**
+   * Fetch closed-without-merge PR counts per repository for the configured user.
+   * Used to populate closedWithoutMergeCount in repo scores for accurate merge rate.
+   */
+  async fetchUserClosedPRCounts(): Promise<Map<string, number>> {
+    const config = this.stateManager.getState().config;
+
+    if (!config.githubUsername) {
+      return new Map();
+    }
+
+    console.error(`Fetching closed PR counts for @${config.githubUsername}...`);
+
+    const repos = new Map<string, number>();
+    let page = 1;
+    let fetched = 0;
+
+    while (true) {
+      const { data } = await this.octokit.search.issuesAndPullRequests({
+        q: `is:pr is:closed is:unmerged author:${config.githubUsername}`,
+        sort: 'updated',
+        order: 'desc',
+        per_page: 100,
+        page,
+      });
+
+      for (const item of data.items) {
+        const repoMatch = item.html_url.match(/github\.com\/([^/]+\/[^/]+)\//);
+        if (!repoMatch) continue;
+
+        const repo = repoMatch[1];
+        const owner = repo.split('/')[0];
+
+        // Skip own repos
+        if (owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
+
+        // Skip excluded repos and orgs
+        if (config.excludeRepos.includes(repo)) continue;
+        if (config.excludeOrgs?.some(org => owner.toLowerCase() === org.toLowerCase())) continue;
+
+        repos.set(repo, (repos.get(repo) || 0) + 1);
+      }
+
+      fetched += data.items.length;
+
+      if (fetched >= data.total_count || fetched >= 1000 || data.items.length === 0) {
+        break;
+      }
+
+      page++;
+    }
+
+    console.error(`Found ${fetched} closed (unmerged) PRs across ${repos.size} repos`);
+    return repos;
+  }
+
+  /**
+   * Fetch PRs closed without merge in the last N days.
+   * Returns lightweight ClosedPR objects for surfacing in the daily digest.
+   */
+  async fetchRecentlyClosedPRs(days: number = 7): Promise<ClosedPR[]> {
+    const config = this.stateManager.getState().config;
+
+    if (!config.githubUsername) {
+      return [];
+    }
+
+    const sinceDate = new Date();
+    sinceDate.setDate(sinceDate.getDate() - days);
+    const since = sinceDate.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    console.error(`Fetching recently closed PRs for @${config.githubUsername} (since ${since})...`);
+
+    const { data } = await this.octokit.search.issuesAndPullRequests({
+      q: `is:pr is:closed is:unmerged author:${config.githubUsername} closed:>=${since}`,
+      sort: 'updated',
+      order: 'desc',
+      per_page: 100,
+    });
+
+    const closedPRs: ClosedPR[] = [];
+
+    for (const item of data.items) {
+      const repoMatch = item.html_url.match(/github\.com\/([^/]+\/[^/]+)\//);
+      if (!repoMatch) continue;
+
+      const repo = repoMatch[1];
+      const owner = repo.split('/')[0];
+
+      // Skip own repos
+      if (owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
+
+      // Skip excluded repos and orgs
+      if (config.excludeRepos.includes(repo)) continue;
+      if (config.excludeOrgs?.some(org => owner.toLowerCase() === org.toLowerCase())) continue;
+
+      const numberMatch = item.html_url.match(/\/pull\/(\d+)/);
+      const number = numberMatch ? parseInt(numberMatch[1], 10) : 0;
+
+      closedPRs.push({
+        url: item.html_url,
+        repo,
+        number,
+        title: item.title,
+        closedAt: item.closed_at || '',
+      });
+    }
+
+    console.error(`Found ${closedPRs.length} recently closed PRs`);
+    return closedPRs;
+  }
+
+  /**
    * Generate a daily digest from fetched PRs
    */
-  generateDigest(prs: FetchedPR[]): DailyDigest {
+  generateDigest(prs: FetchedPR[], recentlyClosedPRs: ClosedPR[] = []): DailyDigest {
     const now = new Date().toISOString();
 
     // Categorize PRs
@@ -698,6 +810,7 @@ export class PRMonitor {
       approachingDormant,
       dormantPRs,
       healthyPRs,
+      recentlyClosedPRs,
       summary: {
         totalActivePRs: prs.length,
         totalNeedingAttention: prsNeedingResponse.length + ciFailingPRs.length + mergeConflictPRs.length + needsRebasePRs.length + missingRequiredFilesPRs.length + incompleteChecklistPRs.length,

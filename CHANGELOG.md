@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-02-08
+
+### Added
+
+- Track closed PRs from GitHub — queries `is:pr is:closed is:unmerged` to populate `closedWithoutMergeCount` in repo scores
+- Recently closed PRs section in daily digest and dashboard — surfaces PRs closed without merge in the last 7 days
+- `fetchUserClosedPRCounts()` and `fetchRecentlyClosedPRs()` methods in PRMonitor
+- `ClosedPR` type and `recentlyClosedPRs` field in `DailyDigest`
+- `recently_closed` actionable issue type for structured output
+
+### Fixed
+
+- Merge rate was always 100% because `closedWithoutMergeCount` was never populated from GitHub
+- Closed PRs were invisible — a PR closed by a maintainer would silently vanish from the dashboard
+
 ## [0.4.1] - 2026-02-07
 
 ### Fixed
@@ -73,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.5.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.2.0...v0.3.0
