@@ -1,7 +1,7 @@
 ---
 name: oss
 description: "Daily OSS contribution check - uses CLI with --json for structured data"
-allowed-tools: Bash, Read, Write, Glob, Grep, AskUserQuestion, Task, mcp__*
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Task, mcp__*
 ---
 
 # OSS Autopilot Daily Check
@@ -17,6 +17,43 @@ Before running any CLI commands, ensure the bundle exists (auto-builds on first 
 ```
 
 If this fails, fall back to the gh CLI workflow (Step 1b).
+
+## Step 0.7: Detect Curated Issue List
+
+Before running the daily check, determine if the user has a curated issue list.
+
+### 1. Check config for `issueListPath`
+
+Read `.claude/oss-autopilot/config.md` and look for the `issueListPath` field in YAML frontmatter.
+
+### 2. If `issueListPath` is set, read and parse the file
+
+Use the Read tool to load the file at the configured path. Parse the markdown to identify:
+- **Available issues**: Lines with `- [#NUMBER](URL)` that are NOT wrapped in `~~strikethrough~~` and do NOT contain "**Done**"
+- **Completed issues**: Lines wrapped in `~~strikethrough~~` or containing "**Done**"
+- **Priority tiers**: Section headings (e.g., `## Pursue — Ready to Contribute`, `## Maybe — Viable with Caveats`)
+
+Count available and completed issues.
+
+### 3. If `issueListPath` is NOT set, probe common locations
+
+Check these paths in order (using Read tool, accept first that exists):
+- `open-source/potential-issue-list.md`
+- `oss/issue-list.md`
+- `issues.md`
+
+If found, treat as an auto-detected list. Note the path for later.
+
+### 4. Set session context variables
+
+Store these for use in later steps:
+- `hasIssueList`: boolean — whether a list was found
+- `issueListPath`: string — path to the list file
+- `availableCount`: number — issues not marked done
+- `completedCount`: number — issues marked done
+- `issueListSource`: "configured" | "auto-detected" — how the list was found
+
+**Do NOT display anything yet** — this data is used in Step 3 to offer the right action choices.
 
 ## Step 1: Run Daily Check and Open Dashboard
 
@@ -80,6 +117,7 @@ All PRs are healthy! No issues need attention.
 ```
 
 Then use AskUserQuestion with:
+- "Pick an issue from your list" (if `hasIssueList` and `availableCount > 0` and `hasCapacity`) — "{availableCount} vetted issues available"
 - "Search for new issues" (if `hasCapacity`)
 - "View PR status details"
 - "Done for now"
@@ -141,9 +179,12 @@ Use AskUserQuestion with **action-focused options**, not PR-specific options.
 | Option | Condition | Label | Description |
 |--------|-----------|-------|-------------|
 | 1 | Always (if actionable issues exist) | "Address all {count} issues in parallel (Recommended)" | "Launch agents simultaneously to check status, rebase, fix CI, and respond" |
-| 2 | If `capacity.hasCapacity === true` | "Search for new issues" | "Look for new contribution opportunities" |
-| 2 | If `capacity.hasCapacity === false` | "View healthy PRs" | "See status of PRs not needing attention" |
-| 3 | Always | "Done for now" | "End session with summary" |
+| 2 | If `hasIssueList` and `availableCount > 0` and `hasCapacity` | "Pick from your issue list ({availableCount} available)" | "Choose from your curated list of vetted issues" |
+| 2/3 | If `capacity.hasCapacity === true` | "Search for new issues" | "Look for new contribution opportunities" |
+| 2/3 | If `capacity.hasCapacity === false` | "View healthy PRs" | "See status of PRs not needing attention" |
+| 3/4 | Always | "Done for now" | "End session with summary" |
+
+**Note:** Option numbers shift based on whether the issue list option is shown. Keep within the 4-option limit (the 4th is auto "Other").
 
 **Note:** The 4th option is the automatic "Other" - user can type specific PR selections.
 
@@ -435,6 +476,7 @@ What would you like to do next?
 ```
 
 Then use AskUserQuestion:
+- "Pick from your issue list" (if `hasIssueList` and `availableCount > 0` and `hasCapacity`) — "{availableCount} vetted issues available"
 - "Search for new issues" (if `hasCapacity`)
 - "Check for more PR updates" (re-run daily check)
 - "Done for now"
@@ -467,6 +509,19 @@ Then return to Step 3 to present action choices again.
 
 Only available if `capacity.hasCapacity === true`.
 
+**If `hasIssueList` is true and `availableCount > 0`**, present a preamble before searching:
+
+Use AskUserQuestion:
+- "Review from your curated list ({availableCount} available)" — "Pick from pre-vetted issues you've already researched"
+- "Search GitHub" — "Find new issues via CLI search"
+- "Both — list first, then search" — "Review your list, then search for more"
+- "Done for now"
+
+Route based on choice:
+- "Review from list" → go to **Handle "Pick Issue From List"** above
+- "Search GitHub" → continue with CLI search below
+- "Both" → show list first (Handle "Pick Issue From List"), then after that completes, continue with CLI search
+
 Use the CLI:
 ```bash
 GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" search 10 --json
@@ -477,11 +532,80 @@ Or dispatch the `issue-scout` agent with language/label preferences.
 If user requests this but `hasCapacity === false`:
 > "You currently have [N] critical issues that need attention. Would you like to address those first, or override and search anyway?"
 
+### Handle "Pick Issue From List"
+
+Only available when `hasIssueList` is true and `availableCount > 0`.
+
+#### 1. Read and parse the list file
+
+Re-read the file at `issueListPath` (it may have been updated since Step 0.7). Parse available issues — those NOT struck through and NOT marked "**Done**".
+
+#### 2. Display available issues grouped by priority tier
+
+Present the issues using their section headings from the list file:
+
+```
+## Your Curated Issue List ({availableCount} available, {completedCount} done)
+
+### Pursue — Ready to Contribute
+1. suitenumerique/meet#804 — Test mic while "muted" (Low complexity)
+2. py-pdf/pypdf#2065 — Add PDF annotation /IRT (Low-medium complexity)
+3. super-productivity/super-productivity#6365 — Window control buttons overlap (Low complexity)
+
+### Maybe — Viable with Caveats
+4. keycloak/keycloak#45868 — Admin UI ClientScope default mismatch (Low complexity)
+5. palantir/blueprint#6799 — Blue artifact line in table cell selection (Medium-high complexity)
+```
+
+#### 3. Ask user to pick
+
+Use AskUserQuestion with up to 4 options (dynamically chosen from the top of the list):
+
+```
+Question: "Which issue would you like to work on?"
+Header: "Issue"
+
+Options:
+1. "{repo}#{number} — {brief title}" (top priority issue)
+2. "{repo}#{number} — {brief title}" (second)
+3. "Search GitHub instead"
+4. "Done for now"
+```
+
+If there are more than 2 issues, the user can type a number via "Other" to pick any displayed issue.
+
+#### 4. Vet the selected issue
+
+Dispatch the `issue-scout` agent to vet the picked issue. Pass the issue URL and note that it came from the curated list:
+
+```
+Task(issue-scout, "Vet this issue from the user's curated list:
+  URL: {issue_url}
+  Source: curated-list (pre-vetted, apply +2 score bonus)
+  Verify it's still open, unassigned, and claimable.
+  Check for recent claims or linked PRs since the list was last updated.")
+```
+
+#### 5. Present vetting results and offer to claim
+
+Show the vetting summary. If claimable, offer:
+- "Claim this issue and start working"
+- "Pick a different issue from the list"
+- "Search GitHub instead"
+- "Done for now"
+
+#### 6. After claiming → implementation → PR → Step 6.5
+
+When the user claims an issue from the list and eventually creates a PR, proceed to **Step 6.5** (Post-PR List Continuity) instead of ending.
+
+**CRITICAL: Track that the current issue came from the curated list** so Step 6.5 knows to offer list updates.
+
 ### After Each Action
 
 1. Re-run the daily check to refresh state
-2. Return to Step 3 with updated action choices
-3. Continue until user selects "Done for now"
+2. If `hasIssueList`, re-read the list file to get updated available/completed counts
+3. Return to Step 3 with updated action choices (including updated list counts)
+4. Continue until user selects "Done for now"
 
 ---
 
@@ -517,6 +641,75 @@ Dispatch the `pr-compliance-checker` agent with the PR URL.
 
 Before submitting a PR, check if the repo has a test directory:
 - `test/`, `tests/`, `__tests__/`, `spec/`
+
+---
+
+## Step 6.5: Post-PR List Continuity
+
+**Trigger:** After creating a PR for an issue that came from the curated issue list (`issueListPath`).
+
+This step ensures the user's issue list stays current and offers to continue through remaining items.
+
+### 1. Offer to update the list file
+
+Ask the user:
+
+```
+Question: "Update your issue list to mark this as done?"
+Header: "List update"
+
+Options:
+1. "Yes, mark it done with PR link (Recommended)"
+2. "No, I'll update it manually"
+```
+
+If yes, use the Edit tool to update the list file:
+- Wrap the repo heading and issue line in `~~strikethrough~~`
+- Change or add the status to: `**Done** — PR [#NUMBER](URL) submitted, {brief status}.`
+
+Example transformation:
+```markdown
+# Before:
+### suitenumerique/meet (1.6k★) — Open-source video conferencing (LiveKit)
+- [#804](https://github.com/suitenumerique/meet/issues/804) — Test mic while "muted"
+  - **Low complexity** — Help wanted, unassigned, no PRs, active repo.
+
+# After:
+### ~~suitenumerique/meet (1.6k★) — Open-source video conferencing (LiveKit)~~
+- ~~[#804](https://github.com/suitenumerique/meet/issues/804) — Test mic while "muted"~~
+  - **Done** — PR [#42](https://github.com/suitenumerique/meet/pull/42) submitted, CI passing.
+```
+
+**Important:** Only strike through the specific repo heading if ALL issues under it are now done. If other issues remain under the same repo heading, only strike through the individual issue lines.
+
+### 2. Show remaining count
+
+After updating (or skipping update):
+
+```
+Issue list updated! {remainingCount} issues remaining, {completedCount} done.
+```
+
+### 3. Offer next action
+
+Use AskUserQuestion:
+- "Pick another from your list" (if `remainingCount > 0`) — "{remainingCount} issues remaining"
+- "Search GitHub for new issues" — "Find fresh contribution opportunities"
+- "Done for now" — "End session with summary"
+
+If `remainingCount === 0`:
+```
+All issues from your list have been addressed! Nice work.
+```
+Then offer:
+- "Search GitHub for new issues"
+- "Find more issues to add to your list"
+- "Done for now"
+
+**Route based on choice:**
+- "Pick another" → go to **Handle "Pick Issue From List"** (Step 4 handler)
+- "Search GitHub" → go to **Handle "Find New Issues"**
+- "Done for now" → go to **Step 5: Session End**
 
 ---
 
