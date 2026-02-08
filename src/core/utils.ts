@@ -12,9 +12,16 @@ let cachedGitHubToken: string | null = null;
 let tokenFetchAttempted = false;
 
 /**
- * Get the data directory for oss-autopilot.
- * Creates the directory if it doesn't exist.
- * Returns ~/.oss-autopilot/
+ * Returns the oss-autopilot data directory path, creating it if it does not exist.
+ *
+ * The directory is located at `~/.oss-autopilot/` and serves as the root for
+ * all persisted user data (state, backups, dashboard).
+ *
+ * @returns Absolute path to the data directory (e.g., `/Users/you/.oss-autopilot`)
+ *
+ * @example
+ * const dir = getDataDir();
+ * // "/Users/you/.oss-autopilot"
  */
 export function getDataDir(): string {
   const dir = path.join(os.homedir(), '.oss-autopilot');
@@ -25,17 +32,31 @@ export function getDataDir(): string {
 }
 
 /**
- * Get the path to the state file.
- * Returns ~/.oss-autopilot/state.json
+ * Returns the path to the state file (`~/.oss-autopilot/state.json`).
+ *
+ * Implicitly creates the data directory via {@link getDataDir} if it does not exist.
+ *
+ * @returns Absolute path to `state.json`
+ *
+ * @example
+ * const statePath = getStatePath();
+ * // "/Users/you/.oss-autopilot/state.json"
  */
 export function getStatePath(): string {
   return path.join(getDataDir(), 'state.json');
 }
 
 /**
- * Get the backup directory for state files.
- * Creates the directory if it doesn't exist.
- * Returns ~/.oss-autopilot/backups/
+ * Returns the backup directory path, creating it if it does not exist.
+ *
+ * Located at `~/.oss-autopilot/backups/`. Used for automatic state backups
+ * before each write operation.
+ *
+ * @returns Absolute path to the backups directory
+ *
+ * @example
+ * const backupDir = getBackupDir();
+ * // "/Users/you/.oss-autopilot/backups"
  */
 export function getBackupDir(): string {
   const dir = path.join(getDataDir(), 'backups');
@@ -46,13 +67,28 @@ export function getBackupDir(): string {
 }
 
 /**
- * Get the dashboard file path.
- * Returns ~/.oss-autopilot/dashboard.html
+ * Returns the path to the generated HTML dashboard file (`~/.oss-autopilot/dashboard.html`).
+ *
+ * Implicitly creates the data directory via {@link getDataDir} if it does not exist.
+ *
+ * @returns Absolute path to `dashboard.html`
+ *
+ * @example
+ * const dashPath = getDashboardPath();
+ * // "/Users/you/.oss-autopilot/dashboard.html"
  */
 export function getDashboardPath(): string {
   return path.join(getDataDir(), 'dashboard.html');
 }
 
+/**
+ * Represents a parsed GitHub pull request or issue URL.
+ *
+ * @property owner - The repository owner (e.g., `"facebook"`)
+ * @property repo - The repository name (e.g., `"react"`)
+ * @property number - The PR or issue number
+ * @property type - Whether the URL points to a pull request or an issue
+ */
 interface ParsedGitHubUrl {
   owner: string;
   repo: string;
@@ -72,7 +108,25 @@ function isValidOwnerRepo(owner: string, repo: string): boolean {
 }
 
 /**
- * Parse a GitHub PR or issue URL
+ * Parses a GitHub pull request or issue URL into its components.
+ *
+ * Only accepts HTTPS GitHub URLs (`https://github.com/...`). Returns `null` for
+ * invalid URLs, non-GitHub URLs, or URLs with invalid owner/repo characters.
+ *
+ * @param url - Full GitHub URL (e.g., `"https://github.com/owner/repo/pull/42"`)
+ * @returns Parsed URL components, or `null` if the URL is invalid or not a recognized GitHub PR/issue URL
+ *
+ * @example
+ * parseGitHubUrl('https://github.com/facebook/react/pull/123')
+ * // { owner: "facebook", repo: "react", number: 123, type: "pull" }
+ *
+ * @example
+ * parseGitHubUrl('https://github.com/vercel/next.js/issues/456')
+ * // { owner: "vercel", repo: "next.js", number: 456, type: "issues" }
+ *
+ * @example
+ * parseGitHubUrl('https://example.com/not-github')
+ * // null
  */
 export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
   // URL must start with https://github.com/
@@ -114,14 +168,38 @@ export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
 }
 
 /**
- * Calculate days between two dates
+ * Calculates the number of whole days between two dates, using floor rounding.
+ *
+ * Can return negative values if `from` is after `to`. Partial days are truncated
+ * (e.g., 1.9 days returns 1).
+ *
+ * @param from - The start date
+ * @param to - The end date (defaults to the current date/time)
+ * @returns Number of whole days between the two dates (may be negative)
+ *
+ * @example
+ * daysBetween(new Date('2024-01-01'), new Date('2024-01-10'))
+ * // 9
+ *
+ * @example
+ * daysBetween(new Date('2024-01-10'), new Date('2024-01-01'))
+ * // -9
  */
 export function daysBetween(from: Date, to: Date = new Date()): number {
   return Math.floor((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 /**
- * Split repo string "owner/repo" into components
+ * Splits an `"owner/repo"` string into its owner and repo components.
+ *
+ * Does not validate the input format; if no `/` is present, `repo` will be `undefined`.
+ *
+ * @param repoFullName - Full repository name in `"owner/repo"` format
+ * @returns Object with `owner` and `repo` string properties
+ *
+ * @example
+ * splitRepo('facebook/react')
+ * // { owner: "facebook", repo: "react" }
  */
 export function splitRepo(repoFullName: string): { owner: string; repo: string } {
   const [owner, repo] = repoFullName.split('/');
@@ -129,7 +207,21 @@ export function splitRepo(repoFullName: string): { owner: string; repo: string }
 }
 
 /**
- * Format a date as a human-readable relative time string
+ * Formats a timestamp as a human-readable relative time string.
+ *
+ * Returns minutes for < 1 hour, hours for < 1 day, days for < 30 days,
+ * and a locale-formatted date string for anything older.
+ *
+ * @param dateStr - ISO 8601 date string
+ * @returns Relative time like `"5m ago"`, `"3h ago"`, `"12d ago"`, or a formatted date
+ *
+ * @example
+ * formatRelativeTime('2024-01-20T10:00:00Z')
+ * // "5d ago" (if called on Jan 25)
+ *
+ * @example
+ * formatRelativeTime(new Date(Date.now() - 120000).toISOString())
+ * // "2m ago"
  */
 export function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -145,7 +237,17 @@ export function formatRelativeTime(dateStr: string): string {
 }
 
 /**
- * Create a descending date comparator for array.sort()
+ * Creates a descending date comparator function for use with `Array.prototype.sort()`.
+ *
+ * Items with `null` or `undefined` dates are treated as epoch (sorted last).
+ *
+ * @param getDate - Accessor function that extracts a date value from each item
+ * @returns A comparator function that sorts items from newest to oldest
+ *
+ * @example
+ * const prs = [{ createdAt: '2024-01-01' }, { createdAt: '2024-06-15' }];
+ * prs.sort(byDateDescending(pr => pr.createdAt));
+ * // [{ createdAt: '2024-06-15' }, { createdAt: '2024-01-01' }]
  */
 export function byDateDescending<T>(getDate: (item: T) => string | number | null | undefined) {
   return (a: T, b: T): number => {
@@ -156,14 +258,19 @@ export function byDateDescending<T>(getDate: (item: T) => string | number | null
 }
 
 /**
- * Get GitHub token from environment or gh CLI.
+ * Retrieves a GitHub authentication token, checking sources in priority order.
  *
- * Priority:
- * 1. GITHUB_TOKEN environment variable
- * 2. gh auth token (from gh CLI)
+ * Checks `GITHUB_TOKEN` environment variable first, then falls back to `gh auth token`
+ * from the GitHub CLI. The result is cached after the first successful lookup (or first
+ * failed attempt), so subsequent calls are instant and do not spawn subprocesses.
  *
- * Result is cached for the session.
- * Returns null if no token is available.
+ * @returns The GitHub token string, or `null` if no token is available
+ *
+ * @example
+ * const token = getGitHubToken();
+ * if (token) {
+ *   // use token for API calls
+ * }
  */
 export function getGitHubToken(): string | null {
   // Return cached token if we already have one
@@ -205,8 +312,16 @@ export function getGitHubToken(): string | null {
 }
 
 /**
- * Get GitHub token or throw an error with helpful message.
- * Use this when a token is required for the operation.
+ * Returns a GitHub token or throws an error with setup instructions.
+ *
+ * Delegates to {@link getGitHubToken} and throws if no token is found. Use this
+ * in commands that cannot proceed without authentication.
+ *
+ * @returns The GitHub token string (guaranteed non-null)
+ * @throws {Error} If no token is available, with instructions for `gh auth login` or setting `GITHUB_TOKEN`
+ *
+ * @example
+ * const token = requireGitHubToken(); // throws if not authenticated
  */
 export function requireGitHubToken(): string {
   const token = getGitHubToken();
@@ -225,7 +340,15 @@ export function requireGitHubToken(): string {
 }
 
 /**
- * Reset the cached token (for testing)
+ * Resets the cached GitHub token and fetch-attempted flag.
+ *
+ * Intended for use in tests to ensure a clean state between test cases.
+ * After calling this, the next call to {@link getGitHubToken} will re-fetch the token.
+ *
+ * @example
+ * afterEach(() => {
+ *   resetGitHubTokenCache();
+ * });
  */
 export function resetGitHubTokenCache(): void {
   cachedGitHubToken = null;

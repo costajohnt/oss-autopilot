@@ -2,16 +2,63 @@
  * Core types for the Open Source Contribution Agent
  */
 
+/** GitHub PR lifecycle status. */
 export type PRStatus = 'open' | 'merged' | 'closed' | 'draft';
+
+/**
+ * How active a tracked PR is from the contributor's perspective.
+ * - `active` — Recent activity from either side
+ * - `needs_response` — Maintainer commented; contributor should reply
+ * - `waiting` — Contributor is waiting on maintainer action
+ * - `dormant` — No activity for an extended period (see `AgentConfig.dormantThresholdDays`)
+ */
 export type PRActivityStatus = 'active' | 'needs_response' | 'waiting' | 'dormant';
+
+/**
+ * Lifecycle of a discovered issue through the contribution pipeline.
+ * - `candidate` — Discovered but not yet claimed
+ * - `claimed` — Contributor has claimed the issue (e.g., commented "I'll work on this")
+ * - `in_progress` — Work is underway locally
+ * - `pr_submitted` — A PR has been opened for this issue
+ */
 export type IssueStatus = 'candidate' | 'claimed' | 'in_progress' | 'pr_submitted';
+
+/** CI pipeline status for a PR's latest commit. */
 export type CIStatus = 'passing' | 'failing' | 'pending' | 'unknown';
+
+/** GitHub's pull request review decision (from the reviewDecision GraphQL field). */
 export type ReviewDecision = 'approved' | 'changes_requested' | 'review_required' | 'unknown';
+
+/**
+ * Derived health status for a TrackedPR (v1). Computed from CI status, merge conflicts,
+ * and review decision. `'none'` means no issues detected.
+ */
 export type PRHealthStatus = 'ci_failing' | 'conflict' | 'changes_requested' | 'approved' | 'none';
 
 /**
- * FetchedPR - Ephemeral PR data fetched fresh from GitHub
- * This is NOT persisted in state - it's fetched on each daily run
+ * Computed status for a {@link FetchedPR}, determined by `PRMonitor.determineStatus()`.
+ * Statuses are checked in priority order — the first match wins.
+ *
+ * **Action required (contributor must act):**
+ * - `needs_response` — Maintainer commented after the contributor's last activity
+ * - `needs_changes` — Reviewer requested changes (via review, not just a comment)
+ * - `failing_ci` — One or more CI checks are failing
+ * - `ci_blocked` — CI cannot run (e.g., first-time contributor approval needed) *(reserved)*
+ * - `ci_not_running` — No CI checks have been triggered *(reserved)*
+ * - `merge_conflict` — PR has merge conflicts with the base branch
+ * - `needs_rebase` — PR branch is significantly behind upstream *(reserved)*
+ * - `missing_required_files` — Required files like changesets or CLA are missing *(reserved)*
+ * - `incomplete_checklist` — PR body has unchecked required checkboxes
+ *
+ * **Waiting (no action needed right now):**
+ * - `changes_addressed` — Contributor pushed commits after reviewer feedback; awaiting re-review
+ * - `waiting` — CI is pending or no specific action needed
+ * - `waiting_on_maintainer` — PR is approved and CI passes; waiting for maintainer to merge
+ * - `healthy` — Everything looks good; normal review cycle
+ *
+ * **Staleness warnings:**
+ * - `approaching_dormant` — No activity for `approachingDormantDays` (default 25)
+ * - `dormant` — No activity for `dormantThresholdDays` (default 30)
  */
 export type FetchedPRStatus =
   | 'needs_response'
@@ -41,6 +88,11 @@ export type MaintainerActionHint =
   | 'docs_requested'       // "documentation", "readme", "jsdoc"
   | 'rebase_requested';    // "rebase", "merge conflict"
 
+/**
+ * Ephemeral PR data fetched fresh from GitHub on each run (v2 architecture).
+ * Unlike {@link TrackedPR}, this is never persisted in local state — it represents
+ * a point-in-time snapshot of a PR's current condition.
+ */
 export interface FetchedPR {
   // Identity
   id: number;
@@ -49,55 +101,63 @@ export interface FetchedPR {
   number: number;
   title: string;
 
-  // Computed status (derived from checks below)
+  /** Computed by `PRMonitor.determineStatus()` based on the fields below. */
   status: FetchedPRStatus;
 
   // Timestamps
   createdAt: string;
   updatedAt: string;
 
-  // Activity
+  /** Calendar days since the most recent activity (comment, commit, review). */
   daysSinceActivity: number;
 
   // CI and merge status
   ciStatus: CIStatus;
-  failingCheckNames: string[]; // Names of failing CI checks (helps distinguish real CI from validation bots)
+  /** Names of failing CI checks. Useful for distinguishing real CI failures from validation bots. */
+  failingCheckNames: string[];
   hasMergeConflict: boolean;
   reviewDecision: ReviewDecision;
 
   // Branch freshness
-  commitsBehindUpstream?: number; // How many commits behind the base branch
-  headRefName?: string; // PR branch name
-  baseRefName?: string; // Target branch name (e.g., "main", "master")
+  /** How many commits the PR branch is behind the base branch. */
+  commitsBehindUpstream?: number;
+  headRefName?: string;
+  /** Target branch name (e.g., "main", "master"). */
+  baseRefName?: string;
 
-  // Local repo info
-  localRepoPath?: string; // Path to local clone, if available
+  /** Absolute path to local clone, if the repo is cloned on this machine. */
+  localRepoPath?: string;
 
-  // Missing requirements
-  missingRequiredFiles?: string[]; // e.g., ["changeset", "CLA"]
+  /** Required files the PR is missing (e.g., `["changeset", "CLA"]`). */
+  missingRequiredFiles?: string[];
 
-  // Response detection
-  hasUnrespondedComment: boolean; // Maintainer commented after user's last comment
+  /** True when a maintainer commented after the contributor's last comment or commit. */
+  hasUnrespondedComment: boolean;
   lastMaintainerComment?: {
     author: string;
     body: string;
     createdAt: string;
   };
 
-  // Latest commit timestamp (fetched when hasUnrespondedComment is true)
+  /** ISO timestamp of the latest commit. Used to determine if changes were pushed after review feedback. */
   latestCommitDate?: string;
 
-  // PR body analysis
-  hasIncompleteChecklist: boolean; // PR body has unchecked required checkboxes
+  /** True when the PR body contains unchecked required checkboxes. */
+  hasIncompleteChecklist: boolean;
   checklistStats?: {
     checked: number;
     total: number;
   };
 
-  // Maintainer action hints (what they're asking for)
+  /** Hints extracted from maintainer comments about what actions they are requesting. */
   maintainerActionHints: MaintainerActionHint[];
 }
 
+/**
+ * Legacy v1 persisted PR record, stored in `AgentState` arrays.
+ * In v2, these arrays are preserved for historical data but PRs are no longer actively
+ * tracked here — see {@link FetchedPR} for the current approach.
+ */
 export interface TrackedPR {
   // Identity
   id: number;
@@ -107,26 +167,31 @@ export interface TrackedPR {
   title: string;
 
   // Status
+  /** GitHub lifecycle status (open, merged, closed, draft). */
   status: PRStatus;
+  /** Contributor-perspective activity level — distinct from `status` which tracks GitHub lifecycle. */
   activityStatus: PRActivityStatus;
 
   // Timestamps
   createdAt: string;
   updatedAt: string;
+  /** ISO timestamp of when this PR was last polled by the agent. */
   lastChecked: string;
   mergedAt?: string;
   closedAt?: string;
 
   // Activity tracking
+  /** ISO timestamp of the most recent activity (comment, commit, review). */
   lastActivityAt: string;
   daysSinceActivity: number;
 
-  // Linked issue
+  /** Issue number this PR fixes (in the same repo). */
   linkedIssueNumber?: number;
 
   // Pending actions
   hasUnreadComments: boolean;
-  pendingResponse?: string; // Draft response awaiting approval
+  /** Draft response text awaiting the contributor's approval before posting. */
+  pendingResponse?: string;
 
   // Metrics
   reviewCommentCount: number;
@@ -137,13 +202,14 @@ export interface TrackedPR {
   hasMergeConflict?: boolean;
   reviewDecision?: ReviewDecision;
 
-  // Computed health status (derived from ciStatus, hasMergeConflict, reviewDecision)
+  /** Derived from `ciStatus`, `hasMergeConflict`, and `reviewDecision`. */
   healthStatus?: PRHealthStatus;
 
-  // Repo score (1-10 scale, from repo-evaluator)
+  /** Repository quality score on a 1-10 scale (see {@link RepoScore}). */
   repoScore?: number;
 }
 
+/** An issue tracked through the contribution pipeline from discovery to PR submission. */
 export interface TrackedIssue {
   // Identity
   id: number;
@@ -152,22 +218,24 @@ export interface TrackedIssue {
   number: number;
   title: string;
 
-  // Status
   status: IssueStatus;
 
-  // Metadata
   labels: string[];
   createdAt: string;
   updatedAt: string;
 
-  // Vetting results
+  /** Whether the issue has been through the vetting process (checking for existing PRs, activity, etc.). */
   vetted: boolean;
   vettingResult?: IssueVettingResult;
 
-  // Linked PR
+  /** PR number submitted for this issue (in the same repo). */
   linkedPRNumber?: number;
 }
 
+/**
+ * Result of vetting an issue for contribution suitability.
+ * An issue passes vetting when all checks are true (no existing PR, not claimed, etc.).
+ */
 export interface IssueVettingResult {
   passedAllChecks: boolean;
   checks: {
@@ -178,9 +246,14 @@ export interface IssueVettingResult {
     contributionGuidelinesFound: boolean;
   };
   contributionGuidelines?: ContributionGuidelines;
+  /** Free-text observations from the vetting process (e.g., "Issue has 3 linked PRs, all closed"). */
   notes: string[];
 }
 
+/**
+ * Structured representation of a project's contribution guidelines,
+ * extracted from CONTRIBUTING.md or similar files during issue vetting.
+ */
 export interface ContributionGuidelines {
   // From CONTRIBUTING.md
   branchNamingConvention?: string;
@@ -191,6 +264,7 @@ export interface ContributionGuidelines {
   // Testing requirements
   testFramework?: string;
   testCoverageRequired?: boolean;
+  /** Expected test file naming pattern (e.g., `"*.test.ts"`, `"*_spec.rb"`). */
   testFileNaming?: string;
 
   // Code style
@@ -199,34 +273,49 @@ export interface ContributionGuidelines {
   styleGuideUrl?: string;
 
   // Process
+  /** How to claim an issue (e.g., "Comment on the issue before starting work"). */
   issueClaimProcess?: string;
   reviewProcess?: string;
   claRequired?: boolean;
 
-  // Raw content for reference
+  /** Raw CONTRIBUTING.md content for reference when structured fields are insufficient. */
   rawContent?: string;
 }
 
+/** Health snapshot of a GitHub repository, used to determine if a project is worth contributing to. */
 export interface ProjectHealth {
   repo: string;
   lastCommitAt: string;
   daysSinceLastCommit: number;
   openIssuesCount: number;
+  /** Average number of days for maintainers to respond to issues. */
   avgIssueResponseDays: number;
   ciStatus: 'passing' | 'failing' | 'unknown';
+  /** Whether the project is considered active based on recent commit history. */
   isActive: boolean;
+  /** True if the health check itself failed (e.g., API error). */
   checkFailed?: boolean;
   failureReason?: string;
 }
 
+/**
+ * Quality score for a repository, used to prioritize issue search results.
+ * Score is on a 1-10 scale: base 5, +2 per merged PR (max +4), -1 per closed-without-merge (max -3).
+ * Repos below `AgentConfig.minRepoScoreThreshold` are deprioritized.
+ */
 export interface RepoScore {
   repo: string;
-  score: number; // 1-10 scale
+  /** Overall score from 1 (avoid) to 10 (excellent track record). */
+  score: number;
+  /** Number of the contributor's PRs that were merged in this repo. */
   mergedPRCount: number;
+  /** Number of the contributor's PRs closed without merge (indicates friction). */
   closedWithoutMergeCount: number;
+  /** Average days for maintainers to respond; null if no data. */
   avgResponseDays: number | null;
   lastMergedAt?: string;
   lastEvaluatedAt: string;
+  /** Qualitative signals about the repo's maintainer culture. */
   signals: {
     hasActiveMaintainers: boolean;
     isResponsive: boolean;
@@ -234,6 +323,15 @@ export interface RepoScore {
   };
 }
 
+/**
+ * Event types recorded in the {@link AgentState} audit log.
+ * - `pr_tracked` — A new PR was added to tracking
+ * - `pr_merged` — A tracked PR was merged
+ * - `pr_closed` — A tracked PR was closed without merge
+ * - `pr_dormant` — A PR crossed the dormant threshold
+ * - `daily_check` — A daily digest run completed
+ * - `comment_posted` — The agent posted a comment on a PR
+ */
 export type StateEventType =
   | 'pr_tracked'
   | 'pr_merged'
@@ -242,13 +340,17 @@ export type StateEventType =
   | 'daily_check'
   | 'comment_posted';
 
+/** An entry in the state audit log. Events are append-only and used for history tracking. */
 export interface StateEvent {
   id: string;
   type: StateEventType;
-  at: string; // ISO timestamp
+  /** ISO 8601 timestamp of when the event occurred. */
+  at: string;
+  /** Event-specific payload (e.g., `{ repo: "owner/repo", number: 42 }` for PR events). */
   data: Record<string, unknown>;
 }
 
+/** Minimal record of a PR that was closed without being merged, used in the daily digest. */
 export interface ClosedPR {
   url: string;
   repo: string; // "owner/repo"
@@ -258,13 +360,19 @@ export interface ClosedPR {
   closedBy?: string;
 }
 
+/**
+ * The daily report produced by `PRMonitor.generateDigest()`.
+ * Contains all open PRs fetched fresh from GitHub, categorized by status,
+ * plus recently closed PRs and summary statistics. This is persisted in
+ * `AgentState.lastDigest` so the HTML dashboard can render it.
+ */
 export interface DailyDigest {
   generatedAt: string;
 
-  // All open PRs (fetched fresh from GitHub)
+  /** All open PRs authored by the user, fetched from GitHub Search API. */
   openPRs: FetchedPR[];
 
-  // Categorized PRs (subsets of openPRs)
+  // Categorized PRs (each array is a subset of openPRs filtered by status)
   prsNeedingResponse: FetchedPR[];
   ciFailingPRs: FetchedPR[];
   ciBlockedPRs: FetchedPR[];
@@ -276,54 +384,57 @@ export interface DailyDigest {
   needsChangesPRs: FetchedPR[];
   changesAddressedPRs: FetchedPR[];
   waitingOnMaintainerPRs: FetchedPR[];
-  approachingDormant: FetchedPR[]; // 25+ days
+  /** PRs with no activity for 25+ days (configurable via `approachingDormantDays`). */
+  approachingDormant: FetchedPR[];
   dormantPRs: FetchedPR[];
   healthyPRs: FetchedPR[];
 
-  // Recently closed PRs (closed without merge in last 7 days)
+  /** PRs closed without merge in the last 7 days. Surfaced to alert the contributor. */
   recentlyClosedPRs: ClosedPR[];
 
-  // Summary
   summary: {
     totalActivePRs: number;
+    /** Count of PRs requiring contributor action (response, CI fix, conflict resolution, etc.). */
     totalNeedingAttention: number;
-    totalMergedAllTime: number; // From repo scores
-    mergeRate: number; // percentage
+    /** Lifetime merged PR count across all repos, derived from {@link RepoScore} data. */
+    totalMergedAllTime: number;
+    /** Percentage of all-time PRs that were merged (merged / (merged + closed)). */
+    mergeRate: number;
   };
 }
 
 /**
- * AgentState v2 - Simplified state without active PR tracking
- * PRs are fetched fresh from GitHub on each run, not stored locally
+ * Root state object persisted to `~/.oss-autopilot/state.json`.
  *
- * Legacy PR arrays are kept for backward compatibility but:
- * - v1: PRs are tracked in arrays
- * - v2: Arrays are preserved as historical data but not actively used
+ * In v2 (current), PRs are fetched fresh from GitHub on each run via the Search API.
+ * The `activePRs`, `dormantPRs`, `mergedPRs`, and `closedPRs` arrays are v1 legacy
+ * data preserved for backward compatibility but not actively written to.
+ * The primary runtime data lives in `lastDigest` and `repoScores`.
  */
 export interface AgentState {
-  // Version for migrations (v2 = fresh fetching)
+  /** Schema version. `2` = v2 fresh-fetch architecture. Used by `StateManager` for migrations. */
   version: number;
 
-  // Repository scores - tracks merge history for search prioritization
+  /** Per-repo quality scores keyed by `"owner/repo"`. Used to prioritize issue search results. */
   repoScores: Record<string, RepoScore>;
 
-  // Configuration
   config: AgentConfig;
 
-  // Event log (audit trail)
+  /** Append-only audit log of significant events (PR merged, daily check, etc.). */
   events: StateEvent[];
 
-  // Metadata
+  /** ISO timestamp of the last CLI invocation. */
   lastRunAt: string;
+  /** ISO timestamp of the last daily digest generation. */
   lastDigestAt?: string;
 
-  // Last fetched digest (v2) - stored so dashboard can render fresh data
+  /** Cached daily digest so the HTML dashboard can render without re-fetching from GitHub. */
   lastDigest?: DailyDigest;
 
-  // Monthly merged PR counts keyed by "YYYY-MM" - for contribution timeline chart
+  /** Monthly merged PR counts keyed by `"YYYY-MM"`. Powers the contribution timeline chart. */
   monthlyMergedCounts?: Record<string, number>;
 
-  // PR arrays - v1 uses these actively, v2 preserves for history
+  // Legacy v1 PR arrays — preserved for history, not actively used in v2
   activePRs: TrackedPR[];
   activeIssues: TrackedIssue[];
   dormantPRs: TrackedPR[];
@@ -331,40 +442,47 @@ export interface AgentState {
   closedPRs: TrackedPR[];
 }
 
+/** User-configurable settings, populated via `/setup-oss` and stored in {@link AgentState}. */
 export interface AgentConfig {
-  // Setup status
-  setupComplete: boolean; // false until user completes initial setup
-  setupCompletedAt?: string; // timestamp of when setup was completed
+  /** False until the user completes initial setup via `/setup-oss`. */
+  setupComplete: boolean;
+  setupCompletedAt?: string;
 
   // Limits
-  maxActivePRs: number; // default 10
-  dormantThresholdDays: number; // default 30
-  approachingDormantDays: number; // default 25
-  maxIssueAgeDays: number; // default 90 - filter out issues older than this by updated_at
+  maxActivePRs: number;
+  /** Days of inactivity before a PR is marked `dormant`. Default 30. */
+  dormantThresholdDays: number;
+  /** Days of inactivity before a PR is marked `approaching_dormant`. Default 25. */
+  approachingDormantDays: number;
+  /** Issues older than this (by `updated_at`) are filtered from search results. Default 90. */
+  maxIssueAgeDays: number;
 
-  // Search preferences
-  languages: string[]; // e.g., ["typescript", "javascript", "ruby"]
-  labels: string[]; // e.g., ["good first issue", "help wanted"]
-  excludeRepos: string[]; // repos to skip (e.g., "owner/repo")
-  excludeOrgs?: string[]; // orgs to skip (e.g., "ClearMatch")
+  /** Programming languages to search for issues in (e.g., `["typescript", "javascript"]`). */
+  languages: string[];
+  /** GitHub labels to filter issues by (e.g., `["good first issue", "help wanted"]`). */
+  labels: string[];
+  /** Repos to exclude from issue search, in `"owner/repo"` format. */
+  excludeRepos: string[];
+  /** Organizations to exclude from issue search. */
+  excludeOrgs?: string[];
 
-  // Trusted projects (where we've had PRs merged)
+  /** Repos where the contributor has had PRs merged. Used for prioritization. */
   trustedProjects: string[];
 
-  // GitHub username
   githubUsername: string;
 
-  // Repository scoring threshold
-  minRepoScoreThreshold: number; // default 4
+  /** Minimum {@link RepoScore} to include a repo in search results. Default 4. */
+  minRepoScoreThreshold: number;
 
-  // Starred repositories for prioritized issue discovery
-  starredRepos: string[]; // e.g., ["owner/repo", "owner2/repo2"]
-  starredReposLastFetched?: string; // ISO timestamp of last fetch
+  /** User's GitHub starred repos, fetched periodically for prioritized issue discovery. */
+  starredRepos: string[];
+  starredReposLastFetched?: string;
 
-  // SessionStart health check notification (default: true)
+  /** Whether to show the health check notification on session start. Default true. */
   showHealthCheck?: boolean;
 }
 
+/** Default configuration applied to new state files. All fields can be overridden via `/setup-oss`. */
 export const DEFAULT_CONFIG: AgentConfig = {
   setupComplete: false,
   maxActivePRs: 10,
@@ -380,6 +498,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
   starredRepos: [],
 };
 
+/** Initial state written to `~/.oss-autopilot/state.json` on first run. Uses v2 architecture. */
 export const INITIAL_STATE: AgentState = {
   version: 2, // v2: Fresh GitHub fetching
   activePRs: [],

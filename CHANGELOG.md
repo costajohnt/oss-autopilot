@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.5] - 2026-02-08
+
+### Added
+
+- Comprehensive JSDoc documentation for all exported symbols in `src/core/types.ts`, `src/core/state.ts`, and `src/core/utils.ts`
+- `@param`, `@returns`, `@example`, and `@throws` tags on all exported functions
+- Property-level descriptions on interfaces where purpose isn't obvious from name
+- Cross-references between related types (e.g., `TrackedPR` ↔ `FetchedPR`, v1 vs v2 architecture)
+- Documented scoring formula, event cap behavior, caching semantics, and v2 architecture decisions
+
 ## [0.8.4] - 2026-02-08
 
 ### Added
@@ -191,6 +201,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.8.5]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.1...v0.8.2
