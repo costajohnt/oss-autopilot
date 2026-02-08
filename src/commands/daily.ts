@@ -39,7 +39,7 @@ export async function runDaily(options: DailyOptions): Promise<void> {
 
   // Fetch merged PR counts to populate repo scores for accurate statistics
   // Reset stale repos first (so excluded/removed repos get zeroed)
-  const mergedCounts = await prMonitor.fetchUserMergedPRCounts();
+  const { repos: mergedCounts, monthlyCounts } = await prMonitor.fetchUserMergedPRCounts();
   for (const score of Object.values(stateManager.getState().repoScores)) {
     if (!mergedCounts.has(score.repo)) {
       stateManager.updateRepoScore(score.repo, { mergedPRCount: 0 });
@@ -48,6 +48,9 @@ export async function runDaily(options: DailyOptions): Promise<void> {
   for (const [repo, { count, lastMergedAt }] of mergedCounts) {
     stateManager.updateRepoScore(repo, { mergedPRCount: count, lastMergedAt: lastMergedAt || undefined });
   }
+
+  // Store monthly merged counts for the contribution timeline chart
+  stateManager.setMonthlyMergedCounts(monthlyCounts);
 
   // Generate digest from fresh data
   const digest = prMonitor.generateDigest(prs);

@@ -300,6 +300,9 @@ export interface AgentState {
   // Last fetched digest (v2) - stored so dashboard can render fresh data
   lastDigest?: DailyDigest;
 
+  // Monthly merged PR counts keyed by "YYYY-MM" - for contribution timeline chart
+  monthlyMergedCounts?: Record<string, number>;
+
   // PR arrays - v1 uses these actively, v2 preserves for history
   activePRs: TrackedPR[];
   activeIssues: TrackedIssue[];

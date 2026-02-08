@@ -444,6 +444,13 @@ export class StateManager {
   }
 
   /**
+   * Store monthly merged PR counts for the contribution timeline chart
+   */
+  setMonthlyMergedCounts(counts: Record<string, number>): void {
+    this.state.monthlyMergedCounts = counts;
+  }
+
+  /**
    * Update configuration
    */
   updateConfig(config: Partial<AgentState['config']>): void {

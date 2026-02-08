@@ -546,18 +546,22 @@ export class PRMonitor {
 
   /**
    * Fetch merged PR counts and latest merge dates per repository for the configured user.
-   * Used to populate repoScores for accurate dashboard statistics and contribution timeline.
+   * Also builds a monthly histogram of all merges for the contribution timeline.
    */
-  async fetchUserMergedPRCounts(): Promise<Map<string, { count: number; lastMergedAt: string }>> {
+  async fetchUserMergedPRCounts(): Promise<{
+    repos: Map<string, { count: number; lastMergedAt: string }>;
+    monthlyCounts: Record<string, number>;
+  }> {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
-      return new Map();
+      return { repos: new Map(), monthlyCounts: {} };
     }
 
     console.error(`Fetching merged PR counts for @${config.githubUsername}...`);
 
-    const results = new Map<string, { count: number; lastMergedAt: string }>();
+    const repos = new Map<string, { count: number; lastMergedAt: string }>();
+    const monthlyCounts: Record<string, number> = {};
     let page = 1;
     let fetched = 0;
 
@@ -585,14 +589,22 @@ export class PRMonitor {
         if (config.excludeOrgs?.some(org => owner.toLowerCase() === org.toLowerCase())) continue;
 
         const mergedAt = item.pull_request?.merged_at || item.closed_at || '';
-        const existing = results.get(repo);
+
+        // Per-repo tracking
+        const existing = repos.get(repo);
         if (existing) {
           existing.count += 1;
           if (mergedAt && mergedAt > existing.lastMergedAt) {
             existing.lastMergedAt = mergedAt;
           }
         } else {
-          results.set(repo, { count: 1, lastMergedAt: mergedAt });
+          repos.set(repo, { count: 1, lastMergedAt: mergedAt });
+        }
+
+        // Monthly histogram (every PR counted individually)
+        if (mergedAt) {
+          const month = mergedAt.slice(0, 7); // "YYYY-MM"
+          monthlyCounts[month] = (monthlyCounts[month] || 0) + 1;
         }
       }
 
@@ -606,8 +618,8 @@ export class PRMonitor {
       page++;
     }
 
-    console.error(`Found ${fetched} merged PRs across ${results.size} repos`);
-    return results;
+    console.error(`Found ${fetched} merged PRs across ${repos.size} repos`);
+    return { repos, monthlyCounts };
   }
 
   /**

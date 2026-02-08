@@ -79,14 +79,8 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
     .sort((a, b) => b[1].merged - a[1].merged)
     .slice(0, 10);
 
-  // Monthly activity from repo scores (approximation based on lastMergedAt)
-  const monthlyMerged: Record<string, number> = {};
-  for (const score of Object.values(state.repoScores)) {
-    if (score.lastMergedAt) {
-      const month = score.lastMergedAt.slice(0, 7);
-      monthlyMerged[month] = (monthlyMerged[month] || 0) + 1;
-    }
-  }
+  // Monthly activity from per-PR merge dates (populated during daily check)
+  const monthlyMerged: Record<string, number> = state.monthlyMergedCounts || {};
 
   // Build stats from digest
   const stats = {
