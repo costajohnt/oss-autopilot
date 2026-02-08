@@ -545,10 +545,10 @@ export class PRMonitor {
   }
 
   /**
-   * Fetch merged PR counts per repository for the configured user.
-   * Used to populate repoScores for accurate dashboard statistics.
+   * Fetch merged PR counts and latest merge dates per repository for the configured user.
+   * Used to populate repoScores for accurate dashboard statistics and contribution timeline.
    */
-  async fetchUserMergedPRCounts(): Promise<Map<string, number>> {
+  async fetchUserMergedPRCounts(): Promise<Map<string, { count: number; lastMergedAt: string }>> {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
@@ -557,7 +557,7 @@ export class PRMonitor {
 
     console.error(`Fetching merged PR counts for @${config.githubUsername}...`);
 
-    const counts = new Map<string, number>();
+    const results = new Map<string, { count: number; lastMergedAt: string }>();
     let page = 1;
     let fetched = 0;
 
@@ -584,7 +584,16 @@ export class PRMonitor {
         if (config.excludeRepos.includes(repo)) continue;
         if (config.excludeOrgs?.some(org => owner.toLowerCase() === org.toLowerCase())) continue;
 
-        counts.set(repo, (counts.get(repo) || 0) + 1);
+        const mergedAt = item.pull_request?.merged_at || item.closed_at || '';
+        const existing = results.get(repo);
+        if (existing) {
+          existing.count += 1;
+          if (mergedAt && mergedAt > existing.lastMergedAt) {
+            existing.lastMergedAt = mergedAt;
+          }
+        } else {
+          results.set(repo, { count: 1, lastMergedAt: mergedAt });
+        }
       }
 
       fetched += data.items.length;
@@ -597,8 +606,8 @@ export class PRMonitor {
       page++;
     }
 
-    console.error(`Found ${fetched} merged PRs across ${counts.size} repos`);
-    return counts;
+    console.error(`Found ${fetched} merged PRs across ${results.size} repos`);
+    return results;
   }
 
   /**

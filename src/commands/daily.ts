@@ -45,8 +45,8 @@ export async function runDaily(options: DailyOptions): Promise<void> {
       stateManager.updateRepoScore(score.repo, { mergedPRCount: 0 });
     }
   }
-  for (const [repo, count] of mergedCounts) {
-    stateManager.updateRepoScore(repo, { mergedPRCount: count });
+  for (const [repo, { count, lastMergedAt }] of mergedCounts) {
+    stateManager.updateRepoScore(repo, { mergedPRCount: count, lastMergedAt: lastMergedAt || undefined });
   }
 
   // Generate digest from fresh data
