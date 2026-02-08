@@ -245,7 +245,7 @@ describe('PRMonitor changes_addressed detection', () => {
     expect(result).toBe('needs_response');
   });
 
-  it('should not check commit date when hasUnrespondedComment is false', () => {
+  it('should not check commit date when hasUnrespondedComment is false and review is approved', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).determineStatus(
       'passing',
@@ -256,12 +256,94 @@ describe('PRMonitor changes_addressed detection', () => {
       2,
       30,
       25,
-      '2026-02-08T12:00:00Z',  // latestCommitDate (irrelevant)
-      '2026-02-07T10:00:00Z'   // lastMaintainerCommentDate (irrelevant)
+      '2026-02-08T12:00:00Z',  // latestCommitDate
+      '2026-02-07T10:00:00Z',  // lastMaintainerCommentDate
+      undefined                 // latestChangesRequestedDate
     );
 
-    // Should be healthy (not changes_addressed) since there's no unresponded comment
-    expect(result).not.toBe('changes_addressed');
-    expect(result).not.toBe('needs_response');
+    expect(result).toBe('waiting_on_maintainer');
+  });
+});
+
+describe('PRMonitor needs_changes detection', () => {
+  beforeEach(() => {
+    mockOctokitInstance = {};
+  });
+
+  it('should return needs_changes when changes_requested and no new commits', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus(
+      'passing',
+      false,
+      false,            // hasUnrespondedComment = false (inline review comments)
+      false,
+      'changes_requested',
+      2,
+      30,
+      25,
+      '2026-02-08T06:50:38Z',   // latestCommitDate (before review)
+      undefined,                  // lastMaintainerCommentDate
+      '2026-02-08T11:52:22Z'    // latestChangesRequestedDate (after commit)
+    );
+
+    expect(result).toBe('needs_changes');
+  });
+
+  it('should return changes_addressed when commits pushed after changes_requested review', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus(
+      'passing',
+      false,
+      false,
+      false,
+      'changes_requested',
+      2,
+      30,
+      25,
+      '2026-02-09T10:00:00Z',   // latestCommitDate (after review)
+      undefined,
+      '2026-02-08T11:52:22Z'    // latestChangesRequestedDate (before commit)
+    );
+
+    expect(result).toBe('changes_addressed');
+  });
+
+  it('should return needs_changes when no commit date available', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus(
+      'passing',
+      false,
+      false,
+      false,
+      'changes_requested',
+      2,
+      30,
+      25,
+      undefined,                  // latestCommitDate (missing)
+      undefined,
+      '2026-02-08T11:52:22Z'    // latestChangesRequestedDate
+    );
+
+    expect(result).toBe('needs_changes');
+  });
+
+  it('should return healthy when changes_requested but no review date available', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus(
+      'passing',
+      false,
+      false,
+      false,
+      'changes_requested',
+      2,
+      30,
+      25,
+      '2026-02-08T06:50:38Z',
+      undefined,
+      undefined                   // latestChangesRequestedDate (missing)
+    );
+
+    // No review date to compare against — fall through to healthy
+    expect(result).toBe('healthy');
   });
 });

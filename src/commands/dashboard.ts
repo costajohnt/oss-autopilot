@@ -990,7 +990,7 @@ function generateDashboardHtml(
       </div>
       <div class="pr-list">
         ${digest.openPRs.map(pr => {
-          const hasIssues = pr.ciStatus === 'failing' || pr.hasMergeConflict || (pr.hasUnrespondedComment && pr.status !== 'changes_addressed');
+          const hasIssues = pr.ciStatus === 'failing' || pr.hasMergeConflict || (pr.hasUnrespondedComment && pr.status !== 'changes_addressed') || pr.status === 'needs_changes';
           const isStale = pr.daysSinceActivity >= approachingDormantDays;
           const itemClass = hasIssues ? 'has-issues' : (isStale ? 'stale' : '');
 

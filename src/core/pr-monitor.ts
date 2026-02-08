@@ -122,19 +122,20 @@ export class PRMonitor {
       // Priority: needs_response > failing_ci > merge_conflict > approaching_dormant > dormant > waiting > healthy
       const statusPriority: Record<FetchedPRStatus, number> = {
         'needs_response': 0,
-        'failing_ci': 1,
-        'ci_blocked': 2,
-        'ci_not_running': 3,
-        'merge_conflict': 4,
-        'needs_rebase': 5,
-        'missing_required_files': 6,
-        'incomplete_checklist': 7,
-        'changes_addressed': 8,
-        'approaching_dormant': 9,
-        'dormant': 10,
-        'waiting': 11,
-        'waiting_on_maintainer': 12,
-        'healthy': 13,
+        'needs_changes': 1,
+        'failing_ci': 2,
+        'ci_blocked': 3,
+        'ci_not_running': 4,
+        'merge_conflict': 5,
+        'needs_rebase': 6,
+        'missing_required_files': 7,
+        'incomplete_checklist': 8,
+        'changes_addressed': 9,
+        'approaching_dormant': 10,
+        'dormant': 11,
+        'waiting': 12,
+        'waiting_on_maintainer': 13,
+        'healthy': 14,
       };
       return statusPriority[a.status] - statusPriority[b.status];
     });
@@ -181,10 +182,12 @@ export class PRMonitor {
     );
 
     // Fetch CI status and (conditionally) latest commit date in parallel
-    // We only need the commit date when hasUnrespondedComment is true, to distinguish
-    // "needs_response" from "changes_addressed" (contributor pushed after maintainer commented)
+    // We need the commit date when hasUnrespondedComment is true (to distinguish
+    // "needs_response" from "changes_addressed") OR when reviewDecision is "changes_requested"
+    // (to detect needs_changes: review requested changes but no new commits pushed)
     const ciPromise = this.getCIStatus(owner, repo, ghPR.head.sha);
-    const commitDatePromise = hasUnrespondedComment
+    const needCommitDate = hasUnrespondedComment || reviewDecision === 'changes_requested';
+    const commitDatePromise = needCommitDate
       ? this.octokit.repos.getCommit({ owner, repo, ref: ghPR.head.sha })
           .then(res => res.data.commit.author?.date)
           .catch(() => undefined)
@@ -207,6 +210,9 @@ export class PRMonitor {
     // Calculate days since activity
     const daysSinceActivity = daysBetween(new Date(ghPR.updated_at), new Date());
 
+    // Find the date of the latest changes_requested review (for needs_changes detection)
+    const latestChangesRequestedDate = this.getLatestChangesRequestedDate(reviews);
+
     // Determine status
     const status = this.determineStatus(
       ciStatus,
@@ -218,7 +224,8 @@ export class PRMonitor {
       config.dormantThresholdDays,
       config.approachingDormantDays,
       latestCommitDate,
-      lastMaintainerComment?.createdAt
+      lastMaintainerComment?.createdAt,
+      latestChangesRequestedDate
     );
 
     return {
@@ -327,9 +334,10 @@ export class PRMonitor {
     dormantThreshold: number,
     approachingThreshold: number,
     latestCommitDate?: string,
-    lastMaintainerCommentDate?: string
+    lastMaintainerCommentDate?: string,
+    latestChangesRequestedDate?: string
   ): FetchedPRStatus {
-    // Priority order: needs_response/changes_addressed > failing_ci > merge_conflict > incomplete_checklist > dormant > approaching_dormant > waiting_on_maintainer > waiting/healthy
+    // Priority order: needs_response/needs_changes/changes_addressed > failing_ci > merge_conflict > incomplete_checklist > dormant > approaching_dormant > waiting_on_maintainer > waiting/healthy
 
     if (hasUnrespondedComment) {
       // If the contributor pushed a commit after the maintainer's comment,
@@ -338,6 +346,17 @@ export class PRMonitor {
         return 'changes_addressed';
       }
       return 'needs_response';
+    }
+
+    // Review requested changes but no unresponded comment (feedback was in inline
+    // review comments with empty body, so checkUnrespondedComments didn't catch it).
+    // If the latest commit is before the review, the contributor hasn't addressed it yet.
+    if (reviewDecision === 'changes_requested' && latestChangesRequestedDate) {
+      if (!latestCommitDate || latestCommitDate < latestChangesRequestedDate) {
+        return 'needs_changes';
+      }
+      // Commit is after review — changes have been addressed
+      return 'changes_addressed';
     }
 
     if (ciStatus === 'failing') {
@@ -596,6 +615,24 @@ export class PRMonitor {
   }
 
   /**
+   * Get the date of the latest CHANGES_REQUESTED review (from any reviewer).
+   * Used to detect needs_changes status when review feedback is in inline comments.
+   */
+  private getLatestChangesRequestedDate(
+    reviews: Array<{ state?: string | null; submitted_at?: string | null }>
+  ): string | undefined {
+    let latest: string | undefined;
+    for (const review of reviews) {
+      if (review.state === 'CHANGES_REQUESTED' && review.submitted_at) {
+        if (!latest || review.submitted_at > latest) {
+          latest = review.submitted_at;
+        }
+      }
+    }
+    return latest;
+  }
+
+  /**
    * Check if PR has merge conflict
    */
   private hasMergeConflict(mergeable: boolean | null, mergeableState: string | null): boolean {
@@ -816,6 +853,7 @@ export class PRMonitor {
     const needsRebasePRs = prs.filter(pr => pr.status === 'needs_rebase');
     const missingRequiredFilesPRs = prs.filter(pr => pr.status === 'missing_required_files');
     const incompleteChecklistPRs = prs.filter(pr => pr.status === 'incomplete_checklist');
+    const needsChangesPRs = prs.filter(pr => pr.status === 'needs_changes');
     const changesAddressedPRs = prs.filter(pr => pr.status === 'changes_addressed');
     const waitingOnMaintainerPRs = prs.filter(pr => pr.status === 'waiting_on_maintainer');
 
@@ -830,6 +868,7 @@ export class PRMonitor {
       needsRebasePRs,
       missingRequiredFilesPRs,
       incompleteChecklistPRs,
+      needsChangesPRs,
       changesAddressedPRs,
       waitingOnMaintainerPRs,
       approachingDormant,
@@ -838,7 +877,7 @@ export class PRMonitor {
       recentlyClosedPRs,
       summary: {
         totalActivePRs: prs.length,
-        totalNeedingAttention: prsNeedingResponse.length + ciFailingPRs.length + mergeConflictPRs.length + needsRebasePRs.length + missingRequiredFilesPRs.length + incompleteChecklistPRs.length,
+        totalNeedingAttention: prsNeedingResponse.length + needsChangesPRs.length + ciFailingPRs.length + mergeConflictPRs.length + needsRebasePRs.length + missingRequiredFilesPRs.length + incompleteChecklistPRs.length,
         totalMergedAllTime: stats.mergedPRs,
         mergeRate: parseFloat(stats.mergeRate),
       },
