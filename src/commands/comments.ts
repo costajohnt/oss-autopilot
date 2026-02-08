@@ -140,10 +140,7 @@ export async function runComments(options: CommentsOptions): Promise<void> {
   }
 
   // Text output
-  if (!options.json) {
-    console.log(`\n💬 Fetching comments for: ${options.prUrl}\n`);
-  }
-
+  console.log(`\n💬 Fetching comments for: ${options.prUrl}\n`);
   console.log(`## ${pr.title}\n`);
   console.log(`**Status:** ${pr.state} | **Mergeable:** ${pr.mergeable ?? 'checking...'}`);
   console.log(`**Branch:** ${pr.head.ref} → ${pr.base.ref}`);
@@ -266,7 +263,6 @@ export async function runPost(options: PostOptions): Promise<void> {
 
     if (options.json) {
       outputJson({
-        success: true,
         commentUrl: comment.html_url,
         url: options.url,
       });
@@ -351,7 +347,6 @@ export async function runClaim(options: ClaimOptions): Promise<void> {
 
     if (options.json) {
       outputJson({
-        success: true,
         commentUrl: comment.html_url,
         issueUrl: options.issueUrl,
       });
