@@ -83,6 +83,16 @@ export class PRMonitor {
     for (const item of allItems) {
       if (!item.pull_request) continue;
 
+      // Skip PRs to repos owned by the user (not OSS contributions)
+      const repoMatch = item.html_url.match(/github\.com\/([^/]+)\/([^/]+)\//);
+      if (repoMatch) {
+        const repoOwner = repoMatch[1];
+        if (repoOwner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
+        const repoFullName = `${repoMatch[1]}/${repoMatch[2]}`;
+        if (config.excludeRepos.includes(repoFullName)) continue;
+        if (config.excludeOrgs?.some(org => repoOwner.toLowerCase() === org.toLowerCase())) continue;
+      }
+
       const task = this.fetchPRDetails(item.html_url)
         .then(pr => {
           if (pr) prs.push(pr);

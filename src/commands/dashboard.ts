@@ -155,6 +155,7 @@ function generateDashboardHtml(
     ...digest.needsRebasePRs,
     ...digest.missingRequiredFilesPRs,
     ...digest.prsNeedingResponse,
+    ...digest.incompleteChecklistPRs,
   ];
 
   return `<!DOCTYPE html>
@@ -414,6 +415,9 @@ function generateDashboardHtml(
       background: rgba(218, 54, 51, 0.1);
     }
 
+    .health-item.incomplete-checklist {
+      border-left-color: var(--accent-info);
+    }
     .health-item.needs-response {
       border-left-color: var(--accent-warning);
       background: var(--accent-warning-dim);
@@ -432,6 +436,7 @@ function generateDashboardHtml(
 
     .health-item.ci-failing .health-icon { background: var(--accent-error-dim); color: var(--accent-error); }
     .health-item.conflict .health-icon { background: rgba(218, 54, 51, 0.15); color: var(--accent-conflict); }
+    .health-item.incomplete-checklist .health-icon { background: var(--accent-info-dim); color: var(--accent-info); }
     .health-item.needs-response .health-icon { background: var(--accent-warning-dim); color: var(--accent-warning); }
 
     .health-content { flex: 1; min-width: 0; }
@@ -840,6 +845,20 @@ function generateDashboardHtml(
           <div class="health-content">
             <div class="health-title"><a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - Missing Required Files</div>
             <div class="health-meta">${pr.missingRequiredFiles?.join(', ') || pr.title.slice(0, 50)}</div>
+          </div>
+        </div>
+        `).join('')}
+        ${digest.incompleteChecklistPRs.map(pr => `
+        <div class="health-item incomplete-checklist">
+          <div class="health-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 11l3 3L22 4"/>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+          </div>
+          <div class="health-content">
+            <div class="health-title"><a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - Incomplete Checklist${pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : ''}</div>
+            <div class="health-meta">${pr.title.slice(0, 50)}${pr.title.length > 50 ? '...' : ''}</div>
           </div>
         </div>
         `).join('')}
