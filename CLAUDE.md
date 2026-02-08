@@ -110,8 +110,9 @@ The CLI bundle is gitignored and built automatically on first run. During develo
 1. Fork and clone
 2. Create feature branch: `git checkout -b feature/your-feature`
 3. Make changes and test: `npm test`
-4. Commit with conventional format: `feat:`, `fix:`, `refactor:`
-5. Push and open PR
+4. **Bump version and update changelog** (see Versioning below)
+5. Commit with conventional format: `feat:`, `fix:`, `refactor:`
+6. Push and open PR
 
 **Important:**
 - Do NOT push directly to main
@@ -120,10 +121,12 @@ The CLI bundle is gitignored and built automatically on first run. During develo
 
 ### Versioning
 
-- `.claude-plugin/plugin.json` is the source of truth for the plugin version (the marketplace reads it)
-- `package.json` version must always match `plugin.json`
-- Follow [semver](https://semver.org/): new feature = minor bump, bug fix = patch bump
-- Update `CHANGELOG.md` with every release
+**Every PR must include a version bump and changelog entry.**
+
+- Bump the version in **both** `.claude-plugin/plugin.json` and `package.json` (they must always match)
+- Follow [semver](https://semver.org/): bug fix = patch, new feature = minor
+- Add a new section to `CHANGELOG.md` with the bumped version and a description of your changes (use `Added`, `Changed`, `Fixed` headings)
+- Add a comparison link at the bottom of `CHANGELOG.md` for the new version
 
 **AI Attribution Rule (CRITICAL):**
 NEVER add AI attribution to commits, comments, PRs, or any content submitted to external repositories unless explicitly required by that repo's contribution guidelines. This includes:

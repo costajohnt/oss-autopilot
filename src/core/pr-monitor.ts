@@ -442,7 +442,19 @@ export class PRMonitor {
       ]);
 
       const combinedStatus = statusResponse.data;
-      const checkRuns = checksResponse?.data?.check_runs || [];
+      const allCheckRuns = checksResponse?.data?.check_runs || [];
+
+      // Deduplicate check runs by name, keeping only the most recent run per unique name.
+      // GitHub returns all historical runs (including re-runs), so without deduplication
+      // a superseded failure will incorrectly flag the PR as failing even after a re-run passes.
+      const latestCheckRunsByName = new Map<string, typeof allCheckRuns[0]>();
+      for (const check of allCheckRuns) {
+        const existing = latestCheckRunsByName.get(check.name);
+        if (!existing || new Date(check.started_at ?? 0) > new Date(existing.started_at ?? 0)) {
+          latestCheckRunsByName.set(check.name, check);
+        }
+      }
+      const checkRuns = [...latestCheckRunsByName.values()];
 
       // Analyze check runs (GitHub Actions, etc.)
       let hasFailingChecks = false;
