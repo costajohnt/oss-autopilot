@@ -2,7 +2,7 @@
 
 Discover issues worth contributing to, track your PRs across repos, and draft responses to maintainer feedback. An AI copilot for your open source journey.
 
-![Version](https://img.shields.io/badge/version-0.7.2-blue)
+![Version](https://img.shields.io/badge/version-0.8.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 
@@ -40,6 +40,22 @@ Contributing to open source is rewarding but hard to sustain. PRs get lost, main
 - **Curated issue lists**: Maintain a markdown file of issues you're interested in — `/oss` auto-detects and integrates it into your workflow
 - **Repository scoring**: Tracks repo responsiveness and analyzes health before you contribute
 - **Human-in-the-loop**: Claude never posts anything without your explicit approval
+
+## Why OSS Autopilot?
+
+Existing tools cover pieces of the contribution workflow — but none handle the full lifecycle. Here's how OSS Autopilot compares:
+
+| Capability | OSS Autopilot | Issue Finders | PR Dashboards | AI Agents |
+|---|:---:|:---:|:---:|:---:|
+| Find matching issues | Yes | Yes | — | Some |
+| Monitor PR health | Yes | — | Yes | — |
+| Diagnose CI failures | Yes | — | — | Some |
+| Draft review responses | Yes | — | — | Yes |
+| Auto-rebase detection | Yes | — | — | — |
+| Repository scoring | Yes | — | — | — |
+| Human-in-the-loop | Yes | n/a | n/a | Rarely |
+
+OSS Autopilot is the only tool that covers discovery, monitoring, diagnosis, and response — all in one workflow with human approval at every step.
 
 ## Usage
 
@@ -182,6 +198,7 @@ Settings are stored in `.claude/oss-autopilot/config.md` (YAML frontmatter). Run
 | `approachingDormantDays` | 7 | Days until dormancy warning |
 | `languages` | (chosen at setup) | Languages to filter issue search |
 | `labels` | (chosen at setup) | Issue labels to look for (e.g., `good first issue`, `help wanted`) |
+| `showHealthCheck` | `true` | Show PR health notification on session start |
 
 PR tracking state is stored separately in `~/.oss-autopilot/state.json`.
 
