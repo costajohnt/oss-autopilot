@@ -138,6 +138,16 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
     lines.push('');
   }
 
+  // Needs Changes (review requested changes, no new commits yet)
+  if (digest.needsChangesPRs.length > 0) {
+    lines.push('### 🔧 Needs Changes');
+    for (const pr of digest.needsChangesPRs) {
+      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
+      lines.push(`  └─ Review requested changes — push commits to address`);
+    }
+    lines.push('');
+  }
+
   // Incomplete Checklist
   if (digest.incompleteChecklistPRs.length > 0) {
     lines.push('### 📋 Incomplete Checklist');
@@ -256,6 +266,15 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
     console.log('');
   }
 
+  if (digest.needsChangesPRs.length > 0) {
+    console.log('🔧 Needs Changes:');
+    for (const pr of digest.needsChangesPRs) {
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+      console.log(`    Review requested changes — push commits to address`);
+    }
+    console.log('');
+  }
+
   if (digest.incompleteChecklistPRs.length > 0) {
     console.log('📋 Incomplete Checklist:');
     for (const pr of digest.incompleteChecklistPRs) {
@@ -319,7 +338,7 @@ function assessCapacity(prs: FetchedPR[], maxActivePRs: number): CapacityAssessm
   const activePRCount = prs.length;
 
   // Count critical issues
-  const criticalStatuses = new Set(['needs_response', 'failing_ci', 'merge_conflict']);
+  const criticalStatuses = new Set(['needs_response', 'needs_changes', 'failing_ci', 'merge_conflict']);
   const criticalIssueCount = prs.filter(pr => criticalStatuses.has(pr.status)).length;
 
   // Has capacity if: under PR limit AND no critical issues
@@ -375,7 +394,14 @@ function collectActionableIssues(prs: FetchedPR[], recentlyClosedPRs: ClosedPR[]
     }
   }
 
-  // 2. CI Failing (include check names so user can distinguish real CI from validation bots)
+  // 2. Needs Changes (review requested changes, contributor hasn't pushed new code)
+  for (const pr of prs) {
+    if (pr.status === 'needs_changes') {
+      issues.push({ type: 'needs_changes', pr, label: '[Needs Changes]' });
+    }
+  }
+
+  // 3. CI Failing (include check names so user can distinguish real CI from validation bots)
   for (const pr of prs) {
     if (pr.status === 'failing_ci') {
       const checkInfo = pr.failingCheckNames.length > 0
@@ -385,14 +411,14 @@ function collectActionableIssues(prs: FetchedPR[], recentlyClosedPRs: ClosedPR[]
     }
   }
 
-  // 3. Merge Conflicts
+  // 4. Merge Conflicts
   for (const pr of prs) {
     if (pr.status === 'merge_conflict') {
       issues.push({ type: 'merge_conflict', pr, label: '[Merge Conflict]' });
     }
   }
 
-  // 4. Incomplete Checklist
+  // 5. Incomplete Checklist
   for (const pr of prs) {
     if (pr.status === 'incomplete_checklist') {
       const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : '';
@@ -400,14 +426,14 @@ function collectActionableIssues(prs: FetchedPR[], recentlyClosedPRs: ClosedPR[]
     }
   }
 
-  // 5. Approaching Dormant
+  // 6. Approaching Dormant
   for (const pr of prs) {
     if (pr.status === 'approaching_dormant') {
       issues.push({ type: 'approaching_dormant', pr, label: '[Approaching Dormant]' });
     }
   }
 
-  // 6. Recently Closed (informational - PRs closed without merge in last 7 days)
+  // 7. Recently Closed (informational - PRs closed without merge in last 7 days)
   for (const closedPR of recentlyClosedPRs) {
     // Create a minimal FetchedPR-like object for the ActionableIssue interface
     const pr: FetchedPR = {

@@ -22,6 +22,7 @@ export type FetchedPRStatus =
   | 'needs_rebase'
   | 'missing_required_files'
   | 'incomplete_checklist'
+  | 'needs_changes'
   | 'changes_addressed'
   | 'waiting'
   | 'waiting_on_maintainer'
@@ -272,6 +273,7 @@ export interface DailyDigest {
   needsRebasePRs: FetchedPR[];
   missingRequiredFilesPRs: FetchedPR[];
   incompleteChecklistPRs: FetchedPR[];
+  needsChangesPRs: FetchedPR[];
   changesAddressedPRs: FetchedPR[];
   waitingOnMaintainerPRs: FetchedPR[];
   approachingDormant: FetchedPR[]; // 25+ days
