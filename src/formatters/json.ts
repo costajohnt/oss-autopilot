@@ -21,7 +21,7 @@ export interface CapacityAssessment {
   reason: string;
 }
 
-export type ActionableIssueType = 'ci_failing' | 'merge_conflict' | 'needs_response' | 'approaching_dormant';
+export type ActionableIssueType = 'ci_failing' | 'merge_conflict' | 'needs_response' | 'incomplete_checklist' | 'approaching_dormant';
 
 export interface ActionableIssue {
   type: ActionableIssueType;

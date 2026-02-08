@@ -21,10 +21,23 @@ export type FetchedPRStatus =
   | 'merge_conflict'
   | 'needs_rebase'
   | 'missing_required_files'
+  | 'incomplete_checklist'
   | 'waiting'
+  | 'waiting_on_maintainer'
   | 'healthy'
   | 'approaching_dormant'
   | 'dormant';
+
+/**
+ * Hints about what a maintainer is asking for in their review comments.
+ * Extracted from comment text by keyword matching.
+ */
+export type MaintainerActionHint =
+  | 'demo_requested'       // "screenshot", "demo", "recording", "before/after", "gif"
+  | 'tests_requested'      // "add test", "test coverage", "unit test", "missing test"
+  | 'changes_requested'    // Generic code changes (from review decision)
+  | 'docs_requested'       // "documentation", "readme", "jsdoc"
+  | 'rebase_requested';    // "rebase", "merge conflict"
 
 export interface FetchedPR {
   // Identity
@@ -67,6 +80,16 @@ export interface FetchedPR {
     body: string;
     createdAt: string;
   };
+
+  // PR body analysis
+  hasIncompleteChecklist: boolean; // PR body has unchecked required checkboxes
+  checklistStats?: {
+    checked: number;
+    total: number;
+  };
+
+  // Maintainer action hints (what they're asking for)
+  maintainerActionHints: MaintainerActionHint[];
 }
 
 export interface TrackedPR {
@@ -234,6 +257,8 @@ export interface DailyDigest {
   mergeConflictPRs: FetchedPR[];
   needsRebasePRs: FetchedPR[];
   missingRequiredFilesPRs: FetchedPR[];
+  incompleteChecklistPRs: FetchedPR[];
+  waitingOnMaintainerPRs: FetchedPR[];
   approachingDormant: FetchedPR[]; // 25+ days
   dormantPRs: FetchedPR[];
   healthyPRs: FetchedPR[];

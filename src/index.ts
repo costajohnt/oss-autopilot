@@ -1073,6 +1073,8 @@ function generateDigest(updates: PRUpdate[]): DailyDigest {
     mergeConflictPRs: [],
     needsRebasePRs: [],
     missingRequiredFilesPRs: [],
+    incompleteChecklistPRs: [],
+    waitingOnMaintainerPRs: [],
     approachingDormant: [],
     dormantPRs: [],
     healthyPRs: [],

@@ -4,7 +4,7 @@
  * v2: No local state tracking - everything is fetched fresh
  */
 
-import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type PRCheckFailure } from '../core/index.js';
+import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type PRCheckFailure, type MaintainerActionHint } from '../core/index.js';
 import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue } from '../formatters/json.js';
 
 interface DailyOptions {
@@ -112,6 +112,20 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
       const maintainer = pr.lastMaintainerComment?.author || 'maintainer';
       lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
       lines.push(`  └─ @${maintainer} commented`);
+      if (pr.maintainerActionHints.length > 0) {
+        const hintLabels = pr.maintainerActionHints.map(formatActionHint).join(', ');
+        lines.push(`  └─ Action: ${hintLabels}`);
+      }
+    }
+    lines.push('');
+  }
+
+  // Incomplete Checklist
+  if (digest.incompleteChecklistPRs.length > 0) {
+    lines.push('### 📋 Incomplete Checklist');
+    for (const pr of digest.incompleteChecklistPRs) {
+      const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total} checked)` : '';
+      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}${stats}`);
     }
     lines.push('');
   }
@@ -134,12 +148,20 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
     lines.push('');
   }
 
+  // Waiting on Maintainer (approved, no action needed from user)
+  if (digest.waitingOnMaintainerPRs.length > 0) {
+    lines.push('### ⏳ Waiting on Maintainer');
+    for (const pr of digest.waitingOnMaintainerPRs) {
+      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title} (approved)`);
+    }
+    lines.push('');
+  }
+
   // Healthy PRs
   if (digest.healthyPRs.length > 0) {
     lines.push('### ✅ Healthy');
     for (const pr of digest.healthyPRs) {
-      const status = pr.reviewDecision === 'approved' ? ' (approved)' : '';
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}${status}`);
+      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
     }
     lines.push('');
   }
@@ -184,6 +206,19 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
     console.log('💬 Needs Response:');
     for (const pr of digest.prsNeedingResponse) {
       console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+      if (pr.maintainerActionHints.length > 0) {
+        const hintLabels = pr.maintainerActionHints.map(formatActionHint).join(', ');
+        console.log(`    Action: ${hintLabels}`);
+      }
+    }
+    console.log('');
+  }
+
+  if (digest.incompleteChecklistPRs.length > 0) {
+    console.log('📋 Incomplete Checklist:');
+    for (const pr of digest.incompleteChecklistPRs) {
+      const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total} checked)` : '';
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}${stats}`);
     }
     console.log('');
   }
@@ -200,6 +235,14 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
     console.log('💤 Dormant:');
     for (const pr of digest.dormantPRs) {
       console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (${pr.daysSinceActivity} days)`);
+    }
+    console.log('');
+  }
+
+  if (digest.waitingOnMaintainerPRs.length > 0) {
+    console.log('⏳ Waiting on Maintainer:');
+    for (const pr of digest.waitingOnMaintainerPRs) {
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (approved)`);
     }
     console.log('');
   }
@@ -285,7 +328,15 @@ function collectActionableIssues(prs: FetchedPR[]): ActionableIssue[] {
     }
   }
 
-  // 4. Approaching Dormant
+  // 4. Incomplete Checklist
+  for (const pr of prs) {
+    if (pr.status === 'incomplete_checklist') {
+      const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : '';
+      issues.push({ type: 'incomplete_checklist', pr, label: `[Incomplete Checklist${stats}]` });
+    }
+  }
+
+  // 5. Approaching Dormant
   for (const pr of prs) {
     if (pr.status === 'approaching_dormant') {
       issues.push({ type: 'approaching_dormant', pr, label: '[Approaching Dormant]' });
@@ -293,4 +344,17 @@ function collectActionableIssues(prs: FetchedPR[]): ActionableIssue[] {
   }
 
   return issues;
+}
+
+/**
+ * Format a maintainer action hint as a human-readable label
+ */
+function formatActionHint(hint: MaintainerActionHint): string {
+  switch (hint) {
+    case 'demo_requested': return 'demo/screenshot requested';
+    case 'tests_requested': return 'tests requested';
+    case 'changes_requested': return 'code changes requested';
+    case 'docs_requested': return 'documentation requested';
+    case 'rebase_requested': return 'rebase requested';
+  }
 }
