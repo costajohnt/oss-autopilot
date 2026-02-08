@@ -13,7 +13,10 @@ This command checks your open source PRs and provides a summary of what needs at
 Before running any CLI commands, ensure the bundle exists (auto-builds on first run):
 
 ```bash
-[ -f "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ] || (cd "${CLAUDE_PLUGIN_ROOT}" && npm install --silent 2>&1 && npm run bundle --silent 2>&1) >/dev/null
+# Rebuild if bundle missing OR package.json is newer (post-upgrade)
+if [ ! -f "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ] || [ "${CLAUDE_PLUGIN_ROOT}/package.json" -nt "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ]; then
+  (cd "${CLAUDE_PLUGIN_ROOT}" && npm install --silent 2>&1 && npm run bundle --silent 2>&1) >/dev/null
+fi
 ```
 
 If this fails, fall back to the gh CLI workflow (Step 1b).
@@ -95,13 +98,20 @@ The CLI returns structured data with new fields for the action-first flow:
 }
 ```
 
-**Display ONLY the `briefSummary` field:**
+**Display the `briefSummary` field with the plugin version appended:**
+
+Get the current version:
+```bash
+node -e "console.log(require('${CLAUDE_PLUGIN_ROOT}/package.json').version)" 2>/dev/null
 ```
-data.briefSummary
+
+Then display:
+```
+data.briefSummary + " | v{version}"
 ```
 
 Example output:
-> 16 Active PRs | 3 need attention | Dashboard opened in browser
+> 16 Active PRs | 3 need attention | Dashboard opened in browser | v0.6.1
 
 Then proceed to Step 3 (Present Action Choices).
 

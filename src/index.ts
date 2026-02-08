@@ -12,7 +12,16 @@ import { IssueDiscovery } from './core/issue-discovery.js';
 import { parseGitHubUrl, getDashboardPath, getGitHubToken } from './core/utils.js';
 import { DailyDigest, TrackedPR } from './core/types.js';
 
-const VERSION = '0.1.0';
+const VERSION = (() => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const pkgPath = path.join(path.dirname(process.argv[1]), '..', 'package.json');
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
+  } catch {
+    return '0.0.0';
+  }
+})();
 const GITHUB_TOKEN = getGitHubToken();
 
 /**
