@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-02-08
+
+### Added
+
+- Smarter issue search strategy — new Phase 0 prioritizes repos where user has merged PRs (highest merge probability), replacing the generic "high-score" phase. Phase 0 uses a broader search query without `good first issue`/`help wanted` labels — established contributors can handle any open issue
+- `getReposWithMergedPRs()` method on `StateManager` — returns repos sorted by merged PR count for search prioritization
+- Logarithmic repo scoring formula — merge bonus now scales from +2 (1 PR) to +5 (5+ PRs), replacing the linear formula. Full formula: base 5, log merge bonus (max +5), -1 per closed (max -3), +1 recency, +1 responsive, -2 hostile, clamped [1-10]
+- Recency bonus in repo scoring — +1 for repos with a merge within the last 90 days, so stale relationships decay over time
+- Responsiveness signal from open PR data — daily check now observes maintainer behavior (comments, review states) and updates `isResponsive` signal on repo scores
+- Active maintainer detection — repos with open PRs in healthy/review states get `hasActiveMaintainers: true` from real data instead of defaults
+- Auto-sync `trustedProjects` from merged PR history — repos with mergedPRCount > 0 are automatically added to trustedProjects during daily check
+- Org-level affinity scoring — +5 viability bonus for issues in repos under an org where user has merged PRs elsewhere (e.g., merged in `facebook/react` boosts `facebook/react-dom` issues)
+- Closed/rejected PR history check in issue vetting — repos where all user PRs were closed without merge get a -15 viability penalty; mixed history shown as informational note
+- `searchPriority`, `viabilityScore`, `repoScore`, and `excludedRepos` fields in search JSON output — agents can see why each issue was ranked and which repos were filtered
+- Exclusion awareness for issue-scout agent — fallback `gh` searches now respect the exclusion list
+- Issue list depletion detection — when curated list reaches 0 available issues, offers "Replenish your issue list" instead of empty state
+- Auto-exclude prompt for recently closed PRs — offers to exclude repos where PRs were rejected
+- `CheckResult` type for vetting checks that may be inconclusive — `checkNoExistingPR` and `checkNotClaimed` now return `{ passed, inconclusive?, reason? }` instead of bare `boolean`, surfacing API failures to the user
+- Aggregate failure detection in daily signal/trust sync loops — `[DAILY_ALL_SIGNAL_UPDATES_FAILED]` and `[DAILY_ALL_TRUST_SYNCS_FAILED]` tags logged when all updates fail, matching the pattern already used in `searchInRepos` and `vetIssuesParallel`
+- Per-phase error tracking in `searchIssues` — phases 0, 1, and 2 errors are now all included in the final "No issue candidates found" error message
+- 32 new tests (254 total): logarithmic scoring, recency bonus, org affinity, computeRepoSignals, partial signal preservation, closed-PR viability penalty, `markRepoHostile` signal preservation, and `incrementMergedCount`/`incrementClosedCount` routing
+
+### Changed
+
+- Search phases reordered: merged-PR repos → starred repos → general (was: starred → high-score → general)
+- `SearchPriority` type: `'merged_pr' | 'starred' | 'normal'` union replacing raw `string`
+- `vetIssue()` now uses `repoScores` directly for trusted project detection, showing merge count (e.g., "Trusted project (3 PRs merged)")
+
+### Fixed
+
+- `RepoScoreUpdate` type introduced replacing `Partial<RepoScore>` in `updateRepoScore()` — prevents callers from setting `score`, `repo`, or `lastEvaluatedAt` fields that should never be set externally
+- `RepoSignals` interface extracted from inline `RepoScore.signals` type — enables type-safe partial signal updates
+- `ComputedRepoSignals` type moved to `src/core/types.ts` so core domain types are defined in the core module, not in command modules
+- `incrementMergedCount()` and `incrementClosedCount()` now route through `updateRepoScore()` for a single mutation path — all repo score changes flow through one typed interface with diagnostic log messages
+- `vetIssue()` now checks `projectHealth.checkFailed` — repos are no longer penalized as "inactive" when the health check itself failed due to API errors; uses a neutral default instead
+- Recommendation downgraded to `needs_review` when any vetting check was inconclusive — `approve` now requires all checks to actually pass, not just optimistically default
+- `checkNoExistingPR` and `checkNotClaimed` inconclusive results surfaced as vetting notes — previously silent on API failure, users can now see "Could not verify absence of existing PRs" or "Could not verify claim status"
+- `searchInRepos` and `vetIssuesParallel` now return failure metadata (`allBatchesFailed`, `allFailed`) to callers — failures propagate to the final error message instead of being absorbed
+- Silent batch-failure absorption in `searchInRepos` — now tracks failed batch count and logs `[SEARCH_PHASE_ALL_BATCHES_FAILED]` when all batches fail
+- Silent vetting-failure absorption in `vetIssuesParallel` — now logs `[VET_ISSUES_ALL_FAILED]` when all issues fail vetting
+- `computeRepoSignals` now skips PRs with empty/missing `repo` field with a warning, preventing corrupted state entries
+- Daily check signal/trusted-project sync loops wrapped in try-catch with aggregate failure detection so a single corrupted repo score cannot crash the entire daily digest
+- Misleading org affinity guard `orgName !== repoFullName` replaced with `repoFullName.includes('/')` to clearly express intent
+- Hardcoded status comparisons in `computeRepoSignals` replaced with named `Set<FetchedPRStatus>` constants for exhaustiveness tracking
+
 ## [0.8.8] - 2026-02-08
 
 ### Fixed
@@ -220,6 +265,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.9.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.8...v0.9.0
 [0.8.8]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.5...v0.8.6

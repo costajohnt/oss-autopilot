@@ -5,6 +5,7 @@
 
 import type { TrackedPR, FetchedPR, DailyDigest, AgentState } from '../core/types.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
+import type { SearchPriority } from '../core/issue-discovery.js';
 
 export interface JsonOutput<T = unknown> {
   success: boolean;
@@ -67,7 +68,19 @@ export interface SearchOutput {
     recommendation: 'approve' | 'skip' | 'needs_review';
     reasonsToApprove: string[];
     reasonsToSkip: string[];
+    searchPriority: SearchPriority;
+    /** 0-100 scale composite viability score */
+    viabilityScore: number;
+    repoScore?: {
+      /** 1-10 scale repository quality score */
+      score: number;
+      mergedPRCount: number;
+      closedWithoutMergeCount: number;
+      isResponsive: boolean;
+      lastMergedAt?: string;
+    };
   }>;
+  excludedRepos: string[];
 }
 
 export interface TrackOutput {

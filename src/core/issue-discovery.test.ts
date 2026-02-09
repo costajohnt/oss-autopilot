@@ -17,8 +17,9 @@ vi.mock('./state.js', () => ({
       repoScores: {},
     }),
     getStarredRepos: () => [],
-    getHighScoringRepos: () => [],
+    getReposWithMergedPRs: () => [],
     getLowScoringRepos: () => [],
+    getRepoScore: () => undefined,
   })),
 }));
 
@@ -39,6 +40,9 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
     clearRequirements: false,
     hasContributionGuidelines: false,
     issueUpdatedAt: '2020-01-01T00:00:00Z', // Very old, no freshness bonus
+    closedWithoutMergeCount: 0,
+    mergedPRCount: 0,
+    orgHasMergedPRs: false,
   };
 
   it('should return base score of 50 with no bonuses or penalties', () => {
@@ -129,6 +133,9 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
       clearRequirements: true,
       hasContributionGuidelines: true,
       issueUpdatedAt: recent.toISOString(),
+      closedWithoutMergeCount: 0,
+      mergedPRCount: 0,
+      orgHasMergedPRs: false,
     });
     // 50 + 20 + 15 + 15 + 10 = 110, clamped to 100
     expect(score).toBe(100);
@@ -144,9 +151,81 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
       clearRequirements: true, // +15
       hasContributionGuidelines: true, // +10
       issueUpdatedAt: recent.toISOString(), // +15
+      closedWithoutMergeCount: 0,
+      mergedPRCount: 0,
+      orgHasMergedPRs: false,
     });
     // 50 + 10 + 15 + 15 + 10 - 20 = 80
     expect(score).toBe(80);
+  });
+
+  it('should subtract -15 for closed-without-merge history with no merges', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      closedWithoutMergeCount: 2,
+      mergedPRCount: 0,
+    });
+    expect(score).toBe(50 - 15);
+  });
+
+  it('should NOT subtract penalty when closed PRs exist but merges also exist', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      closedWithoutMergeCount: 1,
+      mergedPRCount: 2,
+    });
+    // No -15 penalty because mergedPRCount > 0
+    expect(score).toBe(50);
+  });
+
+  it('should NOT subtract penalty when closedWithoutMergeCount is 0', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      closedWithoutMergeCount: 0,
+      mergedPRCount: 0,
+    });
+    expect(score).toBe(50);
+  });
+
+  it('should apply closed-PR penalty alongside other penalties', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      hasExistingPR: true, // -30
+      closedWithoutMergeCount: 1, // -15
+      mergedPRCount: 0,
+    });
+    // 50 - 30 - 15 = 5
+    expect(score).toBe(5);
+  });
+
+  it('should add +5 for org affinity', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      orgHasMergedPRs: true,
+    });
+    expect(score).toBe(55);
+  });
+
+  it('should NOT add org affinity bonus when false', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      orgHasMergedPRs: false,
+    });
+    expect(score).toBe(50);
+  });
+
+  it('should combine org affinity with other bonuses', () => {
+    const recent = new Date();
+    recent.setDate(recent.getDate() - 3);
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      repoScore: 8, // +16
+      clearRequirements: true, // +15
+      issueUpdatedAt: recent.toISOString(), // +15
+      orgHasMergedPRs: true, // +5
+    });
+    // 50 + 16 + 15 + 15 + 5 = 101, clamped to 100
+    expect(score).toBe(100);
   });
 });
 
@@ -217,5 +296,101 @@ describe('IssueDiscovery.analyzeRequirements (via vetIssue internals)', () => {
       We want to improve user experience by providing clear feedback.
     `;
     expect(discovery.analyzeRequirements(body)).toBe(true);
+  });
+});
+
+describe('IssueDiscovery.vetIssue inconclusive downgrade', () => {
+  let discovery: InstanceType<typeof IssueDiscovery>;
+
+  const makeGhIssue = () => ({
+    id: 1,
+    html_url: 'https://github.com/owner/repo/issues/42',
+    title: 'Test issue with clear requirements',
+    labels: [{ name: 'good first issue' }],
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-02-01T00:00:00Z',
+    comments: 0,
+    body: `
+      This feature should add pagination to the API.
+      1. Add page parameter to GET /items
+      2. Return 20 items per page
+      The API should return a 400 error for invalid page numbers.
+    `,
+  });
+
+  beforeEach(() => {
+    mockOctokitInstance = {
+      issues: {
+        get: vi.fn().mockResolvedValue({ data: makeGhIssue() }),
+        listEventsForTimeline: vi.fn().mockResolvedValue({ data: [] }),
+      },
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({ data: { total_count: 0, items: [] } }),
+      },
+      repos: {
+        get: vi.fn().mockResolvedValue({
+          data: { open_issues_count: 5, pushed_at: '2026-02-01T00:00:00Z' },
+        }),
+        listCommits: vi.fn().mockResolvedValue({
+          data: [{ commit: { author: { date: '2026-02-01T00:00:00Z' } } }],
+        }),
+        getContent: vi.fn().mockRejectedValue(new Error('404 Not Found')),
+      },
+      actions: {
+        listRepoWorkflows: vi.fn().mockResolvedValue({ data: { total_count: 1 } }),
+      },
+    };
+    discovery = new IssueDiscovery('fake-token');
+  });
+
+  it('should approve when all checks pass definitively', async () => {
+    const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
+    expect(candidate.recommendation).toBe('approve');
+  });
+
+  it('should downgrade to needs_review when checkNoExistingPR is inconclusive', async () => {
+    // Make the search call throw (simulating rate limit / API error)
+    mockOctokitInstance.search.issuesAndPullRequests.mockRejectedValue(
+      new Error('API rate limit exceeded')
+    );
+
+    const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
+    expect(candidate.recommendation).toBe('needs_review');
+    expect(candidate.vettingResult.notes).toContainEqual(
+      expect.stringContaining('Could not verify absence of existing PRs')
+    );
+    expect(candidate.vettingResult.notes).toContainEqual(
+      expect.stringContaining('Recommendation downgraded')
+    );
+  });
+
+  it('should downgrade to needs_review when checkNotClaimed is inconclusive', async () => {
+    // Issue has comments, so checkNotClaimed will try to fetch them
+    mockOctokitInstance.issues.get.mockResolvedValue({
+      data: { ...makeGhIssue(), comments: 3 },
+    });
+    // Make paginate throw (simulating API error)
+    mockOctokitInstance.paginate = vi.fn().mockRejectedValue(
+      new Error('Server error')
+    );
+
+    const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
+    expect(candidate.recommendation).toBe('needs_review');
+    expect(candidate.vettingResult.notes).toContainEqual(
+      expect.stringContaining('Could not verify claim status')
+    );
+  });
+
+  it('should downgrade to needs_review when project health check fails', async () => {
+    // Make repos.get throw (simulating API error)
+    mockOctokitInstance.repos.get.mockRejectedValue(
+      new Error('Not Found')
+    );
+
+    const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
+    expect(candidate.recommendation).toBe('needs_review');
+    expect(candidate.vettingResult.notes).toContainEqual(
+      expect.stringContaining('Could not verify project activity')
+    );
   });
 });

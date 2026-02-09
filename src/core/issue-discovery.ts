@@ -28,7 +28,14 @@ interface GitHubSearchItem {
   [key: string]: unknown;
 }
 
-type SearchPriority = 'starred' | 'high_score' | 'normal';
+export type SearchPriority = 'merged_pr' | 'starred' | 'normal';
+
+/** Result of a vetting check that may be inconclusive due to API errors. */
+interface CheckResult {
+  passed: boolean;
+  inconclusive?: boolean;
+  reason?: string;
+}
 
 export interface IssueCandidate {
   issue: TrackedIssue;
@@ -155,8 +162,8 @@ export class IssueDiscovery {
 
   /**
    * Search for issues matching our criteria.
-   * Searches in priority order: starred repos first, then high-scoring repos, then general.
-   * Filters out issues from low-scoring repos.
+   * Searches in priority order: merged-PR repos first (no label filter), then starred repos, then general.
+   * Filters out issues from low-scoring and excluded repos.
    */
   async searchIssues(options: {
     languages?: string[];
@@ -169,14 +176,18 @@ export class IssueDiscovery {
     const maxResults = options.maxResults || 10;
 
     const allCandidates: IssueCandidate[] = [];
+    let phase0Error: string | null = null;
+    let phase1Error: string | null = null;
+
+    // Get merged-PR repos (highest merge probability)
+    const mergedPRRepos = this.stateManager.getReposWithMergedPRs();
+    const mergedPRRepoSet = new Set(mergedPRRepos);
 
     // Get starred repos (with refresh if stale)
     const starredRepos = await this.getStarredReposWithRefresh();
     const starredRepoSet = new Set(starredRepos);
 
-    // Get high-scoring and low-scoring repos from state
-    const highScoringRepos = this.stateManager.getHighScoringRepos();
-    const highScoringRepoSet = new Set(highScoringRepos);
+    // Get low-scoring repos from state
     const lowScoringRepos = new Set(this.stateManager.getLowScoringRepos(3)); // Score <= 3 is low
 
     // Common filters
@@ -185,9 +196,12 @@ export class IssueDiscovery {
     const maxAgeDays = config.maxIssueAgeDays || 90;
     const now = new Date();
 
-    // Build base query parts
+    // Build query parts
     const labelQuery = labels.map(l => `label:"${l}"`).join(' ');
     const langQuery = languages.map(l => `language:${l}`).join(' ');
+    // Phase 0 uses a broader query — established contributors don't need beginner labels
+    const establishedQuery = `is:issue is:open ${langQuery} no:assignee`;
+    // Phases 1+ use label-filtered query for discovery in unfamiliar repos
     const baseQuery = `is:issue is:open ${labelQuery} ${langQuery} no:assignee`;
 
     // Helper to filter issues
@@ -206,45 +220,54 @@ export class IssueDiscovery {
       });
     };
 
-    // Phase 1: Search starred repos first
-    if (starredRepos.length > 0) {
-      console.log(`Phase 1: Searching issues in ${starredRepos.length} starred repos...`);
+    // Phase 0: Search repos where user has merged PRs (highest merge probability)
+    // Uses broader query — established contributors don't need "good first issue" labels
+    if (mergedPRRepos.length > 0) {
+      console.log(`Phase 0: Searching issues in ${mergedPRRepos.length} repos with merged PRs (no label filter)...`);
       const remainingNeeded = maxResults - allCandidates.length;
       if (remainingNeeded > 0) {
-        const starredCandidates = await this.searchInRepos(
-          starredRepos.slice(0, 10), // Limit to first 10 starred repos
-          baseQuery,
+        const { candidates: mergedPRCandidates, allBatchesFailed } = await this.searchInRepos(
+          mergedPRRepos.slice(0, 10),
+          establishedQuery,
           remainingNeeded,
-          'starred',
+          'merged_pr',
           filterIssues
         );
-        allCandidates.push(...starredCandidates);
-        console.log(`Found ${starredCandidates.length} candidates from starred repos`);
+        allCandidates.push(...mergedPRCandidates);
+        if (allBatchesFailed) {
+          phase0Error = 'All merged-PR repo batches failed';
+        }
+        console.log(`Found ${mergedPRCandidates.length} candidates from merged-PR repos`);
       }
     }
 
-    // Phase 2: Search high-scoring repos
-    if (allCandidates.length < maxResults && highScoringRepos.length > 0) {
-      console.log(`Phase 2: Searching issues in ${highScoringRepos.length} high-scoring repos...`);
-      // Filter out repos already searched (starred)
-      const reposToSearch = highScoringRepos.filter(r => !starredRepoSet.has(r));
-      const remainingNeeded = maxResults - allCandidates.length;
-      if (remainingNeeded > 0 && reposToSearch.length > 0) {
-        const highScoreCandidates = await this.searchInRepos(
-          reposToSearch.slice(0, 10), // Limit to first 10 high-scoring repos
-          baseQuery,
-          remainingNeeded,
-          'high_score',
-          filterIssues
-        );
-        allCandidates.push(...highScoreCandidates);
-        console.log(`Found ${highScoreCandidates.length} candidates from high-scoring repos`);
+    // Phase 1: Search starred repos (filter out already-searched merged-PR repos)
+    if (allCandidates.length < maxResults && starredRepos.length > 0) {
+      const reposToSearch = starredRepos.filter(r => !mergedPRRepoSet.has(r));
+      if (reposToSearch.length > 0) {
+        console.log(`Phase 1: Searching issues in ${reposToSearch.length} starred repos...`);
+        const remainingNeeded = maxResults - allCandidates.length;
+        if (remainingNeeded > 0) {
+          const { candidates: starredCandidates, allBatchesFailed } = await this.searchInRepos(
+            reposToSearch.slice(0, 10),
+            baseQuery,
+            remainingNeeded,
+            'starred',
+            filterIssues
+          );
+          allCandidates.push(...starredCandidates);
+          if (allBatchesFailed) {
+            phase1Error = 'All starred repo batches failed';
+          }
+          console.log(`Found ${starredCandidates.length} candidates from starred repos`);
+        }
       }
     }
 
-    // Phase 3: General search (if still need more)
+    // Phase 2: General search (if still need more)
+    let phase2Error: string | null = null;
     if (allCandidates.length < maxResults) {
-      console.log('Phase 3: General issue search...');
+      console.log('Phase 2: General issue search...');
       const remainingNeeded = maxResults - allCandidates.length;
       try {
         const { data } = await this.octokit.search.issuesAndPullRequests({
@@ -261,35 +284,47 @@ export class IssueDiscovery {
         const itemsToVet = filterIssues(data.items)
           .filter(item => {
             const repoFullName = item.repository_url.split('/').slice(-2).join('/');
-            // Skip if already searched in starred or high-score phases
-            return !starredRepoSet.has(repoFullName) && !highScoringRepoSet.has(repoFullName) && !seenRepos.has(repoFullName);
+            // Skip if already searched in earlier phases
+            return !mergedPRRepoSet.has(repoFullName) && !starredRepoSet.has(repoFullName) && !seenRepos.has(repoFullName);
           })
           .slice(0, remainingNeeded * 2);
 
-        const results = await this.vetIssuesParallel(
+        const { candidates: results, allFailed: allVetFailed } = await this.vetIssuesParallel(
           itemsToVet.map(i => i.html_url),
           remainingNeeded,
           'normal'
         );
         allCandidates.push(...results);
+        if (allVetFailed) {
+          phase2Error = (phase2Error ? phase2Error + '; ' : '') + 'all vetting failed';
+        }
         console.log(`Found ${results.length} candidates from general search`);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`[SEARCH_PHASE_3_FAILED] Error in general issue search: ${errorMessage}`);
+        phase2Error = errorMessage;
+        console.error(`[SEARCH_PHASE_2_FAILED] Error in general issue search: ${errorMessage}`);
       }
     }
 
     if (allCandidates.length === 0) {
+      const phaseErrors = [
+        phase0Error ? `Phase 0 (merged-PR repos): ${phase0Error}` : null,
+        phase1Error ? `Phase 1 (starred repos): ${phase1Error}` : null,
+        phase2Error ? `Phase 2 (general): ${phase2Error}` : null,
+      ].filter(Boolean);
+      const details = phaseErrors.length > 0
+        ? ` ${phaseErrors.join('. ')}.`
+        : '';
       throw new Error(
-        'No issue candidates found across all search phases. ' +
+        `No issue candidates found across all search phases.${details} ` +
         'Try adjusting your search criteria (languages, labels) or check your network connection.'
       );
     }
 
     // Sort by priority first, then by recommendation
     allCandidates.sort((a, b) => {
-      // Priority order: starred > high_score > normal
-      const priorityOrder: Record<SearchPriority, number> = { starred: 0, high_score: 1, normal: 2 };
+      // Priority order: merged_pr > starred > normal
+      const priorityOrder: Record<SearchPriority, number> = { merged_pr: 0, starred: 1, normal: 2 };
       const priorityDiff = priorityOrder[a.searchPriority] - priorityOrder[b.searchPriority];
       if (priorityDiff !== 0) return priorityDiff;
 
@@ -316,7 +351,7 @@ export class IssueDiscovery {
     maxResults: number,
     priority: SearchPriority,
     filterFn: (items: GitHubSearchItem[]) => GitHubSearchItem[]
-  ): Promise<IssueCandidate[]> {
+  ): Promise<{ candidates: IssueCandidate[]; allBatchesFailed: boolean }> {
     const candidates: IssueCandidate[] = [];
 
     // Batch repos to reduce API calls.
@@ -325,6 +360,7 @@ export class IssueDiscovery {
     // Using 5 repos per batch stays well under the limit.
     const BATCH_SIZE = 5;
     const batches = this.batchRepos(repos, BATCH_SIZE);
+    let failedBatches = 0;
 
     for (const batch of batches) {
       if (candidates.length >= maxResults) break;
@@ -344,21 +380,29 @@ export class IssueDiscovery {
         if (data.items.length > 0) {
           const filtered = filterFn(data.items);
           const remainingNeeded = maxResults - candidates.length;
-          const results = await this.vetIssuesParallel(
+          const { candidates: vetted } = await this.vetIssuesParallel(
             filtered.slice(0, remainingNeeded * 2).map(i => i.html_url),
             remainingNeeded,
             priority
           );
-          candidates.push(...results);
+          candidates.push(...vetted);
         }
       } catch (error) {
-        // Log but continue with other batches
+        failedBatches++;
         const batchRepos = batch.join(', ');
         console.error(`Error searching issues in batch [${batchRepos}]:`, error instanceof Error ? error.message : error);
       }
     }
 
-    return candidates;
+    const allBatchesFailed = failedBatches === batches.length && batches.length > 0;
+    if (allBatchesFailed) {
+      console.error(
+        `[SEARCH_PHASE_ALL_BATCHES_FAILED] All ${batches.length} batch(es) failed for ${priority} phase. ` +
+        `This may indicate a systemic issue (rate limit, auth, network).`
+      );
+    }
+
+    return { candidates, allBatchesFailed };
   }
 
   /**
@@ -382,12 +426,15 @@ export class IssueDiscovery {
     urls: string[],
     maxResults: number,
     priority?: SearchPriority
-  ): Promise<IssueCandidate[]> {
+  ): Promise<{ candidates: IssueCandidate[]; allFailed: boolean }> {
     const candidates: IssueCandidate[] = [];
     const pending: Promise<void>[] = [];
+    let failedVettingCount = 0;
+    let attemptedCount = 0;
 
     for (const url of urls) {
       if (candidates.length >= maxResults) break;
+      attemptedCount++;
 
       const task = this.vetIssue(url)
         .then(candidate => {
@@ -400,6 +447,7 @@ export class IssueDiscovery {
           }
         })
         .catch(error => {
+          failedVettingCount++;
           console.error(`Error vetting issue ${url}:`, error instanceof Error ? error.message : error);
         });
 
@@ -417,7 +465,16 @@ export class IssueDiscovery {
 
     // Wait for remaining
     await Promise.allSettled(pending);
-    return candidates.slice(0, maxResults);
+
+    const allFailed = failedVettingCount === attemptedCount && attemptedCount > 0;
+    if (allFailed) {
+      console.error(
+        `[VET_ISSUES_ALL_FAILED] All ${attemptedCount} issue(s) failed vetting. ` +
+        `This may indicate a systemic issue (rate limit, auth, network).`
+      );
+    }
+
+    return { candidates: candidates.slice(0, maxResults), allFailed };
   }
 
   /**
@@ -441,22 +498,29 @@ export class IssueDiscovery {
     });
 
     // Run all vetting checks in parallel
-    const [noExistingPR, notClaimed, projectHealth, contributionGuidelines] = await Promise.all([
+    const [existingPRCheck, claimCheck, projectHealth, contributionGuidelines] = await Promise.all([
       this.checkNoExistingPR(owner, repo, number),
       this.checkNotClaimed(owner, repo, number, ghIssue.comments),
       this.checkProjectHealth(owner, repo),
       this.fetchContributionGuidelines(owner, repo),
     ]);
 
+    const noExistingPR = existingPRCheck.passed;
+    const notClaimed = claimCheck.passed;
+
     // Analyze issue quality
     const clearRequirements = this.analyzeRequirements(ghIssue.body || '');
 
+    // When the health check itself failed (API error), use a neutral default:
+    // don't penalize the repo as inactive, but don't credit it as active either.
+    const projectActive = projectHealth.checkFailed ? true : projectHealth.isActive;
+
     const vettingResult: IssueVettingResult = {
-      passedAllChecks: noExistingPR && notClaimed && projectHealth.isActive && clearRequirements,
+      passedAllChecks: noExistingPR && notClaimed && projectActive && clearRequirements,
       checks: {
         noExistingPR,
         notClaimed,
-        projectActive: projectHealth.isActive,
+        projectActive,
         clearRequirements,
         contributionGuidelinesFound: !!contributionGuidelines,
       },
@@ -467,7 +531,17 @@ export class IssueDiscovery {
     // Build notes
     if (!noExistingPR) vettingResult.notes.push('Existing PR found for this issue');
     if (!notClaimed) vettingResult.notes.push('Issue appears to be claimed by someone');
-    if (!projectHealth.isActive) vettingResult.notes.push('Project may be inactive');
+    if (existingPRCheck.inconclusive) {
+      vettingResult.notes.push(`Could not verify absence of existing PRs: ${existingPRCheck.reason || 'API error'}`);
+    }
+    if (claimCheck.inconclusive) {
+      vettingResult.notes.push(`Could not verify claim status: ${claimCheck.reason || 'API error'}`);
+    }
+    if (projectHealth.checkFailed) {
+      vettingResult.notes.push(`Could not verify project activity: ${projectHealth.failureReason || 'API error'}`);
+    } else if (!projectHealth.isActive) {
+      vettingResult.notes.push('Project may be inactive');
+    }
     if (!clearRequirements) vettingResult.notes.push('Issue requirements are unclear');
     if (!contributionGuidelines) vettingResult.notes.push('No CONTRIBUTING.md found');
 
@@ -492,19 +566,42 @@ export class IssueDiscovery {
 
     if (!noExistingPR) reasonsToSkip.push('Has existing PR');
     if (!notClaimed) reasonsToSkip.push('Already claimed');
-    if (!projectHealth.isActive) reasonsToSkip.push('Inactive project');
+    if (!projectHealth.isActive && !projectHealth.checkFailed) reasonsToSkip.push('Inactive project');
     if (!clearRequirements) reasonsToSkip.push('Unclear requirements');
 
     if (noExistingPR) reasonsToApprove.push('No existing PR');
     if (notClaimed) reasonsToApprove.push('Not claimed');
-    if (projectHealth.isActive) reasonsToApprove.push('Active project');
+    if (projectHealth.isActive && !projectHealth.checkFailed) reasonsToApprove.push('Active project');
     if (clearRequirements) reasonsToApprove.push('Clear requirements');
     if (contributionGuidelines) reasonsToApprove.push('Has contribution guidelines');
 
-    // Check if it's a trusted project
+    // Check if it's a trusted project (via repoScores or legacy trustedProjects list)
     const config = this.stateManager.getState().config;
-    if (config.trustedProjects.includes(repoFullName)) {
+    const repoScoreRecord = this.stateManager.getRepoScore(repoFullName);
+    if (repoScoreRecord && repoScoreRecord.mergedPRCount > 0) {
+      reasonsToApprove.push(`Trusted project (${repoScoreRecord.mergedPRCount} PR${repoScoreRecord.mergedPRCount > 1 ? 's' : ''} merged)`);
+    } else if (config.trustedProjects.includes(repoFullName)) {
       reasonsToApprove.push('Trusted project (previous PR merged)');
+    }
+
+    // Check for closed/rejected PR history in this repo
+    if (repoScoreRecord) {
+      if (repoScoreRecord.closedWithoutMergeCount > 0 && repoScoreRecord.mergedPRCount === 0) {
+        reasonsToSkip.push('User has rejected PR(s) in this repo with no successful merges');
+      } else if (repoScoreRecord.closedWithoutMergeCount > 0 && repoScoreRecord.mergedPRCount > 0) {
+        vettingResult.notes.push(`Mixed history: ${repoScoreRecord.mergedPRCount} merged, ${repoScoreRecord.closedWithoutMergeCount} closed without merge`);
+      }
+    }
+
+    // Check for org-level affinity (user has merged PRs in another repo under same org)
+    const orgName = repoFullName.split('/')[0];
+    let orgHasMergedPRs = false;
+    if (orgName && repoFullName.includes('/')) {
+      orgHasMergedPRs = Object.values(this.stateManager.getState().repoScores)
+        .some(rs => rs.repo && rs.mergedPRCount > 0 && rs.repo.startsWith(orgName + '/') && rs.repo !== repoFullName);
+    }
+    if (orgHasMergedPRs) {
+      reasonsToApprove.push(`Org affinity (merged PRs in other ${orgName} repos)`);
     }
 
     let recommendation: 'approve' | 'skip' | 'needs_review';
@@ -516,6 +613,14 @@ export class IssueDiscovery {
       recommendation = 'needs_review';
     }
 
+    // Downgrade to needs_review if any check was inconclusive —
+    // "approve" should only be given when all checks actually passed, not when they were skipped.
+    const hasInconclusiveChecks = projectHealth.checkFailed || existingPRCheck.inconclusive || claimCheck.inconclusive;
+    if (recommendation === 'approve' && hasInconclusiveChecks) {
+      recommendation = 'needs_review';
+      vettingResult.notes.push('Recommendation downgraded: one or more checks were inconclusive');
+    }
+
     // Calculate viability score
     const viabilityScore = this.calculateViabilityScore({
       repoScore: this.getRepoScore(repoFullName),
@@ -524,16 +629,18 @@ export class IssueDiscovery {
       clearRequirements,
       hasContributionGuidelines: !!contributionGuidelines,
       issueUpdatedAt: ghIssue.updated_at,
+      closedWithoutMergeCount: repoScoreRecord?.closedWithoutMergeCount ?? 0,
+      mergedPRCount: repoScoreRecord?.mergedPRCount ?? 0,
+      orgHasMergedPRs,
     });
 
     // Determine search priority
     const starredRepos = this.stateManager.getStarredRepos();
-    const repoScore = this.getRepoScore(repoFullName);
     let searchPriority: SearchPriority = 'normal';
-    if (starredRepos.includes(repoFullName)) {
+    if (repoScoreRecord && repoScoreRecord.mergedPRCount > 0) {
+      searchPriority = 'merged_pr';
+    } else if (starredRepos.includes(repoFullName)) {
       searchPriority = 'starred';
-    } else if (repoScore !== null && repoScore >= 7) {
-      searchPriority = 'high_score';
     }
 
     return {
@@ -548,7 +655,7 @@ export class IssueDiscovery {
     };
   }
 
-  private async checkNoExistingPR(owner: string, repo: string, issueNumber: number): Promise<boolean> {
+  private async checkNoExistingPR(owner: string, repo: string, issueNumber: number): Promise<CheckResult> {
     try {
       // Search for PRs that mention this issue
       const { data } = await this.octokit.search.issuesAndPullRequests({
@@ -571,11 +678,11 @@ export class IssueDiscovery {
         }
       );
 
-      return data.total_count === 0 && linkedPRs.length === 0;
+      return { passed: data.total_count === 0 && linkedPRs.length === 0 };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.warn(`[CHECK_NO_EXISTING_PR] Failed to check for existing PRs on ${owner}/${repo}#${issueNumber}: ${errorMessage}. Assuming no existing PR.`);
-      return true;
+      return { passed: true, inconclusive: true, reason: errorMessage };
     }
   }
 
@@ -584,8 +691,8 @@ export class IssueDiscovery {
     repo: string,
     issueNumber: number,
     commentCount: number
-  ): Promise<boolean> {
-    if (commentCount === 0) return true;
+  ): Promise<CheckResult> {
+    if (commentCount === 0) return { passed: true };
 
     try {
       // Paginate through all comments (up to 100)
@@ -625,15 +732,15 @@ export class IssueDiscovery {
       for (const comment of recentComments) {
         const body = (comment.body || '').toLowerCase();
         if (claimPhrases.some(phrase => body.includes(phrase))) {
-          return false;
+          return { passed: false };
         }
       }
 
-      return true;
+      return { passed: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.warn(`[CHECK_NOT_CLAIMED] Failed to check claim status on ${owner}/${repo}#${issueNumber}: ${errorMessage}. Assuming not claimed.`);
-      return true;
+      return { passed: true, inconclusive: true, reason: errorMessage };
     }
   }
 
@@ -819,8 +926,10 @@ export class IssueDiscovery {
    * - +15 for clear requirements (clarity)
    * - +15 for freshness (recently updated)
    * - +10 for contribution guidelines
+   * - +5 for org affinity (merged PRs in same org)
    * - -30 if existing PR
    * - -20 if claimed
+   * - -15 if closed-without-merge history with no merges
    */
   calculateViabilityScore(params: {
     repoScore: number | null;
@@ -829,6 +938,9 @@ export class IssueDiscovery {
     clearRequirements: boolean;
     hasContributionGuidelines: boolean;
     issueUpdatedAt: string;
+    closedWithoutMergeCount: number;
+    mergedPRCount: number;
+    orgHasMergedPRs: boolean;
   }): number {
     let score = 50; // Base score
 
@@ -857,6 +969,11 @@ export class IssueDiscovery {
       score += 10;
     }
 
+    // Org affinity bonus (+5) — user has merged PRs in another repo under same org
+    if (params.orgHasMergedPRs) {
+      score += 5;
+    }
+
     // Penalty for existing PR (-30)
     if (params.hasExistingPR) {
       score -= 30;
@@ -865,6 +982,11 @@ export class IssueDiscovery {
     // Penalty for claimed issue (-20)
     if (params.isClaimed) {
       score -= 20;
+    }
+
+    // Penalty for closed-without-merge history with no successful merges (-15)
+    if (params.closedWithoutMergeCount > 0 && params.mergedPRCount === 0) {
+      score -= 15;
     }
 
     // Clamp to 0-100
@@ -934,7 +1056,7 @@ ${Object.entries(vettingResult.checks)
   .join('\n')}
 
 ### Project Health
-- Last commit: ${projectHealth.daysSinceLastCommit} days ago
+- Last commit: ${projectHealth.checkFailed ? 'unknown (API error)' : `${projectHealth.daysSinceLastCommit} days ago`}
 - Open issues: ${projectHealth.openIssuesCount}
 - CI status: ${projectHealth.ciStatus}
 

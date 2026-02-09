@@ -4,7 +4,7 @@
  * v2: No local state tracking - everything is fetched fresh
  */
 
-import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type PRCheckFailure, type MaintainerActionHint, type ClosedPR } from '../core/index.js';
+import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ClosedPR, type ComputedRepoSignals } from '../core/index.js';
 import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue } from '../formatters/json.js';
 
 interface DailyOptions {
@@ -46,19 +46,80 @@ export async function runDaily(options: DailyOptions): Promise<void> {
 
   const { repos: mergedCounts, monthlyCounts } = mergedResult;
 
-  // Reset stale repos first (so excluded/removed repos get zeroed)
-  for (const score of Object.values(stateManager.getState().repoScores)) {
-    if (!mergedCounts.has(score.repo)) {
-      stateManager.updateRepoScore(score.repo, { mergedPRCount: 0 });
+  // Reset stale repos first (so excluded/removed repos get zeroed).
+  // Guard: if the API returned zero results but we have existing repos with merged PRs,
+  // skip the reset to avoid wiping scores due to transient API failures.
+  const existingReposWithMerges = Object.values(stateManager.getState().repoScores)
+    .filter(s => s.mergedPRCount > 0);
+  if (mergedCounts.size === 0 && existingReposWithMerges.length > 0) {
+    console.error(`[DAILY] Skipping stale repo reset: API returned 0 merged PR results but state has ${existingReposWithMerges.length} repo(s) with merges. Possible API issue.`);
+  } else {
+    for (const score of Object.values(stateManager.getState().repoScores)) {
+      if (!mergedCounts.has(score.repo)) {
+        stateManager.updateRepoScore(score.repo, { mergedPRCount: 0 });
+      }
     }
   }
+
+  // Update merged/closed counts with per-repo error isolation (matches signal/trust loops below)
+  let mergedCountFailures = 0;
   for (const [repo, { count, lastMergedAt }] of mergedCounts) {
-    stateManager.updateRepoScore(repo, { mergedPRCount: count, lastMergedAt: lastMergedAt || undefined });
+    try {
+      stateManager.updateRepoScore(repo, { mergedPRCount: count, lastMergedAt: lastMergedAt || undefined });
+    } catch (error) {
+      mergedCountFailures++;
+      console.error(`[DAILY] Failed to update merged count for ${repo}:`, error instanceof Error ? error.message : error);
+    }
+  }
+  if (mergedCountFailures === mergedCounts.size && mergedCounts.size > 0) {
+    console.error(`[DAILY_ALL_MERGED_COUNT_UPDATES_FAILED] All ${mergedCounts.size} merged count update(s) failed.`);
   }
 
   // Populate closedWithoutMergeCount in repo scores
+  let closedCountFailures = 0;
   for (const [repo, count] of closedCounts) {
-    stateManager.updateRepoScore(repo, { closedWithoutMergeCount: count });
+    try {
+      stateManager.updateRepoScore(repo, { closedWithoutMergeCount: count });
+    } catch (error) {
+      closedCountFailures++;
+      console.error(`[DAILY] Failed to update closed count for ${repo}:`, error instanceof Error ? error.message : error);
+    }
+  }
+  if (closedCountFailures === closedCounts.size && closedCounts.size > 0) {
+    console.error(`[DAILY_ALL_CLOSED_COUNT_UPDATES_FAILED] All ${closedCounts.size} closed count update(s) failed.`);
+  }
+
+  // Update repo signals from observed open PR data (responsiveness, active maintainers).
+  // Only repos with current open PRs get signal updates — repos with no open PRs
+  // preserve their existing signals to avoid degrading scores when PRs are merged.
+  // Per-repo try-catch: signal/trust syncing is secondary to the daily digest —
+  // a single corrupted repo score should not prevent updates to other repos.
+  const repoSignals = computeRepoSignals(prs);
+  let signalUpdateFailures = 0;
+  for (const [repo, signals] of repoSignals) {
+    try {
+      stateManager.updateRepoScore(repo, { signals });
+    } catch (error) {
+      signalUpdateFailures++;
+      console.error(`[DAILY] Failed to update signals for ${repo}:`, error instanceof Error ? error.message : error);
+    }
+  }
+  if (signalUpdateFailures === repoSignals.size && repoSignals.size > 0) {
+    console.error(`[DAILY_ALL_SIGNAL_UPDATES_FAILED] All ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`);
+  }
+
+  // Auto-sync trustedProjects from repos with merged PRs
+  let trustSyncFailures = 0;
+  for (const [repo] of mergedCounts) {
+    try {
+      stateManager.addTrustedProject(repo);
+    } catch (error) {
+      trustSyncFailures++;
+      console.error(`[DAILY] Failed to sync trusted project ${repo}:`, error instanceof Error ? error.message : error);
+    }
+  }
+  if (trustSyncFailures === mergedCounts.size && mergedCounts.size > 0) {
+    console.error(`[DAILY_ALL_TRUST_SYNCS_FAILED] All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`);
   }
 
   // Store monthly merged counts for the contribution timeline chart
@@ -471,4 +532,46 @@ function formatActionHint(hint: MaintainerActionHint): string {
     case 'docs_requested': return 'documentation requested';
     case 'rebase_requested': return 'rebase requested';
   }
+}
+
+/** Statuses indicating active maintainer engagement (reviews, feedback, merges). */
+const ACTIVE_MAINTAINER_STATUSES: Set<FetchedPRStatus> = new Set([
+  'healthy', 'waiting_on_maintainer', 'changes_addressed', 'needs_response', 'needs_changes',
+]);
+
+/** Statuses indicating staleness — maintainer comments during these statuses don't count as responsive. */
+const STALE_STATUSES: Set<FetchedPRStatus> = new Set([
+  'dormant', 'approaching_dormant',
+]);
+
+/**
+ * Compute per-repo maintainer signals from observed open PR data.
+ * - isResponsive: true if any PR in the repo has a maintainer comment and status
+ *   is not in STALE_STATUSES
+ * - hasActiveMaintainers: true if any PR in the repo has a status in ACTIVE_MAINTAINER_STATUSES
+ */
+export function computeRepoSignals(prs: FetchedPR[]): Map<string, ComputedRepoSignals> {
+  const repoMap = new Map<string, FetchedPR[]>();
+  for (const pr of prs) {
+    if (!pr.repo) {
+      console.warn(`[COMPUTE_SIGNALS] Skipping PR #${pr.number} (${pr.url}) with empty repo field`);
+      continue;
+    }
+    const existing = repoMap.get(pr.repo) || [];
+    existing.push(pr);
+    repoMap.set(pr.repo, existing);
+  }
+
+  const result = new Map<string, ComputedRepoSignals>();
+  for (const [repo, repoPRs] of repoMap) {
+    const isResponsive = repoPRs.some(pr =>
+      pr.lastMaintainerComment && !STALE_STATUSES.has(pr.status)
+    );
+    const hasActiveMaintainers = repoPRs.some(pr =>
+      ACTIVE_MAINTAINER_STATUSES.has(pr.status)
+    );
+    result.set(repo, { isResponsive, hasActiveMaintainers });
+  }
+
+  return result;
 }

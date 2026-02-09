@@ -299,30 +299,82 @@ describe('StateManager calculateScore (via updateRepoScore)', () => {
     expect(score!.score).toBe(5);
   });
 
-  it('should add +2 per merged PR, capped at +4', () => {
-    // 3 merged PRs => bonus would be 6, but capped at +4 => score = 9
+  it('should apply logarithmic merge bonus (1 merge → +2)', () => {
+    // log2(1+1)*2 = log2(2)*2 = 1*2 = 2, score = 5+2 = 7
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 1 });
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(7);
+  });
+
+  it('should apply logarithmic merge bonus (3 merges → +4)', () => {
+    // log2(3+1)*2 = log2(4)*2 = 2*2 = 4, score = 5+4 = 9
     stateManager.updateRepoScore('owner/repo', { mergedPRCount: 3 });
-    const score = stateManager.getRepoScore('owner/repo');
-    expect(score!.score).toBe(9);
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(9);
+  });
+
+  it('should cap logarithmic merge bonus at +5 (5+ merges)', () => {
+    // log2(5+1)*2 = log2(6)*2 = 2.585*2 = 5.17, rounded to 5, score = 5+5 = 10
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 5 });
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(10);
+  });
+
+  it('should also cap at +5 for 7+ merges', () => {
+    // log2(7+1)*2 = log2(8)*2 = 3*2 = 6, capped at 5, score = 5+5 = 10
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 7 });
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(10);
+  });
+
+  it('should differentiate 2 merges from 7 merges', () => {
+    stateManager.updateRepoScore('owner/few', { mergedPRCount: 2 });
+    stateManager.updateRepoScore('owner/many', { mergedPRCount: 7 });
+    const fewScore = stateManager.getRepoScore('owner/few')!.score;
+    const manyScore = stateManager.getRepoScore('owner/many')!.score;
+    expect(manyScore).toBeGreaterThan(fewScore);
   });
 
   it('should subtract -1 per closed without merge, capped at -3', () => {
     // 5 closed without merge => penalty would be 5, but capped at -3 => score = 2
     stateManager.updateRepoScore('owner/repo', { closedWithoutMergeCount: 5 });
-    const score = stateManager.getRepoScore('owner/repo');
-    expect(score!.score).toBe(2);
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(2);
+  });
+
+  it('should add +1 for recency (last merge within 90 days)', () => {
+    const recentDate = new Date();
+    recentDate.setDate(recentDate.getDate() - 30);
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 1, lastMergedAt: recentDate.toISOString() });
+    // 5 + 2 (1 merge) + 1 (recency) = 8
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(8);
+  });
+
+  it('should add recency bonus at exactly 90 days', () => {
+    const boundaryDate = new Date();
+    boundaryDate.setDate(boundaryDate.getDate() - 90);
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 1, lastMergedAt: boundaryDate.toISOString() });
+    // 5 + 2 (1 merge) + 1 (recency, daysSince <= 90) = 8
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(8);
+  });
+
+  it('should NOT add recency bonus for merges older than 90 days', () => {
+    const oldDate = new Date();
+    oldDate.setDate(oldDate.getDate() - 120);
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 1, lastMergedAt: oldDate.toISOString() });
+    // 5 + 2 (1 merge) + 0 (no recency) = 7
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(7);
+  });
+
+  it('should skip recency bonus for invalid lastMergedAt date', () => {
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 1, lastMergedAt: 'invalid-date' });
+    // 5 + 2 (1 merge) + 0 (invalid date, no recency) = 7
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(7);
   });
 
   it('should add +1 for responsive signal', () => {
     stateManager.updateRepoScore('owner/repo', { signals: { isResponsive: true, hasActiveMaintainers: true, hasHostileComments: false } });
-    const score = stateManager.getRepoScore('owner/repo');
-    expect(score!.score).toBe(6);
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(6);
   });
 
   it('should subtract -2 for hostile signal', () => {
     stateManager.updateRepoScore('owner/repo', { signals: { hasHostileComments: true, hasActiveMaintainers: true, isResponsive: false } });
-    const score = stateManager.getRepoScore('owner/repo');
-    expect(score!.score).toBe(3);
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(3);
   });
 
   it('should clamp score to minimum of 1', () => {
@@ -331,18 +383,94 @@ describe('StateManager calculateScore (via updateRepoScore)', () => {
       closedWithoutMergeCount: 10,
       signals: { hasHostileComments: true, hasActiveMaintainers: true, isResponsive: false },
     });
-    const score = stateManager.getRepoScore('owner/repo');
-    expect(score!.score).toBe(1);
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(1);
   });
 
   it('should clamp score to maximum of 10', () => {
-    // Base 5, +4 (merged cap), +1 (responsive) = 10
+    // Base 5, +5 (merged cap), +1 (responsive) = 11 => clamped to 10
     stateManager.updateRepoScore('owner/repo', {
       mergedPRCount: 100,
       signals: { isResponsive: true, hasActiveMaintainers: true, hasHostileComments: false },
     });
-    const score = stateManager.getRepoScore('owner/repo');
-    expect(score!.score).toBe(10);
+    expect(stateManager.getRepoScore('owner/repo')!.score).toBe(10);
+  });
+});
+
+describe('StateManager updateRepoScore partial signals', () => {
+  let stateManager: StateManager;
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  it('should preserve hasHostileComments when updating with partial signals', () => {
+    // First set hostile to true
+    stateManager.updateRepoScore('owner/repo', {
+      signals: { hasHostileComments: true, hasActiveMaintainers: true, isResponsive: false },
+    });
+    expect(stateManager.getRepoScore('owner/repo')!.signals.hasHostileComments).toBe(true);
+
+    // Now update only isResponsive — hasHostileComments should be preserved
+    stateManager.updateRepoScore('owner/repo', {
+      signals: { isResponsive: true, hasActiveMaintainers: true },
+    });
+    const score = stateManager.getRepoScore('owner/repo')!;
+    expect(score.signals.hasHostileComments).toBe(true);
+    expect(score.signals.isResponsive).toBe(true);
+  });
+
+  it('should preserve isResponsive when updating only hasHostileComments', () => {
+    stateManager.updateRepoScore('owner/repo', {
+      signals: { isResponsive: true, hasActiveMaintainers: false, hasHostileComments: false },
+    });
+
+    stateManager.updateRepoScore('owner/repo', {
+      signals: { hasHostileComments: true },
+    });
+    const score = stateManager.getRepoScore('owner/repo')!;
+    expect(score.signals.isResponsive).toBe(true);
+    expect(score.signals.hasHostileComments).toBe(true);
+  });
+});
+
+describe('StateManager getReposWithMergedPRs', () => {
+  let stateManager: StateManager;
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  it('should return empty array when no repos have merged PRs', () => {
+    expect(stateManager.getReposWithMergedPRs()).toEqual([]);
+  });
+
+  it('should return repos with mergedPRCount > 0', () => {
+    stateManager.updateRepoScore('owner/merged-repo', { mergedPRCount: 2 });
+    stateManager.updateRepoScore('owner/no-merges', { mergedPRCount: 0 });
+    stateManager.updateRepoScore('owner/also-merged', { mergedPRCount: 1 });
+
+    const repos = stateManager.getReposWithMergedPRs();
+    expect(repos).toHaveLength(2);
+    expect(repos).toContain('owner/merged-repo');
+    expect(repos).toContain('owner/also-merged');
+    expect(repos).not.toContain('owner/no-merges');
+  });
+
+  it('should sort by merged count descending', () => {
+    stateManager.updateRepoScore('owner/few', { mergedPRCount: 1 });
+    stateManager.updateRepoScore('owner/many', { mergedPRCount: 5 });
+    stateManager.updateRepoScore('owner/some', { mergedPRCount: 3 });
+
+    const repos = stateManager.getReposWithMergedPRs();
+    expect(repos).toEqual(['owner/many', 'owner/some', 'owner/few']);
+  });
+
+  it('should not include repos that only have closed PRs', () => {
+    stateManager.updateRepoScore('owner/rejected', { closedWithoutMergeCount: 3, mergedPRCount: 0 });
+    stateManager.updateRepoScore('owner/merged', { mergedPRCount: 1 });
+
+    const repos = stateManager.getReposWithMergedPRs();
+    expect(repos).toEqual(['owner/merged']);
   });
 });
 
@@ -412,6 +540,90 @@ describe('StateManager state validity', () => {
     expect(stats.totalTracked).toBe(2);
     // mergeRate = 5 / (5+1) * 100 = 83.3%
     expect(stats.mergeRate).toBe('83.3%');
+  });
+});
+
+describe('StateManager markRepoHostile signal preservation', () => {
+  let stateManager: StateManager;
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  it('should preserve isResponsive when marking repo as hostile', () => {
+    stateManager.updateRepoScore('owner/repo', {
+      signals: { isResponsive: true, hasActiveMaintainers: true, hasHostileComments: false },
+    });
+    stateManager.markRepoHostile('owner/repo');
+    const score = stateManager.getRepoScore('owner/repo')!;
+    expect(score.signals.hasHostileComments).toBe(true);
+    expect(score.signals.isResponsive).toBe(true);
+    expect(score.signals.hasActiveMaintainers).toBe(true);
+  });
+
+  it('should apply -2 hostile penalty to score', () => {
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 1 });
+    const scoreBefore = stateManager.getRepoScore('owner/repo')!.score;
+    stateManager.markRepoHostile('owner/repo');
+    const scoreAfter = stateManager.getRepoScore('owner/repo')!.score;
+    expect(scoreAfter).toBe(scoreBefore - 2);
+  });
+
+  it('should create default score record if repo not yet scored', () => {
+    stateManager.markRepoHostile('owner/new-repo');
+    const score = stateManager.getRepoScore('owner/new-repo')!;
+    expect(score).toBeDefined();
+    expect(score.signals.hasHostileComments).toBe(true);
+    // Base 5 - 2 hostile = 3
+    expect(score.score).toBe(3);
+  });
+});
+
+describe('StateManager incrementMergedCount / incrementClosedCount routing', () => {
+  let stateManager: StateManager;
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  it('should create record and set count to 1 for new repo', () => {
+    stateManager.incrementMergedCount('owner/new-repo');
+    const score = stateManager.getRepoScore('owner/new-repo')!;
+    expect(score).toBeDefined();
+    expect(score.mergedPRCount).toBe(1);
+    expect(score.lastMergedAt).toBeDefined();
+  });
+
+  it('should increment correctly on multiple calls', () => {
+    stateManager.incrementMergedCount('owner/repo');
+    stateManager.incrementMergedCount('owner/repo');
+    expect(stateManager.getRepoScore('owner/repo')!.mergedPRCount).toBe(2);
+  });
+
+  it('should preserve existing signals when incrementing merged count', () => {
+    stateManager.updateRepoScore('owner/repo', {
+      signals: { isResponsive: true, hasActiveMaintainers: true, hasHostileComments: false },
+    });
+    stateManager.incrementMergedCount('owner/repo');
+    const score = stateManager.getRepoScore('owner/repo')!;
+    expect(score.signals.isResponsive).toBe(true);
+    expect(score.signals.hasActiveMaintainers).toBe(true);
+    expect(score.mergedPRCount).toBe(1);
+  });
+
+  it('should create record and set count to 1 for new repo on incrementClosedCount', () => {
+    stateManager.incrementClosedCount('owner/new-repo');
+    const score = stateManager.getRepoScore('owner/new-repo')!;
+    expect(score).toBeDefined();
+    expect(score.closedWithoutMergeCount).toBe(1);
+  });
+
+  it('should handle mixed increment and closed operations on same repo', () => {
+    stateManager.incrementMergedCount('owner/repo');
+    stateManager.incrementClosedCount('owner/repo');
+    const score = stateManager.getRepoScore('owner/repo')!;
+    expect(score.mergedPRCount).toBe(1);
+    expect(score.closedWithoutMergeCount).toBe(1);
   });
 });
 

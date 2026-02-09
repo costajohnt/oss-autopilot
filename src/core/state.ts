@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, StateEvent, StateEventType, DailyDigest } from './types.js';
+import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, RepoScoreUpdate, StateEvent, StateEventType, DailyDigest } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
 
 // Current state version
@@ -919,20 +919,36 @@ export class StateManager {
   }
 
   /**
-   * Calculate the score based on the repo's metrics
-   * Base 5, +2 per merged (max +4), -1 per closed without merge (max -3),
-   * +1 if responsive, -2 if hostile. Clamp 1-10.
+   * Calculate the score based on the repo's metrics.
+   * Base 5, logarithmic merge bonus (max +5), -1 per closed without merge (max -3),
+   * +1 if recently merged (within 90 days), +1 if responsive, -2 if hostile. Clamp 1-10.
    */
   private calculateScore(repoScore: RepoScore): number {
     let score = 5; // Base score
 
-    // +2 per merged PR (max +4)
-    const mergedBonus = Math.min(repoScore.mergedPRCount * 2, 4);
-    score += mergedBonus;
+    // Logarithmic merge bonus (max +5): 1→+2, 2→+3, 3→+4, 5+→+5
+    if (repoScore.mergedPRCount > 0) {
+      const mergedBonus = Math.min(Math.round(Math.log2(repoScore.mergedPRCount + 1) * 2), 5);
+      score += mergedBonus;
+    }
 
     // -1 per closed without merge (max -3)
     const closedPenalty = Math.min(repoScore.closedWithoutMergeCount, 3);
     score -= closedPenalty;
+
+    // +1 if lastMergedAt is set and within 90 days (recency)
+    if (repoScore.lastMergedAt) {
+      const lastMergedDate = new Date(repoScore.lastMergedAt);
+      if (isNaN(lastMergedDate.getTime())) {
+        console.error(`[SCORE_CALC] Invalid lastMergedAt date for ${repoScore.repo}: "${repoScore.lastMergedAt}". Skipping recency bonus.`);
+      } else {
+        const msPerDay = 1000 * 60 * 60 * 24;
+        const daysSince = Math.floor((Date.now() - lastMergedDate.getTime()) / msPerDay);
+        if (daysSince <= 90) {
+          score += 1;
+        }
+      }
+    }
 
     // +1 if responsive
     if (repoScore.signals.isResponsive) {
@@ -951,13 +967,14 @@ export class StateManager {
   /**
    * Update a repository's score with partial updates. If the repo has no existing score,
    * a default score record is created first (base score 5). After applying updates, the
-   * numeric score is recalculated using the formula: base 5, +2 per merged PR (max +4),
-   * -1 per closed-without-merge (max -3), +1 if responsive, -2 if hostile, clamped to [1, 10].
+   * numeric score is recalculated using the formula: base 5, logarithmic merge bonus (max +5),
+   * -1 per closed-without-merge (max -3), +1 if recently merged, +1 if responsive, -2 if hostile, clamped to [1, 10].
    * @param repo - Repository in "owner/repo" format.
-   * @param updates - Partial RepoScore fields to merge. The `score` field is ignored
-   *   since it is always recalculated.
+   * @param updates - Updatable RepoScore fields to merge. The `score`, `repo`, and
+   *   `lastEvaluatedAt` fields are not accepted — score is always derived via
+   *   calculateScore(), and repo/lastEvaluatedAt are managed internally.
    */
-  updateRepoScore(repo: string, updates: Partial<RepoScore>): void {
+  updateRepoScore(repo: string, updates: RepoScoreUpdate): void {
     if (!this.state.repoScores[repo]) {
       this.state.repoScores[repo] = this.createDefaultRepoScore(repo);
     }
@@ -990,39 +1007,31 @@ export class StateManager {
 
   /**
    * Increment the merged PR count for a repository and recalculate its score.
-   * Creates a default score record if the repo has not been scored yet.
+   * Routes through {@link updateRepoScore} for a single mutation path.
    * @param repo - Repository in "owner/repo" format.
    */
   incrementMergedCount(repo: string): void {
-    if (!this.state.repoScores[repo]) {
-      this.state.repoScores[repo] = this.createDefaultRepoScore(repo);
-    }
-
-    const repoScore = this.state.repoScores[repo];
-    repoScore.mergedPRCount += 1;
-    repoScore.lastMergedAt = new Date().toISOString();
-    repoScore.score = this.calculateScore(repoScore);
-    repoScore.lastEvaluatedAt = new Date().toISOString();
-
-    console.error(`Incremented merged count for ${repo}: ${repoScore.mergedPRCount} merged, score: ${repoScore.score}/10`);
+    const current = this.state.repoScores[repo];
+    const newCount = (current?.mergedPRCount ?? 0) + 1;
+    this.updateRepoScore(repo, {
+      mergedPRCount: newCount,
+      lastMergedAt: new Date().toISOString(),
+    });
+    console.error(`  └─ incremented merged count for ${repo}: ${newCount}`);
   }
 
   /**
    * Increment the closed-without-merge count for a repository and recalculate its score.
-   * Creates a default score record if the repo has not been scored yet.
+   * Routes through {@link updateRepoScore} for a single mutation path.
    * @param repo - Repository in "owner/repo" format.
    */
   incrementClosedCount(repo: string): void {
-    if (!this.state.repoScores[repo]) {
-      this.state.repoScores[repo] = this.createDefaultRepoScore(repo);
-    }
-
-    const repoScore = this.state.repoScores[repo];
-    repoScore.closedWithoutMergeCount += 1;
-    repoScore.score = this.calculateScore(repoScore);
-    repoScore.lastEvaluatedAt = new Date().toISOString();
-
-    console.error(`Incremented closed count for ${repo}: ${repoScore.closedWithoutMergeCount} closed, score: ${repoScore.score}/10`);
+    const current = this.state.repoScores[repo];
+    const newCount = (current?.closedWithoutMergeCount ?? 0) + 1;
+    this.updateRepoScore(repo, {
+      closedWithoutMergeCount: newCount,
+    });
+    console.error(`  └─ incremented closed count for ${repo}: ${newCount}`);
   }
 
   /**
@@ -1031,16 +1040,20 @@ export class StateManager {
    * @param repo - Repository in "owner/repo" format.
    */
   markRepoHostile(repo: string): void {
-    if (!this.state.repoScores[repo]) {
-      this.state.repoScores[repo] = this.createDefaultRepoScore(repo);
-    }
+    this.updateRepoScore(repo, { signals: { hasHostileComments: true } });
+    console.error(`Marked ${repo} as hostile, score: ${this.state.repoScores[repo].score}/10`);
+  }
 
-    const repoScore = this.state.repoScores[repo];
-    repoScore.signals.hasHostileComments = true;
-    repoScore.score = this.calculateScore(repoScore);
-    repoScore.lastEvaluatedAt = new Date().toISOString();
-
-    console.error(`Marked ${repo} as hostile, score: ${repoScore.score}/10`);
+  /**
+   * Get repositories where the user has at least one merged PR, sorted by merged count descending.
+   * These repos represent proven relationships with high merge probability.
+   * @returns Array of "owner/repo" strings for repos with mergedPRCount > 0.
+   */
+  getReposWithMergedPRs(): string[] {
+    return Object.values(this.state.repoScores)
+      .filter(rs => rs.mergedPRCount > 0)
+      .sort((a, b) => b.mergedPRCount - a.mergedPRCount)
+      .map(rs => rs.repo);
   }
 
   /**

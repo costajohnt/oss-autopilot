@@ -126,11 +126,19 @@ When `data.actionableIssues` is empty, display:
 All PRs are healthy! No issues need attention.
 ```
 
+If `hasIssueList && availableCount === 0`:
+```
+Your curated issue list is depleted ({completedCount} done). Time to find new issues!
+```
+
 Then use AskUserQuestion with:
 - "Pick an issue from your list" (if `hasIssueList` and `availableCount > 0` and `hasCapacity`) — "{availableCount} vetted issues available"
-- "Search for new issues" (if `hasCapacity`)
+- "Replenish your issue list" (if `hasIssueList` and `availableCount === 0` and `hasCapacity`) — "All {completedCount} issues done — search for fresh ones"
+- "Search for new issues" (if `hasCapacity` and NOT showing replenish option)
 - "View PR status details"
 - "Done for now"
+
+**"Replenish your issue list"** routes to **Handle "Find New Issues"** (same as search), but agents should be told to suggest issues suitable for adding to the curated list.
 
 ### Display All PRs First (Information Before Prompt)
 
@@ -448,6 +456,27 @@ After all agents complete, present a consolidated summary table:
 | #863 | ink | CI green, awaiting review |
 | #2857 | eslint-plugin-unicorn | CI green, awaiting review |
 ```
+
+### Auto-Exclude Prompt for Rejected PRs
+
+When the daily digest includes `[Recently Closed]` entries (PRs closed without merge), offer to exclude those repos from future searches:
+
+For each recently closed PR where the repo is NOT already excluded and the user has no merged PRs in that repo:
+
+```
+Your PR in {repo} was closed without merge. Exclude this repo from future issue searches?
+```
+
+Use AskUserQuestion with multiSelect:
+- "{repo} — exclude from searches" (for each qualifying repo)
+- "Keep all repos" — "Don't exclude any"
+
+If the user selects repos to exclude, update config:
+```bash
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" config --exclude-repo {repo} --json
+```
+
+Or update the config file directly to add repos to `excludeRepos`.
 
 ### Ask User About Remaining Issues
 

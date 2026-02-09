@@ -300,7 +300,9 @@ export interface ProjectHealth {
 
 /**
  * Quality score for a repository, used to prioritize issue search results.
- * Score is on a 1-10 scale: base 5, +2 per merged PR (max +4), -1 per closed-without-merge (max -3).
+ * Score is on a 1-10 scale: base 5, logarithmic merge bonus (max +5: 1→+2, 2→+3, 3→+4, 5+→+5),
+ * -1 per closed-without-merge (max -3), +1 if lastMergedAt is set and within 90 days,
+ * +1 if responsive, -2 if hostile.
  * Repos below `AgentConfig.minRepoScoreThreshold` are deprioritized.
  */
 export interface RepoScore {
@@ -316,11 +318,30 @@ export interface RepoScore {
   lastMergedAt?: string;
   lastEvaluatedAt: string;
   /** Qualitative signals about the repo's maintainer culture. */
-  signals: {
-    hasActiveMaintainers: boolean;
-    isResponsive: boolean;
-    hasHostileComments: boolean;
-  };
+  signals: RepoSignals;
+}
+
+/** Full set of qualitative signals about a repo's maintainer culture. */
+export interface RepoSignals {
+  hasActiveMaintainers: boolean;
+  isResponsive: boolean;
+  hasHostileComments: boolean;
+}
+
+/** Signals computed from observed open PR data, suitable for merging into RepoScore.signals. */
+export type ComputedRepoSignals = Pick<RepoSignals, 'isResponsive' | 'hasActiveMaintainers'>;
+
+/**
+ * Subset of RepoScore fields that callers may update via `updateRepoScore()`.
+ * Excludes `score` (always derived), `repo` (immutable key), and `lastEvaluatedAt` (auto-set).
+ * The `signals` field accepts a partial update — only provided fields are merged.
+ */
+export interface RepoScoreUpdate {
+  mergedPRCount?: number;
+  closedWithoutMergeCount?: number;
+  avgResponseDays?: number | null;
+  lastMergedAt?: string;
+  signals?: Partial<RepoSignals>;
 }
 
 /**

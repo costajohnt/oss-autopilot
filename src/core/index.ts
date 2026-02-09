@@ -5,7 +5,7 @@
 
 export { StateManager, getStateManager, resetStateManager } from './state.js';
 export { PRMonitor, type PRCheckFailure, type FetchPRsResult, type PRUpdate, type CheckAllPRsResult } from './pr-monitor.js';
-export { IssueDiscovery, type IssueCandidate } from './issue-discovery.js';
+export { IssueDiscovery, type IssueCandidate, type SearchPriority } from './issue-discovery.js';
 export { getOctokit } from './github.js';
 export {
   parseGitHubUrl,
