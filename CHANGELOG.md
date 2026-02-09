@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.7] - 2026-02-08
+
+### Fixed
+
+- SessionStart health check was silent even with active PRs — only reported when `totalNeedingAttention > 0`, which excluded `changesAddressedPRs` and `waitingOnMaintainerPRs`. Now always shows a one-liner summary with PR portfolio breakdown (e.g., "OSS: 16 active PRs — 2 awaiting re-review, 1 waiting on maintainer").
+
 ## [0.8.6] - 2026-02-08
 
 ### Fixed
@@ -208,6 +214,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.8.7]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.3...v0.8.4
