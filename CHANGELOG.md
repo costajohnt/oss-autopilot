@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-02-08
+
+### Added
+
+- Draft-first PR workflow for new contributions (Steps 5.6–5.8) — new PRs are created as drafts, reviewed iteratively with scope-aware agents, squashed into a single commit, and only marked ready after explicit user confirmation. Closes #59.
+- Scope-aware review agents — review prompts include the issue context so findings stay focused on the PR's purpose, preventing scope creep from pre-existing code issues
+- Iterative review cycle with soft 3-round limit — after 3 rounds, gently prompts user to finalize rather than continuing indefinitely
+- Squash + reword step (Step 5.7) — squashes all review-cycle commits into a single clean commit with a reworded message reflecting all work done
+- Per-repo squash configuration — `squashByDefault` global setting with `repoOverrides.{repo}.squash` for repos that prefer atomic commits
+- Mark-ready gate (Step 5.8) — explicit user confirmation required before `gh pr ready` makes the PR visible to maintainers
+- `isNewContribution` and `issueContext` session variables for routing new contributions through draft-first flow
+- Squash preference question in `/setup-oss` (both CLI and markdown paths)
+
+### Changed
+
+- Step 5.5 now routes differently based on `isNewContribution` — new contributions skip pre-commit review agents (moved to Step 5.6), existing PR updates keep the standard review-before-commit flow
+- Step 5.5 sub-step 0 replaced by new routing logic (New Contribution vs Existing PR Update); standard-path sub-steps renumbered from 1–6 (formerly 0–5)
+- Step 6 notes that draft-first PRs have already been code-reviewed, so compliance check focuses on PR description quality and opensource.guide standards
+
 ## [0.9.0] - 2026-02-08
 
 ### Added
@@ -265,6 +284,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.10.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.8...v0.9.0
 [0.8.8]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.6...v0.8.7

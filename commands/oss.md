@@ -339,7 +339,7 @@ These change code or post public content:
 For Tier 2 actions, agents INVESTIGATE and RECOMMEND. All write actions require
 explicit user approval via AskUserQuestion.
 
-**After Tier 2 code changes are complete, ALWAYS proceed to Step 5.5 (Pre-Commit Code Review) before committing or pushing.**
+**After Tier 2 code changes are complete, ALWAYS proceed to Step 5.5 (Pre-Commit Code Review) before committing or pushing.** Step 5.5 routes differently based on whether this is a new contribution (`isNewContribution`) or an update to an existing PR — see Step 5.5 for details.
 
 ### Same-Repo PR Grouping
 
@@ -572,6 +572,12 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" s
 
 Or dispatch the `issue-scout` agent with language/label preferences.
 
+**When the user claims any issue found through search and starts implementing**, set:
+- `isNewContribution = true`
+- `issueContext = { title, url, description }` — for scope-aware review in Step 5.6
+
+This activates the same draft-first workflow as the curated list path (see "Handle Pick Issue From List" section 6 for the full sequence: Steps 5.5 through 6).
+
 If user requests this but `hasCapacity === false`:
 > "You currently have [N] critical issues that need attention. Would you like to address those first, or override and search anyway?"
 
@@ -637,9 +643,19 @@ Show the vetting summary. If claimable, offer:
 - "Search GitHub instead"
 - "Done for now"
 
-#### 6. After claiming → implementation → PR → Step 6.5
+#### 6. After claiming → implementation → draft PR → review → ready → Step 6.5
 
-When the user claims an issue from the list and eventually creates a PR, proceed to **Step 6.5** (Post-PR List Continuity) instead of ending.
+When the user claims an issue and starts implementing, set:
+- `isNewContribution = true`
+- `issueContext = { title, url, description }` — the issue being addressed (used for scope-aware review in Step 5.6)
+
+After implementation, the flow proceeds through the **draft-first workflow**:
+1. Step 5.5 detects `isNewContribution` → commits, pushes, creates draft PR
+2. Step 5.6 runs iterative review cycle (scope-aware, tied to `issueContext`)
+3. Step 5.7 squashes commits and rewords message
+4. Step 5.8 marks PR ready for review after user confirmation
+5. Step 6 runs compliance check
+6. Step 6.5 offers list updates (if issue came from curated list)
 
 **CRITICAL: Track that the current issue came from the curated list** so Step 6.5 knows to offer list updates.
 
@@ -676,7 +692,80 @@ Your PRs are tracked. Run /oss anytime to check again.
 
 This is a quality gate that catches issues before they reach the maintainer.
 
-### 0. Pre-flight: Verify Changes Exist
+### 0. Routing: New Contribution vs Existing PR Update
+
+**Check `isNewContribution`** (set in Step 4 when the user claims an issue and starts implementing).
+
+- **If `isNewContribution === true`:** Follow the **Draft-First Path** (sub-steps 0a–0d below), then route to Step 5.6 for iterative review.
+- **If `isNewContribution === false` (or not set):** Follow the **Standard Path** (sub-step 1 onward) — review before committing, same as before.
+
+#### Draft-First Path (new contributions only)
+
+##### 0a. Pre-flight: Verify Changes Exist
+
+```bash
+git status --porcelain
+```
+
+**If output is empty:** Report no changes and return to Step 4.
+
+##### 0b. Stage and Commit
+
+- Stage the specific changed files (not `git add -A`)
+- If staging fails for any file, report which file(s) failed and why
+- Commit following the repo's conventional commit format
+- If commit fails (e.g., pre-commit hook failure, empty commit):
+  - Report the specific error to the user
+  - If pre-commit hook failed, show the hook output and offer to fix the issues
+  - Do NOT proceed to push
+- **Do NOT add AI attribution** (no Co-Authored-By, no "Generated with" mentions)
+
+##### 0c. Push
+
+```bash
+git push -u origin HEAD
+```
+
+**If push fails**, report the error and offer to retry or cancel.
+
+##### 0d. Create Draft PR
+
+```bash
+gh pr create --draft --title "{conventional title}" --body "{PR body}" --repo {upstream-repo}
+```
+
+Generate the PR title and body following the target repo's conventions (check `CONTRIBUTING.md`, existing PR formats). Include:
+- Reference to the issue being fixed (e.g., "Fixes #123")
+- Brief description of the approach
+
+**If `gh pr create --draft` succeeds**, store in session context:
+- `draftPRNumber` — the PR number returned
+- `draftPRUrl` — the PR URL returned
+- `baseBranch` — the base branch name (from the PR creation output or `gh repo view --json defaultBranchRef`)
+
+> "Draft PR created: {draftPRUrl}. It's marked as a draft — maintainers can see it but won't be asked to review yet. Starting review cycle..."
+
+**→ Proceed to Step 5.6 (Draft PR Review Cycle)**
+
+**If `gh pr create --draft` fails:**
+- Report the specific error (include stderr output)
+- Offer options:
+  1. "Retry" — re-run the command
+  2. "Create as regular PR instead" — fall back to `gh pr create` without `--draft`. Only offer this if the error indicates draft PRs are not supported (e.g., GitHub Enterprise). For auth/network errors, this option won't help.
+  3. "Done for now" — leave changes pushed, create PR manually later
+
+**If non-draft fallback succeeds:**
+- Store `draftPRNumber` and `draftPRUrl` from the created PR
+- Warn: "Note: This PR is immediately visible to maintainers. The review cycle will still run, but maintainers may see the PR before review is complete."
+- Proceed to Step 5.6 (review cycle still runs). Step 5.8 (Mark Ready) will be skipped since the PR is already public.
+
+- **Do NOT proceed to Step 5.6 without a valid `draftPRNumber` and `draftPRUrl`**
+
+---
+
+### Standard Path (existing PR updates)
+
+#### 1. Pre-flight: Verify Changes Exist
 
 ```bash
 git status --porcelain
@@ -687,7 +776,7 @@ git status --porcelain
 
 Then skip the rest of Step 5.5 and return to Step 4's action handler loop.
 
-### 1. Gather Change Context
+#### 2. Gather Change Context
 
 ```bash
 git diff
@@ -695,7 +784,7 @@ git diff --cached
 git status --porcelain
 ```
 
-Save the `git diff` output — it will be passed to each review agent in sub-step 2.
+Save the `git diff` output — it will be passed to each review agent in sub-step 3.
 
 Identify changed files and their types (TypeScript, Python, etc.). Count files changed.
 
@@ -704,7 +793,7 @@ Read the target repo's conventions if not already loaded:
 - Lint/format configs (`.eslintrc*`, `.prettierrc*`, `biome.json`, etc.)
 - Test directory structure (`test/`, `tests/`, `__tests__/`, `spec/`)
 
-### 2. Dispatch Review Agents in Parallel
+#### 3. Dispatch Review Agents in Parallel
 
 **CRITICAL: Dispatch ALL agents in a SINGLE message for true parallelism.**
 
@@ -787,7 +876,7 @@ Task(pre-commit-reviewer,
 **Partial failure:** If some toolkit agents succeed and others fail, consolidate the successful results and note which reviews were skipped:
 > "Note: The following specialized reviews could not be completed: {list}."
 
-### 3. Consolidate Findings
+#### 4. Consolidate Findings
 
 After all agents complete, merge their outputs into a unified report. Deduplicate findings that multiple agents flagged.
 
@@ -822,7 +911,7 @@ If NO issues found across all agents:
 All agents passed. No issues found — changes are clean and ready to commit.
 ```
 
-### 4. User Decision Point
+#### 5. User Decision Point
 
 Use AskUserQuestion based on findings:
 
@@ -848,11 +937,11 @@ Options:
 3. "Done for now" — "Cancel, return to main flow"
 ```
 
-### 5. Handle User Choice
+#### 6. Handle User Choice
 
 **"Address findings":**
 - User makes fixes (with assistance as needed)
-- After fixes, loop back to "Gather Change Context" (sub-step 1 of Step 5.5) to re-gather changes and re-dispatch agents
+- After fixes, loop back to "Gather Change Context" (sub-step 2 of Step 5.5) to re-gather changes and re-dispatch agents
 - Continue until user is satisfied or selects a different option
 
 **"Show full diff" / "Show full diff first":**
@@ -881,6 +970,387 @@ Options:
 
 ---
 
+## Step 5.6: Draft PR Review Cycle
+
+**Trigger:** After a draft PR is created in Step 5.5 (Draft-First Path). Only runs for new contributions (`isNewContribution === true`).
+
+This step runs iterative, scope-aware code review against the draft PR before it becomes visible to maintainers.
+
+Initialize `roundNumber = 1` at the start of the review cycle.
+
+### 1. Gather Change Context
+
+Determine the base branch dynamically (do NOT hardcode `main`):
+
+1. Try: `gh pr view --json baseRefName --jq '.baseRefName'` — most reliable, uses actual PR target
+2. Fallback: `git remote show origin | grep 'HEAD branch' | awk '{print $NF}'` — uses repo default
+3. Last resort: `echo "main"` — warn user: "Could not detect base branch automatically. Defaulting to 'main'. Please confirm this is correct."
+
+If method 2 or 3 is used, ask the user to confirm the base branch before proceeding with diffs.
+
+```bash
+baseBranch=$(gh pr view --json baseRefName --jq '.baseRefName' 2>/dev/null || git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}' || echo "main")
+git fetch origin "$baseBranch"
+git diff "origin/$baseBranch"..HEAD
+git log --oneline "origin/$baseBranch"..HEAD
+```
+
+Store `baseBranch` in session context — it is reused in Step 5.7.
+
+Save the full diff — it covers ALL changes on this branch (not just the last commit).
+
+Identify changed files and their types. Count files changed.
+
+Read the target repo's conventions if not already loaded:
+- `CONTRIBUTING.md`
+- Lint/format configs (`.eslintrc*`, `.prettierrc*`, `biome.json`, etc.)
+- Test directory structure (`test/`, `tests/`, `__tests__/`, `spec/`)
+
+### 2. Dispatch Scope-Aware Review Agents in Parallel
+
+**CRITICAL: Dispatch ALL agents in a SINGLE message for true parallelism.**
+
+Use the same agent dispatch pattern as Step 5.5 sub-step 3 (same agents, same conditional rules, same fallback logic), but **prepend the following SCOPE block** to each agent prompt. The SCOPE block constrains findings to the PR's purpose and prevents scope creep from pre-existing issues:
+
+```
+SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
+Focus findings on changes related to this issue. Flag pre-existing issues only
+if they are Critical severity. Do NOT suggest improvements outside the scope of this PR.
+```
+
+Each agent should tailor the scope instruction to its specialty:
+- **code-reviewer**: "Focus findings on changes related to this issue."
+- **silent-failure-hunter**: "Focus only on error handling in the changed code paths. Do NOT flag pre-existing error handling patterns unless they are Critical."
+- **code-simplifier**: "Only suggest simplifications for code introduced or modified by this PR. Do NOT suggest refactoring pre-existing code."
+- **pr-test-analyzer**: "Focus test recommendations on the new/changed functionality only."
+
+**Additional differences from Step 5.5:**
+- Use `git diff origin/$baseBranch..HEAD` (full branch diff) instead of `git diff` (working tree diff)
+- Conditional agents and fallback follow the same rules as Step 5.5 sub-step 3, with the SCOPE block added to each prompt
+
+**If ALL agents fail (including fallback):**
+> "Review agents are currently unavailable. You can proceed without automated review, but we recommend manual review before marking ready."
+- Offer: "Proceed to squash without review" / "Retry review" / "Done for now"
+
+### 3. Consolidate Findings
+
+Same consolidation logic as Step 5.5 sub-step 4, but add a scope tag to each finding:
+
+```
+## Draft PR Review — Round {roundNumber}
+
+### In-Scope Findings
+
+#### Critical ({count}) — Must fix before marking ready
+- **{file}:{line}** — {description} (found by: {agent})
+  Suggestion: {fix}
+
+#### Recommended ({count}) — Should fix
+- **{file}:{line}** — {description} (found by: {agent})
+  Suggestion: {fix}
+
+#### Minor ({count}) — Nice to have
+- **{file}:{line}** — {description}
+
+### Out-of-Scope Findings ({count})
+These findings relate to pre-existing code, not changes for this issue:
+- **{file}:{line}** — {description} (severity: {level})
+
+### Test Coverage
+- {assessment from pr-test-analyzer}
+```
+
+If NO in-scope issues found:
+```
+## Draft PR Review — Round {roundNumber}
+
+All review agents passed. No in-scope issues found — PR is clean and ready to finalize.
+```
+
+### 4. User Decision Point
+
+Use AskUserQuestion based on findings:
+
+**If in-scope Critical or Recommended issues exist:**
+```
+Question: "Review found {count} in-scope findings. How would you like to proceed?"
+Header: "Review"
+
+Options:
+1. "Address in-scope findings" — "Fix issues related to this PR's purpose"
+2. "Show full diff" — "Display the complete branch diff"
+3. "Finalize anyway" — "Skip remaining fixes, proceed to squash"
+4. "Done for now" — "Leave as draft, come back later"
+```
+
+**If only Minor issues or no in-scope issues:**
+```
+Question: "PR looks clean. Ready to finalize?"
+Header: "Review"
+
+Options:
+1. "Finalize — proceed to squash (Recommended)" — "Squash commits and prepare for review"
+2. "Show full diff first" — "Review the complete branch diff"
+3. "Done for now" — "Leave as draft, come back later"
+```
+
+### 5. Handle User Choice
+
+**"Address in-scope findings":**
+- User makes fixes (with assistance as needed)
+- Stage and commit the fixes (additional commits on the branch)
+- Push to update the draft PR:
+  ```bash
+  git push
+  ```
+- **If push fails**, report the error and offer to retry or continue reviewing locally (do NOT increment `roundNumber` if push failed — the remote is out of sync)
+- **If push succeeds**, increment `roundNumber`
+- Loop back to sub-step 1 (Gather Change Context) to re-review
+
+**Soft limit:** After **3 review rounds**, present a different prompt:
+```
+Question: "You've completed {roundNumber} review rounds. Remaining findings may be diminishing returns. Ready to finalize?"
+Header: "Review"
+
+Options:
+1. "Finalize now (Recommended)" — "Squash and prepare for maintainer review"
+2. "One more round" — "Address remaining findings, then re-review"
+3. "Done for now" — "Leave as draft, come back later"
+```
+
+**"Show full diff" / "Show full diff first":**
+- Display the full `git diff origin/$baseBranch..HEAD` output
+- Then ask:
+  ```
+  Question: "Diff reviewed. Ready to proceed?"
+  Header: "Diff"
+
+  Options:
+  1. "Finalize — proceed to squash (Recommended)"
+  2. "Fix something first" — "Make additional changes"
+  3. "Done for now"
+  ```
+
+**"Finalize — proceed to squash" / "Finalize anyway" / "Finalize now":**
+- **→ Proceed to Step 5.7 (Squash + Reword)**
+
+**"Done for now":**
+- Report: "Draft PR #{draftPRNumber} is saved. Run `/oss` later to continue."
+- Return to Step 4's action handler loop
+
+---
+
+## Step 5.7: Squash + Reword
+
+**Trigger:** After the user finalizes the review cycle in Step 5.6. Only runs for new contributions.
+
+This step produces a clean, single-commit PR with an accurate commit message.
+
+### 1. Count Commits on Branch
+
+```bash
+git rev-list --count "origin/$baseBranch"..HEAD
+```
+
+**If only 1 commit:** Skip squash — nothing to squash. Proceed to Step 5.8.
+
+**If multiple commits:** Continue to sub-step 2.
+
+### 2. Check Squash Configuration
+
+Read the squash setting for this repo from `.claude/oss-autopilot/config.md` frontmatter:
+
+```yaml
+# Global default
+squashByDefault: true
+
+# Per-repo overrides
+repoOverrides:
+  some-org/some-repo:
+    squash: false
+```
+
+**Resolution order:**
+1. Check `repoOverrides.{owner/repo}.squash` — if set, use it
+2. Fall back to `squashByDefault` (defaults to `true` if not set)
+
+**If squash setting is `false`:** Skip to Step 5.8.
+
+**If squash setting is `"ask"` (user selected "Ask me each time" during setup):**
+Ask the user:
+```
+Question: "This branch has {N} commits. Squash into a single commit?"
+Header: "Squash"
+Options:
+1. "Yes, squash (Recommended)" — "Clean single-commit PR"
+2. "No, keep individual commits" — "Proceed without squashing"
+```
+Route based on answer. If "No", skip to Step 5.8.
+
+**If squash setting is `true` (or unset):** Continue with squash.
+
+### 3. Generate Reworded Commit Message (before squashing)
+
+Generate a commit message that reflects ALL work done across the review cycle:
+- Initial implementation
+- Test additions
+- Review fixes
+- Any other changes
+
+Follow the target repo's conventional commit format. Include:
+- Issue reference (e.g., `Fixes #123`)
+- Concise description of what was implemented and why
+
+**Present the reworded message to the user for approval BEFORE performing the squash:**
+
+```
+Question: "This branch has {N} commits. Here's the proposed squashed commit message. Approve, edit, or skip?"
+Header: "Squash"
+
+Options:
+1. "Approve and squash (Recommended)" — "Squash into single commit with this message"
+2. "Edit message" — "Modify the commit message before squashing"
+3. "Skip squash" — "Keep individual commits, proceed to mark ready"
+4. "Done for now" — "Leave as draft, come back later"
+```
+
+Display the proposed message above the prompt.
+
+### 4. Handle User Choice
+
+**"Skip squash":**
+- No destructive operations were performed — branch is unchanged
+- **→ Proceed to Step 5.8**
+
+**"Done for now":**
+- No destructive operations were performed — branch is unchanged
+- Report: "Draft PR #{draftPRNumber} remains as a draft. Run `/oss` later to continue."
+- Return to Step 4's action handler loop
+
+**"Approve and squash" / "Edit message":**
+- If "Edit message", accept the user's edited message first (via "Other" input or follow-up)
+- Continue to sub-step 5 (Perform Squash and Force Push)
+
+### 5. Perform Squash and Force Push
+
+**This sub-step only runs after the user has explicitly approved the squash.**
+
+**5a. Create a safety recovery tag:**
+```bash
+git tag -d oss-autopilot-pre-squash 2>/dev/null   # Remove stale tag from a previous interrupted run
+git tag oss-autopilot-pre-squash
+```
+
+If tag creation fails, do NOT proceed with squash. Report: "Could not create safety recovery tag. Aborting squash to protect your work." Offer: "Retry" / "Skip squash" / "Done for now".
+
+This allows recovery via `git reset --hard oss-autopilot-pre-squash` if anything goes wrong.
+
+**5b. Squash commits:**
+```bash
+git reset --soft "$(git merge-base "origin/$baseBranch" HEAD)"
+git commit -m "{approved or edited message}"
+```
+
+**If `git reset --soft` or `git commit` fails:**
+- Recover: `git reset --hard oss-autopilot-pre-squash`
+- Report the error and offer to retry or skip squash
+- Clean up tag: `git tag -d oss-autopilot-pre-squash`
+
+**5c. Force push:**
+```bash
+git push --force-with-lease
+```
+
+**If force push fails:**
+- Report the specific error to the user
+- If force push is blocked by branch protection:
+  > "Force push is not allowed on this branch. Restoring original commits."
+  - Recover: `git reset --hard oss-autopilot-pre-squash && git push`
+  - Clean up: `git tag -d oss-autopilot-pre-squash`
+- For other failures, offer:
+  1. "Retry force push"
+  2. "Undo squash and keep individual commits" — `git reset --hard oss-autopilot-pre-squash` then `git tag -d oss-autopilot-pre-squash`
+  3. "Done for now" — `git tag -d oss-autopilot-pre-squash` (clean up tag even when leaving)
+- **Do NOT proceed to Step 5.8 unless the push succeeded**
+
+**5d. Clean up recovery tag:**
+```bash
+git tag -d oss-autopilot-pre-squash
+```
+
+**→ Proceed to Step 5.8 after successful push**
+
+---
+
+## Step 5.8: Mark Ready for Review
+
+**Trigger:** After Step 5.7 (Squash + Reword) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
+
+This is the final gate before the PR becomes visible to maintainers.
+
+### 1. Show PR Summary
+
+Display a summary of the draft PR:
+
+```
+## Ready to publish?
+
+Draft PR: {draftPRUrl}
+Title: {PR title}
+Commits: {1 if squashed, N if not}
+Files changed: {count}
+Issue: {issueContext.url}
+
+This will make the PR visible to maintainers for review.
+```
+
+### 2. User Confirmation
+
+```
+Question: "Mark this PR as ready for review?"
+Header: "Publish"
+
+Options:
+1. "Mark ready for review (Recommended)" — "PR is clean and ready for maintainers"
+2. "View PR in browser first" — "Open the PR page to inspect it"
+3. "Keep as draft" — "Leave as draft, come back later"
+```
+
+### 3. Handle User Choice
+
+**"Mark ready for review":**
+```bash
+gh pr ready {draftPRNumber} --repo {upstream-repo}
+```
+
+**If `gh pr ready` succeeds:**
+> "PR #{draftPRNumber} is now ready for review: {draftPRUrl}"
+
+Reset session state: `isNewContribution = false`, clear `issueContext`, `draftPRNumber`, `draftPRUrl`, `baseBranch`, `roundNumber`.
+**→ Proceed to Step 6 (compliance check)**
+
+**If `gh pr ready` fails:**
+- Report the specific error to the user
+- Offer options:
+  1. "Retry" — re-run the command
+  2. "Open PR in browser to mark ready manually" — `gh pr view {draftPRNumber} --repo {upstream-repo} --web`
+  3. "Keep as draft for now" — leave as draft, come back later
+- **Do NOT report success unless the command exits with code 0**
+
+**"View PR in browser first":**
+```bash
+gh pr view {draftPRNumber} --repo {upstream-repo} --web
+```
+
+After viewing, re-prompt with the same options.
+
+**"Keep as draft":**
+- Report: "PR #{draftPRNumber} remains as a draft. Run `/oss` later to mark it ready."
+- Reset session state: `isNewContribution = false`, clear `issueContext`, `draftPRNumber`, `draftPRUrl`, `baseBranch`, `roundNumber`.
+- Return to Step 4's action handler loop
+
+---
+
 ## Step 6: After Creating/Updating PRs
 
 **IMPORTANT:** After helping create or update a PR, always offer a compliance check:
@@ -888,6 +1358,8 @@ Options:
 > "Would you like me to run a compliance check on this PR to ensure it meets opensource.guide best practices?"
 
 Dispatch the `pr-compliance-checker` agent with the PR URL.
+
+**Note:** For new contributions that went through the draft-first workflow (Steps 5.6–5.8), the PR has already been reviewed iteratively and squashed. The compliance check here focuses on PR description quality, licensing, and other opensource.guide standards — not code quality (which was handled in Step 5.6).
 
 ### Test Coverage Requirements
 

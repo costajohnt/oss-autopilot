@@ -501,6 +501,9 @@ export interface AgentConfig {
 
   /** Whether to show the health check notification on session start. Default true. */
   showHealthCheck?: boolean;
+
+  /** Whether to squash commits before marking PR ready. `true` (default), `false`, or `"ask"`. */
+  squashByDefault?: boolean | 'ask';
 }
 
 /** Default configuration applied to new state files. All fields can be overridden via `/setup-oss`. */
@@ -517,6 +520,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
   githubUsername: '',
   minRepoScoreThreshold: 4,
   starredRepos: [],
+  squashByDefault: true,
 };
 
 /** Initial state written to `~/.oss-autopilot/state.json` on first run. Uses v2 architecture. */
