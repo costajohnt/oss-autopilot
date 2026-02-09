@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-02-09
+
+### Fixed
+
+- Dashboard "Attention Required" section now split into "Action Required" (contributor must act) and "Waiting on Others" (informational). Previously grouped all health issues together, creating false urgency. Closes #62.
+- Added missing `needsChangesPRs` rendering to dashboard — PRs with requested changes were not shown in any health section
+- Added `waitingOnMaintainerPRs` and `ciNotRunningPRs` rendering blocks — previously counted but never displayed
+- Dashboard health issue count now matches rendered items (previously `healthIssues` array diverged from template)
+
 ## [0.10.0] - 2026-02-08
 
 ### Added
@@ -284,6 +293,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.10.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.8...v0.9.0
 [0.8.8]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.7...v0.8.8
