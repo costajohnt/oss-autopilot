@@ -109,7 +109,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
     return;
   }
 
-  const html = generateDashboardHtml(stats, topRepos, monthlyMerged, monthlyClosed, monthlyOpened, digest, state);
+  const html = generateDashboardHtml(stats, monthlyMerged, monthlyClosed, monthlyOpened, digest, state);
 
   // Write to file in ~/.oss-autopilot/
   const dashboardPath = getDashboardPath();
@@ -176,27 +176,26 @@ function generateHeatmapHtml(digest: DailyDigest, state: Readonly<AgentState>): 
     addDay(event.at);
   }
 
-  // Build 3-month window (91 days back from today)
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const startDate = new Date(today);
-  startDate.setDate(startDate.getDate() - 90);
+  // Build 3-month window (91 days back from today), using UTC to match GitHub API timestamps
+  const todayUTC = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+  const startDate = new Date(todayUTC);
+  startDate.setUTCDate(startDate.getUTCDate() - 90);
 
   // Align to Sunday (start of week)
-  const dayOfWeek = startDate.getDay();
-  startDate.setDate(startDate.getDate() - dayOfWeek);
+  const dayOfWeek = startDate.getUTCDay();
+  startDate.setUTCDate(startDate.getUTCDate() - dayOfWeek);
 
   // Build cells
   const cells: Array<{ date: string; count: number; dayOfWeek: number }> = [];
   const cursor = new Date(startDate);
-  while (cursor <= today) {
+  while (cursor <= todayUTC) {
     const dateStr = cursor.toISOString().slice(0, 10);
     cells.push({
       date: dateStr,
       count: dailyActivity[dateStr] || 0,
-      dayOfWeek: cursor.getDay(),
+      dayOfWeek: cursor.getUTCDay(),
     });
-    cursor.setDate(cursor.getDate() + 1);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
   // Find max for color scaling
@@ -309,7 +308,6 @@ function generateHeatmapHtml(digest: DailyDigest, state: Readonly<AgentState>): 
 
 function generateDashboardHtml(
   stats: DashboardStats,
-  topRepos: Array<[string, { active: number; merged: number; closed: number }]>,
   monthlyMerged: Record<string, number>,
   monthlyClosed: Record<string, number>,
   monthlyOpened: Record<string, number>,
@@ -1368,19 +1366,14 @@ function generateDashboardHtml(
 
       let allMonths = Array.from(allMonthSet).sort();
 
-      // Pad to at least 6 months
-      if (allMonths.length > 0 && allMonths.length < 6) {
+      // Pad to at least 6 months by walking backwards from the earliest month
+      if (allMonths.length > 0 && allMonthSet.size < 6) {
         const earliest = allMonths[0];
         const [y, m] = earliest.split('-').map(Number);
-        while (allMonths.length < 6) {
-          const d = new Date(y, m - 1 - (6 - allMonths.length), 1);
+        for (let offset = 1; allMonthSet.size < 6; offset++) {
+          const d = new Date(y, m - 1 - offset, 1);
           const padMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-          if (!allMonthSet.has(padMonth)) {
-            allMonths.unshift(padMonth);
-            allMonthSet.add(padMonth);
-          } else {
-            break;
-          }
+          allMonthSet.add(padMonth);
         }
         allMonths = Array.from(allMonthSet).sort();
       }
