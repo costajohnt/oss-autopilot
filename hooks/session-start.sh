@@ -60,6 +60,7 @@ if [ -n "$messages" ]; then
   escaped=$(printf '%s' "$messages" | sed 's/\\/\\\\/g; s/"/\\"/g')
   cat <<EOF
 {
+  "systemMessage": "${escaped}",
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
     "additionalContext": "${escaped}"
