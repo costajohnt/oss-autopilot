@@ -89,7 +89,15 @@ The session continues until you're done — after every action, Claude asks what
 
 ### Dashboard
 
-The dashboard (`~/.oss-autopilot/dashboard.html`) is an HTML page that auto-opens each time you run `/oss`. It shows your active PRs, merge rate, contribution history, and which PRs need attention — all at a glance.
+The dashboard (`~/.oss-autopilot/dashboard.html`) auto-opens each time you run `/oss`. It shows your active PRs, merge rate, contribution history, and which PRs need attention — all at a glance.
+
+**Charts and visualizations:**
+
+- **Contribution Timeline** — Grouped bar chart showing PRs opened, merged, and closed per month
+- **Repository Breakdown** — Top 10 repos by total PRs (with "Other" bucket), stacked bars with percentage tooltips
+- **Success Rate Trends** — Monthly merge rate line chart (0-100%) with raw counts in tooltip
+- **Activity Heatmap** — GitHub-style 3-month calendar heatmap of contribution activity
+- **Status Overview** — Doughnut chart of PR states (active, merged, closed, dormant)
 
 ### Available Commands
 
