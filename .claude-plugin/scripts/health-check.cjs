@@ -1,5 +1,5 @@
-// Quick PR health check — reads cached state, outputs a one-liner if PRs need attention.
-// Called by SessionStart hook. Exits silently when nothing actionable.
+// Quick PR health check — reads cached state, outputs a one-liner summary.
+// Called by SessionStart hook. Exits silently only when no PRs are tracked.
 try {
   const s = require('fs').readFileSync(
     require('path').join(require('os').homedir(), '.oss-autopilot', 'state.json'),
@@ -16,10 +16,29 @@ try {
   if (ageDays > 7) {
     console.log("OSS: Haven't checked your PRs in " + ageDays + ' days. Run /oss to catch up.');
   } else {
-    const need = state.lastDigest.summary.totalNeedingAttention || 0;
-    const total = state.lastDigest.summary.totalActivePRs || 0;
-    if (need > 0) {
-      console.log('OSS: ' + need + ' of ' + total + ' PRs need attention (' + ageLabel + '). Run /oss to address.');
+    const d = state.lastDigest;
+    const total = d.summary.totalActivePRs || 0;
+    if (total === 0) process.exit(0);
+    // Build status segments for a compact one-liner
+    const segments = [];
+    const needResponse = (d.prsNeedingResponse || []).length;
+    const ciFailing = (d.ciFailingPRs || []).length;
+    const conflicts = (d.mergeConflictPRs || []).length;
+    const needsChanges = (d.needsChangesPRs || []).length;
+    const addressed = (d.changesAddressedPRs || []).length;
+    const waitMaintainer = (d.waitingOnMaintainerPRs || []).length;
+    // Actionable items first (you need to do something)
+    if (needResponse > 0) segments.push(needResponse + ' need response');
+    if (needsChanges > 0) segments.push(needsChanges + ' need changes');
+    if (ciFailing > 0) segments.push(ciFailing + ' CI failing');
+    if (conflicts > 0) segments.push(conflicts + ' conflicts');
+    // Informational items (waiting on others)
+    if (addressed > 0) segments.push(addressed + ' awaiting re-review');
+    if (waitMaintainer > 0) segments.push(waitMaintainer + ' waiting on maintainer');
+    if (segments.length > 0) {
+      console.log('OSS: ' + total + ' active PRs — ' + segments.join(', ') + ' (' + ageLabel + ')');
+    } else {
+      console.log('OSS: ' + total + ' active PRs, all healthy (' + ageLabel + ')');
     }
   }
 } catch (e) {
