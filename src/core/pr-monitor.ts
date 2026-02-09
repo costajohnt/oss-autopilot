@@ -648,17 +648,19 @@ export class PRMonitor {
   async fetchUserMergedPRCounts(): Promise<{
     repos: Map<string, { count: number; lastMergedAt: string }>;
     monthlyCounts: Record<string, number>;
+    monthlyOpenedCounts: Record<string, number>;
   }> {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
-      return { repos: new Map(), monthlyCounts: {} };
+      return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {} };
     }
 
     console.error(`Fetching merged PR counts for @${config.githubUsername}...`);
 
     const repos = new Map<string, { count: number; lastMergedAt: string }>();
     const monthlyCounts: Record<string, number> = {};
+    const monthlyOpenedCounts: Record<string, number> = {};
     let page = 1;
     let fetched = 0;
 
@@ -703,6 +705,12 @@ export class PRMonitor {
           const month = mergedAt.slice(0, 7); // "YYYY-MM"
           monthlyCounts[month] = (monthlyCounts[month] || 0) + 1;
         }
+
+        // Track when this PR was opened (for monthly opened histogram)
+        if (item.created_at) {
+          const openedMonth = item.created_at.slice(0, 7); // "YYYY-MM"
+          monthlyOpenedCounts[openedMonth] = (monthlyOpenedCounts[openedMonth] || 0) + 1;
+        }
       }
 
       fetched += data.items.length;
@@ -716,23 +724,29 @@ export class PRMonitor {
     }
 
     console.error(`Found ${fetched} merged PRs across ${repos.size} repos`);
-    return { repos, monthlyCounts };
+    return { repos, monthlyCounts, monthlyOpenedCounts };
   }
 
   /**
    * Fetch closed-without-merge PR counts per repository for the configured user.
    * Used to populate closedWithoutMergeCount in repo scores for accurate merge rate.
    */
-  async fetchUserClosedPRCounts(): Promise<Map<string, number>> {
+  async fetchUserClosedPRCounts(): Promise<{
+    repos: Map<string, number>;
+    monthlyCounts: Record<string, number>;
+    monthlyOpenedCounts: Record<string, number>;
+  }> {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
-      return new Map();
+      return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {} };
     }
 
     console.error(`Fetching closed PR counts for @${config.githubUsername}...`);
 
     const repos = new Map<string, number>();
+    const monthlyCounts: Record<string, number> = {};
+    const monthlyOpenedCounts: Record<string, number> = {};
     let page = 1;
     let fetched = 0;
 
@@ -760,6 +774,18 @@ export class PRMonitor {
         if (config.excludeOrgs?.some(org => owner.toLowerCase() === org.toLowerCase())) continue;
 
         repos.set(repo, (repos.get(repo) || 0) + 1);
+
+        // Track when this PR was closed (for monthly closed histogram)
+        if (item.closed_at) {
+          const closedMonth = item.closed_at.slice(0, 7); // "YYYY-MM"
+          monthlyCounts[closedMonth] = (monthlyCounts[closedMonth] || 0) + 1;
+        }
+
+        // Track when this PR was opened (for monthly opened histogram)
+        if (item.created_at) {
+          const openedMonth = item.created_at.slice(0, 7); // "YYYY-MM"
+          monthlyOpenedCounts[openedMonth] = (monthlyOpenedCounts[openedMonth] || 0) + 1;
+        }
       }
 
       fetched += data.items.length;
@@ -772,7 +798,7 @@ export class PRMonitor {
     }
 
     console.error(`Found ${fetched} closed (unmerged) PRs across ${repos.size} repos`);
-    return repos;
+    return { repos, monthlyCounts, monthlyOpenedCounts };
   }
 
   /**

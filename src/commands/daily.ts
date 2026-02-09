@@ -38,13 +38,14 @@ export async function runDaily(options: DailyOptions): Promise<void> {
   }
 
   // Fetch merged PR counts, closed PR counts, and recently closed PRs in parallel
-  const [mergedResult, closedCounts, recentlyClosedPRs] = await Promise.all([
+  const [mergedResult, closedResult, recentlyClosedPRs] = await Promise.all([
     prMonitor.fetchUserMergedPRCounts(),
     prMonitor.fetchUserClosedPRCounts(),
     prMonitor.fetchRecentlyClosedPRs(),
   ]);
 
-  const { repos: mergedCounts, monthlyCounts } = mergedResult;
+  const { repos: mergedCounts, monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
+  const { repos: closedCounts, monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
 
   // Reset stale repos first (so excluded/removed repos get zeroed).
   // Guard: if the API returned zero results but we have existing repos with merged PRs,
@@ -122,8 +123,36 @@ export async function runDaily(options: DailyOptions): Promise<void> {
     console.error(`[DAILY_ALL_TRUST_SYNCS_FAILED] All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`);
   }
 
-  // Store monthly merged counts for the contribution timeline chart
-  stateManager.setMonthlyMergedCounts(monthlyCounts);
+  // Store monthly chart data (non-critical — each metric isolated so partial failures don't leave inconsistent state)
+  try {
+    stateManager.setMonthlyMergedCounts(monthlyCounts);
+  } catch (error) {
+    console.error('[DAILY] Failed to store monthly merged counts:', error instanceof Error ? error.message : error);
+  }
+
+  try {
+    stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+  } catch (error) {
+    console.error('[DAILY] Failed to store monthly closed counts:', error instanceof Error ? error.message : error);
+  }
+
+  try {
+    // Build combined monthly opened counts from merged + closed + currently-open PRs
+    const combinedOpenedCounts: Record<string, number> = { ...openedFromMerged };
+    for (const [month, count] of Object.entries(openedFromClosed)) {
+      combinedOpenedCounts[month] = (combinedOpenedCounts[month] || 0) + count;
+    }
+    // Add currently-open PR creation dates
+    for (const pr of prs) {
+      if (pr.createdAt) {
+        const month = pr.createdAt.slice(0, 7);
+        combinedOpenedCounts[month] = (combinedOpenedCounts[month] || 0) + 1;
+      }
+    }
+    stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
+  } catch (error) {
+    console.error('[DAILY] Failed to compute/store monthly opened counts:', error instanceof Error ? error.message : error);
+  }
 
   // Generate digest from fresh data
   const digest = prMonitor.generateDigest(prs, recentlyClosedPRs);

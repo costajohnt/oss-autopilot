@@ -77,13 +77,15 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
     prsByRepo[repo].closed = score.closedWithoutMergeCount;
   }
 
-  // Sort repos by total merged
+  // Sort repos by total PRs (merged + active + closed) — matches the HTML chart sort order
   const topRepos = Object.entries(prsByRepo)
-    .sort((a, b) => b[1].merged - a[1].merged)
+    .sort((a, b) => (b[1].merged + b[1].active + b[1].closed) - (a[1].merged + a[1].active + a[1].closed))
     .slice(0, 10);
 
   // Monthly activity from per-PR merge dates (populated during daily check)
   const monthlyMerged: Record<string, number> = state.monthlyMergedCounts || {};
+  const monthlyClosed: Record<string, number> = state.monthlyClosedCounts || {};
+  const monthlyOpened: Record<string, number> = state.monthlyOpenedCounts || {};
 
   // Build stats from digest
   const summary = digest.summary || { totalActivePRs: 0, totalMergedAllTime: 0, mergeRate: 0, totalNeedingAttention: 0 };
@@ -107,7 +109,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
     return;
   }
 
-  const html = generateDashboardHtml(stats, topRepos, monthlyMerged, digest, state.config?.approachingDormantDays ?? 25);
+  const html = generateDashboardHtml(stats, monthlyMerged, monthlyClosed, monthlyOpened, digest, state);
 
   // Write to file in ~/.oss-autopilot/
   const dashboardPath = getDashboardPath();
@@ -143,13 +145,176 @@ interface DashboardStats {
   needsResponse: number;
 }
 
+/**
+ * Build a CSS-grid activity heatmap from available date data.
+ * Uses open PR createdAt, closed PR closedAt, and state events.
+ * 3-month rolling window, GitHub-style green color scale.
+ */
+function generateHeatmapHtml(digest: DailyDigest, state: Readonly<AgentState>): string {
+  // Build daily activity counts from available data
+  const dailyActivity: Record<string, number> = {};
+  const addDay = (dateStr: string | undefined) => {
+    if (!dateStr) return;
+    const day = dateStr.slice(0, 10); // "YYYY-MM-DD"
+    if (day.length === 10) {
+      dailyActivity[day] = (dailyActivity[day] || 0) + 1;
+    }
+  };
+
+  // Open PR creation dates
+  for (const pr of (digest.openPRs || [])) {
+    addDay(pr.createdAt);
+  }
+
+  // Recently closed PR dates
+  for (const pr of (digest.recentlyClosedPRs || [])) {
+    addDay(pr.closedAt);
+  }
+
+  // State events (pr_tracked, pr_merged, pr_closed, etc.)
+  for (const event of (state.events || [])) {
+    addDay(event.at);
+  }
+
+  // Build 3-month window (91 days back from today), using UTC to match GitHub API timestamps
+  const todayUTC = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+  const startDate = new Date(todayUTC);
+  startDate.setUTCDate(startDate.getUTCDate() - 90);
+
+  // Align to Sunday (start of week)
+  const dayOfWeek = startDate.getUTCDay();
+  startDate.setUTCDate(startDate.getUTCDate() - dayOfWeek);
+
+  // Build cells
+  const cells: Array<{ date: string; count: number; dayOfWeek: number }> = [];
+  const cursor = new Date(startDate);
+  while (cursor <= todayUTC) {
+    const dateStr = cursor.toISOString().slice(0, 10);
+    cells.push({
+      date: dateStr,
+      count: dailyActivity[dateStr] || 0,
+      dayOfWeek: cursor.getUTCDay(),
+    });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  // Find max for color scaling
+  const maxCount = Math.max(1, ...cells.map(c => c.count));
+
+  // Color levels (GitHub-style green)
+  const getColor = (count: number): string => {
+    if (count === 0) return '#161b22';
+    const ratio = count / maxCount;
+    if (ratio <= 0.25) return '#0e4429';
+    if (ratio <= 0.5) return '#006d32';
+    if (ratio <= 0.75) return '#26a641';
+    return '#39d353';
+  };
+
+  // Generate month labels
+  const weeks = Math.ceil(cells.length / 7);
+  const monthLabels: Array<{ label: string; col: number }> = [];
+  let lastMonth = '';
+  for (let i = 0; i < cells.length; i++) {
+    const month = cells[i].date.slice(0, 7);
+    if (month !== lastMonth) {
+      lastMonth = month;
+      const d = new Date(cells[i].date + 'T00:00:00Z');
+      const label = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
+      monthLabels.push({ label, col: Math.floor(i / 7) + 1 });
+    }
+  }
+
+  const dayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
+
+  return `
+    <style>
+      .heatmap-wrapper { overflow-x: auto; }
+      .heatmap-month-labels {
+        display: grid;
+        grid-template-columns: 28px repeat(${weeks}, 1fr);
+        margin-bottom: 2px;
+        font-family: 'Geist Mono', monospace;
+        font-size: 0.65rem;
+        color: var(--text-muted);
+      }
+      .heatmap-grid {
+        display: grid;
+        grid-template-rows: repeat(7, 14px);
+        grid-auto-flow: column;
+        grid-auto-columns: 14px;
+        gap: 2px;
+      }
+      .heatmap-cell {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+        cursor: default;
+      }
+      .heatmap-day-labels {
+        display: grid;
+        grid-template-rows: repeat(7, 14px);
+        gap: 2px;
+        margin-right: 4px;
+        font-family: 'Geist Mono', monospace;
+        font-size: 0.6rem;
+        color: var(--text-muted);
+        align-items: center;
+      }
+      .heatmap-container {
+        display: flex;
+        align-items: flex-start;
+      }
+      .heatmap-legend {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 8px;
+        font-family: 'Geist Mono', monospace;
+        font-size: 0.6rem;
+        color: var(--text-muted);
+        justify-content: flex-end;
+      }
+      .heatmap-legend-cell {
+        width: 12px;
+        height: 12px;
+        border-radius: 2px;
+      }
+    </style>
+    <div class="heatmap-wrapper">
+      <div class="heatmap-month-labels">
+        <div></div>
+        ${monthLabels.map(({ label, col }) => `<div style="grid-column: ${col + 1};">${label}</div>`).join('')}
+      </div>
+      <div class="heatmap-container">
+        <div class="heatmap-day-labels">
+          ${dayLabels.map(l => `<div>${l}</div>`).join('')}
+        </div>
+        <div class="heatmap-grid">
+          ${cells.map(c => `<div class="heatmap-cell" style="background: ${getColor(c.count)};" title="${c.date}: ${c.count} activit${c.count === 1 ? 'y' : 'ies'}"></div>`).join('')}
+        </div>
+      </div>
+      <div class="heatmap-legend">
+        <span>Less</span>
+        <div class="heatmap-legend-cell" style="background: #161b22;"></div>
+        <div class="heatmap-legend-cell" style="background: #0e4429;"></div>
+        <div class="heatmap-legend-cell" style="background: #006d32;"></div>
+        <div class="heatmap-legend-cell" style="background: #26a641;"></div>
+        <div class="heatmap-legend-cell" style="background: #39d353;"></div>
+        <span>More</span>
+      </div>
+    </div>`;
+}
+
 function generateDashboardHtml(
   stats: DashboardStats,
-  topRepos: Array<[string, { active: number; merged: number; closed: number }]>,
   monthlyMerged: Record<string, number>,
+  monthlyClosed: Record<string, number>,
+  monthlyOpened: Record<string, number>,
   digest: DailyDigest,
-  approachingDormantDays: number = 25
+  state: Readonly<AgentState>,
 ): string {
+  const approachingDormantDays = state.config?.approachingDormantDays ?? 25;
   // Action Required: contributor must do something
   const actionRequired = [
     ...(digest.prsNeedingResponse || []),
@@ -965,7 +1130,7 @@ function generateDashboardHtml(
 
       <div class="card">
         <div class="card-header">
-          <span class="card-title">Top Repositories</span>
+          <span class="card-title">Repository Breakdown</span>
         </div>
         <div class="card-body">
           <div class="chart-container">
@@ -980,8 +1145,31 @@ function generateDashboardHtml(
         <span class="card-title">Contribution Timeline</span>
       </div>
       <div class="card-body">
-        <div class="chart-container" style="height: 200px;">
+        <div class="chart-container" style="height: 250px;">
           <canvas id="monthlyChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-grid">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Success Rate Trends</span>
+        </div>
+        <div class="card-body">
+          <div class="chart-container">
+            <canvas id="successRateChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Activity Heatmap</span>
+          <span style="font-family: 'Geist Mono', monospace; font-size: 0.7rem; color: var(--text-muted);">Last 3 months</span>
+        </div>
+        <div class="card-body">
+          ${generateHeatmapHtml(digest, state)}
         </div>
       </div>
     </div>
@@ -1066,6 +1254,7 @@ function generateDashboardHtml(
     Chart.defaults.borderColor = '#30363d';
     Chart.defaults.font.family = "'Geist', sans-serif";
 
+    // === Status Doughnut ===
     new Chart(document.getElementById('statusChart'), {
       type: 'doughnut',
       data: {
@@ -1091,14 +1280,56 @@ function generateDashboardHtml(
       }
     });
 
+    // === Repository Breakdown (with "Other" bucket + percentage tooltips) ===
+    ${(() => {
+      // Sort repos by total PRs (merged + active + closed) and build "Other" bucket
+      const allRepoEntries = Object.entries(
+        // Rebuild from full prsByRepo to get all repos, not just top 10
+        (() => {
+          const all: Record<string, { active: number; merged: number; closed: number }> = {};
+          for (const pr of (digest.openPRs || [])) {
+            if (!all[pr.repo]) all[pr.repo] = { active: 0, merged: 0, closed: 0 };
+            all[pr.repo].active++;
+          }
+          for (const [repo, score] of Object.entries(state.repoScores || {})) {
+            if (!all[repo]) all[repo] = { active: 0, merged: 0, closed: 0 };
+            all[repo].merged = score.mergedPRCount;
+            all[repo].closed = score.closedWithoutMergeCount;
+          }
+          return all;
+        })()
+      ).sort((a, b) => {
+        const totalA = a[1].merged + a[1].active + a[1].closed;
+        const totalB = b[1].merged + b[1].active + b[1].closed;
+        return totalB - totalA;
+      });
+
+      const displayRepos = allRepoEntries.slice(0, 10);
+      const otherRepos = allRepoEntries.slice(10);
+      const grandTotal = allRepoEntries.reduce((sum, [, d]) => sum + d.merged + d.active + d.closed, 0);
+
+      if (otherRepos.length > 0) {
+        const otherData = otherRepos.reduce(
+          (acc, [, d]) => ({ active: acc.active + d.active, merged: acc.merged + d.merged, closed: acc.closed + d.closed }),
+          { active: 0, merged: 0, closed: 0 }
+        );
+        displayRepos.push(['Other', otherData]);
+      }
+
+      const repoLabels = displayRepos.map(([repo]) => repo === 'Other' ? 'Other' : (repo.split('/')[1] || repo));
+      const mergedData = displayRepos.map(([, d]) => d.merged);
+      const activeData = displayRepos.map(([, d]) => d.active);
+      const closedData = displayRepos.map(([, d]) => d.closed);
+
+      return `
     new Chart(document.getElementById('reposChart'), {
       type: 'bar',
       data: {
-        labels: ${JSON.stringify(topRepos.map(([repo]) => repo.split('/')[1] || repo))},
+        labels: ${JSON.stringify(repoLabels)},
         datasets: [
-          { label: 'Merged', data: ${JSON.stringify(topRepos.map(([, data]) => data.merged))}, backgroundColor: '#a855f7', borderRadius: 4 },
-          { label: 'Active', data: ${JSON.stringify(topRepos.map(([, data]) => data.active))}, backgroundColor: '#238636', borderRadius: 4 },
-          { label: 'Closed', data: ${JSON.stringify(topRepos.map(([, data]) => data.closed))}, backgroundColor: '#6e7681', borderRadius: 4 }
+          { label: 'Merged', data: ${JSON.stringify(mergedData)}, backgroundColor: '#a855f7', borderRadius: 4 },
+          { label: 'Active', data: ${JSON.stringify(activeData)}, backgroundColor: '#238636', borderRadius: 4 },
+          { label: 'Closed', data: ${JSON.stringify(closedData)}, backgroundColor: '#6e7681', borderRadius: 4 }
         ]
       },
       options: {
@@ -1109,30 +1340,73 @@ function generateDashboardHtml(
           y: { stacked: true, grid: { color: '#21262d' }, ticks: { stepSize: 1 } }
         },
         plugins: {
-          legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true, pointStyle: 'circle' } }
+          legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true, pointStyle: 'circle' } },
+          tooltip: {
+            callbacks: {
+              afterBody: function(context) {
+                const idx = context[0].dataIndex;
+                const total = ${JSON.stringify(mergedData)}[idx] + ${JSON.stringify(activeData)}[idx] + ${JSON.stringify(closedData)}[idx];
+                const pct = ${grandTotal} > 0 ? ((total / ${grandTotal}) * 100).toFixed(1) : '0.0';
+                return pct + '% of all PRs';
+              }
+            }
+          }
         }
       }
-    });
+    });`;
+    })()}
 
-    const months = ${JSON.stringify(Object.keys(monthlyMerged).sort())};
-    const monthlyData = ${JSON.stringify(monthlyMerged)};
+    // === Contribution Timeline (grouped bar: Opened/Merged/Closed) ===
+    ${(() => {
+      // Build union of all months, padded to at least 6
+      const allMonthSet = new Set<string>();
+      for (const m of Object.keys(monthlyMerged)) allMonthSet.add(m);
+      for (const m of Object.keys(monthlyClosed)) allMonthSet.add(m);
+      for (const m of Object.keys(monthlyOpened)) allMonthSet.add(m);
+
+      let allMonths = Array.from(allMonthSet).sort();
+
+      // Pad to at least 6 months by walking backwards from the earliest month
+      if (allMonths.length > 0 && allMonthSet.size < 6) {
+        const earliest = allMonths[0];
+        const [y, m] = earliest.split('-').map(Number);
+        for (let offset = 1; allMonthSet.size < 6; offset++) {
+          const d = new Date(y, m - 1 - offset, 1);
+          const padMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          allMonthSet.add(padMonth);
+        }
+        allMonths = Array.from(allMonthSet).sort();
+      }
+
+      return `
+    const timelineMonths = ${JSON.stringify(allMonths)};
+    const openedData = ${JSON.stringify(monthlyOpened)};
+    const mergedData = ${JSON.stringify(monthlyMerged)};
+    const closedData = ${JSON.stringify(monthlyClosed)};
     new Chart(document.getElementById('monthlyChart'), {
-      type: 'line',
+      type: 'bar',
       data: {
-        labels: months,
-        datasets: [{
-          label: 'Merged PRs',
-          data: months.map(m => monthlyData[m] || 0),
-          borderColor: '#a855f7',
-          backgroundColor: 'rgba(168, 85, 247, 0.1)',
-          fill: true,
-          tension: 0.4,
-          pointRadius: 4,
-          pointBackgroundColor: '#a855f7',
-          pointBorderColor: '#161b22',
-          pointBorderWidth: 2,
-          pointHoverRadius: 6
-        }]
+        labels: timelineMonths,
+        datasets: [
+          {
+            label: 'Opened',
+            data: timelineMonths.map(m => openedData[m] || 0),
+            backgroundColor: '#58a6ff',
+            borderRadius: 3
+          },
+          {
+            label: 'Merged',
+            data: timelineMonths.map(m => mergedData[m] || 0),
+            backgroundColor: '#a855f7',
+            borderRadius: 3
+          },
+          {
+            label: 'Closed',
+            data: timelineMonths.map(m => closedData[m] || 0),
+            backgroundColor: '#6e7681',
+            borderRadius: 3
+          }
+        ]
       },
       options: {
         responsive: true,
@@ -1141,10 +1415,79 @@ function generateDashboardHtml(
           x: { grid: { display: false } },
           y: { grid: { color: '#21262d' }, beginAtZero: true, ticks: { stepSize: 1 } }
         },
-        plugins: { legend: { display: false } },
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true, pointStyle: 'circle' } }
+        },
         interaction: { intersect: false, mode: 'index' }
       }
-    });
+    });`;
+    })()}
+
+    // === Success Rate Trends (monthly merge rate %) ===
+    ${(() => {
+      const allMonthSet = new Set<string>();
+      for (const m of Object.keys(monthlyMerged)) allMonthSet.add(m);
+      for (const m of Object.keys(monthlyClosed)) allMonthSet.add(m);
+      const allMonths = Array.from(allMonthSet).sort();
+
+      const rateData = allMonths.map(m => {
+        const merged = monthlyMerged[m] || 0;
+        const closed = monthlyClosed[m] || 0;
+        const total = merged + closed;
+        return total > 0 ? Math.round((merged / total) * 100) : null;
+      });
+
+      return `
+    new Chart(document.getElementById('successRateChart'), {
+      type: 'line',
+      data: {
+        labels: ${JSON.stringify(allMonths)},
+        datasets: [{
+          label: 'Merge Rate',
+          data: ${JSON.stringify(rateData)},
+          borderColor: '#58a6ff',
+          backgroundColor: 'rgba(88, 166, 255, 0.1)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 4,
+          pointBackgroundColor: '#58a6ff',
+          pointBorderColor: '#161b22',
+          pointBorderWidth: 2,
+          pointHoverRadius: 6,
+          spanGaps: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { grid: { display: false } },
+          y: {
+            grid: { color: '#21262d' },
+            beginAtZero: true,
+            max: 100,
+            ticks: { callback: function(v) { return v + '%'; } }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const idx = context.dataIndex;
+                const months = ${JSON.stringify(allMonths)};
+                const m = months[idx];
+                const merged = ${JSON.stringify(monthlyMerged)}[m] || 0;
+                const closed = ${JSON.stringify(monthlyClosed)}[m] || 0;
+                return context.parsed.y + '% (' + merged + ' merged, ' + closed + ' closed)';
+              }
+            }
+          }
+        },
+        interaction: { intersect: false, mode: 'index' }
+      }
+    });`;
+    })()}
   </script>
 </body>
 </html>`;

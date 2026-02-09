@@ -455,6 +455,12 @@ export interface AgentState {
   /** Monthly merged PR counts keyed by `"YYYY-MM"`. Powers the contribution timeline chart. */
   monthlyMergedCounts?: Record<string, number>;
 
+  /** Monthly closed (without merge) PR counts keyed by `"YYYY-MM"`. Powers the timeline and success rate charts. */
+  monthlyClosedCounts?: Record<string, number>;
+
+  /** Monthly opened PR counts keyed by `"YYYY-MM"`. Combines PRs opened across merged+closed+open sets. */
+  monthlyOpenedCounts?: Record<string, number>;
+
   // Legacy v1 PR arrays — preserved for history, not actively used in v2
   activePRs: TrackedPR[];
   activeIssues: TrackedIssue[];
