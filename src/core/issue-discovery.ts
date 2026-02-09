@@ -28,7 +28,7 @@ interface GitHubSearchItem {
   [key: string]: unknown;
 }
 
-type SearchPriority = 'starred' | 'high_score' | 'normal';
+type SearchPriority = 'merged_pr' | 'starred' | 'normal';
 
 export interface IssueCandidate {
   issue: TrackedIssue;
@@ -170,13 +170,15 @@ export class IssueDiscovery {
 
     const allCandidates: IssueCandidate[] = [];
 
+    // Get merged-PR repos (highest merge probability)
+    const mergedPRRepos = this.stateManager.getReposWithMergedPRs();
+    const mergedPRRepoSet = new Set(mergedPRRepos);
+
     // Get starred repos (with refresh if stale)
     const starredRepos = await this.getStarredReposWithRefresh();
     const starredRepoSet = new Set(starredRepos);
 
-    // Get high-scoring and low-scoring repos from state
-    const highScoringRepos = this.stateManager.getHighScoringRepos();
-    const highScoringRepoSet = new Set(highScoringRepos);
+    // Get low-scoring repos from state
     const lowScoringRepos = new Set(this.stateManager.getLowScoringRepos(3)); // Score <= 3 is low
 
     // Common filters
@@ -206,45 +208,46 @@ export class IssueDiscovery {
       });
     };
 
-    // Phase 1: Search starred repos first
-    if (starredRepos.length > 0) {
-      console.log(`Phase 1: Searching issues in ${starredRepos.length} starred repos...`);
+    // Phase 0: Search repos where user has merged PRs (highest merge probability)
+    if (mergedPRRepos.length > 0) {
+      console.log(`Phase 0: Searching issues in ${mergedPRRepos.length} repos with merged PRs...`);
       const remainingNeeded = maxResults - allCandidates.length;
       if (remainingNeeded > 0) {
-        const starredCandidates = await this.searchInRepos(
-          starredRepos.slice(0, 10), // Limit to first 10 starred repos
+        const mergedPRCandidates = await this.searchInRepos(
+          mergedPRRepos.slice(0, 10),
           baseQuery,
           remainingNeeded,
-          'starred',
+          'merged_pr',
           filterIssues
         );
-        allCandidates.push(...starredCandidates);
-        console.log(`Found ${starredCandidates.length} candidates from starred repos`);
+        allCandidates.push(...mergedPRCandidates);
+        console.log(`Found ${mergedPRCandidates.length} candidates from merged-PR repos`);
       }
     }
 
-    // Phase 2: Search high-scoring repos
-    if (allCandidates.length < maxResults && highScoringRepos.length > 0) {
-      console.log(`Phase 2: Searching issues in ${highScoringRepos.length} high-scoring repos...`);
-      // Filter out repos already searched (starred)
-      const reposToSearch = highScoringRepos.filter(r => !starredRepoSet.has(r));
-      const remainingNeeded = maxResults - allCandidates.length;
-      if (remainingNeeded > 0 && reposToSearch.length > 0) {
-        const highScoreCandidates = await this.searchInRepos(
-          reposToSearch.slice(0, 10), // Limit to first 10 high-scoring repos
-          baseQuery,
-          remainingNeeded,
-          'high_score',
-          filterIssues
-        );
-        allCandidates.push(...highScoreCandidates);
-        console.log(`Found ${highScoreCandidates.length} candidates from high-scoring repos`);
+    // Phase 1: Search starred repos (filter out already-searched merged-PR repos)
+    if (allCandidates.length < maxResults && starredRepos.length > 0) {
+      const reposToSearch = starredRepos.filter(r => !mergedPRRepoSet.has(r));
+      if (reposToSearch.length > 0) {
+        console.log(`Phase 1: Searching issues in ${reposToSearch.length} starred repos...`);
+        const remainingNeeded = maxResults - allCandidates.length;
+        if (remainingNeeded > 0) {
+          const starredCandidates = await this.searchInRepos(
+            reposToSearch.slice(0, 10),
+            baseQuery,
+            remainingNeeded,
+            'starred',
+            filterIssues
+          );
+          allCandidates.push(...starredCandidates);
+          console.log(`Found ${starredCandidates.length} candidates from starred repos`);
+        }
       }
     }
 
-    // Phase 3: General search (if still need more)
+    // Phase 2: General search (if still need more)
     if (allCandidates.length < maxResults) {
-      console.log('Phase 3: General issue search...');
+      console.log('Phase 2: General issue search...');
       const remainingNeeded = maxResults - allCandidates.length;
       try {
         const { data } = await this.octokit.search.issuesAndPullRequests({
@@ -261,8 +264,8 @@ export class IssueDiscovery {
         const itemsToVet = filterIssues(data.items)
           .filter(item => {
             const repoFullName = item.repository_url.split('/').slice(-2).join('/');
-            // Skip if already searched in starred or high-score phases
-            return !starredRepoSet.has(repoFullName) && !highScoringRepoSet.has(repoFullName) && !seenRepos.has(repoFullName);
+            // Skip if already searched in earlier phases
+            return !mergedPRRepoSet.has(repoFullName) && !starredRepoSet.has(repoFullName) && !seenRepos.has(repoFullName);
           })
           .slice(0, remainingNeeded * 2);
 
@@ -275,7 +278,7 @@ export class IssueDiscovery {
         console.log(`Found ${results.length} candidates from general search`);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`[SEARCH_PHASE_3_FAILED] Error in general issue search: ${errorMessage}`);
+        console.error(`[SEARCH_PHASE_2_FAILED] Error in general issue search: ${errorMessage}`);
       }
     }
 
@@ -288,8 +291,8 @@ export class IssueDiscovery {
 
     // Sort by priority first, then by recommendation
     allCandidates.sort((a, b) => {
-      // Priority order: starred > high_score > normal
-      const priorityOrder: Record<SearchPriority, number> = { starred: 0, high_score: 1, normal: 2 };
+      // Priority order: merged_pr > starred > normal
+      const priorityOrder: Record<SearchPriority, number> = { merged_pr: 0, starred: 1, normal: 2 };
       const priorityDiff = priorityOrder[a.searchPriority] - priorityOrder[b.searchPriority];
       if (priorityDiff !== 0) return priorityDiff;
 
@@ -507,6 +510,16 @@ export class IssueDiscovery {
       reasonsToApprove.push('Trusted project (previous PR merged)');
     }
 
+    // Check for closed/rejected PR history in this repo
+    const repoScoreRecord = this.stateManager.getRepoScore(repoFullName);
+    if (repoScoreRecord) {
+      if (repoScoreRecord.closedWithoutMergeCount > 0 && repoScoreRecord.mergedPRCount === 0) {
+        reasonsToSkip.push('User has rejected PR(s) in this repo with no successful merges');
+      } else if (repoScoreRecord.closedWithoutMergeCount > 0 && repoScoreRecord.mergedPRCount > 0) {
+        vettingResult.notes.push(`Mixed history: ${repoScoreRecord.mergedPRCount} merged, ${repoScoreRecord.closedWithoutMergeCount} closed without merge`);
+      }
+    }
+
     let recommendation: 'approve' | 'skip' | 'needs_review';
     if (vettingResult.passedAllChecks) {
       recommendation = 'approve';
@@ -524,16 +537,17 @@ export class IssueDiscovery {
       clearRequirements,
       hasContributionGuidelines: !!contributionGuidelines,
       issueUpdatedAt: ghIssue.updated_at,
+      closedWithoutMergeCount: repoScoreRecord?.closedWithoutMergeCount ?? 0,
+      mergedPRCount: repoScoreRecord?.mergedPRCount ?? 0,
     });
 
     // Determine search priority
     const starredRepos = this.stateManager.getStarredRepos();
-    const repoScore = this.getRepoScore(repoFullName);
     let searchPriority: SearchPriority = 'normal';
-    if (starredRepos.includes(repoFullName)) {
+    if (repoScoreRecord && repoScoreRecord.mergedPRCount > 0) {
+      searchPriority = 'merged_pr';
+    } else if (starredRepos.includes(repoFullName)) {
       searchPriority = 'starred';
-    } else if (repoScore !== null && repoScore >= 7) {
-      searchPriority = 'high_score';
     }
 
     return {
@@ -829,6 +843,8 @@ export class IssueDiscovery {
     clearRequirements: boolean;
     hasContributionGuidelines: boolean;
     issueUpdatedAt: string;
+    closedWithoutMergeCount?: number;
+    mergedPRCount?: number;
   }): number {
     let score = 50; // Base score
 
@@ -865,6 +881,11 @@ export class IssueDiscovery {
     // Penalty for claimed issue (-20)
     if (params.isClaimed) {
       score -= 20;
+    }
+
+    // Penalty for closed-without-merge history with no successful merges (-15)
+    if ((params.closedWithoutMergeCount ?? 0) > 0 && (params.mergedPRCount ?? 0) === 0) {
+      score -= 15;
     }
 
     // Clamp to 0-100

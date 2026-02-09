@@ -1044,6 +1044,18 @@ export class StateManager {
   }
 
   /**
+   * Get repositories where the user has at least one merged PR, sorted by merged count descending.
+   * These repos represent proven relationships with high merge probability.
+   * @returns Array of "owner/repo" strings for repos with mergedPRCount > 0.
+   */
+  getReposWithMergedPRs(): string[] {
+    return Object.values(this.state.repoScores)
+      .filter(rs => rs.mergedPRCount > 0)
+      .sort((a, b) => b.mergedPRCount - a.mergedPRCount)
+      .map(rs => rs.repo);
+  }
+
+  /**
    * Get repositories with a score at or above the given threshold, sorted highest first.
    * @param minScore - Minimum score (inclusive). Defaults to `config.minRepoScoreThreshold`.
    * @returns Array of "owner/repo" strings for repos meeting the threshold.

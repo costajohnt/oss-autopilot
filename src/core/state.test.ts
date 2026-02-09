@@ -346,6 +346,47 @@ describe('StateManager calculateScore (via updateRepoScore)', () => {
   });
 });
 
+describe('StateManager getReposWithMergedPRs', () => {
+  let stateManager: StateManager;
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  it('should return empty array when no repos have merged PRs', () => {
+    expect(stateManager.getReposWithMergedPRs()).toEqual([]);
+  });
+
+  it('should return repos with mergedPRCount > 0', () => {
+    stateManager.updateRepoScore('owner/merged-repo', { mergedPRCount: 2 });
+    stateManager.updateRepoScore('owner/no-merges', { mergedPRCount: 0 });
+    stateManager.updateRepoScore('owner/also-merged', { mergedPRCount: 1 });
+
+    const repos = stateManager.getReposWithMergedPRs();
+    expect(repos).toHaveLength(2);
+    expect(repos).toContain('owner/merged-repo');
+    expect(repos).toContain('owner/also-merged');
+    expect(repos).not.toContain('owner/no-merges');
+  });
+
+  it('should sort by merged count descending', () => {
+    stateManager.updateRepoScore('owner/few', { mergedPRCount: 1 });
+    stateManager.updateRepoScore('owner/many', { mergedPRCount: 5 });
+    stateManager.updateRepoScore('owner/some', { mergedPRCount: 3 });
+
+    const repos = stateManager.getReposWithMergedPRs();
+    expect(repos).toEqual(['owner/many', 'owner/some', 'owner/few']);
+  });
+
+  it('should not include repos that only have closed PRs', () => {
+    stateManager.updateRepoScore('owner/rejected', { closedWithoutMergeCount: 3, mergedPRCount: 0 });
+    stateManager.updateRepoScore('owner/merged', { mergedPRCount: 1 });
+
+    const repos = stateManager.getReposWithMergedPRs();
+    expect(repos).toEqual(['owner/merged']);
+  });
+});
+
 describe('StateManager state validity', () => {
   let stateManager: StateManager;
 

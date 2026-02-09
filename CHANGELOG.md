@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-02-08
+
+### Added
+
+- Smarter issue search strategy — new Phase 0 prioritizes repos where user has merged PRs (highest merge probability), replacing the generic "high-score" phase
+- `getReposWithMergedPRs()` method on `StateManager` — returns repos sorted by merged PR count for search prioritization
+- Closed/rejected PR history check in issue vetting — repos where all user PRs were closed without merge get a -15 viability penalty and "rejected PR(s)" skip reason; mixed history (some merged, some closed) shown as informational note
+- `searchPriority` and `viabilityScore` fields in search JSON output — agents can see why each issue was ranked
+- `excludedRepos` array in search JSON output — agents can see which repos were filtered out
+- Exclusion awareness for issue-scout agent — fallback `gh` searches now respect the exclusion list
+- Issue list depletion detection — when curated list reaches 0 available issues, offers "Replenish your issue list" instead of empty state
+- Auto-exclude prompt for recently closed PRs — offers to exclude repos where PRs were rejected
+- 8 new tests (222 total): `getReposWithMergedPRs` sorting/filtering (4), closed-PR viability penalty (4)
+
+### Changed
+
+- Search phases reordered: merged-PR repos → starred repos → general (was: starred → high-score → general)
+- `SearchPriority` type: `'merged_pr' | 'starred' | 'normal'` (was: `'starred' | 'high_score' | 'normal'`)
+
 ## [0.8.8] - 2026-02-08
 
 ### Fixed
@@ -220,6 +239,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.9.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.8...v0.9.0
 [0.8.8]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.5...v0.8.6

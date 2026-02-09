@@ -124,6 +124,19 @@ When dispatched with an issue from the user's curated list (indicated by `Source
 
 ---
 
+**Excluded Repos Awareness:**
+
+The CLI search command now includes `excludedRepos` in its JSON output. These repos have been explicitly excluded by the user (via config or auto-exclude after rejected PRs).
+
+When performing **fallback manual searches** (using `gh` directly instead of the CLI):
+1. First load the exclusion list from `excludedRepos` in the CLI search output or from the config
+2. **Skip any repos in the exclusion list** when doing `gh search issues` results filtering
+3. When presenting results, note if any were filtered: "Skipped {count} results from excluded repos ({repo1}, {repo2})"
+
+The CLI handles exclusions automatically when using the `search` command — this guidance is only needed for manual `gh` fallback searches.
+
+---
+
 **Search Process:**
 
 1. **Use CLI Search (Primary Method)**

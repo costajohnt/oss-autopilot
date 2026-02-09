@@ -148,6 +148,45 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
     // 50 + 10 + 15 + 15 + 10 - 20 = 80
     expect(score).toBe(80);
   });
+
+  it('should subtract -15 for closed-without-merge history with no merges', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      closedWithoutMergeCount: 2,
+      mergedPRCount: 0,
+    });
+    expect(score).toBe(50 - 15);
+  });
+
+  it('should NOT subtract penalty when closed PRs exist but merges also exist', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      closedWithoutMergeCount: 1,
+      mergedPRCount: 2,
+    });
+    // No -15 penalty because mergedPRCount > 0
+    expect(score).toBe(50);
+  });
+
+  it('should NOT subtract penalty when closedWithoutMergeCount is 0', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      closedWithoutMergeCount: 0,
+      mergedPRCount: 0,
+    });
+    expect(score).toBe(50);
+  });
+
+  it('should apply closed-PR penalty alongside other penalties', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      hasExistingPR: true, // -30
+      closedWithoutMergeCount: 1, // -15
+      mergedPRCount: 0,
+    });
+    // 50 - 30 - 15 = 5
+    expect(score).toBe(5);
+  });
 });
 
 describe('IssueDiscovery.analyzeRequirements (via vetIssue internals)', () => {

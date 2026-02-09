@@ -67,7 +67,10 @@ export interface SearchOutput {
     recommendation: 'approve' | 'skip' | 'needs_review';
     reasonsToApprove: string[];
     reasonsToSkip: string[];
+    searchPriority: string;
+    viabilityScore: number;
   }>;
+  excludedRepos: string[];
 }
 
 export interface TrackOutput {

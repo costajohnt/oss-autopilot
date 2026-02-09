@@ -3,7 +3,7 @@
  * Searches for new issues to work on
  */
 
-import { IssueDiscovery, getGitHubToken } from '../core/index.js';
+import { IssueDiscovery, getGitHubToken, getStateManager } from '../core/index.js';
 import { outputJson, outputJsonError, type SearchOutput } from '../formatters/json.js';
 
 interface SearchOptions {
@@ -35,6 +35,8 @@ export async function runSearch(options: SearchOptions): Promise<void> {
   const candidates = await discovery.searchIssues({ maxResults: options.maxResults });
 
   if (options.json) {
+    const stateManager = getStateManager();
+    const excludedRepos = stateManager.getState().config.excludeRepos || [];
     outputJson<SearchOutput>({
       candidates: candidates.map(c => ({
         issue: {
@@ -47,7 +49,10 @@ export async function runSearch(options: SearchOptions): Promise<void> {
         recommendation: c.recommendation,
         reasonsToApprove: c.reasonsToApprove,
         reasonsToSkip: c.reasonsToSkip,
+        searchPriority: c.searchPriority,
+        viabilityScore: c.viabilityScore,
       })),
+      excludedRepos,
     });
   } else {
     if (candidates.length === 0) {
