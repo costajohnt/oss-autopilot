@@ -123,11 +123,20 @@ export async function runDaily(options: DailyOptions): Promise<void> {
     console.error(`[DAILY_ALL_TRUST_SYNCS_FAILED] All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`);
   }
 
-  // Store monthly chart data (non-critical — failure should not abort the daily run)
+  // Store monthly chart data (non-critical — each metric isolated so partial failures don't leave inconsistent state)
   try {
     stateManager.setMonthlyMergedCounts(monthlyCounts);
-    stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+  } catch (error) {
+    console.error('[DAILY] Failed to store monthly merged counts:', error instanceof Error ? error.message : error);
+  }
 
+  try {
+    stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+  } catch (error) {
+    console.error('[DAILY] Failed to store monthly closed counts:', error instanceof Error ? error.message : error);
+  }
+
+  try {
     // Build combined monthly opened counts from merged + closed + currently-open PRs
     const combinedOpenedCounts: Record<string, number> = { ...openedFromMerged };
     for (const [month, count] of Object.entries(openedFromClosed)) {
@@ -142,7 +151,7 @@ export async function runDaily(options: DailyOptions): Promise<void> {
     }
     stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
   } catch (error) {
-    console.error('[DAILY] Failed to store monthly chart data:', error instanceof Error ? error.message : error);
+    console.error('[DAILY] Failed to compute/store monthly opened counts:', error instanceof Error ? error.message : error);
   }
 
   // Generate digest from fresh data

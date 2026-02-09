@@ -77,9 +77,9 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
     prsByRepo[repo].closed = score.closedWithoutMergeCount;
   }
 
-  // Sort repos by total merged
+  // Sort repos by total PRs (merged + active + closed) — matches the HTML chart sort order
   const topRepos = Object.entries(prsByRepo)
-    .sort((a, b) => b[1].merged - a[1].merged)
+    .sort((a, b) => (b[1].merged + b[1].active + b[1].closed) - (a[1].merged + a[1].active + a[1].closed))
     .slice(0, 10);
 
   // Monthly activity from per-PR merge dates (populated during daily check)
@@ -219,8 +219,8 @@ function generateHeatmapHtml(digest: DailyDigest, state: Readonly<AgentState>): 
     const month = cells[i].date.slice(0, 7);
     if (month !== lastMonth) {
       lastMonth = month;
-      const d = new Date(cells[i].date);
-      const label = d.toLocaleString('en-US', { month: 'short' });
+      const d = new Date(cells[i].date + 'T00:00:00Z');
+      const label = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
       monthLabels.push({ label, col: Math.floor(i / 7) + 1 });
     }
   }
