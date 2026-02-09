@@ -121,6 +121,18 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set issueListPath="PATH
 
 If the file doesn't exist at the given path, warn the user but still save the path (they may create it later).
 
+**Question 7: Squash Commits Before Review**
+- "Should PRs be squashed into a single commit before marking ready for review?"
+- Options: "Yes, always squash (Recommended)", "No, keep individual commits", "Ask me each time"
+
+Map the answer to a config value: "Yes" → `true`, "No" → `false`, "Ask me each time" → `"ask"`.
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set squashByDefault=VALUE --json
+```
+
+This sets the global `squashByDefault` setting. Per-repo overrides can be added later in `config.md` frontmatter under `repoOverrides`.
+
 ## Step 4-CLI: Mark Setup Complete
 
 ```bash
@@ -152,12 +164,20 @@ Show summary:
 - **Languages**: list
 - **Labels**: list
 - **Issue List**: PATH or "Not configured"
+- **Squash PRs**: Yes (default) / No / Ask each time
 
 ### Imported PRs
 - X open PRs imported
 
 ### Next Steps
 Run `/oss` to check your PRs and find new contribution opportunities.
+```
+
+**Note:** The `squashByDefault` and `repoOverrides` settings are stored in the config frontmatter. Per-repo squash overrides can be added manually:
+```yaml
+repoOverrides:
+  some-org/some-repo:
+    squash: false
 ```
 
 ---
@@ -263,6 +283,12 @@ If yes, ask for the file path:
 
 If a path is provided, try to read it to verify it exists. If it doesn't exist, warn but continue — the user may create it later.
 
+**Question 7: Squash Commits Before Review**
+- "Should PRs be squashed into a single commit before marking ready for review?"
+- Options: "Yes, always squash (Recommended)", "No, keep individual commits", "Ask me each time"
+
+This sets the global `squashByDefault` setting. Per-repo overrides can be added later in `config.md` frontmatter under `repoOverrides`.
+
 ## Step 5: Create Directory Structure
 
 ```bash
@@ -296,6 +322,8 @@ labels:
   - good first issue
   - help wanted
 issueListPath: PATH_OR_EMPTY
+squashByDefault: true
+repoOverrides: {}
 githubAccess: gh|mcp
 setupComplete: true
 lastUpdated: YYYY-MM-DD
@@ -314,6 +342,7 @@ This file stores your OSS Autopilot preferences. Edit the YAML frontmatter above
 - **Languages**: list
 - **Issue Labels**: list
 - **Issue List**: PATH or "Not configured"
+- **Squash PRs**: Yes (default) / No / Ask each time
 - **GitHub Access**: gh CLI / MCP server
 ```
 
@@ -401,6 +430,7 @@ Show summary:
 - **Labels**: list
 - **GitHub Access**: via [gh CLI / MCP server]
 - **Issue List**: PATH or "Not configured"
+- **Squash PRs**: Yes (default) / No / Ask each time
 
 ### Imported PRs
 - X open PRs imported

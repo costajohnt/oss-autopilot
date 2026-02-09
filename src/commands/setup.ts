@@ -57,6 +57,15 @@ export async function runSetup(options: SetupOptions): Promise<void> {
           stateManager.updateConfig({ showHealthCheck: value !== 'false' });
           results[key] = value !== 'false' ? 'true' : 'false';
           break;
+        case 'squashByDefault':
+          if (value === 'ask') {
+            stateManager.updateConfig({ squashByDefault: 'ask' });
+            results[key] = 'ask';
+          } else {
+            stateManager.updateConfig({ squashByDefault: value !== 'false' });
+            results[key] = value !== 'false' ? 'true' : 'false';
+          }
+          break;
         case 'complete':
           if (value === 'true') {
             stateManager.markSetupComplete();
