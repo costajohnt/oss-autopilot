@@ -38,13 +38,14 @@ export async function runDaily(options: DailyOptions): Promise<void> {
   }
 
   // Fetch merged PR counts, closed PR counts, and recently closed PRs in parallel
-  const [mergedResult, closedCounts, recentlyClosedPRs] = await Promise.all([
+  const [mergedResult, closedResult, recentlyClosedPRs] = await Promise.all([
     prMonitor.fetchUserMergedPRCounts(),
     prMonitor.fetchUserClosedPRCounts(),
     prMonitor.fetchRecentlyClosedPRs(),
   ]);
 
-  const { repos: mergedCounts, monthlyCounts } = mergedResult;
+  const { repos: mergedCounts, monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
+  const { repos: closedCounts, monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
 
   // Reset stale repos first (so excluded/removed repos get zeroed).
   // Guard: if the API returned zero results but we have existing repos with merged PRs,
@@ -124,6 +125,23 @@ export async function runDaily(options: DailyOptions): Promise<void> {
 
   // Store monthly merged counts for the contribution timeline chart
   stateManager.setMonthlyMergedCounts(monthlyCounts);
+
+  // Store monthly closed counts for the success rate chart
+  stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+
+  // Build combined monthly opened counts from merged + closed + currently-open PRs
+  const combinedOpenedCounts: Record<string, number> = { ...openedFromMerged };
+  for (const [month, count] of Object.entries(openedFromClosed)) {
+    combinedOpenedCounts[month] = (combinedOpenedCounts[month] || 0) + count;
+  }
+  // Add currently-open PR creation dates
+  for (const pr of prs) {
+    if (pr.createdAt) {
+      const month = pr.createdAt.slice(0, 7);
+      combinedOpenedCounts[month] = (combinedOpenedCounts[month] || 0) + 1;
+    }
+  }
+  stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
 
   // Generate digest from fresh data
   const digest = prMonitor.generateDigest(prs, recentlyClosedPRs);

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-02-09
+
+### Added
+
+- **Contribution Timeline enhancement (#17)** — Replaced single-line merged chart with grouped bar chart showing Opened/Merged/Closed PRs per month. New `monthlyOpenedCounts` and `monthlyClosedCounts` state fields power the three-series view.
+- **Repository Breakdown enhancement (#19)** — Repos beyond top 10 are now aggregated into an "Other" bucket. Repos sorted by total PRs (merged + active + closed) instead of merged only. Tooltips show each repo's percentage share of total PRs.
+- **Success Rate Trends chart (#21)** — New monthly merge rate line chart showing `merged / (merged + closed) * 100` per month. Months with zero resolved PRs show gaps. Tooltip shows percentage plus raw counts. Y-axis 0-100%.
+- **Activity Heatmap (#23)** — New CSS grid calendar heatmap showing 3-month rolling window of contribution activity. GitHub-style green color scale (4 intensity levels) built from open PR creation dates, closed PR dates, and state events. Native title tooltips, no Chart.js dependency.
+- `fetchUserMergedPRCounts()` now returns `monthlyOpenedCounts` alongside existing `monthlyCounts`
+- `fetchUserClosedPRCounts()` return type enhanced from `Map<string, number>` to `{ repos, monthlyCounts, monthlyOpenedCounts }` — extracts monthly closed and monthly opened histograms from the same API iteration
+- `setMonthlyClosedCounts()` and `setMonthlyOpenedCounts()` setter methods on `StateManager`
+- `monthlyClosedCounts` and `monthlyOpenedCounts` fields on `AgentState` type
+- Combined monthly opened counts in daily orchestration merge data from merged PRs, closed PRs, and currently-open PRs (mutually exclusive GitHub states — no double counting)
+
 ## [0.10.1] - 2026-02-09
 
 ### Fixed
@@ -293,6 +307,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.11.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.8...v0.9.0

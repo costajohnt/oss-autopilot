@@ -474,6 +474,22 @@ export class StateManager {
   }
 
   /**
+   * Store monthly closed (without merge) PR counts for the contribution timeline and success rate charts.
+   * @param counts - Map of "YYYY-MM" strings to closed PR counts for that month.
+   */
+  setMonthlyClosedCounts(counts: Record<string, number>): void {
+    this.state.monthlyClosedCounts = counts;
+  }
+
+  /**
+   * Store monthly opened PR counts for the contribution timeline chart.
+   * @param counts - Map of "YYYY-MM" strings to opened PR counts for that month.
+   */
+  setMonthlyOpenedCounts(counts: Record<string, number>): void {
+    this.state.monthlyOpenedCounts = counts;
+  }
+
+  /**
    * Shallow-merge partial configuration updates into the current config.
    * @param config - Partial config object whose properties override existing values.
    */
