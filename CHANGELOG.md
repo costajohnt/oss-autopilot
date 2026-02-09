@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.8] - 2026-02-08
+
+### Fixed
+
+- SessionStart hook status not visible to user — `additionalContext` only injects into the AI's system context, never displayed to the user. Added `systemMessage` field to hook JSON output so the PR status summary (e.g., "OSS: 16 active PRs — 2 awaiting re-review") is shown as a visible notification on session start.
+
 ## [0.8.7] - 2026-02-08
 
 ### Fixed
@@ -214,6 +220,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.8.8]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.4...v0.8.5
