@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2026-02-09
+
+### Added
+
+- **Pre-computed action menu in `daily --json`** — The CLI now outputs an `actionMenu` field with ready-to-use menu items (`key`, `label`, `description`) and context flags (`hasActionableIssues`, `actionableCount`, `hasCapacity`). The orchestration layer uses these directly in AskUserQuestion instead of manually deriving options from raw data. Closes #78.
+
 ## [0.13.0] - 2026-02-09
 
 ### Added
@@ -375,6 +381,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.13.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/costajohnt/oss-autopilot/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.12.0...v0.12.1

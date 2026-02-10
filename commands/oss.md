@@ -113,6 +113,14 @@ The CLI returns structured data with new fields for the action-first flow:
         "pr": { "repo": "owner/repo", "number": 123, "title": "...", "url": "..." }
       }
     ],
+    "actionMenu": {
+      "items": [
+        { "key": "address_all", "label": "Address all 3 issues in parallel (Recommended)", "description": "Launch agents simultaneously..." },
+        { "key": "search", "label": "Search for new issues", "description": "Look for new contribution opportunities" },
+        { "key": "done", "label": "Done for now", "description": "End session with summary" }
+      ],
+      "context": { "hasActionableIssues": true, "actionableCount": 3, "hasCapacity": true }
+    },
     "capacity": { "hasCapacity": true, ... },
     "digest": { ... },
     "updates": [...]
@@ -141,9 +149,13 @@ Then proceed to Step 3 (Present Action Choices).
 
 ## Step 3: Present Action Choices
 
+The CLI pre-computes the action menu in `data.actionMenu`. Use these items directly in AskUserQuestion instead of manually deriving options.
+
+**Fallback:** If `data.actionMenu` is missing (e.g., older CLI version), tell the user: "Action menu not found in CLI output — you may need to rebuild the CLI: `cd ${CLAUDE_PLUGIN_ROOT} && npm run bundle`". Then derive options manually: always include "Done for now"; add "Address all N issues in parallel (Recommended)" if `data.actionableIssues.length > 0`; add "Search for new issues" if `data.capacity.hasCapacity`; add "View healthy PRs" if not `data.capacity.hasCapacity` and `data.actionableIssues.length > 0`; otherwise add "View PR status details".
+
 ### If No Actionable Issues
 
-When `data.actionableIssues` is empty, display:
+When `data.actionMenu` is present and `data.actionMenu.context.hasActionableIssues` is `false` (or when `data.actionMenu` is absent and `data.actionableIssues` is empty), display:
 ```
 All PRs are healthy! No issues need attention.
 ```
@@ -153,80 +165,40 @@ If `hasIssueList && availableCount === 0`:
 Your curated issue list is depleted ({completedCount} done). Time to find new issues!
 ```
 
-Then use AskUserQuestion with:
-- "Pick an issue from your list" (if `hasIssueList` and `availableCount > 0` and `hasCapacity`) — "{availableCount} vetted issues available"
-- "Replenish your issue list" (if `hasIssueList` and `availableCount === 0` and `hasCapacity`) — "All {completedCount} issues done — search for fresh ones"
-- "Search for new issues" (if `hasCapacity` and NOT showing replenish option)
-- "View PR status details"
-- "Done for now"
-
-**"Replenish your issue list"** routes to **Handle "Find New Issues"** (same as search), but agents should be told to suggest issues suitable for adding to the curated list.
-
 ### Display All PRs First (Information Before Prompt)
 
-**Before asking the user anything**, display all actionable issues as formatted text:
+When there are actionable issues, display them **before asking the user anything**:
 
 ```
 {count} PRs Need Attention:
 
 1. {issue.label} {issue.pr.repo}#{issue.pr.number}
-   {issue.pr.title} ({daysSinceActivity}d inactive)
+   {issue.pr.title} ({issue.pr.daysSinceActivity}d inactive)
 
 2. {issue.label} {issue.pr.repo}#{issue.pr.number}
-   {issue.pr.title} ({daysSinceActivity}d inactive)
+   {issue.pr.title} ({issue.pr.daysSinceActivity}d inactive)
 
 ... (list ALL actionable issues, no limit)
 
 ---
 ```
 
-Calculate `daysSinceActivity` from the PR's `updatedAt` field.
+Use `issue.pr.daysSinceActivity` from the CLI output (already computed).
 
-Example output:
-```
-7 PRs Need Attention:
+### Ask for Action (Using Pre-Computed Menu)
 
-1. [Needs Rebase] shadcn-ui/ui#9263 (160 behind)
-   fix(docs): use yarn dlx for npx command (35d inactive)
+Use `data.actionMenu.items` directly as AskUserQuestion options. Each item has `key`, `label`, and `description` fields ready for display.
 
-2. [Needs Rebase] shadcn-ui/ui#9262 (160 behind)
-   fix(cli): use 'bun x' instead of 'bunx' (35d inactive)
+**Issue list integration:** If the user has a curated issue list (detected in Step 0.7), insert an issue-list option **after `address_all`** (index 1) or **at the start** (index 0) when no actionable issues exist — i.e., always before the `search`/`view_details`/`view_healthy` item:
 
-3. [Needs Rebase] oven-sh/bun#25791 (233 behind)
-   fix(console): route console.trace() to stderr (14d inactive)
+| Condition | Insert Item |
+|-----------|-------------|
+| `hasIssueList && availableCount > 0 && context.hasCapacity` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} available)"`, Description: `"Choose from your curated list of vetted issues"` |
+| `hasIssueList && availableCount === 0 && context.hasCapacity` | Key: `replenish_list`, Label: `"Replenish your issue list"`, Description: `"All {completedCount} issues done — search for fresh ones"`. Also **remove** the `search` item (replenish replaces it). |
 
-4. [CI Blocked] oven-sh/bun#25791
-   CI needs maintainer to trigger Buildkite
+When inserting issue-list items, keep within the 4-option limit (the 5th is the auto "Other").
 
-5. [Changes Requested] ghostfolio/ghostfolio#6223
-   feat(api): add groupBy=year support (2d inactive)
-
-6. [Merge Conflict] cline/cline#8362
-   fix: update button text after deleting history item (10d inactive)
-
-7. [Needs Response] vadimdemedes/ink#858
-   Remove create-ink-app from README (10d inactive)
-
----
-```
-
-### Ask for Action (4-Option Limit)
-
-Use AskUserQuestion with **action-focused options**, not PR-specific options.
-
-**Options to present:**
-
-| Option | Condition | Label | Description |
-|--------|-----------|-------|-------------|
-| 1 | Always (if actionable issues exist) | "Address all {count} issues in parallel (Recommended)" | "Launch agents simultaneously to check status, rebase, fix CI, and respond" |
-| 2 | If `hasIssueList` and `availableCount > 0` and `hasCapacity` | "Pick from your issue list ({availableCount} available)" | "Choose from your curated list of vetted issues" |
-| 2/3 | If `capacity.hasCapacity === true` | "Search for new issues" | "Look for new contribution opportunities" |
-| 2/3 | If `capacity.hasCapacity === false` | "View healthy PRs" | "See status of PRs not needing attention" |
-| 3/4 | Always | "Done for now" | "End session with summary" |
-
-**Note:** Option numbers shift based on whether the issue list option is shown. Keep within the 4-option limit (the 4th is auto "Other").
-
-**Note:** The 4th option is the automatic "Other" - user can type specific PR selections.
+**"Replenish your issue list"** routes to **Handle "Find New Issues"** (same as search), but agents should be told to suggest issues suitable for adding to the curated list.
 
 ### Example AskUserQuestion
 
@@ -234,7 +206,7 @@ Use AskUserQuestion with **action-focused options**, not PR-specific options.
 Question: "What would you like to do?"
 Header: "Action"
 
-Options:
+Options (from data.actionMenu.items):
 1. Label: "Address all 7 issues in parallel (Recommended)"
    Description: "Launch agents simultaneously to check status, rebase, fix CI, and respond"
 

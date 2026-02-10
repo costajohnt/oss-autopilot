@@ -3,8 +3,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeRepoSignals } from './daily.js';
+import { computeRepoSignals, computeActionMenu } from './daily.js';
 import type { FetchedPR } from '../core/types.js';
+import type { ActionableIssue, CapacityAssessment } from '../formatters/json.js';
 
 /** Create a minimal FetchedPR for testing signal computation */
 function makePR(overrides: Partial<FetchedPR> & { repo: string }): FetchedPR {
@@ -27,6 +28,128 @@ function makePR(overrides: Partial<FetchedPR> & { repo: string }): FetchedPR {
     ...overrides,
   };
 }
+
+/** Create a minimal CapacityAssessment for testing */
+function makeCapacity(overrides: Partial<CapacityAssessment> = {}): CapacityAssessment {
+  return {
+    hasCapacity: true,
+    activePRCount: 3,
+    maxActivePRs: 10,
+    criticalIssueCount: 0,
+    reason: 'You have capacity: 3/10 active PRs, no critical issues',
+    ...overrides,
+  };
+}
+
+/** Create a minimal ActionableIssue for testing */
+function makeActionableIssue(type: ActionableIssue['type'] = 'ci_failing'): ActionableIssue {
+  return {
+    type,
+    pr: makePR({ repo: 'owner/repo' }),
+    label: '[CI Failing]',
+  };
+}
+
+describe('computeActionMenu', () => {
+  it('should include address_all when there are actionable issues', () => {
+    const issues = [makeActionableIssue(), makeActionableIssue('needs_response')];
+    const menu = computeActionMenu(issues, makeCapacity());
+
+    expect(menu.items[0].key).toBe('address_all');
+    expect(menu.items[0].label).toContain('2 issues');
+    expect(menu.context.hasActionableIssues).toBe(true);
+    expect(menu.context.actionableCount).toBe(2);
+  });
+
+  it('should use singular "issue" for count of 1', () => {
+    const issues = [makeActionableIssue()];
+    const menu = computeActionMenu(issues, makeCapacity());
+
+    expect(menu.items[0].label).toContain('1 issue ');
+    expect(menu.items[0].label).not.toContain('1 issues');
+  });
+
+  it('should not include address_all when there are no actionable issues', () => {
+    const menu = computeActionMenu([], makeCapacity());
+
+    expect(menu.items.find(i => i.key === 'address_all')).toBeUndefined();
+    expect(menu.context.hasActionableIssues).toBe(false);
+    expect(menu.context.actionableCount).toBe(0);
+  });
+
+  it('should include search when user has capacity', () => {
+    const menu = computeActionMenu([], makeCapacity({ hasCapacity: true }));
+
+    expect(menu.items.find(i => i.key === 'search')).toBeDefined();
+    expect(menu.items.find(i => i.key === 'view_healthy')).toBeUndefined();
+  });
+
+  it('should include view_healthy (not search) when no capacity and has actionable issues', () => {
+    const issues = [makeActionableIssue()];
+    const menu = computeActionMenu(issues, makeCapacity({ hasCapacity: false }));
+
+    expect(menu.items.find(i => i.key === 'view_healthy')).toBeDefined();
+    expect(menu.items.find(i => i.key === 'search')).toBeUndefined();
+  });
+
+  it('should include view_details when no capacity and no actionable issues', () => {
+    const menu = computeActionMenu([], makeCapacity({ hasCapacity: false }));
+
+    expect(menu.items.find(i => i.key === 'view_details')).toBeDefined();
+    expect(menu.items.find(i => i.key === 'search')).toBeUndefined();
+    expect(menu.items.find(i => i.key === 'view_healthy')).toBeUndefined();
+  });
+
+  it('should always include done as the last item', () => {
+    const menu1 = computeActionMenu([], makeCapacity());
+    const menu2 = computeActionMenu([makeActionableIssue()], makeCapacity({ hasCapacity: false }));
+
+    expect(menu1.items[menu1.items.length - 1].key).toBe('done');
+    expect(menu2.items[menu2.items.length - 1].key).toBe('done');
+  });
+
+  it('should have correct context flags', () => {
+    const menu = computeActionMenu(
+      [makeActionableIssue()],
+      makeCapacity({ hasCapacity: true }),
+    );
+
+    expect(menu.context).toEqual({
+      hasActionableIssues: true,
+      actionableCount: 1,
+      hasCapacity: true,
+    });
+  });
+
+  it('should produce 3 items when actionable issues exist and has capacity', () => {
+    const menu = computeActionMenu([makeActionableIssue()], makeCapacity());
+
+    expect(menu.items).toHaveLength(3);
+    expect(menu.items.map(i => i.key)).toEqual(['address_all', 'search', 'done']);
+  });
+
+  it('should produce 2 items when no actionable issues and has capacity', () => {
+    const menu = computeActionMenu([], makeCapacity());
+
+    expect(menu.items).toHaveLength(2);
+    expect(menu.items.map(i => i.key)).toEqual(['search', 'done']);
+  });
+
+  it('should produce 2 items when no actionable issues and no capacity', () => {
+    const menu = computeActionMenu([], makeCapacity({ hasCapacity: false }));
+
+    expect(menu.items).toHaveLength(2);
+    expect(menu.items.map(i => i.key)).toEqual(['view_details', 'done']);
+  });
+
+  it('should produce 3 items when actionable issues exist and no capacity', () => {
+    const issues = [makeActionableIssue(), makeActionableIssue('needs_response')];
+    const menu = computeActionMenu(issues, makeCapacity({ hasCapacity: false }));
+
+    expect(menu.items).toHaveLength(3);
+    expect(menu.items.map(i => i.key)).toEqual(['address_all', 'view_healthy', 'done']);
+  });
+});
 
 describe('computeRepoSignals', () => {
   it('should return empty map for empty PR list', () => {

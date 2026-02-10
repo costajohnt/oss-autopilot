@@ -5,7 +5,7 @@
  */
 
 import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ClosedPR, type ComputedRepoSignals } from '../core/index.js';
-import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue } from '../formatters/json.js';
+import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue, type ActionMenu, type ActionMenuItem } from '../formatters/json.js';
 
 interface DailyOptions {
   json?: boolean;
@@ -199,7 +199,8 @@ async function runDailyInner(token: string, options: DailyOptions): Promise<void
     // New action-first flow fields
     const actionableIssues = collectActionableIssues(prs, recentlyClosedPRs);
     const briefSummary = formatBriefSummary(digest, actionableIssues.length);
-    outputJson<DailyOutput>({ digest, updates: [], capacity, summary, briefSummary, actionableIssues, failures });
+    const actionMenu = computeActionMenu(actionableIssues, capacity);
+    outputJson<DailyOutput>({ digest, updates: [], capacity, summary, briefSummary, actionableIssues, actionMenu, failures });
   } else {
     // Simple console output for non-JSON mode
     printDigest(digest, capacity);
@@ -588,6 +589,67 @@ function formatActionHint(hint: MaintainerActionHint): string {
     case 'docs_requested': return 'documentation requested';
     case 'rebase_requested': return 'rebase requested';
   }
+}
+
+/**
+ * Compute the action menu from PR data and capacity.
+ * The orchestration layer can insert issue-list options (e.g., "Pick from list")
+ * using the context flags.
+ */
+export function computeActionMenu(
+  actionableIssues: ActionableIssue[],
+  capacity: CapacityAssessment,
+): ActionMenu {
+  const items: ActionMenuItem[] = [];
+  const hasActionableIssues = actionableIssues.length > 0;
+
+  if (hasActionableIssues) {
+    items.push({
+      key: 'address_all',
+      label: `Address all ${actionableIssues.length} issue${actionableIssues.length === 1 ? '' : 's'} in parallel (Recommended)`,
+      description: 'Launch agents simultaneously to check status, rebase, fix CI, and respond',
+    });
+  }
+
+  // Slot for issue-list options — the orchestration layer may insert items here
+  // (index 1 when address_all is present, index 0 otherwise).
+  // See commands/oss.md Step 3 for the insertion logic.
+
+  if (capacity.hasCapacity) {
+    items.push({
+      key: 'search',
+      label: 'Search for new issues',
+      description: 'Look for new contribution opportunities',
+    });
+  } else if (!hasActionableIssues) {
+    // When no actionable issues and no capacity, offer status details
+    items.push({
+      key: 'view_details',
+      label: 'View PR status details',
+      description: 'See full status of all tracked PRs',
+    });
+  } else {
+    items.push({
+      key: 'view_healthy',
+      label: 'View healthy PRs',
+      description: 'See status of PRs not needing attention',
+    });
+  }
+
+  items.push({
+    key: 'done',
+    label: 'Done for now',
+    description: 'End session with summary',
+  });
+
+  return {
+    items,
+    context: {
+      hasActionableIssues,
+      actionableCount: actionableIssues.length,
+      hasCapacity: capacity.hasCapacity,
+    },
+  };
 }
 
 /** Statuses indicating active maintainer engagement (reviews, feedback, merges). */
