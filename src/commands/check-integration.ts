@@ -3,7 +3,6 @@
  * Detects new files in the current branch that aren't referenced elsewhere
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { outputJson, outputJsonError, type CheckIntegrationOutput, type NewFileInfo } from '../formatters/json.js';
@@ -126,37 +125,38 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
 
     // Search for references using git grep (fast, respects .gitignore)
     let referencedBy: string[] = [];
-    try {
-      // Search for: import from './filename', require('./filename'), or just the filename stem
-      const patterns = [
-        importName, // bare name (covers most import patterns)
-      ];
+    // Search for: import from './filename', require('./filename'), or just the filename stem
+    const patterns = [
+      importName, // bare name (covers most import patterns)
+    ];
 
-      // Also search for path-based imports (relative path without extension)
-      if (fileWithoutExt.includes('/')) {
-        patterns.push(fileWithoutExt);
-      }
+    // Also search for path-based imports (relative path without extension)
+    if (fileWithoutExt.includes('/')) {
+      patterns.push(fileWithoutExt);
+    }
 
-      for (const pattern of patterns) {
-        try {
-          const grepOutput = execFileSync('git', ['grep', '-l', '--', pattern], {
-            encoding: 'utf-8',
-            timeout: 10000,
-          }).trim();
-          if (grepOutput) {
-            const matches = grepOutput.split('\n').filter(f => f !== newFile);
-            referencedBy.push(...matches);
-          }
-        } catch {
-          // git grep returns exit code 1 when no matches found
+    for (const pattern of patterns) {
+      try {
+        const grepOutput = execFileSync('git', ['grep', '-l', '--', pattern], {
+          encoding: 'utf-8',
+          timeout: 10000,
+        }).trim();
+        if (grepOutput) {
+          const matches = grepOutput.split('\n').filter(f => f !== newFile);
+          referencedBy.push(...matches);
+        }
+      } catch (error: unknown) {
+        // git grep exit code 1 = no matches (expected), exit code 2+ = real error
+        const exitCode = error && typeof error === 'object' && 'status' in error ? (error as { status: number }).status : null;
+        if (exitCode !== null && exitCode !== 1) {
+          const msg = error instanceof Error ? error.message : String(error);
+          console.error(`Warning: git grep failed for "${pattern}": ${msg}`);
         }
       }
-
-      // Deduplicate
-      referencedBy = [...new Set(referencedBy)];
-    } catch {
-      // git grep failed entirely, treat as unreferenced
     }
+
+    // Deduplicate
+    referencedBy = [...new Set(referencedBy)];
 
     const isIntegrated = referencedBy.length > 0;
     const info: NewFileInfo = {

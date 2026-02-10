@@ -35,7 +35,7 @@ const VERSION = (() => {
 })();
 
 // Commands that don't require GitHub API access
-const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard', 'parse-issue-list', 'local-repos'];
+const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard', 'parse-issue-list', 'check-integration', 'local-repos'];
 
 const program = new Command();
 

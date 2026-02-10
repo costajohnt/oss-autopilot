@@ -51,7 +51,7 @@ function isCompleted(line: string): boolean {
   // Checked checkbox: [x] or [X]
   if (/\[[xX]\]/.test(line)) return true;
   // "Done" marker (standalone word, case insensitive)
-  if (/\b(Done|DONE)\b/.test(line)) return true;
+  if (/\bdone\b/i.test(line)) return true;
   return false;
 }
 

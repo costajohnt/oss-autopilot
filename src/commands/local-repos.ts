@@ -135,17 +135,21 @@ export async function runLocalRepos(options: LocalReposOptions): Promise<void> {
   const repoCount = Object.keys(repos).length;
 
   // Cache the results in state
-  stateManager.setLocalRepoCache({
-    repos,
-    scanPaths,
-    cachedAt: new Date().toISOString(),
-  });
-  stateManager.save();
+  const cachedAt = new Date().toISOString();
+  try {
+    stateManager.setLocalRepoCache({ repos, scanPaths, cachedAt });
+    stateManager.save();
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (!options.json) {
+      console.error(`Warning: Failed to cache scan results: ${msg}`);
+    }
+  }
 
   const result: LocalReposOutput = {
     repos,
     scanPaths,
-    cachedAt: new Date().toISOString(),
+    cachedAt,
     fromCache: false,
   };
 
