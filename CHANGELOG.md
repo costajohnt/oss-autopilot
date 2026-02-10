@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-02-10
+
+### Changed
+
+- **Label-farming spam filter for issue search** — Phase 2 (general search) now detects and filters label-farming repositories that mass-create beginner-labeled issues. Uses two signals: single issues with 5+ beginner labels (strong signal) and repos with 3+ templated titles like "Add Trivia Question 61" (batch signal). Phases 0/1 (user's own repos) are unaffected. Closes #97.
+- **Repo quality bonus in viability scoring** — Issue viability scores now include a quality bonus based on repository star and fork counts. Stars: <50 → +0, 50-499 → +3, 500-4999 → +5, 5000+ → +8. Forks: 50+ → +2, 500+ → +4. This means a 30k-star repo's issues score up to +12 higher than a 10-star spam repo. `ProjectHealth` now includes `stargazersCount` and `forksCount`. Closes #98.
+
 ## [0.16.0] - 2026-02-10
 
 ### Changed
@@ -414,6 +421,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.17.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.15.1...v0.16.0
 [0.15.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.14.0...v0.15.0

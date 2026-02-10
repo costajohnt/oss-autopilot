@@ -25,6 +25,8 @@ interface GitHubSearchItem {
   html_url: string;
   repository_url: string;
   updated_at: string;
+  title?: string;
+  labels?: Array<{ name?: string } | string>;
   [key: string]: unknown;
 }
 
@@ -73,6 +75,98 @@ function pruneCache(): void {
       guidelinesCache.delete(key);
     }
   }
+}
+
+/** Known beginner-type label names used to detect label-farming repos (#97). */
+export const BEGINNER_LABELS = new Set([
+  'good first issue',
+  'hacktoberfest',
+  'easy',
+  'up-for-grabs',
+  'first-timers-only',
+  'beginner-friendly',
+  'beginner',
+  'starter',
+  'newbie',
+  'low-hanging-fruit',
+  'community',
+]);
+
+/** Check if a single issue has an excessive number of beginner labels (>= 5). */
+export function isLabelFarming(item: GitHubSearchItem): boolean {
+  if (!item.labels || !Array.isArray(item.labels)) return false;
+  const labelNames = item.labels.map(l =>
+    (typeof l === 'string' ? l : l.name || '').toLowerCase()
+  );
+  const beginnerCount = labelNames.filter(n => BEGINNER_LABELS.has(n)).length;
+  return beginnerCount >= 5;
+}
+
+/** Detect mass-created issue titles like "Add Trivia Question 61" or "Create Entry #5". */
+export function hasTemplatedTitle(title: string): boolean {
+  if (!title) return false;
+  // Matches "<anything> <category-noun> <number>" where category nouns are typical
+  // of mass-created templated issues. This avoids false positives on legitimate titles
+  // like "Add support for Python 3" or "Implement RFC 7231" which lack category nouns.
+  return /^.+\s+(question|fact|point|item|task|entry|post|challenge|exercise|example|problem|tip|recipe|snippet)\s+#?\d+$/i.test(title);
+}
+
+/**
+ * Batch-analyze search items to detect label-farming repositories (#97).
+ * Returns a Set of repo full names (owner/repo) that appear to be spam.
+ *
+ * A repo is flagged if:
+ * - ANY single issue has >= 5 beginner labels (strong individual signal), OR
+ * - It has >= 3 issues with templated titles (batch signal)
+ */
+export function detectLabelFarmingRepos(items: GitHubSearchItem[]): Set<string> {
+  const spamRepos = new Set<string>();
+  const repoSpamCounts = new Map<string, number>();
+
+  for (const item of items) {
+    const repoFullName = item.repository_url.split('/').slice(-2).join('/');
+
+    // Strong signal: single issue with 5+ beginner labels
+    if (isLabelFarming(item)) {
+      spamRepos.add(repoFullName);
+      continue;
+    }
+
+    // Weaker signal: templated title
+    if (item.title && hasTemplatedTitle(item.title)) {
+      repoSpamCounts.set(repoFullName, (repoSpamCounts.get(repoFullName) || 0) + 1);
+    }
+  }
+
+  // Flag repos with 3+ templated-title issues
+  for (const [repo, count] of repoSpamCounts) {
+    if (count >= 3) {
+      spamRepos.add(repo);
+    }
+  }
+
+  return spamRepos;
+}
+
+/**
+ * Calculate a quality bonus based on repo star and fork counts (#98).
+ * Stars: <50 → 0, 50-499 → +3, 500-4999 → +5, 5000+ → +8
+ * Forks: 50+ → +2, 500+ → +4
+ * Natural max is 12 (8 stars + 4 forks).
+ */
+export function calculateRepoQualityBonus(stargazersCount: number, forksCount: number): number {
+  let bonus = 0;
+
+  // Star tiers
+  if (stargazersCount >= 5000) bonus += 8;
+  else if (stargazersCount >= 500) bonus += 5;
+  else if (stargazersCount >= 50) bonus += 3;
+
+  // Fork tiers
+  if (forksCount >= 500) bonus += 4;
+  else if (forksCount >= 50) bonus += 2;
+
+  return bonus;
 }
 
 export class IssueDiscovery {
@@ -279,9 +373,24 @@ export class IssueDiscovery {
 
         console.log(`Found ${data.total_count} issues in general search, processing top ${data.items.length}...`);
 
+        // Detect and filter label-farming repos (#97)
+        const spamRepos = detectLabelFarmingRepos(data.items);
+        if (spamRepos.size > 0) {
+          const spamCount = data.items.filter(i =>
+            spamRepos.has(i.repository_url.split('/').slice(-2).join('/'))
+          ).length;
+          console.log(
+            `[SPAM_FILTER] Filtered ${spamCount} issues from ${spamRepos.size} label-farming repos: ${[...spamRepos].join(', ')}`
+          );
+        }
+
         // Filter and exclude already-found repos
         const seenRepos = new Set(allCandidates.map(c => c.issue.repo));
         const itemsToVet = filterIssues(data.items)
+          .filter(item => {
+            const repoFullName = item.repository_url.split('/').slice(-2).join('/');
+            return !spamRepos.has(repoFullName);
+          })
           .filter(item => {
             const repoFullName = item.repository_url.split('/').slice(-2).join('/');
             // Skip if already searched in earlier phases
@@ -621,6 +730,15 @@ export class IssueDiscovery {
       vettingResult.notes.push('Recommendation downgraded: one or more checks were inconclusive');
     }
 
+    // Calculate repo quality bonus from star/fork counts (#98)
+    const repoQualityBonus = calculateRepoQualityBonus(
+      projectHealth.stargazersCount ?? 0,
+      projectHealth.forksCount ?? 0,
+    );
+    if (projectHealth.checkFailed && repoQualityBonus === 0) {
+      vettingResult.notes.push('Repo quality bonus unavailable: could not fetch star/fork counts due to API error');
+    }
+
     // Calculate viability score
     const viabilityScore = this.calculateViabilityScore({
       repoScore: this.getRepoScore(repoFullName),
@@ -632,6 +750,7 @@ export class IssueDiscovery {
       closedWithoutMergeCount: repoScoreRecord?.closedWithoutMergeCount ?? 0,
       mergedPRCount: repoScoreRecord?.mergedPRCount ?? 0,
       orgHasMergedPRs,
+      repoQualityBonus,
     });
 
     // Determine search priority
@@ -784,6 +903,8 @@ export class IssueDiscovery {
         avgIssueResponseDays: 0, // Would need more API calls to calculate
         ciStatus,
         isActive: daysSinceLastCommit < 30,
+        stargazersCount: repoData.stargazers_count,
+        forksCount: repoData.forks_count,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -923,6 +1044,7 @@ export class IssueDiscovery {
    * Scoring:
    * - Base: 50 points
    * - +repoScore*2 (up to +20 for score of 10)
+   * - +repoQualityBonus (up to +12 for established repos, from star/fork counts) (#98)
    * - +15 for clear requirements (clarity)
    * - +15 for freshness (recently updated)
    * - +10 for contribution guidelines
@@ -941,6 +1063,7 @@ export class IssueDiscovery {
     closedWithoutMergeCount: number;
     mergedPRCount: number;
     orgHasMergedPRs: boolean;
+    repoQualityBonus?: number;
   }): number {
     let score = 50; // Base score
 
@@ -948,6 +1071,9 @@ export class IssueDiscovery {
     if (params.repoScore !== null) {
       score += params.repoScore * 2;
     }
+
+    // Repo quality bonus from star/fork counts (#98, up to +12)
+    score += params.repoQualityBonus ?? 0;
 
     // Clarity bonus (+15)
     if (params.clearRequirements) {
