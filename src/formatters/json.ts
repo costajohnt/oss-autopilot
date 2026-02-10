@@ -122,6 +122,52 @@ export interface ConfigOutput {
   config: AgentState['config'];
 }
 
+/** A single parsed issue from a markdown list (#82) */
+export interface ParsedIssueItem {
+  repo: string;
+  number: number;
+  title: string;
+  tier: string;
+  url: string;
+}
+
+/** Output of the parse-issue-list command (#82) */
+export interface ParseIssueListOutput {
+  available: ParsedIssueItem[];
+  completed: ParsedIssueItem[];
+  availableCount: number;
+  completedCount: number;
+}
+
+/** Info about a new file's integration status (#83) */
+export interface NewFileInfo {
+  path: string;
+  referencedBy: string[];
+  isIntegrated: boolean;
+  suggestedEntryPoints?: string[];
+}
+
+/** Output of the check-integration command (#83) */
+export interface CheckIntegrationOutput {
+  newFiles: NewFileInfo[];
+  unreferencedCount: number;
+}
+
+/** Info about a local git clone (#84) */
+export interface LocalRepoInfo {
+  path: string;
+  exists: boolean;
+  currentBranch: string | null;
+}
+
+/** Output of the local-repos command (#84) */
+export interface LocalReposOutput {
+  repos: Record<string, LocalRepoInfo>;
+  scanPaths: string[];
+  cachedAt: string;
+  fromCache: boolean;
+}
+
 /**
  * Wrap data in a standard JSON output envelope
  */

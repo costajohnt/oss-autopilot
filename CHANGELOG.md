@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-02-10
+
+### Added
+
+- **Issue list parsing command** — New `parse-issue-list <path>` CLI command parses markdown issue lists into structured JSON with tier classification. Handles strikethrough (`~~done~~`), checked checkboxes (`[x]`), "Done" markers, section headings as tiers, and GitHub issue/PR URL extraction. Eliminates fragile AI-side markdown parsing. Closes #82.
+- **Integration check command** — New `check-integration --base <branch>` CLI command detects new files added in the current branch that aren't referenced by any other file. Reports referenced-by files for integrated code and suggests entry points for orphaned files. Prevents "dead code" PRs where feature files exist but aren't wired into the build. Closes #83.
+- **Local repo detection** — New `local-repos [--scan]` CLI command scans configurable directories for local git clones, caches results in state to avoid repeated filesystem traversal. Maps `owner/repo` remotes to local paths with current branch info. Supports `--paths` override and `--scan` to force refresh. Closes #84.
+
 ## [0.14.0] - 2026-02-10
 
 ### Added
@@ -389,6 +397,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.15.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.12.2...v0.13.0

@@ -494,12 +494,25 @@ export interface AgentState {
   /** Daily activity counts keyed by `"YYYY-MM-DD"`. Powers the activity heatmap chart. */
   dailyActivityCounts?: Record<string, number>;
 
+  /** Cached local repo scan results (#84). Avoids re-scanning the filesystem every session. */
+  localRepoCache?: LocalRepoCache;
+
   // Legacy v1 PR arrays — preserved for history, not actively used in v2
   activePRs: TrackedPR[];
   activeIssues: TrackedIssue[];
   dormantPRs: TrackedPR[];
   mergedPRs: TrackedPR[];
   closedPRs: TrackedPR[];
+}
+
+/** Cached results from scanning the filesystem for local git clones (#84). */
+export interface LocalRepoCache {
+  /** Map of "owner/repo" → local repo info */
+  repos: Record<string, { path: string; exists: boolean; currentBranch: string | null }>;
+  /** Directories that were scanned */
+  scanPaths: string[];
+  /** ISO 8601 timestamp of when the scan was performed */
+  cachedAt: string;
 }
 
 /** User-configurable settings, populated via `/setup-oss` and stored in {@link AgentState}. */
@@ -543,6 +556,9 @@ export interface AgentConfig {
 
   /** Whether to squash commits before marking PR ready. `true` (default), `false`, or `"ask"`. */
   squashByDefault?: boolean | 'ask';
+
+  /** Directories to scan for local git clones (#84). Falls back to default paths if not set. */
+  localRepoScanPaths?: string[];
 }
 
 /** Default configuration applied to new state files. All fields can be overridden via `/setup-oss`. */
