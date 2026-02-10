@@ -1056,7 +1056,8 @@ const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr:
       const checks = pr.classifiedChecks || [];
       const actionable = checks.filter(c => c.category === 'actionable');
       if (actionable.length > 0) return `${actionable.length} check${actionable.length === 1 ? '' : 's'} failed: ${actionable.map(c => c.name).join(', ')}`;
-      if (pr.failingCheckNames.length > 0) return `${pr.failingCheckNames.length} check${pr.failingCheckNames.length === 1 ? '' : 's'} failed`;
+      const failingNames = pr.failingCheckNames || [];
+      if (failingNames.length > 0) return `${failingNames.length} check${failingNames.length === 1 ? '' : 's'} failed`;
       return 'One or more CI checks are failing';
     },
   },
@@ -1160,11 +1161,18 @@ const AUTH_GATE_PATTERNS: RegExp[] = [
  * Default is 'actionable' — only known patterns get reclassified.
  */
 export function classifyCICheck(name: string, description?: string): CIFailureCategory {
-  const text = `${name} ${description || ''}`.toLowerCase();
+  const nameLower = name.toLowerCase();
 
-  // Check auth gates first (more specific)
-  if (AUTH_GATE_PATTERNS.some(p => p.test(text))) return 'auth_gate';
-  if (FORK_LIMITATION_PATTERNS.some(p => p.test(text))) return 'fork_limitation';
+  // Check name first (more reliable than description)
+  if (AUTH_GATE_PATTERNS.some(p => p.test(nameLower))) return 'auth_gate';
+  if (FORK_LIMITATION_PATTERNS.some(p => p.test(nameLower))) return 'fork_limitation';
+
+  // Fall through to description only if name was not classified
+  if (description) {
+    const descLower = description.toLowerCase();
+    if (AUTH_GATE_PATTERNS.some(p => p.test(descLower))) return 'auth_gate';
+    if (FORK_LIMITATION_PATTERNS.some(p => p.test(descLower))) return 'fork_limitation';
+  }
 
   return 'actionable';
 }
