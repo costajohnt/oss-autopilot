@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-02-09
+
+### Added
+
+- **Integration check for new files (Step 5.6b)** — After the review cycle, a new step detects files that were created but never imported or registered in any entry point. Prevents "dead code" PRs where a feature file exists but isn't wired into the build. Closes #74.
+- **Manual testing prompt (Step 5.7b)** — New checkpoint between review and squash that offers to help the user build/run the project locally to verify runtime behavior before finalizing. Automated review catches code patterns but not UI bugs, keyboard shortcuts, or integration issues. Closes #73.
+- **Workflow guard against skipping review cycle** — Added CRITICAL guards at Steps 5.5 (0d), 5.8, and Important Rules preventing `gh pr ready` from being called without completing Steps 5.6, 5.6b, 5.7b, and 5.7. Closes #72.
+
+### Changed
+
+- **Review agent prompts include working directory** — All agent dispatch templates in Steps 5.5 and 5.6 now include `Working directory: {local repo path}` so agents search the correct repo instead of inheriting the parent session's CWD. Closes #75.
+- **Squash force-push handles stale lease refs** — Step 5.7 (5c) now fetches the branch before `--force-with-lease` to update the local tracking ref. Includes a retry with explicit lease value if the initial push still fails after multiple session pushes. Closes #76.
+- **Draft-first workflow flow updated** — Flow summary in Step 4 now reflects the full sequence: 5.5 → 5.6 → 5.6b → 5.7b → 5.7 → 5.8 → 6 → 6.5.
+
 ## [0.12.2] - 2026-02-09
 
 ### Fixed
@@ -361,6 +375,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.13.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.12.2...v0.13.0
 [0.12.2]: https://github.com/costajohnt/oss-autopilot/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.11.1...v0.12.0

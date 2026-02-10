@@ -674,10 +674,12 @@ When the user claims an issue and starts implementing, set:
 After implementation, the flow proceeds through the **draft-first workflow**:
 1. Step 5.5 detects `isNewContribution` → commits, pushes, creates draft PR
 2. Step 5.6 runs iterative review cycle (scope-aware, tied to `issueContext`)
-3. Step 5.7 squashes commits and rewords message
-4. Step 5.8 marks PR ready for review after user confirmation
-5. Step 6 runs compliance check
-6. Step 6.5 offers list updates (if issue came from curated list)
+3. Step 5.6b checks new files are properly integrated (imports, registrations)
+4. Step 5.7b offers manual testing prompt (build/run the project locally)
+5. Step 5.7 squashes commits and rewords message
+6. Step 5.8 marks PR ready for review after user confirmation
+7. Step 6 runs compliance check
+8. Step 6.5 offers list updates (if issue came from curated list)
 
 **CRITICAL: Track that the current issue came from the curated list** so Step 6.5 knows to offer list updates.
 
@@ -767,6 +769,8 @@ Generate the PR title and body following the target repo's conventions (check `C
 
 > "Draft PR created: {draftPRUrl}. It's marked as a draft — maintainers can see it but won't be asked to review yet. Starting review cycle..."
 
+**CRITICAL: Do NOT call `gh pr ready` or skip to Step 5.8. You MUST complete Step 5.6 (review cycle), Step 5.6b (integration check), Step 5.7b (manual testing), and Step 5.7 (squash) first. The draft-first workflow exists to catch issues before maintainers see the PR.**
+
 **→ Proceed to Step 5.6 (Draft PR Review Cycle)**
 
 **If `gh pr create --draft` fails:**
@@ -823,11 +827,14 @@ Capture the `git diff` output and pass it as context to each agent.
 
 **Always dispatch these 4 agents (include the full `git diff` output in each prompt):**
 
+**IMPORTANT: Always include `Working directory: {local repo path}` in every agent prompt so agents can find and read files in the correct location. Without this, agents inherit the parent session's working directory and file lookups will fail.**
+
 ```
 Task(pr-review-toolkit:code-reviewer,
   "Review the following code changes for bugs, logic errors, security vulnerabilities,
    and adherence to project conventions.
    Repository: {repo name}
+   Working directory: {local repo path}
    Convention notes: {any CONTRIBUTING.md or lint config findings}
    Changed files: {changed files list}
 
@@ -837,6 +844,7 @@ Task(pr-review-toolkit:code-reviewer,
 Task(pr-review-toolkit:silent-failure-hunter,
   "Review the following code changes for silent failures, inadequate error handling,
    and inappropriate fallback behavior.
+   Working directory: {local repo path}
    Changed files: {changed files list}
 
    Diff:
@@ -845,6 +853,7 @@ Task(pr-review-toolkit:silent-failure-hunter,
 Task(pr-review-toolkit:code-simplifier,
   "Review the following code changes for dead code, unnecessary complexity, and
    simplification opportunities. Do NOT modify files — report findings only.
+   Working directory: {local repo path}
    Changed files: {changed files list}
 
    Diff:
@@ -853,6 +862,7 @@ Task(pr-review-toolkit:code-simplifier,
 Task(pr-review-toolkit:pr-test-analyzer,
   "Analyze test coverage for the following code changes. Check if modified code paths
    have tests, identify gaps, and recommend what tests should be added.
+   Working directory: {local repo path}
    Test directory: {test dir path}
    Changed files: {changed files list}
 
@@ -867,6 +877,7 @@ Task(pr-review-toolkit:pr-test-analyzer,
   Task(pr-review-toolkit:type-design-analyzer,
     "Review type design in the following TypeScript changes. Check for proper
      encapsulation, invariant expression, and type safety.
+     Working directory: {local repo path}
      Changed files: {changed .ts/.tsx files}
 
      Diff:
@@ -878,6 +889,7 @@ Task(pr-review-toolkit:pr-test-analyzer,
   Task(pr-review-toolkit:comment-analyzer,
     "Review comments in the following code changes for accuracy, completeness,
      and long-term maintainability.
+     Working directory: {local repo path}
      Changed files: {changed files list}
 
      Diff:
@@ -1032,7 +1044,7 @@ Read the target repo's conventions if not already loaded:
 
 **CRITICAL: Dispatch ALL agents in a SINGLE message for true parallelism.**
 
-Use the same agent dispatch pattern as Step 5.5 sub-step 3 (same agents, same conditional rules, same fallback logic), but **prepend the following SCOPE block** to each agent prompt. The SCOPE block constrains findings to the PR's purpose and prevents scope creep from pre-existing issues:
+Use the same agent dispatch pattern as Step 5.5 sub-step 3 (same agents, same conditional rules, same fallback logic), including the `Working directory: {local repo path}` line in every prompt. Additionally, **prepend the following SCOPE block** to each agent prompt. The SCOPE block constrains findings to the PR's purpose and prevents scope creep from pre-existing issues:
 
 ```
 SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
@@ -1052,7 +1064,8 @@ Each agent should tailor the scope instruction to its specialty:
 
 **If ALL agents fail (including fallback):**
 > "Review agents are currently unavailable. You can proceed without automated review, but we recommend manual review before marking ready."
-- Offer: "Proceed to squash without review" / "Retry review" / "Done for now"
+- Offer: "Proceed to integration check (skip review)" / "Retry review" / "Done for now"
+- **"Proceed to integration check":** → Proceed to Step 5.6b (Integration Check). Even without agent review, the integration check and manual testing steps are still valuable.
 
 ### 3. Consolidate Findings
 
@@ -1101,7 +1114,7 @@ Header: "Review"
 Options:
 1. "Address in-scope findings" — "Fix issues related to this PR's purpose"
 2. "Show full diff" — "Display the complete branch diff"
-3. "Finalize anyway" — "Skip remaining fixes, proceed to squash"
+3. "Finalize anyway" — "Skip remaining fixes, run integration check and testing"
 4. "Done for now" — "Leave as draft, come back later"
 ```
 
@@ -1111,7 +1124,7 @@ Question: "PR looks clean. Ready to finalize?"
 Header: "Review"
 
 Options:
-1. "Finalize — proceed to squash (Recommended)" — "Squash commits and prepare for review"
+1. "Finalize (Recommended)" — "Run integration check, optional testing, then squash"
 2. "Show full diff first" — "Review the complete branch diff"
 3. "Done for now" — "Leave as draft, come back later"
 ```
@@ -1135,7 +1148,7 @@ Question: "You've completed {roundNumber} review rounds. Remaining findings may 
 Header: "Review"
 
 Options:
-1. "Finalize now (Recommended)" — "Squash and prepare for maintainer review"
+1. "Finalize now (Recommended)" — "Run integration check, optional testing, then squash"
 2. "One more round" — "Address remaining findings, then re-review"
 3. "Done for now" — "Leave as draft, come back later"
 ```
@@ -1148,13 +1161,13 @@ Options:
   Header: "Diff"
 
   Options:
-  1. "Finalize — proceed to squash (Recommended)"
+  1. "Finalize (Recommended)"
   2. "Fix something first" — "Make additional changes"
   3. "Done for now"
   ```
 
-**"Finalize — proceed to squash" / "Finalize anyway" / "Finalize now":**
-- **→ Proceed to Step 5.7 (Squash + Reword)**
+**"Finalize" / "Finalize anyway" / "Finalize now":**
+- **→ Proceed to Step 5.6b (Integration Check)**
 
 **"Done for now":**
 - Report: "Draft PR #{draftPRNumber} is saved. Run `/oss` later to continue."
@@ -1162,9 +1175,134 @@ Options:
 
 ---
 
+## Step 5.6b: Integration Check for New Files
+
+**Trigger:** After the user finalizes the review cycle in Step 5.6 (or it is skipped). Only runs for new contributions (`isNewContribution === true`).
+
+Review agents only see the diff contents — they cannot detect whether new files are actually wired into the codebase (imported, registered, referenced). This step catches "dead code" PRs where a new file was created but never integrated.
+
+### 1. Identify New Files
+
+```bash
+git diff --name-only --diff-filter=A "origin/$baseBranch"..HEAD
+```
+
+**If `git diff` fails** (non-zero exit code, e.g., `$baseBranch` is unset or `origin/$baseBranch` does not exist): Report the error and offer "Retry after fetching" (`git fetch origin "$baseBranch"` then retry) / "Skip integration check" (→ proceed to Step 5.7b) / "Done for now". Do NOT silently skip to Step 5.7b on command failure.
+
+**If no new files were added** (command succeeds with empty output): Skip this step entirely. **→ Proceed to Step 5.7b (Manual Testing Prompt)**
+
+### 2. Check References for Each New File
+
+For each new file, check whether it is imported or referenced by any existing file:
+
+```bash
+# Extract the filename stem (without extension) for searching
+filename=$(basename "{new_file}" | sed 's/\.[^.]*$//')
+# Search for references in the source tree (excluding the file itself)
+grep -r "$filename" {source_directory}/ --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.py" --include="*.go" -l | grep -v "{new_file}"
+```
+
+Adjust the file extensions and source directory based on the target repo's language.
+
+### 3. Flag Unreferenced Files
+
+If a new file has zero references from other files, flag it:
+
+```
+Warning: {new_file} was created but is not imported or referenced by any other file.
+It may need to be registered in an entry point or manifest.
+```
+
+**If unreferenced files are found**, present a prompt:
+
+```
+Question: "{count} new file(s) appear to have no imports or registrations. This could mean they won't be included in the build."
+Header: "Integration"
+
+Options:
+1. "Investigate and fix" — "Check entry points and add missing imports"
+2. "Skip — files are referenced differently" — "E.g., dynamically loaded, auto-discovered, or config-based"
+3. "Done for now" — "Leave as draft, come back later"
+```
+
+**"Investigate and fix":**
+- Identify likely entry points (e.g., index files, manifests, feature registries)
+- If no likely entry point can be identified, inform the user and offer to skip or manually specify the entry point
+- Add the missing import/registration
+- Stage, commit, and push the fix
+- **If any git operation fails** (stage, commit, or push), report the specific error and offer: "Retry" / "Skip integration fix and proceed" / "Done for now". Do NOT proceed to Step 5.7b unless the push succeeds or the user explicitly skips
+- **→ Proceed to Step 5.7b (Manual Testing Prompt)**
+
+**"Skip — files are referenced differently":**
+- **→ Proceed to Step 5.7b (Manual Testing Prompt)**
+
+**"Done for now":**
+- Report: "Draft PR #{draftPRNumber} remains as a draft. Run `/oss` later to continue."
+- Return to Step 4's action handler loop
+
+**If all new files are properly referenced:** No prompt needed. **→ Proceed to Step 5.7b (Manual Testing Prompt)**
+
+---
+
+## Step 5.7b: Manual Testing Prompt
+
+**Trigger:** After Step 5.6b (Integration Check) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
+
+Automated review catches code patterns, but cannot verify runtime behavior (UI rendering, keyboard shortcuts, browser behavior, CLI output, etc.). This step gives the user a chance to manually verify the feature works before finalizing.
+
+### 1. Prompt for Manual Testing
+
+```
+Question: "Would you like to manually test the changes before finalizing?"
+Header: "Testing"
+
+Options:
+1. "Yes — help me set up testing" — "Walk through building/running the project to test locally"
+2. "Skip — proceed to squash (Recommended for trivial changes)" — "Go directly to squash and finalize"
+3. "Done for now" — "Leave as draft, come back later"
+```
+
+### 2. Handle User Choice
+
+**"Yes — help me set up testing":**
+1. Check for build/test instructions in the repo:
+   - `CONTRIBUTING.md` — look for "Development", "Testing", "Building" sections
+   - `README.md` — look for "Getting Started", "Development" sections
+   - `package.json` scripts — `build`, `dev`, `start`, `test`
+   - `Makefile`, `justfile`, `taskfile.yml` — common build targets
+2. Walk the user through building/running the project based on what's found
+3. For browser extensions: help with loading the unpacked extension
+4. For CLI tools: help with running the tool locally
+5. For web apps: help with starting the dev server
+6. After the user has tested, re-prompt:
+   ```
+   Question: "How did testing go?"
+   Header: "Testing"
+
+   Options:
+   1. "Tests passed — proceed to squash (Recommended)" — "Everything works as expected"
+   2. "Found issues — go back to fix" — "Make additional changes before finalizing"
+   3. "Done for now" — "Leave as draft, come back later"
+   ```
+
+**"Found issues — go back to fix":**
+- User makes fixes (with assistance as needed)
+- Stage, commit, and push the fixes
+- **If any git operation fails** (stage, commit, or push), report the specific error and offer: "Retry" / "Skip push and review locally" / "Done for now". Do NOT loop back to Step 5.6 unless the push succeeds or the user explicitly chooses to review locally
+- Loop back to Step 5.6 sub-step 1 (re-review with agents)
+
+**"Tests passed — proceed to squash" / "Skip — proceed to squash":**
+- **→ Proceed to Step 5.7 (Squash + Reword)**
+
+**"Done for now":**
+- Report: "Draft PR #{draftPRNumber} remains as a draft. Run `/oss` later to continue."
+- Return to Step 4's action handler loop
+
+---
+
 ## Step 5.7: Squash + Reword
 
-**Trigger:** After the user finalizes the review cycle in Step 5.6. Only runs for new contributions.
+**Trigger:** After Step 5.7b (Manual Testing Prompt) completes or is skipped. Only runs for new contributions.
 
 This step produces a clean, single-commit PR with an accurate commit message.
 
@@ -1278,12 +1416,25 @@ git commit -m "{approved or edited message}"
 - Report the error and offer to retry or skip squash
 - Clean up tag: `git tag -d oss-autopilot-pre-squash`
 
-**5c. Force push:**
+**5c. Force push (with stale-ref handling):**
+
+When a session has pushed multiple times, `--force-with-lease` can fail because the local tracking ref is stale relative to the remote. Always fetch the branch first to update the remote-tracking ref:
+
 ```bash
+branch=$(git branch --show-current)
+git fetch origin "$branch:refs/remotes/origin/$branch"
 git push --force-with-lease
 ```
 
-**If force push fails:**
+**If `git fetch` fails** (network error, auth failure), report the error to the user and offer: "Retry fetch" / "Undo squash and keep individual commits" / "Done for now". Do NOT proceed with `git push` if the fetch failed.
+
+**If `--force-with-lease` still fails with "stale info"**, retry once with an explicit lease value:
+
+```bash
+git push "--force-with-lease=$branch:$(git rev-parse "origin/$branch")" origin "$branch"
+```
+
+**If force push fails (either the initial attempt or the explicit lease retry):**
 - Report the specific error to the user
 - If force push is blocked by branch protection:
   > "Force push is not allowed on this branch. Restoring original commits."
@@ -1307,6 +1458,8 @@ git tag -d oss-autopilot-pre-squash
 ## Step 5.8: Mark Ready for Review
 
 **Trigger:** After Step 5.7 (Squash + Reword) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
+
+**CRITICAL: This step must NOT be reached without completing Steps 5.6 (review cycle), 5.6b (integration check), 5.7b (manual testing prompt), and 5.7 (squash). If `gh pr ready` is called before these steps, the draft-first workflow has been bypassed — this is a bug.**
 
 This is the final gate before the PR becomes visible to maintainers.
 
@@ -1381,7 +1534,7 @@ After viewing, re-prompt with the same options.
 
 Dispatch the `pr-compliance-checker` agent with the PR URL.
 
-**Note:** For new contributions that went through the draft-first workflow (Steps 5.6–5.8), the PR has already been reviewed iteratively and squashed. The compliance check here focuses on PR description quality, licensing, and other opensource.guide standards — not code quality (which was handled in Step 5.6).
+**Note:** For new contributions that went through the draft-first workflow (Steps 5.6 through 5.8, including 5.6b and 5.7b), the PR has already been reviewed iteratively, integration-checked, and squashed. The compliance check here focuses on PR description quality, licensing, and other opensource.guide standards — not code quality (which was handled in Step 5.6).
 
 ### Test Coverage Requirements
 
@@ -1514,14 +1667,15 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" p
 6. **Drive the conversation** - Claude controls the flow, user responds to prompts
 7. **Session ends ONLY when user selects "Done for now"** - never assume user is finished
 8. **ALWAYS include "Done for now"** in every AskUserQuestion
+9. **Draft-first workflow is mandatory** — after Step 5.5, complete all steps (5.6 → 5.6b → 5.7b → 5.7) in order before reaching Step 5.8. The `gh pr ready` call belongs exclusively in Step 5.8. Never skip to it directly.
 
 ### UX Guidelines
-9. Keep responses professional and concise
-10. **NEVER add AI attribution** to commits, comments, or PRs
-11. **Display information before prompting** - show all PRs as text FIRST, then ask for action
-12. **Parse "Other" input flexibly** - accept PR numbers, URLs, repo refs like "ink#861"
+10. Keep responses professional and concise
+11. **NEVER add AI attribution** to commits, comments, or PRs
+12. **Display information before prompting** - show all PRs as text FIRST, then ask for action
+13. **Parse "Other" input flexibly** - accept PR numbers, URLs, repo refs like "ink#861"
 
 ### Parallel Execution
-13. **Group PRs by repository** - one agent per repo, not per PR, to avoid branch checkout conflicts
-14. **Parallel execution** - when addressing multiple repos, launch ALL agents in a SINGLE message
-15. After parallel execution, present consolidated results table
+14. **Group PRs by repository** - one agent per repo, not per PR, to avoid branch checkout conflicts
+15. **Parallel execution** - when addressing multiple repos, launch ALL agents in a SINGLE message
+16. After parallel execution, present consolidated results table
