@@ -2,7 +2,7 @@
 
 Discover issues worth contributing to, track your PRs across repos, and draft responses to maintainer feedback. An AI copilot for your open source journey.
 
-![Version](https://img.shields.io/badge/version-0.15.0-blue)
+![Version](https://img.shields.io/badge/version-0.15.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 ![Node Version](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
@@ -312,10 +312,14 @@ gh auth login
 
 ### Build fails on first run
 
-The CLI bundles automatically on first use. If it fails:
+The CLI bundles automatically on first use. If it fails, navigate to the plugin directory and rebuild:
 
 ```bash
-cd ~/.claude/plugins/oss-autopilot   # or your plugin directory
+# Find your plugin installation directory
+find ~/.claude/plugins -name "oss-autopilot" -type d
+
+# Then navigate to it and rebuild
+cd <path-from-find-command>
 npm install
 npm run bundle
 ```
