@@ -25,14 +25,36 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
     console.error('Fetching fresh data from GitHub...');
     try {
       const prMonitor = new PRMonitor(token);
-      const [{ prs, failures }, recentlyClosedPRs] = await Promise.all([
+      const [{ prs, failures }, recentlyClosedPRs, mergedResult, closedResult] = await Promise.all([
         prMonitor.fetchUserOpenPRs(),
         prMonitor.fetchRecentlyClosedPRs(),
+        prMonitor.fetchUserMergedPRCounts(),
+        prMonitor.fetchUserClosedPRCounts(),
       ]);
 
       if (failures.length > 0) {
         console.error(`Warning: ${failures.length} PR fetch(es) failed`);
       }
+
+      // Store monthly chart data (opened/merged/closed) so charts have data
+      const { monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
+      const { monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
+
+      try { stateManager.setMonthlyMergedCounts(monthlyCounts); } catch { /* non-critical */ }
+      try { stateManager.setMonthlyClosedCounts(monthlyClosedCounts); } catch { /* non-critical */ }
+      try {
+        const combinedOpenedCounts: Record<string, number> = { ...openedFromMerged };
+        for (const [month, count] of Object.entries(openedFromClosed)) {
+          combinedOpenedCounts[month] = (combinedOpenedCounts[month] || 0) + count;
+        }
+        for (const pr of prs) {
+          if (pr.createdAt) {
+            const month = pr.createdAt.slice(0, 7);
+            combinedOpenedCounts[month] = (combinedOpenedCounts[month] || 0) + 1;
+          }
+        }
+        stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
+      } catch { /* non-critical */ }
 
       digest = prMonitor.generateDigest(prs, recentlyClosedPRs);
       stateManager.setLastDigest(digest);
@@ -145,167 +167,6 @@ interface DashboardStats {
   needsResponse: number;
 }
 
-/**
- * Build a CSS-grid activity heatmap from available date data.
- * Uses open PR createdAt, closed PR closedAt, and state events.
- * 3-month rolling window, GitHub-style green color scale.
- */
-function generateHeatmapHtml(digest: DailyDigest, state: Readonly<AgentState>): string {
-  // Build daily activity counts from available data
-  const dailyActivity: Record<string, number> = {};
-  const addDay = (dateStr: string | undefined) => {
-    if (!dateStr) return;
-    const day = dateStr.slice(0, 10); // "YYYY-MM-DD"
-    if (day.length === 10) {
-      dailyActivity[day] = (dailyActivity[day] || 0) + 1;
-    }
-  };
-
-  // Open PR creation dates
-  for (const pr of (digest.openPRs || [])) {
-    addDay(pr.createdAt);
-  }
-
-  // Recently closed PR dates
-  for (const pr of (digest.recentlyClosedPRs || [])) {
-    addDay(pr.closedAt);
-  }
-
-  // State events (pr_tracked, pr_merged, pr_closed, etc.)
-  for (const event of (state.events || [])) {
-    addDay(event.at);
-  }
-
-  // Build 3-month window (91 days back from today), using UTC to match GitHub API timestamps
-  const todayUTC = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
-  const startDate = new Date(todayUTC);
-  startDate.setUTCDate(startDate.getUTCDate() - 90);
-
-  // Align to Sunday (start of week)
-  const dayOfWeek = startDate.getUTCDay();
-  startDate.setUTCDate(startDate.getUTCDate() - dayOfWeek);
-
-  // Build cells
-  const cells: Array<{ date: string; count: number; dayOfWeek: number }> = [];
-  const cursor = new Date(startDate);
-  while (cursor <= todayUTC) {
-    const dateStr = cursor.toISOString().slice(0, 10);
-    cells.push({
-      date: dateStr,
-      count: dailyActivity[dateStr] || 0,
-      dayOfWeek: cursor.getUTCDay(),
-    });
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-
-  // Find max for color scaling
-  const maxCount = Math.max(1, ...cells.map(c => c.count));
-
-  // Color levels (GitHub-style green)
-  const getColor = (count: number): string => {
-    if (count === 0) return '#161b22';
-    const ratio = count / maxCount;
-    if (ratio <= 0.25) return '#0e4429';
-    if (ratio <= 0.5) return '#006d32';
-    if (ratio <= 0.75) return '#26a641';
-    return '#39d353';
-  };
-
-  // Generate month labels
-  const weeks = Math.ceil(cells.length / 7);
-  const monthLabels: Array<{ label: string; col: number }> = [];
-  let lastMonth = '';
-  for (let i = 0; i < cells.length; i++) {
-    const month = cells[i].date.slice(0, 7);
-    if (month !== lastMonth) {
-      lastMonth = month;
-      const d = new Date(cells[i].date + 'T00:00:00Z');
-      const label = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' });
-      monthLabels.push({ label, col: Math.floor(i / 7) + 1 });
-    }
-  }
-
-  const dayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
-
-  return `
-    <style>
-      .heatmap-wrapper { overflow-x: auto; }
-      .heatmap-month-labels {
-        display: grid;
-        grid-template-columns: 28px repeat(${weeks}, 1fr);
-        margin-bottom: 2px;
-        font-family: 'Geist Mono', monospace;
-        font-size: 0.65rem;
-        color: var(--text-muted);
-      }
-      .heatmap-grid {
-        display: grid;
-        grid-template-rows: repeat(7, 14px);
-        grid-auto-flow: column;
-        grid-auto-columns: 14px;
-        gap: 2px;
-      }
-      .heatmap-cell {
-        width: 12px;
-        height: 12px;
-        border-radius: 2px;
-        cursor: default;
-      }
-      .heatmap-day-labels {
-        display: grid;
-        grid-template-rows: repeat(7, 14px);
-        gap: 2px;
-        margin-right: 4px;
-        font-family: 'Geist Mono', monospace;
-        font-size: 0.6rem;
-        color: var(--text-muted);
-        align-items: center;
-      }
-      .heatmap-container {
-        display: flex;
-        align-items: flex-start;
-      }
-      .heatmap-legend {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        margin-top: 8px;
-        font-family: 'Geist Mono', monospace;
-        font-size: 0.6rem;
-        color: var(--text-muted);
-        justify-content: flex-end;
-      }
-      .heatmap-legend-cell {
-        width: 12px;
-        height: 12px;
-        border-radius: 2px;
-      }
-    </style>
-    <div class="heatmap-wrapper">
-      <div class="heatmap-month-labels">
-        <div></div>
-        ${monthLabels.map(({ label, col }) => `<div style="grid-column: ${col + 1};">${label}</div>`).join('')}
-      </div>
-      <div class="heatmap-container">
-        <div class="heatmap-day-labels">
-          ${dayLabels.map(l => `<div>${l}</div>`).join('')}
-        </div>
-        <div class="heatmap-grid">
-          ${cells.map(c => `<div class="heatmap-cell" style="background: ${getColor(c.count)};" title="${c.date}: ${c.count} activit${c.count === 1 ? 'y' : 'ies'}"></div>`).join('')}
-        </div>
-      </div>
-      <div class="heatmap-legend">
-        <span>Less</span>
-        <div class="heatmap-legend-cell" style="background: #161b22;"></div>
-        <div class="heatmap-legend-cell" style="background: #0e4429;"></div>
-        <div class="heatmap-legend-cell" style="background: #006d32;"></div>
-        <div class="heatmap-legend-cell" style="background: #26a641;"></div>
-        <div class="heatmap-legend-cell" style="background: #39d353;"></div>
-        <span>More</span>
-      </div>
-    </div>`;
-}
-
 function generateDashboardHtml(
   stats: DashboardStats,
   monthlyMerged: Record<string, number>,
@@ -393,29 +254,25 @@ function generateDashboardHtml(
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-base: #0d1117;
-      --bg-surface: #161b22;
-      --bg-elevated: #1c2128;
-      --border: #30363d;
-      --border-muted: #21262d;
-      --text-primary: #c9d1d9;
+      --bg-base: #080b10;
+      --bg-surface: rgba(22, 27, 34, 0.65);
+      --bg-elevated: rgba(28, 33, 40, 0.8);
+      --border: rgba(48, 54, 61, 0.6);
+      --border-muted: rgba(33, 38, 45, 0.5);
+      --text-primary: #e6edf3;
       --text-secondary: #8b949e;
       --text-muted: #6e7681;
       --accent-merged: #a855f7;
-      --accent-merged-dim: rgba(168, 85, 247, 0.15);
-      --accent-open: #238636;
-      --accent-open-dim: rgba(35, 134, 54, 0.15);
+      --accent-merged-dim: rgba(168, 85, 247, 0.12);
+      --accent-open: #3fb950;
+      --accent-open-dim: rgba(63, 185, 80, 0.12);
       --accent-warning: #d29922;
-      --accent-warning-dim: rgba(210, 153, 34, 0.15);
+      --accent-warning-dim: rgba(210, 153, 34, 0.12);
       --accent-error: #f85149;
-      --accent-error-dim: rgba(248, 81, 73, 0.15);
+      --accent-error-dim: rgba(248, 81, 73, 0.10);
       --accent-conflict: #da3633;
       --accent-info: #58a6ff;
-      --accent-info-dim: rgba(88, 166, 255, 0.1);
-      --glow-merged: 0 0 20px rgba(168, 85, 247, 0.3);
-      --glow-open: 0 0 20px rgba(35, 134, 54, 0.3);
-      --glow-warning: 0 0 20px rgba(210, 153, 34, 0.3);
-      --glow-error: 0 0 20px rgba(248, 81, 73, 0.3);
+      --accent-info-dim: rgba(88, 166, 255, 0.08);
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -426,16 +283,25 @@ function generateDashboardHtml(
       color: var(--text-primary);
       min-height: 100vh;
       line-height: 1.5;
+      overflow-x: hidden;
     }
 
     body::before {
       content: '';
       position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background-image:
-        linear-gradient(rgba(88, 166, 255, 0.02) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(88, 166, 255, 0.02) 1px, transparent 1px);
-      background-size: 50px 50px;
+      top: -20%; left: -10%;
+      width: 60%; height: 60%;
+      background: radial-gradient(ellipse, rgba(88, 166, 255, 0.06) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -20%; right: -10%;
+      width: 50%; height: 50%;
+      background: radial-gradient(ellipse, rgba(168, 85, 247, 0.05) 0%, transparent 70%);
       pointer-events: none;
       z-index: 0;
     }
@@ -452,8 +318,8 @@ function generateDashboardHtml(
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 2.5rem;
-      padding-bottom: 1.5rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
       border-bottom: 1px solid var(--border-muted);
     }
 
@@ -464,15 +330,15 @@ function generateDashboardHtml(
     }
 
     .logo {
-      width: 48px;
-      height: 48px;
-      background: linear-gradient(135deg, var(--accent-info) 0%, var(--accent-merged) 100%);
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(135deg, var(--accent-info) 0%, var(--accent-merged) 50%, #f778ba 100%);
       border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 1.5rem;
-      box-shadow: var(--glow-merged);
+      box-shadow: 0 0 24px rgba(168, 85, 247, 0.3), 0 0 48px rgba(88, 166, 255, 0.15);
     }
 
     .header h1 {
@@ -517,37 +383,42 @@ function generateDashboardHtml(
     }
 
     .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 1rem;
-      margin-bottom: 2rem;
-    }
-
-    @media (max-width: 1200px) { .stats-grid { grid-template-columns: repeat(3, 1fr); } }
-    @media (max-width: 768px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
-
-    .stat-card {
+      display: flex;
       background: var(--bg-surface);
       border: 1px solid var(--border-muted);
       border-radius: 12px;
-      padding: 1.25rem;
-      position: relative;
+      margin-bottom: 1.5rem;
       overflow: hidden;
-      transition: all 0.2s ease;
+    }
+
+    @media (max-width: 768px) {
+      .stats-grid { flex-wrap: wrap; }
+      .stat-card { flex: 1 1 33%; }
+    }
+
+    .stat-card {
+      flex: 1;
+      padding: 1rem 1.25rem;
+      position: relative;
+      transition: background 0.2s ease;
+    }
+
+    .stat-card + .stat-card {
+      border-left: 1px solid var(--border-muted);
     }
 
     .stat-card:hover {
-      border-color: var(--border);
-      transform: translateY(-2px);
+      background: rgba(255, 255, 255, 0.02);
     }
 
-    .stat-card::before {
+    .stat-card::after {
       content: '';
       position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 3px;
+      bottom: 0; left: 0.75rem; right: 0.75rem;
+      height: 2px;
       background: var(--accent-color, var(--border));
-      opacity: 0.8;
+      border-radius: 2px;
+      opacity: 0.7;
     }
 
     .stat-card.active { --accent-color: var(--accent-open); }
@@ -559,7 +430,7 @@ function generateDashboardHtml(
 
     .stat-value {
       font-family: 'Geist Mono', monospace;
-      font-size: 2.25rem;
+      font-size: 1.75rem;
       font-weight: 600;
       line-height: 1;
       margin-bottom: 0.25rem;
@@ -573,7 +444,7 @@ function generateDashboardHtml(
     .stat-card.response .stat-value { color: var(--accent-warning); }
 
     .stat-label {
-      font-size: 0.8rem;
+      font-size: 0.7rem;
       color: var(--text-secondary);
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -582,9 +453,9 @@ function generateDashboardHtml(
     .health-section {
       background: var(--bg-surface);
       border: 1px solid var(--border-muted);
-      border-radius: 12px;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1.25rem;
     }
 
     .health-header {
@@ -746,8 +617,8 @@ function generateDashboardHtml(
     .main-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 1.5rem;
-      margin-bottom: 2rem;
+      gap: 1.25rem;
+      margin-bottom: 1.25rem;
     }
 
     @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
@@ -755,7 +626,7 @@ function generateDashboardHtml(
     .card {
       background: var(--bg-surface);
       border: 1px solid var(--border-muted);
-      border-radius: 12px;
+      border-radius: 10px;
       overflow: hidden;
     }
 
@@ -763,27 +634,29 @@ function generateDashboardHtml(
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 1rem 1.25rem;
+      padding: 0.75rem 1.125rem;
       border-bottom: 1px solid var(--border-muted);
     }
 
     .card-title {
-      font-size: 0.9rem;
+      font-size: 0.75rem;
       font-weight: 600;
-      color: var(--text-primary);
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
 
-    .card-body { padding: 1.25rem; }
+    .card-body { padding: 1rem 1.125rem; }
 
     .chart-container {
       position: relative;
-      height: 280px;
+      height: 260px;
     }
 
     .pr-list-section {
       background: var(--bg-surface);
       border: 1px solid var(--border-muted);
-      border-radius: 12px;
+      border-radius: 10px;
       overflow: hidden;
     }
 
@@ -791,11 +664,17 @@ function generateDashboardHtml(
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 1rem 1.25rem;
+      padding: 0.75rem 1.125rem;
       border-bottom: 1px solid var(--border-muted);
     }
 
-    .pr-list-title { font-size: 1rem; font-weight: 600; }
+    .pr-list-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
 
     .pr-count {
       font-family: 'Geist Mono', monospace;
@@ -936,37 +815,25 @@ function generateDashboardHtml(
 
     .footer {
       text-align: center;
-      padding-top: 2rem;
+      padding-top: 1.5rem;
       border-top: 1px solid var(--border-muted);
-      margin-top: 2rem;
+      margin-top: 1.5rem;
     }
 
     .footer p {
       font-family: 'Geist Mono', monospace;
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       color: var(--text-muted);
     }
 
     @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(20px); }
+      from { opacity: 0; transform: translateY(12px); }
       to { opacity: 1; transform: translateY(0); }
     }
 
-    .stat-card { animation: fadeInUp 0.4s ease forwards; }
-    .stat-card:nth-child(1) { animation-delay: 0.05s; }
-    .stat-card:nth-child(2) { animation-delay: 0.1s; }
-    .stat-card:nth-child(3) { animation-delay: 0.15s; }
-    .stat-card:nth-child(4) { animation-delay: 0.2s; }
-    .stat-card:nth-child(5) { animation-delay: 0.25s; }
-    .stat-card:nth-child(6) { animation-delay: 0.3s; }
-
-    .card, .pr-list-section, .health-section {
-      animation: fadeInUp 0.5s ease forwards;
-      animation-delay: 0.35s;
-      opacity: 0;
+    .stats-grid, .health-section, .pr-list-section {
+      animation: fadeInUp 0.35s ease;
     }
-
-    .pr-list-section { animation-delay: 0.45s; }
   </style>
 </head>
 <body>
@@ -981,7 +848,7 @@ function generateDashboardHtml(
         </div>
         <div>
           <h1>OSS Autopilot</h1>
-          <span class="header-subtitle">Contribution Dashboard</span>
+          <span class="header-subtitle">Mission Control</span>
         </div>
       </div>
       <div class="timestamp">
@@ -1086,7 +953,7 @@ function generateDashboardHtml(
     ` : ''}
 
     ${(digest.recentlyClosedPRs || []).length > 0 ? `
-    <section class="health-section" style="opacity: 0; animation-delay: 0.4s;">
+    <section class="health-section" style="animation-delay: 0.2s;">
       <div class="health-header">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2">
           <circle cx="12" cy="12" r="10"/>
@@ -1140,7 +1007,7 @@ function generateDashboardHtml(
       </div>
     </div>
 
-    <div class="card" style="margin-bottom: 2rem;">
+    <div class="card" style="margin-bottom: 1.25rem;">
       <div class="card-header">
         <span class="card-title">Contribution Timeline</span>
       </div>
@@ -1151,28 +1018,6 @@ function generateDashboardHtml(
       </div>
     </div>
 
-    <div class="main-grid">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Success Rate Trends</span>
-        </div>
-        <div class="card-body">
-          <div class="chart-container">
-            <canvas id="successRateChart"></canvas>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Activity Heatmap</span>
-          <span style="font-family: 'Geist Mono', monospace; font-size: 0.7rem; color: var(--text-muted);">Last 3 months</span>
-        </div>
-        <div class="card-body">
-          ${generateHeatmapHtml(digest, state)}
-        </div>
-      </div>
-    </div>
 
     ${(digest.openPRs || []).length > 0 ? `
     <section class="pr-list-section">
@@ -1245,14 +1090,15 @@ function generateDashboardHtml(
     `}
 
     <footer class="footer">
-      <p>OSS Autopilot Dashboard // Built for open source contributors</p>
+      <p>OSS Autopilot // Mission Control</p>
     </footer>
   </div>
 
   <script>
-    Chart.defaults.color = '#8b949e';
-    Chart.defaults.borderColor = '#30363d';
+    Chart.defaults.color = '#6e7681';
+    Chart.defaults.borderColor = 'rgba(48, 54, 61, 0.4)';
     Chart.defaults.font.family = "'Geist', sans-serif";
+    Chart.defaults.font.size = 11;
 
     // === Status Doughnut ===
     new Chart(document.getElementById('statusChart'), {
@@ -1261,9 +1107,9 @@ function generateDashboardHtml(
         labels: ['Active', 'Dormant', 'Merged', 'Closed'],
         datasets: [{
           data: [${stats.activePRs}, ${stats.dormantPRs}, ${stats.mergedPRs}, ${stats.closedPRs}],
-          backgroundColor: ['#238636', '#d29922', '#a855f7', '#6e7681'],
-          borderColor: '#161b22',
-          borderWidth: 3,
+          backgroundColor: ['#3fb950', '#d29922', '#a855f7', '#484f58'],
+          borderColor: 'rgba(8, 11, 16, 0.8)',
+          borderWidth: 2,
           hoverOffset: 8
         }]
       },
@@ -1274,7 +1120,7 @@ function generateDashboardHtml(
         plugins: {
           legend: {
             position: 'bottom',
-            labels: { padding: 20, usePointStyle: true, pointStyle: 'circle' }
+            labels: { padding: 16, usePointStyle: true, pointStyle: 'circle', font: { size: 11 } }
           }
         }
       }
@@ -1327,20 +1173,20 @@ function generateDashboardHtml(
       data: {
         labels: ${JSON.stringify(repoLabels)},
         datasets: [
-          { label: 'Merged', data: ${JSON.stringify(mergedData)}, backgroundColor: '#a855f7', borderRadius: 4 },
-          { label: 'Active', data: ${JSON.stringify(activeData)}, backgroundColor: '#238636', borderRadius: 4 },
-          { label: 'Closed', data: ${JSON.stringify(closedData)}, backgroundColor: '#6e7681', borderRadius: 4 }
+          { label: 'Merged', data: ${JSON.stringify(mergedData)}, backgroundColor: '#a855f7', borderRadius: 3 },
+          { label: 'Active', data: ${JSON.stringify(activeData)}, backgroundColor: '#3fb950', borderRadius: 3 },
+          { label: 'Closed', data: ${JSON.stringify(closedData)}, backgroundColor: '#484f58', borderRadius: 3 }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          x: { stacked: true, grid: { display: false } },
-          y: { stacked: true, grid: { color: '#21262d' }, ticks: { stepSize: 1 } }
+          x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10 } } },
+          y: { stacked: true, grid: { color: 'rgba(48, 54, 61, 0.3)' }, ticks: { stepSize: 1 } }
         },
         plugins: {
-          legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true, pointStyle: 'circle' } },
+          legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true, pointStyle: 'circle', font: { size: 11 } } },
           tooltip: {
             callbacks: {
               afterBody: function(context) {
@@ -1358,24 +1204,13 @@ function generateDashboardHtml(
 
     // === Contribution Timeline (grouped bar: Opened/Merged/Closed) ===
     ${(() => {
-      // Build union of all months, padded to at least 6
-      const allMonthSet = new Set<string>();
-      for (const m of Object.keys(monthlyMerged)) allMonthSet.add(m);
-      for (const m of Object.keys(monthlyClosed)) allMonthSet.add(m);
-      for (const m of Object.keys(monthlyOpened)) allMonthSet.add(m);
-
-      let allMonths = Array.from(allMonthSet).sort();
-
-      // Pad to at least 6 months by walking backwards from the earliest month
-      if (allMonths.length > 0 && allMonthSet.size < 6) {
-        const earliest = allMonths[0];
-        const [y, m] = earliest.split('-').map(Number);
-        for (let offset = 1; allMonthSet.size < 6; offset++) {
-          const d = new Date(y, m - 1 - offset, 1);
-          const padMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-          allMonthSet.add(padMonth);
-        }
-        allMonths = Array.from(allMonthSet).sort();
+      // Generate a contiguous range of the last 6 months from today
+      // This avoids gaps when historical data spans years (e.g. 2019 and 2026)
+      const now = new Date();
+      const allMonths: string[] = [];
+      for (let offset = 5; offset >= 0; offset--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+        allMonths.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
       }
 
       return `
@@ -1403,7 +1238,7 @@ function generateDashboardHtml(
           {
             label: 'Closed',
             data: timelineMonths.map(m => closedData[m] || 0),
-            backgroundColor: '#6e7681',
+            backgroundColor: '#484f58',
             borderRadius: 3
           }
         ]
@@ -1413,81 +1248,16 @@ function generateDashboardHtml(
         maintainAspectRatio: false,
         scales: {
           x: { grid: { display: false } },
-          y: { grid: { color: '#21262d' }, beginAtZero: true, ticks: { stepSize: 1 } }
+          y: { grid: { color: 'rgba(48, 54, 61, 0.3)' }, beginAtZero: true, ticks: { stepSize: 1 } }
         },
         plugins: {
-          legend: { position: 'bottom', labels: { padding: 20, usePointStyle: true, pointStyle: 'circle' } }
+          legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true, pointStyle: 'circle', font: { size: 11 } } }
         },
         interaction: { intersect: false, mode: 'index' }
       }
     });`;
     })()}
 
-    // === Success Rate Trends (monthly merge rate %) ===
-    ${(() => {
-      const allMonthSet = new Set<string>();
-      for (const m of Object.keys(monthlyMerged)) allMonthSet.add(m);
-      for (const m of Object.keys(monthlyClosed)) allMonthSet.add(m);
-      const allMonths = Array.from(allMonthSet).sort();
-
-      const rateData = allMonths.map(m => {
-        const merged = monthlyMerged[m] || 0;
-        const closed = monthlyClosed[m] || 0;
-        const total = merged + closed;
-        return total > 0 ? Math.round((merged / total) * 100) : null;
-      });
-
-      return `
-    new Chart(document.getElementById('successRateChart'), {
-      type: 'line',
-      data: {
-        labels: ${JSON.stringify(allMonths)},
-        datasets: [{
-          label: 'Merge Rate',
-          data: ${JSON.stringify(rateData)},
-          borderColor: '#58a6ff',
-          backgroundColor: 'rgba(88, 166, 255, 0.1)',
-          fill: true,
-          tension: 0.4,
-          pointRadius: 4,
-          pointBackgroundColor: '#58a6ff',
-          pointBorderColor: '#161b22',
-          pointBorderWidth: 2,
-          pointHoverRadius: 6,
-          spanGaps: true
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          x: { grid: { display: false } },
-          y: {
-            grid: { color: '#21262d' },
-            beginAtZero: true,
-            max: 100,
-            ticks: { callback: function(v) { return v + '%'; } }
-          }
-        },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: function(context) {
-                const idx = context.dataIndex;
-                const months = ${JSON.stringify(allMonths)};
-                const m = months[idx];
-                const merged = ${JSON.stringify(monthlyMerged)}[m] || 0;
-                const closed = ${JSON.stringify(monthlyClosed)}[m] || 0;
-                return context.parsed.y + '% (' + merged + ' merged, ' + closed + ' closed)';
-              }
-            }
-          }
-        },
-        interaction: { intersect: false, mode: 'index' }
-      }
-    });`;
-    })()}
   </script>
 </body>
 </html>`;

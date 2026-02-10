@@ -461,6 +461,9 @@ export interface AgentState {
   /** Monthly opened PR counts keyed by `"YYYY-MM"`. Combines PRs opened across merged+closed+open sets. */
   monthlyOpenedCounts?: Record<string, number>;
 
+  /** Daily activity counts keyed by `"YYYY-MM-DD"`. Powers the activity heatmap chart. */
+  dailyActivityCounts?: Record<string, number>;
+
   // Legacy v1 PR arrays — preserved for history, not actively used in v2
   activePRs: TrackedPR[];
   activeIssues: TrackedIssue[];

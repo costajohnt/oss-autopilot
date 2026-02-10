@@ -2,7 +2,7 @@
 
 Discover issues worth contributing to, track your PRs across repos, and draft responses to maintainer feedback. An AI copilot for your open source journey.
 
-![Version](https://img.shields.io/badge/version-0.11.0-blue)
+![Version](https://img.shields.io/badge/version-0.11.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 
@@ -93,11 +93,9 @@ The dashboard (`~/.oss-autopilot/dashboard.html`) auto-opens each time you run `
 
 **Charts and visualizations:**
 
-- **Contribution Timeline** — Grouped bar chart showing PRs opened, merged, and closed per month
-- **Repository Breakdown** — Top 10 repos by total PRs (with "Other" bucket), stacked bars with percentage tooltips
-- **Success Rate Trends** — Monthly merge rate line chart (0-100%) with raw counts in tooltip
-- **Activity Heatmap** — GitHub-style 3-month calendar heatmap of contribution activity
 - **Status Overview** — Doughnut chart of PR states (active, merged, closed, dormant)
+- **Repository Breakdown** — Top 10 repos by total PRs (with "Other" bucket), stacked bars with percentage tooltips
+- **Contribution Timeline** — Grouped bar chart showing PRs opened, merged, and closed per month
 
 ### Available Commands
 

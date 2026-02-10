@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.1] - 2026-02-09
+
+### Changed
+
+- Dashboard visual redesign — darker base (#080b10), ambient radial glows, unified stats bar with colored underlines, uppercase section titles, tighter spacing, 3-color gradient logo
+- Dashboard command now fetches merged/closed PR counts directly (previously only `daily` populated monthly chart data), so Contribution Timeline shows all three datasets without needing to run `daily` first
+- Timeline and Success Rate charts use contiguous 6-month range from today instead of sparse historical months (fixes 2019→2026 x-axis gap)
+
 ## [0.11.0] - 2026-02-09
 
 ### Added
@@ -307,6 +315,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.11.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.9.0...v0.10.0
