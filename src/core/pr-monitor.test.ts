@@ -18,7 +18,7 @@ vi.mock('./state.js', () => ({
 }));
 
 // Import after mocks are set up
-const { PRMonitor } = await import('./pr-monitor.js');
+const { PRMonitor, computeDisplayLabel, classifyCICheck, classifyFailingChecks } = await import('./pr-monitor.js');
 const { getStateManager } = await import('./state.js');
 
 describe('PRMonitor CI status deduplication', () => {
@@ -937,11 +937,14 @@ describe('PRMonitor generateDigest', () => {
       number: 1,
       title: 'Test PR',
       status: 'healthy',
+      displayLabel: '[Healthy]',
+      displayDescription: 'Everything looks good — normal review cycle',
       createdAt: '2026-02-01T00:00:00Z',
       updatedAt: '2026-02-07T00:00:00Z',
       daysSinceActivity: 1,
       ciStatus: 'passing',
       failingCheckNames: [],
+      classifiedChecks: [],
       hasMergeConflict: false,
       reviewDecision: 'review_required',
       hasUnrespondedComment: false,
@@ -1245,5 +1248,289 @@ describe('PRMonitor acknowledgment comment detection (Issue #69)', () => {
     );
     expect(result.hasUnrespondedComment).toBe(true);
     expect(result.lastMaintainerComment?.author).toBe('maintainer');
+  });
+});
+
+describe('computeDisplayLabel (#79)', () => {
+  function makePR(overrides: Partial<import('./types.js').FetchedPR> = {}): import('./types.js').FetchedPR {
+    return {
+      id: 1,
+      url: 'https://github.com/owner/repo/pull/1',
+      repo: 'owner/repo',
+      number: 1,
+      title: 'Test PR',
+      status: 'healthy',
+      displayLabel: '',
+      displayDescription: '',
+      createdAt: '2026-02-01T00:00:00Z',
+      updatedAt: '2026-02-07T00:00:00Z',
+      daysSinceActivity: 1,
+      ciStatus: 'passing',
+      failingCheckNames: [],
+      classifiedChecks: [],
+      hasMergeConflict: false,
+      reviewDecision: 'review_required',
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      maintainerActionHints: [],
+      ...overrides,
+    };
+  }
+
+  it('should return [Healthy] for healthy status', () => {
+    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({ status: 'healthy' }));
+    expect(displayLabel).toBe('[Healthy]');
+    expect(displayDescription).toBe('Everything looks good — normal review cycle');
+  });
+
+  it('should return [Needs Response] with author for needs_response', () => {
+    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
+      status: 'needs_response',
+      lastMaintainerComment: { author: 'johndoe', body: 'Please fix', createdAt: '2026-02-07T10:00:00Z' },
+    }));
+    expect(displayLabel).toBe('[Needs Response]');
+    expect(displayDescription).toBe('@johndoe commented');
+  });
+
+  it('should return fallback description for needs_response without comment', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({ status: 'needs_response' }));
+    expect(displayDescription).toBe('Maintainer awaiting response');
+  });
+
+  it('should return [CI Failing] with actionable check count', () => {
+    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
+      status: 'failing_ci',
+      failingCheckNames: ['Build', 'Lint', 'Vercel Deploy'],
+      classifiedChecks: [
+        { name: 'Build', category: 'actionable' },
+        { name: 'Lint', category: 'actionable' },
+        { name: 'Vercel Deploy', category: 'fork_limitation' },
+      ],
+    }));
+    expect(displayLabel).toBe('[CI Failing]');
+    expect(displayDescription).toBe('2 checks failed: Build, Lint');
+  });
+
+  it('should return singular form for exactly 1 actionable check', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'failing_ci',
+      failingCheckNames: ['Build'],
+      classifiedChecks: [{ name: 'Build', category: 'actionable' }],
+    }));
+    expect(displayDescription).toBe('1 check failed: Build');
+  });
+
+  it('should fall back to failingCheckNames count when all checks are non-actionable', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'failing_ci',
+      failingCheckNames: ['Vercel Deploy', 'Netlify Build'],
+      classifiedChecks: [
+        { name: 'Vercel Deploy', category: 'fork_limitation' },
+        { name: 'Netlify Build', category: 'fork_limitation' },
+      ],
+    }));
+    expect(displayDescription).toBe('2 checks failed');
+  });
+
+  it('should return generic description when no classified checks', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'failing_ci',
+      failingCheckNames: [],
+      classifiedChecks: [],
+    }));
+    expect(displayDescription).toBe('One or more CI checks are failing');
+  });
+
+  it('should return [Merge Conflict] for merge_conflict', () => {
+    const { displayLabel } = computeDisplayLabel(makePR({ status: 'merge_conflict' }));
+    expect(displayLabel).toBe('[Merge Conflict]');
+  });
+
+  it('should return [Incomplete Checklist] with stats', () => {
+    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
+      status: 'incomplete_checklist',
+      checklistStats: { checked: 2, total: 5 },
+    }));
+    expect(displayLabel).toBe('[Incomplete Checklist]');
+    expect(displayDescription).toBe('2/5 items checked');
+  });
+
+  it('should return fallback for incomplete_checklist without stats', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'incomplete_checklist',
+    }));
+    expect(displayDescription).toBe('PR body has unchecked required checkboxes');
+  });
+
+  it('should return [Missing Files] with file list', () => {
+    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
+      status: 'missing_required_files',
+      missingRequiredFiles: ['CHANGELOG.md', 'LICENSE'],
+    }));
+    expect(displayLabel).toBe('[Missing Files]');
+    expect(displayDescription).toBe('Missing: CHANGELOG.md, LICENSE');
+  });
+
+  it('should return fallback for missing_required_files without file list', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'missing_required_files',
+    }));
+    expect(displayDescription).toBe('Required files are missing');
+  });
+
+  it('should return [Changes Addressed] with author', () => {
+    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
+      status: 'changes_addressed',
+      lastMaintainerComment: { author: 'reviewer', body: 'Changes needed', createdAt: '2026-02-07T10:00:00Z' },
+    }));
+    expect(displayLabel).toBe('[Changes Addressed]');
+    expect(displayDescription).toBe('Waiting for @reviewer to re-review');
+  });
+
+  it('should return fallback for changes_addressed without comment', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'changes_addressed',
+    }));
+    expect(displayDescription).toBe('Waiting for maintainer re-review');
+  });
+
+  it('should return [Dormant] with days count', () => {
+    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
+      status: 'dormant',
+      daysSinceActivity: 45,
+    }));
+    expect(displayLabel).toBe('[Dormant]');
+    expect(displayDescription).toBe('No activity for 45 days');
+  });
+
+  it('should return [Approaching Dormant] with days count', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'approaching_dormant',
+      daysSinceActivity: 27,
+    }));
+    expect(displayDescription).toBe('No activity for 27 days');
+  });
+
+  it('should return [Waiting on Maintainer] for approved PRs', () => {
+    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({ status: 'waiting_on_maintainer' }));
+    expect(displayLabel).toBe('[Waiting on Maintainer]');
+    expect(displayDescription).toBe('Approved and CI passes — waiting for merge');
+  });
+
+  it('should return [Needs Changes] for needs_changes status', () => {
+    const { displayLabel } = computeDisplayLabel(makePR({ status: 'needs_changes' }));
+    expect(displayLabel).toBe('[Needs Changes]');
+  });
+
+  it('should have an entry for every FetchedPRStatus', () => {
+    // Ensure no status is missed — if a new status is added, this test will catch it
+    const allStatuses: import('./types.js').FetchedPRStatus[] = [
+      'needs_response', 'failing_ci', 'ci_blocked', 'ci_not_running',
+      'merge_conflict', 'needs_rebase', 'missing_required_files', 'incomplete_checklist',
+      'needs_changes', 'changes_addressed', 'waiting', 'waiting_on_maintainer',
+      'healthy', 'approaching_dormant', 'dormant',
+    ];
+    for (const status of allStatuses) {
+      const result = computeDisplayLabel(makePR({ status }));
+      expect(result.displayLabel).toBeTruthy();
+      expect(result.displayDescription).toBeTruthy();
+    }
+  });
+
+  it('should return fallback for unknown status', () => {
+    const pr = makePR({ status: 'unknown_future_status' as any });
+    const result = computeDisplayLabel(pr);
+    expect(result.displayLabel).toBe('[unknown_future_status]');
+    expect(result.displayDescription).toBe('Unknown status');
+  });
+});
+
+describe('classifyCICheck (#81)', () => {
+  it('should classify unknown check names as actionable', () => {
+    expect(classifyCICheck('Build')).toBe('actionable');
+    expect(classifyCICheck('Tests')).toBe('actionable');
+    expect(classifyCICheck('Lint')).toBe('actionable');
+    expect(classifyCICheck('CI / test (ubuntu-latest)')).toBe('actionable');
+  });
+
+  it('should classify Vercel as fork_limitation', () => {
+    expect(classifyCICheck('Vercel')).toBe('fork_limitation');
+    expect(classifyCICheck('Vercel Deploy')).toBe('fork_limitation');
+    expect(classifyCICheck('vercel — Preview')).toBe('fork_limitation');
+  });
+
+  it('should classify Netlify as fork_limitation', () => {
+    expect(classifyCICheck('Netlify')).toBe('fork_limitation');
+    expect(classifyCICheck('netlify/build')).toBe('fork_limitation');
+  });
+
+  it('should classify deploy preview checks as fork_limitation', () => {
+    expect(classifyCICheck('Deploy Preview')).toBe('fork_limitation');
+    expect(classifyCICheck('preview deploy')).toBe('fork_limitation');
+  });
+
+  it('should classify storybook checks as fork_limitation', () => {
+    expect(classifyCICheck('deploy-storybook')).toBe('fork_limitation');
+    expect(classifyCICheck('Storybook')).toBe('fork_limitation');
+  });
+
+  it('should classify standalone deploy/preview as actionable', () => {
+    expect(classifyCICheck('Preview')).toBe('actionable');
+    expect(classifyCICheck('Deploy validation')).toBe('actionable');
+  });
+
+  it('should classify Chromatic as fork_limitation', () => {
+    expect(classifyCICheck('Chromatic - Visual Tests')).toBe('fork_limitation');
+  });
+
+  it('should classify Cloudflare Pages as fork_limitation', () => {
+    expect(classifyCICheck('Cloudflare Pages')).toBe('fork_limitation');
+  });
+
+  it('should classify Percy as fork_limitation', () => {
+    expect(classifyCICheck('Percy')).toBe('fork_limitation');
+    expect(classifyCICheck('percy/finalize')).toBe('fork_limitation');
+  });
+
+  it('should classify CLA checks as auth_gate', () => {
+    expect(classifyCICheck('license/cla')).toBe('auth_gate');
+    expect(classifyCICheck('CLA Check')).toBe('auth_gate');
+  });
+
+  it('should classify authorization checks as auth_gate', () => {
+    expect(classifyCICheck('Authorization Check')).toBe('auth_gate');
+    expect(classifyCICheck('Authorize')).toBe('auth_gate');
+  });
+
+  it('should use description for classification when name is generic', () => {
+    expect(classifyCICheck('status-check', 'Authorization required to deploy')).toBe('auth_gate');
+    expect(classifyCICheck('some-check', 'Vercel deployment pending')).toBe('fork_limitation');
+  });
+
+  it('should prioritize auth_gate over fork_limitation when both match', () => {
+    // "Vercel" matches fork_limitation, "CLA" matches auth_gate — auth_gate wins
+    expect(classifyCICheck('Vercel CLA check')).toBe('auth_gate');
+  });
+});
+
+describe('classifyFailingChecks (#81)', () => {
+  it('should return empty array for no checks', () => {
+    expect(classifyFailingChecks([])).toEqual([]);
+  });
+
+  it('should classify mixed checks correctly', () => {
+    const result = classifyFailingChecks(['Build', 'Vercel Deploy', 'license/cla', 'Tests']);
+    expect(result).toEqual([
+      { name: 'Build', category: 'actionable' },
+      { name: 'Vercel Deploy', category: 'fork_limitation' },
+      { name: 'license/cla', category: 'auth_gate' },
+      { name: 'Tests', category: 'actionable' },
+    ]);
+  });
+
+  it('should preserve order of input checks', () => {
+    const result = classifyFailingChecks(['Vercel', 'Build']);
+    expect(result[0].name).toBe('Vercel');
+    expect(result[1].name).toBe('Build');
   });
 });

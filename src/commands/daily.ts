@@ -4,7 +4,7 @@
  * generates a digest, and updates repo scores and analytics in local state.
  */
 
-import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ClosedPR, type ComputedRepoSignals } from '../core/index.js';
+import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ClosedPR, type ComputedRepoSignals, type RepoGroup } from '../core/index.js';
 import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue, type ActionMenu, type ActionMenuItem } from '../formatters/json.js';
 
 interface DailyOptions {
@@ -200,7 +200,9 @@ async function runDailyInner(token: string, options: DailyOptions): Promise<void
     const actionableIssues = collectActionableIssues(prs, recentlyClosedPRs);
     const briefSummary = formatBriefSummary(digest, actionableIssues.length);
     const actionMenu = computeActionMenu(actionableIssues, capacity);
-    outputJson<DailyOutput>({ digest, updates: [], capacity, summary, briefSummary, actionableIssues, actionMenu, failures });
+    // Group PRs by repo for safe parallel dispatch (#80)
+    const repoGroups = groupPRsByRepo(prs);
+    outputJson<DailyOutput>({ digest, updates: [], capacity, summary, briefSummary, actionableIssues, actionMenu, repoGroups, failures });
   } else {
     // Simple console output for non-JSON mode
     printDigest(digest, capacity);
@@ -561,11 +563,14 @@ function collectActionableIssues(prs: FetchedPR[], recentlyClosedPRs: ClosedPR[]
       number: closedPR.number,
       title: closedPR.title,
       status: 'healthy', // placeholder
+      displayLabel: '[Recently Closed]',
+      displayDescription: `Closed without merge${closedPR.closedAt ? ` on ${new Date(closedPR.closedAt).toLocaleDateString()}` : ''}`,
       createdAt: '',
       updatedAt: closedPR.closedAt || '',
       daysSinceActivity: 0,
       ciStatus: 'unknown',
       failingCheckNames: [],
+      classifiedChecks: [],
       hasMergeConflict: false,
       reviewDecision: 'unknown',
       hasUnrespondedComment: false,
@@ -661,6 +666,30 @@ const ACTIVE_MAINTAINER_STATUSES: Set<FetchedPRStatus> = new Set([
 const STALE_STATUSES: Set<FetchedPRStatus> = new Set([
   'dormant', 'approaching_dormant',
 ]);
+
+/**
+ * Group PRs by repository (#80).
+ * Ensures one agent per repo during parallel dispatch, preventing branch checkout conflicts.
+ */
+export function groupPRsByRepo(prs: FetchedPR[]): RepoGroup[] {
+  const repoMap = new Map<string, FetchedPR[]>();
+  for (const pr of prs) {
+    if (!pr.repo) {
+      console.warn(`[GROUP_BY_REPO] Skipping PR #${pr.number} (${pr.url}) with empty repo field`);
+      continue;
+    }
+    const existing = repoMap.get(pr.repo) || [];
+    existing.push(pr);
+    repoMap.set(pr.repo, existing);
+  }
+
+  const groups: RepoGroup[] = [];
+  for (const [repo, repoPRs] of repoMap) {
+    groups.push({ repo, prs: repoPRs });
+  }
+
+  return groups;
+}
 
 /**
  * Compute per-repo maintainer signals from observed open PR data.

@@ -3,7 +3,7 @@
  * Provides structured output that can be consumed by scripts and plugins
  */
 
-import type { TrackedPR, FetchedPR, DailyDigest, AgentState } from '../core/types.js';
+import type { TrackedPR, FetchedPR, DailyDigest, AgentState, RepoGroup } from '../core/types.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { SearchPriority } from '../core/issue-discovery.js';
 
@@ -67,6 +67,7 @@ export interface DailyOutput {
   briefSummary: string; // One-liner for action-first flow
   actionableIssues: ActionableIssue[]; // Structured list for AskUserQuestion
   actionMenu: ActionMenu; // Pre-computed action menu for Step 3
+  repoGroups: RepoGroup[]; // PRs grouped by repo for safe parallel dispatch (#80)
   failures: PRCheckFailure[]; // PRs that failed to fetch (e.g., rate limits, network errors)
 }
 

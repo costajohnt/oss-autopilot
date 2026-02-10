@@ -26,6 +26,29 @@ export type IssueStatus = 'candidate' | 'claimed' | 'in_progress' | 'pr_submitte
 /** CI pipeline status for a PR's latest commit. */
 export type CIStatus = 'passing' | 'failing' | 'pending' | 'unknown';
 
+/**
+ * Classification of a CI check failure (#81).
+ * - `actionable` — Real test/build failure the contributor should fix
+ * - `fork_limitation` — Failure due to fork permissions (e.g., Vercel deploy, Netlify)
+ * - `auth_gate` — Authorization/approval gate, not a real failure
+ */
+export type CIFailureCategory = 'actionable' | 'fork_limitation' | 'auth_gate';
+
+/** A CI check with its failure classification (#81). */
+export interface ClassifiedCheck {
+  name: string;
+  category: CIFailureCategory;
+}
+
+/**
+ * PRs grouped by repository (#80).
+ * Used to prevent parallel git state corruption when multiple PRs exist in the same repo.
+ */
+export interface RepoGroup {
+  repo: string;
+  prs: FetchedPR[];
+}
+
 /** GitHub's pull request review decision (from the reviewDecision GraphQL field). */
 export type ReviewDecision = 'approved' | 'changes_requested' | 'review_required' | 'unknown';
 
@@ -104,6 +127,11 @@ export interface FetchedPR {
   /** Computed by `PRMonitor.determineStatus()` based on the fields below. */
   status: FetchedPRStatus;
 
+  /** Human-readable status label for consistent display (#79). E.g., "[CI Failing]", "[Needs Response]". */
+  displayLabel: string;
+  /** Brief description of what's happening (#79). E.g., "3 checks failed", "@maintainer commented". */
+  displayDescription: string;
+
   // Timestamps
   createdAt: string;
   updatedAt: string;
@@ -115,6 +143,8 @@ export interface FetchedPR {
   ciStatus: CIStatus;
   /** Names of failing CI checks. Useful for distinguishing real CI failures from validation bots. */
   failingCheckNames: string[];
+  /** Failing checks with category classification (#81). Separates actionable failures from fork limitations and auth gates. */
+  classifiedChecks: ClassifiedCheck[];
   hasMergeConflict: boolean;
   reviewDecision: ReviewDecision;
 
