@@ -474,6 +474,54 @@ describe('StateManager getReposWithMergedPRs', () => {
   });
 });
 
+describe('StateManager getReposWithOpenPRs', () => {
+  let stateManager: StateManager;
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  it('should return empty array when no repos have score data', () => {
+    expect(stateManager.getReposWithOpenPRs()).toEqual([]);
+  });
+
+  it('should return repos with mergedPRCount === 0 and no rejections (interacted but no merges)', () => {
+    stateManager.updateRepoScore('owner/rejected', { mergedPRCount: 0, closedWithoutMergeCount: 1 });
+    stateManager.updateRepoScore('owner/merged-repo', { mergedPRCount: 2 });
+    stateManager.updateRepoScore('owner/open-only', { mergedPRCount: 0 });
+
+    const repos = stateManager.getReposWithOpenPRs();
+    expect(repos).toHaveLength(1);
+    expect(repos).toContain('owner/open-only');
+    expect(repos).not.toContain('owner/rejected');
+    expect(repos).not.toContain('owner/merged-repo');
+  });
+
+  it('should sort by score descending', () => {
+    // Both have no merges and no rejections — differentiate by signals
+    stateManager.updateRepoScore('owner/low-score', {
+      mergedPRCount: 0,
+      // default score (5) with no signals
+    });
+    stateManager.updateRepoScore('owner/high-score', {
+      mergedPRCount: 0,
+      signals: { isResponsive: true, hasActiveMaintainers: true, hasHostileComments: false },
+    });
+
+    const repos = stateManager.getReposWithOpenPRs();
+    expect(repos[0]).toBe('owner/high-score');
+    expect(repos[1]).toBe('owner/low-score');
+  });
+
+  it('should NOT include repos with merged PRs', () => {
+    stateManager.updateRepoScore('owner/merged', { mergedPRCount: 1 });
+    stateManager.updateRepoScore('owner/open', { mergedPRCount: 0 });
+
+    const repos = stateManager.getReposWithOpenPRs();
+    expect(repos).toEqual(['owner/open']);
+  });
+});
+
 describe('StateManager state validity', () => {
   let stateManager: StateManager;
 

@@ -37,7 +37,7 @@ export async function runSearch(options: SearchOptions): Promise<void> {
   if (options.json) {
     const stateManager = getStateManager();
     const excludedRepos = stateManager.getState().config.excludeRepos || [];
-    outputJson<SearchOutput>({
+    const searchOutput: SearchOutput = {
       candidates: candidates.map(c => {
         const repoScoreRecord = stateManager.getRepoScore(c.issue.repo);
         return {
@@ -63,11 +63,19 @@ export async function runSearch(options: SearchOptions): Promise<void> {
         };
       }),
       excludedRepos,
-    });
+    };
+    if (discovery.rateLimitWarning) {
+      searchOutput.rateLimitWarning = discovery.rateLimitWarning;
+    }
+    outputJson<SearchOutput>(searchOutput);
   } else {
     if (candidates.length === 0) {
       console.log('No matching issues found.');
       return;
+    }
+
+    if (discovery.rateLimitWarning) {
+      console.warn(`\n⚠ ${discovery.rateLimitWarning}\n`);
     }
 
     console.log(`Found ${candidates.length} candidates:\n`);

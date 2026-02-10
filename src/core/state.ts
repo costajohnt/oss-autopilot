@@ -1088,6 +1088,20 @@ export class StateManager {
   }
 
   /**
+   * Get repositories where the user has interacted (has a score record) but has NOT
+   * yet had a PR merged, excluding repos where the only interaction was rejection.
+   * These represent repos with open or in-progress PRs — relationships that benefit
+   * from continued search attention.
+   * @returns Array of "owner/repo" strings, sorted by score descending.
+   */
+  getReposWithOpenPRs(): string[] {
+    return Object.values(this.state.repoScores)
+      .filter(rs => rs.mergedPRCount === 0 && rs.closedWithoutMergeCount === 0)
+      .sort((a, b) => b.score - a.score)
+      .map(rs => rs.repo);
+  }
+
+  /**
    * Get repositories with a score at or above the given threshold, sorted highest first.
    * @param minScore - Minimum score (inclusive). Defaults to `config.minRepoScoreThreshold`.
    * @returns Array of "owner/repo" strings for repos meeting the threshold.

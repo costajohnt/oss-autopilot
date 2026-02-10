@@ -112,6 +112,8 @@ export interface SearchOutput {
     };
   }>;
   excludedRepos: string[];
+  /** Present when rate limits affected the search — either low pre-flight quota or mid-search rate limit hits (#100). */
+  rateLimitWarning?: string;
 }
 
 export interface TrackOutput {

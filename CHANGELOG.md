@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-02-10
+
+### Added
+
+- **Merged-PR viability bonus** — Issues in repos where the user has merged PRs now receive a +15 viability score bonus, stacking with the existing org affinity (+5) for up to +20 total relationship bonus. This makes proven repos surface higher in search results. Closes #99.
+- **Phase 0 open-PR repo expansion** — Phase 0 search now includes repos where the user has interacted (score data exists) but hasn't merged yet. These open-PR repos fill remaining Phase 0 slots after merged-PR repos, capped at 10 total. New `getReposWithOpenPRs()` method on StateManager. Closes #99.
+- **Viability score as tertiary sort key** — Within the same priority tier and recommendation level, candidates are now sorted by viability score (highest first), preventing arbitrary ordering among equally-recommended issues. Closes #99.
+- **Pre-flight rate limit check** — `searchIssues()` now calls `checkRateLimit()` before starting search phases. When remaining quota < 5, logs a warning with quota info and reset time. The warning is also surfaced in `--json` output via the new `rateLimitWarning` field on `SearchOutput`. Closes #100.
+- **`checkRateLimit()` utility** — New exported function in `github.ts` that queries the GitHub Search API rate limit endpoint and returns `{ remaining, limit, resetAt }`. Closes #100.
+- **Enhanced rate limit retry logging** — `onRateLimit` and `onSecondaryRateLimit` callbacks now log retry count, wait duration, and reset time (e.g., "Rate limit hit (retry 1/2, waiting 30s, resets at 14:52:00)") instead of bare "Retrying after N seconds...". Closes #100.
+- **Graceful partial result context** — When no candidates are found and rate limits were hit during search, the error message now includes "GitHub API rate limits may have affected results" to help users understand the failure. Closes #100.
+
 ## [0.17.0] - 2026-02-10
 
 ### Changed
@@ -421,6 +433,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.18.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.15.1...v0.16.0
 [0.15.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.15.0...v0.15.1
