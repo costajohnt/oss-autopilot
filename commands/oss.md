@@ -15,11 +15,33 @@ Before running any CLI commands, ensure the bundle exists (auto-builds on first 
 ```bash
 # Rebuild if bundle missing OR package.json is newer (post-upgrade)
 if [ ! -f "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ] || [ "${CLAUDE_PLUGIN_ROOT}/package.json" -nt "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ]; then
-  (cd "${CLAUDE_PLUGIN_ROOT}" && npm install --silent 2>&1 && npm run bundle --silent 2>&1) >/dev/null
+  BUILD_LOG=$(cd "${CLAUDE_PLUGIN_ROOT}" && npm install --silent 2>&1 && npm run bundle --silent 2>&1)
+  BUILD_EXIT=$?
+  if [ $BUILD_EXIT -ne 0 ]; then
+    echo "Warning: CLI build failed (exit code $BUILD_EXIT). You may need to run manually:" >&2
+    echo "  cd ${CLAUDE_PLUGIN_ROOT} && npm install && npm run bundle" >&2
+    echo "$BUILD_LOG" | tail -5 >&2
+  fi
 fi
 ```
 
-If this fails, fall back to the gh CLI workflow (Step 1b).
+If the build fails, tell the user what happened and how to fix it. Then fall back to the gh CLI workflow (Step 1b).
+
+## Step 0.6: Check Setup Completeness
+
+Before running the daily check, verify setup is complete:
+
+```bash
+GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" checkSetup --json
+```
+
+If `setupComplete` is false, tell the user:
+
+> "It looks like setup isn't complete yet. Run `/setup-oss` to configure your preferences, or I can continue with defaults."
+
+Use AskUserQuestion to let the user choose:
+- "Run setup first (Recommended)" — launch `/setup-oss`
+- "Continue with defaults" — proceed with the daily check
 
 ## Step 0.7: Detect Curated Issue List
 

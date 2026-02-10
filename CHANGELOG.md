@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-02-09
+
+### Fixed
+
+- **Security: XSS vulnerability in dashboard HTML** — PR titles, comment bodies, and other user-controlled content from the GitHub API are now HTML-escaped before interpolation into the dashboard. Prevents script injection via malicious PR titles.
+- **Concurrency bug in PR fetching** — Replaced fragile `Promise.race` + `splice` concurrency pattern with a worker-pool approach that correctly limits parallel API calls without losing track of in-flight requests.
+- **API failure guard for closed PR counts** — Added transient-failure protection to closed PR count updates (matching the existing guard on merged counts) to prevent zeroing scores during GitHub API outages.
+- **Top-level error handling in daily command** — `runDaily` now wraps its logic in try/catch so unexpected errors produce a clear message (or structured JSON error) instead of an unhandled rejection.
+
+### Added
+
+- **GitHub issue templates** — Bug report and feature request templates (`.github/ISSUE_TEMPLATE/`) standardize issue reporting
+- **Pull request template** — Checklist template (`.github/pull_request_template.md`) ensures PRs include version bumps, changelog, and test results
+- **CODE_OF_CONDUCT.md** — Contributor Covenant-based code of conduct
+- **SECURITY.md** — Security policy with vulnerability reporting instructions and scope documentation
+- **Setup completeness check** — `/oss` now detects incomplete setup (`setupComplete === false`) and offers to run `/setup-oss` before proceeding
+- **Build error surfacing** — Auto-build step in `/oss` now captures and displays npm errors instead of silently redirecting to `/dev/null`
+- **Example workflows in README** — Daily standup, finding contributions, and responding to feedback workflows help new users understand the tool
+- **Additional FAQ entries** — GitLab/Gitea support question, offline usage, expanded troubleshooting
+
+### Changed
+
+- CLI auth error messages now include a link to GitHub CLI installation docs and clearer step-by-step instructions
+- README now explicitly states this is a Claude Code plugin (with callout block) and has improved prerequisites formatting
+- Removed unused legacy methods (`syncPRs`, `checkAllPRs`) and associated types from `PRMonitor` — reduces maintenance surface without breaking any commands
+
 ## [0.11.1] - 2026-02-09
 
 ### Changed
@@ -315,6 +341,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.12.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.10.1...v0.11.0
 [0.10.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.10.0...v0.10.1

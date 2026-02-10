@@ -167,6 +167,19 @@ interface DashboardStats {
   needsResponse: number;
 }
 
+/**
+ * Escape HTML special characters to prevent XSS when interpolating
+ * user-controlled content (e.g. PR titles, comment bodies) into HTML.
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function generateDashboardHtml(
   stats: DashboardStats,
   monthlyMerged: Record<string, number>,
@@ -196,8 +209,8 @@ function generateDashboardHtml(
   ];
 
   function truncateTitle(title: string, max: number = 50): string {
-    if (title.length <= max) return title;
-    return title.slice(0, max) + '...';
+    const truncated = title.length <= max ? title : title.slice(0, max) + '...';
+    return escapeHtml(truncated);
   }
 
   function renderHealthItems(
@@ -208,7 +221,8 @@ function generateDashboardHtml(
     metaFn: (pr: FetchedPR) => string,
   ): string {
     return prs.map(pr => {
-      const label = typeof labelFn === 'string' ? labelFn : labelFn(pr);
+      const rawLabel = typeof labelFn === 'string' ? labelFn : labelFn(pr);
+      const label = escapeHtml(rawLabel);
       return `
         <div class="health-item ${cssClass}">
           <div class="health-icon">
@@ -217,7 +231,7 @@ function generateDashboardHtml(
             </svg>
           </div>
           <div class="health-content">
-            <div class="health-title"><a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - ${label}</div>
+            <div class="health-title"><a href="${escapeHtml(pr.url)}" target="_blank">${escapeHtml(pr.repo)}#${pr.number}</a> - ${label}</div>
             <div class="health-meta">${metaFn(pr)}</div>
           </div>
         </div>`;
@@ -903,14 +917,14 @@ function generateDashboardHtml(
       </div>
       <div class="health-items">
         ${renderHealthItems(digest.prsNeedingResponse || [], 'needs-response', SVG.comment, 'Needs Response',
-          pr => pr.lastMaintainerComment ? `@${pr.lastMaintainerComment.author}: ${truncateTitle(pr.lastMaintainerComment.body, 40)}` : truncateTitle(pr.title))}
+          pr => pr.lastMaintainerComment ? `@${escapeHtml(pr.lastMaintainerComment.author)}: ${truncateTitle(pr.lastMaintainerComment.body, 40)}` : truncateTitle(pr.title))}
         ${renderHealthItems(digest.needsChangesPRs || [], 'needs-changes', SVG.edit, 'Needs Changes', titleMeta)}
         ${renderHealthItems(digest.ciFailingPRs || [], 'ci-failing', SVG.xCircle, 'CI Failing', titleMeta)}
         ${renderHealthItems(digest.mergeConflictPRs || [], 'conflict', SVG.conflict, 'Merge Conflict', titleMeta)}
         ${renderHealthItems(digest.incompleteChecklistPRs || [], 'incomplete-checklist', SVG.checklist,
           pr => `Incomplete Checklist${pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : ''}`, titleMeta)}
         ${renderHealthItems(digest.missingRequiredFilesPRs || [], 'missing-files', SVG.file, 'Missing Required Files',
-          pr => pr.missingRequiredFiles?.join(', ') || truncateTitle(pr.title))}
+          pr => pr.missingRequiredFiles ? escapeHtml(pr.missingRequiredFiles.join(', ')) : truncateTitle(pr.title))}
         ${renderHealthItems(digest.needsRebasePRs || [], 'needs-rebase', SVG.refresh,
           pr => `Needs Rebase${pr.commitsBehindUpstream ? ` (${pr.commitsBehindUpstream} behind)` : ''}`, titleMeta)}
       </div>
@@ -929,7 +943,7 @@ function generateDashboardHtml(
       </div>
       <div class="health-items">
         ${renderHealthItems(digest.changesAddressedPRs || [], 'changes-addressed', SVG.checkCircle, 'Changes Addressed',
-          pr => `Awaiting re-review${pr.lastMaintainerComment ? ` from @${pr.lastMaintainerComment.author}` : ''}`)}
+          pr => `Awaiting re-review${pr.lastMaintainerComment ? ` from @${escapeHtml(pr.lastMaintainerComment.author)}` : ''}`)}
         ${renderHealthItems(digest.waitingOnMaintainerPRs || [], 'waiting-maintainer', SVG.clock, 'Waiting on Maintainer', titleMeta)}
         ${renderHealthItems(digest.ciBlockedPRs || [], 'ci-blocked', SVG.lock, 'CI Blocked', titleMeta)}
         ${renderHealthItems(digest.ciNotRunningPRs || [], 'ci-not-running', SVG.infoCircle, 'CI Not Running', titleMeta)}
@@ -974,8 +988,8 @@ function generateDashboardHtml(
             </svg>
           </div>
           <div class="health-content">
-            <div class="health-title"><a href="${pr.url}" target="_blank">${pr.repo}#${pr.number}</a> - Closed</div>
-            <div class="health-meta">${pr.title.slice(0, 50)}${pr.title.length > 50 ? '...' : ''}${pr.closedAt ? ` · ${new Date(pr.closedAt).toLocaleDateString()}` : ''}</div>
+            <div class="health-title"><a href="${escapeHtml(pr.url)}" target="_blank">${escapeHtml(pr.repo)}#${pr.number}</a> - Closed</div>
+            <div class="health-meta">${escapeHtml(pr.title.slice(0, 50))}${pr.title.length > 50 ? '...' : ''}${pr.closedAt ? ` · ${new Date(pr.closedAt).toLocaleDateString()}` : ''}</div>
           </div>
         </div>
         `).join('')}
@@ -1050,8 +1064,8 @@ function generateDashboardHtml(
           </div>
           <div class="pr-content">
             <div class="pr-title-row">
-              <a href="${pr.url}" target="_blank" class="pr-title">${pr.title}</a>
-              <span class="pr-repo">${pr.repo}#${pr.number}</span>
+              <a href="${escapeHtml(pr.url)}" target="_blank" class="pr-title">${escapeHtml(pr.title)}</a>
+              <span class="pr-repo">${escapeHtml(pr.repo)}#${pr.number}</span>
             </div>
             <div class="pr-badges">
               ${pr.ciStatus === 'failing' ? '<span class="badge badge-ci-failing">CI Failing</span>' : ''}

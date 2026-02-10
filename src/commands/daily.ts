@@ -15,17 +15,34 @@ export async function runDaily(options: DailyOptions): Promise<void> {
   const token = getGitHubToken();
   if (!token) {
     if (options.json) {
-      outputJsonError('GitHub authentication required. Run "gh auth login" or set GITHUB_TOKEN.');
+      outputJsonError('GitHub authentication required. Install GitHub CLI (https://cli.github.com/) and run "gh auth login", or set GITHUB_TOKEN.');
     } else {
       console.error('Error: GitHub authentication required.');
       console.error('');
-      console.error('Options:');
-      console.error('  1. Use gh CLI: gh auth login');
-      console.error('  2. Set GITHUB_TOKEN environment variable');
+      console.error('Option 1 (Recommended): Install and authenticate GitHub CLI');
+      console.error('  Install: https://cli.github.com/');
+      console.error('  Then run: gh auth login');
+      console.error('');
+      console.error('Option 2: Set GITHUB_TOKEN environment variable');
+      console.error('  export GITHUB_TOKEN="your-github-token-here"');
     }
     process.exit(1);
   }
 
+  try {
+    await runDailyInner(token, options);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (options.json) {
+      outputJsonError(`Daily check failed: ${msg}`);
+    } else {
+      console.error(`[FATAL] Daily check failed: ${msg}`);
+    }
+    process.exit(1);
+  }
+}
+
+async function runDailyInner(token: string, options: DailyOptions): Promise<void> {
   const stateManager = getStateManager();
   const prMonitor = new PRMonitor(token);
 
@@ -76,7 +93,13 @@ export async function runDaily(options: DailyOptions): Promise<void> {
     console.error(`[DAILY_ALL_MERGED_COUNT_UPDATES_FAILED] All ${mergedCounts.size} merged count update(s) failed.`);
   }
 
-  // Populate closedWithoutMergeCount in repo scores
+  // Populate closedWithoutMergeCount in repo scores.
+  // Guard: same transient-failure protection as merged counts above.
+  const existingReposWithClosed = Object.values(stateManager.getState().repoScores)
+    .filter(s => (s.closedWithoutMergeCount || 0) > 0);
+  if (closedCounts.size === 0 && existingReposWithClosed.length > 0) {
+    console.error(`[DAILY] Skipping closed count update: API returned 0 results but state has ${existingReposWithClosed.length} repo(s) with closed PRs. Possible API issue.`);
+  }
   let closedCountFailures = 0;
   for (const [repo, count] of closedCounts) {
     try {

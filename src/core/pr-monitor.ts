@@ -6,7 +6,7 @@
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
-import { splitRepo, daysBetween } from './utils.js';
+import { daysBetween } from './utils.js';
 import { FetchedPR, FetchedPRStatus, CIStatus, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR } from './types.js';
 
 // Concurrency limit for parallel API calls
@@ -75,47 +75,43 @@ export class PRMonitor {
       allItems.push(...nextPage.data.items);
     }
 
-    // Fetch detailed info for each PR in parallel with concurrency limit
+    // Filter items to only PRs worth fetching
     const prs: FetchedPR[] = [];
     const failures: PRCheckFailure[] = [];
-    const pending: Promise<void>[] = [];
 
-    for (const item of allItems) {
-      if (!item.pull_request) continue;
-
+    const filteredItems = allItems.filter(item => {
+      if (!item.pull_request) return false;
       // Skip PRs to repos owned by the user (not OSS contributions)
       const repoMatch = item.html_url.match(/github\.com\/([^/]+)\/([^/]+)\//);
       if (repoMatch) {
         const repoOwner = repoMatch[1];
-        if (repoOwner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
+        if (repoOwner.toLowerCase() === config.githubUsername.toLowerCase()) return false;
         const repoFullName = `${repoMatch[1]}/${repoMatch[2]}`;
-        if (config.excludeRepos.includes(repoFullName)) continue;
-        if (config.excludeOrgs?.some(org => repoOwner.toLowerCase() === org.toLowerCase())) continue;
+        if (config.excludeRepos.includes(repoFullName)) return false;
+        if (config.excludeOrgs?.some(org => repoOwner.toLowerCase() === org.toLowerCase())) return false;
       }
+      return true;
+    });
 
-      const task = this.fetchPRDetails(item.html_url)
-        .then(pr => {
+    // Fetch detailed info using a worker pool for bounded concurrency.
+    // N workers consume from a shared index — simpler and more robust than Promise.race + splice.
+    let nextIndex = 0;
+    const fetchWorker = async () => {
+      while (nextIndex < filteredItems.length) {
+        const item = filteredItems[nextIndex++];
+        try {
+          const pr = await this.fetchPRDetails(item.html_url);
           if (pr) prs.push(pr);
-        })
-        .catch(error => {
+        } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
           console.error(`Error fetching ${item.html_url}: ${errorMessage}`);
           failures.push({ prUrl: item.html_url, error: errorMessage });
-        });
-
-      pending.push(task);
-
-      // Limit concurrency
-      if (pending.length >= MAX_CONCURRENT_REQUESTS) {
-        const completed = await Promise.race(
-          pending.map((p, i) => p.then(() => i))
-        );
-        pending.splice(completed, 1);
+        }
       }
-    }
+    };
 
-    // Wait for remaining
-    await Promise.allSettled(pending);
+    const workerCount = Math.min(MAX_CONCURRENT_REQUESTS, filteredItems.length);
+    await Promise.all(Array.from({ length: workerCount }, () => fetchWorker()));
 
     // Sort by days since activity (most urgent first)
     prs.sort((a, b) => {
@@ -940,13 +936,9 @@ export class PRMonitor {
     }
   }
 
-  // ============================================
-  // Legacy methods for backward compatibility
-  // ============================================
-
   /**
-   * @deprecated Use fetchUserOpenPRs() instead
-   * Track a PR by adding it to local state
+   * Track a single PR by adding it to local state.
+   * Used by the `track` and `init` commands.
    */
   async trackPR(prUrl: string): Promise<import('./types.js').TrackedPR> {
     const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
@@ -999,138 +991,4 @@ export class PRMonitor {
     return pr;
   }
 
-  /**
-   * @deprecated Use fetchUserOpenPRs() instead
-   * Sync PRs from GitHub to local state
-   */
-  async syncPRs(): Promise<{ added: number; removed: number; total: number }> {
-    const config = this.stateManager.getState().config;
-
-    if (!config.githubUsername) {
-      console.error('No GitHub username configured. Run setup first.');
-      return { added: 0, removed: 0, total: 0 };
-    }
-
-    console.error(`Syncing PRs for @${config.githubUsername}...`);
-
-    const { data } = await this.octokit.search.issuesAndPullRequests({
-      q: `is:pr is:open author:${config.githubUsername}`,
-      sort: 'updated',
-      order: 'desc',
-      per_page: 100,
-    });
-
-    const githubPRUrls = new Set<string>();
-    let added = 0;
-
-    for (const item of data.items) {
-      if (item.pull_request) {
-        githubPRUrls.add(item.html_url);
-
-        const existingPR = this.stateManager.findPR(item.html_url);
-        if (!existingPR) {
-          try {
-            await this.trackPR(item.html_url);
-            added++;
-          } catch (error) {
-            console.error(`Error adding ${item.html_url}:`, error instanceof Error ? error.message : error);
-          }
-        }
-      }
-    }
-
-    return { added, removed: 0, total: data.total_count };
-  }
-
-  /**
-   * @deprecated Use fetchUserOpenPRs() instead
-   * Check all tracked PRs and return updates
-   */
-  async checkAllPRs(): Promise<{ updates: PRUpdate[]; failures: PRCheckFailure[] }> {
-    const state = this.stateManager.getState();
-    const config = state.config;
-    const now = new Date();
-
-    console.error(`Checking ${state.activePRs.length} active PRs...`);
-
-    const updates: PRUpdate[] = [];
-    const failures: PRCheckFailure[] = [];
-
-    for (const pr of state.activePRs) {
-      try {
-        const { owner, repo } = splitRepo(pr.repo);
-
-        const { data: ghPR } = await this.octokit.pulls.get({
-          owner,
-          repo,
-          pull_number: pr.number,
-        });
-
-        // Check for merge
-        if (ghPR.merged) {
-          this.stateManager.movePRToMerged(pr.url);
-          updates.push({ pr, type: 'merged', message: `PR merged: ${pr.repo}#${pr.number}` });
-          continue;
-        }
-
-        // Check for close
-        if (ghPR.state === 'closed') {
-          this.stateManager.movePRToClosed(pr.url);
-          updates.push({ pr, type: 'closed', message: `PR closed: ${pr.repo}#${pr.number}` });
-          continue;
-        }
-
-        // Update PR with current state
-        const { status: ciStatus } = await this.getCIStatus(owner, repo, ghPR.head.sha);
-        const hasMergeConflict = this.hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state);
-        const daysSinceActivity = daysBetween(new Date(ghPR.updated_at), now);
-
-        this.stateManager.updatePR(pr.url, {
-          lastChecked: now.toISOString(),
-          lastActivityAt: ghPR.updated_at,
-          daysSinceActivity,
-          ciStatus,
-          hasMergeConflict,
-        });
-
-        // Check dormancy
-        if (daysSinceActivity >= config.dormantThresholdDays) {
-          this.stateManager.movePRToDormant(pr.url);
-          updates.push({ pr, type: 'dormant', message: `PR dormant: ${pr.repo}#${pr.number}` });
-        } else if (daysSinceActivity >= config.approachingDormantDays) {
-          updates.push({ pr, type: 'approaching_dormant', message: `PR approaching dormant: ${pr.repo}#${pr.number}` });
-        }
-
-        // Check CI
-        if (ciStatus === 'failing' && pr.ciStatus !== 'failing') {
-          updates.push({ pr, type: 'ci_failing', message: `CI failing: ${pr.repo}#${pr.number}` });
-        }
-
-        // Check conflict
-        if (hasMergeConflict && !pr.hasMergeConflict) {
-          updates.push({ pr, type: 'merge_conflict', message: `Merge conflict: ${pr.repo}#${pr.number}` });
-        }
-      } catch (error) {
-        failures.push({
-          prUrl: pr.url,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    return { updates, failures };
-  }
-}
-
-// Legacy types for backward compatibility
-export interface PRUpdate {
-  pr: import('./types.js').TrackedPR;
-  type: 'merged' | 'closed' | 'new_comment' | 'review' | 'dormant' | 'approaching_dormant' | 'updated' | 'ci_failing' | 'merge_conflict' | 'changes_requested';
-  message: string;
-  details?: string;
-}
-
-export interface CheckAllPRsResult {
-  updates: PRUpdate[];
-  failures: PRCheckFailure[];
 }
