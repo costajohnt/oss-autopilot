@@ -19,6 +19,9 @@ import { runSetup, runCheckSetup } from './commands/setup.js';
 import { runInit } from './commands/init.js';
 import { runRead } from './commands/read.js';
 import { runDashboard } from './commands/dashboard.js';
+import { runParseList } from './commands/parse-list.js';
+import { runCheckIntegration } from './commands/check-integration.js';
+import { runLocalRepos } from './commands/local-repos.js';
 
 const VERSION = (() => {
   try {
@@ -32,7 +35,7 @@ const VERSION = (() => {
 })();
 
 // Commands that don't require GitHub API access
-const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard'];
+const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard', 'parse-issue-list', 'check-integration', 'local-repos'];
 
 const program = new Command();
 
@@ -182,6 +185,36 @@ program
   .option('--json', 'Output as JSON')
   .action(async (options) => {
     await runDashboard({ open: options.open, json: options.json });
+  });
+
+// Parse issue list command (#82)
+program
+  .command('parse-issue-list <path>')
+  .description('Parse a markdown issue list into structured JSON')
+  .option('--json', 'Output as JSON')
+  .action(async (filePath, options) => {
+    await runParseList({ filePath, json: options.json });
+  });
+
+// Check integration command (#83)
+program
+  .command('check-integration')
+  .description('Detect new files not referenced by the codebase')
+  .option('--base <branch>', 'Base branch to compare against', 'main')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    await runCheckIntegration({ base: options.base, json: options.json });
+  });
+
+// Local repos command (#84)
+program
+  .command('local-repos')
+  .description('Scan filesystem for local git clones')
+  .option('--scan', 'Force re-scan (ignores cache)')
+  .option('--paths <dirs...>', 'Directories to scan')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    await runLocalRepos({ scan: options.scan, paths: options.paths, json: options.json });
   });
 
 // Validate GitHub token before running commands that need it

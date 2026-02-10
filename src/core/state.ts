@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, RepoScoreUpdate, StateEvent, StateEventType, DailyDigest } from './types.js';
+import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, RepoScoreUpdate, StateEvent, StateEventType, DailyDigest, LocalRepoCache } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
 
 // Current state version
@@ -494,6 +494,14 @@ export class StateManager {
 
   setDailyActivityCounts(counts: Record<string, number>): void {
     this.state.dailyActivityCounts = counts;
+  }
+
+  /**
+   * Store cached local repo scan results (#84).
+   * @param cache - The scan results, paths scanned, and timestamp.
+   */
+  setLocalRepoCache(cache: LocalRepoCache): void {
+    this.state.localRepoCache = cache;
   }
 
   /**
