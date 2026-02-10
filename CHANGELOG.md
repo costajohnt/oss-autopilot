@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2026-02-09
+
+### Fixed
+
+- **File permissions not enforced on existing state files** — `writeFileSync({ mode: 0o600 })` only sets permissions when creating a new file; existing files retained their original permissions (typically 644/world-readable). Added explicit `chmodSync(0o600)` after every state and backup write to enforce owner-only access regardless of file age.
+- **Data directory created with default permissions** — `~/.oss-autopilot/` and `backups/` directories were created without explicit mode, defaulting to 755 (world-readable listing). Now created with `0o700` (owner-only).
+- **Dashboard HTML had no explicit permissions** — Now written with intentional `0o644` mode instead of relying on umask defaults.
+
+### Added
+
+- **Prompt injection defense for agents** — `pr-responder` and `issue-scout` agents now include explicit instructions to treat GitHub-provided content (PR titles, comments, issue bodies) as untrusted input and flag suspicious prompt injection attempts to the user.
+
 ## [0.12.1] - 2026-02-09
 
 ### Fixed
@@ -349,6 +361,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.12.2]: https://github.com/costajohnt/oss-autopilot/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.12.0...v0.12.1
 [0.12.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.11.0...v0.11.1
