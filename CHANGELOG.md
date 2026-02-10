@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-02-10
+
+### Changed
+
+- **Pre-commit review gate at decision point** — Added a mandatory "Pre-Commit Gate" checkpoint in Step 4 (Execute Approved Actions Only) that routes to Step 5.5 before presenting commit/push options. Previously, the instruction to run pre-commit review was in the Action Tiers preamble, far from the decision point where agents present commit options, causing them to skip it. Now the gate is at the exact point where the agent is about to offer commit options. Closes #86.
+- **Conditional daily re-run after actions** — The "After Each Action" section now distinguishes between Tier 1 (rebases, force pushes) and Tier 2 (comment responses, code fixes) actions. Tier 1 triggers a full daily re-run to refresh PR state; Tier 2 skips the re-run since the data is still valid, saving ~10-15s of API calls between sequential PR responses. Closes #87.
+
 ## [0.15.1] - 2026-02-10
 
 ### Removed
@@ -407,6 +414,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.16.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.15.1...v0.16.0
+[0.15.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.13.0...v0.13.1

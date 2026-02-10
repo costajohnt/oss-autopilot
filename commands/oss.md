@@ -497,6 +497,10 @@ Only after user explicitly approves Tier 2 actions:
 - Post comments
 - Add missing files
 
+#### Pre-Commit Gate (MANDATORY)
+
+**STOP. Before presenting commit/push options to the user, you MUST complete Step 5.5 (Pre-Commit Code Review).** Do not skip this step. Do not offer to commit first. Run the review agents, present findings, THEN offer commit options. The only exception is if `git status --porcelain` confirms there are no uncommitted changes (e.g., only a comment was posted, or the action was investigation-only). Always verify with git status — do not assume based on which actions were dispatched.
+
 ### CRITICAL: Continue the Flow
 
 **After EVERY action completes (investigation, approval, execution), ALWAYS ask what to do next.**
@@ -657,9 +661,16 @@ After implementation, the flow proceeds through the **draft-first workflow**:
 
 ### After Each Action
 
-1. Re-run the daily check to refresh state
-2. If `hasIssueList`, re-read the list file to get updated available/completed counts
-3. Return to Step 3 with updated action choices (including updated list counts)
+1. **If ANY Tier 1 actions were taken** (rebases, force pushes), regardless of whether Tier 2 actions also occurred:
+   - Re-run the daily check to refresh state
+   - Return to Step 3 with updated action choices
+2. **If ONLY Tier 2 actions were taken** (comment responses, code fixes, missing file additions) with no Tier 1 actions in this round:
+   - Skip the daily re-run — the existing data is still valid
+   - Remove completed items from the current action list
+   - Inform the user: "Skipping full refresh — showing locally updated action list. Select 'Check for more PR updates' for a fresh check."
+   - Return to Step 3 with current action choices
+   - **Exception:** If any completed action involved merge conflict resolution (issue type `merge_conflict` from the actionableIssues list), treat the entire batch as Tier 1 and re-run the daily check
+3. If `hasIssueList`, re-read the list file to get updated available/completed counts
 4. Continue until user selects "Done for now"
 
 ---
@@ -762,6 +773,8 @@ Generate the PR title and body following the target repo's conventions (check `C
 ---
 
 ### Standard Path (existing PR updates)
+
+**This path is triggered automatically by the Pre-Commit Gate in Step 4 whenever Tier 2 code changes have been made to an existing PR.** You should already be here before any commit/push options are presented.
 
 #### 1. Pre-flight: Verify Changes Exist
 
