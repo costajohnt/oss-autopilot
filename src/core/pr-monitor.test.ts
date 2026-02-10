@@ -1311,6 +1311,27 @@ describe('computeDisplayLabel (#79)', () => {
     expect(displayDescription).toBe('2 checks failed: Build, Lint');
   });
 
+  it('should return singular form for exactly 1 actionable check', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'failing_ci',
+      failingCheckNames: ['Build'],
+      classifiedChecks: [{ name: 'Build', category: 'actionable' }],
+    }));
+    expect(displayDescription).toBe('1 check failed: Build');
+  });
+
+  it('should fall back to failingCheckNames count when all checks are non-actionable', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'failing_ci',
+      failingCheckNames: ['Vercel Deploy', 'Netlify Build'],
+      classifiedChecks: [
+        { name: 'Vercel Deploy', category: 'fork_limitation' },
+        { name: 'Netlify Build', category: 'fork_limitation' },
+      ],
+    }));
+    expect(displayDescription).toBe('2 checks failed');
+  });
+
   it('should return generic description when no classified checks', () => {
     const { displayDescription } = computeDisplayLabel(makePR({
       status: 'failing_ci',
@@ -1334,6 +1355,29 @@ describe('computeDisplayLabel (#79)', () => {
     expect(displayDescription).toBe('2/5 items checked');
   });
 
+  it('should return fallback for incomplete_checklist without stats', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'incomplete_checklist',
+    }));
+    expect(displayDescription).toBe('PR body has unchecked required checkboxes');
+  });
+
+  it('should return [Missing Files] with file list', () => {
+    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
+      status: 'missing_required_files',
+      missingRequiredFiles: ['CHANGELOG.md', 'LICENSE'],
+    }));
+    expect(displayLabel).toBe('[Missing Files]');
+    expect(displayDescription).toBe('Missing: CHANGELOG.md, LICENSE');
+  });
+
+  it('should return fallback for missing_required_files without file list', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'missing_required_files',
+    }));
+    expect(displayDescription).toBe('Required files are missing');
+  });
+
   it('should return [Changes Addressed] with author', () => {
     const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
       status: 'changes_addressed',
@@ -1341,6 +1385,13 @@ describe('computeDisplayLabel (#79)', () => {
     }));
     expect(displayLabel).toBe('[Changes Addressed]');
     expect(displayDescription).toBe('Waiting for @reviewer to re-review');
+  });
+
+  it('should return fallback for changes_addressed without comment', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'changes_addressed',
+    }));
+    expect(displayDescription).toBe('Waiting for maintainer re-review');
   });
 
   it('should return [Dormant] with days count', () => {
@@ -1454,6 +1505,10 @@ describe('classifyCICheck (#81)', () => {
   it('should use description for classification when name is generic', () => {
     expect(classifyCICheck('status-check', 'Authorization required to deploy')).toBe('auth_gate');
     expect(classifyCICheck('some-check', 'Vercel deployment pending')).toBe('fork_limitation');
+  });
+
+  it('should prioritize auth_gate over fork_limitation when both match', () => {
+    expect(classifyCICheck('deploy approval check')).toBe('auth_gate');
   });
 });
 
