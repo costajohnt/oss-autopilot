@@ -489,6 +489,10 @@ export class StateManager {
     this.state.monthlyOpenedCounts = counts;
   }
 
+  setDailyActivityCounts(counts: Record<string, number>): void {
+    this.state.dailyActivityCounts = counts;
+  }
+
   /**
    * Shallow-merge partial configuration updates into the current config.
    * @param config - Partial config object whose properties override existing values.

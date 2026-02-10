@@ -93,11 +93,9 @@ The dashboard (`~/.oss-autopilot/dashboard.html`) auto-opens each time you run `
 
 **Charts and visualizations:**
 
-- **Contribution Timeline** — Grouped bar chart showing PRs opened, merged, and closed per month
-- **Repository Breakdown** — Top 10 repos by total PRs (with "Other" bucket), stacked bars with percentage tooltips
-- **Success Rate Trends** — Monthly merge rate line chart (0-100%) with raw counts in tooltip
-- **Activity Heatmap** — GitHub-style 3-month calendar heatmap of contribution activity
 - **Status Overview** — Doughnut chart of PR states (active, merged, closed, dormant)
+- **Repository Breakdown** — Top 10 repos by total PRs (with "Other" bucket), stacked bars with percentage tooltips
+- **Contribution Timeline** — Grouped bar chart showing PRs opened, merged, and closed per month
 
 ### Available Commands
 

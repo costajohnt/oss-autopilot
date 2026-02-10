@@ -649,11 +649,12 @@ export class PRMonitor {
     repos: Map<string, { count: number; lastMergedAt: string }>;
     monthlyCounts: Record<string, number>;
     monthlyOpenedCounts: Record<string, number>;
+    dailyActivityCounts: Record<string, number>;
   }> {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
-      return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {} };
+      return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {} };
     }
 
     console.error(`Fetching merged PR counts for @${config.githubUsername}...`);
@@ -661,6 +662,7 @@ export class PRMonitor {
     const repos = new Map<string, { count: number; lastMergedAt: string }>();
     const monthlyCounts: Record<string, number> = {};
     const monthlyOpenedCounts: Record<string, number> = {};
+    const dailyActivityCounts: Record<string, number> = {};
     let page = 1;
     let fetched = 0;
 
@@ -710,6 +712,15 @@ export class PRMonitor {
         if (item.created_at) {
           const openedMonth = item.created_at.slice(0, 7); // "YYYY-MM"
           monthlyOpenedCounts[openedMonth] = (monthlyOpenedCounts[openedMonth] || 0) + 1;
+          // Daily activity: PR opened
+          const openedDay = item.created_at.slice(0, 10);
+          if (openedDay.length === 10) dailyActivityCounts[openedDay] = (dailyActivityCounts[openedDay] || 0) + 1;
+        }
+
+        // Daily activity: PR merged
+        if (mergedAt) {
+          const mergedDay = mergedAt.slice(0, 10);
+          if (mergedDay.length === 10) dailyActivityCounts[mergedDay] = (dailyActivityCounts[mergedDay] || 0) + 1;
         }
       }
 
@@ -724,7 +735,7 @@ export class PRMonitor {
     }
 
     console.error(`Found ${fetched} merged PRs across ${repos.size} repos`);
-    return { repos, monthlyCounts, monthlyOpenedCounts };
+    return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts };
   }
 
   /**
@@ -735,11 +746,12 @@ export class PRMonitor {
     repos: Map<string, number>;
     monthlyCounts: Record<string, number>;
     monthlyOpenedCounts: Record<string, number>;
+    dailyActivityCounts: Record<string, number>;
   }> {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
-      return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {} };
+      return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {} };
     }
 
     console.error(`Fetching closed PR counts for @${config.githubUsername}...`);
@@ -747,6 +759,7 @@ export class PRMonitor {
     const repos = new Map<string, number>();
     const monthlyCounts: Record<string, number> = {};
     const monthlyOpenedCounts: Record<string, number> = {};
+    const dailyActivityCounts: Record<string, number> = {};
     let page = 1;
     let fetched = 0;
 
@@ -779,12 +792,18 @@ export class PRMonitor {
         if (item.closed_at) {
           const closedMonth = item.closed_at.slice(0, 7); // "YYYY-MM"
           monthlyCounts[closedMonth] = (monthlyCounts[closedMonth] || 0) + 1;
+          // Daily activity: PR closed
+          const closedDay = item.closed_at.slice(0, 10);
+          if (closedDay.length === 10) dailyActivityCounts[closedDay] = (dailyActivityCounts[closedDay] || 0) + 1;
         }
 
         // Track when this PR was opened (for monthly opened histogram)
         if (item.created_at) {
           const openedMonth = item.created_at.slice(0, 7); // "YYYY-MM"
           monthlyOpenedCounts[openedMonth] = (monthlyOpenedCounts[openedMonth] || 0) + 1;
+          // Daily activity: PR opened
+          const openedDay = item.created_at.slice(0, 10);
+          if (openedDay.length === 10) dailyActivityCounts[openedDay] = (dailyActivityCounts[openedDay] || 0) + 1;
         }
       }
 
@@ -798,7 +817,7 @@ export class PRMonitor {
     }
 
     console.error(`Found ${fetched} closed (unmerged) PRs across ${repos.size} repos`);
-    return { repos, monthlyCounts, monthlyOpenedCounts };
+    return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts };
   }
 
   /**
