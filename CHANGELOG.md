@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2026-02-10
+
+### Removed
+
+- **Dead code cleanup** — Removed `.claude-plugin/marketplace.json` which was never read during plugin installation. When users run `/plugin marketplace add costajohnt/oss-autopilot`, Claude Code clones the repo and reads `.claude-plugin/plugin.json` directly, never validating marketplace.json. File existed unused since v0.1.0 (33 versions) with no installation issues, confirming it's dead code. Closes #94.
+
+### Fixed
+
+- **README troubleshooting documentation** — Fixed incorrect plugin path in "Build fails on first run" section. Updated from hardcoded `~/.claude/plugins/oss-autopilot` to use `find` command to locate actual installation path, which varies based on installation method (marketplace-installed plugins live in `~/.claude/plugins/cache/`).
+
 ## [0.15.0] - 2026-02-10
 
 ### Added
