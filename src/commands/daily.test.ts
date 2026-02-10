@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeRepoSignals, computeActionMenu } from './daily.js';
+import { computeRepoSignals, computeActionMenu, groupPRsByRepo } from './daily.js';
 import type { FetchedPR } from '../core/types.js';
 import type { ActionableIssue, CapacityAssessment } from '../formatters/json.js';
 
@@ -19,12 +19,15 @@ function makePR(overrides: Partial<FetchedPR> & { repo: string }): FetchedPR {
     daysSinceActivity: 5,
     ciStatus: 'passing',
     failingCheckNames: [],
+    classifiedChecks: [],
     hasMergeConflict: false,
     reviewDecision: 'approved',
     hasUnrespondedComment: false,
     hasIncompleteChecklist: false,
     maintainerActionHints: [],
     status: 'healthy',
+    displayLabel: '[Healthy]',
+    displayDescription: 'Everything looks good — normal review cycle',
     ...overrides,
   };
 }
@@ -283,5 +286,71 @@ describe('computeRepoSignals', () => {
     expect(result.get('owner/active-repo')!.hasActiveMaintainers).toBe(true);
     expect(result.get('owner/dead-repo')!.isResponsive).toBe(false);
     expect(result.get('owner/dead-repo')!.hasActiveMaintainers).toBe(false);
+  });
+});
+
+describe('groupPRsByRepo (#80)', () => {
+  it('should return empty array for no PRs', () => {
+    expect(groupPRsByRepo([])).toEqual([]);
+  });
+
+  it('should group single PR into one group', () => {
+    const prs = [makePR({ repo: 'owner/repo' })];
+    const groups = groupPRsByRepo(prs);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].repo).toBe('owner/repo');
+    expect(groups[0].prs).toHaveLength(1);
+  });
+
+  it('should group multiple PRs in same repo together', () => {
+    const prs = [
+      makePR({ repo: 'owner/repo', number: 1 }),
+      makePR({ repo: 'owner/repo', number: 2 }),
+      makePR({ repo: 'owner/repo', number: 3 }),
+    ];
+    const groups = groupPRsByRepo(prs);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].repo).toBe('owner/repo');
+    expect(groups[0].prs).toHaveLength(3);
+  });
+
+  it('should separate PRs in different repos', () => {
+    const prs = [
+      makePR({ repo: 'owner/repo-a', number: 1 }),
+      makePR({ repo: 'owner/repo-b', number: 2 }),
+    ];
+    const groups = groupPRsByRepo(prs);
+    expect(groups).toHaveLength(2);
+    expect(groups.map(g => g.repo).sort()).toEqual(['owner/repo-a', 'owner/repo-b']);
+  });
+
+  it('should correctly group mixed PRs from multiple repos', () => {
+    const prs = [
+      makePR({ repo: 'vadimdemedes/ink', number: 855, status: 'needs_response' }),
+      makePR({ repo: 'shadcn-ui/ui', number: 9263, status: 'healthy' }),
+      makePR({ repo: 'vadimdemedes/ink', number: 856, status: 'failing_ci' }),
+      makePR({ repo: 'refined-github/refined-github', number: 8965, status: 'needs_response' }),
+    ];
+    const groups = groupPRsByRepo(prs);
+    expect(groups).toHaveLength(3);
+
+    const inkGroup = groups.find(g => g.repo === 'vadimdemedes/ink');
+    expect(inkGroup).toBeDefined();
+    expect(inkGroup!.prs).toHaveLength(2);
+    expect(inkGroup!.prs.map(p => p.number).sort()).toEqual([855, 856]);
+
+    const uiGroup = groups.find(g => g.repo === 'shadcn-ui/ui');
+    expect(uiGroup).toBeDefined();
+    expect(uiGroup!.prs).toHaveLength(1);
+  });
+
+  it('should skip PRs with empty repo field', () => {
+    const prs = [
+      makePR({ repo: '' as any }),
+      makePR({ repo: 'owner/valid', number: 2 }),
+    ];
+    const groups = groupPRsByRepo(prs);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].repo).toBe('owner/valid');
   });
 });

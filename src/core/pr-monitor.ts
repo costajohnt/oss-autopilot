@@ -8,7 +8,7 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween } from './utils.js';
-import { FetchedPR, FetchedPRStatus, CIStatus, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR } from './types.js';
+import { FetchedPR, FetchedPRStatus, CIStatus, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR, CIFailureCategory, ClassifiedCheck } from './types.js';
 
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
@@ -226,18 +226,25 @@ export class PRMonitor {
       latestChangesRequestedDate
     );
 
-    return {
+    // Classify failing checks (#81)
+    const classifiedChecks = classifyFailingChecks(failingCheckNames);
+
+    // Build partial PR (without display fields) for display label computation
+    const pr: FetchedPR = {
       id: ghPR.id,
       url: prUrl,
       repo: `${owner}/${repo}`,
       number,
       title: ghPR.title,
       status,
+      displayLabel: '',  // computed below
+      displayDescription: '',  // computed below
       createdAt: ghPR.created_at,
       updatedAt: ghPR.updated_at,
       daysSinceActivity,
       ciStatus,
       failingCheckNames,
+      classifiedChecks,
       hasMergeConflict,
       reviewDecision,
       hasUnrespondedComment,
@@ -247,6 +254,13 @@ export class PRMonitor {
       checklistStats,
       maintainerActionHints,
     };
+
+    // Compute display labels (#79) — must happen after status + classifiedChecks are set
+    const { displayLabel, displayDescription } = computeDisplayLabel(pr);
+    pr.displayLabel = displayLabel;
+    pr.displayDescription = displayDescription;
+
+    return pr;
   }
 
   /**
@@ -1019,4 +1033,142 @@ export class PRMonitor {
     return pr;
   }
 
+}
+
+/**
+ * Deterministic mapping from FetchedPRStatus → human-readable display label (#79).
+ * Ensures consistent label text across sessions — agents no longer derive these.
+ */
+const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr: FetchedPR) => string }> = {
+  needs_response: {
+    label: '[Needs Response]',
+    description: (pr) => pr.lastMaintainerComment
+      ? `@${pr.lastMaintainerComment.author} commented`
+      : 'Maintainer awaiting response',
+  },
+  needs_changes: {
+    label: '[Needs Changes]',
+    description: () => 'Review requested changes — push commits to address',
+  },
+  failing_ci: {
+    label: '[CI Failing]',
+    description: (pr) => {
+      const actionable = pr.classifiedChecks.filter(c => c.category === 'actionable');
+      if (actionable.length > 0) return `${actionable.length} check${actionable.length === 1 ? '' : 's'} failed: ${actionable.map(c => c.name).join(', ')}`;
+      if (pr.failingCheckNames.length > 0) return `${pr.failingCheckNames.length} check${pr.failingCheckNames.length === 1 ? '' : 's'} failed`;
+      return 'One or more CI checks are failing';
+    },
+  },
+  ci_blocked: {
+    label: '[CI Blocked]',
+    description: () => 'CI cannot run (first-time contributor approval needed)',
+  },
+  ci_not_running: {
+    label: '[CI Not Running]',
+    description: () => 'No CI checks have been triggered',
+  },
+  merge_conflict: {
+    label: '[Merge Conflict]',
+    description: () => 'PR has merge conflicts with the base branch',
+  },
+  needs_rebase: {
+    label: '[Needs Rebase]',
+    description: () => 'PR branch is significantly behind upstream',
+  },
+  missing_required_files: {
+    label: '[Missing Files]',
+    description: (pr) => pr.missingRequiredFiles
+      ? `Missing: ${pr.missingRequiredFiles.join(', ')}`
+      : 'Required files are missing',
+  },
+  incomplete_checklist: {
+    label: '[Incomplete Checklist]',
+    description: (pr) => pr.checklistStats
+      ? `${pr.checklistStats.checked}/${pr.checklistStats.total} items checked`
+      : 'PR body has unchecked required checkboxes',
+  },
+  changes_addressed: {
+    label: '[Changes Addressed]',
+    description: (pr) => pr.lastMaintainerComment
+      ? `Waiting for @${pr.lastMaintainerComment.author} to re-review`
+      : 'Waiting for maintainer re-review',
+  },
+  waiting: {
+    label: '[Waiting]',
+    description: () => 'CI pending or awaiting review',
+  },
+  waiting_on_maintainer: {
+    label: '[Waiting on Maintainer]',
+    description: () => 'Approved and CI passes — waiting for merge',
+  },
+  healthy: {
+    label: '[Healthy]',
+    description: () => 'Everything looks good — normal review cycle',
+  },
+  approaching_dormant: {
+    label: '[Approaching Dormant]',
+    description: (pr) => `No activity for ${pr.daysSinceActivity} days`,
+  },
+  dormant: {
+    label: '[Dormant]',
+    description: (pr) => `No activity for ${pr.daysSinceActivity} days`,
+  },
+};
+
+/** Compute display label and description for a FetchedPR (#79). */
+export function computeDisplayLabel(pr: FetchedPR): { displayLabel: string; displayDescription: string } {
+  const entry = STATUS_DISPLAY[pr.status];
+  return {
+    displayLabel: entry.label,
+    displayDescription: entry.description(pr),
+  };
+}
+
+/**
+ * Known CI check name patterns that indicate fork limitations rather than real failures (#81).
+ * These are deployment/preview services that require repo-level secrets unavailable in forks.
+ */
+const FORK_LIMITATION_PATTERNS: RegExp[] = [
+  /vercel/i,
+  /netlify/i,
+  /preview/i,
+  /deploy/i,
+  /chromatic/i,
+  /percy/i,
+  /cloudflare pages/i,
+];
+
+/**
+ * Known CI check name patterns that indicate authorization gates (#81).
+ * These require maintainer approval and are not real failures.
+ */
+const AUTH_GATE_PATTERNS: RegExp[] = [
+  /authoriz/i,
+  /approval/i,
+  /\bcla\b/i,
+  /license\/cla/i,
+];
+
+/**
+ * Classify a failing CI check as actionable, fork_limitation, or auth_gate (#81).
+ * Default is 'actionable' — only known patterns get reclassified.
+ */
+export function classifyCICheck(name: string, description?: string): CIFailureCategory {
+  const text = `${name} ${description || ''}`.toLowerCase();
+
+  // Check auth gates first (more specific)
+  if (AUTH_GATE_PATTERNS.some(p => p.test(text))) return 'auth_gate';
+  if (FORK_LIMITATION_PATTERNS.some(p => p.test(text))) return 'fork_limitation';
+
+  return 'actionable';
+}
+
+/**
+ * Classify all failing checks and return both the flat names array and classified array (#81).
+ */
+export function classifyFailingChecks(failingCheckNames: string[]): ClassifiedCheck[] {
+  return failingCheckNames.map(name => ({
+    name,
+    category: classifyCICheck(name),
+  }));
 }
