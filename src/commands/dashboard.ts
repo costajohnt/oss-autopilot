@@ -1081,7 +1081,7 @@ function generateDashboardHtml(
               ${pr.ciStatus === 'pending' ? '<span class="badge badge-pending">CI Pending</span>' : ''}
               ${pr.hasMergeConflict ? '<span class="badge badge-conflict">Merge Conflict</span>' : ''}
               ${pr.hasUnrespondedComment && pr.status === 'changes_addressed' ? '<span class="badge badge-changes-addressed">Changes Addressed</span>' : ''}
-              ${pr.hasUnrespondedComment && pr.status !== 'changes_addressed' ? '<span class="badge badge-needs-response">Needs Response</span>' : ''}
+              ${pr.hasUnrespondedComment && pr.status !== 'changes_addressed' && pr.status !== 'failing_ci' ? '<span class="badge badge-needs-response">Needs Response</span>' : ''}
               ${pr.reviewDecision === 'changes_requested' ? '<span class="badge badge-changes-requested">Changes Requested</span>' : ''}
               ${isStale ? `<span class="badge badge-stale">${pr.daysSinceActivity}d inactive</span>` : ''}
             </div>

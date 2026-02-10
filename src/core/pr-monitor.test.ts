@@ -1065,3 +1065,185 @@ describe('PRMonitor generateDigest', () => {
     expect(digest.recentlyClosedPRs[1].number).toBe(101);
   });
 });
+
+describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
+  beforeEach(() => {
+    mockOctokitInstance = {};
+  });
+
+  // Helper to call determineStatus with defaults
+  function callDetermineStatus(overrides: Partial<{
+    ciStatus: string;
+    hasMergeConflict: boolean;
+    hasUnrespondedComment: boolean;
+    hasIncompleteChecklist: boolean;
+    reviewDecision: string;
+    daysSinceActivity: number;
+    dormantThreshold: number;
+    approachingThreshold: number;
+    latestCommitDate: string | undefined;
+    lastMaintainerCommentDate: string | undefined;
+    latestChangesRequestedDate: string | undefined;
+  }> = {}) {
+    const monitor = new PRMonitor('fake-token');
+    const defaults = {
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'review_required',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: undefined as string | undefined,
+      lastMaintainerCommentDate: undefined as string | undefined,
+      latestChangesRequestedDate: undefined as string | undefined,
+    };
+    const p = { ...defaults, ...overrides };
+    return (monitor as any).determineStatus(
+      p.ciStatus, p.hasMergeConflict, p.hasUnrespondedComment,
+      p.hasIncompleteChecklist, p.reviewDecision, p.daysSinceActivity,
+      p.dormantThreshold, p.approachingThreshold, p.latestCommitDate,
+      p.lastMaintainerCommentDate, p.latestChangesRequestedDate
+    );
+  }
+
+  it('should return failing_ci when changes_addressed (comment path) and CI is failing', () => {
+    expect(callDetermineStatus({
+      ciStatus: 'failing',
+      hasUnrespondedComment: true,
+      latestCommitDate: '2026-02-08T12:00:00Z',
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+    })).toBe('failing_ci');
+  });
+
+  it('should return failing_ci when changes_addressed (review path) and CI is failing', () => {
+    expect(callDetermineStatus({
+      ciStatus: 'failing',
+      reviewDecision: 'changes_requested',
+      latestCommitDate: '2026-02-09T10:00:00Z',
+      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+    })).toBe('failing_ci');
+  });
+
+  it('should still return changes_addressed when CI is passing (comment path regression)', () => {
+    expect(callDetermineStatus({
+      ciStatus: 'passing',
+      hasUnrespondedComment: true,
+      latestCommitDate: '2026-02-08T12:00:00Z',
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+    })).toBe('changes_addressed');
+  });
+
+  it('should still return changes_addressed when CI is passing (review path regression)', () => {
+    expect(callDetermineStatus({
+      ciStatus: 'passing',
+      reviewDecision: 'changes_requested',
+      latestCommitDate: '2026-02-09T10:00:00Z',
+      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+    })).toBe('changes_addressed');
+  });
+
+  it('should still prioritize needs_response over failing_ci', () => {
+    expect(callDetermineStatus({
+      ciStatus: 'failing',
+      hasUnrespondedComment: true,
+      // No commit after maintainer comment → needs_response, not changes_addressed
+    })).toBe('needs_response');
+  });
+
+  it('should still prioritize needs_changes over failing_ci', () => {
+    expect(callDetermineStatus({
+      ciStatus: 'failing',
+      reviewDecision: 'changes_requested',
+      latestCommitDate: '2026-02-07T06:50:38Z',
+      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+    })).toBe('needs_changes');
+  });
+});
+
+describe('PRMonitor acknowledgment comment detection (Issue #69)', () => {
+  beforeEach(() => {
+    mockOctokitInstance = {};
+  });
+
+  it('should detect "thanks" as acknowledgment', () => {
+    const monitor = new PRMonitor('fake-token');
+    expect((monitor as any).isAcknowledgmentComment('thanks')).toBe(true);
+  });
+
+  it('should detect "Thank you!" as acknowledgment', () => {
+    const monitor = new PRMonitor('fake-token');
+    expect((monitor as any).isAcknowledgmentComment('Thank you!')).toBe(true);
+  });
+
+  it('should detect "LGTM" as acknowledgment', () => {
+    const monitor = new PRMonitor('fake-token');
+    expect((monitor as any).isAcknowledgmentComment('LGTM')).toBe(true);
+  });
+
+  it('should detect "Looks good, will review soon" as acknowledgment', () => {
+    const monitor = new PRMonitor('fake-token');
+    expect((monitor as any).isAcknowledgmentComment('Looks good, will review soon')).toBe(true);
+  });
+
+  it('should detect "we\'ll get to this shortly" as acknowledgment', () => {
+    const monitor = new PRMonitor('fake-token');
+    expect((monitor as any).isAcknowledgmentComment("we'll get to this shortly")).toBe(true);
+  });
+
+  it('should detect "noted" as acknowledgment', () => {
+    const monitor = new PRMonitor('fake-token');
+    expect((monitor as any).isAcknowledgmentComment('noted')).toBe(true);
+  });
+
+  it('should NOT detect actionable comment as acknowledgment', () => {
+    const monitor = new PRMonitor('fake-token');
+    expect((monitor as any).isAcknowledgmentComment('Please fix linting errors')).toBe(false);
+  });
+
+  it('should NOT detect empty string as acknowledgment', () => {
+    const monitor = new PRMonitor('fake-token');
+    expect((monitor as any).isAcknowledgmentComment('')).toBe(false);
+  });
+
+  it('should NOT detect comment with question mark as acknowledgment', () => {
+    const monitor = new PRMonitor('fake-token');
+    expect((monitor as any).isAcknowledgmentComment('Thanks, can you add tests?')).toBe(false);
+  });
+
+  it('should NOT detect long comment with keyword as acknowledgment', () => {
+    const monitor = new PRMonitor('fake-token');
+    const longComment = 'Thanks for this PR! ' + 'x'.repeat(100);
+    expect((monitor as any).isAcknowledgmentComment(longComment)).toBe(false);
+  });
+
+  it('should not trigger hasUnrespondedComment for acknowledgment comments', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR description', created_at: '2026-02-07T10:00:00Z' },
+        { user: { login: 'maintainer' }, body: 'Thanks, will review soon', created_at: '2026-02-07T12:00:00Z' },
+      ],
+      [],
+      'testuser'
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+    expect(result.lastMaintainerComment).toBeUndefined();
+  });
+
+  it('should still trigger hasUnrespondedComment for actionable comment after acknowledgment', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+        { user: { login: 'maintainer' }, body: 'Thanks, will look at this', created_at: '2026-02-07T11:00:00Z' },
+        { user: { login: 'maintainer' }, body: 'Please fix the linting errors in src/main.ts', created_at: '2026-02-07T12:00:00Z' },
+      ],
+      [],
+      'testuser'
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('maintainer');
+  });
+});
