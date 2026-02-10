@@ -141,9 +141,7 @@ export async function runLocalRepos(options: LocalReposOptions): Promise<void> {
     stateManager.save();
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    if (!options.json) {
-      console.error(`Warning: Failed to cache scan results: ${msg}`);
-    }
+    console.error(`Warning: Failed to cache scan results: ${msg}`);
   }
 
   const result: LocalReposOutput = {
