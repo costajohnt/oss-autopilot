@@ -1,6 +1,7 @@
 /**
- * PR Monitor - Fetches and checks PR status fresh from GitHub
- * v2: No local state tracking - fetches everything on each run
+ * PR Monitor - Fetches and checks PR status from GitHub.
+ * v2: fetchUserOpenPRs() is stateless (no local PR tracking),
+ * but trackPR() and score methods still write to state.
  */
 
 import { Octokit } from '@octokit/rest';
@@ -94,7 +95,8 @@ export class PRMonitor {
     });
 
     // Fetch detailed info using a worker pool for bounded concurrency.
-    // N workers consume from a shared index — simpler and more robust than Promise.race + splice.
+    // N workers consume from a shared index — simpler than Promise.race + splice.
+    // Safe because JS is single-threaded: nextIndex++ and prs.push() are never interleaved mid-operation.
     let nextIndex = 0;
     const fetchWorker = async () => {
       while (nextIndex < filteredItems.length) {

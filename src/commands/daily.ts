@@ -1,7 +1,7 @@
 /**
  * Daily check command
- * Fetches all open PRs fresh from GitHub and generates a digest
- * v2: No local state tracking - everything is fetched fresh
+ * Fetches all open PRs fresh from GitHub (v2: no PR-level state tracking),
+ * generates a digest, and updates repo scores and analytics in local state.
  */
 
 import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ClosedPR, type ComputedRepoSignals } from '../core/index.js';
@@ -37,6 +37,9 @@ export async function runDaily(options: DailyOptions): Promise<void> {
       outputJsonError(`Daily check failed: ${msg}`);
     } else {
       console.error(`[FATAL] Daily check failed: ${msg}`);
+      if (error instanceof Error && error.stack) {
+        console.error(error.stack);
+      }
     }
     process.exit(1);
   }
@@ -94,11 +97,12 @@ async function runDailyInner(token: string, options: DailyOptions): Promise<void
   }
 
   // Populate closedWithoutMergeCount in repo scores.
-  // Guard: same transient-failure protection as merged counts above.
+  // Diagnostic: warn if API returned empty but we have known closed PRs (possible transient API failure).
+  // Unlike merged counts above, there is no stale-reset loop for closed counts, so no skip is needed.
   const existingReposWithClosed = Object.values(stateManager.getState().repoScores)
     .filter(s => (s.closedWithoutMergeCount || 0) > 0);
   if (closedCounts.size === 0 && existingReposWithClosed.length > 0) {
-    console.error(`[DAILY] Skipping closed count update: API returned 0 results but state has ${existingReposWithClosed.length} repo(s) with closed PRs. Possible API issue.`);
+    console.error(`[DAILY] Warning: API returned 0 closed PR results but state has ${existingReposWithClosed.length} repo(s) with closed PRs. Possible transient API issue.`);
   }
   let closedCountFailures = 0;
   for (const [repo, count] of closedCounts) {

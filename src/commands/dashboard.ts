@@ -169,7 +169,10 @@ interface DashboardStats {
 
 /**
  * Escape HTML special characters to prevent XSS when interpolating
- * user-controlled content (e.g. PR titles, comment bodies) into HTML.
+ * user-controlled content (e.g. PR titles, comment bodies, author names) into HTML.
+ * Note: This escapes HTML entity characters only. It does not sanitize URL schemes
+ * (e.g., javascript:) — callers placing values in href attributes should validate
+ * the URL scheme if the source is untrusted. GitHub API URLs are trusted.
  */
 function escapeHtml(text: string): string {
   return text
@@ -213,6 +216,11 @@ function generateDashboardHtml(
     return escapeHtml(truncated);
   }
 
+  /**
+   * Render health status items. labelFn output is automatically HTML-escaped.
+   * metaFn output is injected raw — callers must ensure metaFn returns safe HTML
+   * (use escapeHtml for any user-controlled content within metaFn).
+   */
   function renderHealthItems(
     prs: FetchedPR[],
     cssClass: string,

@@ -35,7 +35,7 @@ Before running the daily check, verify setup is complete:
 GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" checkSetup --json
 ```
 
-If `setupComplete` is false, tell the user:
+If the JSON response's `data.setupComplete` field is false, tell the user:
 
 > "It looks like setup isn't complete yet. Run `/setup-oss` to configure your preferences, or I can continue with defaults."
 
