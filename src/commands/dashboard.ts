@@ -135,7 +135,8 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
 
   // Write to file in ~/.oss-autopilot/
   const dashboardPath = getDashboardPath();
-  fs.writeFileSync(dashboardPath, html);
+  fs.writeFileSync(dashboardPath, html, { mode: 0o644 });
+  fs.chmodSync(dashboardPath, 0o644);
 
   console.log(`\n📊 Dashboard generated: ${dashboardPath}`);
 

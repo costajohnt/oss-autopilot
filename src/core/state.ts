@@ -416,13 +416,16 @@ export class StateManager {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const backupFile = path.join(backupDir, `state-${timestamp}.json`);
       fs.copyFileSync(statePath, backupFile);
+      fs.chmodSync(backupFile, 0o600);
 
       // Keep only last 10 backups
       this.cleanupBackups();
     }
 
     // Save state with restricted permissions (owner-only read/write)
+    // Note: writeFileSync mode only applies on file creation; chmodSync enforces it on existing files
     fs.writeFileSync(statePath, JSON.stringify(this.state, null, 2), { mode: 0o600 });
+    fs.chmodSync(statePath, 0o600);
     console.error('State saved successfully');
   }
 

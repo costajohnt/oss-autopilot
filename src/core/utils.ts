@@ -26,7 +26,7 @@ let tokenFetchAttempted = false;
 export function getDataDir(): string {
   const dir = path.join(os.homedir(), '.oss-autopilot');
   if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
   return dir;
 }
@@ -61,7 +61,7 @@ export function getStatePath(): string {
 export function getBackupDir(): string {
   const dir = path.join(getDataDir(), 'backups');
   if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
   return dir;
 }
