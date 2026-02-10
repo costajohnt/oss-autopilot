@@ -23,7 +23,14 @@ vi.mock('./state.js', () => ({
   })),
 }));
 
-const { IssueDiscovery } = await import('./issue-discovery.js');
+const {
+  IssueDiscovery,
+  isLabelFarming,
+  hasTemplatedTitle,
+  detectLabelFarmingRepos,
+  calculateRepoQualityBonus,
+  BEGINNER_LABELS,
+} = await import('./issue-discovery.js');
 
 describe('IssueDiscovery.calculateViabilityScore', () => {
   let discovery: InstanceType<typeof IssueDiscovery>;
@@ -329,7 +336,7 @@ describe('IssueDiscovery.vetIssue inconclusive downgrade', () => {
       },
       repos: {
         get: vi.fn().mockResolvedValue({
-          data: { open_issues_count: 5, pushed_at: '2026-02-01T00:00:00Z' },
+          data: { open_issues_count: 5, pushed_at: '2026-02-01T00:00:00Z', stargazers_count: 100, forks_count: 20 },
         }),
         listCommits: vi.fn().mockResolvedValue({
           data: [{ commit: { author: { date: '2026-02-01T00:00:00Z' } } }],
@@ -392,5 +399,301 @@ describe('IssueDiscovery.vetIssue inconclusive downgrade', () => {
     expect(candidate.vettingResult.notes).toContainEqual(
       expect.stringContaining('Could not verify project activity')
     );
+  });
+
+  it('should note unavailable quality bonus when health check fails', async () => {
+    mockOctokitInstance.repos.get.mockRejectedValue(new Error('Not Found'));
+
+    const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
+    expect(candidate.vettingResult.notes).toContainEqual(
+      expect.stringContaining('Repo quality bonus unavailable')
+    );
+  });
+
+  it('should populate stargazersCount and forksCount from checkProjectHealth', async () => {
+    mockOctokitInstance.repos.get.mockResolvedValue({
+      data: { open_issues_count: 5, pushed_at: '2026-02-01T00:00:00Z', stargazers_count: 5000, forks_count: 800 },
+    });
+
+    const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
+    expect(candidate.projectHealth.stargazersCount).toBe(5000);
+    expect(candidate.projectHealth.forksCount).toBe(800);
+  });
+});
+
+describe('isLabelFarming', () => {
+  const makeItem = (labels: string[]) => ({
+    html_url: 'https://github.com/spam/repo/issues/1',
+    repository_url: 'https://api.github.com/repos/spam/repo',
+    updated_at: '2026-01-01T00:00:00Z',
+    labels: labels.map(name => ({ name })),
+  });
+
+  it('should return false with 4 beginner labels', () => {
+    expect(isLabelFarming(makeItem([
+      'good first issue', 'hacktoberfest', 'easy', 'beginner',
+    ]))).toBe(false);
+  });
+
+  it('should return true with 5 beginner labels', () => {
+    expect(isLabelFarming(makeItem([
+      'good first issue', 'hacktoberfest', 'easy', 'beginner', 'starter',
+    ]))).toBe(true);
+  });
+
+  it('should count only beginner labels, ignoring non-beginner labels', () => {
+    expect(isLabelFarming(makeItem([
+      'good first issue', 'hacktoberfest', 'bug', 'enhancement', 'easy', 'documentation',
+    ]))).toBe(false); // Only 3 beginner labels
+  });
+
+  it('should handle string labels', () => {
+    const item = {
+      html_url: 'https://github.com/spam/repo/issues/1',
+      repository_url: 'https://api.github.com/repos/spam/repo',
+      updated_at: '2026-01-01T00:00:00Z',
+      labels: ['good first issue', 'hacktoberfest', 'easy', 'beginner', 'newbie'] as any,
+    };
+    expect(isLabelFarming(item)).toBe(true);
+  });
+
+  it('should return false when no labels present', () => {
+    const item = {
+      html_url: 'https://github.com/spam/repo/issues/1',
+      repository_url: 'https://api.github.com/repos/spam/repo',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    expect(isLabelFarming(item)).toBe(false);
+  });
+
+  it('should be case-insensitive', () => {
+    expect(isLabelFarming(makeItem([
+      'Good First Issue', 'HACKTOBERFEST', 'Easy', 'Beginner', 'Starter',
+    ]))).toBe(true);
+  });
+});
+
+describe('hasTemplatedTitle', () => {
+  it('should detect "Add Trivia Question 61"', () => {
+    expect(hasTemplatedTitle('Add Trivia Question 61')).toBe(true);
+  });
+
+  it('should detect "Create Entry #5"', () => {
+    expect(hasTemplatedTitle('Create Entry #5')).toBe(true);
+  });
+
+  it('should detect "Update Documentation Item 12"', () => {
+    expect(hasTemplatedTitle('Update Documentation Item 12')).toBe(true);
+  });
+
+  it('should detect "Write Blog Post #42"', () => {
+    expect(hasTemplatedTitle('Write Blog Post #42')).toBe(true);
+  });
+
+  it('should detect "Implement Feature Task 7"', () => {
+    expect(hasTemplatedTitle('Implement Feature Task 7')).toBe(true);
+  });
+
+  it('should NOT detect "Fix authentication bug"', () => {
+    expect(hasTemplatedTitle('Fix authentication bug')).toBe(false);
+  });
+
+  it('should NOT detect "Add dark mode support"', () => {
+    expect(hasTemplatedTitle('Add dark mode support')).toBe(false);
+  });
+
+  it('should NOT detect empty string', () => {
+    expect(hasTemplatedTitle('')).toBe(false);
+  });
+
+  it('should NOT detect "Update the README with installation instructions"', () => {
+    expect(hasTemplatedTitle('Update the README with installation instructions')).toBe(false);
+  });
+
+  // False-positive resistance: legitimate titles ending in numbers
+  it('should NOT detect "Add support for Python 3.12"', () => {
+    expect(hasTemplatedTitle('Add support for Python 3.12')).toBe(false);
+  });
+
+  it('should NOT detect "Implement RFC 7231"', () => {
+    expect(hasTemplatedTitle('Implement RFC 7231')).toBe(false);
+  });
+
+  it('should NOT detect "Update CI pipeline to use Node 22"', () => {
+    expect(hasTemplatedTitle('Update CI pipeline to use Node 22')).toBe(false);
+  });
+});
+
+describe('detectLabelFarmingRepos', () => {
+  const makeItem = (repo: string, opts: { labels?: string[]; title?: string } = {}) => ({
+    html_url: `https://github.com/${repo}/issues/1`,
+    repository_url: `https://api.github.com/repos/${repo}`,
+    updated_at: '2026-01-01T00:00:00Z',
+    title: opts.title || 'Some issue',
+    labels: (opts.labels || []).map(name => ({ name })),
+  });
+
+  it('should flag repo with single issue having 5+ beginner labels', () => {
+    const items = [
+      makeItem('spam/repo', {
+        labels: ['good first issue', 'hacktoberfest', 'easy', 'beginner', 'starter'],
+      }),
+      makeItem('legit/project', { labels: ['bug'] }),
+    ];
+    const spamRepos = detectLabelFarmingRepos(items);
+    expect(spamRepos.has('spam/repo')).toBe(true);
+    expect(spamRepos.has('legit/project')).toBe(false);
+  });
+
+  it('should flag repo with 3+ templated title issues', () => {
+    const items = [
+      makeItem('spam/trivia', { title: 'Add Trivia Question 1' }),
+      makeItem('spam/trivia', { title: 'Add Trivia Question 2' }),
+      makeItem('spam/trivia', { title: 'Add Trivia Question 3' }),
+      makeItem('legit/project', { title: 'Fix login redirect' }),
+    ];
+    const spamRepos = detectLabelFarmingRepos(items);
+    expect(spamRepos.has('spam/trivia')).toBe(true);
+    expect(spamRepos.has('legit/project')).toBe(false);
+  });
+
+  it('should NOT flag repo with only 2 templated title issues', () => {
+    const items = [
+      makeItem('borderline/repo', { title: 'Add Question 1' }),
+      makeItem('borderline/repo', { title: 'Add Question 2' }),
+    ];
+    const spamRepos = detectLabelFarmingRepos(items);
+    expect(spamRepos.has('borderline/repo')).toBe(false);
+  });
+
+  it('should return empty set for clean items', () => {
+    const items = [
+      makeItem('legit/a', { title: 'Fix memory leak', labels: ['bug'] }),
+      makeItem('legit/b', { title: 'Add feature X', labels: ['good first issue'] }),
+    ];
+    const spamRepos = detectLabelFarmingRepos(items);
+    expect(spamRepos.size).toBe(0);
+  });
+
+  it('should handle mixed spam signals across repos', () => {
+    const items = [
+      // Spam repo via labels
+      makeItem('spam/labels', {
+        labels: ['good first issue', 'hacktoberfest', 'easy', 'beginner', 'community'],
+      }),
+      // Spam repo via templated titles (need 3)
+      makeItem('spam/titles', { title: 'Create Entry 1' }),
+      makeItem('spam/titles', { title: 'Create Entry 2' }),
+      makeItem('spam/titles', { title: 'Create Entry 3' }),
+      // Legit
+      makeItem('legit/project', { title: 'Improve error handling' }),
+    ];
+    const spamRepos = detectLabelFarmingRepos(items);
+    expect(spamRepos.has('spam/labels')).toBe(true);
+    expect(spamRepos.has('spam/titles')).toBe(true);
+    expect(spamRepos.has('legit/project')).toBe(false);
+  });
+});
+
+describe('calculateRepoQualityBonus', () => {
+  it('should return 0 for tiny repo (< 50 stars, < 50 forks)', () => {
+    expect(calculateRepoQualityBonus(10, 5)).toBe(0);
+  });
+
+  it('should return 3 for small repo (50-499 stars)', () => {
+    expect(calculateRepoQualityBonus(100, 20)).toBe(3);
+  });
+
+  it('should return 7 for medium repo (500-4999 stars, 50+ forks)', () => {
+    expect(calculateRepoQualityBonus(1000, 100)).toBe(7); // 5 stars + 2 forks
+  });
+
+  it('should return 12 for large repo (5000+ stars, 500+ forks)', () => {
+    expect(calculateRepoQualityBonus(30000, 5000)).toBe(12); // 8 stars + 4 forks
+  });
+
+  it('should return 12 for very large repo (natural max)', () => {
+    expect(calculateRepoQualityBonus(50000, 10000)).toBe(12); // 8 + 4
+  });
+
+  it('should return 8 for high-star low-fork repo', () => {
+    expect(calculateRepoQualityBonus(10000, 30)).toBe(8); // 8 stars + 0 forks
+  });
+
+  it('should return 4 for low-star high-fork repo', () => {
+    expect(calculateRepoQualityBonus(10, 1000)).toBe(4); // 0 stars + 4 forks
+  });
+
+  it('should handle exact boundary values', () => {
+    expect(calculateRepoQualityBonus(50, 0)).toBe(3);    // exactly 50 stars
+    expect(calculateRepoQualityBonus(500, 0)).toBe(5);   // exactly 500 stars
+    expect(calculateRepoQualityBonus(5000, 0)).toBe(8);  // exactly 5000 stars
+    expect(calculateRepoQualityBonus(0, 50)).toBe(2);    // exactly 50 forks
+    expect(calculateRepoQualityBonus(0, 500)).toBe(4);   // exactly 500 forks
+  });
+
+  it('should return 0 for zero stars and forks', () => {
+    expect(calculateRepoQualityBonus(0, 0)).toBe(0);
+  });
+});
+
+describe('calculateViabilityScore with repoQualityBonus', () => {
+  let discovery: InstanceType<typeof IssueDiscovery>;
+
+  beforeEach(() => {
+    mockOctokitInstance = {};
+    discovery = new IssueDiscovery('fake-token');
+  });
+
+  const baseParams = {
+    repoScore: null as number | null,
+    hasExistingPR: false,
+    isClaimed: false,
+    clearRequirements: false,
+    hasContributionGuidelines: false,
+    issueUpdatedAt: '2020-01-01T00:00:00Z',
+    closedWithoutMergeCount: 0,
+    mergedPRCount: 0,
+    orgHasMergedPRs: false,
+  };
+
+  it('should add repoQualityBonus to base score', () => {
+    const score = discovery.calculateViabilityScore({ ...baseParams, repoQualityBonus: 8 });
+    expect(score).toBe(58); // 50 + 8
+  });
+
+  it('should default to 0 when repoQualityBonus is undefined', () => {
+    const score = discovery.calculateViabilityScore(baseParams);
+    expect(score).toBe(50);
+  });
+
+  it('should still clamp to 100 with quality bonus', () => {
+    const recent = new Date();
+    recent.setDate(recent.getDate() - 1);
+    const score = discovery.calculateViabilityScore({
+      repoScore: 10,            // +20
+      hasExistingPR: false,
+      isClaimed: false,
+      clearRequirements: true,   // +15
+      hasContributionGuidelines: true, // +10
+      issueUpdatedAt: recent.toISOString(), // +15
+      closedWithoutMergeCount: 0,
+      mergedPRCount: 0,
+      orgHasMergedPRs: true,     // +5
+      repoQualityBonus: 12,      // +12
+    });
+    // 50 + 20 + 12 + 15 + 15 + 10 + 5 = 127, clamped to 100
+    expect(score).toBe(100);
+  });
+
+  it('should combine quality bonus with other bonuses and penalties', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      repoQualityBonus: 7,       // +7
+      clearRequirements: true,    // +15
+      isClaimed: true,            // -20
+    });
+    // 50 + 7 + 15 - 20 = 52
+    expect(score).toBe(52);
   });
 });

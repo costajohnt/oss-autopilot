@@ -323,6 +323,10 @@ export interface ProjectHealth {
   ciStatus: 'passing' | 'failing' | 'unknown';
   /** Whether the project is considered active based on recent commit history. */
   isActive: boolean;
+  /** GitHub star count, used for repo quality scoring (#98). */
+  stargazersCount?: number;
+  /** GitHub fork count, used for repo quality scoring (#98). */
+  forksCount?: number;
   /** True if the health check itself failed (e.g., API error). */
   checkFailed?: boolean;
   failureReason?: string;
