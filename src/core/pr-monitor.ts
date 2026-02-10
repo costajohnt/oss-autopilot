@@ -313,10 +313,34 @@ export class PRMonitor {
       }
     }
 
+    // Filter out pure acknowledgment comments that don't require a response
+    if (lastMaintainerComment && this.isAcknowledgmentComment(lastMaintainerComment.body)) {
+      lastMaintainerComment = undefined;
+    }
+
     return {
       hasUnrespondedComment: !!lastMaintainerComment,
       lastMaintainerComment,
     };
+  }
+
+  /**
+   * Detect acknowledgment comments that don't require a response.
+   * Returns true only when: no question mark, matches an acknowledgment keyword, and under 100 chars.
+   * Conservative — false negatives (flagging an acknowledgment) are safer than false positives.
+   */
+  private isAcknowledgmentComment(body: string): boolean {
+    if (!body || body.length > 100) return false;
+    if (body.includes('?')) return false;
+
+    const lower = body.toLowerCase();
+    const ackKeywords = [
+      'thanks', 'thank you', 'lgtm', 'looks good',
+      'will review', "we'll review", "we'll get to this",
+      'noted', 'got it', 'will look', 'will check',
+    ];
+
+    return ackKeywords.some(kw => lower.includes(kw));
   }
 
   /**
@@ -341,6 +365,7 @@ export class PRMonitor {
       // If the contributor pushed a commit after the maintainer's comment,
       // the changes have been addressed — waiting for maintainer re-review
       if (latestCommitDate && lastMaintainerCommentDate && latestCommitDate > lastMaintainerCommentDate) {
+        if (ciStatus === 'failing') return 'failing_ci';
         return 'changes_addressed';
       }
       return 'needs_response';
@@ -354,6 +379,7 @@ export class PRMonitor {
         return 'needs_changes';
       }
       // Commit is after review — changes have been addressed
+      if (ciStatus === 'failing') return 'failing_ci';
       return 'changes_addressed';
     }
 
