@@ -55,6 +55,15 @@ describe('parseIssueList', () => {
     expect(result.completed[0].number).toBe(5);
   });
 
+  it('should detect lowercase "done" marker as completed', () => {
+    const content = `# Tier 1
+- https://github.com/owner/repo/issues/6 Feature B - done
+`;
+    const result = parseIssueList(content);
+    expect(result.completedCount).toBe(1);
+    expect(result.availableCount).toBe(0);
+  });
+
   it('should use section headings as tiers', () => {
     const content = `# High Priority
 - https://github.com/a/b/issues/1 Issue one
