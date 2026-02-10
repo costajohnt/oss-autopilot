@@ -670,12 +670,14 @@ const STALE_STATUSES: Set<FetchedPRStatus> = new Set([
 /**
  * Group PRs by repository (#80).
  * Ensures one agent per repo during parallel dispatch, preventing branch checkout conflicts.
- * Groups are sorted by highest-priority PR status (most urgent repo first).
  */
 export function groupPRsByRepo(prs: FetchedPR[]): RepoGroup[] {
   const repoMap = new Map<string, FetchedPR[]>();
   for (const pr of prs) {
-    if (!pr.repo) continue;
+    if (!pr.repo) {
+      console.warn(`[GROUP_BY_REPO] Skipping PR #${pr.number} (${pr.url}) with empty repo field`);
+      continue;
+    }
     const existing = repoMap.get(pr.repo) || [];
     existing.push(pr);
     repoMap.set(pr.repo, existing);

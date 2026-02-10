@@ -1053,7 +1053,8 @@ const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr:
   failing_ci: {
     label: '[CI Failing]',
     description: (pr) => {
-      const actionable = pr.classifiedChecks.filter(c => c.category === 'actionable');
+      const checks = pr.classifiedChecks || [];
+      const actionable = checks.filter(c => c.category === 'actionable');
       if (actionable.length > 0) return `${actionable.length} check${actionable.length === 1 ? '' : 's'} failed: ${actionable.map(c => c.name).join(', ')}`;
       if (pr.failingCheckNames.length > 0) return `${pr.failingCheckNames.length} check${pr.failingCheckNames.length === 1 ? '' : 's'} failed`;
       return 'One or more CI checks are failing';
@@ -1118,6 +1119,10 @@ const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr:
 /** Compute display label and description for a FetchedPR (#79). */
 export function computeDisplayLabel(pr: FetchedPR): { displayLabel: string; displayDescription: string } {
   const entry = STATUS_DISPLAY[pr.status];
+  if (!entry) {
+    console.warn(`[DISPLAY_LABEL] Unknown status "${pr.status}" for PR #${pr.number} (${pr.url})`);
+    return { displayLabel: `[${pr.status}]`, displayDescription: 'Unknown status' };
+  }
   return {
     displayLabel: entry.label,
     displayDescription: entry.description(pr),
@@ -1131,8 +1136,9 @@ export function computeDisplayLabel(pr: FetchedPR): { displayLabel: string; disp
 const FORK_LIMITATION_PATTERNS: RegExp[] = [
   /vercel/i,
   /netlify/i,
-  /preview/i,
-  /deploy/i,
+  /\bpreview\s*deploy/i,
+  /\bdeploy\s*preview/i,
+  /storybook/i,
   /chromatic/i,
   /percy/i,
   /cloudflare pages/i,

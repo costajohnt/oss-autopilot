@@ -1385,6 +1385,13 @@ describe('computeDisplayLabel (#79)', () => {
       expect(result.displayDescription).toBeTruthy();
     }
   });
+
+  it('should return fallback for unknown status', () => {
+    const pr = makePR({ status: 'unknown_future_status' as any });
+    const result = computeDisplayLabel(pr);
+    expect(result.displayLabel).toBe('[unknown_future_status]');
+    expect(result.displayDescription).toBe('Unknown status');
+  });
 });
 
 describe('classifyCICheck (#81)', () => {
@@ -1406,13 +1413,22 @@ describe('classifyCICheck (#81)', () => {
     expect(classifyCICheck('netlify/build')).toBe('fork_limitation');
   });
 
-  it('should classify deploy checks as fork_limitation', () => {
+  it('should classify deploy preview checks as fork_limitation', () => {
     expect(classifyCICheck('Deploy Preview')).toBe('fork_limitation');
-    expect(classifyCICheck('deploy-storybook')).toBe('fork_limitation');
+    expect(classifyCICheck('preview deploy')).toBe('fork_limitation');
   });
 
-  it('should classify preview checks as fork_limitation', () => {
-    expect(classifyCICheck('Preview')).toBe('fork_limitation');
+  it('should classify storybook checks as fork_limitation', () => {
+    expect(classifyCICheck('deploy-storybook')).toBe('fork_limitation');
+    expect(classifyCICheck('Storybook')).toBe('fork_limitation');
+  });
+
+  it('should classify standalone deploy/preview as actionable', () => {
+    expect(classifyCICheck('Preview')).toBe('actionable');
+    expect(classifyCICheck('Deploy validation')).toBe('actionable');
+  });
+
+  it('should classify Chromatic as fork_limitation', () => {
     expect(classifyCICheck('Chromatic - Visual Tests')).toBe('fork_limitation');
   });
 
