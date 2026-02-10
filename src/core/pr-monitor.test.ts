@@ -1508,7 +1508,8 @@ describe('classifyCICheck (#81)', () => {
   });
 
   it('should prioritize auth_gate over fork_limitation when both match', () => {
-    expect(classifyCICheck('deploy approval check')).toBe('auth_gate');
+    // "Vercel" matches fork_limitation, "CLA" matches auth_gate — auth_gate wins
+    expect(classifyCICheck('Vercel CLA check')).toBe('auth_gate');
   });
 });
 
