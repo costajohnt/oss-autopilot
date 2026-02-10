@@ -8,6 +8,7 @@ let mockOctokitInstance: any;
 
 vi.mock('./github.js', () => ({
   getOctokit: vi.fn(() => mockOctokitInstance),
+  checkRateLimit: vi.fn().mockResolvedValue({ remaining: 30, limit: 30, resetAt: new Date().toISOString() }),
 }));
 
 vi.mock('./state.js', () => ({
@@ -18,6 +19,7 @@ vi.mock('./state.js', () => ({
     }),
     getStarredRepos: () => [],
     getReposWithMergedPRs: () => [],
+    getReposWithOpenPRs: () => [],
     getLowScoringRepos: () => [],
     getRepoScore: () => undefined,
   })),
@@ -166,6 +168,40 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
     expect(score).toBe(80);
   });
 
+  it('should add +15 for merged PR in this repo (#99)', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      mergedPRCount: 1,
+    });
+    expect(score).toBe(50 + 15);
+  });
+
+  it('should add +15 for merged PR even with multiple merges (#99)', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      mergedPRCount: 5,
+    });
+    expect(score).toBe(50 + 15);
+  });
+
+  it('should NOT add merged PR bonus when mergedPRCount is 0', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      mergedPRCount: 0,
+    });
+    expect(score).toBe(50);
+  });
+
+  it('should stack merged PR bonus (+15) with org affinity (+5) for +20 total relationship bonus', () => {
+    const score = discovery.calculateViabilityScore({
+      ...baseParams,
+      mergedPRCount: 2,
+      orgHasMergedPRs: true,
+    });
+    // 50 + 15 (merged PR) + 5 (org affinity) = 70
+    expect(score).toBe(70);
+  });
+
   it('should subtract -15 for closed-without-merge history with no merges', () => {
     const score = discovery.calculateViabilityScore({
       ...baseParams,
@@ -181,8 +217,8 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
       closedWithoutMergeCount: 1,
       mergedPRCount: 2,
     });
-    // No -15 penalty because mergedPRCount > 0
-    expect(score).toBe(50);
+    // No -15 penalty because mergedPRCount > 0, but +15 merged PR bonus applies
+    expect(score).toBe(50 + 15);
   });
 
   it('should NOT subtract penalty when closedWithoutMergeCount is 0', () => {
@@ -695,5 +731,38 @@ describe('calculateViabilityScore with repoQualityBonus', () => {
     });
     // 50 + 7 + 15 - 20 = 52
     expect(score).toBe(52);
+  });
+});
+
+describe('IssueDiscovery.isRateLimitError', () => {
+  const isRateLimitError = (IssueDiscovery as any).isRateLimitError;
+
+  it('should return true for HTTP 429', () => {
+    const error = Object.assign(new Error('Too Many Requests'), { status: 429 });
+    expect(isRateLimitError(error)).toBe(true);
+  });
+
+  it('should return true for HTTP 403 with "rate limit" in message', () => {
+    const error = Object.assign(new Error('API rate limit exceeded'), { status: 403 });
+    expect(isRateLimitError(error)).toBe(true);
+  });
+
+  it('should return false for HTTP 403 without rate limit message', () => {
+    const error = Object.assign(new Error('Resource not accessible by integration'), { status: 403 });
+    expect(isRateLimitError(error)).toBe(false);
+  });
+
+  it('should return false for HTTP 500', () => {
+    const error = Object.assign(new Error('Internal Server Error'), { status: 500 });
+    expect(isRateLimitError(error)).toBe(false);
+  });
+
+  it('should return false for errors without status', () => {
+    expect(isRateLimitError(new Error('Network timeout'))).toBe(false);
+  });
+
+  it('should return false for null/undefined', () => {
+    expect(isRateLimitError(null)).toBe(false);
+    expect(isRateLimitError(undefined)).toBe(false);
   });
 });

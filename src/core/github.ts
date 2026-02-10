@@ -7,8 +7,23 @@ import { throttling } from '@octokit/plugin-throttling';
 
 const ThrottledOctokit = Octokit.plugin(throttling);
 
+/** Rate limit info returned by {@link checkRateLimit}. */
+export interface RateLimitInfo {
+  /** Remaining search API requests in current window. */
+  remaining: number;
+  /** Total search API request limit per window. */
+  limit: number;
+  /** ISO timestamp when the rate limit window resets. */
+  resetAt: string;
+}
+
 let _octokit: Octokit | null = null;
 let _currentToken: string | null = null;
+
+/** Format a Date as HH:MM:SS for log messages. */
+function formatResetTime(date: Date): string {
+  return date.toLocaleTimeString('en-US', { hour12: false });
+}
 
 export function getOctokit(token: string): Octokit {
   // Return cached instance only if token matches
@@ -19,21 +34,30 @@ export function getOctokit(token: string): Octokit {
     throttle: {
       onRateLimit: (retryAfter, options, octokit, retryCount) => {
         const opts = options as { method: string; url: string };
-        console.warn(`Rate limit hit for ${opts.method} ${opts.url}`);
+        const resetAt = new Date(Date.now() + retryAfter * 1000);
         if (retryCount < 2) {
-          console.log(`Retrying after ${retryAfter} seconds...`);
+          console.warn(
+            `Rate limit hit (retry ${retryCount + 1}/2, waiting ${retryAfter}s, resets at ${formatResetTime(resetAt)}) — ${opts.method} ${opts.url}`
+          );
           return true;
         }
-        console.error('Rate limit exceeded, not retrying');
+        console.error(
+          `Rate limit exceeded, not retrying — ${opts.method} ${opts.url} (resets at ${formatResetTime(resetAt)})`
+        );
         return false;
       },
       onSecondaryRateLimit: (retryAfter, options, octokit, retryCount) => {
         const opts = options as { method: string; url: string };
-        console.warn(`Secondary rate limit hit for ${opts.method} ${opts.url}`);
+        const resetAt = new Date(Date.now() + retryAfter * 1000);
         if (retryCount < 1) {
-          console.log(`Retrying after ${retryAfter} seconds...`);
+          console.warn(
+            `Secondary rate limit hit (retry ${retryCount + 1}/1, waiting ${retryAfter}s, resets at ${formatResetTime(resetAt)}) — ${opts.method} ${opts.url}`
+          );
           return true;
         }
+        console.error(
+          `Secondary rate limit exceeded, not retrying — ${opts.method} ${opts.url} (resets at ${formatResetTime(resetAt)})`
+        );
         return false;
       },
     },
@@ -41,4 +65,19 @@ export function getOctokit(token: string): Octokit {
 
   _currentToken = token;
   return _octokit;
+}
+
+/**
+ * Check the GitHub Search API rate limit quota.
+ * Returns the remaining requests, total limit, and reset time for the search endpoint.
+ */
+export async function checkRateLimit(token: string): Promise<RateLimitInfo> {
+  const octokit = getOctokit(token);
+  const { data } = await octokit.rateLimit.get();
+  const search = data.resources.search;
+  return {
+    remaining: search.remaining,
+    limit: search.limit,
+    resetAt: new Date(search.reset * 1000).toISOString(),
+  };
 }

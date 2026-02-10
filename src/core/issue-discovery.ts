@@ -6,7 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Octokit } from '@octokit/rest';
-import { getOctokit } from './github.js';
+import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
 import { parseGitHubUrl, daysBetween, getDataDir } from './utils.js';
 import {
@@ -172,8 +172,13 @@ export function calculateRepoQualityBonus(stargazersCount: number, forksCount: n
 export class IssueDiscovery {
   private octokit: Octokit;
   private stateManager: ReturnType<typeof getStateManager>;
+  private githubToken: string;
+
+  /** Set after searchIssues() runs if rate limits affected the search (low pre-flight quota or mid-search rate limit hits). */
+  rateLimitWarning: string | null = null;
 
   constructor(githubToken: string) {
+    this.githubToken = githubToken;
     this.octokit = getOctokit(githubToken);
     this.stateManager = getStateManager();
   }
@@ -272,10 +277,33 @@ export class IssueDiscovery {
     const allCandidates: IssueCandidate[] = [];
     let phase0Error: string | null = null;
     let phase1Error: string | null = null;
+    let rateLimitHitDuringSearch = false;
+
+    // Pre-flight rate limit check (#100)
+    this.rateLimitWarning = null;
+    try {
+      const rateLimit = await checkRateLimit(this.githubToken);
+      if (rateLimit.remaining < 5) {
+        const resetTime = new Date(rateLimit.resetAt).toLocaleTimeString('en-US', { hour12: false });
+        this.rateLimitWarning =
+          `GitHub search API quota low (${rateLimit.remaining}/${rateLimit.limit} remaining, resets at ${resetTime}). Search may be slow.`;
+        console.warn(this.rateLimitWarning);
+      }
+    } catch (error) {
+      // Fail fast on auth errors — no point searching with a bad token
+      if ((error as any)?.status === 401) {
+        throw error;
+      }
+      // Non-fatal: proceed with search for transient/network errors
+      console.warn('[RATE_LIMIT_CHECK] Could not check rate limit:', error instanceof Error ? error.message : error);
+    }
 
     // Get merged-PR repos (highest merge probability)
     const mergedPRRepos = this.stateManager.getReposWithMergedPRs();
     const mergedPRRepoSet = new Set(mergedPRRepos);
+
+    // Get open-PR repos (repos with score data but no merges yet)
+    const openPRRepos = this.stateManager.getReposWithOpenPRs();
 
     // Get starred repos (with refresh if stale)
     const starredRepos = await this.getStarredReposWithRefresh();
@@ -314,35 +342,76 @@ export class IssueDiscovery {
       });
     };
 
-    // Phase 0: Search repos where user has merged PRs (highest merge probability)
+    // Phase 0: Search repos where user has merged PRs + open-PR repos (highest merge probability)
     // Uses broader query — established contributors don't need "good first issue" labels
-    if (mergedPRRepos.length > 0) {
-      console.log(`Phase 0: Searching issues in ${mergedPRRepos.length} repos with merged PRs (no label filter)...`);
-      const remainingNeeded = maxResults - allCandidates.length;
-      if (remainingNeeded > 0) {
-        const { candidates: mergedPRCandidates, allBatchesFailed } = await this.searchInRepos(
-          mergedPRRepos.slice(0, 10),
-          establishedQuery,
-          remainingNeeded,
-          'merged_pr',
-          filterIssues
-        );
-        allCandidates.push(...mergedPRCandidates);
-        if (allBatchesFailed) {
-          phase0Error = 'All merged-PR repo batches failed';
+    // Merged-PR repos come first, then open-PR repos fill remaining slots (capped at 10 total)
+    const phase0Repos = [
+      ...mergedPRRepos,
+      ...openPRRepos.filter(r => !mergedPRRepoSet.has(r)),
+    ].slice(0, 10);
+    const phase0RepoSet = new Set(phase0Repos);
+
+    if (phase0Repos.length > 0) {
+      const mergedInPhase0 = Math.min(mergedPRRepos.length, phase0Repos.length);
+      const openInPhase0 = phase0Repos.length - mergedInPhase0;
+      console.log(`Phase 0: Searching issues in ${phase0Repos.length} repos (${mergedInPhase0} merged-PR, ${openInPhase0} open-PR, no label filter)...`);
+
+      // Phase 0a: merged-PR repos (priority: merged_pr)
+      const mergedPhase0Repos = phase0Repos.slice(0, mergedInPhase0);
+      if (mergedPhase0Repos.length > 0) {
+        const remainingNeeded = maxResults - allCandidates.length;
+        if (remainingNeeded > 0) {
+          const { candidates: mergedCandidates, allBatchesFailed, rateLimitHit } = await this.searchInRepos(
+            mergedPhase0Repos,
+            establishedQuery,
+            remainingNeeded,
+            'merged_pr',
+            filterIssues
+          );
+          allCandidates.push(...mergedCandidates);
+          if (allBatchesFailed) {
+            phase0Error = 'All merged-PR repo batches failed';
+          }
+          if (rateLimitHit) {
+            rateLimitHitDuringSearch = true;
+          }
+          console.log(`Found ${mergedCandidates.length} candidates from merged-PR repos`);
         }
-        console.log(`Found ${mergedPRCandidates.length} candidates from merged-PR repos`);
+      }
+
+      // Phase 0b: open-PR repos (priority: starred — intermediate tier)
+      const openPhase0Repos = phase0Repos.slice(mergedInPhase0);
+      if (openPhase0Repos.length > 0 && allCandidates.length < maxResults) {
+        const remainingNeeded = maxResults - allCandidates.length;
+        if (remainingNeeded > 0) {
+          const { candidates: openCandidates, allBatchesFailed, rateLimitHit } = await this.searchInRepos(
+            openPhase0Repos,
+            establishedQuery,
+            remainingNeeded,
+            'starred',
+            filterIssues
+          );
+          allCandidates.push(...openCandidates);
+          if (allBatchesFailed) {
+            const msg = 'All open-PR repo batches failed';
+            phase0Error = phase0Error ? `${phase0Error}; ${msg}` : msg;
+          }
+          if (rateLimitHit) {
+            rateLimitHitDuringSearch = true;
+          }
+          console.log(`Found ${openCandidates.length} candidates from open-PR repos`);
+        }
       }
     }
 
-    // Phase 1: Search starred repos (filter out already-searched merged-PR repos)
+    // Phase 1: Search starred repos (filter out already-searched Phase 0 repos)
     if (allCandidates.length < maxResults && starredRepos.length > 0) {
-      const reposToSearch = starredRepos.filter(r => !mergedPRRepoSet.has(r));
+      const reposToSearch = starredRepos.filter(r => !phase0RepoSet.has(r));
       if (reposToSearch.length > 0) {
         console.log(`Phase 1: Searching issues in ${reposToSearch.length} starred repos...`);
         const remainingNeeded = maxResults - allCandidates.length;
         if (remainingNeeded > 0) {
-          const { candidates: starredCandidates, allBatchesFailed } = await this.searchInRepos(
+          const { candidates: starredCandidates, allBatchesFailed, rateLimitHit } = await this.searchInRepos(
             reposToSearch.slice(0, 10),
             baseQuery,
             remainingNeeded,
@@ -352,6 +421,9 @@ export class IssueDiscovery {
           allCandidates.push(...starredCandidates);
           if (allBatchesFailed) {
             phase1Error = 'All starred repo batches failed';
+          }
+          if (rateLimitHit) {
+            rateLimitHitDuringSearch = true;
           }
           console.log(`Found ${starredCandidates.length} candidates from starred repos`);
         }
@@ -394,11 +466,11 @@ export class IssueDiscovery {
           .filter(item => {
             const repoFullName = item.repository_url.split('/').slice(-2).join('/');
             // Skip if already searched in earlier phases
-            return !mergedPRRepoSet.has(repoFullName) && !starredRepoSet.has(repoFullName) && !seenRepos.has(repoFullName);
+            return !phase0RepoSet.has(repoFullName) && !starredRepoSet.has(repoFullName) && !seenRepos.has(repoFullName);
           })
           .slice(0, remainingNeeded * 2);
 
-        const { candidates: results, allFailed: allVetFailed } = await this.vetIssuesParallel(
+        const { candidates: results, allFailed: allVetFailed, rateLimitHit: vetRateLimitHit } = await this.vetIssuesParallel(
           itemsToVet.map(i => i.html_url),
           remainingNeeded,
           'normal'
@@ -407,10 +479,16 @@ export class IssueDiscovery {
         if (allVetFailed) {
           phase2Error = (phase2Error ? phase2Error + '; ' : '') + 'all vetting failed';
         }
+        if (vetRateLimitHit) {
+          rateLimitHitDuringSearch = true;
+        }
         console.log(`Found ${results.length} candidates from general search`);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         phase2Error = errorMessage;
+        if (IssueDiscovery.isRateLimitError(error)) {
+          rateLimitHitDuringSearch = true;
+        }
         console.error(`[SEARCH_PHASE_2_FAILED] Error in general issue search: ${errorMessage}`);
       }
     }
@@ -424,13 +502,26 @@ export class IssueDiscovery {
       const details = phaseErrors.length > 0
         ? ` ${phaseErrors.join('. ')}.`
         : '';
+      const rateLimitContext = rateLimitHitDuringSearch
+        ? ' GitHub API rate limits may have affected results — try again after the rate limit resets.'
+        : '';
       throw new Error(
-        `No issue candidates found across all search phases.${details} ` +
+        `No issue candidates found across all search phases.${details}${rateLimitContext} ` +
         'Try adjusting your search criteria (languages, labels) or check your network connection.'
       );
     }
 
-    // Sort by priority first, then by recommendation
+    // Surface rate limit warning even with partial results (#100)
+    // This overwrites the pre-flight "quota low" warning (speculative) with a more
+    // informative "results incomplete" warning (factual) when rate limits actually hit.
+    if (rateLimitHitDuringSearch) {
+      this.rateLimitWarning =
+        `Search results may be incomplete: GitHub API rate limits were hit during search. ` +
+        `Found ${allCandidates.length} candidate${allCandidates.length === 1 ? '' : 's'} but some search phases failed. ` +
+        `Try again after the rate limit resets for complete results.`;
+    }
+
+    // Sort by priority first, then by recommendation, then by viability score
     allCandidates.sort((a, b) => {
       // Priority order: merged_pr > starred > normal
       const priorityOrder: Record<SearchPriority, number> = { merged_pr: 0, starred: 1, normal: 2 };
@@ -439,10 +530,25 @@ export class IssueDiscovery {
 
       // Then by recommendation
       const recommendationOrder = { approve: 0, needs_review: 1, skip: 2 };
-      return recommendationOrder[a.recommendation] - recommendationOrder[b.recommendation];
+      const recDiff = recommendationOrder[a.recommendation] - recommendationOrder[b.recommendation];
+      if (recDiff !== 0) return recDiff;
+
+      // Then by viability score (highest first)
+      return b.viabilityScore - a.viabilityScore;
     });
 
     return allCandidates.slice(0, maxResults);
+  }
+
+  /** Check if an error is a GitHub rate limit error (429 or rate-limit 403). */
+  private static isRateLimitError(error: unknown): boolean {
+    const status = (error as any)?.status;
+    if (status === 429) return true;
+    if (status === 403) {
+      const msg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+      return msg.includes('rate limit');
+    }
+    return false;
   }
 
   /**
@@ -460,7 +566,7 @@ export class IssueDiscovery {
     maxResults: number,
     priority: SearchPriority,
     filterFn: (items: GitHubSearchItem[]) => GitHubSearchItem[]
-  ): Promise<{ candidates: IssueCandidate[]; allBatchesFailed: boolean }> {
+  ): Promise<{ candidates: IssueCandidate[]; allBatchesFailed: boolean; rateLimitHit: boolean }> {
     const candidates: IssueCandidate[] = [];
 
     // Batch repos to reduce API calls.
@@ -470,6 +576,7 @@ export class IssueDiscovery {
     const BATCH_SIZE = 5;
     const batches = this.batchRepos(repos, BATCH_SIZE);
     let failedBatches = 0;
+    let rateLimitFailures = 0;
 
     for (const batch of batches) {
       if (candidates.length >= maxResults) break;
@@ -498,12 +605,16 @@ export class IssueDiscovery {
         }
       } catch (error) {
         failedBatches++;
+        if (IssueDiscovery.isRateLimitError(error)) {
+          rateLimitFailures++;
+        }
         const batchRepos = batch.join(', ');
         console.error(`Error searching issues in batch [${batchRepos}]:`, error instanceof Error ? error.message : error);
       }
     }
 
     const allBatchesFailed = failedBatches === batches.length && batches.length > 0;
+    const rateLimitHit = rateLimitFailures > 0;
     if (allBatchesFailed) {
       console.error(
         `[SEARCH_PHASE_ALL_BATCHES_FAILED] All ${batches.length} batch(es) failed for ${priority} phase. ` +
@@ -511,7 +622,7 @@ export class IssueDiscovery {
       );
     }
 
-    return { candidates, allBatchesFailed };
+    return { candidates, allBatchesFailed, rateLimitHit };
   }
 
   /**
@@ -535,10 +646,11 @@ export class IssueDiscovery {
     urls: string[],
     maxResults: number,
     priority?: SearchPriority
-  ): Promise<{ candidates: IssueCandidate[]; allFailed: boolean }> {
+  ): Promise<{ candidates: IssueCandidate[]; allFailed: boolean; rateLimitHit: boolean }> {
     const candidates: IssueCandidate[] = [];
     const pending: Promise<void>[] = [];
     let failedVettingCount = 0;
+    let rateLimitFailures = 0;
     let attemptedCount = 0;
 
     for (const url of urls) {
@@ -557,6 +669,9 @@ export class IssueDiscovery {
         })
         .catch(error => {
           failedVettingCount++;
+          if (IssueDiscovery.isRateLimitError(error)) {
+            rateLimitFailures++;
+          }
           console.error(`Error vetting issue ${url}:`, error instanceof Error ? error.message : error);
         });
 
@@ -583,7 +698,7 @@ export class IssueDiscovery {
       );
     }
 
-    return { candidates: candidates.slice(0, maxResults), allFailed };
+    return { candidates: candidates.slice(0, maxResults), allFailed, rateLimitHit: rateLimitFailures > 0 };
   }
 
   /**
@@ -1045,6 +1160,7 @@ export class IssueDiscovery {
    * - Base: 50 points
    * - +repoScore*2 (up to +20 for score of 10)
    * - +repoQualityBonus (up to +12 for established repos, from star/fork counts) (#98)
+   * - +15 for merged PR in this repo (direct proven relationship) (#99)
    * - +15 for clear requirements (clarity)
    * - +15 for freshness (recently updated)
    * - +10 for contribution guidelines
@@ -1074,6 +1190,11 @@ export class IssueDiscovery {
 
     // Repo quality bonus from star/fork counts (#98, up to +12)
     score += params.repoQualityBonus ?? 0;
+
+    // Merged PR bonus (+15) — direct proven relationship with this repo (#99)
+    if (params.mergedPRCount > 0) {
+      score += 15;
+    }
 
     // Clarity bonus (+15)
     if (params.clearRequirements) {
