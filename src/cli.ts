@@ -194,9 +194,14 @@ program.hook('preAction', async (thisCommand, actionCommand) => {
     if (!token) {
       console.error('Error: GitHub authentication required.');
       console.error('');
-      console.error('Options:');
-      console.error('  1. Use gh CLI: gh auth login');
-      console.error('  2. Set GITHUB_TOKEN environment variable');
+      console.error('Option 1 (Recommended): Install and authenticate GitHub CLI');
+      console.error('  Install: https://cli.github.com/');
+      console.error('  Then run: gh auth login');
+      console.error('');
+      console.error('Option 2: Set GITHUB_TOKEN environment variable');
+      console.error('  export GITHUB_TOKEN="your-github-token-here"');
+      console.error('');
+      console.error('Then run your command again.');
       process.exit(1);
     }
   }

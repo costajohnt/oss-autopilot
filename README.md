@@ -2,17 +2,23 @@
 
 Discover issues worth contributing to, track your PRs across repos, and draft responses to maintainer feedback. An AI copilot for your open source journey.
 
-![Version](https://img.shields.io/badge/version-0.11.1-blue)
+![Version](https://img.shields.io/badge/version-0.12.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
+![Node Version](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
 
 ![OSS Autopilot Dashboard](docs/images/dashboard.png)
 
+> **OSS Autopilot is a [Claude Code](https://claude.ai/claude-code) plugin.** It runs inside the Claude Code editor and uses Claude to help you manage your open source contributions.
+
 ## Quick Start
 
-**Prerequisites:** [Claude Code](https://claude.ai/claude-code), Node.js 18+, and [GitHub CLI](https://cli.github.com/) (`gh auth login`).
+**You'll need:**
+- [Claude Code](https://claude.ai/claude-code) (the editor)
+- Node.js 18+ (for the CLI backend)
+- [GitHub CLI](https://cli.github.com/) authenticated with `gh auth login`
 
-**In Claude Code, run:**
+**Install in Claude Code:**
 
 ```
 /plugin marketplace add costajohnt/oss-autopilot
@@ -251,6 +257,30 @@ These fire automatically as `PreToolUse` hooks when Claude Code runs `git commit
 
 ---
 
+## Example Workflows
+
+### Daily Standup (5 min)
+
+1. Run `/oss` to check all open PRs
+2. Address critical issues (CI failures, merge conflicts, maintainer comments)
+3. Done for now
+
+### Finding Your Next Contribution (15 min)
+
+1. Run `/oss` to confirm you have capacity
+2. Search for new issues matching your skills
+3. Vet a promising issue with the repo-evaluator
+4. Claim it and get started
+
+### Responding to Maintainer Feedback (10 min)
+
+1. Run `/oss` — identifies PRs with new comments
+2. Select a PR that needs a response
+3. Claude reads the feedback and drafts a response for your review
+4. Post it after reviewing
+
+---
+
 ## Tips for Effective Use
 
 **Start small:** Set `maxActivePRs` to 3-5 when starting out. Better to maintain fewer PRs actively than let many go stale.
@@ -315,6 +345,12 @@ Yes, as long as your GitHub CLI (`gh`) has access to those repos. The plugin use
 
 **Can I use this without the Claude Code plugin system?**
 The CLI can run standalone (`node dist/cli.bundle.cjs daily --json`), but it's designed to work with Claude Code for the best experience.
+
+**Does this work with GitLab, Gitea, or other platforms?**
+Not currently — it's GitHub-focused. Contributions welcome to add support for other platforms.
+
+**What if I'm offline?**
+Commands that check GitHub (like `/oss`) require internet access. The dashboard can be viewed offline if you've generated it previously.
 
 ---
 

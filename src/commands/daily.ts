@@ -1,7 +1,7 @@
 /**
  * Daily check command
- * Fetches all open PRs fresh from GitHub and generates a digest
- * v2: No local state tracking - everything is fetched fresh
+ * Fetches all open PRs fresh from GitHub (v2: no PR-level state tracking),
+ * generates a digest, and updates repo scores and analytics in local state.
  */
 
 import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ClosedPR, type ComputedRepoSignals } from '../core/index.js';
@@ -15,17 +15,37 @@ export async function runDaily(options: DailyOptions): Promise<void> {
   const token = getGitHubToken();
   if (!token) {
     if (options.json) {
-      outputJsonError('GitHub authentication required. Run "gh auth login" or set GITHUB_TOKEN.');
+      outputJsonError('GitHub authentication required. Install GitHub CLI (https://cli.github.com/) and run "gh auth login", or set GITHUB_TOKEN.');
     } else {
       console.error('Error: GitHub authentication required.');
       console.error('');
-      console.error('Options:');
-      console.error('  1. Use gh CLI: gh auth login');
-      console.error('  2. Set GITHUB_TOKEN environment variable');
+      console.error('Option 1 (Recommended): Install and authenticate GitHub CLI');
+      console.error('  Install: https://cli.github.com/');
+      console.error('  Then run: gh auth login');
+      console.error('');
+      console.error('Option 2: Set GITHUB_TOKEN environment variable');
+      console.error('  export GITHUB_TOKEN="your-github-token-here"');
     }
     process.exit(1);
   }
 
+  try {
+    await runDailyInner(token, options);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (options.json) {
+      outputJsonError(`Daily check failed: ${msg}`);
+    } else {
+      console.error(`[FATAL] Daily check failed: ${msg}`);
+      if (error instanceof Error && error.stack) {
+        console.error(error.stack);
+      }
+    }
+    process.exit(1);
+  }
+}
+
+async function runDailyInner(token: string, options: DailyOptions): Promise<void> {
   const stateManager = getStateManager();
   const prMonitor = new PRMonitor(token);
 
@@ -76,7 +96,14 @@ export async function runDaily(options: DailyOptions): Promise<void> {
     console.error(`[DAILY_ALL_MERGED_COUNT_UPDATES_FAILED] All ${mergedCounts.size} merged count update(s) failed.`);
   }
 
-  // Populate closedWithoutMergeCount in repo scores
+  // Populate closedWithoutMergeCount in repo scores.
+  // Diagnostic: warn if API returned empty but we have known closed PRs (possible transient API failure).
+  // Unlike merged counts above, there is no stale-reset loop for closed counts, so no skip is needed.
+  const existingReposWithClosed = Object.values(stateManager.getState().repoScores)
+    .filter(s => (s.closedWithoutMergeCount || 0) > 0);
+  if (closedCounts.size === 0 && existingReposWithClosed.length > 0) {
+    console.error(`[DAILY] Warning: API returned 0 closed PR results but state has ${existingReposWithClosed.length} repo(s) with closed PRs. Possible transient API issue.`);
+  }
   let closedCountFailures = 0;
   for (const [repo, count] of closedCounts) {
     try {
