@@ -100,7 +100,7 @@ The CLI returns structured data with new fields for the action-first flow:
           { "key": "search", "label": "Search for new issues", "description": "Look for new contribution opportunities" },
           { "key": "done", "label": "Done for now", "description": "End session with summary" }
         ],
-        "context": { "hasActionableIssues": true, "actionableCount": 3, "hasCapacity": true }
+        "context": { "hasActionableIssues": true, "actionableCount": 3, "hasCapacity": true, "hasIssueResponses": false, "issueResponseCount": 0 }
       },
       "capacity": { "hasCapacity": true, ... },
       "digest": { ... }
@@ -302,6 +302,7 @@ When the user selects an action from the menu above, **read the relevant workflo
 | "Work through all issues" | `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` | "Handle Work Through All Issues" |
 | "Pick from your issue list" | `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` | "Handle Pick Issue From List" |
 | Specific PR selection (via "Other") | `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` | "Handle Specific PR Selection" |
+| "Review issue replies" | Handled in core (below) | "Handle Review Issue Replies" |
 | "Search for new issues" | Handled in core (below) | "Handle Find New Issues" |
 | "Done for now" | Handled in core (below) | "Step 5: Session End" |
 
@@ -310,6 +311,48 @@ When the user selects an action from the menu above, **read the relevant workflo
 **If a workflow file fails to load** (Read tool returns error): Tell the user which file could not be loaded and the error. Suggest reinstalling the plugin (`/plugin install oss-autopilot@oss-autopilot`). Do NOT attempt to reconstruct the workflow from memory.
 
 For CLI command syntax and agent names, read: `${CLAUDE_PLUGIN_ROOT}/workflows/reference.md`
+
+### Handle "Review Issue Replies"
+
+When the user selects "Review issue replies", display each commented issue with a maintainer response from `data.daily.commentedIssues` (filtered to `status === 'new_response'`):
+
+```
+## Issue Replies
+
+Maintainers responded to your comments on these issues:
+
+1. **owner/repo#123** — Issue title
+   └─ @maintainer: "Go for it! Feel free to submit a PR..."
+   └─ Your comment: 5 days ago
+
+2. **owner/repo#456** — Another issue title
+   └─ @maintainer: "Thanks for the interest. Here's what..."
+   └─ Your comment: 2 days ago
+```
+
+For each issue, use AskUserQuestion to offer actions:
+- "Claim this issue" — Run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" claim ISSUE_URL --json` to add it to the tracked pipeline, then proceed to work on it
+- "View full thread" — Display the issue URL for the user to open in browser
+- "Skip" — Move to the next issue
+
+After processing all issue replies (or user chooses to stop), return to Step 3 to present action choices again.
+
+### Handle "View Healthy PRs"
+
+Show when `capacity.hasCapacity === false` (user has critical issues to address first).
+
+Display healthy PRs from `data.daily.digest.healthyPRs`:
+```
+Healthy PRs (no action needed):
+
+- owner/repo#123 - Title here (approved, CI passing)
+- owner/repo#456 - Title here (waiting for review)
+...
+
+These PRs are progressing normally. Focus on the {count} issues that need attention.
+```
+
+Then return to Step 3 to present action choices again.
 
 ### Handle "Find New Issues"
 

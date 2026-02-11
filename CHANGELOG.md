@@ -154,6 +154,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Strengthened git workflow rules in CLAUDE.md** - Emphasized mandatory checkout-main-pull-branch step.
 - **Added Code Review section to CLAUDE.md** - Standard review workflow using pr-review-toolkit agents (code-reviewer, silent-failure-hunter, code-simplifier) before pushing.
 
+
 ## [0.25.0] - 2026-02-11
 
 ### Added
@@ -161,6 +162,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **README rewrite** — Restructured to lead with the pain point ("You have 12 open PRs...") instead of product description. Better information architecture: pain → solution → install → usage. Troubleshooting now uses collapsible `<details>` sections. Added tests badge.
 - **First-run welcome experience** — When `/oss` detects zero active PRs (new user or clean slate), shows a guided welcome message with options to search for issues, import existing PRs, or explore. Replaces the confusing empty dashboard.
 - **Loading screen pattern** — `/oss` command now shows "Checking your PRs across GitHub..." while running all setup, build, and daily check steps in a single combined bash call. Eliminates verbose narration and intermediate tool output. Users see only the loading message, then the results.
+- **Issue conversation tracking** — The `/oss` daily check now monitors GitHub issues the user has commented on (e.g., "Is this still relevant?", "I'd like to work on this") and surfaces maintainer responses. New `IssueConversationMonitor` class follows the `PRMonitor` pattern: stateless GitHub Search API fetch, bounded concurrency worker pool, bot filtering, and acknowledgment detection. Results appear in the daily summary, action menu ("Review N issue replies"), and HTML dashboard. The user can claim issues directly from the replies flow, feeding them into the existing `TrackedIssue` pipeline. Closes #114.
+- `CommentedIssue` and `IssueConversationStatus` types in `src/core/types.ts`
+- `IssueConversationMonitor` class with `fetchCommentedIssues()` in `src/core/issue-conversation.ts`
+- `isAcknowledgmentComment()` exported utility for shared acknowledgment filtering (used by both `IssueConversationMonitor` and `PRMonitor`)
+- `commentedIssues` field on `DailyOutput` for structured issue conversation data
+- `hasIssueResponses`/`issueResponseCount` context flags on `ActionMenu`
+- `issue_replies` action menu item when maintainer responses are detected
+- Issue Conversations section in HTML dashboard with speech bubble icons
+- "Handle Review Issue Replies" orchestration in `commands/oss.md`
+- 30 new tests for issue conversation detection, bot filtering, acknowledgment filtering, and edge cases (27 in `issue-conversation.test.ts`, 3 in `daily.test.ts`)
 
 ## [0.24.1] - 2026-02-11
 

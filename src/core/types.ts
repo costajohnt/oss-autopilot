@@ -583,6 +583,27 @@ export interface AgentConfig {
   shelvedPRUrls?: string[];
 }
 
+/** Status of a user's comment thread on a GitHub issue. */
+export type IssueConversationStatus =
+  | 'new_response'      // Maintainer responded after user's last comment
+  | 'waiting'           // Last non-bot commenter is not the user; no substantive (non-acknowledgment) response found
+  | 'acknowledged';     // User was the last non-bot commenter; no action needed
+
+/** A GitHub issue the user has commented on, with conversation state. */
+export interface CommentedIssue {
+  repo: string;         // "owner/repo"
+  number: number;
+  title: string;
+  url: string;
+  status: IssueConversationStatus;
+  userLastCommentedAt: string;
+  lastResponseAuthor?: string;
+  lastResponseBody?: string;    // Truncated to 200 chars (+ "..." suffix when truncated)
+  lastResponseAt?: string;
+  labels: string[];
+  daysSinceUserComment: number;
+}
+
 /** Default configuration applied to new state files. All fields can be overridden via `/setup-oss`. */
 export const DEFAULT_CONFIG: AgentConfig = {
   setupComplete: false,
