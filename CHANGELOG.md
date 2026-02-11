@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-02-11
+
+### Added
+
+- **AI policy detection with configurable repo blocklist** — Repos with known anti-AI contribution policies (e.g., `matplotlib/matplotlib`) are now automatically filtered from search results. Ships with a small default blocklist. Configurable via `setup --set aiPolicyBlocklist="owner/repo,owner2/repo2"`. The issue-scout agent is also trained to detect AI policy signals during manual vetting (hidden comments, policy PRs, anti-AI CONTRIBUTING.md language) and recommend blocklist additions. The `aiPolicyBlocklist` field is exposed in CLI search JSON output. Closes #108.
+
 ## [0.23.2] - 2026-02-11
 
 ### Fixed
@@ -494,6 +500,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.24.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.23.2...v0.24.0
 [0.23.2]: https://github.com/costajohnt/oss-autopilot/compare/v0.23.1...v0.23.2
 [0.23.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.23.0...v0.23.1
 [0.23.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.22.0...v0.23.0
