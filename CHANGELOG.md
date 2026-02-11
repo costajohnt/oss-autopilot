@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-02-10
+
+### Added
+
+- **Parallel multi-strategy issue search** — When searching for new issues, the skill layer now dispatches 3 parallel agents simultaneously: Strategy A checks established repos (merged/open PRs) for new issues, Strategy B runs the CLI filtered search (language + labels + stars), and Strategy C searches trending/popular repos. Results are deduplicated by issue URL, tagged by source, and presented in priority order. One parallel round replaces 3 sequential rounds. Closes #106.
+- **Auto-exclude searched repos across rounds** — Session state now tracks `searchedRepos` (repos surfaced in prior rounds). On subsequent search rounds, previously-surfaced repos are automatically passed as exclusions to all 3 strategies. Closes #106.
+
 ## [0.22.0] - 2026-02-10
 
 ### Added
@@ -470,6 +477,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.23.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.19.0...v0.20.0
