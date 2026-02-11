@@ -27,9 +27,9 @@ fi
 if [ "$PKG_VERSION" != "$PLUGIN_VERSION" ] || [ "$PKG_VERSION" != "$README_VERSION" ]; then
   cat >&2 <<EOF
 Version mismatch detected! All three must match before committing.
-  package.json:              $PKG_VERSION
-  .claude-plugin/plugin.json: $PLUGIN_VERSION
-  README.md badge:           $README_VERSION
+  package.json:                $PKG_VERSION
+  .claude-plugin/plugin.json:  $PLUGIN_VERSION
+  README.md badge:             $README_VERSION
 EOF
   exit 2
 fi

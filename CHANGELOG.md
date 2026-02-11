@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.1] - 2026-02-11
+
+### Added
+
+- **Marketplace catalog file** — Re-added `.claude-plugin/marketplace.json` (removed in v0.15.1 as unused, but confirmed required by the current marketplace install flow). Users can now install via `/plugin marketplace add costajohnt/oss-autopilot` followed by `/plugin install oss-autopilot@oss-autopilot`. The file is intentionally minimal — version, author, and license are omitted since Claude Code merges these from `plugin.json` at install time.
+
+### Fixed
+
+- Install instructions in README and CLAUDE.md now include the required `@oss-autopilot` marketplace suffix on the `/plugin install` command
+- File structure docs in CLAUDE.md now mention `marketplace.json`
+
 ## [0.23.0] - 2026-02-10
 
 ### Added
@@ -477,6 +488,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.23.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.23.0...v0.23.1
 [0.23.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.20.0...v0.21.0
