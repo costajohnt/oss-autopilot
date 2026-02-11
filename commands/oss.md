@@ -543,7 +543,7 @@ Options (ordered by priority, up to 3 PRs + Done — limited to 4 options for As
 The user selects a PR, and you:
 1. Use the findings from Phase A (do NOT re-investigate, unless staleness warning triggered and user opts to re-check)
 2. Execute the recommended action for that specific PR
-3. After completing the action, proceed to Step 5.5 (Pre-Commit Code Review) if code was changed
+3. After completing the action, proceed to Step 5.5 (Pre-Commit Code Review) if code was changed. After Step 5.5 completes (including sub-step 7 if applicable), return here to Phase C's loop — do NOT follow sub-step 7's "proceed to Step 6" path during Phase C.
 
 **Action failure handling:** After executing the action for a PR:
 - **If successful**: Show "Completed: repo#123 — response posted + code pushed."
@@ -569,14 +569,13 @@ Options:
 
 Continue until the user selects "Done for now" or all items are addressed.
 
-**When all Tier 2 items are addressed:**
-> "All {count} items addressed. {completed} completed, {failed} failed."
+**When Phase C ends** (all items addressed OR user selects "Done for now"):
+- If all addressed: > "All {count} items addressed. {completed} completed, {failed} failed."
+- If early exit: > "{completed} of {count} items addressed ({failed} failed, {remaining} remaining)."
 
-Then proceed to the "After Each Action" section.
+Proceed to the "After Each Action" section.
 
-**When the user selects "Done for now" during Phase C:** Proceed to the "After Each Action" section with a note of which items were completed and which remain.
-
-**Phase C and "After Each Action" interaction:** The "After Each Action" logic runs ONCE after Phase C ends (either all items done or user selects "Done for now") — NOT between individual Phase C actions. During Phase C's sequential loop, track what was done but defer the state refresh. Pass the combined Tier 1 (from Phase A) and Tier 2 (from Phase C) actions to "After Each Action" so it can decide whether a daily re-run is needed.
+**Phase C and "After Each Action" interaction:** The "After Each Action" logic runs ONCE after Phase C ends — NOT between individual Phase C actions. During Phase C's sequential loop, track what was done but defer the state refresh. Pass the combined Tier 1 (from Phase A) and Tier 2 (from Phase C) actions to "After Each Action" so it can decide whether a daily re-run is needed.
 
 ### Pre-Commit Gate (MANDATORY)
 
@@ -606,8 +605,6 @@ Or update the config file directly to add repos to `excludeRepos`.
 ### CRITICAL: Continue the Flow
 
 **After the "Work through all issues" flow completes (Phase C ends or user selects "Done for now" during it), and after "After Each Action" runs its state refresh, ALWAYS present the session-level menu. Never end with just a summary.**
-
-Note: During Phase C's sequential loop, the *inner* loop in Phase C handles per-PR prompting. This section applies *after* Phase C is finished.
 
 Use AskUserQuestion:
 - "Pick from your issue list" (if `hasIssueList` and `availableCount > 0` and `hasCapacity`) — "{availableCount} vetted issues available"
@@ -897,15 +894,41 @@ Read the target repo's conventions if not already loaded:
 - Lint/format configs (`.eslintrc*`, `.prettierrc*`, `biome.json`, etc.)
 - Test directory structure (`test/`, `tests/`, `__tests__/`, `spec/`)
 
+**Classify change size** from the diff and file count:
+- Count diff lines from `git diff HEAD --stat` summary (captures both staged and unstaged changes; e.g., "3 files changed, 45 insertions(+), 12 deletions(-)"). Use insertions + deletions as the line count. Note: binary files report 0 lines — if the diff contains binary files, classify based on file count alone.
+- Count changed files from `git status --porcelain`.
+
+Evaluate from largest to smallest — **first match wins**:
+
+| Classification | Criteria |
+|----------------|----------|
+| **Large** | > 200 diff lines OR > 5 files |
+| **Medium** | ≥ 50 diff lines OR 3–5 files |
+| **Small** | Everything else (< 50 diff lines AND ≤ 2 files) |
+
+Save as `changeSize` for use in sub-step 3. Report: "> Change size: {tier} ({N} diff lines, {M} files) — dispatching {K} agents."
+
+**If classification fails** (command errors, unparseable output, or both counts are zero despite `git status --porcelain` showing changes): default to **Large** to ensure maximum review coverage and warn: "Could not determine change size — defaulting to Large for comprehensive review."
+
 #### 3. Dispatch Review Agents in Parallel
 
-**CRITICAL: Dispatch ALL agents in a SINGLE message for true parallelism.**
+**CRITICAL: Dispatch ALL selected agents in a SINGLE message for true parallelism.**
 
 Capture the `git diff` output and pass it as context to each agent.
 
-**Always dispatch these 4 agents (include the full `git diff` output in each prompt):**
-
 **IMPORTANT: Always include `Working directory: {local repo path}` in every agent prompt so agents can find and read files in the correct location. Without this, agents inherit the parent session's working directory and file lookups will fail.**
+
+**Scale dispatch based on `changeSize`** (from sub-step 2):
+
+| Size | Agents to dispatch |
+|------|--------------------|
+| **Small** | `code-reviewer` + `silent-failure-hunter` |
+| **Medium** | Small agents + `code-simplifier` |
+| **Large** | Medium agents + `pr-test-analyzer` + conditional agents below |
+
+> **Rationale:** Typical review-response changes (10–50 lines, 1–2 files) don't need 4–6 agents. Scaling reduces latency and token cost for the common case while keeping the full suite for larger contributions.
+
+**Agent prompts** (dispatch only those selected by the tier above; include the full `git diff` output in each):
 
 ```
 Task(pr-review-toolkit:code-reviewer,
@@ -948,7 +971,7 @@ Task(pr-review-toolkit:pr-test-analyzer,
    {git diff output}")
 ```
 
-**Conditional agents (dispatch in the SAME message if applicable):**
+**Conditional agents — Large changes only (dispatch in the SAME message if applicable):**
 
 - **`pr-review-toolkit:type-design-analyzer`** — dispatch only if changed files include TypeScript (`.ts`, `.tsx`) or other typed languages
   ```
@@ -1075,10 +1098,42 @@ Options:
 - **Do NOT add AI attribution** (no Co-Authored-By, no "Generated with" mentions)
 - Push to the PR branch
 - **If any git operation fails** (staging, commit, or push), report the specific error to the user and offer to retry or cancel
-- **Only proceed to Step 6 after confirming the push succeeded**
+- **After confirming the push succeeded, proceed to sub-step 7 (Post Response Comment)**
 
 **"Done for now":**
 - Return to Step 4's action handler loop without committing
+
+#### 7. Post Response Comment (for existing PR updates)
+
+**Skip this step if** the PR's status (from Phase A or Step 4 context) was NOT `needs_response` or `needs_changes` — i.e., no maintainer feedback was being addressed. Maintenance-only actions (rebase, CI fix where status was `ci_failing`) do not need a response comment.
+
+**If the push was in response to maintainer feedback:**
+
+1. Draft a response comment summarizing what was changed:
+   - Reference specific review points that were addressed
+   - Briefly describe the approach taken for each point
+   - Mention any points that were intentionally NOT changed, with a brief explanation why
+   - Keep the tone professional and grateful (see `oss-contribution` skill for guidelines)
+
+2. Present the draft to the user:
+   ```
+   Question: "Post this response to the maintainer?"
+   Header: "PR Comment"
+
+   Options:
+   1. "Post this response (Recommended)" — "Post the comment as drafted"
+   2. "Edit before posting" — "Modify the draft first"
+   3. "Skip — don't post a comment" — "Push is enough, no comment needed"
+   ```
+
+3. Handle choice:
+   - **"Post this response":** Write comment to `/tmp/pr-comment-{pr_number}.md` and post via `gh pr comment {pr_number} --repo {upstream_repo} --body-file /tmp/pr-comment-{pr_number}.md` (avoids shell escaping issues with inline `--body`). Verify exit code 0, then delete the temp file.
+   - **"Edit before posting":** Let the user modify the draft, re-present for approval, then post using the same method.
+   - **"Skip":** No comment posted.
+
+4. **If `gh pr comment` fails (for either "Post" or "Edit" path):** Report the error, display the drafted comment so the user can copy it, and offer: "Retry" / "Copy and post manually" / "Skip". Do NOT silently proceed without the comment.
+
+**After this sub-step completes (or is skipped):** If currently in Phase C's sequential loop, return to Phase C to process the next item. Otherwise, proceed to Step 6.
 
 ---
 
@@ -1122,7 +1177,7 @@ Read the target repo's conventions if not already loaded:
 
 **CRITICAL: Dispatch ALL agents in a SINGLE message for true parallelism.**
 
-Use the same agent dispatch pattern as Step 5.5 sub-step 3 (same agents, same conditional rules, same fallback logic), including the `Working directory: {local repo path}` line in every prompt. Additionally, **prepend the following SCOPE block** to each agent prompt. The SCOPE block constrains findings to the PR's purpose and prevents scope creep from pre-existing issues:
+Use the same agent dispatch pattern as Step 5.5 sub-step 3, **always using the Large tier** (code-reviewer, silent-failure-hunter, code-simplifier, pr-test-analyzer, plus conditional agents), since this reviews the full branch diff for a new contribution. Step 5.5's size-based scaling does not apply here. Include the `Working directory: {local repo path}` line in every prompt. Additionally, **prepend the following SCOPE block** to each agent prompt. The SCOPE block constrains findings to the PR's purpose and prevents scope creep from pre-existing issues:
 
 ```
 SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
