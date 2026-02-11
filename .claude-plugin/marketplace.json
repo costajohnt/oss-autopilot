@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "oss-autopilot",
-      "source": ".",
+      "source": "./",
       "description": "AI-powered autopilot for managing open source contributions - track PRs, respond to maintainers, discover issues, and maintain contribution velocity"
     }
   ]
