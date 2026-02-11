@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-02-10
+
+### Changed
+
+- **Enriched PR display in /oss workflow** — Step 3 now shows maintainer hints (who commented + what they asked), effort estimates (Small/Medium/Large heuristic), and an explicit priority ordering explanation. Uses data already available on `FetchedPR` — no CLI changes needed. Closes #89.
+- **Three-phase "Work through all issues" workflow** — Replaced "Address all N issues in parallel" with a guided sequential flow: Phase A dispatches maintenance in parallel and investigates all Tier 2 items; Phase B presents a consolidated findings table with maintainer ask, effort, and recommended action per PR; Phase C walks through Tier 2 items one-at-a-time with user control after each completion. Closes #88.
+- **Renamed action menu item** — "Address all N issues in parallel" → "Work through all N issues" with updated description reflecting the new three-phase approach (parallel maintenance, consolidated findings, sequential code changes).
+
 ## [0.18.0] - 2026-02-10
 
 ### Added
@@ -433,6 +441,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.19.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.15.1...v0.16.0

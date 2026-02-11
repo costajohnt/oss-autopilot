@@ -115,7 +115,7 @@ The CLI returns structured data with new fields for the action-first flow:
     ],
     "actionMenu": {
       "items": [
-        { "key": "address_all", "label": "Address all 3 issues in parallel (Recommended)", "description": "Launch agents simultaneously..." },
+        { "key": "address_all", "label": "Work through all 3 issues (Recommended)", "description": "Run maintenance in parallel, then address code changes one at a time" },
         { "key": "search", "label": "Search for new issues", "description": "Look for new contribution opportunities" },
         { "key": "done", "label": "Done for now", "description": "End session with summary" }
       ],
@@ -151,7 +151,7 @@ Then proceed to Step 3 (Present Action Choices).
 
 The CLI pre-computes the action menu in `data.actionMenu`. Use these items directly in AskUserQuestion instead of manually deriving options.
 
-**Fallback:** If `data.actionMenu` is missing (e.g., older CLI version), tell the user: "Action menu not found in CLI output — you may need to rebuild the CLI: `cd ${CLAUDE_PLUGIN_ROOT} && npm run bundle`". Then derive options manually: always include "Done for now"; add "Address all N issues in parallel (Recommended)" if `data.actionableIssues.length > 0`; add "Search for new issues" if `data.capacity.hasCapacity`; add "View healthy PRs" if not `data.capacity.hasCapacity` and `data.actionableIssues.length > 0`; otherwise add "View PR status details".
+**Fallback:** If `data.actionMenu` is missing (e.g., older CLI version), tell the user: "Action menu not found in CLI output — you may need to rebuild the CLI: `cd ${CLAUDE_PLUGIN_ROOT} && npm run bundle`". Then derive options manually: always include "Done for now"; add "Work through all N issues (Recommended)" if `data.actionableIssues.length > 0`; add "Search for new issues" if `data.capacity.hasCapacity`; add "View healthy PRs" if not `data.capacity.hasCapacity` and `data.actionableIssues.length > 0`; otherwise add "View PR status details".
 
 ### If No Actionable Issues
 
@@ -167,21 +167,41 @@ Your curated issue list is depleted ({completedCount} done). Time to find new is
 
 ### Display All PRs First (Information Before Prompt)
 
-When there are actionable issues, display them **before asking the user anything**:
+When there are actionable issues, display them **before asking the user anything**.
+
+Issues are listed in priority order: `needs_response` → `needs_changes` → `ci_failing` → `merge_conflict` → `incomplete_checklist` → `approaching_dormant` → `recently_closed`. This matches the ordering from `collectActionableIssues()` in the CLI.
+
+For each issue, show the enriched format using data already available on `FetchedPR`:
 
 ```
-{count} PRs Need Attention:
+{count} PRs Need Attention (in priority order):
 
-1. {issue.label} {issue.pr.repo}#{issue.pr.number}
-   {issue.pr.title} ({issue.pr.daysSinceActivity}d inactive)
+1. {issue.label} {issue.pr.repo}#{issue.pr.number} — {issue.pr.title} ({issue.pr.daysSinceActivity}d)
+   └─ @{issue.pr.lastMaintainerComment.author}: {formatted maintainerActionHints}
+   └─ Effort: {effort} — {action summary}
 
-2. {issue.label} {issue.pr.repo}#{issue.pr.number}
-   {issue.pr.title} ({issue.pr.daysSinceActivity}d inactive)
+2. {issue.label} {issue.pr.repo}#{issue.pr.number} — {issue.pr.title} ({issue.pr.daysSinceActivity}d)
+   └─ @{issue.pr.lastMaintainerComment.author}: {formatted maintainerActionHints}
+   └─ Effort: {effort} — {action summary}
 
 ... (list ALL actionable issues, no limit)
 
 ---
 ```
+
+**Maintainer hints line**: Only show if `issue.pr.lastMaintainerComment` exists. Format each hint from `issue.pr.maintainerActionHints` using these labels: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
+
+**Effort estimate**: Compute at display time from issue type + hint count:
+
+| Effort | Condition |
+|--------|-----------|
+| **Small** | `needs_response` with 0-1 hints (just a reply), `incomplete_checklist`, `approaching_dormant`, `recently_closed` (informational only) |
+| **Medium** | `needs_response` with 2+ hints (reply + code changes), `needs_changes` with 0-2 hints, `ci_failing` |
+| **Large** | `merge_conflict`, `needs_changes` with 3+ hints |
+
+If an issue type doesn't match any row above, default to **Medium**.
+
+**Action summary**: Brief description based on type (e.g., "respond + code changes", "rebase + push", "investigate CI logs").
 
 Use `issue.pr.daysSinceActivity` from the CLI output (already computed).
 
@@ -207,8 +227,8 @@ Question: "What would you like to do?"
 Header: "Action"
 
 Options (from data.actionMenu.items):
-1. Label: "Address all 7 issues in parallel (Recommended)"
-   Description: "Launch agents simultaneously to check status, rebase, fix CI, and respond"
+1. Label: "Work through all 7 issues (Recommended)"
+   Description: "Run maintenance in parallel, then address code changes one at a time"
 
 2. Label: "Search for new issues"
    Description: "Look for new contribution opportunities"
@@ -320,7 +340,7 @@ These are non-destructive operations that don't change code logic:
 - Fetching upstream changes
 
 For Tier 1 actions, agents CAN execute directly (rebase + force push) when the user
-selects "Address all issues" or explicitly approves maintenance. No separate investigation
+selects "Work through all issues" or explicitly approves maintenance. No separate investigation
 step is needed — just do the rebase and report the result.
 
 **Tier 2: Code Changes (investigate first, then approve)**
@@ -379,12 +399,17 @@ Build a map of `repo → local_path`. Pass this to agents so they know:
 If a repo isn't cloned locally and a rebase is needed, the agent should clone it
 (to `~/Documents/oss/<repo-name>` by default) as part of the maintenance action.
 
-### Handle "Address All Issues in Parallel"
+### Handle "Work Through All Issues"
 
-**CRITICAL: Dispatch ALL agents in a SINGLE message for true parallelism.**
+This flow uses a three-phase approach: parallel investigation, consolidated presentation, and sequential execution with user control.
+
 **CRITICAL: Group PRs by repository — one agent per repo, not per PR.**
 
-For each issue in `actionableIssues`, include a Task tool call:
+#### Phase A: Parallel Maintenance + Investigation
+
+**CRITICAL: Dispatch ALL agents in a SINGLE message for true parallelism.**
+
+For each issue in `actionableIssues`, include a Task tool call grouped by repo:
 
 | Issue Type | Tier | Agent Action |
 |------------|------|--------------|
@@ -399,6 +424,7 @@ For each issue in `actionableIssues`, include a Task tool call:
 | Changes Addressed | Info | Note that changes were pushed after maintainer review — no contributor action needed, awaiting re-review. |
 | Missing Required Files | Tier 2 | Identify what's missing (changeset, CLA, etc.), draft the file. DO NOT push. |
 | Approaching Dormant | Tier 2 | Assess if still relevant, recommend follow-up action. |
+| Recently Closed | Info | Note as closed without merge. DO NOT clone, checkout, or rebase — the PR branch may not exist. Report closure for the Auto-Exclude prompt. |
 
 **Agent dispatch prompt template for comprehensive PR check:**
 
@@ -424,9 +450,23 @@ Report back:
 (e) Whether force push was performed
 ```
 
-### Present Results
+**Agent failure handling:**
+- If an agent fails or times out, note the failure and the affected PRs
+- Never silently omit PRs from the Phase B presentation
+- Include failed repos in a separate "Could Not Check" section in Phase B (see below)
+- After Phase B, if any items are in "Could Not Check", offer: "Retry failed checks" / "Skip and continue with available results" / "Done for now"
+  - **"Retry failed checks"**: Re-dispatch agents ONLY for the failed repos (not all agents). Merge retry results into Phase B display. If retry also fails, keep in "Could Not Check" with updated error and continue to Phase C with available results.
+  - **"Skip and continue"**: Proceed to Phase C. Note to user: "{N} PRs were not checked and may need manual attention."
 
-After all agents complete, present a consolidated summary table:
+**Phase A completion verification:** After all agents return, cross-reference their results against the input `actionableIssues` list. Any PR that does not appear in any agent's response (either as a result or an explicit failure) should be added to the "Could Not Check" section with the error: "No result received from agent."
+
+**Record `phaseACompletedAt`** when all Phase A agents have returned results. This timestamp is used for the staleness check in Phase C.
+
+#### Phase B: Present Consolidated Results
+
+After all agents complete, present results in two sections (plus a failure section if needed):
+
+**Section 1: Routine Maintenance Results** (existing format)
 
 ```
 ## PR Status Dashboard
@@ -438,18 +478,109 @@ After all agents complete, present a consolidated summary table:
 | #8362 | cline | Rebased (129 behind) | Clean, force pushed |
 | #9263 | shadcn-ui/ui | Rebased (160 behind) | Clean, force pushed |
 
-### Needs Attention
-| PR | Repo | Issue | Action Needed |
-|---|---|---|---|
-| #6223 | ghostfolio | Changes requested | Address reviewer feedback |
-| #858 | ink | Needs response | Reply to maintainer |
-
 ### No Action Needed
 | PR | Repo | Status |
 |---|---|---|
 | #863 | ink | CI green, awaiting review |
 | #2857 | eslint-plugin-unicorn | CI green, awaiting review |
+
+### Could Not Check (only if agents failed)
+| PR | Repo | Error |
+|---|---|---|
+| #855, #856 | ink | Agent timed out |
 ```
+
+**Section 2: Tier 2 Findings** (new consolidated view)
+
+Only show this section if there are Tier 2 items remaining after Phase A:
+
+```
+### Tier 2 Items — Code Changes Needed
+
+| # | PR | Status | Maintainer Ask | Effort | Recommended Action |
+|---|-----|--------|---------------|--------|-------------------|
+| 1 | repo#123 | needs_response | Requested shortcut change + tooltip | Small | Code change + respond |
+| 2 | repo#456 | needs_changes | Fix trailing newline, sync docs | Medium | Code changes + push |
+| 3 | repo#789 | approaching_dormant | No activity in 12 days | Small | Post follow-up comment |
+
+**Key findings:**
+- **repo#123**: Maintainer wants X. 2-line fix in `file.ts`.
+- **repo#456**: 3 changes requested. Tests need updating.
+- **repo#789**: Stale — needs a polite check-in comment.
+```
+
+Populate the table using data from the Phase A agent results:
+- **PR**: `{repo}#{number}` — short form
+- **Status**: From `issue.type` (needs_response, needs_changes, ci_failing, etc.)
+- **Maintainer Ask**: 1-line summary of what the maintainer requested (from agent investigation findings)
+- **Effort**: Use the same heuristic as Step 3 display (Small/Medium/Large)
+- **Recommended Action**: Brief action description from agent findings
+
+**Key findings**: 1-line summary per PR from the agent investigation results. Focus on what the maintainer is asking and what code change is needed.
+
+#### Phase C: Sequential Tier 2 Execution
+
+If no Tier 2 items remain after Phase A:
+> "All issues were routine maintenance (rebases, status checks) — handled automatically. No code changes needed."
+> Proceed to the "After Each Action" section.
+
+Present the user with a priority-ordered choice:
+
+```
+Question: "Which PR would you like to address first?"
+Header: "Next PR"
+
+Options (ordered by priority, up to 3 PRs + Done — limited to 4 options for AskUserQuestion; user can type a number via "Other" to select any item from the findings table above):
+1. "repo#123 — respond + code change (Small)"
+2. "repo#456 — address 3 requested changes (Medium)"
+3. "repo#789 — post follow-up (Small)"
+4. "Done for now"
+```
+
+**Staleness note:** Phase A findings are cached for the session. If more than 30 minutes have elapsed since `phaseACompletedAt`, warn the user before executing:
+> "Note: These findings are from {minutes} minutes ago. The PR status may have changed. Would you like to re-check this PR before proceeding?"
+
+The user selects a PR, and you:
+1. Use the findings from Phase A (do NOT re-investigate, unless staleness warning triggered and user opts to re-check)
+2. Execute the recommended action for that specific PR
+3. After completing the action, proceed to Step 5.5 (Pre-Commit Code Review) if code was changed
+
+**Action failure handling:** After executing the action for a PR:
+- **If successful**: Show "Completed: repo#123 — response posted + code pushed."
+- **If failed**: Show "Failed: repo#123 — {specific error message}. This PR was not addressed."
+  - If the error appears transient (network timeout, rate limit, auth token expired): Offer "Retry" / "Skip and move to next" / "Done for now"
+  - If the error appears persistent (merge conflict during apply, file not found, branch deleted): Offer "Investigate the error" / "Skip and move to next" / "Done for now" — do NOT offer "Retry" for errors that will deterministically fail again
+- Track completed, failed, and remaining counts separately in the progress display
+- Failed items remain in the options list for future attempts
+
+After each PR completion, show progress and offer the next choice:
+
+```
+Completed: 1 | Failed: 0 | Remaining: 2
+
+Question: "What's next?"
+Header: "Next PR"
+
+Options:
+1. "repo#456 — address 3 requested changes (Medium)"
+2. "repo#789 — post follow-up (Small)"
+3. "Done for now"
+```
+
+Continue until the user selects "Done for now" or all items are addressed.
+
+**When all Tier 2 items are addressed:**
+> "All {count} items addressed. {completed} completed, {failed} failed."
+
+Then proceed to the "After Each Action" section.
+
+**When the user selects "Done for now" during Phase C:** Proceed to the "After Each Action" section with a note of which items were completed and which remain.
+
+**Phase C and "After Each Action" interaction:** The "After Each Action" logic runs ONCE after Phase C ends (either all items done or user selects "Done for now") — NOT between individual Phase C actions. During Phase C's sequential loop, track what was done but defer the state refresh. Pass the combined Tier 1 (from Phase A) and Tier 2 (from Phase C) actions to "After Each Action" so it can decide whether a daily re-run is needed.
+
+### Pre-Commit Gate (MANDATORY)
+
+**STOP. Before presenting commit/push options to the user, you MUST complete Step 5.5 (Pre-Commit Code Review).** Do not skip this step. Do not offer to commit first. Run the review agents, present findings, THEN offer commit options. The only exception is if `git status --porcelain` confirms there are no uncommitted changes (e.g., only a comment was posted, or the action was investigation-only). Always verify with git status — do not assume based on which actions were dispatched.
 
 ### Auto-Exclude Prompt for Rejected PRs
 
@@ -472,51 +603,13 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" c
 
 Or update the config file directly to add repos to `excludeRepos`.
 
-### Ask User About Remaining Issues
-
-If there are Tier 2 issues remaining after maintenance:
-
-Use AskUserQuestion:
-
-```
-Question: "Which issues would you like me to investigate?"
-Header: "Investigate"
-multiSelect: true
-
-Options:
-1. "Address changes requested on ghostfolio#6223"
-2. "Draft response for ink#858"
-3. "All of the above"
-4. "None - I'll handle manually"
-```
-
-### Execute Approved Actions Only
-
-Only after user explicitly approves Tier 2 actions:
-- Push code changes
-- Post comments
-- Add missing files
-
-#### Pre-Commit Gate (MANDATORY)
-
-**STOP. Before presenting commit/push options to the user, you MUST complete Step 5.5 (Pre-Commit Code Review).** Do not skip this step. Do not offer to commit first. Run the review agents, present findings, THEN offer commit options. The only exception is if `git status --porcelain` confirms there are no uncommitted changes (e.g., only a comment was posted, or the action was investigation-only). Always verify with git status — do not assume based on which actions were dispatched.
-
 ### CRITICAL: Continue the Flow
 
-**After EVERY action completes (investigation, approval, execution), ALWAYS ask what to do next.**
+**After the "Work through all issues" flow completes (Phase C ends or user selects "Done for now" during it), and after "After Each Action" runs its state refresh, ALWAYS present the session-level menu. Never end with just a summary.**
 
-Never end with just a summary. Always prompt:
+Note: During Phase C's sequential loop, the *inner* loop in Phase C handles per-PR prompting. This section applies *after* Phase C is finished.
 
-```
-Actions completed:
-- Rebased 4 PRs (all clean)
-- Pushed fix for #9263
-- Posted response to #858
-
-What would you like to do next?
-```
-
-Then use AskUserQuestion:
+Use AskUserQuestion:
 - "Pick from your issue list" (if `hasIssueList` and `availableCount > 0` and `hasCapacity`) — "{availableCount} vetted issues available"
 - "Search for new issues" (if `hasCapacity`)
 - "Check for more PR updates" (re-run daily check)
@@ -1642,10 +1735,10 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" p
 ## Important Rules
 
 ### Human-in-the-Loop
-1. **Tier 1 (maintenance)**: Rebase + force push is allowed after user selects "Address all issues" or explicitly approves
+1. **Tier 1 (maintenance)**: Rebase + force push is allowed after user selects "Work through all issues" or explicitly approves
 2. **Tier 2 (code/comments)**: NEVER push code or post comments without explicit per-action approval
 3. **Agents report results** for Tier 1, **investigate and recommend** for Tier 2
-4. Always use AskUserQuestion with multiSelect before executing Tier 2 write actions
+4. In Phase C, present Tier 2 items one at a time for sequential approval and execution
 
 ### Workflow Control (CRITICAL)
 5. **NEVER end without asking what's next** - after ANY action, always prompt user

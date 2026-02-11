@@ -51,7 +51,7 @@ This agent handles two tiers of actions:
 
 - **Tier 1 (Routine Maintenance):** Rebase onto upstream, clone repos. These are non-destructive
   and can be executed directly. Rebase + force push is allowed without separate approval when
-  the user has requested a health check or selected "Address all issues."
+  the user has requested a health check or selected "Work through all issues."
 
 - **Tier 2 (Code Changes):** Fix CI, resolve conflicts, add missing files. These require
   investigation and recommendation only — do NOT push code changes without explicit approval.

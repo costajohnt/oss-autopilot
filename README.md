@@ -2,7 +2,7 @@
 
 Discover issues worth contributing to, track your PRs across repos, and draft responses to maintainer feedback. An AI copilot for your open source journey.
 
-![Version](https://img.shields.io/badge/version-0.18.0-blue)
+![Version](https://img.shields.io/badge/version-0.19.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 ![Node Version](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
@@ -87,7 +87,7 @@ Claude checks all your open PRs across GitHub, opens an HTML dashboard in your b
 
 Then you choose what to do:
 
-- **Address all issues in parallel** — launches agents to investigate, rebase, and draft responses simultaneously
+- **Work through all issues** — runs maintenance in parallel, then walks through code changes one at a time
 - **Search for new issues** — find contribution opportunities matching your skills
 - **Done for now** — end with a session summary
 

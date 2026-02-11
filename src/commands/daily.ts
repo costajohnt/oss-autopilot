@@ -502,7 +502,7 @@ function formatBriefSummary(digest: DailyDigest, issueCount: number): string {
 
 /**
  * Collect all actionable issues across PRs for the action-first flow
- * Order: Needs response → CI failing → Merge conflicts → Approaching dormant
+ * Order: Needs response → Needs changes → CI failing → Merge conflicts → Incomplete checklist → Approaching dormant → Recently closed
  */
 function collectActionableIssues(prs: FetchedPR[], recentlyClosedPRs: ClosedPR[] = []): ActionableIssue[] {
   const issues: ActionableIssue[] = [];
@@ -611,8 +611,8 @@ export function computeActionMenu(
   if (hasActionableIssues) {
     items.push({
       key: 'address_all',
-      label: `Address all ${actionableIssues.length} issue${actionableIssues.length === 1 ? '' : 's'} in parallel (Recommended)`,
-      description: 'Launch agents simultaneously to check status, rebase, fix CI, and respond',
+      label: `Work through all ${actionableIssues.length} issue${actionableIssues.length === 1 ? '' : 's'} (Recommended)`,
+      description: 'Run maintenance in parallel, then address code changes one at a time',
     });
   }
 

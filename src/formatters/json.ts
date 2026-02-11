@@ -37,7 +37,7 @@ export interface ActionableIssue {
 export interface ActionMenuItem {
   /** Stable identifier for routing (e.g., "address_all", "search", "done"). */
   key: string;
-  /** Display text for the option (e.g., "Address all 3 issues in parallel (Recommended)"). */
+  /** Display text for the option (e.g., "Work through all 3 issues (Recommended)"). */
   label: string;
   /** Explanation shown below the label. */
   description: string;
