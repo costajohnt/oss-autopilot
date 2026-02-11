@@ -2,7 +2,8 @@
 
 Discover issues worth contributing to, track your PRs across repos, and draft responses to maintainer feedback. An AI copilot for your open source journey.
 
-![Version](https://img.shields.io/badge/version-0.24.0-blue)
+![Version](https://img.shields.io/badge/version-0.24.1-blue)
+![CI](https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 ![Node Version](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
