@@ -77,6 +77,7 @@ Store these for use in later steps:
 - `availableCount`: number — issues not marked done
 - `completedCount`: number — issues marked done
 - `issueListSource`: "configured" | "auto-detected" — how the list was found
+- `searchRoundScores`: number[] = [] — average vetting score per search round (appended in "Handle Find New Issues")
 
 **Do NOT display anything yet** — this data is used in Step 3 to offer the right action choices.
 
@@ -213,7 +214,8 @@ Use `data.actionMenu.items` directly as AskUserQuestion options. Each item has `
 
 | Condition | Insert Item |
 |-----------|-------------|
-| `hasIssueList && availableCount > 0 && context.hasCapacity` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} available)"`, Description: `"Choose from your curated list of vetted issues"` |
+| `hasIssueList && availableCount >= 5 && context.hasCapacity` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} ready)"`, Description: `"You have {availableCount} vetted issues ready to work on — starting one would be higher ROI than searching for more"` |
+| `hasIssueList && availableCount > 0 && availableCount < 5 && context.hasCapacity` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} available)"`, Description: `"Choose from your curated list of vetted issues"` |
 | `hasIssueList && availableCount === 0 && context.hasCapacity` | Key: `replenish_list`, Label: `"Replenish your issue list"`, Description: `"All {completedCount} issues done — search for fresh ones"`. Also **remove** the `search` item (replenish replaces it). |
 
 When inserting issue-list items, keep within the 4-option limit (the 5th is the auto "Other").
@@ -659,6 +661,91 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" s
 ```
 
 Or dispatch the `issue-scout` agent with language/label preferences.
+
+#### After Search Results: Batch Vet Flow
+
+When search results come back (from CLI or issue-scout), present the candidates and offer a batch workflow. Set `currentRound = searchRoundScores.length + 1`.
+
+Use AskUserQuestion:
+- "Add all to list and vet in parallel (Recommended)" — "Add candidates to your issue list as 'Pending vet', then dispatch parallel vet agents"
+- "Pick one to vet now" — "Select a single candidate to investigate immediately"
+- "Search again with different criteria" — "Re-run the CLI search with adjusted language, labels, or other parameters"
+- "Done for now"
+
+**"Add all to list and vet in parallel":**
+
+1. **Add candidates to the curated list.** For each search result, append an entry under a new `## Pending Vet` section (create section if it doesn't exist):
+   ```markdown
+   ### {owner}/{repo} ({stars}★) — {repo description}
+   - [#{number}]({url}) — {issue title}
+     - **Pending vet** — Found in search round {currentRound}, not yet vetted.
+   ```
+
+2. **Dispatch parallel vet agents** (up to 5 concurrent). For each candidate:
+   ```
+   Task(issue-scout, "Vet this issue from the user's search results:
+     URL: {issue_url}
+     Source: search-round-{currentRound}
+     Check: still open, unassigned, no linked PRs, repo health, complexity estimate.
+     Return: score (1-10), recommendation (pursue/maybe/skip), red flags if any.")
+   ```
+
+3. **After all vet agents return**, update each list entry with vetting findings:
+   - Replace `**Pending vet**` with the vetting result: `**Score: {score}/10** — {recommendation}. {brief findings}`
+   - Move entries to the appropriate priority tier section based on recommendation:
+     - `pursue` → `## Pursue — Ready to Contribute`
+     - `maybe` → `## Maybe — Viable with Caveats`
+     - `skip` → `## Skip — Not Recommended` (or remove from list, per user preference)
+
+4. **Track round scores.** Calculate the average score for this round and append to `searchRoundScores`:
+   ```
+   roundAvg = mean of all vetting scores from this round
+   searchRoundScores.push(roundAvg)
+   ```
+
+5. **Present summary**, then proceed to **Diminishing Returns Check** below.
+   ```
+   ## Search Round {currentRound} Results
+
+   Vetted {count} candidates (avg score: {roundAvg}/10):
+   - {count_pursue} ready to pursue
+   - {count_maybe} viable with caveats
+   - {count_skip} not recommended
+
+   Your issue list now has {availableCount} available issues.
+   ```
+
+**"Pick one to vet now":**
+- Display the search results as a numbered list
+- Use AskUserQuestion with up to 3 candidates + "Done for now"
+- Dispatch a single `issue-scout` agent for the selected candidate (same prompt as step 2 above)
+- Present the vetting result and offer: "Claim this issue and start working" / "Pick a different one" / "Done for now"
+- Record the single score: `searchRoundScores.push(score)` — then proceed to **Diminishing Returns Check**
+
+**"Search again with different criteria":**
+- Route back to the CLI search command above (`search 10 --json`). The user can adjust preferences before re-running.
+
+#### Diminishing Returns Check
+
+After each batch vet or single vet completes and a score is appended to `searchRoundScores`, check for quality decline:
+
+**If `searchRoundScores.length >= 2` and the previous round's average is > 0**, compare:
+```
+previousAvg = searchRoundScores[searchRoundScores.length - 2]
+currentAvg = searchRoundScores[searchRoundScores.length - 1]
+dropPercent = (previousAvg - currentAvg) / previousAvg * 100
+```
+
+Display an advisory based on the severity of the drop:
+- **If `dropPercent > 50`**: > "Search quality has dropped significantly (avg score {currentAvg} vs {previousAvg}). Further searching is likely to yield diminishing returns. You have {availableCount} vetted issues ready to work on."
+- **Otherwise, if `dropPercent > 30`**: > "These candidates are lower quality than the previous round (avg score {currentAvg} vs {previousAvg}). You have {availableCount} vetted issues ready. Consider working on those instead of searching more."
+
+After displaying the round summary (and advisory if applicable), present the next action:
+
+Use AskUserQuestion (if `availableCount >= 5` and an advisory was shown, place the list option first with "(Recommended)"):
+- "Pick from your issue list ({availableCount} ready)" (if `hasIssueList && availableCount > 0`) — "Start working on a vetted issue"
+- "Search for new issues" — "Run another search round"
+- "Done for now"
 
 **When the user claims any issue found through search and starts implementing**, set:
 - `isNewContribution = true`

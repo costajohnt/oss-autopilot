@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-02-10
+
+### Added
+
+- **Batch vet workflow for search results** — After search results come back, a new "Add all to list and vet in parallel" option adds candidates to the curated issue list as "Pending vet" entries, dispatches up to 5 parallel issue-scout agents, then updates entries with scores and recommendations. Entries are automatically sorted into priority tiers (Pursue/Maybe/Skip). Closes #107.
+- **Diminishing returns detection across search rounds** — Session tracks average vetting score per search round in `searchRoundScores`. When a new round's average drops >30% below the previous, an advisory is shown recommending the user work from their existing list instead of searching more. At >50% drop, the advisory is strengthened. Closes #107.
+- **Stronger "work on existing list" nudge** — When `availableCount >= 5`, the issue list option is promoted with ROI-focused language ("starting one would be higher ROI than searching for more") and a brief nudge is displayed before the action menu. Closes #107.
+
 ## [0.21.0] - 2026-02-10
 
 ### Added
@@ -462,6 +470,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.22.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.18.0...v0.19.0
