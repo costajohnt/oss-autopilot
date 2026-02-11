@@ -2,7 +2,7 @@
 
 Discover issues worth contributing to, track your PRs across repos, and draft responses to maintainer feedback. An AI copilot for your open source journey.
 
-![Version](https://img.shields.io/badge/version-0.23.0-blue)
+![Version](https://img.shields.io/badge/version-0.23.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 ![Node Version](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
@@ -22,7 +22,7 @@ Discover issues worth contributing to, track your PRs across repos, and draft re
 
 ```
 /plugin marketplace add costajohnt/oss-autopilot
-/plugin install oss-autopilot
+/plugin install oss-autopilot@oss-autopilot
 ```
 
 Then run `/setup-oss` to configure your preferences. That's it.
@@ -140,10 +140,10 @@ Claude automatically uses these agents based on context:
 OSS Autopilot notifies you when a newer version is available on GitHub. To update:
 
 ```
-/plugin update oss-autopilot
+/plugin marketplace update oss-autopilot
 ```
 
-Your configuration is preserved across updates. The CLI bundle auto-rebuilds after upgrades.
+This refreshes the marketplace catalog and updates the plugin to the latest version. Your configuration is preserved across updates. The CLI bundle auto-rebuilds after upgrades.
 
 See the [Changelog](CHANGELOG.md) for what's new in each release.
 

@@ -24,7 +24,7 @@ If `gh` is not installed or authenticated:
 
 ```
 /plugin marketplace add costajohnt/oss-autopilot
-/plugin install oss-autopilot
+/plugin install oss-autopilot@oss-autopilot
 ```
 
 ### Step 3: Restart and run setup
@@ -72,6 +72,7 @@ Plugin directory:
 ├── agents/*.md                       # 7 specialized agents (pr-responder, issue-scout, etc.)
 ├── skills/oss-contribution/SKILL.md  # Contribution best practices skill
 ├── .claude-plugin/plugin.json        # Plugin manifest (version must match package.json)
+├── .claude-plugin/marketplace.json   # Marketplace catalog (required for /plugin marketplace add)
 ├── src/                              # TypeScript source
 │   ├── cli.ts                        # CLI entry point (commander setup)
 │   ├── commands/                     # CLI subcommands (daily, search, track, etc.)

@@ -1,0 +1,16 @@
+{
+  "name": "oss-autopilot",
+  "owner": {
+    "name": "John Costa"
+  },
+  "metadata": {
+    "description": "AI-powered autopilot for managing open source contributions with Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "oss-autopilot",
+      "source": ".",
+      "description": "AI-powered autopilot for managing open source contributions - track PRs, respond to maintainers, discover issues, and maintain contribution velocity"
+    }
+  ]
+}
