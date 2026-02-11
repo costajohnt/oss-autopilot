@@ -3,7 +3,7 @@
  * Provides structured output that can be consumed by scripts and plugins
  */
 
-import type { TrackedPR, FetchedPR, DailyDigest, AgentState, RepoGroup } from '../core/types.js';
+import type { TrackedPR, FetchedPR, DailyDigest, AgentState, RepoGroup, CommentedIssue } from '../core/types.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { SearchPriority } from '../core/issue-discovery.js';
 
@@ -49,13 +49,15 @@ export interface ActionMenuItem {
  * plus context flags so the orchestration can insert issue-list options.
  */
 export interface ActionMenu {
-  /** Ordered list of menu items. The orchestration may insert issue-list items after `address_all` (index 1) or at the start (index 0) when no actionable issues exist. */
+  /** Ordered list of menu items. The orchestration may insert issue-list items after the CLI-generated items (address_all, issue_replies) or at the start when none exist. */
   items: ActionMenuItem[];
   /** Context flags for the orchestration layer to decide on issue-list options. */
   context: {
     hasActionableIssues: boolean;
     actionableCount: number;
     hasCapacity: boolean;
+    hasIssueResponses: boolean;
+    issueResponseCount: number;
   };
 }
 
@@ -67,6 +69,7 @@ export interface DailyOutput {
   briefSummary: string; // One-liner for action-first flow
   actionableIssues: ActionableIssue[]; // Structured list for AskUserQuestion
   actionMenu: ActionMenu; // Pre-computed action menu for Step 3
+  commentedIssues: CommentedIssue[]; // Issues user commented on with conversation state
   repoGroups: RepoGroup[]; // PRs grouped by repo for safe parallel dispatch (#80)
   failures: PRCheckFailure[]; // PRs that failed to fetch (e.g., rate limits, network errors)
 }

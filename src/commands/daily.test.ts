@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { computeRepoSignals, computeActionMenu, groupPRsByRepo } from './daily.js';
-import type { FetchedPR } from '../core/types.js';
+import type { FetchedPR, CommentedIssue } from '../core/types.js';
 import type { ActionableIssue, CapacityAssessment } from '../formatters/json.js';
 
 /** Create a minimal FetchedPR for testing signal computation */
@@ -121,6 +121,8 @@ describe('computeActionMenu', () => {
       hasActionableIssues: true,
       actionableCount: 1,
       hasCapacity: true,
+      hasIssueResponses: false,
+      issueResponseCount: 0,
     });
   });
 
@@ -151,6 +153,54 @@ describe('computeActionMenu', () => {
 
     expect(menu.items).toHaveLength(3);
     expect(menu.items.map(i => i.key)).toEqual(['address_all', 'view_healthy', 'done']);
+  });
+
+  it('should include issue_replies item and context when issue responses exist', () => {
+    const issueResponses: CommentedIssue[] = [
+      {
+        repo: 'owner/repo',
+        number: 10,
+        title: 'Test issue',
+        url: 'https://github.com/owner/repo/issues/10',
+        status: 'new_response',
+        userLastCommentedAt: '2026-02-01T10:00:00Z',
+        lastResponseAuthor: 'maintainer',
+        lastResponseBody: 'Go for it!',
+        lastResponseAt: '2026-02-02T10:00:00Z',
+        labels: ['bug'],
+        daysSinceUserComment: 3,
+      },
+    ];
+    const menu = computeActionMenu([], makeCapacity(), issueResponses);
+
+    expect(menu.items.map(i => i.key)).toEqual(['issue_replies', 'search', 'done']);
+    expect(menu.items[0].label).toBe('Review 1 issue reply');
+    expect(menu.context).toEqual({
+      hasActionableIssues: false,
+      actionableCount: 0,
+      hasCapacity: true,
+      hasIssueResponses: true,
+      issueResponseCount: 1,
+    });
+  });
+
+  it('should order address_all before issue_replies when both present', () => {
+    const issueResponses: CommentedIssue[] = [
+      { repo: 'a/b', number: 1, title: 'T', url: 'u', status: 'new_response', userLastCommentedAt: '', labels: [], daysSinceUserComment: 0 },
+    ];
+    const menu = computeActionMenu([makeActionableIssue()], makeCapacity(), issueResponses);
+
+    expect(menu.items.map(i => i.key)).toEqual(['address_all', 'issue_replies', 'search', 'done']);
+  });
+
+  it('should use plural label for multiple issue responses', () => {
+    const issueResponses: CommentedIssue[] = [
+      { repo: 'a/b', number: 1, title: 'T', url: 'u', status: 'new_response', userLastCommentedAt: '', labels: [], daysSinceUserComment: 0 },
+      { repo: 'c/d', number: 2, title: 'T', url: 'u', status: 'new_response', userLastCommentedAt: '', labels: [], daysSinceUserComment: 0 },
+    ];
+    const menu = computeActionMenu([], makeCapacity(), issueResponses);
+
+    expect(menu.items[0].label).toBe('Review 2 issue replies');
   });
 });
 

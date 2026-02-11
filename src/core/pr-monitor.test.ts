@@ -19,6 +19,7 @@ vi.mock('./state.js', () => ({
 
 // Import after mocks are set up
 const { PRMonitor, computeDisplayLabel, classifyCICheck, classifyFailingChecks } = await import('./pr-monitor.js');
+const { isAcknowledgmentComment } = await import('./issue-conversation.js');
 const { getStateManager } = await import('./state.js');
 
 describe('PRMonitor CI status deduplication', () => {
@@ -1165,60 +1166,46 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
   });
 });
 
-describe('PRMonitor acknowledgment comment detection (Issue #69)', () => {
-  beforeEach(() => {
-    mockOctokitInstance = {};
-  });
-
+describe('isAcknowledgmentComment (Issue #69)', () => {
   it('should detect "thanks" as acknowledgment', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).isAcknowledgmentComment('thanks')).toBe(true);
+    expect(isAcknowledgmentComment('thanks')).toBe(true);
   });
 
   it('should detect "Thank you!" as acknowledgment', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).isAcknowledgmentComment('Thank you!')).toBe(true);
+    expect(isAcknowledgmentComment('Thank you!')).toBe(true);
   });
 
   it('should detect "LGTM" as acknowledgment', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).isAcknowledgmentComment('LGTM')).toBe(true);
+    expect(isAcknowledgmentComment('LGTM')).toBe(true);
   });
 
   it('should detect "Looks good, will review soon" as acknowledgment', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).isAcknowledgmentComment('Looks good, will review soon')).toBe(true);
+    expect(isAcknowledgmentComment('Looks good, will review soon')).toBe(true);
   });
 
   it('should detect "we\'ll get to this shortly" as acknowledgment', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).isAcknowledgmentComment("we'll get to this shortly")).toBe(true);
+    expect(isAcknowledgmentComment("we'll get to this shortly")).toBe(true);
   });
 
   it('should detect "noted" as acknowledgment', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).isAcknowledgmentComment('noted')).toBe(true);
+    expect(isAcknowledgmentComment('noted')).toBe(true);
   });
 
   it('should NOT detect actionable comment as acknowledgment', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).isAcknowledgmentComment('Please fix linting errors')).toBe(false);
+    expect(isAcknowledgmentComment('Please fix linting errors')).toBe(false);
   });
 
   it('should NOT detect empty string as acknowledgment', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).isAcknowledgmentComment('')).toBe(false);
+    expect(isAcknowledgmentComment('')).toBe(false);
   });
 
   it('should NOT detect comment with question mark as acknowledgment', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).isAcknowledgmentComment('Thanks, can you add tests?')).toBe(false);
+    expect(isAcknowledgmentComment('Thanks, can you add tests?')).toBe(false);
   });
 
   it('should NOT detect long comment with keyword as acknowledgment', () => {
-    const monitor = new PRMonitor('fake-token');
     const longComment = 'Thanks for this PR! ' + 'x'.repeat(100);
-    expect((monitor as any).isAcknowledgmentComment(longComment)).toBe(false);
+    expect(isAcknowledgmentComment(longComment)).toBe(false);
   });
 
   it('should not trigger hasUnrespondedComment for acknowledgment comments', () => {

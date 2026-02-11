@@ -6,9 +6,9 @@
 
 import * as fs from 'fs';
 import { execFile } from 'child_process';
-import { getStateManager, getDashboardPath, PRMonitor, getGitHubToken } from '../core/index.js';
+import { getStateManager, getDashboardPath, PRMonitor, IssueConversationMonitor, getGitHubToken } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
-import type { FetchedPR, DailyDigest, AgentState, RepoScore, ClosedPR } from '../core/types.js';
+import type { FetchedPR, DailyDigest, AgentState, RepoScore, ClosedPR, CommentedIssue } from '../core/types.js';
 
 interface DashboardOptions {
   open?: boolean;
@@ -19,18 +19,30 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
   const stateManager = getStateManager();
   const token = getGitHubToken();
   let digest: DailyDigest | undefined;
+  let commentedIssues: CommentedIssue[] = [];
 
   // If we have a token, fetch fresh data
   if (token) {
     console.error('Fetching fresh data from GitHub...');
     try {
       const prMonitor = new PRMonitor(token);
-      const [{ prs, failures }, recentlyClosedPRs, mergedResult, closedResult] = await Promise.all([
+      const issueMonitor = new IssueConversationMonitor(token);
+      const [{ prs, failures }, recentlyClosedPRs, mergedResult, closedResult, fetchedIssues] = await Promise.all([
         prMonitor.fetchUserOpenPRs(),
         prMonitor.fetchRecentlyClosedPRs(),
         prMonitor.fetchUserMergedPRCounts(),
         prMonitor.fetchUserClosedPRCounts(),
+        issueMonitor.fetchCommentedIssues().catch(error => {
+          const msg = error instanceof Error ? error.message : String(error);
+          if (msg.includes('No GitHub username configured')) {
+            console.error(`[DASHBOARD] Issue conversation tracking requires setup: ${msg}`);
+          } else {
+            console.error(`[DASHBOARD] Issue conversation fetch failed: ${msg}`);
+          }
+          return { issues: [] as CommentedIssue[], failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }] };
+        }),
       ]);
+      commentedIssues = fetchedIssues.issues;
 
       if (failures.length > 0) {
         console.error(`Warning: ${failures.length} PR fetch(es) failed`);
@@ -40,8 +52,12 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       const { monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
       const { monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
 
-      try { stateManager.setMonthlyMergedCounts(monthlyCounts); } catch { /* non-critical */ }
-      try { stateManager.setMonthlyClosedCounts(monthlyClosedCounts); } catch { /* non-critical */ }
+      try { stateManager.setMonthlyMergedCounts(monthlyCounts); } catch (error) {
+        console.error('[DASHBOARD] Failed to store monthly merged counts:', error instanceof Error ? error.message : error);
+      }
+      try { stateManager.setMonthlyClosedCounts(monthlyClosedCounts); } catch (error) {
+        console.error('[DASHBOARD] Failed to store monthly closed counts:', error instanceof Error ? error.message : error);
+      }
       try {
         const combinedOpenedCounts: Record<string, number> = { ...openedFromMerged };
         for (const [month, count] of Object.entries(openedFromClosed)) {
@@ -54,7 +70,9 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
           }
         }
         stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
-      } catch { /* non-critical */ }
+      } catch (error) {
+        console.error('[DASHBOARD] Failed to store monthly opened counts:', error instanceof Error ? error.message : error);
+      }
 
       digest = prMonitor.generateDigest(prs, recentlyClosedPRs);
       stateManager.setLastDigest(digest);
@@ -121,17 +139,21 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
   };
 
   if (options.json) {
+    const issueResponses = commentedIssues.filter(i => i.status === 'new_response');
     outputJson({
       stats,
       prsByRepo,
       topRepos: topRepos.map(([repo, data]) => ({ repo, ...data })),
       monthlyMerged,
       activePRs: digest.openPRs || [],
+      commentedIssues,
+      issueResponses,
     });
     return;
   }
 
-  const html = generateDashboardHtml(stats, monthlyMerged, monthlyClosed, monthlyOpened, digest, state);
+  const issueResponses = commentedIssues.filter(i => i.status === 'new_response');
+  const html = generateDashboardHtml(stats, monthlyMerged, monthlyClosed, monthlyOpened, digest, state, issueResponses);
 
   // Write to file in ~/.oss-autopilot/
   const dashboardPath = getDashboardPath();
@@ -191,6 +213,7 @@ function generateDashboardHtml(
   monthlyOpened: Record<string, number>,
   digest: DailyDigest,
   state: Readonly<AgentState>,
+  issueResponses: CommentedIssue[] = [],
 ): string {
   const approachingDormantDays = state.config?.approachingDormantDays ?? 25;
   // Action Required: contributor must do something
@@ -999,6 +1022,33 @@ function generateDashboardHtml(
           <div class="health-content">
             <div class="health-title"><a href="${escapeHtml(pr.url)}" target="_blank">${escapeHtml(pr.repo)}#${pr.number}</a> - Closed</div>
             <div class="health-meta">${escapeHtml(pr.title.slice(0, 50))}${pr.title.length > 50 ? '...' : ''}${pr.closedAt ? ` · ${new Date(pr.closedAt).toLocaleDateString()}` : ''}</div>
+          </div>
+        </div>
+        `).join('')}
+      </div>
+    </section>
+    ` : ''}
+
+    ${issueResponses.length > 0 ? `
+    <section class="health-section" style="animation-delay: 0.25s;">
+      <div class="health-header">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-info)" stroke-width="2">
+          ${SVG.comment}
+        </svg>
+        <h2>Issue Conversations</h2>
+        <span class="health-badge" style="background: var(--accent-info-dim); color: var(--accent-info);">${issueResponses.length} repl${issueResponses.length !== 1 ? 'ies' : 'y'}</span>
+      </div>
+      <div class="health-items">
+        ${issueResponses.map(issue => `
+        <div class="health-item changes-addressed">
+          <div class="health-icon" style="background: var(--accent-info-dim); color: var(--accent-info);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              ${SVG.comment}
+            </svg>
+          </div>
+          <div class="health-content">
+            <div class="health-title"><a href="${escapeHtml(issue.url)}" target="_blank">${escapeHtml(issue.repo)}#${issue.number}</a> - ${escapeHtml(issue.title.slice(0, 50))}${issue.title.length > 50 ? '...' : ''}</div>
+            <div class="health-meta">${issue.lastResponseAuthor ? `@${escapeHtml(issue.lastResponseAuthor)}: ${escapeHtml((issue.lastResponseBody || '').slice(0, 60))}${(issue.lastResponseBody || '').length > 60 ? '...' : ''}` : 'New response'}</div>
           </div>
         </div>
         `).join('')}

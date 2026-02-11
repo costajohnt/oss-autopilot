@@ -4,7 +4,7 @@
  * generates a digest, and updates repo scores and analytics in local state.
  */
 
-import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ClosedPR, type ComputedRepoSignals, type RepoGroup } from '../core/index.js';
+import { getStateManager, PRMonitor, IssueConversationMonitor, getGitHubToken, formatRelativeTime, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ClosedPR, type ComputedRepoSignals, type RepoGroup, type CommentedIssue } from '../core/index.js';
 import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue, type ActionMenu, type ActionMenuItem } from '../formatters/json.js';
 
 interface DailyOptions {
@@ -57,12 +57,27 @@ async function runDailyInner(token: string, options: DailyOptions): Promise<void
     console.error(`Warning: ${failures.length} PR fetch(es) failed`);
   }
 
-  // Fetch merged PR counts, closed PR counts, and recently closed PRs in parallel
-  const [mergedResult, closedResult, recentlyClosedPRs] = await Promise.all([
+  // Fetch merged PR counts, closed PR counts, recently closed PRs, and commented issues in parallel
+  const issueMonitor = new IssueConversationMonitor(token);
+  const [mergedResult, closedResult, recentlyClosedPRs, issueConversationResult] = await Promise.all([
     prMonitor.fetchUserMergedPRCounts(),
     prMonitor.fetchUserClosedPRCounts(),
     prMonitor.fetchRecentlyClosedPRs(),
+    issueMonitor.fetchCommentedIssues().catch(error => {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes('No GitHub username configured')) {
+        console.error(`[DAILY] Issue conversation tracking requires setup: ${msg}`);
+      } else {
+        console.error(`[DAILY] Issue conversation fetch failed: ${msg}`);
+      }
+      return { issues: [] as CommentedIssue[], failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }] };
+    }),
   ]);
+
+  const commentedIssues = issueConversationResult.issues;
+  if (issueConversationResult.failures.length > 0) {
+    console.error(`[DAILY] ${issueConversationResult.failures.length} issue conversation check(s) failed`);
+  }
 
   const { repos: mergedCounts, monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
   const { repos: closedCounts, monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
@@ -195,24 +210,25 @@ async function runDailyInner(token: string, options: DailyOptions): Promise<void
 
   if (options.json) {
     // Include pre-formatted summary for Claude to display verbatim
-    const summary = formatSummary(digest, capacity);
+    const issueResponses = commentedIssues.filter(i => i.status === 'new_response');
+    const summary = formatSummary(digest, capacity, issueResponses);
     // New action-first flow fields
     const actionableIssues = collectActionableIssues(prs, recentlyClosedPRs);
-    const briefSummary = formatBriefSummary(digest, actionableIssues.length);
-    const actionMenu = computeActionMenu(actionableIssues, capacity);
+    const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length);
+    const actionMenu = computeActionMenu(actionableIssues, capacity, issueResponses);
     // Group PRs by repo for safe parallel dispatch (#80)
     const repoGroups = groupPRsByRepo(prs);
-    outputJson<DailyOutput>({ digest, updates: [], capacity, summary, briefSummary, actionableIssues, actionMenu, repoGroups, failures });
+    outputJson<DailyOutput>({ digest, updates: [], capacity, summary, briefSummary, actionableIssues, actionMenu, commentedIssues, repoGroups, failures });
   } else {
     // Simple console output for non-JSON mode
-    printDigest(digest, capacity);
+    printDigest(digest, capacity, commentedIssues);
   }
 }
 
 /**
  * Format summary as markdown (used in JSON output for Claude to display verbatim)
  */
-function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): string {
+function formatSummary(digest: DailyDigest, capacity: CapacityAssessment, issueResponses: CommentedIssue[] = []): string {
   const lines: string[] = [];
 
   // Header
@@ -335,6 +351,19 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
     lines.push('');
   }
 
+  // Issue Replies
+  if (issueResponses.length > 0) {
+    lines.push('### 💬 Issue Replies');
+    for (const issue of issueResponses) {
+      lines.push(`- [${issue.repo}#${issue.number}](${issue.url}): ${issue.title}`);
+      if (issue.lastResponseAuthor && issue.lastResponseBody) {
+        const timeAgo = issue.lastResponseAt ? formatRelativeTime(issue.lastResponseAt) : '';
+        lines.push(`  └─ @${issue.lastResponseAuthor}: "${issue.lastResponseBody.slice(0, 80)}${issue.lastResponseBody.length > 80 ? '...' : ''}"${timeAgo ? ` (${timeAgo})` : ''}`);
+      }
+    }
+    lines.push('');
+  }
+
   // Capacity
   const capacityIcon = capacity.hasCapacity ? '✅' : '⚠️';
   const capacityLabel = capacity.hasCapacity ? 'Ready for new work' : 'Focus on existing PRs';
@@ -346,7 +375,7 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
 /**
  * Print digest to console (simple text output)
  */
-function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
+function printDigest(digest: DailyDigest, capacity: CapacityAssessment, commentedIssues: CommentedIssue[] = []): void {
   console.log('\n📊 OSS Daily Check\n');
   console.log(`Active PRs: ${digest.summary.totalActivePRs}`);
   console.log(`Needing Attention: ${digest.summary.totalNeedingAttention}`);
@@ -447,6 +476,18 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
     console.log('');
   }
 
+  const issueResponses = commentedIssues.filter(i => i.status === 'new_response');
+  if (issueResponses.length > 0) {
+    console.log('💬 Issue Replies:');
+    for (const issue of issueResponses) {
+      console.log(`  - ${issue.repo}#${issue.number}: ${issue.title}`);
+      if (issue.lastResponseAuthor) {
+        console.log(`    @${issue.lastResponseAuthor}: ${(issue.lastResponseBody || '').slice(0, 80)}${(issue.lastResponseBody || '').length > 80 ? '...' : ''}`);
+      }
+    }
+    console.log('');
+  }
+
   console.log('Run with --json for structured output');
   console.log('Run "dashboard --open" for browser view');
 }
@@ -493,11 +534,14 @@ function assessCapacity(prs: FetchedPR[], maxActivePRs: number): CapacityAssessm
 /**
  * Format a brief one-liner summary for the action-first flow
  */
-function formatBriefSummary(digest: DailyDigest, issueCount: number): string {
+function formatBriefSummary(digest: DailyDigest, issueCount: number, issueResponseCount: number = 0): string {
   const attentionText = issueCount > 0
     ? `${issueCount} need${issueCount === 1 ? 's' : ''} attention`
     : 'all healthy';
-  return `📊 ${digest.summary.totalActivePRs} Active PRs | ${attentionText} | Dashboard opened in browser`;
+  const issueReplyText = issueResponseCount > 0
+    ? ` | ${issueResponseCount} issue repl${issueResponseCount === 1 ? 'y' : 'ies'}`
+    : '';
+  return `📊 ${digest.summary.totalActivePRs} Active PRs | ${attentionText}${issueReplyText} | Dashboard opened in browser`;
 }
 
 /**
@@ -604,9 +648,11 @@ function formatActionHint(hint: MaintainerActionHint): string {
 export function computeActionMenu(
   actionableIssues: ActionableIssue[],
   capacity: CapacityAssessment,
+  issueResponses: CommentedIssue[] = [],
 ): ActionMenu {
   const items: ActionMenuItem[] = [];
   const hasActionableIssues = actionableIssues.length > 0;
+  const hasIssueResponses = issueResponses.length > 0;
 
   if (hasActionableIssues) {
     items.push({
@@ -616,8 +662,17 @@ export function computeActionMenu(
     });
   }
 
+  // Issue replies — positioned after address_all but before search
+  if (hasIssueResponses) {
+    items.push({
+      key: 'issue_replies',
+      label: `Review ${issueResponses.length} issue repl${issueResponses.length === 1 ? 'y' : 'ies'}`,
+      description: 'Maintainers responded to your comments on issues',
+    });
+  }
+
   // Slot for issue-list options — the orchestration layer may insert items here
-  // (index 1 when address_all is present, index 0 otherwise).
+  // (index after address_all/issue_replies when present, index 0 otherwise).
   // See commands/oss.md Step 3 for the insertion logic.
 
   if (capacity.hasCapacity) {
@@ -653,6 +708,8 @@ export function computeActionMenu(
       hasActionableIssues,
       actionableCount: actionableIssues.length,
       hasCapacity: capacity.hasCapacity,
+      hasIssueResponses,
+      issueResponseCount: issueResponses.length,
     },
   };
 }
@@ -668,26 +725,33 @@ const STALE_STATUSES: Set<FetchedPRStatus> = new Set([
 ]);
 
 /**
- * Group PRs by repository (#80).
- * Ensures one agent per repo during parallel dispatch, preventing branch checkout conflicts.
+ * Build a map grouping PRs by repository, skipping PRs with empty repo fields.
+ * Shared by groupPRsByRepo and computeRepoSignals.
  */
-export function groupPRsByRepo(prs: FetchedPR[]): RepoGroup[] {
+function buildRepoMap(prs: FetchedPR[], label: string): Map<string, FetchedPR[]> {
   const repoMap = new Map<string, FetchedPR[]>();
   for (const pr of prs) {
     if (!pr.repo) {
-      console.warn(`[GROUP_BY_REPO] Skipping PR #${pr.number} (${pr.url}) with empty repo field`);
+      console.warn(`[${label}] Skipping PR #${pr.number} (${pr.url}) with empty repo field`);
       continue;
     }
     const existing = repoMap.get(pr.repo) || [];
     existing.push(pr);
     repoMap.set(pr.repo, existing);
   }
+  return repoMap;
+}
 
+/**
+ * Group PRs by repository (#80).
+ * Ensures one agent per repo during parallel dispatch, preventing branch checkout conflicts.
+ */
+export function groupPRsByRepo(prs: FetchedPR[]): RepoGroup[] {
+  const repoMap = buildRepoMap(prs, 'GROUP_BY_REPO');
   const groups: RepoGroup[] = [];
   for (const [repo, repoPRs] of repoMap) {
     groups.push({ repo, prs: repoPRs });
   }
-
   return groups;
 }
 
@@ -698,17 +762,7 @@ export function groupPRsByRepo(prs: FetchedPR[]): RepoGroup[] {
  * - hasActiveMaintainers: true if any PR in the repo has a status in ACTIVE_MAINTAINER_STATUSES
  */
 export function computeRepoSignals(prs: FetchedPR[]): Map<string, ComputedRepoSignals> {
-  const repoMap = new Map<string, FetchedPR[]>();
-  for (const pr of prs) {
-    if (!pr.repo) {
-      console.warn(`[COMPUTE_SIGNALS] Skipping PR #${pr.number} (${pr.url}) with empty repo field`);
-      continue;
-    }
-    const existing = repoMap.get(pr.repo) || [];
-    existing.push(pr);
-    repoMap.set(pr.repo, existing);
-  }
-
+  const repoMap = buildRepoMap(prs, 'COMPUTE_SIGNALS');
   const result = new Map<string, ComputedRepoSignals>();
   for (const [repo, repoPRs] of repoMap) {
     const isResponsive = repoPRs.some(pr =>
@@ -719,6 +773,5 @@ export function computeRepoSignals(prs: FetchedPR[]): Map<string, ComputedRepoSi
     );
     result.set(repo, { isResponsive, hasActiveMaintainers });
   }
-
   return result;
 }

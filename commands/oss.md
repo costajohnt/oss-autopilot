@@ -121,7 +121,7 @@ The CLI returns structured data with new fields for the action-first flow:
         { "key": "search", "label": "Search for new issues", "description": "Look for new contribution opportunities" },
         { "key": "done", "label": "Done for now", "description": "End session with summary" }
       ],
-      "context": { "hasActionableIssues": true, "actionableCount": 3, "hasCapacity": true }
+      "context": { "hasActionableIssues": true, "actionableCount": 3, "hasCapacity": true, "hasIssueResponses": false, "issueResponseCount": 0 }
     },
     "capacity": { "hasCapacity": true, ... },
     "digest": { ... },
@@ -621,6 +621,31 @@ Use AskUserQuestion:
 
 When user selects specific PRs (e.g., "1 and 3"), dispatch only those agents in parallel.
 Still group by repo if selected PRs share a repository.
+
+### Handle "Review Issue Replies"
+
+When the user selects "Review issue replies", display each commented issue with a maintainer response from `data.commentedIssues` (filtered to `status === 'new_response'`):
+
+```
+## Issue Replies
+
+Maintainers responded to your comments on these issues:
+
+1. **owner/repo#123** — Issue title
+   └─ @maintainer: "Go for it! Feel free to submit a PR..."
+   └─ Your comment: 5 days ago
+
+2. **owner/repo#456** — Another issue title
+   └─ @maintainer: "Thanks for the interest. Here's what..."
+   └─ Your comment: 2 days ago
+```
+
+For each issue, use AskUserQuestion to offer actions:
+- "Claim this issue" — Run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" claim ISSUE_URL --json` to add it to the tracked pipeline, then proceed to work on it
+- "View full thread" — Display the issue URL for the user to open in browser
+- "Skip" — Move to the next issue
+
+After processing all issue replies (or user chooses to stop), return to Step 3 to present action choices again.
 
 ### Handle "View Healthy PRs"
 

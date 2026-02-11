@@ -9,6 +9,7 @@ import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween } from './utils.js';
 import { FetchedPR, FetchedPRStatus, CIStatus, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR, CIFailureCategory, ClassifiedCheck } from './types.js';
+import { isAcknowledgmentComment } from './issue-conversation.js';
 
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
@@ -328,7 +329,7 @@ export class PRMonitor {
     }
 
     // Filter out pure acknowledgment comments that don't require a response
-    if (lastMaintainerComment && this.isAcknowledgmentComment(lastMaintainerComment.body)) {
+    if (lastMaintainerComment && isAcknowledgmentComment(lastMaintainerComment.body)) {
       lastMaintainerComment = undefined;
     }
 
@@ -336,25 +337,6 @@ export class PRMonitor {
       hasUnrespondedComment: !!lastMaintainerComment,
       lastMaintainerComment,
     };
-  }
-
-  /**
-   * Detect acknowledgment comments that don't require a response.
-   * Returns true only when: no question mark, matches an acknowledgment keyword, and under 100 chars.
-   * Conservative — false negatives (flagging an acknowledgment) are safer than false positives.
-   */
-  private isAcknowledgmentComment(body: string): boolean {
-    if (!body || body.length > 100) return false;
-    if (body.includes('?')) return false;
-
-    const lower = body.toLowerCase();
-    const ackKeywords = [
-      'thanks', 'thank you', 'lgtm', 'looks good',
-      'will review', "we'll review", "we'll get to this",
-      'noted', 'got it', 'will look', 'will check',
-    ];
-
-    return ackKeywords.some(kw => lower.includes(kw));
   }
 
   /**
