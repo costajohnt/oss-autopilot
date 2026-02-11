@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-02-10
+
+### Added
+
+- **Minimum star threshold for Phase 2 search results** — General discovery (Phase 2) now filters out repos with fewer than `minStars` (default 50) GitHub stars. Phases 0 (merged-PR repos) and 1 (starred repos) are exempt since those repos have a known relationship. Repos where the health check failed are not penalized. Configurable via `setup --set minStars=100`. Closes #105.
+- **Per-repo result cap (max 2 issues per repo)** — After sorting, no more than 2 issues from any single repo appear in search results. Prevents a single active repo from dominating the candidate list. Applied after priority/recommendation/viability sorting to keep the best candidates. Closes #105.
+- **Documentation-only issue filter (opt-in)** — Issues where ALL labels are documentation-related (`documentation`, `docs`, `typo`, `spelling`) can be filtered out via `setup --set includeDocIssues=false`. Included by default since doc issues can have bounties. Issues with mixed labels (e.g., `good first issue` + `documentation`) always pass through. Closes #105.
+- `minStars` and `includeDocIssues` fields on `AgentConfig` with defaults (50 and true)
+- `isDocOnlyIssue()`, `applyPerRepoCap()`, and `DOC_ONLY_LABELS` exported from issue-discovery module
+- 19 new tests for doc-only detection, per-repo capping, and DOC_ONLY_LABELS constant (432 total)
+
 ## [0.20.0] - 2026-02-10
 
 ### Changed
@@ -451,6 +462,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.21.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.17.0...v0.18.0

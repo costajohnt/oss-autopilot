@@ -563,6 +563,12 @@ export interface AgentConfig {
 
   /** Directories to scan for local git clones (#84). Falls back to default paths if not set. */
   localRepoScanPaths?: string[];
+
+  /** Minimum GitHub star count for Phase 2 (general search) results. Default 50. Phases 0/1 are exempt. */
+  minStars?: number;
+
+  /** Whether to include documentation-only issues in search results. Default true. */
+  includeDocIssues?: boolean;
 }
 
 /** Default configuration applied to new state files. All fields can be overridden via `/setup-oss`. */
@@ -580,6 +586,8 @@ export const DEFAULT_CONFIG: AgentConfig = {
   minRepoScoreThreshold: 4,
   starredRepos: [],
   squashByDefault: true,
+  minStars: 50,
+  includeDocIssues: true,
 };
 
 /** Initial state written to `~/.oss-autopilot/state.json` on first run. Uses v2 architecture. */
