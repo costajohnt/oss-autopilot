@@ -37,6 +37,8 @@ const {
   BEGINNER_LABELS,
 } = await import('./issue-discovery.js');
 
+const { getStateManager } = await import('./state.js');
+
 describe('IssueDiscovery.calculateViabilityScore', () => {
   let discovery: InstanceType<typeof IssueDiscovery>;
 
@@ -923,6 +925,144 @@ describe('applyPerRepoCap (#105)', () => {
     expect(result.filter((c: any) => c.issue.repo === 'owner/repo-a')).toHaveLength(2);
     expect(result.filter((c: any) => c.issue.repo === 'owner/repo-b')).toHaveLength(2);
     expect(result.filter((c: any) => c.issue.repo === 'owner/repo-c')).toHaveLength(1);
+  });
+});
+
+describe('aiPolicyBlocklist filtering in searchIssues (#108)', () => {
+  let discovery: InstanceType<typeof IssueDiscovery>;
+
+  const makeSearchItem = (repo: string, num: number) => ({
+    html_url: `https://github.com/${repo}/issues/${num}`,
+    repository_url: `https://api.github.com/repos/${repo}`,
+    updated_at: new Date().toISOString(),
+    title: `Test issue ${num}`,
+    labels: [{ name: 'good first issue' }],
+    id: num,
+    comments: 0,
+    body: `1. Step one\n2. Step two\nThis should work correctly.\n${'x'.repeat(200)}`,
+    created_at: new Date().toISOString(),
+    number: num,
+  });
+
+  function mockStateWithBlocklist(aiPolicyBlocklist?: string[]): void {
+    const config: Record<string, unknown> = {
+      githubUsername: 'testuser',
+      trustedProjects: [],
+      starredRepos: [],
+      excludeRepos: [],
+      languages: ['typescript'],
+      labels: ['good first issue'],
+      maxIssueAgeDays: 90,
+      includeDocIssues: true,
+      minStars: 0,
+    };
+    if (aiPolicyBlocklist !== undefined) {
+      config.aiPolicyBlocklist = aiPolicyBlocklist;
+    }
+    (getStateManager as any).mockReturnValue({
+      getState: () => ({ config, repoScores: {}, activeIssues: [] }),
+      getStarredRepos: () => [],
+      isStarredReposStale: () => false,
+      getReposWithMergedPRs: () => [],
+      getReposWithOpenPRs: () => [],
+      getLowScoringRepos: () => [],
+      getRepoScore: () => undefined,
+    });
+  }
+
+  beforeEach(() => {
+    mockStateWithBlocklist(['blocked/repo']);
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            total_count: 2,
+            items: [
+              makeSearchItem('blocked/repo', 1),
+              makeSearchItem('allowed/repo', 2),
+            ],
+          },
+        }),
+      },
+      issues: {
+        get: vi.fn().mockImplementation(({ owner, repo, issue_number }: any) => Promise.resolve({
+          data: {
+            id: issue_number,
+            html_url: `https://github.com/${owner}/${repo}/issues/${issue_number}`,
+            title: `Test issue ${issue_number}`,
+            labels: [{ name: 'good first issue' }],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            comments: 0,
+            body: `1. Step one\n2. Step two\nThis should work correctly.\n${'x'.repeat(200)}`,
+          },
+        })),
+        listEventsForTimeline: vi.fn().mockResolvedValue({ data: [] }),
+      },
+      repos: {
+        get: vi.fn().mockResolvedValue({
+          data: { open_issues_count: 5, pushed_at: new Date().toISOString(), stargazers_count: 100, forks_count: 20 },
+        }),
+        listCommits: vi.fn().mockResolvedValue({
+          data: [{ commit: { author: { date: new Date().toISOString() } } }],
+        }),
+        getContent: vi.fn().mockRejectedValue(new Error('404 Not Found')),
+      },
+      actions: {
+        listRepoWorkflows: vi.fn().mockResolvedValue({ data: { total_count: 1 } }),
+      },
+    };
+
+    discovery = new IssueDiscovery('fake-token');
+  });
+
+  it('should filter out issues from blocklisted repos', async () => {
+    const candidates = await discovery.searchIssues({ maxResults: 10 });
+    const repos = candidates.map(c => c.issue.repo);
+    expect(repos).not.toContain('blocked/repo');
+    expect(repos).toContain('allowed/repo');
+  });
+
+  it('should pass through all issues when blocklist is empty', async () => {
+    mockStateWithBlocklist([]);
+    discovery = new IssueDiscovery('fake-token');
+
+    const candidates = await discovery.searchIssues({ maxResults: 10 });
+    const repos = candidates.map(c => c.issue.repo);
+    expect(repos).toContain('blocked/repo');
+    expect(repos).toContain('allowed/repo');
+  });
+
+  it('should handle undefined blocklist gracefully', async () => {
+    mockStateWithBlocklist(undefined);
+    discovery = new IssueDiscovery('fake-token');
+
+    const candidates = await discovery.searchIssues({ maxResults: 10 });
+    const repos = candidates.map(c => c.issue.repo);
+    // Neither test repo is in DEFAULT_CONFIG.aiPolicyBlocklist (['matplotlib/matplotlib']), so both pass through
+    expect(repos).toContain('blocked/repo');
+    expect(repos).toContain('allowed/repo');
+  });
+
+  it('should fall back to DEFAULT_CONFIG blocklist when config value is undefined', async () => {
+    mockStateWithBlocklist(undefined);
+    // Include matplotlib/matplotlib (which IS in DEFAULT_CONFIG.aiPolicyBlocklist) in search results
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: {
+        total_count: 2,
+        items: [
+          makeSearchItem('matplotlib/matplotlib', 1),
+          makeSearchItem('allowed/repo', 2),
+        ],
+      },
+    });
+    discovery = new IssueDiscovery('fake-token');
+
+    const candidates = await discovery.searchIssues({ maxResults: 10 });
+    const repos = candidates.map(c => c.issue.repo);
+    expect(repos).not.toContain('matplotlib/matplotlib');
+    expect(repos).toContain('allowed/repo');
   });
 });
 

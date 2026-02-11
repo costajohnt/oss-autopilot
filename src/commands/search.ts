@@ -3,7 +3,7 @@
  * Searches for new issues to work on
  */
 
-import { IssueDiscovery, getGitHubToken, getStateManager } from '../core/index.js';
+import { IssueDiscovery, getGitHubToken, getStateManager, DEFAULT_CONFIG } from '../core/index.js';
 import { outputJson, outputJsonError, type SearchOutput } from '../formatters/json.js';
 
 interface SearchOptions {
@@ -36,7 +36,9 @@ export async function runSearch(options: SearchOptions): Promise<void> {
 
   if (options.json) {
     const stateManager = getStateManager();
-    const excludedRepos = stateManager.getState().config.excludeRepos || [];
+    const { config } = stateManager.getState();
+    const excludedRepos = config.excludeRepos || [];
+    const aiPolicyBlocklist = config.aiPolicyBlocklist ?? DEFAULT_CONFIG.aiPolicyBlocklist ?? [];
     const searchOutput: SearchOutput = {
       candidates: candidates.map(c => {
         const repoScoreRecord = stateManager.getRepoScore(c.issue.repo);
@@ -63,6 +65,7 @@ export async function runSearch(options: SearchOptions): Promise<void> {
         };
       }),
       excludedRepos,
+      aiPolicyBlocklist,
     };
     if (discovery.rateLimitWarning) {
       searchOutput.rateLimitWarning = discovery.rateLimitWarning;

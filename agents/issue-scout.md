@@ -143,6 +143,23 @@ The CLI handles exclusions automatically when using the `search` command — thi
 
 ---
 
+**AI Policy Awareness (#108):**
+
+Some repositories have anti-AI contribution policies that reject or hide AI-assisted contributions. The CLI automatically filters repos listed in `aiPolicyBlocklist` during search.
+
+When **manually vetting** an issue (outside the CLI search), watch for these signals:
+- Comments hidden as spam (especially claim comments)
+- Policy PRs or issues filed against AI-assisted contributions
+- CONTRIBUTING.md language explicitly prohibiting AI tools
+- Maintainer comments about AI-generated code
+
+The `aiPolicyBlocklist` field is included in CLI search JSON output. If you discover a repo has an anti-AI policy during vetting:
+1. Warn the user immediately — do not proceed with claiming
+2. Recommend adding the repo to their blocklist: `setup --set aiPolicyBlocklist="matplotlib/matplotlib,new-owner/new-repo"` (this **replaces** the entire blocklist — include all existing entries)
+3. Note the discovery in the vetting summary under a "Policy Warning" section
+
+---
+
 **Search Process:**
 
 1. **Use CLI Search (Primary Method)**

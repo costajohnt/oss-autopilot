@@ -3,7 +3,7 @@
  * Interactive setup / configuration
  */
 
-import { getStateManager } from '../core/index.js';
+import { getStateManager, DEFAULT_CONFIG } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
 
 interface SetupOptions {
@@ -76,6 +76,35 @@ export async function runSetup(options: SetupOptions): Promise<void> {
           stateManager.updateConfig({ includeDocIssues: value === 'true' });
           results[key] = value === 'true' ? 'true' : 'false';
           break;
+        case 'aiPolicyBlocklist': {
+          const entries = value.split(',').map(r => r.trim()).filter(Boolean);
+          const valid: string[] = [];
+          const invalid: string[] = [];
+          for (const entry of entries) {
+            const normalized = entry.replace(/\s+/g, '');
+            if (/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(normalized)) {
+              valid.push(normalized);
+            } else {
+              invalid.push(entry);
+            }
+          }
+          if (invalid.length > 0) {
+            if (!options.json) {
+              console.warn(`Warning: Skipping invalid entries (expected "owner/repo" format): ${invalid.join(', ')}`);
+            }
+            results['aiPolicyBlocklist_invalidEntries'] = invalid.join(', ');
+          }
+          if (valid.length === 0 && entries.length > 0) {
+            if (!options.json) {
+              console.warn('Warning: All entries were invalid. Blocklist not updated.');
+            }
+            results[key] = '(all entries invalid)';
+            break;
+          }
+          stateManager.updateConfig({ aiPolicyBlocklist: valid });
+          results[key] = valid.length > 0 ? valid.join(', ') : '(empty)';
+          break;
+        }
         case 'complete':
           if (value === 'true') {
             stateManager.markSetupComplete();
@@ -177,6 +206,13 @@ export async function runSetup(options: SetupOptions): Promise<void> {
           default: ['good first issue', 'help wanted'],
           type: 'list',
         },
+        {
+          setting: 'aiPolicyBlocklist',
+          prompt: 'Repos with anti-AI contribution policies to block (owner/repo, comma-separated)?',
+          current: config.aiPolicyBlocklist ?? DEFAULT_CONFIG.aiPolicyBlocklist,
+          default: ['matplotlib/matplotlib'],
+          type: 'list',
+        },
       ],
     });
   } else {
@@ -223,6 +259,13 @@ export async function runSetup(options: SetupOptions): Promise<void> {
     console.log('PROMPT: What issue labels should we search for? (comma-separated)');
     console.log(`CURRENT: ${config.labels.join(', ')}`);
     console.log('DEFAULT: good first issue, help wanted');
+    console.log('TYPE: list');
+    console.log('');
+
+    console.log('SETTING: aiPolicyBlocklist');
+    console.log('PROMPT: Repos with anti-AI contribution policies to block? (owner/repo, comma-separated)');
+    console.log(`CURRENT: ${(config.aiPolicyBlocklist ?? DEFAULT_CONFIG.aiPolicyBlocklist ?? []).join(', ')}`);
+    console.log('DEFAULT: matplotlib/matplotlib');
     console.log('TYPE: list');
     console.log('');
 

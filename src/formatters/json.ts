@@ -112,6 +112,8 @@ export interface SearchOutput {
     };
   }>;
   excludedRepos: string[];
+  /** Repos with known anti-AI contribution policies, filtered from search results (#108). */
+  aiPolicyBlocklist: string[];
   /** Present when rate limits affected the search — either low pre-flight quota or mid-search rate limit hits (#100). */
   rateLimitWarning?: string;
 }

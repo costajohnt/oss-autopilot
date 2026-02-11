@@ -15,6 +15,7 @@ import {
   ContributionGuidelines,
   ProjectHealth,
   RepoScore,
+  DEFAULT_CONFIG,
 } from './types.js';
 
 // Concurrency limit for parallel API calls
@@ -373,11 +374,17 @@ export class IssueDiscovery {
 
     // Helper to filter issues
     const includeDocIssues = config.includeDocIssues ?? true;
+    const aiBlocklisted = new Set(config.aiPolicyBlocklist ?? DEFAULT_CONFIG.aiPolicyBlocklist ?? []);
+    if (aiBlocklisted.size > 0) {
+      console.log(`[AI_POLICY_FILTER] Filtering issues from ${aiBlocklisted.size} blocklisted repo(s): ${[...aiBlocklisted].join(', ')}`);
+    }
     const filterIssues = (items: GitHubSearchItem[]) => {
       return items.filter(item => {
         if (trackedUrls.has(item.html_url)) return false;
         const repoFullName = item.repository_url.split('/').slice(-2).join('/');
         if (excludedRepos.has(repoFullName)) return false;
+        // Filter repos with known anti-AI contribution policies (#108)
+        if (aiBlocklisted.has(repoFullName)) return false;
         // Filter OUT low-scoring repos
         if (lowScoringRepos.has(repoFullName)) return false;
         // Filter by issue age based on updated_at

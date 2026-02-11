@@ -569,6 +569,9 @@ export interface AgentConfig {
 
   /** Whether to include documentation-only issues in search results. Default true. */
   includeDocIssues?: boolean;
+
+  /** Repos known to have anti-AI contribution policies, in `"owner/repo"` format. Filtered from search results automatically. */
+  aiPolicyBlocklist?: string[];
 }
 
 /** Default configuration applied to new state files. All fields can be overridden via `/setup-oss`. */
@@ -588,6 +591,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
   squashByDefault: true,
   minStars: 50,
   includeDocIssues: true,
+  aiPolicyBlocklist: ['matplotlib/matplotlib'],
 };
 
 /** Initial state written to `~/.oss-autopilot/state.json` on first run. Uses v2 architecture. */
