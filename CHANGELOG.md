@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-02-10
+
+### Changed
+
+- **Size-based review agent scaling in Step 5.5** — Pre-commit code review now classifies changes as Small (< 50 lines, ≤ 2 files), Medium (50–200 lines or 3–5 files), or Large (> 200 lines or > 5 files) and dispatches agents accordingly. Small changes get 2 agents (code-reviewer + silent-failure-hunter), Medium adds code-simplifier, Large gets the full suite plus conditional agents. Reduces latency and token cost for typical review-response patches. Step 5.6 (Draft PR Review) always uses the Large tier for new contributions. Closes #90.
+
+### Added
+
+- **Post-response comment step (Standard Path sub-step 7)** — After committing and pushing changes to an existing PR in response to maintainer feedback, the workflow now explicitly drafts a response comment summarizing what was addressed, presents it for user approval, and posts it via `gh pr comment`. Skipped for maintenance-only actions or PRs without maintainer feedback context. Closes #91.
+
 ## [0.19.0] - 2026-02-10
 
 ### Changed
@@ -441,6 +451,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.20.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.16.0...v0.17.0
