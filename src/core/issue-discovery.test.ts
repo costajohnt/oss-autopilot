@@ -31,6 +31,9 @@ const {
   hasTemplatedTitle,
   detectLabelFarmingRepos,
   calculateRepoQualityBonus,
+  isDocOnlyIssue,
+  applyPerRepoCap,
+  DOC_ONLY_LABELS,
   BEGINNER_LABELS,
 } = await import('./issue-discovery.js');
 
@@ -764,5 +767,176 @@ describe('IssueDiscovery.isRateLimitError', () => {
   it('should return false for null/undefined', () => {
     expect(isRateLimitError(null)).toBe(false);
     expect(isRateLimitError(undefined)).toBe(false);
+  });
+});
+
+describe('isDocOnlyIssue (#105)', () => {
+  const makeItem = (labels: string[]) => ({
+    html_url: 'https://github.com/owner/repo/issues/1',
+    repository_url: 'https://api.github.com/repos/owner/repo',
+    updated_at: '2026-01-01T00:00:00Z',
+    labels: labels.map(name => ({ name })),
+  });
+
+  it('should return true when ALL labels are doc-related', () => {
+    expect(isDocOnlyIssue(makeItem(['documentation', 'typo']))).toBe(true);
+  });
+
+  it('should return true for single doc label', () => {
+    expect(isDocOnlyIssue(makeItem(['docs']))).toBe(true);
+  });
+
+  it('should return true for spelling label', () => {
+    expect(isDocOnlyIssue(makeItem(['spelling']))).toBe(true);
+  });
+
+  it('should return false when mixed labels (doc + non-doc)', () => {
+    expect(isDocOnlyIssue(makeItem(['documentation', 'good first issue']))).toBe(false);
+  });
+
+  it('should return false when no labels', () => {
+    expect(isDocOnlyIssue(makeItem([]))).toBe(false);
+  });
+
+  it('should return false for non-doc labels', () => {
+    expect(isDocOnlyIssue(makeItem(['bug', 'enhancement']))).toBe(false);
+  });
+
+  it('should be case-insensitive', () => {
+    expect(isDocOnlyIssue(makeItem(['Documentation', 'TYPO']))).toBe(true);
+  });
+
+  it('should return false when item has no labels property', () => {
+    const item = {
+      html_url: 'https://github.com/owner/repo/issues/1',
+      repository_url: 'https://api.github.com/repos/owner/repo',
+      updated_at: '2026-01-01T00:00:00Z',
+    };
+    expect(isDocOnlyIssue(item)).toBe(false);
+  });
+
+  it('should handle string labels', () => {
+    const item = {
+      html_url: 'https://github.com/owner/repo/issues/1',
+      repository_url: 'https://api.github.com/repos/owner/repo',
+      updated_at: '2026-01-01T00:00:00Z',
+      labels: ['documentation', 'docs'] as any,
+    };
+    expect(isDocOnlyIssue(item)).toBe(true);
+  });
+
+  it('should return false for mixed string labels', () => {
+    const item = {
+      html_url: 'https://github.com/owner/repo/issues/1',
+      repository_url: 'https://api.github.com/repos/owner/repo',
+      updated_at: '2026-01-01T00:00:00Z',
+      labels: ['documentation', 'bug'] as any,
+    };
+    expect(isDocOnlyIssue(item)).toBe(false);
+  });
+});
+
+describe('applyPerRepoCap (#105)', () => {
+  const makeCandidate = (repo: string, score: number): any => ({
+    issue: { repo, number: Math.random(), title: `Issue in ${repo}` },
+    viabilityScore: score,
+    searchPriority: 'normal',
+    recommendation: 'approve',
+  });
+
+  it('should keep at most 2 issues per repo', () => {
+    const candidates = [
+      makeCandidate('owner/repo-a', 90),
+      makeCandidate('owner/repo-a', 85),
+      makeCandidate('owner/repo-a', 80), // Should be dropped
+      makeCandidate('owner/repo-b', 75),
+    ];
+    const result = applyPerRepoCap(candidates, 2);
+    expect(result).toHaveLength(3);
+    expect(result.filter((c: any) => c.issue.repo === 'owner/repo-a')).toHaveLength(2);
+    expect(result.filter((c: any) => c.issue.repo === 'owner/repo-b')).toHaveLength(1);
+  });
+
+  it('should keep first N per repo based on input order (preserves sort)', () => {
+    const candidates = [
+      makeCandidate('owner/repo-a', 90),
+      makeCandidate('owner/repo-a', 85),
+      makeCandidate('owner/repo-a', 80),
+    ];
+    const result = applyPerRepoCap(candidates, 2);
+    expect(result).toHaveLength(2);
+    expect(result[0].viabilityScore).toBe(90);
+    expect(result[1].viabilityScore).toBe(85);
+  });
+
+  it('should return all candidates when no repo exceeds cap', () => {
+    const candidates = [
+      makeCandidate('owner/repo-a', 90),
+      makeCandidate('owner/repo-b', 85),
+      makeCandidate('owner/repo-c', 80),
+    ];
+    const result = applyPerRepoCap(candidates, 2);
+    expect(result).toHaveLength(3);
+  });
+
+  it('should handle empty input', () => {
+    expect(applyPerRepoCap([], 2)).toHaveLength(0);
+  });
+
+  it('should handle cap of 1', () => {
+    const candidates = [
+      makeCandidate('owner/repo-a', 90),
+      makeCandidate('owner/repo-a', 85),
+      makeCandidate('owner/repo-b', 80),
+      makeCandidate('owner/repo-b', 75),
+    ];
+    const result = applyPerRepoCap(candidates, 1);
+    expect(result).toHaveLength(2);
+    expect(result[0].issue.repo).toBe('owner/repo-a');
+    expect(result[1].issue.repo).toBe('owner/repo-b');
+  });
+
+  it('should handle multiple repos each at exactly the cap', () => {
+    const candidates = [
+      makeCandidate('owner/repo-a', 90),
+      makeCandidate('owner/repo-a', 85),
+      makeCandidate('owner/repo-b', 80),
+      makeCandidate('owner/repo-b', 75),
+      makeCandidate('owner/repo-c', 70),
+    ];
+    const result = applyPerRepoCap(candidates, 2);
+    expect(result).toHaveLength(5); // All kept
+  });
+
+  it('should cap multiple repos simultaneously', () => {
+    const candidates = [
+      makeCandidate('owner/repo-a', 90),
+      makeCandidate('owner/repo-a', 85),
+      makeCandidate('owner/repo-a', 80), // Dropped
+      makeCandidate('owner/repo-b', 75),
+      makeCandidate('owner/repo-b', 70),
+      makeCandidate('owner/repo-b', 65), // Dropped
+      makeCandidate('owner/repo-c', 60),
+    ];
+    const result = applyPerRepoCap(candidates, 2);
+    expect(result).toHaveLength(5);
+    expect(result.filter((c: any) => c.issue.repo === 'owner/repo-a')).toHaveLength(2);
+    expect(result.filter((c: any) => c.issue.repo === 'owner/repo-b')).toHaveLength(2);
+    expect(result.filter((c: any) => c.issue.repo === 'owner/repo-c')).toHaveLength(1);
+  });
+});
+
+describe('DOC_ONLY_LABELS', () => {
+  it('should contain the expected documentation labels', () => {
+    expect(DOC_ONLY_LABELS.has('documentation')).toBe(true);
+    expect(DOC_ONLY_LABELS.has('docs')).toBe(true);
+    expect(DOC_ONLY_LABELS.has('typo')).toBe(true);
+    expect(DOC_ONLY_LABELS.has('spelling')).toBe(true);
+  });
+
+  it('should not contain non-doc labels', () => {
+    expect(DOC_ONLY_LABELS.has('bug')).toBe(false);
+    expect(DOC_ONLY_LABELS.has('good first issue')).toBe(false);
+    expect(DOC_ONLY_LABELS.has('enhancement')).toBe(false);
   });
 });

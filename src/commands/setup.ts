@@ -66,6 +66,16 @@ export async function runSetup(options: SetupOptions): Promise<void> {
             results[key] = value !== 'false' ? 'true' : 'false';
           }
           break;
+        case 'minStars': {
+          const parsed = parseInt(value);
+          stateManager.updateConfig({ minStars: isNaN(parsed) ? 50 : parsed });
+          results[key] = value;
+          break;
+        }
+        case 'includeDocIssues':
+          stateManager.updateConfig({ includeDocIssues: value === 'true' });
+          results[key] = value === 'true' ? 'true' : 'false';
+          break;
         case 'complete':
           if (value === 'true') {
             stateManager.markSetupComplete();

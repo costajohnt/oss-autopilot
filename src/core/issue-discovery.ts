@@ -77,6 +77,51 @@ function pruneCache(): void {
   }
 }
 
+/** Labels that indicate documentation-only issues (#105). */
+export const DOC_ONLY_LABELS = new Set([
+  'documentation',
+  'docs',
+  'typo',
+  'spelling',
+]);
+
+/**
+ * Check if an issue's labels are ALL documentation-related (#105).
+ * Issues with mixed labels (e.g., "good first issue" + "documentation") pass through.
+ * Issues with no labels are not considered doc-only.
+ */
+export function isDocOnlyIssue(item: GitHubSearchItem): boolean {
+  if (!item.labels || !Array.isArray(item.labels) || item.labels.length === 0) return false;
+  const labelNames = item.labels.map(l =>
+    (typeof l === 'string' ? l : l.name || '').toLowerCase()
+  );
+  // Filter out empty label names before checking
+  const nonEmptyLabels = labelNames.filter(n => n.length > 0);
+  if (nonEmptyLabels.length === 0) return false;
+  return nonEmptyLabels.every(n => DOC_ONLY_LABELS.has(n));
+}
+
+/**
+ * Apply per-repo cap to candidates (#105).
+ * Keeps at most `maxPerRepo` issues from any single repo.
+ * Maintains the existing sort order — first N from each repo are kept,
+ * excess issues from over-represented repos are dropped.
+ */
+export function applyPerRepoCap(candidates: IssueCandidate[], maxPerRepo: number): IssueCandidate[] {
+  const repoCounts = new Map<string, number>();
+  const kept: IssueCandidate[] = [];
+
+  for (const c of candidates) {
+    const count = repoCounts.get(c.issue.repo) || 0;
+    if (count < maxPerRepo) {
+      kept.push(c);
+      repoCounts.set(c.issue.repo, count + 1);
+    }
+  }
+
+  return kept;
+}
+
 /** Known beginner-type label names used to detect label-farming repos (#97). */
 export const BEGINNER_LABELS = new Set([
   'good first issue',
@@ -327,6 +372,7 @@ export class IssueDiscovery {
     const baseQuery = `is:issue is:open ${labelQuery} ${langQuery} no:assignee`;
 
     // Helper to filter issues
+    const includeDocIssues = config.includeDocIssues ?? true;
     const filterIssues = (items: GitHubSearchItem[]) => {
       return items.filter(item => {
         if (trackedUrls.has(item.html_url)) return false;
@@ -338,6 +384,8 @@ export class IssueDiscovery {
         const updatedAt = new Date(item.updated_at);
         const ageDays = daysBetween(updatedAt, now);
         if (ageDays > maxAgeDays) return false;
+        // Filter out doc-only issues unless opted in (#105)
+        if (!includeDocIssues && isDocOnlyIssue(item)) return false;
         return true;
       });
     };
@@ -475,14 +523,28 @@ export class IssueDiscovery {
           remainingNeeded,
           'normal'
         );
-        allCandidates.push(...results);
+
+        // Apply minStars filter to Phase 2 results (#105)
+        // Phase 0/1 are exempt — if you've already contributed to or starred a repo, star count is irrelevant.
+        const minStars = config.minStars ?? 50;
+        const starFiltered = results.filter(c => {
+          if (c.projectHealth.checkFailed) return true; // Don't penalize repos we couldn't check
+          const stars = c.projectHealth.stargazersCount ?? 0;
+          return stars >= minStars;
+        });
+        const starFilteredCount = results.length - starFiltered.length;
+        if (starFilteredCount > 0) {
+          console.log(`[STAR_FILTER] Filtered ${starFilteredCount} candidates below ${minStars} stars`);
+        }
+
+        allCandidates.push(...starFiltered);
         if (allVetFailed) {
           phase2Error = (phase2Error ? phase2Error + '; ' : '') + 'all vetting failed';
         }
         if (vetRateLimitHit) {
           rateLimitHitDuringSearch = true;
         }
-        console.log(`Found ${results.length} candidates from general search`);
+        console.log(`Found ${starFiltered.length} candidates from general search`);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         phase2Error = errorMessage;
@@ -537,7 +599,10 @@ export class IssueDiscovery {
       return b.viabilityScore - a.viabilityScore;
     });
 
-    return allCandidates.slice(0, maxResults);
+    // Apply per-repo cap: max 2 issues from any single repo (#105)
+    const capped = applyPerRepoCap(allCandidates, 2);
+
+    return capped.slice(0, maxResults);
   }
 
   /** Check if an error is a GitHub rate limit error (429 or rate-limit 403). */
