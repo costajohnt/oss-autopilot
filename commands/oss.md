@@ -78,6 +78,7 @@ Store these for use in later steps:
 - `completedCount`: number — issues marked done
 - `issueListSource`: "configured" | "auto-detected" — how the list was found
 - `searchRoundScores`: number[] = [] — average vetting score per search round (appended in "Handle Find New Issues")
+- `searchedRepos`: string[] = [] — repos surfaced in previous search rounds, auto-excluded from subsequent rounds
 
 **Do NOT display anything yet** — this data is used in Step 3 to offer the right action choices.
 
@@ -646,30 +647,118 @@ Only available if `capacity.hasCapacity === true`.
 
 Use AskUserQuestion:
 - "Review from your curated list ({availableCount} available)" — "Pick from pre-vetted issues you've already researched"
-- "Search GitHub" — "Find new issues via CLI search"
+- "Search GitHub" — "Find new issues via parallel multi-strategy search"
 - "Both — list first, then search" — "Review your list, then search for more"
 - "Done for now"
 
 Route based on choice:
 - "Review from list" → go to **Handle "Pick Issue From List"** above
-- "Search GitHub" → continue with CLI search below
-- "Both" → show list first (Handle "Pick Issue From List"), then after that completes, continue with CLI search
+- "Search GitHub" → continue with **Parallel Multi-Strategy Search** below
+- "Both" → show list first (Handle "Pick Issue From List"), then after that completes, continue with **Parallel Multi-Strategy Search**
 
-Use the CLI:
-```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" search 10 --json
+#### Parallel Multi-Strategy Search
+
+**CRITICAL: Dispatch ALL 3 strategies in a SINGLE message for true parallelism.**
+
+**Strategy A — Established repos (merged-PR + open-PR repos):**
+```
+Task(issue-scout, "Find recently-opened issues (last 30 days) in repos where the user has merged or open PRs.
+  [If searchedRepos is non-empty, insert: "Exclude results from these repos (already searched in prior rounds): {searchedRepos as comma-separated list}."]
+  Get merged-PR repos: read ~/.oss-autopilot/state.json, extract repo names from repoScores entries where mergedPRCount > 0 (sorted by mergedPRCount descending).
+  Get open-PR repos: run `gh search prs --author @me --state open --json repository --jq '.[].repository.nameWithOwner' | sort -u`.
+  Combine both lists (merged-PR repos first), deduplicate.
+  For each repo: `gh search issues --repo OWNER/REPO --state open --sort created --limit 5`.
+  Exclude issues authored by the user (get username from `gh api user -q .login`).
+  Return at most 15 total results (prioritize repos with higher mergedPRCount).
+  For each: repo, number, title, URL, labels, source: 'established-repo', and brief assessment.")
 ```
 
-Or dispatch the `issue-scout` agent with language/label preferences.
+**Strategy B — Filtered CLI search (language + label + star filters):**
+```
+Task(general-purpose, "Run the CLI search command and return the raw JSON output verbatim:
+  ```bash
+  GITHUB_TOKEN=$(gh auth token) node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs\" search 10 --json
+  ```")
+```
+
+When Strategy B returns, check the JSON `success` field. If `success: false`, treat it as a failed strategy. If `success: true`, tag each candidate in `data.candidates` as source: `'cli-search'`.
+
+**Strategy C — Trending/popular repos in user's language preferences:**
+```
+Task(issue-scout, "Search for good-first-issue candidates in trending/popular repos the user has NOT contributed to.
+  [If searchedRepos is non-empty, insert: "Exclude results from these repos (already searched in prior rounds): {searchedRepos as comma-separated list}."]
+  Exclude issues authored by the user (get username from `gh api user -q .login`).
+  Read the user's language preferences from .claude/oss-autopilot/config.md.
+  Then: gh search issues --label 'good first issue' --language {lang} --state open --sort reactions-+1 --limit 10
+  Focus on repos with high star counts and recent activity.
+  For each: repo, number, title, URL, labels, star count, source: 'trending-repo', and brief assessment.")
+```
+
+#### Combine, Filter, and Deduplicate
+
+After all 3 strategies return:
+
+1. **Normalize** all results to a common shape: `{ repo, number, title, url, labels, source, metadata }`. For Strategy B, flatten `candidate.issue.{repo, number, title, url, labels}` to the top level and place `candidate.{recommendation, viabilityScore, repoScore, reasonsToApprove, reasonsToSkip}` into `metadata`. Strategies A/C return structured text from issue-scout — extract the same fields from their output.
+2. **Filter Strategy B** against `searchedRepos` — remove any candidates whose repo appears in `searchedRepos` (the CLI does not receive session-level exclusions, so this must be done post-hoc)
+3. **Deduplicate** by issue URL — if the same issue appears in multiple strategies, keep the entry with the richest metadata but assign the **highest-priority source tag** (Established repo > CLI search > Trending repo)
+4. **Sort** by source priority: Established repo first, then CLI search, then Trending repo (preserve original ordering within each group)
+5. **Update `searchedRepos`** — append all repos from the deduplicated results (dedup against existing entries). This must happen before presenting the batch vet options.
+
+**If ALL strategies failed** (all 3 returned errors, not just empty results), do NOT proceed to batch vet:
+> "All 3 search strategies failed. Check: `gh auth status`, CLI build exists, network connectivity."
+> Show each strategy's specific error.
+
+Use AskUserQuestion:
+- "Retry search" — "Re-dispatch all 3 strategies"
+- "Done for now"
+
+Route based on choice:
+- "Retry search" → go back to **Parallel Multi-Strategy Search** above (same parameters)
+- "Done for now" → return to Step 3
+
+**Stop — do not fall through to the presentation step below.**
+
+**If some strategies failed**, note it and continue with available results:
+> "Strategy {name} failed: {error}. Showing results from {N} successful strategies."
+> Omit strategies that returned zero results without comment.
+
+**If the total candidate count is zero** (whether some strategies failed or all succeeded but returned empty), do NOT proceed to batch vet:
+> "No matching issues found from the successful strategies. This typically means your exclusion list has grown large or filters are too narrow."
+
+Use AskUserQuestion:
+- "Retry with broader criteria" — "Re-dispatch with expanded label filters"
+- "Done for now"
+
+Route based on choice:
+- "Retry with broader criteria" → go back to **Parallel Multi-Strategy Search** above, but broaden Strategy C to search for `'help wanted'` label in addition to `'good first issue'`
+- "Done for now" → return to Step 3
+
+**Stop — do not fall through to the presentation step below.**
+
+Present combined results grouped by source (omit empty groups):
+```
+## Search Results ({totalCount} candidates from {successCount} strategies)
+
+### From Established Repos ({count})
+{results with source: 'established-repo'}
+
+### From CLI Search ({count})
+{results with source: 'cli-search'}
+
+### From Trending Repos ({count})
+{results with source: 'trending-repo'}
+```
+
+Proceed to the batch vet flow with the deduplicated results.
 
 #### After Search Results: Batch Vet Flow
 
-When search results come back (from CLI or issue-scout), present the candidates and offer a batch workflow. Set `currentRound = searchRoundScores.length + 1`.
+When search results come back (from the Parallel Multi-Strategy Search), present the combined, deduplicated candidates and offer a batch workflow. Set `currentRound = searchRoundScores.length + 1`.
 
 Use AskUserQuestion:
 - "Add all to list and vet in parallel (Recommended)" — "Add candidates to your issue list as 'Pending vet', then dispatch parallel vet agents"
 - "Pick one to vet now" — "Select a single candidate to investigate immediately"
-- "Search again with different criteria" — "Re-run the CLI search with adjusted language, labels, or other parameters"
+- "Search again with different criteria" — "Run another parallel search round with adjusted parameters (prior repos auto-excluded)"
 - "Done for now"
 
 **"Add all to list and vet in parallel":**
@@ -723,7 +812,7 @@ Use AskUserQuestion:
 - Record the single score: `searchRoundScores.push(score)` — then proceed to **Diminishing Returns Check**
 
 **"Search again with different criteria":**
-- Route back to the CLI search command above (`search 10 --json`). The user can adjust preferences before re-running.
+- Route back to **Parallel Multi-Strategy Search** (exclusions carry forward automatically).
 
 #### Diminishing Returns Check
 
@@ -744,7 +833,7 @@ After displaying the round summary (and advisory if applicable), present the nex
 
 Use AskUserQuestion (if `availableCount >= 5` and an advisory was shown, place the list option first with "(Recommended)"):
 - "Pick from your issue list ({availableCount} ready)" (if `hasIssueList && availableCount > 0`) — "Start working on a vetted issue"
-- "Search for new issues" — "Run another search round"
+- "Search for new issues" — "Run another parallel search round"
 - "Done for now"
 
 **When the user claims any issue found through search and starts implementing**, set:
