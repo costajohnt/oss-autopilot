@@ -1240,8 +1240,9 @@ Options:
 - Continue until user is satisfied or selects a different option
 
 **"Show full diff" / "Show full diff first":**
-- Display the full `git diff` output
-- Then ask:
+- Run `git diff` and **output the full diff as a markdown code block in your text response** so the user can read it
+- **If `git diff` fails**, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly (the user has explicitly chosen to proceed without reviewing the raw diff).
+- **After** the diff is visible in your response (or user chose to continue without), use AskUserQuestion:
   ```
   Question: "Diff reviewed. Ready to proceed?"
   Header: "Diff"
@@ -1275,7 +1276,9 @@ Options:
    - Mention any points that were intentionally NOT changed, with a brief explanation why
    - Keep the tone professional and grateful (see `oss-contribution` skill for guidelines)
 
-2. Present the draft to the user:
+2. **Output the drafted comment as a blockquote in your text response** so the user can read it.
+
+3. **After** the draft is visible in your response, use AskUserQuestion:
    ```
    Question: "Post this response to the maintainer?"
    Header: "PR Comment"
@@ -1286,12 +1289,12 @@ Options:
    3. "Skip — don't post a comment" — "Push is enough, no comment needed"
    ```
 
-3. Handle choice:
+4. Handle choice:
    - **"Post this response":** Write comment to `/tmp/pr-comment-{pr_number}.md` and post via `gh pr comment {pr_number} --repo {upstream_repo} --body-file /tmp/pr-comment-{pr_number}.md` (avoids shell escaping issues with inline `--body`). Verify exit code 0, then delete the temp file.
    - **"Edit before posting":** Let the user modify the draft, re-present for approval, then post using the same method.
    - **"Skip":** No comment posted.
 
-4. **If `gh pr comment` fails (for either "Post" or "Edit" path):** Report the error, display the drafted comment so the user can copy it, and offer: "Retry" / "Copy and post manually" / "Skip". Do NOT silently proceed without the comment.
+5. **If `gh pr comment` fails (for either "Post" or "Edit" path):** Report the error, display the drafted comment so the user can copy it, and offer: "Retry" / "Copy and post manually" / "Skip". Do NOT silently proceed without the comment.
 
 **After this sub-step completes (or is skipped):** If currently in Phase C's sequential loop, return to Phase C to process the next item. Otherwise, proceed to Step 6.
 
@@ -1447,8 +1450,9 @@ Options:
 ```
 
 **"Show full diff" / "Show full diff first":**
-- Display the full `git diff origin/$baseBranch..HEAD` output
-- Then ask:
+- Run `git diff origin/$baseBranch..HEAD` and **output the full diff as a markdown code block in your text response** so the user can read it
+- **If `git diff` fails** (e.g., remote ref not found), try `git fetch origin $baseBranch` and retry. If still failing, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly.
+- **After** the diff is visible in your response (or user chose to continue without), use AskUserQuestion:
   ```
   Question: "Diff reviewed. Ready to proceed?"
   Header: "Diff"
