@@ -22,33 +22,32 @@ Checking your PRs across GitHub...
 
 That's it. One line. No narration, no "Let me...", no step-by-step commentary. Just the loading message, then proceed to run commands.
 
-### 2. Run ALL Setup + Daily in a Single Bash Call
+### 2. Run EVERYTHING in a Single Bash Call
 
-After the loading message, execute Steps 0.5 through 1 in **one combined bash command** (below). Do NOT run them as separate tool calls — that creates visual noise in the UI.
+After the loading message, execute the **one combined bash command** below. This single call handles build, auth, setup check, daily fetch, dashboard, version, and issue list detection. Do NOT run ANY other tool calls (no Read, no additional Bash) between the loading message and displaying results.
 
 ### 3. Only Show Results
 
-After the bash call completes, jump straight to displaying the brief summary (Step 2) and action menu (Step 3). Do NOT echo the raw JSON. Do NOT narrate what happened during setup.
+After the bash call completes, jump straight to displaying the brief summary and action menu. Do NOT echo the raw JSON. Do NOT narrate what happened. No "Now let me...", no "Let me check...", no intermediate commentary.
 
 **If something fails**, then and only then explain the error.
 
-## Steps 0.5–1: Build, Setup Check, Daily Check, and Dashboard (Combined)
+## Combined Bash Script
 
-Run everything in a single bash call to minimize UI noise:
+Run **everything** in a single bash call. This covers build, auth, setup, daily fetch, dashboard, version, and issue list detection. The output uses `---SECTION---` delimiters so Claude can parse each part.
 
 ```bash
-# Step 0.5: Rebuild CLI if needed
+# Rebuild CLI if needed
 if [ ! -f "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ] || [ "${CLAUDE_PLUGIN_ROOT}/package.json" -nt "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ]; then
   BUILD_LOG=$(cd "${CLAUDE_PLUGIN_ROOT}" && npm install --silent 2>&1 && npm run bundle --silent 2>&1)
-  BUILD_EXIT=$?
-  if [ $BUILD_EXIT -ne 0 ]; then
+  if [ $? -ne 0 ]; then
     echo "BUILD_FAILED"
     echo "$BUILD_LOG" | tail -5
     exit 1
   fi
 fi
 
-# Step 0.6: Check GitHub token
+# Check GitHub token
 GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN")
 export GITHUB_TOKEN
 if [ -z "$GITHUB_TOKEN" ]; then
@@ -62,11 +61,8 @@ SETUP_COMPLETE=$(echo "$SETUP_JSON" | node -e "
   try {
     const d = JSON.parse(require('fs').readFileSync(0, 'utf8'));
     console.log(d.data?.setupComplete === true ? 'true' : 'false');
-  } catch(e) {
-    console.log('ERROR');
-  }
+  } catch(e) { console.log('ERROR'); }
 ")
-
 if [ "$SETUP_COMPLETE" = "ERROR" ]; then
   echo "SETUP_CHECK_FAILED"
   exit 1
@@ -75,7 +71,7 @@ elif [ "$SETUP_COMPLETE" = "false" ]; then
   exit 0
 fi
 
-# Step 1: Run daily check + dashboard
+# Run daily check (the main slow part - GitHub API calls)
 DAILY_JSON=$(node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-daily-stderr.log)
 DAILY_EXIT=$?
 if [ $DAILY_EXIT -ne 0 ] && [ -z "$DAILY_JSON" ]; then
@@ -86,67 +82,92 @@ if [ $DAILY_EXIT -ne 0 ] && [ -z "$DAILY_JSON" ]; then
 fi
 rm -f /tmp/oss-daily-stderr.log
 
-# Generate and open dashboard (non-critical — don't fail if this errors)
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" dashboard 2>/dev/null
+# Generate and open dashboard (suppress all output)
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" dashboard >/dev/null 2>&1
 if command -v open >/dev/null 2>&1; then
   open ~/.oss-autopilot/dashboard.html 2>/dev/null
 elif command -v xdg-open >/dev/null 2>&1; then
   xdg-open ~/.oss-autopilot/dashboard.html 2>/dev/null &
 fi
 
-# Output only the daily JSON (the only thing Claude needs to parse)
+# Get version
+VERSION=$(node -e "console.log(require('${CLAUDE_PLUGIN_ROOT}/package.json').version)" 2>/dev/null)
+
+# Detect issue list
+ISSUE_LIST_PATH=""
+ISSUE_LIST_SOURCE=""
+CONFIG_FILE=".claude/oss-autopilot/config.md"
+if [ -f "$CONFIG_FILE" ]; then
+  # Extract issueListPath from YAML frontmatter
+  CONFIGURED_PATH=$(sed -n '/^---$/,/^---$/p' "$CONFIG_FILE" | grep 'issueListPath:' | sed 's/issueListPath:[[:space:]]*//' | tr -d '"' | tr -d "'")
+  if [ -n "$CONFIGURED_PATH" ] && [ -f "$CONFIGURED_PATH" ]; then
+    ISSUE_LIST_PATH="$CONFIGURED_PATH"
+    ISSUE_LIST_SOURCE="configured"
+  fi
+fi
+if [ -z "$ISSUE_LIST_PATH" ]; then
+  for PROBE in "open-source/potential-issue-list.md" "oss/issue-list.md" "issues.md"; do
+    if [ -f "$PROBE" ]; then
+      ISSUE_LIST_PATH="$PROBE"
+      ISSUE_LIST_SOURCE="auto-detected"
+      break
+    fi
+  done
+fi
+
+# Count available/completed issues if list exists
+AVAILABLE_COUNT=0
+COMPLETED_COUNT=0
+if [ -n "$ISSUE_LIST_PATH" ]; then
+  AVAILABLE_COUNT=$(grep -cE '^\s*- \[' "$ISSUE_LIST_PATH" 2>/dev/null | head -1)
+  COMPLETED_COUNT=$(grep -cE '(~~.*~~|\*\*Done\*\*)' "$ISSUE_LIST_PATH" 2>/dev/null | head -1)
+  # Subtract completed from total to get available
+  AVAILABLE_COUNT=$((AVAILABLE_COUNT - COMPLETED_COUNT))
+  if [ "$AVAILABLE_COUNT" -lt 0 ]; then AVAILABLE_COUNT=0; fi
+fi
+
+# Output everything with section delimiters
+echo "---DAILY_JSON---"
 echo "$DAILY_JSON"
+echo "---VERSION---"
+echo "$VERSION"
+echo "---ISSUE_LIST---"
+echo "path=$ISSUE_LIST_PATH"
+echo "source=$ISSUE_LIST_SOURCE"
+echo "available=$AVAILABLE_COUNT"
+echo "completed=$COMPLETED_COUNT"
 ```
 
 **Parse the output:**
 
+The output uses `---SECTION---` delimiters. Split on these to extract each part.
+
+**Error sentinel check** (before delimiters appear):
 - If output starts with `BUILD_FAILED`: Tell the user the CLI build failed and show the error lines. Suggest running `cd ${CLAUDE_PLUGIN_ROOT} && npm install && npm run bundle`. Then fall back to the gh CLI workflow (Step 1b).
 - If output is `NO_GITHUB_TOKEN`: Tell the user: "GitHub authentication is required. Install [GitHub CLI](https://cli.github.com/) and run `gh auth login`, or set the `GITHUB_TOKEN` environment variable."
 - If output is `SETUP_CHECK_FAILED`: Tell the user: "Something went wrong checking your setup. Try running `/setup-oss` to reconfigure."
 - If output is `SETUP_NEEDED`: Tell the user: "It looks like setup isn't complete yet." Use AskUserQuestion to let them choose "Run setup first (Recommended)" (launch `/setup-oss`) or "Continue with defaults" (re-run the daily check portion only).
 - If output starts with `DAILY_FAILED`: Tell the user the daily check failed, show the error lines from the output, and fall back to the gh CLI workflow (Step 1b).
-- If output contains valid JSON with `"success": true`: Parse it and proceed to Step 0.7 (issue list detection) then Step 2 (display results).
-- If output contains JSON with `"success": false`: Show the error from `data.error`.
-- **Otherwise** (empty output, partial JSON, or unrecognizable text): Tell the user "Something went wrong running the daily check." Show the first few lines of output if any. Suggest running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json` to see the full error. Then fall back to the gh CLI workflow (Step 1b).
 
-## Step 0.7: Detect Curated Issue List
+**Successful output parsing:**
+1. **`---DAILY_JSON---`**: Extract the JSON between this and the next delimiter. Parse it. If `"success": true`, continue. If `"success": false`, show `data.error`.
+2. **`---VERSION---`**: Extract the version string (e.g., "0.25.0").
+3. **`---ISSUE_LIST---`**: Extract key=value pairs:
+   - `path` - file path (empty if no list found)
+   - `source` - "configured" or "auto-detected" (empty if no list)
+   - `available` - count of available issues
+   - `completed` - count of completed issues
 
-Before displaying results, silently determine if the user has a curated issue list. Do NOT display anything during this step.
+**Set session context variables** from the parsed output:
+- `hasIssueList`: true if `path` is non-empty
+- `issueListPath`: the path value
+- `availableCount`: the available count
+- `completedCount`: the completed count
+- `issueListSource`: the source value
+- `searchRoundScores`: number[] = [] (appended in "Handle Find New Issues")
+- `searchedRepos`: string[] = [] (auto-excluded from subsequent search rounds)
 
-### 1. Check config for `issueListPath`
-
-Read `.claude/oss-autopilot/config.md` and look for the `issueListPath` field in YAML frontmatter.
-
-### 2. If `issueListPath` is set, read and parse the file
-
-Use the Read tool to load the file at the configured path. Parse the markdown to identify:
-- **Available issues**: Lines with `- [#NUMBER](URL)` that are NOT wrapped in `~~strikethrough~~` and do NOT contain "**Done**"
-- **Completed issues**: Lines wrapped in `~~strikethrough~~` or containing "**Done**"
-- **Priority tiers**: Section headings (e.g., `## Pursue — Ready to Contribute`, `## Maybe — Viable with Caveats`)
-
-Count available and completed issues.
-
-### 3. If `issueListPath` is NOT set, probe common locations
-
-Check these paths in order (using Read tool, accept first that exists):
-- `open-source/potential-issue-list.md`
-- `oss/issue-list.md`
-- `issues.md`
-
-If found, treat as an auto-detected list. Note the path for later.
-
-### 4. Set session context variables
-
-Store these for use in later steps:
-- `hasIssueList`: boolean — whether a list was found
-- `issueListPath`: string — path to the list file
-- `availableCount`: number — issues not marked done
-- `completedCount`: number — issues marked done
-- `issueListSource`: "configured" | "auto-detected" — how the list was found
-- `searchRoundScores`: number[] = [] — average vetting score per search round (appended in "Handle Find New Issues")
-- `searchedRepos`: string[] = [] — repos surfaced in previous search rounds, auto-excluded from subsequent rounds
-
-**Do NOT display anything yet** — this data is used in Step 3 to offer the right action choices.
+**If output doesn't match any pattern** (empty, partial, or unrecognizable): Tell the user "Something went wrong running the daily check." Show the first few lines if any. Suggest running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json`. Then fall back to Step 1b.
 
 ## Step 2: Display Brief Summary
 
@@ -179,20 +200,14 @@ The CLI returns structured data with new fields for the action-first flow:
 }
 ```
 
-**Display the `briefSummary` field with the plugin version appended:**
+**Display the `briefSummary` field with the version from `---VERSION---`:**
 
-Get the current version:
-```bash
-node -e "console.log(require('${CLAUDE_PLUGIN_ROOT}/package.json').version)" 2>/dev/null
-```
-
-Then display:
 ```
 data.briefSummary + " | v{version}"
 ```
 
 Example output:
-> 16 Active PRs | 3 need attention | Dashboard opened in browser | v0.6.1
+> 📊 16 Active PRs | 3 need attention | Dashboard opened in browser | v0.25.0
 
 Then proceed to Step 2.5 (check for first-run) or Step 3 (Present Action Choices).
 
@@ -287,7 +302,7 @@ Use `issue.pr.daysSinceActivity` from the CLI output (already computed).
 
 Use `data.actionMenu.items` directly as AskUserQuestion options. Each item has `key`, `label`, and `description` fields ready for display.
 
-**Issue list integration:** If the user has a curated issue list (detected in Step 0.7), insert an issue-list option **after `address_all`** (index 1) or **at the start** (index 0) when no actionable issues exist — i.e., always before the `search`/`view_details`/`view_healthy` item:
+**Issue list integration:** If the user has a curated issue list (detected from `---ISSUE_LIST---` in the combined bash output), insert an issue-list option **after `address_all`** (index 1) or **at the start** (index 0) when no actionable issues exist — i.e., always before the `search`/`view_details`/`view_healthy` item:
 
 | Condition | Insert Item |
 |-----------|-------------|
@@ -927,7 +942,7 @@ Only available when `hasIssueList` is true and `availableCount > 0`.
 
 #### 1. Read and parse the list file
 
-Re-read the file at `issueListPath` (it may have been updated since Step 0.7). Parse available issues — those NOT struck through and NOT marked "**Done**".
+Re-read the file at `issueListPath` (it may have been updated since initial detection). Parse available issues — those NOT struck through and NOT marked "**Done**".
 
 #### 2. Display available issues grouped by priority tier
 

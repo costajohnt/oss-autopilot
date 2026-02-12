@@ -120,10 +120,12 @@ GITHUB_TOKEN=$(gh auth token) node dist/cli.bundle.cjs daily --json
 
 ## Git Workflow
 
-**Before starting any task that involves writing code**, always:
+**Before starting any task that involves writing code**, ALWAYS:
 ```bash
 git checkout main && git pull && git checkout -b <branch-name>
 ```
+This is mandatory. Never skip this step. Never start work on a stale branch or directly on main.
+
 Branch naming: `feature/description`, `fix/description`, `chore/description`.
 
 Then:
