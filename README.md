@@ -4,7 +4,7 @@ You have 12 open PRs across GitHub. A maintainer asked a question 5 days ago. Tw
 
 **Sound familiar?**
 
-OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you when something needs attention, and helps you respond to maintainer feedback — so your contributions actually get merged.
+OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you when something needs attention, and helps you respond to maintainer feedback so your contributions actually get merged.
 
 ![Version](https://img.shields.io/badge/version-0.25.0-blue)
 ![CI](https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg)
@@ -36,13 +36,13 @@ Claude checks every open PR you have across all of GitHub and tells you what nee
 
 2 PRs Need Attention (in priority order):
 
-1. [Needs Response] vadimdemedes/ink#855 — Add kitty keyboard support (3d)
+1. [Needs Response] vadimdemedes/ink#855 - Add kitty keyboard support (3d)
    └─ @sindresorhus: tests requested
-   └─ Effort: Medium — respond + add tests
+   └─ Effort: Medium - respond + add tests
 
-2. [CI Failing] rubyforgood/human-essentials#5492 — Add item filter (1d)
+2. [CI Failing] rubyforgood/human-essentials#5492 - Add item filter (1d)
    └─ Failing: rspec, lint
-   └─ Effort: Medium — investigate CI logs
+   └─ Effort: Medium - investigate CI logs
 
 What would you like to do?
   > Work through all 2 issues (Recommended)
@@ -50,7 +50,7 @@ What would you like to do?
   > Done for now
 ```
 
-Then Claude walks you through each issue — drafting responses, diagnosing CI failures, resolving conflicts — until everything is handled.
+Then Claude walks you through each issue: drafting responses, diagnosing CI failures, resolving conflicts, until everything is handled.
 
 An HTML dashboard also opens in your browser with charts showing your contribution timeline, merge rate, and PR health at a glance.
 
@@ -58,10 +58,10 @@ An HTML dashboard also opens in your browser with charts showing your contributi
 
 Contributing to open source is rewarding but hard to sustain:
 
-- **PRs go stale** — You forget to check on submissions from weeks ago
-- **Comments get missed** — Maintainer feedback sits unanswered, PRs rot
-- **No good starting point** — You want to contribute but don't know where
-- **Tracking is tedious** — Multiple contributions across repos, each with different status
+- **PRs go stale** - You forget to check on submissions from weeks ago
+- **Comments get missed** - Maintainer feedback sits unanswered, PRs rot
+- **No good starting point** - You want to contribute but don't know where
+- **Tracking is tedious** - Multiple contributions across repos, each with different status
 
 ## How OSS Autopilot Helps
 
@@ -80,16 +80,16 @@ Existing tools cover pieces of the workflow. None handle the full contribution l
 
 | Capability | OSS Autopilot | Issue Finders | PR Dashboards | AI Agents |
 |---|:---:|:---:|:---:|:---:|
-| Find matching issues | Yes | Yes | — | Some |
-| Monitor PR health across repos | Yes | — | Yes | — |
-| Diagnose CI failures | Yes | — | — | Some |
-| Draft responses to maintainers | Yes | — | — | Yes |
-| Learn from your merge history | Yes | — | — | — |
-| Repository health scoring | Yes | — | — | — |
+| Find matching issues | Yes | Yes | No | Some |
+| Monitor PR health across repos | Yes | No | Yes | No |
+| Diagnose CI failures | Yes | No | No | Some |
+| Draft responses to maintainers | Yes | No | No | Yes |
+| Learn from your merge history | Yes | No | No | No |
+| Repository health scoring | Yes | No | No | No |
 | Human-in-the-loop | Yes | n/a | n/a | Rarely |
-| Free & local | Yes | Some | — | — |
+| Free & local | Yes | Some | No | No |
 
-**Issue finders** help you discover projects but abandon you after. **PR dashboards** (Graphite, $24/mo) are built for teams, not individual contributors. **AI agents** can write code but don't manage the social side of OSS. OSS Autopilot covers discovery → monitoring → diagnosis → response in one workflow.
+**Issue finders** help you discover projects but abandon you after. **PR dashboards** (Graphite, $24/mo) are built for teams, not individual contributors. **AI agents** can write code but don't manage the social side of OSS. OSS Autopilot covers discovery, monitoring, diagnosis, and response in one workflow.
 
 ---
 
@@ -97,20 +97,20 @@ Existing tools cover pieces of the workflow. None handle the full contribution l
 
 ### Daily Workflow (5 min)
 
-1. Run `/oss` — see what needs attention
+1. Run `/oss` to see what needs attention
 2. Work through critical issues (CI failures, maintainer comments, conflicts)
 3. Done for now
 
 ### Finding Contributions (15 min)
 
-1. Run `/oss` — confirm you have capacity
+1. Run `/oss` to confirm you have capacity
 2. Search for issues matching your skills
 3. Vet a promising repo with the repo-evaluator
 4. Claim it and start working
 
 ### Responding to Feedback (10 min)
 
-1. Run `/oss` — identifies PRs with new comments
+1. Run `/oss` to see PRs with new comments
 2. Select a PR that needs a response
 3. Claude reads the feedback and drafts a response for your review
 4. Post it after reviewing
@@ -119,9 +119,9 @@ Existing tools cover pieces of the workflow. None handle the full contribution l
 
 The dashboard (`~/.oss-autopilot/dashboard.html`) auto-opens each time you run `/oss`. It includes:
 
-- **Status Overview** — Doughnut chart of PR states (active, merged, closed, dormant)
-- **Repository Breakdown** — Top 10 repos by total PRs with stacked bars
-- **Contribution Timeline** — Monthly view of PRs opened, merged, and closed
+- **Status Overview** - Doughnut chart of PR states (active, merged, closed, dormant)
+- **Repository Breakdown** - Top 10 repos by total PRs with stacked bars
+- **Contribution Timeline** - Monthly view of PRs opened, merged, and closed
 
 ### Curated Issue Lists
 
@@ -192,7 +192,7 @@ Your configuration is preserved. The CLI bundle auto-rebuilds after upgrades. Se
 
 ## How It Works
 
-OSS Autopilot uses a hybrid architecture — deterministic TypeScript for speed and reliability, Claude for judgment and communication:
+OSS Autopilot uses a hybrid architecture: deterministic TypeScript for speed and reliability, Claude for judgment and communication.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -227,7 +227,7 @@ node dist/cli.bundle.cjs status --json
 node dist/cli.bundle.cjs dashboard
 ```
 
-All commands return `{ success, data, error, timestamp }` — useful for building your own tooling on top.
+All commands return `{ success, data, error, timestamp }`, useful for building your own tooling on top.
 
 ---
 
@@ -322,7 +322,7 @@ Yes, as long as your GitHub CLI (`gh`) has access.
 The CLI can run standalone (`node dist/cli.bundle.cjs daily --json`), but it's designed for the Claude Code plugin experience.
 
 **GitLab / Gitea / Bitbucket support?**
-Not yet — GitHub only. Contributions welcome.
+Not yet, GitHub only. Contributions welcome.
 
 ---
 
