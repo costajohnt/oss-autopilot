@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] - 2026-02-11
+
+### Added
+
+- **`startup` CLI command** — New command that combines auth check, setup check, daily fetch, dashboard generation, version detection, and issue list detection into a single CLI invocation. The `/oss` command's bash script shrinks from ~100 lines to ~8 lines, eliminating the multi-section delimiter parsing and reducing UI noise in Claude Code.
+- **`executeDailyCheck()` export** — Extracted the core daily check logic from `runDaily` into a reusable exported function that returns `DailyOutput` without outputting. Used by the new `startup` command.
+- **`writeDashboardFromState()` export** — Lightweight dashboard generation that reads from state (no GitHub re-fetch). Generates HTML and writes to `~/.oss-autopilot/dashboard.html`.
+- **`IssueListInfo` and `StartupOutput` types** — New type definitions for the startup command's structured output.
+
+### Changed
+
+- **Simplified `/oss` bash script** — Replaced ~100-line inline script with an ~8-line version that calls `startup --json`. Delimiter-based parsing (`---DAILY_JSON---`, `---VERSION---`, `---ISSUE_LIST---`) replaced with single JSON envelope parsing.
+
 ## [0.25.1] - 2026-02-11
 
 ### Changed
@@ -523,6 +536,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.26.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.25.1...v0.26.0
 [0.25.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.24.1...v0.25.0
 [0.24.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.24.0...v0.24.1

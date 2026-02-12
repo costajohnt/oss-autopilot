@@ -45,7 +45,11 @@ export async function runDaily(options: DailyOptions): Promise<void> {
   }
 }
 
-async function runDailyInner(token: string, options: DailyOptions): Promise<void> {
+/**
+ * Core daily check logic, extracted for reuse by the startup command.
+ * Fetches all open PRs, updates state, and returns structured output.
+ */
+export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   const stateManager = getStateManager();
   const prMonitor = new PRMonitor(token);
 
@@ -193,19 +197,23 @@ async function runDailyInner(token: string, options: DailyOptions): Promise<void
   // Assess capacity for new work
   const capacity = assessCapacity(prs, stateManager.getState().config.maxActivePRs);
 
+  // Build output fields
+  const summary = formatSummary(digest, capacity);
+  const actionableIssues = collectActionableIssues(prs, recentlyClosedPRs);
+  const briefSummary = formatBriefSummary(digest, actionableIssues.length);
+  const actionMenu = computeActionMenu(actionableIssues, capacity);
+  const repoGroups = groupPRsByRepo(prs);
+
+  return { digest, updates: [], capacity, summary, briefSummary, actionableIssues, actionMenu, repoGroups, failures };
+}
+
+async function runDailyInner(token: string, options: DailyOptions): Promise<void> {
+  const result = await executeDailyCheck(token);
+
   if (options.json) {
-    // Include pre-formatted summary for Claude to display verbatim
-    const summary = formatSummary(digest, capacity);
-    // New action-first flow fields
-    const actionableIssues = collectActionableIssues(prs, recentlyClosedPRs);
-    const briefSummary = formatBriefSummary(digest, actionableIssues.length);
-    const actionMenu = computeActionMenu(actionableIssues, capacity);
-    // Group PRs by repo for safe parallel dispatch (#80)
-    const repoGroups = groupPRsByRepo(prs);
-    outputJson<DailyOutput>({ digest, updates: [], capacity, summary, briefSummary, actionableIssues, actionMenu, repoGroups, failures });
+    outputJson<DailyOutput>(result);
   } else {
-    // Simple console output for non-JSON mode
-    printDigest(digest, capacity);
+    printDigest(result.digest, result.capacity);
   }
 }
 

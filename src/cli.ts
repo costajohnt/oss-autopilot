@@ -22,6 +22,7 @@ import { runDashboard } from './commands/dashboard.js';
 import { runParseList } from './commands/parse-list.js';
 import { runCheckIntegration } from './commands/check-integration.js';
 import { runLocalRepos } from './commands/local-repos.js';
+import { runStartup } from './commands/startup.js';
 
 const VERSION = (() => {
   try {
@@ -34,8 +35,9 @@ const VERSION = (() => {
   }
 })();
 
-// Commands that don't require GitHub API access
-const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard', 'parse-issue-list', 'check-integration', 'local-repos'];
+// Commands that skip the preAction GitHub token check.
+// startup handles auth internally (returns authError in JSON instead of process.exit).
+const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard', 'parse-issue-list', 'check-integration', 'local-repos', 'startup'];
 
 const program = new Command();
 
@@ -215,6 +217,15 @@ program
   .option('--json', 'Output as JSON')
   .action(async (options) => {
     await runLocalRepos({ scan: options.scan, paths: options.paths, json: options.json });
+  });
+
+// Startup command (combines auth, setup, daily, dashboard, issue list)
+program
+  .command('startup')
+  .description('Run all pre-flight checks and daily fetch in one call')
+  .option('--json', 'Output as JSON')
+  .action(async (options) => {
+    await runStartup({ json: options.json });
   });
 
 // Validate GitHub token before running commands that need it
