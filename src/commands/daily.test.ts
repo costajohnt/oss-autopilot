@@ -80,27 +80,12 @@ describe('computeActionMenu', () => {
     expect(menu.context.actionableCount).toBe(0);
   });
 
-  it('should include search when user has capacity', () => {
-    const menu = computeActionMenu([], makeCapacity({ hasCapacity: true }));
+  it('should always include search regardless of capacity', () => {
+    const withCapacity = computeActionMenu([], makeCapacity({ hasCapacity: true }));
+    const withoutCapacity = computeActionMenu([], makeCapacity({ hasCapacity: false }));
 
-    expect(menu.items.find(i => i.key === 'search')).toBeDefined();
-    expect(menu.items.find(i => i.key === 'view_healthy')).toBeUndefined();
-  });
-
-  it('should include view_healthy (not search) when no capacity and has actionable issues', () => {
-    const issues = [makeActionableIssue()];
-    const menu = computeActionMenu(issues, makeCapacity({ hasCapacity: false }));
-
-    expect(menu.items.find(i => i.key === 'view_healthy')).toBeDefined();
-    expect(menu.items.find(i => i.key === 'search')).toBeUndefined();
-  });
-
-  it('should include view_details when no capacity and no actionable issues', () => {
-    const menu = computeActionMenu([], makeCapacity({ hasCapacity: false }));
-
-    expect(menu.items.find(i => i.key === 'view_details')).toBeDefined();
-    expect(menu.items.find(i => i.key === 'search')).toBeUndefined();
-    expect(menu.items.find(i => i.key === 'view_healthy')).toBeUndefined();
+    expect(withCapacity.items.find(i => i.key === 'search')).toBeDefined();
+    expect(withoutCapacity.items.find(i => i.key === 'search')).toBeDefined();
   });
 
   it('should always include done as the last item', () => {
@@ -124,33 +109,21 @@ describe('computeActionMenu', () => {
     });
   });
 
-  it('should produce 3 items when actionable issues exist and has capacity', () => {
-    const menu = computeActionMenu([makeActionableIssue()], makeCapacity());
-
-    expect(menu.items).toHaveLength(3);
-    expect(menu.items.map(i => i.key)).toEqual(['address_all', 'search', 'done']);
-  });
-
-  it('should produce 2 items when no actionable issues and has capacity', () => {
-    const menu = computeActionMenu([], makeCapacity());
-
-    expect(menu.items).toHaveLength(2);
-    expect(menu.items.map(i => i.key)).toEqual(['search', 'done']);
-  });
-
-  it('should produce 2 items when no actionable issues and no capacity', () => {
-    const menu = computeActionMenu([], makeCapacity({ hasCapacity: false }));
-
-    expect(menu.items).toHaveLength(2);
-    expect(menu.items.map(i => i.key)).toEqual(['view_details', 'done']);
-  });
-
-  it('should produce 3 items when actionable issues exist and no capacity', () => {
+  it('should produce [address_all, search, done] when actionable issues exist', () => {
     const issues = [makeActionableIssue(), makeActionableIssue('needs_response')];
-    const menu = computeActionMenu(issues, makeCapacity({ hasCapacity: false }));
+    const withCapacity = computeActionMenu(issues, makeCapacity({ hasCapacity: true }));
+    const withoutCapacity = computeActionMenu(issues, makeCapacity({ hasCapacity: false }));
 
-    expect(menu.items).toHaveLength(3);
-    expect(menu.items.map(i => i.key)).toEqual(['address_all', 'view_healthy', 'done']);
+    expect(withCapacity.items.map(i => i.key)).toEqual(['address_all', 'search', 'done']);
+    expect(withoutCapacity.items.map(i => i.key)).toEqual(['address_all', 'search', 'done']);
+  });
+
+  it('should produce [search, done] when no actionable issues exist', () => {
+    const withCapacity = computeActionMenu([], makeCapacity({ hasCapacity: true }));
+    const withoutCapacity = computeActionMenu([], makeCapacity({ hasCapacity: false }));
+
+    expect(withCapacity.items.map(i => i.key)).toEqual(['search', 'done']);
+    expect(withoutCapacity.items.map(i => i.key)).toEqual(['search', 'done']);
   });
 });
 

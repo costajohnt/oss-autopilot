@@ -624,30 +624,14 @@ export function computeActionMenu(
     });
   }
 
-  // Slot for issue-list options — the orchestration layer may insert items here
-  // (index 1 when address_all is present, index 0 otherwise).
-  // See commands/oss.md Step 3 for the insertion logic.
+  // The orchestration layer (commands/oss.md Step 3) may insert issue-list
+  // options before this item when a curated list is available.
 
-  if (capacity.hasCapacity) {
-    items.push({
-      key: 'search',
-      label: 'Search for new issues',
-      description: 'Look for new contribution opportunities',
-    });
-  } else if (!hasActionableIssues) {
-    // When no actionable issues and no capacity, offer status details
-    items.push({
-      key: 'view_details',
-      label: 'View PR status details',
-      description: 'See full status of all tracked PRs',
-    });
-  } else {
-    items.push({
-      key: 'view_healthy',
-      label: 'View healthy PRs',
-      description: 'See status of PRs not needing attention',
-    });
-  }
+  items.push({
+    key: 'search',
+    label: 'Search for new issues',
+    description: 'Look for new contribution opportunities',
+  });
 
   items.push({
     key: 'done',
