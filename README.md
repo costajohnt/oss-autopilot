@@ -6,7 +6,7 @@ You have 12 open PRs across GitHub. A maintainer asked a question 5 days ago. Tw
 
 OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you when something needs attention, and helps you respond to maintainer feedback so your contributions actually get merged.
 
-![Version](https://img.shields.io/badge/version-0.26.2-blue)
+![Version](https://img.shields.io/badge/version-0.26.3-blue)
 ![CI](https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg)
 ![Tests](https://img.shields.io/badge/tests-447_passing-success)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -52,6 +52,41 @@ Then Claude walks you through each issue: drafting responses, diagnosing CI fail
 
 An HTML dashboard also opens in your browser with charts showing your contribution timeline, merge rate, and PR health at a glance.
 
+### When You Search for Issues
+
+Select "Search for new issues" and the issue scout finds opportunities matched to your history — not just random "good first issue" results:
+
+```
+🔍 Found 8 candidates across 6 repos
+
+From repos where you've merged PRs ⭐
+─────────────────────────────────────
+1. ✅ expressjs/express#6012 — Add timeout option to res.download()
+   Labels: feature, good first issue
+   Score: 92/100 — You merged 2 PRs here, clear requirements, active repo
+   ✓ unclaimed · ✓ no linked PRs · ✓ last commit 2 days ago
+
+2. ✅ chalk/chalk#642 — Support NO_COLOR in browser builds
+   Labels: enhancement
+   Score: 85/100 — You merged 1 PR here, repo has 7-day merge time
+   ✓ unclaimed · ✓ no linked PRs · ✓ CONTRIBUTING.md found
+
+From your starred repos
+─────────────────────────────────────
+3. ✅ sindresorhus/execa#831 — Add encoding option to execaNode
+   Labels: good first issue, help wanted
+   Score: 78/100 — High-quality repo, clear requirements, recent activity
+   ✓ unclaimed · ✓ no linked PRs · ✓ last commit 5 days ago
+
+Skipped (not worth your time)
+─────────────────────────────────────
+⚠ fake-oss/calculator — Label farming detected (6 beginner labels)
+⚠ inactive/legacy-app — No commits in 90+ days
+⚠ contested/router#44 — Already claimed by @other-dev 2 days ago
+```
+
+Each issue gets a **viability score (0-100)** based on your relationship with the repo, issue clarity, project health, and whether someone else has already claimed it. Repos where your PRs got merged are prioritized first — that's where you have the highest chance of getting another PR accepted.
+
 ## The Problem
 
 Contributing to open source is rewarding but hard to sustain:
@@ -67,8 +102,8 @@ Contributing to open source is rewarding but hard to sustain:
 |---|---|
 | **Monitors all your PRs** | Checks for new comments, CI failures, merge conflicts, incomplete checklists, and maintainer requests |
 | **Drafts responses** | Claude reads maintainer feedback and writes a response for your review |
-| **Finds issues worth working on** | Searches GitHub using your language preferences, learns from your contribution history, filters spam repos |
-| **Scores repositories** | Tracks responsiveness, merge rates, and maintainer activity before you invest time |
+| **Finds issues matched to you** | 3-phase priority search: repos where you've merged PRs first, then starred repos, then general discovery. Scores every issue 0-100 on viability. Filters spam repos, claimed issues, and inactive projects |
+| **Scores repositories** | Evaluates merge rate, PR review speed, maintainer responsiveness, and community health. Caches scores and tracks your relationship with each repo |
 | **Keeps you honest** | Flags approaching-dormant PRs and capacity limits so nothing slips |
 | **Never acts without you** | Human-in-the-loop: nothing is posted to GitHub without your explicit approval |
 
@@ -78,7 +113,8 @@ Existing tools cover pieces of the workflow. None handle the full contribution l
 
 | Capability | OSS Autopilot | Issue Finders | PR Dashboards | AI Agents |
 |---|:---:|:---:|:---:|:---:|
-| Find matching issues | Yes | Yes | No | Some |
+| Find issues matched to your history | Yes | No | No | No |
+| Find issues by label/language | Yes | Yes | No | Some |
 | Monitor PR health across repos | Yes | No | Yes | No |
 | Diagnose CI failures | Yes | No | No | Some |
 | Draft responses to maintainers | Yes | No | No | Yes |
@@ -87,7 +123,7 @@ Existing tools cover pieces of the workflow. None handle the full contribution l
 | Human-in-the-loop | Yes | n/a | n/a | Rarely |
 | Free & local | Yes | Some | No | No |
 
-**Issue finders** help you discover projects but abandon you after. **PR dashboards** (Graphite, $24/mo) are built for teams, not individual contributors. **AI agents** can write code but don't manage the social side of OSS. OSS Autopilot covers discovery, monitoring, diagnosis, and response in one workflow.
+**Issue finders** help you discover projects but show the same results to everyone. They don't know your merge history, can't filter spam repos, and abandon you after the search. **PR dashboards** (Graphite, $24/mo) are built for teams, not individual contributors. **AI agents** can write code but don't manage the social side of OSS. OSS Autopilot covers discovery, monitoring, diagnosis, and response in one workflow — and learns from your history to get better over time.
 
 ---
 
@@ -101,10 +137,15 @@ Existing tools cover pieces of the workflow. None handle the full contribution l
 
 ### Finding Contributions (15 min)
 
-1. Run `/oss` to confirm you have capacity
-2. Search for issues matching your skills
-3. Vet a promising repo with the repo-evaluator
-4. Claim it and start working
+1. Run `/oss` and select "Search for new issues"
+2. The issue scout searches in priority order:
+   - **Repos where you've merged PRs** (highest success rate — no "good first issue" filter needed)
+   - **Your starred repos** (you already expressed interest)
+   - **General GitHub discovery** (language + label filters, minimum star count)
+3. Each issue is vetted automatically — existing PRs, claim comments, project activity, contribution guidelines
+4. Pick a high-scoring issue, and Claude drafts a professional claim message for your review
+
+Issues from spam repos (label farming, templated mass issues) and inactive projects are filtered before you ever see them.
 
 ### Responding to Feedback (10 min)
 

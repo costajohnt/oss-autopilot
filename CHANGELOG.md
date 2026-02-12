@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.3] - 2026-02-11
+
+### Changed
+
+- **README: expanded issue discovery coverage** — Added a "When You Search for Issues" showcase section with example output showing the 3-phase priority search, viability scoring, and spam filtering. Expanded the "Finding Contributions" usage section, enriched the feature table and comparison table, and strengthened the competitive positioning around relationship-aware search.
+
 ## [0.26.2] - 2026-02-11
 
 ### Changed
@@ -548,6 +554,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.26.3]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.2...v0.26.3
 [0.26.2]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.1...v0.26.2
 [0.26.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.0...v0.26.1
 [0.26.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.25.1...v0.26.0
