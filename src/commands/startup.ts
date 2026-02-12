@@ -188,6 +188,9 @@ export async function runStartup(options: StartupOptions): Promise<void> {
       outputJsonError(`Daily check failed: ${msg}`);
     } else {
       console.error(`[FATAL] Daily check failed: ${msg}`);
+      if (error instanceof Error && error.stack) {
+        console.error(error.stack);
+      }
     }
     process.exit(1);
   }
