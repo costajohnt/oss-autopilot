@@ -6,15 +6,13 @@ You have 12 open PRs across GitHub. A maintainer asked a question 5 days ago. Tw
 
 OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you when something needs attention, and helps you respond to maintainer feedback so your contributions actually get merged.
 
-![Version](https://img.shields.io/badge/version-0.26.1-blue)
+![Version](https://img.shields.io/badge/version-0.26.2-blue)
 ![CI](https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg)
 ![Tests](https://img.shields.io/badge/tests-447_passing-success)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 
-![OSS Autopilot Dashboard](docs/images/dashboard.png)
-
-<!-- TODO: Replace dashboard screenshot with a demo GIF showing the full /oss workflow -->
+![OSS Autopilot Demo](docs/images/demo.gif)
 
 ## Install in 60 Seconds
 
@@ -118,6 +116,8 @@ Existing tools cover pieces of the workflow. None handle the full contribution l
 ### Dashboard
 
 The dashboard (`~/.oss-autopilot/dashboard.html`) auto-opens each time you run `/oss`. It includes:
+
+![OSS Autopilot Dashboard](docs/images/dashboard.png)
 
 - **Status Overview** - Doughnut chart of PR states (active, merged, closed, dormant)
 - **Repository Breakdown** - Top 10 repos by total PRs with stacked bars
