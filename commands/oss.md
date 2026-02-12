@@ -69,18 +69,24 @@ if [ "$SETUP_COMPLETE" = "ERROR" ]; then
 elif [ "$SETUP_COMPLETE" = "false" ]; then
   echo "SETUP_NEEDED"
   exit 0
+elif [ "$SETUP_COMPLETE" != "true" ]; then
+  echo "SETUP_CHECK_FAILED"
+  exit 1
 fi
 
 # Run daily check (the main slow part - GitHub API calls)
 DAILY_JSON=$(node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-daily-stderr.log)
 DAILY_EXIT=$?
-if [ $DAILY_EXIT -ne 0 ] && [ -z "$DAILY_JSON" ]; then
-  echo "DAILY_FAILED"
-  cat /tmp/oss-daily-stderr.log 2>/dev/null | tail -10
-  rm -f /tmp/oss-daily-stderr.log
-  exit 1
-fi
 rm -f /tmp/oss-daily-stderr.log
+if [ $DAILY_EXIT -ne 0 ]; then
+  # Check if we got valid JSON despite non-zero exit (CLI returns non-zero with success:false)
+  if echo "$DAILY_JSON" | node -e "try{JSON.parse(require('fs').readFileSync(0,'utf8'));process.exit(0)}catch{process.exit(1)}" 2>/dev/null; then
+    : # Valid JSON, continue to parse below
+  else
+    echo "DAILY_FAILED"
+    exit 1
+  fi
+fi
 
 # Generate and open dashboard (suppress all output)
 node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" dashboard >/dev/null 2>&1
@@ -90,7 +96,7 @@ elif command -v xdg-open >/dev/null 2>&1; then
   xdg-open ~/.oss-autopilot/dashboard.html 2>/dev/null &
 fi
 
-# Get version (fallback to "unknown" if package.json can't be read)
+# Get version
 VERSION=$(node -e "console.log(require('${CLAUDE_PLUGIN_ROOT}/package.json').version)" 2>/dev/null)
 VERSION=${VERSION:-"unknown"}
 
@@ -100,7 +106,7 @@ ISSUE_LIST_SOURCE=""
 CONFIG_FILE=".claude/oss-autopilot/config.md"
 if [ -f "$CONFIG_FILE" ]; then
   # Extract issueListPath from YAML frontmatter
-  CONFIGURED_PATH=$(sed -n '/^---$/,/^---$/p' "$CONFIG_FILE" | grep 'issueListPath:' | sed 's/issueListPath:[[:space:]]*//' | tr -d '"' | tr -d "'")
+  CONFIGURED_PATH=$(awk '/^---$/{n++; next} n==1{print}' "$CONFIG_FILE" | grep 'issueListPath:' | sed 's/issueListPath:[[:space:]]*//' | tr -d '"' | tr -d "'")
   if [ -n "$CONFIGURED_PATH" ] && [ -f "$CONFIGURED_PATH" ]; then
     ISSUE_LIST_PATH="$CONFIGURED_PATH"
     ISSUE_LIST_SOURCE="configured"
@@ -121,8 +127,8 @@ AVAILABLE_COUNT=0
 COMPLETED_COUNT=0
 if [ -n "$ISSUE_LIST_PATH" ]; then
   # Count available: list items that are NOT strikethrough/done
-  AVAILABLE_COUNT=$(grep -E '^\s*- \[' "$ISSUE_LIST_PATH" 2>/dev/null | grep -vcE '(~~|\*\*Done\*\*)' || echo 0)
-  COMPLETED_COUNT=$(grep -E '^\s*- \[' "$ISSUE_LIST_PATH" 2>/dev/null | grep -cE '(~~|\*\*Done\*\*)' || echo 0)
+  AVAILABLE_COUNT=$(grep -E '^\s*- \[' "$ISSUE_LIST_PATH" 2>/dev/null | grep -vcE '(~~|\*\*Done\*\*)' || true)
+  COMPLETED_COUNT=$(grep -E '^\s*- \[' "$ISSUE_LIST_PATH" 2>/dev/null | grep -cE '(~~|\*\*Done\*\*)' || true)
 fi
 
 # Output everything with section delimiters
@@ -148,23 +154,16 @@ The output uses three named delimiters: `---DAILY_JSON---`, `---VERSION---`, and
 - If output is `SETUP_NEEDED`: Tell the user: "It looks like setup isn't complete yet." Use AskUserQuestion to let them choose "Run setup first (Recommended)" (launch `/setup-oss`) or "Continue with defaults" (re-run the daily check portion only).
 - If output starts with `DAILY_FAILED`: Tell the user the daily check failed, show the error lines from the output, and fall back to the gh CLI workflow (Step 1b).
 
-**Successful output parsing:**
-1. **`---DAILY_JSON---`**: Extract the JSON between this and the next delimiter. Parse it. If `"success": true`, continue. If `"success": false`, show `data.error`.
-2. **`---VERSION---`**: Extract the version string (e.g., "0.25.0").
-3. **`---ISSUE_LIST---`**: Extract key=value pairs:
-   - `path` - file path (empty if no list found)
-   - `source` - "configured" or "auto-detected" (empty if no list)
-   - `available` - count of available issues
-   - `completed` - count of completed issues
+**Successful output parsing** - extract sections and set session variables:
 
-**Set session context variables** from the parsed output:
-- `hasIssueList`: true if `path` is non-empty
-- `issueListPath`: the path value
-- `availableCount`: the available count
-- `completedCount`: the completed count
-- `issueListSource`: the source value
-- `searchRoundScores`: number[] = [] (appended in "Handle Find New Issues")
-- `searchedRepos`: string[] = [] (auto-excluded from subsequent search rounds)
+| Delimiter | Extract | Session Variable |
+|-----------|---------|-----------------|
+| `---DAILY_JSON---` | JSON blob between this and next delimiter | Parse; if `"success": false`, show `data.error` |
+| `---VERSION---` | Version string (e.g., "0.25.1") | `version` |
+| `---ISSUE_LIST---` path= | File path | `issueListPath`; `hasIssueList` = non-empty |
+| `---ISSUE_LIST---` source= | "configured" or "auto-detected" | `issueListSource` |
+| `---ISSUE_LIST---` available= | Integer | `availableCount` |
+| `---ISSUE_LIST---` completed= | Integer | `completedCount` |
 
 **If output doesn't match any pattern** (empty, partial, or unrecognizable): Tell the user "Something went wrong running the daily check." Show the first few lines if any. Suggest running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json`. Then fall back to Step 1b.
 
@@ -732,6 +731,10 @@ Then return to Step 3 to present action choices again.
 ### Handle "Find New Issues"
 
 Only available if `capacity.hasCapacity === true`.
+
+**Initialize search session state** (reset each time this handler is entered):
+- `searchRoundScores`: number[] = [] (average vetting score per search round, for diminishing returns check)
+- `searchedRepos`: string[] = [] (repos surfaced in previous rounds, auto-excluded from subsequent rounds)
 
 **If `hasIssueList` is true and `availableCount > 0`**, present a preamble before searching:
 

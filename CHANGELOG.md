@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Consolidated `/oss` loading into a single tool call** - Version detection and issue list probing now run inside the same combined bash script as the daily check. Eliminates 3-4 extra tool calls (Read config, Read issue list files, Bash for version) that were visible in the UI between the loading message and results. Users now see only "Checking your PRs across GitHub..." then the summary.
 - **Suppressed dashboard generation stdout** - Dashboard command output no longer leaks into the UI.
 - **Strengthened git workflow rules in CLAUDE.md** - Emphasized mandatory checkout-main-pull-branch step.
+- **Added Code Review section to CLAUDE.md** - Standard review workflow using pr-review-toolkit agents (code-reviewer, silent-failure-hunter, code-simplifier) before pushing.
 
 ## [0.25.0] - 2026-02-11
 
