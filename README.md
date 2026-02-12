@@ -32,7 +32,7 @@ Restart Claude Code, then run `/setup-oss`. Done.
 Claude checks every open PR you have across all of GitHub and tells you what needs your attention:
 
 ```
-15 Active PRs | 2 need attention | Dashboard opened in browser | v0.25.0
+📊 15 Active PRs | 2 need attention | Dashboard opened in browser | v0.25.0
 
 2 PRs Need Attention (in priority order):
 
@@ -159,9 +159,9 @@ Settings live in `.claude/oss-autopilot/config.md` (YAML frontmatter). Run `/set
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `githubUsername` | (detected) | Your GitHub username |
-| `maxActivePRs` | 20 | Capacity limit before suggesting focus |
+| `maxActivePRs` | 10 | Capacity limit before suggesting focus |
 | `dormantDays` | 30 | Days until PR marked dormant |
-| `approachingDormantDays` | 7 | Days until dormancy warning |
+| `approachingDormantDays` | 25 | Days until dormancy warning |
 | `languages` | (chosen at setup) | Languages to filter issue search |
 | `labels` | (chosen at setup) | Issue labels to search for |
 | `showHealthCheck` | `true` | Show PR health notification on session start |

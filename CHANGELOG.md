@@ -514,6 +514,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.25.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.24.1...v0.25.0
 [0.24.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.23.2...v0.24.0
 [0.23.2]: https://github.com/costajohnt/oss-autopilot/compare/v0.23.1...v0.23.2
@@ -539,7 +540,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.10.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.8...v0.9.0
-[0.25.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.24.1...v0.25.0
 [0.8.8]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.5...v0.8.6

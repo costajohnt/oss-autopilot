@@ -48,21 +48,51 @@ if [ ! -f "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ] || [ "${CLAUDE_PLUGIN_RO
   fi
 fi
 
-# Step 0.6: Check setup completeness
+# Step 0.6: Check GitHub token
 GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN")
 export GITHUB_TOKEN
-SETUP_JSON=$(node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" checkSetup --json 2>/dev/null)
-SETUP_COMPLETE=$(echo "$SETUP_JSON" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));console.log(d.data?.setupComplete||false)}catch{console.log(false)}")
+if [ -z "$GITHUB_TOKEN" ]; then
+  echo "NO_GITHUB_TOKEN"
+  exit 1
+fi
 
-if [ "$SETUP_COMPLETE" = "false" ]; then
+# Check setup completeness
+SETUP_JSON=$(node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" checkSetup --json 2>/dev/null)
+SETUP_COMPLETE=$(echo "$SETUP_JSON" | node -e "
+  try {
+    const d = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+    console.log(d.data?.setupComplete === true ? 'true' : 'false');
+  } catch(e) {
+    console.log('ERROR');
+  }
+")
+
+if [ "$SETUP_COMPLETE" = "ERROR" ]; then
+  echo "SETUP_CHECK_FAILED"
+  exit 1
+elif [ "$SETUP_COMPLETE" = "false" ]; then
   echo "SETUP_NEEDED"
   exit 0
 fi
 
 # Step 1: Run daily check + dashboard
-DAILY_JSON=$(node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/dev/null)
+DAILY_JSON=$(node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-daily-stderr.log)
+DAILY_EXIT=$?
+if [ $DAILY_EXIT -ne 0 ] && [ -z "$DAILY_JSON" ]; then
+  echo "DAILY_FAILED"
+  cat /tmp/oss-daily-stderr.log 2>/dev/null | tail -10
+  rm -f /tmp/oss-daily-stderr.log
+  exit 1
+fi
+rm -f /tmp/oss-daily-stderr.log
+
+# Generate and open dashboard (non-critical — don't fail if this errors)
 node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" dashboard 2>/dev/null
-open ~/.oss-autopilot/dashboard.html 2>/dev/null
+if command -v open >/dev/null 2>&1; then
+  open ~/.oss-autopilot/dashboard.html 2>/dev/null
+elif command -v xdg-open >/dev/null 2>&1; then
+  xdg-open ~/.oss-autopilot/dashboard.html 2>/dev/null &
+fi
 
 # Output only the daily JSON (the only thing Claude needs to parse)
 echo "$DAILY_JSON"
@@ -71,9 +101,13 @@ echo "$DAILY_JSON"
 **Parse the output:**
 
 - If output starts with `BUILD_FAILED`: Tell the user the CLI build failed and show the error lines. Suggest running `cd ${CLAUDE_PLUGIN_ROOT} && npm install && npm run bundle`. Then fall back to the gh CLI workflow (Step 1b).
+- If output is `NO_GITHUB_TOKEN`: Tell the user: "GitHub authentication is required. Install [GitHub CLI](https://cli.github.com/) and run `gh auth login`, or set the `GITHUB_TOKEN` environment variable."
+- If output is `SETUP_CHECK_FAILED`: Tell the user: "Something went wrong checking your setup. Try running `/setup-oss` to reconfigure."
 - If output is `SETUP_NEEDED`: Tell the user: "It looks like setup isn't complete yet." Use AskUserQuestion to let them choose "Run setup first (Recommended)" (launch `/setup-oss`) or "Continue with defaults" (re-run the daily check portion only).
+- If output starts with `DAILY_FAILED`: Tell the user the daily check failed, show the error lines from the output, and fall back to the gh CLI workflow (Step 1b).
 - If output contains valid JSON with `"success": true`: Parse it and proceed to Step 0.7 (issue list detection) then Step 2 (display results).
 - If output contains JSON with `"success": false`: Show the error from `data.error`.
+- **Otherwise** (empty output, partial JSON, or unrecognizable text): Tell the user "Something went wrong running the daily check." Show the first few lines of output if any. Suggest running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json` to see the full error. Then fall back to the gh CLI workflow (Step 1b).
 
 ## Step 0.7: Detect Curated Issue List
 
@@ -113,13 +147,6 @@ Store these for use in later steps:
 - `searchedRepos`: string[] = [] — repos surfaced in previous search rounds, auto-excluded from subsequent rounds
 
 **Do NOT display anything yet** — this data is used in Step 3 to offer the right action choices.
-
-**If CLI returns valid JSON** (with `success: true`):
-- Display the brief summary (Step 2)
-- Present action choices (Step 3)
-
-**If CLI fails or no JSON output**:
-- Fall back to gh CLI workflow (Step 1b)
 
 ## Step 2: Display Brief Summary
 
@@ -191,7 +218,7 @@ Use AskUserQuestion with these options:
 
 **Routing:**
 - **Search for issues** → Jump to "Handle Find New Issues" (same as Step 4's search flow)
-- **Import existing PRs** → Run the import command: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" init $(gh api user --jq '.login') --json`, then re-run Step 1 to show updated results
+- **Import existing PRs** → Run the import command: `GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" init "$(gh api user --jq '.login')" --json`. If it succeeds, re-run the daily check (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/dev/null`) and display results from Step 2. If it fails, show the error and suggest checking `gh auth status`.
 - **Just exploring** → Show a brief tip: "Run `/oss` whenever you want to check on your contributions. It works best when you have a few open PRs to track." Then end.
 
 **Skip this step** if `totalActivePRs > 0` — go directly to Step 3.
