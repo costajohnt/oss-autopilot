@@ -142,6 +142,16 @@ Then:
 - Always add new commits on top of current work (never rewrite pushed history)
 - When merging PRs, always **squash and merge**
 
+## Code Review
+
+**Before pushing or after significant changes, run the pr-review-toolkit to review code extensively.** Launch multiple review agents in parallel:
+
+- `pr-review-toolkit:code-reviewer` — bugs, logic errors, dead code, consistency
+- `pr-review-toolkit:silent-failure-hunter` — error handling gaps, swallowed errors
+- `pr-review-toolkit:code-simplifier` — refactoring, simplification, redundancy
+
+Always look for opportunities to refactor, simplify, and remove dead code. Fix actionable findings before pushing.
+
 ## Subagent Usage
 
 **Use subagents (Task tool) in parallel whenever possible.** When a task involves multiple independent pieces of work — research, code review, exploration across different files or modules — dispatch them concurrently in a single message rather than sequentially. This dramatically reduces wall-clock time.
