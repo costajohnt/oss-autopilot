@@ -155,7 +155,7 @@ Use AskUserQuestion with these options:
 
 The CLI pre-computes the action menu in `data.daily.actionMenu`. Use these items directly in AskUserQuestion instead of manually deriving options.
 
-**Fallback:** If `data.daily.actionMenu` is missing (e.g., older CLI version), tell the user: "Action menu not found in CLI output — you may need to rebuild the CLI: `cd ${CLAUDE_PLUGIN_ROOT} && npm run bundle`". Then derive options manually: always include "Done for now"; add "Work through all N issues (Recommended)" if `data.daily.actionableIssues.length > 0`; add "Search for new issues" if `data.daily.capacity.hasCapacity`; add "View healthy PRs" if not `data.daily.capacity.hasCapacity` and `data.daily.actionableIssues.length > 0`; otherwise add "View PR status details".
+**Fallback:** If `data.daily.actionMenu` is missing (e.g., older CLI version), tell the user: "Action menu not found in CLI output — you may need to rebuild the CLI: `cd ${CLAUDE_PLUGIN_ROOT} && npm run bundle`". Then derive options manually: always include "Done for now"; add "Work through all N issues (Recommended)" if `data.daily.actionableIssues.length > 0`; always add "Search for new issues".
 
 ### If No Actionable Issues
 
@@ -213,13 +213,13 @@ Use `issue.pr.daysSinceActivity` from the CLI output (already computed).
 
 Use `data.daily.actionMenu.items` directly as AskUserQuestion options. Each item has `key`, `label`, and `description` fields ready for display.
 
-**Issue list integration:** If the user has a curated issue list (detected from `data.issueList` in the startup output), insert an issue-list option **after `address_all`** (index 1) or **at the start** (index 0) when no actionable issues exist — i.e., always before the `search`/`view_details`/`view_healthy` item:
+**Issue list integration:** If the user has a curated issue list (detected from `data.issueList` in the startup output), insert an issue-list option **after `address_all`** (index 1) or **at the start** (index 0) when no actionable issues exist — i.e., always before the `search` item:
 
 | Condition | Insert Item |
 |-----------|-------------|
-| `hasIssueList && availableCount >= 5 && context.hasCapacity` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} ready)"`, Description: `"You have {availableCount} vetted issues ready to work on — starting one would be higher ROI than searching for more"` |
-| `hasIssueList && availableCount > 0 && availableCount < 5 && context.hasCapacity` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} available)"`, Description: `"Choose from your curated list of vetted issues"` |
-| `hasIssueList && availableCount === 0 && context.hasCapacity` | Key: `replenish_list`, Label: `"Replenish your issue list"`, Description: `"All {completedCount} issues done — search for fresh ones"`. Also **remove** the `search` item (replenish replaces it). |
+| `hasIssueList && availableCount >= 5` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} ready)"`, Description: `"You have {availableCount} vetted issues ready to work on — starting one would be higher ROI than searching for more"` |
+| `hasIssueList && availableCount > 0 && availableCount < 5` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} available)"`, Description: `"Choose from your curated list of vetted issues"` |
+| `hasIssueList && availableCount === 0` | Key: `replenish_list`, Label: `"Replenish your issue list"`, Description: `"All {completedCount} issues done — search for fresh ones"`. Also **remove** the `search` item (replenish replaces it). |
 
 When inserting issue-list items, keep within the 4-option limit (the 5th is the auto "Other").
 
@@ -612,8 +612,8 @@ Or update the config file directly to add repos to `excludeRepos`.
 **After the "Work through all issues" flow completes (Phase C ends or user selects "Done for now" during it), and after "After Each Action" runs its state refresh, ALWAYS present the session-level menu. Never end with just a summary.**
 
 Use AskUserQuestion:
-- "Pick from your issue list" (if `hasIssueList` and `availableCount > 0` and `hasCapacity`) — "{availableCount} vetted issues available"
-- "Search for new issues" (if `hasCapacity`)
+- "Pick from your issue list" (if `hasIssueList` and `availableCount > 0`) — "{availableCount} vetted issues available"
+- "Search for new issues"
 - "Check for more PR updates" (re-run daily check)
 - "Done for now"
 
@@ -624,26 +624,7 @@ Use AskUserQuestion:
 When user selects specific PRs (e.g., "1 and 3"), dispatch only those agents in parallel.
 Still group by repo if selected PRs share a repository.
 
-### Handle "View Healthy PRs"
-
-Show when `capacity.hasCapacity === false` (user has critical issues to address first).
-
-Display healthy PRs from `data.daily.digest.healthyPRs`:
-```
-Healthy PRs (no action needed):
-
-- owner/repo#123 - Title here (approved, CI passing)
-- owner/repo#456 - Title here (waiting for review)
-...
-
-These PRs are progressing normally. Focus on the {count} issues that need attention.
-```
-
-Then return to Step 3 to present action choices again.
-
 ### Handle "Find New Issues"
-
-Only available if `capacity.hasCapacity === true`.
 
 **Initialize search session state** (reset each time this handler is entered):
 - `searchRoundScores`: number[] = [] (average vetting score per search round, for diminishing returns check)
@@ -847,9 +828,6 @@ Use AskUserQuestion (if `availableCount >= 5` and an advisory was shown, place t
 - `issueContext = { title, url, description }` — for scope-aware review in Step 5.6
 
 This activates the same draft-first workflow as the curated list path (see "Handle Pick Issue From List" section 6 for the full sequence: Steps 5.5 through 6).
-
-If user requests this but `hasCapacity === false`:
-> "You currently have [N] critical issues that need attention. Would you like to address those first, or override and search anyway?"
 
 ### Handle "Pick Issue From List"
 
