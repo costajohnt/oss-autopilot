@@ -628,7 +628,7 @@ Still group by repo if selected PRs share a repository.
 
 Show when `capacity.hasCapacity === false` (user has critical issues to address first).
 
-Display healthy PRs from `data.daily.digest.healthy`:
+Display healthy PRs from `data.daily.digest.healthyPRs`:
 ```
 Healthy PRs (no action needed):
 
