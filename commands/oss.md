@@ -77,16 +77,18 @@ fi
 # Run daily check (the main slow part - GitHub API calls)
 DAILY_JSON=$(node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-daily-stderr.log)
 DAILY_EXIT=$?
-rm -f /tmp/oss-daily-stderr.log
 if [ $DAILY_EXIT -ne 0 ]; then
   # Check if we got valid JSON despite non-zero exit (CLI returns non-zero with success:false)
   if echo "$DAILY_JSON" | node -e "try{JSON.parse(require('fs').readFileSync(0,'utf8'));process.exit(0)}catch{process.exit(1)}" 2>/dev/null; then
     : # Valid JSON, continue to parse below
   else
     echo "DAILY_FAILED"
+    cat /tmp/oss-daily-stderr.log 2>/dev/null | tail -10
+    rm -f /tmp/oss-daily-stderr.log
     exit 1
   fi
 fi
+rm -f /tmp/oss-daily-stderr.log
 
 # Generate and open dashboard (suppress all output)
 node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" dashboard >/dev/null 2>&1
