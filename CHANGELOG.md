@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-02-11
+
+### Added
+
+- **README rewrite** — Restructured to lead with the pain point ("You have 12 open PRs...") instead of product description. Better information architecture: pain → solution → install → usage. Troubleshooting now uses collapsible `<details>` sections. Added tests badge.
+- **First-run welcome experience** — When `/oss` detects zero active PRs (new user or clean slate), shows a guided welcome message with options to search for issues, import existing PRs, or explore. Replaces the confusing empty dashboard.
+- **Loading screen pattern** — `/oss` command now shows "Checking your PRs across GitHub..." while running all setup, build, and daily check steps in a single combined bash call. Eliminates verbose narration and intermediate tool output. Users see only the loading message, then the results.
+
 ## [0.24.1] - 2026-02-11
 
 ### Added
@@ -531,6 +539,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.10.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.8...v0.9.0
+[0.25.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.24.1...v0.25.0
 [0.8.8]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.7...v0.8.8
 [0.8.7]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.6...v0.8.7
 [0.8.6]: https://github.com/costajohnt/oss-autopilot/compare/v0.8.5...v0.8.6
