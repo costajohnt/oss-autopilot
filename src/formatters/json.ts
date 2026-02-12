@@ -126,6 +126,31 @@ export interface ConfigOutput {
   config: AgentState['config'];
 }
 
+/** Info about a detected issue list file */
+export interface IssueListInfo {
+  path: string;
+  source: 'configured' | 'auto-detected';
+  availableCount: number;
+  completedCount: number;
+}
+
+/**
+ * Output of the startup command (combines auth, setup, daily, dashboard, issue list).
+ *
+ * Three valid shapes:
+ * 1. Setup incomplete: { version, setupComplete: false }
+ * 2. Auth failure: { version, setupComplete: true, authError: "..." }
+ * 3. Success: { version, setupComplete: true, daily, dashboardPath?, issueList? }
+ */
+export interface StartupOutput {
+  version: string;
+  setupComplete: boolean;
+  authError?: string;
+  daily?: DailyOutput;
+  dashboardPath?: string;
+  issueList?: IssueListInfo;
+}
+
 /** A single parsed issue from a markdown list (#82) */
 export interface ParsedIssueItem {
   repo: string;

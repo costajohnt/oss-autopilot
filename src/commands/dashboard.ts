@@ -109,16 +109,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
   const monthlyClosed: Record<string, number> = state.monthlyClosedCounts || {};
   const monthlyOpened: Record<string, number> = state.monthlyOpenedCounts || {};
 
-  // Build stats from digest
-  const summary = digest.summary || { totalActivePRs: 0, totalMergedAllTime: 0, mergeRate: 0, totalNeedingAttention: 0 };
-  const stats = {
-    activePRs: summary.totalActivePRs,
-    dormantPRs: (digest.dormantPRs || []).length,
-    mergedPRs: summary.totalMergedAllTime,
-    closedPRs: Object.values(state.repoScores || {}).reduce((sum, s) => sum + (s.closedWithoutMergeCount || 0), 0),
-    mergeRate: `${(summary.mergeRate ?? 0).toFixed(1)}%`,
-    needsResponse: (digest.prsNeedingResponse || []).length,
-  };
+  const stats = buildDashboardStats(digest, state);
 
   if (options.json) {
     outputJson({
@@ -159,6 +150,35 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
   }
 }
 
+/**
+ * Generate dashboard HTML from state (no GitHub fetch).
+ * Call after executeDailyCheck() which saves fresh data to state.
+ * Returns the path to the generated dashboard HTML file.
+ */
+export function writeDashboardFromState(): string {
+  const stateManager = getStateManager();
+  const state = stateManager.getState();
+  const digest = state.lastDigest;
+
+  if (!digest) {
+    throw new Error('No digest data available. Run daily check first.');
+  }
+
+  const monthlyMerged: Record<string, number> = state.monthlyMergedCounts || {};
+  const monthlyClosed: Record<string, number> = state.monthlyClosedCounts || {};
+  const monthlyOpened: Record<string, number> = state.monthlyOpenedCounts || {};
+
+  const stats = buildDashboardStats(digest, state);
+
+  const html = generateDashboardHtml(stats, monthlyMerged, monthlyClosed, monthlyOpened, digest, state);
+
+  const dashboardPath = getDashboardPath();
+  fs.writeFileSync(dashboardPath, html, { mode: 0o644 });
+  fs.chmodSync(dashboardPath, 0o644);
+
+  return dashboardPath;
+}
+
 interface DashboardStats {
   activePRs: number;
   dormantPRs: number;
@@ -166,6 +186,18 @@ interface DashboardStats {
   closedPRs: number;
   mergeRate: string;
   needsResponse: number;
+}
+
+function buildDashboardStats(digest: DailyDigest, state: AgentState): DashboardStats {
+  const summary = digest.summary || { totalActivePRs: 0, totalMergedAllTime: 0, mergeRate: 0, totalNeedingAttention: 0 };
+  return {
+    activePRs: summary.totalActivePRs,
+    dormantPRs: (digest.dormantPRs || []).length,
+    mergedPRs: summary.totalMergedAllTime,
+    closedPRs: Object.values(state.repoScores || {}).reduce((sum, s) => sum + (s.closedWithoutMergeCount || 0), 0),
+    mergeRate: `${(summary.mergeRate ?? 0).toFixed(1)}%`,
+    needsResponse: (digest.prsNeedingResponse || []).length,
+  };
 }
 
 /**
