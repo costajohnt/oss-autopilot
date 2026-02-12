@@ -120,10 +120,12 @@ GITHUB_TOKEN=$(gh auth token) node dist/cli.bundle.cjs daily --json
 
 ## Git Workflow
 
-**Before starting any task that involves writing code**, always:
+**Before starting any task that involves writing code**, ALWAYS:
 ```bash
 git checkout main && git pull && git checkout -b <branch-name>
 ```
+This is mandatory. Never skip this step. Never start work on a stale branch or directly on main.
+
 Branch naming: `feature/description`, `fix/description`, `chore/description`.
 
 Then:
@@ -139,6 +141,16 @@ Then:
 - No merge commits. Always rebase (`git pull --rebase`, `git rebase main`)
 - Always add new commits on top of current work (never rewrite pushed history)
 - When merging PRs, always **squash and merge**
+
+## Code Review
+
+**Before pushing or after significant changes, run the pr-review-toolkit to review code extensively.** Launch multiple review agents in parallel:
+
+- `pr-review-toolkit:code-reviewer` — bugs, logic errors, dead code, consistency
+- `pr-review-toolkit:silent-failure-hunter` — error handling gaps, swallowed errors
+- `pr-review-toolkit:code-simplifier` — refactoring, simplification, redundancy
+
+Always look for opportunities to refactor, simplify, and remove dead code. Fix actionable findings before pushing.
 
 ## Subagent Usage
 

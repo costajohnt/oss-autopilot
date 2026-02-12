@@ -6,7 +6,7 @@ You have 12 open PRs across GitHub. A maintainer asked a question 5 days ago. Tw
 
 OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you when something needs attention, and helps you respond to maintainer feedback so your contributions actually get merged.
 
-![Version](https://img.shields.io/badge/version-0.25.0-blue)
+![Version](https://img.shields.io/badge/version-0.25.1-blue)
 ![CI](https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg)
 ![Tests](https://img.shields.io/badge/tests-436_passing-success)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -32,7 +32,7 @@ Restart Claude Code, then run `/setup-oss`. Done.
 Claude checks every open PR you have across all of GitHub and tells you what needs your attention:
 
 ```
-📊 15 Active PRs | 2 need attention | Dashboard opened in browser | v0.25.0
+📊 15 Active PRs | 2 need attention | Dashboard opened in browser | v0.25.1
 
 2 PRs Need Attention (in priority order):
 
