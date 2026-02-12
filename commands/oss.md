@@ -144,7 +144,7 @@ Use AskUserQuestion with these options:
 
 **Routing:**
 - **Search for issues** → Jump to "Handle Find New Issues" (same as Step 4's search flow)
-- **Import existing PRs** → Run the import command: `GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" init "$(gh api user --jq '.login')" --json`. If it succeeds, re-run the daily check (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/dev/null`) and display results from Step 2. If it fails, show the error and suggest checking `gh auth status`.
+- **Import existing PRs** → Run the import command: `GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" init "$(gh api user --jq '.login')" --json`. If it succeeds, re-run `startup --json` (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" startup --json 2>/tmp/oss-startup-stderr.log`) and parse the result from the top (same routing as the initial startup call). If it fails, show the error and suggest checking `gh auth status`.
 - **Just exploring** → Show a brief tip: "Run `/oss` whenever you want to check on your contributions. It works best when you have a few open PRs to track." Then end.
 
 **Skip this step** if `totalActivePRs > 0` — go directly to Step 3.
@@ -1934,7 +1934,10 @@ Then offer:
 All commands support `--json` flag for structured output:
 
 ```bash
-# Daily check (syncs and checks all PRs)
+# Startup (preferred entry point — combines auth, setup, daily, dashboard, issue list)
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" startup --json
+
+# Daily check (syncs and checks all PRs — standalone, without dashboard/issue list)
 GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json
 
 # Status overview
