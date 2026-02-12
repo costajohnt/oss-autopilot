@@ -34,7 +34,7 @@ After the bash call completes, jump straight to displaying the brief summary and
 
 ## Combined Bash Script
 
-Run **everything** in a single bash call. This covers build, auth, setup, daily fetch, dashboard, version, and issue list detection. The output uses `---SECTION---` delimiters so Claude can parse each part.
+Run **everything** in a single bash call. This covers build, auth, setup, daily fetch, dashboard, version, and issue list detection. The output uses three named delimiters (`---DAILY_JSON---`, `---VERSION---`, `---ISSUE_LIST---`) on their own lines so Claude can parse each part.
 
 ```bash
 # Rebuild CLI if needed
@@ -90,8 +90,9 @@ elif command -v xdg-open >/dev/null 2>&1; then
   xdg-open ~/.oss-autopilot/dashboard.html 2>/dev/null &
 fi
 
-# Get version
+# Get version (fallback to "unknown" if package.json can't be read)
 VERSION=$(node -e "console.log(require('${CLAUDE_PLUGIN_ROOT}/package.json').version)" 2>/dev/null)
+VERSION=${VERSION:-"unknown"}
 
 # Detect issue list
 ISSUE_LIST_PATH=""
@@ -119,11 +120,9 @@ fi
 AVAILABLE_COUNT=0
 COMPLETED_COUNT=0
 if [ -n "$ISSUE_LIST_PATH" ]; then
-  AVAILABLE_COUNT=$(grep -cE '^\s*- \[' "$ISSUE_LIST_PATH" 2>/dev/null | head -1)
-  COMPLETED_COUNT=$(grep -cE '(~~.*~~|\*\*Done\*\*)' "$ISSUE_LIST_PATH" 2>/dev/null | head -1)
-  # Subtract completed from total to get available
-  AVAILABLE_COUNT=$((AVAILABLE_COUNT - COMPLETED_COUNT))
-  if [ "$AVAILABLE_COUNT" -lt 0 ]; then AVAILABLE_COUNT=0; fi
+  # Count available: list items that are NOT strikethrough/done
+  AVAILABLE_COUNT=$(grep -E '^\s*- \[' "$ISSUE_LIST_PATH" 2>/dev/null | grep -vcE '(~~|\*\*Done\*\*)' || echo 0)
+  COMPLETED_COUNT=$(grep -E '^\s*- \[' "$ISSUE_LIST_PATH" 2>/dev/null | grep -cE '(~~|\*\*Done\*\*)' || echo 0)
 fi
 
 # Output everything with section delimiters
@@ -140,7 +139,7 @@ echo "completed=$COMPLETED_COUNT"
 
 **Parse the output:**
 
-The output uses `---SECTION---` delimiters. Split on these to extract each part.
+The output uses three named delimiters: `---DAILY_JSON---`, `---VERSION---`, and `---ISSUE_LIST---`. Each delimiter appears on its own line. Split on lines that exactly match a delimiter (not substrings within JSON content).
 
 **Error sentinel check** (before delimiters appear):
 - If output starts with `BUILD_FAILED`: Tell the user the CLI build failed and show the error lines. Suggest running `cd ${CLAUDE_PLUGIN_ROOT} && npm install && npm run bundle`. Then fall back to the gh CLI workflow (Step 1b).
@@ -207,7 +206,7 @@ data.briefSummary + " | v{version}"
 ```
 
 Example output:
-> 📊 16 Active PRs | 3 need attention | Dashboard opened in browser | v0.25.0
+> 📊 16 Active PRs | 3 need attention | Dashboard opened in browser | v0.25.1
 
 Then proceed to Step 2.5 (check for first-run) or Step 3 (Present Action Choices).
 
@@ -743,7 +742,7 @@ Use AskUserQuestion:
 - "Done for now"
 
 Route based on choice:
-- "Review from list" → go to **Handle "Pick Issue From List"** above
+- "Review from list" → go to **Handle "Pick Issue From List"** below
 - "Search GitHub" → continue with **Parallel Multi-Strategy Search** below
 - "Both" → show list first (Handle "Pick Issue From List"), then after that completes, continue with **Parallel Multi-Strategy Search**
 
