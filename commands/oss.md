@@ -8,44 +8,110 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Task, mcp__
 
 This command checks your open source PRs and provides a summary of what needs attention.
 
-## Step 0.5: Ensure CLI is Built
+## Output Style — Loading Screen Pattern
 
-Before running any CLI commands, ensure the bundle exists (auto-builds on first run):
+**CRITICAL: Follow this pattern exactly.**
+
+### 1. Display Loading Message FIRST
+
+Before running ANY tool calls, output this text immediately (the user sees it while commands run):
+
+```
+Checking your PRs across GitHub...
+```
+
+That's it. One line. No narration, no "Let me...", no step-by-step commentary. Just the loading message, then proceed to run commands.
+
+### 2. Run ALL Setup + Daily in a Single Bash Call
+
+After the loading message, execute Steps 0.5 through 1 in **one combined bash command** (below). Do NOT run them as separate tool calls — that creates visual noise in the UI.
+
+### 3. Only Show Results
+
+After the bash call completes, jump straight to displaying the brief summary (Step 2) and action menu (Step 3). Do NOT echo the raw JSON. Do NOT narrate what happened during setup.
+
+**If something fails**, then and only then explain the error.
+
+## Steps 0.5–1: Build, Setup Check, Daily Check, and Dashboard (Combined)
+
+Run everything in a single bash call to minimize UI noise:
 
 ```bash
-# Rebuild if bundle missing OR package.json is newer (post-upgrade)
+# Step 0.5: Rebuild CLI if needed
 if [ ! -f "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ] || [ "${CLAUDE_PLUGIN_ROOT}/package.json" -nt "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ]; then
   BUILD_LOG=$(cd "${CLAUDE_PLUGIN_ROOT}" && npm install --silent 2>&1 && npm run bundle --silent 2>&1)
   BUILD_EXIT=$?
   if [ $BUILD_EXIT -ne 0 ]; then
-    echo "Warning: CLI build failed (exit code $BUILD_EXIT). You may need to run manually:" >&2
-    echo "  cd ${CLAUDE_PLUGIN_ROOT} && npm install && npm run bundle" >&2
-    echo "$BUILD_LOG" | tail -5 >&2
+    echo "BUILD_FAILED"
+    echo "$BUILD_LOG" | tail -5
+    exit 1
   fi
 fi
+
+# Step 0.6: Check GitHub token
+GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN")
+export GITHUB_TOKEN
+if [ -z "$GITHUB_TOKEN" ]; then
+  echo "NO_GITHUB_TOKEN"
+  exit 1
+fi
+
+# Check setup completeness
+SETUP_JSON=$(node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" checkSetup --json 2>/dev/null)
+SETUP_COMPLETE=$(echo "$SETUP_JSON" | node -e "
+  try {
+    const d = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+    console.log(d.data?.setupComplete === true ? 'true' : 'false');
+  } catch(e) {
+    console.log('ERROR');
+  }
+")
+
+if [ "$SETUP_COMPLETE" = "ERROR" ]; then
+  echo "SETUP_CHECK_FAILED"
+  exit 1
+elif [ "$SETUP_COMPLETE" = "false" ]; then
+  echo "SETUP_NEEDED"
+  exit 0
+fi
+
+# Step 1: Run daily check + dashboard
+DAILY_JSON=$(node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-daily-stderr.log)
+DAILY_EXIT=$?
+if [ $DAILY_EXIT -ne 0 ] && [ -z "$DAILY_JSON" ]; then
+  echo "DAILY_FAILED"
+  cat /tmp/oss-daily-stderr.log 2>/dev/null | tail -10
+  rm -f /tmp/oss-daily-stderr.log
+  exit 1
+fi
+rm -f /tmp/oss-daily-stderr.log
+
+# Generate and open dashboard (non-critical — don't fail if this errors)
+node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" dashboard 2>/dev/null
+if command -v open >/dev/null 2>&1; then
+  open ~/.oss-autopilot/dashboard.html 2>/dev/null
+elif command -v xdg-open >/dev/null 2>&1; then
+  xdg-open ~/.oss-autopilot/dashboard.html 2>/dev/null &
+fi
+
+# Output only the daily JSON (the only thing Claude needs to parse)
+echo "$DAILY_JSON"
 ```
 
-If the build fails, tell the user what happened and how to fix it. Then fall back to the gh CLI workflow (Step 1b).
+**Parse the output:**
 
-## Step 0.6: Check Setup Completeness
-
-Before running the daily check, verify setup is complete:
-
-```bash
-GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" checkSetup --json
-```
-
-If the JSON response's `data.setupComplete` field is false, tell the user:
-
-> "It looks like setup isn't complete yet. Run `/setup-oss` to configure your preferences, or I can continue with defaults."
-
-Use AskUserQuestion to let the user choose:
-- "Run setup first (Recommended)" — launch `/setup-oss`
-- "Continue with defaults" — proceed with the daily check
+- If output starts with `BUILD_FAILED`: Tell the user the CLI build failed and show the error lines. Suggest running `cd ${CLAUDE_PLUGIN_ROOT} && npm install && npm run bundle`. Then fall back to the gh CLI workflow (Step 1b).
+- If output is `NO_GITHUB_TOKEN`: Tell the user: "GitHub authentication is required. Install [GitHub CLI](https://cli.github.com/) and run `gh auth login`, or set the `GITHUB_TOKEN` environment variable."
+- If output is `SETUP_CHECK_FAILED`: Tell the user: "Something went wrong checking your setup. Try running `/setup-oss` to reconfigure."
+- If output is `SETUP_NEEDED`: Tell the user: "It looks like setup isn't complete yet." Use AskUserQuestion to let them choose "Run setup first (Recommended)" (launch `/setup-oss`) or "Continue with defaults" (re-run the daily check portion only).
+- If output starts with `DAILY_FAILED`: Tell the user the daily check failed, show the error lines from the output, and fall back to the gh CLI workflow (Step 1b).
+- If output contains valid JSON with `"success": true`: Parse it and proceed to Step 0.7 (issue list detection) then Step 2 (display results).
+- If output contains JSON with `"success": false`: Show the error from `data.error`.
+- **Otherwise** (empty output, partial JSON, or unrecognizable text): Tell the user "Something went wrong running the daily check." Show the first few lines of output if any. Suggest running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json` to see the full error. Then fall back to the gh CLI workflow (Step 1b).
 
 ## Step 0.7: Detect Curated Issue List
 
-Before running the daily check, determine if the user has a curated issue list.
+Before displaying results, silently determine if the user has a curated issue list. Do NOT display anything during this step.
 
 ### 1. Check config for `issueListPath`
 
@@ -81,23 +147,6 @@ Store these for use in later steps:
 - `searchedRepos`: string[] = [] — repos surfaced in previous search rounds, auto-excluded from subsequent rounds
 
 **Do NOT display anything yet** — this data is used in Step 3 to offer the right action choices.
-
-## Step 1: Run Daily Check and Open Dashboard
-
-Run the daily check, generate dashboard, and open it in the background:
-
-```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/dev/null && \
-  node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" dashboard 2>/dev/null && \
-  open ~/.oss-autopilot/dashboard.html
-```
-
-**If CLI returns valid JSON** (with `success: true`):
-- Display the brief summary (Step 2)
-- Present action choices (Step 3)
-
-**If CLI fails or no JSON output**:
-- Fall back to gh CLI workflow (Step 1b)
 
 ## Step 2: Display Brief Summary
 
@@ -145,7 +194,34 @@ data.briefSummary + " | v{version}"
 Example output:
 > 16 Active PRs | 3 need attention | Dashboard opened in browser | v0.6.1
 
-Then proceed to Step 3 (Present Action Choices).
+Then proceed to Step 2.5 (check for first-run) or Step 3 (Present Action Choices).
+
+---
+
+## Step 2.5: First-Run Welcome (Empty State)
+
+If `data.digest.summary.totalActivePRs === 0` AND setup is complete, this is likely the user's first run or they have no open PRs. Instead of showing an empty dashboard and action menu, show a welcome message:
+
+```
+Welcome to OSS Autopilot! You don't have any open PRs right now.
+
+Let's get started — what would you like to do?
+```
+
+Use AskUserQuestion with these options:
+
+| Option | Description |
+|--------|-------------|
+| "Search for issues to contribute to (Recommended)" | "Find open source issues matching your skills and interests" |
+| "Import existing PRs" | "If you have PRs that didn't show up, reimport from GitHub" |
+| "Just exploring" | "Take a look around — run /oss again anytime" |
+
+**Routing:**
+- **Search for issues** → Jump to "Handle Find New Issues" (same as Step 4's search flow)
+- **Import existing PRs** → Run the import command: `GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" init "$(gh api user --jq '.login')" --json`. If it succeeds, re-run the daily check (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/dev/null`) and display results from Step 2. If it fails, show the error and suggest checking `gh auth status`.
+- **Just exploring** → Show a brief tip: "Run `/oss` whenever you want to check on your contributions. It works best when you have a few open PRs to track." Then end.
+
+**Skip this step** if `totalActivePRs > 0` — go directly to Step 3.
 
 ---
 
@@ -159,7 +235,7 @@ The CLI pre-computes the action menu in `data.actionMenu`. Use these items direc
 
 When `data.actionMenu` is present and `data.actionMenu.context.hasActionableIssues` is `false` (or when `data.actionMenu` is absent and `data.actionableIssues` is empty), display:
 ```
-All PRs are healthy! No issues need attention.
+All PRs are healthy — nothing needs your attention right now.
 ```
 
 If `hasIssueList && availableCount === 0`:

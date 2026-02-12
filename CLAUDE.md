@@ -135,6 +135,10 @@ Then:
 **Important:**
 - Do NOT push directly to main
 - Keep PRs focused and atomic
+- Do NOT amend commits without explicit permission
+- No merge commits. Always rebase (`git pull --rebase`, `git rebase main`)
+- Always add new commits on top of current work (never rewrite pushed history)
+- When merging PRs, always **squash and merge**
 
 ## Subagent Usage
 
