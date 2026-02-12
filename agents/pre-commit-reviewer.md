@@ -172,6 +172,20 @@ Then use AskUserQuestion:
 - "Commit and push (Recommended)" — "Stage, commit, and push changes"
 - "Done for now" — "Cancel, return without committing"
 
+**When user selects "Show full diff" / "Show full diff first":**
+- Run `git diff` and **output the full diff as a markdown code block in your text response** so the user can read it
+- **If `git diff` fails**, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly.
+- **After** the diff is visible in your response (or user chose to continue without), use AskUserQuestion:
+  ```
+  Question: "Diff reviewed. Ready to proceed?"
+  Header: "Diff"
+
+  Options:
+  1. "Commit and push (Recommended)" — "Stage and push these changes"
+  2. "Fix something first" — "Make additional changes before committing"
+  3. "Done for now" — "Cancel"
+  ```
+
 ## Important Rules
 
 1. **Be specific** — always include file paths and line numbers
