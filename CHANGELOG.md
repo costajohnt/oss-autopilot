@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.6] - 2026-02-13
+
+### Fixed
+
+- **Use correct diff range for fork-based branches (#142)** — Replaced `origin/$baseBranch..HEAD` with `$(git merge-base origin/$baseBranch HEAD)..HEAD` in Steps 5.6, 5.6b, and 5.7. In fork workflows where `origin` is the fork, the old range included upstream commits, producing massive irrelevant diffs.
+- **Add `--head` flag for fork-based `gh pr create` (#139)** — Step 0d now always uses `--head forkOwner:branch` with fallback detection if `gh repo view` fails, preventing "you must first push the current branch" errors on fork PRs.
+- **Fix squash commit counting for forks (#138)** — Step 5.7 commit count now uses `$mergeBase..HEAD` instead of `origin/$baseBranch..HEAD`, with pre-flight validation before the destructive squash operation to guard against empty/invalid merge-base values.
+
 ## [0.26.5] - 2026-02-13
 
 ### Added
@@ -573,6 +581,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.26.6]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.5...v0.26.6
 [0.26.5]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.4...v0.26.5
 [0.26.4]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.3...v0.26.4
 [0.26.3]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.2...v0.26.3

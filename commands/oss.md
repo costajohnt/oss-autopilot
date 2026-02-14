@@ -992,8 +992,17 @@ git push -u origin HEAD
 
 ##### 0d. Create Draft PR
 
+**Always include `--head`** to handle both fork-based and same-repo workflows. The `--head` flag is harmless for same-repo PRs and required for fork-based PRs:
+
 ```bash
-gh pr create --draft --title "{conventional title}" --body "{PR body}" --repo {upstream-repo}
+forkOwner=$(gh repo view --json owner --jq '.owner.login')
+branch=$(git branch --show-current)
+```
+
+**If `$forkOwner` is empty** (e.g., `gh` not authenticated, network error): fall back to parsing the remote URL: `forkOwner=$(git remote get-url origin | sed -n 's|.*github.com[:/]\([^/]*\)/.*|\1|p')`. If still empty, ask the user to provide their fork owner name manually. **If `$branch` is empty** (detached HEAD state, e.g., during a rebase or in CI): report "Cannot create a PR from a detached HEAD. Please check out a named branch first." Do NOT run `gh pr create` with an empty `$forkOwner` or `$branch`.
+
+```bash
+gh pr create --draft --title "{conventional title}" --body "{PR body}" --repo {upstream-repo} --head "$forkOwner:$branch"
 ```
 
 Generate the PR title and body following the target repo's conventions (check `CONTRIBUTING.md`, existing PR formats). Include:
@@ -1325,14 +1334,25 @@ If method 2 or 3 is used, ask the user to confirm the base branch before proceed
 
 ```bash
 baseBranch=$(gh pr view --json baseRefName --jq '.baseRefName' 2>/dev/null || git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}' || echo "main")
-git fetch origin "$baseBranch"
-git diff "origin/$baseBranch"..HEAD
-git log --oneline "origin/$baseBranch"..HEAD
+if ! git fetch origin "$baseBranch" 2>/dev/null; then
+  echo "Warning: Failed to fetch origin/$baseBranch. Diffs may be incomplete."
+fi
+mergeBase=$(git merge-base "origin/$baseBranch" HEAD 2>/dev/null) || true
+if [ -n "$mergeBase" ]; then
+  git diff "$mergeBase"..HEAD
+  git log --oneline "$mergeBase"..HEAD
+elif git rev-parse --verify "origin/$baseBranch" 2>/dev/null; then
+  # Fallback: three-dot syntax (may include upstream commits)
+  git diff "origin/$baseBranch"...HEAD
+  git log --oneline "origin/$baseBranch"...HEAD
+else
+  echo "Error: Cannot compute diff — origin/$baseBranch does not exist locally."
+fi
 ```
 
-Store `baseBranch` in session context — it is reused in Step 5.7.
+Store `baseBranch` and `mergeBase` in session context — they are reused throughout Steps 5.6, 5.6b, and 5.7. If `$mergeBase` is empty (fallback path), warn the user that diffs may include upstream commits. If neither `$mergeBase` nor `origin/$baseBranch` is available, report the error and offer: "Retry after fetching" / "Specify base branch manually" / "Done for now". Do NOT dispatch review agents without diff context. Downstream steps (5.6b, 5.7) validate and recompute `$mergeBase` before use.
 
-Save the full diff — it covers ALL changes on this branch (not just the last commit).
+Save the full diff — it covers ALL changes on this branch (not just the last commit). Using `merge-base` ensures only the contributor's changes are included, not upstream commits (important for fork-based workflows).
 
 Identify changed files and their types. Count files changed.
 
@@ -1360,7 +1380,7 @@ Each agent should tailor the scope instruction to its specialty:
 - **pr-test-analyzer**: "Focus test recommendations on the new/changed functionality only."
 
 **Additional differences from Step 5.5:**
-- Use `git diff origin/$baseBranch..HEAD` (full branch diff) instead of `git diff` (working tree diff)
+- Use `git diff $mergeBase..HEAD` (full branch diff from merge-base) instead of `git diff` (working tree diff). If `$mergeBase` is empty (merge-base failed in sub-step 1), use `origin/$baseBranch...HEAD` (three-dot) instead
 - Conditional agents and fallback follow the same rules as Step 5.5 sub-step 3, with the SCOPE block added to each prompt
 
 **If ALL agents fail (including fallback):**
@@ -1455,8 +1475,8 @@ Options:
 ```
 
 **"Show full diff" / "Show full diff first":**
-- Run `git diff origin/$baseBranch..HEAD` and **output the full diff as a markdown code block in your text response** so the user can read it
-- **If `git diff` fails** (e.g., remote ref not found), try `git fetch origin $baseBranch` and retry. If still failing, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly.
+- Run `git diff $mergeBase..HEAD` and **output the full diff as a markdown code block in your text response** so the user can read it
+- **If `git diff` fails** (e.g., `$mergeBase` is empty or remote ref not found), recompute: `git fetch origin "$baseBranch" && mergeBase=$(git merge-base "origin/$baseBranch" HEAD)` and retry. If still failing, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly.
 - **After** the diff is visible in your response (or user chose to continue without), use AskUserQuestion:
   ```
   Question: "Diff reviewed. Ready to proceed?"
@@ -1486,10 +1506,10 @@ Review agents only see the diff contents — they cannot detect whether new file
 ### 1. Identify New Files
 
 ```bash
-git diff --name-only --diff-filter=A "origin/$baseBranch"..HEAD
+git diff --name-only --diff-filter=A "$mergeBase"..HEAD
 ```
 
-**If `git diff` fails** (non-zero exit code, e.g., `$baseBranch` is unset or `origin/$baseBranch` does not exist): Report the error and offer "Retry after fetching" (`git fetch origin "$baseBranch"` then retry) / "Skip integration check" (→ proceed to Step 5.7b) / "Done for now". Do NOT silently skip to Step 5.7b on command failure.
+**If `git diff` fails** (non-zero exit code, e.g., `$mergeBase` is empty or invalid): Recompute `mergeBase` via `git fetch origin "$baseBranch" && mergeBase=$(git merge-base "origin/$baseBranch" HEAD)` and retry. If recomputation also fails, offer "Skip integration check" (proceed to Step 5.7b) / "Done for now". Do NOT silently skip on command failure.
 
 **If no new files were added** (command succeeds with empty output): Skip this step entirely. **→ Proceed to Step 5.7b (Manual Testing Prompt)**
 
@@ -1618,8 +1638,17 @@ This step produces a clean, single-commit PR with an accurate commit message.
 ### 1. Count Commits on Branch
 
 ```bash
-git rev-list --count "origin/$baseBranch"..HEAD
+# Validate $mergeBase before using it
+git cat-file -t "$mergeBase" 2>/dev/null || { git fetch origin "$baseBranch" && mergeBase=$(git merge-base "origin/$baseBranch" HEAD); }
+# After recomputation, verify $mergeBase is non-empty and valid
+if [ -z "$mergeBase" ] || ! git cat-file -t "$mergeBase" 2>/dev/null; then
+  echo "Error: Failed to compute a valid merge-base. Cannot proceed with commit count."
+  exit 1
+fi
+git rev-list --count "$mergeBase"..HEAD
 ```
+
+**If `$mergeBase` is still empty or invalid after recomputation:** Report the error. Offer "Skip squash" / "Done for now". Do NOT run `git rev-list` or proceed to squash with an invalid merge-base.
 
 **If only 1 commit:** Skip squash — nothing to squash. Proceed to Step 5.8.
 
@@ -1714,9 +1743,10 @@ If tag creation fails, do NOT proceed with squash. Report: "Could not create saf
 
 This allows recovery via `git reset --hard oss-autopilot-pre-squash` if anything goes wrong.
 
-**5b. Squash commits:**
+**5b. Squash commits** (`$mergeBase` was already validated in sub-step 1):
+
 ```bash
-git reset --soft "$(git merge-base "origin/$baseBranch" HEAD)"
+git reset --soft "$mergeBase"
 git commit -m "{approved or edited message}"
 ```
 
