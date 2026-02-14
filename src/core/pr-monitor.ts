@@ -13,6 +13,30 @@ import { FetchedPR, FetchedPRStatus, CIStatus, ReviewDecision, DailyDigest, Main
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
 
+// Bot accounts that don't follow the [bot] suffix convention
+const KNOWN_BOT_USERNAMES = new Set([
+  'allcontributors',
+  'changeset-bot',
+  'claassistant',
+  'codecov-commenter',
+  'greenkeeper',
+  'imgbot',
+  'netlify',
+  'renovate',
+  'snyk-bot',
+  'sonarcloud',
+  'stale',
+  'vercel',
+]);
+
+/**
+ * Check if a comment author is a bot account.
+ * Matches the [bot] suffix convention and known bot usernames (case-insensitive).
+ */
+export function isBotAuthor(author: string): boolean {
+  return author.includes('[bot]') || KNOWN_BOT_USERNAMES.has(author.toLowerCase());
+}
+
 export interface PRCheckFailure {
   prUrl: string;
   error: string;
@@ -315,7 +339,8 @@ export class PRMonitor {
 
     for (const item of timeline) {
       if (item.isUser) continue; // Skip user's own comments
-      if (item.author.includes('[bot]')) continue; // Skip bots
+      if (item.author === 'unknown') continue; // Skip deleted/null accounts
+      if (isBotAuthor(item.author)) continue; // Skip bots
 
       const itemTime = new Date(item.createdAt);
       if (!lastUserCommentTime || itemTime > lastUserCommentTime) {

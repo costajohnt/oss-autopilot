@@ -18,7 +18,7 @@ vi.mock('./state.js', () => ({
 }));
 
 // Import after mocks are set up
-const { PRMonitor, computeDisplayLabel, classifyCICheck, classifyFailingChecks } = await import('./pr-monitor.js');
+const { PRMonitor, computeDisplayLabel, classifyCICheck, classifyFailingChecks, isBotAuthor } = await import('./pr-monitor.js');
 const { getStateManager } = await import('./state.js');
 
 describe('PRMonitor CI status deduplication', () => {
@@ -733,12 +733,56 @@ describe('PRMonitor checkUnrespondedComments', () => {
     expect(result.hasUnrespondedComment).toBe(false);
   });
 
-  it('should skip bot comments', () => {
+  it('should skip bot comments with [bot] suffix', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
       [
         { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
         { user: { login: 'dependabot[bot]' }, body: 'Dependency update', created_at: '2026-02-07T12:00:00Z' },
+      ],
+      [],
+      'testuser'
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('should skip known bot accounts without [bot] suffix', () => {
+    const monitor = new PRMonitor('fake-token');
+    const knownBots = ['CLAassistant', 'codecov-commenter', 'changeset-bot', 'netlify', 'sonarcloud'];
+    for (const bot of knownBots) {
+      const result = (monitor as any).checkUnrespondedComments(
+        [
+          { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+          { user: { login: bot }, body: 'Automated check passed', created_at: '2026-02-07T12:00:00Z' },
+        ],
+        [],
+        'testuser'
+      );
+      expect(result.hasUnrespondedComment).toBe(false);
+    }
+  });
+
+  it('should still flag non-bot maintainer comments when bot comments also exist', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+        { user: { login: 'CLAassistant' }, body: 'CLA signed', created_at: '2026-02-07T11:00:00Z' },
+        { user: { login: 'maintainer' }, body: 'Please add tests', created_at: '2026-02-07T12:00:00Z' },
+      ],
+      [],
+      'testuser'
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('maintainer');
+  });
+
+  it('should skip comments from deleted accounts (null user)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+        { user: null, body: 'Ghost comment', created_at: '2026-02-07T12:00:00Z' },
       ],
       [],
       'testuser'
@@ -1532,5 +1576,36 @@ describe('classifyFailingChecks (#81)', () => {
     const result = classifyFailingChecks(['Vercel', 'Build']);
     expect(result[0].name).toBe('Vercel');
     expect(result[1].name).toBe('Build');
+  });
+});
+
+describe('isBotAuthor (#143)', () => {
+  it('should identify [bot] suffix accounts', () => {
+    expect(isBotAuthor('dependabot[bot]')).toBe(true);
+    expect(isBotAuthor('github-actions[bot]')).toBe(true);
+    expect(isBotAuthor('n8n-assistant[bot]')).toBe(true);
+  });
+
+  it('should identify known bot accounts without [bot] suffix', () => {
+    expect(isBotAuthor('CLAassistant')).toBe(true);
+    expect(isBotAuthor('codecov-commenter')).toBe(true);
+    expect(isBotAuthor('changeset-bot')).toBe(true);
+    expect(isBotAuthor('netlify')).toBe(true);
+    expect(isBotAuthor('sonarcloud')).toBe(true);
+    expect(isBotAuthor('renovate')).toBe(true);
+    expect(isBotAuthor('imgbot')).toBe(true);
+    expect(isBotAuthor('snyk-bot')).toBe(true);
+  });
+
+  it('should be case-insensitive for known bots', () => {
+    expect(isBotAuthor('claassistant')).toBe(true);
+    expect(isBotAuthor('CLAASSISTANT')).toBe(true);
+    expect(isBotAuthor('Netlify')).toBe(true);
+  });
+
+  it('should not flag human users', () => {
+    expect(isBotAuthor('maintainer')).toBe(false);
+    expect(isBotAuthor('sindresorhus')).toBe(false);
+    expect(isBotAuthor('costajohnt')).toBe(false);
   });
 });
