@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.5] - 2026-02-13
+
+### Added
+
+- **Manual testing auto-skip for non-visual changes (#134)** — Added auto-skip criteria to Step 5.7b so non-visual utility changes with passing automated tests bypass the manual testing prompt.
+- **Branch prefix vs commit type mismatch (#135)** — Added guidance at issue claim time to choose a consistent change type (fix/feat/docs) for both branch prefix and commit message based on issue labels.
+
+### Fixed
+
+- **Force push refspec bash concatenation bug (#133)** — Simplified `git fetch origin "$branch:refs/remotes/origin/$branch"` to `git fetch origin "$branch"` to avoid shell quoting issues with the colon-separated refspec when chained via `&&` in bash commands.
+- **CI re-run permission failures (#144)** — Added fallback guidance when `gh run rerun --failed` fails with permission or other errors on fork PRs. Suggests alternatives: empty commit retrigger, maintainer request, or waiting.
+- **Full review tier for new contributions (#137)** — Strengthened Step 5.6 to explicitly override size-based scaling, ensuring the full Large-tier review suite is dispatched for new contributions regardless of diff size.
+
 ## [0.26.4] - 2026-02-12
 
 ### Fixed
@@ -560,6 +573,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.26.5]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.4...v0.26.5
 [0.26.4]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.3...v0.26.4
 [0.26.3]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.2...v0.26.3
 [0.26.2]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.1...v0.26.2

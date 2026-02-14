@@ -241,6 +241,17 @@ For branches behind upstream:
 For CI failures (code issues):
 > Analyze the failing check output. Identify whether it's a test failure, lint error, build error, or type error. Recommend a specific fix.
 
+For CI re-runs:
+> Attempt `gh run rerun <id> --repo <repo> --failed`. If it fails, do NOT retry. Handle based on error:
+> - "Must have admin rights" (common for fork PRs) → Report permission issue and suggest alternatives for user approval:
+>   1. Push an empty commit to retrigger CI: `git commit --allow-empty -m "retrigger CI" && git push`
+>   2. Leave a comment asking the maintainer to re-run CI
+>   3. Wait — maintainers often re-run CI during review
+> - "not in a rerunnable state" → Report that the run cannot be rerun (still in progress or cancelled). Suggest waiting.
+> - Any other error → Report the exact error message. Do NOT push an empty commit (the issue is not permissions-related).
+>
+> **Retrigger limit:** Suggest the empty commit approach at most once per PR. If CI fails again after retriggering, the failure is likely a real issue. Note that empty retrigger commits will be squashed out during Step 5.7.
+
 For linting failures:
 > Run the project's lint fix command (usually `npm run lint:fix` or similar), then commit and push.
 
