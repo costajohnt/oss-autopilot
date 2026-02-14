@@ -8,7 +8,7 @@ OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you 
 
 ![Version](https://img.shields.io/badge/version-0.27.0-blue)
 ![CI](https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/badge/tests-460_passing-success)
+![Tests](https://img.shields.io/badge/tests-464_passing-success)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 
