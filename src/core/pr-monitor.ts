@@ -8,7 +8,7 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween } from './utils.js';
-import { FetchedPR, FetchedPRStatus, CIStatus, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR, CIFailureCategory, ClassifiedCheck } from './types.js';
+import { FetchedPR, FetchedPRStatus, CIStatus, CIStatusResult, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR, CIFailureCategory, ClassifiedCheck } from './types.js';
 
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
@@ -536,7 +536,7 @@ export class PRMonitor {
    * Get CI status from combined status API and check runs.
    * Returns status and names of failing checks for diagnostics.
    */
-  private async getCIStatus(owner: string, repo: string, sha: string): Promise<{ status: CIStatus; failingCheckNames: string[]; failingCheckConclusions: Map<string, string> }> {
+  private async getCIStatus(owner: string, repo: string, sha: string): Promise<CIStatusResult> {
     if (!sha) return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
 
     try {
@@ -1085,6 +1085,8 @@ const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr:
       const checks = pr.classifiedChecks || [];
       const actionable = checks.filter(c => c.category === 'actionable');
       if (actionable.length > 0) return `${actionable.length} check${actionable.length === 1 ? '' : 's'} failed: ${actionable.map(c => c.name).join(', ')}`;
+      const infrastructure = checks.filter(c => c.category === 'infrastructure');
+      if (infrastructure.length > 0) return `${infrastructure.length} check${infrastructure.length === 1 ? '' : 's'} cancelled/timed out (infrastructure)`;
       const failingNames = pr.failingCheckNames || [];
       if (failingNames.length > 0) return `${failingNames.length} check${failingNames.length === 1 ? '' : 's'} failed`;
       return 'One or more CI checks are failing';
@@ -1190,8 +1192,8 @@ const AUTH_GATE_PATTERNS: RegExp[] = [
  * These are runner issues, dependency install problems, or service outages — not code failures.
  */
 const INFRASTRUCTURE_PATTERNS: RegExp[] = [
-  /\binstall\s*(os\s*)?dep/i,
-  /\bsetup\b.*\bfail/i,
+  /\binstall\s*(os\s*)?dep(endenc|s\b)/i,
+  /\bsetup\s+fail(ed|ure)?\b/i,
   /\bservice\s*unavailable/i,
   /\binfrastructure/i,
 ];

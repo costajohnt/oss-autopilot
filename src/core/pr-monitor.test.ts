@@ -1376,6 +1376,29 @@ describe('computeDisplayLabel (#79)', () => {
     expect(displayDescription).toBe('2 checks failed');
   });
 
+  it('should indicate infrastructure failures when all checks are infrastructure (#145)', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'failing_ci',
+      failingCheckNames: ['Build', 'Lint'],
+      classifiedChecks: [
+        { name: 'Build', category: 'infrastructure', conclusion: 'cancelled' },
+        { name: 'Lint', category: 'infrastructure', conclusion: 'timed_out' },
+      ],
+    }));
+    expect(displayDescription).toBe('2 checks cancelled/timed out (infrastructure)');
+  });
+
+  it('should indicate single infrastructure failure (#145)', () => {
+    const { displayDescription } = computeDisplayLabel(makePR({
+      status: 'failing_ci',
+      failingCheckNames: ['Build'],
+      classifiedChecks: [
+        { name: 'Build', category: 'infrastructure', conclusion: 'cancelled' },
+      ],
+    }));
+    expect(displayDescription).toBe('1 check cancelled/timed out (infrastructure)');
+  });
+
   it('should return generic description when no classified checks', () => {
     const { displayDescription } = computeDisplayLabel(makePR({
       status: 'failing_ci',
@@ -1577,6 +1600,20 @@ describe('classifyCICheck (#81)', () => {
     expect(classifyCICheck('API timeout handling tests')).toBe('actionable');
     expect(classifyCICheck('Connection timeout tests')).toBe('actionable');
     expect(classifyCICheck('Hang detection tests')).toBe('actionable');
+  });
+
+  it('should not false-positive on check names containing setup/install substrings (#145)', () => {
+    expect(classifyCICheck('Setup test to fail gracefully')).toBe('actionable');
+    expect(classifyCICheck('Setup failover tests')).toBe('actionable');
+    expect(classifyCICheck('Install deprecated packages')).toBe('actionable');
+  });
+
+  it('should correctly match tightened infrastructure patterns (#145)', () => {
+    expect(classifyCICheck('Install dependencies')).toBe('infrastructure');
+    expect(classifyCICheck('Install OS dependencies')).toBe('infrastructure');
+    expect(classifyCICheck('Install deps')).toBe('infrastructure');
+    expect(classifyCICheck('Setup failed')).toBe('infrastructure');
+    expect(classifyCICheck('Setup failure')).toBe('infrastructure');
   });
 
   it('should prioritize conclusion over name patterns (#145)', () => {

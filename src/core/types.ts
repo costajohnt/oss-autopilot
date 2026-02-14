@@ -42,6 +42,13 @@ export interface ClassifiedCheck {
   conclusion?: string;
 }
 
+/** Return type for PRMonitor.getCIStatus(). */
+export interface CIStatusResult {
+  status: CIStatus;
+  failingCheckNames: string[];
+  failingCheckConclusions: Map<string, string>;
+}
+
 /**
  * PRs grouped by repository (#80).
  * Used to prevent parallel git state corruption when multiple PRs exist in the same repo.
