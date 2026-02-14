@@ -1374,6 +1374,45 @@ describe('PRMonitor acknowledgment comment detection (Issue #69)', () => {
     expect(result.hasUnrespondedComment).toBe(false);
   });
 
+  it('should skip CHANGES_REQUESTED reviews with empty body (#151)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+      ],
+      [
+        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'CHANGES_REQUESTED' },
+      ],
+      'testuser'
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('should ignore user own COMMENTED reviews (#151)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [],
+      [
+        // User's own inline review — should not trigger needs_response
+        { user: { login: 'testuser' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
+      ],
+      'testuser'
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('should use synthetic body for inline-only COMMENTED reviews (#151)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [],
+      [
+        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
+      ],
+      'testuser'
+    );
+    expect(result.lastMaintainerComment?.body).toBe('(posted inline review comments)');
+  });
+
   it('should still skip APPROVED reviews with no body (#151)', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
@@ -1793,8 +1832,19 @@ describe('isConditionalChecklistItem (#152)', () => {
     expect(isConditionalChecklistItem('- [ ] Demo - not applicable')).toBe(true);
   });
 
-  it('should detect "optional"', () => {
+  it('should detect "optional" in parentheses or at start of item', () => {
     expect(isConditionalChecklistItem('- [ ] Optional: update README')).toBe(true);
+    expect(isConditionalChecklistItem('- [ ] Screenshots (optional)')).toBe(true);
+  });
+
+  it('should NOT flag "optional" in the middle of a meaningful item', () => {
+    expect(isConditionalChecklistItem('- [ ] Add optional parameters to API')).toBe(false);
+    expect(isConditionalChecklistItem('- [ ] Support optional chaining in parser')).toBe(false);
+  });
+
+  it('should detect "if required" and "when applicable"', () => {
+    expect(isConditionalChecklistItem('- [ ] Update API docs if required')).toBe(true);
+    expect(isConditionalChecklistItem('- [ ] Migration script when applicable')).toBe(true);
   });
 
   it('should NOT flag unconditional items', () => {
@@ -1816,30 +1866,17 @@ describe('PRMonitor status with inline review after commit (#151)', () => {
 
   it('should return needs_response when inline review arrives after commit that addressed old comment', () => {
     const monitor = new PRMonitor('fake-token');
-    // Step 1: checkUnrespondedComments finds the inline review (newest maintainer event)
-    const { hasUnrespondedComment, lastMaintainerComment } = (monitor as any).checkUnrespondedComments(
-      [
-        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-13T00:00:00Z' },
-        { user: { login: 'fregante' }, body: 'Please fix X', created_at: '2026-02-13T00:37:25Z' },
-      ],
-      [
-        { user: { login: 'SunsetTechuila' }, body: '', submitted_at: '2026-02-14T05:14:49Z', state: 'COMMENTED' },
-      ],
-      'testuser'
-    );
-
-    // Step 2: determineStatus should return needs_response because the review is after the commit
     const status = (monitor as any).determineStatus(
-      'passing',
-      false,
-      hasUnrespondedComment,
-      false,
-      'review_required',
-      1,
-      30,
-      25,
-      '2026-02-13T06:35:00Z',            // latestCommitDate (before inline review)
-      lastMaintainerComment?.createdAt,    // should be 2026-02-14T05:14:49Z
+      'passing',                  // ciStatus
+      false,                      // hasMergeConflict
+      true,                       // hasUnrespondedComment (inline review detected)
+      false,                      // hasIncompleteChecklist
+      'review_required',          // reviewDecision
+      1,                          // daysSinceActivity
+      30,                         // dormantThreshold
+      25,                         // approachingThreshold
+      '2026-02-13T06:35:00Z',    // latestCommitDate (before inline review)
+      '2026-02-14T05:14:49Z',    // lastMaintainerCommentDate (inline review)
     );
 
     expect(status).toBe('needs_response');

@@ -412,8 +412,7 @@ export class PRMonitor {
       return 'needs_response';
     }
 
-    // Review requested changes but no unresponded comment (feedback was in inline
-    // review comments with empty body, so checkUnrespondedComments didn't catch it).
+    // Review requested changes but no unresponded comment.
     // If the latest commit is before the review, the contributor hasn't addressed it yet.
     if (reviewDecision === 'changes_requested' && latestChangesRequestedDate) {
       if (!latestCommitDate || latestCommitDate < latestChangesRequestedDate) {
@@ -484,14 +483,8 @@ export class PRMonitor {
       line => !isConditionalChecklistItem(line)
     );
 
-    // All checked or only conditional items unchecked — checklist complete
-    if (nonConditionalUnchecked.length === 0) return {
-      hasIncompleteChecklist: false,
-      checklistStats: { checked, total },
-    };
-
     return {
-      hasIncompleteChecklist: true,
+      hasIncompleteChecklist: nonConditionalUnchecked.length > 0,
       checklistStats: { checked, total },
     };
   }
@@ -1175,7 +1168,7 @@ export function computeDisplayLabel(pr: FetchedPR): { displayLabel: string; disp
  * Matches patterns like "(if the PR is ...)", "if applicable", "N/A", "optional", etc.
  * Conservative — only skips items with clear conditional language.
  */
-const CONDITIONAL_CHECKLIST_PATTERN = /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\boptional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b/;
+const CONDITIONAL_CHECKLIST_PATTERN = /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\(optional\)|- \[ \]\s*optional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b/;
 
 export function isConditionalChecklistItem(line: string): boolean {
   return CONDITIONAL_CHECKLIST_PATTERN.test(line.toLowerCase());
