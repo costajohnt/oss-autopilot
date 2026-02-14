@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.7] - 2026-02-13
+
+### Fixed
+
+- **Filter bot comments from "Needs Response" detection (#143)** — Bot accounts like CLAassistant, codecov-commenter, and changeset-bot (without the `[bot]` suffix) now correctly filtered alongside `[bot]`-suffixed accounts. PRs with only bot comments no longer trigger false positive investigation cycles.
+
 ## [0.26.6] - 2026-02-13
 
 ### Fixed
@@ -581,6 +587,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.26.7]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.6...v0.26.7
 [0.26.6]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.5...v0.26.6
 [0.26.5]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.4...v0.26.5
 [0.26.4]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.3...v0.26.4
