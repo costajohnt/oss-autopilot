@@ -419,7 +419,7 @@ For each issue in `actionableIssues`, include a Task tool call grouped by repo:
 | Issue Type | Tier | Agent Action |
 |------------|------|--------------|
 | Needs Rebase | Tier 1 | Clone if needed, fetch upstream, rebase, force push. Report result. |
-| CI Failing | Tier 2 | Investigate CI failures. Analyze logs, identify root cause, recommend fixes. DO NOT push. |
+| CI Failing | Tier 2 | Investigate CI failures. Analyze logs, identify root cause, recommend fixes. DO NOT push code fixes without approval. If a re-run is needed, attempt `gh run rerun <id> --repo <repo> --failed`. If it fails (permission error, non-rerunnable state, or other error), report the error and suggest alternatives for user approval: push an empty commit to retrigger, ask maintainer to re-run, or wait. |
 | CI Blocked | Info | Report that CI needs maintainer trigger. Suggest commenting to request it. |
 | CI Not Running | Info | Investigate why CI isn't running. Check if workflows exist, if fork has actions enabled. |
 | Fork Limitation | Info | Note as expected — no action needed. |
@@ -827,7 +827,7 @@ Use AskUserQuestion (if `availableCount >= 5` and an advisory was shown, place t
 - `isNewContribution = true`
 - `issueContext = { title, url, description }` — for scope-aware review in Step 5.6
 
-This activates the same draft-first workflow as the curated list path (see "Handle Pick Issue From List" section 6 for the full sequence: Steps 5.5 through 6).
+This activates the same draft-first workflow as the curated list path (see "Handle Pick Issue From List" section 6 for the full sequence: Steps 5.5 through 6, including change type selection rules).
 
 ### Handle "Pick Issue From List"
 
@@ -896,6 +896,11 @@ Show the vetting summary. If claimable, offer:
 When the user claims an issue and starts implementing, set:
 - `isNewContribution = true`
 - `issueContext = { title, url, description }` — the issue being addressed (used for scope-aware review in Step 5.6)
+- **Choose a consistent change type** based on the issue labels and nature of the change. Use this type for both the branch prefix and the commit message to avoid mismatches flagged by the compliance checker:
+  - Issue labeled `bug` or fixes broken behavior → `fix/` branch, `fix:` commit
+  - Issue labeled `enhancement`, `feature`, or adds new functionality → `feat/` branch, `feat:` commit
+  - Documentation-only changes → `docs/` branch, `docs:` commit
+  - If ambiguous, prefer `fix/` for correcting existing behavior and `feat/` for adding new capabilities
 
 After implementation, the flow proceeds through the **draft-first workflow**:
 1. Step 5.5 detects `isNewContribution` → commits, pushes, creates draft PR
@@ -1340,7 +1345,7 @@ Read the target repo's conventions if not already loaded:
 
 **CRITICAL: Dispatch ALL agents in a SINGLE message for true parallelism.**
 
-Use the same agent dispatch pattern as Step 5.5 sub-step 3, **always using the Large tier** (code-reviewer, silent-failure-hunter, code-simplifier, pr-test-analyzer, plus conditional agents), since this reviews the full branch diff for a new contribution. Step 5.5's size-based scaling does not apply here. Include the `Working directory: {local repo path}` line in every prompt. Additionally, **prepend the following SCOPE block** to each agent prompt. The SCOPE block constrains findings to the PR's purpose and prevents scope creep from pre-existing issues:
+Use the same agent dispatch pattern as Step 5.5 sub-step 3, but **do NOT use Step 5.5's size-based scaling — regardless of how small the diff is (even < 50 lines, ≤ 2 files), always dispatch the full Large tier** (code-reviewer, silent-failure-hunter, code-simplifier, pr-test-analyzer, plus conditional agents). New contributions warrant maximum review coverage. Include the `Working directory: {local repo path}` line in every prompt. Additionally, **prepend the following SCOPE block** to each agent prompt. The SCOPE block constrains findings to the PR's purpose and prevents scope creep from pre-existing issues:
 
 ```
 SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
@@ -1547,6 +1552,13 @@ Options:
 
 Automated review catches code patterns, but cannot verify runtime behavior (UI rendering, keyboard shortcuts, browser behavior, CLI output, etc.). This step gives the user a chance to manually verify the feature works before finalizing.
 
+**Auto-skip when ALL of the following are true:**
+- The change is a utility function, library code, or backend logic (no visual/UI component)
+- All relevant automated test suites pass
+- Manual testing would require non-trivial environment setup (e.g., CSP headers, specific server config, browser extension loading)
+
+When auto-skipping, note: "Skipping manual testing — non-visual change, all automated tests pass, and manual testing would require non-trivial environment setup." Then proceed directly to Step 5.7.
+
 ### 1. Prompt for Manual Testing
 
 ```
@@ -1719,7 +1731,7 @@ When a session has pushed multiple times, `--force-with-lease` can fail because 
 
 ```bash
 branch=$(git branch --show-current)
-git fetch origin "$branch:refs/remotes/origin/$branch"
+git fetch origin "$branch"
 git push --force-with-lease
 ```
 
