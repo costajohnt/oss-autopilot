@@ -1867,13 +1867,15 @@ After viewing, re-prompt with the same options.
 
 ## Step 6: After Creating/Updating PRs
 
-**IMPORTANT:** After helping create or update a PR, always offer a compliance check:
+**For PRs that completed the full draft-first workflow** (Steps 5.6 → 5.6b → 5.7b → 5.7 → 5.8, i.e., `isNewContribution === true` and all steps completed): Skip the compliance check. The PR was already reviewed by 5+ agents, integration-checked, manually tested, and squashed. Note:
+
+> "Compliance check skipped — this PR went through the full draft-first review workflow."
+
+**For all other PR updates** (existing PRs, quick fixes, responses to maintainer feedback): Always offer a compliance check:
 
 > "Would you like me to run a compliance check on this PR to ensure it meets opensource.guide best practices?"
 
 Dispatch the `pr-compliance-checker` agent with the PR URL.
-
-**Note:** For new contributions that went through the draft-first workflow (Steps 5.6 through 5.8, including 5.6b and 5.7b), the PR has already been reviewed iteratively, integration-checked, and squashed. The compliance check here focuses on PR description quality, licensing, and other opensource.guide standards — not code quality (which was handled in Step 5.6).
 
 ### Test Coverage Requirements
 
