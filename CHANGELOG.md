@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] - 2026-02-13
+
+### Added
+
+- **Infrastructure CI failure classification (#145)** — Jobs with `cancelled` or `timed_out` conclusions are now classified as `infrastructure` instead of `actionable`, skipping unnecessary investigation. Infrastructure-related check names (install dependencies, runner setup, service unavailable) are also detected. Conclusion data flows from GitHub API through to the classified checks output.
+
+### Changed
+
+- **Make compliance check conditional after draft-first workflow (#140)** — PRs that completed the full draft-first review cycle (Steps 5.6 → 5.6b → 5.7b → 5.7 → 5.8) now skip the compliance check automatically, since 5+ review agents already covered quality. Compliance check still runs for existing PR updates and quick fixes.
+
 ## [0.26.7] - 2026-02-13
 
 ### Fixed
@@ -587,6 +597,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.27.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.7...v0.27.0
 [0.26.7]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.6...v0.26.7
 [0.26.6]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.5...v0.26.6
 [0.26.5]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.4...v0.26.5

@@ -1555,9 +1555,39 @@ describe('classifyCICheck (#81)', () => {
     // "Vercel" matches fork_limitation, "CLA" matches auth_gate — auth_gate wins
     expect(classifyCICheck('Vercel CLA check')).toBe('auth_gate');
   });
+
+  it('should classify cancelled jobs as infrastructure (#145)', () => {
+    expect(classifyCICheck('pytest on macOS', undefined, 'cancelled')).toBe('infrastructure');
+    expect(classifyCICheck('Build', undefined, 'cancelled')).toBe('infrastructure');
+  });
+
+  it('should classify timed_out jobs as infrastructure (#145)', () => {
+    expect(classifyCICheck('CI / test (ubuntu-latest)', undefined, 'timed_out')).toBe('infrastructure');
+  });
+
+  it('should classify infrastructure-related check names (#145)', () => {
+    expect(classifyCICheck('Install OS dependencies')).toBe('infrastructure');
+    expect(classifyCICheck('Runner setup failed')).toBe('infrastructure');
+    expect(classifyCICheck('Service unavailable')).toBe('infrastructure');
+  });
+
+  it('should not false-positive on legitimate check names containing runner/timeout/hang (#145)', () => {
+    expect(classifyCICheck('Test runner')).toBe('actionable');
+    expect(classifyCICheck('Jest runner')).toBe('actionable');
+    expect(classifyCICheck('API timeout handling tests')).toBe('actionable');
+    expect(classifyCICheck('Connection timeout tests')).toBe('actionable');
+    expect(classifyCICheck('Hang detection tests')).toBe('actionable');
+  });
+
+  it('should prioritize conclusion over name patterns (#145)', () => {
+    // Even if name looks actionable, cancelled conclusion means infrastructure
+    expect(classifyCICheck('Tests', undefined, 'cancelled')).toBe('infrastructure');
+    // But a failed conclusion with actionable name stays actionable
+    expect(classifyCICheck('Tests', undefined, 'failure')).toBe('actionable');
+  });
 });
 
-describe('classifyFailingChecks (#81)', () => {
+describe('classifyFailingChecks (#81, #145)', () => {
   it('should return empty array for no checks', () => {
     expect(classifyFailingChecks([])).toEqual([]);
   });
@@ -1565,10 +1595,19 @@ describe('classifyFailingChecks (#81)', () => {
   it('should classify mixed checks correctly', () => {
     const result = classifyFailingChecks(['Build', 'Vercel Deploy', 'license/cla', 'Tests']);
     expect(result).toEqual([
-      { name: 'Build', category: 'actionable' },
-      { name: 'Vercel Deploy', category: 'fork_limitation' },
-      { name: 'license/cla', category: 'auth_gate' },
-      { name: 'Tests', category: 'actionable' },
+      { name: 'Build', category: 'actionable', conclusion: undefined },
+      { name: 'Vercel Deploy', category: 'fork_limitation', conclusion: undefined },
+      { name: 'license/cla', category: 'auth_gate', conclusion: undefined },
+      { name: 'Tests', category: 'actionable', conclusion: undefined },
+    ]);
+  });
+
+  it('should use conclusion data for classification (#145)', () => {
+    const conclusions = new Map([['Build', 'cancelled'], ['Tests', 'failure']]);
+    const result = classifyFailingChecks(['Build', 'Tests'], conclusions);
+    expect(result).toEqual([
+      { name: 'Build', category: 'infrastructure', conclusion: 'cancelled' },
+      { name: 'Tests', category: 'actionable', conclusion: 'failure' },
     ]);
   });
 

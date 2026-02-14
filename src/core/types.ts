@@ -31,13 +31,15 @@ export type CIStatus = 'passing' | 'failing' | 'pending' | 'unknown';
  * - `actionable` — Real test/build failure the contributor should fix
  * - `fork_limitation` — Failure due to fork permissions (e.g., Vercel deploy, Netlify)
  * - `auth_gate` — Authorization/approval gate, not a real failure
+ * - `infrastructure` — Runner timeout, dependency install failure, or other transient infra issue
  */
-export type CIFailureCategory = 'actionable' | 'fork_limitation' | 'auth_gate';
+export type CIFailureCategory = 'actionable' | 'fork_limitation' | 'auth_gate' | 'infrastructure';
 
 /** A CI check with its failure classification (#81). */
 export interface ClassifiedCheck {
   name: string;
   category: CIFailureCategory;
+  conclusion?: string;
 }
 
 /**

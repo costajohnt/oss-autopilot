@@ -215,7 +215,7 @@ export class PRMonitor {
           .catch(() => undefined)
       : Promise.resolve(undefined);
 
-    const [{ status: ciStatus, failingCheckNames }, latestCommitDate] = await Promise.all([
+    const [{ status: ciStatus, failingCheckNames, failingCheckConclusions }, latestCommitDate] = await Promise.all([
       ciPromise,
       commitDatePromise,
     ]);
@@ -251,7 +251,7 @@ export class PRMonitor {
     );
 
     // Classify failing checks (#81)
-    const classifiedChecks = classifyFailingChecks(failingCheckNames);
+    const classifiedChecks = classifyFailingChecks(failingCheckNames, failingCheckConclusions);
 
     // Build partial PR (without display fields) for display label computation
     const pr: FetchedPR = {
@@ -536,8 +536,8 @@ export class PRMonitor {
    * Get CI status from combined status API and check runs.
    * Returns status and names of failing checks for diagnostics.
    */
-  private async getCIStatus(owner: string, repo: string, sha: string): Promise<{ status: CIStatus; failingCheckNames: string[] }> {
-    if (!sha) return { status: 'unknown', failingCheckNames: [] };
+  private async getCIStatus(owner: string, repo: string, sha: string): Promise<{ status: CIStatus; failingCheckNames: string[]; failingCheckConclusions: Map<string, string> }> {
+    if (!sha) return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
 
     try {
       // Fetch both combined status and check runs in parallel
@@ -566,11 +566,13 @@ export class PRMonitor {
       let hasPendingChecks = false;
       let hasSuccessfulChecks = false;
       const failingCheckNames: string[] = [];
+      const failingCheckConclusions = new Map<string, string>();
 
       for (const check of checkRuns) {
         if (check.conclusion === 'failure' || check.conclusion === 'cancelled' || check.conclusion === 'timed_out') {
           hasFailingChecks = true;
           failingCheckNames.push(check.name);
+          failingCheckConclusions.set(check.name, check.conclusion);
         } else if (check.conclusion === 'action_required') {
           hasPendingChecks = true; // Maintainer approval gate, not a real failure
         } else if (check.status === 'in_progress' || check.status === 'queued') {
@@ -602,6 +604,8 @@ export class PRMonitor {
       const hasStatuses = combinedStatus.statuses.length > 0;
 
       // Collect failing status names from combined status API
+      // Note: Combined statuses don't have conclusion data (only check runs do),
+      // so these rely on name-based classification in classifyFailingChecks.
       for (const s of realStatuses) {
         if (s.state === 'failure' || s.state === 'error') {
           failingCheckNames.push(s.context);
@@ -611,23 +615,23 @@ export class PRMonitor {
       // Priority: failing > pending > passing > unknown
       // Safety net: If we have ANY failing checks, report as failing
       if (hasFailingChecks || effectiveCombinedState === 'failure' || effectiveCombinedState === 'error') {
-        return { status: 'failing', failingCheckNames };
+        return { status: 'failing', failingCheckNames, failingCheckConclusions };
       }
 
       if (hasPendingChecks || effectiveCombinedState === 'pending') {
-        return { status: 'pending', failingCheckNames: [] };
+        return { status: 'pending', failingCheckNames: [], failingCheckConclusions: new Map() };
       }
 
       if (hasSuccessfulChecks || effectiveCombinedState === 'success') {
-        return { status: 'passing', failingCheckNames: [] };
+        return { status: 'passing', failingCheckNames: [], failingCheckConclusions: new Map() };
       }
 
       // No checks found at all - this is common for repos without CI
       if (!hasStatuses && checkRuns.length === 0) {
-        return { status: 'unknown', failingCheckNames: [] };
+        return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
       }
 
-      return { status: 'unknown', failingCheckNames: [] };
+      return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
     } catch (error) {
       const statusCode = (error as { status?: number }).status;
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -638,11 +642,11 @@ export class PRMonitor {
         console.error(`[RATE LIMIT] CI check failed for ${owner}/${repo}: Rate limit exceeded`);
       } else if (statusCode === 404) {
         // Repo might not have CI configured, this is normal
-        return { status: 'unknown', failingCheckNames: [] };
+        return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
       } else {
         console.error(`[CI ERROR] Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage}`);
       }
-      return { status: 'unknown', failingCheckNames: [] };
+      return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
     }
   }
 
@@ -1182,32 +1186,57 @@ const AUTH_GATE_PATTERNS: RegExp[] = [
 ];
 
 /**
- * Classify a failing CI check as actionable, fork_limitation, or auth_gate (#81).
- * Default is 'actionable' — only known patterns get reclassified.
+ * Known CI check name patterns that indicate infrastructure/transient failures (#145).
+ * These are runner issues, dependency install problems, or service outages — not code failures.
  */
-export function classifyCICheck(name: string, description?: string): CIFailureCategory {
+const INFRASTRUCTURE_PATTERNS: RegExp[] = [
+  /\binstall\s*(os\s*)?dep/i,
+  /\bsetup\b.*\bfail/i,
+  /\bservice\s*unavailable/i,
+  /\binfrastructure/i,
+];
+
+/**
+ * Classify a failing CI check as actionable, fork_limitation, auth_gate, or infrastructure (#81, #145).
+ * Default is 'actionable' — only known patterns get reclassified.
+ * When conclusion is provided (cancelled, timed_out), the check is classified as infrastructure.
+ */
+export function classifyCICheck(name: string, description?: string, conclusion?: string): CIFailureCategory {
+  // Infrastructure: cancelled or timed_out jobs are transient failures (#145)
+  if (conclusion === 'cancelled' || conclusion === 'timed_out') return 'infrastructure';
+
   const nameLower = name.toLowerCase();
 
   // Check name first (more reliable than description)
   if (AUTH_GATE_PATTERNS.some(p => p.test(nameLower))) return 'auth_gate';
   if (FORK_LIMITATION_PATTERNS.some(p => p.test(nameLower))) return 'fork_limitation';
+  if (INFRASTRUCTURE_PATTERNS.some(p => p.test(nameLower))) return 'infrastructure';
 
   // Fall through to description only if name was not classified
   if (description) {
     const descLower = description.toLowerCase();
     if (AUTH_GATE_PATTERNS.some(p => p.test(descLower))) return 'auth_gate';
     if (FORK_LIMITATION_PATTERNS.some(p => p.test(descLower))) return 'fork_limitation';
+    if (INFRASTRUCTURE_PATTERNS.some(p => p.test(descLower))) return 'infrastructure';
   }
 
   return 'actionable';
 }
 
 /**
- * Classify all failing checks and return both the flat names array and classified array (#81).
+ * Classify all failing checks and return both the flat names array and classified array (#81, #145).
+ * Accepts optional conclusion data to detect infrastructure failures.
  */
-export function classifyFailingChecks(failingCheckNames: string[]): ClassifiedCheck[] {
-  return failingCheckNames.map(name => ({
-    name,
-    category: classifyCICheck(name),
-  }));
+export function classifyFailingChecks(
+  failingCheckNames: string[],
+  conclusions?: Map<string, string>
+): ClassifiedCheck[] {
+  return failingCheckNames.map(name => {
+    const conclusion = conclusions?.get(name);
+    return {
+      name,
+      category: classifyCICheck(name, undefined, conclusion),
+      conclusion,
+    };
+  });
 }
