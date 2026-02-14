@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.1] - 2026-02-14
+
+### Fixed
+
+- **Detect inline-only review comments as needing response (#151)** — Reviews with `COMMENTED` state but no top-level body (indicating inline review comments) are now included in the unresponded comment timeline. Previously, these were invisible to the detection logic, causing PRs with new review feedback after a commit to be classified as `changes_addressed` instead of `needs_response`.
+- **Skip conditional checklist items from incomplete detection (#152)** — Unchecked checklist items containing conditional language like "(if the PR is ...)", "if applicable", "optional", or "N/A" are no longer counted as incomplete. This eliminates false-positive `incomplete_checklist` status for PRs in repos that use conditional checklists (e.g., n8n's backport label item).
+
 ## [0.27.0] - 2026-02-13
 
 ### Added
@@ -597,6 +604,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.27.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.7...v0.27.0
 [0.26.7]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.6...v0.26.7
 [0.26.6]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.5...v0.26.6

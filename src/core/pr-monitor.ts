@@ -292,7 +292,7 @@ export class PRMonitor {
    */
   private checkUnrespondedComments(
     comments: Array<{ user?: { login?: string } | null; body?: string | null; created_at: string }>,
-    reviews: Array<{ user?: { login?: string } | null; body?: string | null; submitted_at?: string | null }>,
+    reviews: Array<{ user?: { login?: string } | null; body?: string | null; submitted_at?: string | null; state?: string | null }>,
     username: string
   ): { hasUnrespondedComment: boolean; lastMaintainerComment?: FetchedPR['lastMaintainerComment'] } {
     // Combine comments and reviews into a timeline
@@ -310,14 +310,16 @@ export class PRMonitor {
 
     for (const review of reviews) {
       if (!review.submitted_at) continue;
-      // Skip reviews with empty bodies - these are state changes (approve/request changes)
-      // without actual comment text, and don't need a response
       const body = (review.body || '').trim();
-      if (!body) continue;
+      // Include COMMENTED reviews even without body text — they indicate
+      // inline review comments were posted and may need a response (#151).
+      // Skip other empty-body reviews (APPROVED, CHANGES_REQUESTED, DISMISSED)
+      // as those are state changes without comment text.
+      if (!body && review.state !== 'COMMENTED') continue;
       const author = review.user?.login || 'unknown';
       timeline.push({
         author,
-        body,
+        body: body || '(posted inline review comments)',
         createdAt: review.submitted_at,
         isUser: author.toLowerCase() === username.toLowerCase(),
       });
@@ -459,24 +461,31 @@ export class PRMonitor {
    * Analyze PR body for incomplete checklists (unchecked markdown checkboxes).
    * Looks for patterns like "- [ ]" (unchecked) vs "- [x]" (checked).
    * Only flags if there ARE checkboxes and some are unchecked.
+   * Conditional items (containing "if applicable", "(if ...)", etc.) are
+   * excluded from the incomplete count (#152).
    */
   private analyzeChecklist(body: string): { hasIncompleteChecklist: boolean; checklistStats?: FetchedPR['checklistStats'] } {
     if (!body) return { hasIncompleteChecklist: false };
 
     const checkedPattern = /- \[x\]/gi;
-    const uncheckedPattern = /- \[ \]/g;
+    const uncheckedLinePattern = /^.*- \[ \].*$/gm;
 
     const checkedMatches = body.match(checkedPattern) || [];
-    const uncheckedMatches = body.match(uncheckedPattern) || [];
+    const uncheckedLines = body.match(uncheckedLinePattern) || [];
 
     const checked = checkedMatches.length;
-    const total = checked + uncheckedMatches.length;
+    const total = checked + uncheckedLines.length;
 
     // No checkboxes at all - not a checklist PR
     if (total === 0) return { hasIncompleteChecklist: false };
 
-    // All checked - checklist complete
-    if (uncheckedMatches.length === 0) return {
+    // Filter out conditional checklist items that are intentionally unchecked
+    const nonConditionalUnchecked = uncheckedLines.filter(
+      line => !isConditionalChecklistItem(line)
+    );
+
+    // All checked or only conditional items unchecked — checklist complete
+    if (nonConditionalUnchecked.length === 0) return {
       hasIncompleteChecklist: false,
       checklistStats: { checked, total },
     };
@@ -1159,6 +1168,17 @@ export function computeDisplayLabel(pr: FetchedPR): { displayLabel: string; disp
     displayLabel: entry.label,
     displayDescription: entry.description(pr),
   };
+}
+
+/**
+ * Detect conditional checklist items that are intentionally left unchecked (#152).
+ * Matches patterns like "(if the PR is ...)", "if applicable", "N/A", "optional", etc.
+ * Conservative — only skips items with clear conditional language.
+ */
+const CONDITIONAL_CHECKLIST_PATTERN = /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\boptional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b/;
+
+export function isConditionalChecklistItem(line: string): boolean {
+  return CONDITIONAL_CHECKLIST_PATTERN.test(line.toLowerCase());
 }
 
 /**
