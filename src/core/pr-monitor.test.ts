@@ -18,7 +18,7 @@ vi.mock('./state.js', () => ({
 }));
 
 // Import after mocks are set up
-const { PRMonitor, computeDisplayLabel, classifyCICheck, classifyFailingChecks, isBotAuthor } = await import('./pr-monitor.js');
+const { PRMonitor, computeDisplayLabel, classifyCICheck, classifyFailingChecks, isBotAuthor, isConditionalChecklistItem } = await import('./pr-monitor.js');
 const { getStateManager } = await import('./state.js');
 
 describe('PRMonitor CI status deduplication', () => {
@@ -498,6 +498,56 @@ describe('PRMonitor analyzeChecklist', () => {
     const result = (monitor as any).analyzeChecklist(body);
     expect(result.hasIncompleteChecklist).toBe(true);
     expect(result.checklistStats).toEqual({ checked: 1, total: 2 });
+  });
+
+  it('should not flag conditional checklist items as incomplete (#152)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const body = [
+      '- [x] PR title and summary are descriptive',
+      '- [x] Docs updated or follow-up ticket created',
+      '- [x] Tests included',
+      '- [ ] PR Labeled with `release/backport` (if the PR is an urgent fix that needs to be backported)',
+    ].join('\n');
+    const result = (monitor as any).analyzeChecklist(body);
+    expect(result.hasIncompleteChecklist).toBe(false);
+    expect(result.checklistStats).toEqual({ checked: 3, total: 4 });
+  });
+
+  it('should still flag non-conditional unchecked items alongside conditional ones (#152)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const body = [
+      '- [x] Tests included',
+      '- [ ] Documentation updated',
+      '- [ ] Changelog entry (if applicable)',
+    ].join('\n');
+    const result = (monitor as any).analyzeChecklist(body);
+    expect(result.hasIncompleteChecklist).toBe(true);
+    expect(result.checklistStats).toEqual({ checked: 1, total: 3 });
+  });
+
+  it('should handle multiple conditional patterns (#152)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const body = [
+      '- [x] Tests pass',
+      '- [ ] Update CHANGELOG (if applicable)',
+      '- [ ] Add migration (only if schema changes)',
+      '- [ ] Backport label (if needed)',
+    ].join('\n');
+    const result = (monitor as any).analyzeChecklist(body);
+    expect(result.hasIncompleteChecklist).toBe(false);
+    expect(result.checklistStats).toEqual({ checked: 1, total: 4 });
+  });
+
+  it('should handle "N/A" and "optional" patterns (#152)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const body = [
+      '- [x] Code review',
+      '- [ ] Screenshots (N/A for backend changes)',
+      '- [ ] Optional: update README',
+    ].join('\n');
+    const result = (monitor as any).analyzeChecklist(body);
+    expect(result.hasIncompleteChecklist).toBe(false);
+    expect(result.checklistStats).toEqual({ checked: 1, total: 3 });
   });
 });
 
@@ -1293,6 +1343,109 @@ describe('PRMonitor acknowledgment comment detection (Issue #69)', () => {
     expect(result.hasUnrespondedComment).toBe(true);
     expect(result.lastMaintainerComment?.author).toBe('maintainer');
   });
+
+  it('should detect inline-only COMMENTED reviews as unresponded (#151)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+      ],
+      [
+        // Review with inline comments only (no top-level body)
+        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
+      ],
+      'testuser'
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('reviewer');
+  });
+
+  it('should skip reviews with null/undefined state and no body (#151)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+      ],
+      [
+        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z' },
+      ],
+      'testuser'
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('should skip CHANGES_REQUESTED reviews with empty body (#151)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+      ],
+      [
+        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'CHANGES_REQUESTED' },
+      ],
+      'testuser'
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('should ignore user own COMMENTED reviews (#151)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [],
+      [
+        // User's own inline review — should not trigger needs_response
+        { user: { login: 'testuser' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
+      ],
+      'testuser'
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('should use synthetic body for inline-only COMMENTED reviews (#151)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [],
+      [
+        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
+      ],
+      'testuser'
+    );
+    expect(result.lastMaintainerComment?.body).toBe('(posted inline review comments)');
+  });
+
+  it('should still skip APPROVED reviews with no body (#151)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+      ],
+      [
+        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'APPROVED' },
+      ],
+      'testuser'
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('should detect new inline review after commit as needs_response (#151)', () => {
+    const monitor = new PRMonitor('fake-token');
+    // Scenario: maintainer comments → user pushes commit → different reviewer posts inline review
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-13T00:00:00Z' },
+        { user: { login: 'fregante' }, body: 'Please fix X', created_at: '2026-02-13T00:37:25Z' },
+      ],
+      [
+        // Inline-only review posted after the user's commit
+        { user: { login: 'SunsetTechuila' }, body: '', submitted_at: '2026-02-14T05:14:49Z', state: 'COMMENTED' },
+      ],
+      'testuser'
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    // The most recent maintainer comment should be the inline review, not the older comment
+    expect(result.lastMaintainerComment?.author).toBe('SunsetTechuila');
+    expect(result.lastMaintainerComment?.createdAt).toBe('2026-02-14T05:14:49Z');
+  });
 });
 
 describe('computeDisplayLabel (#79)', () => {
@@ -1652,6 +1805,81 @@ describe('classifyFailingChecks (#81, #145)', () => {
     const result = classifyFailingChecks(['Vercel', 'Build']);
     expect(result[0].name).toBe('Vercel');
     expect(result[1].name).toBe('Build');
+  });
+});
+
+describe('isConditionalChecklistItem (#152)', () => {
+  it('should detect "(if ...)" pattern', () => {
+    expect(isConditionalChecklistItem('- [ ] PR Labeled with `release/backport` (if the PR is an urgent fix)')).toBe(true);
+  });
+
+  it('should detect "if applicable"', () => {
+    expect(isConditionalChecklistItem('- [ ] Update CHANGELOG (if applicable)')).toBe(true);
+    expect(isConditionalChecklistItem('- [ ] Changelog entry if applicable')).toBe(true);
+  });
+
+  it('should detect "if needed" and "if necessary"', () => {
+    expect(isConditionalChecklistItem('- [ ] Add migration if needed')).toBe(true);
+    expect(isConditionalChecklistItem('- [ ] Update docs if necessary')).toBe(true);
+  });
+
+  it('should detect "only if"', () => {
+    expect(isConditionalChecklistItem('- [ ] Add migration only if schema changes')).toBe(true);
+  });
+
+  it('should detect "N/A" and "not applicable"', () => {
+    expect(isConditionalChecklistItem('- [ ] Screenshots (N/A for backend changes)')).toBe(true);
+    expect(isConditionalChecklistItem('- [ ] Demo - not applicable')).toBe(true);
+  });
+
+  it('should detect "optional" in parentheses or at start of item', () => {
+    expect(isConditionalChecklistItem('- [ ] Optional: update README')).toBe(true);
+    expect(isConditionalChecklistItem('- [ ] Screenshots (optional)')).toBe(true);
+  });
+
+  it('should NOT flag "optional" in the middle of a meaningful item', () => {
+    expect(isConditionalChecklistItem('- [ ] Add optional parameters to API')).toBe(false);
+    expect(isConditionalChecklistItem('- [ ] Support optional chaining in parser')).toBe(false);
+  });
+
+  it('should detect "if required" and "when applicable"', () => {
+    expect(isConditionalChecklistItem('- [ ] Update API docs if required')).toBe(true);
+    expect(isConditionalChecklistItem('- [ ] Migration script when applicable')).toBe(true);
+  });
+
+  it('should NOT flag unconditional items', () => {
+    expect(isConditionalChecklistItem('- [ ] Tests added')).toBe(false);
+    expect(isConditionalChecklistItem('- [ ] Documentation updated')).toBe(false);
+    expect(isConditionalChecklistItem('- [ ] Lint passes')).toBe(false);
+  });
+
+  it('should be case-insensitive', () => {
+    expect(isConditionalChecklistItem('- [ ] IF APPLICABLE: update docs')).toBe(true);
+    expect(isConditionalChecklistItem('- [ ] Optional README update')).toBe(true);
+  });
+});
+
+describe('PRMonitor status with inline review after commit (#151)', () => {
+  beforeEach(() => {
+    mockOctokitInstance = {};
+  });
+
+  it('should return needs_response when inline review arrives after commit that addressed old comment', () => {
+    const monitor = new PRMonitor('fake-token');
+    const status = (monitor as any).determineStatus(
+      'passing',                  // ciStatus
+      false,                      // hasMergeConflict
+      true,                       // hasUnrespondedComment (inline review detected)
+      false,                      // hasIncompleteChecklist
+      'review_required',          // reviewDecision
+      1,                          // daysSinceActivity
+      30,                         // dormantThreshold
+      25,                         // approachingThreshold
+      '2026-02-13T06:35:00Z',    // latestCommitDate (before inline review)
+      '2026-02-14T05:14:49Z',    // lastMaintainerCommentDate (inline review)
+    );
+
+    expect(status).toBe('needs_response');
   });
 });
 
