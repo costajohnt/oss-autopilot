@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-02-17
+
+### Added
+
+- **Shelve/unshelve PRs (#158)** — New `shelve <url>` and `unshelve <url>` CLI commands to manually exclude PRs from capacity and actionable issues. Shelved PRs appear in a dimmed section in the daily digest and dashboard, and are excluded from the PR capacity limit. PRs auto-unshelve when a maintainer engages (needs_response, needs_changes, failing_ci, merge_conflict), with a notification in both the digest and dashboard.
+
+### Changed
+
+- **Dormancy replaced by shelving** — Dormant PRs (30+ days inactive) are now automatically treated as shelved instead of appearing in separate "Dormant" and "Approaching Dormant" sections. They return to active automatically when activity resumes. The dashboard doughnut chart now shows Active/Shelved/Merged/Closed.
+- **Capacity assessment excludes shelved PRs** — The capacity line now shows `(N/M PRs + K shelved)` when shelved PRs exist. Shelved PRs no longer count against `maxActivePRs`.
+- **Dashboard shelved section** — Dashboard renders a dimmed "Shelved" section and an "Auto-Unshelved" notification section. Shelved PRs are filtered from the "Active Pull Requests" list.
+
+### Removed
+
+- **Dormant/Approaching Dormant sections** — Replaced by the unified shelving concept. Dormant PRs now appear in the "Shelved" section instead of separate dormancy sections.
+
 ## [0.29.0] - 2026-02-17
 
 ### Changed
@@ -629,6 +645,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.30.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.28.1...v0.29.0
 [0.28.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.27.1...v0.28.0

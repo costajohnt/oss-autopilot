@@ -57,6 +57,15 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       } catch { /* non-critical */ }
 
       digest = prMonitor.generateDigest(prs, recentlyClosedPRs);
+
+      // Apply shelve partitioning for display (auto-unshelve only runs in daily check)
+      // Dormant PRs are treated as shelved for display purposes
+      const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
+      const freshShelved = prs.filter(pr => shelvedUrls.has(pr.url) || pr.status === 'dormant');
+      digest.shelvedPRs = freshShelved;
+      digest.autoUnshelvedPRs = [];
+      digest.summary.totalActivePRs = prs.length - freshShelved.length;
+
       stateManager.setLastDigest(digest);
       stateManager.save();
       console.error(`Refreshed: ${prs.length} PRs fetched`);
@@ -181,22 +190,20 @@ export function writeDashboardFromState(): string {
 
 interface DashboardStats {
   activePRs: number;
-  dormantPRs: number;
+  shelvedPRs: number;
   mergedPRs: number;
   closedPRs: number;
   mergeRate: string;
-  needsResponse: number;
 }
 
 function buildDashboardStats(digest: DailyDigest, state: AgentState): DashboardStats {
   const summary = digest.summary || { totalActivePRs: 0, totalMergedAllTime: 0, mergeRate: 0, totalNeedingAttention: 0 };
   return {
     activePRs: summary.totalActivePRs,
-    dormantPRs: (digest.dormantPRs || []).length,
+    shelvedPRs: (digest.shelvedPRs || []).length,
     mergedPRs: summary.totalMergedAllTime,
     closedPRs: Object.values(state.repoScores || {}).reduce((sum, s) => sum + (s.closedWithoutMergeCount || 0), 0),
     mergeRate: `${(summary.mergeRate ?? 0).toFixed(1)}%`,
-    needsResponse: (digest.prsNeedingResponse || []).length,
   };
 }
 
@@ -225,6 +232,11 @@ function generateDashboardHtml(
   state: Readonly<AgentState>,
 ): string {
   const approachingDormantDays = state.config?.approachingDormantDays ?? 25;
+  const shelvedPRs = digest.shelvedPRs || [];
+  const autoUnshelvedPRs = digest.autoUnshelvedPRs || [];
+  const shelvedUrls = new Set(shelvedPRs.map(pr => pr.url));
+  const activePRList = (digest.openPRs || []).filter(pr => !shelvedUrls.has(pr.url));
+
   // Action Required: contributor must do something
   const actionRequired = [
     ...(digest.prsNeedingResponse || []),
@@ -292,6 +304,8 @@ function generateDashboardHtml(
     lock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     infoCircle: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
     refresh: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
+    box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
+    bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
   };
 
   // Default meta: truncated PR title
@@ -477,11 +491,9 @@ function generateDashboardHtml(
     }
 
     .stat-card.active { --accent-color: var(--accent-open); }
-    .stat-card.dormant { --accent-color: var(--accent-warning); }
     .stat-card.merged { --accent-color: var(--accent-merged); }
     .stat-card.closed { --accent-color: var(--text-muted); }
     .stat-card.rate { --accent-color: var(--accent-info); }
-    .stat-card.response { --accent-color: var(--accent-warning); }
 
     .stat-value {
       font-family: 'Geist Mono', monospace;
@@ -492,11 +504,9 @@ function generateDashboardHtml(
     }
 
     .stat-card.active .stat-value { color: var(--accent-open); }
-    .stat-card.dormant .stat-value { color: var(--accent-warning); }
     .stat-card.merged .stat-value { color: var(--accent-merged); }
     .stat-card.closed .stat-value { color: var(--text-muted); }
     .stat-card.rate .stat-value { color: var(--accent-info); }
-    .stat-card.response .stat-value { color: var(--accent-warning); }
 
     .stat-label {
       font-size: 0.7rem;
@@ -598,6 +608,24 @@ function generateDashboardHtml(
       border-left-color: var(--accent-warning);
       background: var(--accent-warning-dim);
     }
+
+    .health-item.shelved {
+      border-left-color: var(--text-muted);
+      background: rgba(110, 118, 129, 0.06);
+      opacity: 0.6;
+    }
+
+    .health-item.shelved .health-icon { background: rgba(110, 118, 129, 0.12); color: var(--text-muted); }
+
+    .health-item.auto-unshelved {
+      border-left-color: var(--accent-info);
+      background: var(--accent-info-dim);
+    }
+
+    .health-item.auto-unshelved .health-icon { background: var(--accent-info-dim); color: var(--accent-info); }
+
+    .stat-card.shelved { --accent-color: var(--text-muted); }
+    .stat-card.shelved .stat-value { color: var(--text-muted); }
 
     .waiting-section {
       border-color: rgba(88, 166, 255, 0.2);
@@ -923,9 +951,9 @@ function generateDashboardHtml(
         <div class="stat-value">${stats.activePRs}</div>
         <div class="stat-label">Active PRs</div>
       </div>
-      <div class="stat-card dormant">
-        <div class="stat-value">${stats.dormantPRs}</div>
-        <div class="stat-label">Dormant</div>
+      <div class="stat-card shelved">
+        <div class="stat-value">${stats.shelvedPRs}</div>
+        <div class="stat-label">Shelved</div>
       </div>
       <div class="stat-card merged">
         <div class="stat-value">${stats.mergedPRs}</div>
@@ -938,10 +966,6 @@ function generateDashboardHtml(
       <div class="stat-card rate">
         <div class="stat-value">${stats.mergeRate}</div>
         <div class="stat-label">Merge Rate</div>
-      </div>
-      <div class="stat-card response">
-        <div class="stat-value">${stats.needsResponse}</div>
-        <div class="stat-label">Need Response</div>
       </div>
     </div>
 
@@ -1038,6 +1062,22 @@ function generateDashboardHtml(
     </section>
     ` : ''}
 
+    ${autoUnshelvedPRs.length > 0 ? `
+    <section class="health-section" style="animation-delay: 0.25s;">
+      <div class="health-header">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-info)" stroke-width="2">
+          ${SVG.bell}
+        </svg>
+        <h2>Auto-Unshelved</h2>
+        <span class="health-badge" style="background: var(--accent-info-dim); color: var(--accent-info);">${autoUnshelvedPRs.length} unshelved</span>
+      </div>
+      <div class="health-items">
+        ${renderHealthItems(autoUnshelvedPRs, 'auto-unshelved', SVG.bell,
+          pr => 'Auto-Unshelved (' + pr.status.replace(/_/g, ' ') + ')', titleMeta)}
+      </div>
+    </section>
+    ` : ''}
+
     <div class="main-grid">
       <div class="card">
         <div class="card-header">
@@ -1074,14 +1114,14 @@ function generateDashboardHtml(
     </div>
 
 
-    ${(digest.openPRs || []).length > 0 ? `
+    ${activePRList.length > 0 ? `
     <section class="pr-list-section">
       <div class="pr-list-header">
         <h2 class="pr-list-title">Active Pull Requests</h2>
-        <span class="pr-count">${(digest.openPRs || []).length} open</span>
+        <span class="pr-count">${activePRList.length} open</span>
       </div>
       <div class="pr-list">
-        ${(digest.openPRs || []).map(pr => {
+        ${activePRList.map(pr => {
           const hasIssues = pr.ciStatus === 'failing' || pr.hasMergeConflict || (pr.hasUnrespondedComment && pr.status !== 'changes_addressed') || pr.status === 'needs_changes';
           const isStale = pr.daysSinceActivity >= approachingDormantDays;
           const itemClass = hasIssues ? 'has-issues' : (isStale ? 'stale' : '');
@@ -1144,6 +1184,37 @@ function generateDashboardHtml(
     </section>
     `}
 
+    ${shelvedPRs.length > 0 ? `
+    <section class="pr-list-section" style="margin-top: 1.25rem; opacity: 0.7;">
+      <div class="pr-list-header">
+        <h2 class="pr-list-title">Shelved Pull Requests</h2>
+        <span class="pr-count" style="background: rgba(110, 118, 129, 0.15); color: var(--text-muted);">${shelvedPRs.length} shelved</span>
+      </div>
+      <div class="pr-list">
+        ${shelvedPRs.map(pr => `
+        <div class="pr-item">
+          <div class="pr-status-indicator" style="background: rgba(110, 118, 129, 0.1); color: var(--text-muted);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              ${SVG.box}
+            </svg>
+          </div>
+          <div class="pr-content">
+            <div class="pr-title-row">
+              <a href="${escapeHtml(pr.url)}" target="_blank" class="pr-title">${escapeHtml(pr.title)}</a>
+              <span class="pr-repo">${escapeHtml(pr.repo)}#${pr.number}</span>
+            </div>
+            <div class="pr-badges">
+              <span class="badge badge-days">${pr.daysSinceActivity}d inactive</span>
+            </div>
+          </div>
+          <div class="pr-activity">
+            ${pr.daysSinceActivity === 0 ? 'Today' : (pr.daysSinceActivity === 1 ? 'Yesterday' : pr.daysSinceActivity + 'd ago')}
+          </div>
+        </div>`).join('')}
+      </div>
+    </section>
+    ` : ''}
+
     <footer class="footer">
       <p>OSS Autopilot // Mission Control</p>
     </footer>
@@ -1159,10 +1230,10 @@ function generateDashboardHtml(
     new Chart(document.getElementById('statusChart'), {
       type: 'doughnut',
       data: {
-        labels: ['Active', 'Dormant', 'Merged', 'Closed'],
+        labels: ['Active', 'Shelved', 'Merged', 'Closed'],
         datasets: [{
-          data: [${stats.activePRs}, ${stats.dormantPRs}, ${stats.mergedPRs}, ${stats.closedPRs}],
-          backgroundColor: ['#3fb950', '#d29922', '#a855f7', '#484f58'],
+          data: [${stats.activePRs}, ${stats.shelvedPRs}, ${stats.mergedPRs}, ${stats.closedPRs}],
+          backgroundColor: ['#3fb950', '#6e7681', '#a855f7', '#484f58'],
           borderColor: 'rgba(8, 11, 16, 0.8)',
           borderWidth: 2,
           hoverOffset: 8

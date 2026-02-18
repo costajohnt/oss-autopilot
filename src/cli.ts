@@ -23,6 +23,7 @@ import { runParseList } from './commands/parse-list.js';
 import { runCheckIntegration } from './commands/check-integration.js';
 import { runLocalRepos } from './commands/local-repos.js';
 import { runStartup } from './commands/startup.js';
+import { runShelve, runUnshelve } from './commands/shelve.js';
 
 const VERSION = (() => {
   try {
@@ -37,7 +38,7 @@ const VERSION = (() => {
 
 // Commands that skip the preAction GitHub token check.
 // startup handles auth internally (returns authError in JSON instead of process.exit).
-const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard', 'parse-issue-list', 'check-integration', 'local-repos', 'startup'];
+const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard', 'parse-issue-list', 'check-integration', 'local-repos', 'startup', 'shelve', 'unshelve'];
 
 const program = new Command();
 
@@ -226,6 +227,24 @@ program
   .option('--json', 'Output as JSON')
   .action(async (options) => {
     await runStartup({ json: options.json });
+  });
+
+// Shelve command
+program
+  .command('shelve <pr-url>')
+  .description('Shelve a PR (exclude from capacity and actionable issues)')
+  .option('--json', 'Output as JSON')
+  .action(async (prUrl, options) => {
+    await runShelve({ prUrl, json: options.json });
+  });
+
+// Unshelve command
+program
+  .command('unshelve <pr-url>')
+  .description('Unshelve a PR (include in capacity and actionable issues again)')
+  .option('--json', 'Output as JSON')
+  .action(async (prUrl, options) => {
+    await runUnshelve({ prUrl, json: options.json });
   });
 
 // Validate GitHub token before running commands that need it

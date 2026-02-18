@@ -857,6 +857,51 @@ export class StateManager {
     return now.getTime() - lastFetchedDate.getTime() > staleThresholdMs;
   }
 
+  // === Shelve/Unshelve ===
+
+  /**
+   * Shelve a PR by URL. Shelved PRs are excluded from capacity and actionable issues.
+   * They are auto-unshelved when a maintainer engages (needs_response, needs_changes, etc.).
+   * @param url - The full GitHub PR URL.
+   * @returns true if newly added, false if already shelved.
+   */
+  shelvePR(url: string): boolean {
+    if (!this.state.config.shelvedPRUrls) {
+      this.state.config.shelvedPRUrls = [];
+    }
+    if (this.state.config.shelvedPRUrls.includes(url)) {
+      return false;
+    }
+    this.state.config.shelvedPRUrls.push(url);
+    return true;
+  }
+
+  /**
+   * Unshelve a PR by URL.
+   * @param url - The full GitHub PR URL.
+   * @returns true if found and removed, false if not shelved.
+   */
+  unshelvePR(url: string): boolean {
+    if (!this.state.config.shelvedPRUrls) {
+      return false;
+    }
+    const index = this.state.config.shelvedPRUrls.indexOf(url);
+    if (index === -1) {
+      return false;
+    }
+    this.state.config.shelvedPRUrls.splice(index, 1);
+    return true;
+  }
+
+  /**
+   * Check if a PR is shelved.
+   * @param url - The full GitHub PR URL.
+   * @returns true if the URL is in the shelved list.
+   */
+  isPRShelved(url: string): boolean {
+    return this.state.config.shelvedPRUrls?.includes(url) ?? false;
+  }
+
   // === PR Utilities ===
 
   /**
