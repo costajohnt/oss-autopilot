@@ -28,33 +28,45 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          CURRENT=$(node -e "console.log(require('./package.json').version)")
+          NODE_ERR=$(mktemp)
+          CURRENT=$(node -e "console.log(require('./package.json').version)" 2>"$NODE_ERR") || true
 
           if [ -z "$CURRENT" ] || [ "$CURRENT" = "undefined" ]; then
-            echo "::error::Failed to read version from package.json (got: '$CURRENT')"
+            echo "::error::Failed to read version from package.json (got: '$CURRENT'). $(cat "$NODE_ERR")"
             exit 1
           fi
-          if ! echo "$CURRENT" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]'; then
+          if ! echo "$CURRENT" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::Version '$CURRENT' does not look like semver"
             exit 1
           fi
 
           TAG="v${CURRENT}"
 
+          TAG_EXISTS=false
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            if gh release view "$TAG" >/dev/null 2>&1; then
+            TAG_EXISTS=true
+          fi
+
+          if [ "$TAG_EXISTS" = true ]; then
+            RELEASE_ERR=$(gh release view "$TAG" 2>&1) && RELEASE_EXISTS=true || RELEASE_EXISTS=false
+            if [ "$RELEASE_EXISTS" = true ]; then
               echo "exists=true" >> "$GITHUB_OUTPUT"
               echo "Version ${CURRENT} already released — skipping."
-            else
+            elif echo "$RELEASE_ERR" | grep -q "release not found"; then
               echo "exists=false" >> "$GITHUB_OUTPUT"
               echo "version=${CURRENT}" >> "$GITHUB_OUTPUT"
               echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+              echo "tag_exists=true" >> "$GITHUB_OUTPUT"
               echo "::warning::Tag ${TAG} exists but no release found. Will create release."
+            else
+              echo "::error::Failed to check release status for ${TAG}: ${RELEASE_ERR}"
+              exit 1
             fi
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
             echo "version=${CURRENT}" >> "$GITHUB_OUTPUT"
             echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
             echo "New version detected: ${CURRENT}"
           fi
 
@@ -90,8 +102,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          TAG_EXISTS: ${{ steps.version.outputs.tag_exists }}
         run: |
-          gh release create "$RELEASE_TAG" \
-            --title "v${RELEASE_VERSION}" \
-            --notes-file /tmp/release-body.md \
-            --target main
+          ARGS=(
+            "$RELEASE_TAG"
+            --title "v${RELEASE_VERSION}"
+            --notes-file /tmp/release-body.md
+          )
+          if [ "$TAG_EXISTS" != "true" ]; then
+            ARGS+=(--target main)
+          fi
+          gh release create "${ARGS[@]}"
