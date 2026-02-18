@@ -601,7 +601,7 @@ interface CommentedIssueBase {
 }
 
 /** Issue where a maintainer responded after the user's last comment. */
-interface CommentedIssueWithResponse extends CommentedIssueBase {
+export interface CommentedIssueWithResponse extends CommentedIssueBase {
   status: 'new_response';
   lastResponseAuthor: string;
   lastResponseBody: string;    // Truncated to 200 chars (+ "..." suffix when truncated)

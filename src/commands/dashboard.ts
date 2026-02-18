@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import { execFile } from 'child_process';
 import { getStateManager, getDashboardPath, PRMonitor, IssueConversationMonitor, getGitHubToken } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
-import type { FetchedPR, DailyDigest, AgentState, RepoScore, ClosedPR, MergedPR, CommentedIssue } from '../core/types.js';
+import type { FetchedPR, DailyDigest, AgentState, RepoScore, ClosedPR, MergedPR, CommentedIssue, CommentedIssueWithResponse } from '../core/types.js';
 
 interface DashboardOptions {
   open?: boolean;
@@ -51,6 +51,9 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
         }),
       ]);
       commentedIssues = fetchedIssues.issues;
+      if (fetchedIssues.failures.length > 0) {
+        console.error(`[DASHBOARD] ${fetchedIssues.failures.length} issue conversation check(s) failed`);
+      }
 
       if (failures.length > 0) {
         console.error(`Warning: ${failures.length} PR fetch(es) failed`);
@@ -97,7 +100,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       console.error(`Refreshed: ${prs.length} PRs fetched`);
     } catch (error) {
       console.error('Failed to fetch fresh data:', error instanceof Error ? error.message : error);
-      console.error('Falling back to cached data...');
+      console.error('Falling back to cached data (issue conversations unavailable)...');
       digest = stateManager.getState().lastDigest;
     }
   } else {
@@ -147,7 +150,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
   const stats = buildDashboardStats(digest, state);
 
   if (options.json) {
-    const issueResponses = commentedIssues.filter(i => i.status === 'new_response');
+    const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
     outputJson({
       stats,
       prsByRepo,
@@ -160,7 +163,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
     return;
   }
 
-  const issueResponses = commentedIssues.filter(i => i.status === 'new_response');
+  const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   const html = generateDashboardHtml(stats, monthlyMerged, monthlyClosed, monthlyOpened, digest, state, issueResponses);
 
   // Write to file in ~/.oss-autopilot/
@@ -260,7 +263,7 @@ function generateDashboardHtml(
   monthlyOpened: Record<string, number>,
   digest: DailyDigest,
   state: Readonly<AgentState>,
-  issueResponses: CommentedIssue[] = [],
+  issueResponses: CommentedIssueWithResponse[] = [],
 ): string {
   const approachingDormantDays = state.config?.approachingDormantDays ?? 25;
   const shelvedPRs = digest.shelvedPRs || [];
@@ -1157,7 +1160,7 @@ function generateDashboardHtml(
           </div>
           <div class="health-content">
             <div class="health-title"><a href="${escapeHtml(issue.url)}" target="_blank">${escapeHtml(issue.repo)}#${issue.number}</a> - ${escapeHtml(issue.title.slice(0, 50))}${issue.title.length > 50 ? '...' : ''}</div>
-            <div class="health-meta">${issue.lastResponseAuthor ? `@${escapeHtml(issue.lastResponseAuthor)}: ${escapeHtml((issue.lastResponseBody || '').slice(0, 60))}${(issue.lastResponseBody || '').length > 60 ? '...' : ''}` : 'New response'}</div>
+            <div class="health-meta">@${escapeHtml(issue.lastResponseAuthor)}: ${escapeHtml(issue.lastResponseBody.slice(0, 60))}${issue.lastResponseBody.length > 60 ? '...' : ''}</div>
           </div>
         </div>
         `).join('')}

@@ -30,7 +30,8 @@ vi.mock('./state.js', () => ({
   })),
 }));
 
-const { IssueConversationMonitor, isAcknowledgmentComment } = await import('./issue-conversation.js');
+const { IssueConversationMonitor } = await import('./issue-conversation.js');
+const { isAcknowledgmentComment } = await import('./comment-utils.js');
 
 // Helper to build a search result item
 function makeSearchItem(overrides: Record<string, any> = {}) {
@@ -339,7 +340,10 @@ describe('IssueConversationMonitor', () => {
     const { issues } = await monitor.fetchCommentedIssues();
 
     expect(issues).toHaveLength(1);
-    expect(issues[0].lastResponseBody!.length).toBeLessThanOrEqual(203); // 200 + "..."
+    expect(issues[0].status).toBe('new_response');
+    if (issues[0].status === 'new_response') {
+      expect(issues[0].lastResponseBody.length).toBeLessThanOrEqual(203); // 200 + "..."
+    }
   });
 
   it('should sort results with new_response first', async () => {

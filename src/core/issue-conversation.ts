@@ -8,7 +8,7 @@
 
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
-import { isBotAuthor } from './pr-monitor.js';
+import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 import { getStateManager } from './state.js';
 import { daysBetween, splitRepo } from './utils.js';
 import type { CommentedIssue, IssueConversationStatus } from './types.js';
@@ -166,6 +166,10 @@ export class IssueConversationMonitor {
       per_page: 100,
     });
 
+    if (comments.data.length === 100) {
+      console.error(`[ISSUE_CONVERSATION] Issue ${item.html_url} has 100+ comments; analysis may miss older comments (pagination not implemented)`);
+    }
+
     const timeline: Array<{ author: string; body: string; createdAt: string; isUser: boolean }> = [];
     for (const comment of comments.data) {
       if (!comment.user?.login) continue; // Skip comments from deleted accounts
@@ -213,19 +217,6 @@ export class IssueConversationMonitor {
       }
     }
 
-    // Determine status
-    let status: IssueConversationStatus;
-    if (lastResponse) {
-      status = 'new_response';
-    } else {
-      // No substantive response found. If user is the last non-bot commenter,
-      // mark as acknowledged; otherwise mark as waiting.
-      const lastNonBotComment = [...timeline].reverse().find(
-        e => !isBotAuthor(e.author)
-      );
-      status = lastNonBotComment?.isUser ? 'acknowledged' : 'waiting';
-    }
-
     const labels = (item.labels || []).map(l => l.name || '').filter(Boolean);
 
     const base = {
@@ -248,26 +239,13 @@ export class IssueConversationMonitor {
       };
     }
 
+    // No substantive response found. If user is the last non-bot commenter,
+    // mark as acknowledged; otherwise mark as waiting.
+    const lastNonBotComment = [...timeline].reverse().find(
+      e => !isBotAuthor(e.author)
+    );
+    const status = lastNonBotComment?.isUser ? 'acknowledged' as const : 'waiting' as const;
     return { ...base, status };
   }
 }
 
-/**
- * Detect acknowledgment comments that don't require a response.
- * Returns true only when: no question mark, matches an acknowledgment keyword, and under 100 chars.
- * Conservative -- missing a real acknowledgment (false negative) is safer than suppressing a substantive response (false positive).
- * Used by both IssueConversationMonitor and PRMonitor.
- */
-export function isAcknowledgmentComment(body: string): boolean {
-  if (!body || body.length > 100) return false;
-  if (body.includes('?')) return false;
-
-  const lower = body.toLowerCase();
-  const ackKeywords = [
-    'thanks', 'thank you', 'lgtm', 'looks good',
-    'will review', "we'll review", "we'll get to this",
-    'noted', 'got it', 'will look', 'will check',
-  ];
-
-  return ackKeywords.some(kw => lower.includes(kw));
-}

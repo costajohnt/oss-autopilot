@@ -9,34 +9,13 @@ import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, parseGitHubUrl } from './utils.js';
 import { FetchedPR, FetchedPRStatus, CIStatus, CIStatusResult, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR, MergedPR, CIFailureCategory, ClassifiedCheck } from './types.js';
-import { isAcknowledgmentComment } from './issue-conversation.js';
+import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
+
+// Re-export so existing consumers (tests, index.ts) can still import from pr-monitor
+export { isBotAuthor };
 
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
-
-// Bot accounts that don't follow the [bot] suffix convention
-const KNOWN_BOT_USERNAMES = new Set([
-  'allcontributors',
-  'changeset-bot',
-  'claassistant',
-  'codecov-commenter',
-  'greenkeeper',
-  'imgbot',
-  'netlify',
-  'renovate',
-  'snyk-bot',
-  'sonarcloud',
-  'stale',
-  'vercel',
-]);
-
-/**
- * Check if a comment author is a bot account.
- * Matches the [bot] suffix convention and known bot usernames (case-insensitive).
- */
-export function isBotAuthor(author: string): boolean {
-  return author.includes('[bot]') || KNOWN_BOT_USERNAMES.has(author.toLowerCase());
-}
 
 export interface PRCheckFailure {
   prUrl: string;

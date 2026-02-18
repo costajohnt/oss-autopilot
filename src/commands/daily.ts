@@ -4,7 +4,7 @@
  * generates a digest, and updates repo scores and analytics in local state.
  */
 
-import { getStateManager, PRMonitor, IssueConversationMonitor, getGitHubToken, formatRelativeTime, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ComputedRepoSignals, type RepoGroup, type MergedPR, type ClosedPR, type CommentedIssue } from '../core/index.js';
+import { getStateManager, PRMonitor, IssueConversationMonitor, getGitHubToken, formatRelativeTime, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ComputedRepoSignals, type RepoGroup, type MergedPR, type ClosedPR, type CommentedIssue, type CommentedIssueWithResponse } from '../core/index.js';
 import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue, type ActionMenu, type ActionMenuItem } from '../formatters/json.js';
 
 /**
@@ -258,7 +258,7 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   const capacity = assessCapacity(activePRs, stateManager.getState().config.maxActivePRs, shelvedPRs.length);
 
   // Build output fields from active PRs only
-  const issueResponses = commentedIssues.filter(i => i.status === 'new_response');
+  const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   const summary = formatSummary(digest, capacity, issueResponses);
   const actionableIssues = collectActionableIssues(activePRs);
   digest.summary.totalNeedingAttention = actionableIssues.length;
@@ -282,7 +282,7 @@ async function runDailyInner(token: string, options: DailyOptions): Promise<void
 /**
  * Format summary as markdown (used in JSON output for Claude to display verbatim)
  */
-function formatSummary(digest: DailyDigest, capacity: CapacityAssessment, issueResponses: CommentedIssue[] = []): string {
+function formatSummary(digest: DailyDigest, capacity: CapacityAssessment, issueResponses: CommentedIssueWithResponse[] = []): string {
   const lines: string[] = [];
 
   // Header
@@ -421,10 +421,8 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment, issueR
     lines.push('### 💬 Issue Replies');
     for (const issue of issueResponses) {
       lines.push(`- [${issue.repo}#${issue.number}](${issue.url}): ${issue.title}`);
-      if (issue.lastResponseAuthor && issue.lastResponseBody) {
-        const timeAgo = issue.lastResponseAt ? formatRelativeTime(issue.lastResponseAt) : '';
-        lines.push(`  └─ @${issue.lastResponseAuthor}: "${issue.lastResponseBody.slice(0, 80)}${issue.lastResponseBody.length > 80 ? '...' : ''}"${timeAgo ? ` (${timeAgo})` : ''}`);
-      }
+      const timeAgo = formatRelativeTime(issue.lastResponseAt);
+      lines.push(`  └─ @${issue.lastResponseAuthor}: "${issue.lastResponseBody.slice(0, 80)}${issue.lastResponseBody.length > 80 ? '...' : ''}"${timeAgo ? ` (${timeAgo})` : ''}`);
     }
     lines.push('');
   }
@@ -551,14 +549,12 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment, commente
     console.log('');
   }
 
-  const issueResponses = commentedIssues.filter(i => i.status === 'new_response');
+  const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   if (issueResponses.length > 0) {
     console.log('💬 Issue Replies:');
     for (const issue of issueResponses) {
       console.log(`  - ${issue.repo}#${issue.number}: ${issue.title}`);
-      if (issue.lastResponseAuthor) {
-        console.log(`    @${issue.lastResponseAuthor}: ${(issue.lastResponseBody || '').slice(0, 80)}${(issue.lastResponseBody || '').length > 80 ? '...' : ''}`);
-      }
+      console.log(`    @${issue.lastResponseAuthor}: ${issue.lastResponseBody.slice(0, 80)}${issue.lastResponseBody.length > 80 ? '...' : ''}`);
     }
     console.log('');
   }
@@ -694,7 +690,7 @@ export function computeActionMenu(
   capacity: CapacityAssessment,
   commentedIssues: CommentedIssue[] = [],
 ): ActionMenu {
-  const issueResponses = commentedIssues.filter(i => i.status === 'new_response');
+  const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   const items: ActionMenuItem[] = [];
   const hasActionableIssues = actionableIssues.length > 0;
   const hasIssueResponses = issueResponses.length > 0;
