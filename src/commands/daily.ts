@@ -4,7 +4,7 @@
  * generates a digest, and updates repo scores and analytics in local state.
  */
 
-import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ComputedRepoSignals, type RepoGroup } from '../core/index.js';
+import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ComputedRepoSignals, type RepoGroup, type MergedPR, type ClosedPR } from '../core/index.js';
 import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue, type ActionMenu, type ActionMenuItem } from '../formatters/json.js';
 
 /**
@@ -69,11 +69,19 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     console.error(`Warning: ${failures.length} PR fetch(es) failed`);
   }
 
-  // Fetch merged PR counts, closed PR counts, and recently closed PRs in parallel
-  const [mergedResult, closedResult, recentlyClosedPRs] = await Promise.all([
+  // Fetch merged PR counts, closed PR counts, recently closed PRs, and recently merged PRs in parallel
+  // Recently closed/merged are non-critical (cosmetic sections), so isolate their failure
+  const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs] = await Promise.all([
     prMonitor.fetchUserMergedPRCounts(),
     prMonitor.fetchUserClosedPRCounts(),
-    prMonitor.fetchRecentlyClosedPRs(),
+    prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
+      console.error(`Warning: Failed to fetch recently closed PRs: ${err instanceof Error ? err.message : err}`);
+      return [];
+    }),
+    prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
+      console.error(`Warning: Failed to fetch recently merged PRs: ${err instanceof Error ? err.message : err}`);
+      return [];
+    }),
   ]);
 
   const { repos: mergedCounts, monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
@@ -218,7 +226,7 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   // Generate digest from fresh data.
   // Note: digest.openPRs contains ALL fetched PRs (including shelved).
   // We override summary fields below to reflect active-only counts.
-  const digest = prMonitor.generateDigest(prs, recentlyClosedPRs);
+  const digest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);
 
   // Attach shelve info to digest
   digest.shelvedPRs = shelvedPRs;
@@ -353,6 +361,16 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
     lines.push('');
   }
 
+  // Recently Merged (wins!)
+  if (digest.recentlyMergedPRs.length > 0) {
+    lines.push('### 🎉 Recently Merged');
+    for (const pr of digest.recentlyMergedPRs) {
+      const mergedDate = pr.mergedAt ? new Date(pr.mergedAt).toLocaleDateString() : '';
+      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}${mergedDate ? ` (merged ${mergedDate})` : ''}`);
+    }
+    lines.push('');
+  }
+
   // Recently Closed (closed without merge)
   if (digest.recentlyClosedPRs.length > 0) {
     lines.push('### 🚫 Recently Closed');
@@ -466,6 +484,15 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
     console.log('⏳ Waiting on Maintainer:');
     for (const pr of digest.waitingOnMaintainerPRs) {
       console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (approved)`);
+    }
+    console.log('');
+  }
+
+  if (digest.recentlyMergedPRs.length > 0) {
+    console.log('🎉 Recently Merged:');
+    for (const pr of digest.recentlyMergedPRs) {
+      const mergedDate = pr.mergedAt ? new Date(pr.mergedAt).toLocaleDateString() : '';
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}${mergedDate ? ` (merged ${mergedDate})` : ''}`);
     }
     console.log('');
   }

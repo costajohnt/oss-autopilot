@@ -404,6 +404,15 @@ export interface ClosedPR {
   closedBy?: string;
 }
 
+/** Minimal record of a PR that was merged, used in the daily digest. */
+export interface MergedPR {
+  url: string;
+  repo: string; // "owner/repo"
+  number: number;
+  title: string;
+  mergedAt: string;
+}
+
 /**
  * The daily report produced by `PRMonitor.generateDigest()`.
  * Contains all open PRs fetched fresh from GitHub, categorized by status,
@@ -435,6 +444,9 @@ export interface DailyDigest {
 
   /** PRs closed without merge in the last 7 days. Surfaced to alert the contributor. */
   recentlyClosedPRs: ClosedPR[];
+
+  /** PRs merged in the last 7 days. Surfaced as wins in the dashboard. */
+  recentlyMergedPRs: MergedPR[];
 
   /** PRs manually shelved by the user (excluded from capacity and actionable issues). */
   shelvedPRs: FetchedPR[];

@@ -6,7 +6,7 @@ You have 12 open PRs across GitHub. A maintainer asked a question 5 days ago. Tw
 
 OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you when something needs attention, and helps you respond to maintainer feedback so your contributions actually get merged.
 
-![Version](https://img.shields.io/badge/version-0.30.1-blue)
+![Version](https://img.shields.io/badge/version-0.31.0-blue)
 ![CI](https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg)
 ![Tests](https://img.shields.io/badge/tests-500_passing-success)
 ![License](https://img.shields.io/badge/license-MIT-green)

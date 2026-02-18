@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import { execFile } from 'child_process';
 import { getStateManager, getDashboardPath, PRMonitor, getGitHubToken } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
-import type { FetchedPR, DailyDigest, AgentState, RepoScore, ClosedPR } from '../core/types.js';
+import type { FetchedPR, DailyDigest, AgentState, RepoScore, ClosedPR, MergedPR } from '../core/types.js';
 
 interface DashboardOptions {
   open?: boolean;
@@ -25,9 +25,17 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
     console.error('Fetching fresh data from GitHub...');
     try {
       const prMonitor = new PRMonitor(token);
-      const [{ prs, failures }, recentlyClosedPRs, mergedResult, closedResult] = await Promise.all([
+      // Recently closed/merged are non-critical (cosmetic sections), so isolate their failure
+      const [{ prs, failures }, recentlyClosedPRs, recentlyMergedPRs, mergedResult, closedResult] = await Promise.all([
         prMonitor.fetchUserOpenPRs(),
-        prMonitor.fetchRecentlyClosedPRs(),
+        prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
+          console.error(`Warning: Failed to fetch recently closed PRs: ${err instanceof Error ? err.message : err}`);
+          return [];
+        }),
+        prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
+          console.error(`Warning: Failed to fetch recently merged PRs: ${err instanceof Error ? err.message : err}`);
+          return [];
+        }),
         prMonitor.fetchUserMergedPRCounts(),
         prMonitor.fetchUserClosedPRCounts(),
       ]);
@@ -56,7 +64,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
         stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
       } catch { /* non-critical */ }
 
-      digest = prMonitor.generateDigest(prs, recentlyClosedPRs);
+      digest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);
 
       // Apply shelve partitioning for display (auto-unshelve only runs in daily check)
       // Dormant PRs are treated as shelved for display purposes
@@ -234,6 +242,7 @@ function generateDashboardHtml(
   const approachingDormantDays = state.config?.approachingDormantDays ?? 25;
   const shelvedPRs = digest.shelvedPRs || [];
   const autoUnshelvedPRs = digest.autoUnshelvedPRs || [];
+  const recentlyMerged = digest.recentlyMergedPRs || [];
   const shelvedUrls = new Set(shelvedPRs.map(pr => pr.url));
   const activePRList = (digest.openPRs || []).filter(pr => !shelvedUrls.has(pr.url));
 
@@ -306,6 +315,7 @@ function generateDashboardHtml(
     refresh: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
     box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
     bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+    gitMerge: '<circle cx="7" cy="18" r="3"/><circle cx="7" cy="6" r="3"/><circle cx="17" cy="12" r="3"/><line x1="7" y1="9" x2="7" y2="15"/><path d="M7 9c0 4 10 3 10 3"/>',
   };
 
   // Default meta: truncated PR title
@@ -1031,6 +1041,33 @@ function generateDashboardHtml(
     </section>
     ` : ''}
 
+    ${recentlyMerged.length > 0 ? `
+    <section class="health-section" style="animation-delay: 0.15s;">
+      <div class="health-header">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-merged)" stroke-width="2">
+          ${SVG.gitMerge}
+        </svg>
+        <h2>Recently Merged</h2>
+        <span class="health-badge" style="background: var(--accent-merged-dim); color: var(--accent-merged);">${recentlyMerged.length} merged</span>
+      </div>
+      <div class="health-items">
+        ${recentlyMerged.map(pr => `
+        <div class="health-item" style="border-left-color: var(--accent-merged);">
+          <div class="health-icon" style="background: var(--accent-merged-dim); color: var(--accent-merged);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              ${SVG.gitMerge}
+            </svg>
+          </div>
+          <div class="health-content">
+            <div class="health-title"><a href="${escapeHtml(pr.url)}" target="_blank">${escapeHtml(pr.repo)}#${pr.number}</a> - Merged</div>
+            <div class="health-meta">${truncateTitle(pr.title)}${pr.mergedAt ? ` · ${new Date(pr.mergedAt).toLocaleDateString()}` : ''}</div>
+          </div>
+        </div>
+        `).join('')}
+      </div>
+    </section>
+    ` : ''}
+
     ${(digest.recentlyClosedPRs || []).length > 0 ? `
     <section class="health-section" style="animation-delay: 0.2s;">
       <div class="health-header">
@@ -1054,7 +1091,7 @@ function generateDashboardHtml(
           </div>
           <div class="health-content">
             <div class="health-title"><a href="${escapeHtml(pr.url)}" target="_blank">${escapeHtml(pr.repo)}#${pr.number}</a> - Closed</div>
-            <div class="health-meta">${escapeHtml(pr.title.slice(0, 50))}${pr.title.length > 50 ? '...' : ''}${pr.closedAt ? ` · ${new Date(pr.closedAt).toLocaleDateString()}` : ''}</div>
+            <div class="health-meta">${truncateTitle(pr.title)}${pr.closedAt ? ` · ${new Date(pr.closedAt).toLocaleDateString()}` : ''}</div>
           </div>
         </div>
         `).join('')}
