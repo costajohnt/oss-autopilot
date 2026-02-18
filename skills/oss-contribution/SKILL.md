@@ -98,85 +98,11 @@ Maintainer feedback is a gift - they're investing time to help you improve. Even
 
 ## Following Up on Dormant PRs
 
-### When to Follow Up
+- **7 days:** Light check-in ("Anything else needed from my side?")
+- **14 days:** Direct follow-up ("Still on your radar? Happy to make changes.")
+- **30 days:** Final check ("Understand if priorities shifted. Let me know!")
 
-- No response in 7+ days: Light check-in
-- No response in 14+ days: Direct follow-up
-- No response in 30+ days: Consider if repo is maintained
-
-### Follow-Up Messages
-
-**7-day check-in:**
-> "Hi! Just checking if there's anything else needed from my side?"
-
-**14-day follow-up:**
-> "Hi! Is this PR still on your radar? Happy to make any changes needed."
-
-**30-day follow-up:**
-> "Checking in again. I'd love to get this merged but understand if priorities have shifted. Let me know!"
-
-### Tips
-
-- Be patient, not pushy
-- Only follow up once per timeframe
-- Check if maintainers are active elsewhere (maybe they're on vacation)
-- Consider if the project is still maintained
-
-## Understanding CI Failures
-
-### Common CI Issues
-
-**Test failures:**
-- Read the test output carefully
-- Reproduce locally before pushing fixes
-- Don't blindly adjust tests to pass
-
-**Lint/format failures:**
-- Run project's lint command locally
-- Check for consistent formatting tools
-- Follow project's style, not your preference
-
-**Build failures:**
-- Check for type errors
-- Verify all imports are correct
-- Ensure dependencies are properly declared
-
-**Coverage failures:**
-- Add tests for new code paths
-- Check project's coverage requirements
-
-### Responding to CI Failures
-
-1. Investigate before asking - most failures have clear error messages
-2. Fix and push - don't leave PR in failing state
-3. If stuck, ask specific questions: "CI is failing with [error]. I've tried [X]. Any suggestions?"
-
-## Evaluating Repositories
-
-### Green Flags
-
-- Recent commits (< 30 days)
-- PRs getting merged regularly
-- Issues getting responses
-- CONTRIBUTING.md exists
-- Active maintainer participation
-- Regular releases
-
-### Red Flags
-
-- No commits in 60+ days
-- Many stale PRs
-- Unanswered issues
-- Archived repository
-- Single maintainer with no activity
-- Hostile comments
-
-### Before Contributing
-
-1. Check recent PR activity - are they merging?
-2. Read CONTRIBUTING.md
-3. Look at merged PRs for style expectations
-4. Check if there are issue templates to follow
+Be patient, not pushy. Only follow up once per timeframe. Check if maintainers are active elsewhere before escalating.
 
 ## Time Management
 
