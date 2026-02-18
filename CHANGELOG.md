@@ -5,11 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] - 2026-02-18
+
+### Changed
+
+- **Modularize `/oss` skill prompt (#136)** — Split the monolithic 1,456-line `commands/oss.md` into a slim core router (~394 lines) plus 4 on-demand workflow files loaded via Read tool. The core router handles startup, daily check display, action menu, and routing; workflow files are only loaded when their specific path is entered. New files: `workflows/work-through-issues.md` (Phase A/B/C + pick-from-list), `workflows/pre-commit-review.md` (standard path for existing PRs), `workflows/draft-first-workflow.md` (new contribution full pipeline), `workflows/reference.md` (CLI commands + agent table). Reduces initial context window usage by 50-77% for common sessions.
+
 ## [0.31.0] - 2026-02-18
 
 ### Added
 
-- **Recently Merged PRs in dashboard (#163)** — New "Recently Merged" section in both the HTML dashboard and daily digest, showing PRs merged in the last 7 days. Uses purple accent with git-merge icon, placed above the "Recently Closed" section. Adds `fetchRecentlyMergedPRs()` to `PRMonitor`, refactors `fetchRecentlyClosedPRs` into a shared `fetchRecentPRs<T>` generic helper, new `MergedPR` type, and `recentlyMergedPRs` field on `DailyDigest`.
+- **Recently Merged PRs in dashboard (#165)** — New "Recently Merged" section in both the HTML dashboard and daily digest, showing PRs merged in the last 7 days. Uses purple accent with git-merge icon, placed above the "Recently Closed" section. Adds `fetchRecentlyMergedPRs()` to `PRMonitor`, refactors `fetchRecentlyClosedPRs` into a shared `fetchRecentPRs<T>` generic helper, new `MergedPR` type, and `recentlyMergedPRs` field on `DailyDigest`.
 
 ## [0.30.1] - 2026-02-17
 
@@ -657,6 +663,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.32.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.30.1...v0.31.0
 [0.30.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.30.0...v0.30.1
 [0.30.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.29.0...v0.30.0
