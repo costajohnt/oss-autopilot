@@ -18,6 +18,7 @@ export interface CapacityAssessment {
   hasCapacity: boolean;
   activePRCount: number;
   maxActivePRs: number;
+  shelvedPRCount: number;
   criticalIssueCount: number;
   reason: string;
 }

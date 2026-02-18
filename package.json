@@ -1,6 +1,6 @@
 {
   "name": "oss-autopilot",
-  "version": "0.29.0",
+  "version": "0.30.0",
   "description": "AI-powered autopilot for managing open source contributions with Claude Code",
   "type": "module",
   "main": "dist/cli.js",

@@ -7,6 +7,14 @@
 import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ComputedRepoSignals, type RepoGroup } from '../core/index.js';
 import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue, type ActionMenu, type ActionMenuItem } from '../formatters/json.js';
 
+/**
+ * Statuses indicating maintainer engagement or action needed from the contributor.
+ * Used both for auto-unshelving shelved PRs and for counting critical issues in capacity assessment.
+ */
+const CRITICAL_STATUSES: ReadonlySet<FetchedPRStatus> = new Set([
+  'needs_response', 'needs_changes', 'failing_ci', 'merge_conflict',
+]);
+
 interface DailyOptions {
   json?: boolean;
 }
@@ -185,24 +193,51 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     console.error('[DAILY] Failed to compute/store monthly opened counts:', error instanceof Error ? error.message : error);
   }
 
-  // Generate digest from fresh data
+  // Partition PRs into active vs shelved, auto-unshelving when maintainers engage
+  const shelvedPRs: FetchedPR[] = [];
+  const autoUnshelvedPRs: FetchedPR[] = [];
+  const activePRs: FetchedPR[] = [];
+
+  for (const pr of prs) {
+    if (stateManager.isPRShelved(pr.url)) {
+      if (CRITICAL_STATUSES.has(pr.status)) {
+        stateManager.unshelvePR(pr.url);
+        autoUnshelvedPRs.push(pr);
+        activePRs.push(pr);
+      } else {
+        shelvedPRs.push(pr);
+      }
+    } else {
+      activePRs.push(pr);
+    }
+  }
+
+  // Generate digest from fresh data.
+  // Note: digest.openPRs contains ALL fetched PRs (including shelved).
+  // We override summary fields below to reflect active-only counts.
   const digest = prMonitor.generateDigest(prs, recentlyClosedPRs);
+
+  // Attach shelve info to digest
+  digest.shelvedPRs = shelvedPRs;
+  digest.autoUnshelvedPRs = autoUnshelvedPRs;
+  digest.summary.totalActivePRs = activePRs.length;
 
   // Store digest in state so dashboard can render it
   stateManager.setLastDigest(digest);
 
-  // Save state (updates lastRunAt, lastDigest)
+  // Save state (updates lastRunAt, lastDigest, and any auto-unshelve changes)
   stateManager.save();
 
-  // Assess capacity for new work
-  const capacity = assessCapacity(prs, stateManager.getState().config.maxActivePRs);
+  // Assess capacity from active PRs only (shelved PRs excluded)
+  const capacity = assessCapacity(activePRs, stateManager.getState().config.maxActivePRs, shelvedPRs.length);
 
-  // Build output fields
+  // Build output fields from active PRs only
   const summary = formatSummary(digest, capacity);
-  const actionableIssues = collectActionableIssues(prs);
+  const actionableIssues = collectActionableIssues(activePRs);
+  digest.summary.totalNeedingAttention = actionableIssues.length;
   const briefSummary = formatBriefSummary(digest, actionableIssues.length);
   const actionMenu = computeActionMenu(actionableIssues, capacity);
-  const repoGroups = groupPRsByRepo(prs);
+  const repoGroups = groupPRsByRepo(activePRs);
 
   return { digest, updates: [], capacity, summary, briefSummary, actionableIssues, actionMenu, repoGroups, failures };
 }
@@ -343,10 +378,30 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
     lines.push('');
   }
 
+  // Auto-unshelved (important: maintainer engagement on shelved PRs)
+  if (digest.autoUnshelvedPRs.length > 0) {
+    lines.push('### 🔔 Auto-Unshelved');
+    lines.push('> These PRs were shelved but a maintainer engaged — moved back to active.');
+    for (const pr of digest.autoUnshelvedPRs) {
+      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title} (${pr.status.replace(/_/g, ' ')})`);
+    }
+    lines.push('');
+  }
+
+  // Shelved PRs (dimmed, excluded from capacity)
+  if (digest.shelvedPRs.length > 0) {
+    lines.push('### 📦 Shelved');
+    for (const pr of digest.shelvedPRs) {
+      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
+    }
+    lines.push('');
+  }
+
   // Capacity
   const capacityIcon = capacity.hasCapacity ? '✅' : '⚠️';
   const capacityLabel = capacity.hasCapacity ? 'Ready for new work' : 'Focus on existing PRs';
-  lines.push(`**Capacity:** ${capacityIcon} ${capacityLabel} (${capacity.activePRCount}/${capacity.maxActivePRs} PRs)`);
+  const shelvedNote = capacity.shelvedPRCount > 0 ? ` + ${capacity.shelvedPRCount} shelved` : '';
+  lines.push(`**Capacity:** ${capacityIcon} ${capacityLabel} (${capacity.activePRCount}/${capacity.maxActivePRs} PRs${shelvedNote})`);
 
   return lines.join('\n');
 }
@@ -455,19 +510,33 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
     console.log('');
   }
 
+  if (digest.autoUnshelvedPRs.length > 0) {
+    console.log('🔔 Auto-Unshelved:');
+    for (const pr of digest.autoUnshelvedPRs) {
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (${pr.status.replace(/_/g, ' ')})`);
+    }
+    console.log('');
+  }
+
+  if (digest.shelvedPRs.length > 0) {
+    console.log('📦 Shelved:');
+    for (const pr of digest.shelvedPRs) {
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+    }
+    console.log('');
+  }
+
   console.log('Run with --json for structured output');
   console.log('Run "dashboard --open" for browser view');
 }
 
 /**
- * Assess whether user has capacity for new issues
+ * Assess whether user has capacity for new issues.
+ * Only active (non-shelved) PRs count against the limit.
  */
-function assessCapacity(prs: FetchedPR[], maxActivePRs: number): CapacityAssessment {
-  const activePRCount = prs.length;
-
-  // Count critical issues
-  const criticalStatuses = new Set(['needs_response', 'needs_changes', 'failing_ci', 'merge_conflict']);
-  const criticalIssueCount = prs.filter(pr => criticalStatuses.has(pr.status)).length;
+function assessCapacity(activePRs: FetchedPR[], maxActivePRs: number, shelvedPRCount: number): CapacityAssessment {
+  const activePRCount = activePRs.length;
+  const criticalIssueCount = activePRs.filter(pr => CRITICAL_STATUSES.has(pr.status)).length;
 
   // Has capacity if: under PR limit AND no critical issues
   const underPRLimit = activePRCount < maxActivePRs;
@@ -476,12 +545,13 @@ function assessCapacity(prs: FetchedPR[], maxActivePRs: number): CapacityAssessm
 
   // Generate reason
   let reason: string;
+  const shelvedNote = shelvedPRCount > 0 ? ` + ${shelvedPRCount} shelved` : '';
   if (hasCapacity) {
-    reason = `You have capacity: ${activePRCount}/${maxActivePRs} active PRs, no critical issues`;
+    reason = `You have capacity: ${activePRCount}/${maxActivePRs} active PRs${shelvedNote}, no critical issues`;
   } else {
     const reasons: string[] = [];
     if (!underPRLimit) {
-      reasons.push(`at PR limit (${activePRCount}/${maxActivePRs})`);
+      reasons.push(`at PR limit (${activePRCount}/${maxActivePRs}${shelvedNote})`);
     }
     if (!noCriticalIssues) {
       reasons.push(`${criticalIssueCount} critical issue${criticalIssueCount === 1 ? '' : 's'} need attention`);
@@ -493,6 +563,7 @@ function assessCapacity(prs: FetchedPR[], maxActivePRs: number): CapacityAssessm
     hasCapacity,
     activePRCount,
     maxActivePRs,
+    shelvedPRCount,
     criticalIssueCount,
     reason,
   };

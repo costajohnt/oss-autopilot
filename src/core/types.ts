@@ -456,6 +456,11 @@ export interface DailyDigest {
   /** PRs closed without merge in the last 7 days. Surfaced to alert the contributor. */
   recentlyClosedPRs: ClosedPR[];
 
+  /** PRs manually shelved by the user (excluded from capacity and actionable issues). */
+  shelvedPRs: FetchedPR[];
+  /** PRs that were auto-unshelved this run because a maintainer engaged. */
+  autoUnshelvedPRs: FetchedPR[];
+
   summary: {
     totalActivePRs: number;
     /** Count of PRs requiring contributor action (response, CI fix, conflict resolution, etc.). */
@@ -581,6 +586,9 @@ export interface AgentConfig {
 
   /** Repos known to have anti-AI contribution policies, in `"owner/repo"` format. Filtered from search results automatically. */
   aiPolicyBlocklist?: string[];
+
+  /** PR URLs manually shelved by the user. Shelved PRs are excluded from capacity and actionable issues. Auto-unshelved when maintainers engage. */
+  shelvedPRUrls?: string[];
 }
 
 /** Default configuration applied to new state files. All fields can be overridden via `/setup-oss`. */
@@ -601,6 +609,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
   minStars: 50,
   includeDocIssues: true,
   aiPolicyBlocklist: ['matplotlib/matplotlib'],
+  shelvedPRUrls: [],
 };
 
 /** Initial state written to `~/.oss-autopilot/state.json` on first run. Uses v2 architecture. */

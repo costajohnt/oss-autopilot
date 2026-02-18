@@ -38,6 +38,7 @@ function makeCapacity(overrides: Partial<CapacityAssessment> = {}): CapacityAsse
     hasCapacity: true,
     activePRCount: 3,
     maxActivePRs: 10,
+    shelvedPRCount: 0,
     criticalIssueCount: 0,
     reason: 'You have capacity: 3/10 active PRs, no critical issues',
     ...overrides,

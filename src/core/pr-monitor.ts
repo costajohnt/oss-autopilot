@@ -989,6 +989,8 @@ export class PRMonitor {
       dormantPRs,
       healthyPRs,
       recentlyClosedPRs,
+      shelvedPRs: [],
+      autoUnshelvedPRs: [],
       summary: {
         totalActivePRs: prs.length,
         totalNeedingAttention: prsNeedingResponse.length + needsChangesPRs.length + ciFailingPRs.length + mergeConflictPRs.length + needsRebasePRs.length + missingRequiredFilesPRs.length + incompleteChecklistPRs.length,

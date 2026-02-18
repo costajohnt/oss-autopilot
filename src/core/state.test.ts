@@ -762,3 +762,62 @@ describe('StateManager event logging', () => {
     expect(noEvents).toHaveLength(0);
   });
 });
+
+// ── Shelve / Unshelve ──────────────────────────────────────
+describe('shelvePR / unshelvePR / isPRShelved', () => {
+  let stateManager: StateManager;
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  it('should shelve a PR and mark it as shelved', () => {
+    const url = 'https://github.com/owner/repo/pull/1';
+    expect(stateManager.shelvePR(url)).toBe(true);
+    expect(stateManager.isPRShelved(url)).toBe(true);
+  });
+
+  it('should return false when shelving an already-shelved PR (idempotent)', () => {
+    const url = 'https://github.com/owner/repo/pull/1';
+    stateManager.shelvePR(url);
+    expect(stateManager.shelvePR(url)).toBe(false);
+  });
+
+  it('should unshelve a shelved PR', () => {
+    const url = 'https://github.com/owner/repo/pull/1';
+    stateManager.shelvePR(url);
+    expect(stateManager.unshelvePR(url)).toBe(true);
+    expect(stateManager.isPRShelved(url)).toBe(false);
+  });
+
+  it('should return false when unshelving a PR that is not shelved', () => {
+    const url = 'https://github.com/owner/repo/pull/1';
+    expect(stateManager.unshelvePR(url)).toBe(false);
+  });
+
+  it('should handle multiple shelved PRs independently', () => {
+    const url1 = 'https://github.com/owner/repo/pull/1';
+    const url2 = 'https://github.com/owner/repo/pull/2';
+    stateManager.shelvePR(url1);
+    stateManager.shelvePR(url2);
+    expect(stateManager.isPRShelved(url1)).toBe(true);
+    expect(stateManager.isPRShelved(url2)).toBe(true);
+
+    stateManager.unshelvePR(url1);
+    expect(stateManager.isPRShelved(url1)).toBe(false);
+    expect(stateManager.isPRShelved(url2)).toBe(true);
+  });
+
+  it('should handle isPRShelved when shelvedPRUrls is undefined', () => {
+    // Simulate legacy state without shelvedPRUrls
+    (stateManager.getState().config as any).shelvedPRUrls = undefined;
+    expect(stateManager.isPRShelved('https://github.com/owner/repo/pull/1')).toBe(false);
+  });
+
+  it('should initialize shelvedPRUrls array when first shelving', () => {
+    (stateManager.getState().config as any).shelvedPRUrls = undefined;
+    const url = 'https://github.com/owner/repo/pull/1';
+    expect(stateManager.shelvePR(url)).toBe(true);
+    expect(stateManager.getState().config.shelvedPRUrls).toEqual([url]);
+  });
+});
