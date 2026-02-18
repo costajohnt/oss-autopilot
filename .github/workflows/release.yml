@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -21,12 +25,32 @@ jobs:
 
       - name: Check for version change
         id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           CURRENT=$(node -e "console.log(require('./package.json').version)")
+
+          if [ -z "$CURRENT" ] || [ "$CURRENT" = "undefined" ]; then
+            echo "::error::Failed to read version from package.json (got: '$CURRENT')"
+            exit 1
+          fi
+          if ! echo "$CURRENT" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]'; then
+            echo "::error::Version '$CURRENT' does not look like semver"
+            exit 1
+          fi
+
           TAG="v${CURRENT}"
+
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Version ${CURRENT} already released — skipping."
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              echo "exists=true" >> "$GITHUB_OUTPUT"
+              echo "Version ${CURRENT} already released — skipping."
+            else
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+              echo "version=${CURRENT}" >> "$GITHUB_OUTPUT"
+              echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+              echo "::warning::Tag ${TAG} exists but no release found. Will create release."
+            fi
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
             echo "version=${CURRENT}" >> "$GITHUB_OUTPUT"
@@ -36,11 +60,14 @@ jobs:
 
       - name: Extract changelog section
         if: steps.version.outputs.exists == 'false'
-        id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          # Extract the section for this version from CHANGELOG.md
-          # Matches from "## [VERSION]" until the next "## [" or EOF
+          if [ ! -f CHANGELOG.md ]; then
+            echo "::error::CHANGELOG.md not found in repository root"
+            exit 1
+          fi
+
           BODY=$(awk -v ver="$VERSION" '
             BEGIN { found=0 }
             /^## \[/ {
@@ -51,17 +78,20 @@ jobs:
           ' CHANGELOG.md)
 
           if [ -z "$BODY" ]; then
-            BODY="Release v${VERSION}"
+            echo "::warning::No CHANGELOG.md entry found for version ${VERSION}. Using generic release body."
+            BODY="Release v${VERSION} (no changelog entry found)"
           fi
 
-          # Write to file to avoid escaping issues
           echo "$BODY" > /tmp/release-body.md
 
       - name: Create release
         if: steps.version.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "v${{ steps.version.outputs.version }}" \
-            --notes-file /tmp/release-body.md
+          gh release create "$RELEASE_TAG" \
+            --title "v${RELEASE_VERSION}" \
+            --notes-file /tmp/release-body.md \
+            --target main
