@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - 2026-02-18
+
+### Added
+
+- **Recently Merged PRs in dashboard (#163)** — New "Recently Merged" section in both the HTML dashboard and daily digest, showing PRs merged in the last 7 days. Uses purple accent with git-merge icon, placed above the "Recently Closed" section. Adds `fetchRecentlyMergedPRs()` to `PRMonitor`, refactors `fetchRecentlyClosedPRs` into a shared `fetchRecentPRs<T>` generic helper, new `MergedPR` type, and `recentlyMergedPRs` field on `DailyDigest`.
+
 ## [0.30.1] - 2026-02-17
 
 ### Removed
@@ -651,6 +657,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.31.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.30.1...v0.31.0
 [0.30.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.30.0...v0.30.1
 [0.30.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.28.1...v0.29.0

@@ -1161,6 +1161,216 @@ describe('PRMonitor generateDigest', () => {
     expect(digest.recentlyClosedPRs[0].number).toBe(100);
     expect(digest.recentlyClosedPRs[1].number).toBe(101);
   });
+
+  it('should include recentlyMergedPRs', () => {
+    const mergedPRs: import('./types.js').MergedPR[] = [
+      {
+        url: 'https://github.com/owner/repo/pull/200',
+        repo: 'owner/repo',
+        number: 200,
+        title: 'Merged PR 1',
+        mergedAt: '2026-02-06T00:00:00Z',
+      },
+      {
+        url: 'https://github.com/owner/repo/pull/201',
+        repo: 'owner/repo',
+        number: 201,
+        title: 'Merged PR 2',
+        mergedAt: '2026-02-05T00:00:00Z',
+      },
+    ];
+
+    const monitor = new PRMonitor('fake-token');
+    const digest = monitor.generateDigest([], [], mergedPRs);
+
+    expect(digest.recentlyMergedPRs).toHaveLength(2);
+    expect(digest.recentlyMergedPRs[0].number).toBe(200);
+    expect(digest.recentlyMergedPRs[1].number).toBe(201);
+  });
+
+  it('should default recentlyMergedPRs to empty array', () => {
+    const monitor = new PRMonitor('fake-token');
+    const digest = monitor.generateDigest([]);
+
+    expect(digest.recentlyMergedPRs).toEqual([]);
+  });
+});
+
+describe('PRMonitor fetchRecentlyMergedPRs', () => {
+  beforeEach(() => {
+    mockOctokitInstance = {};
+    vi.mocked(getStateManager).mockReturnValue({
+      getState: () => ({
+        config: {
+          githubUsername: 'testuser',
+          excludeRepos: ['excluded/repo'],
+          excludeOrgs: ['excludedorg'],
+        },
+      }),
+    } as any);
+  });
+
+  it('should fetch and return recently merged PRs', async () => {
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            items: [
+              {
+                html_url: 'https://github.com/owner/repo/pull/42',
+                title: 'Fix the thing',
+                pull_request: { merged_at: '2026-02-15T12:00:00Z' },
+                closed_at: '2026-02-15T12:00:00Z',
+              },
+            ],
+          },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRecentlyMergedPRs();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      url: 'https://github.com/owner/repo/pull/42',
+      repo: 'owner/repo',
+      number: 42,
+      title: 'Fix the thing',
+      mergedAt: '2026-02-15T12:00:00Z',
+    });
+  });
+
+  it('should skip PRs to own repos', async () => {
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            items: [
+              {
+                html_url: 'https://github.com/testuser/my-repo/pull/1',
+                title: 'Self PR',
+                pull_request: { merged_at: '2026-02-15T12:00:00Z' },
+                closed_at: '2026-02-15T12:00:00Z',
+              },
+            ],
+          },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRecentlyMergedPRs();
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('should skip excluded repos', async () => {
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            items: [
+              {
+                html_url: 'https://github.com/excluded/repo/pull/1',
+                title: 'Excluded repo PR',
+                pull_request: { merged_at: '2026-02-15T12:00:00Z' },
+                closed_at: '2026-02-15T12:00:00Z',
+              },
+            ],
+          },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRecentlyMergedPRs();
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('should skip excluded orgs', async () => {
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            items: [
+              {
+                html_url: 'https://github.com/excludedorg/repo/pull/1',
+                title: 'Excluded org PR',
+                pull_request: { merged_at: '2026-02-15T12:00:00Z' },
+                closed_at: '2026-02-15T12:00:00Z',
+              },
+            ],
+          },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRecentlyMergedPRs();
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('should return empty array when no username configured', async () => {
+    vi.mocked(getStateManager).mockReturnValue({
+      getState: () => ({ config: { githubUsername: '' } }),
+    } as any);
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRecentlyMergedPRs();
+
+    expect(result).toEqual([]);
+  });
+
+  it('should use merged_at from pull_request field', async () => {
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            items: [
+              {
+                html_url: 'https://github.com/owner/repo/pull/10',
+                title: 'PR with merged_at',
+                pull_request: { merged_at: '2026-02-14T08:00:00Z' },
+                closed_at: '2026-02-14T09:00:00Z',
+              },
+            ],
+          },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRecentlyMergedPRs();
+
+    expect(result[0].mergedAt).toBe('2026-02-14T08:00:00Z');
+  });
+
+  it('should fall back to closed_at when merged_at is absent', async () => {
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            items: [
+              {
+                html_url: 'https://github.com/owner/repo/pull/10',
+                title: 'PR without merged_at',
+                pull_request: {},
+                closed_at: '2026-02-14T09:00:00Z',
+              },
+            ],
+          },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRecentlyMergedPRs();
+
+    expect(result[0].mergedAt).toBe('2026-02-14T09:00:00Z');
+  });
 });
 
 describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {

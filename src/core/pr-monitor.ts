@@ -7,8 +7,8 @@
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
-import { daysBetween } from './utils.js';
-import { FetchedPR, FetchedPRStatus, CIStatus, CIStatusResult, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR, CIFailureCategory, ClassifiedCheck } from './types.js';
+import { daysBetween, parseGitHubUrl } from './utils.js';
+import { FetchedPR, FetchedPRStatus, CIStatus, CIStatusResult, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR, MergedPR, CIFailureCategory, ClassifiedCheck } from './types.js';
 
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
@@ -890,13 +890,19 @@ export class PRMonitor {
   }
 
   /**
-   * Fetch PRs closed without merge in the last N days.
-   * Returns lightweight ClosedPR objects for surfacing in the daily digest.
+   * Shared helper: search for recent PRs and filter out own repos, excluded repos/orgs.
+   * Returns parsed search results that pass all filters.
    */
-  async fetchRecentlyClosedPRs(days: number = 7): Promise<ClosedPR[]> {
+  private async fetchRecentPRs<T>(
+    query: string,
+    label: string,
+    days: number,
+    mapItem: (item: { html_url: string; title: string; closed_at: string | null; pull_request?: { merged_at?: string | null } }, parsed: { owner: string; repo: string; number: number }) => T,
+  ): Promise<T[]> {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
+      console.error(`Skipping recently ${label} PRs fetch: no githubUsername configured`);
       return [];
     }
 
@@ -904,51 +910,88 @@ export class PRMonitor {
     sinceDate.setDate(sinceDate.getDate() - days);
     const since = sinceDate.toISOString().split('T')[0]; // YYYY-MM-DD
 
-    console.error(`Fetching recently closed PRs for @${config.githubUsername} (since ${since})...`);
+    console.error(`Fetching recently ${label} PRs for @${config.githubUsername} (since ${since})...`);
 
     const { data } = await this.octokit.search.issuesAndPullRequests({
-      q: `is:pr is:closed is:unmerged author:${config.githubUsername} closed:>=${since}`,
+      q: query.replace('{username}', config.githubUsername).replace('{since}', since),
       sort: 'updated',
       order: 'desc',
       per_page: 100,
     });
 
-    const closedPRs: ClosedPR[] = [];
+    const results: T[] = [];
 
     for (const item of data.items) {
-      const repoMatch = item.html_url.match(/github\.com\/([^/]+\/[^/]+)\//);
-      if (!repoMatch) continue;
+      const parsed = parseGitHubUrl(item.html_url);
+      if (!parsed) {
+        console.error(`Warning: Could not parse GitHub URL from API response: ${item.html_url}`);
+        continue;
+      }
 
-      const repo = repoMatch[1];
-      const owner = repo.split('/')[0];
+      const repo = `${parsed.owner}/${parsed.repo}`;
 
       // Skip own repos
-      if (owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
+      if (parsed.owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
 
       // Skip excluded repos and orgs
       if (config.excludeRepos.includes(repo)) continue;
-      if (config.excludeOrgs?.some(org => owner.toLowerCase() === org.toLowerCase())) continue;
+      if (config.excludeOrgs?.some(org => parsed.owner.toLowerCase() === org.toLowerCase())) continue;
 
-      const numberMatch = item.html_url.match(/\/pull\/(\d+)/);
-      const number = numberMatch ? parseInt(numberMatch[1], 10) : 0;
+      results.push(mapItem(item, { owner: parsed.owner, repo, number: parsed.number }));
+    }
 
-      closedPRs.push({
+    console.error(`Found ${results.length} recently ${label} PRs`);
+    return results;
+  }
+
+  /**
+   * Fetch PRs closed without merge in the last N days.
+   * Returns lightweight ClosedPR objects for surfacing in the daily digest.
+   */
+  async fetchRecentlyClosedPRs(days: number = 7): Promise<ClosedPR[]> {
+    return this.fetchRecentPRs<ClosedPR>(
+      'is:pr is:closed is:unmerged author:{username} closed:>={since}',
+      'closed',
+      days,
+      (item, { repo, number }) => ({
         url: item.html_url,
         repo,
         number,
         title: item.title,
         closedAt: item.closed_at || '',
-      });
-    }
+      }),
+    );
+  }
 
-    console.error(`Found ${closedPRs.length} recently closed PRs`);
-    return closedPRs;
+  /**
+   * Fetch PRs merged in the last N days.
+   * Returns lightweight MergedPR objects for surfacing as wins in the dashboard.
+   */
+  async fetchRecentlyMergedPRs(days: number = 7): Promise<MergedPR[]> {
+    return this.fetchRecentPRs<MergedPR>(
+      'is:pr is:merged author:{username} merged:>={since}',
+      'merged',
+      days,
+      (item, { repo, number }) => {
+        const mergedAt = item.pull_request?.merged_at;
+        if (!mergedAt) {
+          console.error(`Warning: merged_at missing for merged PR ${item.html_url}${item.closed_at ? ', falling back to closed_at' : ', no date available'}`);
+        }
+        return {
+          url: item.html_url,
+          repo,
+          number,
+          title: item.title,
+          mergedAt: mergedAt || item.closed_at || '',
+        };
+      },
+    );
   }
 
   /**
    * Generate a daily digest from fetched PRs
    */
-  generateDigest(prs: FetchedPR[], recentlyClosedPRs: ClosedPR[] = []): DailyDigest {
+  generateDigest(prs: FetchedPR[], recentlyClosedPRs: ClosedPR[] = [], recentlyMergedPRs: MergedPR[] = []): DailyDigest {
     const now = new Date().toISOString();
 
     // Categorize PRs
@@ -989,6 +1032,7 @@ export class PRMonitor {
       dormantPRs,
       healthyPRs,
       recentlyClosedPRs,
+      recentlyMergedPRs,
       shelvedPRs: [],
       autoUnshelvedPRs: [],
       summary: {
