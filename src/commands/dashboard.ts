@@ -194,7 +194,6 @@ interface DashboardStats {
   mergedPRs: number;
   closedPRs: number;
   mergeRate: string;
-  needsResponse: number;
 }
 
 function buildDashboardStats(digest: DailyDigest, state: AgentState): DashboardStats {
@@ -205,7 +204,6 @@ function buildDashboardStats(digest: DailyDigest, state: AgentState): DashboardS
     mergedPRs: summary.totalMergedAllTime,
     closedPRs: Object.values(state.repoScores || {}).reduce((sum, s) => sum + (s.closedWithoutMergeCount || 0), 0),
     mergeRate: `${(summary.mergeRate ?? 0).toFixed(1)}%`,
-    needsResponse: (digest.prsNeedingResponse || []).length,
   };
 }
 
@@ -496,7 +494,6 @@ function generateDashboardHtml(
     .stat-card.merged { --accent-color: var(--accent-merged); }
     .stat-card.closed { --accent-color: var(--text-muted); }
     .stat-card.rate { --accent-color: var(--accent-info); }
-    .stat-card.response { --accent-color: var(--accent-warning); }
 
     .stat-value {
       font-family: 'Geist Mono', monospace;
@@ -510,7 +507,6 @@ function generateDashboardHtml(
     .stat-card.merged .stat-value { color: var(--accent-merged); }
     .stat-card.closed .stat-value { color: var(--text-muted); }
     .stat-card.rate .stat-value { color: var(--accent-info); }
-    .stat-card.response .stat-value { color: var(--accent-warning); }
 
     .stat-label {
       font-size: 0.7rem;
@@ -971,10 +967,6 @@ function generateDashboardHtml(
         <div class="stat-value">${stats.mergeRate}</div>
         <div class="stat-label">Merge Rate</div>
       </div>
-      <div class="stat-card response">
-        <div class="stat-value">${stats.needsResponse}</div>
-        <div class="stat-label">Need Response</div>
-      </div>
     </div>
 
     ${actionRequired.length > 0 ? `
@@ -1086,21 +1078,6 @@ function generateDashboardHtml(
     </section>
     ` : ''}
 
-    ${shelvedPRs.length > 0 ? `
-    <section class="health-section" style="animation-delay: 0.3s;">
-      <div class="health-header">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2">
-          ${SVG.box}
-        </svg>
-        <h2>Shelved</h2>
-        <span class="health-badge" style="background: rgba(110, 118, 129, 0.15); color: var(--text-muted);">${shelvedPRs.length} shelved</span>
-      </div>
-      <div class="health-items">
-        ${renderHealthItems(shelvedPRs, 'shelved', SVG.box, 'Shelved', titleMeta)}
-      </div>
-    </section>
-    ` : ''}
-
     <div class="main-grid">
       <div class="card">
         <div class="card-header">
@@ -1206,6 +1183,37 @@ function generateDashboardHtml(
       </div>
     </section>
     `}
+
+    ${shelvedPRs.length > 0 ? `
+    <section class="pr-list-section" style="margin-top: 1.25rem; opacity: 0.7;">
+      <div class="pr-list-header">
+        <h2 class="pr-list-title">Shelved Pull Requests</h2>
+        <span class="pr-count" style="background: rgba(110, 118, 129, 0.15); color: var(--text-muted);">${shelvedPRs.length} shelved</span>
+      </div>
+      <div class="pr-list">
+        ${shelvedPRs.map(pr => `
+        <div class="pr-item">
+          <div class="pr-status-indicator" style="background: rgba(110, 118, 129, 0.1); color: var(--text-muted);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              ${SVG.box}
+            </svg>
+          </div>
+          <div class="pr-content">
+            <div class="pr-title-row">
+              <a href="${escapeHtml(pr.url)}" target="_blank" class="pr-title">${escapeHtml(pr.title)}</a>
+              <span class="pr-repo">${escapeHtml(pr.repo)}#${pr.number}</span>
+            </div>
+            <div class="pr-badges">
+              <span class="badge badge-days">${pr.daysSinceActivity}d inactive</span>
+            </div>
+          </div>
+          <div class="pr-activity">
+            ${pr.daysSinceActivity === 0 ? 'Today' : (pr.daysSinceActivity === 1 ? 'Yesterday' : pr.daysSinceActivity + 'd ago')}
+          </div>
+        </div>`).join('')}
+      </div>
+    </section>
+    ` : ''}
 
     <footer class="footer">
       <p>OSS Autopilot // Mission Control</p>
