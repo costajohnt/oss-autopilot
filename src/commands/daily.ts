@@ -4,7 +4,7 @@
  * generates a digest, and updates repo scores and analytics in local state.
  */
 
-import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ClosedPR, type ComputedRepoSignals, type RepoGroup } from '../core/index.js';
+import { getStateManager, PRMonitor, getGitHubToken, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ComputedRepoSignals, type RepoGroup } from '../core/index.js';
 import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue, type ActionMenu, type ActionMenuItem } from '../formatters/json.js';
 
 interface DailyOptions {
@@ -199,7 +199,7 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
 
   // Build output fields
   const summary = formatSummary(digest, capacity);
-  const actionableIssues = collectActionableIssues(prs, recentlyClosedPRs);
+  const actionableIssues = collectActionableIssues(prs);
   const briefSummary = formatBriefSummary(digest, actionableIssues.length);
   const actionMenu = computeActionMenu(actionableIssues, capacity);
   const repoGroups = groupPRsByRepo(prs);
@@ -509,10 +509,13 @@ function formatBriefSummary(digest: DailyDigest, issueCount: number): string {
 }
 
 /**
- * Collect all actionable issues across PRs for the action-first flow
- * Order: Needs response → Needs changes → CI failing → Merge conflicts → Incomplete checklist → Approaching dormant → Recently closed
+ * Collect all actionable issues across PRs for the action-first flow.
+ * Order: Needs response → Needs changes → CI failing → Merge conflicts → Incomplete checklist → Approaching dormant
+ *
+ * Note: Recently closed PRs are informational only and excluded from this list.
+ * They are available separately in digest.recentlyClosedPRs (#156).
  */
-function collectActionableIssues(prs: FetchedPR[], recentlyClosedPRs: ClosedPR[] = []): ActionableIssue[] {
+function collectActionableIssues(prs: FetchedPR[]): ActionableIssue[] {
   const issues: ActionableIssue[] = [];
 
   // 1. Needs Response (highest priority - someone is waiting for you)
@@ -559,33 +562,6 @@ function collectActionableIssues(prs: FetchedPR[], recentlyClosedPRs: ClosedPR[]
     if (pr.status === 'approaching_dormant') {
       issues.push({ type: 'approaching_dormant', pr, label: '[Approaching Dormant]' });
     }
-  }
-
-  // 7. Recently Closed (informational - PRs closed without merge in last 7 days)
-  for (const closedPR of recentlyClosedPRs) {
-    // Create a minimal FetchedPR-like object for the ActionableIssue interface
-    const pr: FetchedPR = {
-      id: 0,
-      url: closedPR.url,
-      repo: closedPR.repo,
-      number: closedPR.number,
-      title: closedPR.title,
-      status: 'healthy', // placeholder
-      displayLabel: '[Recently Closed]',
-      displayDescription: `Closed without merge${closedPR.closedAt ? ` on ${new Date(closedPR.closedAt).toLocaleDateString()}` : ''}`,
-      createdAt: '',
-      updatedAt: closedPR.closedAt || '',
-      daysSinceActivity: 0,
-      ciStatus: 'unknown',
-      failingCheckNames: [],
-      classifiedChecks: [],
-      hasMergeConflict: false,
-      reviewDecision: 'unknown',
-      hasUnrespondedComment: false,
-      hasIncompleteChecklist: false,
-      maintainerActionHints: [],
-    };
-    issues.push({ type: 'recently_closed', pr, label: '[Recently Closed]' });
   }
 
   return issues;
