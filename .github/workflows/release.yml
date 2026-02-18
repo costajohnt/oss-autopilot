@@ -94,7 +94,7 @@ jobs:
             BODY="Release v${VERSION} (no changelog entry found)"
           fi
 
-          echo "$BODY" > /tmp/release-body.md
+          printf '%s\n' "$BODY" > /tmp/release-body.md
 
       - name: Create release
         if: steps.version.outputs.exists == 'false'
