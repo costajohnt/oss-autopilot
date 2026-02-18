@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- **Dead code cleanup of legacy v1 methods (#161)** — Removed 11 unused StateManager methods that were remnants of the v1 local PR tracking architecture: `findPR`, `updatePR`, `movePRToMerged`, `movePRToClosed`, `movePRToDormant`, `reactivatePR`, `moveDormantPRToMerged`, `moveDormantPRToClosed`, `updateIssue`, `removeIssue`, `linkIssueToPR`. These had zero production callers since v2 fetches PRs fresh from GitHub. Corresponding tests were also removed. Methods with active callers (`addActivePR`, `untrackPR`, `markPRAsRead`, `markAllPRsAsRead`, `addIssue`) are preserved.
+- **Dead code cleanup of legacy v1 methods (#161)** — Removed 11 unused StateManager methods that were remnants of the v1 local PR tracking architecture: `findPR`, `updatePR`, `movePRToMerged`, `movePRToClosed`, `movePRToDormant`, `reactivatePR`, `moveDormantPRToMerged`, `moveDormantPRToClosed`, `updateIssue`, `removeIssue`, `linkIssueToPR`. Also removed the `PRHealthStatus` type and 4 dead interface fields (`TrackedPR.healthStatus`, `TrackedPR.pendingResponse`, `TrackedPR.linkedIssueNumber`, `TrackedIssue.linkedPRNumber`). Corresponding tests were also removed. Methods with active callers (`addActivePR`, `untrackPR`, `markPRAsRead`, `markAllPRsAsRead`, `addIssue`) are preserved.
 
 ## [0.30.0] - 2026-02-17
 

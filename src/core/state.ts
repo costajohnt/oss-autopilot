@@ -517,7 +517,7 @@ export class StateManager {
   /**
    * Append an event to the event log. Events are capped at {@link MAX_EVENTS} (1000);
    * when the cap is exceeded, the oldest events are trimmed to stay within the limit.
-   * @param type - The event type (e.g. 'pr_tracked', 'pr_merged').
+   * @param type - The event type (e.g. 'pr_tracked').
    * @param data - Arbitrary key-value payload for the event.
    */
   appendEvent(type: StateEventType, data: Record<string, unknown>): void {
