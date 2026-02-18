@@ -583,4 +583,86 @@ describe('IssueConversationMonitor', () => {
     expect(issues).toHaveLength(0);
     expect(failures).toHaveLength(0);
   });
+
+  it('should propagate search API failure as thrown error', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockRejectedValue(
+      new Error('API rate limit exceeded'),
+    );
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    await expect(monitor.fetchCommentedIssues()).rejects.toThrow('API rate limit exceeded');
+  });
+
+  it('should skip comments from deleted accounts (null user.login)', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: {
+        items: [makeSearchItem()],
+        total_count: 1,
+      },
+    });
+
+    mockOctokitInstance.issues.listComments.mockResolvedValue({
+      data: [
+        makeComment('testuser', 'I can work on this', '2026-02-01T10:00:00Z'),
+        { user: null, body: 'Ghost comment from deleted account', created_at: '2026-02-02T10:00:00Z' },
+        makeComment('maintainer', 'Sure, assigned!', '2026-02-03T10:00:00Z'),
+      ],
+    });
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    const { issues } = await monitor.fetchCommentedIssues();
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].status).toBe('new_response');
+    // The deleted account comment is skipped; maintainer response is detected
+    expect(issues[0].lastResponseAuthor).toBe('maintainer');
+  });
+
+  it('should use the latest maintainer response when multiple exist', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: {
+        items: [makeSearchItem()],
+        total_count: 1,
+      },
+    });
+
+    mockOctokitInstance.issues.listComments.mockResolvedValue({
+      data: [
+        makeComment('testuser', 'Can I work on this?', '2026-02-01T10:00:00Z'),
+        makeComment('maintainerA', 'Let me check...', '2026-02-02T10:00:00Z'),
+        makeComment('maintainerB', 'Yes, go ahead and submit a PR', '2026-02-03T10:00:00Z'),
+      ],
+    });
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    const { issues } = await monitor.fetchCommentedIssues();
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].status).toBe('new_response');
+    // "Last wins" — maintainerB's response (latest) should be the one surfaced
+    expect(issues[0].lastResponseAuthor).toBe('maintainerB');
+    expect(issues[0].lastResponseBody).toContain('go ahead and submit a PR');
+  });
+
+  it('should record null analysis results in failures array', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: {
+        items: [makeSearchItem()],
+        total_count: 1,
+      },
+    });
+
+    // Empty comment thread — analyzeIssueConversation returns null
+    mockOctokitInstance.issues.listComments.mockResolvedValue({
+      data: [],
+    });
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    const { issues, failures } = await monitor.fetchCommentedIssues();
+
+    expect(issues).toHaveLength(0);
+    expect(failures).toHaveLength(1);
+    expect(failures[0].issueUrl).toBe('https://github.com/owner/repo/issues/42');
+    expect(failures[0].error).toContain('No user comment found');
+  });
 });

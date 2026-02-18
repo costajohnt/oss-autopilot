@@ -589,20 +589,35 @@ export type IssueConversationStatus =
   | 'waiting'           // Last non-bot commenter is not the user; no substantive (non-acknowledgment) response found
   | 'acknowledged';     // User was the last non-bot commenter; no action needed
 
-/** A GitHub issue the user has commented on, with conversation state. */
-export interface CommentedIssue {
+/** Base fields shared by all issue conversation states. */
+interface CommentedIssueBase {
   repo: string;         // "owner/repo"
   number: number;
   title: string;
   url: string;
-  status: IssueConversationStatus;
   userLastCommentedAt: string;
-  lastResponseAuthor?: string;
-  lastResponseBody?: string;    // Truncated to 200 chars (+ "..." suffix when truncated)
-  lastResponseAt?: string;
   labels: string[];
   daysSinceUserComment: number;
 }
+
+/** Issue where a maintainer responded after the user's last comment. */
+interface CommentedIssueWithResponse extends CommentedIssueBase {
+  status: 'new_response';
+  lastResponseAuthor: string;
+  lastResponseBody: string;    // Truncated to 200 chars (+ "..." suffix when truncated)
+  lastResponseAt: string;
+}
+
+/** Issue where no substantive maintainer response was found. */
+interface CommentedIssueWithoutResponse extends CommentedIssueBase {
+  status: 'waiting' | 'acknowledged';
+  lastResponseAuthor?: undefined;
+  lastResponseBody?: undefined;
+  lastResponseAt?: undefined;
+}
+
+/** A GitHub issue the user has commented on, with conversation state. */
+export type CommentedIssue = CommentedIssueWithResponse | CommentedIssueWithoutResponse;
 
 /** Default configuration applied to new state files. All fields can be overridden via `/setup-oss`. */
 export const DEFAULT_CONFIG: AgentConfig = {

@@ -8,6 +8,7 @@
 
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
+import { isBotAuthor } from './pr-monitor.js';
 import { getStateManager } from './state.js';
 import { daysBetween, splitRepo } from './utils.js';
 import type { CommentedIssue, IssueConversationStatus } from './types.js';
@@ -113,7 +114,11 @@ export class IssueConversationMonitor {
         const { item, repoFullName } = candidates[nextIndex++];
         try {
           const issue = await this.analyzeIssueConversation(item, repoFullName, username);
-          if (issue) results.push(issue);
+          if (issue) {
+            results.push(issue);
+          } else {
+            failures.push({ issueUrl: item.html_url, error: 'No user comment found despite commenter: search match (possible pagination or eventual consistency)' });
+          }
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error);
           failures.push({ issueUrl: item.html_url, error: msg });
@@ -193,7 +198,7 @@ export class IssueConversationMonitor {
     let lastResponse: { author: string; body: string; createdAt: string } | undefined;
     for (const entry of timeline) {
       if (entry.isUser) continue;
-      if (entry.author.includes('[bot]')) continue;
+      if (isBotAuthor(entry.author)) continue;
 
       const entryTime = new Date(entry.createdAt);
       if (entryTime > userLastCommentTime) {
@@ -216,26 +221,34 @@ export class IssueConversationMonitor {
       // No substantive response found. If user is the last non-bot commenter,
       // mark as acknowledged; otherwise mark as waiting.
       const lastNonBotComment = [...timeline].reverse().find(
-        e => !e.author.includes('[bot]')
+        e => !isBotAuthor(e.author)
       );
       status = lastNonBotComment?.isUser ? 'acknowledged' : 'waiting';
     }
 
     const labels = (item.labels || []).map(l => l.name || '').filter(Boolean);
 
-    return {
+    const base = {
       repo: repoFullName,
       number: item.number,
       title: item.title,
       url: item.html_url,
-      status,
       userLastCommentedAt: userLastComment.createdAt,
-      lastResponseAuthor: lastResponse?.author,
-      lastResponseBody: lastResponse?.body,
-      lastResponseAt: lastResponse?.createdAt,
       labels,
       daysSinceUserComment: daysBetween(userLastCommentTime, new Date()),
     };
+
+    if (lastResponse) {
+      return {
+        ...base,
+        status: 'new_response' as const,
+        lastResponseAuthor: lastResponse.author,
+        lastResponseBody: lastResponse.body,
+        lastResponseAt: lastResponse.createdAt,
+      };
+    }
+
+    return { ...base, status };
   }
 }
 

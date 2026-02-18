@@ -263,7 +263,7 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   const actionableIssues = collectActionableIssues(activePRs);
   digest.summary.totalNeedingAttention = actionableIssues.length;
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length);
-  const actionMenu = computeActionMenu(actionableIssues, capacity, issueResponses);
+  const actionMenu = computeActionMenu(actionableIssues, capacity, commentedIssues);
   const repoGroups = groupPRsByRepo(activePRs);
 
   return { digest, updates: [], capacity, summary, briefSummary, actionableIssues, actionMenu, commentedIssues, repoGroups, failures };
@@ -692,8 +692,9 @@ function formatActionHint(hint: MaintainerActionHint): string {
 export function computeActionMenu(
   actionableIssues: ActionableIssue[],
   capacity: CapacityAssessment,
-  issueResponses: CommentedIssue[] = [],
+  commentedIssues: CommentedIssue[] = [],
 ): ActionMenu {
+  const issueResponses = commentedIssues.filter(i => i.status === 'new_response');
   const items: ActionMenuItem[] = [];
   const hasActionableIssues = actionableIssues.length > 0;
   const hasIssueResponses = issueResponses.length > 0;

@@ -160,7 +160,7 @@ describe('computeActionMenu', () => {
 
   it('should order address_all before issue_replies when both present', () => {
     const issueResponses: CommentedIssue[] = [
-      { repo: 'a/b', number: 1, title: 'T', url: 'u', status: 'new_response', userLastCommentedAt: '', labels: [], daysSinceUserComment: 0 },
+      { repo: 'a/b', number: 1, title: 'T', url: 'u', status: 'new_response', userLastCommentedAt: '', lastResponseAuthor: 'm', lastResponseBody: 'x', lastResponseAt: '', labels: [], daysSinceUserComment: 0 },
     ];
     const menu = computeActionMenu([makeActionableIssue()], makeCapacity(), issueResponses);
 
@@ -169,8 +169,8 @@ describe('computeActionMenu', () => {
 
   it('should use plural label for multiple issue responses', () => {
     const issueResponses: CommentedIssue[] = [
-      { repo: 'a/b', number: 1, title: 'T', url: 'u', status: 'new_response', userLastCommentedAt: '', labels: [], daysSinceUserComment: 0 },
-      { repo: 'c/d', number: 2, title: 'T', url: 'u', status: 'new_response', userLastCommentedAt: '', labels: [], daysSinceUserComment: 0 },
+      { repo: 'a/b', number: 1, title: 'T', url: 'u', status: 'new_response', userLastCommentedAt: '', lastResponseAuthor: 'm', lastResponseBody: 'x', lastResponseAt: '', labels: [], daysSinceUserComment: 0 },
+      { repo: 'c/d', number: 2, title: 'T', url: 'u', status: 'new_response', userLastCommentedAt: '', lastResponseAuthor: 'm', lastResponseBody: 'x', lastResponseAt: '', labels: [], daysSinceUserComment: 0 },
     ];
     const menu = computeActionMenu([], makeCapacity(), issueResponses);
 
