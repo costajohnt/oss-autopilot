@@ -558,8 +558,6 @@ Still group by repo if selected PRs share a repository.
 
 ### Handle "Find New Issues"
 
-If `hasIssueList` and `availableCount > 0`, offer to review the list first before searching.
-
 The full search workflow is in the `/oss-search` command. Tell the user:
 > "Starting issue search — this uses the `/oss-search` workflow."
 
@@ -1067,7 +1065,9 @@ if ! git fetch origin "$baseBranch" 2>/dev/null; then
   echo "Warning: git fetch failed — diffs may be based on stale data."
 fi
 mergeBase=$(git merge-base "origin/$baseBranch" HEAD 2>/dev/null) || true
-``` Use `git diff $mergeBase..HEAD` for the full branch diff. If `$mergeBase` is empty, fall back to `origin/$baseBranch...HEAD`. If neither works, report error — do NOT dispatch agents without diff context. Read `CONTRIBUTING.md` and lint configs if not already loaded.
+```
+
+Use `git diff $mergeBase..HEAD` for the full branch diff. If `$mergeBase` is empty, fall back to `origin/$baseBranch...HEAD`. If neither works, report error — do NOT dispatch agents without diff context. Read `CONTRIBUTING.md` and lint configs if not already loaded.
 
 ### 2. Dispatch Scope-Aware Review Agents
 
@@ -1208,7 +1208,8 @@ Options:
    git tag oss-autopilot-pre-squash                  # safety tag — MUST succeed
    git reset --soft "$mergeBase"
    git commit -m "{approved message}"
-   git fetch origin "$(git branch --show-current)"
+   branch=$(git branch --show-current)
+   git fetch origin "$branch"
    git push --force-with-lease
    git tag -d oss-autopilot-pre-squash               # cleanup after success
    ```
@@ -1290,7 +1291,7 @@ After viewing, re-prompt with the same options.
 - Reset session state: `isNewContribution = false`, clear `issueContext`, `draftPRNumber`, `draftPRUrl`, `baseBranch`, `roundNumber`.
 - Return to Step 4's action handler loop
 
-> **Context tip:** This was a full implementation cycle. Starting a fresh `/oss` session will free up context for more work. You can continue here if needed.
+> **Context tip:** You've done significant work this session. Starting a fresh `/oss` session later may help with context limits. Your draft PR is saved.
 
 ---
 

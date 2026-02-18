@@ -31,6 +31,7 @@ Route based on choice:
 - "Review from list" → this command requires `/oss` context. Tell the user: "Returning to `/oss` to browse your issue list." End this command; the parent `/oss` session handles "Pick Issue From List".
 - "Search GitHub" → continue with **Parallel Multi-Strategy Search** below
 - "Both" → show list first (return to `/oss` for "Pick Issue From List"), then continue with **Parallel Multi-Strategy Search**
+- "Done for now" → end this command. If invoked from `/oss`, return to the parent session. If standalone, exit.
 
 ## Parallel Multi-Strategy Search
 
@@ -160,7 +161,7 @@ dropPercent = (previousAvg - currentAvg) / previousAvg * 100
 Use AskUserQuestion (if `availableCount >= 5` and advisory shown, place list option first with "(Recommended)"):
 - "Pick from your issue list ({availableCount} ready)" (if available) — "Start working on a vetted issue"
 - "Search for new issues" — "Run another parallel search round"
-- "Done for now"
+- "Done for now" — end this command; return to parent `/oss` session if applicable
 
 **When the user claims any issue and starts implementing**, set:
 - `isNewContribution = true`
