@@ -173,7 +173,7 @@ Your curated issue list is depleted ({completedCount} done). Time to find new is
 
 When there are actionable issues, display them **before asking the user anything**.
 
-Issues are listed in priority order: `needs_response` → `needs_changes` → `ci_failing` → `merge_conflict` → `incomplete_checklist` → `approaching_dormant` → `recently_closed`. This matches the ordering from `collectActionableIssues()` in the CLI.
+Issues are listed in priority order: `needs_response` → `needs_changes` → `ci_failing` → `merge_conflict` → `incomplete_checklist` → `approaching_dormant`. This matches the ordering from `collectActionableIssues()` in the CLI. Recently closed PRs are NOT included here — they appear in a separate informational section below (see "Recently Closed PRs").
 
 For each issue, show the enriched format using data already available on `FetchedPR`:
 
@@ -199,7 +199,7 @@ For each issue, show the enriched format using data already available on `Fetche
 
 | Effort | Condition |
 |--------|-----------|
-| **Small** | `needs_response` with 0-1 hints (just a reply), `incomplete_checklist`, `approaching_dormant`, `recently_closed` (informational only) |
+| **Small** | `needs_response` with 0-1 hints (just a reply), `incomplete_checklist`, `approaching_dormant` |
 | **Medium** | `needs_response` with 2+ hints (reply + code changes), `needs_changes` with 0-2 hints, `ci_failing` |
 | **Large** | `merge_conflict`, `needs_changes` with 3+ hints |
 
@@ -208,6 +208,17 @@ If an issue type doesn't match any row above, default to **Medium**.
 **Action summary**: Brief description based on type (e.g., "respond + code changes", "rebase + push", "investigate CI logs").
 
 Use `issue.pr.daysSinceActivity` from the CLI output (already computed).
+
+### Recently Closed PRs (Informational)
+
+If `data.daily.digest.recentlyClosedPRs` has entries, display them **after** the actionable issues list (or after "All PRs are healthy" if none) as a separate informational section. These are NOT counted in the "Need Attention" total and do NOT receive priority numbers:
+
+```
+Recently closed (informational):
+- {repo}#{number} — {title} (closed without merge on {closedAt date})
+```
+
+These do not require any action. They exist so the user knows what was closed. The Auto-Exclude prompt (Step 6) may offer to exclude these repos from future searches.
 
 ### Ask for Action (Using Pre-Computed Menu)
 
@@ -429,7 +440,6 @@ For each issue in `actionableIssues`, include a Task tool call grouped by repo:
 | Changes Addressed | Info | Note that changes were pushed after maintainer review — no contributor action needed, awaiting re-review. |
 | Missing Required Files | Tier 2 | Identify what's missing (changeset, CLA, etc.), draft the file. DO NOT push. |
 | Approaching Dormant | Tier 2 | Assess if still relevant, recommend follow-up action. |
-| Recently Closed | Info | Note as closed without merge. DO NOT clone, checkout, or rebase — the PR branch may not exist. Report closure for the Auto-Exclude prompt. |
 
 **Agent dispatch prompt template for comprehensive PR check:**
 
@@ -588,7 +598,7 @@ Proceed to the "After Each Action" section.
 
 ### Auto-Exclude Prompt for Rejected PRs
 
-When the daily digest includes `[Recently Closed]` entries (PRs closed without merge), offer to exclude those repos from future searches:
+When `data.daily.digest.recentlyClosedPRs` has entries (PRs closed without merge), offer to exclude those repos from future searches:
 
 For each recently closed PR where the repo is NOT already excluded and the user has no merged PRs in that repo:
 
