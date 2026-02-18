@@ -873,7 +873,6 @@ export class StateManager {
       return false;
     }
     this.state.config.shelvedPRUrls.push(url);
-    console.error(`Shelved PR: ${url}`);
     return true;
   }
 
@@ -891,7 +890,6 @@ export class StateManager {
       return false;
     }
     this.state.config.shelvedPRUrls.splice(index, 1);
-    console.error(`Unshelved PR: ${url}`);
     return true;
   }
 

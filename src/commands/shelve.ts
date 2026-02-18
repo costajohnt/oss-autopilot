@@ -12,7 +12,8 @@ interface ShelveCommandOptions {
   json?: boolean;
 }
 
-const PR_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
+/** @internal Exported for testing */
+export const PR_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
 
 function validatePRUrl(prUrl: string, json?: boolean): void {
   if (PR_URL_PATTERN.test(prUrl)) return;
