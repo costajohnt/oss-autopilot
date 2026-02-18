@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - 2026-02-17
+
+### Changed
+
+- **Reduce `/oss` context window footprint (#141)** — Extracted the issue search workflow (~200 lines) into a standalone `/oss-search` command, replaced the legacy gh CLI fallback (~70 lines) with a short error message, condensed verbose sections (Draft PR Review Cycle, Squash + Reword, Integration Check, Action Tiers), and trimmed agent-covered content from SKILL.md. Net reduction: ~490 lines from `oss.md`, bringing typical session token usage down ~34%.
+
+### Added
+
+- **`/oss-search` command** — Self-contained issue search workflow extracted from `/oss`. Includes parallel multi-strategy search (established repos, CLI search, trending repos), batch vetting, and diminishing returns tracking.
+- **Session scope guidance** — After completing a full implementation cycle (draft PR marked ready), a note suggests starting a fresh `/oss` session to free context.
+
 ## [0.28.1] - 2026-02-17
 
 ### Fixed
@@ -618,6 +629,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.29.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.28.1...v0.29.0
 [0.28.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.28.0...v0.28.1
 [0.28.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.27.1...v0.28.0
 [0.27.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.27.0...v0.27.1

@@ -52,11 +52,11 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" startup --json 2>/tmp/oss-start
 The output is a single JSON object with the standard envelope: `{ success: boolean, data?: StartupOutput, error?: string, timestamp: string }`.
 
 **Error sentinel check** (before JSON appears — only possible if the build step fails):
-- If output starts with `BUILD_FAILED`: Tell the user the CLI build failed and show the error lines. Suggest running `cd ${CLAUDE_PLUGIN_ROOT} && npm install && npm run bundle`. Then fall back to the gh CLI workflow (Step 1b).
+- If output starts with `BUILD_FAILED`: Tell the user the CLI build failed and show the error lines. Then show error recovery steps (Step 1b).
 
 **JSON parsing** — parse the entire output as JSON:
 
-- If `success` is `false`: Show `error` field to the user. This means the daily check failed. Fall back to Step 1b.
+- If `success` is `false`: Show `error` field to the user. This means the daily check failed. Show error recovery steps (Step 1b).
 - If `success` is `true`, extract `data` as `StartupOutput`:
 
 | Field | Meaning | Session Variable |
@@ -73,7 +73,7 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 - `data.setupComplete === false` → Tell the user: "It looks like setup isn't complete yet." Use AskUserQuestion to let them choose "Run setup first (Recommended)" (launch `/setup-oss`) or "Continue with defaults". If they choose "Continue with defaults", re-run the daily check directly (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-startup-stderr.log`), use `data.version` from the startup output already received, and continue to Step 2 with the daily result as `data.daily`.
 - `data.daily` is present → Continue to Step 2 (display brief summary and action menu).
 
-**If output is empty or not valid JSON**: Tell the user "Something went wrong running the startup check." Suggest running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" startup --json`. Then fall back to Step 1b.
+**If output is empty or not valid JSON**: Tell the user "Something went wrong running the startup check." Suggest running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" startup --json`. Then show error recovery steps (Step 1b).
 
 ## Step 2: Display Brief Summary
 
@@ -272,104 +272,26 @@ When user provides custom input via "Other", parse for:
 
 ---
 
-## Step 1b: Fallback to gh CLI
+## Step 1b: CLI Error Recovery
 
-If the TypeScript CLI is not available, use gh CLI directly.
+Show any captured error output (from `$BUILD_LOG`, stderr, or the `error` field). Then troubleshoot based on the error type:
 
-### Detect GitHub Access
-
-Check in this order:
-
-**Option 1: MCP Server (if available)**
-Check if a GitHub MCP server is available by looking for tools like:
-- `mcp__github__*` (official GitHub MCP)
-- `mcp__*github*` (other GitHub MCP servers)
-
-If available, prefer MCP tools for richer data access.
-
-**Option 2: GitHub CLI (`gh`)**
-```bash
-gh auth status
-```
-
-If not authenticated:
-> "I need GitHub access. Please run `gh auth login` first."
-
-### Load Configuration
-
-Read the config file:
-```
-Read(.claude/oss-autopilot/config.md)
-```
-
-If missing or `setupComplete: false`:
-> "OSS Autopilot needs configuration. Run `/setup-oss` first."
-
-### Fetch and Check PRs
-
-```bash
-# Search ALL open PRs across GitHub (not just current repo)
-gh search prs --author USERNAME --state open --json repository,number,title,url,updatedAt --limit 100
-```
-
-For each PR, get detailed status:
-```bash
-gh pr view NUMBER --repo OWNER/REPO --json state,title,updatedAt,reviews,comments,statusCheckRollup,mergeable,reviewDecision,headRefName
-```
-
-### Determine PR Status
-
-For each PR, categorize as (checked in priority order):
-- **CI Failing**: statusCheckRollup shows failures (excluding expected fork limitations like Vercel auth)
-- **CI Blocked**: CI is pending/blocked and requires maintainer action to trigger (e.g., Buildkite on external PRs)
-- **CI Not Running**: No CI checks have been reported at all
-- **Merge Conflict**: mergeable is false
-- **Needs Response**: has new comments from maintainers (changes_requested or unresponded comments)
-- **Changes Addressed**: maintainer commented but contributor pushed newer commits (awaiting re-review)
-- **Needs Rebase**: branch is significantly behind upstream (check via `gh pr view --json baseRefName,headRefName` and compare)
-- **Missing Required Files**: changeset bot or CLA bot has flagged missing files
-- **Approaching Dormant**: no activity past `approachingDormantDays`
-- **Merged**: state is "MERGED"
-- **Closed**: state is "CLOSED" (without merge)
-- **Healthy**: everything looks good
-
-**Distinguishing CI failures from expected fork limitations:**
-Some CI failures are expected for external forks and not actionable by the contributor:
-- Vercel deploy previews requiring team authorization
-- Internal CI systems that don't run on fork PRs
-These should be labeled `[Fork Limitation]` rather than `[CI Failing]` and treated as informational, not actionable.
-
-Then format and present action choices similar to Step 3.
+- **Build failure** (BUILD_FAILED sentinel): `cd ${CLAUDE_PLUGIN_ROOT} && npm install && npm run bundle`. Common causes: missing Node.js 18+, stale `node_modules` (delete and reinstall), npm permission issues.
+- **Auth/network error** (`success: false` with valid JSON): Check `gh auth status` and network connectivity. The CLI built fine — the daily check itself failed.
+- **Invalid output** (empty or non-JSON): Try running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" startup --json`. Check `node --version` (need 18+).
 
 ---
 
 ## Step 4: Action Handlers
 
-### Action Tiers: Routine Maintenance vs Code Changes
+### Action Tiers
 
-Actions are divided into two tiers based on risk:
+| Tier | Scope | Examples | Agent Behavior |
+|------|-------|----------|---------------|
+| **Tier 1** — Routine Maintenance | Non-destructive, no code logic changes | Rebase, clone, fetch upstream | Execute directly (with user consent). Report result. |
+| **Tier 2** — Code Changes | Changes code or posts public content | CI fixes, conflict resolution, review responses, missing files | Investigate and recommend. All writes require explicit user approval. |
 
-**Tier 1: Routine Maintenance (auto-safe with user consent)**
-These are non-destructive operations that don't change code logic:
-- Rebasing onto upstream (replay existing commits on new base)
-- Cloning repos that aren't available locally
-- Fetching upstream changes
-
-For Tier 1 actions, agents CAN execute directly (rebase + force push) when the user
-selects "Work through all issues" or explicitly approves maintenance. No separate investigation
-step is needed — just do the rebase and report the result.
-
-**Tier 2: Code Changes (investigate first, then approve)**
-These change code or post public content:
-- Fixing CI failures (code changes)
-- Resolving merge conflicts (code changes)
-- Responding to review comments (public communication)
-- Adding missing files (changesets, CLA)
-
-For Tier 2 actions, agents INVESTIGATE and RECOMMEND. All write actions require
-explicit user approval via AskUserQuestion.
-
-**After Tier 2 code changes are complete, ALWAYS proceed to Step 5.5 (Pre-Commit Code Review) before committing or pushing.** Step 5.5 routes differently based on whether this is a new contribution (`isNewContribution`) or an update to an existing PR — see Step 5.5 for details.
+**After Tier 2 code changes, ALWAYS proceed to Step 5.5 (Pre-Commit Code Review) before committing or pushing.**
 
 ### Same-Repo PR Grouping
 
@@ -636,208 +558,14 @@ Still group by repo if selected PRs share a repository.
 
 ### Handle "Find New Issues"
 
-**Initialize search session state** (reset each time this handler is entered):
-- `searchRoundScores`: number[] = [] (average vetting score per search round, for diminishing returns check)
-- `searchedRepos`: string[] = [] (repos surfaced in previous rounds, auto-excluded from subsequent rounds)
+If `hasIssueList` and `availableCount > 0`, offer to review the list first before searching.
 
-**If `hasIssueList` is true and `availableCount > 0`**, present a preamble before searching:
+The full search workflow is in the `/oss-search` command. Tell the user:
+> "Starting issue search — this uses the `/oss-search` workflow."
 
-Use AskUserQuestion:
-- "Review from your curated list ({availableCount} available)" — "Pick from pre-vetted issues you've already researched"
-- "Search GitHub" — "Find new issues via parallel multi-strategy search"
-- "Both — list first, then search" — "Review your list, then search for more"
-- "Done for now"
+Then invoke `/oss-search`, passing session state (`hasIssueList`, `availableCount`, `completedCount`, `issueListPath`).
 
-Route based on choice:
-- "Review from list" → go to **Handle "Pick Issue From List"** below
-- "Search GitHub" → continue with **Parallel Multi-Strategy Search** below
-- "Both" → show list first (Handle "Pick Issue From List"), then after that completes, continue with **Parallel Multi-Strategy Search**
-
-#### Parallel Multi-Strategy Search
-
-**CRITICAL: Dispatch ALL 3 strategies in a SINGLE message for true parallelism.**
-
-**Strategy A — Established repos (merged-PR + open-PR repos):**
-```
-Task(issue-scout, "Find recently-opened issues (last 30 days) in repos where the user has merged or open PRs.
-  [If searchedRepos is non-empty, insert: "Exclude results from these repos (already searched in prior rounds): {searchedRepos as comma-separated list}."]
-  Get merged-PR repos: read ~/.oss-autopilot/state.json, extract repo names from repoScores entries where mergedPRCount > 0 (sorted by mergedPRCount descending).
-  Get open-PR repos: run `gh search prs --author @me --state open --json repository --jq '.[].repository.nameWithOwner' | sort -u`.
-  Combine both lists (merged-PR repos first), deduplicate.
-  For each repo: `gh search issues --repo OWNER/REPO --state open --sort created --limit 5`.
-  Exclude issues authored by the user (get username from `gh api user -q .login`).
-  Return at most 15 total results (prioritize repos with higher mergedPRCount).
-  For each: repo, number, title, URL, labels, source: 'established-repo', and brief assessment.")
-```
-
-**Strategy B — Filtered CLI search (language + label + star filters):**
-```
-Task(general-purpose, "Run the CLI search command and return the raw JSON output verbatim:
-  ```bash
-  GITHUB_TOKEN=$(gh auth token) node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs\" search 10 --json
-  ```")
-```
-
-When Strategy B returns, check the JSON `success` field. If `success: false`, treat it as a failed strategy. If `success: true`, tag each candidate in `data.candidates` as source: `'cli-search'`.
-
-**Strategy C — Trending/popular repos in user's language preferences:**
-```
-Task(issue-scout, "Search for good-first-issue candidates in trending/popular repos the user has NOT contributed to.
-  [If searchedRepos is non-empty, insert: "Exclude results from these repos (already searched in prior rounds): {searchedRepos as comma-separated list}."]
-  Exclude issues authored by the user (get username from `gh api user -q .login`).
-  Read the user's language preferences from .claude/oss-autopilot/config.md.
-  Then: gh search issues --label 'good first issue' --language {lang} --state open --sort reactions-+1 --limit 10
-  Focus on repos with high star counts and recent activity.
-  For each: repo, number, title, URL, labels, star count, source: 'trending-repo', and brief assessment.")
-```
-
-#### Combine, Filter, and Deduplicate
-
-After all 3 strategies return:
-
-1. **Normalize** all results to a common shape: `{ repo, number, title, url, labels, source, metadata }`. For Strategy B, flatten `candidate.issue.{repo, number, title, url, labels}` to the top level and place `candidate.{recommendation, viabilityScore, repoScore, reasonsToApprove, reasonsToSkip}` into `metadata`. Strategies A/C return structured text from issue-scout — extract the same fields from their output.
-2. **Filter Strategy B** against `searchedRepos` — remove any candidates whose repo appears in `searchedRepos` (the CLI does not receive session-level exclusions, so this must be done post-hoc)
-3. **Deduplicate** by issue URL — if the same issue appears in multiple strategies, keep the entry with the richest metadata but assign the **highest-priority source tag** (Established repo > CLI search > Trending repo)
-4. **Sort** by source priority: Established repo first, then CLI search, then Trending repo (preserve original ordering within each group)
-5. **Update `searchedRepos`** — append all repos from the deduplicated results (dedup against existing entries). This must happen before presenting the batch vet options.
-
-**If ALL strategies failed** (all 3 returned errors, not just empty results), do NOT proceed to batch vet:
-> "All 3 search strategies failed. Check: `gh auth status`, CLI build exists, network connectivity."
-> Show each strategy's specific error.
-
-Use AskUserQuestion:
-- "Retry search" — "Re-dispatch all 3 strategies"
-- "Done for now"
-
-Route based on choice:
-- "Retry search" → go back to **Parallel Multi-Strategy Search** above (same parameters)
-- "Done for now" → return to Step 3
-
-**Stop — do not fall through to the presentation step below.**
-
-**If some strategies failed**, note it and continue with available results:
-> "Strategy {name} failed: {error}. Showing results from {N} successful strategies."
-> Omit strategies that returned zero results without comment.
-
-**If the total candidate count is zero** (whether some strategies failed or all succeeded but returned empty), do NOT proceed to batch vet:
-> "No matching issues found from the successful strategies. This typically means your exclusion list has grown large or filters are too narrow."
-
-Use AskUserQuestion:
-- "Retry with broader criteria" — "Re-dispatch with expanded label filters"
-- "Done for now"
-
-Route based on choice:
-- "Retry with broader criteria" → go back to **Parallel Multi-Strategy Search** above, but broaden Strategy C to search for `'help wanted'` label in addition to `'good first issue'`
-- "Done for now" → return to Step 3
-
-**Stop — do not fall through to the presentation step below.**
-
-Present combined results grouped by source (omit empty groups):
-```
-## Search Results ({totalCount} candidates from {successCount} strategies)
-
-### From Established Repos ({count})
-{results with source: 'established-repo'}
-
-### From CLI Search ({count})
-{results with source: 'cli-search'}
-
-### From Trending Repos ({count})
-{results with source: 'trending-repo'}
-```
-
-Proceed to the batch vet flow with the deduplicated results.
-
-#### After Search Results: Batch Vet Flow
-
-When search results come back (from the Parallel Multi-Strategy Search), present the combined, deduplicated candidates and offer a batch workflow. Set `currentRound = searchRoundScores.length + 1`.
-
-Use AskUserQuestion:
-- "Add all to list and vet in parallel (Recommended)" — "Add candidates to your issue list as 'Pending vet', then dispatch parallel vet agents"
-- "Pick one to vet now" — "Select a single candidate to investigate immediately"
-- "Search again with different criteria" — "Run another parallel search round with adjusted parameters (prior repos auto-excluded)"
-- "Done for now"
-
-**"Add all to list and vet in parallel":**
-
-1. **Add candidates to the curated list.** For each search result, append an entry under a new `## Pending Vet` section (create section if it doesn't exist):
-   ```markdown
-   ### {owner}/{repo} ({stars}★) — {repo description}
-   - [#{number}]({url}) — {issue title}
-     - **Pending vet** — Found in search round {currentRound}, not yet vetted.
-   ```
-
-2. **Dispatch parallel vet agents** (up to 5 concurrent). For each candidate:
-   ```
-   Task(issue-scout, "Vet this issue from the user's search results:
-     URL: {issue_url}
-     Source: search-round-{currentRound}
-     Check: still open, unassigned, no linked PRs, repo health, complexity estimate.
-     Return: score (1-10), recommendation (pursue/maybe/skip), red flags if any.")
-   ```
-
-3. **After all vet agents return**, update each list entry with vetting findings:
-   - Replace `**Pending vet**` with the vetting result: `**Score: {score}/10** — {recommendation}. {brief findings}`
-   - Move entries to the appropriate priority tier section based on recommendation:
-     - `pursue` → `## Pursue — Ready to Contribute`
-     - `maybe` → `## Maybe — Viable with Caveats`
-     - `skip` → `## Skip — Not Recommended` (or remove from list, per user preference)
-
-4. **Track round scores.** Calculate the average score for this round and append to `searchRoundScores`:
-   ```
-   roundAvg = mean of all vetting scores from this round
-   searchRoundScores.push(roundAvg)
-   ```
-
-5. **Present summary**, then proceed to **Diminishing Returns Check** below.
-   ```
-   ## Search Round {currentRound} Results
-
-   Vetted {count} candidates (avg score: {roundAvg}/10):
-   - {count_pursue} ready to pursue
-   - {count_maybe} viable with caveats
-   - {count_skip} not recommended
-
-   Your issue list now has {availableCount} available issues.
-   ```
-
-**"Pick one to vet now":**
-- Display the search results as a numbered list
-- Use AskUserQuestion with up to 3 candidates + "Done for now"
-- Dispatch a single `issue-scout` agent for the selected candidate (same prompt as step 2 above)
-- Present the vetting result and offer: "Claim this issue and start working" / "Pick a different one" / "Done for now"
-- Record the single score: `searchRoundScores.push(score)` — then proceed to **Diminishing Returns Check**
-
-**"Search again with different criteria":**
-- Route back to **Parallel Multi-Strategy Search** (exclusions carry forward automatically).
-
-#### Diminishing Returns Check
-
-After each batch vet or single vet completes and a score is appended to `searchRoundScores`, check for quality decline:
-
-**If `searchRoundScores.length >= 2` and the previous round's average is > 0**, compare:
-```
-previousAvg = searchRoundScores[searchRoundScores.length - 2]
-currentAvg = searchRoundScores[searchRoundScores.length - 1]
-dropPercent = (previousAvg - currentAvg) / previousAvg * 100
-```
-
-Display an advisory based on the severity of the drop:
-- **If `dropPercent > 50`**: > "Search quality has dropped significantly (avg score {currentAvg} vs {previousAvg}). Further searching is likely to yield diminishing returns. You have {availableCount} vetted issues ready to work on."
-- **Otherwise, if `dropPercent > 30`**: > "These candidates are lower quality than the previous round (avg score {currentAvg} vs {previousAvg}). You have {availableCount} vetted issues ready. Consider working on those instead of searching more."
-
-After displaying the round summary (and advisory if applicable), present the next action:
-
-Use AskUserQuestion (if `availableCount >= 5` and an advisory was shown, place the list option first with "(Recommended)"):
-- "Pick from your issue list ({availableCount} ready)" (if `hasIssueList && availableCount > 0`) — "Start working on a vetted issue"
-- "Search for new issues" — "Run another parallel search round"
-- "Done for now"
-
-**When the user claims any issue found through search and starts implementing**, set:
-- `isNewContribution = true`
-- `issueContext = { title, url, description }` — for scope-aware review in Step 5.6
-
-This activates the same draft-first workflow as the curated list path (see "Handle Pick Issue From List" section 6 for the full sequence: Steps 5.5 through 6, including change type selection rules).
+When the user claims any issue found through search and starts implementing, set `isNewContribution = true` and `issueContext = { title, url, description }`. This activates the draft-first workflow (see "Handle Pick Issue From List" section 6).
 
 ### Handle "Pick Issue From List"
 
@@ -1325,253 +1053,76 @@ Options:
 
 ## Step 5.6: Draft PR Review Cycle
 
-**Trigger:** After a draft PR is created in Step 5.5 (Draft-First Path). Only runs for new contributions (`isNewContribution === true`).
+**Trigger:** After draft PR created in Step 5.5. Only for new contributions (`isNewContribution === true`).
 
-This step runs iterative, scope-aware code review against the draft PR before it becomes visible to maintainers.
-
-Initialize `roundNumber = 1` at the start of the review cycle.
+Initialize `roundNumber = 1`.
 
 ### 1. Gather Change Context
 
-Determine the base branch dynamically (do NOT hardcode `main`):
-
-1. Try: `gh pr view --json baseRefName --jq '.baseRefName'` — most reliable, uses actual PR target
-2. Fallback: `git remote show origin | grep 'HEAD branch' | awk '{print $NF}'` — uses repo default
-3. Last resort: `echo "main"` — warn user: "Could not detect base branch automatically. Defaulting to 'main'. Please confirm this is correct."
-
-If method 2 or 3 is used, ask the user to confirm the base branch before proceeding with diffs.
+Compute `baseBranch` and `mergeBase` (store in session — reused in 5.6b and 5.7):
 
 ```bash
 baseBranch=$(gh pr view --json baseRefName --jq '.baseRefName' 2>/dev/null || git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}' || echo "main")
 if ! git fetch origin "$baseBranch" 2>/dev/null; then
-  echo "Warning: Failed to fetch origin/$baseBranch. Diffs may be incomplete."
+  echo "Warning: git fetch failed — diffs may be based on stale data."
 fi
 mergeBase=$(git merge-base "origin/$baseBranch" HEAD 2>/dev/null) || true
-if [ -n "$mergeBase" ]; then
-  git diff "$mergeBase"..HEAD
-  git log --oneline "$mergeBase"..HEAD
-elif git rev-parse --verify "origin/$baseBranch" 2>/dev/null; then
-  # Fallback: three-dot syntax (may include upstream commits)
-  git diff "origin/$baseBranch"...HEAD
-  git log --oneline "origin/$baseBranch"...HEAD
-else
-  echo "Error: Cannot compute diff — origin/$baseBranch does not exist locally."
-fi
-```
+``` Use `git diff $mergeBase..HEAD` for the full branch diff. If `$mergeBase` is empty, fall back to `origin/$baseBranch...HEAD`. If neither works, report error — do NOT dispatch agents without diff context. Read `CONTRIBUTING.md` and lint configs if not already loaded.
 
-Store `baseBranch` and `mergeBase` in session context — they are reused throughout Steps 5.6, 5.6b, and 5.7. If `$mergeBase` is empty (fallback path), warn the user that diffs may include upstream commits. If neither `$mergeBase` nor `origin/$baseBranch` is available, report the error and offer: "Retry after fetching" / "Specify base branch manually" / "Done for now". Do NOT dispatch review agents without diff context. Downstream steps (5.6b, 5.7) validate and recompute `$mergeBase` before use.
+### 2. Dispatch Scope-Aware Review Agents
 
-Save the full diff — it covers ALL changes on this branch (not just the last commit). Using `merge-base` ensures only the contributor's changes are included, not upstream commits (important for fork-based workflows).
+**Dispatch ALL agents in a SINGLE message.** Always use the full Large tier (code-reviewer, silent-failure-hunter, code-simplifier, pr-test-analyzer + conditional agents) regardless of diff size. Include `Working directory: {local repo path}` in every prompt.
 
-Identify changed files and their types. Count files changed.
-
-Read the target repo's conventions if not already loaded:
-- `CONTRIBUTING.md`
-- Lint/format configs (`.eslintrc*`, `.prettierrc*`, `biome.json`, etc.)
-- Test directory structure (`test/`, `tests/`, `__tests__/`, `spec/`)
-
-### 2. Dispatch Scope-Aware Review Agents in Parallel
-
-**CRITICAL: Dispatch ALL agents in a SINGLE message for true parallelism.**
-
-Use the same agent dispatch pattern as Step 5.5 sub-step 3, but **do NOT use Step 5.5's size-based scaling — regardless of how small the diff is (even < 50 lines, ≤ 2 files), always dispatch the full Large tier** (code-reviewer, silent-failure-hunter, code-simplifier, pr-test-analyzer, plus conditional agents). New contributions warrant maximum review coverage. Include the `Working directory: {local repo path}` line in every prompt. Additionally, **prepend the following SCOPE block** to each agent prompt. The SCOPE block constrains findings to the PR's purpose and prevents scope creep from pre-existing issues:
-
+**Prepend this SCOPE block to each agent prompt:**
 ```
 SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
 Focus findings on changes related to this issue. Flag pre-existing issues only
 if they are Critical severity. Do NOT suggest improvements outside the scope of this PR.
 ```
 
-Each agent should tailor the scope instruction to its specialty:
-- **code-reviewer**: "Focus findings on changes related to this issue."
-- **silent-failure-hunter**: "Focus only on error handling in the changed code paths. Do NOT flag pre-existing error handling patterns unless they are Critical."
-- **code-simplifier**: "Only suggest simplifications for code introduced or modified by this PR. Do NOT suggest refactoring pre-existing code."
-- **pr-test-analyzer**: "Focus test recommendations on the new/changed functionality only."
+Tailor per agent: code-reviewer focuses on issue-related changes, silent-failure-hunter on changed code paths only, code-simplifier on new/modified code only, pr-test-analyzer on new functionality only.
 
-**Additional differences from Step 5.5:**
-- Use `git diff $mergeBase..HEAD` (full branch diff from merge-base) instead of `git diff` (working tree diff). If `$mergeBase` is empty (merge-base failed in sub-step 1), use `origin/$baseBranch...HEAD` (three-dot) instead
-- Conditional agents and fallback follow the same rules as Step 5.5 sub-step 3, with the SCOPE block added to each prompt
+If ALL agents fail: offer "Proceed to integration check (skip review)" / "Retry" / "Done for now".
 
-**If ALL agents fail (including fallback):**
-> "Review agents are currently unavailable. You can proceed without automated review, but we recommend manual review before marking ready."
-- Offer: "Proceed to integration check (skip review)" / "Retry review" / "Done for now"
-- **"Proceed to integration check":** → Proceed to Step 5.6b (Integration Check). Even without agent review, the integration check and manual testing steps are still valuable.
+### 3. Consolidate and Present
 
-### 3. Consolidate Findings
+Same as Step 5.5 sub-step 4, but separate findings into **In-Scope** (Critical/Recommended/Minor) and **Out-of-Scope** (pre-existing issues). Include test coverage assessment.
 
-Same consolidation logic as Step 5.5 sub-step 4, but add a scope tag to each finding:
+### 4. User Decision
 
-```
-## Draft PR Review — Round {roundNumber}
+**If Critical/Recommended findings:** "Address findings" / "Show full diff" / "Finalize anyway" / "Done for now"
+**If clean:** "Finalize (Recommended)" / "Show full diff" / "Done for now"
 
-### In-Scope Findings
+### 5. Handle Choice
 
-#### Critical ({count}) — Must fix before marking ready
-- **{file}:{line}** — {description} (found by: {agent})
-  Suggestion: {fix}
+**"Address findings":** Fix → commit → push → increment `roundNumber` → loop to sub-step 1. Only increment `roundNumber` if push succeeds. On push failure, report error and offer retry/done. **Soft limit after 3 rounds:** suggest finalizing (diminishing returns).
 
-#### Recommended ({count}) — Should fix
-- **{file}:{line}** — {description} (found by: {agent})
-  Suggestion: {fix}
+**"Show diff":** Output `git diff $mergeBase..HEAD` as code block. If the diff command fails, recompute `$mergeBase` and retry. If still failing, offer "Continue without diff" / "Retry" / "Done for now". Then offer: "Finalize" / "Fix something" / "Done for now".
 
-#### Minor ({count}) — Nice to have
-- **{file}:{line}** — {description}
+**"Finalize":** → Step 5.6b (Integration Check)
 
-### Out-of-Scope Findings ({count})
-These findings relate to pre-existing code, not changes for this issue:
-- **{file}:{line}** — {description} (severity: {level})
-
-### Test Coverage
-- {assessment from pr-test-analyzer}
-```
-
-If NO in-scope issues found:
-```
-## Draft PR Review — Round {roundNumber}
-
-All review agents passed. No in-scope issues found — PR is clean and ready to finalize.
-```
-
-### 4. User Decision Point
-
-Use AskUserQuestion based on findings:
-
-**If in-scope Critical or Recommended issues exist:**
-```
-Question: "Review found {count} in-scope findings. How would you like to proceed?"
-Header: "Review"
-
-Options:
-1. "Address in-scope findings" — "Fix issues related to this PR's purpose"
-2. "Show full diff" — "Display the complete branch diff"
-3. "Finalize anyway" — "Skip remaining fixes, run integration check and testing"
-4. "Done for now" — "Leave as draft, come back later"
-```
-
-**If only Minor issues or no in-scope issues:**
-```
-Question: "PR looks clean. Ready to finalize?"
-Header: "Review"
-
-Options:
-1. "Finalize (Recommended)" — "Run integration check, optional testing, then squash"
-2. "Show full diff first" — "Review the complete branch diff"
-3. "Done for now" — "Leave as draft, come back later"
-```
-
-### 5. Handle User Choice
-
-**"Address in-scope findings":**
-- User makes fixes (with assistance as needed)
-- Stage and commit the fixes (additional commits on the branch)
-- Push to update the draft PR:
-  ```bash
-  git push
-  ```
-- **If push fails**, report the error and offer to retry or continue reviewing locally (do NOT increment `roundNumber` if push failed — the remote is out of sync)
-- **If push succeeds**, increment `roundNumber`
-- Loop back to sub-step 1 (Gather Change Context) to re-review
-
-**Soft limit:** After **3 review rounds**, present a different prompt:
-```
-Question: "You've completed {roundNumber} review rounds. Remaining findings may be diminishing returns. Ready to finalize?"
-Header: "Review"
-
-Options:
-1. "Finalize now (Recommended)" — "Run integration check, optional testing, then squash"
-2. "One more round" — "Address remaining findings, then re-review"
-3. "Done for now" — "Leave as draft, come back later"
-```
-
-**"Show full diff" / "Show full diff first":**
-- Run `git diff $mergeBase..HEAD` and **output the full diff as a markdown code block in your text response** so the user can read it
-- **If `git diff` fails** (e.g., `$mergeBase` is empty or remote ref not found), recompute: `git fetch origin "$baseBranch" && mergeBase=$(git merge-base "origin/$baseBranch" HEAD)` and retry. If still failing, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly.
-- **After** the diff is visible in your response (or user chose to continue without), use AskUserQuestion:
-  ```
-  Question: "Diff reviewed. Ready to proceed?"
-  Header: "Diff"
-
-  Options:
-  1. "Finalize (Recommended)"
-  2. "Fix something first" — "Make additional changes"
-  3. "Done for now"
-  ```
-
-**"Finalize" / "Finalize anyway" / "Finalize now":**
-- **→ Proceed to Step 5.6b (Integration Check)**
-
-**"Done for now":**
-- Report: "Draft PR #{draftPRNumber} is saved. Run `/oss` later to continue."
-- Return to Step 4's action handler loop
+**"Done for now":** Report draft saved, return to Step 4.
 
 ---
 
 ## Step 5.6b: Integration Check for New Files
 
-**Trigger:** After the user finalizes the review cycle in Step 5.6 (or it is skipped). Only runs for new contributions (`isNewContribution === true`).
+**Trigger:** After Step 5.6 finalized. Only for new contributions.
 
-Review agents only see the diff contents — they cannot detect whether new files are actually wired into the codebase (imported, registered, referenced). This step catches "dead code" PRs where a new file was created but never integrated.
+Review agents see diff contents but can't detect whether new files are wired into the codebase. This catches "dead code" PRs.
 
-### 1. Identify New Files
+### Flow
 
-```bash
-git diff --name-only --diff-filter=A "$mergeBase"..HEAD
-```
+1. **Find new files:** `git diff --name-only --diff-filter=A "$mergeBase"..HEAD`. If `$mergeBase` is invalid, recompute it. If no new files → skip to Step 5.7b.
 
-**If `git diff` fails** (non-zero exit code, e.g., `$mergeBase` is empty or invalid): Recompute `mergeBase` via `git fetch origin "$baseBranch" && mergeBase=$(git merge-base "origin/$baseBranch" HEAD)` and retry. If recomputation also fails, offer "Skip integration check" (proceed to Step 5.7b) / "Done for now". Do NOT silently skip on command failure.
+2. **Check references:** For each new file, search for its name stem in the source tree (grep for imports/registrations, excluding the file itself). Adjust file extensions to match the repo's language.
 
-**If no new files were added** (command succeeds with empty output): Skip this step entirely. **→ Proceed to Step 5.7b (Manual Testing Prompt)**
+3. **Flag unreferenced files:** If any new file has zero references, warn the user and offer:
+   - "Investigate and fix" — find entry points, add missing imports, commit + push. If git operations fail, report error and offer retry/skip/done. Do NOT proceed unless push succeeds or user explicitly skips.
+   - "Skip — files are referenced differently" — e.g., dynamically loaded, auto-discovered
+   - "Done for now" — leave as draft
 
-### 2. Check References for Each New File
-
-For each new file, check whether it is imported or referenced by any existing file:
-
-```bash
-# Extract the filename stem (without extension) for searching
-filename=$(basename "{new_file}" | sed 's/\.[^.]*$//')
-# Search for references in the source tree (excluding the file itself)
-grep -r "$filename" {source_directory}/ --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.py" --include="*.go" -l | grep -v "{new_file}"
-```
-
-Adjust the file extensions and source directory based on the target repo's language.
-
-### 3. Flag Unreferenced Files
-
-If a new file has zero references from other files, flag it:
-
-```
-Warning: {new_file} was created but is not imported or referenced by any other file.
-It may need to be registered in an entry point or manifest.
-```
-
-**If unreferenced files are found**, present a prompt:
-
-```
-Question: "{count} new file(s) appear to have no imports or registrations. This could mean they won't be included in the build."
-Header: "Integration"
-
-Options:
-1. "Investigate and fix" — "Check entry points and add missing imports"
-2. "Skip — files are referenced differently" — "E.g., dynamically loaded, auto-discovered, or config-based"
-3. "Done for now" — "Leave as draft, come back later"
-```
-
-**"Investigate and fix":**
-- Identify likely entry points (e.g., index files, manifests, feature registries)
-- If no likely entry point can be identified, inform the user and offer to skip or manually specify the entry point
-- Add the missing import/registration
-- Stage, commit, and push the fix
-- **If any git operation fails** (stage, commit, or push), report the specific error and offer: "Retry" / "Skip integration fix and proceed" / "Done for now". Do NOT proceed to Step 5.7b unless the push succeeds or the user explicitly skips
-- **→ Proceed to Step 5.7b (Manual Testing Prompt)**
-
-**"Skip — files are referenced differently":**
-- **→ Proceed to Step 5.7b (Manual Testing Prompt)**
-
-**"Done for now":**
-- Report: "Draft PR #{draftPRNumber} remains as a draft. Run `/oss` later to continue."
-- Return to Step 4's action handler loop
-
-**If all new files are properly referenced:** No prompt needed. **→ Proceed to Step 5.7b (Manual Testing Prompt)**
+**If all files referenced or user resolves:** → Step 5.7b (Manual Testing Prompt)
 
 ---
 
@@ -1640,166 +1191,31 @@ Options:
 
 ## Step 5.7: Squash + Reword
 
-**Trigger:** After Step 5.7b (Manual Testing Prompt) completes or is skipped. Only runs for new contributions.
+**Trigger:** After Step 5.7b completes or is skipped. Only for new contributions.
 
-This step produces a clean, single-commit PR with an accurate commit message.
+### Flow
 
-### 1. Count Commits on Branch
+1. **Count commits:** Validate `$mergeBase` (recompute if invalid), then `git rev-list --count "$mergeBase"..HEAD`. If only 1 commit → skip to Step 5.8.
 
-```bash
-# Validate $mergeBase before using it
-git cat-file -t "$mergeBase" 2>/dev/null || { git fetch origin "$baseBranch" && mergeBase=$(git merge-base "origin/$baseBranch" HEAD); }
-# After recomputation, verify $mergeBase is non-empty and valid
-if [ -z "$mergeBase" ] || ! git cat-file -t "$mergeBase" 2>/dev/null; then
-  echo "Error: Failed to compute a valid merge-base. Cannot proceed with commit count."
-  exit 1
-fi
-git rev-list --count "$mergeBase"..HEAD
-```
+2. **Check config:** Read squash setting from `.claude/oss-autopilot/config.md` (check `repoOverrides.{repo}.squash`, then `squashByDefault`, default `true`). If `false` → Step 5.8. If `"ask"` → prompt user.
 
-**If `$mergeBase` is still empty or invalid after recomputation:** Report the error. Offer "Skip squash" / "Done for now". Do NOT run `git rev-list` or proceed to squash with an invalid merge-base.
+3. **Generate message:** Create a commit message covering all work (implementation + tests + fixes). Follow repo's commit format, include issue reference. **Present to user for approval BEFORE squashing:**
+   - "Approve and squash (Recommended)" / "Edit message" / "Skip squash" / "Done for now"
 
-**If only 1 commit:** Skip squash — nothing to squash. Proceed to Step 5.8.
+4. **Squash (after user approval):** Run each command individually — check for failure before proceeding:
+   ```bash
+   git tag -d oss-autopilot-pre-squash 2>/dev/null  # cleanup stale tag
+   git tag oss-autopilot-pre-squash                  # safety tag — MUST succeed
+   git reset --soft "$mergeBase"
+   git commit -m "{approved message}"
+   git fetch origin "$(git branch --show-current)"
+   git push --force-with-lease
+   git tag -d oss-autopilot-pre-squash               # cleanup after success
+   ```
+   **CRITICAL: If the safety tag creation fails, do NOT proceed with the squash.** Report: "Could not create safety recovery tag. Aborting squash to protect your work." Offer: "Retry" / "Skip squash" / "Done for now".
+   On any other failure: recover via `git reset --hard oss-autopilot-pre-squash`, report error, offer retry/undo/done. If `--force-with-lease` fails with stale info, retry once with explicit lease: `git push "--force-with-lease=$branch:$(git rev-parse origin/$branch)" origin $branch`. If force push blocked by branch protection: `git reset --hard oss-autopilot-pre-squash && git push && git tag -d oss-autopilot-pre-squash`. Do NOT proceed to Step 5.8 unless push succeeded.
 
-**If multiple commits:** Continue to sub-step 2.
-
-### 2. Check Squash Configuration
-
-Read the squash setting for this repo from `.claude/oss-autopilot/config.md` frontmatter:
-
-```yaml
-# Global default
-squashByDefault: true
-
-# Per-repo overrides
-repoOverrides:
-  some-org/some-repo:
-    squash: false
-```
-
-**Resolution order:**
-1. Check `repoOverrides.{owner/repo}.squash` — if set, use it
-2. Fall back to `squashByDefault` (defaults to `true` if not set)
-
-**If squash setting is `false`:** Skip to Step 5.8.
-
-**If squash setting is `"ask"` (user selected "Ask me each time" during setup):**
-Ask the user:
-```
-Question: "This branch has {N} commits. Squash into a single commit?"
-Header: "Squash"
-Options:
-1. "Yes, squash (Recommended)" — "Clean single-commit PR"
-2. "No, keep individual commits" — "Proceed without squashing"
-```
-Route based on answer. If "No", skip to Step 5.8.
-
-**If squash setting is `true` (or unset):** Continue with squash.
-
-### 3. Generate Reworded Commit Message (before squashing)
-
-Generate a commit message that reflects ALL work done across the review cycle:
-- Initial implementation
-- Test additions
-- Review fixes
-- Any other changes
-
-Follow the target repo's conventional commit format. Include:
-- Issue reference (e.g., `Fixes #123`)
-- Concise description of what was implemented and why
-
-**Present the reworded message to the user for approval BEFORE performing the squash:**
-
-```
-Question: "This branch has {N} commits. Here's the proposed squashed commit message. Approve, edit, or skip?"
-Header: "Squash"
-
-Options:
-1. "Approve and squash (Recommended)" — "Squash into single commit with this message"
-2. "Edit message" — "Modify the commit message before squashing"
-3. "Skip squash" — "Keep individual commits, proceed to mark ready"
-4. "Done for now" — "Leave as draft, come back later"
-```
-
-Display the proposed message above the prompt.
-
-### 4. Handle User Choice
-
-**"Skip squash":**
-- No destructive operations were performed — branch is unchanged
-- **→ Proceed to Step 5.8**
-
-**"Done for now":**
-- No destructive operations were performed — branch is unchanged
-- Report: "Draft PR #{draftPRNumber} remains as a draft. Run `/oss` later to continue."
-- Return to Step 4's action handler loop
-
-**"Approve and squash" / "Edit message":**
-- If "Edit message", accept the user's edited message first (via "Other" input or follow-up)
-- Continue to sub-step 5 (Perform Squash and Force Push)
-
-### 5. Perform Squash and Force Push
-
-**This sub-step only runs after the user has explicitly approved the squash.**
-
-**5a. Create a safety recovery tag:**
-```bash
-git tag -d oss-autopilot-pre-squash 2>/dev/null   # Remove stale tag from a previous interrupted run
-git tag oss-autopilot-pre-squash
-```
-
-If tag creation fails, do NOT proceed with squash. Report: "Could not create safety recovery tag. Aborting squash to protect your work." Offer: "Retry" / "Skip squash" / "Done for now".
-
-This allows recovery via `git reset --hard oss-autopilot-pre-squash` if anything goes wrong.
-
-**5b. Squash commits** (`$mergeBase` was already validated in sub-step 1):
-
-```bash
-git reset --soft "$mergeBase"
-git commit -m "{approved or edited message}"
-```
-
-**If `git reset --soft` or `git commit` fails:**
-- Recover: `git reset --hard oss-autopilot-pre-squash`
-- Report the error and offer to retry or skip squash
-- Clean up tag: `git tag -d oss-autopilot-pre-squash`
-
-**5c. Force push (with stale-ref handling):**
-
-When a session has pushed multiple times, `--force-with-lease` can fail because the local tracking ref is stale relative to the remote. Always fetch the branch first to update the remote-tracking ref:
-
-```bash
-branch=$(git branch --show-current)
-git fetch origin "$branch"
-git push --force-with-lease
-```
-
-**If `git fetch` fails** (network error, auth failure), report the error to the user and offer: "Retry fetch" / "Undo squash and keep individual commits" / "Done for now". Do NOT proceed with `git push` if the fetch failed.
-
-**If `--force-with-lease` still fails with "stale info"**, retry once with an explicit lease value:
-
-```bash
-git push "--force-with-lease=$branch:$(git rev-parse "origin/$branch")" origin "$branch"
-```
-
-**If force push fails (either the initial attempt or the explicit lease retry):**
-- Report the specific error to the user
-- If force push is blocked by branch protection:
-  > "Force push is not allowed on this branch. Restoring original commits."
-  - Recover: `git reset --hard oss-autopilot-pre-squash && git push`
-  - Clean up: `git tag -d oss-autopilot-pre-squash`
-- For other failures, offer:
-  1. "Retry force push"
-  2. "Undo squash and keep individual commits" — `git reset --hard oss-autopilot-pre-squash` then `git tag -d oss-autopilot-pre-squash`
-  3. "Done for now" — `git tag -d oss-autopilot-pre-squash` (clean up tag even when leaving)
-- **Do NOT proceed to Step 5.8 unless the push succeeded**
-
-**5d. Clean up recovery tag:**
-```bash
-git tag -d oss-autopilot-pre-squash
-```
-
-**→ Proceed to Step 5.8 after successful push**
+**→ Step 5.8 after successful push**
 
 ---
 
@@ -1849,6 +1265,8 @@ gh pr ready {draftPRNumber} --repo {upstream-repo}
 **If `gh pr ready` succeeds:**
 > "PR #{draftPRNumber} is now ready for review: {draftPRUrl}"
 
+> **Context tip:** This was a full implementation cycle. Starting a fresh `/oss` session will free up context for more work. You can continue here if needed.
+
 Reset session state: `isNewContribution = false`, clear `issueContext`, `draftPRNumber`, `draftPRUrl`, `baseBranch`, `roundNumber`.
 **→ Proceed to Step 6 (compliance check)**
 
@@ -1871,6 +1289,8 @@ After viewing, re-prompt with the same options.
 - Report: "PR #{draftPRNumber} remains as a draft. Run `/oss` later to mark it ready."
 - Reset session state: `isNewContribution = false`, clear `issueContext`, `draftPRNumber`, `draftPRUrl`, `baseBranch`, `roundNumber`.
 - Return to Step 4's action handler loop
+
+> **Context tip:** This was a full implementation cycle. Starting a fresh `/oss` session will free up context for more work. You can continue here if needed.
 
 ---
 
