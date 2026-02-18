@@ -51,65 +51,6 @@ describe('StateManager', () => {
       expect(state.activePRs).toHaveLength(1);
     });
 
-    it('should update PR properties', () => {
-      const mockPR = createMockPR();
-      stateManager.addActivePR(mockPR);
-      stateManager.updatePR(mockPR.url, { hasUnreadComments: true });
-      const state = stateManager.getState();
-      expect(state.activePRs[0].hasUnreadComments).toBe(true);
-    });
-
-    it('should move PR to merged', () => {
-      const mockPR = createMockPR();
-      stateManager.addActivePR(mockPR);
-      stateManager.movePRToMerged(mockPR.url);
-      const state = stateManager.getState();
-      expect(state.activePRs).toHaveLength(0);
-      expect(state.mergedPRs).toHaveLength(1);
-      expect(state.mergedPRs[0].status).toBe('merged');
-    });
-
-    it('should move PR to closed', () => {
-      const mockPR = createMockPR();
-      stateManager.addActivePR(mockPR);
-      stateManager.movePRToClosed(mockPR.url);
-      const state = stateManager.getState();
-      expect(state.activePRs).toHaveLength(0);
-      expect(state.closedPRs).toHaveLength(1);
-      expect(state.closedPRs[0].status).toBe('closed');
-    });
-
-    it('should move PR to dormant', () => {
-      const mockPR = createMockPR();
-      stateManager.addActivePR(mockPR);
-      stateManager.movePRToDormant(mockPR.url);
-      const state = stateManager.getState();
-      expect(state.activePRs).toHaveLength(0);
-      expect(state.dormantPRs).toHaveLength(1);
-      expect(state.dormantPRs[0].activityStatus).toBe('dormant');
-    });
-
-    it('should reactivate dormant PR', () => {
-      const mockPR = createMockPR();
-      stateManager.addActivePR(mockPR);
-      stateManager.movePRToDormant(mockPR.url);
-      stateManager.reactivatePR(mockPR.url);
-      const state = stateManager.getState();
-      expect(state.dormantPRs).toHaveLength(0);
-      expect(state.activePRs).toHaveLength(1);
-      expect(state.activePRs[0].activityStatus).toBe('active');
-    });
-
-    it('should move dormant PR directly to merged', () => {
-      const mockPR = createMockPR();
-      stateManager.addActivePR(mockPR);
-      stateManager.movePRToDormant(mockPR.url);
-      stateManager.moveDormantPRToMerged(mockPR.url);
-      const state = stateManager.getState();
-      expect(state.dormantPRs).toHaveLength(0);
-      expect(state.mergedPRs).toHaveLength(1);
-    });
-
     it('should untrack a PR', () => {
       const mockPR = createMockPR();
       stateManager.addActivePR(mockPR);
@@ -119,9 +60,9 @@ describe('StateManager', () => {
     });
 
     it('should untrack a dormant PR', () => {
-      const mockPR = createMockPR();
-      stateManager.addActivePR(mockPR);
-      stateManager.movePRToDormant(mockPR.url);
+      const mockPR = createMockPR({ activityStatus: 'dormant' });
+      // Manually place PR in dormant array (simulating legacy state)
+      (stateManager.getState().dormantPRs as TrackedPR[]).push(mockPR);
       const removed = stateManager.untrackPR(mockPR.url);
       expect(removed).toBe(true);
       expect(stateManager.getState().dormantPRs).toHaveLength(0);
@@ -157,21 +98,6 @@ describe('StateManager', () => {
   });
 
   describe('Statistics', () => {
-    it('should calculate correct merge rate', () => {
-      // Add and merge a PR
-      const mockPR = createMockPR();
-      stateManager.addActivePR(mockPR);
-      stateManager.movePRToMerged(mockPR.url);
-
-      // Add and close another PR
-      const pr2 = createMockPR({ id: 456, url: 'https://github.com/owner/repo/pull/2', number: 2 });
-      stateManager.addActivePR(pr2);
-      stateManager.movePRToClosed(pr2.url);
-
-      const stats = stateManager.getStats();
-      expect(stats.mergeRate).toBe('50.0%');
-    });
-
     it('should return 0% merge rate when no completed PRs', () => {
       const stats = stateManager.getStats();
       expect(stats.mergeRate).toBe('0.0%');
@@ -229,50 +155,9 @@ describe('StateManager', () => {
   });
 
   describe('Edge Cases', () => {
-    it('should handle updatePR on non-existent PR silently', () => {
-      // Should not throw
-      stateManager.updatePR('https://nonexistent.url', { hasUnreadComments: true });
-      const state = stateManager.getState();
-      expect(state.activePRs).toHaveLength(0);
-    });
-
     it('should handle markPRAsRead on non-existent PR', () => {
       const result = stateManager.markPRAsRead('https://nonexistent.url');
       expect(result).toBe(false);
-    });
-
-    it('should handle movePRToMerged on non-existent PR silently', () => {
-      // Should not throw
-      stateManager.movePRToMerged('https://nonexistent.url');
-      const state = stateManager.getState();
-      expect(state.mergedPRs).toHaveLength(0);
-    });
-
-    it('should handle reactivatePR on non-existent dormant PR silently', () => {
-      // Should not throw
-      stateManager.reactivatePR('https://nonexistent.url');
-      const state = stateManager.getState();
-      expect(state.activePRs).toHaveLength(0);
-    });
-
-    it('should preserve updated PR data when moving to dormant', () => {
-      const mockPR = createMockPR({ daysSinceActivity: 5 });
-      stateManager.addActivePR(mockPR);
-      stateManager.updatePR(mockPR.url, { daysSinceActivity: 35 });
-      stateManager.movePRToDormant(mockPR.url);
-      const state = stateManager.getState();
-      expect(state.dormantPRs[0].daysSinceActivity).toBe(35);
-    });
-
-    it('should handle moveDormantPRToClosed', () => {
-      const mockPR = createMockPR();
-      stateManager.addActivePR(mockPR);
-      stateManager.movePRToDormant(mockPR.url);
-      stateManager.moveDormantPRToClosed(mockPR.url);
-      const state = stateManager.getState();
-      expect(state.dormantPRs).toHaveLength(0);
-      expect(state.closedPRs).toHaveLength(1);
-      expect(state.closedPRs[0].status).toBe('closed');
     });
 
     it('should isolate state between instances', () => {
