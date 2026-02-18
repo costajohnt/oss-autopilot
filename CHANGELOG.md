@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-02-17
+
+### Changed
+
+- **pr-responder agent: reduce AI communication tells** — Removed formulaic response templates ("Thanks for the review!", "Good catch!") that made drafted comments obviously AI-generated. Added guidance on varying tone, matching thread energy, and avoiding structured changelogs in PR comments. Agent now flags situations requiring human response (maintainer frustration, visual tasks, subjective decisions) instead of drafting a reply.
+- **Contribution skill: writing style and escalation guidance** — Added "Writing Style (Avoiding AI Tells)" section covering the most common patterns that alert maintainers to automation. Added "When to Respond Personally" section identifying situations where the human contributor should respond directly.
+- **OSS command: align post-response instructions** — Replaced structured changelog-style comment instructions in the "Post Response Comment" step with brief, natural-sounding guidance consistent with the new AI tells rules.
+
 ## [0.27.1] - 2026-02-14
 
 ### Fixed
@@ -604,6 +612,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.28.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.27.1...v0.28.0
 [0.27.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.7...v0.27.0
 [0.26.7]: https://github.com/costajohnt/oss-autopilot/compare/v0.26.6...v0.26.7
