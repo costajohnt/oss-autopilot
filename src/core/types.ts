@@ -62,12 +62,6 @@ export interface RepoGroup {
 export type ReviewDecision = 'approved' | 'changes_requested' | 'review_required' | 'unknown';
 
 /**
- * Derived health status for a TrackedPR (v1). Computed from CI status, merge conflicts,
- * and review decision. `'none'` means no issues detected.
- */
-export type PRHealthStatus = 'ci_failing' | 'conflict' | 'changes_requested' | 'approved' | 'none';
-
-/**
  * Computed status for a {@link FetchedPR}, determined by `PRMonitor.determineStatus()`.
  * Statuses are checked in priority order — the first match wins.
  *
@@ -224,13 +218,8 @@ export interface TrackedPR {
   lastActivityAt: string;
   daysSinceActivity: number;
 
-  /** Issue number this PR fixes (in the same repo). */
-  linkedIssueNumber?: number;
-
   // Pending actions
   hasUnreadComments: boolean;
-  /** Draft response text awaiting the contributor's approval before posting. */
-  pendingResponse?: string;
 
   // Metrics
   reviewCommentCount: number;
@@ -240,12 +229,6 @@ export interface TrackedPR {
   ciStatus?: CIStatus;
   hasMergeConflict?: boolean;
   reviewDecision?: ReviewDecision;
-
-  /** Derived from `ciStatus`, `hasMergeConflict`, and `reviewDecision`. */
-  healthStatus?: PRHealthStatus;
-
-  /** Repository quality score on a 1-10 scale (see {@link RepoScore}). */
-  repoScore?: number;
 }
 
 /** An issue tracked through the contribution pipeline from discovery to PR submission. */
@@ -266,9 +249,6 @@ export interface TrackedIssue {
   /** Whether the issue has been through the vetting process (checking for existing PRs, activity, etc.). */
   vetted: boolean;
   vettingResult?: IssueVettingResult;
-
-  /** PR number submitted for this issue (in the same repo). */
-  linkedPRNumber?: number;
 }
 
 /**
