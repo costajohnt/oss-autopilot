@@ -1284,11 +1284,10 @@ Options:
 
 **If the push was in response to maintainer feedback:**
 
-1. Draft a response comment summarizing what was changed:
-   - Reference specific review points that were addressed
-   - Briefly describe the approach taken for each point
-   - Mention any points that were intentionally NOT changed, with a brief explanation why
-   - Keep the tone professional and grateful (see `oss-contribution` skill for guidelines)
+1. Draft a brief response comment:
+   - Keep it to one or two sentences describing what you changed — avoid bullet-point changelogs
+   - Mention anything intentionally left unchanged only if the maintainer will wonder about it
+   - Match the thread's tone and length (see `oss-contribution` skill for writing style guidelines)
 
 2. **Output the drafted comment as a blockquote in your text response** so the user can read it.
 

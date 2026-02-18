@@ -23,38 +23,20 @@ version: 1.1.0
 
 Maintainer feedback is a gift - they're investing time to help you improve. Even critical feedback should be received gracefully.
 
-### Response Framework
+### Response Approach
 
-**For suggestions you'll implement:**
-> "Good catch! I'll [specific action] and push an update."
-
-Keep it short. Don't over-explain.
-
-**For questions or clarifications:**
-> "The reason I did X was [brief explanation]. Would you prefer [alternative]?"
-
-**For feedback you disagree with:**
-Be careful here. Maintainers usually have context you don't.
-
-> "I see your point about X. I went with this approach because [reason]. Happy to change if you'd prefer [alternative]."
-
-Never argue. If you strongly disagree, explain once, then defer to their judgment.
+- Address every point they raise
+- Keep it short. One or two sentences is usually enough.
+- Push updates promptly after discussion
+- Mark conversations as resolved after addressing
+- If you disagree, explain once briefly, then defer to their judgment
 
 ### Things to Avoid
 
 - Being defensive or dismissive
 - Long justifications for every decision
-- "Actually, that's intentional" without explanation
 - Ignoring feedback points
 - Taking days to respond
-
-### Things to Do
-
-- Thank them for reviewing
-- Address every point they raise
-- Ask clarifying questions when genuinely confused
-- Push updates promptly after discussion
-- Mark conversations as resolved after addressing
 
 ## Writing Good PR Descriptions
 
@@ -238,7 +220,6 @@ Before submitting any PR, verify:
 - Be patient - maintainers are often volunteers
 - Respond promptly to feedback (within 24-48 hours)
 - Keep discussions public and constructive
-- Thank maintainers for their time
 - Accept decisions gracefully, even if you disagree
 
 ### Never
@@ -248,13 +229,32 @@ Before submitting any PR, verify:
 - Ignore feedback points
 - Make demands or set ultimatums
 
+### Writing Style (Avoiding AI Tells)
+
+AI-generated comments have recognizable patterns. Avoid these:
+
+- **No changelogs in comments.** "Changes in the latest commit:" with bullet points is a dead giveaway. Describe what you did in a sentence, or let the diff speak.
+- **Vary your openings.** Don't start every response with "Thanks for the review!" or "Good catch!" Sometimes just jump to the substance.
+- **Match their length.** If the maintainer wrote two sentences, don't respond with four paragraphs.
+- **Read the whole thread first.** Asking about something explained three comments up is the fastest way to lose credibility.
+- **Mean what you say.** Don't defend a position then immediately abandon it. Push back or agree -- pick one.
+- **Figure things out yourself.** If a maintainer says "add a screenshot," look at existing examples. Don't ask them to explain the tooling.
+
+### When to Respond Personally
+
+Some situations require the human contributor, not an AI tool:
+
+- **Maintainer frustration or AI accusations** — respond honestly and personally
+- **Visual/subjective tasks** — screenshots, design opinions, UX judgments
+- **Heated discussions** — any thread about AI ethics, contribution policies, or governance
+- **Process questions with obvious answers** — look at existing examples instead of asking
+
 ## Contribution Ethics
 
 ### Do
 
 - Attribute work properly (co-authors for pair work)
 - Give credit in PR descriptions
-- Thank maintainers for their time
 - Share knowledge with other contributors
 
 ### Don't
