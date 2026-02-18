@@ -192,7 +192,7 @@ Options (ordered by priority, up to 3 PRs + Done — limited to 4 options for As
 The user selects a PR, and you:
 1. Use the findings from Phase A (do NOT re-investigate, unless staleness warning triggered and user opts to re-check)
 2. Execute the recommended action for that specific PR
-3. After completing the action, check `isNewContribution`: if code was changed, read `${CLAUDE_PLUGIN_ROOT}/workflows/pre-commit-review.md` for the pre-commit review. After the review completes (including sub-step 7 if applicable), return here to Phase C's loop — do NOT follow sub-step 7's "proceed to Step 6" path during Phase C.
+3. After completing the action, if code was changed, route to Step 5.5 (Pre-Commit Code Review) in the core router — it will read the appropriate workflow file based on `isNewContribution`. After the review completes, return here to Phase C's loop.
 
 **Action failure handling:** After executing the action for a PR:
 - **If successful**: Show "Completed: repo#123 — response posted + code pushed."
