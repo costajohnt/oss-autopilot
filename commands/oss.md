@@ -307,6 +307,8 @@ When the user selects an action from the menu above, **read the relevant workflo
 
 **After completing any workflow**, return here for "After Each Action" and "Session End" logic.
 
+**If a workflow file fails to load** (Read tool returns error): Tell the user which file could not be loaded and the error. Suggest reinstalling the plugin (`/plugin install oss-autopilot@oss-autopilot`). Do NOT attempt to reconstruct the workflow from memory.
+
 For CLI command syntax and agent names, read: `${CLAUDE_PLUGIN_ROOT}/workflows/reference.md`
 
 ### Handle "Find New Issues"
