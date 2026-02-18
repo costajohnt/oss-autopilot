@@ -9,33 +9,13 @@ import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, parseGitHubUrl } from './utils.js';
 import { FetchedPR, FetchedPRStatus, CIStatus, CIStatusResult, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR, MergedPR, CIFailureCategory, ClassifiedCheck } from './types.js';
+import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
+
+// Re-export so existing consumers (tests, index.ts) can still import from pr-monitor
+export { isBotAuthor };
 
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
-
-// Bot accounts that don't follow the [bot] suffix convention
-const KNOWN_BOT_USERNAMES = new Set([
-  'allcontributors',
-  'changeset-bot',
-  'claassistant',
-  'codecov-commenter',
-  'greenkeeper',
-  'imgbot',
-  'netlify',
-  'renovate',
-  'snyk-bot',
-  'sonarcloud',
-  'stale',
-  'vercel',
-]);
-
-/**
- * Check if a comment author is a bot account.
- * Matches the [bot] suffix convention and known bot usernames (case-insensitive).
- */
-export function isBotAuthor(author: string): boolean {
-  return author.includes('[bot]') || KNOWN_BOT_USERNAMES.has(author.toLowerCase());
-}
 
 export interface PRCheckFailure {
   prUrl: string;
@@ -355,7 +335,7 @@ export class PRMonitor {
     }
 
     // Filter out pure acknowledgment comments that don't require a response
-    if (lastMaintainerComment && this.isAcknowledgmentComment(lastMaintainerComment.body)) {
+    if (lastMaintainerComment && isAcknowledgmentComment(lastMaintainerComment.body)) {
       lastMaintainerComment = undefined;
     }
 
@@ -363,25 +343,6 @@ export class PRMonitor {
       hasUnrespondedComment: !!lastMaintainerComment,
       lastMaintainerComment,
     };
-  }
-
-  /**
-   * Detect acknowledgment comments that don't require a response.
-   * Returns true only when: no question mark, matches an acknowledgment keyword, and under 100 chars.
-   * Conservative — false negatives (flagging an acknowledgment) are safer than false positives.
-   */
-  private isAcknowledgmentComment(body: string): boolean {
-    if (!body || body.length > 100) return false;
-    if (body.includes('?')) return false;
-
-    const lower = body.toLowerCase();
-    const ackKeywords = [
-      'thanks', 'thank you', 'lgtm', 'looks good',
-      'will review', "we'll review", "we'll get to this",
-      'noted', 'got it', 'will look', 'will check',
-    ];
-
-    return ackKeywords.some(kw => lower.includes(kw));
   }
 
   /**

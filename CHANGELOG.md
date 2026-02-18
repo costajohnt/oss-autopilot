@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0] - 2026-02-18
+
+### Added
+
+- **Issue conversation tracking (#114)** — The `/oss` daily check now monitors GitHub issues the user has commented on (e.g., "Is this still relevant?", "I'd like to work on this") and surfaces maintainer responses. New `IssueConversationMonitor` class follows the `PRMonitor` pattern: stateless GitHub Search API fetch, bounded concurrency worker pool, bot filtering, and acknowledgment detection. Results appear in the daily summary, action menu ("Review N issue replies"), and HTML dashboard. The user can claim issues directly from the replies flow, feeding them into the existing `TrackedIssue` pipeline. Closes #114.
+- `CommentedIssue` discriminated union type (`CommentedIssueWithResponse | CommentedIssueWithoutResponse`) and `IssueConversationStatus` in `src/core/types.ts`
+- `IssueConversationMonitor` class with `fetchCommentedIssues()` in `src/core/issue-conversation.ts`
+- `isAcknowledgmentComment()` exported utility for shared acknowledgment filtering (used by both `IssueConversationMonitor` and `PRMonitor`)
+- `commentedIssues` field on `DailyOutput` for structured issue conversation data
+- `hasIssueResponses`/`issueResponseCount` context flags on `ActionMenu`
+- `issue_replies` action menu item when maintainer responses are detected
+- Issue Conversations section in HTML dashboard with speech bubble icons
+- "Handle Review Issue Replies" orchestration in `commands/oss.md`
+- 30+ tests for issue conversation detection, bot filtering, acknowledgment filtering, and edge cases
+
+### Changed
+
+- **Bot filtering uses `isBotAuthor()` instead of `[bot]` substring** — Issue conversation monitor now uses the same comprehensive bot detection (12 known bot usernames) as `PRMonitor`, catching bots like `renovate`, `codecov-commenter`, and `netlify` that don't follow the `[bot]` suffix convention.
+- **`computeActionMenu` accepts full `commentedIssues` and filters internally** — Previously accepted pre-filtered `issueResponses`, which could diverge from source data. Now filters `new_response` status internally for better encapsulation.
+
+### Fixed
+
+- **Null analysis results tracked in failures array** — When `analyzeIssueConversation` returns null (no user comment found despite search match), the issue is now recorded in the failures array instead of silently disappearing from both results and failures.
+
 ## [0.32.0] - 2026-02-18
 
 ### Changed
@@ -154,6 +178,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Strengthened git workflow rules in CLAUDE.md** - Emphasized mandatory checkout-main-pull-branch step.
 - **Added Code Review section to CLAUDE.md** - Standard review workflow using pr-review-toolkit agents (code-reviewer, silent-failure-hunter, code-simplifier) before pushing.
 
+
 ## [0.25.0] - 2026-02-11
 
 ### Added
@@ -161,6 +186,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **README rewrite** — Restructured to lead with the pain point ("You have 12 open PRs...") instead of product description. Better information architecture: pain → solution → install → usage. Troubleshooting now uses collapsible `<details>` sections. Added tests badge.
 - **First-run welcome experience** — When `/oss` detects zero active PRs (new user or clean slate), shows a guided welcome message with options to search for issues, import existing PRs, or explore. Replaces the confusing empty dashboard.
 - **Loading screen pattern** — `/oss` command now shows "Checking your PRs across GitHub..." while running all setup, build, and daily check steps in a single combined bash call. Eliminates verbose narration and intermediate tool output. Users see only the loading message, then the results.
+- **Issue conversation tracking (#114)** — See [0.33.0] for details (rebased from this branch)
 
 ## [0.24.1] - 2026-02-11
 
@@ -663,6 +689,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.33.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.30.1...v0.31.0
 [0.30.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.30.0...v0.30.1
