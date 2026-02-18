@@ -207,6 +207,9 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
       } else {
         shelvedPRs.push(pr);
       }
+    } else if (pr.status === 'dormant') {
+      // Dormant PRs are auto-shelved (not persisted — they return when activity resumes)
+      shelvedPRs.push(pr);
     } else {
       activePRs.push(pr);
     }
@@ -328,24 +331,6 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment): strin
       const maintainer = pr.lastMaintainerComment?.author || 'maintainer';
       lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
       lines.push(`  └─ Waiting for @${maintainer} to re-review`);
-    }
-    lines.push('');
-  }
-
-  // Approaching Dormant
-  if (digest.approachingDormant.length > 0) {
-    lines.push('### ⏰ Approaching Dormant');
-    for (const pr of digest.approachingDormant) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title} (${pr.daysSinceActivity} days)`);
-    }
-    lines.push('');
-  }
-
-  // Dormant
-  if (digest.dormantPRs.length > 0) {
-    lines.push('### 💤 Dormant');
-    for (const pr of digest.dormantPRs) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title} (${pr.daysSinceActivity} days)`);
     }
     lines.push('');
   }
@@ -477,22 +462,6 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment): void {
     console.log('');
   }
 
-  if (digest.approachingDormant.length > 0) {
-    console.log('⏰ Approaching Dormant:');
-    for (const pr of digest.approachingDormant) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (${pr.daysSinceActivity} days)`);
-    }
-    console.log('');
-  }
-
-  if (digest.dormantPRs.length > 0) {
-    console.log('💤 Dormant:');
-    for (const pr of digest.dormantPRs) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (${pr.daysSinceActivity} days)`);
-    }
-    console.log('');
-  }
-
   if (digest.waitingOnMaintainerPRs.length > 0) {
     console.log('⏳ Waiting on Maintainer:');
     for (const pr of digest.waitingOnMaintainerPRs) {
@@ -581,7 +550,7 @@ function formatBriefSummary(digest: DailyDigest, issueCount: number): string {
 
 /**
  * Collect all actionable issues across PRs for the action-first flow.
- * Order: Needs response → Needs changes → CI failing → Merge conflicts → Incomplete checklist → Approaching dormant
+ * Order: Needs response → Needs changes → CI failing → Merge conflicts → Incomplete checklist
  *
  * Note: Recently closed PRs are informational only and excluded from this list.
  * They are available separately in digest.recentlyClosedPRs (#156).
@@ -625,13 +594,6 @@ function collectActionableIssues(prs: FetchedPR[]): ActionableIssue[] {
     if (pr.status === 'incomplete_checklist') {
       const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : '';
       issues.push({ type: 'incomplete_checklist', pr, label: `[Incomplete Checklist${stats}]` });
-    }
-  }
-
-  // 6. Approaching Dormant
-  for (const pr of prs) {
-    if (pr.status === 'approaching_dormant') {
-      issues.push({ type: 'approaching_dormant', pr, label: '[Approaching Dormant]' });
     }
   }
 

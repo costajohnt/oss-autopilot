@@ -13,8 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Dormancy replaced by shelving** — Dormant PRs (30+ days inactive) are now automatically treated as shelved instead of appearing in separate "Dormant" and "Approaching Dormant" sections. They return to active automatically when activity resumes. The dashboard doughnut chart now shows Active/Shelved/Merged/Closed.
 - **Capacity assessment excludes shelved PRs** — The capacity line now shows `(N/M PRs + K shelved)` when shelved PRs exist. Shelved PRs no longer count against `maxActivePRs`.
-- **Dashboard shelved section** — Dashboard renders a dimmed "Shelved" section and an "Auto-Unshelved" notification section. A shelved stat card appears in the stats grid when shelved PRs exist. Shelved PRs are filtered from the "Active Pull Requests" list.
+- **Dashboard shelved section** — Dashboard renders a dimmed "Shelved" section and an "Auto-Unshelved" notification section. Shelved PRs are filtered from the "Active Pull Requests" list.
+
+### Removed
+
+- **Dormant/Approaching Dormant sections** — Replaced by the unified shelving concept. Dormant PRs now appear in the "Shelved" section instead of separate dormancy sections.
 
 ## [0.29.0] - 2026-02-17
 

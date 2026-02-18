@@ -59,8 +59,9 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       digest = prMonitor.generateDigest(prs, recentlyClosedPRs);
 
       // Apply shelve partitioning for display (auto-unshelve only runs in daily check)
+      // Dormant PRs are treated as shelved for display purposes
       const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
-      const freshShelved = prs.filter(pr => shelvedUrls.has(pr.url));
+      const freshShelved = prs.filter(pr => shelvedUrls.has(pr.url) || pr.status === 'dormant');
       digest.shelvedPRs = freshShelved;
       digest.autoUnshelvedPRs = [];
       digest.summary.totalActivePRs = prs.length - freshShelved.length;
@@ -189,24 +190,22 @@ export function writeDashboardFromState(): string {
 
 interface DashboardStats {
   activePRs: number;
-  dormantPRs: number;
+  shelvedPRs: number;
   mergedPRs: number;
   closedPRs: number;
   mergeRate: string;
   needsResponse: number;
-  shelvedPRs: number;
 }
 
 function buildDashboardStats(digest: DailyDigest, state: AgentState): DashboardStats {
   const summary = digest.summary || { totalActivePRs: 0, totalMergedAllTime: 0, mergeRate: 0, totalNeedingAttention: 0 };
   return {
     activePRs: summary.totalActivePRs,
-    dormantPRs: (digest.dormantPRs || []).length,
+    shelvedPRs: (digest.shelvedPRs || []).length,
     mergedPRs: summary.totalMergedAllTime,
     closedPRs: Object.values(state.repoScores || {}).reduce((sum, s) => sum + (s.closedWithoutMergeCount || 0), 0),
     mergeRate: `${(summary.mergeRate ?? 0).toFixed(1)}%`,
     needsResponse: (digest.prsNeedingResponse || []).length,
-    shelvedPRs: (digest.shelvedPRs || []).length,
   };
 }
 
@@ -494,7 +493,6 @@ function generateDashboardHtml(
     }
 
     .stat-card.active { --accent-color: var(--accent-open); }
-    .stat-card.dormant { --accent-color: var(--accent-warning); }
     .stat-card.merged { --accent-color: var(--accent-merged); }
     .stat-card.closed { --accent-color: var(--text-muted); }
     .stat-card.rate { --accent-color: var(--accent-info); }
@@ -509,7 +507,6 @@ function generateDashboardHtml(
     }
 
     .stat-card.active .stat-value { color: var(--accent-open); }
-    .stat-card.dormant .stat-value { color: var(--accent-warning); }
     .stat-card.merged .stat-value { color: var(--accent-merged); }
     .stat-card.closed .stat-value { color: var(--text-muted); }
     .stat-card.rate .stat-value { color: var(--accent-info); }
@@ -958,9 +955,9 @@ function generateDashboardHtml(
         <div class="stat-value">${stats.activePRs}</div>
         <div class="stat-label">Active PRs</div>
       </div>
-      <div class="stat-card dormant">
-        <div class="stat-value">${stats.dormantPRs}</div>
-        <div class="stat-label">Dormant</div>
+      <div class="stat-card shelved">
+        <div class="stat-value">${stats.shelvedPRs}</div>
+        <div class="stat-label">Shelved</div>
       </div>
       <div class="stat-card merged">
         <div class="stat-value">${stats.mergedPRs}</div>
@@ -978,12 +975,6 @@ function generateDashboardHtml(
         <div class="stat-value">${stats.needsResponse}</div>
         <div class="stat-label">Need Response</div>
       </div>
-      ${stats.shelvedPRs > 0 ? `
-      <div class="stat-card shelved">
-        <div class="stat-value">${stats.shelvedPRs}</div>
-        <div class="stat-label">Shelved</div>
-      </div>
-      ` : ''}
     </div>
 
     ${actionRequired.length > 0 ? `
@@ -1231,10 +1222,10 @@ function generateDashboardHtml(
     new Chart(document.getElementById('statusChart'), {
       type: 'doughnut',
       data: {
-        labels: ['Active', 'Dormant', 'Merged', 'Closed'],
+        labels: ['Active', 'Shelved', 'Merged', 'Closed'],
         datasets: [{
-          data: [${stats.activePRs}, ${stats.dormantPRs}, ${stats.mergedPRs}, ${stats.closedPRs}],
-          backgroundColor: ['#3fb950', '#d29922', '#a855f7', '#484f58'],
+          data: [${stats.activePRs}, ${stats.shelvedPRs}, ${stats.mergedPRs}, ${stats.closedPRs}],
+          backgroundColor: ['#3fb950', '#6e7681', '#a855f7', '#484f58'],
           borderColor: 'rgba(8, 11, 16, 0.8)',
           borderWidth: 2,
           hoverOffset: 8
