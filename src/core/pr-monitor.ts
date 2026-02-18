@@ -902,7 +902,7 @@ export class PRMonitor {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
-      console.error(`Skipping recently ${label} PRs fetch: no githubUsername configured`);
+      console.error(`Skipping recently ${label} PRs fetch: no githubUsername configured. Run /setup-oss to configure.`);
       return [];
     }
 

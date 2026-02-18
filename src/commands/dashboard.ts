@@ -1060,7 +1060,7 @@ function generateDashboardHtml(
           </div>
           <div class="health-content">
             <div class="health-title"><a href="${escapeHtml(pr.url)}" target="_blank">${escapeHtml(pr.repo)}#${pr.number}</a> - Merged</div>
-            <div class="health-meta">${escapeHtml(pr.title.slice(0, 50))}${pr.title.length > 50 ? '...' : ''}${pr.mergedAt ? ` · ${new Date(pr.mergedAt).toLocaleDateString()}` : ''}</div>
+            <div class="health-meta">${truncateTitle(pr.title)}${pr.mergedAt ? ` · ${new Date(pr.mergedAt).toLocaleDateString()}` : ''}</div>
           </div>
         </div>
         `).join('')}
@@ -1091,7 +1091,7 @@ function generateDashboardHtml(
           </div>
           <div class="health-content">
             <div class="health-title"><a href="${escapeHtml(pr.url)}" target="_blank">${escapeHtml(pr.repo)}#${pr.number}</a> - Closed</div>
-            <div class="health-meta">${escapeHtml(pr.title.slice(0, 50))}${pr.title.length > 50 ? '...' : ''}${pr.closedAt ? ` · ${new Date(pr.closedAt).toLocaleDateString()}` : ''}</div>
+            <div class="health-meta">${truncateTitle(pr.title)}${pr.closedAt ? ` · ${new Date(pr.closedAt).toLocaleDateString()}` : ''}</div>
           </div>
         </div>
         `).join('')}
