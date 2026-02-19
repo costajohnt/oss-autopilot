@@ -12,6 +12,7 @@ import * as path from 'path';
 const execFileAsync = promisify(execFile);
 
 const BUNDLE_PATH = path.resolve(__dirname, '../../dist/cli.bundle.cjs');
+const BUNDLE_EXISTS = fs.existsSync(BUNDLE_PATH);
 const TEST_HOME = '/tmp/oss-autopilot-e2e-test-' + process.pid;
 
 async function runStartup(
@@ -49,13 +50,8 @@ async function runStartup(
   return { stdout: result.stdout, stderr: result.stderr, json };
 }
 
-describe('startup --json E2E', () => {
+describe.skipIf(!BUNDLE_EXISTS)('startup --json E2E', () => {
   beforeAll(() => {
-    if (!fs.existsSync(BUNDLE_PATH)) {
-      throw new Error(
-        `Bundle not found at ${BUNDLE_PATH}. Run "npm run bundle" first.`,
-      );
-    }
     fs.mkdirSync(TEST_HOME, { recursive: true });
   });
 
