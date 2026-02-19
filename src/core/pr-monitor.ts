@@ -84,6 +84,8 @@ export class PRMonitor {
     const prs: FetchedPR[] = [];
     const failures: PRCheckFailure[] = [];
 
+    const shelvedUrls = new Set(config.shelvedPRUrls || []);
+
     const filteredItems = allItems.filter(item => {
       if (!item.pull_request) return false;
       // Skip PRs to repos owned by the user (not OSS contributions)
@@ -95,8 +97,11 @@ export class PRMonitor {
       const ownerLower = parsed.owner.toLowerCase();
       if (ownerLower === config.githubUsername.toLowerCase()) return false;
       const repoFullName = `${parsed.owner}/${parsed.repo}`;
-      if (config.excludeRepos.includes(repoFullName)) return false;
-      if (config.excludeOrgs?.some(org => ownerLower === org.toLowerCase())) return false;
+      // Keep shelved PRs even from excluded repos/orgs — excludeRepos is meant
+      // to stop finding *new* issues there, not hide open PRs already being tracked (#175)
+      const isShelved = shelvedUrls.has(item.html_url);
+      if (config.excludeRepos.includes(repoFullName) && !isShelved) return false;
+      if (config.excludeOrgs?.some(org => ownerLower === org.toLowerCase()) && !isShelved) return false;
       return true;
     });
 
