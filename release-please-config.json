@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "draft": false,
+      "prerelease": false,
+      "extra-files": [
+        ".claude-plugin/plugin.json"
+      ]
+    }
+  }
+}

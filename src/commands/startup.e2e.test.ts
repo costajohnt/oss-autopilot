@@ -1,0 +1,92 @@
+/**
+ * E2E smoke tests for the startup --json command.
+ * Runs the bundled CLI binary and validates JSON output.
+ */
+
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const execFileAsync = promisify(execFile);
+
+const BUNDLE_PATH = path.resolve(__dirname, '../../dist/cli.bundle.cjs');
+const TEST_HOME = '/tmp/oss-autopilot-e2e-test-' + process.pid;
+
+/**
+ * Run the bundled CLI with startup --json, using an isolated HOME directory
+ * so no real user state is read.
+ */
+async function runStartup(
+  env?: Record<string, string>,
+): Promise<{ stdout: string; stderr: string; json: any }> {
+  const result = await execFileAsync('node', [BUNDLE_PATH, 'startup', '--json'], {
+    timeout: 5000,
+    env: { ...process.env, ...env, HOME: TEST_HOME },
+    cwd: TEST_HOME,
+  }).catch((err: any) => ({
+    stdout: (err.stdout as string) || '',
+    stderr: (err.stderr as string) || '',
+  }));
+
+  let json: any;
+  try {
+    json = JSON.parse(result.stdout);
+  } catch {
+    json = null;
+  }
+
+  return { stdout: result.stdout, stderr: result.stderr, json };
+}
+
+describe('startup --json E2E', () => {
+  beforeAll(() => {
+    if (!fs.existsSync(BUNDLE_PATH)) {
+      throw new Error(
+        `Bundle not found at ${BUNDLE_PATH}. Run "npm run bundle" first.`,
+      );
+    }
+    // Create isolated home directory
+    fs.mkdirSync(TEST_HOME, { recursive: true });
+  });
+
+  afterAll(() => {
+    // Clean up isolated home directory
+    fs.rmSync(TEST_HOME, { recursive: true, force: true });
+  });
+
+  it('should output valid JSON', async () => {
+    const { json } = await runStartup({ GITHUB_TOKEN: '' });
+    expect(json).not.toBeNull();
+    expect(typeof json).toBe('object');
+  });
+
+  it('should include success and data fields in the envelope', async () => {
+    const { json } = await runStartup({ GITHUB_TOKEN: '' });
+    expect(json).toHaveProperty('success', true);
+    expect(json).toHaveProperty('data');
+    expect(json).toHaveProperty('timestamp');
+  });
+
+  it('should include version and setupComplete in data', async () => {
+    const { json } = await runStartup({ GITHUB_TOKEN: '' });
+    const data = json.data;
+    expect(data).toHaveProperty('version');
+    expect(typeof data.version).toBe('string');
+    expect(data).toHaveProperty('setupComplete');
+    expect(typeof data.setupComplete).toBe('boolean');
+  });
+
+  it('should return setupComplete: false when no state file exists', async () => {
+    const { json } = await runStartup({ GITHUB_TOKEN: '' });
+    expect(json.data.setupComplete).toBe(false);
+  });
+
+  it('should complete within 5 seconds', async () => {
+    const start = Date.now();
+    await runStartup({ GITHUB_TOKEN: '' });
+    const duration = Date.now() - start;
+    expect(duration).toBeLessThan(5000);
+  });
+});
