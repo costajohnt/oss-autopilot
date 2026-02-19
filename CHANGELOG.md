@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.1] - 2026-02-18
+
+### Fixed
+
+- **PR responder no longer posts text-only "demos" (#173)** — When a maintainer asks for visual proof (screenshots, before/after demos, videos), the pr-responder agent now flags it to the user instead of generating a verbose text description. Visuals must come from the user, and text + visuals go in a single comment. Added to the "Avoiding AI Tells" section and the analysis process as an early check.
+
 ## [0.33.0] - 2026-02-18
 
 ### Added
@@ -689,6 +695,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.33.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.30.1...v0.31.0
