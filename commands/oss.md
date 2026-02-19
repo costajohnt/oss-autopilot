@@ -270,6 +270,19 @@ When user provides custom input via "Other", parse for:
 **If input is unclear**, ask for clarification:
 > "I didn't understand '{input}'. Please enter PR numbers (e.g., '1 and 3'), a repo reference (e.g., 'ink#861'), or select an option above."
 
+### Handling Informational Questions
+
+When the user types a simple question via "Other" input (or at any point during the session), determine whether it's **informational** or **actionable**:
+
+| Type | Examples | Behavior |
+|------|----------|----------|
+| **Informational** | "show me a link to issue #1", "what's the URL for PR #123", "how many PRs do I have open?", "list my healthy PRs", "what did the maintainer say on ink#855?" | Respond with the requested information as **text only**. Do NOT follow up with AskUserQuestion. Let the user read the answer and send their next message. |
+| **Actionable** | "fix #1", "address all issues", "search for new issues", "rebase ink#855" | Execute the action, then prompt with AskUserQuestion as usual. |
+
+**Why:** In Claude Code, AskUserQuestion renders as an interactive picker that replaces preceding text output. If informational text is immediately followed by a prompt, the user sees the answer for a brief moment before it's hidden behind the picker.
+
+**Rule of thumb:** If the user's input is a question (starts with "what", "show", "how", "list", "which", "where") or requests information without implying an action to execute, treat it as informational.
+
 ---
 
 ## Step 1b: CLI Error Recovery
@@ -421,7 +434,7 @@ This is a quality gate that catches issues before they reach the maintainer.
 4. In Phase C, present Tier 2 items one at a time for sequential approval and execution
 
 ### Workflow Control (CRITICAL)
-5. **NEVER end without asking what's next** - after ANY action, always prompt user
+5. **After workflow actions, always ask what's next** - after completing a workflow action (addressing a PR, running maintenance, searching for issues), prompt the user for the next step. **Exception:** If the user asked a simple informational question via "Other" input (e.g., "show me a link to issue #1", "what's the status of PR #5", "list my healthy PRs"), respond with the information as text and do NOT immediately follow with AskUserQuestion. Let the user read the answer and send their next message naturally. See "Handling Informational Questions" below.
 6. **Drive the conversation** - Claude controls the flow, user responds to prompts
 7. **Session ends ONLY when user selects "Done for now"** - never assume user is finished
 8. **ALWAYS include "Done for now"** in every AskUserQuestion
@@ -432,8 +445,9 @@ This is a quality gate that catches issues before they reach the maintainer.
 11. **NEVER add AI attribution** to commits, comments, or PRs
 12. **Display information before prompting** - show all PRs as text FIRST, then ask for action
 13. **Parse "Other" input flexibly** - accept PR numbers, URLs, repo refs like "ink#861"
+14. **Don't prompt after informational responses** - when the user asks a simple question, respond with text only. AskUserQuestion hides preceding text in the UI, so only use it after workflow actions, not after answering questions
 
 ### Parallel Execution
-14. **Group PRs by repository** - one agent per repo, not per PR, to avoid branch checkout conflicts
-15. **Parallel execution** - when addressing multiple repos, launch ALL agents in a SINGLE message
-16. After parallel execution, present consolidated results table
+15. **Group PRs by repository** - one agent per repo, not per PR, to avoid branch checkout conflicts
+16. **Parallel execution** - when addressing multiple repos, launch ALL agents in a SINGLE message
+17. After parallel execution, present consolidated results table
