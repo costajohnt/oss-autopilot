@@ -93,6 +93,8 @@ Then open a Pull Request on GitHub.
 
 ## Running Tests
 
+Tests use **co-location** — each test file lives alongside its source file as `*.test.ts` (e.g. `src/core/state.ts` → `src/core/state.test.ts`). There is no separate `tests/` directory.
+
 ```bash
 # Run all tests
 npm test

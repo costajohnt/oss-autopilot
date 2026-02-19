@@ -168,6 +168,34 @@ export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
 }
 
 /**
+ * Extracts the owner and repo from a GitHub URL of any shape
+ * (e.g. `https://github.com/owner/repo/pull/42`, `https://github.com/owner/repo/`).
+ *
+ * Unlike {@link parseGitHubUrl}, this does **not** require a PR or issue number in the URL.
+ *
+ * @param url - A GitHub URL containing at least `github.com/owner/repo`
+ * @returns `{ owner, repo }` or `null` if the URL cannot be parsed
+ *
+ * @example
+ * extractOwnerRepo('https://github.com/facebook/react/pull/123')
+ * // { owner: "facebook", repo: "react" }
+ *
+ * @example
+ * extractOwnerRepo('https://github.com/vercel/next.js/')
+ * // { owner: "vercel", repo: "next.js" }
+ */
+export function extractOwnerRepo(url: string): { owner: string; repo: string } | null {
+  const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
+  if (!match) return null;
+
+  const owner = match[1];
+  const repo = match[2];
+  if (!isValidOwnerRepo(owner, repo)) return null;
+
+  return { owner, repo };
+}
+
+/**
  * Calculates the number of whole days between two dates, using floor rounding.
  *
  * Can return negative values if `from` is after `to`. Partial days are truncated

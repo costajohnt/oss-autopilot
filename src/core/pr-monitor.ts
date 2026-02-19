@@ -7,7 +7,7 @@
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
-import { daysBetween, parseGitHubUrl } from './utils.js';
+import { daysBetween, parseGitHubUrl, extractOwnerRepo } from './utils.js';
 import { FetchedPR, FetchedPRStatus, CIStatus, CIStatusResult, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR, MergedPR, CIFailureCategory, ClassifiedCheck } from './types.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 
@@ -87,13 +87,12 @@ export class PRMonitor {
     const filteredItems = allItems.filter(item => {
       if (!item.pull_request) return false;
       // Skip PRs to repos owned by the user (not OSS contributions)
-      const repoMatch = item.html_url.match(/github\.com\/([^/]+)\/([^/]+)\//);
-      if (repoMatch) {
-        const repoOwner = repoMatch[1];
-        if (repoOwner.toLowerCase() === config.githubUsername.toLowerCase()) return false;
-        const repoFullName = `${repoMatch[1]}/${repoMatch[2]}`;
+      const parsed = extractOwnerRepo(item.html_url);
+      if (parsed) {
+        if (parsed.owner.toLowerCase() === config.githubUsername.toLowerCase()) return false;
+        const repoFullName = `${parsed.owner}/${parsed.repo}`;
         if (config.excludeRepos.includes(repoFullName)) return false;
-        if (config.excludeOrgs?.some(org => repoOwner.toLowerCase() === org.toLowerCase())) return false;
+        if (config.excludeOrgs?.some(org => parsed.owner.toLowerCase() === org.toLowerCase())) return false;
       }
       return true;
     });
@@ -506,7 +505,13 @@ export class PRMonitor {
       // Fetch both combined status and check runs in parallel
       const [statusResponse, checksResponse] = await Promise.all([
         this.octokit.repos.getCombinedStatusForRef({ owner, repo, ref: sha }),
-        this.octokit.checks.listForRef({ owner, repo, ref: sha }).catch(() => null),
+        this.octokit.checks.listForRef({ owner, repo, ref: sha }).catch((err: unknown) => {
+          const status = (err as { status?: number })?.status;
+          if (status !== 404) {
+            console.error(`[PR_MONITOR] Non-404 error fetching check runs for ${owner}/${repo}@${sha.slice(0, 7)}: ${status ?? err}`);
+          }
+          return null;
+        }),
       ]);
 
       const combinedStatus = statusResponse.data;
@@ -706,11 +711,11 @@ export class PRMonitor {
       });
 
       for (const item of data.items) {
-        const repoMatch = item.html_url.match(/github\.com\/([^/]+\/[^/]+)\//);
-        if (!repoMatch) continue;
+        const parsed = extractOwnerRepo(item.html_url);
+        if (!parsed) continue;
 
-        const repo = repoMatch[1];
-        const owner = repo.split('/')[0];
+        const repo = `${parsed.owner}/${parsed.repo}`;
+        const owner = parsed.owner;
 
         // Skip own repos (PRs to your own repos aren't OSS contributions)
         if (owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
@@ -803,11 +808,11 @@ export class PRMonitor {
       });
 
       for (const item of data.items) {
-        const repoMatch = item.html_url.match(/github\.com\/([^/]+\/[^/]+)\//);
-        if (!repoMatch) continue;
+        const parsed = extractOwnerRepo(item.html_url);
+        if (!parsed) continue;
 
-        const repo = repoMatch[1];
-        const owner = repo.split('/')[0];
+        const repo = `${parsed.owner}/${parsed.repo}`;
+        const owner = parsed.owner;
 
         // Skip own repos
         if (owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;

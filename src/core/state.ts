@@ -414,7 +414,8 @@ export class StateManager {
     // Create backup of existing state
     if (fs.existsSync(statePath)) {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const backupFile = path.join(backupDir, `state-${timestamp}.json`);
+      const randomSuffix = Math.random().toString(36).slice(2, 8);
+      const backupFile = path.join(backupDir, `state-${timestamp}-${randomSuffix}.json`);
       fs.copyFileSync(statePath, backupFile);
       fs.chmodSync(backupFile, 0o600);
 

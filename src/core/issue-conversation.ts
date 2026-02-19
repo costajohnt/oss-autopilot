@@ -10,7 +10,7 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 import { getStateManager } from './state.js';
-import { daysBetween, splitRepo } from './utils.js';
+import { daysBetween, splitRepo, extractOwnerRepo } from './utils.js';
 import type { CommentedIssue, IssueConversationStatus } from './types.js';
 
 const MAX_CONCURRENT_REQUESTS = 5;
@@ -72,14 +72,14 @@ export class IssueConversationMonitor {
       // Defensive: skip pull requests in case type:issue qualifier is unreliable
       if (item.pull_request) continue;
 
-      const repoMatch = item.html_url.match(/github\.com\/([^/]+)\/([^/]+)\/issues\//);
-      if (!repoMatch) {
+      const parsed = extractOwnerRepo(item.html_url);
+      if (!parsed) {
         console.error(`[ISSUE_CONVERSATION] Skipping issue with unparseable URL: ${item.html_url}`);
         continue;
       }
 
-      const owner = repoMatch[1];
-      const repoFullName = `${owner}/${repoMatch[2]}`;
+      const owner = parsed.owner;
+      const repoFullName = `${parsed.owner}/${parsed.repo}`;
 
       // Skip issues in user-owned repos (we only care about contributing to others' projects)
       if (owner.toLowerCase() === username.toLowerCase()) continue;

@@ -8,7 +8,7 @@ OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you 
 
 ![Version](https://img.shields.io/badge/version-0.33.0-blue)
 ![CI](https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/badge/tests-500_passing-success)
+![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/costajohnt/oss-autopilot/main/.github/badges/tests.json)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 
@@ -120,6 +120,7 @@ Existing tools cover pieces of the workflow. None handle the full contribution l
 | Draft responses to maintainers | Yes | No | No | Yes |
 | Learn from your merge history | Yes | No | No | No |
 | Repository health scoring | Yes | No | No | No |
+| Track issue discussions | Yes | No | No | No |
 | Human-in-the-loop | Yes | n/a | n/a | Rarely |
 | Free & local | Yes | Some | No | No |
 
@@ -364,6 +365,13 @@ The CLI can run standalone (`node dist/cli.bundle.cjs daily --json`), but it's d
 
 **GitLab / Gitea / Bitbucket support?**
 Not yet, GitHub only. Contributions welcome.
+
+## Limitations
+
+- **GitHub only** — GitLab, Bitbucket, and other forges are not supported. Contributions welcome.
+- **1,000 PR cap** — GitHub's Search API returns at most 1,000 results per query. If you have more than 1,000 open PRs, the oldest ones won't appear.
+- **Rate limiting** — The CLI respects GitHub's rate limits and backs off automatically, but heavy use (large merge histories, many repos) can hit secondary rate limits. If this happens, wait a few minutes and retry.
+- **Individual contributor focus** — Designed for solo contributors managing their own PRs. No team dashboards, shared state, or multi-user workflows.
 
 ---
 

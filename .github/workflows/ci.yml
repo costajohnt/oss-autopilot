@@ -54,3 +54,52 @@ jobs:
             exit 1
           fi
           echo "Bundle created successfully: $(wc -c < dist/cli.bundle.cjs) bytes"
+
+  update-badge:
+    name: Update test badge
+    needs: [ci]
+    if: github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests and update badge
+        run: |
+          RESULT=$(npx vitest run --reporter=json 2>/dev/null || true)
+          PASSED=$(echo "$RESULT" | node -e "
+            let buf = '';
+            process.stdin.on('data', d => buf += d);
+            process.stdin.on('end', () => {
+              try {
+                const json = JSON.parse(buf);
+                console.log(json.numPassedTests || 0);
+              } catch { console.log(0); }
+            });
+          ")
+          if [ "$PASSED" -gt 0 ]; then
+            echo "{\"schemaVersion\":1,\"label\":\"tests\",\"message\":\"${PASSED} passing\",\"color\":\"success\"}" > .github/badges/tests.json
+            echo "Badge updated: ${PASSED} passing"
+          else
+            echo "No passing tests detected, skipping badge update"
+          fi
+
+      - name: Commit badge update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/badges/tests.json
+          git diff --staged --quiet || git commit -m "chore: update test badge [skip ci]"
+          git push
