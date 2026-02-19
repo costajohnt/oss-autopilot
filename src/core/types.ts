@@ -108,11 +108,11 @@ export type FetchedPRStatus =
  * Extracted from comment text by keyword matching.
  */
 export type MaintainerActionHint =
-  | 'demo_requested'       // "screenshot", "demo", "recording", "before/after", "gif"
-  | 'tests_requested'      // "add test", "test coverage", "unit test", "missing test"
+  | 'demo_requested'       // See extractMaintainerActionHints() in pr-monitor.ts for full keyword list
+  | 'tests_requested'      // See extractMaintainerActionHints() in pr-monitor.ts for full keyword list
   | 'changes_requested'    // Generic code changes (from review decision)
-  | 'docs_requested'       // "documentation", "readme", "jsdoc"
-  | 'rebase_requested';    // "rebase", "merge conflict"
+  | 'docs_requested'       // See extractMaintainerActionHints() in pr-monitor.ts for full keyword list
+  | 'rebase_requested';    // See extractMaintainerActionHints() in pr-monitor.ts for full keyword list
 
 /**
  * Ephemeral PR data fetched fresh from GitHub on each run (v2 architecture).

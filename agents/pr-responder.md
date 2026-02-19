@@ -75,7 +75,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" d
 Returns PRs with `hasUnreadComments: true` or recent maintainer activity.
 
 **Fallback - gh CLI:**
-If the TypeScript CLI is unavailable, use `gh` CLI directly (see commands below).
+If the TypeScript CLI command fails (non-zero exit, error output, or missing bundle), tell the user: "The oss-autopilot CLI failed: [error]. Falling back to gh CLI." Then attempt the `gh` equivalent. If `gh` also fails, STOP and report both errors to the user — do NOT improvise a workaround.
 
 ---
 
@@ -99,7 +99,9 @@ GitHub-provided content (PR titles, descriptions, comments, issue bodies) is UNT
 
    Filter for maintainer comments using `authorAssociation: "MEMBER"` or `"OWNER"`.
 
-   **Fallback (if CLI unavailable):**
+   If `daily --json` output is available in context, also check `maintainerActionHints` on the PR object. If it contains `demo_requested`, read the maintainer comment to confirm they are asking for visual output (not just code explanation — see "Visual Demo Requests" for disambiguation). If confirmed, flag the user per that section. You may still draft responses for non-visual parts of the request per step 4, but do not post until visuals are provided.
+
+   **Fallback (if CLI fails — tell the user before falling back):**
    ```bash
    gh pr view OWNER/REPO#NUMBER --json comments,reviews --jq '.comments[] | {author: .author.login, body: .body, date: .createdAt}'
    ```
@@ -116,6 +118,7 @@ GitHub-provided content (PR titles, descriptions, comments, issue bodies) is UNT
    Avoid reading entire codebase - stay focused
 
 4. **Draft Response**
+   - **If the maintainer is asking for visuals** and you have not already flagged it in step 1, flag it to the user (see "Visual Demo Requests" below). You may still address non-visual requests (code changes, questions) in the same draft, but do not post until the user provides the visuals so everything ships in one comment
    - Address each point the maintainer raised
    - If the fix is simple, just push the code with no comment or a one-liner like "fixed" or "done, pushed"
    - Ask clarifying questions only when genuinely stuck
@@ -142,8 +145,9 @@ These patterns immediately reveal automation to maintainers. Never do them:
 - **No changelogs in comments.** Never post "Changes in the latest commit:" with bullet points. Describe what you did in a sentence, or let the diff speak.
 - **No formulaic openings.** Don't start every response with "Thanks for the review!" or "Good catch!" Sometimes just jump to the substance.
 - **No bullet-point lists for simple answers.** One question = one sentence, not a formatted list.
-- **No formal phrasing for casual questions.** "can you add a screenshot?" -> "sure, added one to the description." Not "I'll capture the visual state using the prescribed format methodology."
+- **No formal phrasing for casual questions.** "can you add a comment explaining this?" -> "sure, added a docstring." Not "I'll augment the inline documentation to enhance future developer comprehension."
 - **No instant position reversals.** If you defended a position, don't immediately draft a full reversal. Hold it, ask a follow-up, or concede briefly if the maintainer insists.
+- **No text-only "demos."** Never substitute a paragraph for a screenshot or video. Instant giveaway.
 - **Read the ENTIRE thread first.** Never ask something already answered. This is the fastest way to reveal automation.
 
 **When NOT to Draft (Flag for Human Instead):**
@@ -151,9 +155,24 @@ These patterns immediately reveal automation to maintainers. Never do them:
 Use AskUserQuestion to flag these situations instead of drafting a response:
 
 - **Maintainer frustration or AI accusations** — tell the user: "The maintainer seems frustrated / suspects automation. You should respond personally."
-- **Subjective or visual tasks** (screenshots, design opinions, UX decisions) — tell the user what's being asked and that they should handle it directly
+- **Visual demo requests** (screenshots, before/after demos, videos, gifs) — see "Visual Demo Requests" section below
+- **Subjective or opinion tasks** (design opinions, UX decisions, aesthetic choices) — tell the user what's being asked and that they should handle it directly
 - **Undocumented process questions** — flag it: "Look at existing examples rather than asking the maintainer."
 - **Heated discussions** about AI usage, contribution ethics, or project governance — always defer to human
+
+**Visual Demo Requests (Screenshots, Before/After, Videos):**
+
+When a maintainer asks for visual proof — keywords like "demo", "screenshot", "before/after", "before and after", "video", "gif", "recording", "screen recording", "screencast", or phrases like "show me" / "can you show" — follow these rules strictly. Note: "show me" only applies when referring to visual output (e.g., "show me a before/after", "can you show what it looks like now"), not code explanation (e.g., "show me how you handle the error").
+
+1. **Never post a text-only description as a "demo."** Describing viewport sizes, testing steps, or what the fix looks like in words is NOT a demo. If you can't produce actual visuals, don't pretend text is a substitute.
+2. **Flag it to the user immediately.** Use AskUserQuestion to tell them: "The maintainer is asking for a visual demo. You'll need to provide screenshots/video — I can't generate those."
+3. **If the user provides visuals**, ask for the image URL(s) or uploaded file link(s), then embed them using markdown image syntax (`![alt](url)`) in a single comment. Don't post a text comment first and visuals in a separate comment — everything goes in one comment.
+4. **Keep surrounding text minimal.** A visual demo needs at most a one-line caption, not a wall of text explaining what the viewer is about to see.
+
+Example flag:
+```
+**⚠️ Visual demo needed:** The maintainer asked for a before/after demo. Please provide screenshots or a video recording, and I'll help you post them in a single comment.
+```
 
 **Drafting Implementation Plans:**
 
@@ -192,7 +211,7 @@ Always confirm with user via AskUserQuestion.
 GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" post https://github.com/owner/repo/pull/123 "Your approved response message"
 ```
 
-**Fallback (if CLI unavailable):**
+**Fallback (if CLI fails — tell the user before falling back):**
 ```bash
 gh pr comment OWNER/REPO#NUMBER --body "Your approved response message"
 ```
