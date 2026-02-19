@@ -17,7 +17,7 @@
     "status": "tsx src/cli.ts status",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm test && npm run bundle"
+    "prepublishOnly": "npm test && npm run build && npm run bundle"
   },
   "keywords": [
     "claude-code-plugin",

@@ -268,6 +268,7 @@ describe('runStartup dashboard behavior', () => {
   });
 
   it('should not open browser when dashboard generation fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const daily = makeDailyOutput(5);
     executeDailyCheck.mockResolvedValue(daily);
     writeDashboardFromState.mockImplementation(() => {
@@ -278,5 +279,10 @@ describe('runStartup dashboard behavior', () => {
 
     expect(execFile).not.toHaveBeenCalled();
     expect(daily.briefSummary).not.toContain('Dashboard opened in browser');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Dashboard'),
+      'Dashboard write failed',
+    );
+    consoleErrorSpy.mockRestore();
   });
 });

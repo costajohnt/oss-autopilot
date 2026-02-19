@@ -30,6 +30,7 @@ async function runStartup(
     return {
       stdout: (err.stdout as string) || '',
       stderr: (err.stderr as string) || '',
+      message: err.message ?? '',
     };
   });
 
@@ -65,12 +66,13 @@ describe('startup --json E2E', () => {
 
   it('should output valid JSON', async () => {
     const { json } = await runStartup({ GITHUB_TOKEN: '' });
-    expect(json).not.toBeNull();
+    expect(json, 'CLI should return parseable JSON output').not.toBeNull();
     expect(typeof json).toBe('object');
   });
 
   it('should include success and data fields in the envelope', async () => {
     const { json } = await runStartup({ GITHUB_TOKEN: '' });
+    expect(json, 'CLI should return parseable JSON output').not.toBeNull();
     expect(json).toHaveProperty('success', true);
     expect(json).toHaveProperty('data');
     expect(json).toHaveProperty('timestamp');
@@ -78,6 +80,7 @@ describe('startup --json E2E', () => {
 
   it('should include version and setupComplete in data', async () => {
     const { json } = await runStartup({ GITHUB_TOKEN: '' });
+    expect(json, 'CLI should return parseable JSON output').not.toBeNull();
     const data = json.data;
     expect(data).toHaveProperty('version');
     expect(typeof data.version).toBe('string');
@@ -87,6 +90,7 @@ describe('startup --json E2E', () => {
 
   it('should return setupComplete: false when no state file exists', async () => {
     const { json } = await runStartup({ GITHUB_TOKEN: '' });
+    expect(json, 'CLI should return parseable JSON output').not.toBeNull();
     expect(json.data.setupComplete).toBe(false);
   });
 
