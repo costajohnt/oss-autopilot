@@ -14,26 +14,35 @@ const execFileAsync = promisify(execFile);
 const BUNDLE_PATH = path.resolve(__dirname, '../../dist/cli.bundle.cjs');
 const TEST_HOME = '/tmp/oss-autopilot-e2e-test-' + process.pid;
 
-/**
- * Run the bundled CLI with startup --json, using an isolated HOME directory
- * so no real user state is read.
- */
 async function runStartup(
   env?: Record<string, string>,
 ): Promise<{ stdout: string; stderr: string; json: any }> {
+  let exitCode: number | null = 0;
+  let signal: string | null = null;
+
   const result = await execFileAsync('node', [BUNDLE_PATH, 'startup', '--json'], {
     timeout: 5000,
     env: { ...process.env, ...env, HOME: TEST_HOME },
     cwd: TEST_HOME,
-  }).catch((err: any) => ({
-    stdout: (err.stdout as string) || '',
-    stderr: (err.stderr as string) || '',
-  }));
+  }).catch((err: any) => {
+    exitCode = err.code ?? null;
+    signal = err.signal ?? null;
+    return {
+      stdout: (err.stdout as string) || '',
+      stderr: (err.stderr as string) || '',
+    };
+  });
 
   let json: any;
   try {
     json = JSON.parse(result.stdout);
   } catch {
+    if (result.stdout.length > 0) {
+      console.warn(
+        `[E2E] Failed to parse CLI stdout as JSON (exit=${exitCode}, signal=${signal}):\n` +
+        `stdout: ${result.stdout.slice(0, 500)}\nstderr: ${result.stderr.slice(0, 500)}`
+      );
+    }
     json = null;
   }
 
@@ -47,12 +56,10 @@ describe('startup --json E2E', () => {
         `Bundle not found at ${BUNDLE_PATH}. Run "npm run bundle" first.`,
       );
     }
-    // Create isolated home directory
     fs.mkdirSync(TEST_HOME, { recursive: true });
   });
 
   afterAll(() => {
-    // Clean up isolated home directory
     fs.rmSync(TEST_HOME, { recursive: true, force: true });
   });
 

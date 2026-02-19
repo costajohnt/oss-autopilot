@@ -8,7 +8,12 @@
       "draft": false,
       "prerelease": false,
       "extra-files": [
-        ".claude-plugin/plugin.json"
+        {
+          "type": "json",
+          "path": ".claude-plugin/plugin.json",
+          "jsonpath": "$.version"
+        },
+        "README.md"
       ]
     }
   }
