@@ -38,12 +38,10 @@ async function runStartup(
   try {
     json = JSON.parse(result.stdout);
   } catch {
-    if (result.stdout.length > 0) {
-      console.warn(
-        `[E2E] Failed to parse CLI stdout as JSON (exit=${exitCode}, signal=${signal}):\n` +
-        `stdout: ${result.stdout.slice(0, 500)}\nstderr: ${result.stderr.slice(0, 500)}`
-      );
-    }
+    console.warn(
+      `[E2E] Failed to parse CLI stdout as JSON (exit=${exitCode}, signal=${signal}):\n` +
+      `stdout: ${result.stdout.slice(0, 500) || '(empty)'}\nstderr: ${result.stderr.slice(0, 500) || '(empty)'}`
+    );
     json = null;
   }
 

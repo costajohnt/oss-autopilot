@@ -38,6 +38,7 @@
     "url": "https://github.com/costajohnt/oss-autopilot/issues"
   },
   "files": [
+    ".claude-plugin/",
     "dist/",
     "src/",
     "LICENSE",
