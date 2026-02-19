@@ -88,12 +88,15 @@ export class PRMonitor {
       if (!item.pull_request) return false;
       // Skip PRs to repos owned by the user (not OSS contributions)
       const parsed = extractOwnerRepo(item.html_url);
-      if (parsed) {
-        if (parsed.owner.toLowerCase() === config.githubUsername.toLowerCase()) return false;
-        const repoFullName = `${parsed.owner}/${parsed.repo}`;
-        if (config.excludeRepos.includes(repoFullName)) return false;
-        if (config.excludeOrgs?.some(org => parsed.owner.toLowerCase() === org.toLowerCase())) return false;
+      if (!parsed) {
+        console.error(`[PR_MONITOR] Skipping PR with unparseable URL: ${item.html_url}`);
+        return false;
       }
+      const ownerLower = parsed.owner.toLowerCase();
+      if (ownerLower === config.githubUsername.toLowerCase()) return false;
+      const repoFullName = `${parsed.owner}/${parsed.repo}`;
+      if (config.excludeRepos.includes(repoFullName)) return false;
+      if (config.excludeOrgs?.some(org => ownerLower === org.toLowerCase())) return false;
       return true;
     });
 
@@ -148,14 +151,12 @@ export class PRMonitor {
    * Fetch detailed information for a single PR
    */
   private async fetchPRDetails(prUrl: string): Promise<FetchedPR | null> {
-    // Parse URL to get owner/repo/number
-    const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
-    if (!match) {
+    const parsed = parseGitHubUrl(prUrl);
+    if (!parsed || parsed.type !== 'pull') {
       throw new Error(`Invalid PR URL format: ${prUrl}`);
     }
 
-    const [, owner, repo, numberStr] = match;
-    const number = parseInt(numberStr, 10);
+    const { owner, repo, number } = parsed;
     const config = this.stateManager.getState().config;
 
     // Fetch PR data, comments, and reviews in parallel
@@ -505,6 +506,7 @@ export class PRMonitor {
       // Fetch both combined status and check runs in parallel
       const [statusResponse, checksResponse] = await Promise.all([
         this.octokit.repos.getCombinedStatusForRef({ owner, repo, ref: sha }),
+        // 404 is expected for repos without check runs configured; log other errors for debugging
         this.octokit.checks.listForRef({ owner, repo, ref: sha }).catch((err: unknown) => {
           const status = (err as { status?: number })?.status;
           if (status !== 404) {
@@ -712,10 +714,13 @@ export class PRMonitor {
 
       for (const item of data.items) {
         const parsed = extractOwnerRepo(item.html_url);
-        if (!parsed) continue;
+        if (!parsed) {
+          console.error(`[PR_MONITOR] Skipping merged PR with unparseable URL: ${item.html_url}`);
+          continue;
+        }
 
-        const repo = `${parsed.owner}/${parsed.repo}`;
-        const owner = parsed.owner;
+        const { owner } = parsed;
+        const repo = `${owner}/${parsed.repo}`;
 
         // Skip own repos (PRs to your own repos aren't OSS contributions)
         if (owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
@@ -809,10 +814,13 @@ export class PRMonitor {
 
       for (const item of data.items) {
         const parsed = extractOwnerRepo(item.html_url);
-        if (!parsed) continue;
+        if (!parsed) {
+          console.error(`[PR_MONITOR] Skipping closed PR with unparseable URL: ${item.html_url}`);
+          continue;
+        }
 
-        const repo = `${parsed.owner}/${parsed.repo}`;
-        const owner = parsed.owner;
+        const { owner } = parsed;
+        const repo = `${owner}/${parsed.repo}`;
 
         // Skip own repos
         if (owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
@@ -1026,13 +1034,12 @@ export class PRMonitor {
    * Used by the `track` and `init` commands.
    */
   async trackPR(prUrl: string): Promise<import('./types.js').TrackedPR> {
-    const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
-    if (!match) {
+    const parsed = parseGitHubUrl(prUrl);
+    if (!parsed || parsed.type !== 'pull') {
       throw new Error(`Invalid PR URL: ${prUrl}`);
     }
 
-    const [, owner, repo, numberStr] = match;
-    const number = parseInt(numberStr, 10);
+    const { owner, repo, number } = parsed;
 
     const { data: ghPR } = await this.octokit.pulls.get({
       owner,

@@ -168,13 +168,14 @@ export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
 }
 
 /**
- * Extracts the owner and repo from a GitHub URL of any shape
+ * Extracts the owner and repo from a GitHub web URL
  * (e.g. `https://github.com/owner/repo/pull/42`, `https://github.com/owner/repo/`).
  *
  * Unlike {@link parseGitHubUrl}, this does **not** require a PR or issue number in the URL.
+ * Like `parseGitHubUrl`, it enforces an `https://github.com/` prefix.
  *
- * @param url - A GitHub URL containing at least `github.com/owner/repo`
- * @returns `{ owner, repo }` or `null` if the URL cannot be parsed
+ * @param url - An HTTPS GitHub URL containing at least `github.com/owner/repo`
+ * @returns `{ owner, repo }` or `null` if the URL cannot be parsed or contains invalid owner/repo characters
  *
  * @example
  * extractOwnerRepo('https://github.com/facebook/react/pull/123')
@@ -185,6 +186,7 @@ export function parseGitHubUrl(url: string): ParsedGitHubUrl | null {
  * // { owner: "vercel", repo: "next.js" }
  */
 export function extractOwnerRepo(url: string): { owner: string; repo: string } | null {
+  if (!url.startsWith('https://github.com/')) return null;
   const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
   if (!match) return null;
 

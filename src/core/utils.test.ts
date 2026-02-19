@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   parseGitHubUrl,
+  extractOwnerRepo,
   daysBetween,
   splitRepo,
   formatRelativeTime,
@@ -72,6 +73,48 @@ describe('parseGitHubUrl', () => {
   it('should parse large PR numbers', () => {
     const result = parseGitHubUrl('https://github.com/owner/repo/pull/99999');
     expect(result).toEqual({ owner: 'owner', repo: 'repo', number: 99999, type: 'pull' });
+  });
+});
+
+describe('extractOwnerRepo', () => {
+  it('should extract owner and repo from a PR URL', () => {
+    expect(extractOwnerRepo('https://github.com/facebook/react/pull/123'))
+      .toEqual({ owner: 'facebook', repo: 'react' });
+  });
+
+  it('should extract owner and repo from an issue URL', () => {
+    expect(extractOwnerRepo('https://github.com/vercel/next.js/issues/456'))
+      .toEqual({ owner: 'vercel', repo: 'next.js' });
+  });
+
+  it('should extract from a bare repo URL with trailing slash', () => {
+    expect(extractOwnerRepo('https://github.com/vercel/next.js/'))
+      .toEqual({ owner: 'vercel', repo: 'next.js' });
+  });
+
+  it('should handle hyphenated and underscored names', () => {
+    expect(extractOwnerRepo('https://github.com/my-org/my_repo/pull/1'))
+      .toEqual({ owner: 'my-org', repo: 'my_repo' });
+  });
+
+  it('should return null for non-GitHub URLs', () => {
+    expect(extractOwnerRepo('https://gitlab.com/owner/repo')).toBeNull();
+  });
+
+  it('should return null for non-HTTPS GitHub URLs', () => {
+    expect(extractOwnerRepo('http://github.com/owner/repo')).toBeNull();
+  });
+
+  it('should return null for SSH-style URLs', () => {
+    expect(extractOwnerRepo('ssh://git@github.com/owner/repo')).toBeNull();
+  });
+
+  it('should return null for invalid owner characters', () => {
+    expect(extractOwnerRepo('https://github.com/bad@owner/repo')).toBeNull();
+  });
+
+  it('should return null for URLs with only owner (no repo)', () => {
+    expect(extractOwnerRepo('https://github.com/owner')).toBeNull();
   });
 });
 

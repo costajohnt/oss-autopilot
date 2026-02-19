@@ -78,8 +78,8 @@ export class IssueConversationMonitor {
         continue;
       }
 
-      const owner = parsed.owner;
-      const repoFullName = `${parsed.owner}/${parsed.repo}`;
+      const { owner, repo } = parsed;
+      const repoFullName = `${owner}/${repo}`;
 
       // Skip issues in user-owned repos (we only care about contributing to others' projects)
       if (owner.toLowerCase() === username.toLowerCase()) continue;

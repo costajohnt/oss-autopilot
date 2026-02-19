@@ -364,13 +364,13 @@ Yes, as long as your GitHub CLI (`gh`) has access.
 The CLI can run standalone (`node dist/cli.bundle.cjs daily --json`), but it's designed for the Claude Code plugin experience.
 
 **GitLab / Gitea / Bitbucket support?**
-Not yet, GitHub only. Contributions welcome.
+Not yet — see [Limitations](#limitations) below.
 
 ## Limitations
 
 - **GitHub only** — GitLab, Bitbucket, and other forges are not supported. Contributions welcome.
-- **1,000 PR cap** — GitHub's Search API returns at most 1,000 results per query. If you have more than 1,000 open PRs, the oldest ones won't appear.
-- **Rate limiting** — The CLI respects GitHub's rate limits and backs off automatically, but heavy use (large merge histories, many repos) can hit secondary rate limits. If this happens, wait a few minutes and retry.
+- **1,000 PR cap** — GitHub's Search API returns at most 1,000 results per query. If you have more than 1,000 open, merged, or closed PRs, the oldest results from each search may be truncated.
+- **Rate limiting** — The CLI automatically backs off on GitHub rate limits (with up to 2 retries) and secondary rate limits (1 retry), but sustained heavy use can exhaust these retries. If this happens, wait a few minutes and retry.
 - **Individual contributor focus** — Designed for solo contributors managing their own PRs. No team dashboards, shared state, or multi-user workflows.
 
 ---
