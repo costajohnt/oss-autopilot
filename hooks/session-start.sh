@@ -9,6 +9,14 @@ PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 messages=""
 
+# --- Step 0: Auto-pull marketplace clone for self-updates ---
+# Workaround for https://github.com/anthropics/claude-code/issues/26744
+# Marketplace plugins don't auto-update, so we pull on session start.
+MARKETPLACE_DIR="${HOME}/.claude/plugins/marketplaces/oss-autopilot"
+if [ -d "${MARKETPLACE_DIR}/.git" ]; then
+  (cd "${MARKETPLACE_DIR}" && git pull --ff-only) >/dev/null 2>&1 || true
+fi
+
 # --- Step 1: Rebuild stale bundle (if needed) ---
 if [ -f "${PLUGIN_ROOT}/dist/cli.bundle.cjs" ] && [ "${PLUGIN_ROOT}/package.json" -nt "${PLUGIN_ROOT}/dist/cli.bundle.cjs" ]; then
   if (cd "${PLUGIN_ROOT}" && npm install --silent 2>/dev/null && npm run bundle --silent 2>/dev/null); then
