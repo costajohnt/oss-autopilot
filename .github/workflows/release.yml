@@ -1,3 +1,7 @@
+# Note: release-please.yml now handles automated version bumps and changelog PRs.
+# This workflow creates GitHub releases from manual version bumps (backward compat).
+# If a release-please PR was merged, its release is created first and this workflow
+# skips via the "exists == true" guard in the version check step.
 name: Release
 
 on:

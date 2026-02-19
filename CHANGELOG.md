@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.0] - 2026-02-18
+
+### Added
+
+- **E2E smoke test for `startup --json` (#186)** — Integration test that runs the bundled CLI binary and validates JSON output structure, required fields (`version`, `setupComplete`), setup-incomplete handling, and execution speed (< 5 seconds). Uses an isolated HOME directory to avoid reading real user state.
+- **Test coverage for startup dashboard-skip logic (#181)** — Unit tests verifying that `openInBrowser()` is skipped when `totalActivePRs === 0` (first run), called when PRs exist, and stays false when dashboard generation fails. Mocks `writeDashboardFromState`, `openInBrowser`, and `executeDailyCheck`.
+- **Error path coverage for `getCIStatus` (#182)** — 8 new tests covering 401 (auth error), 403 (rate limit), 404 (silent), 500 (generic), network timeout, `listForRef` non-404 error logging, `listForRef` 404 silent handling, and empty SHA early return. Test count: 441 → 544.
+- **npm publish workflow (#183)** — GitHub Actions workflow (`.github/workflows/npm-publish.yml`) that publishes to npm on release creation. Added `files` field to `package.json` to control published contents and `prepublishOnly` script for pre-publish validation. npm badge added to README.
+- **Automated changelog via release-please (#185)** — Added `release-please-config.json`, `.release-please-manifest.json`, and `.github/workflows/release-please.yml` to automate version bumps and changelog generation from conventional commits.
+
+### Changed
+
+- **GitHub issue templates upgraded to YAML forms (#184)** — Converted `.github/ISSUE_TEMPLATE/bug_report.md` and `feature_request.md` from markdown to YAML form format (`.yml`), providing GitHub's structured form-based UI with required field validation, dropdowns for OS selection, and placeholder text for better issue reporting.
+
 ## [0.33.1] - 2026-02-18
 
 ### Fixed
@@ -695,6 +709,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.34.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.33.1...v0.34.0
 [0.33.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.33.0...v0.33.1
 [0.33.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.32.0...v0.33.0
 [0.32.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.31.0...v0.32.0

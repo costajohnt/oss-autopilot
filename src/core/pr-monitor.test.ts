@@ -3,7 +3,7 @@
  * maintainer hint extraction, review decision, and comment detection
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 let mockOctokitInstance: any;
 
@@ -2298,5 +2298,133 @@ describe('isBotAuthor (#143)', () => {
     expect(isBotAuthor('maintainer')).toBe(false);
     expect(isBotAuthor('sindresorhus')).toBe(false);
     expect(isBotAuthor('costajohnt')).toBe(false);
+  });
+});
+
+describe('getCIStatus error handling (#182)', () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  /** Create an error with an HTTP status code, matching Octokit's error shape */
+  function httpError(message: string, status: number): Error {
+    return Object.assign(new Error(message), { status });
+  }
+
+  /** Build a mockOctokitInstance where both API methods reject with the same error */
+  function mockBothEndpointsRejecting(error: Error): void {
+    mockOctokitInstance = {
+      repos: { getCombinedStatusForRef: vi.fn().mockRejectedValue(error) },
+      checks: { listForRef: vi.fn().mockRejectedValue(error) },
+    };
+  }
+
+  /** Call getCIStatus on a fresh PRMonitor with a standard test SHA */
+  async function callGetCIStatus(sha = 'abc123def'): Promise<any> {
+    const monitor = new PRMonitor('fake-token');
+    return (monitor as any).getCIStatus('owner', 'repo', sha);
+  }
+
+  const emptyCombinedStatus = {
+    data: { state: 'success', statuses: [] },
+  };
+
+  beforeEach(() => {
+    mockOctokitInstance = {};
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  it('should return unknown status on 401 unauthorized and log AUTH ERROR', async () => {
+    mockBothEndpointsRejecting(httpError('Unauthorized', 401));
+
+    const result = await callGetCIStatus();
+
+    expect(result.status).toBe('unknown');
+    expect(result.failingCheckNames).toEqual([]);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('[AUTH ERROR]'));
+  });
+
+  it('should return unknown status on 403 rate limit and log RATE LIMIT', async () => {
+    mockBothEndpointsRejecting(httpError('Forbidden', 403));
+
+    const result = await callGetCIStatus();
+
+    expect(result.status).toBe('unknown');
+    expect(result.failingCheckNames).toEqual([]);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('[RATE LIMIT]'));
+  });
+
+  it('should return unknown status on 404 without logging an error', async () => {
+    mockBothEndpointsRejecting(httpError('Not Found', 404));
+
+    const result = await callGetCIStatus();
+
+    expect(result.status).toBe('unknown');
+    expect(result.failingCheckNames).toEqual([]);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('should return unknown status on 500 generic error and log CI ERROR', async () => {
+    mockBothEndpointsRejecting(httpError('Internal Server Error', 500));
+
+    const result = await callGetCIStatus();
+
+    expect(result.status).toBe('unknown');
+    expect(result.failingCheckNames).toEqual([]);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('[CI ERROR]'));
+  });
+
+  it('should return unknown status on network timeout error and log CI ERROR', async () => {
+    mockBothEndpointsRejecting(new Error('connect ETIMEDOUT'));
+
+    const result = await callGetCIStatus();
+
+    expect(result.status).toBe('unknown');
+    expect(result.failingCheckNames).toEqual([]);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('[CI ERROR]'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('ETIMEDOUT'));
+  });
+
+  it('should log non-404 error from listForRef but continue with status check', async () => {
+    mockOctokitInstance = {
+      repos: { getCombinedStatusForRef: vi.fn().mockResolvedValue(emptyCombinedStatus) },
+      checks: { listForRef: vi.fn().mockRejectedValue(httpError('Server Error', 500)) },
+    };
+
+    const result = await callGetCIStatus();
+
+    expect(result).toBeDefined();
+    expect(result.status).not.toBe('failing');
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[PR_MONITOR] Non-404 error fetching check runs')
+    );
+  });
+
+  it('should silently handle 404 from listForRef without logging', async () => {
+    mockOctokitInstance = {
+      repos: { getCombinedStatusForRef: vi.fn().mockResolvedValue(emptyCombinedStatus) },
+      checks: { listForRef: vi.fn().mockRejectedValue(httpError('Not Found', 404)) },
+    };
+
+    const result = await callGetCIStatus();
+
+    expect(result).toBeDefined();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('should return unknown with empty sha', async () => {
+    mockOctokitInstance = {
+      repos: { getCombinedStatusForRef: vi.fn() },
+      checks: { listForRef: vi.fn() },
+    };
+
+    const result = await callGetCIStatus('');
+
+    expect(result.status).toBe('unknown');
+    expect(result.failingCheckNames).toEqual([]);
+    expect(mockOctokitInstance.repos.getCombinedStatusForRef).not.toHaveBeenCalled();
+    expect(mockOctokitInstance.checks.listForRef).not.toHaveBeenCalled();
   });
 });

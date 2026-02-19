@@ -2,8 +2,38 @@
  * Tests for startup command helper functions
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { parseIssueListPathFromConfig, countIssueListItems } from './startup.js';
+
+// --- Mocks for runStartup dashboard tests ---
+
+vi.mock('../core/index.js', () => ({
+  getStateManager: vi.fn(() => ({
+    isSetupComplete: vi.fn(() => true),
+  })),
+  getGitHubToken: vi.fn(() => 'fake-token'),
+}));
+
+vi.mock('./daily.js', () => ({
+  executeDailyCheck: vi.fn(),
+}));
+
+vi.mock('./dashboard.js', () => ({
+  writeDashboardFromState: vi.fn(() => '/tmp/dashboard.html'),
+}));
+
+vi.mock('child_process', () => ({
+  execFile: vi.fn(),
+}));
+
+// Mock fs so detectIssueList doesn't hit the real filesystem
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return {
+    ...actual,
+    existsSync: vi.fn(() => false),
+  };
+});
 
 describe('parseIssueListPathFromConfig', () => {
   it('should extract issueListPath from YAML frontmatter', () => {
@@ -150,5 +180,109 @@ Just some text, no issue list items.
     const result = countIssueListItems(content);
     expect(result.availableCount).toBe(3);
     expect(result.completedCount).toBe(3);
+  });
+});
+
+// --- runStartup dashboard behavior tests ---
+
+describe('runStartup dashboard behavior', () => {
+  // Lazy imports so vi.mock() is in effect
+  let runStartup: typeof import('./startup.js').runStartup;
+  let executeDailyCheck: ReturnType<typeof vi.fn>;
+  let writeDashboardFromState: ReturnType<typeof vi.fn>;
+  let execFile: ReturnType<typeof vi.fn>;
+
+  function makeDailyOutput(totalActivePRs: number) {
+    return {
+      digest: {
+        generatedAt: new Date().toISOString(),
+        openPRs: [],
+        prsNeedingResponse: [],
+        ciFailingPRs: [],
+        ciBlockedPRs: [],
+        ciNotRunningPRs: [],
+        mergeConflictPRs: [],
+        needsRebasePRs: [],
+        missingRequiredFilesPRs: [],
+        incompleteChecklistPRs: [],
+        needsChangesPRs: [],
+        stalePRs: [],
+        healthyPRs: [],
+        summary: {
+          totalActivePRs,
+          totalMergedAllTime: 0,
+          mergeRate: 0,
+          totalNeedingAttention: 0,
+        },
+      },
+      updates: [],
+      capacity: { canTakeMore: true, activePRCount: totalActivePRs, maxRecommended: 10 },
+      summary: '',
+      briefSummary: `📊 ${totalActivePRs} Active PRs`,
+      actionableIssues: [],
+      actionMenu: { items: [] },
+      commentedIssues: [],
+      repoGroups: [],
+      failures: [],
+    };
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    const startupMod = await import('./startup.js');
+    runStartup = startupMod.runStartup;
+
+    const dailyMod = await import('./daily.js');
+    executeDailyCheck = dailyMod.executeDailyCheck as ReturnType<typeof vi.fn>;
+
+    const dashMod = await import('./dashboard.js');
+    writeDashboardFromState = dashMod.writeDashboardFromState as ReturnType<typeof vi.fn>;
+
+    const cpMod = await import('child_process');
+    execFile = cpMod.execFile as unknown as ReturnType<typeof vi.fn>;
+  });
+
+  it('should NOT open browser when totalActivePRs is 0', async () => {
+    const daily = makeDailyOutput(0);
+    executeDailyCheck.mockResolvedValue(daily);
+    writeDashboardFromState.mockReturnValue('/tmp/dashboard.html');
+
+    await runStartup({ json: true });
+
+    expect(writeDashboardFromState).toHaveBeenCalled();
+    expect(execFile).not.toHaveBeenCalled();
+    expect(daily.briefSummary).not.toContain('Dashboard opened in browser');
+  });
+
+  it('should open browser when totalActivePRs > 0', async () => {
+    const daily = makeDailyOutput(3);
+    executeDailyCheck.mockResolvedValue(daily);
+    writeDashboardFromState.mockReturnValue('/tmp/dashboard.html');
+
+    await runStartup({ json: true });
+
+    expect(writeDashboardFromState).toHaveBeenCalled();
+    expect(execFile).toHaveBeenCalled();
+    expect(daily.briefSummary).toContain('Dashboard opened in browser');
+  });
+
+  it('should not open browser when dashboard generation fails', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const daily = makeDailyOutput(5);
+    executeDailyCheck.mockResolvedValue(daily);
+    writeDashboardFromState.mockImplementation(() => {
+      throw new Error('Dashboard write failed');
+    });
+
+    await runStartup({ json: true });
+
+    expect(execFile).not.toHaveBeenCalled();
+    expect(daily.briefSummary).not.toContain('Dashboard opened in browser');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Dashboard'),
+      'Dashboard write failed',
+    );
+    consoleErrorSpy.mockRestore();
   });
 });
