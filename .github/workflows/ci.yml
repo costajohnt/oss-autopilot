@@ -54,3 +54,51 @@ jobs:
             exit 1
           fi
           echo "Bundle created successfully: $(wc -c < dist/cli.bundle.cjs) bytes"
+
+  # Maintains a shields.io endpoint badge with the current passing test count.
+  # Re-runs tests after CI passes on main, writes the count to .github/badges/tests.json,
+  # and commits. The README references this file via a shields.io /endpoint badge URL.
+  update-badge:
+    name: Update test badge
+    needs: [ci]
+    if: github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests and update badge
+        run: |
+          npx vitest run --reporter=json --outputFile=test-results.json || true
+          if [ ! -f test-results.json ]; then
+            echo "::warning::vitest did not produce test-results.json. Badge not updated."
+            exit 0
+          fi
+          PASSED=$(node -p "try { require('./test-results.json').numPassedTests || 0 } catch { 0 }")
+          if [ "$PASSED" -gt 0 ]; then
+            echo "{\"schemaVersion\":1,\"label\":\"tests\",\"message\":\"${PASSED} passing\",\"color\":\"success\"}" > .github/badges/tests.json
+            echo "Badge updated: ${PASSED} passing"
+          else
+            echo "::warning::vitest ran but 0 tests passed. Badge not updated."
+          fi
+          rm -f test-results.json
+
+      - name: Commit badge update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/badges/tests.json
+          git diff --staged --quiet || git commit -m "chore: update test badge [skip ci]"
+          git push

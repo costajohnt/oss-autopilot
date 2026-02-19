@@ -337,7 +337,7 @@ export class IssueDiscovery {
       }
     } catch (error) {
       // Fail fast on auth errors — no point searching with a bad token
-      if ((error as any)?.status === 401) {
+      if ((error as { status?: number })?.status === 401) {
         throw error;
       }
       // Non-fatal: proceed with search for transient/network errors
@@ -614,7 +614,7 @@ export class IssueDiscovery {
 
   /** Check if an error is a GitHub rate limit error (429 or rate-limit 403). */
   private static isRateLimitError(error: unknown): boolean {
-    const status = (error as any)?.status;
+    const status = (error as { status?: number })?.status;
     if (status === 429) return true;
     if (status === 403) {
       const msg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
