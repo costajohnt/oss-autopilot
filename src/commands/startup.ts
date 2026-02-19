@@ -157,12 +157,22 @@ export async function runStartup(options: StartupOptions): Promise<void> {
     const daily = await executeDailyCheck(token);
 
     // 4. Generate dashboard from state (just saved by daily)
+    // Skip opening on first run (0 PRs) — the welcome flow handles onboarding
     let dashboardPath: string | undefined;
+    let dashboardOpened = false;
     try {
       dashboardPath = writeDashboardFromState();
-      openInBrowser(dashboardPath);
+      if (daily.digest.summary.totalActivePRs > 0) {
+        openInBrowser(dashboardPath);
+        dashboardOpened = true;
+      }
     } catch (error) {
       console.error('[STARTUP] Dashboard generation failed:', error instanceof Error ? error.message : error);
+    }
+
+    // Append dashboard status to brief summary (only startup opens the browser, not daily)
+    if (dashboardOpened) {
+      daily.briefSummary += ' | Dashboard opened in browser';
     }
 
     // 5. Detect issue list

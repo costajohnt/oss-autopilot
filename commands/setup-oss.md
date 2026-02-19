@@ -23,10 +23,10 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" checkSetup --json 2>/dev/null
 ```
 
 **If CLI returns valid JSON:**
-- Use CLI commands for all setup (Steps 1-CLI through 6-CLI below)
+- Use CLI commands for all setup (Steps 1-CLI through 7-CLI below)
 
 **If CLI is NOT available (build failed or node unavailable):**
-- Fall back to markdown-based setup (Steps 1 through 9 below)
+- Fall back to markdown-based setup (Steps 1 through 10 below)
 
 ---
 
@@ -133,13 +133,26 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set squashByDefault=VAL
 
 This sets the global `squashByDefault` setting. Per-repo overrides can be added later in `config.md` frontmatter under `repoOverrides`.
 
-## Step 4-CLI: Mark Setup Complete
+## Step 4-CLI: Verify GitHub Access
+
+Before marking setup complete, verify that the token actually works by making a lightweight API call:
+
+```bash
+gh api user --jq '.login' 2>/dev/null
+```
+
+**If this fails** (empty output or error), do NOT proceed. Tell the user:
+> "GitHub authentication check failed. Please verify your credentials: run `gh auth status` to check, or re-authenticate with `gh auth login`."
+
+**If this succeeds**, confirm the returned username matches the one from Step 2-CLI and proceed to Step 5-CLI.
+
+## Step 5-CLI: Mark Setup Complete
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set complete=true --json
 ```
 
-## Step 5-CLI: Import Existing PRs
+## Step 6-CLI: Import Existing PRs
 
 Ask user:
 > "Would you like me to import your existing open PRs?"
@@ -151,7 +164,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" i
 
 This fetches all open PRs from GitHub and adds them to tracking.
 
-## Step 6-CLI: Confirmation
+## Step 7-CLI: Confirmation
 
 Show summary:
 ```markdown
@@ -289,7 +302,20 @@ If a path is provided, try to read it to verify it exists. If it doesn't exist, 
 
 This sets the global `squashByDefault` setting. Per-repo overrides can be added later in `config.md` frontmatter under `repoOverrides`.
 
-## Step 5: Create Directory Structure
+## Step 5: Verify GitHub Access
+
+Before creating config files, verify that the token actually works:
+
+```bash
+gh api user --jq '.login'
+```
+
+**If this fails**, do NOT proceed. Tell the user:
+> "GitHub authentication check failed. Please verify your credentials: run `gh auth status` to check."
+
+**If this succeeds**, confirm the username matches and proceed.
+
+## Step 6: Create Directory Structure
 
 ```bash
 mkdir -p .claude/oss-autopilot
@@ -297,7 +323,7 @@ mkdir -p .claude/oss-autopilot
 
 ### Rollback on Failure
 
-Track which files have been successfully created. If any step fails during file creation (Steps 6-7):
+Track which files have been successfully created. If any step fails during file creation (Steps 7-8):
 1. **Do NOT set `setupComplete: true`** in the config
 2. Inform the user exactly which step failed:
    > "Setup failed at [Step X: description]. Files created before this step are intact. Run `/setup-oss` again to retry."
@@ -305,7 +331,7 @@ Track which files have been successfully created. If any step fails during file 
 
 The setup is only considered complete when ALL files are written successfully.
 
-## Step 6: Write Configuration
+## Step 7: Write Configuration
 
 Write the configuration to `.claude/oss-autopilot/config.md`:
 
@@ -346,7 +372,7 @@ This file stores your OSS Autopilot preferences. Edit the YAML frontmatter above
 - **GitHub Access**: gh CLI / MCP server
 ```
 
-## Step 7: Initialize State Files
+## Step 8: Initialize State Files
 
 Create empty state files:
 
@@ -395,7 +421,7 @@ Cache of repository evaluations for contribution decisions.
 |------|-------|---------------|------------|----------------|
 ```
 
-## Step 8: Offer to Import Existing PRs
+## Step 9: Offer to Import Existing PRs
 
 Ask user:
 > "Would you like me to import your existing open PRs?"
@@ -415,7 +441,7 @@ Use `mcp__github__search_issues` with query `is:pr is:open author:USERNAME`
 
 Parse results and add each PR to tracked-prs.md.
 
-## Step 9: Confirmation
+## Step 10: Confirmation
 
 Show summary:
 
