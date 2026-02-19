@@ -37,9 +37,10 @@ async function runStartup(
   let json: any;
   try {
     json = JSON.parse(result.stdout);
-  } catch {
+  } catch (parseError) {
     console.warn(
       `[E2E] Failed to parse CLI stdout as JSON (exit=${exitCode}, signal=${signal}):\n` +
+      `parse error: ${parseError instanceof Error ? parseError.message : parseError}\n` +
       `stdout: ${result.stdout.slice(0, 500) || '(empty)'}\nstderr: ${result.stderr.slice(0, 500) || '(empty)'}`
     );
     json = null;

@@ -39,6 +39,10 @@
   },
   "files": [
     ".claude-plugin/",
+    "agents/",
+    "commands/",
+    "hooks/",
+    "skills/",
     "dist/",
     "src/",
     "LICENSE",
