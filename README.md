@@ -175,15 +175,15 @@ Configure the path in `/setup-oss`, or place a file at `open-source/potential-is
 
 Claude automatically dispatches these based on context:
 
-| Agent | Purpose |
-|-------|---------|
-| **pr-responder** | Drafts responses to maintainer feedback |
-| **pr-health-checker** | Diagnoses CI failures, merge conflicts, stale reviews |
-| **pr-compliance-checker** | Validates PRs against [opensource.guide](https://opensource.guide) best practices |
-| **pre-commit-reviewer** | Reviews code changes before committing |
-| **issue-scout** | Finds and vets new issues to work on |
-| **repo-evaluator** | Analyzes repository health before contributing |
-| **contribution-strategist** | Strategic advice for your OSS journey |
+| Agent | Purpose | When it runs |
+|-------|---------|-------------|
+| **pr-responder** | Drafts responses to maintainer feedback | PR has `needs_response` status (unread maintainer comment) |
+| **pr-health-checker** | Diagnoses CI failures, merge conflicts, stale reviews | PR has `failing_ci`, `merge_conflict`, or needs rebase |
+| **pr-compliance-checker** | Validates PRs against [opensource.guide](https://opensource.guide) best practices | Before marking a new PR as ready for review |
+| **pre-commit-reviewer** | Reviews code changes before committing | After Tier 2 code changes, before commit/push |
+| **issue-scout** | Finds and vets new issues to work on | User selects "Search for new issues" from action menu |
+| **repo-evaluator** | Analyzes repository health before contributing | Before claiming an issue in an unfamiliar repo |
+| **contribution-strategist** | Strategic advice for your OSS journey | User asks for contribution strategy or career advice |
 
 ### Available Commands
 

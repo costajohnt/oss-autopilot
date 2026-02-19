@@ -612,7 +612,7 @@ function formatBriefSummary(digest: DailyDigest, issueCount: number, issueRespon
   const issueReplyText = issueResponseCount > 0
     ? ` | ${issueResponseCount} issue repl${issueResponseCount === 1 ? 'y' : 'ies'}`
     : '';
-  return `📊 ${digest.summary.totalActivePRs} Active PRs | ${attentionText}${issueReplyText} | Dashboard opened in browser`;
+  return `📊 ${digest.summary.totalActivePRs} Active PRs | ${attentionText}${issueReplyText}`;
 }
 
 /**
