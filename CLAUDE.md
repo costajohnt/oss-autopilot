@@ -160,10 +160,11 @@ Always look for opportunities to refactor, simplify, and remove dead code. Fix a
 
 **Every PR must include a version bump and changelog entry.**
 
-- Bump the version in **all three** places (they must always match):
+- Bump the version in **all four** places (they must always match):
   - `package.json`
   - `.claude-plugin/plugin.json`
   - `README.md` badge (`![Version](https://img.shields.io/badge/version-X.Y.Z-blue)`)
+  - `.release-please-manifest.json`
 - Follow [semver](https://semver.org/): bug fix = patch, new feature = minor
 - Add a new section to `CHANGELOG.md` with the bumped version and a description of your changes (use `Added`, `Changed`, `Fixed` headings)
 - Add a comparison link at the bottom of `CHANGELOG.md` for the new version
