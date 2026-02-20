@@ -6,9 +6,6 @@ You have 12 open PRs across GitHub. A maintainer asked a question 5 days ago. Tw
 
 OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you when something needs attention, and helps you respond to maintainer feedback so your contributions actually get merged.
 
-<!-- x-release-please-start-version -->
-![Version](https://img.shields.io/badge/version-0.35.0-blue)
-<!-- x-release-please-end -->
 ![CI](https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg)
 ![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/costajohnt/oss-autopilot/main/.github/badges/tests.json)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -296,7 +293,7 @@ claude --plugin-dir ./oss-autopilot
 
 | Hook | What it blocks |
 |------|----------------|
-| `check-versions.sh` | Commits when `package.json`, `plugin.json`, and README badge versions don't match |
+| `check-versions.sh` | Commits when `package.json` and `plugin.json` versions don't match |
 | `no-ai-attribution.sh` | Commits containing AI attribution phrases |
 | `no-commit-on-main.sh` | Direct commits to `main` or `master` |
 | `conventional-commits.sh` | Commit messages without `feat:`/`fix:`/`chore:` prefix |
