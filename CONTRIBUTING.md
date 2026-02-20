@@ -61,8 +61,7 @@ git checkout -b fix/your-bug-fix
 - Add tests if applicable
 - Run `npm test` to ensure tests pass
 - Run `npm run build` to ensure it compiles
-- **Bump the version** in all three places (they must match): `package.json`, `.claude-plugin/plugin.json`, and the `README.md` version badge. Follow [semver](https://semver.org/): bug fix = patch, new feature = minor
-- **Update `CHANGELOG.md`** with a new version section describing your changes (use `Added`, `Changed`, `Fixed` headings as appropriate). Add a comparison link at the bottom of the file
+- **Do NOT manually bump versions or edit CHANGELOG.md** — versioning is automated via [release-please](https://github.com/googleapis/release-please)
 
 ### 4. Commit
 
@@ -108,16 +107,11 @@ npx vitest src/core/state.test.ts
 
 ## Release Process
 
-When preparing a new release:
+Releases are automated via [release-please](https://github.com/googleapis/release-please). Contributors do NOT need to bump versions, edit CHANGELOG.md, or create tags.
 
-1. **Decide version number** following [semver](https://semver.org/): new feature = minor bump, bug fix = patch bump
-2. **Update version** in both `.claude-plugin/plugin.json` and `package.json` (they must always match)
-3. **Update CHANGELOG.md** with the new version section (Added, Changed, Fixed as appropriate)
-4. **Update version badge** in `README.md` to reflect the new version
-5. **Commit**: `git commit -m "chore: release vX.Y.Z"`
-6. **Tag**: `git tag vX.Y.Z`
-7. **Push with tags**: `git push origin main --tags`
-8. **Optional**: Create a GitHub release with `gh release create vX.Y.Z --notes "See CHANGELOG.md"`
+1. Use [conventional commits](https://www.conventionalcommits.org/): `feat:` (minor bump), `fix:` (patch bump), `chore:` (no release)
+2. On merge to main, release-please opens or updates a release PR that bumps versions and generates the changelog
+3. A maintainer merges the release-please PR to create a GitHub release, which triggers npm publish
 
 ## Questions?
 
