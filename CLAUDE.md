@@ -130,9 +130,8 @@ Branch naming: `feature/description`, `fix/description`, `chore/description`.
 
 Then:
 1. Make changes and test: `npm test`
-2. **Bump version and update changelog** (see Versioning below)
-3. Commit with conventional format: `feat:`, `fix:`, `refactor:`
-4. Push and open PR
+2. Commit with conventional format: `feat:`, `fix:`, `refactor:`
+3. Push and open PR
 
 **Important:**
 - Do NOT push directly to main
@@ -158,16 +157,11 @@ Always look for opportunities to refactor, simplify, and remove dead code. Fix a
 
 ## Versioning
 
-**Every PR must include a version bump and changelog entry.**
+**Versioning is automated via [release-please](https://github.com/googleapis/release-please).** Do NOT manually bump versions or edit CHANGELOG.md.
 
-- Bump the version in **all four** places (they must always match):
-  - `package.json`
-  - `.claude-plugin/plugin.json`
-  - `README.md` badge (`![Version](https://img.shields.io/badge/version-X.Y.Z-blue)`)
-  - `.release-please-manifest.json`
-- Follow [semver](https://semver.org/): bug fix = patch, new feature = minor
-- Add a new section to `CHANGELOG.md` with the bumped version and a description of your changes (use `Added`, `Changed`, `Fixed` headings)
-- Add a comparison link at the bottom of `CHANGELOG.md` for the new version
+- Use [conventional commits](https://www.conventionalcommits.org/): `feat:` (minor), `fix:` (patch), `chore:` (no release). Releasable commits (`feat:`, `fix:`) become CHANGELOG entries, so write them descriptively
+- On push to main, release-please opens or updates a release PR that bumps all version-bearing files (configured in `release-please-config.json`)
+- Merge the release-please PR to create a GitHub release, which triggers npm publish
 
 ## AI Attribution Rule (CRITICAL)
 
