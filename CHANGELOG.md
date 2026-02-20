@@ -5,6 +5,95 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.36.0](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.35.0...oss-autopilot-v0.36.0) (2026-02-20)
+
+
+### ⚠ BREAKING CHANGES
+
+* PRs are now fetched fresh from GitHub on each run instead of being tracked locally in state.
+
+### Features
+
+* add batch vet workflow, diminishing returns detection, and stronger list nudge ([#111](https://github.com/costajohnt/oss-autopilot/issues/111)) ([d9b2721](https://github.com/costajohnt/oss-autopilot/commit/d9b27216e03b8ff0f7beb6449e292ee3104566c3)), closes [#107](https://github.com/costajohnt/oss-autopilot/issues/107)
+* add checklist detection, action hints, and waiting-on-maintainer status ([#33](https://github.com/costajohnt/oss-autopilot/issues/33)) ([6dfc442](https://github.com/costajohnt/oss-autopilot/commit/6dfc44208ce39757fbc9eff7dd8ff37b5152f8d3))
+* add dismiss/undismiss for issue reply notifications ([#191](https://github.com/costajohnt/oss-autopilot/issues/191)) ([d7d6d68](https://github.com/costajohnt/oss-autopilot/commit/d7d6d68f4209203d0d77b496da63141c29b463ee))
+* add dismiss/undismiss for issue reply notifications ([#191](https://github.com/costajohnt/oss-autopilot/issues/191)) ([#193](https://github.com/costajohnt/oss-autopilot/issues/193)) ([d7d6d68](https://github.com/costajohnt/oss-autopilot/commit/d7d6d68f4209203d0d77b496da63141c29b463ee))
+* add integration check, manual testing, and workflow guards ([#77](https://github.com/costajohnt/oss-autopilot/issues/77)) ([1319e1e](https://github.com/costajohnt/oss-autopilot/commit/1319e1e648aad72ce4193d57777164c2b91c342e))
+* add issue conversation tracking ([#114](https://github.com/costajohnt/oss-autopilot/issues/114)) ([8ae00e8](https://github.com/costajohnt/oss-autopilot/commit/8ae00e8527dca322515ce6466376bad4e04b4ddb))
+* add label-farming spam filter and repo quality signals to issue search ([#101](https://github.com/costajohnt/oss-autopilot/issues/101)) ([4724db4](https://github.com/costajohnt/oss-autopilot/commit/4724db444e73cb98402e754dd1539c10628a7a14))
+* add merged-PR prioritization and rate limit handling to issue search ([#102](https://github.com/costajohnt/oss-autopilot/issues/102)) ([9147547](https://github.com/costajohnt/oss-autopilot/commit/91475479af50b56d5426b27e608f63fe065ad958))
+* add parallel multi-strategy search and auto-exclude across rounds ([#112](https://github.com/costajohnt/oss-autopilot/issues/112)) ([dc3ec21](https://github.com/costajohnt/oss-autopilot/commit/dc3ec2174d4b86c8cee212318692ac35866cb495)), closes [#106](https://github.com/costajohnt/oss-autopilot/issues/106)
+* add parse-issue-list, check-integration, and local-repos CLI commands ([#93](https://github.com/costajohnt/oss-autopilot/issues/93)) ([9149fc0](https://github.com/costajohnt/oss-autopilot/commit/9149fc08c95fd179cf91e3684b7c80a8e80da1a9))
+* add plugin marketplace for /plugin discovery ([#9](https://github.com/costajohnt/oss-autopilot/issues/9)) ([85c2f16](https://github.com/costajohnt/oss-autopilot/commit/85c2f163aca6f78e31bebcf956cda5440bb009a4))
+* add pre-commit code review step for quality gate before pushing ([#39](https://github.com/costajohnt/oss-autopilot/issues/39)) ([2cb9508](https://github.com/costajohnt/oss-autopilot/commit/2cb95080193d4e405cb8ae82a835c0ae875b8689))
+* add pre-commit gate and conditional daily re-run in /oss workflow ([#95](https://github.com/costajohnt/oss-autopilot/issues/95)) ([c141214](https://github.com/costajohnt/oss-autopilot/commit/c1412141f4292efb4e8e1e29cc7233870ea4ca15))
+* add pre-commit hooks enforcing workflow rules ([#42](https://github.com/costajohnt/oss-autopilot/issues/42)) ([ab35a37](https://github.com/costajohnt/oss-autopilot/commit/ab35a37c6b16dd4a313bc413b067d809a9d36bfc))
+* add review agent scaling by diff size and post-response comment step ([#109](https://github.com/costajohnt/oss-autopilot/issues/109)) ([7d0eb5c](https://github.com/costajohnt/oss-autopilot/commit/7d0eb5c298b92b35cc6dfa8a9f688921bfe4b65d))
+* add search result diversification filters (min stars, per-repo cap, doc filter) ([#110](https://github.com/costajohnt/oss-autopilot/issues/110)) ([23db158](https://github.com/costajohnt/oss-autopilot/commit/23db1582786431d9b442c3f237f8d1b69c1ed250)), closes [#105](https://github.com/costajohnt/oss-autopilot/issues/105)
+* add three-phase multi-PR workflow and enriched PR display ([#104](https://github.com/costajohnt/oss-autopilot/issues/104)) ([e85de08](https://github.com/costajohnt/oss-autopilot/commit/e85de082f062480af420e8c5d26a7f1234d349d2))
+* address all 6 open issues ([#187](https://github.com/costajohnt/oss-autopilot/issues/187)) ([4eacab6](https://github.com/costajohnt/oss-autopilot/commit/4eacab65bd4cf55edf1b08f8aad44fd498c904f3))
+* AI policy detection with configurable repo blocklist ([#113](https://github.com/costajohnt/oss-autopilot/issues/113)) ([d28e502](https://github.com/costajohnt/oss-autopilot/commit/d28e502669fc5345704254a6b444e614f7c36ff7))
+* auto-pull marketplace clone on session start ([#178](https://github.com/costajohnt/oss-autopilot/issues/178)) ([#179](https://github.com/costajohnt/oss-autopilot/issues/179)) ([deea6eb](https://github.com/costajohnt/oss-autopilot/commit/deea6eb6eeeda09c38b27686bade0afa3161f001))
+* bundle CLI with esbuild for zero-install experience ([#34](https://github.com/costajohnt/oss-autopilot/issues/34)) ([13b1e35](https://github.com/costajohnt/oss-autopilot/commit/13b1e35a658fd0d7c2df1a34e1843c09bd84ebaf))
+* classify infrastructure CI failures and make compliance check conditional ([#149](https://github.com/costajohnt/oss-autopilot/issues/149)) ([29a4b27](https://github.com/costajohnt/oss-autopilot/commit/29a4b272ff99522b54a8ee9b8533ea0743b84709))
+* consolidate startup checks into single CLI command ([#126](https://github.com/costajohnt/oss-autopilot/issues/126)) ([94bd424](https://github.com/costajohnt/oss-autopilot/commit/94bd424f5f9b6c06bc1ced6c1a0cc9f00b4dae52))
+* curated issue list integration + v0.4.0 release ([#35](https://github.com/costajohnt/oss-autopilot/issues/35)) ([b9fd389](https://github.com/costajohnt/oss-autopilot/commit/b9fd38993af893f4703324a36eaec733b9773220))
+* dashboard visual redesign ([#66](https://github.com/costajohnt/oss-autopilot/issues/66)) ([da3c647](https://github.com/costajohnt/oss-autopilot/commit/da3c647780e477408e0d85683ea2fb2a4df77598))
+* **dashboard:** update color scheme ([3c01654](https://github.com/costajohnt/oss-autopilot/commit/3c016541e13ec0a0b87a6ed934bdbf4e4fe775ed))
+* **dashboard:** update color scheme ([fd7adbe](https://github.com/costajohnt/oss-autopilot/commit/fd7adbef6f4fb93105d1993ab6a7e9d2e0f0b5ee))
+* draft-first PR workflow with iterative review cycles ([#61](https://github.com/costajohnt/oss-autopilot/issues/61)) ([c322954](https://github.com/costajohnt/oss-autopilot/commit/c32295459f7be8084f45a768f03009ae70a3365f)), closes [#59](https://github.com/costajohnt/oss-autopilot/issues/59)
+* enrich daily --json with display labels, repo grouping, and CI classification ([#92](https://github.com/costajohnt/oss-autopilot/issues/92)) ([39c3884](https://github.com/costajohnt/oss-autopilot/commit/39c3884f7f7735e0a28646b1e45ccdced88bf43f))
+* historical analytics dashboard with 4 chart enhancements ([#64](https://github.com/costajohnt/oss-autopilot/issues/64)) ([9719f65](https://github.com/costajohnt/oss-autopilot/commit/9719f65e2a8f441f7d758874a1c9c2e9cd1aaac9))
+* hybrid CLI architecture with action-first UX and human-in-the-loop ([#5](https://github.com/costajohnt/oss-autopilot/issues/5)) ([53a51ec](https://github.com/costajohnt/oss-autopilot/commit/53a51ec4ad254443f970a964721db1049841ef1f))
+* implement v2 fresh GitHub fetching architecture ([#27](https://github.com/costajohnt/oss-autopilot/issues/27)) ([fd32851](https://github.com/costajohnt/oss-autopilot/commit/fd3285150c72237c0da021cce3d944e3f192c5f5))
+* improve daily check with rebase detection, action tiers, and new PR status categories ([#30](https://github.com/costajohnt/oss-autopilot/issues/30)) ([ee7dc7a](https://github.com/costajohnt/oss-autopilot/commit/ee7dc7a42bfc6f8f5e6807eb09fe4f0a56d1f157))
+* marketing readiness polish — security, UX, governance ([#67](https://github.com/costajohnt/oss-autopilot/issues/67)) ([fbdd51f](https://github.com/costajohnt/oss-autopilot/commit/fbdd51f54276c6a2802cd42a973a041d2bac4914))
+* modularize /oss skill prompt ([#164](https://github.com/costajohnt/oss-autopilot/issues/164)) ([82874dd](https://github.com/costajohnt/oss-autopilot/commit/82874dd753666acd2945bbe42d463def9cad27a6))
+* pre-compute action menu in daily --json output ([9b8b2de](https://github.com/costajohnt/oss-autopilot/commit/9b8b2dee9c469023e46bd163c0c979ea610ef6c9))
+* pre-compute action menu in daily --json output ([a588915](https://github.com/costajohnt/oss-autopilot/commit/a588915b9c37c3bcc71003f9626c73dbf4547b61)), closes [#78](https://github.com/costajohnt/oss-autopilot/issues/78)
+* proactive PR health check, competitive positioning, and demo guide ([#45](https://github.com/costajohnt/oss-autopilot/issues/45)) ([c721e3d](https://github.com/costajohnt/oss-autopilot/commit/c721e3d8cd685d526d8724f770a79ea6c19a9f61))
+* README rewrite, first-run welcome, and loading screen pattern ([#124](https://github.com/costajohnt/oss-autopilot/issues/124)) ([f45067f](https://github.com/costajohnt/oss-autopilot/commit/f45067f356a6112058f8ef2cdcaad3af2d08fe62))
+* recently merged PRs in dashboard and daily digest ([#165](https://github.com/costajohnt/oss-autopilot/issues/165)) ([a9960d1](https://github.com/costajohnt/oss-autopilot/commit/a9960d10aefdef2bc905b7c935a85875ed500922))
+* reduce /oss context window footprint ([#141](https://github.com/costajohnt/oss-autopilot/issues/141)) ([#159](https://github.com/costajohnt/oss-autopilot/issues/159)) ([803c2ec](https://github.com/costajohnt/oss-autopilot/commit/803c2ec298be785e2be11f5b5fc37fe00671a488))
+* seamless plugin upgrade experience with stale bundle detection ([#40](https://github.com/costajohnt/oss-autopilot/issues/40)) ([b1c8123](https://github.com/costajohnt/oss-autopilot/commit/b1c81236692fdacf8292328c8f0b8bdf12176d20))
+* shelve/unshelve PRs, consolidate dormancy, dashboard cleanup ([#158](https://github.com/costajohnt/oss-autopilot/issues/158)) ([#160](https://github.com/costajohnt/oss-autopilot/issues/160)) ([b365b5b](https://github.com/costajohnt/oss-autopilot/commit/b365b5b6975225c6083b0fbc9ae8d292fb2002e0))
+* smarter issue search, enhanced repo scoring, and hardened type safety ([fbf56be](https://github.com/costajohnt/oss-autopilot/commit/fbf56be6f8effac704f64ae7cef4e1986d9c5a6b))
+* track closed PRs for accurate merge rate and visibility ([#38](https://github.com/costajohnt/oss-autopilot/issues/38)) ([30cabe9](https://github.com/costajohnt/oss-autopilot/commit/30cabe95c58aa2521afb41307e0d2cce7878a56b))
+
+
+### Bug Fixes
+
+* add marketplace.json for plugin installation ([#115](https://github.com/costajohnt/oss-autopilot/issues/115)) ([d515748](https://github.com/costajohnt/oss-autopilot/commit/d51574810e272e60dd326a7a1942c6afa67b9db4))
+* batch skill prompt fixes ([#133](https://github.com/costajohnt/oss-autopilot/issues/133), [#134](https://github.com/costajohnt/oss-autopilot/issues/134), [#135](https://github.com/costajohnt/oss-autopilot/issues/135), [#137](https://github.com/costajohnt/oss-autopilot/issues/137), [#144](https://github.com/costajohnt/oss-autopilot/issues/144)) ([#146](https://github.com/costajohnt/oss-autopilot/issues/146)) ([3b63b1c](https://github.com/costajohnt/oss-autopilot/commit/3b63b1ccae5cd8b3cab64a801cc9cea0cdeab205))
+* CI failure overrides changes_addressed + acknowledgment comment filtering ([#70](https://github.com/costajohnt/oss-autopilot/issues/70)) ([0e3dfe0](https://github.com/costajohnt/oss-autopilot/commit/0e3dfe0cb7c33b6403c337fd1dad3e5c755b2346))
+* classify PRs with changes_requested review as needs_changes instead of healthy ([844d5fd](https://github.com/costajohnt/oss-autopilot/commit/844d5fd7c1adc28856ae6166d1973a8adbafeb22))
+* classify PRs with changes_requested review as needs_changes instead of healthy ([#48](https://github.com/costajohnt/oss-autopilot/issues/48)) ([afce57f](https://github.com/costajohnt/oss-autopilot/commit/afce57f6530416b94e9e20a8d50e9db857f77926))
+* consolidate /oss loading into single tool call ([#125](https://github.com/costajohnt/oss-autopilot/issues/125)) ([024a8e0](https://github.com/costajohnt/oss-autopilot/commit/024a8e08948fcd6f760e3e4ea01debb4d5285444))
+* correct health check script path to .claude-plugin/scripts/ ([#47](https://github.com/costajohnt/oss-autopilot/issues/47)) ([7aea26b](https://github.com/costajohnt/oss-autopilot/commit/7aea26b0645696e19c9d438b22125477d5d46009))
+* correct marketplace.json schema for Claude Code plugin installation ([#96](https://github.com/costajohnt/oss-autopilot/issues/96)) ([63d1a72](https://github.com/costajohnt/oss-autopilot/commit/63d1a7215750651fc7eb2d16924f6d6cb496550d))
+* deduplicate CI check runs to prevent false failure reports ([#36](https://github.com/costajohnt/oss-autopilot/issues/36)) ([51b1671](https://github.com/costajohnt/oss-autopilot/commit/51b16714a68966e605c1d35d633eb653fd17248d))
+* detect changes_addressed status when contributor pushes after maintainer review ([#44](https://github.com/costajohnt/oss-autopilot/issues/44)) ([c38aa1a](https://github.com/costajohnt/oss-autopilot/commit/c38aa1ae323ca9b1ce0e51aae3c3c498ca3e8c74))
+* display content before approval prompts ([#131](https://github.com/costajohnt/oss-autopilot/issues/131)) ([8f2588a](https://github.com/costajohnt/oss-autopilot/commit/8f2588aabea1714d636302e79f4d2723e7f6524f))
+* don't prompt after informational responses ([#189](https://github.com/costajohnt/oss-autopilot/issues/189)) ([ab7ab7d](https://github.com/costajohnt/oss-autopilot/commit/ab7ab7ddda02d2434525e1252d964dbcc11f2c2a)), closes [#188](https://github.com/costajohnt/oss-autopilot/issues/188)
+* enforce file permissions and add prompt injection defense ([#71](https://github.com/costajohnt/oss-autopilot/issues/71)) ([d0f19c4](https://github.com/costajohnt/oss-autopilot/commit/d0f19c4bfd5567b896efb2eaf4e1889db435f1a4))
+* exclude recently closed PRs from "Need Attention" count ([#156](https://github.com/costajohnt/oss-autopilot/issues/156)) ([e5e107c](https://github.com/costajohnt/oss-autopilot/commit/e5e107c4cb7548c22fc27b61b12f12ea0a896fa1))
+* exclude recently closed PRs from "Need Attention" count ([#156](https://github.com/costajohnt/oss-autopilot/issues/156)) ([#157](https://github.com/costajohnt/oss-autopilot/issues/157)) ([e5e107c](https://github.com/costajohnt/oss-autopilot/commit/e5e107c4cb7548c22fc27b61b12f12ea0a896fa1))
+* exempt shelved PRs from excludeRepos/excludeOrgs filtering ([#175](https://github.com/costajohnt/oss-autopilot/issues/175)) ([#176](https://github.com/costajohnt/oss-autopilot/issues/176)) ([d2537e3](https://github.com/costajohnt/oss-autopilot/commit/d2537e3154598245e08ee6ed1dfca5d1af5108fc))
+* filter bot comments from needs-response detection ([#143](https://github.com/costajohnt/oss-autopilot/issues/143)) ([#148](https://github.com/costajohnt/oss-autopilot/issues/148)) ([38dc6cf](https://github.com/costajohnt/oss-autopilot/commit/38dc6cf5737e058c75e60c4f4fa1bcb652f582b9))
+* filter non-actionable CI statuses from capacity assessment ([#32](https://github.com/costajohnt/oss-autopilot/issues/32)) ([143f5f3](https://github.com/costajohnt/oss-autopilot/commit/143f5f351197e19af5ffaf3401401a4a3dacc180))
+* health check always shows PR status summary on session start ([#53](https://github.com/costajohnt/oss-autopilot/issues/53)) ([dfec79f](https://github.com/costajohnt/oss-autopilot/commit/dfec79f6535c100994c05134d7be217ed4bb6cb9))
+* improve PR status classification accuracy ([#151](https://github.com/costajohnt/oss-autopilot/issues/151), [#152](https://github.com/costajohnt/oss-autopilot/issues/152)) ([#153](https://github.com/costajohnt/oss-autopilot/issues/153)) ([8b76748](https://github.com/costajohnt/oss-autopilot/commit/8b767482105f2deb49abe07be1c652e5a3e3918c))
+* move health check to .cjs file for Node.js 18-24+ compatibility ([#46](https://github.com/costajohnt/oss-autopilot/issues/46)) ([be5c0f3](https://github.com/costajohnt/oss-autopilot/commit/be5c0f33c0e52cdf0a53ac43d0b35bc18f37e8ee))
+* populate merged PR counts from GitHub and add org/owner filtering ([#29](https://github.com/costajohnt/oss-autopilot/issues/29)) ([e270a7f](https://github.com/costajohnt/oss-autopilot/commit/e270a7f52373caf32064d3b9b04c71fa57d52386))
+* pr-responder defers to user for visual demo requests ([#173](https://github.com/costajohnt/oss-autopilot/issues/173)) ([#177](https://github.com/costajohnt/oss-autopilot/issues/177)) ([316acfb](https://github.com/costajohnt/oss-autopilot/commit/316acfb799a34802ee0b7613f673eee20887cde3))
+* reduce AI communication tells in PR responder and contribution skill ([#155](https://github.com/costajohnt/oss-autopilot/issues/155)) ([620778d](https://github.com/costajohnt/oss-autopilot/commit/620778d22f3d9623ea266e5230e2e1edb9ae68f9))
+* replace markdown SessionStart hook with command-based hooks.json format ([#52](https://github.com/costajohnt/oss-autopilot/issues/52)) ([4fac5da](https://github.com/costajohnt/oss-autopilot/commit/4fac5da5f10d0b364dc50abc95c2e9c03101eb3c))
+* show SessionStart status to user via systemMessage ([#54](https://github.com/costajohnt/oss-autopilot/issues/54)) ([1e165c6](https://github.com/costajohnt/oss-autopilot/commit/1e165c68e5eea542b4dbebedd67f0de6089fb7a0))
+* simplify action menu to always show search option ([#127](https://github.com/costajohnt/oss-autopilot/issues/127)) ([454a2cf](https://github.com/costajohnt/oss-autopilot/commit/454a2cf2dde9af36986c75b72de5070a1cf23bd8))
+* split dashboard 'Attention Required' into actionable vs informational sections ([#63](https://github.com/costajohnt/oss-autopilot/issues/63)) ([0b3da8a](https://github.com/costajohnt/oss-autopilot/commit/0b3da8a343ea46225b62849c032b2fb00a1cefe4)), closes [#62](https://github.com/costajohnt/oss-autopilot/issues/62)
+* use "./" instead of "." in marketplace.json source field ([#116](https://github.com/costajohnt/oss-autopilot/issues/116)) ([be9e463](https://github.com/costajohnt/oss-autopilot/commit/be9e46358419841f2e02761ce2e6e743245486d8))
+* use merge-base for correct fork workflow diffs ([#142](https://github.com/costajohnt/oss-autopilot/issues/142), [#139](https://github.com/costajohnt/oss-autopilot/issues/139), [#138](https://github.com/costajohnt/oss-autopilot/issues/138)) ([#147](https://github.com/costajohnt/oss-autopilot/issues/147)) ([93b28c9](https://github.com/costajohnt/oss-autopilot/commit/93b28c9f4f5657d4f12f8a7a615edd688fd830a2))
+
 ## [0.35.0] - 2026-02-19
 
 ### Added
