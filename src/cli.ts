@@ -24,6 +24,7 @@ import { runCheckIntegration } from './commands/check-integration.js';
 import { runLocalRepos } from './commands/local-repos.js';
 import { runStartup } from './commands/startup.js';
 import { runShelve, runUnshelve } from './commands/shelve.js';
+import { runDismiss, runUndismiss } from './commands/dismiss.js';
 
 const VERSION = (() => {
   try {
@@ -38,7 +39,7 @@ const VERSION = (() => {
 
 // Commands that skip the preAction GitHub token check.
 // startup handles auth internally (returns authError in JSON instead of process.exit).
-const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard', 'parse-issue-list', 'check-integration', 'local-repos', 'startup', 'shelve', 'unshelve'];
+const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard', 'parse-issue-list', 'check-integration', 'local-repos', 'startup', 'shelve', 'unshelve', 'dismiss', 'undismiss'];
 
 const program = new Command();
 
@@ -245,6 +246,24 @@ program
   .option('--json', 'Output as JSON')
   .action(async (prUrl, options) => {
     await runUnshelve({ prUrl, json: options.json });
+  });
+
+// Dismiss command
+program
+  .command('dismiss <issue-url>')
+  .description('Dismiss issue reply notifications (resurfaces on new activity)')
+  .option('--json', 'Output as JSON')
+  .action(async (issueUrl, options) => {
+    await runDismiss({ issueUrl, json: options.json });
+  });
+
+// Undismiss command
+program
+  .command('undismiss <issue-url>')
+  .description('Undismiss an issue (re-enable reply notifications)')
+  .option('--json', 'Output as JSON')
+  .action(async (issueUrl, options) => {
+    await runUndismiss({ issueUrl, json: options.json });
   });
 
 // Validate GitHub token before running commands that need it

@@ -706,3 +706,65 @@ describe('shelvePR / unshelvePR / isPRShelved', () => {
     expect(stateManager.getState().config.shelvedPRUrls).toEqual([url]);
   });
 });
+
+// ── Dismiss / Undismiss Issues ──────────────────────────────────────
+describe('dismissIssue / undismissIssue / getIssueDismissedAt', () => {
+  let stateManager: StateManager;
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  it('should dismiss an issue and store the timestamp', () => {
+    const url = 'https://github.com/owner/repo/issues/1';
+    const timestamp = '2025-01-15T10:00:00.000Z';
+    expect(stateManager.dismissIssue(url, timestamp)).toBe(true);
+    expect(stateManager.getIssueDismissedAt(url)).toBe(timestamp);
+  });
+
+  it('should return false when dismissing an already-dismissed issue (idempotent)', () => {
+    const url = 'https://github.com/owner/repo/issues/1';
+    stateManager.dismissIssue(url, '2025-01-15T10:00:00.000Z');
+    expect(stateManager.dismissIssue(url, '2025-01-16T10:00:00.000Z')).toBe(false);
+    // Original timestamp is preserved
+    expect(stateManager.getIssueDismissedAt(url)).toBe('2025-01-15T10:00:00.000Z');
+  });
+
+  it('should undismiss a dismissed issue', () => {
+    const url = 'https://github.com/owner/repo/issues/1';
+    stateManager.dismissIssue(url, '2025-01-15T10:00:00.000Z');
+    expect(stateManager.undismissIssue(url)).toBe(true);
+    expect(stateManager.getIssueDismissedAt(url)).toBeUndefined();
+  });
+
+  it('should return false when undismissing an issue that is not dismissed', () => {
+    const url = 'https://github.com/owner/repo/issues/1';
+    expect(stateManager.undismissIssue(url)).toBe(false);
+  });
+
+  it('should handle multiple dismissed issues independently', () => {
+    const url1 = 'https://github.com/owner/repo/issues/1';
+    const url2 = 'https://github.com/owner/repo/issues/2';
+    stateManager.dismissIssue(url1, '2025-01-15T10:00:00.000Z');
+    stateManager.dismissIssue(url2, '2025-01-16T10:00:00.000Z');
+    expect(stateManager.getIssueDismissedAt(url1)).toBe('2025-01-15T10:00:00.000Z');
+    expect(stateManager.getIssueDismissedAt(url2)).toBe('2025-01-16T10:00:00.000Z');
+
+    stateManager.undismissIssue(url1);
+    expect(stateManager.getIssueDismissedAt(url1)).toBeUndefined();
+    expect(stateManager.getIssueDismissedAt(url2)).toBe('2025-01-16T10:00:00.000Z');
+  });
+
+  it('should handle getIssueDismissedAt when dismissedIssues is undefined', () => {
+    (stateManager.getState().config as any).dismissedIssues = undefined;
+    expect(stateManager.getIssueDismissedAt('https://github.com/owner/repo/issues/1')).toBeUndefined();
+  });
+
+  it('should initialize dismissedIssues object when first dismissing', () => {
+    (stateManager.getState().config as any).dismissedIssues = undefined;
+    const url = 'https://github.com/owner/repo/issues/1';
+    const timestamp = '2025-01-15T10:00:00.000Z';
+    expect(stateManager.dismissIssue(url, timestamp)).toBe(true);
+    expect(stateManager.getState().config.dismissedIssues).toEqual({ [url]: timestamp });
+  });
+});

@@ -257,16 +257,44 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   // Assess capacity from active PRs only (shelved PRs excluded)
   const capacity = assessCapacity(activePRs, stateManager.getState().config.maxActivePRs, shelvedPRs.length);
 
-  // Build output fields from active PRs only
-  const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
+  // Filter dismissed issues: suppress if dismissed after last response, resurface + auto-undismiss if new activity
+  let hasAutoUndismissed = false;
+  const filteredCommentedIssues = commentedIssues.filter(issue => {
+    const dismissedAt = stateManager.getIssueDismissedAt(issue.url);
+    if (!dismissedAt) return true; // Not dismissed — include
+    if (issue.status === 'new_response') {
+      const responseTime = new Date(issue.lastResponseAt).getTime();
+      const dismissTime = new Date(dismissedAt).getTime();
+      if (isNaN(responseTime) || isNaN(dismissTime)) {
+        // Invalid timestamp — fail open (include issue to be safe)
+        console.error(`[DAILY] Invalid timestamp in dismiss check for ${issue.url}, including issue`);
+        stateManager.undismissIssue(issue.url);
+        hasAutoUndismissed = true;
+        return true;
+      }
+      if (responseTime > dismissTime) {
+        // New activity after dismiss — auto-undismiss and resurface
+        stateManager.undismissIssue(issue.url);
+        hasAutoUndismissed = true;
+        return true;
+      }
+    }
+    // Still dismissed (last response is at or before dismiss timestamp)
+    return false;
+  });
+  if (hasAutoUndismissed) {
+    stateManager.save();
+  }
+
+  const issueResponses = filteredCommentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   const summary = formatSummary(digest, capacity, issueResponses);
   const actionableIssues = collectActionableIssues(activePRs);
   digest.summary.totalNeedingAttention = actionableIssues.length;
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length);
-  const actionMenu = computeActionMenu(actionableIssues, capacity, commentedIssues);
+  const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues);
   const repoGroups = groupPRsByRepo(activePRs);
 
-  return { digest, updates: [], capacity, summary, briefSummary, actionableIssues, actionMenu, commentedIssues, repoGroups, failures };
+  return { digest, updates: [], capacity, summary, briefSummary, actionableIssues, actionMenu, commentedIssues: filteredCommentedIssues, repoGroups, failures };
 }
 
 async function runDailyInner(token: string, options: DailyOptions): Promise<void> {

@@ -697,6 +697,48 @@ export class StateManager {
     return this.state.config.shelvedPRUrls?.includes(url) ?? false;
   }
 
+  // === Dismiss / Undismiss Issues ===
+
+  /**
+   * Dismiss an issue by URL. Dismissed issues are excluded from `new_response` notifications
+   * until new activity occurs after the dismiss timestamp.
+   * @param url - The full GitHub issue URL.
+   * @param timestamp - ISO timestamp of when the issue was dismissed.
+   * @returns true if newly dismissed, false if already dismissed.
+   */
+  dismissIssue(url: string, timestamp: string): boolean {
+    if (!this.state.config.dismissedIssues) {
+      this.state.config.dismissedIssues = {};
+    }
+    if (url in this.state.config.dismissedIssues) {
+      return false;
+    }
+    this.state.config.dismissedIssues[url] = timestamp;
+    return true;
+  }
+
+  /**
+   * Undismiss an issue by URL.
+   * @param url - The full GitHub issue URL.
+   * @returns true if found and removed, false if not dismissed.
+   */
+  undismissIssue(url: string): boolean {
+    if (!this.state.config.dismissedIssues || !(url in this.state.config.dismissedIssues)) {
+      return false;
+    }
+    delete this.state.config.dismissedIssues[url];
+    return true;
+  }
+
+  /**
+   * Get the timestamp when an issue was dismissed.
+   * @param url - The full GitHub issue URL.
+   * @returns The ISO dismiss timestamp, or undefined if not dismissed.
+   */
+  getIssueDismissedAt(url: string): string | undefined {
+    return this.state.config.dismissedIssues?.[url];
+  }
+
   // === PR Utilities ===
 
   /**
