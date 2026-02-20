@@ -581,6 +581,9 @@ export interface AgentConfig {
 
   /** PR URLs manually shelved by the user. Shelved PRs are excluded from capacity and actionable issues. Auto-unshelved when maintainers engage. */
   shelvedPRUrls?: string[];
+
+  /** Issue URLs dismissed by the user, mapped to ISO timestamp of when dismissed. Issues with new responses after the dismiss timestamp resurface automatically. */
+  dismissedIssues?: Record<string, string>;
 }
 
 /** Status of a user's comment thread on a GitHub issue. */
@@ -638,6 +641,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
   includeDocIssues: true,
   aiPolicyBlocklist: ['matplotlib/matplotlib'],
   shelvedPRUrls: [],
+  dismissedIssues: {},
 };
 
 /** Initial state written to `~/.oss-autopilot/state.json` on first run. Uses v2 architecture. */

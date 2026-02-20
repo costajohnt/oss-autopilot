@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.0] - 2026-02-19
+
+### Added
+
+- **Dismiss/undismiss issue reply notifications (#191)** — New `dismiss <issue-url>` and `undismiss <issue-url>` CLI commands let users mute `new_response` notifications without posting a comment. Dismissed issues store a timestamp so new responses after the dismiss automatically resurface. Follows the existing shelve/unshelve pattern for PRs.
+
 ## [0.34.1] - 2026-02-18
 
 ### Fixed
@@ -715,6 +721,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PR monitoring and health checking
 - Dashboard HTML generation
 
+[0.35.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.34.1...v0.35.0
 [0.34.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.34.0...v0.34.1
 [0.34.0]: https://github.com/costajohnt/oss-autopilot/compare/v0.33.1...v0.34.0
 [0.33.1]: https://github.com/costajohnt/oss-autopilot/compare/v0.33.0...v0.33.1
