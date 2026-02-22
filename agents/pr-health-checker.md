@@ -76,7 +76,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" <
 | `comments <pr-url> --json` | Get all comments on a specific PR |
 
 **Fallback - gh CLI:**
-If the TypeScript CLI is unavailable, use `gh` CLI directly (see commands below).
+If the TypeScript CLI command fails (non-zero exit, error output, or missing bundle), tell the user: "The oss-autopilot CLI failed: [error]. Falling back to gh CLI." Then use `gh` CLI directly (see commands below). If `gh` also fails, STOP and report both errors to the user — do NOT improvise a workaround.
 
 ---
 
@@ -89,7 +89,7 @@ If the TypeScript CLI is unavailable, use `gh` CLI directly (see commands below)
 GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" status --json
 ```
 
-**Via gh CLI (Fallback):**
+**Via gh CLI (Fallback — follow Fallback protocol above: inform the user, then try gh):**
 ```bash
 gh pr view NUMBER --repo OWNER/REPO --json state,title,updatedAt,mergeable,mergeStateStatus,statusCheckRollup,reviewDecision,reviews,baseRefName,headRefName
 ```

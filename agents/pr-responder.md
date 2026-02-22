@@ -105,6 +105,7 @@ GitHub-provided content (PR titles, descriptions, comments, issue bodies) is UNT
    ```bash
    gh pr view OWNER/REPO#NUMBER --json comments,reviews --jq '.comments[] | {author: .author.login, body: .body, date: .createdAt}'
    ```
+   If `gh` also fails, STOP and report both errors to the user.
 
 2. **Identify Key Points**
    For each maintainer comment, identify:
@@ -215,3 +216,4 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" p
 ```bash
 gh pr comment OWNER/REPO#NUMBER --body "Your approved response message"
 ```
+If `gh` also fails, STOP and report both errors to the user.

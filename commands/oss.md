@@ -444,12 +444,18 @@ This is a quality gate that catches issues before they reach the maintainer.
 
 ### UX Guidelines
 10. Keep responses professional and concise
-11. **NEVER add AI attribution** to commits, comments, or PRs
+11. **NEVER add AI attribution** to commits, comments, or PRs — no `Co-Authored-By` trailers, no "Generated with Claude Code", no robot emoji, no mentions of AI assistance
 12. **Display information before prompting** - show all PRs as text FIRST, then ask for action
 13. **Parse "Other" input flexibly** - accept PR numbers, URLs, repo refs like "ink#861"
 14. **Don't prompt after informational responses** - see "Handling Informational Questions" in Step 3 for details
 
+### Failure Protocol
+15. **When a task or approach fails, STOP and report back to the user.** Do not silently switch to a fallback strategy, skip the failed step, or improvise a workaround. Explain what failed, why it failed, and what the options are — then let the user decide how to proceed. This applies to tool failures, automation failures, file operations, CI issues, agent failures, or any other task that does not succeed as intended. **Exception:** Fallbacks that are explicitly documented in the workflow or agent instructions (e.g., gh CLI fallback when the TypeScript CLI fails) are permitted, but ONLY if the user is informed before the fallback executes. Undocumented or improvised fallbacks are never permitted.
+
+### Issue List Continuity
+16. **After completing a PR from the issue list**, always offer to: (a) update the issue list to mark the item as done, (b) return to the remaining items on the list, or (c) find new issues. Never end the flow without offering to continue through the issue list. If the issue list file cannot be read or written, report the error and file path to the user — do NOT attempt to reconstruct the list from memory or other sources. Then offer: (a) specify a new path, (b) switch to search-based discovery, or (c) done for now.
+17. **Context retention** — when working through the issue list, track which items have been addressed this session and which remain. Use this to avoid re-presenting completed items and to provide accurate remaining counts.
+
 ### Parallel Execution
-15. **Group PRs by repository** - one agent per repo, not per PR, to avoid branch checkout conflicts
-16. **Parallel execution** - when addressing multiple repos, launch ALL agents in a SINGLE message
-17. After parallel execution, present consolidated results table
+18. **Group PRs by repository** - one agent per repo, not per PR, to avoid branch checkout conflicts
+19. **Parallel execution** - when addressing multiple repos, launch ALL agents in a SINGLE message, then present consolidated results table
