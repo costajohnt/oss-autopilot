@@ -179,16 +179,24 @@ Some situations require the human contributor, not an AI tool:
 
 ### Do
 
-- Attribute work properly (co-authors for pair work)
-- Give credit in PR descriptions
+- Attribute work properly (co-authors for human pair work)
+- Give credit to human contributors in PR descriptions
 - Share knowledge with other contributors
 
 ### Don't
 
-- Add AI attribution to commits or PRs
+- Add AI attribution to commits or PRs:
+  - No `Co-Authored-By: Claude` trailers
+  - No "Generated with Claude Code" in PR descriptions
+  - No robot emoji attributions
+  - No mentions of AI assistance in comments
 - Claim credit for others' work
 - Submit low-quality PRs just for contribution graphs
 - Spam repos with trivial changes
+
+## Failure Protocol
+
+When a task or approach fails, **STOP and report back to the user** with what failed and why. Do not silently switch strategies or improvise workarounds — let the user decide how to proceed. Documented fallbacks (e.g., gh CLI fallback) are permitted if the user is informed first. Undocumented or improvised fallbacks are never permitted.
 
 ## Resources
 

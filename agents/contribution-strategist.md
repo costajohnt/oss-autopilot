@@ -74,7 +74,7 @@ This returns:
    - User preferences (languages, labels)
    - Repository relationship scores
 
-   **Fallback (if CLI unavailable):** Read from `.claude/oss-autopilot/`:
+   **Fallback (if CLI fails — tell the user: "The oss-autopilot CLI failed: [error]. Falling back to local data."):** Read from `.claude/oss-autopilot/`. If local data is also missing, STOP and report both errors to the user — do NOT improvise a workaround.
    - `pr-history.md` - Past merged/closed PRs
    - `tracked-prs.md` - Current active PRs
    - `config.md` - User preferences

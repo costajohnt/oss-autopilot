@@ -95,7 +95,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" c
 ```
 
 **Fallback - gh CLI:**
-If the TypeScript CLI is unavailable, fall back to `gh` CLI directly and read state from `.claude/oss-autopilot/` markdown files.
+If the TypeScript CLI command fails (non-zero exit, error output, or missing bundle), tell the user: "The oss-autopilot CLI failed: [error]. Falling back to gh CLI." Then attempt the `gh` equivalent. If `gh` also fails, STOP and report both errors to the user — do NOT improvise a workaround.
 
 ---
 
@@ -189,7 +189,7 @@ The `aiPolicyBlocklist` field is included in CLI search JSON output. If you disc
    - `pr-history.md` - Merged/closed PRs (successful relationships)
    - `repo-scores.md` - Cached repo evaluations
 
-**Fallback Search (if CLI unavailable):**
+**Fallback Search (if CLI search fails — follow Fallback protocol above: inform the user, then try gh. If gh also fails, STOP and report both errors):**
 
 A) **Starred/trusted repos first** (higher quality):
 ```bash
@@ -216,8 +216,8 @@ The CLI performs comprehensive vetting including:
 - Previous PR attempt analysis
 - Recommendation scoring
 
-**Fallback Manual Vetting:**
-For promising issues, perform deep vetting with this comprehensive checklist:
+**Fallback Manual Vetting (if CLI vet fails — inform the user before falling back):**
+For promising issues, perform deep vetting with this comprehensive checklist. If manual vetting also fails, STOP and report both errors to the user.
 
 ### 1. Claimability Check
 
@@ -464,10 +464,11 @@ When user wants to claim an issue:
    GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" claim https://github.com/owner/repo/issues/123 "Your claim message"
    ```
 
-   **Fallback (if CLI unavailable):**
+   **Fallback (if CLI claim fails — inform the user before falling back):**
    ```bash
    gh issue comment OWNER/REPO#NUMBER --body "message"
    ```
+   If this also fails, STOP and report both errors to the user.
 
    Add to tracked issues in local state
 

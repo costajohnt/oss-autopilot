@@ -70,7 +70,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" t
 ```
 
 **Fallback - gh CLI:**
-If the TypeScript CLI is unavailable, use `gh` CLI directly for PR data.
+If the TypeScript CLI command fails (non-zero exit, error output, or missing bundle), tell the user: "The oss-autopilot CLI failed: [error]. Falling back to gh CLI." Then use `gh` CLI directly for PR data. If `gh` also fails, STOP and report both errors to the user — do NOT improvise a workaround.
 
 ## Compliance Checks
 
@@ -82,7 +82,7 @@ Run these checks for any PR:
 **Via CLI (if PR is tracked):**
 The `status --json` output includes PR body for analysis.
 
-**Via gh CLI (fallback):**
+**Via gh CLI (fallback — follow Fallback protocol above: inform the user, then try gh):**
 ```bash
 gh pr view OWNER/REPO#NUMBER --json body | jq -r '.body'
 ```
