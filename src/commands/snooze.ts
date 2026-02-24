@@ -40,7 +40,7 @@ export async function runSnooze(options: SnoozeCommandOptions): Promise<void> {
   validatePRUrl(options.prUrl, options.json);
 
   const days = options.days ?? DEFAULT_SNOOZE_DAYS;
-  if (days <= 0) {
+  if (!Number.isFinite(days) || days <= 0) {
     if (options.json) {
       outputJsonError('Snooze duration must be a positive number of days.');
     } else {
