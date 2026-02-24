@@ -619,6 +619,60 @@ export class StateManager {
     }
   }
 
+  /**
+   * Test whether a repo matches any of the given exclusion lists.
+   * Both repo and org comparisons are case-insensitive (GitHub names are case-insensitive).
+   * @param repo  - Repository in "owner/repo" format.
+   * @param repos - Full "owner/repo" strings (case-insensitive match).
+   * @param orgs  - Org names (case-insensitive match against the owner segment of the repo).
+   */
+  private static matchesExclusion(repo: string, repos: string[], orgs?: string[]): boolean {
+    const repoLower = repo.toLowerCase();
+    if (repos.some(r => r.toLowerCase() === repoLower)) return true;
+    if (orgs?.some(o => o.toLowerCase() === repoLower.split('/')[0])) return true;
+    return false;
+  }
+
+  /**
+   * Check whether a repository matches any exclusion rule from the current config.
+   * A repo is excluded if it matches an entry in `excludeRepos` (case-insensitive)
+   * or if its owner segment matches an entry in `excludeOrgs` (case-insensitive).
+   * @param repo - Repository in "owner/repo" format.
+   */
+  private isExcluded(repo: string): boolean {
+    const { excludeRepos, excludeOrgs } = this.state.config;
+    return StateManager.matchesExclusion(repo, excludeRepos, excludeOrgs);
+  }
+
+  /**
+   * Remove repositories matching the given exclusion lists from `trustedProjects`
+   * and `repoScores`. Called when a repo or org is newly excluded to keep stored
+   * data consistent with current filters.
+   * @param repos - Full "owner/repo" strings to exclude (case-insensitive match).
+   * @param orgs  - Org names to exclude (case-insensitive match against owner segment).
+   */
+  cleanupExcludedData(repos: string[], orgs: string[]): void {
+    const matches = (repo: string): boolean => StateManager.matchesExclusion(repo, repos, orgs);
+
+    const beforeTrusted = this.state.config.trustedProjects.length;
+    this.state.config.trustedProjects = this.state.config.trustedProjects.filter(p => !matches(p));
+    const removedTrusted = beforeTrusted - this.state.config.trustedProjects.length;
+
+    let removedScoreCount = 0;
+    for (const key of Object.keys(this.state.repoScores)) {
+      if (matches(key)) {
+        delete this.state.repoScores[key];
+        removedScoreCount++;
+      }
+    }
+
+    if (removedTrusted > 0 || removedScoreCount > 0) {
+      console.error(
+        `[CLEANUP] Removed ${removedTrusted} trusted project(s) and ${removedScoreCount} repo score(s) for excluded repos/orgs`
+      );
+    }
+  }
+
   // === Starred Repos Management ===
 
   /**
@@ -1106,16 +1160,20 @@ export class StateManager {
    * Compute aggregate statistics from the current state. In v2 architecture, `activePRs`,
    * `dormantPRs`, `activeIssues`, and `needsResponse` always return 0 because those counts
    * come from the fresh GitHub fetch (see PRMonitor), not from local state. The `mergedPRs`
-   * and `closedPRs` counts are summed from repo score records. `totalTracked` reflects the
-   * number of repositories with score records.
+   * and `closedPRs` counts are summed from repo score records, excluding repos that match
+   * `excludeRepos` or `excludeOrgs` in the config (#211). `totalTracked` reflects the
+   * number of non-excluded repositories with score records.
    * @returns A Stats snapshot computed from the current state.
    */
   getStats(): Stats {
-    // v2: Calculate from repoScores (no local PR tracking)
+    // v2: Calculate from repoScores, filtering out excluded repos/orgs (#211)
     let totalMerged = 0;
     let totalClosed = 0;
+    let totalTracked = 0;
 
-    for (const score of Object.values(this.state.repoScores)) {
+    for (const [repoKey, score] of Object.entries(this.state.repoScores)) {
+      if (this.isExcluded(repoKey)) continue;
+      totalTracked++;
       totalMerged += score.mergedPRCount;
       totalClosed += score.closedWithoutMergeCount;
     }
@@ -1133,9 +1191,9 @@ export class StateManager {
       mergedPRs: totalMerged,
       closedPRs: totalClosed,
       activeIssues: 0,
-      trustedProjects: this.state.config.trustedProjects.length,
+      trustedProjects: this.state.config.trustedProjects.filter(p => !this.isExcluded(p)).length,
       mergeRate: mergeRate.toFixed(1) + '%',
-      totalTracked: Object.keys(this.state.repoScores).length,
+      totalTracked,
       needsResponse: 0,
     };
   }
@@ -1151,17 +1209,17 @@ export interface Stats {
   activePRs: number;
   /** Number of dormant PRs. Always 0 in v2 (sourced from fresh fetch instead). */
   dormantPRs: number;
-  /** Total merged PRs across all scored repositories. */
+  /** Total merged PRs across scored repositories (excludes repos/orgs in exclusion config). */
   mergedPRs: number;
-  /** Total PRs closed without merge across all scored repositories. */
+  /** Total PRs closed without merge across scored repositories (excludes repos/orgs in exclusion config). */
   closedPRs: number;
   /** Number of active issues. Always 0 in v2 (sourced from fresh fetch instead). */
   activeIssues: number;
-  /** Number of repositories in the trusted projects list. */
+  /** Number of trusted projects (excludes repos/orgs in exclusion config). */
   trustedProjects: number;
   /** Merge success rate as a percentage string (e.g. "75.0%"). */
   mergeRate: string;
-  /** Number of repositories with score records. */
+  /** Number of scored repositories (excludes repos/orgs in exclusion config). */
   totalTracked: number;
   /** Number of PRs needing a response. Always 0 in v2 (sourced from fresh fetch instead). */
   needsResponse: number;

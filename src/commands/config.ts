@@ -12,6 +12,11 @@ interface ConfigOptions {
   json?: boolean;
 }
 
+function exitWithError(msg: string, json?: boolean): never {
+  if (json) { outputJsonError(msg); } else { console.error(msg); }
+  process.exit(1);
+}
+
 export async function runConfig(options: ConfigOptions): Promise<void> {
   const stateManager = getStateManager();
   const currentConfig = stateManager.getState().config;
@@ -28,12 +33,7 @@ export async function runConfig(options: ConfigOptions): Promise<void> {
   }
 
   if (!options.value) {
-    if (options.json) {
-      outputJsonError('Value required');
-    } else {
-      console.error('Usage: oss-autopilot config <key> <value>');
-    }
-    process.exit(1);
+    exitWithError('Value required', options.json);
   }
 
   // Handle specific config keys
@@ -51,18 +51,37 @@ export async function runConfig(options: ConfigOptions): Promise<void> {
         stateManager.updateConfig({ labels: [...currentConfig.labels, options.value] });
       }
       break;
-    case 'exclude-repo':
-      if (!currentConfig.excludeRepos.includes(options.value)) {
+    case 'exclude-repo': {
+      const parts = options.value.split('/');
+      if (parts.length !== 2 || !parts[0] || !parts[1]) {
+        exitWithError(
+          `Invalid repo format "${options.value}". Use "owner/repo" format. To exclude an entire org, use: config exclude-org ${options.value}`,
+          options.json,
+        );
+      }
+      const valueLower = options.value.toLowerCase();
+      if (!currentConfig.excludeRepos.some(r => r.toLowerCase() === valueLower)) {
         stateManager.updateConfig({ excludeRepos: [...currentConfig.excludeRepos, options.value] });
+        stateManager.cleanupExcludedData([options.value], []);
       }
       break;
-    default:
-      if (options.json) {
-        outputJsonError(`Unknown config key: ${options.key}`);
-      } else {
-        console.error(`Unknown config key: ${options.key}`);
+    }
+    case 'exclude-org': {
+      if (options.value.includes('/')) {
+        exitWithError(
+          `Invalid org name "${options.value}". Use just the org name (e.g., "facebook"), not "owner/repo" format. To exclude a specific repo, use: config exclude-repo ${options.value}`,
+          options.json,
+        );
       }
-      process.exit(1);
+      const currentOrgs = currentConfig.excludeOrgs ?? [];
+      if (!currentOrgs.some(o => o.toLowerCase() === options.value.toLowerCase())) {
+        stateManager.updateConfig({ excludeOrgs: [...currentOrgs, options.value] });
+        stateManager.cleanupExcludedData([], [options.value]);
+      }
+      break;
+    }
+    default:
+      exitWithError(`Unknown config key: ${options.key}`, options.json);
   }
 
   stateManager.save();
