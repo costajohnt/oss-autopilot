@@ -346,9 +346,10 @@ Maintainers responded to your comments on these issues:
 ```
 
 For each issue, use AskUserQuestion to offer actions:
-- "Claim this issue" — Run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" claim ISSUE_URL --json` to add it to the tracked pipeline, then proceed to work on it
-- "View full thread" — Display the issue URL for the user to open in browser
-- "Skip" — Move to the next issue
+- "Claim this issue" — Run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" claim ISSUE_URL --json` to add it to the tracked pipeline. Also auto-dismiss by running `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" dismiss ISSUE_URL --json`. Then proceed to work on it.
+- "Mark as reviewed" — The user has seen the reply but doesn't want to claim the issue right now. Dismiss it so it won't reappear next session: run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" dismiss ISSUE_URL --json`. If a genuinely new response arrives later (after the dismiss timestamp), the auto-undismiss logic will resurface it.
+- "View full thread" — Display the issue URL for the user to open in browser. After viewing, re-prompt with the same options for this issue (do not advance to the next issue).
+- "Skip" — Leave the reply undismissed. It will reappear next session. Use this when the user wants to defer action to a future session.
 
 After processing all issue replies (or user chooses to stop), return to Step 3 to present action choices again.
 
