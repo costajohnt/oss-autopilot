@@ -22,9 +22,6 @@ interface UnsnoozeCommandOptions {
   json?: boolean;
 }
 
-// Re-export for backward compatibility with tests
-export { PR_URL_PATTERN };
-
 export async function runSnooze(options: SnoozeCommandOptions): Promise<void> {
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
 
@@ -76,29 +73,19 @@ export async function runSnooze(options: SnoozeCommandOptions): Promise<void> {
 export async function runUnsnooze(options: UnsnoozeCommandOptions): Promise<void> {
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
 
-  try {
-    const stateManager = getStateManager();
-    const removed = stateManager.unsnoozePR(options.prUrl);
+  const stateManager = getStateManager();
+  const removed = stateManager.unsnoozePR(options.prUrl);
 
-    if (removed) {
-      stateManager.save();
-    }
+  if (removed) {
+    stateManager.save();
+  }
 
-    if (options.json) {
-      outputJson({ unsnoozed: removed, url: options.prUrl });
-    } else if (removed) {
-      console.log(`Unsnoozed: ${options.prUrl}`);
-      console.log('CI failure notifications are active again for this PR.');
-    } else {
-      console.log('PR was not snoozed.');
-    }
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    if (options.json) {
-      outputJsonError(`Unsnooze failed: ${msg}`);
-    } else {
-      console.error(`Error: Unsnooze failed: ${msg}`);
-    }
-    process.exit(1);
+  if (options.json) {
+    outputJson({ unsnoozed: removed, url: options.prUrl });
+  } else if (removed) {
+    console.log(`Unsnoozed: ${options.prUrl}`);
+    console.log('CI failure notifications are active again for this PR.');
+  } else {
+    console.log('PR was not snoozed.');
   }
 }
