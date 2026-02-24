@@ -117,8 +117,11 @@ git log --oneline HEAD..upstream/MAIN_BRANCH | wc -l
 **Step 3: If behind, perform rebase (Tier 1 — auto-safe)**
 ```bash
 git rebase upstream/MAIN_BRANCH
-# If clean:
-git push origin PR_BRANCH --force-with-lease
+# If clean — follow the rebase push protocol:
+git branch --set-upstream-to=origin/PR_BRANCH PR_BRANCH
+git fetch origin PR_BRANCH
+git push --force-with-lease
+# If --force-with-lease fails: STOP. Do NOT fall back to --force. Report the error.
 # If conflicts:
 git rebase --abort
 # Report conflicts for Tier 2 handling
@@ -273,4 +276,4 @@ For missing changesets:
 - Explain *why* something is failing, not just *that* it's failing
 - For complex issues, suggest asking the maintainer for guidance
 - **Rebase is safe to execute directly** — it replays existing commits, doesn't change code
-- **Always use --force-with-lease** (not --force) for safety
+- **Always use --force-with-lease** (not --force) for safety. Before pushing, set upstream tracking (`git branch --set-upstream-to=origin/BRANCH BRANCH`) and fetch the remote ref (`git fetch origin BRANCH`) so the lease ref is current. **NEVER fall back to --force** if --force-with-lease fails — report the error instead
