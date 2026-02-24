@@ -56,8 +56,9 @@ jobs:
           echo "Bundle created successfully: $(wc -c < dist/cli.bundle.cjs) bytes"
 
   # Maintains a shields.io endpoint badge with the current passing test count.
-  # Re-runs tests after CI passes on main, writes the count to .github/badges/tests.json,
-  # and commits. The README references this file via a shields.io /endpoint badge URL.
+  # Re-runs tests after CI passes on main, writes the count to .github/badges/tests.json
+  # on a separate 'badges' branch (main is protected and blocks direct pushes).
+  # The README references this file via a shields.io /endpoint badge URL.
   update-badge:
     name: Update test badge
     needs: [ci]
@@ -88,6 +89,7 @@ jobs:
           fi
           PASSED=$(node -p "try { require('./test-results.json').numPassedTests || 0 } catch { 0 }")
           if [ "$PASSED" -gt 0 ]; then
+            mkdir -p .github/badges
             echo "{\"schemaVersion\":1,\"label\":\"tests\",\"message\":\"${PASSED} passing\",\"color\":\"success\"}" > .github/badges/tests.json
             echo "Badge updated: ${PASSED} passing"
           else
@@ -95,10 +97,29 @@ jobs:
           fi
           rm -f test-results.json
 
-      - name: Commit badge update
+      - name: Push badge to badges branch
         run: |
+          if [ ! -f .github/badges/tests.json ]; then
+            echo "No badge file to push"
+            exit 0
+          fi
+          cp .github/badges/tests.json /tmp/badge.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Fetch existing badges branch, or create orphan on first run
+          if git fetch origin badges:badges 2>/dev/null; then
+            git checkout -f badges
+          else
+            git checkout --orphan badges
+            git rm -rf . 2>/dev/null || true
+          fi
+          mkdir -p .github/badges
+          cp /tmp/badge.json .github/badges/tests.json
           git add .github/badges/tests.json
-          git diff --staged --quiet || git commit -m "chore: update test badge [skip ci]"
-          git push
+          # Only commit and push if badge content changed
+          if git diff --staged --quiet; then
+            echo "Badge unchanged, skipping push"
+          else
+            git commit -m "chore: update test badge [skip ci]"
+            git push origin badges --force
+          fi
