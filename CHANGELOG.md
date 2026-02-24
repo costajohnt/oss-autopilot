@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.36.2](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.36.1...oss-autopilot-v0.36.2) (2026-02-24)
+
+
+### Bug Fixes
+
+* address all open issues ([#192](https://github.com/costajohnt/oss-autopilot/issues/192), [#202](https://github.com/costajohnt/oss-autopilot/issues/202), [#203](https://github.com/costajohnt/oss-autopilot/issues/203), [#204](https://github.com/costajohnt/oss-autopilot/issues/204)) ([#209](https://github.com/costajohnt/oss-autopilot/issues/209)) ([c2a271d](https://github.com/costajohnt/oss-autopilot/commit/c2a271dc3dc59e5a7b2995ec937257a11fdbfd5a))
+
 ## [0.36.1](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.36.0...oss-autopilot-v0.36.1) (2026-02-24)
 
 
