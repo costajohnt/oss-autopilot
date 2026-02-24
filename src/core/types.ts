@@ -551,9 +551,9 @@ export interface AgentConfig {
   languages: string[];
   /** GitHub labels to filter issues by (e.g., `["good first issue", "help wanted"]`). */
   labels: string[];
-  /** Repos to exclude from issue search, in `"owner/repo"` format. */
+  /** Repos to exclude from search and stats, in `"owner/repo"` format. */
   excludeRepos: string[];
-  /** Organizations to exclude from issue search. */
+  /** Organizations to exclude from search and stats (case-insensitive match on owner segment). */
   excludeOrgs?: string[];
 
   /** Repos where the contributor has had PRs merged. Used for prioritization. */

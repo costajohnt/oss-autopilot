@@ -935,6 +935,34 @@ describe('StateManager getStats exclusion filtering', () => {
     expect(stats.totalTracked).toBe(0);
   });
 
+  it('should match excludeRepos case-insensitively', () => {
+    stateManager.updateRepoScore('facebook/react', { mergedPRCount: 5 });
+    stateManager.updateConfig({ excludeRepos: ['Facebook/React'] });
+
+    const stats = stateManager.getStats();
+    expect(stats.mergedPRs).toBe(0);
+    expect(stats.totalTracked).toBe(0);
+  });
+
+  it('should exclude by both excludeRepos and excludeOrgs simultaneously', () => {
+    stateManager.updateRepoScore('org-a/repo-1', { mergedPRCount: 1 });
+    stateManager.updateRepoScore('org-b/repo-2', { mergedPRCount: 2 });
+    stateManager.updateRepoScore('org-c/repo-3', { mergedPRCount: 3 });
+    stateManager.updateConfig({ excludeRepos: ['org-a/repo-1'], excludeOrgs: ['org-b'] });
+
+    const stats = stateManager.getStats();
+    expect(stats.mergedPRs).toBe(3);
+    expect(stats.totalTracked).toBe(1);
+  });
+
+  it('should work when excludeOrgs is undefined', () => {
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 2 });
+    // excludeOrgs is not set (undefined) — should not crash
+    const stats = stateManager.getStats();
+    expect(stats.mergedPRs).toBe(2);
+    expect(stats.totalTracked).toBe(1);
+  });
+
   it('should filter trustedProjects count by excludeRepos', () => {
     stateManager.addTrustedProject('owner/kept');
     stateManager.addTrustedProject('owner/excluded');
@@ -1012,6 +1040,16 @@ describe('StateManager cleanupExcludedData', () => {
     expect(stateManager.getState().repoScores['bad-org/repo-a']).toBeUndefined();
     expect(stateManager.getState().repoScores['bad-org/repo-b']).toBeUndefined();
     expect(stateManager.getState().repoScores['good-org/repo-c']).toBeDefined();
+  });
+
+  it('should match repo name case-insensitively', () => {
+    stateManager.addTrustedProject('facebook/react');
+    stateManager.updateRepoScore('facebook/react', { mergedPRCount: 1 });
+
+    stateManager.cleanupExcludedData(['Facebook/React'], []);
+
+    expect(stateManager.getState().config.trustedProjects).toEqual([]);
+    expect(stateManager.getState().repoScores['facebook/react']).toBeUndefined();
   });
 
   it('should match org name case-insensitively', () => {
