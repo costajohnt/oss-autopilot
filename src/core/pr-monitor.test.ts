@@ -2634,3 +2634,248 @@ describe('Maintainer self-reply detection (#199)', () => {
     expect(result).toBe(true);
   });
 });
+
+describe('fetchUserMergedPRCounts — historical stats filtering', () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  function makeMergedPRItem(owner: string, repo: string, mergedAt: string) {
+    return {
+      html_url: `https://github.com/${owner}/${repo}/pull/1`,
+      pull_request: { merged_at: mergedAt },
+      closed_at: mergedAt,
+      created_at: mergedAt,
+    };
+  }
+
+  it('should count merged PRs from excluded repos', async () => {
+    vi.mocked(getStateManager).mockReturnValue({
+      getState: () => ({
+        config: {
+          githubUsername: 'testuser',
+          excludeRepos: ['someorg/excluded-repo'],
+          excludeOrgs: [],
+        },
+      }),
+    } as any);
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            total_count: 2,
+            items: [
+              makeMergedPRItem('someorg', 'excluded-repo', '2025-06-01T00:00:00Z'),
+              makeMergedPRItem('otherorg', 'normal-repo', '2025-07-01T00:00:00Z'),
+            ],
+          },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserMergedPRCounts();
+
+    // Both PRs should be counted — excludeRepos should NOT filter historical stats
+    expect(result.repos.size).toBe(2);
+    expect(result.repos.get('someorg/excluded-repo')).toEqual({ count: 1, lastMergedAt: '2025-06-01T00:00:00Z' });
+    expect(result.repos.get('otherorg/normal-repo')).toEqual({ count: 1, lastMergedAt: '2025-07-01T00:00:00Z' });
+  });
+
+  it('should count merged PRs from excluded orgs', async () => {
+    vi.mocked(getStateManager).mockReturnValue({
+      getState: () => ({
+        config: {
+          githubUsername: 'testuser',
+          excludeRepos: [],
+          excludeOrgs: ['excludedorg'],
+        },
+      }),
+    } as any);
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            total_count: 2,
+            items: [
+              makeMergedPRItem('excludedorg', 'their-repo', '2025-06-01T00:00:00Z'),
+              makeMergedPRItem('otherorg', 'normal-repo', '2025-07-01T00:00:00Z'),
+            ],
+          },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserMergedPRCounts();
+
+    // Both PRs should be counted — excludeOrgs should NOT filter historical stats
+    expect(result.repos.size).toBe(2);
+    expect(result.repos.get('excludedorg/their-repo')).toEqual({ count: 1, lastMergedAt: '2025-06-01T00:00:00Z' });
+    expect(result.repos.get('otherorg/normal-repo')).toEqual({ count: 1, lastMergedAt: '2025-07-01T00:00:00Z' });
+  });
+
+  it('should still filter out self-repo PRs', async () => {
+    vi.mocked(getStateManager).mockReturnValue({
+      getState: () => ({
+        config: {
+          githubUsername: 'testuser',
+          excludeRepos: [],
+          excludeOrgs: [],
+        },
+      }),
+    } as any);
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            total_count: 2,
+            items: [
+              makeMergedPRItem('testuser', 'my-own-repo', '2025-06-01T00:00:00Z'),
+              makeMergedPRItem('otherorg', 'their-repo', '2025-07-01T00:00:00Z'),
+            ],
+          },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserMergedPRCounts();
+
+    // Self-repo PR should be filtered out, only the other one counted
+    expect(result.repos.size).toBe(1);
+    expect(result.repos.has('testuser/my-own-repo')).toBe(false);
+    expect(result.repos.get('otherorg/their-repo')).toEqual({ count: 1, lastMergedAt: '2025-07-01T00:00:00Z' });
+  });
+});
+
+describe('fetchUserClosedPRCounts — historical stats filtering', () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  function makeClosedPRItem(owner: string, repo: string, closedAt: string) {
+    return {
+      html_url: `https://github.com/${owner}/${repo}/pull/1`,
+      closed_at: closedAt,
+      created_at: closedAt,
+    };
+  }
+
+  it('should count closed PRs from excluded repos', async () => {
+    vi.mocked(getStateManager).mockReturnValue({
+      getState: () => ({
+        config: {
+          githubUsername: 'testuser',
+          excludeRepos: ['someorg/excluded-repo'],
+          excludeOrgs: [],
+        },
+      }),
+    } as any);
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            total_count: 2,
+            items: [
+              makeClosedPRItem('someorg', 'excluded-repo', '2025-06-01T00:00:00Z'),
+              makeClosedPRItem('otherorg', 'normal-repo', '2025-07-01T00:00:00Z'),
+            ],
+          },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserClosedPRCounts();
+
+    // Both PRs should be counted — excludeRepos should NOT filter historical stats
+    expect(result.repos.size).toBe(2);
+    expect(result.repos.get('someorg/excluded-repo')).toBe(1);
+    expect(result.repos.get('otherorg/normal-repo')).toBe(1);
+  });
+
+  it('should count closed PRs from excluded orgs', async () => {
+    vi.mocked(getStateManager).mockReturnValue({
+      getState: () => ({
+        config: {
+          githubUsername: 'testuser',
+          excludeRepos: [],
+          excludeOrgs: ['excludedorg'],
+        },
+      }),
+    } as any);
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            total_count: 2,
+            items: [
+              makeClosedPRItem('excludedorg', 'their-repo', '2025-06-01T00:00:00Z'),
+              makeClosedPRItem('otherorg', 'normal-repo', '2025-07-01T00:00:00Z'),
+            ],
+          },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserClosedPRCounts();
+
+    // Both PRs should be counted — excludeOrgs should NOT filter historical stats
+    expect(result.repos.size).toBe(2);
+    expect(result.repos.get('excludedorg/their-repo')).toBe(1);
+    expect(result.repos.get('otherorg/normal-repo')).toBe(1);
+  });
+
+  it('should still filter out self-repo PRs', async () => {
+    vi.mocked(getStateManager).mockReturnValue({
+      getState: () => ({
+        config: {
+          githubUsername: 'testuser',
+          excludeRepos: [],
+          excludeOrgs: [],
+        },
+      }),
+    } as any);
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            total_count: 2,
+            items: [
+              makeClosedPRItem('testuser', 'my-own-repo', '2025-06-01T00:00:00Z'),
+              makeClosedPRItem('otherorg', 'their-repo', '2025-07-01T00:00:00Z'),
+            ],
+          },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserClosedPRCounts();
+
+    // Self-repo PR should be filtered out, only the other one counted
+    expect(result.repos.size).toBe(1);
+    expect(result.repos.has('testuser/my-own-repo')).toBe(false);
+    expect(result.repos.get('otherorg/their-repo')).toBe(1);
+  });
+});
