@@ -59,7 +59,8 @@ export async function runConfig(options: ConfigOptions): Promise<void> {
           options.json,
         );
       }
-      if (!currentConfig.excludeRepos.includes(options.value)) {
+      const valueLower = options.value.toLowerCase();
+      if (!currentConfig.excludeRepos.some(r => r.toLowerCase() === valueLower)) {
         stateManager.updateConfig({ excludeRepos: [...currentConfig.excludeRepos, options.value] });
         stateManager.cleanupExcludedData([options.value], []);
       }
@@ -73,7 +74,7 @@ export async function runConfig(options: ConfigOptions): Promise<void> {
         );
       }
       const currentOrgs = currentConfig.excludeOrgs ?? [];
-      if (!currentOrgs.includes(options.value)) {
+      if (!currentOrgs.some(o => o.toLowerCase() === options.value.toLowerCase())) {
         stateManager.updateConfig({ excludeOrgs: [...currentOrgs, options.value] });
         stateManager.cleanupExcludedData([], [options.value]);
       }
