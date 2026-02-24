@@ -52,8 +52,27 @@ export async function runConfig(options: ConfigOptions): Promise<void> {
       }
       break;
     case 'exclude-repo':
+      if (!options.value.includes('/')) {
+        const repoMsg = `Invalid repo format "${options.value}". Use "owner/repo" format. To exclude an entire org, use: config exclude-org ${options.value}`;
+        if (options.json) { outputJsonError(repoMsg); } else { console.error(repoMsg); }
+        process.exit(1);
+      }
       if (!currentConfig.excludeRepos.includes(options.value)) {
         stateManager.updateConfig({ excludeRepos: [...currentConfig.excludeRepos, options.value] });
+        stateManager.cleanupExcludedData([options.value], []);
+      }
+      break;
+    case 'exclude-org':
+      if (options.value.includes('/')) {
+        const orgMsg = `Invalid org name "${options.value}". Use just the org name (e.g., "facebook"), not "owner/repo" format. To exclude a specific repo, use: config exclude-repo ${options.value}`;
+        if (options.json) { outputJsonError(orgMsg); } else { console.error(orgMsg); }
+        process.exit(1);
+      }
+      if (!(currentConfig.excludeOrgs ?? []).includes(options.value)) {
+        stateManager.updateConfig({
+          excludeOrgs: [...(currentConfig.excludeOrgs ?? []), options.value],
+        });
+        stateManager.cleanupExcludedData([], [options.value]);
       }
       break;
     default:

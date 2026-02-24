@@ -619,6 +619,58 @@ export class StateManager {
     }
   }
 
+  /**
+   * Test whether a repo matches any of the given exclusion lists.
+   * @param repo  - Repository in "owner/repo" format.
+   * @param repos - Full "owner/repo" strings (exact match).
+   * @param orgs  - Org names (case-insensitive prefix match against "owner/").
+   */
+  private static matchesExclusion(repo: string, repos: string[], orgs?: string[]): boolean {
+    if (repos.includes(repo)) return true;
+    if (orgs?.some(o => o.toLowerCase() === repo.split('/')[0].toLowerCase())) return true;
+    return false;
+  }
+
+  /**
+   * Check whether a repository matches any exclusion rule from the current config.
+   * A repo is excluded if it appears in `excludeRepos` (exact match) or if its
+   * org prefix matches any entry in `excludeOrgs` (case-insensitive).
+   * @param repo - Repository in "owner/repo" format.
+   */
+  private isExcluded(repo: string): boolean {
+    const { excludeRepos, excludeOrgs } = this.state.config;
+    return StateManager.matchesExclusion(repo, excludeRepos, excludeOrgs);
+  }
+
+  /**
+   * Remove repositories matching the given exclusion lists from `trustedProjects`
+   * and `repoScores`. Called when a repo or org is newly excluded to keep stored
+   * data consistent with current filters.
+   * @param repos - Full "owner/repo" strings to exclude (exact match).
+   * @param orgs  - Org names to exclude (matches all "org/*" repos, case-insensitive).
+   */
+  cleanupExcludedData(repos: string[], orgs: string[]): void {
+    const matches = (repo: string): boolean => StateManager.matchesExclusion(repo, repos, orgs);
+
+    const beforeTrusted = this.state.config.trustedProjects.length;
+    this.state.config.trustedProjects = this.state.config.trustedProjects.filter(p => !matches(p));
+    const removedTrusted = beforeTrusted - this.state.config.trustedProjects.length;
+
+    let removedScoreCount = 0;
+    for (const key of Object.keys(this.state.repoScores)) {
+      if (matches(key)) {
+        delete this.state.repoScores[key];
+        removedScoreCount++;
+      }
+    }
+
+    if (removedTrusted > 0 || removedScoreCount > 0) {
+      console.error(
+        `[CLEANUP] Removed ${removedTrusted} trusted project(s) and ${removedScoreCount} repo score(s) for excluded repos/orgs`
+      );
+    }
+  }
+
   // === Starred Repos Management ===
 
   /**
@@ -1111,11 +1163,14 @@ export class StateManager {
    * @returns A Stats snapshot computed from the current state.
    */
   getStats(): Stats {
-    // v2: Calculate from repoScores (no local PR tracking)
+    // v2: Calculate from repoScores, filtering out excluded repos/orgs (#211)
     let totalMerged = 0;
     let totalClosed = 0;
+    let totalTracked = 0;
 
     for (const score of Object.values(this.state.repoScores)) {
+      if (this.isExcluded(score.repo)) continue;
+      totalTracked++;
       totalMerged += score.mergedPRCount;
       totalClosed += score.closedWithoutMergeCount;
     }
@@ -1133,9 +1188,9 @@ export class StateManager {
       mergedPRs: totalMerged,
       closedPRs: totalClosed,
       activeIssues: 0,
-      trustedProjects: this.state.config.trustedProjects.length,
+      trustedProjects: this.state.config.trustedProjects.filter(p => !this.isExcluded(p)).length,
       mergeRate: mergeRate.toFixed(1) + '%',
-      totalTracked: Object.keys(this.state.repoScores).length,
+      totalTracked,
       needsResponse: 0,
     };
   }

@@ -66,8 +66,12 @@ Task(issue-scout, "Search for good-first-issue candidates in trending/popular re
   [If searchedRepos is non-empty, insert: "Exclude results from these repos (already searched in prior rounds): {searchedRepos as comma-separated list}."]
   Exclude issues authored by the user (get username from `gh api user -q .login`).
   Read the user's language preferences from .claude/oss-autopilot/config.md.
-  Then: gh search issues --label 'good first issue' --language {lang} --state open --sort reactions-+1 --limit 10
+  Read minStars from ~/.oss-autopilot/state.json at path config.minStars (default 50 if missing or null).
+  Then: gh search issues --label 'good first issue' --language {lang} --state open --sort reactions-+1 --limit 20
+  For each candidate, check the repo's star count via `gh api repos/{owner}/{repo} -q .stargazers_count`.
+  Filter out repos with fewer stars than minStars.
   Focus on repos with high star counts and recent activity.
+  Return at most 10 results that pass the filter.
   For each: repo, number, title, URL, labels, star count, source: 'trending-repo', and brief assessment.")
 ```
 
