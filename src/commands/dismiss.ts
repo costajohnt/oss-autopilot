@@ -5,30 +5,19 @@
  */
 
 import { getStateManager } from '../core/index.js';
-import { outputJson, outputJsonError } from '../formatters/json.js';
+import { outputJson } from '../formatters/json.js';
+import { ISSUE_URL_PATTERN, validateGitHubUrl } from './validation.js';
 
 interface DismissCommandOptions {
   issueUrl: string;
   json?: boolean;
 }
 
-/** @internal Exported for testing */
-export const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+$/;
-
-function validateIssueUrl(issueUrl: string, json?: boolean): void {
-  if (ISSUE_URL_PATTERN.test(issueUrl)) return;
-
-  if (json) {
-    outputJsonError(`Invalid issue URL: ${issueUrl}. Expected format: https://github.com/owner/repo/issues/123`);
-  } else {
-    console.error(`Error: Invalid issue URL: ${issueUrl}`);
-    console.error('Expected format: https://github.com/owner/repo/issues/123');
-  }
-  process.exit(1);
-}
+// Re-export for backward compatibility with tests
+export { ISSUE_URL_PATTERN };
 
 export async function runDismiss(options: DismissCommandOptions): Promise<void> {
-  validateIssueUrl(options.issueUrl, options.json);
+  validateGitHubUrl(options.issueUrl, ISSUE_URL_PATTERN, 'issue', options.json);
 
   const stateManager = getStateManager();
   const added = stateManager.dismissIssue(options.issueUrl, new Date().toISOString());
@@ -49,7 +38,7 @@ export async function runDismiss(options: DismissCommandOptions): Promise<void> 
 }
 
 export async function runUndismiss(options: DismissCommandOptions): Promise<void> {
-  validateIssueUrl(options.issueUrl, options.json);
+  validateGitHubUrl(options.issueUrl, ISSUE_URL_PATTERN, 'issue', options.json);
 
   const stateManager = getStateManager();
   const removed = stateManager.undismissIssue(options.issueUrl);

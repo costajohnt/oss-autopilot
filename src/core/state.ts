@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, RepoScoreUpdate, StateEvent, StateEventType, DailyDigest, LocalRepoCache } from './types.js';
+import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, RepoScoreUpdate, StateEvent, StateEventType, DailyDigest, LocalRepoCache, SnoozeInfo } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
 
 // Current state version
@@ -130,6 +130,9 @@ export class StateManager {
         labels: [...INITIAL_STATE.config.labels],
         excludeRepos: [],
         trustedProjects: [],
+        shelvedPRUrls: [],
+        dismissedIssues: {},
+        snoozedPRs: {},
       },
       events: [],
       lastRunAt: new Date().toISOString(),
@@ -737,6 +740,94 @@ export class StateManager {
    */
   getIssueDismissedAt(url: string): string | undefined {
     return this.state.config.dismissedIssues?.[url];
+  }
+
+  // === Snooze / Unsnooze CI Failures ===
+
+  /**
+   * Snooze a PR's CI failure for a given number of days.
+   * Snoozed PRs are excluded from actionable CI failure lists until the snooze expires.
+   * @param url - The full GitHub PR URL.
+   * @param reason - Why the CI failure is being snoozed (e.g., "upstream infrastructure issue").
+   * @param durationDays - Number of days to snooze. Default 7.
+   * @returns true if newly snoozed, false if already snoozed.
+   */
+  snoozePR(url: string, reason: string, durationDays: number): boolean {
+    if (!Number.isFinite(durationDays) || durationDays <= 0) {
+      throw new Error(`Invalid snooze duration: ${durationDays}. Must be a positive finite number.`);
+    }
+    if (!this.state.config.snoozedPRs) {
+      this.state.config.snoozedPRs = {};
+    }
+    if (url in this.state.config.snoozedPRs) {
+      return false;
+    }
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+    this.state.config.snoozedPRs[url] = {
+      reason,
+      snoozedAt: now.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    };
+    return true;
+  }
+
+  /**
+   * Unsnooze a PR by URL.
+   * @param url - The full GitHub PR URL.
+   * @returns true if found and removed, false if not snoozed.
+   */
+  unsnoozePR(url: string): boolean {
+    if (!this.state.config.snoozedPRs || !(url in this.state.config.snoozedPRs)) {
+      return false;
+    }
+    delete this.state.config.snoozedPRs[url];
+    return true;
+  }
+
+  /**
+   * Check if a PR is currently snoozed (not expired).
+   * @param url - The full GitHub PR URL.
+   * @returns true if the PR is snoozed and the snooze has not expired.
+   */
+  isSnoozed(url: string): boolean {
+    const info = this.getSnoozeInfo(url);
+    if (!info) return false;
+    const expiresAtMs = new Date(info.expiresAt).getTime();
+    if (isNaN(expiresAtMs)) {
+      console.error(`[STATE] Invalid expiresAt for snoozed PR ${url}: "${info.expiresAt}". Treating as not snoozed.`);
+      return false;
+    }
+    return expiresAtMs > Date.now();
+  }
+
+  /**
+   * Get snooze metadata for a PR.
+   * @param url - The full GitHub PR URL.
+   * @returns The snooze metadata, or undefined if not snoozed.
+   */
+  getSnoozeInfo(url: string): SnoozeInfo | undefined {
+    return this.state.config.snoozedPRs?.[url];
+  }
+
+  /**
+   * Expire all snoozes that are past their `expiresAt` timestamp.
+   * @returns Array of PR URLs whose snoozes were expired.
+   */
+  expireSnoozes(): string[] {
+    if (!this.state.config.snoozedPRs) return [];
+    const expired: string[] = [];
+    const now = Date.now();
+    for (const [url, info] of Object.entries(this.state.config.snoozedPRs)) {
+      const expiresAtMs = new Date(info.expiresAt).getTime();
+      if (isNaN(expiresAtMs) || expiresAtMs <= now) {
+        expired.push(url);
+      }
+    }
+    for (const url of expired) {
+      delete this.state.config.snoozedPRs![url];
+    }
+    return expired;
   }
 
   // === PR Utilities ===

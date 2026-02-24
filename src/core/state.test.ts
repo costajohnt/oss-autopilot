@@ -768,3 +768,130 @@ describe('dismissIssue / undismissIssue / getIssueDismissedAt', () => {
     expect(stateManager.getState().config.dismissedIssues).toEqual({ [url]: timestamp });
   });
 });
+
+// ── Snooze / Unsnooze PR CI Failures ──────────────────────────────────────
+describe('snoozePR / unsnoozePR / isSnoozed / expireSnoozes', () => {
+  let stateManager: StateManager;
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  it('should snooze a PR and mark it as snoozed', () => {
+    const url = 'https://github.com/owner/repo/pull/1';
+    expect(stateManager.snoozePR(url, 'upstream issue', 7)).toBe(true);
+    expect(stateManager.isSnoozed(url)).toBe(true);
+  });
+
+  it('should return false when snoozing an already-snoozed PR (idempotent)', () => {
+    const url = 'https://github.com/owner/repo/pull/1';
+    stateManager.snoozePR(url, 'upstream issue', 7);
+    expect(stateManager.snoozePR(url, 'different reason', 14)).toBe(false);
+  });
+
+  it('should store snooze metadata correctly', () => {
+    const url = 'https://github.com/owner/repo/pull/1';
+    const before = Date.now();
+    stateManager.snoozePR(url, 'flaky infra', 14);
+    const after = Date.now();
+
+    const info = stateManager.getSnoozeInfo(url);
+    expect(info).toBeDefined();
+    expect(info!.reason).toBe('flaky infra');
+
+    const snoozedAt = new Date(info!.snoozedAt).getTime();
+    expect(snoozedAt).toBeGreaterThanOrEqual(before);
+    expect(snoozedAt).toBeLessThanOrEqual(after);
+
+    const expiresAt = new Date(info!.expiresAt).getTime();
+    const expectedExpiry = snoozedAt + 14 * 24 * 60 * 60 * 1000;
+    expect(expiresAt).toBe(expectedExpiry);
+  });
+
+  it('should unsnooze a snoozed PR', () => {
+    const url = 'https://github.com/owner/repo/pull/1';
+    stateManager.snoozePR(url, 'upstream issue', 7);
+    expect(stateManager.unsnoozePR(url)).toBe(true);
+    expect(stateManager.isSnoozed(url)).toBe(false);
+    expect(stateManager.getSnoozeInfo(url)).toBeUndefined();
+  });
+
+  it('should return false when unsnoozing a PR that is not snoozed', () => {
+    const url = 'https://github.com/owner/repo/pull/1';
+    expect(stateManager.unsnoozePR(url)).toBe(false);
+  });
+
+  it('should report expired snoozes as not snoozed via isSnoozed', () => {
+    const url = 'https://github.com/owner/repo/pull/1';
+    stateManager.snoozePR(url, 'test', 7);
+
+    // Manually set expiresAt to the past
+    const config = stateManager.getState().config as any;
+    config.snoozedPRs[url].expiresAt = '2020-01-01T00:00:00.000Z';
+
+    expect(stateManager.isSnoozed(url)).toBe(false);
+  });
+
+  it('should expire snoozes that are past their expiresAt', () => {
+    const url1 = 'https://github.com/owner/repo/pull/1';
+    const url2 = 'https://github.com/owner/repo/pull/2';
+    stateManager.snoozePR(url1, 'expired one', 7);
+    stateManager.snoozePR(url2, 'still active', 7);
+
+    // Set url1 to expired
+    const config = stateManager.getState().config as any;
+    config.snoozedPRs[url1].expiresAt = '2020-01-01T00:00:00.000Z';
+
+    const expired = stateManager.expireSnoozes();
+    expect(expired).toEqual([url1]);
+    expect(stateManager.getSnoozeInfo(url1)).toBeUndefined();
+    expect(stateManager.getSnoozeInfo(url2)).toBeDefined();
+  });
+
+  it('should return empty array when no snoozes have expired', () => {
+    const url = 'https://github.com/owner/repo/pull/1';
+    stateManager.snoozePR(url, 'test', 7);
+    const expired = stateManager.expireSnoozes();
+    expect(expired).toEqual([]);
+  });
+
+  it('should return empty array when there are no snoozes', () => {
+    expect(stateManager.expireSnoozes()).toEqual([]);
+  });
+
+  it('should handle multiple snoozed PRs independently', () => {
+    const url1 = 'https://github.com/owner/repo/pull/1';
+    const url2 = 'https://github.com/owner/repo/pull/2';
+    stateManager.snoozePR(url1, 'reason 1', 7);
+    stateManager.snoozePR(url2, 'reason 2', 14);
+    expect(stateManager.isSnoozed(url1)).toBe(true);
+    expect(stateManager.isSnoozed(url2)).toBe(true);
+
+    stateManager.unsnoozePR(url1);
+    expect(stateManager.isSnoozed(url1)).toBe(false);
+    expect(stateManager.isSnoozed(url2)).toBe(true);
+  });
+
+  it('should handle isSnoozed when snoozedPRs is undefined', () => {
+    (stateManager.getState().config as any).snoozedPRs = undefined;
+    expect(stateManager.isSnoozed('https://github.com/owner/repo/pull/1')).toBe(false);
+  });
+
+  it('should handle getSnoozeInfo when snoozedPRs is undefined', () => {
+    (stateManager.getState().config as any).snoozedPRs = undefined;
+    expect(stateManager.getSnoozeInfo('https://github.com/owner/repo/pull/1')).toBeUndefined();
+  });
+
+  it('should initialize snoozedPRs object when first snoozing', () => {
+    (stateManager.getState().config as any).snoozedPRs = undefined;
+    const url = 'https://github.com/owner/repo/pull/1';
+    expect(stateManager.snoozePR(url, 'test', 7)).toBe(true);
+    expect(stateManager.getState().config.snoozedPRs).toBeDefined();
+    expect(Object.keys(stateManager.getState().config.snoozedPRs!)).toHaveLength(1);
+  });
+
+  it('should handle expireSnoozes when snoozedPRs is undefined', () => {
+    (stateManager.getState().config as any).snoozedPRs = undefined;
+    expect(stateManager.expireSnoozes()).toEqual([]);
+  });
+});

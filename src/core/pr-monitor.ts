@@ -807,9 +807,9 @@ export class PRMonitor {
         // Skip own repos (PRs to your own repos aren't OSS contributions)
         if (owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
 
-        // Skip excluded repos and orgs
-        if (config.excludeRepos.includes(repo)) continue;
-        if (config.excludeOrgs?.some(org => owner.toLowerCase() === org.toLowerCase())) continue;
+        // Note: excludeRepos/excludeOrgs are intentionally NOT filtered here.
+        // Those filters control issue discovery/search, not historical statistics.
+        // A merged PR is a merged PR regardless of current tracking preferences.
 
         const mergedAt = item.pull_request?.merged_at || item.closed_at || '';
 
@@ -907,9 +907,9 @@ export class PRMonitor {
         // Skip own repos
         if (owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
 
-        // Skip excluded repos and orgs
-        if (config.excludeRepos.includes(repo)) continue;
-        if (config.excludeOrgs?.some(org => owner.toLowerCase() === org.toLowerCase())) continue;
+        // Note: excludeRepos/excludeOrgs are intentionally NOT filtered here.
+        // Those filters control issue discovery/search, not historical statistics.
+        // A closed PR is a closed PR regardless of current tracking preferences.
 
         repos.set(repo, (repos.get(repo) || 0) + 1);
 

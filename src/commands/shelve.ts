@@ -5,30 +5,19 @@
  */
 
 import { getStateManager } from '../core/index.js';
-import { outputJson, outputJsonError } from '../formatters/json.js';
+import { outputJson } from '../formatters/json.js';
+import { PR_URL_PATTERN, validateGitHubUrl } from './validation.js';
 
 interface ShelveCommandOptions {
   prUrl: string;
   json?: boolean;
 }
 
-/** @internal Exported for testing */
-export const PR_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
-
-function validatePRUrl(prUrl: string, json?: boolean): void {
-  if (PR_URL_PATTERN.test(prUrl)) return;
-
-  if (json) {
-    outputJsonError(`Invalid PR URL: ${prUrl}. Expected format: https://github.com/owner/repo/pull/123`);
-  } else {
-    console.error(`Error: Invalid PR URL: ${prUrl}`);
-    console.error('Expected format: https://github.com/owner/repo/pull/123');
-  }
-  process.exit(1);
-}
+// Re-export for backward compatibility with tests
+export { PR_URL_PATTERN };
 
 export async function runShelve(options: ShelveCommandOptions): Promise<void> {
-  validatePRUrl(options.prUrl, options.json);
+  validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
 
   const stateManager = getStateManager();
   const added = stateManager.shelvePR(options.prUrl);
@@ -49,7 +38,7 @@ export async function runShelve(options: ShelveCommandOptions): Promise<void> {
 }
 
 export async function runUnshelve(options: ShelveCommandOptions): Promise<void> {
-  validatePRUrl(options.prUrl, options.json);
+  validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
 
   const stateManager = getStateManager();
   const removed = stateManager.unshelvePR(options.prUrl);

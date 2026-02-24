@@ -25,6 +25,7 @@ import { runLocalRepos } from './commands/local-repos.js';
 import { runStartup } from './commands/startup.js';
 import { runShelve, runUnshelve } from './commands/shelve.js';
 import { runDismiss, runUndismiss } from './commands/dismiss.js';
+import { runSnooze, runUnsnooze } from './commands/snooze.js';
 
 const VERSION = (() => {
   try {
@@ -39,7 +40,7 @@ const VERSION = (() => {
 
 // Commands that skip the preAction GitHub token check.
 // startup handles auth internally (returns authError in JSON instead of process.exit).
-const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard', 'parse-issue-list', 'check-integration', 'local-repos', 'startup', 'shelve', 'unshelve', 'dismiss', 'undismiss'];
+const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard', 'parse-issue-list', 'check-integration', 'local-repos', 'startup', 'shelve', 'unshelve', 'dismiss', 'undismiss', 'snooze', 'unsnooze'];
 
 const program = new Command();
 
@@ -264,6 +265,26 @@ program
   .option('--json', 'Output as JSON')
   .action(async (issueUrl, options) => {
     await runUndismiss({ issueUrl, json: options.json });
+  });
+
+// Snooze command
+program
+  .command('snooze <pr-url>')
+  .description('Snooze CI failure notifications for a PR')
+  .requiredOption('--reason <reason>', 'Reason for snoozing (e.g., "upstream infrastructure issue")')
+  .option('--days <days>', 'Number of days to snooze (default: 7)', '7')
+  .option('--json', 'Output as JSON')
+  .action(async (prUrl, options) => {
+    await runSnooze({ prUrl, reason: options.reason, days: parseInt(options.days, 10), json: options.json });
+  });
+
+// Unsnooze command
+program
+  .command('unsnooze <pr-url>')
+  .description('Unsnooze a PR (re-enable CI failure notifications)')
+  .option('--json', 'Output as JSON')
+  .action(async (prUrl, options) => {
+    await runUnsnooze({ prUrl, json: options.json });
   });
 
 // Validate GitHub token before running commands that need it

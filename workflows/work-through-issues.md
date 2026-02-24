@@ -19,7 +19,7 @@ Task(general-purpose, "Check all 3 PRs in vadimdemedes/ink: #855, #856, #863.
   For each PR:
   1. git checkout the branch
   2. Fetch upstream, check commits behind
-  3. Rebase if behind, force push if clean
+  3. If behind, rebase and push with --force-with-lease (see rebase push protocol below)
   4. Check CI status and review comments
   Report results for all 3 PRs.")
 ```
@@ -63,7 +63,7 @@ For each issue in `actionableIssues`, include a Task tool call grouped by repo:
 
 | Issue Type | Tier | Agent Action |
 |------------|------|--------------|
-| Needs Rebase | Tier 1 | Clone if needed, fetch upstream, rebase, force push. Report result. |
+| Needs Rebase | Tier 1 | Clone if needed, fetch upstream, rebase, push with `--force-with-lease` (see rebase push protocol). Report result. |
 | CI Failing | Tier 2 | Investigate CI failures. Analyze logs, identify root cause, recommend fixes. DO NOT push code fixes without approval. If a re-run is needed, attempt `gh run rerun <id> --repo <repo> --failed`. If it fails (permission error, non-rerunnable state, or other error), report the error and suggest alternatives for user approval: push an empty commit to retrigger, ask maintainer to re-run, or wait. |
 | CI Blocked | Info | Report that CI needs maintainer trigger. Suggest commenting to request it. |
 | CI Not Running | Info | Investigate why CI isn't running. Check if workflows exist, if fork has actions enabled. |
@@ -85,18 +85,27 @@ For each PR:
 1. If not cloned, clone to ~/Documents/oss/{repo-name}
 2. git checkout the PR branch
 3. Fetch upstream, check how many commits behind
-4. If behind and rebase is clean, rebase and force push (Tier 1 - auto-safe)
+4. If behind and rebase is clean, push using the rebase push protocol below (Tier 1 - auto-safe)
 5. If rebase has conflicts, abort and report the conflicts (Tier 2 - needs manual resolution)
 6. Check CI status: gh pr checks {number} --repo {repo}
 7. Check for review comments and changes requested
 8. Check for bot comments (changeset-bot, CLA bot, etc.)
+
+**Rebase Push Protocol (MANDATORY for all force pushes after rebase):**
+After a successful rebase, you MUST follow these steps in order:
+  a. Set upstream tracking: git branch --set-upstream-to=origin/{branch} {branch}
+  b. Fetch the latest remote ref: git fetch origin {branch}
+  c. Push with: git push --force-with-lease
+  d. NEVER fall back to git push --force. If --force-with-lease fails, abort and report
+     the error to the user. The --force-with-lease safety check exists to prevent
+     overwriting commits pushed by others. Falling back to --force defeats this protection.
 
 Report back:
 (a) Commits behind / rebase result
 (b) CI status (passing/failing/blocked/not running)
 (c) Review comments and their status
 (d) Any missing required files
-(e) Whether force push was performed
+(e) Whether --force-with-lease push was performed (or failed and why)
 ```
 
 **Agent failure handling:**
