@@ -584,6 +584,9 @@ export interface AgentConfig {
 
   /** Issue URLs dismissed by the user, mapped to ISO timestamp of when dismissed. Issues with new responses after the dismiss timestamp resurface automatically. */
   dismissedIssues?: Record<string, string>;
+
+  /** PR URLs with snoozed CI failures, mapped to snooze metadata. Snoozed PRs are excluded from actionable CI failure list until expiry. */
+  snoozedPRs?: Record<string, { reason: string; snoozedAt: string; expiresAt: string }>;
 }
 
 /** Status of a user's comment thread on a GitHub issue. */
@@ -642,6 +645,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
   aiPolicyBlocklist: ['matplotlib/matplotlib'],
   shelvedPRUrls: [],
   dismissedIssues: {},
+  snoozedPRs: {},
 };
 
 /** Initial state written to `~/.oss-autopilot/state.json` on first run. Uses v2 architecture. */
