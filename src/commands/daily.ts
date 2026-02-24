@@ -216,19 +216,19 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     console.error('[DAILY] Failed to compute/store monthly opened counts:', error instanceof Error ? error.message : error);
   }
 
-  // Expire any snoozes that have passed their expiresAt timestamp
-  const expiredSnoozes = stateManager.expireSnoozes();
-  if (expiredSnoozes.length > 0) {
-    console.error(`[DAILY] ${expiredSnoozes.length} snoozed PR(s) expired and will resurface:`);
-    for (const url of expiredSnoozes) {
-      console.error(`  - ${url}`);
-    }
-    try {
+  // Expire any snoozes that have passed their expiresAt timestamp.
+  // Non-critical: corrupted snooze entries should not abort the daily check.
+  try {
+    const expiredSnoozes = stateManager.expireSnoozes();
+    if (expiredSnoozes.length > 0) {
+      console.error(`[DAILY] ${expiredSnoozes.length} snoozed PR(s) expired and will resurface:`);
+      for (const url of expiredSnoozes) {
+        console.error(`  - ${url}`);
+      }
       stateManager.save();
-    } catch (error) {
-      console.error('[DAILY] Failed to persist snooze expiration:', error instanceof Error ? error.message : error);
-      // Non-critical: snoozes will be re-expired on next run
     }
+  } catch (error) {
+    console.error('[DAILY] Failed to expire/persist snoozes:', error instanceof Error ? error.message : error);
   }
 
   // Partition PRs into active vs shelved, auto-unshelving when maintainers engage

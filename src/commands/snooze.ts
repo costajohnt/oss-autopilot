@@ -6,6 +6,7 @@
 
 import { getStateManager } from '../core/index.js';
 import { outputJson, outputJsonError } from '../formatters/json.js';
+import { PR_URL_PATTERN, validateGitHubUrl } from './validation.js';
 
 const DEFAULT_SNOOZE_DAYS = 7;
 
@@ -21,23 +22,11 @@ interface UnsnoozeCommandOptions {
   json?: boolean;
 }
 
-/** @internal Exported for testing */
-export const PR_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
-
-function validatePRUrl(prUrl: string, json?: boolean): void {
-  if (PR_URL_PATTERN.test(prUrl)) return;
-
-  if (json) {
-    outputJsonError(`Invalid PR URL: ${prUrl}. Expected format: https://github.com/owner/repo/pull/123`);
-  } else {
-    console.error(`Error: Invalid PR URL: ${prUrl}`);
-    console.error('Expected format: https://github.com/owner/repo/pull/123');
-  }
-  process.exit(1);
-}
+// Re-export for backward compatibility with tests
+export { PR_URL_PATTERN };
 
 export async function runSnooze(options: SnoozeCommandOptions): Promise<void> {
-  validatePRUrl(options.prUrl, options.json);
+  validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
 
   const days = options.days ?? DEFAULT_SNOOZE_DAYS;
   if (!Number.isFinite(days) || days <= 0) {
@@ -85,7 +74,7 @@ export async function runSnooze(options: SnoozeCommandOptions): Promise<void> {
 }
 
 export async function runUnsnooze(options: UnsnoozeCommandOptions): Promise<void> {
-  validatePRUrl(options.prUrl, options.json);
+  validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
 
   try {
     const stateManager = getStateManager();

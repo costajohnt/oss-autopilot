@@ -525,7 +525,6 @@ export interface LocalRepoCache {
   cachedAt: string;
 }
 
-/** User-configurable settings, populated via `/setup-oss` and stored in {@link AgentState}. */
 /** Metadata for a snoozed PR's CI failure. */
 export interface SnoozeInfo {
   reason: string;
@@ -533,6 +532,7 @@ export interface SnoozeInfo {
   expiresAt: string;
 }
 
+/** User-configurable settings, populated via `/setup-oss` and stored in {@link AgentState}. */
 export interface AgentConfig {
   /** False until the user completes initial setup via `/setup-oss`. */
   setupComplete: boolean;

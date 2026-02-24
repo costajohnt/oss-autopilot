@@ -753,6 +753,9 @@ export class StateManager {
    * @returns true if newly snoozed, false if already snoozed.
    */
   snoozePR(url: string, reason: string, durationDays: number): boolean {
+    if (!Number.isFinite(durationDays) || durationDays <= 0) {
+      throw new Error(`Invalid snooze duration: ${durationDays}. Must be a positive finite number.`);
+    }
     if (!this.state.config.snoozedPRs) {
       this.state.config.snoozedPRs = {};
     }
