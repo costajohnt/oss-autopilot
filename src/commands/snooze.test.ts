@@ -2,7 +2,7 @@
  * Tests for snooze/unsnooze commands
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { PR_URL_PATTERN } from './snooze.js';
 
 // We test the state-level snooze logic directly via StateManager (in state.test.ts)
@@ -25,28 +25,10 @@ describe('PR_URL_PATTERN', () => {
   });
 });
 
-describe('runSnooze (integration)', () => {
-  // Use dynamic import to avoid module-level side effects
-  let runSnooze: typeof import('./snooze.js').runSnooze;
-  let StateManager: typeof import('../core/state.js').StateManager;
-
-  beforeEach(async () => {
-    const snoozeModule = await import('./snooze.js');
-    const stateModule = await import('../core/state.js');
-    runSnooze = snoozeModule.runSnooze;
-    StateManager = stateModule.StateManager;
-  });
-
-  it('should output JSON when --json flag is set', async () => {
-    // We can't easily test the full command without mocking getStateManager,
-    // but we can verify the URL pattern is exported and correct
-    expect(PR_URL_PATTERN).toBeDefined();
-  });
-});
-
-describe('runUnsnooze (integration)', () => {
-  it('should export the function', async () => {
-    const { runUnsnooze } = await import('./snooze.js');
+describe('runSnooze / runUnsnooze exports', () => {
+  it('should export both command functions', async () => {
+    const { runSnooze, runUnsnooze } = await import('./snooze.js');
+    expect(typeof runSnooze).toBe('function');
     expect(typeof runUnsnooze).toBe('function');
   });
 });
