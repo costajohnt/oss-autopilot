@@ -17,6 +17,16 @@ export { isBotAuthor };
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
 
+/** Inline review comment shape used for self-reply detection and body extraction (#199). */
+interface ReviewComment {
+  id: number;
+  user?: { login?: string } | null;
+  body?: string | null;
+  created_at: string;
+  in_reply_to_id?: number;
+  pull_request_review_id?: number | null;
+}
+
 export interface PRCheckFailure {
   prUrl: string;
   error: string;
@@ -164,16 +174,27 @@ export class PRMonitor {
     const { owner, repo, number } = parsed;
     const config = this.stateManager.getState().config;
 
-    // Fetch PR data, comments, and reviews in parallel
-    const [prResponse, commentsResponse, reviewsResponse] = await Promise.all([
+    // Fetch PR data, comments, reviews, and inline review comments in parallel.
+    // listReviewComments is non-critical (used for self-reply detection), so degrade
+    // gracefully on failure rather than dropping the entire PR (#199).
+    const [prResponse, commentsResponse, reviewsResponse, reviewCommentsResponse] = await Promise.all([
       this.octokit.pulls.get({ owner, repo, pull_number: number }),
       this.octokit.issues.listComments({ owner, repo, issue_number: number, per_page: 100 }),
       this.octokit.pulls.listReviews({ owner, repo, pull_number: number }),
+      this.octokit.pulls.listReviewComments({ owner, repo, pull_number: number, per_page: 100 })
+        .catch((err: unknown) => {
+          const status = (err as { status?: number })?.status;
+          if (status !== 404) {
+            console.error(`[PR_MONITOR] Failed to fetch review comments for ${owner}/${repo}#${number} (status ${status ?? 'unknown'}): self-reply detection will be skipped`);
+          }
+          return { data: [] as Array<any> };
+        }),
     ]);
 
     const ghPR = prResponse.data;
     const comments = commentsResponse.data;
     const reviews = reviewsResponse.data;
+    const reviewComments: ReviewComment[] = reviewCommentsResponse.data;
 
     // Determine review decision
     const reviewDecision = this.determineReviewDecision(reviews);
@@ -185,6 +206,7 @@ export class PRMonitor {
     const { hasUnrespondedComment, lastMaintainerComment } = this.checkUnrespondedComments(
       comments,
       reviews,
+      reviewComments,
       config.githubUsername
     );
 
@@ -277,11 +299,13 @@ export class PRMonitor {
    */
   private checkUnrespondedComments(
     comments: Array<{ user?: { login?: string } | null; body?: string | null; created_at: string }>,
-    reviews: Array<{ user?: { login?: string } | null; body?: string | null; submitted_at?: string | null; state?: string | null }>,
+    reviews: Array<{ user?: { login?: string } | null; body?: string | null; submitted_at?: string | null; state?: string | null; id?: number }>,
+    reviewComments: ReviewComment[],
     username: string
   ): { hasUnrespondedComment: boolean; lastMaintainerComment?: FetchedPR['lastMaintainerComment'] } {
     // Combine comments and reviews into a timeline
     const timeline: Array<{ author: string; body: string; createdAt: string; isUser: boolean }> = [];
+    const usernameLower = username.toLowerCase();
 
     for (const comment of comments) {
       const author = comment.user?.login || 'unknown';
@@ -289,7 +313,7 @@ export class PRMonitor {
         author,
         body: comment.body || '',
         createdAt: comment.created_at,
-        isUser: author.toLowerCase() === username.toLowerCase(),
+        isUser: author.toLowerCase() === usernameLower,
       });
     }
 
@@ -302,11 +326,24 @@ export class PRMonitor {
       // as those are state changes without comment text.
       if (!body && review.state !== 'COMMENTED') continue;
       const author = review.user?.login || 'unknown';
+
+      // For inline-only COMMENTED reviews, skip pure self-replies (#199)
+      if (!body && review.state === 'COMMENTED' && review.id != null) {
+        if (this.isAllSelfReplies(review.id, reviewComments)) {
+          continue;
+        }
+      }
+
+      // Resolve body: prefer actual text, then inline comment text, then synthetic placeholder
+      const resolvedBody = body
+        || (review.id != null ? this.getInlineCommentBody(review.id, reviewComments) : undefined)
+        || '(posted inline review comments)';
+
       timeline.push({
         author,
-        body: body || '(posted inline review comments)',
+        body: resolvedBody,
         createdAt: review.submitted_at,
-        isUser: author.toLowerCase() === username.toLowerCase(),
+        isUser: author.toLowerCase() === usernameLower,
       });
     }
 
@@ -348,6 +385,46 @@ export class PRMonitor {
       hasUnrespondedComment: !!lastMaintainerComment,
       lastMaintainerComment,
     };
+  }
+
+  /**
+   * Check if all inline comments in a COMMENTED review are self-replies.
+   * A self-reply is when an author replies to their own earlier inline comment.
+   * Used to filter out informational follow-ups that don't require contributor action (#199).
+   */
+  private isAllSelfReplies(reviewId: number, reviewComments: ReviewComment[]): boolean {
+    const commentsForReview = reviewComments.filter(
+      c => c.pull_request_review_id === reviewId
+    );
+
+    if (commentsForReview.length === 0) return false;
+
+    // Build map of ALL comment IDs → lowercase author for parent lookup
+    const authorMap = new Map<number, string>();
+    for (const c of reviewComments) {
+      if (c.user?.login) {
+        authorMap.set(c.id, c.user.login.toLowerCase());
+      }
+    }
+
+    return commentsForReview.every(comment => {
+      if (!comment.in_reply_to_id) return false; // New thread, not a reply
+      const parentAuthor = authorMap.get(comment.in_reply_to_id);
+      const commentAuthor = comment.user?.login?.toLowerCase();
+      return parentAuthor != null && commentAuthor != null && parentAuthor === commentAuthor;
+    });
+  }
+
+  /**
+   * Get the body text of inline review comments for a COMMENTED review.
+   * Returns the first non-empty comment body, or undefined.
+   * Enables the acknowledgment filter to evaluate real content instead of
+   * synthetic placeholders (#199).
+   */
+  private getInlineCommentBody(reviewId: number, reviewComments: ReviewComment[]): string | undefined {
+    return reviewComments
+      .find(c => c.pull_request_review_id === reviewId && c.body?.trim())
+      ?.body?.trim();
   }
 
   /**
