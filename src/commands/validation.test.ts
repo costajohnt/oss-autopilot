@@ -1,6 +1,6 @@
 /**
- * Tests for shared URL validation patterns.
- * Command-level snooze/unsnooze state logic is tested in state.test.ts.
+ * Tests for shared URL validation patterns (validation.ts).
+ * Command-level state logic is tested in shelve.test.ts, dismiss.test.ts, and state.test.ts.
  */
 
 import { describe, it, expect } from 'vitest';
