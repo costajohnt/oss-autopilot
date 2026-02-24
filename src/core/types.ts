@@ -526,6 +526,13 @@ export interface LocalRepoCache {
 }
 
 /** User-configurable settings, populated via `/setup-oss` and stored in {@link AgentState}. */
+/** Metadata for a snoozed PR's CI failure. */
+export interface SnoozeInfo {
+  reason: string;
+  snoozedAt: string;
+  expiresAt: string;
+}
+
 export interface AgentConfig {
   /** False until the user completes initial setup via `/setup-oss`. */
   setupComplete: boolean;
@@ -586,7 +593,7 @@ export interface AgentConfig {
   dismissedIssues?: Record<string, string>;
 
   /** PR URLs with snoozed CI failures, mapped to snooze metadata. Snoozed PRs are excluded from actionable CI failure list until expiry. */
-  snoozedPRs?: Record<string, { reason: string; snoozedAt: string; expiresAt: string }>;
+  snoozedPRs?: Record<string, SnoozeInfo>;
 }
 
 /** Status of a user's comment thread on a GitHub issue. */

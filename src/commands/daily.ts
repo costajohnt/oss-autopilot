@@ -223,7 +223,12 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     for (const url of expiredSnoozes) {
       console.error(`  - ${url}`);
     }
-    stateManager.save();
+    try {
+      stateManager.save();
+    } catch (error) {
+      console.error('[DAILY] Failed to persist snooze expiration:', error instanceof Error ? error.message : error);
+      // Non-critical: snoozes will be re-expired on next run
+    }
   }
 
   // Partition PRs into active vs shelved, auto-unshelving when maintainers engage
@@ -299,7 +304,7 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   const issueResponses = filteredCommentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   const summary = formatSummary(digest, capacity, issueResponses);
   const snoozedUrls = new Set(
-    Object.keys(stateManager.getState().config.snoozedPRs ?? {}),
+    Object.keys(stateManager.getState().config.snoozedPRs ?? {}).filter(url => stateManager.isSnoozed(url)),
   );
   const actionableIssues = collectActionableIssues(activePRs, snoozedUrls);
   digest.summary.totalNeedingAttention = actionableIssues.length;

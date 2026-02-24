@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, RepoScoreUpdate, StateEvent, StateEventType, DailyDigest, LocalRepoCache } from './types.js';
+import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, RepoScoreUpdate, StateEvent, StateEventType, DailyDigest, LocalRepoCache, SnoozeInfo } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
 
 // Current state version
@@ -790,7 +790,12 @@ export class StateManager {
   isSnoozed(url: string): boolean {
     const info = this.getSnoozeInfo(url);
     if (!info) return false;
-    return new Date(info.expiresAt).getTime() > Date.now();
+    const expiresAtMs = new Date(info.expiresAt).getTime();
+    if (isNaN(expiresAtMs)) {
+      console.error(`[STATE] Invalid expiresAt for snoozed PR ${url}: "${info.expiresAt}". Treating as not snoozed.`);
+      return false;
+    }
+    return expiresAtMs > Date.now();
   }
 
   /**
@@ -798,7 +803,7 @@ export class StateManager {
    * @param url - The full GitHub PR URL.
    * @returns The snooze metadata, or undefined if not snoozed.
    */
-  getSnoozeInfo(url: string): { reason: string; snoozedAt: string; expiresAt: string } | undefined {
+  getSnoozeInfo(url: string): SnoozeInfo | undefined {
     return this.state.config.snoozedPRs?.[url];
   }
 
@@ -811,7 +816,8 @@ export class StateManager {
     const expired: string[] = [];
     const now = Date.now();
     for (const [url, info] of Object.entries(this.state.config.snoozedPRs)) {
-      if (new Date(info.expiresAt).getTime() <= now) {
+      const expiresAtMs = new Date(info.expiresAt).getTime();
+      if (isNaN(expiresAtMs) || expiresAtMs <= now) {
         expired.push(url);
       }
     }

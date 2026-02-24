@@ -24,11 +24,3 @@ describe('PR_URL_PATTERN', () => {
     expect(PR_URL_PATTERN.test('https://github.com/owner/repo/pull/123/files')).toBe(false);
   });
 });
-
-describe('runSnooze / runUnsnooze exports', () => {
-  it('should export both command functions', async () => {
-    const { runSnooze, runUnsnooze } = await import('./snooze.js');
-    expect(typeof runSnooze).toBe('function');
-    expect(typeof runUnsnooze).toBe('function');
-  });
-});

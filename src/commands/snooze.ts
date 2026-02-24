@@ -49,47 +49,67 @@ export async function runSnooze(options: SnoozeCommandOptions): Promise<void> {
     process.exit(1);
   }
 
-  const stateManager = getStateManager();
-  const added = stateManager.snoozePR(options.prUrl, options.reason, days);
+  try {
+    const stateManager = getStateManager();
+    const added = stateManager.snoozePR(options.prUrl, options.reason, days);
 
-  if (added) {
-    stateManager.save();
-  }
-
-  const snoozeInfo = stateManager.getSnoozeInfo(options.prUrl);
-
-  if (options.json) {
-    outputJson({ snoozed: added, url: options.prUrl, days, reason: options.reason, expiresAt: snoozeInfo?.expiresAt });
-  } else if (added) {
-    console.log(`Snoozed: ${options.prUrl}`);
-    console.log(`Reason: ${options.reason}`);
-    console.log(`Duration: ${days} day${days === 1 ? '' : 's'}`);
-    console.log(`Expires: ${snoozeInfo?.expiresAt ? new Date(snoozeInfo.expiresAt).toLocaleString() : 'unknown'}`);
-    console.log('CI failure notifications are now muted for this PR.');
-  } else {
-    console.log('PR is already snoozed.');
-    if (snoozeInfo) {
-      console.log(`Expires: ${new Date(snoozeInfo.expiresAt).toLocaleString()}`);
+    if (added) {
+      stateManager.save();
     }
+
+    const snoozeInfo = stateManager.getSnoozeInfo(options.prUrl);
+
+    if (options.json) {
+      outputJson({ snoozed: added, url: options.prUrl, days, reason: options.reason, expiresAt: snoozeInfo?.expiresAt });
+    } else if (added) {
+      console.log(`Snoozed: ${options.prUrl}`);
+      console.log(`Reason: ${options.reason}`);
+      console.log(`Duration: ${days} day${days === 1 ? '' : 's'}`);
+      console.log(`Expires: ${snoozeInfo?.expiresAt ? new Date(snoozeInfo.expiresAt).toLocaleString() : 'unknown'}`);
+      console.log('CI failure notifications are now muted for this PR.');
+    } else {
+      console.log('PR is already snoozed.');
+      if (snoozeInfo) {
+        console.log(`Expires: ${new Date(snoozeInfo.expiresAt).toLocaleString()}`);
+      }
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (options.json) {
+      outputJsonError(`Snooze failed: ${msg}`);
+    } else {
+      console.error(`Error: Snooze failed: ${msg}`);
+    }
+    process.exit(1);
   }
 }
 
 export async function runUnsnooze(options: UnsnoozeCommandOptions): Promise<void> {
   validatePRUrl(options.prUrl, options.json);
 
-  const stateManager = getStateManager();
-  const removed = stateManager.unsnoozePR(options.prUrl);
+  try {
+    const stateManager = getStateManager();
+    const removed = stateManager.unsnoozePR(options.prUrl);
 
-  if (removed) {
-    stateManager.save();
-  }
+    if (removed) {
+      stateManager.save();
+    }
 
-  if (options.json) {
-    outputJson({ unsnoozed: removed, url: options.prUrl });
-  } else if (removed) {
-    console.log(`Unsnoozed: ${options.prUrl}`);
-    console.log('CI failure notifications are active again for this PR.');
-  } else {
-    console.log('PR was not snoozed.');
+    if (options.json) {
+      outputJson({ unsnoozed: removed, url: options.prUrl });
+    } else if (removed) {
+      console.log(`Unsnoozed: ${options.prUrl}`);
+      console.log('CI failure notifications are active again for this PR.');
+    } else {
+      console.log('PR was not snoozed.');
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (options.json) {
+      outputJsonError(`Unsnooze failed: ${msg}`);
+    } else {
+      console.error(`Error: Unsnooze failed: ${msg}`);
+    }
+    process.exit(1);
   }
 }
