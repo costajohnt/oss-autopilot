@@ -742,7 +742,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
 
   it('should return false when no comments or reviews', () => {
     const monitor = new PRMonitor('fake-token');
-    const result = (monitor as any).checkUnrespondedComments([], [], 'testuser');
+    const result = (monitor as any).checkUnrespondedComments([], [], [], 'testuser');
     expect(result.hasUnrespondedComment).toBe(false);
     expect(result.lastMaintainerComment).toBeUndefined();
   });
@@ -751,6 +751,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
       [{ user: { login: 'testuser' }, body: 'My comment', created_at: '2026-02-07T10:00:00Z' }],
+      [],
       [],
       'testuser'
     );
@@ -764,6 +765,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
         { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
         { user: { login: 'maintainer' }, body: 'Please fix X', created_at: '2026-02-07T12:00:00Z' },
       ],
+      [],
       [],
       'testuser'
     );
@@ -779,6 +781,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
         { user: { login: 'testuser' }, body: 'Fixed', created_at: '2026-02-07T12:00:00Z' },
       ],
       [],
+      [],
       'testuser'
     );
     expect(result.hasUnrespondedComment).toBe(false);
@@ -791,6 +794,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
         { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
         { user: { login: 'dependabot[bot]' }, body: 'Dependency update', created_at: '2026-02-07T12:00:00Z' },
       ],
+      [],
       [],
       'testuser'
     );
@@ -807,6 +811,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
           { user: { login: bot }, body: 'Automated check passed', created_at: '2026-02-07T12:00:00Z' },
         ],
         [],
+        [],
         'testuser'
       );
       expect(result.hasUnrespondedComment).toBe(false);
@@ -822,6 +827,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
         { user: { login: 'maintainer' }, body: 'Please add tests', created_at: '2026-02-07T12:00:00Z' },
       ],
       [],
+      [],
       'testuser'
     );
     expect(result.hasUnrespondedComment).toBe(true);
@@ -836,6 +842,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
         { user: null, body: 'Ghost comment', created_at: '2026-02-07T12:00:00Z' },
       ],
       [],
+      [],
       'testuser'
     );
     expect(result.hasUnrespondedComment).toBe(false);
@@ -848,6 +855,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
       [
         { user: { login: 'maintainer' }, body: 'Needs changes here', submitted_at: '2026-02-07T12:00:00Z' },
       ],
+      [],
       'testuser'
     );
     expect(result.hasUnrespondedComment).toBe(true);
@@ -861,6 +869,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
       [
         { user: { login: 'maintainer' }, body: '', submitted_at: '2026-02-07T12:00:00Z' },
       ],
+      [],
       'testuser'
     );
     expect(result.hasUnrespondedComment).toBe(false);
@@ -874,6 +883,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
         { user: { login: 'maintainer' }, body: longBody, created_at: '2026-02-07T12:00:00Z' },
       ],
       [],
+      [],
       'testuser'
     );
     expect(result.lastMaintainerComment?.body.length).toBeLessThanOrEqual(203); // 200 + "..."
@@ -886,6 +896,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
         { user: { login: 'TestUser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
         { user: { login: 'maintainer' }, body: 'Fix this', created_at: '2026-02-07T12:00:00Z' },
       ],
+      [],
       [],
       'testuser' // lowercase
     );
@@ -1520,6 +1531,7 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
         { user: { login: 'maintainer' }, body: 'Thanks, will review soon', created_at: '2026-02-07T12:00:00Z' },
       ],
       [],
+      [],
       'testuser'
     );
     expect(result.hasUnrespondedComment).toBe(false);
@@ -1534,6 +1546,7 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
         { user: { login: 'maintainer' }, body: 'Thanks, will look at this', created_at: '2026-02-07T11:00:00Z' },
         { user: { login: 'maintainer' }, body: 'Please fix the linting errors in src/main.ts', created_at: '2026-02-07T12:00:00Z' },
       ],
+      [],
       [],
       'testuser'
     );
@@ -1551,6 +1564,7 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
         // Review with inline comments only (no top-level body)
         { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
       ],
+      [],
       'testuser'
     );
     expect(result.hasUnrespondedComment).toBe(true);
@@ -1566,6 +1580,7 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
       [
         { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z' },
       ],
+      [],
       'testuser'
     );
     expect(result.hasUnrespondedComment).toBe(false);
@@ -1580,6 +1595,7 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
       [
         { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'CHANGES_REQUESTED' },
       ],
+      [],
       'testuser'
     );
     expect(result.hasUnrespondedComment).toBe(false);
@@ -1593,6 +1609,7 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
         // User's own inline review — should not trigger needs_response
         { user: { login: 'testuser' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
       ],
+      [],
       'testuser'
     );
     expect(result.hasUnrespondedComment).toBe(false);
@@ -1605,6 +1622,7 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
       [
         { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
       ],
+      [],
       'testuser'
     );
     expect(result.lastMaintainerComment?.body).toBe('(posted inline review comments)');
@@ -1619,6 +1637,7 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
       [
         { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'APPROVED' },
       ],
+      [],
       'testuser'
     );
     expect(result.hasUnrespondedComment).toBe(false);
@@ -1636,6 +1655,7 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
         // Inline-only review posted after the user's commit
         { user: { login: 'SunsetTechuila' }, body: '', submitted_at: '2026-02-14T05:14:49Z', state: 'COMMENTED' },
       ],
+      [],
       'testuser'
     );
     expect(result.hasUnrespondedComment).toBe(true);
@@ -2088,6 +2108,7 @@ describe('fetchUserOpenPRs excludeRepos/excludeOrgs exempts shelved PRs (#175)',
           },
         }),
         listReviews: vi.fn().mockResolvedValue({ data: [] }),
+        listReviewComments: vi.fn().mockResolvedValue({ data: [] }),
       },
       issues: {
         listComments: vi.fn().mockResolvedValue({ data: [] }),
@@ -2426,5 +2447,190 @@ describe('getCIStatus error handling (#182)', () => {
     expect(result.failingCheckNames).toEqual([]);
     expect(mockOctokitInstance.repos.getCombinedStatusForRef).not.toHaveBeenCalled();
     expect(mockOctokitInstance.checks.listForRef).not.toHaveBeenCalled();
+  });
+});
+
+describe('Maintainer self-reply detection (#199)', () => {
+  beforeEach(() => {
+    mockOctokitInstance = {};
+  });
+
+  it('should skip COMMENTED review when all inline comments are self-replies', () => {
+    const monitor = new PRMonitor('fake-token');
+    // Scenario from issue #199: MikeMcQuaid submits review, contributor pushes commit,
+    // MikeMcQuaid self-replies to own inline comment
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' },
+      ],
+      [
+        // Original review with inline comments
+        { user: { login: 'MikeMcQuaid' }, body: '', submitted_at: '2026-02-22T12:00:00Z', state: 'COMMENTED', id: 100 },
+        // Self-reply review after contributor's commit
+        { user: { login: 'MikeMcQuaid' }, body: '', submitted_at: '2026-02-24T08:29:00Z', state: 'COMMENTED', id: 200 },
+      ],
+      [
+        // Original inline comment from the first review
+        { id: 1000, user: { login: 'MikeMcQuaid' }, body: 'Can you see if T.untyped can use T.anything?', created_at: '2026-02-22T12:00:00Z', pull_request_review_id: 100 },
+        // Self-reply to own comment in the second review
+        { id: 1001, user: { login: 'MikeMcQuaid' }, body: "Unfortunately seems like they can't all be changed", created_at: '2026-02-24T08:29:00Z', in_reply_to_id: 1000, pull_request_review_id: 200 },
+      ],
+      'testuser'
+    );
+
+    // The self-reply review (id=200) should be skipped, but the original review (id=100)
+    // which has a new comment thread (no in_reply_to_id) should still trigger needs_response
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('MikeMcQuaid');
+    // The original review's inline text should be used
+    expect(result.lastMaintainerComment?.body).toContain('T.untyped');
+  });
+
+  it('should not flag needs_response when only self-reply exists after user comment', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' },
+        // User comments again after original review
+        { user: { login: 'testuser' }, body: 'Addressed the review', created_at: '2026-02-24T00:37:00Z' },
+      ],
+      [
+        // Original review
+        { user: { login: 'maintainer' }, body: '', submitted_at: '2026-02-22T12:00:00Z', state: 'COMMENTED', id: 100 },
+        // Self-reply after user's response
+        { user: { login: 'maintainer' }, body: '', submitted_at: '2026-02-24T08:29:00Z', state: 'COMMENTED', id: 200 },
+      ],
+      [
+        // Original inline comment
+        { id: 1000, user: { login: 'maintainer' }, body: 'Please fix this', created_at: '2026-02-22T12:00:00Z', pull_request_review_id: 100 },
+        // Self-reply
+        { id: 1001, user: { login: 'maintainer' }, body: 'Never mind, looks like this is fine', created_at: '2026-02-24T08:29:00Z', in_reply_to_id: 1000, pull_request_review_id: 200 },
+      ],
+      'testuser'
+    );
+
+    // Self-reply after user's comment should NOT trigger needs_response
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('should still flag when maintainer replies to DIFFERENT author comment', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' },
+      ],
+      [
+        // Review from reviewer-A
+        { user: { login: 'reviewer-A' }, body: '', submitted_at: '2026-02-22T12:00:00Z', state: 'COMMENTED', id: 100 },
+        // Review from reviewer-B replying to reviewer-A (NOT a self-reply)
+        { user: { login: 'reviewer-B' }, body: '', submitted_at: '2026-02-24T08:00:00Z', state: 'COMMENTED', id: 200 },
+      ],
+      [
+        // reviewer-A's original comment
+        { id: 1000, user: { login: 'reviewer-A' }, body: 'Looks good to me', created_at: '2026-02-22T12:00:00Z', pull_request_review_id: 100 },
+        // reviewer-B replies to reviewer-A's comment (different author = NOT self-reply)
+        { id: 1001, user: { login: 'reviewer-B' }, body: 'Actually I disagree, needs changes', created_at: '2026-02-24T08:00:00Z', in_reply_to_id: 1000, pull_request_review_id: 200 },
+      ],
+      'testuser'
+    );
+
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('reviewer-B');
+  });
+
+  it('should still flag when review has mix of self-reply and new thread', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' },
+      ],
+      [
+        // Original review
+        { user: { login: 'maintainer' }, body: '', submitted_at: '2026-02-22T12:00:00Z', state: 'COMMENTED', id: 100 },
+        // Second review with mixed content
+        { user: { login: 'maintainer' }, body: '', submitted_at: '2026-02-24T08:00:00Z', state: 'COMMENTED', id: 200 },
+      ],
+      [
+        // Original inline comment
+        { id: 1000, user: { login: 'maintainer' }, body: 'Fix this', created_at: '2026-02-22T12:00:00Z', pull_request_review_id: 100 },
+        // Self-reply in review 200
+        { id: 1001, user: { login: 'maintainer' }, body: 'Update on this', created_at: '2026-02-24T08:00:00Z', in_reply_to_id: 1000, pull_request_review_id: 200 },
+        // NEW comment thread in same review 200 (no in_reply_to_id)
+        { id: 1002, user: { login: 'maintainer' }, body: 'Also found another issue here', created_at: '2026-02-24T08:01:00Z', pull_request_review_id: 200 },
+      ],
+      'testuser'
+    );
+
+    // Mixed review (self-reply + new thread) should still flag
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('maintainer');
+  });
+
+  it('should use actual inline text instead of synthetic placeholder', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [],
+      [
+        // COMMENTED review with no body and no review.id → falls back to synthetic
+        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
+      ],
+      [],
+      'testuser'
+    );
+
+    // Without review.id, can't look up inline comments — falls back to synthetic
+    expect(result.lastMaintainerComment?.body).toBe('(posted inline review comments)');
+  });
+
+  it('should use actual inline comment text when review has id and reviewComments exist', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).checkUnrespondedComments(
+      [],
+      [
+        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED', id: 100 },
+      ],
+      [
+        { id: 1000, user: { login: 'reviewer' }, body: 'Please add error handling here', created_at: '2026-02-07T12:00:00Z', pull_request_review_id: 100 },
+      ],
+      'testuser'
+    );
+
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.body).toBe('Please add error handling here');
+  });
+
+  it('should return false from isAllSelfReplies when review has no inline comments', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).isAllSelfReplies(999, []);
+    expect(result).toBe(false);
+  });
+
+  it('should return false from isAllSelfReplies when comment starts a new thread', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).isAllSelfReplies(100, [
+      // New thread (no in_reply_to_id)
+      { id: 1000, user: { login: 'maintainer' }, body: 'New issue found', pull_request_review_id: 100 },
+    ]);
+    expect(result).toBe(false);
+  });
+
+  it('should return true from isAllSelfReplies when all comments reply to same author', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).isAllSelfReplies(200, [
+      // Parent comment from review 100
+      { id: 1000, user: { login: 'maintainer' }, body: 'Original comment', pull_request_review_id: 100 },
+      // Self-reply in review 200
+      { id: 1001, user: { login: 'maintainer' }, body: 'Follow up', in_reply_to_id: 1000, pull_request_review_id: 200 },
+    ]);
+    expect(result).toBe(true);
+  });
+
+  it('should be case-insensitive when checking self-reply authors', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).isAllSelfReplies(200, [
+      { id: 1000, user: { login: 'MikeMcQuaid' }, body: 'Original', pull_request_review_id: 100 },
+      { id: 1001, user: { login: 'mikemcquaid' }, body: 'Follow up', in_reply_to_id: 1000, pull_request_review_id: 200 },
+    ]);
+    expect(result).toBe(true);
   });
 });
