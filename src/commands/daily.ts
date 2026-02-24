@@ -216,6 +216,16 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     console.error('[DAILY] Failed to compute/store monthly opened counts:', error instanceof Error ? error.message : error);
   }
 
+  // Expire any snoozes that have passed their expiresAt timestamp
+  const expiredSnoozes = stateManager.expireSnoozes();
+  if (expiredSnoozes.length > 0) {
+    console.error(`[DAILY] ${expiredSnoozes.length} snoozed PR(s) expired and will resurface:`);
+    for (const url of expiredSnoozes) {
+      console.error(`  - ${url}`);
+    }
+    stateManager.save();
+  }
+
   // Partition PRs into active vs shelved, auto-unshelving when maintainers engage
   const shelvedPRs: FetchedPR[] = [];
   const autoUnshelvedPRs: FetchedPR[] = [];
@@ -288,7 +298,10 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
 
   const issueResponses = filteredCommentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   const summary = formatSummary(digest, capacity, issueResponses);
-  const actionableIssues = collectActionableIssues(activePRs);
+  const snoozedUrls = new Set(
+    Object.keys(stateManager.getState().config.snoozedPRs ?? {}),
+  );
+  const actionableIssues = collectActionableIssues(activePRs, snoozedUrls);
   digest.summary.totalNeedingAttention = actionableIssues.length;
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length);
   const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues);
@@ -650,7 +663,7 @@ function formatBriefSummary(digest: DailyDigest, issueCount: number, issueRespon
  * Note: Recently closed PRs are informational only and excluded from this list.
  * They are available separately in digest.recentlyClosedPRs (#156).
  */
-function collectActionableIssues(prs: FetchedPR[]): ActionableIssue[] {
+function collectActionableIssues(prs: FetchedPR[], snoozedUrls: Set<string> = new Set()): ActionableIssue[] {
   const issues: ActionableIssue[] = [];
 
   // 1. Needs Response (highest priority - someone is waiting for you)
@@ -668,8 +681,9 @@ function collectActionableIssues(prs: FetchedPR[]): ActionableIssue[] {
   }
 
   // 3. CI Failing (include check names so user can distinguish real CI from validation bots)
+  // Skip snoozed PRs — their CI failures are known and temporarily dismissed
   for (const pr of prs) {
-    if (pr.status === 'failing_ci') {
+    if (pr.status === 'failing_ci' && !snoozedUrls.has(pr.url)) {
       const checkInfo = pr.failingCheckNames.length > 0
         ? ` (${pr.failingCheckNames.join(', ')})`
         : '';
