@@ -6,7 +6,7 @@ Thanks for your interest in contributing! This project helps developers manage t
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+
 - GitHub CLI (`gh`) authenticated: `gh auth login`
 
 ### Setup

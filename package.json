@@ -16,7 +16,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/cli.bundle.cjs",
+    "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/cli.bundle.cjs",
     "start": "tsx src/cli.ts",
     "dev": "tsx watch src/cli.ts",
     "daily": "tsx src/cli.ts daily",
@@ -57,7 +57,7 @@
     "CHANGELOG.md"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",
