@@ -16,6 +16,8 @@ vi.mock('../formatters/json.js', () => ({
 vi.mock('./validation.js', () => ({
   PR_URL_PATTERN: /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/,
   validateGitHubUrl: vi.fn(),
+  validateUrl: vi.fn((url: string) => url),
+  validateMessage: vi.fn((msg: string) => msg),
 }));
 
 import { getStateManager } from '../core/index.js';
