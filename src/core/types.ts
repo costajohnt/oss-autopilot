@@ -108,11 +108,11 @@ export type FetchedPRStatus =
  * Extracted from comment text by keyword matching.
  */
 export type MaintainerActionHint =
-  | 'demo_requested'       // See extractMaintainerActionHints() in pr-monitor.ts for full keyword list
-  | 'tests_requested'      // See extractMaintainerActionHints() in pr-monitor.ts for full keyword list
-  | 'changes_requested'    // Generic code changes (from review decision)
-  | 'docs_requested'       // See extractMaintainerActionHints() in pr-monitor.ts for full keyword list
-  | 'rebase_requested';    // See extractMaintainerActionHints() in pr-monitor.ts for full keyword list
+  | 'demo_requested' // See extractMaintainerActionHints() in pr-monitor.ts for full keyword list
+  | 'tests_requested' // See extractMaintainerActionHints() in pr-monitor.ts for full keyword list
+  | 'changes_requested' // Generic code changes (from review decision)
+  | 'docs_requested' // See extractMaintainerActionHints() in pr-monitor.ts for full keyword list
+  | 'rebase_requested'; // See extractMaintainerActionHints() in pr-monitor.ts for full keyword list
 
 /**
  * Ephemeral PR data fetched fresh from GitHub on each run (v2 architecture).
@@ -379,13 +379,7 @@ export interface RepoScoreUpdate {
  * - `daily_check` — A daily digest run completed
  * - `comment_posted` — The agent posted a comment on a PR
  */
-export type StateEventType =
-  | 'pr_tracked'
-  | 'pr_merged'
-  | 'pr_closed'
-  | 'pr_dormant'
-  | 'daily_check'
-  | 'comment_posted';
+export type StateEventType = 'pr_tracked' | 'pr_merged' | 'pr_closed' | 'pr_dormant' | 'daily_check' | 'comment_posted';
 
 /** An entry in the state audit log. Events are append-only and used for history tracking. */
 export interface StateEvent {
@@ -601,13 +595,13 @@ export interface AgentConfig {
 
 /** Status of a user's comment thread on a GitHub issue. */
 export type IssueConversationStatus =
-  | 'new_response'      // Maintainer responded after user's last comment
-  | 'waiting'           // Last non-bot commenter is not the user; no substantive (non-acknowledgment) response found
-  | 'acknowledged';     // User was the last non-bot commenter; no action needed
+  | 'new_response' // Maintainer responded after user's last comment
+  | 'waiting' // Last non-bot commenter is not the user; no substantive (non-acknowledgment) response found
+  | 'acknowledged'; // User was the last non-bot commenter; no action needed
 
 /** Base fields shared by all issue conversation states. */
 interface CommentedIssueBase {
-  repo: string;         // "owner/repo"
+  repo: string; // "owner/repo"
   number: number;
   title: string;
   url: string;
@@ -620,7 +614,7 @@ interface CommentedIssueBase {
 export interface CommentedIssueWithResponse extends CommentedIssueBase {
   status: 'new_response';
   lastResponseAuthor: string;
-  lastResponseBody: string;    // Truncated to 200 chars (+ "..." suffix when truncated)
+  lastResponseBody: string; // Truncated to 200 chars (+ "..." suffix when truncated)
   lastResponseAt: string;
 }
 

@@ -6,9 +6,13 @@ describe('runWorkerPool', () => {
     const items = [1, 2, 3, 4, 5];
     const processed: number[] = [];
 
-    await runWorkerPool(items, async (item) => {
-      processed.push(item);
-    }, 3);
+    await runWorkerPool(
+      items,
+      async (item) => {
+        processed.push(item);
+      },
+      3,
+    );
 
     expect(processed.sort()).toEqual([1, 2, 3, 4, 5]);
   });
@@ -18,13 +22,17 @@ describe('runWorkerPool', () => {
     let maxObservedConcurrency = 0;
     const items = [1, 2, 3, 4, 5, 6, 7, 8];
 
-    await runWorkerPool(items, async () => {
-      activeConcurrency++;
-      maxObservedConcurrency = Math.max(maxObservedConcurrency, activeConcurrency);
-      // Simulate async work so workers can overlap
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      activeConcurrency--;
-    }, 3);
+    await runWorkerPool(
+      items,
+      async () => {
+        activeConcurrency++;
+        maxObservedConcurrency = Math.max(maxObservedConcurrency, activeConcurrency);
+        // Simulate async work so workers can overlap
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        activeConcurrency--;
+      },
+      3,
+    );
 
     expect(maxObservedConcurrency).toBeLessThanOrEqual(3);
     // With 8 items and concurrency 3, we should actually see concurrency > 1
@@ -34,9 +42,13 @@ describe('runWorkerPool', () => {
   it('handles empty array', async () => {
     const processed: number[] = [];
 
-    await runWorkerPool([], async (item: number) => {
-      processed.push(item);
-    }, 5);
+    await runWorkerPool(
+      [],
+      async (item: number) => {
+        processed.push(item);
+      },
+      5,
+    );
 
     expect(processed).toEqual([]);
   });
@@ -45,9 +57,13 @@ describe('runWorkerPool', () => {
     const items = [1, 2, 3];
 
     await expect(
-      runWorkerPool(items, async (item) => {
-        if (item === 2) throw new Error('item 2 failed');
-      }, 1),
+      runWorkerPool(
+        items,
+        async (item) => {
+          if (item === 2) throw new Error('item 2 failed');
+        },
+        1,
+      ),
     ).rejects.toThrow('item 2 failed');
   });
 
@@ -55,9 +71,13 @@ describe('runWorkerPool', () => {
     const items = ['a', 'b', 'c', 'd', 'e'];
     const processed: string[] = [];
 
-    await runWorkerPool(items, async (item) => {
-      processed.push(item);
-    }, 1);
+    await runWorkerPool(
+      items,
+      async (item) => {
+        processed.push(item);
+      },
+      1,
+    );
 
     expect(processed).toEqual(['a', 'b', 'c', 'd', 'e']);
   });

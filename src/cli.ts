@@ -29,7 +29,9 @@ import { runSnooze, runUnsnooze } from './commands/snooze.js';
 
 const VERSION = (() => {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const fs = require('fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const path = require('path');
     const pkgPath = path.join(path.dirname(process.argv[1]), '..', 'package.json');
     return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
@@ -40,7 +42,27 @@ const VERSION = (() => {
 
 // Commands that skip the preAction GitHub token check.
 // startup handles auth internally (returns authError in JSON instead of process.exit).
-const LOCAL_ONLY_COMMANDS = ['help', 'status', 'config', 'read', 'untrack', 'version', 'setup', 'checkSetup', 'dashboard', 'parse-issue-list', 'check-integration', 'local-repos', 'startup', 'shelve', 'unshelve', 'dismiss', 'undismiss', 'snooze', 'unsnooze'];
+const LOCAL_ONLY_COMMANDS = [
+  'help',
+  'status',
+  'config',
+  'read',
+  'untrack',
+  'version',
+  'setup',
+  'checkSetup',
+  'dashboard',
+  'parse-issue-list',
+  'check-integration',
+  'local-repos',
+  'startup',
+  'shelve',
+  'unshelve',
+  'dismiss',
+  'undismiss',
+  'snooze',
+  'unsnooze',
+];
 
 const program = new Command();
 

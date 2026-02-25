@@ -45,7 +45,9 @@ describe('runTrack', () => {
 
   it('should exit with error when no GitHub token is available', async () => {
     mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runTrack({ prUrl: TEST_PR_URL, json: true })).rejects.toThrow('exit');
 
@@ -74,7 +76,7 @@ describe('runTrack', () => {
     await runTrack({ prUrl: TEST_PR_URL, json: false });
 
     expect(consoleSpy).toHaveBeenCalled();
-    const allOutput = consoleSpy.mock.calls.map(c => c[0]).join('\n');
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
     expect(allOutput).toContain('owner/repo#42');
     consoleSpy.mockRestore();
   });

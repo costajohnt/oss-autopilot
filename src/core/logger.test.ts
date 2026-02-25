@@ -106,7 +106,9 @@ describe('logger', () => {
       loggerModule.enableDebug();
       const err = new Error('boom');
       await expect(
-        loggerModule.timed('mod', 'op', async () => { throw err; })
+        loggerModule.timed('mod', 'op', async () => {
+          throw err;
+        }),
       ).rejects.toThrow('boom');
       expect(consoleErrorSpy).toHaveBeenCalled();
       const output = consoleErrorSpy.mock.calls[0][0] as string;
@@ -117,7 +119,9 @@ describe('logger', () => {
     it('should re-throw on error without logging when debug is disabled', async () => {
       const err = new Error('boom');
       await expect(
-        loggerModule.timed('mod', 'op', async () => { throw err; })
+        loggerModule.timed('mod', 'op', async () => {
+          throw err;
+        }),
       ).rejects.toThrow('boom');
       expect(consoleErrorSpy).not.toHaveBeenCalled();
     });

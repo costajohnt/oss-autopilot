@@ -78,23 +78,25 @@ describe('parseGitHubUrl', () => {
 
 describe('extractOwnerRepo', () => {
   it('should extract owner and repo from a PR URL', () => {
-    expect(extractOwnerRepo('https://github.com/facebook/react/pull/123'))
-      .toEqual({ owner: 'facebook', repo: 'react' });
+    expect(extractOwnerRepo('https://github.com/facebook/react/pull/123')).toEqual({
+      owner: 'facebook',
+      repo: 'react',
+    });
   });
 
   it('should extract owner and repo from an issue URL', () => {
-    expect(extractOwnerRepo('https://github.com/vercel/next.js/issues/456'))
-      .toEqual({ owner: 'vercel', repo: 'next.js' });
+    expect(extractOwnerRepo('https://github.com/vercel/next.js/issues/456')).toEqual({
+      owner: 'vercel',
+      repo: 'next.js',
+    });
   });
 
   it('should extract from a bare repo URL with trailing slash', () => {
-    expect(extractOwnerRepo('https://github.com/vercel/next.js/'))
-      .toEqual({ owner: 'vercel', repo: 'next.js' });
+    expect(extractOwnerRepo('https://github.com/vercel/next.js/')).toEqual({ owner: 'vercel', repo: 'next.js' });
   });
 
   it('should handle hyphenated and underscored names', () => {
-    expect(extractOwnerRepo('https://github.com/my-org/my_repo/pull/1'))
-      .toEqual({ owner: 'my-org', repo: 'my_repo' });
+    expect(extractOwnerRepo('https://github.com/my-org/my_repo/pull/1')).toEqual({ owner: 'my-org', repo: 'my_repo' });
   });
 
   it('should return null for non-GitHub URLs', () => {
@@ -230,33 +232,22 @@ describe('formatRelativeTime', () => {
 
 describe('byDateDescending', () => {
   it('should sort items by date descending', () => {
-    const items = [
-      { date: '2026-01-01' },
-      { date: '2026-03-01' },
-      { date: '2026-02-01' },
-    ];
-    items.sort(byDateDescending(item => item.date));
-    expect(items.map(i => i.date)).toEqual(['2026-03-01', '2026-02-01', '2026-01-01']);
+    const items = [{ date: '2026-01-01' }, { date: '2026-03-01' }, { date: '2026-02-01' }];
+    items.sort(byDateDescending((item) => item.date));
+    expect(items.map((i) => i.date)).toEqual(['2026-03-01', '2026-02-01', '2026-01-01']);
   });
 
   it('should handle null dates (sort to end)', () => {
-    const items = [
-      { date: null as string | null },
-      { date: '2026-02-01' },
-      { date: '2026-01-01' },
-    ];
-    items.sort(byDateDescending(item => item.date));
+    const items = [{ date: null as string | null }, { date: '2026-02-01' }, { date: '2026-01-01' }];
+    items.sort(byDateDescending((item) => item.date));
     expect(items[0].date).toBe('2026-02-01');
     expect(items[1].date).toBe('2026-01-01');
     expect(items[2].date).toBeNull();
   });
 
   it('should handle undefined dates', () => {
-    const items = [
-      { date: undefined as string | undefined },
-      { date: '2026-01-01' },
-    ];
-    items.sort(byDateDescending(item => item.date));
+    const items = [{ date: undefined as string | undefined }, { date: '2026-01-01' }];
+    items.sort(byDateDescending((item) => item.date));
     expect(items[0].date).toBe('2026-01-01');
     expect(items[1].date).toBeUndefined();
   });
@@ -266,7 +257,7 @@ describe('byDateDescending', () => {
       { date: '2026-01-01', id: 'a' },
       { date: '2026-01-01', id: 'b' },
     ];
-    items.sort(byDateDescending(item => item.date));
+    items.sort(byDateDescending((item) => item.date));
     // Both have same date, order is stable (0 diff)
     expect(items.length).toBe(2);
   });

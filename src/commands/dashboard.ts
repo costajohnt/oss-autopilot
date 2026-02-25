@@ -6,9 +6,23 @@
 
 import * as fs from 'fs';
 import { execFile } from 'child_process';
-import { getStateManager, getDashboardPath, PRMonitor, IssueConversationMonitor, getGitHubToken } from '../core/index.js';
+import {
+  getStateManager,
+  getDashboardPath,
+  PRMonitor,
+  IssueConversationMonitor,
+  getGitHubToken,
+} from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
-import type { FetchedPR, DailyDigest, AgentState, RepoScore, ClosedPR, MergedPR, CommentedIssue, CommentedIssueWithResponse } from '../core/types.js';
+import type {
+  FetchedPR,
+  DailyDigest,
+  AgentState,
+  ClosedPR,
+  MergedPR,
+  CommentedIssue,
+  CommentedIssueWithResponse,
+} from '../core/types.js';
 
 interface DashboardOptions {
   open?: boolean;
@@ -28,28 +42,32 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       const prMonitor = new PRMonitor(token);
       // Recently closed/merged are non-critical (cosmetic sections), so isolate their failure
       const issueMonitor = new IssueConversationMonitor(token);
-      const [{ prs, failures }, recentlyClosedPRs, recentlyMergedPRs, mergedResult, closedResult, fetchedIssues] = await Promise.all([
-        prMonitor.fetchUserOpenPRs(),
-        prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
-          console.error(`Warning: Failed to fetch recently closed PRs: ${err instanceof Error ? err.message : err}`);
-          return [];
-        }),
-        prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
-          console.error(`Warning: Failed to fetch recently merged PRs: ${err instanceof Error ? err.message : err}`);
-          return [];
-        }),
-        prMonitor.fetchUserMergedPRCounts(),
-        prMonitor.fetchUserClosedPRCounts(),
-        issueMonitor.fetchCommentedIssues().catch(error => {
-          const msg = error instanceof Error ? error.message : String(error);
-          if (msg.includes('No GitHub username configured')) {
-            console.error(`[DASHBOARD] Issue conversation tracking requires setup: ${msg}`);
-          } else {
-            console.error(`[DASHBOARD] Issue conversation fetch failed: ${msg}`);
-          }
-          return { issues: [] as CommentedIssue[], failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }] };
-        }),
-      ]);
+      const [{ prs, failures }, recentlyClosedPRs, recentlyMergedPRs, mergedResult, closedResult, fetchedIssues] =
+        await Promise.all([
+          prMonitor.fetchUserOpenPRs(),
+          prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
+            console.error(`Warning: Failed to fetch recently closed PRs: ${err instanceof Error ? err.message : err}`);
+            return [];
+          }),
+          prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
+            console.error(`Warning: Failed to fetch recently merged PRs: ${err instanceof Error ? err.message : err}`);
+            return [];
+          }),
+          prMonitor.fetchUserMergedPRCounts(),
+          prMonitor.fetchUserClosedPRCounts(),
+          issueMonitor.fetchCommentedIssues().catch((error) => {
+            const msg = error instanceof Error ? error.message : String(error);
+            if (msg.includes('No GitHub username configured')) {
+              console.error(`[DASHBOARD] Issue conversation tracking requires setup: ${msg}`);
+            } else {
+              console.error(`[DASHBOARD] Issue conversation fetch failed: ${msg}`);
+            }
+            return {
+              issues: [] as CommentedIssue[],
+              failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
+            };
+          }),
+        ]);
       commentedIssues = fetchedIssues.issues;
       if (fetchedIssues.failures.length > 0) {
         console.error(`[DASHBOARD] ${fetchedIssues.failures.length} issue conversation check(s) failed`);
@@ -63,11 +81,21 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       const { monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
       const { monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
 
-      try { stateManager.setMonthlyMergedCounts(monthlyCounts); } catch (error) {
-        console.error('[DASHBOARD] Failed to store monthly merged counts:', error instanceof Error ? error.message : error);
+      try {
+        stateManager.setMonthlyMergedCounts(monthlyCounts);
+      } catch (error) {
+        console.error(
+          '[DASHBOARD] Failed to store monthly merged counts:',
+          error instanceof Error ? error.message : error,
+        );
       }
-      try { stateManager.setMonthlyClosedCounts(monthlyClosedCounts); } catch (error) {
-        console.error('[DASHBOARD] Failed to store monthly closed counts:', error instanceof Error ? error.message : error);
+      try {
+        stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+      } catch (error) {
+        console.error(
+          '[DASHBOARD] Failed to store monthly closed counts:',
+          error instanceof Error ? error.message : error,
+        );
       }
       try {
         const combinedOpenedCounts: Record<string, number> = { ...openedFromMerged };
@@ -82,7 +110,10 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
         }
         stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
       } catch (error) {
-        console.error('[DASHBOARD] Failed to store monthly opened counts:', error instanceof Error ? error.message : error);
+        console.error(
+          '[DASHBOARD] Failed to store monthly opened counts:',
+          error instanceof Error ? error.message : error,
+        );
       }
 
       digest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);
@@ -90,7 +121,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       // Apply shelve partitioning for display (auto-unshelve only runs in daily check)
       // Dormant PRs are treated as shelved for display purposes
       const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
-      const freshShelved = prs.filter(pr => shelvedUrls.has(pr.url) || pr.status === 'dormant');
+      const freshShelved = prs.filter((pr) => shelvedUrls.has(pr.url) || pr.status === 'dormant');
       digest.shelvedPRs = freshShelved;
       digest.autoUnshelvedPRs = [];
       digest.summary.totalActivePRs = prs.length - freshShelved.length;
@@ -125,7 +156,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
   const prsByRepo: Record<string, { active: number; merged: number; closed: number }> = {};
 
   // Count active PRs by repo from digest
-  for (const pr of (digest.openPRs || [])) {
+  for (const pr of digest.openPRs || []) {
     if (!prsByRepo[pr.repo]) prsByRepo[pr.repo] = { active: 0, merged: 0, closed: 0 };
     prsByRepo[pr.repo].active++;
   }
@@ -139,7 +170,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
 
   // Sort repos by total PRs (merged + active + closed) — matches the HTML chart sort order
   const topRepos = Object.entries(prsByRepo)
-    .sort((a, b) => (b[1].merged + b[1].active + b[1].closed) - (a[1].merged + a[1].active + a[1].closed))
+    .sort((a, b) => b[1].merged + b[1].active + b[1].closed - (a[1].merged + a[1].active + a[1].closed))
     .slice(0, 10);
 
   // Monthly activity from per-PR merge dates (populated during daily check)
@@ -176,8 +207,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
   if (options.open) {
     // Use platform-specific open command - path is hardcoded, not user input
     const isWindows = process.platform === 'win32';
-    const openCmd = process.platform === 'darwin' ? 'open' :
-                    isWindows ? 'cmd' : 'xdg-open';
+    const openCmd = process.platform === 'darwin' ? 'open' : isWindows ? 'cmd' : 'xdg-open';
     const args = isWindows ? ['/c', 'start', '', dashboardPath] : [dashboardPath];
 
     console.log(`Dashboard: ${dashboardPath}`);
@@ -230,7 +260,12 @@ interface DashboardStats {
 }
 
 function buildDashboardStats(digest: DailyDigest, state: AgentState): DashboardStats {
-  const summary = digest.summary || { totalActivePRs: 0, totalMergedAllTime: 0, mergeRate: 0, totalNeedingAttention: 0 };
+  const summary = digest.summary || {
+    totalActivePRs: 0,
+    totalMergedAllTime: 0,
+    mergeRate: 0,
+    totalNeedingAttention: 0,
+  };
   return {
     activePRs: summary.totalActivePRs,
     shelvedPRs: (digest.shelvedPRs || []).length,
@@ -269,8 +304,8 @@ function generateDashboardHtml(
   const shelvedPRs = digest.shelvedPRs || [];
   const autoUnshelvedPRs = digest.autoUnshelvedPRs || [];
   const recentlyMerged = digest.recentlyMergedPRs || [];
-  const shelvedUrls = new Set(shelvedPRs.map(pr => pr.url));
-  const activePRList = (digest.openPRs || []).filter(pr => !shelvedUrls.has(pr.url));
+  const shelvedUrls = new Set(shelvedPRs.map((pr) => pr.url));
+  const activePRList = (digest.openPRs || []).filter((pr) => !shelvedUrls.has(pr.url));
 
   // Action Required: contributor must do something
   const actionRequired = [
@@ -308,10 +343,11 @@ function generateDashboardHtml(
     labelFn: string | ((pr: FetchedPR) => string),
     metaFn: (pr: FetchedPR) => string,
   ): string {
-    return prs.map(pr => {
-      const rawLabel = typeof labelFn === 'string' ? labelFn : labelFn(pr);
-      const label = escapeHtml(rawLabel);
-      return `
+    return prs
+      .map((pr) => {
+        const rawLabel = typeof labelFn === 'string' ? labelFn : labelFn(pr);
+        const label = escapeHtml(rawLabel);
+        return `
         <div class="health-item ${cssClass}" data-status="${cssClass}" data-repo="${escapeHtml(pr.repo)}" data-title="${escapeHtml(pr.title.toLowerCase())}">
           <div class="health-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -323,25 +359,30 @@ function generateDashboardHtml(
             <div class="health-meta">${metaFn(pr)}</div>
           </div>
         </div>`;
-    }).join('');
+      })
+      .join('');
   }
 
   // SVG path constants for health item icons
   const SVG = {
     comment: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
     edit: '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>',
-    xCircle: '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>',
-    conflict: '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>',
+    xCircle:
+      '<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>',
+    conflict:
+      '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>',
     checklist: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
     file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>',
     checkCircle: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
     clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
     lock: '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
-    infoCircle: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+    infoCircle:
+      '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
     refresh: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
     box: '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>',
     bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
-    gitMerge: '<circle cx="7" cy="18" r="3"/><circle cx="7" cy="6" r="3"/><circle cx="17" cy="12" r="3"/><line x1="7" y1="9" x2="7" y2="15"/><path d="M7 9c0 4 10 3 10 3"/>',
+    gitMerge:
+      '<circle cx="7" cy="18" r="3"/><circle cx="7" cy="6" r="3"/><circle cx="17" cy="12" r="3"/><line x1="7" y1="9" x2="7" y2="15"/><path d="M7 9c0 4 10 3 10 3"/>',
   };
 
   // Default meta: truncated PR title
@@ -1136,16 +1177,20 @@ function generateDashboardHtml(
       </div>
       <div class="header-controls">
         <div class="timestamp">
-          Last updated: ${digest.generatedAt ? new Date(digest.generatedAt).toLocaleString('en-US', {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-          }) : 'Unknown'}
+          Last updated: ${
+            digest.generatedAt
+              ? new Date(digest.generatedAt).toLocaleString('en-US', {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  hour12: false,
+                })
+              : 'Unknown'
+          }
         </div>
         <button class="theme-toggle" id="themeToggle" title="Toggle light/dark mode">
           <svg id="themeIconSun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1221,15 +1266,20 @@ function generateDashboardHtml(
           for (const pr of actionRequired) repos.add(pr.repo);
           for (const pr of waitingOnOthers) repos.add(pr.repo);
           for (const pr of recentlyMerged) repos.add(pr.repo);
-          for (const pr of (digest.recentlyClosedPRs || [])) repos.add(pr.repo);
+          for (const pr of digest.recentlyClosedPRs || []) repos.add(pr.repo);
           for (const pr of autoUnshelvedPRs) repos.add(pr.repo);
-          return Array.from(repos).sort().map(repo => `<option value="${escapeHtml(repo)}">${escapeHtml(repo)}</option>`).join('\n        ');
+          return Array.from(repos)
+            .sort()
+            .map((repo) => `<option value="${escapeHtml(repo)}">${escapeHtml(repo)}</option>`)
+            .join('\n        ');
         })()}
       </select>
       <span class="filter-count" id="filterCount"></span>
     </div>
 
-    ${actionRequired.length > 0 ? `
+    ${
+      actionRequired.length > 0
+        ? `
     <section class="health-section">
       <div class="health-header">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-warning)" stroke-width="2">
@@ -1241,22 +1291,45 @@ function generateDashboardHtml(
         <span class="health-badge">${actionRequired.length} issue${actionRequired.length !== 1 ? 's' : ''}</span>
       </div>
       <div class="health-items">
-        ${renderHealthItems(digest.prsNeedingResponse || [], 'needs-response', SVG.comment, 'Needs Response',
-          pr => pr.lastMaintainerComment ? `@${escapeHtml(pr.lastMaintainerComment.author)}: ${truncateTitle(pr.lastMaintainerComment.body, 40)}` : truncateTitle(pr.title))}
+        ${renderHealthItems(digest.prsNeedingResponse || [], 'needs-response', SVG.comment, 'Needs Response', (pr) =>
+          pr.lastMaintainerComment
+            ? `@${escapeHtml(pr.lastMaintainerComment.author)}: ${truncateTitle(pr.lastMaintainerComment.body, 40)}`
+            : truncateTitle(pr.title),
+        )}
         ${renderHealthItems(digest.needsChangesPRs || [], 'needs-changes', SVG.edit, 'Needs Changes', titleMeta)}
         ${renderHealthItems(digest.ciFailingPRs || [], 'ci-failing', SVG.xCircle, 'CI Failing', titleMeta)}
         ${renderHealthItems(digest.mergeConflictPRs || [], 'conflict', SVG.conflict, 'Merge Conflict', titleMeta)}
-        ${renderHealthItems(digest.incompleteChecklistPRs || [], 'incomplete-checklist', SVG.checklist,
-          pr => `Incomplete Checklist${pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : ''}`, titleMeta)}
-        ${renderHealthItems(digest.missingRequiredFilesPRs || [], 'missing-files', SVG.file, 'Missing Required Files',
-          pr => pr.missingRequiredFiles ? escapeHtml(pr.missingRequiredFiles.join(', ')) : truncateTitle(pr.title))}
-        ${renderHealthItems(digest.needsRebasePRs || [], 'needs-rebase', SVG.refresh,
-          pr => `Needs Rebase${pr.commitsBehindUpstream ? ` (${pr.commitsBehindUpstream} behind)` : ''}`, titleMeta)}
+        ${renderHealthItems(
+          digest.incompleteChecklistPRs || [],
+          'incomplete-checklist',
+          SVG.checklist,
+          (pr) =>
+            `Incomplete Checklist${pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : ''}`,
+          titleMeta,
+        )}
+        ${renderHealthItems(
+          digest.missingRequiredFilesPRs || [],
+          'missing-files',
+          SVG.file,
+          'Missing Required Files',
+          (pr) => (pr.missingRequiredFiles ? escapeHtml(pr.missingRequiredFiles.join(', ')) : truncateTitle(pr.title)),
+        )}
+        ${renderHealthItems(
+          digest.needsRebasePRs || [],
+          'needs-rebase',
+          SVG.refresh,
+          (pr) => `Needs Rebase${pr.commitsBehindUpstream ? ` (${pr.commitsBehindUpstream} behind)` : ''}`,
+          titleMeta,
+        )}
       </div>
     </section>
-    ` : ''}
+    `
+        : ''
+    }
 
-    ${waitingOnOthers.length > 0 ? `
+    ${
+      waitingOnOthers.length > 0
+        ? `
     <section class="health-section waiting-section">
       <div class="health-header">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-info)" stroke-width="2">
@@ -1267,16 +1340,26 @@ function generateDashboardHtml(
         <span class="health-badge" style="background: var(--accent-info-dim); color: var(--accent-info);">${waitingOnOthers.length} PR${waitingOnOthers.length !== 1 ? 's' : ''}</span>
       </div>
       <div class="health-items">
-        ${renderHealthItems(digest.changesAddressedPRs || [], 'changes-addressed', SVG.checkCircle, 'Changes Addressed',
-          pr => `Awaiting re-review${pr.lastMaintainerComment ? ` from @${escapeHtml(pr.lastMaintainerComment.author)}` : ''}`)}
+        ${renderHealthItems(
+          digest.changesAddressedPRs || [],
+          'changes-addressed',
+          SVG.checkCircle,
+          'Changes Addressed',
+          (pr) =>
+            `Awaiting re-review${pr.lastMaintainerComment ? ` from @${escapeHtml(pr.lastMaintainerComment.author)}` : ''}`,
+        )}
         ${renderHealthItems(digest.waitingOnMaintainerPRs || [], 'waiting-maintainer', SVG.clock, 'Waiting on Maintainer', titleMeta)}
         ${renderHealthItems(digest.ciBlockedPRs || [], 'ci-blocked', SVG.lock, 'CI Blocked', titleMeta)}
         ${renderHealthItems(digest.ciNotRunningPRs || [], 'ci-not-running', SVG.infoCircle, 'CI Not Running', titleMeta)}
       </div>
     </section>
-    ` : ''}
+    `
+        : ''
+    }
 
-    ${actionRequired.length === 0 && waitingOnOthers.length === 0 ? `
+    ${
+      actionRequired.length === 0 && waitingOnOthers.length === 0
+        ? `
     <section class="health-section">
       <div class="health-header">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-open)" stroke-width="2">
@@ -1289,9 +1372,13 @@ function generateDashboardHtml(
         All PRs are healthy - no CI failures, conflicts, or pending responses
       </div>
     </section>
-    ` : ''}
+    `
+        : ''
+    }
 
-    ${recentlyMerged.length > 0 ? `
+    ${
+      recentlyMerged.length > 0
+        ? `
     <section class="health-section" style="animation-delay: 0.15s;">
       <div class="health-header">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-merged)" stroke-width="2">
@@ -1301,7 +1388,9 @@ function generateDashboardHtml(
         <span class="health-badge" style="background: var(--accent-merged-dim); color: var(--accent-merged);">${recentlyMerged.length} merged</span>
       </div>
       <div class="health-items">
-        ${recentlyMerged.map(pr => `
+        ${recentlyMerged
+          .map(
+            (pr) => `
         <div class="health-item" style="border-left-color: var(--accent-merged);" data-status="merged" data-repo="${escapeHtml(pr.repo)}" data-title="${escapeHtml(pr.title.toLowerCase())}">
           <div class="health-icon" style="background: var(--accent-merged-dim); color: var(--accent-merged);">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1313,12 +1402,18 @@ function generateDashboardHtml(
             <div class="health-meta">${truncateTitle(pr.title)}${pr.mergedAt ? ` · ${new Date(pr.mergedAt).toLocaleDateString()}` : ''}</div>
           </div>
         </div>
-        `).join('')}
+        `,
+          )
+          .join('')}
       </div>
     </section>
-    ` : ''}
+    `
+        : ''
+    }
 
-    ${(digest.recentlyClosedPRs || []).length > 0 ? `
+    ${
+      (digest.recentlyClosedPRs || []).length > 0
+        ? `
     <section class="health-section" style="animation-delay: 0.2s;">
       <div class="health-header">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2">
@@ -1330,7 +1425,9 @@ function generateDashboardHtml(
         <span class="health-badge" style="background: rgba(110, 118, 129, 0.15); color: var(--text-muted);">${(digest.recentlyClosedPRs || []).length} closed</span>
       </div>
       <div class="health-items">
-        ${(digest.recentlyClosedPRs || []).map(pr => `
+        ${(digest.recentlyClosedPRs || [])
+          .map(
+            (pr) => `
         <div class="health-item" style="border-left-color: var(--text-muted); opacity: 0.7;" data-status="closed" data-repo="${escapeHtml(pr.repo)}" data-title="${escapeHtml(pr.title.toLowerCase())}">
           <div class="health-icon" style="background: rgba(110, 118, 129, 0.15); color: var(--text-muted);">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1344,12 +1441,18 @@ function generateDashboardHtml(
             <div class="health-meta">${truncateTitle(pr.title)}${pr.closedAt ? ` · ${new Date(pr.closedAt).toLocaleDateString()}` : ''}</div>
           </div>
         </div>
-        `).join('')}
+        `,
+          )
+          .join('')}
       </div>
     </section>
-    ` : ''}
+    `
+        : ''
+    }
 
-    ${autoUnshelvedPRs.length > 0 ? `
+    ${
+      autoUnshelvedPRs.length > 0
+        ? `
     <section class="health-section" style="animation-delay: 0.25s;">
       <div class="health-header">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-info)" stroke-width="2">
@@ -1359,13 +1462,22 @@ function generateDashboardHtml(
         <span class="health-badge" style="background: var(--accent-info-dim); color: var(--accent-info);">${autoUnshelvedPRs.length} unshelved</span>
       </div>
       <div class="health-items">
-        ${renderHealthItems(autoUnshelvedPRs, 'auto-unshelved', SVG.bell,
-          pr => 'Auto-Unshelved (' + pr.status.replace(/_/g, ' ') + ')', titleMeta)}
+        ${renderHealthItems(
+          autoUnshelvedPRs,
+          'auto-unshelved',
+          SVG.bell,
+          (pr) => 'Auto-Unshelved (' + pr.status.replace(/_/g, ' ') + ')',
+          titleMeta,
+        )}
       </div>
     </section>
-    ` : ''}
+    `
+        : ''
+    }
 
-    ${issueResponses.length > 0 ? `
+    ${
+      issueResponses.length > 0
+        ? `
     <section class="health-section" style="animation-delay: 0.3s;">
       <div class="health-header">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-info)" stroke-width="2">
@@ -1375,7 +1487,9 @@ function generateDashboardHtml(
         <span class="health-badge" style="background: var(--accent-info-dim); color: var(--accent-info);">${issueResponses.length} repl${issueResponses.length !== 1 ? 'ies' : 'y'}</span>
       </div>
       <div class="health-items">
-        ${issueResponses.map(issue => `
+        ${issueResponses
+          .map(
+            (issue) => `
         <div class="health-item changes-addressed">
           <div class="health-icon" style="background: var(--accent-info-dim); color: var(--accent-info);">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1387,10 +1501,14 @@ function generateDashboardHtml(
             <div class="health-meta">@${escapeHtml(issue.lastResponseAuthor)}: ${escapeHtml(issue.lastResponseBody.slice(0, 60))}${issue.lastResponseBody.length > 60 ? '...' : ''}</div>
           </div>
         </div>
-        `).join('')}
+        `,
+          )
+          .join('')}
       </div>
     </section>
-    ` : ''}
+    `
+        : ''
+    }
 
     <div class="main-grid">
       <div class="card">
@@ -1428,41 +1546,58 @@ function generateDashboardHtml(
     </div>
 
 
-    ${activePRList.length > 0 ? `
+    ${
+      activePRList.length > 0
+        ? `
     <section class="pr-list-section">
       <div class="pr-list-header">
         <h2 class="pr-list-title">Active Pull Requests</h2>
         <span class="pr-count">${activePRList.length} open</span>
       </div>
       <div class="pr-list">
-        ${activePRList.map(pr => {
-          const hasIssues = pr.ciStatus === 'failing' || pr.hasMergeConflict || (pr.hasUnrespondedComment && pr.status !== 'changes_addressed') || pr.status === 'needs_changes';
-          const isStale = pr.daysSinceActivity >= approachingDormantDays;
-          const itemClass = hasIssues ? 'has-issues' : (isStale ? 'stale' : '');
+        ${activePRList
+          .map((pr) => {
+            const hasIssues =
+              pr.ciStatus === 'failing' ||
+              pr.hasMergeConflict ||
+              (pr.hasUnrespondedComment && pr.status !== 'changes_addressed') ||
+              pr.status === 'needs_changes';
+            const isStale = pr.daysSinceActivity >= approachingDormantDays;
+            const itemClass = hasIssues ? 'has-issues' : isStale ? 'stale' : '';
 
-          const prStatus = pr.ciStatus === 'failing' ? 'ci-failing' :
-            pr.hasMergeConflict ? 'conflict' :
-            (pr.hasUnrespondedComment && pr.status !== 'changes_addressed' && pr.status !== 'failing_ci') ? 'needs-response' :
-            pr.status === 'needs_changes' ? 'needs-changes' :
-            pr.status === 'changes_addressed' ? 'changes-addressed' :
-            'active';
+            const prStatus =
+              pr.ciStatus === 'failing'
+                ? 'ci-failing'
+                : pr.hasMergeConflict
+                  ? 'conflict'
+                  : pr.hasUnrespondedComment && pr.status !== 'changes_addressed' && pr.status !== 'failing_ci'
+                    ? 'needs-response'
+                    : pr.status === 'needs_changes'
+                      ? 'needs-changes'
+                      : pr.status === 'changes_addressed'
+                        ? 'changes-addressed'
+                        : 'active';
 
-          return `
+            return `
         <div class="pr-item ${itemClass}" data-status="${prStatus}" data-repo="${escapeHtml(pr.repo)}" data-title="${escapeHtml(pr.title.toLowerCase())}">
           <div class="pr-status-indicator">
-            ${hasIssues ? `
+            ${
+              hasIssues
+                ? `
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
               <line x1="12" y1="8" x2="12" y2="12"/>
               <line x1="12" y1="16" x2="12.01" y2="16"/>
             </svg>
-            ` : `
+            `
+                : `
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
               <line x1="12" y1="16" x2="12" y2="12"/>
               <line x1="12" y1="8" x2="12.01" y2="8"/>
             </svg>
-            `}
+            `
+            }
           </div>
           <div class="pr-content">
             <div class="pr-title-row">
@@ -1481,13 +1616,15 @@ function generateDashboardHtml(
             </div>
           </div>
           <div class="pr-activity">
-            ${pr.daysSinceActivity === 0 ? 'Today' : (pr.daysSinceActivity === 1 ? 'Yesterday' : pr.daysSinceActivity + 'd ago')}
+            ${pr.daysSinceActivity === 0 ? 'Today' : pr.daysSinceActivity === 1 ? 'Yesterday' : pr.daysSinceActivity + 'd ago'}
           </div>
         </div>`;
-        }).join('')}
+          })
+          .join('')}
       </div>
     </section>
-    ` : `
+    `
+        : `
     <section class="pr-list-section">
       <div class="pr-list-header">
         <h2 class="pr-list-title">Active Pull Requests</h2>
@@ -1503,16 +1640,21 @@ function generateDashboardHtml(
         <p>No active pull requests</p>
       </div>
     </section>
-    `}
+    `
+    }
 
-    ${shelvedPRs.length > 0 ? `
+    ${
+      shelvedPRs.length > 0
+        ? `
     <section class="pr-list-section" style="margin-top: 1.25rem; opacity: 0.7;">
       <div class="pr-list-header">
         <h2 class="pr-list-title">Shelved Pull Requests</h2>
         <span class="pr-count" style="background: rgba(110, 118, 129, 0.15); color: var(--text-muted);">${shelvedPRs.length} shelved</span>
       </div>
       <div class="pr-list">
-        ${shelvedPRs.map(pr => `
+        ${shelvedPRs
+          .map(
+            (pr) => `
         <div class="pr-item" data-status="shelved" data-repo="${escapeHtml(pr.repo)}" data-title="${escapeHtml(pr.title.toLowerCase())}">
           <div class="pr-status-indicator" style="background: rgba(110, 118, 129, 0.1); color: var(--text-muted);">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1529,12 +1671,16 @@ function generateDashboardHtml(
             </div>
           </div>
           <div class="pr-activity">
-            ${pr.daysSinceActivity === 0 ? 'Today' : (pr.daysSinceActivity === 1 ? 'Yesterday' : pr.daysSinceActivity + 'd ago')}
+            ${pr.daysSinceActivity === 0 ? 'Today' : pr.daysSinceActivity === 1 ? 'Yesterday' : pr.daysSinceActivity + 'd ago'}
           </div>
-        </div>`).join('')}
+        </div>`,
+          )
+          .join('')}
       </div>
     </section>
-    ` : ''}
+    `
+        : ''
+    }
 
     <footer class="footer">
       <p>OSS Autopilot // Mission Control</p>
@@ -1674,8 +1820,8 @@ function generateDashboardHtml(
       const starThreshold = minStars ?? 50;
       const shouldExcludeRepo = (repo: string): boolean => {
         const repoLower = repo.toLowerCase();
-        if (exRepos.some(r => r.toLowerCase() === repoLower)) return true;
-        if (exOrgs?.some(o => o.toLowerCase() === repoLower.split('/')[0])) return true;
+        if (exRepos.some((r) => r.toLowerCase() === repoLower)) return true;
+        if (exOrgs?.some((o) => o.toLowerCase() === repoLower.split('/')[0])) return true;
         const score = (state.repoScores || {})[repo];
         // Fail-open: repos without cached star data are shown (not excluded).
         // Unlike issue-discovery (fail-closed), the dashboard shows the user's own
@@ -1689,7 +1835,7 @@ function generateDashboardHtml(
         // Rebuild from full prsByRepo to get all repos, not just top 10
         (() => {
           const all: Record<string, { active: number; merged: number; closed: number }> = {};
-          for (const pr of (digest.openPRs || [])) {
+          for (const pr of digest.openPRs || []) {
             if (shouldExcludeRepo(pr.repo)) continue;
             if (!all[pr.repo]) all[pr.repo] = { active: 0, merged: 0, closed: 0 };
             all[pr.repo].active++;
@@ -1701,7 +1847,7 @@ function generateDashboardHtml(
             all[repo].closed = score.closedWithoutMergeCount;
           }
           return all;
-        })()
+        })(),
       ).sort((a, b) => {
         const totalA = a[1].merged + a[1].active + a[1].closed;
         const totalB = b[1].merged + b[1].active + b[1].closed;
@@ -1714,13 +1860,17 @@ function generateDashboardHtml(
 
       if (otherRepos.length > 0) {
         const otherData = otherRepos.reduce(
-          (acc, [, d]) => ({ active: acc.active + d.active, merged: acc.merged + d.merged, closed: acc.closed + d.closed }),
-          { active: 0, merged: 0, closed: 0 }
+          (acc, [, d]) => ({
+            active: acc.active + d.active,
+            merged: acc.merged + d.merged,
+            closed: acc.closed + d.closed,
+          }),
+          { active: 0, merged: 0, closed: 0 },
         );
         displayRepos.push(['Other', otherData]);
       }
 
-      const repoLabels = displayRepos.map(([repo]) => repo === 'Other' ? 'Other' : (repo.split('/')[1] || repo));
+      const repoLabels = displayRepos.map(([repo]) => (repo === 'Other' ? 'Other' : repo.split('/')[1] || repo));
       const mergedData = displayRepos.map(([, d]) => d.merged);
       const activeData = displayRepos.map(([, d]) => d.active);
       const closedData = displayRepos.map(([, d]) => d.closed);

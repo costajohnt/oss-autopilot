@@ -360,10 +360,10 @@ export function requireGitHubToken(): string {
   if (!token) {
     throw new ConfigurationError(
       'GitHub authentication required.\n\n' +
-      'Options:\n' +
-      '  1. Use gh CLI: gh auth login\n' +
-      '  2. Set GITHUB_TOKEN environment variable\n\n' +
-      'The gh CLI is recommended - install from https://cli.github.com'
+        'Options:\n' +
+        '  1. Use gh CLI: gh auth login\n' +
+        '  2. Set GITHUB_TOKEN environment variable\n\n' +
+        'The gh CLI is recommended - install from https://cli.github.com',
     );
   }
 

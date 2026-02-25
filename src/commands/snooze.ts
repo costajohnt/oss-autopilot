@@ -48,7 +48,13 @@ export async function runSnooze(options: SnoozeCommandOptions): Promise<void> {
     const snoozeInfo = stateManager.getSnoozeInfo(options.prUrl);
 
     if (options.json) {
-      outputJson({ snoozed: added, url: options.prUrl, days, reason: options.reason, expiresAt: snoozeInfo?.expiresAt });
+      outputJson({
+        snoozed: added,
+        url: options.prUrl,
+        days,
+        reason: options.reason,
+        expiresAt: snoozeInfo?.expiresAt,
+      });
     } else if (added) {
       console.log(`Snoozed: ${options.prUrl}`);
       console.log(`Reason: ${options.reason}`);

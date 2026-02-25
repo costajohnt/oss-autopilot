@@ -38,10 +38,18 @@ export function isAcknowledgmentComment(body: string): boolean {
 
   const lower = body.toLowerCase();
   const ackKeywords = [
-    'thanks', 'thank you', 'lgtm', 'looks good',
-    'will review', "we'll review", "we'll get to this",
-    'noted', 'got it', 'will look', 'will check',
+    'thanks',
+    'thank you',
+    'lgtm',
+    'looks good',
+    'will review',
+    "we'll review",
+    "we'll get to this",
+    'noted',
+    'got it',
+    'will look',
+    'will check',
   ];
 
-  return ackKeywords.some(kw => lower.includes(kw));
+  return ackKeywords.some((kw) => lower.includes(kw));
 }

@@ -36,9 +36,7 @@ describe('runStatus', () => {
     { repo: 'owner/repo', number: 2, title: 'Add feature', hasUnreadComments: false },
   ];
 
-  const mockDormantPRs = [
-    { repo: 'other/repo', number: 10, title: 'Old PR', hasUnreadComments: false },
-  ];
+  const mockDormantPRs = [{ repo: 'other/repo', number: 10, title: 'Old PR', hasUnreadComments: false }];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,7 +67,7 @@ describe('runStatus', () => {
     await runStatus({ json: false });
 
     expect(consoleSpy).toHaveBeenCalled();
-    const allOutput = consoleSpy.mock.calls.map(c => c[0]).join('\n');
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
     expect(allOutput).toContain('Active PRs: 3');
     expect(allOutput).toContain('Dormant PRs: 1');
     expect(allOutput).toContain('Merge Rate: 71%');

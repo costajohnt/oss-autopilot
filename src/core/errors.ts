@@ -8,7 +8,10 @@
  * Base error for all oss-autopilot errors.
  */
 export class OssAutopilotError extends Error {
-  constructor(message: string, public readonly code: string) {
+  constructor(
+    message: string,
+    public readonly code: string,
+  ) {
     super(message);
     this.name = 'OssAutopilotError';
   }
@@ -28,7 +31,10 @@ export class ConfigurationError extends OssAutopilotError {
  * GitHub API errors (rate limits, auth failures, network).
  */
 export class GitHubAPIError extends OssAutopilotError {
-  constructor(message: string, public readonly status?: number) {
+  constructor(
+    message: string,
+    public readonly status?: number,
+  ) {
     super(message, 'GITHUB_API_ERROR');
     this.name = 'GitHubAPIError';
   }

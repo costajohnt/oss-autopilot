@@ -15,9 +15,7 @@ const BUNDLE_PATH = path.resolve(__dirname, '../../dist/cli.bundle.cjs');
 const BUNDLE_EXISTS = fs.existsSync(BUNDLE_PATH);
 const TEST_HOME = '/tmp/oss-autopilot-e2e-test-' + process.pid;
 
-async function runStartup(
-  env?: Record<string, string>,
-): Promise<{ stdout: string; stderr: string; json: any }> {
+async function runStartup(env?: Record<string, string>): Promise<{ stdout: string; stderr: string; json: any }> {
   let exitCode: number | null = 0;
   let signal: string | null = null;
 
@@ -41,8 +39,8 @@ async function runStartup(
   } catch (parseError) {
     console.warn(
       `[E2E] Failed to parse CLI stdout as JSON (exit=${exitCode}, signal=${signal}):\n` +
-      `parse error: ${parseError instanceof Error ? parseError.message : parseError}\n` +
-      `stdout: ${result.stdout.slice(0, 500) || '(empty)'}\nstderr: ${result.stderr.slice(0, 500) || '(empty)'}`
+        `parse error: ${parseError instanceof Error ? parseError.message : parseError}\n` +
+        `stdout: ${result.stdout.slice(0, 500) || '(empty)'}\nstderr: ${result.stderr.slice(0, 500) || '(empty)'}`,
     );
     json = null;
   }

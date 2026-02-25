@@ -64,31 +64,37 @@ export async function runComments(options: CommentsOptions): Promise<void> {
   const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number });
 
   // Get review comments (inline code comments)
-  const reviewComments = await paginateAll((page) => octokit.pulls.listReviewComments({
-    owner,
-    repo,
-    pull_number,
-    per_page: 100,
-    page,
-  }));
+  const reviewComments = await paginateAll((page) =>
+    octokit.pulls.listReviewComments({
+      owner,
+      repo,
+      pull_number,
+      per_page: 100,
+      page,
+    }),
+  );
 
   // Get issue comments (general PR discussion)
-  const issueComments = await paginateAll((page) => octokit.issues.listComments({
-    owner,
-    repo,
-    issue_number: pull_number,
-    per_page: 100,
-    page,
-  }));
+  const issueComments = await paginateAll((page) =>
+    octokit.issues.listComments({
+      owner,
+      repo,
+      issue_number: pull_number,
+      per_page: 100,
+      page,
+    }),
+  );
 
   // Get reviews
-  const reviews = await paginateAll((page) => octokit.pulls.listReviews({
-    owner,
-    repo,
-    pull_number,
-    per_page: 100,
-    page,
-  }));
+  const reviews = await paginateAll((page) =>
+    octokit.pulls.listReviews({
+      owner,
+      repo,
+      pull_number,
+      per_page: 100,
+      page,
+    }),
+  );
 
   // Filter out own comments, optionally show bots
   const username = stateManager.getState().config.githubUsername;
@@ -107,7 +113,7 @@ export async function runComments(options: CommentsOptions): Promise<void> {
     .filter(filterComment)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   const relevantReviews = reviews
-    .filter(r => filterComment(r) && r.body && r.body.trim())
+    .filter((r) => filterComment(r) && r.body && r.body.trim())
     .sort((a, b) => new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime());
 
   if (options.json) {
@@ -120,19 +126,19 @@ export async function runComments(options: CommentsOptions): Promise<void> {
         base: pr.base.ref,
         url: pr.html_url,
       },
-      reviews: relevantReviews.map(r => ({
+      reviews: relevantReviews.map((r) => ({
         user: r.user?.login,
         state: r.state,
         body: r.body,
         submittedAt: r.submitted_at,
       })),
-      reviewComments: relevantReviewComments.map(c => ({
+      reviewComments: relevantReviewComments.map((c) => ({
         user: c.user?.login,
         body: c.body,
         path: c.path,
         createdAt: c.created_at,
       })),
-      issueComments: relevantIssueComments.map(c => ({
+      issueComments: relevantIssueComments.map((c) => ({
         user: c.user?.login,
         body: c.body,
         createdAt: c.created_at,
@@ -156,8 +162,7 @@ export async function runComments(options: CommentsOptions): Promise<void> {
   if (relevantReviews.length > 0) {
     console.log('### Reviews (newest first)\n');
     for (const review of relevantReviews) {
-      const state = review.state === 'APPROVED' ? '✅' :
-                    review.state === 'CHANGES_REQUESTED' ? '❌' : '💬';
+      const state = review.state === 'APPROVED' ? '✅' : review.state === 'CHANGES_REQUESTED' ? '❌' : '💬';
       const time = review.submitted_at ? formatRelativeTime(review.submitted_at) : '';
       console.log(`${state} **@${review.user?.login}** (${review.state}) - ${time}`);
       if (review.body) {
@@ -188,14 +193,14 @@ export async function runComments(options: CommentsOptions): Promise<void> {
     }
   }
 
-  if (relevantReviewComments.length === 0 &&
-      relevantIssueComments.length === 0 &&
-      relevantReviews.length === 0) {
+  if (relevantReviewComments.length === 0 && relevantIssueComments.length === 0 && relevantReviews.length === 0) {
     console.log('No comments from other users.\n');
   }
 
   console.log('---');
-  console.log(`**Summary:** ${relevantReviews.length} reviews, ${relevantReviewComments.length} inline comments, ${relevantIssueComments.length} discussion comments`);
+  console.log(
+    `**Summary:** ${relevantReviews.length} reviews, ${relevantReviewComments.length} inline comments, ${relevantIssueComments.length} discussion comments`,
+  );
 }
 
 export async function runPost(options: PostOptions): Promise<void> {
@@ -320,8 +325,7 @@ export async function runClaim(options: ClaimOptions): Promise<void> {
   const { owner, repo, number } = parsed;
 
   // Default claim message or custom
-  const message = options.message ||
-    "Hi! I'd like to work on this issue. Could you assign it to me?";
+  const message = options.message || "Hi! I'd like to work on this issue. Could you assign it to me?";
 
   if (!options.json) {
     console.log('\n🙋 Claiming issue:', options.issueUrl);

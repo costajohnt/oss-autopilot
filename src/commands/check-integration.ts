@@ -14,9 +14,20 @@ interface CheckIntegrationOptions {
 
 /** File extensions we consider "code" that should be imported/referenced */
 const CODE_EXTENSIONS = new Set([
-  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
-  '.py', '.rb', '.go', '.rs', '.java', '.kt',
-  '.vue', '.svelte',
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.py',
+  '.rb',
+  '.go',
+  '.rs',
+  '.java',
+  '.kt',
+  '.vue',
+  '.svelte',
 ]);
 
 /** Files that are typically entry points or config, not expected to be imported */
@@ -89,10 +100,10 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
   }
 
   // Filter to code files, excluding tests, configs, etc.
-  const codeFiles = newFiles.filter(f => {
+  const codeFiles = newFiles.filter((f) => {
     const ext = path.extname(f);
     if (!CODE_EXTENSIONS.has(ext)) return false;
-    return !IGNORED_PATTERNS.some(p => p.test(f));
+    return !IGNORED_PATTERNS.some((p) => p.test(f));
   });
 
   if (codeFiles.length === 0) {
@@ -111,7 +122,10 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
     allFiles = execFileSync('git', ['ls-files'], {
       encoding: 'utf-8',
       timeout: 10000,
-    }).trim().split('\n').filter(Boolean);
+    })
+      .trim()
+      .split('\n')
+      .filter(Boolean);
   } catch {
     allFiles = [];
   }
@@ -142,12 +156,13 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
           timeout: 10000,
         }).trim();
         if (grepOutput) {
-          const matches = grepOutput.split('\n').filter(f => f !== newFile);
+          const matches = grepOutput.split('\n').filter((f) => f !== newFile);
           referencedBy.push(...matches);
         }
       } catch (error: unknown) {
         // git grep exit code 1 = no matches (expected), exit code 2+ = real error
-        const exitCode = error && typeof error === 'object' && 'status' in error ? (error as { status: number }).status : null;
+        const exitCode =
+          error && typeof error === 'object' && 'status' in error ? (error as { status: number }).status : null;
         if (exitCode !== null && exitCode !== 1) {
           const msg = error instanceof Error ? error.message : String(error);
           console.error(`Warning: git grep failed for "${pattern}": ${msg}`);
@@ -172,7 +187,7 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
     results.push(info);
   }
 
-  const unreferencedCount = results.filter(r => !r.isIntegrated).length;
+  const unreferencedCount = results.filter((r) => !r.isIntegrated).length;
   const output: CheckIntegrationOutput = { newFiles: results, unreferencedCount };
 
   if (options.json) {

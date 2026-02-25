@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  OssAutopilotError,
-  ConfigurationError,
-  GitHubAPIError,
-  ValidationError,
-  StateError,
-} from './errors.js';
+import { OssAutopilotError, ConfigurationError, GitHubAPIError, ValidationError, StateError } from './errors.js';
 
 describe('Custom Error Hierarchy', () => {
   describe('OssAutopilotError', () => {

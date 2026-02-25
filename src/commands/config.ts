@@ -13,7 +13,11 @@ interface ConfigOptions {
 }
 
 function exitWithError(msg: string, json?: boolean): never {
-  if (json) { outputJsonError(msg); } else { console.error(msg); }
+  if (json) {
+    outputJsonError(msg);
+  } else {
+    console.error(msg);
+  }
   process.exit(1);
 }
 
@@ -61,7 +65,7 @@ export async function runConfig(options: ConfigOptions): Promise<void> {
         );
       }
       const valueLower = value.toLowerCase();
-      if (!currentConfig.excludeRepos.some(r => r.toLowerCase() === valueLower)) {
+      if (!currentConfig.excludeRepos.some((r) => r.toLowerCase() === valueLower)) {
         stateManager.updateConfig({ excludeRepos: [...currentConfig.excludeRepos, value] });
         stateManager.cleanupExcludedData([value], []);
       }
@@ -75,7 +79,7 @@ export async function runConfig(options: ConfigOptions): Promise<void> {
         );
       }
       const currentOrgs = currentConfig.excludeOrgs ?? [];
-      if (!currentOrgs.some(o => o.toLowerCase() === value.toLowerCase())) {
+      if (!currentOrgs.some((o) => o.toLowerCase() === value.toLowerCase())) {
         stateManager.updateConfig({ excludeOrgs: [...currentOrgs, value] });
         stateManager.cleanupExcludedData([], [value]);
       }

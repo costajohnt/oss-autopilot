@@ -76,7 +76,7 @@ describe('computeActionMenu', () => {
   it('should not include address_all when there are no actionable issues', () => {
     const menu = computeActionMenu([], makeCapacity());
 
-    expect(menu.items.find(i => i.key === 'address_all')).toBeUndefined();
+    expect(menu.items.find((i) => i.key === 'address_all')).toBeUndefined();
     expect(menu.context.hasActionableIssues).toBe(false);
     expect(menu.context.actionableCount).toBe(0);
   });
@@ -85,8 +85,8 @@ describe('computeActionMenu', () => {
     const withCapacity = computeActionMenu([], makeCapacity({ hasCapacity: true }));
     const withoutCapacity = computeActionMenu([], makeCapacity({ hasCapacity: false }));
 
-    expect(withCapacity.items.find(i => i.key === 'search')).toBeDefined();
-    expect(withoutCapacity.items.find(i => i.key === 'search')).toBeDefined();
+    expect(withCapacity.items.find((i) => i.key === 'search')).toBeDefined();
+    expect(withoutCapacity.items.find((i) => i.key === 'search')).toBeDefined();
   });
 
   it('should always include done as the last item', () => {
@@ -98,10 +98,7 @@ describe('computeActionMenu', () => {
   });
 
   it('should have correct context flags', () => {
-    const menu = computeActionMenu(
-      [makeActionableIssue()],
-      makeCapacity({ hasCapacity: true }),
-    );
+    const menu = computeActionMenu([makeActionableIssue()], makeCapacity({ hasCapacity: true }));
 
     expect(menu.context).toEqual({
       hasActionableIssues: true,
@@ -117,16 +114,16 @@ describe('computeActionMenu', () => {
     const withCapacity = computeActionMenu(issues, makeCapacity({ hasCapacity: true }));
     const withoutCapacity = computeActionMenu(issues, makeCapacity({ hasCapacity: false }));
 
-    expect(withCapacity.items.map(i => i.key)).toEqual(['address_all', 'search', 'done']);
-    expect(withoutCapacity.items.map(i => i.key)).toEqual(['address_all', 'search', 'done']);
+    expect(withCapacity.items.map((i) => i.key)).toEqual(['address_all', 'search', 'done']);
+    expect(withoutCapacity.items.map((i) => i.key)).toEqual(['address_all', 'search', 'done']);
   });
 
   it('should produce [search, done] when no actionable issues exist', () => {
     const withCapacity = computeActionMenu([], makeCapacity({ hasCapacity: true }));
     const withoutCapacity = computeActionMenu([], makeCapacity({ hasCapacity: false }));
 
-    expect(withCapacity.items.map(i => i.key)).toEqual(['search', 'done']);
-    expect(withoutCapacity.items.map(i => i.key)).toEqual(['search', 'done']);
+    expect(withCapacity.items.map((i) => i.key)).toEqual(['search', 'done']);
+    expect(withoutCapacity.items.map((i) => i.key)).toEqual(['search', 'done']);
   });
 
   it('should include issue_replies item and context when issue responses exist', () => {
@@ -147,7 +144,7 @@ describe('computeActionMenu', () => {
     ];
     const menu = computeActionMenu([], makeCapacity(), issueResponses);
 
-    expect(menu.items.map(i => i.key)).toEqual(['issue_replies', 'search', 'done']);
+    expect(menu.items.map((i) => i.key)).toEqual(['issue_replies', 'search', 'done']);
     expect(menu.items[0].label).toBe('Review 1 issue reply');
     expect(menu.context).toEqual({
       hasActionableIssues: false,
@@ -160,17 +157,53 @@ describe('computeActionMenu', () => {
 
   it('should order address_all before issue_replies when both present', () => {
     const issueResponses: CommentedIssue[] = [
-      { repo: 'a/b', number: 1, title: 'T', url: 'u', status: 'new_response', userLastCommentedAt: '', lastResponseAuthor: 'm', lastResponseBody: 'x', lastResponseAt: '', labels: [], daysSinceUserComment: 0 },
+      {
+        repo: 'a/b',
+        number: 1,
+        title: 'T',
+        url: 'u',
+        status: 'new_response',
+        userLastCommentedAt: '',
+        lastResponseAuthor: 'm',
+        lastResponseBody: 'x',
+        lastResponseAt: '',
+        labels: [],
+        daysSinceUserComment: 0,
+      },
     ];
     const menu = computeActionMenu([makeActionableIssue()], makeCapacity(), issueResponses);
 
-    expect(menu.items.map(i => i.key)).toEqual(['address_all', 'issue_replies', 'search', 'done']);
+    expect(menu.items.map((i) => i.key)).toEqual(['address_all', 'issue_replies', 'search', 'done']);
   });
 
   it('should use plural label for multiple issue responses', () => {
     const issueResponses: CommentedIssue[] = [
-      { repo: 'a/b', number: 1, title: 'T', url: 'u', status: 'new_response', userLastCommentedAt: '', lastResponseAuthor: 'm', lastResponseBody: 'x', lastResponseAt: '', labels: [], daysSinceUserComment: 0 },
-      { repo: 'c/d', number: 2, title: 'T', url: 'u', status: 'new_response', userLastCommentedAt: '', lastResponseAuthor: 'm', lastResponseBody: 'x', lastResponseAt: '', labels: [], daysSinceUserComment: 0 },
+      {
+        repo: 'a/b',
+        number: 1,
+        title: 'T',
+        url: 'u',
+        status: 'new_response',
+        userLastCommentedAt: '',
+        lastResponseAuthor: 'm',
+        lastResponseBody: 'x',
+        lastResponseAt: '',
+        labels: [],
+        daysSinceUserComment: 0,
+      },
+      {
+        repo: 'c/d',
+        number: 2,
+        title: 'T',
+        url: 'u',
+        status: 'new_response',
+        userLastCommentedAt: '',
+        lastResponseAuthor: 'm',
+        lastResponseBody: 'x',
+        lastResponseAt: '',
+        labels: [],
+        daysSinceUserComment: 0,
+      },
     ];
     const menu = computeActionMenu([], makeCapacity(), issueResponses);
 
@@ -248,7 +281,13 @@ describe('computeRepoSignals', () => {
   });
 
   it('should NOT mark repo as having active maintainers for non-review statuses', () => {
-    const inactiveStatuses = ['failing_ci', 'merge_conflict', 'dormant', 'approaching_dormant', 'incomplete_checklist'] as const;
+    const inactiveStatuses = [
+      'failing_ci',
+      'merge_conflict',
+      'dormant',
+      'approaching_dormant',
+      'incomplete_checklist',
+    ] as const;
     for (const status of inactiveStatuses) {
       const prs = [makePR({ repo: `owner/${status}`, status })];
       const result = computeRepoSignals(prs);
@@ -339,13 +378,10 @@ describe('groupPRsByRepo (#80)', () => {
   });
 
   it('should separate PRs in different repos', () => {
-    const prs = [
-      makePR({ repo: 'owner/repo-a', number: 1 }),
-      makePR({ repo: 'owner/repo-b', number: 2 }),
-    ];
+    const prs = [makePR({ repo: 'owner/repo-a', number: 1 }), makePR({ repo: 'owner/repo-b', number: 2 })];
     const groups = groupPRsByRepo(prs);
     expect(groups).toHaveLength(2);
-    expect(groups.map(g => g.repo).sort()).toEqual(['owner/repo-a', 'owner/repo-b']);
+    expect(groups.map((g) => g.repo).sort()).toEqual(['owner/repo-a', 'owner/repo-b']);
   });
 
   it('should correctly group mixed PRs from multiple repos', () => {
@@ -358,21 +394,18 @@ describe('groupPRsByRepo (#80)', () => {
     const groups = groupPRsByRepo(prs);
     expect(groups).toHaveLength(3);
 
-    const inkGroup = groups.find(g => g.repo === 'vadimdemedes/ink');
+    const inkGroup = groups.find((g) => g.repo === 'vadimdemedes/ink');
     expect(inkGroup).toBeDefined();
     expect(inkGroup!.prs).toHaveLength(2);
-    expect(inkGroup!.prs.map(p => p.number).sort()).toEqual([855, 856]);
+    expect(inkGroup!.prs.map((p) => p.number).sort()).toEqual([855, 856]);
 
-    const uiGroup = groups.find(g => g.repo === 'shadcn-ui/ui');
+    const uiGroup = groups.find((g) => g.repo === 'shadcn-ui/ui');
     expect(uiGroup).toBeDefined();
     expect(uiGroup!.prs).toHaveLength(1);
   });
 
   it('should skip PRs with empty repo field', () => {
-    const prs = [
-      makePR({ repo: '' as any }),
-      makePR({ repo: 'owner/valid', number: 2 }),
-    ];
+    const prs = [makePR({ repo: '' as any }), makePR({ repo: 'owner/valid', number: 2 })];
     const groups = groupPRsByRepo(prs);
     expect(groups).toHaveLength(1);
     expect(groups[0].repo).toBe('owner/valid');

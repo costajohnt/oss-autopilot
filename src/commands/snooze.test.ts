@@ -84,7 +84,9 @@ describe('runSnooze', () => {
   });
 
   it('should reject non-positive snooze duration', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runSnooze({ prUrl: TEST_PR_URL, reason: 'test', days: 0, json: true })).rejects.toThrow('exit');
 
@@ -93,7 +95,9 @@ describe('runSnooze', () => {
   });
 
   it('should reject negative snooze duration', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runSnooze({ prUrl: TEST_PR_URL, reason: 'test', days: -5, json: true })).rejects.toThrow('exit');
 

@@ -51,13 +51,15 @@ describe('runSetup', () => {
   it('should show setup status when already complete in JSON mode', async () => {
     await runSetup({ json: true });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({
-      setupComplete: true,
-      config: expect.objectContaining({
-        githubUsername: 'testuser',
-        maxActivePRs: 10,
+    expect(mockOutputJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        setupComplete: true,
+        config: expect.objectContaining({
+          githubUsername: 'testuser',
+          maxActivePRs: 10,
+        }),
       }),
-    }));
+    );
   });
 
   it('should show setup prompts when setup is incomplete in JSON mode', async () => {
@@ -69,21 +71,25 @@ describe('runSetup', () => {
 
     await runSetup({ json: true });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({
-      setupRequired: true,
-      prompts: expect.arrayContaining([
-        expect.objectContaining({ setting: 'username' }),
-        expect.objectContaining({ setting: 'maxActivePRs' }),
-      ]),
-    }));
+    expect(mockOutputJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        setupRequired: true,
+        prompts: expect.arrayContaining([
+          expect.objectContaining({ setting: 'username' }),
+          expect.objectContaining({ setting: 'maxActivePRs' }),
+        ]),
+      }),
+    );
   });
 
   it('should show setup prompts when --reset is used', async () => {
     await runSetup({ reset: true, json: true });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({
-      setupRequired: true,
-    }));
+    expect(mockOutputJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        setupRequired: true,
+      }),
+    );
   });
 
   it('should apply --set settings correctly', async () => {
@@ -92,13 +98,15 @@ describe('runSetup', () => {
     expect(mockUpdateConfig).toHaveBeenCalledWith({ githubUsername: 'newuser' });
     expect(mockUpdateConfig).toHaveBeenCalledWith({ maxActivePRs: 5 });
     expect(mockSave).toHaveBeenCalled();
-    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({
-      success: true,
-      settings: expect.objectContaining({
-        username: 'newuser',
-        maxActivePRs: '5',
+    expect(mockOutputJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        settings: expect.objectContaining({
+          username: 'newuser',
+          maxActivePRs: '5',
+        }),
       }),
-    }));
+    );
   });
 
   it('should handle languages setting with comma-separated values', async () => {
@@ -185,7 +193,7 @@ describe('runCheckSetup', () => {
 
     await runCheckSetup({ json: false });
 
-    const allOutput = consoleSpy.mock.calls.map(c => c[0]).join('\n');
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
     expect(allOutput).toContain('SETUP_COMPLETE');
     expect(allOutput).toContain('username=testuser');
     consoleSpy.mockRestore();
@@ -200,7 +208,7 @@ describe('runCheckSetup', () => {
 
     await runCheckSetup({ json: false });
 
-    const allOutput = consoleSpy.mock.calls.map(c => c[0]).join('\n');
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
     expect(allOutput).toContain('SETUP_INCOMPLETE');
     consoleSpy.mockRestore();
   });

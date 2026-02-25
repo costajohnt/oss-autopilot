@@ -106,15 +106,17 @@ export function detectIssueList(): IssueListInfo | undefined {
     const { availableCount, completedCount } = countIssueListItems(content);
     return { path: issueListPath, source, availableCount, completedCount };
   } catch (error) {
-    console.error(`[STARTUP] Failed to read issue list at ${issueListPath}:`, error instanceof Error ? error.message : error);
+    console.error(
+      `[STARTUP] Failed to read issue list at ${issueListPath}:`,
+      error instanceof Error ? error.message : error,
+    );
     return { path: issueListPath, source, availableCount: 0, completedCount: 0 };
   }
 }
 
 function openInBrowser(filePath: string): void {
   const isWindows = process.platform === 'win32';
-  const openCmd = process.platform === 'darwin' ? 'open' :
-                  isWindows ? 'cmd' : 'xdg-open';
+  const openCmd = process.platform === 'darwin' ? 'open' : isWindows ? 'cmd' : 'xdg-open';
   const args = isWindows ? ['/c', 'start', '', filePath] : [filePath];
   execFile(openCmd, args, (error) => {
     if (error) {
@@ -144,7 +146,8 @@ export async function runStartup(options: StartupOptions): Promise<void> {
       outputJson<StartupOutput>({
         version,
         setupComplete: true,
-        authError: 'GitHub authentication required. Install GitHub CLI (https://cli.github.com/) and run "gh auth login", or set GITHUB_TOKEN.',
+        authError:
+          'GitHub authentication required. Install GitHub CLI (https://cli.github.com/) and run "gh auth login", or set GITHUB_TOKEN.',
       });
     } else {
       console.error('Error: GitHub authentication required.');

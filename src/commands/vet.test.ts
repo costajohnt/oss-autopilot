@@ -40,7 +40,9 @@ describe('runVet', () => {
 
   it('should exit with error when no GitHub token', async () => {
     mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runVet({ issueUrl: TEST_ISSUE_URL, json: true })).rejects.toThrow('exit');
 

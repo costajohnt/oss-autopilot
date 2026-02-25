@@ -8,7 +8,19 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, parseGitHubUrl, extractOwnerRepo } from './utils.js';
-import { FetchedPR, FetchedPRStatus, CIStatus, CIStatusResult, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR, MergedPR, CIFailureCategory, ClassifiedCheck } from './types.js';
+import {
+  FetchedPR,
+  FetchedPRStatus,
+  CIStatus,
+  CIStatusResult,
+  ReviewDecision,
+  DailyDigest,
+  MaintainerActionHint,
+  ClosedPR,
+  MergedPR,
+  CIFailureCategory,
+  ClassifiedCheck,
+} from './types.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 import { runWorkerPool } from './concurrency.js';
 import { ConfigurationError, ValidationError } from './errors.js';
@@ -100,7 +112,7 @@ export class PRMonitor {
 
     const shelvedUrls = new Set(config.shelvedPRUrls || []);
 
-    const filteredItems = allItems.filter(item => {
+    const filteredItems = allItems.filter((item) => {
       if (!item.pull_request) return false;
       // Skip PRs to repos owned by the user (not OSS contributions)
       const parsed = extractOwnerRepo(item.html_url);
@@ -115,46 +127,53 @@ export class PRMonitor {
       // to stop finding *new* issues there, not hide open PRs already being tracked (#175)
       const isShelved = shelvedUrls.has(item.html_url);
       if (config.excludeRepos.includes(repoFullName) && !isShelved) return false;
-      if (config.excludeOrgs?.some(org => ownerLower === org.toLowerCase()) && !isShelved) return false;
+      if (config.excludeOrgs?.some((org) => ownerLower === org.toLowerCase()) && !isShelved) return false;
       return true;
     });
 
-    debug('pr-monitor', `Filtered to ${filteredItems.length} PRs after excluding own repos, shelved, and excluded orgs/repos`);
+    debug(
+      'pr-monitor',
+      `Filtered to ${filteredItems.length} PRs after excluding own repos, shelved, and excluded orgs/repos`,
+    );
 
     // Fetch detailed info using a worker pool for bounded concurrency.
     await timed('pr-monitor', `Fetch details for ${filteredItems.length} PRs`, async () => {
-      await runWorkerPool(filteredItems, async (item) => {
-        try {
-          debug('pr-monitor', `Fetching details for ${item.html_url}`);
-          const pr = await this.fetchPRDetails(item.html_url);
-          if (pr) prs.push(pr);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          warn('pr-monitor', `Error fetching ${item.html_url}: ${errorMessage}`);
-          failures.push({ prUrl: item.html_url, error: errorMessage });
-        }
-      }, MAX_CONCURRENT_REQUESTS);
+      await runWorkerPool(
+        filteredItems,
+        async (item) => {
+          try {
+            debug('pr-monitor', `Fetching details for ${item.html_url}`);
+            const pr = await this.fetchPRDetails(item.html_url);
+            if (pr) prs.push(pr);
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            warn('pr-monitor', `Error fetching ${item.html_url}: ${errorMessage}`);
+            failures.push({ prUrl: item.html_url, error: errorMessage });
+          }
+        },
+        MAX_CONCURRENT_REQUESTS,
+      );
     });
 
     // Sort by days since activity (most urgent first)
     prs.sort((a, b) => {
       // Priority: needs_response > failing_ci > merge_conflict > approaching_dormant > dormant > waiting > healthy
       const statusPriority: Record<FetchedPRStatus, number> = {
-        'needs_response': 0,
-        'needs_changes': 1,
-        'failing_ci': 2,
-        'ci_blocked': 3,
-        'ci_not_running': 4,
-        'merge_conflict': 5,
-        'needs_rebase': 6,
-        'missing_required_files': 7,
-        'incomplete_checklist': 8,
-        'changes_addressed': 9,
-        'approaching_dormant': 10,
-        'dormant': 11,
-        'waiting': 12,
-        'waiting_on_maintainer': 13,
-        'healthy': 14,
+        needs_response: 0,
+        needs_changes: 1,
+        failing_ci: 2,
+        ci_blocked: 3,
+        ci_not_running: 4,
+        merge_conflict: 5,
+        needs_rebase: 6,
+        missing_required_files: 7,
+        incomplete_checklist: 8,
+        changes_addressed: 9,
+        approaching_dormant: 10,
+        dormant: 11,
+        waiting: 12,
+        waiting_on_maintainer: 13,
+        healthy: 14,
       };
       return statusPriority[a.status] - statusPriority[b.status];
     });
@@ -179,32 +198,38 @@ export class PRMonitor {
     // gracefully on failure rather than dropping the entire PR (#199).
     const [prResponse, comments, reviewsResponse, reviewComments] = await Promise.all([
       this.octokit.pulls.get({ owner, repo, pull_number: number }),
-      paginateAll((page) => this.octokit.issues.listComments({ owner, repo, issue_number: number, per_page: 100, page })),
+      paginateAll((page) =>
+        this.octokit.issues.listComments({ owner, repo, issue_number: number, per_page: 100, page }),
+      ),
       this.octokit.pulls.listReviews({ owner, repo, pull_number: number }),
-      paginateAll((page) => this.octokit.pulls.listReviewComments({ owner, repo, pull_number: number, per_page: 100, page }))
-        .catch((err: unknown) => {
-          const status = (err as { status?: number })?.status;
-          // Rate limit errors must propagate — silently swallowing them hides
-          // a systemic problem and produces misleading results (#229).
-          if (status === 429) {
+      paginateAll((page) =>
+        this.octokit.pulls.listReviewComments({ owner, repo, pull_number: number, per_page: 100, page }),
+      ).catch((err: unknown) => {
+        const status = (err as { status?: number })?.status;
+        // Rate limit errors must propagate — silently swallowing them hides
+        // a systemic problem and produces misleading results (#229).
+        if (status === 429) {
+          throw err;
+        }
+        if (status === 403) {
+          const msg = ((err as { message?: string })?.message ?? '').toLowerCase();
+          if (msg.includes('rate limit') || msg.includes('abuse detection')) {
             throw err;
           }
-          if (status === 403) {
-            const msg = ((err as { message?: string })?.message ?? '').toLowerCase();
-            if (msg.includes('rate limit') || msg.includes('abuse detection')) {
-              throw err;
-            }
-            // Non-rate-limit 403 (DMCA, private repo, SSO) — degrade gracefully
-            warn('pr-monitor', `403 fetching review comments for ${owner}/${repo}#${number}: ${msg}`);
-            return { data: [] as Array<any> };
-          }
-          if (status === 404) {
-            debug('pr-monitor', `Review comments 404 for ${owner}/${repo}#${number} (likely no inline comments)`);
-          } else {
-            warn('pr-monitor', `Failed to fetch review comments for ${owner}/${repo}#${number} (status ${status ?? 'unknown'}): self-reply detection will be skipped`);
-          }
+          // Non-rate-limit 403 (DMCA, private repo, SSO) — degrade gracefully
+          warn('pr-monitor', `403 fetching review comments for ${owner}/${repo}#${number}: ${msg}`);
           return [] as Array<any>;
-        }),
+        }
+        if (status === 404) {
+          debug('pr-monitor', `Review comments 404 for ${owner}/${repo}#${number} (likely no inline comments)`);
+        } else {
+          warn(
+            'pr-monitor',
+            `Failed to fetch review comments for ${owner}/${repo}#${number} (status ${status ?? 'unknown'}): self-reply detection will be skipped`,
+          );
+        }
+        return [] as Array<any>;
+      }),
     ]);
 
     const ghPR = prResponse.data;
@@ -221,7 +246,7 @@ export class PRMonitor {
       comments,
       reviews,
       reviewComments,
-      config.githubUsername
+      config.githubUsername,
     );
 
     // Fetch CI status and (conditionally) latest commit date in parallel
@@ -231,8 +256,9 @@ export class PRMonitor {
     const ciPromise = this.getCIStatus(owner, repo, ghPR.head.sha);
     const needCommitDate = hasUnrespondedComment || reviewDecision === 'changes_requested';
     const commitDatePromise = needCommitDate
-      ? this.octokit.repos.getCommit({ owner, repo, ref: ghPR.head.sha })
-          .then(res => res.data.commit.author?.date)
+      ? this.octokit.repos
+          .getCommit({ owner, repo, ref: ghPR.head.sha })
+          .then((res) => res.data.commit.author?.date)
           .catch(() => undefined)
       : Promise.resolve(undefined);
 
@@ -245,10 +271,7 @@ export class PRMonitor {
     const { hasIncompleteChecklist, checklistStats } = this.analyzeChecklist(ghPR.body || '');
 
     // Extract maintainer action hints from comments
-    const maintainerActionHints = this.extractMaintainerActionHints(
-      lastMaintainerComment?.body,
-      reviewDecision
-    );
+    const maintainerActionHints = this.extractMaintainerActionHints(lastMaintainerComment?.body, reviewDecision);
 
     // Calculate days since activity
     const daysSinceActivity = daysBetween(new Date(ghPR.updated_at), new Date());
@@ -268,7 +291,7 @@ export class PRMonitor {
       config.approachingDormantDays,
       latestCommitDate,
       lastMaintainerComment?.createdAt,
-      latestChangesRequestedDate
+      latestChangesRequestedDate,
     );
 
     // Classify failing checks (#81)
@@ -305,8 +328,8 @@ export class PRMonitor {
   private buildFetchedPR(fields: Omit<FetchedPR, 'displayLabel' | 'displayDescription'>): FetchedPR {
     const pr: FetchedPR = {
       ...fields,
-      displayLabel: '',  // computed below
-      displayDescription: '',  // computed below
+      displayLabel: '', // computed below
+      displayDescription: '', // computed below
     };
 
     // Compute display labels (#79) — must happen after status + classifiedChecks are set
@@ -322,9 +345,15 @@ export class PRMonitor {
    */
   private checkUnrespondedComments(
     comments: Array<{ user?: { login?: string } | null; body?: string | null; created_at: string }>,
-    reviews: Array<{ user?: { login?: string } | null; body?: string | null; submitted_at?: string | null; state?: string | null; id?: number }>,
+    reviews: Array<{
+      user?: { login?: string } | null;
+      body?: string | null;
+      submitted_at?: string | null;
+      state?: string | null;
+      id?: number;
+    }>,
     reviewComments: ReviewComment[],
-    username: string
+    username: string,
   ): { hasUnrespondedComment: boolean; lastMaintainerComment?: FetchedPR['lastMaintainerComment'] } {
     // Combine comments and reviews into a timeline
     const timeline: Array<{ author: string; body: string; createdAt: string; isUser: boolean }> = [];
@@ -358,9 +387,10 @@ export class PRMonitor {
       }
 
       // Resolve body: prefer actual text, then inline comment text, then synthetic placeholder
-      const resolvedBody = body
-        || (review.id != null ? this.getInlineCommentBody(review.id, reviewComments) : undefined)
-        || '(posted inline review comments)';
+      const resolvedBody =
+        body ||
+        (review.id != null ? this.getInlineCommentBody(review.id, reviewComments) : undefined) ||
+        '(posted inline review comments)';
 
       timeline.push({
         author,
@@ -416,9 +446,7 @@ export class PRMonitor {
    * Used to filter out informational follow-ups that don't require contributor action (#199).
    */
   private isAllSelfReplies(reviewId: number, reviewComments: ReviewComment[]): boolean {
-    const commentsForReview = reviewComments.filter(
-      c => c.pull_request_review_id === reviewId
-    );
+    const commentsForReview = reviewComments.filter((c) => c.pull_request_review_id === reviewId);
 
     if (commentsForReview.length === 0) return false;
 
@@ -430,7 +458,7 @@ export class PRMonitor {
       }
     }
 
-    return commentsForReview.every(comment => {
+    return commentsForReview.every((comment) => {
       if (!comment.in_reply_to_id) return false; // New thread, not a reply
       const parentAuthor = authorMap.get(comment.in_reply_to_id);
       const commentAuthor = comment.user?.login?.toLowerCase();
@@ -445,9 +473,7 @@ export class PRMonitor {
    * synthetic placeholders (#199).
    */
   private getInlineCommentBody(reviewId: number, reviewComments: ReviewComment[]): string | undefined {
-    return reviewComments
-      .find(c => c.pull_request_review_id === reviewId && c.body?.trim())
-      ?.body?.trim();
+    return reviewComments.find((c) => c.pull_request_review_id === reviewId && c.body?.trim())?.body?.trim();
   }
 
   /**
@@ -464,7 +490,7 @@ export class PRMonitor {
     approachingThreshold: number,
     latestCommitDate?: string,
     lastMaintainerCommentDate?: string,
-    latestChangesRequestedDate?: string
+    latestChangesRequestedDate?: string,
   ): FetchedPRStatus {
     // Priority order: needs_response/needs_changes/changes_addressed > failing_ci > merge_conflict > incomplete_checklist > dormant > approaching_dormant > waiting_on_maintainer > waiting/healthy
 
@@ -529,7 +555,10 @@ export class PRMonitor {
    * Conditional items (containing "if applicable", "(if ...)", etc.) are
    * excluded from the incomplete count (#152).
    */
-  private analyzeChecklist(body: string): { hasIncompleteChecklist: boolean; checklistStats?: FetchedPR['checklistStats'] } {
+  private analyzeChecklist(body: string): {
+    hasIncompleteChecklist: boolean;
+    checklistStats?: FetchedPR['checklistStats'];
+  } {
     if (!body) return { hasIncompleteChecklist: false };
 
     const checkedPattern = /- \[x\]/gi;
@@ -545,9 +574,7 @@ export class PRMonitor {
     if (total === 0) return { hasIncompleteChecklist: false };
 
     // Filter out conditional checklist items that are intentionally unchecked
-    const nonConditionalUnchecked = uncheckedLines.filter(
-      line => !isConditionalChecklistItem(line)
-    );
+    const nonConditionalUnchecked = uncheckedLines.filter((line) => !isConditionalChecklistItem(line));
 
     return {
       hasIncompleteChecklist: nonConditionalUnchecked.length > 0,
@@ -561,7 +588,7 @@ export class PRMonitor {
    */
   private extractMaintainerActionHints(
     commentBody: string | undefined,
-    reviewDecision: ReviewDecision
+    reviewDecision: ReviewDecision,
   ): MaintainerActionHint[] {
     const hints: MaintainerActionHint[] = [];
 
@@ -574,26 +601,47 @@ export class PRMonitor {
     const lower = commentBody.toLowerCase();
 
     // Demo/screenshot requests
-    const demoKeywords = ['screenshot', 'demo', 'recording', 'screen recording', 'before/after', 'before and after', 'gif', 'video', 'screencast', 'show me', 'can you show'];
-    if (demoKeywords.some(kw => lower.includes(kw))) {
+    const demoKeywords = [
+      'screenshot',
+      'demo',
+      'recording',
+      'screen recording',
+      'before/after',
+      'before and after',
+      'gif',
+      'video',
+      'screencast',
+      'show me',
+      'can you show',
+    ];
+    if (demoKeywords.some((kw) => lower.includes(kw))) {
       hints.push('demo_requested');
     }
 
     // Test requests
-    const testKeywords = ['add test', 'test coverage', 'unit test', 'missing test', 'add a test', 'write test', 'needs test', 'need test'];
-    if (testKeywords.some(kw => lower.includes(kw))) {
+    const testKeywords = [
+      'add test',
+      'test coverage',
+      'unit test',
+      'missing test',
+      'add a test',
+      'write test',
+      'needs test',
+      'need test',
+    ];
+    if (testKeywords.some((kw) => lower.includes(kw))) {
       hints.push('tests_requested');
     }
 
     // Documentation requests
     const docKeywords = ['documentation', 'readme', 'jsdoc', 'docstring', 'add docs', 'update docs', 'document this'];
-    if (docKeywords.some(kw => lower.includes(kw))) {
+    if (docKeywords.some((kw) => lower.includes(kw))) {
       hints.push('docs_requested');
     }
 
     // Rebase requests
     const rebaseKeywords = ['rebase', 'merge conflict', 'out of date', 'behind main', 'behind master'];
-    if (rebaseKeywords.some(kw => lower.includes(kw))) {
+    if (rebaseKeywords.some((kw) => lower.includes(kw))) {
       hints.push('rebase_requested');
     }
 
@@ -641,26 +689,27 @@ export class PRMonitor {
    */
   private analyzeCombinedStatus(
     combinedStatus: { state: string; statuses: Array<{ state: string; context: string; description: string | null }> },
-    failingCheckNames: string[]
+    failingCheckNames: string[],
   ): { effectiveCombinedState: string; hasStatuses: boolean } {
     // Filter out authorization-gate statuses (e.g., Vercel "Authorization required to deploy")
     // These are permission gates, not real CI failures
-    const realStatuses = combinedStatus.statuses.filter(s => {
+    const realStatuses = combinedStatus.statuses.filter((s) => {
       const desc = (s.description || '').toLowerCase();
-      return !(s.state === 'failure' && (
-        desc.includes('authorization required') ||
-        desc.includes('authorize')
-      ));
+      return !(s.state === 'failure' && (desc.includes('authorization required') || desc.includes('authorize')));
     });
 
-    const hasRealFailure = realStatuses.some(s => s.state === 'failure' || s.state === 'error');
-    const hasRealPending = realStatuses.some(s => s.state === 'pending');
-    const hasRealSuccess = realStatuses.some(s => s.state === 'success');
-    const effectiveCombinedState = hasRealFailure ? 'failure'
-      : hasRealPending ? 'pending'
-      : hasRealSuccess ? 'success'
-      : realStatuses.length === 0 ? 'success' // All statuses were auth gates; don't inherit original failure
-      : combinedStatus.state;
+    const hasRealFailure = realStatuses.some((s) => s.state === 'failure' || s.state === 'error');
+    const hasRealPending = realStatuses.some((s) => s.state === 'pending');
+    const hasRealSuccess = realStatuses.some((s) => s.state === 'success');
+    const effectiveCombinedState = hasRealFailure
+      ? 'failure'
+      : hasRealPending
+        ? 'pending'
+        : hasRealSuccess
+          ? 'success'
+          : realStatuses.length === 0
+            ? 'success' // All statuses were auth gates; don't inherit original failure
+            : combinedStatus.state;
     const hasStatuses = combinedStatus.statuses.length > 0;
 
     // Collect failing status names from combined status API
@@ -688,9 +737,10 @@ export class PRMonitor {
       failingCheckConclusions: Map<string, string>;
     },
     combinedAnalysis: { effectiveCombinedState: string; hasStatuses: boolean },
-    checkRunCount: number
+    checkRunCount: number,
   ): CIStatusResult {
-    const { hasFailingChecks, hasPendingChecks, hasSuccessfulChecks, failingCheckNames, failingCheckConclusions } = checkRunAnalysis;
+    const { hasFailingChecks, hasPendingChecks, hasSuccessfulChecks, failingCheckNames, failingCheckConclusions } =
+      checkRunAnalysis;
     const { effectiveCombinedState, hasStatuses } = combinedAnalysis;
 
     // Safety net: If we have ANY failing checks, report as failing
@@ -731,7 +781,10 @@ export class PRMonitor {
           if (status === 404) {
             debug('pr-monitor', `Check runs 404 for ${owner}/${repo}@${sha.slice(0, 7)} (no checks configured)`);
           } else {
-            warn('pr-monitor', `Non-404 error fetching check runs for ${owner}/${repo}@${sha.slice(0, 7)}: ${status ?? err}`);
+            warn(
+              'pr-monitor',
+              `Non-404 error fetching check runs for ${owner}/${repo}@${sha.slice(0, 7)}: ${status ?? err}`,
+            );
           }
           return null;
         }),
@@ -743,7 +796,7 @@ export class PRMonitor {
       // Deduplicate check runs by name, keeping only the most recent run per unique name.
       // GitHub returns all historical runs (including re-runs), so without deduplication
       // a superseded failure will incorrectly flag the PR as failing even after a re-run passes.
-      const latestCheckRunsByName = new Map<string, typeof allCheckRuns[0]>();
+      const latestCheckRunsByName = new Map<string, (typeof allCheckRuns)[0]>();
       for (const check of allCheckRuns) {
         const existing = latestCheckRunsByName.get(check.name);
         if (!existing || new Date(check.started_at ?? 0) > new Date(existing.started_at ?? 0)) {
@@ -778,7 +831,9 @@ export class PRMonitor {
   /**
    * Determine review decision from reviews list
    */
-  private determineReviewDecision(reviews: Array<{ state?: string | null; user?: { login?: string } | null }>): ReviewDecision {
+  private determineReviewDecision(
+    reviews: Array<{ state?: string | null; user?: { login?: string } | null }>,
+  ): ReviewDecision {
     if (reviews.length === 0) {
       return 'review_required';
     }
@@ -811,7 +866,7 @@ export class PRMonitor {
    * Used to detect needs_changes status when review feedback is in inline comments.
    */
   private getLatestChangesRequestedDate(
-    reviews: Array<{ state?: string | null; submitted_at?: string | null }>
+    reviews: Array<{ state?: string | null; submitted_at?: string | null }>,
   ): string | undefined {
     let latest: string | undefined;
     for (const review of reviews) {
@@ -1051,7 +1106,9 @@ export class PRMonitor {
           results.set(result.value.repo, result.value.stars);
         } else {
           chunkFailures++;
-          console.error(`[STAR_FETCH] Failed to fetch stars for ${chunk[j]}: ${result.reason instanceof Error ? result.reason.message : result.reason}`);
+          console.error(
+            `[STAR_FETCH] Failed to fetch stars for ${chunk[j]}: ${result.reason instanceof Error ? result.reason.message : result.reason}`,
+          );
         }
       }
       // If entire chunk failed, likely a systemic issue (rate limit, auth, outage) — abort remaining
@@ -1076,7 +1133,10 @@ export class PRMonitor {
     query: string,
     label: string,
     days: number,
-    mapItem: (item: { html_url: string; title: string; closed_at: string | null; pull_request?: { merged_at?: string | null } }, parsed: { owner: string; repo: string; number: number }) => T,
+    mapItem: (
+      item: { html_url: string; title: string; closed_at: string | null; pull_request?: { merged_at?: string | null } },
+      parsed: { owner: string; repo: string; number: number },
+    ) => T,
   ): Promise<T[]> {
     const config = this.stateManager.getState().config;
 
@@ -1114,7 +1174,7 @@ export class PRMonitor {
 
       // Skip excluded repos and orgs
       if (config.excludeRepos.includes(repo)) continue;
-      if (config.excludeOrgs?.some(org => parsed.owner.toLowerCase() === org.toLowerCase())) continue;
+      if (config.excludeOrgs?.some((org) => parsed.owner.toLowerCase() === org.toLowerCase())) continue;
 
       results.push(mapItem(item, { owner: parsed.owner, repo, number: parsed.number }));
     }
@@ -1154,7 +1214,9 @@ export class PRMonitor {
       (item, { repo, number }) => {
         const mergedAt = item.pull_request?.merged_at;
         if (!mergedAt) {
-          console.error(`Warning: merged_at missing for merged PR ${item.html_url}${item.closed_at ? ', falling back to closed_at' : ', no date available'}`);
+          console.error(
+            `Warning: merged_at missing for merged PR ${item.html_url}${item.closed_at ? ', falling back to closed_at' : ', no date available'}`,
+          );
         }
         return {
           url: item.html_url,
@@ -1170,28 +1232,32 @@ export class PRMonitor {
   /**
    * Generate a daily digest from fetched PRs
    */
-  generateDigest(prs: FetchedPR[], recentlyClosedPRs: ClosedPR[] = [], recentlyMergedPRs: MergedPR[] = []): DailyDigest {
+  generateDigest(
+    prs: FetchedPR[],
+    recentlyClosedPRs: ClosedPR[] = [],
+    recentlyMergedPRs: MergedPR[] = [],
+  ): DailyDigest {
     const now = new Date().toISOString();
 
     // Categorize PRs
-    const prsNeedingResponse = prs.filter(pr => pr.status === 'needs_response');
-    const ciFailingPRs = prs.filter(pr => pr.status === 'failing_ci');
-    const mergeConflictPRs = prs.filter(pr => pr.status === 'merge_conflict');
-    const approachingDormant = prs.filter(pr => pr.status === 'approaching_dormant');
-    const dormantPRs = prs.filter(pr => pr.status === 'dormant');
-    const healthyPRs = prs.filter(pr => pr.status === 'healthy' || pr.status === 'waiting');
+    const prsNeedingResponse = prs.filter((pr) => pr.status === 'needs_response');
+    const ciFailingPRs = prs.filter((pr) => pr.status === 'failing_ci');
+    const mergeConflictPRs = prs.filter((pr) => pr.status === 'merge_conflict');
+    const approachingDormant = prs.filter((pr) => pr.status === 'approaching_dormant');
+    const dormantPRs = prs.filter((pr) => pr.status === 'dormant');
+    const healthyPRs = prs.filter((pr) => pr.status === 'healthy' || pr.status === 'waiting');
 
     // Get stats from state manager (historical data from repo scores)
     const stats = this.stateManager.getStats();
 
-    const ciBlockedPRs = prs.filter(pr => pr.status === 'ci_blocked');
-    const ciNotRunningPRs = prs.filter(pr => pr.status === 'ci_not_running');
-    const needsRebasePRs = prs.filter(pr => pr.status === 'needs_rebase');
-    const missingRequiredFilesPRs = prs.filter(pr => pr.status === 'missing_required_files');
-    const incompleteChecklistPRs = prs.filter(pr => pr.status === 'incomplete_checklist');
-    const needsChangesPRs = prs.filter(pr => pr.status === 'needs_changes');
-    const changesAddressedPRs = prs.filter(pr => pr.status === 'changes_addressed');
-    const waitingOnMaintainerPRs = prs.filter(pr => pr.status === 'waiting_on_maintainer');
+    const ciBlockedPRs = prs.filter((pr) => pr.status === 'ci_blocked');
+    const ciNotRunningPRs = prs.filter((pr) => pr.status === 'ci_not_running');
+    const needsRebasePRs = prs.filter((pr) => pr.status === 'needs_rebase');
+    const missingRequiredFilesPRs = prs.filter((pr) => pr.status === 'missing_required_files');
+    const incompleteChecklistPRs = prs.filter((pr) => pr.status === 'incomplete_checklist');
+    const needsChangesPRs = prs.filter((pr) => pr.status === 'needs_changes');
+    const changesAddressedPRs = prs.filter((pr) => pr.status === 'changes_addressed');
+    const waitingOnMaintainerPRs = prs.filter((pr) => pr.status === 'waiting_on_maintainer');
 
     return {
       generatedAt: now,
@@ -1216,7 +1282,14 @@ export class PRMonitor {
       autoUnshelvedPRs: [],
       summary: {
         totalActivePRs: prs.length,
-        totalNeedingAttention: prsNeedingResponse.length + needsChangesPRs.length + ciFailingPRs.length + mergeConflictPRs.length + needsRebasePRs.length + missingRequiredFilesPRs.length + incompleteChecklistPRs.length,
+        totalNeedingAttention:
+          prsNeedingResponse.length +
+          needsChangesPRs.length +
+          ciFailingPRs.length +
+          mergeConflictPRs.length +
+          needsRebasePRs.length +
+          missingRequiredFilesPRs.length +
+          incompleteChecklistPRs.length,
         totalMergedAllTime: stats.mergedPRs,
         mergeRate: parseFloat(stats.mergeRate),
       },
@@ -1287,7 +1360,6 @@ export class PRMonitor {
     this.stateManager.addActivePR(pr);
     return pr;
   }
-
 }
 
 /**
@@ -1297,9 +1369,8 @@ export class PRMonitor {
 const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr: FetchedPR) => string }> = {
   needs_response: {
     label: '[Needs Response]',
-    description: (pr) => pr.lastMaintainerComment
-      ? `@${pr.lastMaintainerComment.author} commented`
-      : 'Maintainer awaiting response',
+    description: (pr) =>
+      pr.lastMaintainerComment ? `@${pr.lastMaintainerComment.author} commented` : 'Maintainer awaiting response',
   },
   needs_changes: {
     label: '[Needs Changes]',
@@ -1309,10 +1380,12 @@ const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr:
     label: '[CI Failing]',
     description: (pr) => {
       const checks = pr.classifiedChecks || [];
-      const actionable = checks.filter(c => c.category === 'actionable');
-      if (actionable.length > 0) return `${actionable.length} check${actionable.length === 1 ? '' : 's'} failed: ${actionable.map(c => c.name).join(', ')}`;
-      const infrastructure = checks.filter(c => c.category === 'infrastructure');
-      if (infrastructure.length > 0) return `${infrastructure.length} check${infrastructure.length === 1 ? '' : 's'} cancelled/timed out (infrastructure)`;
+      const actionable = checks.filter((c) => c.category === 'actionable');
+      if (actionable.length > 0)
+        return `${actionable.length} check${actionable.length === 1 ? '' : 's'} failed: ${actionable.map((c) => c.name).join(', ')}`;
+      const infrastructure = checks.filter((c) => c.category === 'infrastructure');
+      if (infrastructure.length > 0)
+        return `${infrastructure.length} check${infrastructure.length === 1 ? '' : 's'} cancelled/timed out (infrastructure)`;
       const failingNames = pr.failingCheckNames || [];
       if (failingNames.length > 0) return `${failingNames.length} check${failingNames.length === 1 ? '' : 's'} failed`;
       return 'One or more CI checks are failing';
@@ -1336,21 +1409,22 @@ const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr:
   },
   missing_required_files: {
     label: '[Missing Files]',
-    description: (pr) => pr.missingRequiredFiles
-      ? `Missing: ${pr.missingRequiredFiles.join(', ')}`
-      : 'Required files are missing',
+    description: (pr) =>
+      pr.missingRequiredFiles ? `Missing: ${pr.missingRequiredFiles.join(', ')}` : 'Required files are missing',
   },
   incomplete_checklist: {
     label: '[Incomplete Checklist]',
-    description: (pr) => pr.checklistStats
-      ? `${pr.checklistStats.checked}/${pr.checklistStats.total} items checked`
-      : 'PR body has unchecked required checkboxes',
+    description: (pr) =>
+      pr.checklistStats
+        ? `${pr.checklistStats.checked}/${pr.checklistStats.total} items checked`
+        : 'PR body has unchecked required checkboxes',
   },
   changes_addressed: {
     label: '[Changes Addressed]',
-    description: (pr) => pr.lastMaintainerComment
-      ? `Waiting for @${pr.lastMaintainerComment.author} to re-review`
-      : 'Waiting for maintainer re-review',
+    description: (pr) =>
+      pr.lastMaintainerComment
+        ? `Waiting for @${pr.lastMaintainerComment.author} to re-review`
+        : 'Waiting for maintainer re-review',
   },
   waiting: {
     label: '[Waiting]',
@@ -1392,7 +1466,8 @@ export function computeDisplayLabel(pr: FetchedPR): { displayLabel: string; disp
  * Matches patterns like "(if the PR is ...)", "if applicable", "N/A", "optional", etc.
  * Conservative — only skips items with clear conditional language.
  */
-const CONDITIONAL_CHECKLIST_PATTERN = /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\(optional\)|- \[ \]\s*optional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b/;
+const CONDITIONAL_CHECKLIST_PATTERN =
+  /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\(optional\)|- \[ \]\s*optional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b/;
 
 export function isConditionalChecklistItem(line: string): boolean {
   return CONDITIONAL_CHECKLIST_PATTERN.test(line.toLowerCase());
@@ -1417,12 +1492,7 @@ const FORK_LIMITATION_PATTERNS: RegExp[] = [
  * Known CI check name patterns that indicate authorization gates (#81).
  * These require maintainer approval and are not real failures.
  */
-const AUTH_GATE_PATTERNS: RegExp[] = [
-  /authoriz/i,
-  /approval/i,
-  /\bcla\b/i,
-  /license\/cla/i,
-];
+const AUTH_GATE_PATTERNS: RegExp[] = [/authoriz/i, /approval/i, /\bcla\b/i, /license\/cla/i];
 
 /**
  * Known CI check name patterns that indicate infrastructure/transient failures (#145).
@@ -1447,16 +1517,16 @@ export function classifyCICheck(name: string, description?: string, conclusion?:
   const nameLower = name.toLowerCase();
 
   // Check name first (more reliable than description)
-  if (AUTH_GATE_PATTERNS.some(p => p.test(nameLower))) return 'auth_gate';
-  if (FORK_LIMITATION_PATTERNS.some(p => p.test(nameLower))) return 'fork_limitation';
-  if (INFRASTRUCTURE_PATTERNS.some(p => p.test(nameLower))) return 'infrastructure';
+  if (AUTH_GATE_PATTERNS.some((p) => p.test(nameLower))) return 'auth_gate';
+  if (FORK_LIMITATION_PATTERNS.some((p) => p.test(nameLower))) return 'fork_limitation';
+  if (INFRASTRUCTURE_PATTERNS.some((p) => p.test(nameLower))) return 'infrastructure';
 
   // Fall through to description only if name was not classified
   if (description) {
     const descLower = description.toLowerCase();
-    if (AUTH_GATE_PATTERNS.some(p => p.test(descLower))) return 'auth_gate';
-    if (FORK_LIMITATION_PATTERNS.some(p => p.test(descLower))) return 'fork_limitation';
-    if (INFRASTRUCTURE_PATTERNS.some(p => p.test(descLower))) return 'infrastructure';
+    if (AUTH_GATE_PATTERNS.some((p) => p.test(descLower))) return 'auth_gate';
+    if (FORK_LIMITATION_PATTERNS.some((p) => p.test(descLower))) return 'fork_limitation';
+    if (INFRASTRUCTURE_PATTERNS.some((p) => p.test(descLower))) return 'infrastructure';
   }
 
   return 'actionable';
@@ -1468,9 +1538,9 @@ export function classifyCICheck(name: string, description?: string, conclusion?:
  */
 export function classifyFailingChecks(
   failingCheckNames: string[],
-  conclusions?: Map<string, string>
+  conclusions?: Map<string, string>,
 ): ClassifiedCheck[] {
-  return failingCheckNames.map(name => {
+  return failingCheckNames.map((name) => {
     const conclusion = conclusions?.get(name);
     return {
       name,

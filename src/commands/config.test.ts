@@ -98,7 +98,9 @@ describe('runConfig', () => {
   });
 
   it('should exit with error for invalid repo format in exclude-repo', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runConfig({ key: 'exclude-repo', value: 'invalid', json: true })).rejects.toThrow('exit');
 
@@ -117,7 +119,9 @@ describe('runConfig', () => {
   });
 
   it('should exit with error for invalid org name with slash', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runConfig({ key: 'exclude-org', value: 'owner/repo', json: true })).rejects.toThrow('exit');
 
@@ -126,7 +130,9 @@ describe('runConfig', () => {
   });
 
   it('should exit with error for unknown config key', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runConfig({ key: 'unknown-key', value: 'val', json: true })).rejects.toThrow('exit');
 
@@ -135,7 +141,9 @@ describe('runConfig', () => {
   });
 
   it('should exit with error when value is missing', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runConfig({ key: 'username', json: true })).rejects.toThrow('exit');
 

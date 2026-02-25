@@ -40,7 +40,7 @@ export async function runSearch(options: SearchOptions): Promise<void> {
     const excludedRepos = config.excludeRepos || [];
     const aiPolicyBlocklist = config.aiPolicyBlocklist ?? DEFAULT_CONFIG.aiPolicyBlocklist ?? [];
     const searchOutput: SearchOutput = {
-      candidates: candidates.map(c => {
+      candidates: candidates.map((c) => {
         const repoScoreRecord = stateManager.getRepoScore(c.issue.repo);
         return {
           issue: {
@@ -55,13 +55,15 @@ export async function runSearch(options: SearchOptions): Promise<void> {
           reasonsToSkip: c.reasonsToSkip,
           searchPriority: c.searchPriority,
           viabilityScore: c.viabilityScore,
-          repoScore: repoScoreRecord ? {
-            score: repoScoreRecord.score,
-            mergedPRCount: repoScoreRecord.mergedPRCount,
-            closedWithoutMergeCount: repoScoreRecord.closedWithoutMergeCount,
-            isResponsive: repoScoreRecord.signals?.isResponsive ?? false,
-            lastMergedAt: repoScoreRecord.lastMergedAt,
-          } : undefined,
+          repoScore: repoScoreRecord
+            ? {
+                score: repoScoreRecord.score,
+                mergedPRCount: repoScoreRecord.mergedPRCount,
+                closedWithoutMergeCount: repoScoreRecord.closedWithoutMergeCount,
+                isResponsive: repoScoreRecord.signals?.isResponsive ?? false,
+                lastMergedAt: repoScoreRecord.lastMergedAt,
+              }
+            : undefined,
         };
       }),
       excludedRepos,

@@ -41,7 +41,9 @@ describe('runComments', () => {
 
   it('should exit with error when no GitHub token', async () => {
     mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runComments({ prUrl: TEST_PR_URL, json: true })).rejects.toThrow('exit');
 
@@ -52,7 +54,9 @@ describe('runComments', () => {
   it('should exit with error for invalid PR URL', async () => {
     mockGetGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runComments({ prUrl: 'invalid-url', json: true })).rejects.toThrow('exit');
 
@@ -65,13 +69,25 @@ describe('runComments', () => {
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
 
     const mockPullsGet = vi.fn().mockResolvedValue({
-      data: { title: 'Test PR', state: 'open', mergeable: true, head: { ref: 'feature' }, base: { ref: 'main' }, html_url: TEST_PR_URL },
+      data: {
+        title: 'Test PR',
+        state: 'open',
+        mergeable: true,
+        head: { ref: 'feature' },
+        base: { ref: 'main' },
+        html_url: TEST_PR_URL,
+      },
     });
     const mockListReviewComments = vi.fn().mockResolvedValue({ data: [] });
     const mockListComments = vi.fn().mockResolvedValue({ data: [] });
     const mockListReviews = vi.fn().mockResolvedValue({
       data: [
-        { user: { login: 'reviewer', type: 'User' }, state: 'APPROVED', body: 'LGTM', submitted_at: '2026-01-15T10:00:00Z' },
+        {
+          user: { login: 'reviewer', type: 'User' },
+          state: 'APPROVED',
+          body: 'LGTM',
+          submitted_at: '2026-01-15T10:00:00Z',
+        },
       ],
     });
 
@@ -82,11 +98,13 @@ describe('runComments', () => {
 
     await runComments({ prUrl: TEST_PR_URL, json: true });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({
-      pr: expect.objectContaining({ title: 'Test PR', state: 'open' }),
-      reviews: [{ user: 'reviewer', state: 'APPROVED', body: 'LGTM', submittedAt: '2026-01-15T10:00:00Z' }],
-      summary: { reviewCount: 1, inlineCommentCount: 0, discussionCommentCount: 0 },
-    }));
+    expect(mockOutputJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pr: expect.objectContaining({ title: 'Test PR', state: 'open' }),
+        reviews: [{ user: 'reviewer', state: 'APPROVED', body: 'LGTM', submittedAt: '2026-01-15T10:00:00Z' }],
+        summary: { reviewCount: 1, inlineCommentCount: 0, discussionCommentCount: 0 },
+      }),
+    );
   });
 
   it('should filter out own comments', async () => {
@@ -94,7 +112,14 @@ describe('runComments', () => {
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
 
     const mockPullsGet = vi.fn().mockResolvedValue({
-      data: { title: 'Test PR', state: 'open', mergeable: true, head: { ref: 'feature' }, base: { ref: 'main' }, html_url: TEST_PR_URL },
+      data: {
+        title: 'Test PR',
+        state: 'open',
+        mergeable: true,
+        head: { ref: 'feature' },
+        base: { ref: 'main' },
+        html_url: TEST_PR_URL,
+      },
     });
     const mockListReviewComments = vi.fn().mockResolvedValue({ data: [] });
     const mockListComments = vi.fn().mockResolvedValue({
@@ -125,7 +150,9 @@ describe('runPost', () => {
 
   it('should exit with error when no GitHub token', async () => {
     mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runPost({ url: TEST_PR_URL, message: 'Hello', json: true })).rejects.toThrow('exit');
 
@@ -135,7 +162,9 @@ describe('runPost', () => {
 
   it('should exit with error when no message provided', async () => {
     mockGetGitHubToken.mockReturnValue('ghp_test123');
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runPost({ url: TEST_PR_URL, json: true })).rejects.toThrow('exit');
 
@@ -146,7 +175,9 @@ describe('runPost', () => {
   it('should exit with error for invalid URL', async () => {
     mockGetGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runPost({ url: 'bad-url', message: 'Hello', json: true })).rejects.toThrow('exit');
 
@@ -192,7 +223,9 @@ describe('runClaim', () => {
 
   it('should exit with error when no GitHub token', async () => {
     mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runClaim({ issueUrl: TEST_ISSUE_URL, json: true })).rejects.toThrow('exit');
 
@@ -203,7 +236,9 @@ describe('runClaim', () => {
   it('should exit with error for non-issue URL', async () => {
     mockGetGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runClaim({ issueUrl: TEST_PR_URL, json: true })).rejects.toThrow('exit');
 
@@ -231,12 +266,14 @@ describe('runClaim', () => {
     await runClaim({ issueUrl: TEST_ISSUE_URL, json: true });
 
     expect(mockCreateComment).toHaveBeenCalled();
-    expect(mockAddIssue).toHaveBeenCalledWith(expect.objectContaining({
-      url: TEST_ISSUE_URL,
-      repo: 'owner/repo',
-      number: 10,
-      status: 'claimed',
-    }));
+    expect(mockAddIssue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: TEST_ISSUE_URL,
+        repo: 'owner/repo',
+        number: 10,
+        status: 'claimed',
+      }),
+    );
     expect(mockSave).toHaveBeenCalled();
     expect(mockOutputJson).toHaveBeenCalledWith({
       commentUrl: 'https://github.com/owner/repo/issues/10#issuecomment-1',

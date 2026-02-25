@@ -18,7 +18,14 @@ vi.mock('./state.js', () => ({
 }));
 
 // Import after mocks are set up
-const { PRMonitor, computeDisplayLabel, classifyCICheck, classifyFailingChecks, isBotAuthor, isConditionalChecklistItem } = await import('./pr-monitor.js');
+const {
+  PRMonitor,
+  computeDisplayLabel,
+  classifyCICheck,
+  classifyFailingChecks,
+  isBotAuthor,
+  isConditionalChecklistItem,
+} = await import('./pr-monitor.js');
 const { isAcknowledgmentComment } = await import('./comment-utils.js');
 const { getStateManager } = await import('./state.js');
 
@@ -197,16 +204,16 @@ describe('PRMonitor changes_addressed detection', () => {
   it('should return changes_addressed when commit is newer than maintainer comment', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).determineStatus(
-      'passing',        // ciStatus
-      false,            // hasMergeConflict
-      true,             // hasUnrespondedComment
-      false,            // hasIncompleteChecklist
+      'passing', // ciStatus
+      false, // hasMergeConflict
+      true, // hasUnrespondedComment
+      false, // hasIncompleteChecklist
       'changes_requested', // reviewDecision
-      2,                // daysSinceActivity
-      30,               // dormantThreshold
-      25,               // approachingThreshold
-      '2026-02-08T12:00:00Z',  // latestCommitDate (newer)
-      '2026-02-07T10:00:00Z'   // lastMaintainerCommentDate (older)
+      2, // daysSinceActivity
+      30, // dormantThreshold
+      25, // approachingThreshold
+      '2026-02-08T12:00:00Z', // latestCommitDate (newer)
+      '2026-02-07T10:00:00Z', // lastMaintainerCommentDate (older)
     );
 
     expect(result).toBe('changes_addressed');
@@ -217,14 +224,14 @@ describe('PRMonitor changes_addressed detection', () => {
     const result = (monitor as any).determineStatus(
       'passing',
       false,
-      true,             // hasUnrespondedComment
+      true, // hasUnrespondedComment
       false,
       'changes_requested',
       2,
       30,
       25,
-      '2026-02-06T10:00:00Z',  // latestCommitDate (older)
-      '2026-02-07T10:00:00Z'   // lastMaintainerCommentDate (newer)
+      '2026-02-06T10:00:00Z', // latestCommitDate (older)
+      '2026-02-07T10:00:00Z', // lastMaintainerCommentDate (newer)
     );
 
     expect(result).toBe('needs_response');
@@ -235,14 +242,14 @@ describe('PRMonitor changes_addressed detection', () => {
     const result = (monitor as any).determineStatus(
       'passing',
       false,
-      true,             // hasUnrespondedComment
+      true, // hasUnrespondedComment
       false,
       'changes_requested',
       2,
       30,
       25,
-      undefined,               // latestCommitDate (missing)
-      '2026-02-07T10:00:00Z'  // lastMaintainerCommentDate
+      undefined, // latestCommitDate (missing)
+      '2026-02-07T10:00:00Z', // lastMaintainerCommentDate
     );
 
     expect(result).toBe('needs_response');
@@ -253,15 +260,15 @@ describe('PRMonitor changes_addressed detection', () => {
     const result = (monitor as any).determineStatus(
       'passing',
       false,
-      false,            // hasUnrespondedComment = false
+      false, // hasUnrespondedComment = false
       false,
       'approved',
       2,
       30,
       25,
-      '2026-02-08T12:00:00Z',  // latestCommitDate
-      '2026-02-07T10:00:00Z',  // lastMaintainerCommentDate
-      undefined                 // latestChangesRequestedDate
+      '2026-02-08T12:00:00Z', // latestCommitDate
+      '2026-02-07T10:00:00Z', // lastMaintainerCommentDate
+      undefined, // latestChangesRequestedDate
     );
 
     expect(result).toBe('waiting_on_maintainer');
@@ -278,15 +285,15 @@ describe('PRMonitor needs_changes detection', () => {
     const result = (monitor as any).determineStatus(
       'passing',
       false,
-      false,            // hasUnrespondedComment = false (inline review comments)
+      false, // hasUnrespondedComment = false (inline review comments)
       false,
       'changes_requested',
       2,
       30,
       25,
-      '2026-02-08T06:50:38Z',   // latestCommitDate (before review)
-      undefined,                  // lastMaintainerCommentDate
-      '2026-02-08T11:52:22Z'    // latestChangesRequestedDate (after commit)
+      '2026-02-08T06:50:38Z', // latestCommitDate (before review)
+      undefined, // lastMaintainerCommentDate
+      '2026-02-08T11:52:22Z', // latestChangesRequestedDate (after commit)
     );
 
     expect(result).toBe('needs_changes');
@@ -303,9 +310,9 @@ describe('PRMonitor needs_changes detection', () => {
       2,
       30,
       25,
-      '2026-02-09T10:00:00Z',   // latestCommitDate (after review)
+      '2026-02-09T10:00:00Z', // latestCommitDate (after review)
       undefined,
-      '2026-02-08T11:52:22Z'    // latestChangesRequestedDate (before commit)
+      '2026-02-08T11:52:22Z', // latestChangesRequestedDate (before commit)
     );
 
     expect(result).toBe('changes_addressed');
@@ -322,9 +329,9 @@ describe('PRMonitor needs_changes detection', () => {
       2,
       30,
       25,
-      undefined,                  // latestCommitDate (missing)
+      undefined, // latestCommitDate (missing)
       undefined,
-      '2026-02-08T11:52:22Z'    // latestChangesRequestedDate
+      '2026-02-08T11:52:22Z', // latestChangesRequestedDate
     );
 
     expect(result).toBe('needs_changes');
@@ -343,7 +350,7 @@ describe('PRMonitor needs_changes detection', () => {
       25,
       '2026-02-08T06:50:38Z',
       undefined,
-      undefined                   // latestChangesRequestedDate (missing)
+      undefined, // latestChangesRequestedDate (missing)
     );
 
     // No review date to compare against — fall through to healthy
@@ -357,19 +364,21 @@ describe('PRMonitor determineStatus — remaining paths', () => {
   });
 
   // Helper to call determineStatus with defaults
-  function callDetermineStatus(overrides: Partial<{
-    ciStatus: string;
-    hasMergeConflict: boolean;
-    hasUnrespondedComment: boolean;
-    hasIncompleteChecklist: boolean;
-    reviewDecision: string;
-    daysSinceActivity: number;
-    dormantThreshold: number;
-    approachingThreshold: number;
-    latestCommitDate: string | undefined;
-    lastMaintainerCommentDate: string | undefined;
-    latestChangesRequestedDate: string | undefined;
-  }> = {}) {
+  function callDetermineStatus(
+    overrides: Partial<{
+      ciStatus: string;
+      hasMergeConflict: boolean;
+      hasUnrespondedComment: boolean;
+      hasIncompleteChecklist: boolean;
+      reviewDecision: string;
+      daysSinceActivity: number;
+      dormantThreshold: number;
+      approachingThreshold: number;
+      latestCommitDate: string | undefined;
+      lastMaintainerCommentDate: string | undefined;
+      latestChangesRequestedDate: string | undefined;
+    }> = {},
+  ) {
     const monitor = new PRMonitor('fake-token');
     const defaults = {
       ciStatus: 'passing',
@@ -386,10 +395,17 @@ describe('PRMonitor determineStatus — remaining paths', () => {
     };
     const p = { ...defaults, ...overrides };
     return (monitor as any).determineStatus(
-      p.ciStatus, p.hasMergeConflict, p.hasUnrespondedComment,
-      p.hasIncompleteChecklist, p.reviewDecision, p.daysSinceActivity,
-      p.dormantThreshold, p.approachingThreshold, p.latestCommitDate,
-      p.lastMaintainerCommentDate, p.latestChangesRequestedDate
+      p.ciStatus,
+      p.hasMergeConflict,
+      p.hasUnrespondedComment,
+      p.hasIncompleteChecklist,
+      p.reviewDecision,
+      p.daysSinceActivity,
+      p.dormantThreshold,
+      p.approachingThreshold,
+      p.latestCommitDate,
+      p.lastMaintainerCommentDate,
+      p.latestChangesRequestedDate,
     );
   }
 
@@ -430,24 +446,30 @@ describe('PRMonitor determineStatus — remaining paths', () => {
   });
 
   it('should prioritize needs_response over failing_ci', () => {
-    expect(callDetermineStatus({
-      ciStatus: 'failing',
-      hasUnrespondedComment: true,
-    })).toBe('needs_response');
+    expect(
+      callDetermineStatus({
+        ciStatus: 'failing',
+        hasUnrespondedComment: true,
+      }),
+    ).toBe('needs_response');
   });
 
   it('should prioritize failing_ci over merge_conflict', () => {
-    expect(callDetermineStatus({
-      ciStatus: 'failing',
-      hasMergeConflict: true,
-    })).toBe('failing_ci');
+    expect(
+      callDetermineStatus({
+        ciStatus: 'failing',
+        hasMergeConflict: true,
+      }),
+    ).toBe('failing_ci');
   });
 
   it('should prioritize merge_conflict over incomplete_checklist', () => {
-    expect(callDetermineStatus({
-      hasMergeConflict: true,
-      hasIncompleteChecklist: true,
-    })).toBe('merge_conflict');
+    expect(
+      callDetermineStatus({
+        hasMergeConflict: true,
+        hasIncompleteChecklist: true,
+      }),
+    ).toBe('merge_conflict');
   });
 });
 
@@ -516,11 +538,9 @@ describe('PRMonitor analyzeChecklist', () => {
 
   it('should still flag non-conditional unchecked items alongside conditional ones (#152)', () => {
     const monitor = new PRMonitor('fake-token');
-    const body = [
-      '- [x] Tests included',
-      '- [ ] Documentation updated',
-      '- [ ] Changelog entry (if applicable)',
-    ].join('\n');
+    const body = ['- [x] Tests included', '- [ ] Documentation updated', '- [ ] Changelog entry (if applicable)'].join(
+      '\n',
+    );
     const result = (monitor as any).analyzeChecklist(body);
     expect(result.hasIncompleteChecklist).toBe(true);
     expect(result.checklistStats).toEqual({ checked: 1, total: 3 });
@@ -573,7 +593,7 @@ describe('PRMonitor extractMaintainerActionHints', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).extractMaintainerActionHints(
       'Can you show a screenshot of the before/after?',
-      'review_required'
+      'review_required',
     );
     expect(result).toContain('demo_requested');
   });
@@ -582,7 +602,7 @@ describe('PRMonitor extractMaintainerActionHints', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).extractMaintainerActionHints(
       'Please add test coverage for this feature',
-      'review_required'
+      'review_required',
     );
     expect(result).toContain('tests_requested');
   });
@@ -591,7 +611,7 @@ describe('PRMonitor extractMaintainerActionHints', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).extractMaintainerActionHints(
       'Can you update the documentation for this API change?',
-      'review_required'
+      'review_required',
     );
     expect(result).toContain('docs_requested');
   });
@@ -600,7 +620,7 @@ describe('PRMonitor extractMaintainerActionHints', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).extractMaintainerActionHints(
       'This branch is behind main, could you rebase?',
-      'review_required'
+      'review_required',
     );
     expect(result).toContain('rebase_requested');
   });
@@ -609,7 +629,7 @@ describe('PRMonitor extractMaintainerActionHints', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).extractMaintainerActionHints(
       'Please add test coverage and a screenshot of the changes',
-      'changes_requested'
+      'changes_requested',
     );
     expect(result).toContain('changes_requested');
     expect(result).toContain('tests_requested');
@@ -630,9 +650,7 @@ describe('PRMonitor determineReviewDecision', () => {
 
   it('should return approved when latest review is APPROVED', () => {
     const monitor = new PRMonitor('fake-token');
-    const result = (monitor as any).determineReviewDecision([
-      { state: 'APPROVED', user: { login: 'reviewer1' } },
-    ]);
+    const result = (monitor as any).determineReviewDecision([{ state: 'APPROVED', user: { login: 'reviewer1' } }]);
     expect(result).toBe('approved');
   });
 
@@ -664,9 +682,7 @@ describe('PRMonitor determineReviewDecision', () => {
 
   it('should return review_required for COMMENTED-only reviews', () => {
     const monitor = new PRMonitor('fake-token');
-    const result = (monitor as any).determineReviewDecision([
-      { state: 'COMMENTED', user: { login: 'reviewer1' } },
-    ]);
+    const result = (monitor as any).determineReviewDecision([{ state: 'COMMENTED', user: { login: 'reviewer1' } }]);
     expect(result).toBe('review_required');
   });
 });
@@ -753,7 +769,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
       [{ user: { login: 'testuser' }, body: 'My comment', created_at: '2026-02-07T10:00:00Z' }],
       [],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);
   });
@@ -767,7 +783,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
       ],
       [],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(true);
     expect(result.lastMaintainerComment?.author).toBe('maintainer');
@@ -782,7 +798,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
       ],
       [],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);
   });
@@ -796,7 +812,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
       ],
       [],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);
   });
@@ -812,7 +828,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
         ],
         [],
         [],
-        'testuser'
+        'testuser',
       );
       expect(result.hasUnrespondedComment).toBe(false);
     }
@@ -828,7 +844,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
       ],
       [],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(true);
     expect(result.lastMaintainerComment?.author).toBe('maintainer');
@@ -843,7 +859,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
       ],
       [],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);
   });
@@ -852,11 +868,9 @@ describe('PRMonitor checkUnrespondedComments', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
       [],
-      [
-        { user: { login: 'maintainer' }, body: 'Needs changes here', submitted_at: '2026-02-07T12:00:00Z' },
-      ],
+      [{ user: { login: 'maintainer' }, body: 'Needs changes here', submitted_at: '2026-02-07T12:00:00Z' }],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(true);
     expect(result.lastMaintainerComment?.author).toBe('maintainer');
@@ -866,11 +880,9 @@ describe('PRMonitor checkUnrespondedComments', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
       [],
-      [
-        { user: { login: 'maintainer' }, body: '', submitted_at: '2026-02-07T12:00:00Z' },
-      ],
+      [{ user: { login: 'maintainer' }, body: '', submitted_at: '2026-02-07T12:00:00Z' }],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);
   });
@@ -879,12 +891,10 @@ describe('PRMonitor checkUnrespondedComments', () => {
     const monitor = new PRMonitor('fake-token');
     const longBody = 'x'.repeat(300);
     const result = (monitor as any).checkUnrespondedComments(
-      [
-        { user: { login: 'maintainer' }, body: longBody, created_at: '2026-02-07T12:00:00Z' },
-      ],
+      [{ user: { login: 'maintainer' }, body: longBody, created_at: '2026-02-07T12:00:00Z' }],
       [],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.lastMaintainerComment?.body.length).toBeLessThanOrEqual(203); // 200 + "..."
   });
@@ -898,7 +908,7 @@ describe('PRMonitor checkUnrespondedComments', () => {
       ],
       [],
       [],
-      'testuser' // lowercase
+      'testuser', // lowercase
     );
     expect(result.hasUnrespondedComment).toBe(true);
   });
@@ -1034,7 +1044,6 @@ describe('PRMonitor getCIStatus auth-gate filtering', () => {
 });
 
 describe('PRMonitor generateDigest', () => {
-
   function makeFetchedPR(overrides: Partial<import('./types.js').FetchedPR> = {}): import('./types.js').FetchedPR {
     return {
       id: 1,
@@ -1097,16 +1106,16 @@ describe('PRMonitor generateDigest', () => {
     const monitor = new PRMonitor('fake-token');
     const digest = monitor.generateDigest(prs);
 
-    expect(digest.prsNeedingResponse.map(p => p.number)).toEqual([1]);
-    expect(digest.ciFailingPRs.map(p => p.number)).toEqual([2]);
-    expect(digest.mergeConflictPRs.map(p => p.number)).toEqual([3]);
-    expect(digest.healthyPRs.map(p => p.number)).toEqual([4, 11]); // healthy + waiting
-    expect(digest.dormantPRs.map(p => p.number)).toEqual([5]);
-    expect(digest.approachingDormant.map(p => p.number)).toEqual([6]);
-    expect(digest.needsChangesPRs.map(p => p.number)).toEqual([7]);
-    expect(digest.changesAddressedPRs.map(p => p.number)).toEqual([8]);
-    expect(digest.waitingOnMaintainerPRs.map(p => p.number)).toEqual([9]);
-    expect(digest.incompleteChecklistPRs.map(p => p.number)).toEqual([10]);
+    expect(digest.prsNeedingResponse.map((p) => p.number)).toEqual([1]);
+    expect(digest.ciFailingPRs.map((p) => p.number)).toEqual([2]);
+    expect(digest.mergeConflictPRs.map((p) => p.number)).toEqual([3]);
+    expect(digest.healthyPRs.map((p) => p.number)).toEqual([4, 11]); // healthy + waiting
+    expect(digest.dormantPRs.map((p) => p.number)).toEqual([5]);
+    expect(digest.approachingDormant.map((p) => p.number)).toEqual([6]);
+    expect(digest.needsChangesPRs.map((p) => p.number)).toEqual([7]);
+    expect(digest.changesAddressedPRs.map((p) => p.number)).toEqual([8]);
+    expect(digest.waitingOnMaintainerPRs.map((p) => p.number)).toEqual([9]);
+    expect(digest.incompleteChecklistPRs.map((p) => p.number)).toEqual([10]);
   });
 
   it('should calculate totalNeedingAttention correctly', () => {
@@ -1391,19 +1400,21 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
   });
 
   // Helper to call determineStatus with defaults
-  function callDetermineStatus(overrides: Partial<{
-    ciStatus: string;
-    hasMergeConflict: boolean;
-    hasUnrespondedComment: boolean;
-    hasIncompleteChecklist: boolean;
-    reviewDecision: string;
-    daysSinceActivity: number;
-    dormantThreshold: number;
-    approachingThreshold: number;
-    latestCommitDate: string | undefined;
-    lastMaintainerCommentDate: string | undefined;
-    latestChangesRequestedDate: string | undefined;
-  }> = {}) {
+  function callDetermineStatus(
+    overrides: Partial<{
+      ciStatus: string;
+      hasMergeConflict: boolean;
+      hasUnrespondedComment: boolean;
+      hasIncompleteChecklist: boolean;
+      reviewDecision: string;
+      daysSinceActivity: number;
+      dormantThreshold: number;
+      approachingThreshold: number;
+      latestCommitDate: string | undefined;
+      lastMaintainerCommentDate: string | undefined;
+      latestChangesRequestedDate: string | undefined;
+    }> = {},
+  ) {
     const monitor = new PRMonitor('fake-token');
     const defaults = {
       ciStatus: 'passing',
@@ -1420,64 +1431,83 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
     };
     const p = { ...defaults, ...overrides };
     return (monitor as any).determineStatus(
-      p.ciStatus, p.hasMergeConflict, p.hasUnrespondedComment,
-      p.hasIncompleteChecklist, p.reviewDecision, p.daysSinceActivity,
-      p.dormantThreshold, p.approachingThreshold, p.latestCommitDate,
-      p.lastMaintainerCommentDate, p.latestChangesRequestedDate
+      p.ciStatus,
+      p.hasMergeConflict,
+      p.hasUnrespondedComment,
+      p.hasIncompleteChecklist,
+      p.reviewDecision,
+      p.daysSinceActivity,
+      p.dormantThreshold,
+      p.approachingThreshold,
+      p.latestCommitDate,
+      p.lastMaintainerCommentDate,
+      p.latestChangesRequestedDate,
     );
   }
 
   it('should return failing_ci when changes_addressed (comment path) and CI is failing', () => {
-    expect(callDetermineStatus({
-      ciStatus: 'failing',
-      hasUnrespondedComment: true,
-      latestCommitDate: '2026-02-08T12:00:00Z',
-      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
-    })).toBe('failing_ci');
+    expect(
+      callDetermineStatus({
+        ciStatus: 'failing',
+        hasUnrespondedComment: true,
+        latestCommitDate: '2026-02-08T12:00:00Z',
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toBe('failing_ci');
   });
 
   it('should return failing_ci when changes_addressed (review path) and CI is failing', () => {
-    expect(callDetermineStatus({
-      ciStatus: 'failing',
-      reviewDecision: 'changes_requested',
-      latestCommitDate: '2026-02-09T10:00:00Z',
-      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
-    })).toBe('failing_ci');
+    expect(
+      callDetermineStatus({
+        ciStatus: 'failing',
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-09T10:00:00Z',
+        latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+      }),
+    ).toBe('failing_ci');
   });
 
   it('should still return changes_addressed when CI is passing (comment path regression)', () => {
-    expect(callDetermineStatus({
-      ciStatus: 'passing',
-      hasUnrespondedComment: true,
-      latestCommitDate: '2026-02-08T12:00:00Z',
-      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
-    })).toBe('changes_addressed');
+    expect(
+      callDetermineStatus({
+        ciStatus: 'passing',
+        hasUnrespondedComment: true,
+        latestCommitDate: '2026-02-08T12:00:00Z',
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toBe('changes_addressed');
   });
 
   it('should still return changes_addressed when CI is passing (review path regression)', () => {
-    expect(callDetermineStatus({
-      ciStatus: 'passing',
-      reviewDecision: 'changes_requested',
-      latestCommitDate: '2026-02-09T10:00:00Z',
-      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
-    })).toBe('changes_addressed');
+    expect(
+      callDetermineStatus({
+        ciStatus: 'passing',
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-09T10:00:00Z',
+        latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+      }),
+    ).toBe('changes_addressed');
   });
 
   it('should still prioritize needs_response over failing_ci', () => {
-    expect(callDetermineStatus({
-      ciStatus: 'failing',
-      hasUnrespondedComment: true,
-      // No commit after maintainer comment → needs_response, not changes_addressed
-    })).toBe('needs_response');
+    expect(
+      callDetermineStatus({
+        ciStatus: 'failing',
+        hasUnrespondedComment: true,
+        // No commit after maintainer comment → needs_response, not changes_addressed
+      }),
+    ).toBe('needs_response');
   });
 
   it('should still prioritize needs_changes over failing_ci', () => {
-    expect(callDetermineStatus({
-      ciStatus: 'failing',
-      reviewDecision: 'changes_requested',
-      latestCommitDate: '2026-02-07T06:50:38Z',
-      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
-    })).toBe('needs_changes');
+    expect(
+      callDetermineStatus({
+        ciStatus: 'failing',
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-07T06:50:38Z',
+        latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+      }),
+    ).toBe('needs_changes');
   });
 });
 
@@ -1532,7 +1562,7 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
       ],
       [],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);
     expect(result.lastMaintainerComment).toBeUndefined();
@@ -1544,11 +1574,15 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
       [
         { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
         { user: { login: 'maintainer' }, body: 'Thanks, will look at this', created_at: '2026-02-07T11:00:00Z' },
-        { user: { login: 'maintainer' }, body: 'Please fix the linting errors in src/main.ts', created_at: '2026-02-07T12:00:00Z' },
+        {
+          user: { login: 'maintainer' },
+          body: 'Please fix the linting errors in src/main.ts',
+          created_at: '2026-02-07T12:00:00Z',
+        },
       ],
       [],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(true);
     expect(result.lastMaintainerComment?.author).toBe('maintainer');
@@ -1557,15 +1591,13 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   it('should detect inline-only COMMENTED reviews as unresponded (#151)', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
-      [
-        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
-      ],
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
       [
         // Review with inline comments only (no top-level body)
         { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
       ],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(true);
     expect(result.lastMaintainerComment?.author).toBe('reviewer');
@@ -1574,14 +1606,10 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   it('should skip reviews with null/undefined state and no body (#151)', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
-      [
-        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
-      ],
-      [
-        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z' },
-      ],
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
+      [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z' }],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);
   });
@@ -1589,14 +1617,10 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   it('should skip CHANGES_REQUESTED reviews with empty body (#151)', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
-      [
-        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
-      ],
-      [
-        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'CHANGES_REQUESTED' },
-      ],
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
+      [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'CHANGES_REQUESTED' }],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);
   });
@@ -1610,7 +1634,7 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
         { user: { login: 'testuser' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
       ],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);
   });
@@ -1619,11 +1643,9 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
       [],
-      [
-        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
-      ],
+      [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' }],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.lastMaintainerComment?.body).toBe('(posted inline review comments)');
   });
@@ -1631,14 +1653,10 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   it('should still skip APPROVED reviews with no body (#151)', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
-      [
-        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
-      ],
-      [
-        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'APPROVED' },
-      ],
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
+      [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'APPROVED' }],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);
   });
@@ -1656,7 +1674,7 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
         { user: { login: 'SunsetTechuila' }, body: '', submitted_at: '2026-02-14T05:14:49Z', state: 'COMMENTED' },
       ],
       [],
-      'testuser'
+      'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(true);
     // The most recent maintainer comment should be the inline review, not the older comment
@@ -1698,10 +1716,12 @@ describe('computeDisplayLabel (#79)', () => {
   });
 
   it('should return [Needs Response] with author for needs_response', () => {
-    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
-      status: 'needs_response',
-      lastMaintainerComment: { author: 'johndoe', body: 'Please fix', createdAt: '2026-02-07T10:00:00Z' },
-    }));
+    const { displayLabel, displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'needs_response',
+        lastMaintainerComment: { author: 'johndoe', body: 'Please fix', createdAt: '2026-02-07T10:00:00Z' },
+      }),
+    );
     expect(displayLabel).toBe('[Needs Response]');
     expect(displayDescription).toBe('@johndoe commented');
   });
@@ -1712,69 +1732,79 @@ describe('computeDisplayLabel (#79)', () => {
   });
 
   it('should return [CI Failing] with actionable check count', () => {
-    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
-      status: 'failing_ci',
-      failingCheckNames: ['Build', 'Lint', 'Vercel Deploy'],
-      classifiedChecks: [
-        { name: 'Build', category: 'actionable' },
-        { name: 'Lint', category: 'actionable' },
-        { name: 'Vercel Deploy', category: 'fork_limitation' },
-      ],
-    }));
+    const { displayLabel, displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'failing_ci',
+        failingCheckNames: ['Build', 'Lint', 'Vercel Deploy'],
+        classifiedChecks: [
+          { name: 'Build', category: 'actionable' },
+          { name: 'Lint', category: 'actionable' },
+          { name: 'Vercel Deploy', category: 'fork_limitation' },
+        ],
+      }),
+    );
     expect(displayLabel).toBe('[CI Failing]');
     expect(displayDescription).toBe('2 checks failed: Build, Lint');
   });
 
   it('should return singular form for exactly 1 actionable check', () => {
-    const { displayDescription } = computeDisplayLabel(makePR({
-      status: 'failing_ci',
-      failingCheckNames: ['Build'],
-      classifiedChecks: [{ name: 'Build', category: 'actionable' }],
-    }));
+    const { displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'failing_ci',
+        failingCheckNames: ['Build'],
+        classifiedChecks: [{ name: 'Build', category: 'actionable' }],
+      }),
+    );
     expect(displayDescription).toBe('1 check failed: Build');
   });
 
   it('should fall back to failingCheckNames count when all checks are non-actionable', () => {
-    const { displayDescription } = computeDisplayLabel(makePR({
-      status: 'failing_ci',
-      failingCheckNames: ['Vercel Deploy', 'Netlify Build'],
-      classifiedChecks: [
-        { name: 'Vercel Deploy', category: 'fork_limitation' },
-        { name: 'Netlify Build', category: 'fork_limitation' },
-      ],
-    }));
+    const { displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'failing_ci',
+        failingCheckNames: ['Vercel Deploy', 'Netlify Build'],
+        classifiedChecks: [
+          { name: 'Vercel Deploy', category: 'fork_limitation' },
+          { name: 'Netlify Build', category: 'fork_limitation' },
+        ],
+      }),
+    );
     expect(displayDescription).toBe('2 checks failed');
   });
 
   it('should indicate infrastructure failures when all checks are infrastructure (#145)', () => {
-    const { displayDescription } = computeDisplayLabel(makePR({
-      status: 'failing_ci',
-      failingCheckNames: ['Build', 'Lint'],
-      classifiedChecks: [
-        { name: 'Build', category: 'infrastructure', conclusion: 'cancelled' },
-        { name: 'Lint', category: 'infrastructure', conclusion: 'timed_out' },
-      ],
-    }));
+    const { displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'failing_ci',
+        failingCheckNames: ['Build', 'Lint'],
+        classifiedChecks: [
+          { name: 'Build', category: 'infrastructure', conclusion: 'cancelled' },
+          { name: 'Lint', category: 'infrastructure', conclusion: 'timed_out' },
+        ],
+      }),
+    );
     expect(displayDescription).toBe('2 checks cancelled/timed out (infrastructure)');
   });
 
   it('should indicate single infrastructure failure (#145)', () => {
-    const { displayDescription } = computeDisplayLabel(makePR({
-      status: 'failing_ci',
-      failingCheckNames: ['Build'],
-      classifiedChecks: [
-        { name: 'Build', category: 'infrastructure', conclusion: 'cancelled' },
-      ],
-    }));
+    const { displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'failing_ci',
+        failingCheckNames: ['Build'],
+        classifiedChecks: [{ name: 'Build', category: 'infrastructure', conclusion: 'cancelled' }],
+      }),
+    );
     expect(displayDescription).toBe('1 check cancelled/timed out (infrastructure)');
   });
 
   it('should return generic description when no classified checks', () => {
-    const { displayDescription } = computeDisplayLabel(makePR({
-      status: 'failing_ci',
-      failingCheckNames: [],
-      classifiedChecks: [],
-    }));
+    const { displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'failing_ci',
+        failingCheckNames: [],
+        classifiedChecks: [],
+      }),
+    );
     expect(displayDescription).toBe('One or more CI checks are failing');
   });
 
@@ -1784,67 +1814,83 @@ describe('computeDisplayLabel (#79)', () => {
   });
 
   it('should return [Incomplete Checklist] with stats', () => {
-    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
-      status: 'incomplete_checklist',
-      checklistStats: { checked: 2, total: 5 },
-    }));
+    const { displayLabel, displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'incomplete_checklist',
+        checklistStats: { checked: 2, total: 5 },
+      }),
+    );
     expect(displayLabel).toBe('[Incomplete Checklist]');
     expect(displayDescription).toBe('2/5 items checked');
   });
 
   it('should return fallback for incomplete_checklist without stats', () => {
-    const { displayDescription } = computeDisplayLabel(makePR({
-      status: 'incomplete_checklist',
-    }));
+    const { displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'incomplete_checklist',
+      }),
+    );
     expect(displayDescription).toBe('PR body has unchecked required checkboxes');
   });
 
   it('should return [Missing Files] with file list', () => {
-    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
-      status: 'missing_required_files',
-      missingRequiredFiles: ['CHANGELOG.md', 'LICENSE'],
-    }));
+    const { displayLabel, displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'missing_required_files',
+        missingRequiredFiles: ['CHANGELOG.md', 'LICENSE'],
+      }),
+    );
     expect(displayLabel).toBe('[Missing Files]');
     expect(displayDescription).toBe('Missing: CHANGELOG.md, LICENSE');
   });
 
   it('should return fallback for missing_required_files without file list', () => {
-    const { displayDescription } = computeDisplayLabel(makePR({
-      status: 'missing_required_files',
-    }));
+    const { displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'missing_required_files',
+      }),
+    );
     expect(displayDescription).toBe('Required files are missing');
   });
 
   it('should return [Changes Addressed] with author', () => {
-    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
-      status: 'changes_addressed',
-      lastMaintainerComment: { author: 'reviewer', body: 'Changes needed', createdAt: '2026-02-07T10:00:00Z' },
-    }));
+    const { displayLabel, displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'changes_addressed',
+        lastMaintainerComment: { author: 'reviewer', body: 'Changes needed', createdAt: '2026-02-07T10:00:00Z' },
+      }),
+    );
     expect(displayLabel).toBe('[Changes Addressed]');
     expect(displayDescription).toBe('Waiting for @reviewer to re-review');
   });
 
   it('should return fallback for changes_addressed without comment', () => {
-    const { displayDescription } = computeDisplayLabel(makePR({
-      status: 'changes_addressed',
-    }));
+    const { displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'changes_addressed',
+      }),
+    );
     expect(displayDescription).toBe('Waiting for maintainer re-review');
   });
 
   it('should return [Dormant] with days count', () => {
-    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({
-      status: 'dormant',
-      daysSinceActivity: 45,
-    }));
+    const { displayLabel, displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'dormant',
+        daysSinceActivity: 45,
+      }),
+    );
     expect(displayLabel).toBe('[Dormant]');
     expect(displayDescription).toBe('No activity for 45 days');
   });
 
   it('should return [Approaching Dormant] with days count', () => {
-    const { displayDescription } = computeDisplayLabel(makePR({
-      status: 'approaching_dormant',
-      daysSinceActivity: 27,
-    }));
+    const { displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'approaching_dormant',
+        daysSinceActivity: 27,
+      }),
+    );
     expect(displayDescription).toBe('No activity for 27 days');
   });
 
@@ -1862,10 +1908,21 @@ describe('computeDisplayLabel (#79)', () => {
   it('should have an entry for every FetchedPRStatus', () => {
     // Ensure no status is missed — if a new status is added, this test will catch it
     const allStatuses: import('./types.js').FetchedPRStatus[] = [
-      'needs_response', 'failing_ci', 'ci_blocked', 'ci_not_running',
-      'merge_conflict', 'needs_rebase', 'missing_required_files', 'incomplete_checklist',
-      'needs_changes', 'changes_addressed', 'waiting', 'waiting_on_maintainer',
-      'healthy', 'approaching_dormant', 'dormant',
+      'needs_response',
+      'failing_ci',
+      'ci_blocked',
+      'ci_not_running',
+      'merge_conflict',
+      'needs_rebase',
+      'missing_required_files',
+      'incomplete_checklist',
+      'needs_changes',
+      'changes_addressed',
+      'waiting',
+      'waiting_on_maintainer',
+      'healthy',
+      'approaching_dormant',
+      'dormant',
     ];
     for (const status of allStatuses) {
       const result = computeDisplayLabel(makePR({ status }));
@@ -2010,7 +2067,10 @@ describe('classifyFailingChecks (#81, #145)', () => {
   });
 
   it('should use conclusion data for classification (#145)', () => {
-    const conclusions = new Map([['Build', 'cancelled'], ['Tests', 'failure']]);
+    const conclusions = new Map([
+      ['Build', 'cancelled'],
+      ['Tests', 'failure'],
+    ]);
     const result = classifyFailingChecks(['Build', 'Tests'], conclusions);
     expect(result).toEqual([
       { name: 'Build', category: 'infrastructure', conclusion: 'cancelled' },
@@ -2027,7 +2087,9 @@ describe('classifyFailingChecks (#81, #145)', () => {
 
 describe('isConditionalChecklistItem (#152)', () => {
   it('should detect "(if ...)" pattern', () => {
-    expect(isConditionalChecklistItem('- [ ] PR Labeled with `release/backport` (if the PR is an urgent fix)')).toBe(true);
+    expect(isConditionalChecklistItem('- [ ] PR Labeled with `release/backport` (if the PR is an urgent fix)')).toBe(
+      true,
+    );
   });
 
   it('should detect "if applicable"', () => {
@@ -2089,7 +2151,7 @@ describe('fetchUserOpenPRs excludeRepos/excludeOrgs exempts shelved PRs (#175)',
   const makePRDetailMocks = (prUrl: string) => {
     const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
     if (!match) throw new Error(`Bad URL: ${prUrl}`);
-    const [, owner, repo, num] = match;
+    const [, _owner, _repo, num] = match;
     return {
       pulls: {
         get: vi.fn().mockResolvedValue({
@@ -2275,16 +2337,16 @@ describe('PRMonitor status with inline review after commit (#151)', () => {
   it('should return needs_response when inline review arrives after commit that addressed old comment', () => {
     const monitor = new PRMonitor('fake-token');
     const status = (monitor as any).determineStatus(
-      'passing',                  // ciStatus
-      false,                      // hasMergeConflict
-      true,                       // hasUnrespondedComment (inline review detected)
-      false,                      // hasIncompleteChecklist
-      'review_required',          // reviewDecision
-      1,                          // daysSinceActivity
-      30,                         // dormantThreshold
-      25,                         // approachingThreshold
-      '2026-02-13T06:35:00Z',    // latestCommitDate (before inline review)
-      '2026-02-14T05:14:49Z',    // lastMaintainerCommentDate (inline review)
+      'passing', // ciStatus
+      false, // hasMergeConflict
+      true, // hasUnrespondedComment (inline review detected)
+      false, // hasIncompleteChecklist
+      'review_required', // reviewDecision
+      1, // daysSinceActivity
+      30, // dormantThreshold
+      25, // approachingThreshold
+      '2026-02-13T06:35:00Z', // latestCommitDate (before inline review)
+      '2026-02-14T05:14:49Z', // lastMaintainerCommentDate (inline review)
     );
 
     expect(status).toBe('needs_response');
@@ -2420,9 +2482,7 @@ describe('getCIStatus error handling (#182)', () => {
 
     expect(result).toBeDefined();
     expect(result.status).not.toBe('failing');
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Non-404 error fetching check runs')
-    );
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Non-404 error fetching check runs'));
   });
 
   it('should silently handle 404 from listForRef without logging', async () => {
@@ -2462,9 +2522,7 @@ describe('Maintainer self-reply detection (#199)', () => {
     // Scenario from issue #199: MikeMcQuaid submits review, contributor pushes commit,
     // MikeMcQuaid self-replies to own inline comment
     const result = (monitor as any).checkUnrespondedComments(
-      [
-        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' },
-      ],
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' }],
       [
         // Original review with inline comments
         { user: { login: 'MikeMcQuaid' }, body: '', submitted_at: '2026-02-22T12:00:00Z', state: 'COMMENTED', id: 100 },
@@ -2473,11 +2531,24 @@ describe('Maintainer self-reply detection (#199)', () => {
       ],
       [
         // Original inline comment from the first review
-        { id: 1000, user: { login: 'MikeMcQuaid' }, body: 'Can you see if T.untyped can use T.anything?', created_at: '2026-02-22T12:00:00Z', pull_request_review_id: 100 },
+        {
+          id: 1000,
+          user: { login: 'MikeMcQuaid' },
+          body: 'Can you see if T.untyped can use T.anything?',
+          created_at: '2026-02-22T12:00:00Z',
+          pull_request_review_id: 100,
+        },
         // Self-reply to own comment in the second review
-        { id: 1001, user: { login: 'MikeMcQuaid' }, body: "Unfortunately seems like they can't all be changed", created_at: '2026-02-24T08:29:00Z', in_reply_to_id: 1000, pull_request_review_id: 200 },
+        {
+          id: 1001,
+          user: { login: 'MikeMcQuaid' },
+          body: "Unfortunately seems like they can't all be changed",
+          created_at: '2026-02-24T08:29:00Z',
+          in_reply_to_id: 1000,
+          pull_request_review_id: 200,
+        },
       ],
-      'testuser'
+      'testuser',
     );
 
     // The self-reply review (id=200) should be skipped, but the original review (id=100)
@@ -2504,11 +2575,24 @@ describe('Maintainer self-reply detection (#199)', () => {
       ],
       [
         // Original inline comment
-        { id: 1000, user: { login: 'maintainer' }, body: 'Please fix this', created_at: '2026-02-22T12:00:00Z', pull_request_review_id: 100 },
+        {
+          id: 1000,
+          user: { login: 'maintainer' },
+          body: 'Please fix this',
+          created_at: '2026-02-22T12:00:00Z',
+          pull_request_review_id: 100,
+        },
         // Self-reply
-        { id: 1001, user: { login: 'maintainer' }, body: 'Never mind, looks like this is fine', created_at: '2026-02-24T08:29:00Z', in_reply_to_id: 1000, pull_request_review_id: 200 },
+        {
+          id: 1001,
+          user: { login: 'maintainer' },
+          body: 'Never mind, looks like this is fine',
+          created_at: '2026-02-24T08:29:00Z',
+          in_reply_to_id: 1000,
+          pull_request_review_id: 200,
+        },
       ],
-      'testuser'
+      'testuser',
     );
 
     // Self-reply after user's comment should NOT trigger needs_response
@@ -2518,9 +2602,7 @@ describe('Maintainer self-reply detection (#199)', () => {
   it('should still flag when maintainer replies to DIFFERENT author comment', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
-      [
-        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' },
-      ],
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' }],
       [
         // Review from reviewer-A
         { user: { login: 'reviewer-A' }, body: '', submitted_at: '2026-02-22T12:00:00Z', state: 'COMMENTED', id: 100 },
@@ -2529,11 +2611,24 @@ describe('Maintainer self-reply detection (#199)', () => {
       ],
       [
         // reviewer-A's original comment
-        { id: 1000, user: { login: 'reviewer-A' }, body: 'Looks good to me', created_at: '2026-02-22T12:00:00Z', pull_request_review_id: 100 },
+        {
+          id: 1000,
+          user: { login: 'reviewer-A' },
+          body: 'Looks good to me',
+          created_at: '2026-02-22T12:00:00Z',
+          pull_request_review_id: 100,
+        },
         // reviewer-B replies to reviewer-A's comment (different author = NOT self-reply)
-        { id: 1001, user: { login: 'reviewer-B' }, body: 'Actually I disagree, needs changes', created_at: '2026-02-24T08:00:00Z', in_reply_to_id: 1000, pull_request_review_id: 200 },
+        {
+          id: 1001,
+          user: { login: 'reviewer-B' },
+          body: 'Actually I disagree, needs changes',
+          created_at: '2026-02-24T08:00:00Z',
+          in_reply_to_id: 1000,
+          pull_request_review_id: 200,
+        },
       ],
-      'testuser'
+      'testuser',
     );
 
     expect(result.hasUnrespondedComment).toBe(true);
@@ -2543,9 +2638,7 @@ describe('Maintainer self-reply detection (#199)', () => {
   it('should still flag when review has mix of self-reply and new thread', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
-      [
-        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' },
-      ],
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' }],
       [
         // Original review
         { user: { login: 'maintainer' }, body: '', submitted_at: '2026-02-22T12:00:00Z', state: 'COMMENTED', id: 100 },
@@ -2554,13 +2647,32 @@ describe('Maintainer self-reply detection (#199)', () => {
       ],
       [
         // Original inline comment
-        { id: 1000, user: { login: 'maintainer' }, body: 'Fix this', created_at: '2026-02-22T12:00:00Z', pull_request_review_id: 100 },
+        {
+          id: 1000,
+          user: { login: 'maintainer' },
+          body: 'Fix this',
+          created_at: '2026-02-22T12:00:00Z',
+          pull_request_review_id: 100,
+        },
         // Self-reply in review 200
-        { id: 1001, user: { login: 'maintainer' }, body: 'Update on this', created_at: '2026-02-24T08:00:00Z', in_reply_to_id: 1000, pull_request_review_id: 200 },
+        {
+          id: 1001,
+          user: { login: 'maintainer' },
+          body: 'Update on this',
+          created_at: '2026-02-24T08:00:00Z',
+          in_reply_to_id: 1000,
+          pull_request_review_id: 200,
+        },
         // NEW comment thread in same review 200 (no in_reply_to_id)
-        { id: 1002, user: { login: 'maintainer' }, body: 'Also found another issue here', created_at: '2026-02-24T08:01:00Z', pull_request_review_id: 200 },
+        {
+          id: 1002,
+          user: { login: 'maintainer' },
+          body: 'Also found another issue here',
+          created_at: '2026-02-24T08:01:00Z',
+          pull_request_review_id: 200,
+        },
       ],
-      'testuser'
+      'testuser',
     );
 
     // Mixed review (self-reply + new thread) should still flag
@@ -2577,7 +2689,7 @@ describe('Maintainer self-reply detection (#199)', () => {
         { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' },
       ],
       [],
-      'testuser'
+      'testuser',
     );
 
     // Without review.id, can't look up inline comments — falls back to synthetic
@@ -2588,13 +2700,17 @@ describe('Maintainer self-reply detection (#199)', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).checkUnrespondedComments(
       [],
+      [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED', id: 100 }],
       [
-        { user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED', id: 100 },
+        {
+          id: 1000,
+          user: { login: 'reviewer' },
+          body: 'Please add error handling here',
+          created_at: '2026-02-07T12:00:00Z',
+          pull_request_review_id: 100,
+        },
       ],
-      [
-        { id: 1000, user: { login: 'reviewer' }, body: 'Please add error handling here', created_at: '2026-02-07T12:00:00Z', pull_request_review_id: 100 },
-      ],
-      'testuser'
+      'testuser',
     );
 
     expect(result.hasUnrespondedComment).toBe(true);
@@ -2631,7 +2747,13 @@ describe('Maintainer self-reply detection (#199)', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).isAllSelfReplies(200, [
       { id: 1000, user: { login: 'MikeMcQuaid' }, body: 'Original', pull_request_review_id: 100 },
-      { id: 1001, user: { login: 'mikemcquaid' }, body: 'Follow up', in_reply_to_id: 1000, pull_request_review_id: 200 },
+      {
+        id: 1001,
+        user: { login: 'mikemcquaid' },
+        body: 'Follow up',
+        in_reply_to_id: 1000,
+        pull_request_review_id: 200,
+      },
     ]);
     expect(result).toBe(true);
   });
@@ -2888,7 +3010,8 @@ describe('fetchRepoStarCounts (#216)', () => {
   it('should fetch star counts for repos', async () => {
     mockOctokitInstance = {
       repos: {
-        get: vi.fn()
+        get: vi
+          .fn()
           .mockResolvedValueOnce({ data: { stargazers_count: 5000 } })
           .mockResolvedValueOnce({ data: { stargazers_count: 200 } }),
       },
@@ -2911,7 +3034,8 @@ describe('fetchRepoStarCounts (#216)', () => {
   it('should skip repos that fail to fetch (deleted/private)', async () => {
     mockOctokitInstance = {
       repos: {
-        get: vi.fn()
+        get: vi
+          .fn()
           .mockResolvedValueOnce({ data: { stargazers_count: 1000 } })
           .mockRejectedValueOnce(new Error('Not Found')),
       },
@@ -3029,7 +3153,10 @@ describe('review comment fetch error handling (#229)', () => {
   });
 
   it('should degrade gracefully on non-rate-limit 403 (e.g. private repo)', async () => {
-    mockOctokitInstance = makeMocksWithReviewCommentError({ status: 403, message: 'Resource not accessible by integration' });
+    mockOctokitInstance = makeMocksWithReviewCommentError({
+      status: 403,
+      message: 'Resource not accessible by integration',
+    });
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const monitor = new PRMonitor('fake-token');
@@ -3038,9 +3165,7 @@ describe('review comment fetch error handling (#229)', () => {
     // Non-rate-limit 403 should NOT re-throw — PR still returned
     expect(prs).toHaveLength(1);
     expect(prs[0].url).toBe(prUrl);
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('403 fetching review comments'),
-    );
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('403 fetching review comments'));
 
     errorSpy.mockRestore();
   });
@@ -3055,9 +3180,7 @@ describe('review comment fetch error handling (#229)', () => {
     // PR should still be returned — 500 is gracefully degraded
     expect(prs).toHaveLength(1);
     expect(prs[0].url).toBe(prUrl);
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Failed to fetch review comments'),
-    );
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to fetch review comments'));
 
     errorSpy.mockRestore();
   });

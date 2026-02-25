@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { execFileSync } from 'child_process';
 import { getStateManager } from '../core/index.js';
-import { outputJson, outputJsonError, type LocalReposOutput, type LocalRepoInfo } from '../formatters/json.js';
+import { outputJson, type LocalReposOutput, type LocalRepoInfo } from '../formatters/json.js';
 
 interface LocalReposOptions {
   scan?: boolean;
@@ -52,11 +52,13 @@ function getGitHubRemote(repoPath: string): string | null {
 /** Get the current branch of a git repo */
 function getCurrentBranch(repoPath: string): string | null {
   try {
-    return execFileSync('git', ['-C', repoPath, 'branch', '--show-current'], {
-      encoding: 'utf-8',
-      timeout: 5000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim() || null;
+    return (
+      execFileSync('git', ['-C', repoPath, 'branch', '--show-current'], {
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim() || null
+    );
   } catch {
     return null;
   }
@@ -72,9 +74,7 @@ export function scanForRepos(scanPaths: string[]): Record<string, LocalRepoInfo>
     // Find git repos up to 3 levels deep
     let gitDirs: string[];
     try {
-      const output = execFileSync('find', [
-        scanPath, '-maxdepth', '4', '-name', '.git', '-type', 'd',
-      ], {
+      const output = execFileSync('find', [scanPath, '-maxdepth', '4', '-name', '.git', '-type', 'd'], {
         encoding: 'utf-8',
         timeout: 30000,
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -104,9 +104,10 @@ export function scanForRepos(scanPaths: string[]): Record<string, LocalRepoInfo>
 export async function runLocalRepos(options: LocalReposOptions): Promise<void> {
   const stateManager = getStateManager();
   const state = stateManager.getState();
-  const scanPaths = options.paths?.map(p => path.resolve(p)) ??
+  const scanPaths =
+    options.paths?.map((p) => path.resolve(p)) ??
     state.config.localRepoScanPaths ??
-    DEFAULT_SCAN_PATHS.filter(p => fs.existsSync(p));
+    DEFAULT_SCAN_PATHS.filter((p) => fs.existsSync(p));
 
   // Use cached data unless --scan is specified
   if (!options.scan && state.localRepoCache) {
