@@ -5,6 +5,7 @@
 
 import { getStateManager } from '../core/index.js';
 import { outputJson, outputJsonError } from '../formatters/json.js';
+import { validateUrl } from './validation.js';
 
 interface ReadOptions {
   prUrl?: string;
@@ -39,6 +40,8 @@ export async function runRead(options: ReadOptions): Promise<void> {
     }
     process.exit(1);
   }
+
+  validateUrl(options.prUrl);
 
   if (!options.json) {
     console.log(`\n✓ Marking PR as read: ${options.prUrl}\n`);

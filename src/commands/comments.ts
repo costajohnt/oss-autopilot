@@ -5,6 +5,7 @@
 
 import { getStateManager, getOctokit, parseGitHubUrl, formatRelativeTime, getGitHubToken } from '../core/index.js';
 import { outputJson, outputJsonError } from '../formatters/json.js';
+import { validateUrl } from './validation.js';
 
 interface CommentsOptions {
   prUrl: string;
@@ -26,6 +27,8 @@ interface ClaimOptions {
 }
 
 export async function runComments(options: CommentsOptions): Promise<void> {
+  validateUrl(options.prUrl);
+
   const token = getGitHubToken();
   if (!token) {
     if (options.json) {
@@ -192,6 +195,8 @@ export async function runComments(options: CommentsOptions): Promise<void> {
 }
 
 export async function runPost(options: PostOptions): Promise<void> {
+  validateUrl(options.url);
+
   const token = getGitHubToken();
   if (!token) {
     if (options.json) {
@@ -281,6 +286,8 @@ export async function runPost(options: PostOptions): Promise<void> {
 }
 
 export async function runClaim(options: ClaimOptions): Promise<void> {
+  validateUrl(options.issueUrl);
+
   const token = getGitHubToken();
   if (!token) {
     if (options.json) {
