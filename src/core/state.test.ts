@@ -1186,8 +1186,8 @@ describe('Concurrent State Write Protection', () => {
 
       expect(() => acquireLock(lockPath)).toThrow('State file is locked by another process');
 
-      // Clean up
-      releaseLock(lockPath);
+      // Clean up (use unlinkSync directly since releaseLock checks PID ownership)
+      fs.unlinkSync(lockPath);
     });
 
     it('should recover from stale locks', () => {
@@ -1204,6 +1204,35 @@ describe('Concurrent State Write Protection', () => {
       expect(newLockData.pid).toBe(process.pid);
 
       releaseLock(lockPath);
+    });
+
+    it('should recover from corrupt lock files', () => {
+      const lockPath = path.join(tmpDir, 'state.json.lock');
+      // Write invalid JSON to simulate a corrupt lock file
+      fs.writeFileSync(lockPath, 'NOT VALID JSON', { flag: 'wx' });
+
+      // Should succeed because corrupt locks are treated as stale
+      acquireLock(lockPath);
+      expect(fs.existsSync(lockPath)).toBe(true);
+
+      const newLockData = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+      expect(newLockData.pid).toBe(process.pid);
+
+      releaseLock(lockPath);
+    });
+
+    it('should not release a lock owned by another process', () => {
+      const lockPath = path.join(tmpDir, 'state.json.lock');
+      // Simulate a lock from another process
+      const lockData = JSON.stringify({ pid: 999999, timestamp: Date.now() });
+      fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
+
+      // releaseLock should not remove it because PID doesn't match
+      releaseLock(lockPath);
+      expect(fs.existsSync(lockPath)).toBe(true);
+
+      // Clean up
+      fs.unlinkSync(lockPath);
     });
 
     it('should silently handle releasing a non-existent lock', () => {

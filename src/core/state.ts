@@ -22,47 +22,60 @@ const LEGACY_STATE_FILE = path.join(process.cwd(), 'data', 'state.json');
 const LEGACY_BACKUP_DIR = path.join(process.cwd(), 'data', 'backups');
 
 /**
+ * Check whether an existing lock file is stale (expired or corrupt).
+ * Returns true if the lock should be considered stale and can be removed.
+ */
+function isLockStale(lockPath: string): boolean {
+  try {
+    const existing = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+    return Date.now() - existing.timestamp > LOCK_TIMEOUT_MS;
+  } catch {
+    // Lock file is unreadable or contains invalid JSON — treat as stale
+    return true;
+  }
+}
+
+/**
  * Acquire an advisory file lock using exclusive-create (`wx` flag).
- * If the lock file already exists but is older than LOCK_TIMEOUT_MS, it is treated as stale and removed.
+ * If the lock file already exists but is stale (older than LOCK_TIMEOUT_MS or corrupt),
+ * it is removed and re-acquired.
  * @throws Error if the lock is held by another active process.
  */
 export function acquireLock(lockPath: string): void {
   const lockData = JSON.stringify({ pid: process.pid, timestamp: Date.now() });
   try {
-    fs.writeFileSync(lockPath, lockData, { flag: 'wx' }); // Fails if exists
+    fs.writeFileSync(lockPath, lockData, { flag: 'wx' }); // Fails if file exists
+    return;
   } catch {
     // Lock file exists — check if it is stale
-    try {
-      const existing = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
-      if (Date.now() - existing.timestamp > LOCK_TIMEOUT_MS) {
-        fs.unlinkSync(lockPath); // Remove stale lock
-        fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
-      } else {
-        throw new Error('State file is locked by another process');
-      }
-    } catch (innerError) {
-      // Re-throw our own error; wrap unexpected ones
-      if (innerError instanceof Error && innerError.message === 'State file is locked by another process') {
-        throw innerError;
-      }
-      // Lock file disappeared between check and read, or other race — retry once
-      try {
-        fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
-      } catch {
-        throw new Error('State file is locked by another process');
-      }
-    }
+  }
+
+  if (!isLockStale(lockPath)) {
+    throw new Error('State file is locked by another process');
+  }
+
+  // Stale lock detected — remove it and try to re-acquire
+  try { fs.unlinkSync(lockPath); } catch { /* already removed */ }
+  try {
+    fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
+  } catch {
+    // Another process grabbed the lock between unlink and write
+    throw new Error('State file is locked by another process');
   }
 }
 
 /**
- * Release an advisory file lock. Silently ignores missing lock files.
+ * Release an advisory file lock, but only if this process owns it.
+ * Silently ignores missing lock files or locks owned by other processes.
  */
 export function releaseLock(lockPath: string): void {
   try {
-    fs.unlinkSync(lockPath);
+    const data = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+    if (data.pid === process.pid) {
+      fs.unlinkSync(lockPath);
+    }
   } catch {
-    /* lock already removed — nothing to do */
+    /* lock already removed or unreadable — nothing to do */
   }
 }
 
