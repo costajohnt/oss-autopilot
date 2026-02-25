@@ -198,11 +198,13 @@ describe('IssueConversationMonitor', () => {
         ...defaultState().config,
         aiPolicyBlocklist: [],
       },
-      activeIssues: [{
-        repo: 'owner/repo',
-        number: 42,
-        status: 'claimed',
-      }],
+      activeIssues: [
+        {
+          repo: 'owner/repo',
+          number: 42,
+          status: 'claimed',
+        },
+      ],
     };
 
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
@@ -221,10 +223,12 @@ describe('IssueConversationMonitor', () => {
   it('should handle empty comment threads', async () => {
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
       data: {
-        items: [makeSearchItem({
-          html_url: 'https://github.com/owner/repo/issues/99',
-          number: 99,
-        })],
+        items: [
+          makeSearchItem({
+            html_url: 'https://github.com/owner/repo/issues/99',
+            number: 99,
+          }),
+        ],
         total_count: 1,
       },
     });
@@ -250,7 +254,7 @@ describe('IssueConversationMonitor', () => {
 
     mockOctokitInstance.issues.listComments.mockResolvedValue({
       data: [
-        makeComment('TestUser', 'Can I work on this?', '2026-02-01T10:00:00Z'),  // Different case
+        makeComment('TestUser', 'Can I work on this?', '2026-02-01T10:00:00Z'), // Different case
         makeComment('maintainer', 'Sure, go ahead!', '2026-02-02T10:00:00Z'),
       ],
     });
@@ -373,9 +377,7 @@ describe('IssueConversationMonitor', () => {
       if (callCount === 1) {
         // Issue 1: user commented, no response
         return Promise.resolve({
-          data: [
-            makeComment('testuser', 'I can help', '2026-02-01T10:00:00Z'),
-          ],
+          data: [makeComment('testuser', 'I can help', '2026-02-01T10:00:00Z')],
         });
       } else {
         // Issue 2: user commented, maintainer responded
@@ -402,9 +404,11 @@ describe('IssueConversationMonitor', () => {
   it('should include labels from the issue', async () => {
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
       data: {
-        items: [makeSearchItem({
-          labels: [{ name: 'bug' }, { name: 'help wanted' }],
-        })],
+        items: [
+          makeSearchItem({
+            labels: [{ name: 'bug' }, { name: 'help wanted' }],
+          }),
+        ],
         total_count: 1,
       },
     });
@@ -483,9 +487,7 @@ describe('IssueConversationMonitor', () => {
 
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
       data: {
-        items: [
-          makeSearchItem({ html_url: 'https://github.com/excluded/repo/issues/1', number: 1 }),
-        ],
+        items: [makeSearchItem({ html_url: 'https://github.com/excluded/repo/issues/1', number: 1 })],
         total_count: 1,
       },
     });
@@ -508,9 +510,7 @@ describe('IssueConversationMonitor', () => {
 
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
       data: {
-        items: [
-          makeSearchItem({ html_url: 'https://github.com/excluded/repo/issues/1', number: 1 }),
-        ],
+        items: [makeSearchItem({ html_url: 'https://github.com/excluded/repo/issues/1', number: 1 })],
         total_count: 1,
       },
     });
@@ -541,9 +541,7 @@ describe('IssueConversationMonitor', () => {
 
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
       data: {
-        items: [
-          makeSearchItem({ html_url: 'https://github.com/ExcludedOrg/some-repo/issues/5', number: 5 }),
-        ],
+        items: [makeSearchItem({ html_url: 'https://github.com/ExcludedOrg/some-repo/issues/5', number: 5 })],
         total_count: 1,
       },
     });
@@ -589,9 +587,7 @@ describe('IssueConversationMonitor', () => {
   });
 
   it('should propagate search API failure as thrown error', async () => {
-    mockOctokitInstance.search.issuesAndPullRequests.mockRejectedValue(
-      new Error('API rate limit exceeded'),
-    );
+    mockOctokitInstance.search.issuesAndPullRequests.mockRejectedValue(new Error('API rate limit exceeded'));
 
     const monitor = new IssueConversationMonitor('fake-token');
     await expect(monitor.fetchCommentedIssues()).rejects.toThrow('API rate limit exceeded');

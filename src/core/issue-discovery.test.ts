@@ -34,7 +34,7 @@ const {
   isDocOnlyIssue,
   applyPerRepoCap,
   DOC_ONLY_LABELS,
-  BEGINNER_LABELS,
+  BEGINNER_LABELS: _BEGINNER_LABELS,
 } = await import('./issue-discovery.js');
 
 const { getStateManager } = await import('./state.js');
@@ -398,18 +398,14 @@ describe('IssueDiscovery.vetIssue inconclusive downgrade', () => {
 
   it('should downgrade to needs_review when checkNoExistingPR is inconclusive', async () => {
     // Make the search call throw (simulating rate limit / API error)
-    mockOctokitInstance.search.issuesAndPullRequests.mockRejectedValue(
-      new Error('API rate limit exceeded')
-    );
+    mockOctokitInstance.search.issuesAndPullRequests.mockRejectedValue(new Error('API rate limit exceeded'));
 
     const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
     expect(candidate.recommendation).toBe('needs_review');
     expect(candidate.vettingResult.notes).toContainEqual(
-      expect.stringContaining('Could not verify absence of existing PRs')
+      expect.stringContaining('Could not verify absence of existing PRs'),
     );
-    expect(candidate.vettingResult.notes).toContainEqual(
-      expect.stringContaining('Recommendation downgraded')
-    );
+    expect(candidate.vettingResult.notes).toContainEqual(expect.stringContaining('Recommendation downgraded'));
   });
 
   it('should downgrade to needs_review when checkNotClaimed is inconclusive', async () => {
@@ -418,37 +414,27 @@ describe('IssueDiscovery.vetIssue inconclusive downgrade', () => {
       data: { ...makeGhIssue(), comments: 3 },
     });
     // Make paginate throw (simulating API error)
-    mockOctokitInstance.paginate = vi.fn().mockRejectedValue(
-      new Error('Server error')
-    );
+    mockOctokitInstance.paginate = vi.fn().mockRejectedValue(new Error('Server error'));
 
     const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
     expect(candidate.recommendation).toBe('needs_review');
-    expect(candidate.vettingResult.notes).toContainEqual(
-      expect.stringContaining('Could not verify claim status')
-    );
+    expect(candidate.vettingResult.notes).toContainEqual(expect.stringContaining('Could not verify claim status'));
   });
 
   it('should downgrade to needs_review when project health check fails', async () => {
     // Make repos.get throw (simulating API error)
-    mockOctokitInstance.repos.get.mockRejectedValue(
-      new Error('Not Found')
-    );
+    mockOctokitInstance.repos.get.mockRejectedValue(new Error('Not Found'));
 
     const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
     expect(candidate.recommendation).toBe('needs_review');
-    expect(candidate.vettingResult.notes).toContainEqual(
-      expect.stringContaining('Could not verify project activity')
-    );
+    expect(candidate.vettingResult.notes).toContainEqual(expect.stringContaining('Could not verify project activity'));
   });
 
   it('should note unavailable quality bonus when health check fails', async () => {
     mockOctokitInstance.repos.get.mockRejectedValue(new Error('Not Found'));
 
     const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
-    expect(candidate.vettingResult.notes).toContainEqual(
-      expect.stringContaining('Repo quality bonus unavailable')
-    );
+    expect(candidate.vettingResult.notes).toContainEqual(expect.stringContaining('Repo quality bonus unavailable'));
   });
 
   it('should populate stargazersCount and forksCount from checkProjectHealth', async () => {
@@ -467,25 +453,21 @@ describe('isLabelFarming', () => {
     html_url: 'https://github.com/spam/repo/issues/1',
     repository_url: 'https://api.github.com/repos/spam/repo',
     updated_at: '2026-01-01T00:00:00Z',
-    labels: labels.map(name => ({ name })),
+    labels: labels.map((name) => ({ name })),
   });
 
   it('should return false with 4 beginner labels', () => {
-    expect(isLabelFarming(makeItem([
-      'good first issue', 'hacktoberfest', 'easy', 'beginner',
-    ]))).toBe(false);
+    expect(isLabelFarming(makeItem(['good first issue', 'hacktoberfest', 'easy', 'beginner']))).toBe(false);
   });
 
   it('should return true with 5 beginner labels', () => {
-    expect(isLabelFarming(makeItem([
-      'good first issue', 'hacktoberfest', 'easy', 'beginner', 'starter',
-    ]))).toBe(true);
+    expect(isLabelFarming(makeItem(['good first issue', 'hacktoberfest', 'easy', 'beginner', 'starter']))).toBe(true);
   });
 
   it('should count only beginner labels, ignoring non-beginner labels', () => {
-    expect(isLabelFarming(makeItem([
-      'good first issue', 'hacktoberfest', 'bug', 'enhancement', 'easy', 'documentation',
-    ]))).toBe(false); // Only 3 beginner labels
+    expect(
+      isLabelFarming(makeItem(['good first issue', 'hacktoberfest', 'bug', 'enhancement', 'easy', 'documentation'])),
+    ).toBe(false); // Only 3 beginner labels
   });
 
   it('should handle string labels', () => {
@@ -508,9 +490,7 @@ describe('isLabelFarming', () => {
   });
 
   it('should be case-insensitive', () => {
-    expect(isLabelFarming(makeItem([
-      'Good First Issue', 'HACKTOBERFEST', 'Easy', 'Beginner', 'Starter',
-    ]))).toBe(true);
+    expect(isLabelFarming(makeItem(['Good First Issue', 'HACKTOBERFEST', 'Easy', 'Beginner', 'Starter']))).toBe(true);
   });
 });
 
@@ -571,7 +551,7 @@ describe('detectLabelFarmingRepos', () => {
     repository_url: `https://api.github.com/repos/${repo}`,
     updated_at: '2026-01-01T00:00:00Z',
     title: opts.title || 'Some issue',
-    labels: (opts.labels || []).map(name => ({ name })),
+    labels: (opts.labels || []).map((name) => ({ name })),
   });
 
   it('should flag repo with single issue having 5+ beginner labels', () => {
@@ -666,11 +646,11 @@ describe('calculateRepoQualityBonus', () => {
   });
 
   it('should handle exact boundary values', () => {
-    expect(calculateRepoQualityBonus(50, 0)).toBe(3);    // exactly 50 stars
-    expect(calculateRepoQualityBonus(500, 0)).toBe(5);   // exactly 500 stars
-    expect(calculateRepoQualityBonus(5000, 0)).toBe(8);  // exactly 5000 stars
-    expect(calculateRepoQualityBonus(0, 50)).toBe(2);    // exactly 50 forks
-    expect(calculateRepoQualityBonus(0, 500)).toBe(4);   // exactly 500 forks
+    expect(calculateRepoQualityBonus(50, 0)).toBe(3); // exactly 50 stars
+    expect(calculateRepoQualityBonus(500, 0)).toBe(5); // exactly 500 stars
+    expect(calculateRepoQualityBonus(5000, 0)).toBe(8); // exactly 5000 stars
+    expect(calculateRepoQualityBonus(0, 50)).toBe(2); // exactly 50 forks
+    expect(calculateRepoQualityBonus(0, 500)).toBe(4); // exactly 500 forks
   });
 
   it('should return 0 for zero stars and forks', () => {
@@ -712,16 +692,16 @@ describe('calculateViabilityScore with repoQualityBonus', () => {
     const recent = new Date();
     recent.setDate(recent.getDate() - 1);
     const score = discovery.calculateViabilityScore({
-      repoScore: 10,            // +20
+      repoScore: 10, // +20
       hasExistingPR: false,
       isClaimed: false,
-      clearRequirements: true,   // +15
+      clearRequirements: true, // +15
       hasContributionGuidelines: true, // +10
       issueUpdatedAt: recent.toISOString(), // +15
       closedWithoutMergeCount: 0,
       mergedPRCount: 0,
-      orgHasMergedPRs: true,     // +5
-      repoQualityBonus: 12,      // +12
+      orgHasMergedPRs: true, // +5
+      repoQualityBonus: 12, // +12
     });
     // 50 + 20 + 12 + 15 + 15 + 10 + 5 = 127, clamped to 100
     expect(score).toBe(100);
@@ -730,9 +710,9 @@ describe('calculateViabilityScore with repoQualityBonus', () => {
   it('should combine quality bonus with other bonuses and penalties', () => {
     const score = discovery.calculateViabilityScore({
       ...baseParams,
-      repoQualityBonus: 7,       // +7
-      clearRequirements: true,    // +15
-      isClaimed: true,            // -20
+      repoQualityBonus: 7, // +7
+      clearRequirements: true, // +15
+      isClaimed: true, // -20
     });
     // 50 + 7 + 15 - 20 = 52
     expect(score).toBe(52);
@@ -777,7 +757,7 @@ describe('isDocOnlyIssue (#105)', () => {
     html_url: 'https://github.com/owner/repo/issues/1',
     repository_url: 'https://api.github.com/repos/owner/repo',
     updated_at: '2026-01-01T00:00:00Z',
-    labels: labels.map(name => ({ name })),
+    labels: labels.map((name) => ({ name })),
   });
 
   it('should return true when ALL labels are doc-related', () => {
@@ -978,26 +958,25 @@ describe('aiPolicyBlocklist filtering in searchIssues (#108)', () => {
         issuesAndPullRequests: vi.fn().mockResolvedValue({
           data: {
             total_count: 2,
-            items: [
-              makeSearchItem('blocked/repo', 1),
-              makeSearchItem('allowed/repo', 2),
-            ],
+            items: [makeSearchItem('blocked/repo', 1), makeSearchItem('allowed/repo', 2)],
           },
         }),
       },
       issues: {
-        get: vi.fn().mockImplementation(({ owner, repo, issue_number }: any) => Promise.resolve({
-          data: {
-            id: issue_number,
-            html_url: `https://github.com/${owner}/${repo}/issues/${issue_number}`,
-            title: `Test issue ${issue_number}`,
-            labels: [{ name: 'good first issue' }],
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            comments: 0,
-            body: `1. Step one\n2. Step two\nThis should work correctly.\n${'x'.repeat(200)}`,
-          },
-        })),
+        get: vi.fn().mockImplementation(({ owner, repo, issue_number }: any) =>
+          Promise.resolve({
+            data: {
+              id: issue_number,
+              html_url: `https://github.com/${owner}/${repo}/issues/${issue_number}`,
+              title: `Test issue ${issue_number}`,
+              labels: [{ name: 'good first issue' }],
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              comments: 0,
+              body: `1. Step one\n2. Step two\nThis should work correctly.\n${'x'.repeat(200)}`,
+            },
+          }),
+        ),
         listEventsForTimeline: vi.fn().mockResolvedValue({ data: [] }),
       },
       repos: {
@@ -1019,7 +998,7 @@ describe('aiPolicyBlocklist filtering in searchIssues (#108)', () => {
 
   it('should filter out issues from blocklisted repos', async () => {
     const candidates = await discovery.searchIssues({ maxResults: 10 });
-    const repos = candidates.map(c => c.issue.repo);
+    const repos = candidates.map((c) => c.issue.repo);
     expect(repos).not.toContain('blocked/repo');
     expect(repos).toContain('allowed/repo');
   });
@@ -1029,7 +1008,7 @@ describe('aiPolicyBlocklist filtering in searchIssues (#108)', () => {
     discovery = new IssueDiscovery('fake-token');
 
     const candidates = await discovery.searchIssues({ maxResults: 10 });
-    const repos = candidates.map(c => c.issue.repo);
+    const repos = candidates.map((c) => c.issue.repo);
     expect(repos).toContain('blocked/repo');
     expect(repos).toContain('allowed/repo');
   });
@@ -1039,7 +1018,7 @@ describe('aiPolicyBlocklist filtering in searchIssues (#108)', () => {
     discovery = new IssueDiscovery('fake-token');
 
     const candidates = await discovery.searchIssues({ maxResults: 10 });
-    const repos = candidates.map(c => c.issue.repo);
+    const repos = candidates.map((c) => c.issue.repo);
     // Neither test repo is in DEFAULT_CONFIG.aiPolicyBlocklist (['matplotlib/matplotlib']), so both pass through
     expect(repos).toContain('blocked/repo');
     expect(repos).toContain('allowed/repo');
@@ -1051,16 +1030,13 @@ describe('aiPolicyBlocklist filtering in searchIssues (#108)', () => {
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
       data: {
         total_count: 2,
-        items: [
-          makeSearchItem('matplotlib/matplotlib', 1),
-          makeSearchItem('allowed/repo', 2),
-        ],
+        items: [makeSearchItem('matplotlib/matplotlib', 1), makeSearchItem('allowed/repo', 2)],
       },
     });
     discovery = new IssueDiscovery('fake-token');
 
     const candidates = await discovery.searchIssues({ maxResults: 10 });
-    const repos = candidates.map(c => c.issue.repo);
+    const repos = candidates.map((c) => c.issue.repo);
     expect(repos).not.toContain('matplotlib/matplotlib');
     expect(repos).toContain('allowed/repo');
   });

@@ -37,12 +37,12 @@ export function getOctokit(token: string): Octokit {
         const resetAt = new Date(Date.now() + retryAfter * 1000);
         if (retryCount < 2) {
           console.warn(
-            `Rate limit hit (retry ${retryCount + 1}/2, waiting ${retryAfter}s, resets at ${formatResetTime(resetAt)}) — ${opts.method} ${opts.url}`
+            `Rate limit hit (retry ${retryCount + 1}/2, waiting ${retryAfter}s, resets at ${formatResetTime(resetAt)}) — ${opts.method} ${opts.url}`,
           );
           return true;
         }
         console.error(
-          `Rate limit exceeded, not retrying — ${opts.method} ${opts.url} (resets at ${formatResetTime(resetAt)})`
+          `Rate limit exceeded, not retrying — ${opts.method} ${opts.url} (resets at ${formatResetTime(resetAt)})`,
         );
         return false;
       },
@@ -51,12 +51,12 @@ export function getOctokit(token: string): Octokit {
         const resetAt = new Date(Date.now() + retryAfter * 1000);
         if (retryCount < 1) {
           console.warn(
-            `Secondary rate limit hit (retry ${retryCount + 1}/1, waiting ${retryAfter}s, resets at ${formatResetTime(resetAt)}) — ${opts.method} ${opts.url}`
+            `Secondary rate limit hit (retry ${retryCount + 1}/1, waiting ${retryAfter}s, resets at ${formatResetTime(resetAt)}) — ${opts.method} ${opts.url}`,
           );
           return true;
         }
         console.error(
-          `Secondary rate limit exceeded, not retrying — ${opts.method} ${opts.url} (resets at ${formatResetTime(resetAt)})`
+          `Secondary rate limit exceeded, not retrying — ${opts.method} ${opts.url} (resets at ${formatResetTime(resetAt)})`,
         );
         return false;
       },

@@ -5,7 +5,19 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, RepoScoreUpdate, StateEvent, StateEventType, DailyDigest, LocalRepoCache, SnoozeInfo } from './types.js';
+import {
+  AgentState,
+  INITIAL_STATE,
+  TrackedPR,
+  TrackedIssue,
+  RepoScore,
+  RepoScoreUpdate,
+  StateEvent,
+  StateEventType,
+  DailyDigest,
+  LocalRepoCache,
+  SnoozeInfo,
+} from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
 import { ValidationError } from './errors.js';
 
@@ -56,7 +68,11 @@ export function acquireLock(lockPath: string): void {
   }
 
   // Stale lock detected — remove it and try to re-acquire
-  try { fs.unlinkSync(lockPath); } catch { /* already removed */ }
+  try {
+    fs.unlinkSync(lockPath);
+  } catch {
+    /* already removed */
+  }
   try {
     fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
   } catch {
@@ -263,8 +279,9 @@ export class StateManager {
       // Copy backups if they exist
       if (fs.existsSync(LEGACY_BACKUP_DIR)) {
         const newBackupDir = getBackupDir();
-        const backupFiles = fs.readdirSync(LEGACY_BACKUP_DIR)
-          .filter(f => f.startsWith('state-') && f.endsWith('.json'));
+        const backupFiles = fs
+          .readdirSync(LEGACY_BACKUP_DIR)
+          .filter((f) => f.startsWith('state-') && f.endsWith('.json'));
 
         for (const backupFile of backupFiles) {
           const srcPath = path.join(LEGACY_BACKUP_DIR, backupFile);
@@ -392,8 +409,9 @@ export class StateManager {
     }
 
     // Get backup files sorted by name (most recent first, since names include timestamps)
-    const backupFiles = fs.readdirSync(backupDir)
-      .filter(f => f.startsWith('state-') && f.endsWith('.json'))
+    const backupFiles = fs
+      .readdirSync(backupDir)
+      .filter((f) => f.startsWith('state-') && f.endsWith('.json'))
       .sort()
       .reverse();
 
@@ -421,7 +439,7 @@ export class StateManager {
 
           return state;
         }
-      } catch (error) {
+      } catch (_error) {
         // This backup is also corrupted, try the next one
         console.warn(`Backup ${backupFile} is corrupted, trying next...`);
       }
@@ -449,14 +467,13 @@ export class StateManager {
     }
 
     // Base requirements for all versions
-    const hasBaseFields = (
+    const hasBaseFields =
       typeof s.version === 'number' &&
       typeof s.repoScores === 'object' &&
       s.repoScores !== null &&
       Array.isArray(s.events) &&
       typeof s.config === 'object' &&
-      s.config !== null
-    );
+      s.config !== null;
 
     if (!hasBaseFields) return false;
 
@@ -520,8 +537,9 @@ export class StateManager {
   private cleanupBackups(): void {
     const backupDir = getBackupDir();
     try {
-      const files = fs.readdirSync(backupDir)
-        .filter(f => f.startsWith('state-'))
+      const files = fs
+        .readdirSync(backupDir)
+        .filter((f) => f.startsWith('state-'))
         .sort()
         .reverse();
 
@@ -530,7 +548,10 @@ export class StateManager {
         try {
           fs.unlinkSync(path.join(backupDir, file));
         } catch (error) {
-          console.error(`Warning: Could not delete old backup ${file}:`, error instanceof Error ? error.message : error);
+          console.error(
+            `Warning: Could not delete old backup ${file}:`,
+            error instanceof Error ? error.message : error,
+          );
         }
       }
     } catch (error) {
@@ -629,7 +650,7 @@ export class StateManager {
    * @returns All events matching the given type, in chronological order.
    */
   getEventsByType(type: StateEventType): StateEvent[] {
-    return this.state.events.filter(e => e.type === type);
+    return this.state.events.filter((e) => e.type === type);
   }
 
   /**
@@ -639,7 +660,7 @@ export class StateManager {
    * @returns Events whose timestamps fall within [since, until].
    */
   getEventsInRange(since: Date, until: Date = new Date()): StateEvent[] {
-    return this.state.events.filter(e => {
+    return this.state.events.filter((e) => {
       const eventTime = new Date(e.at);
       return eventTime >= since && eventTime <= until;
     });
@@ -655,7 +676,7 @@ export class StateManager {
    */
   addActivePR(pr: TrackedPR): void {
     // Check if already exists
-    const existing = this.state.activePRs.find(p => p.url === pr.url);
+    const existing = this.state.activePRs.find((p) => p.url === pr.url);
     if (existing) {
       console.error(`PR ${pr.url} already tracked`);
       return;
@@ -679,7 +700,7 @@ export class StateManager {
    * @param issue - The issue to begin tracking.
    */
   addIssue(issue: TrackedIssue): void {
-    const existing = this.state.activeIssues.find(i => i.url === issue.url);
+    const existing = this.state.activeIssues.find((i) => i.url === issue.url);
     if (existing) {
       console.error(`Issue ${issue.url} already tracked`);
       return;
@@ -712,8 +733,8 @@ export class StateManager {
    */
   private static matchesExclusion(repo: string, repos: string[], orgs?: string[]): boolean {
     const repoLower = repo.toLowerCase();
-    if (repos.some(r => r.toLowerCase() === repoLower)) return true;
-    if (orgs?.some(o => o.toLowerCase() === repoLower.split('/')[0])) return true;
+    if (repos.some((r) => r.toLowerCase() === repoLower)) return true;
+    if (orgs?.some((o) => o.toLowerCase() === repoLower.split('/')[0])) return true;
     return false;
   }
 
@@ -739,7 +760,7 @@ export class StateManager {
     const matches = (repo: string): boolean => StateManager.matchesExclusion(repo, repos, orgs);
 
     const beforeTrusted = this.state.config.trustedProjects.length;
-    this.state.config.trustedProjects = this.state.config.trustedProjects.filter(p => !matches(p));
+    this.state.config.trustedProjects = this.state.config.trustedProjects.filter((p) => !matches(p));
     const removedTrusted = beforeTrusted - this.state.config.trustedProjects.length;
 
     let removedScoreCount = 0;
@@ -752,7 +773,7 @@ export class StateManager {
 
     if (removedTrusted > 0 || removedScoreCount > 0) {
       console.error(
-        `[CLEANUP] Removed ${removedTrusted} trusted project(s) and ${removedScoreCount} repo score(s) for excluded repos/orgs`
+        `[CLEANUP] Removed ${removedTrusted} trusted project(s) and ${removedScoreCount} repo score(s) for excluded repos/orgs`,
       );
     }
   }
@@ -978,7 +999,7 @@ export class StateManager {
    */
   untrackPR(url: string): boolean {
     // Check active PRs
-    let index = this.state.activePRs.findIndex(p => p.url === url);
+    let index = this.state.activePRs.findIndex((p) => p.url === url);
     if (index !== -1) {
       const pr = this.state.activePRs.splice(index, 1)[0];
       console.error(`Untracked PR: ${pr.repo}#${pr.number}`);
@@ -986,7 +1007,7 @@ export class StateManager {
     }
 
     // Check dormant PRs
-    index = this.state.dormantPRs.findIndex(p => p.url === url);
+    index = this.state.dormantPRs.findIndex((p) => p.url === url);
     if (index !== -1) {
       const pr = this.state.dormantPRs.splice(index, 1)[0];
       console.error(`Untracked dormant PR: ${pr.repo}#${pr.number}`);
@@ -1003,7 +1024,7 @@ export class StateManager {
    * @returns true if the PR was found and updated, false if not in the active list.
    */
   markPRAsRead(url: string): boolean {
-    const pr = this.state.activePRs.find(p => p.url === url);
+    const pr = this.state.activePRs.find((p) => p.url === url);
     if (pr) {
       pr.hasUnreadComments = false;
       pr.activityStatus = 'active';
@@ -1082,7 +1103,9 @@ export class StateManager {
     if (repoScore.lastMergedAt) {
       const lastMergedDate = new Date(repoScore.lastMergedAt);
       if (isNaN(lastMergedDate.getTime())) {
-        console.error(`[SCORE_CALC] Invalid lastMergedAt date for ${repoScore.repo}: "${repoScore.lastMergedAt}". Skipping recency bonus.`);
+        console.error(
+          `[SCORE_CALC] Invalid lastMergedAt date for ${repoScore.repo}: "${repoScore.lastMergedAt}". Skipping recency bonus.`,
+        );
       } else {
         const msPerDay = 1000 * 60 * 60 * 24;
         const daysSince = Math.floor((Date.now() - lastMergedDate.getTime()) / msPerDay);
@@ -1196,9 +1219,9 @@ export class StateManager {
    */
   getReposWithMergedPRs(): string[] {
     return Object.values(this.state.repoScores)
-      .filter(rs => rs.mergedPRCount > 0)
+      .filter((rs) => rs.mergedPRCount > 0)
       .sort((a, b) => b.mergedPRCount - a.mergedPRCount)
-      .map(rs => rs.repo);
+      .map((rs) => rs.repo);
   }
 
   /**
@@ -1210,9 +1233,9 @@ export class StateManager {
    */
   getReposWithOpenPRs(): string[] {
     return Object.values(this.state.repoScores)
-      .filter(rs => rs.mergedPRCount === 0 && rs.closedWithoutMergeCount === 0)
+      .filter((rs) => rs.mergedPRCount === 0 && rs.closedWithoutMergeCount === 0)
       .sort((a, b) => b.score - a.score)
-      .map(rs => rs.repo);
+      .map((rs) => rs.repo);
   }
 
   /**
@@ -1223,9 +1246,9 @@ export class StateManager {
   getHighScoringRepos(minScore?: number): string[] {
     const threshold = minScore ?? this.state.config.minRepoScoreThreshold;
     return Object.values(this.state.repoScores)
-      .filter(rs => rs.score >= threshold)
+      .filter((rs) => rs.score >= threshold)
       .sort((a, b) => b.score - a.score)
-      .map(rs => rs.repo);
+      .map((rs) => rs.repo);
   }
 
   /**
@@ -1236,9 +1259,9 @@ export class StateManager {
   getLowScoringRepos(maxScore?: number): string[] {
     const threshold = maxScore ?? this.state.config.minRepoScoreThreshold;
     return Object.values(this.state.repoScores)
-      .filter(rs => rs.score <= threshold)
+      .filter((rs) => rs.score <= threshold)
       .sort((a, b) => a.score - b.score)
-      .map(rs => rs.repo);
+      .map((rs) => rs.repo);
   }
 
   // === Statistics ===
@@ -1266,9 +1289,7 @@ export class StateManager {
     }
 
     const completed = totalMerged + totalClosed;
-    const mergeRate = completed > 0
-      ? (totalMerged / completed) * 100
-      : 0;
+    const mergeRate = completed > 0 ? (totalMerged / completed) * 100 : 0;
 
     return {
       // v2: These are calculated from fresh GitHub data, not stored locally
@@ -1278,7 +1299,7 @@ export class StateManager {
       mergedPRs: totalMerged,
       closedPRs: totalClosed,
       activeIssues: 0,
-      trustedProjects: this.state.config.trustedProjects.filter(p => !this.isExcluded(p)).length,
+      trustedProjects: this.state.config.trustedProjects.filter((p) => !this.isExcluded(p)).length,
       mergeRate: mergeRate.toFixed(1) + '%',
       totalTracked,
       needsResponse: 0,

@@ -46,11 +46,11 @@ export async function runSetup(options: SetupOptions): Promise<void> {
           results[key] = value;
           break;
         case 'languages':
-          stateManager.updateConfig({ languages: value.split(',').map(l => l.trim()) });
+          stateManager.updateConfig({ languages: value.split(',').map((l) => l.trim()) });
           results[key] = value;
           break;
         case 'labels':
-          stateManager.updateConfig({ labels: value.split(',').map(l => l.trim()) });
+          stateManager.updateConfig({ labels: value.split(',').map((l) => l.trim()) });
           results[key] = value;
           break;
         case 'showHealthCheck':
@@ -77,7 +77,10 @@ export async function runSetup(options: SetupOptions): Promise<void> {
           results[key] = value === 'true' ? 'true' : 'false';
           break;
         case 'aiPolicyBlocklist': {
-          const entries = value.split(',').map(r => r.trim()).filter(Boolean);
+          const entries = value
+            .split(',')
+            .map((r) => r.trim())
+            .filter(Boolean);
           const valid: string[] = [];
           const invalid: string[] = [];
           for (const entry of entries) {

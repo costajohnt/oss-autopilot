@@ -17,7 +17,7 @@ export async function runStatus(options: StatusOptions): Promise<void> {
 
   if (options.json) {
     // Extract only the stats we want to output (exclude totalTracked)
-    const { totalTracked, ...outputStats } = stats as typeof stats & { totalTracked?: number };
+    const { totalTracked: _totalTracked, ...outputStats } = stats as typeof stats & { totalTracked?: number };
     outputJson<StatusOutput>({
       stats: outputStats,
       activePRs: [...state.activePRs],

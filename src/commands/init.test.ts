@@ -47,7 +47,9 @@ describe('runInit', () => {
 
   it('should exit with error when no GitHub token is available', async () => {
     mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runInit({ username: 'testuser', json: true })).rejects.toThrow('exit');
 
@@ -128,9 +130,7 @@ describe('runInit', () => {
     const mockSearch = vi.fn().mockResolvedValue({
       data: {
         total_count: 1,
-        items: [
-          { html_url: 'https://github.com/owner/repo/issues/5' },
-        ],
+        items: [{ html_url: 'https://github.com/owner/repo/issues/5' }],
       },
     });
     mockGetOctokit.mockReturnValue({

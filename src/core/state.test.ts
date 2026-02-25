@@ -90,13 +90,18 @@ describe('StateManager', () => {
 
     it('should mark all PRs as read', () => {
       const pr1 = createMockPR({ hasUnreadComments: true });
-      const pr2 = createMockPR({ id: 456, url: 'https://github.com/owner/repo/pull/2', number: 2, hasUnreadComments: true });
+      const pr2 = createMockPR({
+        id: 456,
+        url: 'https://github.com/owner/repo/pull/2',
+        number: 2,
+        hasUnreadComments: true,
+      });
       stateManager.addActivePR(pr1);
       stateManager.addActivePR(pr2);
       const count = stateManager.markAllPRsAsRead();
       expect(count).toBe(2);
       const state = stateManager.getState();
-      expect(state.activePRs.every(pr => !pr.hasUnreadComments)).toBe(true);
+      expect(state.activePRs.every((pr) => !pr.hasUnreadComments)).toBe(true);
     });
   });
 
@@ -111,7 +116,12 @@ describe('StateManager', () => {
       // So needsResponse is always 0 in getStats()
       // The actual count comes from the fresh fetch in daily command
       const pr1 = createMockPR({ hasUnreadComments: true });
-      const pr2 = createMockPR({ id: 456, url: 'https://github.com/owner/repo/pull/2', number: 2, hasUnreadComments: false });
+      const pr2 = createMockPR({
+        id: 456,
+        url: 'https://github.com/owner/repo/pull/2',
+        number: 2,
+        hasUnreadComments: false,
+      });
       stateManager.addActivePR(pr1);
       stateManager.addActivePR(pr2);
       const stats = stateManager.getStats();
@@ -131,7 +141,7 @@ describe('StateManager', () => {
       stateManager.addTrustedProject('owner/repo');
       stateManager.addTrustedProject('owner/repo');
       const state = stateManager.getState();
-      expect(state.config.trustedProjects.filter(p => p === 'owner/repo')).toHaveLength(1);
+      expect(state.config.trustedProjects.filter((p) => p === 'owner/repo')).toHaveLength(1);
     });
   });
 
@@ -256,12 +266,16 @@ describe('StateManager calculateScore (via updateRepoScore)', () => {
   });
 
   it('should add +1 for responsive signal', () => {
-    stateManager.updateRepoScore('owner/repo', { signals: { isResponsive: true, hasActiveMaintainers: true, hasHostileComments: false } });
+    stateManager.updateRepoScore('owner/repo', {
+      signals: { isResponsive: true, hasActiveMaintainers: true, hasHostileComments: false },
+    });
     expect(stateManager.getRepoScore('owner/repo')!.score).toBe(6);
   });
 
   it('should subtract -2 for hostile signal', () => {
-    stateManager.updateRepoScore('owner/repo', { signals: { hasHostileComments: true, hasActiveMaintainers: true, isResponsive: false } });
+    stateManager.updateRepoScore('owner/repo', {
+      signals: { hasHostileComments: true, hasActiveMaintainers: true, isResponsive: false },
+    });
     expect(stateManager.getRepoScore('owner/repo')!.score).toBe(3);
   });
 
@@ -589,7 +603,7 @@ describe('StateManager event logging', () => {
 
     const dailyChecks = stateManager.getEventsByType('daily_check');
     expect(dailyChecks).toHaveLength(3);
-    expect(dailyChecks.every(e => e.type === 'daily_check')).toBe(true);
+    expect(dailyChecks.every((e) => e.type === 'daily_check')).toBe(true);
 
     const merged = stateManager.getEventsByType('pr_merged');
     expect(merged).toHaveLength(1);
@@ -617,7 +631,9 @@ describe('StateManager event logging', () => {
 
   it('should filter events by date range with getEventsInRange', () => {
     // Manually push events with controlled timestamps to avoid timing issues
-    const state = stateManager.getState() as { events: Array<{ id: string; type: StateEventType; at: string; data: Record<string, unknown> }> };
+    const state = stateManager.getState() as {
+      events: Array<{ id: string; type: StateEventType; at: string; data: Record<string, unknown> }>;
+    };
 
     state.events.push(
       { id: 'evt_1', type: 'daily_check', at: '2024-01-01T00:00:00Z', data: { day: 'jan1' } },
@@ -636,17 +652,11 @@ describe('StateManager event logging', () => {
     expect(rangeEvents[1].data.day).toBe('feb1');
 
     // Range: entire year should include all 4
-    const allEvents = stateManager.getEventsInRange(
-      new Date('2023-12-01T00:00:00Z'),
-      new Date('2024-12-31T00:00:00Z'),
-    );
+    const allEvents = stateManager.getEventsInRange(new Date('2023-12-01T00:00:00Z'), new Date('2024-12-31T00:00:00Z'));
     expect(allEvents).toHaveLength(4);
 
     // Range: before all events should include none
-    const noEvents = stateManager.getEventsInRange(
-      new Date('2023-01-01T00:00:00Z'),
-      new Date('2023-12-31T00:00:00Z'),
-    );
+    const noEvents = stateManager.getEventsInRange(new Date('2023-01-01T00:00:00Z'), new Date('2023-12-31T00:00:00Z'));
     expect(noEvents).toHaveLength(0);
   });
 });

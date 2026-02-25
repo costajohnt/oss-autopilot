@@ -4,15 +4,42 @@
  * generates a digest, and updates repo scores and analytics in local state.
  */
 
-import { getStateManager, PRMonitor, IssueConversationMonitor, getGitHubToken, formatRelativeTime, type DailyDigest, type FetchedPR, type FetchedPRStatus, type PRCheckFailure, type MaintainerActionHint, type ComputedRepoSignals, type RepoGroup, type MergedPR, type ClosedPR, type CommentedIssue, type CommentedIssueWithResponse } from '../core/index.js';
-import { outputJson, outputJsonError, type DailyOutput, type CapacityAssessment, type ActionableIssue, type ActionMenu, type ActionMenuItem } from '../formatters/json.js';
+import {
+  getStateManager,
+  PRMonitor,
+  IssueConversationMonitor,
+  getGitHubToken,
+  formatRelativeTime,
+  type DailyDigest,
+  type FetchedPR,
+  type FetchedPRStatus,
+  type MaintainerActionHint,
+  type ComputedRepoSignals,
+  type RepoGroup,
+  type MergedPR,
+  type ClosedPR,
+  type CommentedIssue,
+  type CommentedIssueWithResponse,
+} from '../core/index.js';
+import {
+  outputJson,
+  outputJsonError,
+  type DailyOutput,
+  type CapacityAssessment,
+  type ActionableIssue,
+  type ActionMenu,
+  type ActionMenuItem,
+} from '../formatters/json.js';
 
 /**
  * Statuses indicating maintainer engagement or action needed from the contributor.
  * Used both for auto-unshelving shelved PRs and for counting critical issues in capacity assessment.
  */
 const CRITICAL_STATUSES: ReadonlySet<FetchedPRStatus> = new Set([
-  'needs_response', 'needs_changes', 'failing_ci', 'merge_conflict',
+  'needs_response',
+  'needs_changes',
+  'failing_ci',
+  'merge_conflict',
 ]);
 
 interface DailyOptions {
@@ -23,7 +50,9 @@ export async function runDaily(options: DailyOptions): Promise<void> {
   const token = getGitHubToken();
   if (!token) {
     if (options.json) {
-      outputJsonError('GitHub authentication required. Install GitHub CLI (https://cli.github.com/) and run "gh auth login", or set GITHUB_TOKEN.');
+      outputJsonError(
+        'GitHub authentication required. Install GitHub CLI (https://cli.github.com/) and run "gh auth login", or set GITHUB_TOKEN.',
+      );
     } else {
       console.error('Error: GitHub authentication required.');
       console.error('');
@@ -72,27 +101,32 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   // Fetch merged PR counts, closed PR counts, recently closed PRs, recently merged PRs, and commented issues in parallel
   // Recently closed/merged are non-critical (cosmetic sections), so isolate their failure
   const issueMonitor = new IssueConversationMonitor(token);
-  const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs, issueConversationResult] = await Promise.all([
-    prMonitor.fetchUserMergedPRCounts(),
-    prMonitor.fetchUserClosedPRCounts(),
-    prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
-      console.error(`Warning: Failed to fetch recently closed PRs: ${err instanceof Error ? err.message : err}`);
-      return [];
-    }),
-    prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
-      console.error(`Warning: Failed to fetch recently merged PRs: ${err instanceof Error ? err.message : err}`);
-      return [];
-    }),
-    issueMonitor.fetchCommentedIssues().catch(error => {
-      const msg = error instanceof Error ? error.message : String(error);
-      if (msg.includes('No GitHub username configured')) {
-        console.error(`[DAILY] Issue conversation tracking requires setup: ${msg}`);
-      } else {
-        console.error(`[DAILY] Issue conversation fetch failed: ${msg}`);
-      }
-      return { issues: [] as CommentedIssue[], failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }] };
-    }),
-  ]);
+  const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs, issueConversationResult] = await Promise.all(
+    [
+      prMonitor.fetchUserMergedPRCounts(),
+      prMonitor.fetchUserClosedPRCounts(),
+      prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
+        console.error(`Warning: Failed to fetch recently closed PRs: ${err instanceof Error ? err.message : err}`);
+        return [];
+      }),
+      prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
+        console.error(`Warning: Failed to fetch recently merged PRs: ${err instanceof Error ? err.message : err}`);
+        return [];
+      }),
+      issueMonitor.fetchCommentedIssues().catch((error) => {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (msg.includes('No GitHub username configured')) {
+          console.error(`[DAILY] Issue conversation tracking requires setup: ${msg}`);
+        } else {
+          console.error(`[DAILY] Issue conversation fetch failed: ${msg}`);
+        }
+        return {
+          issues: [] as CommentedIssue[],
+          failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
+        };
+      }),
+    ],
+  );
 
   const commentedIssues = issueConversationResult.issues;
   if (issueConversationResult.failures.length > 0) {
@@ -100,15 +134,20 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   }
 
   const { repos: mergedCounts, monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
-  const { repos: closedCounts, monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
+  const {
+    repos: closedCounts,
+    monthlyCounts: monthlyClosedCounts,
+    monthlyOpenedCounts: openedFromClosed,
+  } = closedResult;
 
   // Reset stale repos first (so excluded/removed repos get zeroed).
   // Guard: if the API returned zero results but we have existing repos with merged PRs,
   // skip the reset to avoid wiping scores due to transient API failures.
-  const existingReposWithMerges = Object.values(stateManager.getState().repoScores)
-    .filter(s => s.mergedPRCount > 0);
+  const existingReposWithMerges = Object.values(stateManager.getState().repoScores).filter((s) => s.mergedPRCount > 0);
   if (mergedCounts.size === 0 && existingReposWithMerges.length > 0) {
-    console.error(`[DAILY] Skipping stale repo reset: API returned 0 merged PR results but state has ${existingReposWithMerges.length} repo(s) with merges. Possible API issue.`);
+    console.error(
+      `[DAILY] Skipping stale repo reset: API returned 0 merged PR results but state has ${existingReposWithMerges.length} repo(s) with merges. Possible API issue.`,
+    );
   } else {
     for (const score of Object.values(stateManager.getState().repoScores)) {
       if (!mergedCounts.has(score.repo)) {
@@ -124,7 +163,10 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
       stateManager.updateRepoScore(repo, { mergedPRCount: count, lastMergedAt: lastMergedAt || undefined });
     } catch (error) {
       mergedCountFailures++;
-      console.error(`[DAILY] Failed to update merged count for ${repo}:`, error instanceof Error ? error.message : error);
+      console.error(
+        `[DAILY] Failed to update merged count for ${repo}:`,
+        error instanceof Error ? error.message : error,
+      );
     }
   }
   if (mergedCountFailures === mergedCounts.size && mergedCounts.size > 0) {
@@ -134,10 +176,13 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   // Populate closedWithoutMergeCount in repo scores.
   // Diagnostic: warn if API returned empty but we have known closed PRs (possible transient API failure).
   // Unlike merged counts above, there is no stale-reset loop for closed counts, so no skip is needed.
-  const existingReposWithClosed = Object.values(stateManager.getState().repoScores)
-    .filter(s => (s.closedWithoutMergeCount || 0) > 0);
+  const existingReposWithClosed = Object.values(stateManager.getState().repoScores).filter(
+    (s) => (s.closedWithoutMergeCount || 0) > 0,
+  );
   if (closedCounts.size === 0 && existingReposWithClosed.length > 0) {
-    console.error(`[DAILY] Warning: API returned 0 closed PR results but state has ${existingReposWithClosed.length} repo(s) with closed PRs. Possible transient API issue.`);
+    console.error(
+      `[DAILY] Warning: API returned 0 closed PR results but state has ${existingReposWithClosed.length} repo(s) with closed PRs. Possible transient API issue.`,
+    );
   }
   let closedCountFailures = 0;
   for (const [repo, count] of closedCounts) {
@@ -145,7 +190,10 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
       stateManager.updateRepoScore(repo, { closedWithoutMergeCount: count });
     } catch (error) {
       closedCountFailures++;
-      console.error(`[DAILY] Failed to update closed count for ${repo}:`, error instanceof Error ? error.message : error);
+      console.error(
+        `[DAILY] Failed to update closed count for ${repo}:`,
+        error instanceof Error ? error.message : error,
+      );
     }
   }
   if (closedCountFailures === closedCounts.size && closedCounts.size > 0) {
@@ -168,7 +216,9 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     }
   }
   if (signalUpdateFailures === repoSignals.size && repoSignals.size > 0) {
-    console.error(`[DAILY_ALL_SIGNAL_UPDATES_FAILED] All ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`);
+    console.error(
+      `[DAILY_ALL_SIGNAL_UPDATES_FAILED] All ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`,
+    );
   }
 
   // Fetch star counts for all scored repos (used by dashboard minStars filter, #216)
@@ -178,7 +228,9 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     starCounts = await prMonitor.fetchRepoStarCounts(allRepos);
   } catch (error) {
     console.error('[DAILY] Failed to fetch repo star counts:', error instanceof Error ? error.message : error);
-    console.error('[DAILY] Dashboard minStars filter will use cached star counts (or be skipped for repos without cached data).');
+    console.error(
+      '[DAILY] Dashboard minStars filter will use cached star counts (or be skipped for repos without cached data).',
+    );
     starCounts = new Map();
   }
   let starUpdateFailures = 0;
@@ -205,7 +257,9 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     }
   }
   if (trustSyncFailures === mergedCounts.size && mergedCounts.size > 0) {
-    console.error(`[DAILY_ALL_TRUST_SYNCS_FAILED] All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`);
+    console.error(
+      `[DAILY_ALL_TRUST_SYNCS_FAILED] All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`,
+    );
   }
 
   // Store monthly chart data (non-critical — each metric isolated so partial failures don't leave inconsistent state)
@@ -236,7 +290,10 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     }
     stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
   } catch (error) {
-    console.error('[DAILY] Failed to compute/store monthly opened counts:', error instanceof Error ? error.message : error);
+    console.error(
+      '[DAILY] Failed to compute/store monthly opened counts:',
+      error instanceof Error ? error.message : error,
+    );
   }
 
   // Expire any snoozes that have passed their expiresAt timestamp.
@@ -297,7 +354,7 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
 
   // Filter dismissed issues: suppress if dismissed after last response, resurface + auto-undismiss if new activity
   let hasAutoUndismissed = false;
-  const filteredCommentedIssues = commentedIssues.filter(issue => {
+  const filteredCommentedIssues = commentedIssues.filter((issue) => {
     const dismissedAt = stateManager.getIssueDismissedAt(issue.url);
     if (!dismissedAt) return true; // Not dismissed — include
     if (issue.status === 'new_response') {
@@ -324,10 +381,12 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     stateManager.save();
   }
 
-  const issueResponses = filteredCommentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
+  const issueResponses = filteredCommentedIssues.filter(
+    (i): i is CommentedIssueWithResponse => i.status === 'new_response',
+  );
   const summary = formatSummary(digest, capacity, issueResponses);
   const snoozedUrls = new Set(
-    Object.keys(stateManager.getState().config.snoozedPRs ?? {}).filter(url => stateManager.isSnoozed(url)),
+    Object.keys(stateManager.getState().config.snoozedPRs ?? {}).filter((url) => stateManager.isSnoozed(url)),
   );
   const actionableIssues = collectActionableIssues(activePRs, snoozedUrls);
   digest.summary.totalNeedingAttention = actionableIssues.length;
@@ -335,7 +394,18 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues);
   const repoGroups = groupPRsByRepo(activePRs);
 
-  return { digest, updates: [], capacity, summary, briefSummary, actionableIssues, actionMenu, commentedIssues: filteredCommentedIssues, repoGroups, failures };
+  return {
+    digest,
+    updates: [],
+    capacity,
+    summary,
+    briefSummary,
+    actionableIssues,
+    actionMenu,
+    commentedIssues: filteredCommentedIssues,
+    repoGroups,
+    failures,
+  };
 }
 
 async function runDailyInner(token: string, options: DailyOptions): Promise<void> {
@@ -351,13 +421,19 @@ async function runDailyInner(token: string, options: DailyOptions): Promise<void
 /**
  * Format summary as markdown (used in JSON output for Claude to display verbatim)
  */
-function formatSummary(digest: DailyDigest, capacity: CapacityAssessment, issueResponses: CommentedIssueWithResponse[] = []): string {
+function formatSummary(
+  digest: DailyDigest,
+  capacity: CapacityAssessment,
+  issueResponses: CommentedIssueWithResponse[] = [],
+): string {
   const lines: string[] = [];
 
   // Header
   lines.push('## OSS Dashboard');
   lines.push('');
-  lines.push(`📊 **${digest.summary.totalActivePRs} Active PRs** | ${digest.summary.totalMergedAllTime} Merged | ${digest.summary.mergeRate}% Merge Rate`);
+  lines.push(
+    `📊 **${digest.summary.totalActivePRs} Active PRs** | ${digest.summary.totalMergedAllTime} Merged | ${digest.summary.mergeRate}% Merge Rate`,
+  );
   lines.push('✓ Dashboard generated — say "open dashboard" to view in browser');
   lines.push('');
 
@@ -491,7 +567,9 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment, issueR
     for (const issue of issueResponses) {
       lines.push(`- [${issue.repo}#${issue.number}](${issue.url}): ${issue.title}`);
       const timeAgo = formatRelativeTime(issue.lastResponseAt);
-      lines.push(`  └─ @${issue.lastResponseAuthor}: "${issue.lastResponseBody.slice(0, 80)}${issue.lastResponseBody.length > 80 ? '...' : ''}"${timeAgo ? ` (${timeAgo})` : ''}`);
+      lines.push(
+        `  └─ @${issue.lastResponseAuthor}: "${issue.lastResponseBody.slice(0, 80)}${issue.lastResponseBody.length > 80 ? '...' : ''}"${timeAgo ? ` (${timeAgo})` : ''}`,
+      );
     }
     lines.push('');
   }
@@ -500,7 +578,9 @@ function formatSummary(digest: DailyDigest, capacity: CapacityAssessment, issueR
   const capacityIcon = capacity.hasCapacity ? '✅' : '⚠️';
   const capacityLabel = capacity.hasCapacity ? 'Ready for new work' : 'Focus on existing PRs';
   const shelvedNote = capacity.shelvedPRCount > 0 ? ` + ${capacity.shelvedPRCount} shelved` : '';
-  lines.push(`**Capacity:** ${capacityIcon} ${capacityLabel} (${capacity.activePRCount}/${capacity.maxActivePRs} PRs${shelvedNote})`);
+  lines.push(
+    `**Capacity:** ${capacityIcon} ${capacityLabel} (${capacity.activePRCount}/${capacity.maxActivePRs} PRs${shelvedNote})`,
+  );
 
   return lines.join('\n');
 }
@@ -623,7 +703,9 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment, commente
     console.log('💬 Issue Replies:');
     for (const issue of issueResponses) {
       console.log(`  - ${issue.repo}#${issue.number}: ${issue.title}`);
-      console.log(`    @${issue.lastResponseAuthor}: ${issue.lastResponseBody.slice(0, 80)}${issue.lastResponseBody.length > 80 ? '...' : ''}`);
+      console.log(
+        `    @${issue.lastResponseAuthor}: ${issue.lastResponseBody.slice(0, 80)}${issue.lastResponseBody.length > 80 ? '...' : ''}`,
+      );
     }
     console.log('');
   }
@@ -638,7 +720,7 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment, commente
  */
 function assessCapacity(activePRs: FetchedPR[], maxActivePRs: number, shelvedPRCount: number): CapacityAssessment {
   const activePRCount = activePRs.length;
-  const criticalIssueCount = activePRs.filter(pr => CRITICAL_STATUSES.has(pr.status)).length;
+  const criticalIssueCount = activePRs.filter((pr) => CRITICAL_STATUSES.has(pr.status)).length;
 
   // Has capacity if: under PR limit AND no critical issues
   const underPRLimit = activePRCount < maxActivePRs;
@@ -675,12 +757,9 @@ function assessCapacity(activePRs: FetchedPR[], maxActivePRs: number, shelvedPRC
  * Format a brief one-liner summary for the action-first flow
  */
 function formatBriefSummary(digest: DailyDigest, issueCount: number, issueResponseCount: number = 0): string {
-  const attentionText = issueCount > 0
-    ? `${issueCount} need${issueCount === 1 ? 's' : ''} attention`
-    : 'all healthy';
-  const issueReplyText = issueResponseCount > 0
-    ? ` | ${issueResponseCount} issue repl${issueResponseCount === 1 ? 'y' : 'ies'}`
-    : '';
+  const attentionText = issueCount > 0 ? `${issueCount} need${issueCount === 1 ? 's' : ''} attention` : 'all healthy';
+  const issueReplyText =
+    issueResponseCount > 0 ? ` | ${issueResponseCount} issue repl${issueResponseCount === 1 ? 'y' : 'ies'}` : '';
   return `📊 ${digest.summary.totalActivePRs} Active PRs | ${attentionText}${issueReplyText}`;
 }
 
@@ -712,9 +791,7 @@ function collectActionableIssues(prs: FetchedPR[], snoozedUrls: Set<string> = ne
   // Skip snoozed PRs — their CI failures are known and temporarily dismissed
   for (const pr of prs) {
     if (pr.status === 'failing_ci' && !snoozedUrls.has(pr.url)) {
-      const checkInfo = pr.failingCheckNames.length > 0
-        ? ` (${pr.failingCheckNames.join(', ')})`
-        : '';
+      const checkInfo = pr.failingCheckNames.length > 0 ? ` (${pr.failingCheckNames.join(', ')})` : '';
       issues.push({ type: 'ci_failing', pr, label: `[CI Failing${checkInfo}]` });
     }
   }
@@ -742,11 +819,16 @@ function collectActionableIssues(prs: FetchedPR[], snoozedUrls: Set<string> = ne
  */
 function formatActionHint(hint: MaintainerActionHint): string {
   switch (hint) {
-    case 'demo_requested': return 'demo/screenshot requested';
-    case 'tests_requested': return 'tests requested';
-    case 'changes_requested': return 'code changes requested';
-    case 'docs_requested': return 'documentation requested';
-    case 'rebase_requested': return 'rebase requested';
+    case 'demo_requested':
+      return 'demo/screenshot requested';
+    case 'tests_requested':
+      return 'tests requested';
+    case 'changes_requested':
+      return 'code changes requested';
+    case 'docs_requested':
+      return 'documentation requested';
+    case 'rebase_requested':
+      return 'rebase requested';
   }
 }
 
@@ -811,13 +893,15 @@ export function computeActionMenu(
 
 /** Statuses indicating active maintainer engagement (reviews, feedback, merges). */
 const ACTIVE_MAINTAINER_STATUSES: Set<FetchedPRStatus> = new Set([
-  'healthy', 'waiting_on_maintainer', 'changes_addressed', 'needs_response', 'needs_changes',
+  'healthy',
+  'waiting_on_maintainer',
+  'changes_addressed',
+  'needs_response',
+  'needs_changes',
 ]);
 
 /** Statuses indicating staleness — maintainer comments during these statuses don't count as responsive. */
-const STALE_STATUSES: Set<FetchedPRStatus> = new Set([
-  'dormant', 'approaching_dormant',
-]);
+const STALE_STATUSES: Set<FetchedPRStatus> = new Set(['dormant', 'approaching_dormant']);
 
 /**
  * Build a map grouping PRs by repository, skipping PRs with empty repo fields.
@@ -860,12 +944,8 @@ export function computeRepoSignals(prs: FetchedPR[]): Map<string, ComputedRepoSi
   const repoMap = buildRepoMap(prs, 'COMPUTE_SIGNALS');
   const result = new Map<string, ComputedRepoSignals>();
   for (const [repo, repoPRs] of repoMap) {
-    const isResponsive = repoPRs.some(pr =>
-      pr.lastMaintainerComment && !STALE_STATUSES.has(pr.status)
-    );
-    const hasActiveMaintainers = repoPRs.some(pr =>
-      ACTIVE_MAINTAINER_STATUSES.has(pr.status)
-    );
+    const isResponsive = repoPRs.some((pr) => pr.lastMaintainerComment && !STALE_STATUSES.has(pr.status));
+    const hasActiveMaintainers = repoPRs.some((pr) => ACTIVE_MAINTAINER_STATUSES.has(pr.status));
     result.set(repo, { isResponsive, hasActiveMaintainers });
   }
   return result;

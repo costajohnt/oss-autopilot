@@ -279,10 +279,7 @@ describe('runStartup dashboard behavior', () => {
 
     expect(execFile).not.toHaveBeenCalled();
     expect(daily.briefSummary).not.toContain('Dashboard opened in browser');
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Dashboard'),
-      'Dashboard write failed',
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Dashboard'), 'Dashboard write failed');
     consoleErrorSpy.mockRestore();
   });
 });

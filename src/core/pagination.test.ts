@@ -16,9 +16,7 @@ describe('paginateAll', () => {
     const page1 = Array.from({ length: 100 }, (_, i) => i);
     const page2 = Array.from({ length: 50 }, (_, i) => i + 100);
 
-    const fetchPage = vi.fn()
-      .mockResolvedValueOnce({ data: page1 })
-      .mockResolvedValueOnce({ data: page2 });
+    const fetchPage = vi.fn().mockResolvedValueOnce({ data: page1 }).mockResolvedValueOnce({ data: page2 });
 
     const result = await paginateAll(fetchPage, 100);
 
@@ -56,7 +54,8 @@ describe('paginateAll', () => {
     const page2 = [{ id: 3 }, { id: 4 }];
     const page3 = [{ id: 5 }];
 
-    const fetchPage = vi.fn()
+    const fetchPage = vi
+      .fn()
       .mockResolvedValueOnce({ data: page1 })
       .mockResolvedValueOnce({ data: page2 })
       .mockResolvedValueOnce({ data: page3 });

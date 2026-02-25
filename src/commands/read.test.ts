@@ -67,7 +67,9 @@ describe('runRead', () => {
   });
 
   it('should exit with error when neither prUrl nor --all is provided', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runRead({ json: true })).rejects.toThrow('exit');
 
@@ -82,7 +84,7 @@ describe('runRead', () => {
     await runRead({ all: true, json: false });
 
     expect(consoleSpy).toHaveBeenCalled();
-    const allOutput = consoleSpy.mock.calls.map(c => c[0]).join('\n');
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
     expect(allOutput).toContain('Marked 3 PRs as read');
     consoleSpy.mockRestore();
   });

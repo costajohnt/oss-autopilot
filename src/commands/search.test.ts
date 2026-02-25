@@ -57,7 +57,9 @@ describe('runSearch', () => {
 
   it('should exit with error when no GitHub token is available', async () => {
     mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
 
     await expect(runSearch({ maxResults: 10, json: true })).rejects.toThrow('exit');
 
@@ -69,7 +71,13 @@ describe('runSearch', () => {
     mockGetGitHubToken.mockReturnValue('ghp_test123');
     mockSearchIssues.mockResolvedValue([
       {
-        issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: 'https://github.com/owner/repo/issues/5', labels: ['bug'] },
+        issue: {
+          repo: 'owner/repo',
+          number: 5,
+          title: 'Fix bug',
+          url: 'https://github.com/owner/repo/issues/5',
+          labels: ['bug'],
+        },
         recommendation: 'approve',
         reasonsToApprove: ['Active maintainers'],
         reasonsToSkip: [],
@@ -81,23 +89,37 @@ describe('runSearch', () => {
     await runSearch({ maxResults: 10, json: true });
 
     expect(mockSearchIssues).toHaveBeenCalledWith({ maxResults: 10 });
-    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({
-      candidates: expect.arrayContaining([
-        expect.objectContaining({
-          issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: 'https://github.com/owner/repo/issues/5', labels: ['bug'] },
-          recommendation: 'approve',
-        }),
-      ]),
-      excludedRepos: ['excluded/repo'],
-      aiPolicyBlocklist: ['matplotlib/matplotlib'],
-    }));
+    expect(mockOutputJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candidates: expect.arrayContaining([
+          expect.objectContaining({
+            issue: {
+              repo: 'owner/repo',
+              number: 5,
+              title: 'Fix bug',
+              url: 'https://github.com/owner/repo/issues/5',
+              labels: ['bug'],
+            },
+            recommendation: 'approve',
+          }),
+        ]),
+        excludedRepos: ['excluded/repo'],
+        aiPolicyBlocklist: ['matplotlib/matplotlib'],
+      }),
+    );
   });
 
   it('should include repo score when available', async () => {
     mockGetGitHubToken.mockReturnValue('ghp_test123');
     mockSearchIssues.mockResolvedValue([
       {
-        issue: { repo: 'scored/repo', number: 1, title: 'Issue', url: 'https://github.com/scored/repo/issues/1', labels: [] },
+        issue: {
+          repo: 'scored/repo',
+          number: 1,
+          title: 'Issue',
+          url: 'https://github.com/scored/repo/issues/1',
+          labels: [],
+        },
         recommendation: 'approve',
         reasonsToApprove: [],
         reasonsToSkip: [],
@@ -149,7 +171,7 @@ describe('runSearch', () => {
     await runSearch({ maxResults: 10, json: false });
 
     expect(consoleSpy).toHaveBeenCalled();
-    const allOutput = consoleSpy.mock.calls.map(c => c[0]).join('\n');
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
     expect(allOutput).toContain('No matching issues found');
     consoleSpy.mockRestore();
   });

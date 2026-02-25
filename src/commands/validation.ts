@@ -25,9 +25,8 @@ const REPO_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
 export function validateGitHubUrl(url: string, pattern: RegExp, entityType: 'PR' | 'issue', json?: boolean): void {
   if (pattern.test(url)) return;
 
-  const example = entityType === 'PR'
-    ? 'https://github.com/owner/repo/pull/123'
-    : 'https://github.com/owner/repo/issues/123';
+  const example =
+    entityType === 'PR' ? 'https://github.com/owner/repo/pull/123' : 'https://github.com/owner/repo/issues/123';
   const msg = `Invalid ${entityType} URL: ${url}. Expected format: ${example}`;
 
   if (json) {

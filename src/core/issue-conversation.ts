@@ -32,7 +32,9 @@ export class IssueConversationMonitor {
    * Filters out: user-authored issues, user-owned repos, excluded repos/orgs,
    * AI policy blocklisted repos, already-tracked issues, and pull requests.
    */
-  async fetchCommentedIssues(maxDays: number = 30): Promise<{ issues: CommentedIssue[]; failures: Array<{ issueUrl: string; error: string }> }> {
+  async fetchCommentedIssues(
+    maxDays: number = 30,
+  ): Promise<{ issues: CommentedIssue[]; failures: Array<{ issueUrl: string; error: string }> }> {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
@@ -56,21 +58,23 @@ export class IssueConversationMonitor {
     });
 
     if (data.total_count > 100) {
-      console.error(`[ISSUE_CONVERSATION] Search returned ${data.total_count} results but only first 100 were fetched. Some commented issues may be missing.`);
+      console.error(
+        `[ISSUE_CONVERSATION] Search returned ${data.total_count} results but only first 100 were fetched. Some commented issues may be missing.`,
+      );
     }
 
     // Build sets for filtering
     const trackedIssues = this.stateManager.getState().activeIssues || [];
     const trackedIssueKeys = new Set(
       trackedIssues
-        .filter(i => i.status === 'claimed' || i.status === 'in_progress' || i.status === 'pr_submitted')
-        .map(i => `${i.repo}#${i.number}`)
+        .filter((i) => i.status === 'claimed' || i.status === 'in_progress' || i.status === 'pr_submitted')
+        .map((i) => `${i.repo}#${i.number}`),
     );
-    const blocklist = new Set((config.aiPolicyBlocklist || []).map(r => r.toLowerCase()));
+    const blocklist = new Set((config.aiPolicyBlocklist || []).map((r) => r.toLowerCase()));
 
     // Filter out PRs, user-authored issues, excluded repos, blocklisted repos, and already-tracked issues.
     // Also parse repo info for each candidate to avoid re-parsing in analyzeIssueConversation.
-    const candidates: Array<{ item: typeof data.items[0]; repoFullName: string }> = [];
+    const candidates: Array<{ item: (typeof data.items)[0]; repoFullName: string }> = [];
     for (const item of data.items) {
       // Defensive: skip pull requests in case type:issue qualifier is unreliable
       if (item.pull_request) continue;
@@ -92,7 +96,7 @@ export class IssueConversationMonitor {
 
       // Skip excluded repos and orgs
       if (config.excludeRepos.includes(repoFullName)) continue;
-      if (config.excludeOrgs?.some(org => owner.toLowerCase() === org.toLowerCase())) continue;
+      if (config.excludeOrgs?.some((org) => owner.toLowerCase() === org.toLowerCase())) continue;
 
       // Skip blocklisted repos
       if (blocklist.has(repoFullName.toLowerCase())) continue;
@@ -109,26 +113,36 @@ export class IssueConversationMonitor {
     const results: CommentedIssue[] = [];
     const failures: Array<{ issueUrl: string; error: string }> = [];
 
-    await runWorkerPool(candidates, async ({ item, repoFullName }) => {
-      try {
-        const issue = await this.analyzeIssueConversation(item, repoFullName, username);
-        if (issue) {
-          results.push(issue);
-        } else {
-          failures.push({ issueUrl: item.html_url, error: 'No user comment found despite commenter: search match (possible pagination or eventual consistency)' });
+    await runWorkerPool(
+      candidates,
+      async ({ item, repoFullName }) => {
+        try {
+          const issue = await this.analyzeIssueConversation(item, repoFullName, username);
+          if (issue) {
+            results.push(issue);
+          } else {
+            failures.push({
+              issueUrl: item.html_url,
+              error:
+                'No user comment found despite commenter: search match (possible pagination or eventual consistency)',
+            });
+          }
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          failures.push({ issueUrl: item.html_url, error: msg });
+          console.error(`Error analyzing issue ${item.html_url}: ${msg}`);
         }
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        failures.push({ issueUrl: item.html_url, error: msg });
-        console.error(`Error analyzing issue ${item.html_url}: ${msg}`);
-      }
-    }, MAX_CONCURRENT_REQUESTS);
+      },
+      MAX_CONCURRENT_REQUESTS,
+    );
 
     if (failures.length > 0) {
       console.error(`[ISSUE_CONVERSATION] ${failures.length}/${candidates.length} issue analysis call(s) failed`);
     }
     if (failures.length === candidates.length && candidates.length > 0) {
-      console.error(`[ISSUE_CONVERSATION_ALL_FAILED] All ${candidates.length} issue analysis call(s) failed. Possible systemic issue (rate limit, auth, network).`);
+      console.error(
+        `[ISSUE_CONVERSATION_ALL_FAILED] All ${candidates.length} issue analysis call(s) failed. Possible systemic issue (rate limit, auth, network).`,
+      );
     }
 
     // Sort: new_response first, then waiting, then acknowledged
@@ -139,7 +153,9 @@ export class IssueConversationMonitor {
     };
     results.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
 
-    console.error(`Analyzed ${results.length} issue conversations (${results.filter(i => i.status === 'new_response').length} with new responses)`);
+    console.error(
+      `Analyzed ${results.length} issue conversations (${results.filter((i) => i.status === 'new_response').length} with new responses)`,
+    );
     return { issues: results, failures };
   }
 
@@ -153,13 +169,15 @@ export class IssueConversationMonitor {
   ): Promise<CommentedIssue | null> {
     const { owner, repo } = splitRepo(repoFullName);
 
-    const allComments = await paginateAll((page) => this.octokit.issues.listComments({
-      owner,
-      repo,
-      issue_number: item.number,
-      per_page: 100,
-      page,
-    }));
+    const allComments = await paginateAll((page) =>
+      this.octokit.issues.listComments({
+        owner,
+        repo,
+        issue_number: item.number,
+        per_page: 100,
+        page,
+      }),
+    );
 
     const timeline: Array<{ author: string; body: string; createdAt: string; isUser: boolean }> = [];
     for (const comment of allComments) {
@@ -176,7 +194,7 @@ export class IssueConversationMonitor {
     timeline.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
     // Find the user's last comment
-    let userLastComment: typeof timeline[0] | undefined;
+    let userLastComment: (typeof timeline)[0] | undefined;
     for (const entry of timeline) {
       if (entry.isUser) userLastComment = entry;
     }
@@ -208,7 +226,7 @@ export class IssueConversationMonitor {
       }
     }
 
-    const labels = (item.labels || []).map(l => l.name || '').filter(Boolean);
+    const labels = (item.labels || []).map((l) => l.name || '').filter(Boolean);
 
     const base = {
       repo: repoFullName,
@@ -232,11 +250,8 @@ export class IssueConversationMonitor {
 
     // No substantive response found. If user is the last non-bot commenter,
     // mark as acknowledged; otherwise mark as waiting.
-    const lastNonBotComment = [...timeline].reverse().find(
-      e => !isBotAuthor(e.author)
-    );
-    const status = lastNonBotComment?.isUser ? 'acknowledged' as const : 'waiting' as const;
+    const lastNonBotComment = [...timeline].reverse().find((e) => !isBotAuthor(e.author));
+    const status = lastNonBotComment?.isUser ? ('acknowledged' as const) : ('waiting' as const);
     return { ...base, status };
   }
 }
-
