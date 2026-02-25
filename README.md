@@ -16,7 +16,7 @@ OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you 
 
 ## Install in 60 Seconds
 
-**Prerequisites:** [Claude Code](https://claude.ai/claude-code), Node.js 18+, [GitHub CLI](https://cli.github.com/) (`gh auth login`)
+**Prerequisites:** [Claude Code](https://claude.ai/claude-code), Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh auth login`)
 
 ```
 /plugin marketplace add costajohnt/oss-autopilot
