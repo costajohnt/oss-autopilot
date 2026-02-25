@@ -13,6 +13,7 @@ import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 import { runWorkerPool } from './concurrency.js';
 import { ConfigurationError, ValidationError } from './errors.js';
 import { paginateAll } from './pagination.js';
+import { debug, warn, timed } from './logger.js';
 
 // Re-export so existing consumers (tests, index.ts) can still import from pr-monitor
 export { isBotAuthor };
@@ -60,7 +61,7 @@ export class PRMonitor {
       throw new ConfigurationError('No GitHub username configured. Run setup first.');
     }
 
-    console.error(`Fetching open PRs for @${config.githubUsername}...`);
+    debug('pr-monitor', `Fetching open PRs for @${config.githubUsername}...`);
 
     // Search for all open PRs authored by the user with pagination
     const allItems: typeof firstPage.data.items = [];
@@ -77,7 +78,7 @@ export class PRMonitor {
 
     allItems.push(...firstPage.data.items);
     const totalCount = firstPage.data.total_count;
-    console.error(`Found ${totalCount} open PRs`);
+    debug('pr-monitor', `Found ${totalCount} open PRs`);
 
     // Fetch remaining pages if needed (GitHub search API returns max 1000 results)
     const totalPages = Math.min(Math.ceil(totalCount / perPage), 10); // Cap at 1000 results
@@ -104,7 +105,7 @@ export class PRMonitor {
       // Skip PRs to repos owned by the user (not OSS contributions)
       const parsed = extractOwnerRepo(item.html_url);
       if (!parsed) {
-        console.error(`[PR_MONITOR] Skipping PR with unparseable URL: ${item.html_url}`);
+        warn('pr-monitor', `Skipping PR with unparseable URL: ${item.html_url}`);
         return false;
       }
       const ownerLower = parsed.owner.toLowerCase();
@@ -118,17 +119,22 @@ export class PRMonitor {
       return true;
     });
 
+    debug('pr-monitor', `Filtered to ${filteredItems.length} PRs after excluding own repos, shelved, and excluded orgs/repos`);
+
     // Fetch detailed info using a worker pool for bounded concurrency.
-    await runWorkerPool(filteredItems, async (item) => {
-      try {
-        const pr = await this.fetchPRDetails(item.html_url);
-        if (pr) prs.push(pr);
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`Error fetching ${item.html_url}: ${errorMessage}`);
-        failures.push({ prUrl: item.html_url, error: errorMessage });
-      }
-    }, MAX_CONCURRENT_REQUESTS);
+    await timed('pr-monitor', `Fetch details for ${filteredItems.length} PRs`, async () => {
+      await runWorkerPool(filteredItems, async (item) => {
+        try {
+          debug('pr-monitor', `Fetching details for ${item.html_url}`);
+          const pr = await this.fetchPRDetails(item.html_url);
+          if (pr) prs.push(pr);
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          warn('pr-monitor', `Error fetching ${item.html_url}: ${errorMessage}`);
+          failures.push({ prUrl: item.html_url, error: errorMessage });
+        }
+      }, MAX_CONCURRENT_REQUESTS);
+    });
 
     // Sort by days since activity (most urgent first)
     prs.sort((a, b) => {
@@ -189,13 +195,13 @@ export class PRMonitor {
               throw err;
             }
             // Non-rate-limit 403 (DMCA, private repo, SSO) — degrade gracefully
-            console.warn(`[PR_MONITOR] 403 fetching review comments for ${owner}/${repo}#${number}: ${msg}`);
+            warn('pr-monitor', `403 fetching review comments for ${owner}/${repo}#${number}: ${msg}`);
             return { data: [] as Array<any> };
           }
           if (status === 404) {
-            console.debug(`[PR_MONITOR] 404 fetching review comments for ${owner}/${repo}#${number} — skipping self-reply detection`);
+            debug('pr-monitor', `Review comments 404 for ${owner}/${repo}#${number} (likely no inline comments)`);
           } else {
-            console.warn(`[PR_MONITOR] Failed to fetch review comments for ${owner}/${repo}#${number} (status ${status ?? 'unknown'}): self-reply detection will be skipped`);
+            warn('pr-monitor', `Failed to fetch review comments for ${owner}/${repo}#${number} (status ${status ?? 'unknown'}): self-reply detection will be skipped`);
           }
           return [] as Array<any>;
         }),
@@ -722,8 +728,10 @@ export class PRMonitor {
         // 404 is expected for repos without check runs configured; log other errors for debugging
         this.octokit.checks.listForRef({ owner, repo, ref: sha }).catch((err: unknown) => {
           const status = (err as { status?: number })?.status;
-          if (status !== 404) {
-            console.error(`[PR_MONITOR] Non-404 error fetching check runs for ${owner}/${repo}@${sha.slice(0, 7)}: ${status ?? err}`);
+          if (status === 404) {
+            debug('pr-monitor', `Check runs 404 for ${owner}/${repo}@${sha.slice(0, 7)} (no checks configured)`);
+          } else {
+            warn('pr-monitor', `Non-404 error fetching check runs for ${owner}/${repo}@${sha.slice(0, 7)}: ${status ?? err}`);
           }
           return null;
         }),
@@ -753,14 +761,15 @@ export class PRMonitor {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       if (statusCode === 401) {
-        console.error(`[AUTH ERROR] CI check failed for ${owner}/${repo}: Invalid token`);
+        warn('pr-monitor', `CI check failed for ${owner}/${repo}: Invalid token`);
       } else if (statusCode === 403) {
-        console.error(`[RATE LIMIT] CI check failed for ${owner}/${repo}: Rate limit exceeded`);
+        warn('pr-monitor', `CI check failed for ${owner}/${repo}: Rate limit exceeded`);
       } else if (statusCode === 404) {
         // Repo might not have CI configured, this is normal
+        debug('pr-monitor', `CI check 404 for ${owner}/${repo} (no CI configured)`);
         return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
       } else {
-        console.error(`[CI ERROR] Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage}`);
+        warn('pr-monitor', `Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage}`);
       }
       return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
     }

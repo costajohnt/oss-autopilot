@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { getGitHubToken } from './core/index.js';
+import { getGitHubToken, enableDebug, debug } from './core/index.js';
 import { runDaily } from './commands/daily.js';
 import { runStatus } from './commands/status.js';
 import { runSearch } from './commands/search.js';
@@ -47,7 +47,8 @@ const program = new Command();
 program
   .name('oss-autopilot')
   .description('AI-powered autopilot for managing open source contributions')
-  .version(VERSION);
+  .version(VERSION)
+  .option('--debug', 'Enable debug logging');
 
 // Daily check command
 program
@@ -289,6 +290,13 @@ program
 
 // Validate GitHub token before running commands that need it
 program.hook('preAction', async (thisCommand, actionCommand) => {
+  // Enable debug logging if --debug flag is set
+  const globalOpts = thisCommand.opts();
+  if (globalOpts.debug) {
+    enableDebug();
+    debug('cli', `Running command: ${actionCommand.name()}`);
+  }
+
   // actionCommand is the command being executed (e.g., 'status', 'daily')
   const commandName = actionCommand.name();
 

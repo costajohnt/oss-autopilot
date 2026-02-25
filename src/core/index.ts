@@ -23,4 +23,5 @@ export {
   requireGitHubToken,
   resetGitHubTokenCache,
 } from './utils.js';
+export { enableDebug, isDebugEnabled, debug, warn, timed } from './logger.js';
 export * from './types.js';
