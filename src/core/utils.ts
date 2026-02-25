@@ -6,6 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execFileSync } from 'child_process';
+import { ConfigurationError } from './errors.js';
 
 // Cached GitHub token (fetched once per session)
 let cachedGitHubToken: string | null = null;
@@ -348,7 +349,7 @@ export function getGitHubToken(): string | null {
  * in commands that cannot proceed without authentication.
  *
  * @returns The GitHub token string (guaranteed non-null)
- * @throws {Error} If no token is available, with instructions for `gh auth login` or setting `GITHUB_TOKEN`
+ * @throws {ConfigurationError} If no token is available, with instructions for `gh auth login` or setting `GITHUB_TOKEN`
  *
  * @example
  * const token = requireGitHubToken(); // throws if not authenticated
@@ -357,7 +358,7 @@ export function requireGitHubToken(): string {
   const token = getGitHubToken();
 
   if (!token) {
-    throw new Error(
+    throw new ConfigurationError(
       'GitHub authentication required.\n\n' +
       'Options:\n' +
       '  1. Use gh CLI: gh auth login\n' +
