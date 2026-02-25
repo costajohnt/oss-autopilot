@@ -8,6 +8,7 @@ import * as path from 'path';
 import { Octokit } from '@octokit/rest';
 import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
+import { paginateAll } from './pagination.js';
 import { parseGitHubUrl, daysBetween, getDataDir } from './utils.js';
 import {
   TrackedIssue,
@@ -971,12 +972,13 @@ export class IssueDiscovery {
       });
 
       // Also check timeline for linked PRs
-      const { data: timeline } = await this.octokit.issues.listEventsForTimeline({
+      const timeline = await paginateAll((page) => this.octokit.issues.listEventsForTimeline({
         owner,
         repo,
         issue_number: issueNumber,
         per_page: 100,
-      });
+        page,
+      }));
 
       const linkedPRs = timeline.filter(
         (event) => {
