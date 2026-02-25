@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.36.4](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.36.3...oss-autopilot-v0.36.4) (2026-02-25)
+
+
+### Bug Fixes
+
+* add GH_REPO env for CI dispatch in release-please workflow ([#221](https://github.com/costajohnt/oss-autopilot/issues/221)) ([fe4dfd3](https://github.com/costajohnt/oss-autopilot/commit/fe4dfd301e7eafd9598918055c8d6c2b87607844))
+* auto-trigger CI on release-please PRs via workflow_dispatch ([#220](https://github.com/costajohnt/oss-autopilot/issues/220)) ([c3e5e10](https://github.com/costajohnt/oss-autopilot/commit/c3e5e10c032cc79f8ee63b1bbc73940f977d9ba0))
+* push badge updates to separate branch to avoid branch protection ([#219](https://github.com/costajohnt/oss-autopilot/issues/219)) ([f8b2cb8](https://github.com/costajohnt/oss-autopilot/commit/f8b2cb8b300219be50bd7aea350977dba11bdc33))
+* resolve TS18048 type-check error failing CI on all Node versions ([#217](https://github.com/costajohnt/oss-autopilot/issues/217)) ([1695127](https://github.com/costajohnt/oss-autopilot/commit/16951274d46e60ee6e8f1540393afdfc30ce8348))
+* use PAT for release-please so its PRs trigger CI ([#222](https://github.com/costajohnt/oss-autopilot/issues/222)) ([490a7fc](https://github.com/costajohnt/oss-autopilot/commit/490a7fc4f9cfec74cd050d9890ea4145e7a5a4a4))
+
 ## [0.36.3](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.36.2...oss-autopilot-v0.36.3) (2026-02-24)
 
 
