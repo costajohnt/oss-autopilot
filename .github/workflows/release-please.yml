@@ -27,6 +27,7 @@ jobs:
         if: steps.release-please.outputs.prs_created == 'true' || steps.release-please.outputs.prs_updated == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           PR_DATA: ${{ steps.release-please.outputs.pr }}
         run: |
           PR_BRANCH=$(echo "$PR_DATA" | jq -r '.headBranchName')
