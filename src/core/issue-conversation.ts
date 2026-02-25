@@ -11,6 +11,7 @@ import { getOctokit } from './github.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 import { getStateManager } from './state.js';
 import { daysBetween, splitRepo, extractOwnerRepo } from './utils.js';
+import { runWorkerPool } from './concurrency.js';
 import type { CommentedIssue, IssueConversationStatus } from './types.js';
 
 const MAX_CONCURRENT_REQUESTS = 5;
@@ -103,32 +104,23 @@ export class IssueConversationMonitor {
     console.error(`Found ${candidates.length} commented issues to check`);
 
     // Fetch comments for each issue using worker pool.
-    // N workers consume from a shared index — simpler than Promise.race + splice.
-    // Safe because JS is single-threaded: nextIndex++ and results.push() are never interleaved mid-operation.
     const results: CommentedIssue[] = [];
     const failures: Array<{ issueUrl: string; error: string }> = [];
-    let nextIndex = 0;
 
-    const fetchWorker = async () => {
-      while (nextIndex < candidates.length) {
-        const { item, repoFullName } = candidates[nextIndex++];
-        try {
-          const issue = await this.analyzeIssueConversation(item, repoFullName, username);
-          if (issue) {
-            results.push(issue);
-          } else {
-            failures.push({ issueUrl: item.html_url, error: 'No user comment found despite commenter: search match (possible pagination or eventual consistency)' });
-          }
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error);
-          failures.push({ issueUrl: item.html_url, error: msg });
-          console.error(`Error analyzing issue ${item.html_url}: ${msg}`);
+    await runWorkerPool(candidates, async ({ item, repoFullName }) => {
+      try {
+        const issue = await this.analyzeIssueConversation(item, repoFullName, username);
+        if (issue) {
+          results.push(issue);
+        } else {
+          failures.push({ issueUrl: item.html_url, error: 'No user comment found despite commenter: search match (possible pagination or eventual consistency)' });
         }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        failures.push({ issueUrl: item.html_url, error: msg });
+        console.error(`Error analyzing issue ${item.html_url}: ${msg}`);
       }
-    };
-
-    const workerCount = Math.min(MAX_CONCURRENT_REQUESTS, candidates.length);
-    await Promise.all(Array.from({ length: workerCount }, () => fetchWorker()));
+    }, MAX_CONCURRENT_REQUESTS);
 
     if (failures.length > 0) {
       console.error(`[ISSUE_CONVERSATION] ${failures.length}/${candidates.length} issue analysis call(s) failed`);
