@@ -11,6 +11,7 @@ import { daysBetween, parseGitHubUrl, extractOwnerRepo } from './utils.js';
 import { FetchedPR, FetchedPRStatus, CIStatus, CIStatusResult, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR, MergedPR, CIFailureCategory, ClassifiedCheck } from './types.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 import { runWorkerPool } from './concurrency.js';
+import { ConfigurationError, ValidationError } from './errors.js';
 
 // Re-export so existing consumers (tests, index.ts) can still import from pr-monitor
 export { isBotAuthor };
@@ -55,7 +56,7 @@ export class PRMonitor {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
-      throw new Error('No GitHub username configured. Run setup first.');
+      throw new ConfigurationError('No GitHub username configured. Run setup first.');
     }
 
     console.error(`Fetching open PRs for @${config.githubUsername}...`);
@@ -160,7 +161,7 @@ export class PRMonitor {
   private async fetchPRDetails(prUrl: string): Promise<FetchedPR | null> {
     const parsed = parseGitHubUrl(prUrl);
     if (!parsed || parsed.type !== 'pull') {
-      throw new Error(`Invalid PR URL format: ${prUrl}`);
+      throw new ValidationError(`Invalid PR URL format: ${prUrl}`);
     }
 
     const { owner, repo, number } = parsed;
@@ -1028,7 +1029,7 @@ export class PRMonitor {
         chunk.map(async (repo) => {
           const parts = repo.split('/');
           if (parts.length !== 2 || !parts[0] || !parts[1]) {
-            throw new Error(`Malformed repo identifier: "${repo}"`);
+            throw new ValidationError(`Malformed repo identifier: "${repo}"`);
           }
           const [owner, name] = parts;
           const { data } = await this.octokit.repos.get({ owner, repo: name });
@@ -1232,7 +1233,7 @@ export class PRMonitor {
   async trackPR(prUrl: string): Promise<import('./types.js').TrackedPR> {
     const parsed = parseGitHubUrl(prUrl);
     if (!parsed || parsed.type !== 'pull') {
-      throw new Error(`Invalid PR URL: ${prUrl}`);
+      throw new ValidationError(`Invalid PR URL: ${prUrl}`);
     }
 
     const { owner, repo, number } = parsed;

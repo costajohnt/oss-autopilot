@@ -13,6 +13,7 @@ import { getStateManager } from './state.js';
 import { daysBetween, splitRepo, extractOwnerRepo } from './utils.js';
 import { runWorkerPool } from './concurrency.js';
 import type { CommentedIssue, IssueConversationStatus } from './types.js';
+import { ConfigurationError } from './errors.js';
 
 const MAX_CONCURRENT_REQUESTS = 5;
 
@@ -34,7 +35,7 @@ export class IssueConversationMonitor {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
-      throw new Error('No GitHub username configured. Run setup first.');
+      throw new ConfigurationError('No GitHub username configured. Run setup first.');
     }
 
     const username = config.githubUsername;

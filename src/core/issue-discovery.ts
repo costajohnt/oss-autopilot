@@ -17,6 +17,7 @@ import {
   RepoScore,
   DEFAULT_CONFIG,
 } from './types.js';
+import { ValidationError } from './errors.js';
 
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
@@ -574,7 +575,7 @@ export class IssueDiscovery {
       const rateLimitContext = rateLimitHitDuringSearch
         ? ' GitHub API rate limits may have affected results — try again after the rate limit resets.'
         : '';
-      throw new Error(
+      throw new ValidationError(
         `No issue candidates found across all search phases.${details}${rateLimitContext} ` +
         'Try adjusting your search criteria (languages, labels) or check your network connection.'
       );
@@ -780,7 +781,7 @@ export class IssueDiscovery {
     // Parse URL
     const parsed = parseGitHubUrl(issueUrl);
     if (!parsed || parsed.type !== 'issues') {
-      throw new Error(`Invalid issue URL: ${issueUrl}`);
+      throw new ValidationError(`Invalid issue URL: ${issueUrl}`);
     }
 
     const { owner, repo, number } = parsed;
