@@ -10,6 +10,7 @@ import { getStateManager } from './state.js';
 import { daysBetween, parseGitHubUrl, extractOwnerRepo } from './utils.js';
 import { FetchedPR, FetchedPRStatus, CIStatus, CIStatusResult, ReviewDecision, DailyDigest, MaintainerActionHint, ClosedPR, MergedPR, CIFailureCategory, ClassifiedCheck } from './types.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
+import { runWorkerPool } from './concurrency.js';
 
 // Re-export so existing consumers (tests, index.ts) can still import from pr-monitor
 export { isBotAuthor };
@@ -116,25 +117,16 @@ export class PRMonitor {
     });
 
     // Fetch detailed info using a worker pool for bounded concurrency.
-    // N workers consume from a shared index — simpler than Promise.race + splice.
-    // Safe because JS is single-threaded: nextIndex++ and prs.push() are never interleaved mid-operation.
-    let nextIndex = 0;
-    const fetchWorker = async () => {
-      while (nextIndex < filteredItems.length) {
-        const item = filteredItems[nextIndex++];
-        try {
-          const pr = await this.fetchPRDetails(item.html_url);
-          if (pr) prs.push(pr);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`Error fetching ${item.html_url}: ${errorMessage}`);
-          failures.push({ prUrl: item.html_url, error: errorMessage });
-        }
+    await runWorkerPool(filteredItems, async (item) => {
+      try {
+        const pr = await this.fetchPRDetails(item.html_url);
+        if (pr) prs.push(pr);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`Error fetching ${item.html_url}: ${errorMessage}`);
+        failures.push({ prUrl: item.html_url, error: errorMessage });
       }
-    };
-
-    const workerCount = Math.min(MAX_CONCURRENT_REQUESTS, filteredItems.length);
-    await Promise.all(Array.from({ length: workerCount }, () => fetchWorker()));
+    }, MAX_CONCURRENT_REQUESTS);
 
     // Sort by days since activity (most urgent first)
     prs.sort((a, b) => {
