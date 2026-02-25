@@ -184,8 +184,24 @@ export class PRMonitor {
       this.octokit.pulls.listReviewComments({ owner, repo, pull_number: number, per_page: 100 })
         .catch((err: unknown) => {
           const status = (err as { status?: number })?.status;
-          if (status !== 404) {
-            console.error(`[PR_MONITOR] Failed to fetch review comments for ${owner}/${repo}#${number} (status ${status ?? 'unknown'}): self-reply detection will be skipped`);
+          // Rate limit errors must propagate — silently swallowing them hides
+          // a systemic problem and produces misleading results (#229).
+          if (status === 429) {
+            throw err;
+          }
+          if (status === 403) {
+            const msg = ((err as { message?: string })?.message ?? '').toLowerCase();
+            if (msg.includes('rate limit') || msg.includes('abuse detection')) {
+              throw err;
+            }
+            // Non-rate-limit 403 (DMCA, private repo, SSO) — degrade gracefully
+            console.warn(`[PR_MONITOR] 403 fetching review comments for ${owner}/${repo}#${number}: ${msg}`);
+            return { data: [] as Array<any> };
+          }
+          if (status === 404) {
+            console.debug(`[PR_MONITOR] 404 fetching review comments for ${owner}/${repo}#${number} — skipping self-reply detection`);
+          } else {
+            console.warn(`[PR_MONITOR] Failed to fetch review comments for ${owner}/${repo}#${number} (status ${status ?? 'unknown'}): self-reply detection will be skipped`);
           }
           return { data: [] as Array<any> };
         }),
