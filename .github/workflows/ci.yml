@@ -47,6 +47,10 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Coverage report
+        if: matrix.node-version == 22
+        run: npm run test:coverage
+
       - name: Build bundle
         run: npm run bundle
 
