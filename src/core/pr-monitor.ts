@@ -268,16 +268,13 @@ export class PRMonitor {
     // Classify failing checks (#81)
     const classifiedChecks = classifyFailingChecks(failingCheckNames, failingCheckConclusions);
 
-    // Build partial PR (without display fields) for display label computation
-    const pr: FetchedPR = {
+    return this.buildFetchedPR({
       id: ghPR.id,
       url: prUrl,
       repo: `${owner}/${repo}`,
       number,
       title: ghPR.title,
       status,
-      displayLabel: '',  // computed below
-      displayDescription: '',  // computed below
       createdAt: ghPR.created_at,
       updatedAt: ghPR.updated_at,
       daysSinceActivity,
@@ -292,6 +289,18 @@ export class PRMonitor {
       hasIncompleteChecklist,
       checklistStats,
       maintainerActionHints,
+    });
+  }
+
+  /**
+   * Build a FetchedPR object from computed fields and attach display labels.
+   * Centralizes PR construction and display label computation (#79).
+   */
+  private buildFetchedPR(fields: Omit<FetchedPR, 'displayLabel' | 'displayDescription'>): FetchedPR {
+    const pr: FetchedPR = {
+      ...fields,
+      displayLabel: '',  // computed below
+      displayDescription: '',  // computed below
     };
 
     // Compute display labels (#79) — must happen after status + classifiedChecks are set
@@ -586,6 +595,120 @@ export class PRMonitor {
   }
 
   /**
+   * Analyze check runs (GitHub Actions, etc.) and categorize them.
+   * Returns flags for failing/pending/success and lists of failing check names + conclusions.
+   */
+  private analyzeCheckRuns(checkRuns: Array<{ name: string; conclusion: string | null; status: string }>): {
+    hasFailingChecks: boolean;
+    hasPendingChecks: boolean;
+    hasSuccessfulChecks: boolean;
+    failingCheckNames: string[];
+    failingCheckConclusions: Map<string, string>;
+  } {
+    let hasFailingChecks = false;
+    let hasPendingChecks = false;
+    let hasSuccessfulChecks = false;
+    const failingCheckNames: string[] = [];
+    const failingCheckConclusions = new Map<string, string>();
+
+    for (const check of checkRuns) {
+      if (check.conclusion === 'failure' || check.conclusion === 'cancelled' || check.conclusion === 'timed_out') {
+        hasFailingChecks = true;
+        failingCheckNames.push(check.name);
+        failingCheckConclusions.set(check.name, check.conclusion);
+      } else if (check.conclusion === 'action_required') {
+        hasPendingChecks = true; // Maintainer approval gate, not a real failure
+      } else if (check.status === 'in_progress' || check.status === 'queued') {
+        hasPendingChecks = true;
+      } else if (check.conclusion === 'success') {
+        hasSuccessfulChecks = true;
+      }
+    }
+
+    return { hasFailingChecks, hasPendingChecks, hasSuccessfulChecks, failingCheckNames, failingCheckConclusions };
+  }
+
+  /**
+   * Analyze combined status API results (Travis, CircleCI, etc.).
+   * Filters out authorization-gate statuses and determines the effective combined state.
+   * Appends failing status context names to the provided failingCheckNames array.
+   */
+  private analyzeCombinedStatus(
+    combinedStatus: { state: string; statuses: Array<{ state: string; context: string; description: string | null }> },
+    failingCheckNames: string[]
+  ): { effectiveCombinedState: string; hasStatuses: boolean } {
+    // Filter out authorization-gate statuses (e.g., Vercel "Authorization required to deploy")
+    // These are permission gates, not real CI failures
+    const realStatuses = combinedStatus.statuses.filter(s => {
+      const desc = (s.description || '').toLowerCase();
+      return !(s.state === 'failure' && (
+        desc.includes('authorization required') ||
+        desc.includes('authorize')
+      ));
+    });
+
+    const hasRealFailure = realStatuses.some(s => s.state === 'failure' || s.state === 'error');
+    const hasRealPending = realStatuses.some(s => s.state === 'pending');
+    const hasRealSuccess = realStatuses.some(s => s.state === 'success');
+    const effectiveCombinedState = hasRealFailure ? 'failure'
+      : hasRealPending ? 'pending'
+      : hasRealSuccess ? 'success'
+      : realStatuses.length === 0 ? 'success' // All statuses were auth gates; don't inherit original failure
+      : combinedStatus.state;
+    const hasStatuses = combinedStatus.statuses.length > 0;
+
+    // Collect failing status names from combined status API
+    // Note: Combined statuses don't have conclusion data (only check runs do),
+    // so these rely on name-based classification in classifyFailingChecks.
+    for (const s of realStatuses) {
+      if (s.state === 'failure' || s.state === 'error') {
+        failingCheckNames.push(s.context);
+      }
+    }
+
+    return { effectiveCombinedState, hasStatuses };
+  }
+
+  /**
+   * Merge check run analysis and combined status analysis into a final CIStatusResult.
+   * Priority: failing > pending > passing > unknown.
+   */
+  private mergeStatuses(
+    checkRunAnalysis: {
+      hasFailingChecks: boolean;
+      hasPendingChecks: boolean;
+      hasSuccessfulChecks: boolean;
+      failingCheckNames: string[];
+      failingCheckConclusions: Map<string, string>;
+    },
+    combinedAnalysis: { effectiveCombinedState: string; hasStatuses: boolean },
+    checkRunCount: number
+  ): CIStatusResult {
+    const { hasFailingChecks, hasPendingChecks, hasSuccessfulChecks, failingCheckNames, failingCheckConclusions } = checkRunAnalysis;
+    const { effectiveCombinedState, hasStatuses } = combinedAnalysis;
+
+    // Safety net: If we have ANY failing checks, report as failing
+    if (hasFailingChecks || effectiveCombinedState === 'failure' || effectiveCombinedState === 'error') {
+      return { status: 'failing', failingCheckNames, failingCheckConclusions };
+    }
+
+    if (hasPendingChecks || effectiveCombinedState === 'pending') {
+      return { status: 'pending', failingCheckNames: [], failingCheckConclusions: new Map() };
+    }
+
+    if (hasSuccessfulChecks || effectiveCombinedState === 'success') {
+      return { status: 'passing', failingCheckNames: [], failingCheckConclusions: new Map() };
+    }
+
+    // No checks found at all - this is common for repos without CI
+    if (!hasStatuses && checkRunCount === 0) {
+      return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
+    }
+
+    return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
+  }
+
+  /**
    * Get CI status from combined status API and check runs.
    * Returns status and names of failing checks for diagnostics.
    */
@@ -621,77 +744,10 @@ export class PRMonitor {
       }
       const checkRuns = [...latestCheckRunsByName.values()];
 
-      // Analyze check runs (GitHub Actions, etc.)
-      let hasFailingChecks = false;
-      let hasPendingChecks = false;
-      let hasSuccessfulChecks = false;
-      const failingCheckNames: string[] = [];
-      const failingCheckConclusions = new Map<string, string>();
+      const checkRunAnalysis = this.analyzeCheckRuns(checkRuns);
+      const combinedAnalysis = this.analyzeCombinedStatus(combinedStatus, checkRunAnalysis.failingCheckNames);
 
-      for (const check of checkRuns) {
-        if (check.conclusion === 'failure' || check.conclusion === 'cancelled' || check.conclusion === 'timed_out') {
-          hasFailingChecks = true;
-          failingCheckNames.push(check.name);
-          failingCheckConclusions.set(check.name, check.conclusion);
-        } else if (check.conclusion === 'action_required') {
-          hasPendingChecks = true; // Maintainer approval gate, not a real failure
-        } else if (check.status === 'in_progress' || check.status === 'queued') {
-          hasPendingChecks = true;
-        } else if (check.conclusion === 'success') {
-          hasSuccessfulChecks = true;
-        }
-      }
-
-      // Analyze combined status (Travis, CircleCI, etc.)
-      // Filter out authorization-gate statuses (e.g., Vercel "Authorization required to deploy")
-      // These are permission gates, not real CI failures
-      const realStatuses = combinedStatus.statuses.filter(s => {
-        const desc = (s.description || '').toLowerCase();
-        return !(s.state === 'failure' && (
-          desc.includes('authorization required') ||
-          desc.includes('authorize')
-        ));
-      });
-
-      const hasRealFailure = realStatuses.some(s => s.state === 'failure' || s.state === 'error');
-      const hasRealPending = realStatuses.some(s => s.state === 'pending');
-      const hasRealSuccess = realStatuses.some(s => s.state === 'success');
-      const effectiveCombinedState = hasRealFailure ? 'failure'
-        : hasRealPending ? 'pending'
-        : hasRealSuccess ? 'success'
-        : realStatuses.length === 0 ? 'success' // All statuses were auth gates; don't inherit original failure
-        : combinedStatus.state;
-      const hasStatuses = combinedStatus.statuses.length > 0;
-
-      // Collect failing status names from combined status API
-      // Note: Combined statuses don't have conclusion data (only check runs do),
-      // so these rely on name-based classification in classifyFailingChecks.
-      for (const s of realStatuses) {
-        if (s.state === 'failure' || s.state === 'error') {
-          failingCheckNames.push(s.context);
-        }
-      }
-
-      // Priority: failing > pending > passing > unknown
-      // Safety net: If we have ANY failing checks, report as failing
-      if (hasFailingChecks || effectiveCombinedState === 'failure' || effectiveCombinedState === 'error') {
-        return { status: 'failing', failingCheckNames, failingCheckConclusions };
-      }
-
-      if (hasPendingChecks || effectiveCombinedState === 'pending') {
-        return { status: 'pending', failingCheckNames: [], failingCheckConclusions: new Map() };
-      }
-
-      if (hasSuccessfulChecks || effectiveCombinedState === 'success') {
-        return { status: 'passing', failingCheckNames: [], failingCheckConclusions: new Map() };
-      }
-
-      // No checks found at all - this is common for repos without CI
-      if (!hasStatuses && checkRuns.length === 0) {
-        return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
-      }
-
-      return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
+      return this.mergeStatuses(checkRunAnalysis, combinedAnalysis, checkRuns.length);
     } catch (error) {
       const statusCode = (error as { status?: number }).status;
       const errorMessage = error instanceof Error ? error.message : String(error);
