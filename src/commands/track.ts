@@ -5,6 +5,7 @@
 
 import { getStateManager, PRMonitor, getGitHubToken } from '../core/index.js';
 import { outputJson, outputJsonError, type TrackOutput } from '../formatters/json.js';
+import { validateUrl, PR_URL_PATTERN, validateGitHubUrl } from './validation.js';
 
 interface TrackOptions {
   prUrl: string;
@@ -17,6 +18,9 @@ interface UntrackOptions {
 }
 
 export async function runTrack(options: TrackOptions): Promise<void> {
+  validateUrl(options.prUrl);
+  validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
+
   const token = getGitHubToken();
   if (!token) {
     if (options.json) {
@@ -49,6 +53,9 @@ export async function runTrack(options: TrackOptions): Promise<void> {
 }
 
 export async function runUntrack(options: UntrackOptions): Promise<void> {
+  validateUrl(options.prUrl);
+  validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
+
   const stateManager = getStateManager();
 
   if (!options.json) {

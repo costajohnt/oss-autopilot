@@ -6,7 +6,7 @@
 
 import { getStateManager } from '../core/index.js';
 import { outputJson, outputJsonError } from '../formatters/json.js';
-import { PR_URL_PATTERN, validateGitHubUrl } from './validation.js';
+import { PR_URL_PATTERN, validateGitHubUrl, validateUrl, validateMessage } from './validation.js';
 
 const DEFAULT_SNOOZE_DAYS = 7;
 
@@ -23,7 +23,9 @@ interface UnsnoozeCommandOptions {
 }
 
 export async function runSnooze(options: SnoozeCommandOptions): Promise<void> {
+  validateUrl(options.prUrl);
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
+  validateMessage(options.reason);
 
   const days = options.days ?? DEFAULT_SNOOZE_DAYS;
   if (!Number.isFinite(days) || days <= 0) {
@@ -71,6 +73,7 @@ export async function runSnooze(options: SnoozeCommandOptions): Promise<void> {
 }
 
 export async function runUnsnooze(options: UnsnoozeCommandOptions): Promise<void> {
+  validateUrl(options.prUrl);
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
 
   const stateManager = getStateManager();
