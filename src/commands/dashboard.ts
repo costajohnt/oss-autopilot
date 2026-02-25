@@ -1223,7 +1223,7 @@ function generateDashboardHtml(
           for (const pr of recentlyMerged) repos.add(pr.repo);
           for (const pr of (digest.recentlyClosedPRs || [])) repos.add(pr.repo);
           for (const pr of autoUnshelvedPRs) repos.add(pr.repo);
-          return Array.from(repos).sort().map(repo => `<option value="${escapeHtml(repo)}">${escapeHtml(repo)}</option>`).join('\\n        ');
+          return Array.from(repos).sort().map(repo => `<option value="${escapeHtml(repo)}">${escapeHtml(repo)}</option>`).join('\n        ');
         })()}
       </select>
       <span class="filter-count" id="filterCount"></span>
@@ -1552,8 +1552,10 @@ function generateDashboardHtml(
       var label = document.getElementById('themeLabel');
 
       function getEffectiveTheme() {
-        var stored = localStorage.getItem('oss-dashboard-theme');
-        if (stored) return stored;
+        try {
+          var stored = localStorage.getItem('oss-dashboard-theme');
+          if (stored === 'light' || stored === 'dark') return stored;
+        } catch (e) { /* localStorage unavailable (private browsing) */ }
         return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
       }
 
@@ -1573,9 +1575,9 @@ function generateDashboardHtml(
       applyTheme(getEffectiveTheme());
 
       toggle.addEventListener('click', function() {
-        var current = html.getAttribute('data-theme') || getEffectiveTheme();
+        var current = html.getAttribute('data-theme');
         var next = current === 'dark' ? 'light' : 'dark';
-        localStorage.setItem('oss-dashboard-theme', next);
+        try { localStorage.setItem('oss-dashboard-theme', next); } catch (e) { /* private browsing */ }
         applyTheme(next);
       });
     })();
