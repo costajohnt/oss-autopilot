@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.37.0](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.36.5...oss-autopilot-v0.37.0) (2026-02-25)
+
+
+### Features
+
+* add --debug flag with verbose logging ([#228](https://github.com/costajohnt/oss-autopilot/issues/228)) ([#255](https://github.com/costajohnt/oss-autopilot/issues/255)) ([6486426](https://github.com/costajohnt/oss-autopilot/commit/648642644eb5c97decc9cbf9c37c40466ebf333b))
+* add concurrent state write protection ([#254](https://github.com/costajohnt/oss-autopilot/issues/254)) ([4bca582](https://github.com/costajohnt/oss-autopilot/commit/4bca582286a0c71afefa1329e5a7c1aebea682d4))
+* dashboard improvements — filtering, dark mode, search ([#257](https://github.com/costajohnt/oss-autopilot/issues/257)) ([5e639c1](https://github.com/costajohnt/oss-autopilot/commit/5e639c1176659b60e8e739cb5c8e2682c265769e))
+
+
+### Bug Fixes
+
+* add comment pagination for issues with 100+ comments ([#233](https://github.com/costajohnt/oss-autopilot/issues/233)) ([#250](https://github.com/costajohnt/oss-autopilot/issues/250)) ([a3f5cbd](https://github.com/costajohnt/oss-autopilot/commit/a3f5cbdcdbb5093248b30799699bc0fb4f64179a))
+* harden input validation for CLI arguments ([#251](https://github.com/costajohnt/oss-autopilot/issues/251)) ([81c21ab](https://github.com/costajohnt/oss-autopilot/commit/81c21abf9b62b3eb38699edff53fb05becd671f5))
+* narrow error handling for review comment fetch ([#243](https://github.com/costajohnt/oss-autopilot/issues/243)) ([ed247ff](https://github.com/costajohnt/oss-autopilot/commit/ed247ffa2d2fca1a15fe5c3a8b303cf713a20288))
+
 ## [0.36.5](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.36.4...oss-autopilot-v0.36.5) (2026-02-25)
 
 
