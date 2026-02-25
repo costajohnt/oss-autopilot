@@ -8,29 +8,17 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  actions: write
 
 jobs:
   release-please:
     name: Release Please
     runs-on: ubuntu-latest
     steps:
+      # Uses a PAT so that the push to the release branch triggers CI.
+      # GITHUB_TOKEN events don't trigger other workflows (prevents loops),
+      # but PAT events do.
       - uses: googleapis/release-please-action@v4
-        id: release-please
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-
-      # GITHUB_TOKEN events don't trigger workflows, but workflow_dispatch
-      # is an explicit exception. Dispatch CI so the release PR gets checks.
-      - name: Trigger CI on release PR
-        if: steps.release-please.outputs.prs_created == 'true' || steps.release-please.outputs.prs_updated == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PR_DATA: ${{ steps.release-please.outputs.pr }}
-        run: |
-          PR_BRANCH=$(echo "$PR_DATA" | jq -r '.headBranchName')
-          if [ -n "$PR_BRANCH" ] && [ "$PR_BRANCH" != "null" ]; then
-            gh workflow run ci.yml --ref "$PR_BRANCH"
-          fi
+          token: ${{ secrets.RELEASE_TOKEN }}
