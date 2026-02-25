@@ -2923,3 +2923,123 @@ describe('fetchRepoStarCounts (#216)', () => {
     expect(result.has('org/deleted')).toBe(false);
   });
 });
+
+describe('review comment fetch error handling (#229)', () => {
+  const prUrl = 'https://github.com/owner/repo/pull/1';
+
+  const makeSearchItem = (url: string) => ({
+    html_url: url,
+    title: 'Test PR',
+    pull_request: { html_url: url },
+    created_at: '2026-02-01T00:00:00Z',
+    updated_at: '2026-02-07T00:00:00Z',
+  });
+
+  const makeMocksWithReviewCommentError = (error: { status?: number; message?: string }) => {
+    const err = Object.assign(new Error(error.message ?? 'Request failed'), { status: error.status });
+    return {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: { total_count: 1, items: [makeSearchItem(prUrl)] },
+        }),
+      },
+      pulls: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            id: 1,
+            title: 'Test PR',
+            created_at: '2026-02-01T00:00:00Z',
+            updated_at: '2026-02-07T00:00:00Z',
+            head: { sha: 'abc123' },
+            mergeable: true,
+            mergeable_state: 'clean',
+            body: '',
+            draft: false,
+            review_comments: 0,
+            commits: 1,
+          },
+        }),
+        listReviews: vi.fn().mockResolvedValue({ data: [] }),
+        listReviewComments: vi.fn().mockRejectedValue(err),
+      },
+      issues: {
+        listComments: vi.fn().mockResolvedValue({ data: [] }),
+      },
+      repos: {
+        getCombinedStatusForRef: vi.fn().mockResolvedValue({
+          data: { state: 'success', statuses: [] },
+        }),
+      },
+      checks: {
+        listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [] } }),
+      },
+    };
+  };
+
+  beforeEach(() => {
+    vi.mocked(getStateManager).mockReturnValue({
+      getState: () => ({
+        config: {
+          githubUsername: 'testuser',
+          excludeRepos: [],
+          excludeOrgs: [],
+          shelvedPRUrls: [],
+          dormantThresholdDays: 30,
+          approachingDormantDays: 25,
+        },
+      }),
+    } as any);
+  });
+
+  it('should return empty data on 404 error (expected for some repos)', async () => {
+    mockOctokitInstance = makeMocksWithReviewCommentError({ status: 404, message: 'Not Found' });
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
+
+    // PR should still be returned — 404 is gracefully degraded
+    expect(prs).toHaveLength(1);
+    expect(prs[0].url).toBe(prUrl);
+  });
+
+  it('should re-throw 429 rate limit error (surfaces in failures)', async () => {
+    mockOctokitInstance = makeMocksWithReviewCommentError({ status: 429, message: 'rate limit exceeded' });
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs, failures } = await monitor.fetchUserOpenPRs();
+
+    // Rate limit error should propagate out of fetchPRDetails and appear in failures
+    expect(prs).toHaveLength(0);
+    expect(failures).toHaveLength(1);
+    expect(failures[0].error).toContain('rate limit exceeded');
+  });
+
+  it('should re-throw 403 rate limit error (surfaces in failures)', async () => {
+    mockOctokitInstance = makeMocksWithReviewCommentError({ status: 403, message: 'API rate limit exceeded' });
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs, failures } = await monitor.fetchUserOpenPRs();
+
+    // Rate limit error should propagate out of fetchPRDetails and appear in failures
+    expect(prs).toHaveLength(0);
+    expect(failures).toHaveLength(1);
+    expect(failures[0].error).toContain('API rate limit exceeded');
+  });
+
+  it('should return empty data on 500 server error with warning', async () => {
+    mockOctokitInstance = makeMocksWithReviewCommentError({ status: 500, message: 'Internal Server Error' });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
+
+    // PR should still be returned — 500 is gracefully degraded
+    expect(prs).toHaveLength(1);
+    expect(prs[0].url).toBe(prUrl);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to fetch review comments'),
+    );
+
+    warnSpy.mockRestore();
+  });
+});
