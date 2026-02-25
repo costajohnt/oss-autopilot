@@ -999,6 +999,21 @@ describe('StateManager getStats exclusion filtering', () => {
     expect(stats.mergedPRs).toBe(3);
     expect(stats.totalTracked).toBe(2);
   });
+
+  it('should store stargazersCount via updateRepoScore (#216)', () => {
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 1, stargazersCount: 500 });
+    const score = stateManager.getRepoScore('owner/repo');
+    expect(score?.stargazersCount).toBe(500);
+  });
+
+  it('should update stargazersCount without affecting other fields (#216)', () => {
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 3, closedWithoutMergeCount: 1 });
+    stateManager.updateRepoScore('owner/repo', { stargazersCount: 1000 });
+    const score = stateManager.getRepoScore('owner/repo');
+    expect(score?.stargazersCount).toBe(1000);
+    expect(score?.mergedPRCount).toBe(3);
+    expect(score?.closedWithoutMergeCount).toBe(1);
+  });
 });
 
 // ── cleanupExcludedData (#213) ──────────────────────────────────────────────

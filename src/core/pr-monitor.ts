@@ -946,6 +946,46 @@ export class PRMonitor {
   }
 
   /**
+   * Fetch GitHub star counts for a list of repositories.
+   * Used to populate stargazersCount in repo scores for dashboard filtering by minStars.
+   * Fetches concurrently with per-repo error isolation (missing/private repos are skipped).
+   */
+  async fetchRepoStarCounts(repos: string[]): Promise<Map<string, number>> {
+    if (repos.length === 0) return new Map();
+
+    console.error(`Fetching star counts for ${repos.length} repos...`);
+    const results = new Map<string, number>();
+
+    // Fetch in parallel chunks to avoid overwhelming the API
+    const chunkSize = 10;
+    for (let i = 0; i < repos.length; i += chunkSize) {
+      const chunk = repos.slice(i, i + chunkSize);
+      const settled = await Promise.allSettled(
+        chunk.map(async (repo) => {
+          const parts = repo.split('/');
+          if (parts.length !== 2 || !parts[0] || !parts[1]) {
+            throw new Error(`Malformed repo identifier: "${repo}"`);
+          }
+          const [owner, name] = parts;
+          const { data } = await this.octokit.repos.get({ owner, repo: name });
+          return { repo, stars: data.stargazers_count };
+        }),
+      );
+      for (let j = 0; j < settled.length; j++) {
+        const result = settled[j];
+        if (result.status === 'fulfilled') {
+          results.set(result.value.repo, result.value.stars);
+        } else {
+          console.error(`[STAR_FETCH] Failed to fetch stars for ${chunk[j]}: ${result.reason instanceof Error ? result.reason.message : result.reason}`);
+        }
+      }
+    }
+
+    console.error(`Fetched star counts for ${results.size}/${repos.length} repos`);
+    return results;
+  }
+
+  /**
    * Shared helper: search for recent PRs and filter out own repos, excluded repos/orgs.
    * Returns parsed search results that pass all filters.
    */

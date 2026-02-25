@@ -342,6 +342,8 @@ export interface RepoScore {
   lastEvaluatedAt: string;
   /** Qualitative signals about the repo's maintainer culture. */
   signals: RepoSignals;
+  /** GitHub star count, fetched during daily check for dashboard filtering. */
+  stargazersCount?: number;
 }
 
 /** Full set of qualitative signals about a repo's maintainer culture. */
@@ -365,6 +367,7 @@ export interface RepoScoreUpdate {
   avgResponseDays?: number | null;
   lastMergedAt?: string;
   signals?: Partial<RepoSignals>;
+  stargazersCount?: number;
 }
 
 /**

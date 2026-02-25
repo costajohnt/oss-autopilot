@@ -171,6 +171,28 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     console.error(`[DAILY_ALL_SIGNAL_UPDATES_FAILED] All ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`);
   }
 
+  // Fetch star counts for all scored repos (used by dashboard minStars filter, #216)
+  const allRepos = Object.keys(stateManager.getState().repoScores);
+  let starCounts: Map<string, number>;
+  try {
+    starCounts = await prMonitor.fetchRepoStarCounts(allRepos);
+  } catch (error) {
+    console.error('[DAILY] Failed to fetch repo star counts:', error instanceof Error ? error.message : error);
+    starCounts = new Map();
+  }
+  let starUpdateFailures = 0;
+  for (const [repo, stars] of starCounts) {
+    try {
+      stateManager.updateRepoScore(repo, { stargazersCount: stars });
+    } catch (error) {
+      starUpdateFailures++;
+      console.error(`[DAILY] Failed to update star count for ${repo}:`, error instanceof Error ? error.message : error);
+    }
+  }
+  if (starUpdateFailures === starCounts.size && starCounts.size > 0) {
+    console.error(`[DAILY_ALL_STAR_COUNT_UPDATES_FAILED] All ${starCounts.size} star count update(s) failed.`);
+  }
+
   // Auto-sync trustedProjects from repos with merged PRs
   let trustSyncFailures = 0;
   for (const [repo] of mergedCounts) {
