@@ -11,6 +11,11 @@
 
 # CI/CD and Infrastructure
 /.github/ @costajohnt
+/workflows/ @costajohnt
 
-# Plugin manifest
+# Plugin manifest and hooks
 /.claude-plugin/ @costajohnt
+/hooks/ @costajohnt
+
+# Documentation
+/docs/ @costajohnt
