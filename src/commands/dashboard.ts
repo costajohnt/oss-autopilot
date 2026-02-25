@@ -312,7 +312,7 @@ function generateDashboardHtml(
       const rawLabel = typeof labelFn === 'string' ? labelFn : labelFn(pr);
       const label = escapeHtml(rawLabel);
       return `
-        <div class="health-item ${cssClass}">
+        <div class="health-item ${cssClass}" data-status="${cssClass}" data-repo="${escapeHtml(pr.repo)}" data-title="${escapeHtml(pr.title.toLowerCase())}">
           <div class="health-icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               ${svgPaths}
@@ -358,7 +358,7 @@ function generateDashboardHtml(
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    :root {
+    :root, [data-theme="dark"] {
       --bg-base: #080b10;
       --bg-surface: rgba(22, 27, 34, 0.65);
       --bg-elevated: rgba(28, 33, 40, 0.8);
@@ -378,6 +378,64 @@ function generateDashboardHtml(
       --accent-conflict: #da3633;
       --accent-info: #58a6ff;
       --accent-info-dim: rgba(88, 166, 255, 0.08);
+      --chart-border: rgba(8, 11, 16, 0.8);
+      --chart-grid: rgba(48, 54, 61, 0.3);
+      --scrollbar-track: rgba(28, 33, 40, 0.8);
+      --scrollbar-thumb: rgba(48, 54, 61, 0.6);
+    }
+
+    [data-theme="light"] {
+      --bg-base: #f6f8fa;
+      --bg-surface: rgba(255, 255, 255, 0.85);
+      --bg-elevated: rgba(246, 248, 250, 0.95);
+      --border: rgba(208, 215, 222, 0.6);
+      --border-muted: rgba(216, 222, 228, 0.5);
+      --text-primary: #1f2328;
+      --text-secondary: #656d76;
+      --text-muted: #8b949e;
+      --accent-merged: #8250df;
+      --accent-merged-dim: rgba(130, 80, 223, 0.1);
+      --accent-open: #1a7f37;
+      --accent-open-dim: rgba(26, 127, 55, 0.1);
+      --accent-warning: #9a6700;
+      --accent-warning-dim: rgba(154, 103, 0, 0.1);
+      --accent-error: #cf222e;
+      --accent-error-dim: rgba(207, 34, 46, 0.08);
+      --accent-conflict: #cf222e;
+      --accent-info: #0969da;
+      --accent-info-dim: rgba(9, 105, 218, 0.08);
+      --chart-border: rgba(255, 255, 255, 0.8);
+      --chart-grid: rgba(208, 215, 222, 0.4);
+      --scrollbar-track: rgba(246, 248, 250, 0.95);
+      --scrollbar-thumb: rgba(208, 215, 222, 0.6);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="dark"]) {
+        --bg-base: #f6f8fa;
+        --bg-surface: rgba(255, 255, 255, 0.85);
+        --bg-elevated: rgba(246, 248, 250, 0.95);
+        --border: rgba(208, 215, 222, 0.6);
+        --border-muted: rgba(216, 222, 228, 0.5);
+        --text-primary: #1f2328;
+        --text-secondary: #656d76;
+        --text-muted: #8b949e;
+        --accent-merged: #8250df;
+        --accent-merged-dim: rgba(130, 80, 223, 0.1);
+        --accent-open: #1a7f37;
+        --accent-open-dim: rgba(26, 127, 55, 0.1);
+        --accent-warning: #9a6700;
+        --accent-warning-dim: rgba(154, 103, 0, 0.1);
+        --accent-error: #cf222e;
+        --accent-error-dim: rgba(207, 34, 46, 0.08);
+        --accent-conflict: #cf222e;
+        --accent-info: #0969da;
+        --accent-info-dim: rgba(9, 105, 218, 0.08);
+        --chart-border: rgba(255, 255, 255, 0.8);
+        --chart-grid: rgba(208, 215, 222, 0.4);
+        --scrollbar-track: rgba(246, 248, 250, 0.95);
+        --scrollbar-thumb: rgba(208, 215, 222, 0.6);
+      }
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -409,6 +467,11 @@ function generateDashboardHtml(
       background: radial-gradient(ellipse, rgba(168, 85, 247, 0.05) 0%, transparent 70%);
       pointer-events: none;
       z-index: 0;
+    }
+
+    [data-theme="light"] body::before,
+    [data-theme="light"] body::after {
+      display: none;
     }
 
     .container {
@@ -810,8 +873,8 @@ function generateDashboardHtml(
     }
 
     .pr-list::-webkit-scrollbar { width: 6px; }
-    .pr-list::-webkit-scrollbar-track { background: var(--bg-elevated); }
-    .pr-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .pr-list::-webkit-scrollbar-track { background: var(--scrollbar-track, var(--bg-elevated)); }
+    .pr-list::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb, var(--border)); border-radius: 3px; }
 
     .pr-item {
       display: flex;
@@ -953,6 +1016,107 @@ function generateDashboardHtml(
     .stats-grid, .health-section, .pr-list-section {
       animation: fadeInUp 0.35s ease;
     }
+
+    .theme-toggle {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-muted);
+      border-radius: 8px;
+      padding: 0.4rem 0.6rem;
+      cursor: pointer;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: 'Geist Mono', monospace;
+      font-size: 0.7rem;
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+
+    .theme-toggle:hover {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+    }
+
+    .theme-toggle svg { flex-shrink: 0; }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .filter-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-muted);
+      border-radius: 10px;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+
+    .filter-toolbar label {
+      font-family: 'Geist Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+    }
+
+    .filter-search {
+      flex: 1;
+      min-width: 180px;
+      padding: 0.4rem 0.75rem;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-muted);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-family: 'Geist', sans-serif;
+      font-size: 0.8rem;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    .filter-search:focus {
+      border-color: var(--accent-info);
+    }
+
+    .filter-search::placeholder {
+      color: var(--text-muted);
+    }
+
+    .filter-select {
+      padding: 0.4rem 0.75rem;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-muted);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-family: 'Geist', sans-serif;
+      font-size: 0.8rem;
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.2s ease;
+    }
+
+    .filter-select:focus {
+      border-color: var(--accent-info);
+    }
+
+    .filter-count {
+      font-family: 'Geist Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .pr-item[data-hidden="true"],
+    .health-item[data-hidden="true"] {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -970,15 +1134,36 @@ function generateDashboardHtml(
           <span class="header-subtitle">Mission Control</span>
         </div>
       </div>
-      <div class="timestamp">
-        ${digest.generatedAt ? new Date(digest.generatedAt).toLocaleString('en-US', {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false
-        }) : 'Unknown'}
+      <div class="header-controls">
+        <div class="timestamp">
+          Last updated: ${digest.generatedAt ? new Date(digest.generatedAt).toLocaleString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+          }) : 'Unknown'}
+        </div>
+        <button class="theme-toggle" id="themeToggle" title="Toggle light/dark mode">
+          <svg id="themeIconSun" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg id="themeIconMoon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+          <span id="themeLabel">Light</span>
+        </button>
       </div>
     </header>
 
@@ -1003,6 +1188,45 @@ function generateDashboardHtml(
         <div class="stat-value">${stats.mergeRate}</div>
         <div class="stat-label">Merge Rate</div>
       </div>
+    </div>
+
+    <div class="filter-toolbar" id="filterToolbar">
+      <label>Filters</label>
+      <input type="text" class="filter-search" id="searchInput" placeholder="Search by PR title..." />
+      <select class="filter-select" id="statusFilter">
+        <option value="all">All Statuses</option>
+        <option value="needs-response">Needs Response</option>
+        <option value="needs-changes">Needs Changes</option>
+        <option value="ci-failing">CI Failing</option>
+        <option value="conflict">Merge Conflict</option>
+        <option value="changes-addressed">Changes Addressed</option>
+        <option value="waiting-maintainer">Waiting on Maintainer</option>
+        <option value="ci-blocked">CI Blocked</option>
+        <option value="ci-not-running">CI Not Running</option>
+        <option value="incomplete-checklist">Incomplete Checklist</option>
+        <option value="missing-files">Missing Files</option>
+        <option value="needs-rebase">Needs Rebase</option>
+        <option value="shelved">Shelved</option>
+        <option value="merged">Recently Merged</option>
+        <option value="closed">Recently Closed</option>
+        <option value="auto-unshelved">Auto-Unshelved</option>
+        <option value="active">Active (No Issues)</option>
+      </select>
+      <select class="filter-select" id="repoFilter">
+        <option value="all">All Repositories</option>
+        ${(() => {
+          const repos = new Set<string>();
+          for (const pr of activePRList) repos.add(pr.repo);
+          for (const pr of shelvedPRs) repos.add(pr.repo);
+          for (const pr of actionRequired) repos.add(pr.repo);
+          for (const pr of waitingOnOthers) repos.add(pr.repo);
+          for (const pr of recentlyMerged) repos.add(pr.repo);
+          for (const pr of (digest.recentlyClosedPRs || [])) repos.add(pr.repo);
+          for (const pr of autoUnshelvedPRs) repos.add(pr.repo);
+          return Array.from(repos).sort().map(repo => `<option value="${escapeHtml(repo)}">${escapeHtml(repo)}</option>`).join('\n        ');
+        })()}
+      </select>
+      <span class="filter-count" id="filterCount"></span>
     </div>
 
     ${actionRequired.length > 0 ? `
@@ -1078,7 +1302,7 @@ function generateDashboardHtml(
       </div>
       <div class="health-items">
         ${recentlyMerged.map(pr => `
-        <div class="health-item" style="border-left-color: var(--accent-merged);">
+        <div class="health-item" style="border-left-color: var(--accent-merged);" data-status="merged" data-repo="${escapeHtml(pr.repo)}" data-title="${escapeHtml(pr.title.toLowerCase())}">
           <div class="health-icon" style="background: var(--accent-merged-dim); color: var(--accent-merged);">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               ${SVG.gitMerge}
@@ -1107,7 +1331,7 @@ function generateDashboardHtml(
       </div>
       <div class="health-items">
         ${(digest.recentlyClosedPRs || []).map(pr => `
-        <div class="health-item" style="border-left-color: var(--text-muted); opacity: 0.7;">
+        <div class="health-item" style="border-left-color: var(--text-muted); opacity: 0.7;" data-status="closed" data-repo="${escapeHtml(pr.repo)}" data-title="${escapeHtml(pr.title.toLowerCase())}">
           <div class="health-icon" style="background: rgba(110, 118, 129, 0.15); color: var(--text-muted);">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
@@ -1216,8 +1440,15 @@ function generateDashboardHtml(
           const isStale = pr.daysSinceActivity >= approachingDormantDays;
           const itemClass = hasIssues ? 'has-issues' : (isStale ? 'stale' : '');
 
+          const prStatus = pr.ciStatus === 'failing' ? 'ci-failing' :
+            pr.hasMergeConflict ? 'conflict' :
+            (pr.hasUnrespondedComment && pr.status !== 'changes_addressed' && pr.status !== 'failing_ci') ? 'needs-response' :
+            pr.status === 'needs_changes' ? 'needs-changes' :
+            pr.status === 'changes_addressed' ? 'changes-addressed' :
+            'active';
+
           return `
-        <div class="pr-item ${itemClass}">
+        <div class="pr-item ${itemClass}" data-status="${prStatus}" data-repo="${escapeHtml(pr.repo)}" data-title="${escapeHtml(pr.title.toLowerCase())}">
           <div class="pr-status-indicator">
             ${hasIssues ? `
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1282,7 +1513,7 @@ function generateDashboardHtml(
       </div>
       <div class="pr-list">
         ${shelvedPRs.map(pr => `
-        <div class="pr-item">
+        <div class="pr-item" data-status="shelved" data-repo="${escapeHtml(pr.repo)}" data-title="${escapeHtml(pr.title.toLowerCase())}">
           <div class="pr-status-indicator" style="background: rgba(110, 118, 129, 0.1); color: var(--text-muted);">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               ${SVG.box}
@@ -1307,10 +1538,104 @@ function generateDashboardHtml(
 
     <footer class="footer">
       <p>OSS Autopilot // Mission Control</p>
+      <p style="margin-top: 0.25rem;">Dashboard generated: ${digest.generatedAt ? new Date(digest.generatedAt).toISOString() : 'Unknown'}</p>
     </footer>
   </div>
 
   <script>
+    // === Theme Toggle ===
+    (function() {
+      var html = document.documentElement;
+      var toggle = document.getElementById('themeToggle');
+      var sunIcon = document.getElementById('themeIconSun');
+      var moonIcon = document.getElementById('themeIconMoon');
+      var label = document.getElementById('themeLabel');
+
+      function getEffectiveTheme() {
+        try {
+          var stored = localStorage.getItem('oss-dashboard-theme');
+          if (stored === 'light' || stored === 'dark') return stored;
+        } catch (e) { /* localStorage unavailable (private browsing) */ }
+        return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+
+      function applyTheme(theme) {
+        html.setAttribute('data-theme', theme);
+        if (theme === 'light') {
+          sunIcon.style.display = 'none';
+          moonIcon.style.display = 'block';
+          label.textContent = 'Dark';
+        } else {
+          sunIcon.style.display = 'block';
+          moonIcon.style.display = 'none';
+          label.textContent = 'Light';
+        }
+      }
+
+      applyTheme(getEffectiveTheme());
+
+      toggle.addEventListener('click', function() {
+        var current = html.getAttribute('data-theme');
+        var next = current === 'dark' ? 'light' : 'dark';
+        try { localStorage.setItem('oss-dashboard-theme', next); } catch (e) { /* private browsing */ }
+        applyTheme(next);
+      });
+    })();
+
+    // === Filtering & Search ===
+    (function() {
+      var searchInput = document.getElementById('searchInput');
+      var statusFilter = document.getElementById('statusFilter');
+      var repoFilter = document.getElementById('repoFilter');
+      var filterCount = document.getElementById('filterCount');
+
+      function applyFilters() {
+        var query = searchInput.value.toLowerCase().trim();
+        var status = statusFilter.value;
+        var repo = repoFilter.value;
+        var allItems = document.querySelectorAll('.health-item[data-status], .pr-item[data-status]');
+        var visible = 0;
+        var total = allItems.length;
+
+        allItems.forEach(function(item) {
+          var itemStatus = item.getAttribute('data-status') || '';
+          var itemRepo = item.getAttribute('data-repo') || '';
+          var itemTitle = item.getAttribute('data-title') || '';
+
+          var matchesStatus = (status === 'all') || (itemStatus === status);
+          var matchesRepo = (repo === 'all') || (itemRepo === repo);
+          var matchesSearch = !query || itemTitle.indexOf(query) !== -1;
+
+          if (matchesStatus && matchesRepo && matchesSearch) {
+            item.setAttribute('data-hidden', 'false');
+            visible++;
+          } else {
+            item.setAttribute('data-hidden', 'true');
+          }
+        });
+
+        // Show/hide parent sections if all children are hidden
+        var sections = document.querySelectorAll('.health-section, .pr-list-section');
+        sections.forEach(function(section) {
+          var items = section.querySelectorAll('.health-item[data-status], .pr-item[data-status]');
+          if (items.length === 0) return; // sections without filterable items (e.g. empty state)
+          var anyVisible = false;
+          items.forEach(function(item) {
+            if (item.getAttribute('data-hidden') !== 'true') anyVisible = true;
+          });
+          section.style.display = anyVisible ? '' : 'none';
+        });
+
+        var isFiltering = (status !== 'all' || repo !== 'all' || query.length > 0);
+        filterCount.textContent = isFiltering ? (visible + ' of ' + total + ' items') : '';
+      }
+
+      searchInput.addEventListener('input', applyFilters);
+      statusFilter.addEventListener('change', applyFilters);
+      repoFilter.addEventListener('change', applyFilters);
+    })();
+
+    // === Chart.js Configuration ===
     Chart.defaults.color = '#6e7681';
     Chart.defaults.borderColor = 'rgba(48, 54, 61, 0.4)';
     Chart.defaults.font.family = "'Geist', sans-serif";
