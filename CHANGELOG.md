@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.36.5](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.36.4...oss-autopilot-v0.36.5) (2026-02-25)
+
+
+### Bug Fixes
+
+* dashboard repository breakdown respects star count filter ([#224](https://github.com/costajohnt/oss-autopilot/issues/224)) ([fd9d688](https://github.com/costajohnt/oss-autopilot/commit/fd9d68886eef744dfc73d7dc433efc5c8bafcfd0))
+
 ## [0.36.4](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.36.3...oss-autopilot-v0.36.4) (2026-02-25)
 
 
