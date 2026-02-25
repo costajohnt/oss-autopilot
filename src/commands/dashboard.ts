@@ -1344,16 +1344,33 @@ function generateDashboardHtml(
 
     // === Repository Breakdown (with "Other" bucket + percentage tooltips) ===
     ${(() => {
+      // Filter helper: exclude repos matching excludeRepos/excludeOrgs or below minStars (#216)
+      const { excludeRepos: exRepos = [], excludeOrgs: exOrgs, minStars } = state.config;
+      const starThreshold = minStars ?? 50;
+      const shouldExcludeRepo = (repo: string): boolean => {
+        const repoLower = repo.toLowerCase();
+        if (exRepos.some(r => r.toLowerCase() === repoLower)) return true;
+        if (exOrgs?.some(o => o.toLowerCase() === repoLower.split('/')[0])) return true;
+        const score = (state.repoScores || {})[repo];
+        // Fail-open: repos without cached star data are shown (not excluded).
+        // Unlike issue-discovery (fail-closed), the dashboard shows the user's own
+        // contribution history — hiding repos just because a star fetch failed would be confusing.
+        if (score?.stargazersCount !== undefined && score.stargazersCount < starThreshold) return true;
+        return false;
+      };
+
       // Sort repos by total PRs (merged + active + closed) and build "Other" bucket
       const allRepoEntries = Object.entries(
         // Rebuild from full prsByRepo to get all repos, not just top 10
         (() => {
           const all: Record<string, { active: number; merged: number; closed: number }> = {};
           for (const pr of (digest.openPRs || [])) {
+            if (shouldExcludeRepo(pr.repo)) continue;
             if (!all[pr.repo]) all[pr.repo] = { active: 0, merged: 0, closed: 0 };
             all[pr.repo].active++;
           }
           for (const [repo, score] of Object.entries(state.repoScores || {})) {
+            if (shouldExcludeRepo(repo)) continue;
             if (!all[repo]) all[repo] = { active: 0, merged: 0, closed: 0 };
             all[repo].merged = score.mergedPRCount;
             all[repo].closed = score.closedWithoutMergeCount;

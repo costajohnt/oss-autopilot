@@ -2879,3 +2879,47 @@ describe('fetchUserClosedPRCounts — historical stats filtering', () => {
     expect(result.repos.get('otherorg/their-repo')).toBe(1);
   });
 });
+
+// ── fetchRepoStarCounts (#216) ──────────────────────────────────────────────
+
+describe('fetchRepoStarCounts (#216)', () => {
+  it('should fetch star counts for repos', async () => {
+    mockOctokitInstance = {
+      repos: {
+        get: vi.fn()
+          .mockResolvedValueOnce({ data: { stargazers_count: 5000 } })
+          .mockResolvedValueOnce({ data: { stargazers_count: 200 } }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRepoStarCounts(['org/big-repo', 'org/small-repo']);
+
+    expect(result.size).toBe(2);
+    expect(result.get('org/big-repo')).toBe(5000);
+    expect(result.get('org/small-repo')).toBe(200);
+  });
+
+  it('should return empty map for empty repo list', async () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRepoStarCounts([]);
+    expect(result.size).toBe(0);
+  });
+
+  it('should skip repos that fail to fetch (deleted/private)', async () => {
+    mockOctokitInstance = {
+      repos: {
+        get: vi.fn()
+          .mockResolvedValueOnce({ data: { stargazers_count: 1000 } })
+          .mockRejectedValueOnce(new Error('Not Found')),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRepoStarCounts(['org/exists', 'org/deleted']);
+
+    expect(result.size).toBe(1);
+    expect(result.get('org/exists')).toBe(1000);
+    expect(result.has('org/deleted')).toBe(false);
+  });
+});

@@ -1052,6 +1052,9 @@ export class StateManager {
     if (updates.lastMergedAt !== undefined) {
       repoScore.lastMergedAt = updates.lastMergedAt;
     }
+    if (updates.stargazersCount !== undefined) {
+      repoScore.stargazersCount = updates.stargazersCount;
+    }
     if (updates.signals) {
       repoScore.signals = { ...repoScore.signals, ...updates.signals };
     }
