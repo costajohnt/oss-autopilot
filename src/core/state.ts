@@ -14,9 +14,73 @@ const CURRENT_STATE_VERSION = 2;
 // Maximum number of events to retain in the event log
 const MAX_EVENTS = 1000;
 
+// Lock file timeout: if a lock is older than this, it is considered stale
+const LOCK_TIMEOUT_MS = 30_000; // 30 seconds
+
 // Legacy path for migration
 const LEGACY_STATE_FILE = path.join(process.cwd(), 'data', 'state.json');
 const LEGACY_BACKUP_DIR = path.join(process.cwd(), 'data', 'backups');
+
+/**
+ * Acquire an advisory file lock using exclusive-create (`wx` flag).
+ * If the lock file already exists but is older than LOCK_TIMEOUT_MS, it is treated as stale and removed.
+ * @throws Error if the lock is held by another active process.
+ */
+export function acquireLock(lockPath: string): void {
+  const lockData = JSON.stringify({ pid: process.pid, timestamp: Date.now() });
+  try {
+    fs.writeFileSync(lockPath, lockData, { flag: 'wx' }); // Fails if exists
+  } catch {
+    // Lock file exists — check if it is stale
+    try {
+      const existing = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+      if (Date.now() - existing.timestamp > LOCK_TIMEOUT_MS) {
+        fs.unlinkSync(lockPath); // Remove stale lock
+        fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
+      } else {
+        throw new Error('State file is locked by another process');
+      }
+    } catch (innerError) {
+      // Re-throw our own error; wrap unexpected ones
+      if (innerError instanceof Error && innerError.message === 'State file is locked by another process') {
+        throw innerError;
+      }
+      // Lock file disappeared between check and read, or other race — retry once
+      try {
+        fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
+      } catch {
+        throw new Error('State file is locked by another process');
+      }
+    }
+  }
+}
+
+/**
+ * Release an advisory file lock. Silently ignores missing lock files.
+ */
+export function releaseLock(lockPath: string): void {
+  try {
+    fs.unlinkSync(lockPath);
+  } catch {
+    /* lock already removed — nothing to do */
+  }
+}
+
+/**
+ * Write data to `filePath` atomically by first writing to a temporary file
+ * in the same directory and then renaming. Rename is atomic on POSIX filesystems,
+ * preventing partial/corrupt state files if the process crashes mid-write.
+ */
+export function atomicWriteFileSync(filePath: string, data: string, mode?: number): void {
+  const tmpPath = filePath + '.tmp';
+  fs.writeFileSync(tmpPath, data, { mode: mode ?? 0o644 });
+  fs.renameSync(tmpPath, filePath);
+  // Ensure permissions are correct (rename preserves the tmp file's mode,
+  // but on some systems the mode from writeFileSync is masked by umask)
+  if (mode !== undefined) {
+    fs.chmodSync(filePath, mode);
+  }
+}
 
 /**
  * Migrate state from v1 (local PR tracking) to v2 (fresh GitHub fetching)
@@ -278,8 +342,8 @@ export class StateManager {
         // Migrate from v1 to v2 if needed
         if (state.version === 1) {
           state = migrateV1ToV2(state);
-          // Save the migrated state immediately
-          fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+          // Save the migrated state immediately (atomic write)
+          atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
           console.error('Migrated state saved');
         }
 
@@ -336,9 +400,9 @@ export class StateManager {
           const repoCount = Object.keys(state.repoScores).length;
           console.error(`Restored state v${state.version}: ${repoCount} repo scores`);
 
-          // Overwrite the corrupted main state file with the restored backup
+          // Overwrite the corrupted main state file with the restored backup (atomic write)
           const statePath = getStatePath();
-          fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+          atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
           console.error('Restored backup written to main state file');
 
           return state;
@@ -412,25 +476,31 @@ export class StateManager {
     }
 
     const statePath = getStatePath();
+    const lockPath = statePath + '.lock';
     const backupDir = getBackupDir();
 
-    // Create backup of existing state
-    if (fs.existsSync(statePath)) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const randomSuffix = Math.random().toString(36).slice(2, 8).padEnd(6, '0');
-      const backupFile = path.join(backupDir, `state-${timestamp}-${randomSuffix}.json`);
-      fs.copyFileSync(statePath, backupFile);
-      fs.chmodSync(backupFile, 0o600);
+    // Acquire advisory lock to prevent concurrent writes
+    acquireLock(lockPath);
 
-      // Keep only last 10 backups
-      this.cleanupBackups();
+    try {
+      // Create backup of existing state
+      if (fs.existsSync(statePath)) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const randomSuffix = Math.random().toString(36).slice(2, 8).padEnd(6, '0');
+        const backupFile = path.join(backupDir, `state-${timestamp}-${randomSuffix}.json`);
+        fs.copyFileSync(statePath, backupFile);
+        fs.chmodSync(backupFile, 0o600);
+
+        // Keep only last 10 backups
+        this.cleanupBackups();
+      }
+
+      // Atomic write: write to temp file then rename to prevent corruption on crash
+      atomicWriteFileSync(statePath, JSON.stringify(this.state, null, 2), 0o600);
+      console.error('State saved successfully');
+    } finally {
+      releaseLock(lockPath);
     }
-
-    // Save state with restricted permissions (owner-only read/write)
-    // Note: writeFileSync mode only applies on file creation; chmodSync enforces it on existing files
-    fs.writeFileSync(statePath, JSON.stringify(this.state, null, 2), { mode: 0o600 });
-    fs.chmodSync(statePath, 0o600);
-    console.error('State saved successfully');
   }
 
   private cleanupBackups(): void {

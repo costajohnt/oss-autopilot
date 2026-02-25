@@ -2,9 +2,12 @@
  * Tests for StateManager
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
-import { StateManager } from './state.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { StateManager, acquireLock, releaseLock, atomicWriteFileSync } from './state.js';
 import { TrackedPR, StateEventType } from './types.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 describe('StateManager', () => {
   let stateManager: StateManager;
@@ -1105,5 +1108,108 @@ describe('StateManager cleanupExcludedData', () => {
 
     expect(stateManager.getState().config.trustedProjects).toEqual(['org-c/repo-3']);
     expect(Object.keys(stateManager.getState().repoScores)).toEqual(['org-c/repo-3']);
+  });
+});
+
+describe('Concurrent State Write Protection', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'state-lock-test-'));
+  });
+
+  afterEach(() => {
+    // Clean up temp directory
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  describe('atomicWriteFileSync', () => {
+    it('should write file content correctly', () => {
+      const filePath = path.join(tmpDir, 'test.json');
+      const data = JSON.stringify({ hello: 'world' }, null, 2);
+
+      atomicWriteFileSync(filePath, data);
+
+      expect(fs.readFileSync(filePath, 'utf-8')).toBe(data);
+    });
+
+    it('should not leave a .tmp file after successful write', () => {
+      const filePath = path.join(tmpDir, 'test.json');
+      const tmpPath = filePath + '.tmp';
+
+      atomicWriteFileSync(filePath, '{"ok":true}');
+
+      expect(fs.existsSync(filePath)).toBe(true);
+      expect(fs.existsSync(tmpPath)).toBe(false);
+    });
+
+    it('should overwrite existing file atomically', () => {
+      const filePath = path.join(tmpDir, 'test.json');
+      fs.writeFileSync(filePath, '{"version":1}');
+
+      atomicWriteFileSync(filePath, '{"version":2}');
+
+      expect(fs.readFileSync(filePath, 'utf-8')).toBe('{"version":2}');
+    });
+
+    it('should apply the specified file mode', () => {
+      const filePath = path.join(tmpDir, 'test.json');
+
+      atomicWriteFileSync(filePath, '{}', 0o600);
+
+      const stats = fs.statSync(filePath);
+      // Check owner read/write bits (mask out non-owner bits)
+      expect(stats.mode & 0o777).toBe(0o600);
+    });
+  });
+
+  describe('acquireLock / releaseLock', () => {
+    it('should create a lock file on acquire and remove it on release', () => {
+      const lockPath = path.join(tmpDir, 'state.json.lock');
+
+      acquireLock(lockPath);
+      expect(fs.existsSync(lockPath)).toBe(true);
+
+      const lockData = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+      expect(lockData.pid).toBe(process.pid);
+      expect(typeof lockData.timestamp).toBe('number');
+
+      releaseLock(lockPath);
+      expect(fs.existsSync(lockPath)).toBe(false);
+    });
+
+    it('should throw when lock is held by another process', () => {
+      const lockPath = path.join(tmpDir, 'state.json.lock');
+      // Simulate a lock from another process that is NOT stale
+      const lockData = JSON.stringify({ pid: 999999, timestamp: Date.now() });
+      fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
+
+      expect(() => acquireLock(lockPath)).toThrow('State file is locked by another process');
+
+      // Clean up
+      releaseLock(lockPath);
+    });
+
+    it('should recover from stale locks', () => {
+      const lockPath = path.join(tmpDir, 'state.json.lock');
+      // Simulate a stale lock (timestamp 60 seconds ago, well past the 30s timeout)
+      const staleLockData = JSON.stringify({ pid: 999999, timestamp: Date.now() - 60_000 });
+      fs.writeFileSync(lockPath, staleLockData, { flag: 'wx' });
+
+      // Should succeed because the lock is stale
+      acquireLock(lockPath);
+      expect(fs.existsSync(lockPath)).toBe(true);
+
+      const newLockData = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+      expect(newLockData.pid).toBe(process.pid);
+
+      releaseLock(lockPath);
+    });
+
+    it('should silently handle releasing a non-existent lock', () => {
+      const lockPath = path.join(tmpDir, 'non-existent.lock');
+      // Should not throw
+      expect(() => releaseLock(lockPath)).not.toThrow();
+    });
   });
 });
