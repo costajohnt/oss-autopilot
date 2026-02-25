@@ -5,6 +5,7 @@
 
 import { IssueDiscovery, getGitHubToken } from '../core/index.js';
 import { outputJson, outputJsonError } from '../formatters/json.js';
+import { validateUrl } from './validation.js';
 
 interface VetOptions {
   issueUrl: string;
@@ -12,6 +13,8 @@ interface VetOptions {
 }
 
 export async function runVet(options: VetOptions): Promise<void> {
+  validateUrl(options.issueUrl);
+
   const token = getGitHubToken();
   if (!token) {
     if (options.json) {

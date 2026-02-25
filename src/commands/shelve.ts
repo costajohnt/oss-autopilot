@@ -6,7 +6,7 @@
 
 import { getStateManager } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
-import { PR_URL_PATTERN, validateGitHubUrl } from './validation.js';
+import { PR_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
 interface ShelveCommandOptions {
   prUrl: string;
@@ -17,6 +17,7 @@ interface ShelveCommandOptions {
 export { PR_URL_PATTERN };
 
 export async function runShelve(options: ShelveCommandOptions): Promise<void> {
+  validateUrl(options.prUrl);
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
 
   const stateManager = getStateManager();
@@ -38,6 +39,7 @@ export async function runShelve(options: ShelveCommandOptions): Promise<void> {
 }
 
 export async function runUnshelve(options: ShelveCommandOptions): Promise<void> {
+  validateUrl(options.prUrl);
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
 
   const stateManager = getStateManager();

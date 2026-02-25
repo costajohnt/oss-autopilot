@@ -6,7 +6,7 @@
 
 import { getStateManager } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
-import { ISSUE_URL_PATTERN, validateGitHubUrl } from './validation.js';
+import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
 interface DismissCommandOptions {
   issueUrl: string;
@@ -17,6 +17,7 @@ interface DismissCommandOptions {
 export { ISSUE_URL_PATTERN };
 
 export async function runDismiss(options: DismissCommandOptions): Promise<void> {
+  validateUrl(options.issueUrl);
   validateGitHubUrl(options.issueUrl, ISSUE_URL_PATTERN, 'issue', options.json);
 
   const stateManager = getStateManager();
@@ -38,6 +39,7 @@ export async function runDismiss(options: DismissCommandOptions): Promise<void> 
 }
 
 export async function runUndismiss(options: DismissCommandOptions): Promise<void> {
+  validateUrl(options.issueUrl);
   validateGitHubUrl(options.issueUrl, ISSUE_URL_PATTERN, 'issue', options.json);
 
   const stateManager = getStateManager();
