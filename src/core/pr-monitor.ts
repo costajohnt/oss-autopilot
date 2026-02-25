@@ -186,8 +186,17 @@ export class PRMonitor {
           const status = (err as { status?: number })?.status;
           // Rate limit errors must propagate — silently swallowing them hides
           // a systemic problem and produces misleading results (#229).
-          if (status === 403 || status === 429) {
+          if (status === 429) {
             throw err;
+          }
+          if (status === 403) {
+            const msg = ((err as { message?: string })?.message ?? '').toLowerCase();
+            if (msg.includes('rate limit') || msg.includes('abuse detection')) {
+              throw err;
+            }
+            // Non-rate-limit 403 (DMCA, private repo, SSO) — degrade gracefully
+            console.warn(`[PR_MONITOR] 403 fetching review comments for ${owner}/${repo}#${number}: ${msg}`);
+            return { data: [] as Array<any> };
           }
           if (status === 404) {
             console.debug(`[PR_MONITOR] 404 fetching review comments for ${owner}/${repo}#${number} — skipping self-reply detection`);

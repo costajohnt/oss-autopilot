@@ -3026,6 +3026,23 @@ describe('review comment fetch error handling (#229)', () => {
     expect(failures[0].error).toContain('API rate limit exceeded');
   });
 
+  it('should degrade gracefully on non-rate-limit 403 (e.g. private repo)', async () => {
+    mockOctokitInstance = makeMocksWithReviewCommentError({ status: 403, message: 'Resource not accessible by integration' });
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
+
+    // Non-rate-limit 403 should NOT re-throw — PR still returned
+    expect(prs).toHaveLength(1);
+    expect(prs[0].url).toBe(prUrl);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('403 fetching review comments'),
+    );
+
+    warnSpy.mockRestore();
+  });
+
   it('should return empty data on 500 server error with warning', async () => {
     mockOctokitInstance = makeMocksWithReviewCommentError({ status: 500, message: 'Internal Server Error' });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
