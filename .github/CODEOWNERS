@@ -1,0 +1,21 @@
+# Default owner for everything
+* @costajohnt
+
+# Plugin components
+/commands/ @costajohnt
+/agents/ @costajohnt
+/skills/ @costajohnt
+
+# Core TypeScript
+/src/ @costajohnt
+
+# CI/CD and Infrastructure
+/.github/ @costajohnt
+/workflows/ @costajohnt
+
+# Plugin manifest and hooks
+/.claude-plugin/ @costajohnt
+/hooks/ @costajohnt
+
+# Documentation
+/docs/ @costajohnt
