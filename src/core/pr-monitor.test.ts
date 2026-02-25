@@ -2364,7 +2364,8 @@ describe('getCIStatus error handling (#182)', () => {
 
     expect(result.status).toBe('unknown');
     expect(result.failingCheckNames).toEqual([]);
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('[AUTH ERROR]'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('CI check failed'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid token'));
   });
 
   it('should return unknown status on 403 rate limit and log RATE LIMIT', async () => {
@@ -2374,7 +2375,8 @@ describe('getCIStatus error handling (#182)', () => {
 
     expect(result.status).toBe('unknown');
     expect(result.failingCheckNames).toEqual([]);
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('[RATE LIMIT]'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('CI check failed'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Rate limit exceeded'));
   });
 
   it('should return unknown status on 404 without logging an error', async () => {
@@ -2394,7 +2396,7 @@ describe('getCIStatus error handling (#182)', () => {
 
     expect(result.status).toBe('unknown');
     expect(result.failingCheckNames).toEqual([]);
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('[CI ERROR]'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to check CI'));
   });
 
   it('should return unknown status on network timeout error and log CI ERROR', async () => {
@@ -2404,7 +2406,7 @@ describe('getCIStatus error handling (#182)', () => {
 
     expect(result.status).toBe('unknown');
     expect(result.failingCheckNames).toEqual([]);
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('[CI ERROR]'));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to check CI'));
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('ETIMEDOUT'));
   });
 
@@ -2419,7 +2421,7 @@ describe('getCIStatus error handling (#182)', () => {
     expect(result).toBeDefined();
     expect(result.status).not.toBe('failing');
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[PR_MONITOR] Non-404 error fetching check runs')
+      expect.stringContaining('Non-404 error fetching check runs')
     );
   });
 
@@ -3028,7 +3030,7 @@ describe('review comment fetch error handling (#229)', () => {
 
   it('should degrade gracefully on non-rate-limit 403 (e.g. private repo)', async () => {
     mockOctokitInstance = makeMocksWithReviewCommentError({ status: 403, message: 'Resource not accessible by integration' });
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const monitor = new PRMonitor('fake-token');
     const { prs } = await monitor.fetchUserOpenPRs();
@@ -3036,16 +3038,16 @@ describe('review comment fetch error handling (#229)', () => {
     // Non-rate-limit 403 should NOT re-throw — PR still returned
     expect(prs).toHaveLength(1);
     expect(prs[0].url).toBe(prUrl);
-    expect(warnSpy).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('403 fetching review comments'),
     );
 
-    warnSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
   it('should return empty data on 500 server error with warning', async () => {
     mockOctokitInstance = makeMocksWithReviewCommentError({ status: 500, message: 'Internal Server Error' });
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const monitor = new PRMonitor('fake-token');
     const { prs } = await monitor.fetchUserOpenPRs();
@@ -3053,10 +3055,10 @@ describe('review comment fetch error handling (#229)', () => {
     // PR should still be returned — 500 is gracefully degraded
     expect(prs).toHaveLength(1);
     expect(prs[0].url).toBe(prUrl);
-    expect(warnSpy).toHaveBeenCalledWith(
+    expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Failed to fetch review comments'),
     );
 
-    warnSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 });
