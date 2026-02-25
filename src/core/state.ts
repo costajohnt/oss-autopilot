@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AgentState, INITIAL_STATE, TrackedPR, TrackedIssue, RepoScore, RepoScoreUpdate, StateEvent, StateEventType, DailyDigest, LocalRepoCache, SnoozeInfo } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
+import { StateError } from './errors.js';
 
 // Current state version
 const CURRENT_STATE_VERSION = 2;
@@ -891,7 +892,7 @@ export class StateManager {
    */
   snoozePR(url: string, reason: string, durationDays: number): boolean {
     if (!Number.isFinite(durationDays) || durationDays <= 0) {
-      throw new Error(`Invalid snooze duration: ${durationDays}. Must be a positive finite number.`);
+      throw new StateError(`Invalid snooze duration: ${durationDays}. Must be a positive finite number.`);
     }
     if (!this.state.config.snoozedPRs) {
       this.state.config.snoozedPRs = {};
