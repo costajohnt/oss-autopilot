@@ -7,6 +7,13 @@
   "bin": {
     "oss-autopilot": "./dist/cli.js"
   },
+  "exports": {
+    ".": {
+      "import": "./dist/cli.js",
+      "require": "./dist/cli.bundle.cjs"
+    },
+    "./cli": "./dist/cli.bundle.cjs"
+  },
   "scripts": {
     "build": "tsc",
     "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/cli.bundle.cjs",
