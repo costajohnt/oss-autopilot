@@ -971,13 +971,23 @@ export class PRMonitor {
           return { repo, stars: data.stargazers_count };
         }),
       );
+      let chunkFailures = 0;
       for (let j = 0; j < settled.length; j++) {
         const result = settled[j];
         if (result.status === 'fulfilled') {
           results.set(result.value.repo, result.value.stars);
         } else {
+          chunkFailures++;
           console.error(`[STAR_FETCH] Failed to fetch stars for ${chunk[j]}: ${result.reason instanceof Error ? result.reason.message : result.reason}`);
         }
+      }
+      // If entire chunk failed, likely a systemic issue (rate limit, auth, outage) — abort remaining
+      if (chunkFailures === chunk.length && chunk.length > 0) {
+        const remaining = repos.length - i - chunkSize;
+        if (remaining > 0) {
+          console.error(`[STAR_FETCH] Entire chunk failed, aborting remaining ${remaining} repos`);
+        }
+        break;
       }
     }
 

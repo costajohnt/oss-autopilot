@@ -178,6 +178,7 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     starCounts = await prMonitor.fetchRepoStarCounts(allRepos);
   } catch (error) {
     console.error('[DAILY] Failed to fetch repo star counts:', error instanceof Error ? error.message : error);
+    console.error('[DAILY] Dashboard minStars filter will use cached star counts (or be skipped for repos without cached data).');
     starCounts = new Map();
   }
   let starUpdateFailures = 0;

@@ -1352,6 +1352,9 @@ function generateDashboardHtml(
         if (exRepos.some(r => r.toLowerCase() === repoLower)) return true;
         if (exOrgs?.some(o => o.toLowerCase() === repoLower.split('/')[0])) return true;
         const score = (state.repoScores || {})[repo];
+        // Fail-open: repos without cached star data are shown (not excluded).
+        // Unlike issue-discovery (fail-closed), the dashboard shows the user's own
+        // contribution history — hiding repos just because a star fetch failed would be confusing.
         if (score?.stargazersCount !== undefined && score.stargazersCount < starThreshold) return true;
         return false;
       };
