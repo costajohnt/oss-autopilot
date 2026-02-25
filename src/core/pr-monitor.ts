@@ -12,6 +12,7 @@ import { FetchedPR, FetchedPRStatus, CIStatus, CIStatusResult, ReviewDecision, D
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 import { runWorkerPool } from './concurrency.js';
 import { ConfigurationError, ValidationError } from './errors.js';
+import { paginateAll } from './pagination.js';
 
 // Re-export so existing consumers (tests, index.ts) can still import from pr-monitor
 export { isBotAuthor };
@@ -170,11 +171,11 @@ export class PRMonitor {
     // Fetch PR data, comments, reviews, and inline review comments in parallel.
     // listReviewComments is non-critical (used for self-reply detection), so degrade
     // gracefully on failure rather than dropping the entire PR (#199).
-    const [prResponse, commentsResponse, reviewsResponse, reviewCommentsResponse] = await Promise.all([
+    const [prResponse, comments, reviewsResponse, reviewComments] = await Promise.all([
       this.octokit.pulls.get({ owner, repo, pull_number: number }),
-      this.octokit.issues.listComments({ owner, repo, issue_number: number, per_page: 100 }),
+      paginateAll((page) => this.octokit.issues.listComments({ owner, repo, issue_number: number, per_page: 100, page })),
       this.octokit.pulls.listReviews({ owner, repo, pull_number: number }),
-      this.octokit.pulls.listReviewComments({ owner, repo, pull_number: number, per_page: 100 })
+      paginateAll((page) => this.octokit.pulls.listReviewComments({ owner, repo, pull_number: number, per_page: 100, page }))
         .catch((err: unknown) => {
           const status = (err as { status?: number })?.status;
           // Rate limit errors must propagate — silently swallowing them hides
@@ -196,14 +197,12 @@ export class PRMonitor {
           } else {
             console.warn(`[PR_MONITOR] Failed to fetch review comments for ${owner}/${repo}#${number} (status ${status ?? 'unknown'}): self-reply detection will be skipped`);
           }
-          return { data: [] as Array<any> };
+          return [] as Array<any>;
         }),
     ]);
 
     const ghPR = prResponse.data;
-    const comments = commentsResponse.data;
     const reviews = reviewsResponse.data;
-    const reviewComments: ReviewComment[] = reviewCommentsResponse.data;
 
     // Determine review decision
     const reviewDecision = this.determineReviewDecision(reviews);

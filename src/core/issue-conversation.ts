@@ -9,6 +9,7 @@
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
+import { paginateAll } from './pagination.js';
 import { getStateManager } from './state.js';
 import { daysBetween, splitRepo, extractOwnerRepo } from './utils.js';
 import { runWorkerPool } from './concurrency.js';
@@ -152,19 +153,16 @@ export class IssueConversationMonitor {
   ): Promise<CommentedIssue | null> {
     const { owner, repo } = splitRepo(repoFullName);
 
-    const comments = await this.octokit.issues.listComments({
+    const allComments = await paginateAll((page) => this.octokit.issues.listComments({
       owner,
       repo,
       issue_number: item.number,
       per_page: 100,
-    });
-
-    if (comments.data.length === 100) {
-      console.error(`[ISSUE_CONVERSATION] Issue ${item.html_url} has 100+ comments; analysis may miss older comments (pagination not implemented)`);
-    }
+      page,
+    }));
 
     const timeline: Array<{ author: string; body: string; createdAt: string; isUser: boolean }> = [];
-    for (const comment of comments.data) {
+    for (const comment of allComments) {
       if (!comment.user?.login) continue; // Skip comments from deleted accounts
       const author = comment.user.login;
       timeline.push({

@@ -4,6 +4,7 @@
  */
 
 import { getStateManager, getOctokit, parseGitHubUrl, formatRelativeTime, getGitHubToken } from '../core/index.js';
+import { paginateAll } from '../core/pagination.js';
 import { outputJson, outputJsonError } from '../formatters/json.js';
 import { validateUrl } from './validation.js';
 
@@ -63,28 +64,31 @@ export async function runComments(options: CommentsOptions): Promise<void> {
   const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number });
 
   // Get review comments (inline code comments)
-  const { data: reviewComments } = await octokit.pulls.listReviewComments({
+  const reviewComments = await paginateAll((page) => octokit.pulls.listReviewComments({
     owner,
     repo,
     pull_number,
     per_page: 100,
-  });
+    page,
+  }));
 
   // Get issue comments (general PR discussion)
-  const { data: issueComments } = await octokit.issues.listComments({
+  const issueComments = await paginateAll((page) => octokit.issues.listComments({
     owner,
     repo,
     issue_number: pull_number,
     per_page: 100,
-  });
+    page,
+  }));
 
   // Get reviews
-  const { data: reviews } = await octokit.pulls.listReviews({
+  const reviews = await paginateAll((page) => octokit.pulls.listReviews({
     owner,
     repo,
     pull_number,
     per_page: 100,
-  });
+    page,
+  }));
 
   // Filter out own comments, optionally show bots
   const username = stateManager.getState().config.githubUsername;
