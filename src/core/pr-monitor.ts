@@ -904,7 +904,7 @@ export class PRMonitor {
       return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {} };
     }
 
-    console.error(`Fetching merged PR counts for @${config.githubUsername}...`);
+    debug('pr-monitor', `Fetching merged PR counts for @${config.githubUsername}...`);
 
     const repos = new Map<string, { count: number; lastMergedAt: string }>();
     const monthlyCounts: Record<string, number> = {};
@@ -925,7 +925,7 @@ export class PRMonitor {
       for (const item of data.items) {
         const parsed = extractOwnerRepo(item.html_url);
         if (!parsed) {
-          console.error(`[PR_MONITOR] Skipping merged PR with unparseable URL: ${item.html_url}`);
+          warn('pr-monitor', `[PR_MONITOR] Skipping merged PR with unparseable URL: ${item.html_url}`);
           continue;
         }
 
@@ -984,7 +984,7 @@ export class PRMonitor {
       page++;
     }
 
-    console.error(`Found ${fetched} merged PRs across ${repos.size} repos`);
+    debug('pr-monitor', `Found ${fetched} merged PRs across ${repos.size} repos`);
     return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts };
   }
 
@@ -1004,7 +1004,7 @@ export class PRMonitor {
       return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {} };
     }
 
-    console.error(`Fetching closed PR counts for @${config.githubUsername}...`);
+    debug('pr-monitor', `Fetching closed PR counts for @${config.githubUsername}...`);
 
     const repos = new Map<string, number>();
     const monthlyCounts: Record<string, number> = {};
@@ -1025,7 +1025,7 @@ export class PRMonitor {
       for (const item of data.items) {
         const parsed = extractOwnerRepo(item.html_url);
         if (!parsed) {
-          console.error(`[PR_MONITOR] Skipping closed PR with unparseable URL: ${item.html_url}`);
+          warn('pr-monitor', `[PR_MONITOR] Skipping closed PR with unparseable URL: ${item.html_url}`);
           continue;
         }
 
@@ -1069,7 +1069,7 @@ export class PRMonitor {
       page++;
     }
 
-    console.error(`Found ${fetched} closed (unmerged) PRs across ${repos.size} repos`);
+    debug('pr-monitor', `Found ${fetched} closed (unmerged) PRs across ${repos.size} repos`);
     return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts };
   }
 
@@ -1081,7 +1081,7 @@ export class PRMonitor {
   async fetchRepoStarCounts(repos: string[]): Promise<Map<string, number>> {
     if (repos.length === 0) return new Map();
 
-    console.error(`Fetching star counts for ${repos.length} repos...`);
+    debug('pr-monitor', `Fetching star counts for ${repos.length} repos...`);
     const results = new Map<string, number>();
 
     // Fetch in parallel chunks to avoid overwhelming the API
@@ -1106,7 +1106,8 @@ export class PRMonitor {
           results.set(result.value.repo, result.value.stars);
         } else {
           chunkFailures++;
-          console.error(
+          warn(
+            'pr-monitor',
             `[STAR_FETCH] Failed to fetch stars for ${chunk[j]}: ${result.reason instanceof Error ? result.reason.message : result.reason}`,
           );
         }
@@ -1115,13 +1116,13 @@ export class PRMonitor {
       if (chunkFailures === chunk.length && chunk.length > 0) {
         const remaining = repos.length - i - chunkSize;
         if (remaining > 0) {
-          console.error(`[STAR_FETCH] Entire chunk failed, aborting remaining ${remaining} repos`);
+          warn('pr-monitor', `[STAR_FETCH] Entire chunk failed, aborting remaining ${remaining} repos`);
         }
         break;
       }
     }
 
-    console.error(`Fetched star counts for ${results.size}/${repos.length} repos`);
+    debug('pr-monitor', `Fetched star counts for ${results.size}/${repos.length} repos`);
     return results;
   }
 
@@ -1141,7 +1142,7 @@ export class PRMonitor {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
-      console.error(`Skipping recently ${label} PRs fetch: no githubUsername configured. Run /setup-oss to configure.`);
+      warn('pr-monitor', `Skipping recently ${label} PRs fetch: no githubUsername configured. Run /setup-oss to configure.`);
       return [];
     }
 
@@ -1149,7 +1150,7 @@ export class PRMonitor {
     sinceDate.setDate(sinceDate.getDate() - days);
     const since = sinceDate.toISOString().split('T')[0]; // YYYY-MM-DD
 
-    console.error(`Fetching recently ${label} PRs for @${config.githubUsername} (since ${since})...`);
+    debug('pr-monitor', `Fetching recently ${label} PRs for @${config.githubUsername} (since ${since})...`);
 
     const { data } = await this.octokit.search.issuesAndPullRequests({
       q: query.replace('{username}', config.githubUsername).replace('{since}', since),
@@ -1163,7 +1164,7 @@ export class PRMonitor {
     for (const item of data.items) {
       const parsed = parseGitHubUrl(item.html_url);
       if (!parsed) {
-        console.error(`Warning: Could not parse GitHub URL from API response: ${item.html_url}`);
+        warn('pr-monitor', `Could not parse GitHub URL from API response: ${item.html_url}`);
         continue;
       }
 
@@ -1179,7 +1180,7 @@ export class PRMonitor {
       results.push(mapItem(item, { owner: parsed.owner, repo, number: parsed.number }));
     }
 
-    console.error(`Found ${results.length} recently ${label} PRs`);
+    debug('pr-monitor', `Found ${results.length} recently ${label} PRs`);
     return results;
   }
 
@@ -1214,8 +1215,9 @@ export class PRMonitor {
       (item, { repo, number }) => {
         const mergedAt = item.pull_request?.merged_at;
         if (!mergedAt) {
-          console.error(
-            `Warning: merged_at missing for merged PR ${item.html_url}${item.closed_at ? ', falling back to closed_at' : ', no date available'}`,
+          warn(
+            'pr-monitor',
+            `merged_at missing for merged PR ${item.html_url}${item.closed_at ? ', falling back to closed_at' : ', no date available'}`,
           );
         }
         return {
@@ -1452,7 +1454,7 @@ const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr:
 export function computeDisplayLabel(pr: FetchedPR): { displayLabel: string; displayDescription: string } {
   const entry = STATUS_DISPLAY[pr.status];
   if (!entry) {
-    console.warn(`[DISPLAY_LABEL] Unknown status "${pr.status}" for PR #${pr.number} (${pr.url})`);
+    warn('pr-monitor', `[DISPLAY_LABEL] Unknown status "${pr.status}" for PR #${pr.number} (${pr.url})`);
     return { displayLabel: `[${pr.status}]`, displayDescription: 'Unknown status' };
   }
   return {

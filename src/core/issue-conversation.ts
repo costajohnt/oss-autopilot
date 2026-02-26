@@ -15,6 +15,9 @@ import { daysBetween, splitRepo, extractOwnerRepo } from './utils.js';
 import { runWorkerPool } from './concurrency.js';
 import type { CommentedIssue, IssueConversationStatus } from './types.js';
 import { ConfigurationError } from './errors.js';
+import { debug, warn } from './logger.js';
+
+const MODULE = 'issue-conversation';
 
 const MAX_CONCURRENT_REQUESTS = 5;
 
@@ -46,7 +49,7 @@ export class IssueConversationMonitor {
     cutoffDate.setDate(cutoffDate.getDate() - maxDays);
     const since = cutoffDate.toISOString().split('T')[0];
 
-    console.error(`Fetching commented issues for @${username} (last ${maxDays} days)...`);
+    debug(MODULE, `Fetching commented issues for @${username} (last ${maxDays} days)...`);
 
     // Search for open issues the user has commented on, updated within window
     // Single page (100) is sufficient for most users; log if truncated.
@@ -58,7 +61,8 @@ export class IssueConversationMonitor {
     });
 
     if (data.total_count > 100) {
-      console.error(
+      warn(
+        MODULE,
         `[ISSUE_CONVERSATION] Search returned ${data.total_count} results but only first 100 were fetched. Some commented issues may be missing.`,
       );
     }
@@ -81,7 +85,7 @@ export class IssueConversationMonitor {
 
       const parsed = extractOwnerRepo(item.html_url);
       if (!parsed) {
-        console.error(`[ISSUE_CONVERSATION] Skipping issue with unparseable URL: ${item.html_url}`);
+        warn(MODULE, `[ISSUE_CONVERSATION] Skipping issue with unparseable URL: ${item.html_url}`);
         continue;
       }
 
@@ -107,7 +111,7 @@ export class IssueConversationMonitor {
       candidates.push({ item, repoFullName });
     }
 
-    console.error(`Found ${candidates.length} commented issues to check`);
+    debug(MODULE, `Found ${candidates.length} commented issues to check`);
 
     // Fetch comments for each issue using worker pool.
     const results: CommentedIssue[] = [];
@@ -130,17 +134,18 @@ export class IssueConversationMonitor {
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error);
           failures.push({ issueUrl: item.html_url, error: msg });
-          console.error(`Error analyzing issue ${item.html_url}: ${msg}`);
+          warn(MODULE, `Error analyzing issue ${item.html_url}: ${msg}`);
         }
       },
       MAX_CONCURRENT_REQUESTS,
     );
 
     if (failures.length > 0) {
-      console.error(`[ISSUE_CONVERSATION] ${failures.length}/${candidates.length} issue analysis call(s) failed`);
+      warn(MODULE, `[ISSUE_CONVERSATION] ${failures.length}/${candidates.length} issue analysis call(s) failed`);
     }
     if (failures.length === candidates.length && candidates.length > 0) {
-      console.error(
+      warn(
+        MODULE,
         `[ISSUE_CONVERSATION_ALL_FAILED] All ${candidates.length} issue analysis call(s) failed. Possible systemic issue (rate limit, auth, network).`,
       );
     }
@@ -153,7 +158,8 @@ export class IssueConversationMonitor {
     };
     results.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
 
-    console.error(
+    debug(
+      MODULE,
       `Analyzed ${results.length} issue conversations (${results.filter((i) => i.status === 'new_response').length} with new responses)`,
     );
     return { issues: results, failures };
@@ -201,7 +207,7 @@ export class IssueConversationMonitor {
 
     // If user never commented (shouldn't happen with commenter: search, but be safe)
     if (!userLastComment) {
-      console.error(`[ISSUE_CONVERSATION] No user comment found for ${item.html_url} despite commenter: search match`);
+      warn(MODULE, `[ISSUE_CONVERSATION] No user comment found for ${item.html_url} despite commenter: search match`);
       return null;
     }
 
