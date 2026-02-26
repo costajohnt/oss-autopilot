@@ -28,34 +28,11 @@ export class ConfigurationError extends OssAutopilotError {
 }
 
 /**
- * GitHub API errors (rate limits, auth failures, network).
- */
-export class GitHubAPIError extends OssAutopilotError {
-  constructor(
-    message: string,
-    public readonly status?: number,
-  ) {
-    super(message, 'GITHUB_API_ERROR');
-    this.name = 'GitHubAPIError';
-  }
-}
-
-/**
  * Input validation errors (invalid URLs, out-of-range values).
  */
 export class ValidationError extends OssAutopilotError {
   constructor(message: string) {
     super(message, 'VALIDATION_ERROR');
     this.name = 'ValidationError';
-  }
-}
-
-/**
- * State file errors (corruption, concurrent access).
- */
-export class StateError extends OssAutopilotError {
-  constructor(message: string) {
-    super(message, 'STATE_ERROR');
-    this.name = 'StateError';
   }
 }

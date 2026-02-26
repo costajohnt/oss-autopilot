@@ -218,7 +218,7 @@ export class PRMonitor {
           }
           // Non-rate-limit 403 (DMCA, private repo, SSO) — degrade gracefully
           warn('pr-monitor', `403 fetching review comments for ${owner}/${repo}#${number}: ${msg}`);
-          return [] as Array<any>;
+          return [] as ReviewComment[];
         }
         if (status === 404) {
           debug('pr-monitor', `Review comments 404 for ${owner}/${repo}#${number} (likely no inline comments)`);
@@ -228,7 +228,7 @@ export class PRMonitor {
             `Failed to fetch review comments for ${owner}/${repo}#${number} (status ${status ?? 'unknown'}): self-reply detection will be skipped`,
           );
         }
-        return [] as Array<any>;
+        return [] as ReviewComment[];
       }),
     ]);
 
