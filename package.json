@@ -9,6 +9,7 @@
   },
   "exports": {
     ".": {
+      "types": "./dist/cli.d.ts",
       "import": "./dist/cli.js",
       "require": "./dist/cli.bundle.cjs"
     },
@@ -56,7 +57,6 @@
     "hooks/",
     "skills/",
     "dist/",
-    "src/",
     "LICENSE",
     "README.md",
     "CHANGELOG.md"
