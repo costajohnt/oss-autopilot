@@ -27,6 +27,8 @@ import { ConfigurationError, ValidationError } from './errors.js';
 import { paginateAll } from './pagination.js';
 import { debug, warn, timed } from './logger.js';
 
+const MODULE = 'pr-monitor';
+
 // Re-export so existing consumers (tests, index.ts) can still import from pr-monitor
 export { isBotAuthor };
 
@@ -73,7 +75,7 @@ export class PRMonitor {
       throw new ConfigurationError('No GitHub username configured. Run setup first.');
     }
 
-    debug('pr-monitor', `Fetching open PRs for @${config.githubUsername}...`);
+    debug(MODULE, `Fetching open PRs for @${config.githubUsername}...`);
 
     // Search for all open PRs authored by the user with pagination
     const allItems: typeof firstPage.data.items = [];
@@ -90,7 +92,7 @@ export class PRMonitor {
 
     allItems.push(...firstPage.data.items);
     const totalCount = firstPage.data.total_count;
-    debug('pr-monitor', `Found ${totalCount} open PRs`);
+    debug(MODULE, `Found ${totalCount} open PRs`);
 
     // Fetch remaining pages if needed (GitHub search API returns max 1000 results)
     const totalPages = Math.min(Math.ceil(totalCount / perPage), 10); // Cap at 1000 results
@@ -117,7 +119,7 @@ export class PRMonitor {
       // Skip PRs to repos owned by the user (not OSS contributions)
       const parsed = extractOwnerRepo(item.html_url);
       if (!parsed) {
-        warn('pr-monitor', `Skipping PR with unparseable URL: ${item.html_url}`);
+        warn(MODULE, `Skipping PR with unparseable URL: ${item.html_url}`);
         return false;
       }
       const ownerLower = parsed.owner.toLowerCase();
@@ -132,22 +134,22 @@ export class PRMonitor {
     });
 
     debug(
-      'pr-monitor',
+      MODULE,
       `Filtered to ${filteredItems.length} PRs after excluding own repos, shelved, and excluded orgs/repos`,
     );
 
     // Fetch detailed info using a worker pool for bounded concurrency.
-    await timed('pr-monitor', `Fetch details for ${filteredItems.length} PRs`, async () => {
+    await timed(MODULE, `Fetch details for ${filteredItems.length} PRs`, async () => {
       await runWorkerPool(
         filteredItems,
         async (item) => {
           try {
-            debug('pr-monitor', `Fetching details for ${item.html_url}`);
+            debug(MODULE, `Fetching details for ${item.html_url}`);
             const pr = await this.fetchPRDetails(item.html_url);
             if (pr) prs.push(pr);
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            warn('pr-monitor', `Error fetching ${item.html_url}: ${errorMessage}`);
+            warn(MODULE, `Error fetching ${item.html_url}: ${errorMessage}`);
             failures.push({ prUrl: item.html_url, error: errorMessage });
           }
         },
@@ -217,14 +219,14 @@ export class PRMonitor {
             throw err;
           }
           // Non-rate-limit 403 (DMCA, private repo, SSO) — degrade gracefully
-          warn('pr-monitor', `403 fetching review comments for ${owner}/${repo}#${number}: ${msg}`);
+          warn(MODULE, `403 fetching review comments for ${owner}/${repo}#${number}: ${msg}`);
           return [] as Array<any>;
         }
         if (status === 404) {
-          debug('pr-monitor', `Review comments 404 for ${owner}/${repo}#${number} (likely no inline comments)`);
+          debug(MODULE, `Review comments 404 for ${owner}/${repo}#${number} (likely no inline comments)`);
         } else {
           warn(
-            'pr-monitor',
+            MODULE,
             `Failed to fetch review comments for ${owner}/${repo}#${number} (status ${status ?? 'unknown'}): self-reply detection will be skipped`,
           );
         }
@@ -779,10 +781,10 @@ export class PRMonitor {
         this.octokit.checks.listForRef({ owner, repo, ref: sha }).catch((err: unknown) => {
           const status = (err as { status?: number })?.status;
           if (status === 404) {
-            debug('pr-monitor', `Check runs 404 for ${owner}/${repo}@${sha.slice(0, 7)} (no checks configured)`);
+            debug(MODULE, `Check runs 404 for ${owner}/${repo}@${sha.slice(0, 7)} (no checks configured)`);
           } else {
             warn(
-              'pr-monitor',
+              MODULE,
               `Non-404 error fetching check runs for ${owner}/${repo}@${sha.slice(0, 7)}: ${status ?? err}`,
             );
           }
@@ -814,15 +816,15 @@ export class PRMonitor {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       if (statusCode === 401) {
-        warn('pr-monitor', `CI check failed for ${owner}/${repo}: Invalid token`);
+        warn(MODULE, `CI check failed for ${owner}/${repo}: Invalid token`);
       } else if (statusCode === 403) {
-        warn('pr-monitor', `CI check failed for ${owner}/${repo}: Rate limit exceeded`);
+        warn(MODULE, `CI check failed for ${owner}/${repo}: Rate limit exceeded`);
       } else if (statusCode === 404) {
         // Repo might not have CI configured, this is normal
-        debug('pr-monitor', `CI check 404 for ${owner}/${repo} (no CI configured)`);
+        debug(MODULE, `CI check 404 for ${owner}/${repo} (no CI configured)`);
         return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
       } else {
-        warn('pr-monitor', `Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage}`);
+        warn(MODULE, `Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage}`);
       }
       return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
     }
@@ -904,7 +906,7 @@ export class PRMonitor {
       return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {} };
     }
 
-    debug('pr-monitor', `Fetching merged PR counts for @${config.githubUsername}...`);
+    debug(MODULE, `Fetching merged PR counts for @${config.githubUsername}...`);
 
     const repos = new Map<string, { count: number; lastMergedAt: string }>();
     const monthlyCounts: Record<string, number> = {};
@@ -925,7 +927,7 @@ export class PRMonitor {
       for (const item of data.items) {
         const parsed = extractOwnerRepo(item.html_url);
         if (!parsed) {
-          warn('pr-monitor', `[PR_MONITOR] Skipping merged PR with unparseable URL: ${item.html_url}`);
+          warn(MODULE, `[PR_MONITOR] Skipping merged PR with unparseable URL: ${item.html_url}`);
           continue;
         }
 
@@ -984,7 +986,7 @@ export class PRMonitor {
       page++;
     }
 
-    debug('pr-monitor', `Found ${fetched} merged PRs across ${repos.size} repos`);
+    debug(MODULE, `Found ${fetched} merged PRs across ${repos.size} repos`);
     return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts };
   }
 
@@ -1004,7 +1006,7 @@ export class PRMonitor {
       return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {} };
     }
 
-    debug('pr-monitor', `Fetching closed PR counts for @${config.githubUsername}...`);
+    debug(MODULE, `Fetching closed PR counts for @${config.githubUsername}...`);
 
     const repos = new Map<string, number>();
     const monthlyCounts: Record<string, number> = {};
@@ -1025,7 +1027,7 @@ export class PRMonitor {
       for (const item of data.items) {
         const parsed = extractOwnerRepo(item.html_url);
         if (!parsed) {
-          warn('pr-monitor', `[PR_MONITOR] Skipping closed PR with unparseable URL: ${item.html_url}`);
+          warn(MODULE, `[PR_MONITOR] Skipping closed PR with unparseable URL: ${item.html_url}`);
           continue;
         }
 
@@ -1069,7 +1071,7 @@ export class PRMonitor {
       page++;
     }
 
-    debug('pr-monitor', `Found ${fetched} closed (unmerged) PRs across ${repos.size} repos`);
+    debug(MODULE, `Found ${fetched} closed (unmerged) PRs across ${repos.size} repos`);
     return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts };
   }
 
@@ -1081,7 +1083,7 @@ export class PRMonitor {
   async fetchRepoStarCounts(repos: string[]): Promise<Map<string, number>> {
     if (repos.length === 0) return new Map();
 
-    debug('pr-monitor', `Fetching star counts for ${repos.length} repos...`);
+    debug(MODULE, `Fetching star counts for ${repos.length} repos...`);
     const results = new Map<string, number>();
 
     // Fetch in parallel chunks to avoid overwhelming the API
@@ -1107,7 +1109,7 @@ export class PRMonitor {
         } else {
           chunkFailures++;
           warn(
-            'pr-monitor',
+            MODULE,
             `[STAR_FETCH] Failed to fetch stars for ${chunk[j]}: ${result.reason instanceof Error ? result.reason.message : result.reason}`,
           );
         }
@@ -1116,13 +1118,13 @@ export class PRMonitor {
       if (chunkFailures === chunk.length && chunk.length > 0) {
         const remaining = repos.length - i - chunkSize;
         if (remaining > 0) {
-          warn('pr-monitor', `[STAR_FETCH] Entire chunk failed, aborting remaining ${remaining} repos`);
+          warn(MODULE, `[STAR_FETCH] Entire chunk failed, aborting remaining ${remaining} repos`);
         }
         break;
       }
     }
 
-    debug('pr-monitor', `Fetched star counts for ${results.size}/${repos.length} repos`);
+    debug(MODULE, `Fetched star counts for ${results.size}/${repos.length} repos`);
     return results;
   }
 
@@ -1142,7 +1144,7 @@ export class PRMonitor {
     const config = this.stateManager.getState().config;
 
     if (!config.githubUsername) {
-      warn('pr-monitor', `Skipping recently ${label} PRs fetch: no githubUsername configured. Run /setup-oss to configure.`);
+      warn(MODULE, `Skipping recently ${label} PRs fetch: no githubUsername configured. Run /setup-oss to configure.`);
       return [];
     }
 
@@ -1150,7 +1152,7 @@ export class PRMonitor {
     sinceDate.setDate(sinceDate.getDate() - days);
     const since = sinceDate.toISOString().split('T')[0]; // YYYY-MM-DD
 
-    debug('pr-monitor', `Fetching recently ${label} PRs for @${config.githubUsername} (since ${since})...`);
+    debug(MODULE, `Fetching recently ${label} PRs for @${config.githubUsername} (since ${since})...`);
 
     const { data } = await this.octokit.search.issuesAndPullRequests({
       q: query.replace('{username}', config.githubUsername).replace('{since}', since),
@@ -1164,7 +1166,7 @@ export class PRMonitor {
     for (const item of data.items) {
       const parsed = parseGitHubUrl(item.html_url);
       if (!parsed) {
-        warn('pr-monitor', `Could not parse GitHub URL from API response: ${item.html_url}`);
+        warn(MODULE, `Could not parse GitHub URL from API response: ${item.html_url}`);
         continue;
       }
 
@@ -1180,7 +1182,7 @@ export class PRMonitor {
       results.push(mapItem(item, { owner: parsed.owner, repo, number: parsed.number }));
     }
 
-    debug('pr-monitor', `Found ${results.length} recently ${label} PRs`);
+    debug(MODULE, `Found ${results.length} recently ${label} PRs`);
     return results;
   }
 
@@ -1216,7 +1218,7 @@ export class PRMonitor {
         const mergedAt = item.pull_request?.merged_at;
         if (!mergedAt) {
           warn(
-            'pr-monitor',
+            MODULE,
             `merged_at missing for merged PR ${item.html_url}${item.closed_at ? ', falling back to closed_at' : ', no date available'}`,
           );
         }
@@ -1454,7 +1456,7 @@ const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr:
 export function computeDisplayLabel(pr: FetchedPR): { displayLabel: string; displayDescription: string } {
   const entry = STATUS_DISPLAY[pr.status];
   if (!entry) {
-    warn('pr-monitor', `[DISPLAY_LABEL] Unknown status "${pr.status}" for PR #${pr.number} (${pr.url})`);
+    warn(MODULE, `[DISPLAY_LABEL] Unknown status "${pr.status}" for PR #${pr.number} (${pr.url})`);
     return { displayLabel: `[${pr.status}]`, displayDescription: 'Unknown status' };
   }
   return {

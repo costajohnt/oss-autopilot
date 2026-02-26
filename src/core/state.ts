@@ -387,7 +387,7 @@ export class StateManager {
       }
     } catch (error) {
       warn(MODULE, 'Error loading state:', error);
-      debug(MODULE, 'Attempting to restore from backup...');
+      warn(MODULE, 'Attempting to restore from backup...');
       const restoredState = this.tryRestoreFromBackup();
       if (restoredState) {
         return restoredState;
