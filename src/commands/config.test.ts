@@ -62,6 +62,30 @@ describe('runConfig', () => {
     expect(mockOutputJson).toHaveBeenCalledWith({ success: true, key: 'username', value: 'newuser' });
   });
 
+  it('should exit with error when username has leading hyphen', async () => {
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runConfig({ key: 'username', value: '-invalid', json: true })).rejects.toThrow('exit');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('Invalid GitHub username'));
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+    mockExit.mockRestore();
+  });
+
+  it('should exit with error when username has consecutive hyphens', async () => {
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runConfig({ key: 'username', value: 'bad--user', json: true })).rejects.toThrow('exit');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('consecutive hyphens'));
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+    mockExit.mockRestore();
+  });
+
   it('should add a language', async () => {
     await runConfig({ key: 'add-language', value: 'python', json: true });
 
