@@ -2,12 +2,51 @@
  * Tests for StateManager
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { StateManager, acquireLock, releaseLock, atomicWriteFileSync } from './state.js';
 import { TrackedPR, StateEventType } from './types.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+
+// ─── File-System Persistence Mock Setup ──────────────────────────────────────
+//
+// Module-level variable shared between the vi.mock factory and test helpers.
+// Each describe block resets this in beforeEach / afterEach. The mock redirects
+// getStatePath / getBackupDir / getDataDir away from ~/.oss-autopilot/ so every
+// file-system persistence test operates in a throwaway temp directory.
+// ─────────────────────────────────────────────────────────────────────────────
+
+let mockTmpDir = '';
+
+vi.mock('./utils.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./utils.js')>();
+  return {
+    ...actual,
+    getDataDir: () => {
+      if (!mockTmpDir) throw new Error('mockTmpDir not set');
+      if (!fs.existsSync(mockTmpDir)) {
+        fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
+      }
+      return mockTmpDir;
+    },
+    getStatePath: () => {
+      if (!mockTmpDir) throw new Error('mockTmpDir not set');
+      if (!fs.existsSync(mockTmpDir)) {
+        fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
+      }
+      return path.join(mockTmpDir, 'state.json');
+    },
+    getBackupDir: () => {
+      if (!mockTmpDir) throw new Error('mockTmpDir not set');
+      const backupDir = path.join(mockTmpDir, 'backups');
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+      }
+      return backupDir;
+    },
+  };
+});
 
 describe('StateManager', () => {
   let stateManager: StateManager;
@@ -1259,45 +1298,35 @@ describe('Concurrent State Write Protection', () => {
 // is actually written to and read from disk. Each test suite uses its own
 // isolated temp directory so tests are fully independent.
 //
-// Because StateManager's load() and save() call getStatePath() / getBackupDir()
-// which are hardcoded to ~/.oss-autopilot/, we patch those helpers via vi.mock
-// so every test operates in a throwaway directory.
+// The vi.mock and mockTmpDir variable are declared at the top of this file so
+// they are in scope for the mock factory. See the "File-System Persistence Mock
+// Setup" section near the top of the file.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { vi } from 'vitest';
-
-// Module-level variable shared between the vi.mock factory and test helpers.
-// Each describe block resets this in beforeEach / afterEach.
-let mockTmpDir = '';
-
-vi.mock('./utils.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./utils.js')>();
+// Shared config shape used by both makeV2State and makeV1State.
+function makeBaseConfig(): Record<string, unknown> {
   return {
-    ...actual,
-    getDataDir: () => {
-      if (!mockTmpDir) throw new Error('mockTmpDir not set');
-      if (!fs.existsSync(mockTmpDir)) {
-        fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
-      }
-      return mockTmpDir;
-    },
-    getStatePath: () => {
-      if (!mockTmpDir) throw new Error('mockTmpDir not set');
-      if (!fs.existsSync(mockTmpDir)) {
-        fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
-      }
-      return path.join(mockTmpDir, 'state.json');
-    },
-    getBackupDir: () => {
-      if (!mockTmpDir) throw new Error('mockTmpDir not set');
-      const backupDir = path.join(mockTmpDir, 'backups');
-      if (!fs.existsSync(backupDir)) {
-        fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
-      }
-      return backupDir;
-    },
+    setupComplete: false,
+    maxActivePRs: 10,
+    dormantThresholdDays: 30,
+    approachingDormantDays: 25,
+    maxIssueAgeDays: 90,
+    languages: ['typescript'],
+    labels: ['good first issue'],
+    excludeRepos: [],
+    trustedProjects: [],
+    githubUsername: '',
+    minRepoScoreThreshold: 4,
+    starredRepos: [],
+    squashByDefault: true,
+    minStars: 50,
+    includeDocIssues: true,
+    aiPolicyBlocklist: [],
+    shelvedPRUrls: [],
+    dismissedIssues: {},
+    snoozedPRs: {},
   };
-});
+}
 
 // Helper: build a minimal valid v2 state object for writing to disk in tests.
 function makeV2State(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -1309,27 +1338,7 @@ function makeV2State(overrides: Record<string, unknown> = {}): Record<string, un
     mergedPRs: [],
     closedPRs: [],
     repoScores: {},
-    config: {
-      setupComplete: false,
-      maxActivePRs: 10,
-      dormantThresholdDays: 30,
-      approachingDormantDays: 25,
-      maxIssueAgeDays: 90,
-      languages: ['typescript'],
-      labels: ['good first issue'],
-      excludeRepos: [],
-      trustedProjects: [],
-      githubUsername: '',
-      minRepoScoreThreshold: 4,
-      starredRepos: [],
-      squashByDefault: true,
-      minStars: 50,
-      includeDocIssues: true,
-      aiPolicyBlocklist: [],
-      shelvedPRUrls: [],
-      dismissedIssues: {},
-      snoozedPRs: {},
-    },
+    config: makeBaseConfig(),
     events: [],
     lastRunAt: new Date().toISOString(),
     ...overrides,
@@ -1346,27 +1355,7 @@ function makeV1State(overrides: Record<string, unknown> = {}): Record<string, un
     mergedPRs: [],
     closedPRs: [],
     repoScores: {},
-    config: {
-      setupComplete: false,
-      maxActivePRs: 10,
-      dormantThresholdDays: 30,
-      approachingDormantDays: 25,
-      maxIssueAgeDays: 90,
-      languages: ['typescript'],
-      labels: ['good first issue'],
-      excludeRepos: [],
-      trustedProjects: [],
-      githubUsername: '',
-      minRepoScoreThreshold: 4,
-      starredRepos: [],
-      squashByDefault: true,
-      minStars: 50,
-      includeDocIssues: true,
-      aiPolicyBlocklist: [],
-      shelvedPRUrls: [],
-      dismissedIssues: {},
-      snoozedPRs: {},
-    },
+    config: makeBaseConfig(),
     events: [],
     lastRunAt: new Date().toISOString(),
     ...overrides,
@@ -1489,10 +1478,11 @@ describe('StateManager file-system persistence (save / load)', () => {
     fs.writeFileSync(statePath, JSON.stringify(makeV2State()), { mode: 0o600 });
 
     const sm = new StateManager(false);
-    sm.save(); // Backs up the existing state.json and then cleans up to 10 backups
+    sm.save(); // Backs up the existing state.json (13 total) and then prunes to 10
 
     const remaining = fs.readdirSync(backupDir).filter((f) => f.startsWith('state-'));
-    expect(remaining.length).toBeLessThanOrEqual(10);
+    // 12 pre-existing + 1 new backup from save() = 13 total, pruned to exactly 10
+    expect(remaining.length).toBe(10);
   });
 });
 
