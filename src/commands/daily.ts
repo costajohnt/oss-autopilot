@@ -20,6 +20,7 @@ import {
   type ClosedPR,
   type CommentedIssue,
   type CommentedIssueWithResponse,
+  type PRCheckFailure,
 } from '../core/index.js';
 import {
   outputJson,
@@ -88,7 +89,7 @@ export async function runDaily(options: DailyOptions): Promise<void> {
 
 interface FetchedPRData {
   prs: FetchedPR[];
-  failures: { repo: string; error: string }[];
+  failures: PRCheckFailure[];
   mergedCounts: Map<string, { count: number; lastMergedAt: string | null }>;
   closedCounts: Map<string, number>;
   monthlyCounts: Record<string, number>;
@@ -446,7 +447,7 @@ function generateDigestOutput(
   activePRs: FetchedPR[],
   shelvedPRs: FetchedPR[],
   commentedIssues: CommentedIssue[],
-  failures: { repo: string; error: string }[],
+  failures: PRCheckFailure[],
 ): DailyOutput {
   const stateManager = getStateManager();
 
@@ -554,6 +555,7 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   // Phase 5: Build structured output (capacity, dismiss filter, action menu)
   return generateDigestOutput(digest, activePRs, shelvedPRs, commentedIssues, failures);
 }
+
 async function runDailyInner(token: string, options: DailyOptions): Promise<void> {
   const result = await executeDailyCheck(token);
 
