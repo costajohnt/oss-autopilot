@@ -15,7 +15,7 @@ import type { FetchPRsResult } from '../core/pr-monitor.js';
 // ---------------------------------------------------------------------------
 
 // PRMonitor method mocks
-const mockFetchUserOpenPRs = vi.fn<[], Promise<FetchPRsResult>>();
+const mockFetchUserOpenPRs = vi.fn<() => Promise<FetchPRsResult>>();
 const mockFetchUserMergedPRCounts = vi.fn();
 const mockFetchUserClosedPRCounts = vi.fn();
 const mockFetchRepoStarCounts = vi.fn();
@@ -87,12 +87,9 @@ vi.mock('../core/index.js', () => {
   };
 });
 
-const mockOutputJson = vi.fn();
-const mockOutputJsonError = vi.fn();
-
 vi.mock('../formatters/json.js', () => ({
-  outputJson: vi.fn((...args) => mockOutputJson(...args)),
-  outputJsonError: vi.fn((...args) => mockOutputJsonError(...args)),
+  outputJson: vi.fn(),
+  outputJsonError: vi.fn(),
 }));
 
 // Import AFTER all mocks are declared
@@ -221,17 +218,6 @@ beforeEach(() => {
 
   // Default state: no PRs, no scores
   mockGetState.mockReturnValue(makeDefaultState());
-  mockGetStats.mockReturnValue({
-    activePRs: 0,
-    dormantPRs: 0,
-    mergedPRs: 0,
-    closedPRs: 0,
-    mergeRate: '0.0%',
-    trustedProjects: 0,
-    activeIssues: 0,
-    needsResponse: 0,
-    totalTracked: 0,
-  });
 
   // Default PR monitor responses (no PRs, no failures)
   mockFetchUserOpenPRs.mockResolvedValue({ prs: [], failures: [] });
@@ -257,6 +243,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Restores any vi.spyOn() spies created within individual tests (e.g., console.error spies).
+  // vi.fn() module mocks are reset by vi.clearAllMocks() in beforeEach instead.
   vi.restoreAllMocks();
 });
 
@@ -485,23 +473,25 @@ describe('executeDailyCheck() — capacity assessment', () => {
   it('all four critical statuses count against capacity', async () => {
     const statuses = ['needs_response', 'needs_changes', 'failing_ci', 'merge_conflict'] as const;
     for (const status of statuses) {
+      // Reset mocks between iterations (beforeEach only runs once per it())
       vi.clearAllMocks();
       mockGetState.mockReturnValue(makeDefaultState());
-      mockGetStats.mockReturnValue({ activePRs: 0, dormantPRs: 0, mergedPRs: 0, closedPRs: 0, mergeRate: '0.0%', trustedProjects: 0, activeIssues: 0, needsResponse: 0, totalTracked: 0 });
-      const pr = makePR({ repo: 'owner/repo', number: 1, status });
-      mockFetchUserOpenPRs.mockResolvedValue({ prs: [pr], failures: [] });
+      mockFetchUserOpenPRs.mockResolvedValue({ prs: [], failures: [] });
       mockFetchUserMergedPRCounts.mockResolvedValue(makeMergedResult());
       mockFetchUserClosedPRCounts.mockResolvedValue(makeClosedResult());
-      mockFetchRepoStarCounts.mockResolvedValue(new Map());
+      mockFetchRepoStarCounts.mockResolvedValue(new Map<string, number>());
       mockFetchRecentlyClosedPRs.mockResolvedValue([]);
       mockFetchRecentlyMergedPRs.mockResolvedValue([]);
       mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [] });
-      mockGenerateDigest.mockReturnValue(makeDigest([pr]));
       mockExpireSnoozes.mockReturnValue([]);
       mockIsPRShelved.mockReturnValue(false);
       mockIsSnoozed.mockReturnValue(false);
       mockGetIssueDismissedAt.mockReturnValue(undefined);
       mockSave.mockImplementation(() => {});
+
+      const pr = makePR({ repo: 'owner/repo', number: 1, status });
+      mockFetchUserOpenPRs.mockResolvedValue({ prs: [pr], failures: [] });
+      mockGenerateDigest.mockReturnValue(makeDigest([pr]));
 
       const result = await executeDailyCheck('test-token');
       expect(result.capacity.criticalIssueCount).toBeGreaterThan(0);
@@ -826,20 +816,19 @@ describe('executeDailyCheck() — error resilience', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeDailyCheck() — issue conversation', () => {
-  const makeIssue = (overrides: Partial<CommentedIssue> = {}): CommentedIssue => ({
+  const makeIssue = (overrides: { status?: 'waiting' | 'acknowledged'; url?: string; number?: number } = {}): CommentedIssue => ({
     repo: 'owner/repo',
-    number: 10,
+    number: overrides.number ?? 10,
     title: 'Test issue',
-    url: 'https://github.com/owner/repo/issues/10',
-    status: 'no_response',
+    url: overrides.url ?? 'https://github.com/owner/repo/issues/10',
+    status: overrides.status ?? 'waiting',
     userLastCommentedAt: '2026-01-10T00:00:00Z',
     labels: [],
     daysSinceUserComment: 5,
-    ...overrides,
   });
 
   it('includes non-dismissed issues in commentedIssues', async () => {
-    const issue = makeIssue({ status: 'no_response' });
+    const issue = makeIssue();
     mockFetchCommentedIssues.mockResolvedValue({ issues: [issue], failures: [] });
     mockGetIssueDismissedAt.mockReturnValue(undefined);
 
@@ -850,10 +839,7 @@ describe('executeDailyCheck() — issue conversation', () => {
   });
 
   it('filters out dismissed issues that have no new activity', async () => {
-    const issue = makeIssue({
-      status: 'no_response',
-      url: 'https://github.com/owner/repo/issues/11',
-    });
+    const issue = makeIssue({ url: 'https://github.com/owner/repo/issues/11' });
     mockFetchCommentedIssues.mockResolvedValue({ issues: [issue], failures: [] });
     // Dismissed AFTER the last known activity
     mockGetIssueDismissedAt.mockReturnValue('2026-01-20T00:00:00Z');
