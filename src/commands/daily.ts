@@ -82,14 +82,41 @@ export async function runDaily(options: DailyOptions): Promise<void> {
   }
 }
 
-/**
- * Core daily check logic, extracted for reuse by the startup command.
- * Fetches all open PRs, updates state, and returns structured output.
- */
-export async function executeDailyCheck(token: string): Promise<DailyOutput> {
-  const stateManager = getStateManager();
-  const prMonitor = new PRMonitor(token);
+// ---------------------------------------------------------------------------
+// Phase result types
+// ---------------------------------------------------------------------------
 
+interface FetchedPRData {
+  prs: FetchedPR[];
+  failures: { repo: string; error: string }[];
+  mergedCounts: Map<string, { count: number; lastMergedAt: string | null }>;
+  closedCounts: Map<string, number>;
+  monthlyCounts: Record<string, number>;
+  monthlyClosedCounts: Record<string, number>;
+  openedFromMerged: Record<string, number>;
+  openedFromClosed: Record<string, number>;
+  recentlyClosedPRs: ClosedPR[];
+  recentlyMergedPRs: MergedPR[];
+  commentedIssues: CommentedIssue[];
+}
+
+interface PartitionedPRs {
+  activePRs: FetchedPR[];
+  shelvedPRs: FetchedPR[];
+  autoUnshelvedPRs: FetchedPR[];
+  digest: DailyDigest;
+}
+
+// ---------------------------------------------------------------------------
+// Phase functions
+// ---------------------------------------------------------------------------
+
+/**
+ * Phase 1: Fetch all PR data from GitHub.
+ * Retrieves open PRs, merged/closed counts, recently closed/merged PRs, and
+ * issue conversation data — all in parallel where possible.
+ */
+async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<FetchedPRData> {
   // Fetch all open PRs fresh from GitHub
   const { prs, failures } = await prMonitor.fetchUserOpenPRs();
 
@@ -139,6 +166,34 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
     monthlyCounts: monthlyClosedCounts,
     monthlyOpenedCounts: openedFromClosed,
   } = closedResult;
+
+  return {
+    prs,
+    failures,
+    mergedCounts,
+    closedCounts,
+    monthlyCounts,
+    monthlyClosedCounts,
+    openedFromMerged,
+    openedFromClosed,
+    recentlyClosedPRs,
+    recentlyMergedPRs,
+    commentedIssues,
+  };
+}
+
+/**
+ * Phase 2: Update repo scores in local state.
+ * Applies stale repo reset, updates merged/closed counts, computes and stores
+ * repo signals from open PR data, refreshes star counts, and syncs trusted projects.
+ */
+async function updateRepoScores(
+  prMonitor: PRMonitor,
+  prs: FetchedPR[],
+  mergedCounts: Map<string, { count: number; lastMergedAt: string | null }>,
+  closedCounts: Map<string, number>,
+): Promise<void> {
+  const stateManager = getStateManager();
 
   // Reset stale repos first (so excluded/removed repos get zeroed).
   // Guard: if the API returned zero results but we have existing repos with merged PRs,
@@ -261,6 +316,21 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
       `[DAILY_ALL_TRUST_SYNCS_FAILED] All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`,
     );
   }
+}
+
+/**
+ * Phase 3: Persist monthly chart analytics to state.
+ * Stores merged, closed, and combined opened counts per month.
+ * Each metric is isolated so partial failures don't produce inconsistent state.
+ */
+function updateAnalytics(
+  prs: FetchedPR[],
+  monthlyCounts: Record<string, number>,
+  monthlyClosedCounts: Record<string, number>,
+  openedFromMerged: Record<string, number>,
+  openedFromClosed: Record<string, number>,
+): void {
+  const stateManager = getStateManager();
 
   // Store monthly chart data (non-critical — each metric isolated so partial failures don't leave inconsistent state)
   try {
@@ -295,6 +365,20 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
       error instanceof Error ? error.message : error,
     );
   }
+}
+
+/**
+ * Phase 4: Expire snoozes and partition PRs into active vs shelved buckets.
+ * Auto-unshelves PRs where maintainers have engaged, generates the digest,
+ * and persists state.
+ */
+function partitionPRs(
+  prMonitor: PRMonitor,
+  prs: FetchedPR[],
+  recentlyClosedPRs: ClosedPR[],
+  recentlyMergedPRs: MergedPR[],
+): PartitionedPRs {
+  const stateManager = getStateManager();
 
   // Expire any snoozes that have passed their expiresAt timestamp.
   // Non-critical: corrupted snooze entries should not abort the daily check.
@@ -348,6 +432,23 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
 
   // Save state (updates lastRunAt, lastDigest, and any auto-unshelve changes)
   stateManager.save();
+
+  return { activePRs, shelvedPRs, autoUnshelvedPRs, digest };
+}
+
+/**
+ * Phase 5: Build the structured output for the daily command.
+ * Assesses capacity, filters dismissed issues, computes actionable items,
+ * and assembles the action menu.
+ */
+function generateDigestOutput(
+  digest: DailyDigest,
+  activePRs: FetchedPR[],
+  shelvedPRs: FetchedPR[],
+  commentedIssues: CommentedIssue[],
+  failures: { repo: string; error: string }[],
+): DailyOutput {
+  const stateManager = getStateManager();
 
   // Assess capacity from active PRs only (shelved PRs excluded)
   const capacity = assessCapacity(activePRs, stateManager.getState().config.maxActivePRs, shelvedPRs.length);
@@ -408,6 +509,51 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Core daily check logic, extracted for reuse by the startup command.
+ * Fetches all open PRs, updates state, and returns structured output.
+ *
+ * Orchestrates five named phases:
+ *   1. fetchPRData        — fetch open PRs, merged/closed counts, issues
+ *   2. updateRepoScores   — update signals, star counts, trust in state
+ *   3. updateAnalytics    — store monthly chart data
+ *   4. partitionPRs       — expire snoozes, shelve/unshelve, generate digest
+ *   5. generateDigestOutput — capacity, dismiss filter, action menu assembly
+ */
+export async function executeDailyCheck(token: string): Promise<DailyOutput> {
+  const prMonitor = new PRMonitor(token);
+
+  // Phase 1: Fetch all PR data from GitHub
+  const {
+    prs,
+    failures,
+    mergedCounts,
+    closedCounts,
+    monthlyCounts,
+    monthlyClosedCounts,
+    openedFromMerged,
+    openedFromClosed,
+    recentlyClosedPRs,
+    recentlyMergedPRs,
+    commentedIssues,
+  } = await fetchPRData(prMonitor, token);
+
+  // Phase 2: Update repo scores (signals, star counts, trust sync)
+  await updateRepoScores(prMonitor, prs, mergedCounts, closedCounts);
+
+  // Phase 3: Persist monthly analytics
+  updateAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
+
+  // Phase 4: Expire snoozes, partition PRs, generate and save digest
+  const { activePRs, shelvedPRs, digest } = partitionPRs(prMonitor, prs, recentlyClosedPRs, recentlyMergedPRs);
+
+  // Phase 5: Build structured output (capacity, dismiss filter, action menu)
+  return generateDigestOutput(digest, activePRs, shelvedPRs, commentedIssues, failures);
+}
 async function runDailyInner(token: string, options: DailyOptions): Promise<void> {
   const result = await executeDailyCheck(token);
 
