@@ -13,6 +13,7 @@ import {
   type DailyDigest,
   type FetchedPR,
   type FetchedPRStatus,
+  type ShelvedPRRef,
   type MaintainerActionHint,
   type ComputedRepoSignals,
   type RepoGroup,
@@ -397,22 +398,22 @@ function partitionPRs(
   }
 
   // Partition PRs into active vs shelved, auto-unshelving when maintainers engage
-  const shelvedPRs: FetchedPR[] = [];
-  const autoUnshelvedPRs: FetchedPR[] = [];
+  const shelvedPRs: ShelvedPRRef[] = [];
+  const autoUnshelvedPRs: ShelvedPRRef[] = [];
   const activePRs: FetchedPR[] = [];
 
   for (const pr of prs) {
     if (stateManager.isPRShelved(pr.url)) {
       if (CRITICAL_STATUSES.has(pr.status)) {
         stateManager.unshelvePR(pr.url);
-        autoUnshelvedPRs.push(pr);
+        autoUnshelvedPRs.push(toShelvedPRRef(pr));
         activePRs.push(pr);
       } else {
-        shelvedPRs.push(pr);
+        shelvedPRs.push(toShelvedPRRef(pr));
       }
     } else if (pr.status === 'dormant') {
       // Dormant PRs are auto-shelved (not persisted — they return when activity resumes)
-      shelvedPRs.push(pr);
+      shelvedPRs.push(toShelvedPRRef(pr));
     } else {
       activePRs.push(pr);
     }
@@ -898,6 +899,21 @@ function assessCapacity(activePRs: FetchedPR[], maxActivePRs: number, shelvedPRC
     shelvedPRCount,
     criticalIssueCount,
     reason,
+  };
+}
+
+/**
+ * Map a full FetchedPR to a lightweight ShelvedPRRef for digest output.
+ * Only the fields needed for display are retained, reducing JSON payload size.
+ */
+function toShelvedPRRef(pr: FetchedPR): ShelvedPRRef {
+  return {
+    number: pr.number,
+    url: pr.url,
+    title: pr.title,
+    repo: pr.repo,
+    daysSinceActivity: pr.daysSinceActivity,
+    status: pr.status,
   };
 }
 

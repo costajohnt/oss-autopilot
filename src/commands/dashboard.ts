@@ -16,6 +16,7 @@ import {
 import { outputJson } from '../formatters/json.js';
 import type {
   FetchedPR,
+  ShelvedPRRef,
   DailyDigest,
   AgentState,
   ClosedPR,
@@ -122,7 +123,16 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       // Dormant PRs are treated as shelved for display purposes
       const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
       const freshShelved = prs.filter((pr) => shelvedUrls.has(pr.url) || pr.status === 'dormant');
-      digest.shelvedPRs = freshShelved;
+      digest.shelvedPRs = freshShelved.map(
+        (pr): ShelvedPRRef => ({
+          number: pr.number,
+          url: pr.url,
+          title: pr.title,
+          repo: pr.repo,
+          daysSinceActivity: pr.daysSinceActivity,
+          status: pr.status,
+        }),
+      );
       digest.autoUnshelvedPRs = [];
       digest.summary.totalActivePRs = prs.length - freshShelved.length;
 
@@ -335,13 +345,15 @@ function generateDashboardHtml(
    * Render health status items. labelFn output is automatically HTML-escaped.
    * metaFn output is injected raw — callers must ensure metaFn returns safe HTML
    * (use escapeHtml for any user-controlled content within metaFn).
+   *
+   * Accepts both full FetchedPR objects and lightweight ShelvedPRRef objects.
    */
-  function renderHealthItems(
-    prs: FetchedPR[],
+  function renderHealthItems<T extends Pick<FetchedPR, 'repo' | 'title' | 'url' | 'number'>>(
+    prs: T[],
     cssClass: string,
     svgPaths: string,
-    labelFn: string | ((pr: FetchedPR) => string),
-    metaFn: (pr: FetchedPR) => string,
+    labelFn: string | ((pr: T) => string),
+    metaFn: (pr: T) => string,
   ): string {
     return prs
       .map((pr) => {
@@ -385,8 +397,8 @@ function generateDashboardHtml(
       '<circle cx="7" cy="18" r="3"/><circle cx="7" cy="6" r="3"/><circle cx="17" cy="12" r="3"/><line x1="7" y1="9" x2="7" y2="15"/><path d="M7 9c0 4 10 3 10 3"/>',
   };
 
-  // Default meta: truncated PR title
-  const titleMeta = (pr: FetchedPR): string => truncateTitle(pr.title);
+  // Default meta: truncated PR title (works for both FetchedPR and ShelvedPRRef)
+  const titleMeta = (pr: Pick<FetchedPR, 'title'>): string => truncateTitle(pr.title);
 
   return `<!DOCTYPE html>
 <html lang="en">
