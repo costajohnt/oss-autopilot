@@ -435,7 +435,7 @@ describe('toShelvedPRRef', () => {
 
   it('should not include full FetchedPR fields not needed for display', () => {
     const pr = makePR({ repo: 'owner/repo' });
-    const ref = toShelvedPRRef(pr) as Record<string, unknown>;
+    const ref = toShelvedPRRef(pr) as unknown as Record<string, unknown>;
     expect(ref).not.toHaveProperty('ciStatus');
     expect(ref).not.toHaveProperty('maintainerActionHints');
     expect(ref).not.toHaveProperty('failingCheckNames');
