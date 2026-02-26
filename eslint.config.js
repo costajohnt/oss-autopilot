@@ -21,10 +21,17 @@ export default tseslint.config(
           destructuredArrayIgnorePattern: '^_',
         },
       ],
-      // Allow explicit any for now (codebase uses it extensively)
-      '@typescript-eslint/no-explicit-any': 'off',
+      // Warn on explicit any in production code; test files override this to off
+      '@typescript-eslint/no-explicit-any': 'warn',
       // Allow non-null assertion (used in tests)
       '@typescript-eslint/no-non-null-assertion': 'off',
+    },
+  },
+  {
+    // Test files use `any` extensively for mocking — keep it off there
+    files: ['**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 );
