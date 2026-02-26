@@ -20,6 +20,9 @@ import {
 } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
 import { ValidationError } from './errors.js';
+import { debug } from './logger.js';
+
+const MODULE = 'state';
 
 // Current state version
 const CURRENT_STATE_VERSION = 2;
@@ -42,8 +45,9 @@ function isLockStale(lockPath: string): boolean {
   try {
     const existing = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
     return Date.now() - existing.timestamp > LOCK_TIMEOUT_MS;
-  } catch {
+  } catch (err) {
     // Lock file is unreadable or contains invalid JSON — treat as stale
+    debug(MODULE, 'Lock file unreadable or invalid JSON, treating as stale', err);
     return true;
   }
 }
@@ -59,8 +63,9 @@ export function acquireLock(lockPath: string): void {
   try {
     fs.writeFileSync(lockPath, lockData, { flag: 'wx' }); // Fails if file exists
     return;
-  } catch {
-    // Lock file exists — check if it is stale
+  } catch (err) {
+    // Lock file exists (EEXIST from 'wx' flag) — check if it is stale
+    debug(MODULE, 'Lock file already exists, checking staleness', err);
   }
 
   if (!isLockStale(lockPath)) {
@@ -70,13 +75,16 @@ export function acquireLock(lockPath: string): void {
   // Stale lock detected — remove it and try to re-acquire
   try {
     fs.unlinkSync(lockPath);
-  } catch {
-    /* already removed */
+  } catch (err) {
+    // Intentionally silent: another process may have removed the stale lock first,
+    // which is fine — we proceed to re-acquire regardless
+    debug(MODULE, 'Stale lock already removed by another process', err);
   }
   try {
     fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
-  } catch {
+  } catch (err) {
     // Another process grabbed the lock between unlink and write
+    debug(MODULE, 'Lock re-acquire failed (race condition)', err);
     throw new Error('State file is locked by another process');
   }
 }
@@ -91,8 +99,9 @@ export function releaseLock(lockPath: string): void {
     if (data.pid === process.pid) {
       fs.unlinkSync(lockPath);
     }
-  } catch {
-    /* lock already removed or unreadable — nothing to do */
+  } catch (err) {
+    // Intentionally silent: lock already removed or unreadable — nothing to do
+    debug(MODULE, 'Lock file already removed or unreadable during release', err);
   }
 }
 
@@ -327,8 +336,9 @@ export class StateManager {
         try {
           fs.unlinkSync(newStatePath);
           console.error('Cleaned up partial migration - removed incomplete new state file');
-        } catch {
+        } catch (cleanupErr) {
           console.error('Warning: Could not clean up partial migration file');
+          debug(MODULE, 'Partial migration cleanup failed', cleanupErr);
         }
       }
 
@@ -439,9 +449,10 @@ export class StateManager {
 
           return state;
         }
-      } catch (_error) {
+      } catch (backupErr) {
         // This backup is also corrupted, try the next one
         console.warn(`Backup ${backupFile} is corrupted, trying next...`);
+        debug(MODULE, `Backup ${backupFile} parse failed`, backupErr);
       }
     }
 

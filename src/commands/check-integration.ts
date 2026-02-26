@@ -6,6 +6,7 @@
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { outputJson, outputJsonError, type CheckIntegrationOutput, type NewFileInfo } from '../formatters/json.js';
+import { debug } from '../core/index.js';
 
 interface CheckIntegrationOptions {
   base: string;
@@ -126,7 +127,9 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
       .trim()
       .split('\n')
       .filter(Boolean);
-  } catch {
+  } catch (err) {
+    // git ls-files failed (e.g. not a git repo) — proceed without reference list
+    debug('check-integration', 'git ls-files failed, reference checking will be skipped', err);
     allFiles = [];
   }
 
