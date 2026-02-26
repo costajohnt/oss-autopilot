@@ -1252,3 +1252,536 @@ describe('Concurrent State Write Protection', () => {
     });
   });
 });
+
+// ─── File-System Persistence Tests ───────────────────────────────────────────
+//
+// These tests exercise StateManager in non-inMemory mode, verifying that state
+// is actually written to and read from disk. Each test suite uses its own
+// isolated temp directory so tests are fully independent.
+//
+// Because StateManager's load() and save() call getStatePath() / getBackupDir()
+// which are hardcoded to ~/.oss-autopilot/, we patch those helpers via vi.mock
+// so every test operates in a throwaway directory.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { vi } from 'vitest';
+
+// Module-level variable shared between the vi.mock factory and test helpers.
+// Each describe block resets this in beforeEach / afterEach.
+let mockTmpDir = '';
+
+vi.mock('./utils.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./utils.js')>();
+  return {
+    ...actual,
+    getDataDir: () => {
+      if (!mockTmpDir) throw new Error('mockTmpDir not set');
+      if (!fs.existsSync(mockTmpDir)) {
+        fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
+      }
+      return mockTmpDir;
+    },
+    getStatePath: () => {
+      if (!mockTmpDir) throw new Error('mockTmpDir not set');
+      if (!fs.existsSync(mockTmpDir)) {
+        fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
+      }
+      return path.join(mockTmpDir, 'state.json');
+    },
+    getBackupDir: () => {
+      if (!mockTmpDir) throw new Error('mockTmpDir not set');
+      const backupDir = path.join(mockTmpDir, 'backups');
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+      }
+      return backupDir;
+    },
+  };
+});
+
+// Helper: build a minimal valid v2 state object for writing to disk in tests.
+function makeV2State(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 2,
+    activePRs: [],
+    activeIssues: [],
+    dormantPRs: [],
+    mergedPRs: [],
+    closedPRs: [],
+    repoScores: {},
+    config: {
+      setupComplete: false,
+      maxActivePRs: 10,
+      dormantThresholdDays: 30,
+      approachingDormantDays: 25,
+      maxIssueAgeDays: 90,
+      languages: ['typescript'],
+      labels: ['good first issue'],
+      excludeRepos: [],
+      trustedProjects: [],
+      githubUsername: '',
+      minRepoScoreThreshold: 4,
+      starredRepos: [],
+      squashByDefault: true,
+      minStars: 50,
+      includeDocIssues: true,
+      aiPolicyBlocklist: [],
+      shelvedPRUrls: [],
+      dismissedIssues: {},
+      snoozedPRs: {},
+    },
+    events: [],
+    lastRunAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+// Helper: build a minimal valid v1 state for migration tests.
+function makeV1State(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 1,
+    activePRs: [],
+    activeIssues: [],
+    dormantPRs: [],
+    mergedPRs: [],
+    closedPRs: [],
+    repoScores: {},
+    config: {
+      setupComplete: false,
+      maxActivePRs: 10,
+      dormantThresholdDays: 30,
+      approachingDormantDays: 25,
+      maxIssueAgeDays: 90,
+      languages: ['typescript'],
+      labels: ['good first issue'],
+      excludeRepos: [],
+      trustedProjects: [],
+      githubUsername: '',
+      minRepoScoreThreshold: 4,
+      starredRepos: [],
+      squashByDefault: true,
+      minStars: 50,
+      includeDocIssues: true,
+      aiPolicyBlocklist: [],
+      shelvedPRUrls: [],
+      dismissedIssues: {},
+      snoozedPRs: {},
+    },
+    events: [],
+    lastRunAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+describe('StateManager file-system persistence (save / load)', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-persist-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('should write state.json to disk when save() is called', () => {
+    const sm = new StateManager(false);
+    sm.updateConfig({ githubUsername: 'alice' });
+    sm.save();
+
+    const statePath = path.join(mockTmpDir, 'state.json');
+    expect(fs.existsSync(statePath)).toBe(true);
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(written.config.githubUsername).toBe('alice');
+  });
+
+  it('should set file permissions to 0o600 when writing state', () => {
+    const sm = new StateManager(false);
+    sm.save();
+
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const stats = fs.statSync(statePath);
+    expect(stats.mode & 0o777).toBe(0o600);
+  });
+
+  it('should update lastRunAt on every save()', () => {
+    const sm = new StateManager(false);
+    const before = new Date().toISOString();
+    sm.save();
+    const after = new Date().toISOString();
+
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(written.lastRunAt >= before).toBe(true);
+    expect(written.lastRunAt <= after).toBe(true);
+  });
+
+  it('should load previously saved state from disk', () => {
+    // First instance: save some state
+    const sm1 = new StateManager(false);
+    sm1.updateConfig({ githubUsername: 'bob' });
+    sm1.updateRepoScore('owner/repo', { mergedPRCount: 3 });
+    sm1.save();
+
+    // Second instance reading the same file
+    const sm2 = new StateManager(false);
+    const state = sm2.getState();
+    expect(state.config.githubUsername).toBe('bob');
+    expect(state.repoScores['owner/repo']).toBeDefined();
+    expect(state.repoScores['owner/repo'].mergedPRCount).toBe(3);
+  });
+
+  it('should create a backup of the existing state before saving a new one', () => {
+    const sm = new StateManager(false);
+    sm.save(); // First save: no prior state → no backup yet
+
+    sm.updateConfig({ githubUsername: 'carol' });
+    sm.save(); // Second save: existing state.json → creates a backup
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    const backups = fs.readdirSync(backupDir).filter((f) => f.startsWith('state-') && f.endsWith('.json'));
+    expect(backups.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should set backup file permissions to 0o600', () => {
+    const sm = new StateManager(false);
+    sm.save(); // Create the initial state.json
+
+    sm.updateConfig({ githubUsername: 'dave' });
+    sm.save(); // Triggers backup of first save
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    const backups = fs.readdirSync(backupDir).filter((f) => f.startsWith('state-') && f.endsWith('.json'));
+    expect(backups.length).toBeGreaterThanOrEqual(1);
+    for (const backup of backups) {
+      const stats = fs.statSync(path.join(backupDir, backup));
+      expect(stats.mode & 0o777).toBe(0o600);
+    }
+  });
+
+  it('should return fresh state when no state file exists', () => {
+    // No state.json pre-created — should initialize from scratch
+    const sm = new StateManager(false);
+    const state = sm.getState();
+    expect(state.version).toBe(2);
+    expect(state.activePRs).toHaveLength(0);
+    expect(typeof state.config).toBe('object');
+  });
+
+  it('should not leave a .tmp file on disk after save()', () => {
+    const sm = new StateManager(false);
+    sm.save();
+
+    const tmpFile = path.join(mockTmpDir, 'state.json.tmp');
+    expect(fs.existsSync(tmpFile)).toBe(false);
+  });
+
+  it('should prune old backups keeping only the 10 most recent', () => {
+    // Pre-populate 12 fake backup files with distinct timestamps
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    for (let i = 0; i < 12; i++) {
+      const name = `state-2024-01-${String(i + 1).padStart(2, '0')}T00-00-00-000Z-aabbcc.json`;
+      fs.writeFileSync(path.join(backupDir, name), JSON.stringify(makeV2State()));
+    }
+
+    // Write state.json so save() has something to back up, then save to trigger cleanup
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(makeV2State()), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    sm.save(); // Backs up the existing state.json and then cleans up to 10 backups
+
+    const remaining = fs.readdirSync(backupDir).filter((f) => f.startsWith('state-'));
+    expect(remaining.length).toBeLessThanOrEqual(10);
+  });
+});
+
+describe('StateManager recovery from corrupt state files', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-corrupt-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('should start fresh when state.json contains invalid JSON', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, '{ this is not valid json }', { mode: 0o600 });
+
+    // No backup exists → falls back to fresh state
+    const sm = new StateManager(false);
+    const state = sm.getState();
+    expect(state.version).toBe(2);
+    expect(state.activePRs).toHaveLength(0);
+  });
+
+  it('should restore from backup when state.json is corrupt but a valid backup exists', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, 'CORRUPT', { mode: 0o600 });
+
+    // Create a valid backup with a custom username
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    const fullBackup = makeV2State();
+    (fullBackup.config as Record<string, unknown>)['githubUsername'] = 'restored-user';
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'),
+      JSON.stringify(fullBackup),
+      { mode: 0o600 },
+    );
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+    expect(state.config.githubUsername).toBe('restored-user');
+  });
+
+  it('should overwrite corrupt state.json with restored backup contents', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, 'CORRUPT', { mode: 0o600 });
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    const fullBackup = makeV2State();
+    (fullBackup.config as Record<string, unknown>)['githubUsername'] = 'from-backup';
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'),
+      JSON.stringify(fullBackup),
+      { mode: 0o600 },
+    );
+
+    new StateManager(false);
+
+    // state.json should now contain the restored backup data
+    const restoredOnDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(restoredOnDisk.config.githubUsername).toBe('from-backup');
+  });
+
+  it('should skip corrupt backups and use the next valid one', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, 'CORRUPT', { mode: 0o600 });
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+
+    // Newer backup (sorted last = most recent after reverse) is corrupt
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-02-01T00-00-00-000Z-zzz000.json'),
+      'ALSO CORRUPT',
+      { mode: 0o600 },
+    );
+
+    // Older backup is valid
+    const validBackup = makeV2State();
+    (validBackup.config as Record<string, unknown>)['githubUsername'] = 'valid-older-backup';
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-aaa000.json'),
+      JSON.stringify(validBackup),
+      { mode: 0o600 },
+    );
+
+    const sm = new StateManager(false);
+    expect(sm.getState().config.githubUsername).toBe('valid-older-backup');
+  });
+
+  it('should start fresh when both state.json and all backups are corrupt', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, 'CORRUPT', { mode: 0o600 });
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc000.json'),
+      'ALSO CORRUPT',
+      { mode: 0o600 },
+    );
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+    expect(state.version).toBe(2);
+    expect(state.activePRs).toHaveLength(0);
+  });
+
+  it('should start fresh when state.json has invalid structure (missing required fields)', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    // Valid JSON but missing required fields (no version, no config)
+    fs.writeFileSync(statePath, JSON.stringify({ hello: 'world' }), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+    expect(state.version).toBe(2);
+    expect(typeof state.config).toBe('object');
+  });
+});
+
+describe('StateManager v1 → v2 migration', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-migration-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('should migrate v1 state to v2 on load and update version on disk', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(makeV1State()), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+    expect(state.version).toBe(2);
+
+    // Verify migration was persisted to disk
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(onDisk.version).toBe(2);
+  });
+
+  it('should preserve config when migrating from v1 to v2', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const v1 = makeV1State();
+    (v1.config as Record<string, unknown>)['githubUsername'] = 'migrated-user';
+    fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    expect(sm.getState().config.githubUsername).toBe('migrated-user');
+  });
+
+  it('should clear activePRs during v1 → v2 migration', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const pr = {
+      id: 1,
+      url: 'https://github.com/owner/repo/pull/1',
+      repo: 'owner/repo',
+      number: 1,
+      title: 'Test',
+      status: 'open',
+      activityStatus: 'active',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+      lastChecked: '2024-01-01T00:00:00Z',
+      lastActivityAt: '2024-01-01T00:00:00Z',
+      daysSinceActivity: 0,
+      hasUnreadComments: false,
+      reviewCommentCount: 0,
+      commitCount: 1,
+    };
+    const v1 = makeV1State({ activePRs: [pr] });
+    fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    // v2 migration clears active PRs (they're fetched fresh from GitHub)
+    expect(sm.getState().activePRs).toHaveLength(0);
+  });
+
+  it('should create repo scores from mergedPRs found in v1 state', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const mergedPR = {
+      id: 10,
+      url: 'https://github.com/facebook/react/pull/10',
+      repo: 'facebook/react',
+      number: 10,
+      title: 'Merged PR',
+      status: 'merged',
+      activityStatus: 'active',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+      lastChecked: '2024-01-01T00:00:00Z',
+      lastActivityAt: '2024-01-01T00:00:00Z',
+      daysSinceActivity: 0,
+      hasUnreadComments: false,
+      reviewCommentCount: 0,
+      commitCount: 1,
+    };
+    const v1 = makeV1State({ mergedPRs: [mergedPR] });
+    fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    // Migration should create a repo score entry for the repo that had a merged PR
+    expect(sm.getState().repoScores['facebook/react']).toBeDefined();
+  });
+
+  it('should create repo scores from closedPRs found in v1 state', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const closedPR = {
+      id: 20,
+      url: 'https://github.com/vuejs/vue/pull/20',
+      repo: 'vuejs/vue',
+      number: 20,
+      title: 'Closed PR',
+      status: 'closed',
+      activityStatus: 'active',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+      lastChecked: '2024-01-01T00:00:00Z',
+      lastActivityAt: '2024-01-01T00:00:00Z',
+      daysSinceActivity: 0,
+      hasUnreadComments: false,
+      reviewCommentCount: 0,
+      commitCount: 1,
+    };
+    const v1 = makeV1State({ closedPRs: [closedPR] });
+    fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    expect(sm.getState().repoScores['vuejs/vue']).toBeDefined();
+  });
+
+  it('should not overwrite existing repo scores from v1 state during migration', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const existingScore = {
+      'owner/repo': {
+        repo: 'owner/repo',
+        score: 9,
+        mergedPRCount: 5,
+        closedWithoutMergeCount: 0,
+        avgResponseDays: null,
+        lastEvaluatedAt: '2024-01-01T00:00:00Z',
+        signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
+      },
+    };
+    const mergedPR = {
+      id: 30,
+      url: 'https://github.com/owner/repo/pull/30',
+      repo: 'owner/repo',
+      number: 30,
+      title: 'Another Merged PR',
+      status: 'merged',
+      activityStatus: 'active',
+      createdAt: '2024-01-01T00:00:00Z',
+      updatedAt: '2024-01-01T00:00:00Z',
+      lastChecked: '2024-01-01T00:00:00Z',
+      lastActivityAt: '2024-01-01T00:00:00Z',
+      daysSinceActivity: 0,
+      hasUnreadComments: false,
+      reviewCommentCount: 0,
+      commitCount: 1,
+    };
+    const v1 = makeV1State({ repoScores: existingScore, mergedPRs: [mergedPR] });
+    fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    // The pre-existing score should be preserved, not replaced with a default
+    expect(sm.getState().repoScores['owner/repo'].score).toBe(9);
+    expect(sm.getState().repoScores['owner/repo'].mergedPRCount).toBe(5);
+  });
+
+  it('should migrate v1 backup to v2 when restoring from backup', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, 'CORRUPT', { mode: 0o600 });
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    // Backup is a valid v1 state
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'),
+      JSON.stringify(makeV1State()),
+      { mode: 0o600 },
+    );
+
+    const sm = new StateManager(false);
+    // Should have been migrated to v2 during restore
+    expect(sm.getState().version).toBe(2);
+  });
+});
