@@ -251,7 +251,7 @@ export function writeDashboardFromState(): string {
   return dashboardPath;
 }
 
-interface DashboardStats {
+export interface DashboardStats {
   activePRs: number;
   shelvedPRs: number;
   mergedPRs: number;
@@ -259,7 +259,7 @@ interface DashboardStats {
   mergeRate: string;
 }
 
-function buildDashboardStats(digest: DailyDigest, state: AgentState): DashboardStats {
+export function buildDashboardStats(digest: DailyDigest, state: AgentState): DashboardStats {
   const summary = digest.summary || {
     totalActivePRs: 0,
     totalMergedAllTime: 0,
@@ -282,7 +282,7 @@ function buildDashboardStats(digest: DailyDigest, state: AgentState): DashboardS
  * (e.g., javascript:) — callers placing values in href attributes should validate
  * the URL scheme if the source is untrusted. GitHub API URLs are trusted.
  */
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
