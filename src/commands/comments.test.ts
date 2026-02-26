@@ -185,6 +185,19 @@ describe('runPost', () => {
     mockExit.mockRestore();
   });
 
+  it('should exit with error when message exceeds maximum length', async () => {
+    mockGetGitHubToken.mockReturnValue('ghp_test123');
+    const oversizedMessage = 'a'.repeat(1001);
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runPost({ url: TEST_PR_URL, message: oversizedMessage, json: true })).rejects.toThrow('exit');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('Message exceeds maximum length'));
+    mockExit.mockRestore();
+  });
+
   it('should post a comment and output JSON', async () => {
     mockGetGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
@@ -243,6 +256,22 @@ describe('runClaim', () => {
     await expect(runClaim({ issueUrl: TEST_PR_URL, json: true })).rejects.toThrow('exit');
 
     expect(mockOutputJsonError).toHaveBeenCalledWith('Invalid issue URL format (must be an issue, not a PR)');
+    mockExit.mockRestore();
+  });
+
+  it('should exit with error when claim message exceeds maximum length', async () => {
+    mockGetGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 10, type: 'issues' });
+    const oversizedMessage = 'b'.repeat(1001);
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runClaim({ issueUrl: TEST_ISSUE_URL, message: oversizedMessage, json: true })).rejects.toThrow(
+      'exit',
+    );
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('Message exceeds maximum length'));
     mockExit.mockRestore();
   });
 

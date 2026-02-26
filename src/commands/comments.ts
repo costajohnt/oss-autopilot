@@ -6,7 +6,7 @@
 import { getStateManager, getOctokit, parseGitHubUrl, formatRelativeTime, getGitHubToken } from '../core/index.js';
 import { paginateAll } from '../core/pagination.js';
 import { outputJson, outputJsonError } from '../formatters/json.js';
-import { validateUrl } from './validation.js';
+import { validateUrl, validateMessage } from './validation.js';
 
 interface CommentsOptions {
   prUrl: string;
@@ -240,6 +240,17 @@ export async function runPost(options: PostOptions): Promise<void> {
     process.exit(1);
   }
 
+  try {
+    validateMessage(message);
+  } catch (error) {
+    if (options.json) {
+      outputJsonError(error instanceof Error ? error.message : 'Invalid message');
+    } else {
+      console.error(`Error: ${error instanceof Error ? error.message : 'Invalid message'}`);
+    }
+    process.exit(1);
+  }
+
   // Parse URL
   const parsed = parseGitHubUrl(options.url);
   if (!parsed) {
@@ -326,6 +337,17 @@ export async function runClaim(options: ClaimOptions): Promise<void> {
 
   // Default claim message or custom
   const message = options.message || "Hi! I'd like to work on this issue. Could you assign it to me?";
+
+  try {
+    validateMessage(message);
+  } catch (error) {
+    if (options.json) {
+      outputJsonError(error instanceof Error ? error.message : 'Invalid message');
+    } else {
+      console.error(`Error: ${error instanceof Error ? error.message : 'Invalid message'}`);
+    }
+    process.exit(1);
+  }
 
   if (!options.json) {
     console.log('\n🙋 Claiming issue:', options.issueUrl);
