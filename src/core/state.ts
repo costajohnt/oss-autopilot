@@ -8,7 +8,6 @@ import * as path from 'path';
 import {
   AgentState,
   INITIAL_STATE,
-  TrackedPR,
   TrackedIssue,
   RepoScore,
   RepoScoreUpdate,
@@ -113,20 +112,18 @@ export function atomicWriteFileSync(filePath: string, data: string, mode?: numbe
 }
 
 /**
- * Migrate state from v1 (local PR tracking) to v2 (fresh GitHub fetching)
- * - Preserves repoScores (used for search prioritization)
- * - Preserves config
- * - Drops PR/issue arrays (no longer needed - fetched fresh from GitHub)
+ * Migrate state from v1 (local PR tracking) to v2 (fresh GitHub fetching).
+ * Preserves repoScores and config; drops the legacy PR arrays.
  */
-function migrateV1ToV2(state: AgentState): AgentState {
+function migrateV1ToV2(rawState: Record<string, unknown>): AgentState {
   console.error('Migrating state from v1 to v2 (fresh GitHub fetching)...');
 
-  // Extract merged PR count per repo for scoring
-  const mergedPRs = state.mergedPRs || [];
-  const closedPRs = state.closedPRs || [];
+  // Extract merged/closed PR arrays from v1 state to seed repo scores
+  const mergedPRs = (rawState.mergedPRs as Array<{ repo: string }> | undefined) || [];
+  const closedPRs = (rawState.closedPRs as Array<{ repo: string }> | undefined) || [];
 
   // Update repo scores from historical PR data if not already present
-  const repoScores = { ...state.repoScores };
+  const repoScores = { ...((rawState.repoScores as AgentState['repoScores']) || {}) };
 
   for (const pr of mergedPRs) {
     if (!repoScores[pr.repo]) {
@@ -167,15 +164,10 @@ function migrateV1ToV2(state: AgentState): AgentState {
 
   const migratedState: AgentState = {
     version: 2,
-    // Keep PR arrays for history but don't actively track
-    activePRs: [], // Clear active - will be fetched fresh
-    activeIssues: state.activeIssues || [],
-    dormantPRs: state.dormantPRs || [],
-    mergedPRs: state.mergedPRs || [],
-    closedPRs: state.closedPRs || [],
+    activeIssues: (rawState.activeIssues as AgentState['activeIssues']) || [],
     repoScores,
-    config: state.config,
-    events: state.events || [],
+    config: rawState.config as AgentState['config'],
+    events: (rawState.events as AgentState['events']) || [],
     lastRunAt: new Date().toISOString(),
   };
 
@@ -211,11 +203,7 @@ export class StateManager {
   private createFreshState(): AgentState {
     return {
       version: CURRENT_STATE_VERSION,
-      activePRs: [],
       activeIssues: [],
-      dormantPRs: [],
-      mergedPRs: [],
-      closedPRs: [],
       repoScores: {},
       config: {
         ...INITIAL_STATE.config,
@@ -477,15 +465,9 @@ export class StateManager {
 
     if (!hasBaseFields) return false;
 
-    // v1 requires PR arrays
+    // v1 requires base PR arrays to be present (they will be dropped during migration)
     if (s.version === 1) {
-      return (
-        Array.isArray(s.activePRs) &&
-        Array.isArray(s.activeIssues) &&
-        Array.isArray(s.dormantPRs) &&
-        Array.isArray(s.mergedPRs) &&
-        Array.isArray(s.closedPRs)
-      );
+      return Array.isArray(s.activePRs) && Array.isArray(s.dormantPRs) && Array.isArray(s.mergedPRs) && Array.isArray(s.closedPRs);
     }
 
     // v2+ doesn't require PR arrays
@@ -664,32 +646,6 @@ export class StateManager {
       const eventTime = new Date(e.at);
       return eventTime >= since && eventTime <= until;
     });
-  }
-
-  // === PR Management ===
-
-  /**
-   * Add a PR to the active tracking list. If a PR with the same URL is already
-   * tracked, the call is a no-op (logs a warning but does not duplicate).
-   * Also appends a 'pr_tracked' event.
-   * @param pr - The PR to begin tracking.
-   */
-  addActivePR(pr: TrackedPR): void {
-    // Check if already exists
-    const existing = this.state.activePRs.find((p) => p.url === pr.url);
-    if (existing) {
-      console.error(`PR ${pr.url} already tracked`);
-      return;
-    }
-
-    this.state.activePRs.push(pr);
-    this.appendEvent('pr_tracked', {
-      url: pr.url,
-      repo: pr.repo,
-      number: pr.number,
-      title: pr.title,
-    });
-    console.error(`Added active PR: ${pr.repo}#${pr.number}`);
   }
 
   // === Issue Management ===
@@ -989,68 +945,6 @@ export class StateManager {
     return expired;
   }
 
-  // === PR Utilities ===
-
-  /**
-   * Remove a PR from tracking entirely (active or dormant list). Does not move it
-   * to merged/closed -- the PR is simply dropped from state.
-   * @param url - The full GitHub PR URL.
-   * @returns true if the PR was found and removed, false if not found.
-   */
-  untrackPR(url: string): boolean {
-    // Check active PRs
-    let index = this.state.activePRs.findIndex((p) => p.url === url);
-    if (index !== -1) {
-      const pr = this.state.activePRs.splice(index, 1)[0];
-      console.error(`Untracked PR: ${pr.repo}#${pr.number}`);
-      return true;
-    }
-
-    // Check dormant PRs
-    index = this.state.dormantPRs.findIndex((p) => p.url === url);
-    if (index !== -1) {
-      const pr = this.state.dormantPRs.splice(index, 1)[0];
-      console.error(`Untracked dormant PR: ${pr.repo}#${pr.number}`);
-      return true;
-    }
-
-    console.error(`PR not found: ${url}`);
-    return false;
-  }
-
-  /**
-   * Mark an active PR's comments as read and reset its activity status to 'active'.
-   * @param url - The full GitHub PR URL.
-   * @returns true if the PR was found and updated, false if not in the active list.
-   */
-  markPRAsRead(url: string): boolean {
-    const pr = this.state.activePRs.find((p) => p.url === url);
-    if (pr) {
-      pr.hasUnreadComments = false;
-      pr.activityStatus = 'active';
-      console.error(`Marked as read: ${pr.repo}#${pr.number}`);
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * Mark all active PRs with unread comments as read.
-   * @returns The number of PRs that were marked as read.
-   */
-  markAllPRsAsRead(): number {
-    let count = 0;
-    for (const pr of this.state.activePRs) {
-      if (pr.hasUnreadComments) {
-        pr.hasUnreadComments = false;
-        pr.activityStatus = 'active';
-        count++;
-      }
-    }
-    console.error(`Marked ${count} PRs as read`);
-    return count;
-  }
-
   // === Repository Scoring ===
 
   /**
@@ -1267,12 +1161,10 @@ export class StateManager {
   // === Statistics ===
 
   /**
-   * Compute aggregate statistics from the current state. In v2 architecture, `activePRs`,
-   * `dormantPRs`, `activeIssues`, and `needsResponse` always return 0 because those counts
-   * come from the fresh GitHub fetch (see PRMonitor), not from local state. The `mergedPRs`
-   * and `closedPRs` counts are summed from repo score records, excluding repos that match
-   * `excludeRepos` or `excludeOrgs` in the config (#211). `totalTracked` reflects the
-   * number of non-excluded repositories with score records.
+   * Compute aggregate statistics from the current state. `mergedPRs` and `closedPRs` counts
+   * are summed from repo score records, excluding repos that match `excludeRepos` or `excludeOrgs`
+   * in the config (#211). `totalTracked` reflects the number of non-excluded repositories with
+   * score records.
    * @returns A Stats snapshot computed from the current state.
    */
   getStats(): Stats {
@@ -1292,10 +1184,6 @@ export class StateManager {
     const mergeRate = completed > 0 ? (totalMerged / completed) * 100 : 0;
 
     return {
-      // v2: These are calculated from fresh GitHub data, not stored locally
-      // Return 0 for legacy fields - actual counts come from fresh fetch
-      activePRs: 0,
-      dormantPRs: 0,
       mergedPRs: totalMerged,
       closedPRs: totalClosed,
       activeIssues: 0,
@@ -1309,14 +1197,8 @@ export class StateManager {
 
 /**
  * Aggregate statistics returned by {@link StateManager.getStats}.
- * In v2, fields that depend on live GitHub data return 0 from local state;
- * actual counts are provided by the fresh-fetch layer (PRMonitor).
  */
 export interface Stats {
-  /** Number of active PRs. Always 0 in v2 (sourced from fresh fetch instead). */
-  activePRs: number;
-  /** Number of dormant PRs. Always 0 in v2 (sourced from fresh fetch instead). */
-  dormantPRs: number;
   /** Total merged PRs across scored repositories (excludes repos/orgs in exclusion config). */
   mergedPRs: number;
   /** Total PRs closed without merge across scored repositories (excludes repos/orgs in exclusion config). */

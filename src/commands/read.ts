@@ -1,9 +1,9 @@
 /**
  * Read command
- * Mark PR comments as read
+ * In v2, PR read/unread state is not tracked locally.
+ * This command is a no-op preserved for backward compatibility.
  */
 
-import { getStateManager } from '../core/index.js';
 import { outputJson, outputJsonError } from '../formatters/json.js';
 import { validateUrl } from './validation.js';
 
@@ -14,25 +14,7 @@ interface ReadOptions {
 }
 
 export async function runRead(options: ReadOptions): Promise<void> {
-  const stateManager = getStateManager();
-
-  if (options.all) {
-    if (!options.json) {
-      console.log('\n✓ Marking all PRs as read...\n');
-    }
-
-    const count = stateManager.markAllPRsAsRead();
-    stateManager.save();
-
-    if (options.json) {
-      outputJson({ markedAsRead: count, all: true });
-    } else {
-      console.log(`Marked ${count} PRs as read.`);
-    }
-    return;
-  }
-
-  if (!options.prUrl) {
+  if (!options.all && !options.prUrl) {
     if (options.json) {
       outputJsonError('PR URL or --all flag required');
     } else {
@@ -41,24 +23,18 @@ export async function runRead(options: ReadOptions): Promise<void> {
     process.exit(1);
   }
 
-  validateUrl(options.prUrl);
-
-  if (!options.json) {
-    console.log(`\n✓ Marking PR as read: ${options.prUrl}\n`);
+  if (options.prUrl) {
+    validateUrl(options.prUrl);
   }
 
-  const marked = stateManager.markPRAsRead(options.prUrl);
-  if (marked) {
-    stateManager.save();
-  }
-
+  // In v2, unread state is not tracked locally — PRs are fetched fresh each run.
   if (options.json) {
-    outputJson({ marked, url: options.prUrl });
-  } else {
-    if (marked) {
-      console.log('PR marked as read.');
+    if (options.all) {
+      outputJson({ markedAsRead: 0, all: true, message: 'In v2, PR read state is not tracked locally.' });
     } else {
-      console.log('PR not found or already read.');
+      outputJson({ marked: false, url: options.prUrl, message: 'In v2, PR read state is not tracked locally.' });
     }
+  } else {
+    console.log('Note: In v2, PR read state is not tracked locally. PRs are fetched fresh on each daily run.');
   }
 }

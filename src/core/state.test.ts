@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { StateManager, acquireLock, releaseLock, atomicWriteFileSync } from './state.js';
-import { TrackedPR, StateEventType } from './types.js';
+import { StateEventType } from './types.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -12,96 +12,28 @@ import * as os from 'os';
 describe('StateManager', () => {
   let stateManager: StateManager;
 
-  // Factory function to create a fresh mock PR for each test
-  const createMockPR = (overrides: Partial<TrackedPR> = {}): TrackedPR => ({
-    id: 123,
-    url: 'https://github.com/owner/repo/pull/1',
-    repo: 'owner/repo',
-    number: 1,
-    title: 'Test PR',
-    status: 'open',
-    activityStatus: 'active',
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-01T00:00:00Z',
-    lastChecked: '2024-01-01T00:00:00Z',
-    lastActivityAt: '2024-01-01T00:00:00Z',
-    daysSinceActivity: 0,
-    hasUnreadComments: false,
-    reviewCommentCount: 0,
-    commitCount: 1,
-    ...overrides,
-  });
-
   beforeEach(() => {
     // Create a fresh in-memory state manager for each test
     stateManager = new StateManager(true);
   });
 
-  describe('PR Management', () => {
-    it('should add a PR to active list', () => {
-      const mockPR = createMockPR();
-      stateManager.addActivePR(mockPR);
+  describe('Issue Management', () => {
+    it('should add an issue to active list', () => {
+      const mockIssue = {
+        id: 1,
+        url: 'https://github.com/owner/repo/issues/1',
+        repo: 'owner/repo',
+        number: 1,
+        title: 'Test issue',
+        status: 'candidate' as const,
+        labels: [],
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-01T00:00:00Z',
+        vetted: false,
+      };
+      stateManager.addIssue(mockIssue);
       const state = stateManager.getState();
-      expect(state.activePRs).toHaveLength(1);
-      expect(state.activePRs[0].url).toBe(mockPR.url);
-    });
-
-    it('should not add duplicate PRs', () => {
-      const mockPR = createMockPR();
-      stateManager.addActivePR(mockPR);
-      stateManager.addActivePR(mockPR);
-      const state = stateManager.getState();
-      expect(state.activePRs).toHaveLength(1);
-    });
-
-    it('should untrack a PR', () => {
-      const mockPR = createMockPR();
-      stateManager.addActivePR(mockPR);
-      const removed = stateManager.untrackPR(mockPR.url);
-      expect(removed).toBe(true);
-      expect(stateManager.getState().activePRs).toHaveLength(0);
-    });
-
-    it('should untrack a dormant PR', () => {
-      const mockPR = createMockPR({ activityStatus: 'dormant' });
-      // Manually place PR in dormant array (simulating legacy state)
-      (stateManager.getState().dormantPRs as TrackedPR[]).push(mockPR);
-      const removed = stateManager.untrackPR(mockPR.url);
-      expect(removed).toBe(true);
-      expect(stateManager.getState().dormantPRs).toHaveLength(0);
-    });
-
-    it('should return false when untracking non-existent PR', () => {
-      const removed = stateManager.untrackPR('https://github.com/fake/url');
-      expect(removed).toBe(false);
-    });
-  });
-
-  describe('Mark as Read', () => {
-    it('should mark PR as read', () => {
-      const mockPR = createMockPR({ hasUnreadComments: true, activityStatus: 'needs_response' });
-      stateManager.addActivePR(mockPR);
-      const marked = stateManager.markPRAsRead(mockPR.url);
-      expect(marked).toBe(true);
-      const state = stateManager.getState();
-      expect(state.activePRs[0].hasUnreadComments).toBe(false);
-      expect(state.activePRs[0].activityStatus).toBe('active');
-    });
-
-    it('should mark all PRs as read', () => {
-      const pr1 = createMockPR({ hasUnreadComments: true });
-      const pr2 = createMockPR({
-        id: 456,
-        url: 'https://github.com/owner/repo/pull/2',
-        number: 2,
-        hasUnreadComments: true,
-      });
-      stateManager.addActivePR(pr1);
-      stateManager.addActivePR(pr2);
-      const count = stateManager.markAllPRsAsRead();
-      expect(count).toBe(2);
-      const state = stateManager.getState();
-      expect(state.activePRs.every((pr) => !pr.hasUnreadComments)).toBe(true);
+      expect(state.activeIssues).toHaveLength(1);
     });
   });
 
@@ -113,19 +45,8 @@ describe('StateManager', () => {
 
     it('should return 0 for needsResponse in v2 (PRs fetched fresh from GitHub)', () => {
       // In v2, PRs are not tracked locally - they're fetched fresh
-      // So needsResponse is always 0 in getStats()
-      // The actual count comes from the fresh fetch in daily command
-      const pr1 = createMockPR({ hasUnreadComments: true });
-      const pr2 = createMockPR({
-        id: 456,
-        url: 'https://github.com/owner/repo/pull/2',
-        number: 2,
-        hasUnreadComments: false,
-      });
-      stateManager.addActivePR(pr1);
-      stateManager.addActivePR(pr2);
+      // needsResponse is always 0 in getStats()
       const stats = stateManager.getStats();
-      // v2: needsResponse is 0 because we don't track PRs locally anymore
       expect(stats.needsResponse).toBe(0);
     });
   });
@@ -168,17 +89,12 @@ describe('StateManager', () => {
   });
 
   describe('Edge Cases', () => {
-    it('should handle markPRAsRead on non-existent PR', () => {
-      const result = stateManager.markPRAsRead('https://nonexistent.url');
-      expect(result).toBe(false);
-    });
-
     it('should isolate state between instances', () => {
       const sm1 = new StateManager(true);
       const sm2 = new StateManager(true);
-      sm1.addActivePR(createMockPR());
-      expect(sm1.getState().activePRs).toHaveLength(1);
-      expect(sm2.getState().activePRs).toHaveLength(0);
+      sm1.updateRepoScore('owner/repo', { mergedPRCount: 1 });
+      expect(Object.keys(sm1.getState().repoScores)).toHaveLength(1);
+      expect(Object.keys(sm2.getState().repoScores)).toHaveLength(0);
     });
   });
 });
@@ -440,32 +356,11 @@ describe('StateManager state validity', () => {
     expect(typeof state.repoScores).toBe('object');
     expect(Array.isArray(state.events)).toBe(true);
     expect(state.events).toHaveLength(0);
-    expect(Array.isArray(state.activePRs)).toBe(true);
-    expect(Array.isArray(state.mergedPRs)).toBe(true);
-    expect(Array.isArray(state.closedPRs)).toBe(true);
-    expect(Array.isArray(state.dormantPRs)).toBe(true);
+    expect(Array.isArray(state.activeIssues)).toBe(true);
     expect(typeof state.lastRunAt).toBe('string');
   });
 
   it('should maintain valid structure after operations', () => {
-    const mockPR: TrackedPR = {
-      id: 999,
-      url: 'https://github.com/owner/repo/pull/99',
-      repo: 'owner/repo',
-      number: 99,
-      title: 'Validity test PR',
-      status: 'open',
-      activityStatus: 'active',
-      createdAt: '2024-01-01T00:00:00Z',
-      updatedAt: '2024-01-01T00:00:00Z',
-      lastChecked: '2024-01-01T00:00:00Z',
-      lastActivityAt: '2024-01-01T00:00:00Z',
-      daysSinceActivity: 0,
-      hasUnreadComments: false,
-      reviewCommentCount: 0,
-      commitCount: 1,
-    };
-    stateManager.addActivePR(mockPR);
     stateManager.updateRepoScore('owner/repo', { mergedPRCount: 2 });
     stateManager.appendEvent('daily_check', { note: 'test' });
 
@@ -474,10 +369,8 @@ describe('StateManager state validity', () => {
     expect(typeof state.config).toBe('object');
     expect(typeof state.repoScores).toBe('object');
     expect(Array.isArray(state.events)).toBe(true);
-    expect(state.activePRs).toHaveLength(1);
     expect(Object.keys(state.repoScores)).toHaveLength(1);
-    // events includes the pr_tracked event from addActivePR + the daily_check
-    expect(state.events.length).toBeGreaterThanOrEqual(2);
+    expect(state.events.length).toBeGreaterThanOrEqual(1);
   });
 
   it('should aggregate stats correctly from repo scores', () => {

@@ -3,7 +3,7 @@
  * Provides structured output that can be consumed by scripts and plugins
  */
 
-import type { TrackedPR, FetchedPR, DailyDigest, AgentState, RepoGroup, CommentedIssue } from '../core/types.js';
+import type { FetchedPR, DailyDigest, AgentState, RepoGroup, CommentedIssue } from '../core/types.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { SearchPriority } from '../core/issue-discovery.js';
 
@@ -82,8 +82,6 @@ export interface DailyOutput {
 
 export interface StatusOutput {
   stats: {
-    activePRs: number;
-    dormantPRs: number;
     mergedPRs: number;
     closedPRs: number;
     activeIssues: number;
@@ -91,8 +89,6 @@ export interface StatusOutput {
     mergeRate: string;
     needsResponse: number;
   };
-  activePRs: TrackedPR[];
-  dormantPRs: TrackedPR[];
   lastRunAt: string;
 }
 
@@ -128,7 +124,12 @@ export interface SearchOutput {
 }
 
 export interface TrackOutput {
-  pr: TrackedPR;
+  pr: {
+    repo: string;
+    number: number;
+    title: string;
+    url: string;
+  };
 }
 
 export interface ConfigOutput {
