@@ -322,19 +322,6 @@ export async function runClaim(options: ClaimOptions): Promise<void> {
     process.exit(1);
   }
 
-  // Parse URL
-  const parsed = parseGitHubUrl(options.issueUrl);
-  if (!parsed || parsed.type !== 'issues') {
-    if (options.json) {
-      outputJsonError('Invalid issue URL format (must be an issue, not a PR)');
-    } else {
-      console.error('Invalid issue URL format (must be an issue, not a PR)');
-    }
-    process.exit(1);
-  }
-
-  const { owner, repo, number } = parsed;
-
   // Default claim message or custom
   const message = options.message || "Hi! I'd like to work on this issue. Could you assign it to me?";
 
@@ -348,6 +335,19 @@ export async function runClaim(options: ClaimOptions): Promise<void> {
     }
     process.exit(1);
   }
+
+  // Parse URL
+  const parsed = parseGitHubUrl(options.issueUrl);
+  if (!parsed || parsed.type !== 'issues') {
+    if (options.json) {
+      outputJsonError('Invalid issue URL format (must be an issue, not a PR)');
+    } else {
+      console.error('Invalid issue URL format (must be an issue, not a PR)');
+    }
+    process.exit(1);
+  }
+
+  const { owner, repo, number } = parsed;
 
   if (!options.json) {
     console.log('\n🙋 Claiming issue:', options.issueUrl);

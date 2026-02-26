@@ -261,7 +261,6 @@ describe('runClaim', () => {
 
   it('should exit with error when claim message exceeds maximum length', async () => {
     mockGetGitHubToken.mockReturnValue('ghp_test123');
-    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 10, type: 'issues' });
     const oversizedMessage = 'b'.repeat(1001);
     const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
       throw new Error('exit');
