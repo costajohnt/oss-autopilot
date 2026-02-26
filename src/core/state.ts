@@ -76,8 +76,7 @@ export function acquireLock(lockPath: string): void {
   try {
     fs.unlinkSync(lockPath);
   } catch (err) {
-    // Intentionally silent: another process may have removed the stale lock first,
-    // which is fine — we proceed to re-acquire regardless
+    // Another process may have removed the stale lock first — proceed to re-acquire regardless
     debug(MODULE, 'Stale lock already removed by another process', err);
   }
   try {
@@ -100,7 +99,7 @@ export function releaseLock(lockPath: string): void {
       fs.unlinkSync(lockPath);
     }
   } catch (err) {
-    // Intentionally silent: lock already removed or unreadable — nothing to do
+    // Lock already removed or unreadable — nothing to do
     debug(MODULE, 'Lock file already removed or unreadable during release', err);
   }
 }

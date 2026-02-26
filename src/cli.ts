@@ -36,8 +36,7 @@ const VERSION = (() => {
     const pkgPath = path.join(path.dirname(process.argv[1]), '..', 'package.json');
     return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
   } catch (_err) {
-    // Intentionally silent: package.json may not be readable in all bundle/install
-    // configurations. Fall back to a safe default version string.
+    // package.json may not be readable in all bundle/install configurations — fall back to safe default
     return '0.0.0';
   }
 })();
