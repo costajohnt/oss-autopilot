@@ -48,32 +48,28 @@ const mockGetGitHubToken = vi.mocked(getGitHubToken);
 const mockEnableDebug = vi.mocked(enableDebug);
 const mockDebug = vi.mocked(debug);
 
-// ─── Canonical list of LOCAL_ONLY_COMMANDS (mirrors cli.ts) ──────────────────
+// ─── LOCAL_ONLY_COMMANDS extracted directly from cli.ts source ───────────────
 //
-// This array is the source of truth for the token-gating bypass list.
-// Tests below verify both its membership and the preAction hook that reads it.
+// We read cli.ts at test time to extract the actual LOCAL_ONLY_COMMANDS array
+// so tests stay in sync automatically rather than relying on a manually maintained copy.
+//
+// NOTE: 'help' and 'version' are included in cli.ts's list as a defensive measure,
+// but Commander handles those built-ins before preAction ever fires, so they are
+// never actually matched. They are tested via the length assertion below.
 
-const LOCAL_ONLY_COMMANDS = [
-  'help',
-  'status',
-  'config',
-  'read',
-  'untrack',
-  'version',
-  'setup',
-  'checkSetup',
-  'dashboard',
-  'parse-issue-list',
-  'check-integration',
-  'local-repos',
-  'startup',
-  'shelve',
-  'unshelve',
-  'dismiss',
-  'undismiss',
-  'snooze',
-  'unsnooze',
-];
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+function extractLocalOnlyCommandsFromSource(): string[] {
+  const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+  const match = src.match(/const LOCAL_ONLY_COMMANDS = \[([\s\S]*?)\];/);
+  if (!match) throw new Error('Could not locate LOCAL_ONLY_COMMANDS in cli.ts');
+  const entries = match[1].match(/'([^']+)'/g);
+  if (!entries) throw new Error('Could not parse LOCAL_ONLY_COMMANDS entries from cli.ts');
+  return entries.map((s) => s.replace(/'/g, ''));
+}
+
+const LOCAL_ONLY_COMMANDS = extractLocalOnlyCommandsFromSource();
 
 // ─── Helper: build a minimal Commander program with the same preAction hook ──
 
@@ -81,7 +77,9 @@ function buildTestProgram(localOnlyCommands: string[]) {
   const program = new Command();
   program.name('oss-autopilot').option('--debug', 'Enable debug logging');
 
-  // Register a couple of representative commands
+  // Register a representative set of commands: two that require a token (daily, search)
+  // and two that are LOCAL_ONLY (status, config). This is sufficient to exercise
+  // preAction hook branching without wiring up all 25 real commands.
   program.command('daily').description('Run daily check').action(noop);
   program.command('status').description('Show status').action(noop);
   program.command('config').description('Show config').action(noop);
@@ -192,6 +190,8 @@ describe('LOCAL_ONLY_COMMANDS', () => {
   });
 
   it('should have exactly the expected number of entries (no accidental additions/deletions)', () => {
+    // 19 entries: 17 active + 'help' and 'version' which Commander intercepts before
+    // preAction fires, so they are defensive/dead entries but intentionally kept.
     expect(LOCAL_ONLY_COMMANDS).toHaveLength(19);
   });
 });
@@ -397,10 +397,28 @@ describe('Version detection IIFE', () => {
 
 // ─── Command registration ─────────────────────────────────────────────────────
 
+// Helper: extract command names registered in cli.ts by parsing its source.
+//
+// In cli.ts, each command is registered via method chaining across two lines:
+//   program
+//     .command('name')
+//     .description(...)
+//
+// The regex uses the multiline flag and anchors to line-start indentation so it
+// matches '.command(' calls without needing 'program' on the same line.
+// Arguments like '<pr-url>' and '[count]' are excluded via the character class.
+function extractRegisteredCommandsFromSource(): string[] {
+  const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+  const matches = src.matchAll(/^\s+\.command\('([^'\s<\[]+)/gm);
+  return [...matches].map((m) => m[1]);
+}
+
 describe('Command registration', () => {
-  it('should register all expected subcommands', async () => {
-    // Build a replica of the CLI program with all the expected subcommand names.
-    // This validates the structure without executing program.parse().
+  it('should register all expected subcommands', () => {
+    // Extract command names directly from cli.ts source so this test tracks
+    // additions and deletions in the real entry point automatically.
+    const registeredInCli = extractRegisteredCommandsFromSource();
+
     const expectedCommands = [
       'daily',
       'status',
@@ -429,21 +447,12 @@ describe('Command registration', () => {
       'unsnooze',
     ];
 
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
-
-    // Add all remaining expected commands to the program for this test
-    const alreadyRegistered = new Set(program.commands.map((c) => c.name()));
     for (const name of expectedCommands) {
-      if (!alreadyRegistered.has(name)) {
-        program.command(name).action(noop);
-      }
+      expect(registeredInCli).toContain(name);
     }
 
-    const registeredNames = program.commands.map((c) => c.name());
-
-    for (const name of expectedCommands) {
-      expect(registeredNames).toContain(name);
-    }
+    // Enforce exact count so additions to cli.ts are noticed here too.
+    expect(registeredInCli).toHaveLength(expectedCommands.length);
   });
 
   it('should register the program with name "oss-autopilot"', () => {
