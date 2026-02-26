@@ -28,10 +28,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build bundle
-        run: npm run bundle
+      - name: Run tests
+        run: npm test
+
+      - name: Build
+        run: npm run build && npm run bundle
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
