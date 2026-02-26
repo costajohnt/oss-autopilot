@@ -14,9 +14,9 @@ import {
   getGitHubToken,
 } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
+import { toShelvedPRRef } from './daily.js';
 import type {
   FetchedPR,
-  ShelvedPRRef,
   DailyDigest,
   AgentState,
   ClosedPR,
@@ -123,16 +123,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       // Dormant PRs are treated as shelved for display purposes
       const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
       const freshShelved = prs.filter((pr) => shelvedUrls.has(pr.url) || pr.status === 'dormant');
-      digest.shelvedPRs = freshShelved.map(
-        (pr): ShelvedPRRef => ({
-          number: pr.number,
-          url: pr.url,
-          title: pr.title,
-          repo: pr.repo,
-          daysSinceActivity: pr.daysSinceActivity,
-          status: pr.status,
-        }),
-      );
+      digest.shelvedPRs = freshShelved.map(toShelvedPRRef);
       digest.autoUnshelvedPRs = [];
       digest.summary.totalActivePRs = prs.length - freshShelved.length;
 

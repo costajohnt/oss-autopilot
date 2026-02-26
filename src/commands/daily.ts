@@ -906,7 +906,7 @@ function assessCapacity(activePRs: FetchedPR[], maxActivePRs: number, shelvedPRC
  * Map a full FetchedPR to a lightweight ShelvedPRRef for digest output.
  * Only the fields needed for display are retained, reducing JSON payload size.
  */
-function toShelvedPRRef(pr: FetchedPR): ShelvedPRRef {
+export function toShelvedPRRef(pr: FetchedPR): ShelvedPRRef {
   return {
     number: pr.number,
     url: pr.url,
