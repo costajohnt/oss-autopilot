@@ -80,3 +80,49 @@ export function validateRepoIdentifier(repo: string): string {
   }
   return repo;
 }
+
+/** Maximum allowed GitHub username length */
+const MAX_GITHUB_USERNAME_LENGTH = 39;
+
+/**
+ * GitHub username validation pattern.
+ * Rules: alphanumeric and hyphens only, no leading/trailing hyphens, max 39 chars.
+ * Consecutive hyphens are checked separately after the regex.
+ */
+const GITHUB_USERNAME_PATTERN = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/;
+
+/**
+ * Validate a GitHub username against GitHub's naming rules.
+ * Returns the username if valid, throws with a descriptive message if invalid.
+ *
+ * Rules enforced:
+ *  - May only contain alphanumeric characters and hyphens
+ *  - Cannot begin or end with a hyphen
+ *  - Cannot contain consecutive hyphens
+ *  - Maximum 39 characters
+ */
+export function validateGitHubUsername(username: string): string {
+  if (!username || username.length === 0) {
+    throw new Error('GitHub username cannot be empty.');
+  }
+
+  if (username.length > MAX_GITHUB_USERNAME_LENGTH) {
+    throw new Error(
+      `GitHub username "${username}" exceeds the maximum allowed length of ${MAX_GITHUB_USERNAME_LENGTH} characters.`,
+    );
+  }
+
+  if (!GITHUB_USERNAME_PATTERN.test(username)) {
+    throw new Error(
+      `Invalid GitHub username "${username}". Usernames may only contain alphanumeric characters and hyphens, and cannot begin or end with a hyphen.`,
+    );
+  }
+
+  if (username.includes('--')) {
+    throw new Error(
+      `Invalid GitHub username "${username}". Usernames cannot contain consecutive hyphens.`,
+    );
+  }
+
+  return username;
+}

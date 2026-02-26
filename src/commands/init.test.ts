@@ -45,6 +45,28 @@ describe('runInit', () => {
     } as any);
   });
 
+  it('should exit with error when username is invalid', async () => {
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runInit({ username: '-invalid', json: true })).rejects.toThrow('exit');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('Invalid GitHub username'));
+    mockExit.mockRestore();
+  });
+
+  it('should exit with error when username contains consecutive hyphens', async () => {
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runInit({ username: 'bad--user', json: true })).rejects.toThrow('exit');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('consecutive hyphens'));
+    mockExit.mockRestore();
+  });
+
   it('should exit with error when no GitHub token is available', async () => {
     mockGetGitHubToken.mockReturnValue(null as any);
     const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {

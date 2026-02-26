@@ -5,6 +5,7 @@
 
 import { getStateManager, PRMonitor, getOctokit, getGitHubToken } from '../core/index.js';
 import { outputJson, outputJsonError } from '../formatters/json.js';
+import { validateGitHubUsername } from './validation.js';
 
 interface InitOptions {
   username: string;
@@ -12,6 +13,19 @@ interface InitOptions {
 }
 
 export async function runInit(options: InitOptions): Promise<void> {
+  // Validate username before any interpolation into GitHub Search API queries.
+  try {
+    validateGitHubUsername(options.username);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (options.json) {
+      outputJsonError(msg);
+    } else {
+      console.error(`Error: ${msg}`);
+    }
+    process.exit(1);
+  }
+
   const token = getGitHubToken();
   if (!token) {
     if (options.json) {

@@ -4,7 +4,8 @@
  */
 
 import { getStateManager, DEFAULT_CONFIG } from '../core/index.js';
-import { outputJson } from '../formatters/json.js';
+import { outputJson, outputJsonError } from '../formatters/json.js';
+import { validateGitHubUsername } from './validation.js';
 
 interface SetupOptions {
   reset?: boolean;
@@ -30,6 +31,17 @@ export async function runSetup(options: SetupOptions): Promise<void> {
 
       switch (key) {
         case 'username':
+          try {
+            validateGitHubUsername(value);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (options.json) {
+              outputJsonError(msg);
+            } else {
+              console.error(`Error: ${msg}`);
+            }
+            process.exit(1);
+          }
           stateManager.updateConfig({ githubUsername: value });
           results[key] = value;
           break;

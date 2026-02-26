@@ -11,6 +11,7 @@ import {
   validatePRNumber,
   validateMessage,
   validateRepoIdentifier,
+  validateGitHubUsername,
 } from './validation.js';
 
 describe('PR_URL_PATTERN', () => {
@@ -125,5 +126,54 @@ describe('validateRepoIdentifier', () => {
 
   it('should throw for identifiers with spaces', () => {
     expect(() => validateRepoIdentifier('owner/my repo')).toThrow('Invalid repository format');
+  });
+});
+
+describe('validateGitHubUsername', () => {
+  it('should return valid usernames unchanged', () => {
+    expect(validateGitHubUsername('octocat')).toBe('octocat');
+    expect(validateGitHubUsername('john-doe')).toBe('john-doe');
+    expect(validateGitHubUsername('User123')).toBe('User123');
+    expect(validateGitHubUsername('a')).toBe('a');
+    expect(validateGitHubUsername('a'.repeat(39))).toBe('a'.repeat(39));
+  });
+
+  it('should throw for an empty username', () => {
+    expect(() => validateGitHubUsername('')).toThrow('GitHub username cannot be empty.');
+  });
+
+  it('should throw for usernames exceeding 39 characters', () => {
+    const long = 'a'.repeat(40);
+    expect(() => validateGitHubUsername(long)).toThrow(
+      'exceeds the maximum allowed length of 39 characters',
+    );
+  });
+
+  it('should throw for usernames with a leading hyphen', () => {
+    expect(() => validateGitHubUsername('-bad')).toThrow('Invalid GitHub username');
+  });
+
+  it('should throw for usernames with a trailing hyphen', () => {
+    expect(() => validateGitHubUsername('bad-')).toThrow('Invalid GitHub username');
+  });
+
+  it('should throw for usernames with consecutive hyphens', () => {
+    expect(() => validateGitHubUsername('bad--name')).toThrow('cannot contain consecutive hyphens');
+  });
+
+  it('should throw for usernames with special characters', () => {
+    expect(() => validateGitHubUsername('user_name')).toThrow('Invalid GitHub username');
+    expect(() => validateGitHubUsername('user name')).toThrow('Invalid GitHub username');
+    expect(() => validateGitHubUsername('user@name')).toThrow('Invalid GitHub username');
+    expect(() => validateGitHubUsername('user.name')).toThrow('Invalid GitHub username');
+  });
+
+  it('should throw for usernames that are only a hyphen', () => {
+    expect(() => validateGitHubUsername('-')).toThrow('Invalid GitHub username');
+  });
+
+  it('should accept usernames with hyphens in valid positions', () => {
+    expect(validateGitHubUsername('a-b')).toBe('a-b');
+    expect(validateGitHubUsername('my-org-name')).toBe('my-org-name');
   });
 });
