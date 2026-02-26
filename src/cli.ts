@@ -8,6 +8,7 @@
 
 import { Command } from 'commander';
 import { getGitHubToken, enableDebug, debug } from './core/index.js';
+import { outputJsonError } from './formatters/json.js';
 import { runDaily } from './commands/daily.js';
 import { runStatus } from './commands/status.js';
 import { runSearch } from './commands/search.js';
@@ -325,16 +326,23 @@ program.hook('preAction', async (thisCommand, actionCommand) => {
   if (!LOCAL_ONLY_COMMANDS.includes(commandName)) {
     const token = getGitHubToken();
     if (!token) {
-      console.error('Error: GitHub authentication required.');
-      console.error('');
-      console.error('Option 1 (Recommended): Install and authenticate GitHub CLI');
-      console.error('  Install: https://cli.github.com/');
-      console.error('  Then run: gh auth login');
-      console.error('');
-      console.error('Option 2: Set GITHUB_TOKEN environment variable');
-      console.error('  export GITHUB_TOKEN="your-github-token-here"');
-      console.error('');
-      console.error('Then run your command again.');
+      const jsonFlag = actionCommand.opts().json;
+      if (jsonFlag) {
+        outputJsonError(
+          'GitHub authentication required. Install GitHub CLI (https://cli.github.com/) and run "gh auth login", or set GITHUB_TOKEN.',
+        );
+      } else {
+        console.error('Error: GitHub authentication required.');
+        console.error('');
+        console.error('Option 1 (Recommended): Install and authenticate GitHub CLI');
+        console.error('  Install: https://cli.github.com/');
+        console.error('  Then run: gh auth login');
+        console.error('');
+        console.error('Option 2: Set GITHUB_TOKEN environment variable');
+        console.error('  export GITHUB_TOKEN="your-github-token-here"');
+        console.error('');
+        console.error('Then run your command again.');
+      }
       process.exit(1);
     }
   }
