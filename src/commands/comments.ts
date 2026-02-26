@@ -30,19 +30,8 @@ interface ClaimOptions {
 export async function runComments(options: CommentsOptions): Promise<void> {
   validateUrl(options.prUrl);
 
-  const token = getGitHubToken();
-  if (!token) {
-    if (options.json) {
-      outputJsonError('GitHub authentication required. Run "gh auth login" or set GITHUB_TOKEN.');
-    } else {
-      console.error('Error: GitHub authentication required.');
-      console.error('');
-      console.error('Options:');
-      console.error('  1. Use gh CLI: gh auth login');
-      console.error('  2. Set GITHUB_TOKEN environment variable');
-    }
-    process.exit(1);
-  }
+  // Token is guaranteed by the preAction hook in cli.ts for non-LOCAL_ONLY_COMMANDS.
+  const token = getGitHubToken()!;
 
   const stateManager = getStateManager();
   const octokit = getOctokit(token);
@@ -206,19 +195,8 @@ export async function runComments(options: CommentsOptions): Promise<void> {
 export async function runPost(options: PostOptions): Promise<void> {
   validateUrl(options.url);
 
-  const token = getGitHubToken();
-  if (!token) {
-    if (options.json) {
-      outputJsonError('GitHub authentication required. Run "gh auth login" or set GITHUB_TOKEN.');
-    } else {
-      console.error('Error: GitHub authentication required.');
-      console.error('');
-      console.error('Options:');
-      console.error('  1. Use gh CLI: gh auth login');
-      console.error('  2. Set GITHUB_TOKEN environment variable');
-    }
-    process.exit(1);
-  }
+  // Token is guaranteed by the preAction hook in cli.ts for non-LOCAL_ONLY_COMMANDS.
+  const token = getGitHubToken()!;
 
   let message = options.message;
 
@@ -297,19 +275,8 @@ export async function runPost(options: PostOptions): Promise<void> {
 export async function runClaim(options: ClaimOptions): Promise<void> {
   validateUrl(options.issueUrl);
 
-  const token = getGitHubToken();
-  if (!token) {
-    if (options.json) {
-      outputJsonError('GitHub authentication required. Run "gh auth login" or set GITHUB_TOKEN.');
-    } else {
-      console.error('Error: GitHub authentication required.');
-      console.error('');
-      console.error('Options:');
-      console.error('  1. Use gh CLI: gh auth login');
-      console.error('  2. Set GITHUB_TOKEN environment variable');
-    }
-    process.exit(1);
-  }
+  // Token is guaranteed by the preAction hook in cli.ts for non-LOCAL_ONLY_COMMANDS.
+  const token = getGitHubToken()!;
 
   // Parse URL
   const parsed = parseGitHubUrl(options.issueUrl);

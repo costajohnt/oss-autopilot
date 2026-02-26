@@ -4,7 +4,7 @@
  */
 
 import { getStateManager, PRMonitor, getGitHubToken } from '../core/index.js';
-import { outputJson, outputJsonError, type TrackOutput } from '../formatters/json.js';
+import { outputJson, type TrackOutput } from '../formatters/json.js';
 import { validateUrl, PR_URL_PATTERN, validateGitHubUrl } from './validation.js';
 
 interface TrackOptions {
@@ -21,19 +21,8 @@ export async function runTrack(options: TrackOptions): Promise<void> {
   validateUrl(options.prUrl);
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
 
-  const token = getGitHubToken();
-  if (!token) {
-    if (options.json) {
-      outputJsonError('GitHub authentication required. Run "gh auth login" or set GITHUB_TOKEN.');
-    } else {
-      console.error('Error: GitHub authentication required.');
-      console.error('');
-      console.error('Options:');
-      console.error('  1. Use gh CLI: gh auth login');
-      console.error('  2. Set GITHUB_TOKEN environment variable');
-    }
-    process.exit(1);
-  }
+  // Token is guaranteed by the preAction hook in cli.ts for non-LOCAL_ONLY_COMMANDS.
+  const token = getGitHubToken()!;
 
   const stateManager = getStateManager();
   const prMonitor = new PRMonitor(token);

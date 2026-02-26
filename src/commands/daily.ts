@@ -47,24 +47,8 @@ interface DailyOptions {
 }
 
 export async function runDaily(options: DailyOptions): Promise<void> {
-  const token = getGitHubToken();
-  if (!token) {
-    if (options.json) {
-      outputJsonError(
-        'GitHub authentication required. Install GitHub CLI (https://cli.github.com/) and run "gh auth login", or set GITHUB_TOKEN.',
-      );
-    } else {
-      console.error('Error: GitHub authentication required.');
-      console.error('');
-      console.error('Option 1 (Recommended): Install and authenticate GitHub CLI');
-      console.error('  Install: https://cli.github.com/');
-      console.error('  Then run: gh auth login');
-      console.error('');
-      console.error('Option 2: Set GITHUB_TOKEN environment variable');
-      console.error('  export GITHUB_TOKEN="your-github-token-here"');
-    }
-    process.exit(1);
-  }
+  // Token is guaranteed by the preAction hook in cli.ts for non-LOCAL_ONLY_COMMANDS.
+  const token = getGitHubToken()!;
 
   try {
     await runDailyInner(token, options);

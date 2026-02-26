@@ -19,17 +19,15 @@ vi.mock('../core/index.js', () => {
 
 vi.mock('../formatters/json.js', () => ({
   outputJson: vi.fn(),
-  outputJsonError: vi.fn(),
 }));
 
 import { getStateManager, getGitHubToken } from '../core/index.js';
-import { outputJson, outputJsonError } from '../formatters/json.js';
+import { outputJson } from '../formatters/json.js';
 import { runTrack, runUntrack } from './track.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
 const mockGetGitHubToken = vi.mocked(getGitHubToken);
 const mockOutputJson = vi.mocked(outputJson);
-const mockOutputJsonError = vi.mocked(outputJsonError);
 
 const TEST_PR_URL = 'https://github.com/owner/repo/pull/42';
 
@@ -41,18 +39,6 @@ describe('runTrack', () => {
     mockGetStateManager.mockReturnValue({
       save: mockSave,
     } as any);
-  });
-
-  it('should exit with error when no GitHub token is available', async () => {
-    mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runTrack({ prUrl: TEST_PR_URL, json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('GitHub authentication required'));
-    mockExit.mockRestore();
   });
 
   it('should track a PR and save state', async () => {

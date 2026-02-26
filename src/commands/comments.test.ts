@@ -39,18 +39,6 @@ describe('runComments', () => {
     } as any);
   });
 
-  it('should exit with error when no GitHub token', async () => {
-    mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runComments({ prUrl: TEST_PR_URL, json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('GitHub authentication required'));
-    mockExit.mockRestore();
-  });
-
   it('should exit with error for invalid PR URL', async () => {
     mockGetGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue(null as any);
@@ -148,18 +136,6 @@ describe('runPost', () => {
     vi.clearAllMocks();
   });
 
-  it('should exit with error when no GitHub token', async () => {
-    mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runPost({ url: TEST_PR_URL, message: 'Hello', json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('GitHub authentication required'));
-    mockExit.mockRestore();
-  });
-
   it('should exit with error when no message provided', async () => {
     mockGetGitHubToken.mockReturnValue('ghp_test123');
     const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
@@ -219,18 +195,6 @@ describe('runPost', () => {
 describe('runClaim', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it('should exit with error when no GitHub token', async () => {
-    mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runClaim({ issueUrl: TEST_ISSUE_URL, json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('GitHub authentication required'));
-    mockExit.mockRestore();
   });
 
   it('should exit with error for non-issue URL', async () => {
