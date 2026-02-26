@@ -98,6 +98,8 @@ describe.skipIf(!BUNDLE_EXISTS)('status --json E2E', () => {
     expect(typeof stats.dormantPRs).toBe('number');
     expect(typeof stats.mergedPRs).toBe('number');
     expect(typeof stats.closedPRs).toBe('number');
+    expect(typeof stats.activeIssues).toBe('number');
+    expect(typeof stats.trustedProjects).toBe('number');
     expect(typeof stats.needsResponse).toBe('number');
     expect(typeof stats.mergeRate).toBe('string');
   });
