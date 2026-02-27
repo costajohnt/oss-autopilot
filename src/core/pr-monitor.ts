@@ -26,6 +26,7 @@ import { runWorkerPool } from './concurrency.js';
 import { ConfigurationError, ValidationError } from './errors.js';
 import { paginateAll } from './pagination.js';
 import { debug, warn, timed } from './logger.js';
+import { getHttpCache, cachedRequest } from './http-cache.js';
 
 // Re-export so existing consumers (tests, index.ts) can still import from pr-monitor
 export { isBotAuthor };
@@ -1087,11 +1088,15 @@ export class PRMonitor {
 
     debug(MODULE, `Fetching star counts for ${repos.length} repos...`);
     const results = new Map<string, number>();
+    const cache = getHttpCache();
+
+    // Deduplicate repos to avoid fetching the same repo twice
+    const uniqueRepos = [...new Set(repos)];
 
     // Fetch in parallel chunks to avoid overwhelming the API
     const chunkSize = 10;
-    for (let i = 0; i < repos.length; i += chunkSize) {
-      const chunk = repos.slice(i, i + chunkSize);
+    for (let i = 0; i < uniqueRepos.length; i += chunkSize) {
+      const chunk = uniqueRepos.slice(i, i + chunkSize);
       const settled = await Promise.allSettled(
         chunk.map(async (repo) => {
           const parts = repo.split('/');
@@ -1099,7 +1104,14 @@ export class PRMonitor {
             throw new ValidationError(`Malformed repo identifier: "${repo}"`);
           }
           const [owner, name] = parts;
-          const { data } = await this.octokit.repos.get({ owner, repo: name });
+          const url = `/repos/${owner}/${name}`;
+          const data = await cachedRequest(cache, url, (headers) =>
+            this.octokit.repos.get({
+              owner,
+              repo: name,
+              headers,
+            }) as Promise<{ data: { stargazers_count: number }; headers: Record<string, string> }>,
+          );
           return { repo, stars: data.stargazers_count };
         }),
       );

@@ -1,0 +1,309 @@
+/**
+ * HTTP caching with ETags for GitHub API responses.
+ *
+ * Stores ETags and response bodies for cacheable GET endpoints in
+ * `~/.oss-autopilot/cache/`. On subsequent requests, sends `If-None-Match`
+ * headers — 304 responses don't count against GitHub rate limits.
+ *
+ * Also provides in-flight request deduplication so that concurrent calls
+ * for the same endpoint (e.g., star counts for two PRs in the same repo)
+ * share a single HTTP round-trip.
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+import * as crypto from 'crypto';
+import { getCacheDir } from './utils.js';
+import { debug } from './logger.js';
+
+const MODULE = 'http-cache';
+
+/** Shape of a single cache entry on disk. */
+export interface CacheEntry {
+  etag: string;
+  url: string;
+  body: unknown;
+  cachedAt: string;
+}
+
+/**
+ * Maximum age (in ms) before a cache entry is considered stale and eligible for
+ * eviction during cleanup. Defaults to 24 hours. Entries older than this are
+ * still *usable* for conditional requests (the ETag may still be valid), but
+ * `evictStale()` will remove them.
+ */
+const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * File-based HTTP cache backed by `~/.oss-autopilot/cache/`.
+ *
+ * Each cache entry is stored as a separate JSON file keyed by the SHA-256
+ * hash of the request URL. This avoids filesystem issues with URL-based
+ * filenames and keeps lookup O(1).
+ */
+export class HttpCache {
+  private readonly cacheDir: string;
+
+  /** In-flight request deduplication map: URL -> Promise<response>. */
+  private readonly inflightRequests = new Map<string, Promise<unknown>>();
+
+  constructor(cacheDir?: string) {
+    this.cacheDir = cacheDir ?? getCacheDir();
+  }
+
+  /** Derive a filesystem-safe cache key from a URL. */
+  private keyFor(url: string): string {
+    return crypto.createHash('sha256').update(url).digest('hex');
+  }
+
+  /** Full path to the cache file for a given URL. */
+  private pathFor(url: string): string {
+    return path.join(this.cacheDir, `${this.keyFor(url)}.json`);
+  }
+
+  /**
+   * Look up a cached response. Returns `null` if no cache entry exists.
+   */
+  get(url: string): CacheEntry | null {
+    const filePath = this.pathFor(url);
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const entry = JSON.parse(raw) as CacheEntry;
+      // Sanity-check: the file should contain the URL we asked for
+      if (entry.url !== url) {
+        debug(MODULE, `Cache collision detected for ${url}, ignoring`);
+        return null;
+      }
+      return entry;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Store a response with its ETag.
+   */
+  set(url: string, etag: string, body: unknown): void {
+    const entry: CacheEntry = {
+      etag,
+      url,
+      body,
+      cachedAt: new Date().toISOString(),
+    };
+    try {
+      fs.writeFileSync(this.pathFor(url), JSON.stringify(entry), 'utf-8');
+      debug(MODULE, `Cached response for ${url}`);
+    } catch (err) {
+      // Non-fatal: cache write failure should not break the request
+      debug(MODULE, `Failed to write cache for ${url}`, err);
+    }
+  }
+
+  /**
+   * Check whether a URL has an in-flight request.
+   */
+  hasInflight(url: string): boolean {
+    return this.inflightRequests.has(url);
+  }
+
+  /**
+   * Get the in-flight promise for a URL (for deduplication).
+   */
+  getInflight(url: string): Promise<unknown> | undefined {
+    return this.inflightRequests.get(url);
+  }
+
+  /**
+   * Register an in-flight request for deduplication.
+   * Returns a cleanup function to call when the request completes.
+   */
+  setInflight(url: string, promise: Promise<unknown>): () => void {
+    this.inflightRequests.set(url, promise);
+    return () => {
+      this.inflightRequests.delete(url);
+    };
+  }
+
+  /**
+   * Remove stale entries older than `maxAgeMs` from the cache directory.
+   * Intended to be called periodically (e.g., once per daily run).
+   */
+  evictStale(maxAgeMs: number = DEFAULT_MAX_AGE_MS): number {
+    let evicted = 0;
+    try {
+      const files = fs.readdirSync(this.cacheDir);
+      const now = Date.now();
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        const filePath = path.join(this.cacheDir, file);
+        try {
+          const raw = fs.readFileSync(filePath, 'utf-8');
+          const entry = JSON.parse(raw) as CacheEntry;
+          const age = now - new Date(entry.cachedAt).getTime();
+          if (age > maxAgeMs) {
+            fs.unlinkSync(filePath);
+            evicted++;
+          }
+        } catch {
+          // Corrupt entry — remove it
+          try {
+            fs.unlinkSync(filePath);
+            evicted++;
+          } catch {
+            // Ignore
+          }
+        }
+      }
+    } catch {
+      // Cache dir might not exist yet — that's fine
+    }
+    if (evicted > 0) {
+      debug(MODULE, `Evicted ${evicted} stale cache entries`);
+    }
+    return evicted;
+  }
+
+  /**
+   * Remove all entries from the cache.
+   */
+  clear(): void {
+    try {
+      const files = fs.readdirSync(this.cacheDir);
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        fs.unlinkSync(path.join(this.cacheDir, file));
+      }
+      debug(MODULE, 'Cache cleared');
+    } catch {
+      // Cache dir might not exist yet — that's fine
+    }
+  }
+
+  /**
+   * Return the number of entries currently in the cache.
+   */
+  size(): number {
+    try {
+      return fs.readdirSync(this.cacheDir).filter((f) => f.endsWith('.json')).length;
+    } catch {
+      return 0;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Singleton
+// ---------------------------------------------------------------------------
+
+let _httpCache: HttpCache | null = null;
+
+/**
+ * Get (or create) the shared HttpCache singleton.
+ * The singleton is lazily initialized on first access.
+ */
+export function getHttpCache(): HttpCache {
+  if (!_httpCache) {
+    _httpCache = new HttpCache();
+  }
+  return _httpCache;
+}
+
+/** Reset the singleton (for tests). */
+export function resetHttpCache(): void {
+  _httpCache = null;
+}
+
+// ---------------------------------------------------------------------------
+// Octokit integration helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * URL patterns that benefit from ETag caching.
+ * Repo metadata changes infrequently and is safe to cache aggressively.
+ */
+const CACHEABLE_PATTERNS = [
+  /^\/repos\/[^/]+\/[^/]+$/, // GET /repos/:owner/:repo  (star counts, metadata)
+];
+
+/** Determine whether a request URL is eligible for ETag caching. */
+export function isCacheableUrl(url: string): boolean {
+  // Strip query string for pattern matching
+  const pathname = url.split('?')[0];
+  return CACHEABLE_PATTERNS.some((re) => re.test(pathname));
+}
+
+/**
+ * Wraps an Octokit `repos.get`-style call with ETag caching and request
+ * deduplication.
+ *
+ * Usage:
+ * ```ts
+ * const data = await cachedRequest(cache, octokit, '/repos/owner/repo', () =>
+ *   octokit.repos.get({ owner, repo: name }),
+ * );
+ * ```
+ *
+ * 1. If an identical request is already in-flight, returns the existing promise
+ *    (request deduplication).
+ * 2. If a cached ETag exists, sends `If-None-Match`. On 304, returns the
+ *    cached body without consuming a rate-limit point.
+ * 3. On a fresh 200, caches the ETag + body for next time.
+ */
+export async function cachedRequest<T>(
+  cache: HttpCache,
+  url: string,
+  fetcher: (headers: Record<string, string>) => Promise<{ data: T; headers?: Record<string, string> }>,
+): Promise<T> {
+  // --- Deduplication ---
+  const existing = cache.getInflight(url);
+  if (existing) {
+    debug(MODULE, `Dedup hit for ${url}`);
+    return existing as Promise<T>;
+  }
+
+  const doFetch = async (): Promise<T> => {
+    const extraHeaders: Record<string, string> = {};
+    const cached = cache.get(url);
+    if (cached) {
+      extraHeaders['if-none-match'] = cached.etag;
+    }
+
+    try {
+      const response = await fetcher(extraHeaders);
+      // Store ETag if present (headers may be absent in test mocks)
+      const etag = response.headers?.['etag'];
+      if (etag) {
+        cache.set(url, etag, response.data);
+      }
+      return response.data;
+    } catch (err: unknown) {
+      // Check for 304 Not Modified
+      if (isNotModifiedError(err) && cached) {
+        debug(MODULE, `304 cache hit for ${url}`);
+        return cached.body as T;
+      }
+      throw err;
+    }
+  };
+
+  const promise = doFetch();
+  const cleanup = cache.setInflight(url, promise);
+
+  try {
+    const result = await promise;
+    return result;
+  } finally {
+    cleanup();
+  }
+}
+
+/**
+ * Detect whether an error is a 304 Not Modified response.
+ * Octokit throws a RequestError with status 304 for conditional requests.
+ */
+function isNotModifiedError(err: unknown): boolean {
+  if (err && typeof err === 'object' && 'status' in err) {
+    return (err as { status: number }).status === 304;
+  }
+  return false;
+}

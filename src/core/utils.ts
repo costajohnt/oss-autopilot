@@ -71,6 +71,26 @@ export function getBackupDir(): string {
 }
 
 /**
+ * Returns the HTTP cache directory path, creating it if it does not exist.
+ *
+ * Located at `~/.oss-autopilot/cache/`. Used by {@link HttpCache} to store
+ * ETag-based response caches for GitHub API endpoints.
+ *
+ * @returns Absolute path to the cache directory
+ *
+ * @example
+ * const cacheDir = getCacheDir();
+ * // "/Users/you/.oss-autopilot/cache"
+ */
+export function getCacheDir(): string {
+  const dir = path.join(getDataDir(), 'cache');
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
+  return dir;
+}
+
+/**
  * Returns the path to the generated HTML dashboard file (`~/.oss-autopilot/dashboard.html`).
  *
  * Implicitly creates the data directory via {@link getDataDir} if it does not exist.

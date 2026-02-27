@@ -13,6 +13,7 @@ import { parseGitHubUrl, daysBetween, getDataDir } from './utils.js';
 import { TrackedIssue, IssueVettingResult, ContributionGuidelines, ProjectHealth, DEFAULT_CONFIG } from './types.js';
 import { ValidationError } from './errors.js';
 import { warn } from './logger.js';
+import { getHttpCache, cachedRequest } from './http-cache.js';
 
 const MODULE = 'issue-discovery';
 
@@ -1057,8 +1058,15 @@ export class IssueDiscovery {
 
   private async checkProjectHealth(owner: string, repo: string): Promise<ProjectHealth> {
     try {
-      // Get repo info
-      const { data: repoData } = await this.octokit.repos.get({ owner, repo });
+      // Get repo info (with ETag caching — repo metadata changes infrequently)
+      const cache = getHttpCache();
+      const url = `/repos/${owner}/${repo}`;
+      const repoData = await cachedRequest(cache, url, (headers) =>
+        this.octokit.repos.get({ owner, repo, headers }) as Promise<{
+          data: { open_issues_count: number; pushed_at: string; stargazers_count: number; forks_count: number };
+          headers: Record<string, string>;
+        }>,
+      );
 
       // Get recent commits
       const { data: commits } = await this.octokit.repos.listCommits({
