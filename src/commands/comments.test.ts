@@ -266,9 +266,7 @@ describe('runClaim', () => {
       throw new Error('exit');
     });
 
-    await expect(runClaim({ issueUrl: TEST_ISSUE_URL, message: oversizedMessage, json: true })).rejects.toThrow(
-      'exit',
-    );
+    await expect(runClaim({ issueUrl: TEST_ISSUE_URL, message: oversizedMessage, json: true })).rejects.toThrow('exit');
 
     expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('Message exceeds maximum length'));
     mockExit.mockRestore();
