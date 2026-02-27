@@ -30,11 +30,11 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "prepare": "simple-git-hooks",
+    "prepare": "[ -n \"$CI\" ] || simple-git-hooks",
     "prepublishOnly": "npm test && npm run build && npm run bundle"
   },
   "simple-git-hooks": {
-    "commit-msg": "./scripts/commit-msg.sh $1"
+    "commit-msg": "./scripts/commit-msg.sh \"$1\""
   },
   "keywords": [
     "claude-code-plugin",
