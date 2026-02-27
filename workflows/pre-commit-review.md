@@ -1,6 +1,6 @@
 # Pre-Commit Code Review (Standard Path — Existing PR Updates)
 
-> **Session state:** Expects Tier 2 code changes to exist (uncommitted). This workflow handles existing PR updates.
+> **Session state:** Expects Tier 2 code changes to exist (uncommitted or committed-but-not-pushed). This workflow handles existing PR updates.
 > **Routing check:** If `isNewContribution === true`, **STOP** — read `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` instead and follow the Draft-First Path.
 
 ---
@@ -50,7 +50,7 @@ Save the combined `git diff` + `git diff --cached` output as `reviewDiff`.
 # Diff of committed-but-not-pushed changes against the remote tracking branch
 git diff @{upstream}..HEAD 2>/dev/null || git diff origin/$(git rev-parse --abbrev-ref HEAD)..HEAD 2>/dev/null || git diff origin/main..HEAD
 ```
-Save this output as `reviewDiff`. Use `git diff --stat` with the same range to get the file count and line counts.
+Save this output as `reviewDiff` and note which diff range succeeded as `diffRange`. If all diff commands fail (no remote tracking branch found), report the error and ask the user to specify the base branch manually. Use `git diff --stat` with the same range to get the file count and line counts.
 
 Identify changed files and their types (TypeScript, Python, etc.). Count files changed.
 
@@ -253,7 +253,7 @@ Options:
 - Continue until user is satisfied or selects a different option
 
 **"Show full diff" / "Show full diff first":**
-- Run the appropriate diff command based on `changeSource` (`git diff` for uncommitted, or `git diff @{upstream}..HEAD` for committed-but-not-pushed) and **output the full diff as a markdown code block in your text response** so the user can read it
+- Run the appropriate diff command based on `changeSource` (`git diff` for uncommitted, or the same `diffRange` that succeeded during the gather phase for committed-but-not-pushed) and **output the full diff as a markdown code block in your text response** so the user can read it
 - **If `git diff` fails**, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly (the user has explicitly chosen to proceed without reviewing the raw diff).
 - **After** the diff is visible in your response (or user chose to continue without), use AskUserQuestion:
   ```

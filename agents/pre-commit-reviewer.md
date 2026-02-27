@@ -55,7 +55,7 @@ git status --porcelain
 git log --oneline @{upstream}..HEAD 2>/dev/null || git log --oneline origin/$(git rev-parse --abbrev-ref HEAD)..HEAD 2>/dev/null || git log --oneline origin/main..HEAD 2>/dev/null
 ```
 
-**If this shows commits:** Changes have been committed but not pushed. Use `git diff @{upstream}..HEAD` (or the equivalent fallback range) as the diff to review. Report:
+**If this shows commits:** Changes have been committed but not pushed. Use whichever diff range succeeded from the fallback chain above (e.g., `git diff @{upstream}..HEAD`, or `git diff origin/<branch>..HEAD`, or `git diff origin/main..HEAD`). Save the working range as `diffRange`. If all three fail, ask the user to specify the base branch manually. Report:
 > "No uncommitted changes, but found {N} commit(s) not yet pushed. Reviewing committed changes."
 
 Proceed with review using this diff.
@@ -172,7 +172,7 @@ If there are NO issues found:
 No issues found. Changes look clean and ready to commit.
 ```
 
-**Track findings for iterative review:** Note which review categories (Critical, Recommended, Test Coverage, Convention Alignment) produced findings. Save this as `categoriesWithFindings`.
+**Track findings for iterative review:** Note which review categories (Critical, Recommended, Test Coverage, Convention Alignment) produced findings. Save this as `categoriesWithFindings`. (Note: the standalone agent tracks by review category since it runs as a single reviewer. The parallel workflow in `pre-commit-review.md` tracks by agent name instead.)
 
 Then use AskUserQuestion:
 
@@ -194,7 +194,7 @@ Then use AskUserQuestion:
 - Continue looping until all categories pass cleanly or the user selects a different option
 
 **When user selects "Show full diff" / "Show full diff first":**
-- Run the appropriate diff command (use `git diff @{upstream}..HEAD` if reviewing committed-but-not-pushed changes, otherwise `git diff`) and **output the full diff as a markdown code block in your text response** so the user can read it
+- Run the appropriate diff command (use the saved `diffRange` for committed-but-not-pushed changes, otherwise `git diff`) and **output the full diff as a markdown code block in your text response** so the user can read it
 - **If `git diff` fails**, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly.
 - **After** the diff is visible in your response (or user chose to continue without), use AskUserQuestion:
   ```
