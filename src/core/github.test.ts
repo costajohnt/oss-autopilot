@@ -101,11 +101,12 @@ describe('getOctokit', () => {
 
   it('should create a new instance when token changes', () => {
     const first = getOctokit('token-x');
-    const second = getOctokit('token-y');
-    // Both return mockOctokitInstance from the mock constructor, but the function
-    // creates a new instance when the token changes. We can verify by checking
-    // they are still the mock object (both calls invoke the constructor).
     expect(first).toBeDefined();
+    // Calling with same token should return cached instance
+    const same = getOctokit('token-x');
+    expect(same).toBe(first);
+    // Calling with different token should create new instance
+    const second = getOctokit('token-y');
     expect(second).toBeDefined();
   });
 });

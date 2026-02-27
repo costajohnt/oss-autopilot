@@ -2,7 +2,7 @@
  * Tests for startup command helper functions
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { parseIssueListPathFromConfig, countIssueListItems } from './startup.js';
 
 // --- Mocks for runStartup dashboard tests ---
@@ -195,6 +195,7 @@ import * as fsImport from 'fs';
 describe('detectIssueList', () => {
   let detectIssueList: typeof import('./startup.js').detectIssueList;
   let existsSyncMock: ReturnType<typeof vi.fn>;
+  let origReadFileSync: typeof fsImport.readFileSync;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -202,6 +203,11 @@ describe('detectIssueList', () => {
     detectIssueList = startupMod.detectIssueList;
     const fsMod = await import('fs');
     existsSyncMock = fsMod.existsSync as ReturnType<typeof vi.fn>;
+    origReadFileSync = (fsImport as any).readFileSync;
+  });
+
+  afterEach(() => {
+    (fsImport as any).readFileSync = origReadFileSync;
   });
 
   it('should return undefined when no issue list file exists', () => {
@@ -211,14 +217,12 @@ describe('detectIssueList', () => {
   });
 
   it('should detect issue list from config file', () => {
-    const fsMod = fsImport as any;
     existsSyncMock.mockImplementation((p: string) => {
       if (typeof p === 'string' && p === '.claude/oss-autopilot/config.md') return true;
       if (typeof p === 'string' && p === 'custom/issues.md') return true;
       return false;
     });
-    const origReadFileSync = fsMod.readFileSync;
-    fsMod.readFileSync = vi.fn().mockImplementation((path: string) => {
+    (fsImport as any).readFileSync = vi.fn().mockImplementation((path: string) => {
       if (path === '.claude/oss-autopilot/config.md') {
         return '---\nissueListPath: custom/issues.md\n---\n';
       }
@@ -230,19 +234,15 @@ describe('detectIssueList', () => {
     expect(result).toBeDefined();
     expect(result?.path).toBe('custom/issues.md');
     expect(result?.source).toBe('configured');
-
-    fsMod.readFileSync = origReadFileSync;
   });
 
   it('should handle config file read error gracefully', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const fsMod = fsImport as any;
     existsSyncMock.mockImplementation((p: string) => {
       if (typeof p === 'string' && p === '.claude/oss-autopilot/config.md') return true;
       return false;
     });
-    const origReadFileSync = fsMod.readFileSync;
-    fsMod.readFileSync = vi.fn().mockImplementation(() => {
+    (fsImport as any).readFileSync = vi.fn().mockImplementation(() => {
       throw new Error('Permission denied');
     });
 
@@ -251,16 +251,13 @@ describe('detectIssueList', () => {
     // Should return undefined because config read failed and no probes match
     expect(result).toBeUndefined();
     consoleSpy.mockRestore();
-    fsMod.readFileSync = origReadFileSync;
   });
 
   it('should auto-detect from known probe paths', () => {
     existsSyncMock.mockImplementation((path: string) => {
       return typeof path === 'string' && path === 'issues.md';
     });
-    const fsMod = fsImport as any;
-    const origReadFileSync = fsMod.readFileSync;
-    fsMod.readFileSync = vi.fn().mockReturnValue('- [#1](url) — Issue\n- ~~[#2](url) — Done~~\n');
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](url) — Issue\n- ~~[#2](url) — Done~~\n');
 
     const result = detectIssueList();
 
@@ -269,8 +266,6 @@ describe('detectIssueList', () => {
     expect(result?.source).toBe('auto-detected');
     expect(result?.availableCount).toBe(1);
     expect(result?.completedCount).toBe(1);
-
-    fsMod.readFileSync = origReadFileSync;
   });
 });
 
