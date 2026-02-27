@@ -5,6 +5,7 @@
 
 import { getStateManager } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
+import { validateGitHubUsername } from './validation.js';
 
 interface InitOptions {
   username: string;
@@ -12,6 +13,7 @@ interface InitOptions {
 }
 
 export async function runInit(options: InitOptions): Promise<void> {
+  validateGitHubUsername(options.username);
   const stateManager = getStateManager();
 
   if (!options.json) {

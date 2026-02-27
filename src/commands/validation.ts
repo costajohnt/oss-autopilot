@@ -1,7 +1,8 @@
 /**
- * Shared URL validation patterns and helpers for CLI commands.
+ * Shared validation patterns and helpers for CLI commands.
  */
 
+import { ValidationError } from '../core/errors.js';
 import { outputJsonError } from '../formatters/json.js';
 
 /** Matches GitHub PR URLs: https://github.com/owner/repo/pull/123 */
@@ -79,4 +80,54 @@ export function validateRepoIdentifier(repo: string): string {
     throw new Error(`Invalid repository format: "${repo}". Expected "owner/repo".`);
   }
   return repo;
+}
+
+/** Maximum allowed GitHub username length */
+const MAX_USERNAME_LENGTH = 39;
+/** Pattern for valid GitHub username characters (alphanumeric and hyphens) */
+const USERNAME_CHARS_PATTERN = /^[a-zA-Z0-9-]+$/;
+/** Pattern for consecutive hyphens */
+const CONSECUTIVE_HYPHENS_PATTERN = /--/;
+
+/**
+ * Validate a GitHub username against GitHub's username rules.
+ * Throws a ValidationError if the username is invalid.
+ *
+ * Rules:
+ * - Must not be empty
+ * - Maximum 39 characters
+ * - Only alphanumeric characters and hyphens
+ * - Cannot start or end with a hyphen
+ * - Cannot contain consecutive hyphens
+ */
+export function validateGitHubUsername(username: string): string {
+  if (!username || username.trim().length === 0) {
+    throw new ValidationError('GitHub username cannot be empty.');
+  }
+
+  const trimmed = username.trim();
+
+  if (trimmed.length > MAX_USERNAME_LENGTH) {
+    throw new ValidationError(
+      `GitHub username must be at most ${MAX_USERNAME_LENGTH} characters (got ${trimmed.length}).`,
+    );
+  }
+
+  if (!USERNAME_CHARS_PATTERN.test(trimmed)) {
+    throw new ValidationError('GitHub username can only contain alphanumeric characters and hyphens.');
+  }
+
+  if (trimmed.startsWith('-')) {
+    throw new ValidationError('GitHub username cannot start with a hyphen.');
+  }
+
+  if (trimmed.endsWith('-')) {
+    throw new ValidationError('GitHub username cannot end with a hyphen.');
+  }
+
+  if (CONSECUTIVE_HYPHENS_PATTERN.test(trimmed)) {
+    throw new ValidationError('GitHub username cannot contain consecutive hyphens.');
+  }
+
+  return trimmed;
 }

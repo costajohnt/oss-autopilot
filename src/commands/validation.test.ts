@@ -1,5 +1,5 @@
 /**
- * Tests for shared URL validation patterns (validation.ts).
+ * Tests for shared validation patterns (validation.ts).
  * Command-level state logic is tested in shelve.test.ts, dismiss.test.ts, and state.test.ts.
  */
 
@@ -11,7 +11,9 @@ import {
   validatePRNumber,
   validateMessage,
   validateRepoIdentifier,
+  validateGitHubUsername,
 } from './validation.js';
+import { ValidationError } from '../core/errors.js';
 
 describe('PR_URL_PATTERN', () => {
   it('should match valid PR URLs', () => {
@@ -125,5 +127,82 @@ describe('validateRepoIdentifier', () => {
 
   it('should throw for identifiers with spaces', () => {
     expect(() => validateRepoIdentifier('owner/my repo')).toThrow('Invalid repository format');
+  });
+});
+
+describe('validateGitHubUsername', () => {
+  describe('valid usernames', () => {
+    it('should accept a normal username', () => {
+      expect(validateGitHubUsername('octocat')).toBe('octocat');
+    });
+
+    it('should accept a username with hyphens', () => {
+      expect(validateGitHubUsername('my-cool-name')).toBe('my-cool-name');
+    });
+
+    it('should accept a single character username', () => {
+      expect(validateGitHubUsername('a')).toBe('a');
+    });
+
+    it('should accept a username at the max length of 39 characters', () => {
+      const username = 'a'.repeat(39);
+      expect(validateGitHubUsername(username)).toBe(username);
+    });
+
+    it('should accept a username with numbers', () => {
+      expect(validateGitHubUsername('user123')).toBe('user123');
+    });
+
+    it('should accept a username starting with a number', () => {
+      expect(validateGitHubUsername('123user')).toBe('123user');
+    });
+
+    it('should trim whitespace from the username', () => {
+      expect(validateGitHubUsername('  octocat  ')).toBe('octocat');
+    });
+  });
+
+  describe('invalid usernames', () => {
+    it('should reject an empty string', () => {
+      expect(() => validateGitHubUsername('')).toThrow(ValidationError);
+      expect(() => validateGitHubUsername('')).toThrow('cannot be empty');
+    });
+
+    it('should reject a whitespace-only string', () => {
+      expect(() => validateGitHubUsername('   ')).toThrow(ValidationError);
+      expect(() => validateGitHubUsername('   ')).toThrow('cannot be empty');
+    });
+
+    it('should reject a username longer than 39 characters', () => {
+      const username = 'a'.repeat(40);
+      expect(() => validateGitHubUsername(username)).toThrow(ValidationError);
+      expect(() => validateGitHubUsername(username)).toThrow('at most 39 characters');
+    });
+
+    it('should reject a username starting with a hyphen', () => {
+      expect(() => validateGitHubUsername('-octocat')).toThrow(ValidationError);
+      expect(() => validateGitHubUsername('-octocat')).toThrow('cannot start with a hyphen');
+    });
+
+    it('should reject a username ending with a hyphen', () => {
+      expect(() => validateGitHubUsername('octocat-')).toThrow(ValidationError);
+      expect(() => validateGitHubUsername('octocat-')).toThrow('cannot end with a hyphen');
+    });
+
+    it('should reject a username with consecutive hyphens', () => {
+      expect(() => validateGitHubUsername('octo--cat')).toThrow(ValidationError);
+      expect(() => validateGitHubUsername('octo--cat')).toThrow('consecutive hyphens');
+    });
+
+    it('should reject a username with special characters', () => {
+      expect(() => validateGitHubUsername('octo.cat')).toThrow(ValidationError);
+      expect(() => validateGitHubUsername('octo_cat')).toThrow(ValidationError);
+      expect(() => validateGitHubUsername('octo@cat')).toThrow(ValidationError);
+      expect(() => validateGitHubUsername('octo cat')).toThrow(ValidationError);
+    });
+
+    it('should reject a username with special characters with the right message', () => {
+      expect(() => validateGitHubUsername('octo.cat')).toThrow('alphanumeric characters and hyphens');
+    });
   });
 });
