@@ -4,20 +4,9 @@
  * Separates data concerns from template generation and command orchestration.
  */
 
-import {
-  getStateManager,
-  PRMonitor,
-  IssueConversationMonitor,
-} from '../core/index.js';
+import { getStateManager, PRMonitor, IssueConversationMonitor } from '../core/index.js';
 import { toShelvedPRRef } from './daily.js';
-import type {
-  FetchedPR,
-  DailyDigest,
-  AgentState,
-  ClosedPR,
-  MergedPR,
-  CommentedIssue,
-} from '../core/types.js';
+import type { DailyDigest, AgentState, ClosedPR, MergedPR, CommentedIssue } from '../core/types.js';
 
 export interface DashboardFetchResult {
   digest: DailyDigest;
@@ -77,18 +66,12 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   try {
     stateManager.setMonthlyMergedCounts(monthlyCounts);
   } catch (error) {
-    console.error(
-      '[DASHBOARD] Failed to store monthly merged counts:',
-      error instanceof Error ? error.message : error,
-    );
+    console.error('[DASHBOARD] Failed to store monthly merged counts:', error instanceof Error ? error.message : error);
   }
   try {
     stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
   } catch (error) {
-    console.error(
-      '[DASHBOARD] Failed to store monthly closed counts:',
-      error instanceof Error ? error.message : error,
-    );
+    console.error('[DASHBOARD] Failed to store monthly closed counts:', error instanceof Error ? error.message : error);
   }
   try {
     const combinedOpenedCounts: Record<string, number> = { ...openedFromMerged };
@@ -103,10 +86,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     }
     stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
   } catch (error) {
-    console.error(
-      '[DASHBOARD] Failed to store monthly opened counts:',
-      error instanceof Error ? error.message : error,
-    );
+    console.error('[DASHBOARD] Failed to store monthly opened counts:', error instanceof Error ? error.message : error);
   }
 
   const digest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);

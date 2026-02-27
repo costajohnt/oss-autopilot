@@ -4,12 +4,7 @@
  * Pure functions with no side effects — all data is passed in as arguments.
  */
 
-import type {
-  FetchedPR,
-  DailyDigest,
-  AgentState,
-  CommentedIssueWithResponse,
-} from '../core/types.js';
+import type { FetchedPR, DailyDigest, AgentState, CommentedIssueWithResponse } from '../core/types.js';
 
 export interface DashboardStats {
   activePRs: number;

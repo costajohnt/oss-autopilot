@@ -6,11 +6,7 @@
 
 import * as fs from 'fs';
 import { execFile } from 'child_process';
-import {
-  getStateManager,
-  getDashboardPath,
-  getGitHubToken,
-} from '../core/index.js';
+import { getStateManager, getDashboardPath, getGitHubToken } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
 import type {
   CommentedIssue,
