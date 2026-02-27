@@ -221,9 +221,7 @@ export class IssueConversationMonitor {
     const userLastCommentTime = new Date(userLastComment.createdAt);
 
     // Find responses after the user's last comment
-    let lastResponse:
-      | { author: string; body: string; createdAt: string; authorAssociation: string }
-      | undefined;
+    let lastResponse: { author: string; body: string; createdAt: string; authorAssociation: string } | undefined;
     for (const entry of timeline) {
       if (entry.isUser) continue;
       if (isBotAuthor(entry.author)) continue;
