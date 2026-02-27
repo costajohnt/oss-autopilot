@@ -771,7 +771,10 @@ export class StateManager {
     }
 
     if (removedTrusted > 0 || removedScoreCount > 0) {
-      debug(MODULE, `[CLEANUP] Removed ${removedTrusted} trusted project(s) and ${removedScoreCount} repo score(s) for excluded repos/orgs`);
+      debug(
+        MODULE,
+        `[CLEANUP] Removed ${removedTrusted} trusted project(s) and ${removedScoreCount} repo score(s) for excluded repos/orgs`,
+      );
     }
   }
 
@@ -1100,7 +1103,10 @@ export class StateManager {
     if (repoScore.lastMergedAt) {
       const lastMergedDate = new Date(repoScore.lastMergedAt);
       if (isNaN(lastMergedDate.getTime())) {
-        warn(MODULE, `[SCORE_CALC] Invalid lastMergedAt date for ${repoScore.repo}: "${repoScore.lastMergedAt}". Skipping recency bonus.`);
+        warn(
+          MODULE,
+          `[SCORE_CALC] Invalid lastMergedAt date for ${repoScore.repo}: "${repoScore.lastMergedAt}". Skipping recency bonus.`,
+        );
       } else {
         const msPerDay = 1000 * 60 * 60 * 24;
         const daysSince = Math.floor((Date.now() - lastMergedDate.getTime()) / msPerDay);

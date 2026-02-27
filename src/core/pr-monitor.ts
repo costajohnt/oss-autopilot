@@ -783,10 +783,7 @@ export class PRMonitor {
           if (status === 404) {
             debug(MODULE, `Check runs 404 for ${owner}/${repo}@${sha.slice(0, 7)} (no checks configured)`);
           } else {
-            warn(
-              MODULE,
-              `Non-404 error fetching check runs for ${owner}/${repo}@${sha.slice(0, 7)}: ${status ?? err}`,
-            );
+            warn(MODULE, `Non-404 error fetching check runs for ${owner}/${repo}@${sha.slice(0, 7)}: ${status ?? err}`);
           }
           return null;
         }),
