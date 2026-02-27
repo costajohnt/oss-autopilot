@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.39.0](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.38.0...oss-autopilot-v0.39.0) (2026-02-27)
+
+
+### Features
+
+* add GitHub username validation for search queries ([#318](https://github.com/costajohnt/oss-autopilot/issues/318)) ([ba4c97a](https://github.com/costajohnt/oss-autopilot/commit/ba4c97a2c8ed0c2b1d53881a13fe7cc0b08eb72e))
+* add HTTP caching with ETags for repo metadata ([#326](https://github.com/costajohnt/oss-autopilot/issues/326)) ([c82d6ef](https://github.com/costajohnt/oss-autopilot/commit/c82d6ef11b80e535e1c631f5b7fa8fa6f404e528))
+* add maintainer detection and merge conflict resolution strategies ([#328](https://github.com/costajohnt/oss-autopilot/issues/328)) ([157a242](https://github.com/costajohnt/oss-autopilot/commit/157a2422b64ac2226adfff4cb769616f8ec380f5))
+* add offline mode for dashboard and status commands ([#325](https://github.com/costajohnt/oss-autopilot/issues/325)) ([6b79877](https://github.com/costajohnt/oss-autopilot/commit/6b79877b74a2e1d77362a5a07009264b724430f0)), closes [#296](https://github.com/costajohnt/oss-autopilot/issues/296)
+
+
+### Bug Fixes
+
+* add missing isFromMaintainer property and type imports ([#335](https://github.com/costajohnt/oss-autopilot/issues/335)) ([cab892e](https://github.com/costajohnt/oss-autopilot/commit/cab892e60e0218dcdd76c23f90f7dfc9fa17e135))
+* improve pre-commit review with targeted re-dispatch and committed change detection ([#324](https://github.com/costajohnt/oss-autopilot/issues/324)) ([c04a30d](https://github.com/costajohnt/oss-autopilot/commit/c04a30d6e636ec72656634d5ede45702dd4d5e5c))
+* reduce startup JSON output size by deduplicating PR objects ([#331](https://github.com/costajohnt/oss-autopilot/issues/331)) ([cea2683](https://github.com/costajohnt/oss-autopilot/commit/cea2683b4cdbe12650d6c5f37921b808a27c34a5))
+* remove unused fetchRepoStarCountsImpl import ([#336](https://github.com/costajohnt/oss-autopilot/issues/336)) ([021fb36](https://github.com/costajohnt/oss-autopilot/commit/021fb363c49e41c610a2202453cd7bf9ff0cb371))
+* resolve prettier formatting issues in daily.ts and dashboard.ts ([#337](https://github.com/costajohnt/oss-autopilot/issues/337)) ([a1860d3](https://github.com/costajohnt/oss-autopilot/commit/a1860d398c79a06693a0de62d21db966aa6cb2d4))
+
+
+### Performance Improvements
+
+* reduce cold start latency with lazy imports and async token fetch ([#327](https://github.com/costajohnt/oss-autopilot/issues/327)) ([a795b88](https://github.com/costajohnt/oss-autopilot/commit/a795b88af079a5d5a8d2ead2694b0af2263b9232))
+
 ## [0.38.0](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.37.0...oss-autopilot-v0.38.0) (2026-02-27)
 
 
