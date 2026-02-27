@@ -137,9 +137,10 @@ export interface CombinedStatusAnalysis {
  * Filters out authorization-gate statuses and determines the effective combined state.
  * Returns failing status context names in the result (does not mutate caller arrays).
  */
-export function analyzeCombinedStatus(
-  combinedStatus: { state: string; statuses: Array<{ state: string; context: string; description: string | null }> },
-): CombinedStatusAnalysis {
+export function analyzeCombinedStatus(combinedStatus: {
+  state: string;
+  statuses: Array<{ state: string; context: string; description: string | null }>;
+}): CombinedStatusAnalysis {
   // Filter out authorization-gate statuses (e.g., Vercel "Authorization required to deploy")
   // These are permission gates, not real CI failures
   const realStatuses = combinedStatus.statuses.filter((s) => {

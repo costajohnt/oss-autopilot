@@ -18,13 +18,8 @@ vi.mock('./state.js', () => ({
 }));
 
 // Import after mocks are set up
-const {
-  PRMonitor,
-  computeDisplayLabel,
-  classifyCICheck,
-  classifyFailingChecks,
-  isConditionalChecklistItem,
-} = await import('./pr-monitor.js');
+const { PRMonitor, computeDisplayLabel, classifyCICheck, classifyFailingChecks, isConditionalChecklistItem } =
+  await import('./pr-monitor.js');
 const { isBotAuthor, isAcknowledgmentComment } = await import('./comment-utils.js');
 const { getStateManager } = await import('./state.js');
 
