@@ -1397,7 +1397,6 @@ describe('StateManager recovery from corrupt state files', () => {
     const sm = new StateManager(false);
     const state = sm.getState();
     expect(state.version).toBe(2);
-
   });
 
   it('should restore from backup when state.json is corrupt but a valid backup exists', () => {
@@ -1473,7 +1472,6 @@ describe('StateManager recovery from corrupt state files', () => {
     const sm = new StateManager(false);
     const state = sm.getState();
     expect(state.version).toBe(2);
-
   });
 
   it('should start fresh when state.json has invalid structure (missing required fields)', () => {
@@ -1523,7 +1521,9 @@ describe('StateManager v1 → v2 migration', () => {
 
   it('should migrate v1 state to v2 and drop legacy PR arrays', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
-    const v1 = makeV1State({ activePRs: [{ id: 1, url: 'https://github.com/owner/repo/pull/1', repo: 'owner/repo', number: 1, title: 'Test' }] });
+    const v1 = makeV1State({
+      activePRs: [{ id: 1, url: 'https://github.com/owner/repo/pull/1', repo: 'owner/repo', number: 1, title: 'Test' }],
+    });
     fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
 
     const sm = new StateManager(false);
