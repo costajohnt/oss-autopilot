@@ -87,10 +87,14 @@ vi.mock('../core/index.js', () => {
   };
 });
 
-vi.mock('../formatters/json.js', () => ({
-  outputJson: vi.fn(),
-  outputJsonError: vi.fn(),
-}));
+vi.mock('../formatters/json.js', async () => {
+  const actual = await vi.importActual<typeof import('../formatters/json.js')>('../formatters/json.js');
+  return {
+    ...actual,
+    outputJson: vi.fn(),
+    outputJsonError: vi.fn(),
+  };
+});
 
 // Import AFTER all mocks are declared
 import { executeDailyCheck, runDaily } from './daily.js';
@@ -331,9 +335,9 @@ describe('executeDailyCheck() — PR partitioning', () => {
 
     const result = await executeDailyCheck('test-token');
 
-    // Active PRs appear in repoGroups
-    const allGroupedPRs = result.repoGroups.flatMap((g) => g.prs);
-    expect(allGroupedPRs.some((p) => p.url === activePR.url)).toBe(true);
+    // Active PRs appear in repoGroups (as PR numbers in compact format)
+    const allGroupedPRNumbers = result.repoGroups.flatMap((g) => g.prNumbers);
+    expect(allGroupedPRNumbers).toContain(activePR.number);
     // Not in shelved section of digest
     expect(result.digest.shelvedPRs).toHaveLength(0);
   });
@@ -349,8 +353,8 @@ describe('executeDailyCheck() — PR partitioning', () => {
     expect(result.digest.shelvedPRs).toHaveLength(1);
     expect(result.digest.shelvedPRs[0].url).toBe(dormantPR.url);
     // Not in repoGroups (active only)
-    const allGroupedPRs = result.repoGroups.flatMap((g) => g.prs);
-    expect(allGroupedPRs).toHaveLength(0);
+    const allGroupedPRNumbers = result.repoGroups.flatMap((g) => g.prNumbers);
+    expect(allGroupedPRNumbers).toHaveLength(0);
   });
 
   it('puts explicitly shelved PRs into shelvedPRs section', async () => {
@@ -380,8 +384,8 @@ describe('executeDailyCheck() — PR partitioning', () => {
     expect(result.digest.autoUnshelvedPRs).toHaveLength(1);
     expect(result.digest.autoUnshelvedPRs[0].url).toBe(criticalPR.url);
     // Should appear in active (repoGroups) not shelved
-    const allGroupedPRs = result.repoGroups.flatMap((g) => g.prs);
-    expect(allGroupedPRs.some((p) => p.url === criticalPR.url)).toBe(true);
+    const allGroupedPRNumbers = result.repoGroups.flatMap((g) => g.prNumbers);
+    expect(allGroupedPRNumbers).toContain(criticalPR.number);
   });
 
   it('keeps shelved PR with non-critical status in shelvedPRs (no auto-unshelf)', async () => {
@@ -526,10 +530,10 @@ describe('executeDailyCheck() — snoozed PR filtering', () => {
 
     const result = await executeDailyCheck('test-token');
 
-    // Only activePR should be in actionableIssues
+    // Only activePR should be in actionableIssues (compact format: prNumber instead of pr)
     const ciFailingIssues = result.actionableIssues.filter((i) => i.type === 'ci_failing');
     expect(ciFailingIssues).toHaveLength(1);
-    expect(ciFailingIssues[0].pr.url).toBe(activePR.url);
+    expect(ciFailingIssues[0].prNumber).toBe(activePR.number);
   });
 
   it('includes snoozed PR in active PRs (still shows in digest)', async () => {
@@ -558,8 +562,8 @@ describe('executeDailyCheck() — snoozed PR filtering', () => {
     const result = await executeDailyCheck('test-token');
 
     // PR is still active (appears in repoGroups) even when snoozed
-    const allGroupedPRs = result.repoGroups.flatMap((g) => g.prs);
-    expect(allGroupedPRs.some((p) => p.url === snoozedPR.url)).toBe(true);
+    const allGroupedPRNumbers = result.repoGroups.flatMap((g) => g.prNumbers);
+    expect(allGroupedPRNumbers).toContain(snoozedPR.number);
   });
 });
 
@@ -631,9 +635,9 @@ describe('executeDailyCheck() — output shape', () => {
 
     expect(result.repoGroups).toHaveLength(2);
     const groupA = result.repoGroups.find((g) => g.repo === 'owner/repo-a');
-    expect(groupA?.prs).toHaveLength(2);
+    expect(groupA?.prNumbers).toHaveLength(2);
     const groupB = result.repoGroups.find((g) => g.repo === 'owner/repo-b');
-    expect(groupB?.prs).toHaveLength(1);
+    expect(groupB?.prNumbers).toHaveLength(1);
   });
 });
 

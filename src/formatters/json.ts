@@ -3,7 +3,7 @@
  * Provides structured output that can be consumed by scripts and plugins
  */
 
-import type { FetchedPR, DailyDigest, AgentState, RepoGroup, CommentedIssue } from '../core/types.js';
+import type { FetchedPR, DailyDigest, AgentState, RepoGroup, CommentedIssue, ShelvedPRRef } from '../core/types.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { SearchPriority } from '../core/issue-discovery.js';
 
@@ -37,6 +37,17 @@ export interface ActionableIssue {
 }
 
 /**
+ * Compact version of ActionableIssue for JSON output.
+ * References the PR by number instead of embedding the full object,
+ * since the full PR is already available in digest.openPRs.
+ */
+export interface CompactActionableIssue {
+  type: ActionableIssueType;
+  prNumber: number;
+  label: string;
+}
+
+/**
  * A single action menu item pre-computed by the CLI.
  * The orchestration layer can use these directly in AskUserQuestion prompts.
  */
@@ -67,17 +78,118 @@ export interface ActionMenu {
   };
 }
 
+/**
+ * Deduplicated daily digest for JSON output (#287).
+ *
+ * Full PR objects live only in `openPRs`. Category arrays contain PR numbers
+ * that reference into `openPRs`, reducing JSON payload size by ~60-70%.
+ * Consumers look up full PR details via: openPRs.find(pr => pr.number === n)
+ */
+export interface DailyDigestCompact {
+  generatedAt: string;
+
+  /** All open PRs authored by the user — the single source of truth for full PR objects. */
+  openPRs: FetchedPR[];
+
+  // Category arrays: PR numbers referencing openPRs (each is a subset filtered by status)
+  prsNeedingResponse: number[];
+  ciFailingPRs: number[];
+  ciBlockedPRs: number[];
+  ciNotRunningPRs: number[];
+  mergeConflictPRs: number[];
+  needsRebasePRs: number[];
+  missingRequiredFilesPRs: number[];
+  incompleteChecklistPRs: number[];
+  needsChangesPRs: number[];
+  changesAddressedPRs: number[];
+  waitingOnMaintainerPRs: number[];
+  approachingDormant: number[];
+  dormantPRs: number[];
+  healthyPRs: number[];
+
+  recentlyClosedPRs: DailyDigest['recentlyClosedPRs'];
+  recentlyMergedPRs: DailyDigest['recentlyMergedPRs'];
+  shelvedPRs: ShelvedPRRef[];
+  autoUnshelvedPRs: ShelvedPRRef[];
+
+  summary: DailyDigest['summary'];
+}
+
+/**
+ * Compact repo group for JSON output (#287).
+ * Uses PR numbers instead of full objects; look up in digest.openPRs.
+ */
+export interface CompactRepoGroup {
+  repo: string;
+  prNumbers: number[];
+}
+
 export interface DailyOutput {
-  digest: DailyDigest;
+  digest: DailyDigestCompact;
   updates: unknown[]; // Legacy field, always empty in v2
   capacity: CapacityAssessment;
   summary: string; // Pre-formatted markdown for Claude to display verbatim
   briefSummary: string; // One-liner for action-first flow
-  actionableIssues: ActionableIssue[]; // Structured list for AskUserQuestion
+  actionableIssues: CompactActionableIssue[]; // Structured list referencing PRs by number
   actionMenu: ActionMenu; // Pre-computed action menu for Step 3
   commentedIssues: CommentedIssue[]; // Issues user commented on with conversation state
-  repoGroups: RepoGroup[]; // PRs grouped by repo for safe parallel dispatch (#80)
+  repoGroups: CompactRepoGroup[]; // PRs grouped by repo for safe parallel dispatch (#80)
   failures: PRCheckFailure[]; // PRs that failed to fetch (e.g., rate limits, network errors)
+}
+
+/**
+ * Convert a full DailyDigest to the compact format for JSON output (#287).
+ * Category arrays become PR number arrays; full objects stay only in openPRs.
+ */
+export function deduplicateDigest(digest: DailyDigest): DailyDigestCompact {
+  const toNumbers = (prs: FetchedPR[]): number[] => prs.map((pr) => pr.number);
+
+  return {
+    generatedAt: digest.generatedAt,
+    openPRs: digest.openPRs,
+    prsNeedingResponse: toNumbers(digest.prsNeedingResponse),
+    ciFailingPRs: toNumbers(digest.ciFailingPRs),
+    ciBlockedPRs: toNumbers(digest.ciBlockedPRs),
+    ciNotRunningPRs: toNumbers(digest.ciNotRunningPRs),
+    mergeConflictPRs: toNumbers(digest.mergeConflictPRs),
+    needsRebasePRs: toNumbers(digest.needsRebasePRs),
+    missingRequiredFilesPRs: toNumbers(digest.missingRequiredFilesPRs),
+    incompleteChecklistPRs: toNumbers(digest.incompleteChecklistPRs),
+    needsChangesPRs: toNumbers(digest.needsChangesPRs),
+    changesAddressedPRs: toNumbers(digest.changesAddressedPRs),
+    waitingOnMaintainerPRs: toNumbers(digest.waitingOnMaintainerPRs),
+    approachingDormant: toNumbers(digest.approachingDormant),
+    dormantPRs: toNumbers(digest.dormantPRs),
+    healthyPRs: toNumbers(digest.healthyPRs),
+    recentlyClosedPRs: digest.recentlyClosedPRs,
+    recentlyMergedPRs: digest.recentlyMergedPRs,
+    shelvedPRs: digest.shelvedPRs,
+    autoUnshelvedPRs: digest.autoUnshelvedPRs,
+    summary: digest.summary,
+  };
+}
+
+/**
+ * Convert ActionableIssue[] to CompactActionableIssue[] for JSON output (#287).
+ * Replaces the full PR object with just the PR number.
+ */
+export function compactActionableIssues(issues: ActionableIssue[]): CompactActionableIssue[] {
+  return issues.map((issue) => ({
+    type: issue.type,
+    prNumber: issue.pr.number,
+    label: issue.label,
+  }));
+}
+
+/**
+ * Convert RepoGroup[] to CompactRepoGroup[] for JSON output (#287).
+ * Replaces full PR arrays with PR number arrays.
+ */
+export function compactRepoGroups(groups: RepoGroup[]): CompactRepoGroup[] {
+  return groups.map((group) => ({
+    repo: group.repo,
+    prNumbers: group.prs.map((pr) => pr.number),
+  }));
 }
 
 export interface StatusOutput {
