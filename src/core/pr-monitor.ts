@@ -33,12 +33,7 @@ import { debug, warn, timed } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 
 // Extracted modules
-import {
-  classifyFailingChecks,
-  analyzeCheckRuns,
-  analyzeCombinedStatus,
-  mergeStatuses,
-} from './ci-analysis.js';
+import { classifyFailingChecks, analyzeCheckRuns, analyzeCombinedStatus, mergeStatuses } from './ci-analysis.js';
 import {
   type ReviewComment,
   determineReviewDecision,
