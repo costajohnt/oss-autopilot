@@ -45,7 +45,6 @@ import { computeDisplayLabel } from './display-utils.js';
 import {
   fetchUserMergedPRCounts as fetchUserMergedPRCountsImpl,
   fetchUserClosedPRCounts as fetchUserClosedPRCountsImpl,
-  fetchRepoStarCounts as fetchRepoStarCountsImpl,
   fetchRecentlyClosedPRs as fetchRecentlyClosedPRsImpl,
   fetchRecentlyMergedPRs as fetchRecentlyMergedPRsImpl,
 } from './github-stats.js';
