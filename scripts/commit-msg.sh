@@ -4,7 +4,7 @@
 # See: https://www.conventionalcommits.org/
 
 commit_msg_file="$1"
-commit_msg=$(cat "$commit_msg_file")
+commit_msg=$(head -1 "$commit_msg_file")
 
 # Allow merge commits
 if echo "$commit_msg" | grep -qE "^Merge "; then
