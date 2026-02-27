@@ -372,7 +372,6 @@ describe('getGitHubTokenAsync', () => {
   });
 
   it('should fall back to gh CLI asynchronously when no env var', async () => {
-     
     mockedExecFile.mockImplementation((...args: any[]) => {
       const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
       cb(null, 'ghp_async_token\n');
@@ -389,7 +388,6 @@ describe('getGitHubTokenAsync', () => {
   });
 
   it('should cache the token on subsequent calls', async () => {
-     
     mockedExecFile.mockImplementation((...args: any[]) => {
       const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
       cb(null, 'ghp_async_cached\n');
@@ -403,7 +401,6 @@ describe('getGitHubTokenAsync', () => {
   });
 
   it('should return null when gh CLI fails', async () => {
-     
     mockedExecFile.mockImplementation((...args: any[]) => {
       const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
       cb(new Error('gh not found'), '');
@@ -414,7 +411,6 @@ describe('getGitHubTokenAsync', () => {
   });
 
   it('should not retry after a failed attempt', async () => {
-     
     mockedExecFile.mockImplementation((...args: any[]) => {
       const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
       cb(new Error('gh not found'), '');
