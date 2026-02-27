@@ -188,9 +188,7 @@ function makeDefaultState(overrides: Record<string, unknown> = {}) {
 }
 
 /** Default merged PR counts response */
-function makeMergedResult(
-  repos: Map<string, { count: number; lastMergedAt: string }> = new Map(),
-) {
+function makeMergedResult(repos: Map<string, { count: number; lastMergedAt: string }> = new Map()) {
   return {
     repos,
     monthlyCounts: {},
@@ -276,9 +274,7 @@ describe('executeDailyCheck()', () => {
   });
 
   it('propagates failures from fetchUserOpenPRs', async () => {
-    const failures = [
-      { prUrl: 'https://github.com/owner/repo/pull/1', error: 'Rate limit exceeded' },
-    ];
+    const failures = [{ prUrl: 'https://github.com/owner/repo/pull/1', error: 'Rate limit exceeded' }];
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [], failures });
     const result = await executeDailyCheck('test-token');
     expect(result.failures).toHaveLength(1);
@@ -428,9 +424,7 @@ describe('executeDailyCheck() — capacity assessment', () => {
 
   it('reports no capacity when at or over the PR limit', async () => {
     // 10 PRs at the limit of 10
-    const prs = Array.from({ length: 10 }, (_, i) =>
-      makePR({ repo: 'owner/repo', number: i + 1, status: 'healthy' }),
-    );
+    const prs = Array.from({ length: 10 }, (_, i) => makePR({ repo: 'owner/repo', number: i + 1, status: 'healthy' }));
     mockFetchUserOpenPRs.mockResolvedValue({ prs, failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest(prs));
     mockIsPRShelved.mockReturnValue(false);
@@ -442,9 +436,7 @@ describe('executeDailyCheck() — capacity assessment', () => {
   });
 
   it('reports no capacity when critical issues exist (even under limit)', async () => {
-    const prs = [
-      makePR({ repo: 'owner/repo', number: 1, status: 'needs_response' }),
-    ];
+    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_response' })];
     mockFetchUserOpenPRs.mockResolvedValue({ prs, failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest(prs));
     mockIsPRShelved.mockReturnValue(false);
@@ -816,7 +808,9 @@ describe('executeDailyCheck() — error resilience', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeDailyCheck() — issue conversation', () => {
-  const makeIssue = (overrides: { status?: 'waiting' | 'acknowledged'; url?: string; number?: number } = {}): CommentedIssue => ({
+  const makeIssue = (
+    overrides: { status?: 'waiting' | 'acknowledged'; url?: string; number?: number } = {},
+  ): CommentedIssue => ({
     repo: 'owner/repo',
     number: overrides.number ?? 10,
     title: 'Test issue',
