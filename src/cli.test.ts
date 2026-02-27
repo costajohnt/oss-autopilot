@@ -59,9 +59,6 @@ const mockDebug = vi.mocked(debug);
 // but Commander handles those built-ins before preAction ever fires, so they are
 // never actually matched. They are tested via the length assertion below.
 
-import { readFileSync } from 'fs';
-import { join } from 'path';
-
 function extractLocalOnlyCommandsFromSource(): string[] {
   const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
   const match = src.match(/const LOCAL_ONLY_COMMANDS = \[([\s\S]*?)\];/);
@@ -264,7 +261,7 @@ describe('preAction hook', () => {
 
     await expect(program.parseAsync(['node', 'cli', 'daily'])).rejects.toThrow('process.exit called');
 
-    const errorOutput = consoleErrorSpy.mock.calls.map((c) => c[0]).join('\n');
+    const errorOutput = consoleErrorSpy.mock.calls.map((c: unknown[]) => c[0]).join('\n');
     expect(errorOutput).toContain('GitHub authentication required');
   });
 
