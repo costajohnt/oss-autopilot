@@ -11,7 +11,6 @@ import { daysBetween, parseGitHubUrl, extractOwnerRepo } from './utils.js';
 import {
   FetchedPR,
   FetchedPRStatus,
-  CIStatus,
   CIStatusResult,
   ReviewDecision,
   DailyDigest,
@@ -20,6 +19,7 @@ import {
   MergedPR,
   CIFailureCategory,
   ClassifiedCheck,
+  DetermineStatusInput,
 } from './types.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 import { runWorkerPool } from './concurrency.js';
@@ -280,19 +280,19 @@ export class PRMonitor {
     const latestChangesRequestedDate = this.getLatestChangesRequestedDate(reviews);
 
     // Determine status
-    const status = this.determineStatus(
+    const status = this.determineStatus({
       ciStatus,
       hasMergeConflict,
       hasUnrespondedComment,
       hasIncompleteChecklist,
       reviewDecision,
       daysSinceActivity,
-      config.dormantThresholdDays,
-      config.approachingDormantDays,
+      dormantThreshold: config.dormantThresholdDays,
+      approachingThreshold: config.approachingDormantDays,
       latestCommitDate,
-      lastMaintainerComment?.createdAt,
+      lastMaintainerCommentDate: lastMaintainerComment?.createdAt,
       latestChangesRequestedDate,
-    );
+    });
 
     // Classify failing checks (#81)
     const classifiedChecks = classifyFailingChecks(failingCheckNames, failingCheckConclusions);
@@ -479,19 +479,21 @@ export class PRMonitor {
   /**
    * Determine the overall status of a PR
    */
-  private determineStatus(
-    ciStatus: CIStatus,
-    hasMergeConflict: boolean,
-    hasUnrespondedComment: boolean,
-    hasIncompleteChecklist: boolean,
-    reviewDecision: ReviewDecision,
-    daysSinceActivity: number,
-    dormantThreshold: number,
-    approachingThreshold: number,
-    latestCommitDate?: string,
-    lastMaintainerCommentDate?: string,
-    latestChangesRequestedDate?: string,
-  ): FetchedPRStatus {
+  private determineStatus(input: DetermineStatusInput): FetchedPRStatus {
+    const {
+      ciStatus,
+      hasMergeConflict,
+      hasUnrespondedComment,
+      hasIncompleteChecklist,
+      reviewDecision,
+      daysSinceActivity,
+      dormantThreshold,
+      approachingThreshold,
+      latestCommitDate,
+      lastMaintainerCommentDate,
+      latestChangesRequestedDate,
+    } = input;
+
     // Priority order: needs_response/needs_changes/changes_addressed > failing_ci > merge_conflict > incomplete_checklist > dormant > approaching_dormant > waiting_on_maintainer > waiting/healthy
 
     if (hasUnrespondedComment) {

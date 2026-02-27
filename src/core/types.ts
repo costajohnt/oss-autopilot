@@ -49,6 +49,21 @@ export interface RepoGroup {
 /** GitHub's pull request review decision (from the reviewDecision GraphQL field). */
 export type ReviewDecision = 'approved' | 'changes_requested' | 'review_required' | 'unknown';
 
+/** Input options for `PRMonitor.determineStatus()`. */
+export interface DetermineStatusInput {
+  ciStatus: CIStatus;
+  hasMergeConflict: boolean;
+  hasUnrespondedComment: boolean;
+  hasIncompleteChecklist: boolean;
+  reviewDecision: ReviewDecision;
+  daysSinceActivity: number;
+  dormantThreshold: number;
+  approachingThreshold: number;
+  latestCommitDate?: string;
+  lastMaintainerCommentDate?: string;
+  latestChangesRequestedDate?: string;
+}
+
 /**
  * Computed status for a {@link FetchedPR}, determined by `PRMonitor.determineStatus()`.
  * Statuses are checked in priority order — the first match wins.

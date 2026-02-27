@@ -203,73 +203,73 @@ describe('PRMonitor changes_addressed detection', () => {
 
   it('should return changes_addressed when commit is newer than maintainer comment', () => {
     const monitor = new PRMonitor('fake-token');
-    const result = (monitor as any).determineStatus(
-      'passing', // ciStatus
-      false, // hasMergeConflict
-      true, // hasUnrespondedComment
-      false, // hasIncompleteChecklist
-      'changes_requested', // reviewDecision
-      2, // daysSinceActivity
-      30, // dormantThreshold
-      25, // approachingThreshold
-      '2026-02-08T12:00:00Z', // latestCommitDate (newer)
-      '2026-02-07T10:00:00Z', // lastMaintainerCommentDate (older)
-    );
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: true,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-08T12:00:00Z', // newer
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z', // older
+    });
 
     expect(result).toBe('changes_addressed');
   });
 
   it('should return needs_response when commit is older than maintainer comment', () => {
     const monitor = new PRMonitor('fake-token');
-    const result = (monitor as any).determineStatus(
-      'passing',
-      false,
-      true, // hasUnrespondedComment
-      false,
-      'changes_requested',
-      2,
-      30,
-      25,
-      '2026-02-06T10:00:00Z', // latestCommitDate (older)
-      '2026-02-07T10:00:00Z', // lastMaintainerCommentDate (newer)
-    );
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: true,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-06T10:00:00Z', // older
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z', // newer
+    });
 
     expect(result).toBe('needs_response');
   });
 
   it('should fall back to needs_response when commit date is unavailable', () => {
     const monitor = new PRMonitor('fake-token');
-    const result = (monitor as any).determineStatus(
-      'passing',
-      false,
-      true, // hasUnrespondedComment
-      false,
-      'changes_requested',
-      2,
-      30,
-      25,
-      undefined, // latestCommitDate (missing)
-      '2026-02-07T10:00:00Z', // lastMaintainerCommentDate
-    );
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: true,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: undefined, // missing
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+    });
 
     expect(result).toBe('needs_response');
   });
 
   it('should not check commit date when hasUnrespondedComment is false and review is approved', () => {
     const monitor = new PRMonitor('fake-token');
-    const result = (monitor as any).determineStatus(
-      'passing',
-      false,
-      false, // hasUnrespondedComment = false
-      false,
-      'approved',
-      2,
-      30,
-      25,
-      '2026-02-08T12:00:00Z', // latestCommitDate
-      '2026-02-07T10:00:00Z', // lastMaintainerCommentDate
-      undefined, // latestChangesRequestedDate
-    );
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'approved',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-08T12:00:00Z',
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      latestChangesRequestedDate: undefined,
+    });
 
     expect(result).toBe('waiting_on_maintainer');
   });
@@ -282,76 +282,76 @@ describe('PRMonitor needs_changes detection', () => {
 
   it('should return needs_changes when changes_requested and no new commits', () => {
     const monitor = new PRMonitor('fake-token');
-    const result = (monitor as any).determineStatus(
-      'passing',
-      false,
-      false, // hasUnrespondedComment = false (inline review comments)
-      false,
-      'changes_requested',
-      2,
-      30,
-      25,
-      '2026-02-08T06:50:38Z', // latestCommitDate (before review)
-      undefined, // lastMaintainerCommentDate
-      '2026-02-08T11:52:22Z', // latestChangesRequestedDate (after commit)
-    );
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-08T06:50:38Z', // before review
+      lastMaintainerCommentDate: undefined,
+      latestChangesRequestedDate: '2026-02-08T11:52:22Z', // after commit
+    });
 
     expect(result).toBe('needs_changes');
   });
 
   it('should return changes_addressed when commits pushed after changes_requested review', () => {
     const monitor = new PRMonitor('fake-token');
-    const result = (monitor as any).determineStatus(
-      'passing',
-      false,
-      false,
-      false,
-      'changes_requested',
-      2,
-      30,
-      25,
-      '2026-02-09T10:00:00Z', // latestCommitDate (after review)
-      undefined,
-      '2026-02-08T11:52:22Z', // latestChangesRequestedDate (before commit)
-    );
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-09T10:00:00Z', // after review
+      lastMaintainerCommentDate: undefined,
+      latestChangesRequestedDate: '2026-02-08T11:52:22Z', // before commit
+    });
 
     expect(result).toBe('changes_addressed');
   });
 
   it('should return needs_changes when no commit date available', () => {
     const monitor = new PRMonitor('fake-token');
-    const result = (monitor as any).determineStatus(
-      'passing',
-      false,
-      false,
-      false,
-      'changes_requested',
-      2,
-      30,
-      25,
-      undefined, // latestCommitDate (missing)
-      undefined,
-      '2026-02-08T11:52:22Z', // latestChangesRequestedDate
-    );
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: undefined, // missing
+      lastMaintainerCommentDate: undefined,
+      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+    });
 
     expect(result).toBe('needs_changes');
   });
 
   it('should return healthy when changes_requested but no review date available', () => {
     const monitor = new PRMonitor('fake-token');
-    const result = (monitor as any).determineStatus(
-      'passing',
-      false,
-      false,
-      false,
-      'changes_requested',
-      2,
-      30,
-      25,
-      '2026-02-08T06:50:38Z',
-      undefined,
-      undefined, // latestChangesRequestedDate (missing)
-    );
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-08T06:50:38Z',
+      lastMaintainerCommentDate: undefined,
+      latestChangesRequestedDate: undefined, // missing
+    });
 
     // No review date to compare against — fall through to healthy
     expect(result).toBe('healthy');
@@ -389,24 +389,11 @@ describe('PRMonitor determineStatus — remaining paths', () => {
       daysSinceActivity: 2,
       dormantThreshold: 30,
       approachingThreshold: 25,
-      latestCommitDate: undefined,
-      lastMaintainerCommentDate: undefined,
-      latestChangesRequestedDate: undefined,
+      latestCommitDate: undefined as string | undefined,
+      lastMaintainerCommentDate: undefined as string | undefined,
+      latestChangesRequestedDate: undefined as string | undefined,
     };
-    const p = { ...defaults, ...overrides };
-    return (monitor as any).determineStatus(
-      p.ciStatus,
-      p.hasMergeConflict,
-      p.hasUnrespondedComment,
-      p.hasIncompleteChecklist,
-      p.reviewDecision,
-      p.daysSinceActivity,
-      p.dormantThreshold,
-      p.approachingThreshold,
-      p.latestCommitDate,
-      p.lastMaintainerCommentDate,
-      p.latestChangesRequestedDate,
-    );
+    return (monitor as any).determineStatus({ ...defaults, ...overrides });
   }
 
   it('should return failing_ci when CI is failing', () => {
@@ -1427,20 +1414,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
       lastMaintainerCommentDate: undefined as string | undefined,
       latestChangesRequestedDate: undefined as string | undefined,
     };
-    const p = { ...defaults, ...overrides };
-    return (monitor as any).determineStatus(
-      p.ciStatus,
-      p.hasMergeConflict,
-      p.hasUnrespondedComment,
-      p.hasIncompleteChecklist,
-      p.reviewDecision,
-      p.daysSinceActivity,
-      p.dormantThreshold,
-      p.approachingThreshold,
-      p.latestCommitDate,
-      p.lastMaintainerCommentDate,
-      p.latestChangesRequestedDate,
-    );
+    return (monitor as any).determineStatus({ ...defaults, ...overrides });
   }
 
   it('should return failing_ci when changes_addressed (comment path) and CI is failing', () => {
@@ -2334,18 +2308,18 @@ describe('PRMonitor status with inline review after commit (#151)', () => {
 
   it('should return needs_response when inline review arrives after commit that addressed old comment', () => {
     const monitor = new PRMonitor('fake-token');
-    const status = (monitor as any).determineStatus(
-      'passing', // ciStatus
-      false, // hasMergeConflict
-      true, // hasUnrespondedComment (inline review detected)
-      false, // hasIncompleteChecklist
-      'review_required', // reviewDecision
-      1, // daysSinceActivity
-      30, // dormantThreshold
-      25, // approachingThreshold
-      '2026-02-13T06:35:00Z', // latestCommitDate (before inline review)
-      '2026-02-14T05:14:49Z', // lastMaintainerCommentDate (inline review)
-    );
+    const status = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: true,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'review_required',
+      daysSinceActivity: 1,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-13T06:35:00Z', // before inline review
+      lastMaintainerCommentDate: '2026-02-14T05:14:49Z', // inline review
+    });
 
     expect(status).toBe('needs_response');
   });
