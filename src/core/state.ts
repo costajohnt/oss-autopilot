@@ -360,7 +360,7 @@ export class StateManager {
 
         // Migrate from v1 to v2 if needed
         if (state.version === 1) {
-          state = migrateV1ToV2(state);
+          state = migrateV1ToV2(state as unknown as Record<string, unknown>);
           // Save the migrated state immediately (atomic write)
           atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
           console.error('Migrated state saved');
@@ -414,7 +414,7 @@ export class StateManager {
 
           // Migrate from v1 to v2 if needed
           if (state.version === 1) {
-            state = migrateV1ToV2(state);
+            state = migrateV1ToV2(state as unknown as Record<string, unknown>);
           }
 
           const repoCount = Object.keys(state.repoScores).length;
