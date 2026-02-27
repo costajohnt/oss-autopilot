@@ -3,7 +3,7 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { HttpCache, cachedRequest, isCacheableUrl, type CacheEntry } from './http-cache.js';
+import { HttpCache, cachedRequest, type CacheEntry } from './http-cache.js';
 
 /** Create a temporary directory for cache tests. */
 function makeTmpCacheDir(): string {
@@ -155,23 +155,6 @@ describe('HttpCache', () => {
       const missing = new HttpCache('/tmp/does-not-exist-oss-autopilot-test');
       expect(missing.size()).toBe(0);
     });
-  });
-});
-
-describe('isCacheableUrl', () => {
-  it('matches repo metadata endpoints', () => {
-    expect(isCacheableUrl('/repos/owner/repo')).toBe(true);
-  });
-
-  it('does not match non-repo endpoints', () => {
-    expect(isCacheableUrl('/search/issues')).toBe(false);
-    expect(isCacheableUrl('/repos/owner/repo/pulls')).toBe(false);
-    expect(isCacheableUrl('/repos/owner/repo/commits')).toBe(false);
-    expect(isCacheableUrl('/user')).toBe(false);
-  });
-
-  it('strips query string before matching', () => {
-    expect(isCacheableUrl('/repos/owner/repo?per_page=1')).toBe(true);
   });
 });
 

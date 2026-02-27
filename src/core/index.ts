@@ -44,7 +44,6 @@ export {
   getHttpCache,
   resetHttpCache,
   cachedRequest,
-  isCacheableUrl,
   type CacheEntry,
 } from './http-cache.js';
 export * from './types.js';

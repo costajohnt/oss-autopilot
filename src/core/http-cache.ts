@@ -218,21 +218,6 @@ export function resetHttpCache(): void {
 // ---------------------------------------------------------------------------
 
 /**
- * URL patterns that benefit from ETag caching.
- * Repo metadata changes infrequently and is safe to cache aggressively.
- */
-const CACHEABLE_PATTERNS = [
-  /^\/repos\/[^/]+\/[^/]+$/, // GET /repos/:owner/:repo  (star counts, metadata)
-];
-
-/** Determine whether a request URL is eligible for ETag caching. */
-export function isCacheableUrl(url: string): boolean {
-  // Strip query string for pattern matching
-  const pathname = url.split('?')[0];
-  return CACHEABLE_PATTERNS.some((re) => re.test(pathname));
-}
-
-/**
  * Wraps an Octokit `repos.get`-style call with ETag caching and request
  * deduplication.
  *
