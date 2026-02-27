@@ -180,9 +180,8 @@ function makeRepoScore(overrides: Partial<RepoScore> = {}): RepoScore {
     lastEvaluatedAt: '2026-01-15T00:00:00Z',
     signals: {
       hasActiveMaintainers: true,
-      acceptsContributions: true,
-      maintainerIsResponsive: true,
-      maintainerIsHostile: false,
+      isResponsive: true,
+      hasHostileComments: false,
     },
     ...overrides,
   };
