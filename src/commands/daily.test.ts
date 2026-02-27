@@ -565,7 +565,10 @@ describe('compactActionableIssues (#287)', () => {
 describe('compactRepoGroups (#287)', () => {
   it('should replace prs array with prNumbers array', () => {
     const groups = [
-      { repo: 'owner/repo-a', prs: [makePR({ repo: 'owner/repo-a', number: 1 }), makePR({ repo: 'owner/repo-a', number: 2 })] },
+      {
+        repo: 'owner/repo-a',
+        prs: [makePR({ repo: 'owner/repo-a', number: 1 }), makePR({ repo: 'owner/repo-a', number: 2 })],
+      },
       { repo: 'owner/repo-b', prs: [makePR({ repo: 'owner/repo-b', number: 3 })] },
     ];
 
