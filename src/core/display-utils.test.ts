@@ -39,19 +39,23 @@ describe('computeDisplayLabel', () => {
   });
 
   it('should return [Needs Response] for needs_response status', () => {
-    const result = computeDisplayLabel(makePR({
-      status: 'needs_response',
-      lastMaintainerComment: { author: 'maintainer', body: 'Fix this', createdAt: '2026-02-07T10:00:00Z' },
-    }));
+    const result = computeDisplayLabel(
+      makePR({
+        status: 'needs_response',
+        lastMaintainerComment: { author: 'maintainer', body: 'Fix this', createdAt: '2026-02-07T10:00:00Z' },
+      }),
+    );
     expect(result.displayLabel).toBe('[Needs Response]');
     expect(result.displayDescription).toBe('@maintainer commented');
   });
 
   it('should return [CI Failing] for failing_ci status', () => {
-    const result = computeDisplayLabel(makePR({
-      status: 'failing_ci',
-      classifiedChecks: [{ name: 'unit-tests', category: 'actionable' }],
-    }));
+    const result = computeDisplayLabel(
+      makePR({
+        status: 'failing_ci',
+        classifiedChecks: [{ name: 'unit-tests', category: 'actionable' }],
+      }),
+    );
     expect(result.displayLabel).toBe('[CI Failing]');
     expect(result.displayDescription).toContain('unit-tests');
   });
@@ -79,19 +83,23 @@ describe('computeDisplayLabel', () => {
   });
 
   it('should return [Changes Addressed] for changes_addressed status', () => {
-    const result = computeDisplayLabel(makePR({
-      status: 'changes_addressed',
-      lastMaintainerComment: { author: 'reviewer', body: 'LGTM with changes', createdAt: '2026-02-07T10:00:00Z' },
-    }));
+    const result = computeDisplayLabel(
+      makePR({
+        status: 'changes_addressed',
+        lastMaintainerComment: { author: 'reviewer', body: 'LGTM with changes', createdAt: '2026-02-07T10:00:00Z' },
+      }),
+    );
     expect(result.displayLabel).toBe('[Changes Addressed]');
     expect(result.displayDescription).toContain('@reviewer');
   });
 
   it('should return [Incomplete Checklist] for incomplete_checklist status', () => {
-    const result = computeDisplayLabel(makePR({
-      status: 'incomplete_checklist',
-      checklistStats: { checked: 2, total: 5 },
-    }));
+    const result = computeDisplayLabel(
+      makePR({
+        status: 'incomplete_checklist',
+        checklistStats: { checked: 2, total: 5 },
+      }),
+    );
     expect(result.displayLabel).toBe('[Incomplete Checklist]');
     expect(result.displayDescription).toBe('2/5 items checked');
   });

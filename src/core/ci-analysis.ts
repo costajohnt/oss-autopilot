@@ -4,9 +4,6 @@
  */
 
 import { CIFailureCategory, ClassifiedCheck, CIStatusResult } from './types.js';
-import { warn } from './logger.js';
-
-const MODULE = 'ci-analysis';
 
 /**
  * Known CI check name patterns that indicate fork limitations rather than real failures (#81).

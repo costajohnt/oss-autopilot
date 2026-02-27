@@ -34,7 +34,6 @@ import { getHttpCache, cachedRequest } from './http-cache.js';
 
 // Extracted modules
 import {
-  classifyCICheck,
   classifyFailingChecks,
   analyzeCheckRuns,
   analyzeCombinedStatus,
@@ -46,7 +45,7 @@ import {
   getLatestChangesRequestedDate,
   checkUnrespondedComments,
 } from './review-analysis.js';
-import { analyzeChecklist, isConditionalChecklistItem } from './checklist-analysis.js';
+import { analyzeChecklist } from './checklist-analysis.js';
 import { extractMaintainerActionHints } from './maintainer-analysis.js';
 import { computeDisplayLabel } from './display-utils.js';
 import {
@@ -62,8 +61,6 @@ export { isBotAuthor };
 export { computeDisplayLabel } from './display-utils.js';
 export { classifyCICheck, classifyFailingChecks } from './ci-analysis.js';
 export { isConditionalChecklistItem } from './checklist-analysis.js';
-
-const MODULE = 'pr-monitor';
 
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;

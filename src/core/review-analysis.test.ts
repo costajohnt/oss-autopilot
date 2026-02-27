@@ -17,15 +17,13 @@ describe('determineReviewDecision', () => {
   });
 
   it('should return approved when latest review is APPROVED', () => {
-    expect(
-      determineReviewDecision([{ state: 'APPROVED', user: { login: 'reviewer1' } }]),
-    ).toBe('approved');
+    expect(determineReviewDecision([{ state: 'APPROVED', user: { login: 'reviewer1' } }])).toBe('approved');
   });
 
   it('should return changes_requested when latest review is CHANGES_REQUESTED', () => {
-    expect(
-      determineReviewDecision([{ state: 'CHANGES_REQUESTED', user: { login: 'reviewer1' } }]),
-    ).toBe('changes_requested');
+    expect(determineReviewDecision([{ state: 'CHANGES_REQUESTED', user: { login: 'reviewer1' } }])).toBe(
+      'changes_requested',
+    );
   });
 
   it('should prioritize changes_requested over approved from different users', () => {
@@ -45,9 +43,7 @@ describe('determineReviewDecision', () => {
   });
 
   it('should return review_required for COMMENTED-only reviews', () => {
-    expect(
-      determineReviewDecision([{ state: 'COMMENTED', user: { login: 'reviewer1' } }]),
-    ).toBe('review_required');
+    expect(determineReviewDecision([{ state: 'COMMENTED', user: { login: 'reviewer1' } }])).toBe('review_required');
   });
 });
 
@@ -63,9 +59,9 @@ describe('getLatestChangesRequestedDate', () => {
   });
 
   it('should return the date of a single CHANGES_REQUESTED review', () => {
-    expect(
-      getLatestChangesRequestedDate([{ state: 'CHANGES_REQUESTED', submitted_at: '2026-02-07T10:00:00Z' }]),
-    ).toBe('2026-02-07T10:00:00Z');
+    expect(getLatestChangesRequestedDate([{ state: 'CHANGES_REQUESTED', submitted_at: '2026-02-07T10:00:00Z' }])).toBe(
+      '2026-02-07T10:00:00Z',
+    );
   });
 
   it('should return the latest date when multiple CHANGES_REQUESTED reviews', () => {
@@ -85,23 +81,55 @@ describe('isAllSelfReplies', () => {
 
   it('should return false when comment starts a new thread', () => {
     const result = isAllSelfReplies(100, [
-      { id: 1000, user: { login: 'maintainer' }, body: 'New issue', created_at: '2026-02-07T10:00:00Z', pull_request_review_id: 100 },
+      {
+        id: 1000,
+        user: { login: 'maintainer' },
+        body: 'New issue',
+        created_at: '2026-02-07T10:00:00Z',
+        pull_request_review_id: 100,
+      },
     ]);
     expect(result).toBe(false);
   });
 
   it('should return true when all comments reply to same author', () => {
     const result = isAllSelfReplies(200, [
-      { id: 1000, user: { login: 'maintainer' }, body: 'Original', created_at: '2026-02-07T10:00:00Z', pull_request_review_id: 100 },
-      { id: 1001, user: { login: 'maintainer' }, body: 'Follow up', created_at: '2026-02-07T11:00:00Z', in_reply_to_id: 1000, pull_request_review_id: 200 },
+      {
+        id: 1000,
+        user: { login: 'maintainer' },
+        body: 'Original',
+        created_at: '2026-02-07T10:00:00Z',
+        pull_request_review_id: 100,
+      },
+      {
+        id: 1001,
+        user: { login: 'maintainer' },
+        body: 'Follow up',
+        created_at: '2026-02-07T11:00:00Z',
+        in_reply_to_id: 1000,
+        pull_request_review_id: 200,
+      },
     ]);
     expect(result).toBe(true);
   });
 
   it('should be case-insensitive when checking authors', () => {
     const result = isAllSelfReplies(200, [
-      { id: 1000, user: { login: 'MikeMcQuaid' }, body: 'Original', created_at: '2026-02-07T10:00:00Z', pull_request_review_id: 100 },
-      { id: 1001, user: { login: 'mikemcquaid' }, body: 'Follow up', created_at: '2026-02-07T11:00:00Z', in_reply_to_id: 1000, pull_request_review_id: 200 },
+      {
+        id: 1000,
+        user: { login: 'MikeMcQuaid' },
+        body: 'Original',
+        created_at: '2026-02-07T10:00:00Z',
+        pull_request_review_id: 100,
+      },
+      {
+        id: 1001,
+        user: { login: 'mikemcquaid' },
+        body: 'Follow up',
+        created_at: '2026-02-07T11:00:00Z',
+        in_reply_to_id: 1000,
+        pull_request_review_id: 200,
+      },
     ]);
     expect(result).toBe(true);
   });

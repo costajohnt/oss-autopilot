@@ -118,7 +118,10 @@ describe('analyzeCombinedStatus', () => {
   it('should filter out authorization-gate statuses', () => {
     const failingCheckNames: string[] = [];
     const result = analyzeCombinedStatus(
-      { state: 'failure', statuses: [{ state: 'failure', context: 'vercel', description: 'Authorization required to deploy' }] },
+      {
+        state: 'failure',
+        statuses: [{ state: 'failure', context: 'vercel', description: 'Authorization required to deploy' }],
+      },
       failingCheckNames,
     );
     expect(result.effectiveCombinedState).toBe('success');
@@ -138,7 +141,13 @@ describe('analyzeCombinedStatus', () => {
 describe('mergeStatuses', () => {
   it('should return failing when check runs have failures', () => {
     const result = mergeStatuses(
-      { hasFailingChecks: true, hasPendingChecks: false, hasSuccessfulChecks: false, failingCheckNames: ['test'], failingCheckConclusions: new Map([['test', 'failure']]) },
+      {
+        hasFailingChecks: true,
+        hasPendingChecks: false,
+        hasSuccessfulChecks: false,
+        failingCheckNames: ['test'],
+        failingCheckConclusions: new Map([['test', 'failure']]),
+      },
       { effectiveCombinedState: 'success', hasStatuses: true },
       1,
     );
@@ -147,7 +156,13 @@ describe('mergeStatuses', () => {
 
   it('should return pending when checks are pending', () => {
     const result = mergeStatuses(
-      { hasFailingChecks: false, hasPendingChecks: true, hasSuccessfulChecks: false, failingCheckNames: [], failingCheckConclusions: new Map() },
+      {
+        hasFailingChecks: false,
+        hasPendingChecks: true,
+        hasSuccessfulChecks: false,
+        failingCheckNames: [],
+        failingCheckConclusions: new Map(),
+      },
       { effectiveCombinedState: 'success', hasStatuses: true },
       1,
     );
@@ -156,7 +171,13 @@ describe('mergeStatuses', () => {
 
   it('should return passing when all checks succeed', () => {
     const result = mergeStatuses(
-      { hasFailingChecks: false, hasPendingChecks: false, hasSuccessfulChecks: true, failingCheckNames: [], failingCheckConclusions: new Map() },
+      {
+        hasFailingChecks: false,
+        hasPendingChecks: false,
+        hasSuccessfulChecks: true,
+        failingCheckNames: [],
+        failingCheckConclusions: new Map(),
+      },
       { effectiveCombinedState: 'success', hasStatuses: true },
       1,
     );
@@ -168,7 +189,13 @@ describe('mergeStatuses', () => {
     // the result is unknown. Note: in practice analyzeCombinedStatus returns 'success' for
     // empty statuses, so this tests the fallback path with a non-standard state.
     const result = mergeStatuses(
-      { hasFailingChecks: false, hasPendingChecks: false, hasSuccessfulChecks: false, failingCheckNames: [], failingCheckConclusions: new Map() },
+      {
+        hasFailingChecks: false,
+        hasPendingChecks: false,
+        hasSuccessfulChecks: false,
+        failingCheckNames: [],
+        failingCheckConclusions: new Map(),
+      },
       { effectiveCombinedState: 'neutral', hasStatuses: false },
       0,
     );
