@@ -1516,11 +1516,9 @@ describe('StateManager recovery from corrupt state files', () => {
     fs.mkdirSync(backupDir, { recursive: true });
     const fullBackup = makeV2State();
     (fullBackup.config as Record<string, unknown>)['githubUsername'] = 'restored-user';
-    fs.writeFileSync(
-      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'),
-      JSON.stringify(fullBackup),
-      { mode: 0o600 },
-    );
+    fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'), JSON.stringify(fullBackup), {
+      mode: 0o600,
+    });
 
     const sm = new StateManager(false);
     const state = sm.getState();
@@ -1535,11 +1533,9 @@ describe('StateManager recovery from corrupt state files', () => {
     fs.mkdirSync(backupDir, { recursive: true });
     const fullBackup = makeV2State();
     (fullBackup.config as Record<string, unknown>)['githubUsername'] = 'from-backup';
-    fs.writeFileSync(
-      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'),
-      JSON.stringify(fullBackup),
-      { mode: 0o600 },
-    );
+    fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'), JSON.stringify(fullBackup), {
+      mode: 0o600,
+    });
 
     new StateManager(false);
 
@@ -1556,20 +1552,16 @@ describe('StateManager recovery from corrupt state files', () => {
     fs.mkdirSync(backupDir, { recursive: true });
 
     // Newer backup (sorted last = most recent after reverse) is corrupt
-    fs.writeFileSync(
-      path.join(backupDir, 'state-2024-02-01T00-00-00-000Z-zzz000.json'),
-      'ALSO CORRUPT',
-      { mode: 0o600 },
-    );
+    fs.writeFileSync(path.join(backupDir, 'state-2024-02-01T00-00-00-000Z-zzz000.json'), 'ALSO CORRUPT', {
+      mode: 0o600,
+    });
 
     // Older backup is valid
     const validBackup = makeV2State();
     (validBackup.config as Record<string, unknown>)['githubUsername'] = 'valid-older-backup';
-    fs.writeFileSync(
-      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-aaa000.json'),
-      JSON.stringify(validBackup),
-      { mode: 0o600 },
-    );
+    fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-aaa000.json'), JSON.stringify(validBackup), {
+      mode: 0o600,
+    });
 
     const sm = new StateManager(false);
     expect(sm.getState().config.githubUsername).toBe('valid-older-backup');
@@ -1581,11 +1573,9 @@ describe('StateManager recovery from corrupt state files', () => {
 
     const backupDir = path.join(mockTmpDir, 'backups');
     fs.mkdirSync(backupDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc000.json'),
-      'ALSO CORRUPT',
-      { mode: 0o600 },
-    );
+    fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc000.json'), 'ALSO CORRUPT', {
+      mode: 0o600,
+    });
 
     const sm = new StateManager(false);
     const state = sm.getState();
