@@ -11,7 +11,6 @@ import { daysBetween, parseGitHubUrl, extractOwnerRepo } from './utils.js';
 import {
   FetchedPR,
   FetchedPRStatus,
-  CIStatus,
   CIStatusResult,
   ReviewDecision,
   DailyDigest,
