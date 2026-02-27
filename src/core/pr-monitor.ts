@@ -25,7 +25,6 @@ import {
   MergedPR,
   DetermineStatusInput,
 } from './types.js';
-import { isBotAuthor } from './comment-utils.js';
 import { runWorkerPool } from './concurrency.js';
 import { ConfigurationError, ValidationError } from './errors.js';
 import { paginateAll } from './pagination.js';
@@ -51,8 +50,7 @@ import {
   fetchRecentlyMergedPRs as fetchRecentlyMergedPRsImpl,
 } from './github-stats.js';
 
-// Re-export so existing consumers (tests, index.ts) can still import from pr-monitor
-export { isBotAuthor };
+// Re-export so existing consumers can still import from pr-monitor
 export { computeDisplayLabel } from './display-utils.js';
 export { classifyCICheck, classifyFailingChecks } from './ci-analysis.js';
 export { isConditionalChecklistItem } from './checklist-analysis.js';
@@ -484,7 +482,7 @@ export class PRMonitor {
 
       // Delegate analysis to ci-analysis module
       const checkRunAnalysis = analyzeCheckRuns(checkRuns);
-      const combinedAnalysis = analyzeCombinedStatus(combinedStatus, checkRunAnalysis.failingCheckNames);
+      const combinedAnalysis = analyzeCombinedStatus(combinedStatus);
 
       return mergeStatuses(checkRunAnalysis, combinedAnalysis, checkRuns.length);
     } catch (error) {

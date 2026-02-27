@@ -106,34 +106,28 @@ describe('analyzeCheckRuns', () => {
 
 describe('analyzeCombinedStatus', () => {
   it('should detect real failures', () => {
-    const failingCheckNames: string[] = [];
-    const result = analyzeCombinedStatus(
-      { state: 'failure', statuses: [{ state: 'failure', context: 'ci/test', description: 'Tests failed' }] },
-      failingCheckNames,
-    );
+    const result = analyzeCombinedStatus({
+      state: 'failure',
+      statuses: [{ state: 'failure', context: 'ci/test', description: 'Tests failed' }],
+    });
     expect(result.effectiveCombinedState).toBe('failure');
-    expect(failingCheckNames).toContain('ci/test');
+    expect(result.failingStatusNames).toContain('ci/test');
   });
 
   it('should filter out authorization-gate statuses', () => {
-    const failingCheckNames: string[] = [];
-    const result = analyzeCombinedStatus(
-      {
-        state: 'failure',
-        statuses: [{ state: 'failure', context: 'vercel', description: 'Authorization required to deploy' }],
-      },
-      failingCheckNames,
-    );
+    const result = analyzeCombinedStatus({
+      state: 'failure',
+      statuses: [{ state: 'failure', context: 'vercel', description: 'Authorization required to deploy' }],
+    });
     expect(result.effectiveCombinedState).toBe('success');
-    expect(failingCheckNames).toHaveLength(0);
+    expect(result.failingStatusNames).toHaveLength(0);
   });
 
   it('should detect pending statuses', () => {
-    const failingCheckNames: string[] = [];
-    const result = analyzeCombinedStatus(
-      { state: 'pending', statuses: [{ state: 'pending', context: 'ci/test', description: null }] },
-      failingCheckNames,
-    );
+    const result = analyzeCombinedStatus({
+      state: 'pending',
+      statuses: [{ state: 'pending', context: 'ci/test', description: null }],
+    });
     expect(result.effectiveCombinedState).toBe('pending');
   });
 });
@@ -148,7 +142,7 @@ describe('mergeStatuses', () => {
         failingCheckNames: ['test'],
         failingCheckConclusions: new Map([['test', 'failure']]),
       },
-      { effectiveCombinedState: 'success', hasStatuses: true },
+      { effectiveCombinedState: 'success', hasStatuses: true, failingStatusNames: [] },
       1,
     );
     expect(result.status).toBe('failing');
@@ -163,7 +157,7 @@ describe('mergeStatuses', () => {
         failingCheckNames: [],
         failingCheckConclusions: new Map(),
       },
-      { effectiveCombinedState: 'success', hasStatuses: true },
+      { effectiveCombinedState: 'success', hasStatuses: true, failingStatusNames: [] },
       1,
     );
     expect(result.status).toBe('pending');
@@ -178,7 +172,7 @@ describe('mergeStatuses', () => {
         failingCheckNames: [],
         failingCheckConclusions: new Map(),
       },
-      { effectiveCombinedState: 'success', hasStatuses: true },
+      { effectiveCombinedState: 'success', hasStatuses: true, failingStatusNames: [] },
       1,
     );
     expect(result.status).toBe('passing');
@@ -196,7 +190,7 @@ describe('mergeStatuses', () => {
         failingCheckNames: [],
         failingCheckConclusions: new Map(),
       },
-      { effectiveCombinedState: 'neutral', hasStatuses: false },
+      { effectiveCombinedState: 'neutral', hasStatuses: false, failingStatusNames: [] },
       0,
     );
     expect(result.status).toBe('unknown');

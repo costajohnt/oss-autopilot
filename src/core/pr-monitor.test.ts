@@ -23,10 +23,9 @@ const {
   computeDisplayLabel,
   classifyCICheck,
   classifyFailingChecks,
-  isBotAuthor,
   isConditionalChecklistItem,
 } = await import('./pr-monitor.js');
-const { isAcknowledgmentComment } = await import('./comment-utils.js');
+const { isBotAuthor, isAcknowledgmentComment } = await import('./comment-utils.js');
 const { getStateManager } = await import('./state.js');
 
 // Import extracted module functions (pure logic, no mocks needed)

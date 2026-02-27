@@ -129,16 +129,16 @@ export interface CheckRunAnalysis {
 export interface CombinedStatusAnalysis {
   effectiveCombinedState: string;
   hasStatuses: boolean;
+  failingStatusNames: string[];
 }
 
 /**
  * Analyze combined status API results (Travis, CircleCI, etc.).
  * Filters out authorization-gate statuses and determines the effective combined state.
- * Appends failing status context names to the provided failingCheckNames array.
+ * Returns failing status context names in the result (does not mutate caller arrays).
  */
 export function analyzeCombinedStatus(
   combinedStatus: { state: string; statuses: Array<{ state: string; context: string; description: string | null }> },
-  failingCheckNames: string[],
 ): CombinedStatusAnalysis {
   // Filter out authorization-gate statuses (e.g., Vercel "Authorization required to deploy")
   // These are permission gates, not real CI failures
@@ -162,15 +162,14 @@ export function analyzeCombinedStatus(
   const hasStatuses = combinedStatus.statuses.length > 0;
 
   // Collect failing status names from combined status API
-  // Note: Combined statuses don't have conclusion data (only check runs do),
-  // so these rely on name-based classification in classifyFailingChecks.
+  const failingStatusNames: string[] = [];
   for (const s of realStatuses) {
     if (s.state === 'failure' || s.state === 'error') {
-      failingCheckNames.push(s.context);
+      failingStatusNames.push(s.context);
     }
   }
 
-  return { effectiveCombinedState, hasStatuses };
+  return { effectiveCombinedState, hasStatuses, failingStatusNames };
 }
 
 /**
@@ -184,11 +183,14 @@ export function mergeStatuses(
 ): CIStatusResult {
   const { hasFailingChecks, hasPendingChecks, hasSuccessfulChecks, failingCheckNames, failingCheckConclusions } =
     checkRunAnalysis;
-  const { effectiveCombinedState, hasStatuses } = combinedAnalysis;
+  const { effectiveCombinedState, hasStatuses, failingStatusNames } = combinedAnalysis;
+
+  // Merge failing names from both check runs and combined statuses
+  const allFailingNames = [...failingCheckNames, ...failingStatusNames];
 
   // Safety net: If we have ANY failing checks, report as failing
   if (hasFailingChecks || effectiveCombinedState === 'failure' || effectiveCombinedState === 'error') {
-    return { status: 'failing', failingCheckNames, failingCheckConclusions };
+    return { status: 'failing', failingCheckNames: allFailingNames, failingCheckConclusions };
   }
 
   if (hasPendingChecks || effectiveCombinedState === 'pending') {
