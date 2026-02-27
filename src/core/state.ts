@@ -84,7 +84,7 @@ export function acquireLock(lockPath: string): void {
   } catch (err) {
     // Another process grabbed the lock between unlink and write
     debug(MODULE, 'Lock re-acquire failed (race condition)', err);
-    throw new Error('State file is locked by another process');
+    throw new Error('State file is locked by another process', { cause: err });
   }
 }
 
