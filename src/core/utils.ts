@@ -7,6 +7,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { execFileSync } from 'child_process';
 import { ConfigurationError } from './errors.js';
+import { debug } from './logger.js';
 
 // Cached GitHub token (fetched once per session)
 let cachedGitHubToken: string | null = null;
@@ -335,8 +336,9 @@ export function getGitHubToken(): string | null {
       console.error('Using GitHub token from gh CLI');
       return cachedGitHubToken;
     }
-  } catch {
-    // gh CLI not available or not authenticated - fall through
+  } catch (err) {
+    // gh CLI not available or not authenticated — fall through to return null
+    debug('utils', 'gh auth token failed (CLI unavailable or not authenticated)', err);
   }
 
   return null;

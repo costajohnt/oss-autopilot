@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execFileSync } from 'child_process';
-import { getStateManager } from '../core/index.js';
+import { getStateManager, debug } from '../core/index.js';
 import { outputJson, type LocalReposOutput, type LocalRepoInfo } from '../formatters/json.js';
 
 interface LocalReposOptions {
@@ -44,7 +44,9 @@ function getGitHubRemote(repoPath: string): string | null {
     if (sshMatch) return sshMatch[1];
 
     return null;
-  } catch {
+  } catch (err) {
+    // git remote get-url failed (no remote, not a git repo, or timeout) — skip this repo
+    debug('local-repos', `Failed to get GitHub remote for ${repoPath}`, err);
     return null;
   }
 }
@@ -59,7 +61,9 @@ function getCurrentBranch(repoPath: string): string | null {
         stdio: ['pipe', 'pipe', 'pipe'],
       }).trim() || null
     );
-  } catch {
+  } catch (err) {
+    // git branch --show-current failed — repo may be in detached HEAD state or inaccessible
+    debug('local-repos', `Failed to get current branch for ${repoPath}`, err);
     return null;
   }
 }
@@ -80,7 +84,9 @@ export function scanForRepos(scanPaths: string[]): Record<string, LocalRepoInfo>
         stdio: ['pipe', 'pipe', 'pipe'],
       }).trim();
       gitDirs = output ? output.split('\n').filter(Boolean) : [];
-    } catch {
+    } catch (err) {
+      // find command failed for this scan path (permission denied, path gone, etc.) — skip it
+      debug('local-repos', `find failed for scan path ${scanPath}`, err);
       continue;
     }
 
