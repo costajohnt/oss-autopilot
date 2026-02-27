@@ -46,7 +46,9 @@ const mockUndismissIssue = vi.fn();
 // daily.ts imports everything from '../core/index.js', so we mock the whole barrel export.
 // PRMonitor and IssueConversationMonitor are used as classes (new PRMonitor(...)),
 // so we use actual class syntax (not arrow functions) in the mock implementations.
-vi.mock('../core/index.js', () => {
+vi.mock('../core/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../core/index.js')>();
+
   // Capture module-level mocks via closure — the inner class refers to them by name
   class MockPRMonitor {
     fetchUserOpenPRs = mockFetchUserOpenPRs;
@@ -63,6 +65,7 @@ vi.mock('../core/index.js', () => {
   }
 
   return {
+    ...actual,
     getStateManager: vi.fn(() => ({
       getState: mockGetState,
       updateRepoScore: mockUpdateRepoScore,

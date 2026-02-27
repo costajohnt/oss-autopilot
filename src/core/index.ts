@@ -41,4 +41,17 @@ export {
 } from './utils.js';
 export { enableDebug, isDebugEnabled, debug, warn, timed } from './logger.js';
 export { HttpCache, getHttpCache, resetHttpCache, cachedRequest, type CacheEntry } from './http-cache.js';
+export {
+  CRITICAL_STATUSES,
+  computeRepoSignals,
+  groupPRsByRepo,
+  assessCapacity,
+  collectActionableIssues,
+  computeActionMenu,
+  toShelvedPRRef,
+  formatActionHint,
+  formatBriefSummary,
+  formatSummary,
+  printDigest,
+} from './daily-logic.js';
 export * from './types.js';
