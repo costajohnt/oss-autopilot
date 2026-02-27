@@ -12,6 +12,9 @@ import { paginateAll } from './pagination.js';
 import { parseGitHubUrl, daysBetween, getDataDir } from './utils.js';
 import { TrackedIssue, IssueVettingResult, ContributionGuidelines, ProjectHealth, DEFAULT_CONFIG } from './types.js';
 import { ValidationError } from './errors.js';
+import { warn } from './logger.js';
+
+const MODULE = 'issue-discovery';
 
 // Concurrency limit for parallel API calls
 const MAX_CONCURRENT_REQUESTS = 5;
@@ -261,17 +264,19 @@ export class IssueDiscovery {
     } catch (error) {
       const cachedRepos = this.stateManager.getStarredRepos();
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('Error fetching starred repos:', errorMessage);
+      warn(MODULE, 'Error fetching starred repos:', errorMessage);
 
       if (cachedRepos.length === 0) {
-        console.warn(
-          `[STARRED_REPOS_FETCH_FAILED] Failed to fetch starred repositories from GitHub API. ` +
+        warn(
+          MODULE,
+          `Failed to fetch starred repositories from GitHub API. ` +
             `No cached repos available. Error: ${errorMessage}\n` +
             `Tip: Ensure your GITHUB_TOKEN has the 'read:user' scope and try again.`,
         );
       } else {
-        console.warn(
-          `[STARRED_REPOS_FETCH_FAILED] Failed to fetch starred repositories from GitHub API. ` +
+        warn(
+          MODULE,
+          `Failed to fetch starred repositories from GitHub API. ` +
             `Using ${cachedRepos.length} cached repos instead. Error: ${errorMessage}`,
         );
       }
@@ -318,7 +323,7 @@ export class IssueDiscovery {
       if (rateLimit.remaining < 5) {
         const resetTime = new Date(rateLimit.resetAt).toLocaleTimeString('en-US', { hour12: false });
         this.rateLimitWarning = `GitHub search API quota low (${rateLimit.remaining}/${rateLimit.limit} remaining, resets at ${resetTime}). Search may be slow.`;
-        console.warn(this.rateLimitWarning);
+        warn(MODULE, this.rateLimitWarning);
       }
     } catch (error) {
       // Fail fast on auth errors — no point searching with a bad token
@@ -326,7 +331,7 @@ export class IssueDiscovery {
         throw error;
       }
       // Non-fatal: proceed with search for transient/network errors
-      console.warn('[RATE_LIMIT_CHECK] Could not check rate limit:', error instanceof Error ? error.message : error);
+      warn(MODULE, 'Could not check rate limit:', error instanceof Error ? error.message : error);
     }
 
     // Get merged-PR repos (highest merge probability)
@@ -544,7 +549,7 @@ export class IssueDiscovery {
         if (IssueDiscovery.isRateLimitError(error)) {
           rateLimitHitDuringSearch = true;
         }
-        console.error(`[SEARCH_PHASE_2_FAILED] Error in general issue search: ${errorMessage}`);
+        warn(MODULE, `Error in general issue search: ${errorMessage}`);
       }
     }
 
@@ -665,7 +670,8 @@ export class IssueDiscovery {
           rateLimitFailures++;
         }
         const batchRepos = batch.join(', ');
-        console.error(
+        warn(
+          MODULE,
           `Error searching issues in batch [${batchRepos}]:`,
           error instanceof Error ? error.message : error,
         );
@@ -675,8 +681,9 @@ export class IssueDiscovery {
     const allBatchesFailed = failedBatches === batches.length && batches.length > 0;
     const rateLimitHit = rateLimitFailures > 0;
     if (allBatchesFailed) {
-      console.error(
-        `[SEARCH_PHASE_ALL_BATCHES_FAILED] All ${batches.length} batch(es) failed for ${priority} phase. ` +
+      warn(
+        MODULE,
+        `All ${batches.length} batch(es) failed for ${priority} phase. ` +
           `This may indicate a systemic issue (rate limit, auth, network).`,
       );
     }
@@ -731,7 +738,7 @@ export class IssueDiscovery {
           if (IssueDiscovery.isRateLimitError(error)) {
             rateLimitFailures++;
           }
-          console.error(`Error vetting issue ${url}:`, error instanceof Error ? error.message : error);
+          warn(MODULE, `Error vetting issue ${url}:`, error instanceof Error ? error.message : error);
         });
 
       pending.push(task);
@@ -749,8 +756,9 @@ export class IssueDiscovery {
 
     const allFailed = failedVettingCount === attemptedCount && attemptedCount > 0;
     if (allFailed) {
-      console.error(
-        `[VET_ISSUES_ALL_FAILED] All ${attemptedCount} issue(s) failed vetting. ` +
+      warn(
+        MODULE,
+        `All ${attemptedCount} issue(s) failed vetting. ` +
           `This may indicate a systemic issue (rate limit, auth, network).`,
       );
     }
@@ -978,8 +986,9 @@ export class IssueDiscovery {
       return { passed: data.total_count === 0 && linkedPRs.length === 0 };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(
-        `[CHECK_NO_EXISTING_PR] Failed to check for existing PRs on ${owner}/${repo}#${issueNumber}: ${errorMessage}. Assuming no existing PR.`,
+      warn(
+        MODULE,
+        `Failed to check for existing PRs on ${owner}/${repo}#${issueNumber}: ${errorMessage}. Assuming no existing PR.`,
       );
       return { passed: true, inconclusive: true, reason: errorMessage };
     }
@@ -1038,8 +1047,9 @@ export class IssueDiscovery {
       return { passed: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn(
-        `[CHECK_NOT_CLAIMED] Failed to check claim status on ${owner}/${repo}#${issueNumber}: ${errorMessage}. Assuming not claimed.`,
+      warn(
+        MODULE,
+        `Failed to check claim status on ${owner}/${repo}#${issueNumber}: ${errorMessage}. Assuming not claimed.`,
       );
       return { passed: true, inconclusive: true, reason: errorMessage };
     }
@@ -1074,9 +1084,7 @@ export class IssueDiscovery {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.warn(
-          `[CHECK_CI_STATUS] Failed to check CI status for ${owner}/${repo}: ${errorMessage}. Defaulting to unknown.`,
-        );
+        warn(MODULE, `Failed to check CI status for ${owner}/${repo}: ${errorMessage}. Defaulting to unknown.`);
       }
 
       return {
@@ -1092,7 +1100,7 @@ export class IssueDiscovery {
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[CHECK_PROJECT_HEALTH] Error checking project health for ${owner}/${repo}: ${errorMessage}`);
+      warn(MODULE, `Error checking project health for ${owner}/${repo}: ${errorMessage}`);
       return {
         repo: `${owner}/${repo}`,
         lastCommitAt: '',
@@ -1138,7 +1146,7 @@ export class IssueDiscovery {
       } catch (error) {
         // File not found is expected; only log unexpected errors
         if (error instanceof Error && !error.message.includes('404') && !error.message.includes('Not Found')) {
-          console.warn(`[FETCH_GUIDELINES] Unexpected error fetching ${file} from ${owner}/${repo}: ${error.message}`);
+          warn(MODULE, `Unexpected error fetching ${file} from ${owner}/${repo}: ${error.message}`);
         }
       }
     }

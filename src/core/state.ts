@@ -19,7 +19,7 @@ import {
 } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
 import { ValidationError } from './errors.js';
-import { debug } from './logger.js';
+import { debug, warn } from './logger.js';
 
 const MODULE = 'state';
 
@@ -124,7 +124,7 @@ export function atomicWriteFileSync(filePath: string, data: string, mode?: numbe
  * Preserves repoScores and config; drops the legacy PR arrays.
  */
 function migrateV1ToV2(rawState: Record<string, unknown>): AgentState {
-  console.error('Migrating state from v1 to v2 (fresh GitHub fetching)...');
+  debug(MODULE, 'Migrating state from v1 to v2 (fresh GitHub fetching)...');
 
   // Extract merged/closed PR arrays from v1 state to seed repo scores
   const mergedPRs = (rawState.mergedPRs as Array<{ repo: string }> | undefined) || [];
@@ -179,7 +179,7 @@ function migrateV1ToV2(rawState: Record<string, unknown>): AgentState {
     lastRunAt: new Date().toISOString(),
   };
 
-  console.error(`Migration complete. Preserved ${Object.keys(repoScores).length} repo scores.`);
+  debug(MODULE, `Migration complete. Preserved ${Object.keys(repoScores).length} repo scores.`);
   return migratedState;
 }
 
@@ -262,7 +262,7 @@ export class StateManager {
       return false;
     }
 
-    console.error('Migrating state from ./data/ to ~/.oss-autopilot/...');
+    debug(MODULE, 'Migrating state from ./data/ to ~/.oss-autopilot/...');
 
     try {
       // Ensure the new data directory exists
@@ -270,7 +270,7 @@ export class StateManager {
 
       // Copy state file
       fs.copyFileSync(LEGACY_STATE_FILE, newStatePath);
-      console.error(`Migrated state file to ${newStatePath}`);
+      debug(MODULE, `Migrated state file to ${newStatePath}`);
 
       // Copy backups if they exist
       if (fs.existsSync(LEGACY_BACKUP_DIR)) {
@@ -284,12 +284,12 @@ export class StateManager {
           const destPath = path.join(newBackupDir, backupFile);
           fs.copyFileSync(srcPath, destPath);
         }
-        console.error(`Migrated ${backupFiles.length} backup files`);
+        debug(MODULE, `Migrated ${backupFiles.length} backup files`);
       }
 
       // Remove legacy files
       fs.unlinkSync(LEGACY_STATE_FILE);
-      console.error('Removed legacy state file');
+      debug(MODULE, 'Removed legacy state file');
 
       // Remove legacy backup files
       if (fs.existsSync(LEGACY_BACKUP_DIR)) {
@@ -306,15 +306,15 @@ export class StateManager {
         const remaining = fs.readdirSync(legacyDataDir);
         if (remaining.length === 0) {
           fs.rmdirSync(legacyDataDir);
-          console.error('Removed empty legacy data directory');
+          debug(MODULE, 'Removed empty legacy data directory');
         }
       }
 
-      console.error('Migration complete!');
+      debug(MODULE, 'Migration complete!');
       return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error(`[MIGRATION ERROR] Failed to migrate state: ${errorMessage}`);
+      warn(MODULE, `Failed to migrate state: ${errorMessage}`);
 
       // Clean up partial migration to avoid inconsistent state
       const newStatePath = getStatePath();
@@ -322,19 +322,18 @@ export class StateManager {
         // If both files exist, the migration was partial - remove the new file
         try {
           fs.unlinkSync(newStatePath);
-          console.error('Cleaned up partial migration - removed incomplete new state file');
+          debug(MODULE, 'Cleaned up partial migration - removed incomplete new state file');
         } catch (cleanupErr) {
-          console.error('Warning: Could not clean up partial migration file');
+          warn(MODULE, 'Could not clean up partial migration file');
           debug(MODULE, 'Partial migration cleanup failed', cleanupErr);
         }
       }
 
-      console.error('');
-      console.error('To resolve this issue:');
-      console.error('  1. Ensure you have write permissions to ~/.oss-autopilot/');
-      console.error('  2. Check available disk space');
-      console.error('  3. Manually copy ./data/state.json to ~/.oss-autopilot/state.json');
-      console.error('  4. Or delete ./data/state.json to start fresh');
+      warn(MODULE, 'To resolve this issue:');
+      warn(MODULE, '  1. Ensure you have write permissions to ~/.oss-autopilot/');
+      warn(MODULE, '  2. Check available disk space');
+      warn(MODULE, '  3. Manually copy ./data/state.json to ~/.oss-autopilot/state.json');
+      warn(MODULE, '  4. Or delete ./data/state.json to start fresh');
 
       return false;
     }
@@ -358,12 +357,12 @@ export class StateManager {
 
         // Validate required fields exist
         if (!this.isValidState(state)) {
-          console.error('Invalid state file structure, attempting to restore from backup...');
+          warn(MODULE, 'Invalid state file structure, attempting to restore from backup...');
           const restoredState = this.tryRestoreFromBackup();
           if (restoredState) {
             return restoredState;
           }
-          console.error('No valid backup found, starting fresh');
+          warn(MODULE, 'No valid backup found, starting fresh');
           return this.createFreshState();
         }
 
@@ -372,25 +371,25 @@ export class StateManager {
           state = migrateV1ToV2(state as unknown as Record<string, unknown>);
           // Save the migrated state immediately (atomic write)
           atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
-          console.error('Migrated state saved');
+          debug(MODULE, 'Migrated state saved');
         }
 
         // Log appropriate message based on version
         const repoCount = Object.keys(state.repoScores).length;
-        console.error(`Loaded state v${state.version}: ${repoCount} repo scores tracked`);
+        debug(MODULE, `Loaded state v${state.version}: ${repoCount} repo scores tracked`);
         return state;
       }
     } catch (error) {
-      console.error('Error loading state:', error);
-      console.error('Attempting to restore from backup...');
+      warn(MODULE, 'Error loading state:', error);
+      warn(MODULE, 'Attempting to restore from backup...');
       const restoredState = this.tryRestoreFromBackup();
       if (restoredState) {
         return restoredState;
       }
-      console.error('No valid backup found, starting fresh');
+      warn(MODULE, 'No valid backup found, starting fresh');
     }
 
-    console.error('No existing state found, initializing...');
+    debug(MODULE, 'No existing state found, initializing...');
     return this.createFreshState();
   }
 
@@ -419,7 +418,7 @@ export class StateManager {
         let state = JSON.parse(data) as AgentState;
 
         if (this.isValidState(state)) {
-          console.error(`Successfully restored state from backup: ${backupFile}`);
+          debug(MODULE, `Successfully restored state from backup: ${backupFile}`);
 
           // Migrate from v1 to v2 if needed
           if (state.version === 1) {
@@ -427,18 +426,18 @@ export class StateManager {
           }
 
           const repoCount = Object.keys(state.repoScores).length;
-          console.error(`Restored state v${state.version}: ${repoCount} repo scores`);
+          debug(MODULE, `Restored state v${state.version}: ${repoCount} repo scores`);
 
           // Overwrite the corrupted main state file with the restored backup (atomic write)
           const statePath = getStatePath();
           atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
-          console.error('Restored backup written to main state file');
+          debug(MODULE, 'Restored backup written to main state file');
 
           return state;
         }
       } catch (backupErr) {
         // This backup is also corrupted, try the next one
-        console.warn(`Backup ${backupFile} is corrupted, trying next...`);
+        warn(MODULE, `Backup ${backupFile} is corrupted, trying next...`);
         debug(MODULE, `Backup ${backupFile} parse failed`, backupErr);
       }
     }
@@ -525,7 +524,7 @@ export class StateManager {
 
       // Atomic write: write to temp file then rename to prevent corruption on crash
       atomicWriteFileSync(statePath, JSON.stringify(this.state, null, 2), 0o600);
-      console.error('State saved successfully');
+      debug(MODULE, 'State saved successfully');
     } finally {
       releaseLock(lockPath);
     }
@@ -545,14 +544,11 @@ export class StateManager {
         try {
           fs.unlinkSync(path.join(backupDir, file));
         } catch (error) {
-          console.error(
-            `Warning: Could not delete old backup ${file}:`,
-            error instanceof Error ? error.message : error,
-          );
+          warn(MODULE, `Could not delete old backup ${file}:`, error instanceof Error ? error.message : error);
         }
       }
     } catch (error) {
-      console.error('Warning: Could not clean up backups:', error instanceof Error ? error.message : error);
+      warn(MODULE, 'Could not clean up backups:', error instanceof Error ? error.message : error);
     }
   }
 
@@ -673,12 +669,12 @@ export class StateManager {
   addIssue(issue: TrackedIssue): void {
     const existing = this.state.activeIssues.find((i) => i.url === issue.url);
     if (existing) {
-      console.error(`Issue ${issue.url} already tracked`);
+      debug(MODULE, `Issue ${issue.url} already tracked`);
       return;
     }
 
     this.state.activeIssues.push(issue);
-    console.error(`Added issue: ${issue.repo}#${issue.number}`);
+    debug(MODULE, `Added issue: ${issue.repo}#${issue.number}`);
   }
 
   // === Trusted Projects ===
@@ -691,7 +687,7 @@ export class StateManager {
   addTrustedProject(repo: string): void {
     if (!this.state.config.trustedProjects.includes(repo)) {
       this.state.config.trustedProjects.push(repo);
-      console.error(`Added trusted project: ${repo}`);
+      debug(MODULE, `Added trusted project: ${repo}`);
     }
   }
 
@@ -743,8 +739,9 @@ export class StateManager {
     }
 
     if (removedTrusted > 0 || removedScoreCount > 0) {
-      console.error(
-        `[CLEANUP] Removed ${removedTrusted} trusted project(s) and ${removedScoreCount} repo score(s) for excluded repos/orgs`,
+      debug(
+        MODULE,
+        `Removed ${removedTrusted} trusted project(s) and ${removedScoreCount} repo score(s) for excluded repos/orgs`,
       );
     }
   }
@@ -766,7 +763,7 @@ export class StateManager {
   setStarredRepos(repos: string[]): void {
     this.state.config.starredRepos = repos;
     this.state.config.starredReposLastFetched = new Date().toISOString();
-    console.error(`Updated starred repos: ${repos.length} repositories`);
+    debug(MODULE, `Updated starred repos: ${repos.length} repositories`);
   }
 
   /**
@@ -925,7 +922,7 @@ export class StateManager {
     if (!info) return false;
     const expiresAtMs = new Date(info.expiresAt).getTime();
     if (isNaN(expiresAtMs)) {
-      console.error(`[STATE] Invalid expiresAt for snoozed PR ${url}: "${info.expiresAt}". Treating as not snoozed.`);
+      warn(MODULE, `Invalid expiresAt for snoozed PR ${url}: "${info.expiresAt}". Treating as not snoozed.`);
       return false;
     }
     return expiresAtMs > Date.now();
@@ -1012,8 +1009,9 @@ export class StateManager {
     if (repoScore.lastMergedAt) {
       const lastMergedDate = new Date(repoScore.lastMergedAt);
       if (isNaN(lastMergedDate.getTime())) {
-        console.error(
-          `[SCORE_CALC] Invalid lastMergedAt date for ${repoScore.repo}: "${repoScore.lastMergedAt}". Skipping recency bonus.`,
+        warn(
+          MODULE,
+          `Invalid lastMergedAt date for ${repoScore.repo}: "${repoScore.lastMergedAt}". Skipping recency bonus.`,
         );
       } else {
         const msPerDay = 1000 * 60 * 60 * 24;
@@ -1079,7 +1077,7 @@ export class StateManager {
     repoScore.score = this.calculateScore(repoScore);
     repoScore.lastEvaluatedAt = new Date().toISOString();
 
-    console.error(`Updated repo score for ${repo}: ${repoScore.score}/10`);
+    debug(MODULE, `Updated repo score for ${repo}: ${repoScore.score}/10`);
   }
 
   /**
@@ -1094,7 +1092,7 @@ export class StateManager {
       mergedPRCount: newCount,
       lastMergedAt: new Date().toISOString(),
     });
-    console.error(`  └─ incremented merged count for ${repo}: ${newCount}`);
+    debug(MODULE, `Incremented merged count for ${repo}: ${newCount}`);
   }
 
   /**
@@ -1108,7 +1106,7 @@ export class StateManager {
     this.updateRepoScore(repo, {
       closedWithoutMergeCount: newCount,
     });
-    console.error(`  └─ incremented closed count for ${repo}: ${newCount}`);
+    debug(MODULE, `Incremented closed count for ${repo}: ${newCount}`);
   }
 
   /**
@@ -1118,7 +1116,7 @@ export class StateManager {
    */
   markRepoHostile(repo: string): void {
     this.updateRepoScore(repo, { signals: { hasHostileComments: true } });
-    console.error(`Marked ${repo} as hostile, score: ${this.state.repoScores[repo].score}/10`);
+    debug(MODULE, `Marked ${repo} as hostile, score: ${this.state.repoScores[repo].score}/10`);
   }
 
   /**
