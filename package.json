@@ -30,7 +30,11 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
+    "prepare": "[ -n \"$CI\" ] || simple-git-hooks",
     "prepublishOnly": "npm test && npm run build && npm run bundle"
+  },
+  "simple-git-hooks": {
+    "commit-msg": "./scripts/commit-msg.sh \"$1\""
   },
   "keywords": [
     "claude-code-plugin",
@@ -72,6 +76,7 @@
     "eslint": "^10.0.2",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
+    "simple-git-hooks": "^2.13.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1",
