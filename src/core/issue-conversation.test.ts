@@ -47,11 +47,12 @@ function makeSearchItem(overrides: Record<string, any> = {}) {
 }
 
 // Helper to build a comment
-function makeComment(author: string, body: string, created_at: string) {
+function makeComment(author: string, body: string, created_at: string, author_association: string = 'NONE') {
   return {
     user: { login: author },
     body,
     created_at,
+    author_association,
   };
 }
 
@@ -114,7 +115,7 @@ describe('IssueConversationMonitor', () => {
     mockOctokitInstance.issues.listComments.mockResolvedValue({
       data: [
         makeComment('testuser', 'Is this still relevant?', '2026-02-01T10:00:00Z'),
-        makeComment('maintainer', 'Yes, go for it!', '2026-02-02T10:00:00Z'),
+        makeComment('maintainer', 'Yes, go for it!', '2026-02-02T10:00:00Z', 'MEMBER'),
       ],
     });
 
@@ -125,7 +126,135 @@ describe('IssueConversationMonitor', () => {
     expect(issues[0].status).toBe('new_response');
     expect(issues[0].lastResponseAuthor).toBe('maintainer');
     expect(issues[0].lastResponseBody).toContain('Yes, go for it!');
+    if (issues[0].status === 'new_response') {
+      expect(issues[0].isFromMaintainer).toBe(true);
+    }
     expect(failures).toHaveLength(0);
+  });
+
+  it('should set isFromMaintainer=true for OWNER association', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: {
+        items: [makeSearchItem()],
+        total_count: 1,
+      },
+    });
+
+    mockOctokitInstance.issues.listComments.mockResolvedValue({
+      data: [
+        makeComment('testuser', 'Can I work on this?', '2026-02-01T10:00:00Z'),
+        makeComment('repo-owner', 'Sure, go ahead!', '2026-02-02T10:00:00Z', 'OWNER'),
+      ],
+    });
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    const { issues } = await monitor.fetchCommentedIssues();
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].status).toBe('new_response');
+    if (issues[0].status === 'new_response') {
+      expect(issues[0].isFromMaintainer).toBe(true);
+    }
+  });
+
+  it('should set isFromMaintainer=true for COLLABORATOR association', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: {
+        items: [makeSearchItem()],
+        total_count: 1,
+      },
+    });
+
+    mockOctokitInstance.issues.listComments.mockResolvedValue({
+      data: [
+        makeComment('testuser', 'Can I work on this?', '2026-02-01T10:00:00Z'),
+        makeComment('collab-user', 'Yes, please!', '2026-02-02T10:00:00Z', 'COLLABORATOR'),
+      ],
+    });
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    const { issues } = await monitor.fetchCommentedIssues();
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].status).toBe('new_response');
+    if (issues[0].status === 'new_response') {
+      expect(issues[0].isFromMaintainer).toBe(true);
+    }
+  });
+
+  it('should set isFromMaintainer=false for CONTRIBUTOR association', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: {
+        items: [makeSearchItem()],
+        total_count: 1,
+      },
+    });
+
+    mockOctokitInstance.issues.listComments.mockResolvedValue({
+      data: [
+        makeComment('testuser', 'Working on this', '2026-02-01T10:00:00Z'),
+        makeComment('another-contributor', 'I had the same issue!', '2026-02-02T10:00:00Z', 'CONTRIBUTOR'),
+      ],
+    });
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    const { issues } = await monitor.fetchCommentedIssues();
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].status).toBe('new_response');
+    if (issues[0].status === 'new_response') {
+      expect(issues[0].isFromMaintainer).toBe(false);
+    }
+  });
+
+  it('should set isFromMaintainer=false for NONE association', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: {
+        items: [makeSearchItem()],
+        total_count: 1,
+      },
+    });
+
+    mockOctokitInstance.issues.listComments.mockResolvedValue({
+      data: [
+        makeComment('testuser', 'Working on this', '2026-02-01T10:00:00Z'),
+        makeComment('random-user', 'Me too', '2026-02-02T10:00:00Z', 'NONE'),
+      ],
+    });
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    const { issues } = await monitor.fetchCommentedIssues();
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].status).toBe('new_response');
+    if (issues[0].status === 'new_response') {
+      expect(issues[0].isFromMaintainer).toBe(false);
+    }
+  });
+
+  it('should set isFromMaintainer=false when author_association is missing', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: {
+        items: [makeSearchItem()],
+        total_count: 1,
+      },
+    });
+
+    mockOctokitInstance.issues.listComments.mockResolvedValue({
+      data: [
+        makeComment('testuser', 'Question', '2026-02-01T10:00:00Z'),
+        { user: { login: 'someone' }, body: 'Reply', created_at: '2026-02-02T10:00:00Z' },
+      ],
+    });
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    const { issues } = await monitor.fetchCommentedIssues();
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].status).toBe('new_response');
+    if (issues[0].status === 'new_response') {
+      expect(issues[0].isFromMaintainer).toBe(false);
+    }
   });
 
   it('should ignore bot comments', async () => {
@@ -618,7 +747,7 @@ describe('IssueConversationMonitor', () => {
     expect(issues[0].lastResponseAuthor).toBe('maintainer');
   });
 
-  it('should use the latest maintainer response when multiple exist', async () => {
+  it('should use the latest response when multiple exist and track maintainer status of the last responder', async () => {
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
       data: {
         items: [makeSearchItem()],
@@ -629,8 +758,8 @@ describe('IssueConversationMonitor', () => {
     mockOctokitInstance.issues.listComments.mockResolvedValue({
       data: [
         makeComment('testuser', 'Can I work on this?', '2026-02-01T10:00:00Z'),
-        makeComment('maintainerA', 'Let me check...', '2026-02-02T10:00:00Z'),
-        makeComment('maintainerB', 'Yes, go ahead and submit a PR', '2026-02-03T10:00:00Z'),
+        makeComment('maintainerA', 'Let me check...', '2026-02-02T10:00:00Z', 'MEMBER'),
+        makeComment('maintainerB', 'Yes, go ahead and submit a PR', '2026-02-03T10:00:00Z', 'OWNER'),
       ],
     });
 
@@ -642,6 +771,9 @@ describe('IssueConversationMonitor', () => {
     // "Last wins" — maintainerB's response (latest) should be the one surfaced
     expect(issues[0].lastResponseAuthor).toBe('maintainerB');
     expect(issues[0].lastResponseBody).toContain('go ahead and submit a PR');
+    if (issues[0].status === 'new_response') {
+      expect(issues[0].isFromMaintainer).toBe(true);
+    }
   });
 
   it('should record null analysis results in failures array', async () => {

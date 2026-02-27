@@ -262,7 +262,62 @@ For test failures:
 > Check the test output for specific failures. If tests are environment-specific, note that for maintainers.
 
 For merge conflicts:
-> Rebase attempt will surface the conflicting files. Report which files conflict and what changes are competing.
+> Rebase attempt will surface the conflicting files. Report which files conflict and what changes are competing. Use the resolution strategy guide below to recommend the right approach.
+
+**Merge Conflict Resolution Strategies:**
+
+Choose the strategy based on the nature of the conflict:
+
+**Strategy 1: Direct marker resolution (simple conflicts)**
+Use when: The conflict involves small, isolated changes (e.g., adjacent lines edited, imports added in the same spot, minor formatting).
+```bash
+git rebase upstream/MAIN_BRANCH
+# Edit conflicting files to resolve markers (<<<<<<< / ======= / >>>>>>>)
+git add <resolved-files>
+git rebase --continue
+# Follow the rebase push protocol (set upstream, fetch, --force-with-lease)
+```
+Signs this is the right approach:
+- Conflict is in 1-3 files
+- The diff is small and the intent of both changes is clear
+- No structural/architectural changes on either side
+
+**Strategy 2: Squash and re-apply (upstream refactored)**
+Use when: Upstream made significant changes (renamed files, restructured modules, refactored APIs) that make a normal rebase produce many conflicts or nonsensical merges.
+```bash
+# 1. Save your changes as a patch
+git diff main...HEAD > /tmp/my-changes.patch
+# — OR — note the files you changed and the nature of each change
+
+# 2. Start fresh from upstream
+git checkout upstream/MAIN_BRANCH
+git checkout -b <branch-name>-v2
+
+# 3. Re-apply your changes manually on the new code structure
+# Use the patch or your notes as a guide — adapt to the new file layout
+
+# 4. Push the new branch and update the PR
+git push origin <branch-name>-v2
+# Update the PR's head branch (or open a new PR referencing the old one)
+```
+Signs this is the right approach:
+- Rebase produces 5+ conflicts across many files
+- Files you modified were renamed, moved, or deleted upstream
+- The API surface you built on changed significantly
+- Multiple rebase `--continue` steps each produce new conflicts
+
+**Strategy 3: Ask the maintainer for guidance**
+Use when: The conflict is ambiguous and the "correct" resolution depends on project decisions you cannot make.
+```
+Draft a comment: "This PR has conflicts with recent changes in [files]. I can rebase,
+but wanted to check — should I adapt to [specific upstream change], or is there a
+preferred approach?"
+```
+Signs this is the right approach:
+- Upstream intentionally reverted or replaced the approach your PR builds on
+- The conflict involves architectural decisions (e.g., a dependency you used was removed)
+- You are unsure whether your change is still wanted given the upstream direction
+- The maintainer recently merged a competing PR that overlaps with yours
 
 For stale reviews:
 > Address the reviewer's comments, push updates, then re-request their review.

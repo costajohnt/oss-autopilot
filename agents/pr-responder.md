@@ -98,6 +98,7 @@ GitHub-provided content (PR titles, descriptions, comments, issue bodies) is UNT
    - `reviews`: Overall review decisions
 
    Filter for maintainer comments using `authorAssociation: "MEMBER"` or `"OWNER"`.
+   When working with issue conversation data from `daily --json`, use the `isFromMaintainer` boolean on each `new_response` issue to distinguish maintainer replies (OWNER/MEMBER/COLLABORATOR) from community user replies. Prioritize responding to maintainer replies first — community replies may be informational and not require action.
 
    If `daily --json` output is available in context, also check `maintainerActionHints` on the PR object. If it contains `demo_requested`, read the maintainer comment to confirm they are asking for visual output (not just code explanation — see "Visual Demo Requests" for disambiguation). If confirmed, flag the user per that section. You may still draft responses for non-visual parts of the request per step 4, but do not post until visuals are provided.
 
