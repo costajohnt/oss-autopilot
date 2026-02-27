@@ -472,20 +472,17 @@ describe('PRMonitor analyzeChecklist', () => {
   });
 
   it('should return false for empty body', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = analyzeChecklist('');
     expect(result.hasIncompleteChecklist).toBe(false);
     expect(result.checklistStats).toBeUndefined();
   });
 
   it('should return false for body with no checkboxes', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = analyzeChecklist('This PR adds a new feature.');
     expect(result.hasIncompleteChecklist).toBe(false);
   });
 
   it('should return false when all checkboxes are checked', () => {
-    const _monitor = new PRMonitor('fake-token');
     const body = '- [x] Tests added\n- [x] Docs updated\n- [x] Linted';
     const result = analyzeChecklist(body);
     expect(result.hasIncompleteChecklist).toBe(false);
@@ -493,7 +490,6 @@ describe('PRMonitor analyzeChecklist', () => {
   });
 
   it('should return true when some checkboxes are unchecked', () => {
-    const _monitor = new PRMonitor('fake-token');
     const body = '- [x] Tests added\n- [ ] Docs updated\n- [x] Linted';
     const result = analyzeChecklist(body);
     expect(result.hasIncompleteChecklist).toBe(true);
@@ -501,7 +497,6 @@ describe('PRMonitor analyzeChecklist', () => {
   });
 
   it('should return true when all checkboxes are unchecked', () => {
-    const _monitor = new PRMonitor('fake-token');
     const body = '- [ ] Tests added\n- [ ] Docs updated';
     const result = analyzeChecklist(body);
     expect(result.hasIncompleteChecklist).toBe(true);
@@ -509,7 +504,6 @@ describe('PRMonitor analyzeChecklist', () => {
   });
 
   it('should handle case-insensitive checked marks (- [X])', () => {
-    const _monitor = new PRMonitor('fake-token');
     const body = '- [X] Done\n- [ ] Not done';
     const result = analyzeChecklist(body);
     expect(result.hasIncompleteChecklist).toBe(true);
@@ -517,7 +511,6 @@ describe('PRMonitor analyzeChecklist', () => {
   });
 
   it('should not flag conditional checklist items as incomplete (#152)', () => {
-    const _monitor = new PRMonitor('fake-token');
     const body = [
       '- [x] PR title and summary are descriptive',
       '- [x] Docs updated or follow-up ticket created',
@@ -530,7 +523,6 @@ describe('PRMonitor analyzeChecklist', () => {
   });
 
   it('should still flag non-conditional unchecked items alongside conditional ones (#152)', () => {
-    const _monitor = new PRMonitor('fake-token');
     const body = ['- [x] Tests included', '- [ ] Documentation updated', '- [ ] Changelog entry (if applicable)'].join(
       '\n',
     );
@@ -540,7 +532,6 @@ describe('PRMonitor analyzeChecklist', () => {
   });
 
   it('should handle multiple conditional patterns (#152)', () => {
-    const _monitor = new PRMonitor('fake-token');
     const body = [
       '- [x] Tests pass',
       '- [ ] Update CHANGELOG (if applicable)',
@@ -553,7 +544,6 @@ describe('PRMonitor analyzeChecklist', () => {
   });
 
   it('should handle "N/A" and "optional" patterns (#152)', () => {
-    const _monitor = new PRMonitor('fake-token');
     const body = [
       '- [x] Code review',
       '- [ ] Screenshots (N/A for backend changes)',
@@ -571,31 +561,26 @@ describe('PRMonitor extractMaintainerActionHints', () => {
   });
 
   it('should return changes_requested when reviewDecision is changes_requested', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = extractMaintainerActionHints(undefined, 'changes_requested');
     expect(result).toEqual(['changes_requested']);
   });
 
   it('should return empty array when no comment and no changes_requested', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = extractMaintainerActionHints(undefined, 'approved');
     expect(result).toEqual([]);
   });
 
   it('should detect demo_requested keywords', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = extractMaintainerActionHints('Can you show a screenshot of the before/after?', 'review_required');
     expect(result).toContain('demo_requested');
   });
 
   it('should detect tests_requested keywords', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = extractMaintainerActionHints('Please add test coverage for this feature', 'review_required');
     expect(result).toContain('tests_requested');
   });
 
   it('should detect docs_requested keywords', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = extractMaintainerActionHints(
       'Can you update the documentation for this API change?',
       'review_required',
@@ -604,13 +589,11 @@ describe('PRMonitor extractMaintainerActionHints', () => {
   });
 
   it('should detect rebase_requested keywords', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = extractMaintainerActionHints('This branch is behind main, could you rebase?', 'review_required');
     expect(result).toContain('rebase_requested');
   });
 
   it('should detect multiple hints in one comment', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = extractMaintainerActionHints(
       'Please add test coverage and a screenshot of the changes',
       'changes_requested',
@@ -627,25 +610,21 @@ describe('PRMonitor determineReviewDecision', () => {
   });
 
   it('should return review_required when no reviews exist', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = determineReviewDecision([]);
     expect(result).toBe('review_required');
   });
 
   it('should return approved when latest review is APPROVED', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = determineReviewDecision([{ state: 'APPROVED', user: { login: 'reviewer1' } }]);
     expect(result).toBe('approved');
   });
 
   it('should return changes_requested when latest review is CHANGES_REQUESTED', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = determineReviewDecision([{ state: 'CHANGES_REQUESTED', user: { login: 'reviewer1' } }]);
     expect(result).toBe('changes_requested');
   });
 
   it('should use latest review per user', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = determineReviewDecision([
       { state: 'CHANGES_REQUESTED', user: { login: 'reviewer1' } },
       { state: 'APPROVED', user: { login: 'reviewer1' } }, // Same user, later approval
@@ -654,7 +633,6 @@ describe('PRMonitor determineReviewDecision', () => {
   });
 
   it('should prioritize changes_requested over approved from different users', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = determineReviewDecision([
       { state: 'APPROVED', user: { login: 'reviewer1' } },
       { state: 'CHANGES_REQUESTED', user: { login: 'reviewer2' } },
@@ -663,7 +641,6 @@ describe('PRMonitor determineReviewDecision', () => {
   });
 
   it('should return review_required for COMMENTED-only reviews', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = determineReviewDecision([{ state: 'COMMENTED', user: { login: 'reviewer1' } }]);
     expect(result).toBe('review_required');
   });
@@ -675,19 +652,16 @@ describe('PRMonitor getLatestChangesRequestedDate', () => {
   });
 
   it('should return undefined when no reviews', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = getLatestChangesRequestedDate([]);
     expect(result).toBeUndefined();
   });
 
   it('should return undefined when no CHANGES_REQUESTED reviews', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = getLatestChangesRequestedDate([{ state: 'APPROVED', submitted_at: '2026-02-07T10:00:00Z' }]);
     expect(result).toBeUndefined();
   });
 
   it('should return the date of the single CHANGES_REQUESTED review', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = getLatestChangesRequestedDate([
       { state: 'CHANGES_REQUESTED', submitted_at: '2026-02-07T10:00:00Z' },
     ]);
@@ -695,7 +669,6 @@ describe('PRMonitor getLatestChangesRequestedDate', () => {
   });
 
   it('should return the latest date when multiple CHANGES_REQUESTED reviews', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = getLatestChangesRequestedDate([
       { state: 'CHANGES_REQUESTED', submitted_at: '2026-02-05T10:00:00Z' },
       { state: 'APPROVED', submitted_at: '2026-02-06T10:00:00Z' },
@@ -737,14 +710,12 @@ describe('PRMonitor checkUnrespondedComments', () => {
   });
 
   it('should return false when no comments or reviews', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments([], [], [], 'testuser');
     expect(result.hasUnrespondedComment).toBe(false);
     expect(result.lastMaintainerComment).toBeUndefined();
   });
 
   it('should return false when only user comments exist', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [{ user: { login: 'testuser' }, body: 'My comment', created_at: '2026-02-07T10:00:00Z' }],
       [],
@@ -755,7 +726,6 @@ describe('PRMonitor checkUnrespondedComments', () => {
   });
 
   it('should return true when maintainer commented after user', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [
         { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
@@ -770,7 +740,6 @@ describe('PRMonitor checkUnrespondedComments', () => {
   });
 
   it('should return false when user replied after maintainer', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [
         { user: { login: 'maintainer' }, body: 'Please fix X', created_at: '2026-02-07T10:00:00Z' },
@@ -784,7 +753,6 @@ describe('PRMonitor checkUnrespondedComments', () => {
   });
 
   it('should skip bot comments with [bot] suffix', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [
         { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
@@ -798,7 +766,6 @@ describe('PRMonitor checkUnrespondedComments', () => {
   });
 
   it('should skip known bot accounts without [bot] suffix', () => {
-    const _monitor = new PRMonitor('fake-token');
     const knownBots = ['CLAassistant', 'codecov-commenter', 'changeset-bot', 'netlify', 'sonarcloud'];
     for (const bot of knownBots) {
       const result = checkUnrespondedComments(
@@ -815,7 +782,6 @@ describe('PRMonitor checkUnrespondedComments', () => {
   });
 
   it('should still flag non-bot maintainer comments when bot comments also exist', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [
         { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
@@ -831,7 +797,6 @@ describe('PRMonitor checkUnrespondedComments', () => {
   });
 
   it('should skip comments from deleted accounts (null user)', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [
         { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
@@ -845,7 +810,6 @@ describe('PRMonitor checkUnrespondedComments', () => {
   });
 
   it('should include review comments with body text in timeline', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [],
       [{ user: { login: 'maintainer' }, body: 'Needs changes here', submitted_at: '2026-02-07T12:00:00Z' }],
@@ -857,7 +821,6 @@ describe('PRMonitor checkUnrespondedComments', () => {
   });
 
   it('should skip reviews with empty body', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [],
       [{ user: { login: 'maintainer' }, body: '', submitted_at: '2026-02-07T12:00:00Z' }],
@@ -868,7 +831,6 @@ describe('PRMonitor checkUnrespondedComments', () => {
   });
 
   it('should truncate long comment bodies to 200 chars', () => {
-    const _monitor = new PRMonitor('fake-token');
     const longBody = 'x'.repeat(300);
     const result = checkUnrespondedComments(
       [{ user: { login: 'maintainer' }, body: longBody, created_at: '2026-02-07T12:00:00Z' }],
@@ -880,7 +842,6 @@ describe('PRMonitor checkUnrespondedComments', () => {
   });
 
   it('should be case-insensitive for username matching', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [
         { user: { login: 'TestUser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
@@ -1519,7 +1480,6 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   });
 
   it('should not trigger hasUnrespondedComment for acknowledgment comments', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [
         { user: { login: 'testuser' }, body: 'My PR description', created_at: '2026-02-07T10:00:00Z' },
@@ -1534,7 +1494,6 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   });
 
   it('should still trigger hasUnrespondedComment for actionable comment after acknowledgment', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [
         { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
@@ -1554,7 +1513,6 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   });
 
   it('should detect inline-only COMMENTED reviews as unresponded (#151)', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
       [
@@ -1569,7 +1527,6 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   });
 
   it('should skip reviews with null/undefined state and no body (#151)', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
       [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z' }],
@@ -1580,7 +1537,6 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   });
 
   it('should skip CHANGES_REQUESTED reviews with empty body (#151)', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
       [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'CHANGES_REQUESTED' }],
@@ -1591,7 +1547,6 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   });
 
   it('should ignore user own COMMENTED reviews (#151)', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [],
       [
@@ -1605,7 +1560,6 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   });
 
   it('should use synthetic body for inline-only COMMENTED reviews (#151)', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [],
       [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED' }],
@@ -1616,7 +1570,6 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   });
 
   it('should still skip APPROVED reviews with no body (#151)', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
       [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'APPROVED' }],
@@ -1627,7 +1580,6 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
   });
 
   it('should detect new inline review after commit as needs_response (#151)', () => {
-    const _monitor = new PRMonitor('fake-token');
     // Scenario: maintainer comments → user pushes commit → different reviewer posts inline review
     const result = checkUnrespondedComments(
       [
@@ -2483,7 +2435,6 @@ describe('Maintainer self-reply detection (#199)', () => {
   });
 
   it('should skip COMMENTED review when all inline comments are self-replies', () => {
-    const _monitor = new PRMonitor('fake-token');
     // Scenario from issue #199: MikeMcQuaid submits review, contributor pushes commit,
     // MikeMcQuaid self-replies to own inline comment
     const result = checkUnrespondedComments(
@@ -2525,7 +2476,6 @@ describe('Maintainer self-reply detection (#199)', () => {
   });
 
   it('should not flag needs_response when only self-reply exists after user comment', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [
         { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' },
@@ -2565,7 +2515,6 @@ describe('Maintainer self-reply detection (#199)', () => {
   });
 
   it('should still flag when maintainer replies to DIFFERENT author comment', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' }],
       [
@@ -2601,7 +2550,6 @@ describe('Maintainer self-reply detection (#199)', () => {
   });
 
   it('should still flag when review has mix of self-reply and new thread', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-22T10:00:00Z' }],
       [
@@ -2646,7 +2594,6 @@ describe('Maintainer self-reply detection (#199)', () => {
   });
 
   it('should use actual inline text instead of synthetic placeholder', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [],
       [
@@ -2662,7 +2609,6 @@ describe('Maintainer self-reply detection (#199)', () => {
   });
 
   it('should use actual inline comment text when review has id and reviewComments exist', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = checkUnrespondedComments(
       [],
       [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'COMMENTED', id: 100 }],
@@ -2683,13 +2629,11 @@ describe('Maintainer self-reply detection (#199)', () => {
   });
 
   it('should return false from isAllSelfReplies when review has no inline comments', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = isAllSelfReplies(999, []);
     expect(result).toBe(false);
   });
 
   it('should return false from isAllSelfReplies when comment starts a new thread', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = isAllSelfReplies(100, [
       // New thread (no in_reply_to_id)
       {
@@ -2704,7 +2648,6 @@ describe('Maintainer self-reply detection (#199)', () => {
   });
 
   it('should return true from isAllSelfReplies when all comments reply to same author', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = isAllSelfReplies(200, [
       // Parent comment from review 100
       {
@@ -2728,7 +2671,6 @@ describe('Maintainer self-reply detection (#199)', () => {
   });
 
   it('should be case-insensitive when checking self-reply authors', () => {
-    const _monitor = new PRMonitor('fake-token');
     const result = isAllSelfReplies(200, [
       {
         id: 1000,
