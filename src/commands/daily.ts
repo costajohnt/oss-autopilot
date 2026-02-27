@@ -26,12 +26,33 @@ import {
 import {
   outputJson,
   outputJsonError,
+  deduplicateDigest,
+  compactActionableIssues,
+  compactRepoGroups,
   type DailyOutput,
   type CapacityAssessment,
   type ActionableIssue,
   type ActionMenu,
   type ActionMenuItem,
 } from '../formatters/json.js';
+
+/**
+ * Internal result of the daily check, using full (non-deduplicated) types.
+ * Consumed by printDigest() (text mode) and converted to DailyOutput (JSON mode)
+ * via toDailyOutput() which deduplicates PR objects.
+ */
+interface DailyCheckResult {
+  digest: DailyDigest;
+  updates: unknown[];
+  capacity: CapacityAssessment;
+  summary: string;
+  briefSummary: string;
+  actionableIssues: ActionableIssue[];
+  actionMenu: ActionMenu;
+  commentedIssues: CommentedIssue[];
+  repoGroups: RepoGroup[];
+  failures: PRCheckFailure[];
+}
 
 /**
  * Statuses indicating maintainer engagement or action needed from the contributor.
@@ -433,7 +454,7 @@ function generateDigestOutput(
   shelvedPRs: ShelvedPRRef[],
   commentedIssues: CommentedIssue[],
   failures: PRCheckFailure[],
-): DailyOutput {
+): DailyCheckResult {
   const stateManager = getStateManager();
 
   // Assess capacity from active PRs only (shelved PRs excluded)
@@ -500,8 +521,31 @@ function generateDigestOutput(
 // ---------------------------------------------------------------------------
 
 /**
+ * Convert a full DailyCheckResult to the compact DailyOutput for JSON serialization (#287).
+ * Deduplicates PR objects: category arrays become PR URL references,
+ * full objects live only in digest.openPRs. Reduces JSON payload size ~60-70%.
+ */
+function toDailyOutput(result: DailyCheckResult): DailyOutput {
+  return {
+    digest: deduplicateDigest(result.digest),
+    updates: result.updates,
+    capacity: result.capacity,
+    summary: result.summary,
+    briefSummary: result.briefSummary,
+    actionableIssues: compactActionableIssues(result.actionableIssues),
+    actionMenu: result.actionMenu,
+    commentedIssues: result.commentedIssues,
+    repoGroups: compactRepoGroups(result.repoGroups),
+    failures: result.failures,
+  };
+}
+
+/**
  * Core daily check logic, extracted for reuse by the startup command.
  * Fetches all open PRs, updates state, and returns structured output.
+ *
+ * Returns a deduplicated DailyOutput where category arrays contain PR URLs
+ * instead of full objects (#287). Full PR objects are in digest.openPRs only.
  *
  * Orchestrates five named phases:
  *   1. fetchPRData        — fetch open PRs, merged/closed counts, issues
@@ -511,6 +555,15 @@ function generateDigestOutput(
  *   5. generateDigestOutput — capacity, dismiss filter, action menu assembly
  */
 export async function executeDailyCheck(token: string): Promise<DailyOutput> {
+  const result = await executeDailyCheckInternal(token);
+  return toDailyOutput(result);
+}
+
+/**
+ * Internal daily check returning full (non-deduplicated) result.
+ * Used by runDailyInner for text-mode output where full PR objects are needed.
+ */
+async function executeDailyCheckInternal(token: string): Promise<DailyCheckResult> {
   const prMonitor = new PRMonitor(token);
 
   // Phase 1: Fetch all PR data from GitHub
@@ -542,11 +595,11 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
 }
 
 async function runDailyInner(token: string, options: DailyOptions): Promise<void> {
-  const result = await executeDailyCheck(token);
-
   if (options.json) {
+    const result = await executeDailyCheck(token);
     outputJson<DailyOutput>(result);
   } else {
+    const result = await executeDailyCheckInternal(token);
     printDigest(result.digest, result.capacity, result.commentedIssues);
   }
 }
