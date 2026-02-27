@@ -104,8 +104,8 @@ interface FetchedPRData {
 
 interface PartitionedPRs {
   activePRs: FetchedPR[];
-  shelvedPRs: FetchedPR[];
-  autoUnshelvedPRs: FetchedPR[];
+  shelvedPRs: ShelvedPRRef[];
+  autoUnshelvedPRs: ShelvedPRRef[];
   digest: DailyDigest;
 }
 
@@ -446,7 +446,7 @@ function partitionPRs(
 function generateDigestOutput(
   digest: DailyDigest,
   activePRs: FetchedPR[],
-  shelvedPRs: FetchedPR[],
+  shelvedPRs: ShelvedPRRef[],
   commentedIssues: CommentedIssue[],
   failures: PRCheckFailure[],
 ): DailyOutput {
