@@ -8,11 +8,7 @@ import * as fs from 'fs';
 import { execFile } from 'child_process';
 import { getStateManager, getDashboardPath, getGitHubToken } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
-import type {
-  CommentedIssue,
-  CommentedIssueWithResponse,
-  DailyDigest,
-} from '../core/types.js';
+import type { CommentedIssue, CommentedIssueWithResponse, DailyDigest } from '../core/types.js';
 import { fetchDashboardData, computePRsByRepo, computeTopRepos, getMonthlyData } from './dashboard-data.js';
 import { buildDashboardStats, generateDashboardHtml } from './dashboard-templates.js';
 
@@ -156,4 +152,3 @@ export function writeDashboardFromState(): string {
 
   return dashboardPath;
 }
-

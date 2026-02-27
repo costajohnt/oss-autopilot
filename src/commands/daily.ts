@@ -615,4 +615,3 @@ async function runDailyInner(token: string, options: DailyOptions): Promise<void
     printDigest(result.digest, result.capacity, result.commentedIssues);
   }
 }
-
