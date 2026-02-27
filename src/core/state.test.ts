@@ -3,7 +3,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { StateManager, acquireLock, releaseLock, atomicWriteFileSync } from './state.js';
+import {
+  StateManager,
+  acquireLock,
+  releaseLock,
+  atomicWriteFileSync,
+  getStateManager,
+  resetStateManager,
+} from './state.js';
 import { StateEventType } from './types.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -1639,5 +1646,134 @@ describe('StateManager v1 → v2 migration', () => {
     const sm = new StateManager(false);
     // Should have been migrated to v2 during restore
     expect(sm.getState().version).toBe(2);
+  });
+});
+
+describe('getHighScoringRepos', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+  });
+
+  it('should return repos at or above the given threshold, sorted descending', () => {
+    const sm = new StateManager(false);
+    // Base score 5 - 3 closed = 2 (below threshold)
+    sm.updateRepoScore('low/repo', { closedWithoutMergeCount: 3, signals: {} });
+    // Base score 5 + merge bonus = 8 (above threshold)
+    sm.updateRepoScore('high/repo', { mergedPRCount: 2, signals: {} });
+
+    const highRepos = sm.getHighScoringRepos(5);
+    expect(highRepos.length).toBe(1);
+    expect(highRepos[0]).toBe('high/repo');
+  });
+});
+
+describe('getLowScoringRepos', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+  });
+
+  it('should return repos at or below the given threshold, sorted ascending', () => {
+    const sm = new StateManager(false);
+    // Base score is 5, with 3 closed-without-merge => 5-3=2
+    sm.updateRepoScore('low/repo', { closedWithoutMergeCount: 3, signals: {} });
+    // With 2 merged PRs => 5 + log2(3)*2 ≈ 5+3=8
+    sm.updateRepoScore('high/repo', { mergedPRCount: 2, signals: {} });
+
+    const lowRepos = sm.getLowScoringRepos(3);
+    // low/repo has score 2 which is <= 3
+    expect(lowRepos.length).toBe(1);
+    expect(lowRepos[0]).toBe('low/repo');
+  });
+
+  it('should use config threshold when no argument provided', () => {
+    const sm = new StateManager(false);
+    // Base score 5 - 3 closed = 2 (below default threshold of 4)
+    sm.updateRepoScore('repo/a', { closedWithoutMergeCount: 3, signals: {} });
+    // Base score 5 + merge bonus = 8 (above threshold)
+    sm.updateRepoScore('repo/b', { mergedPRCount: 2, signals: {} });
+
+    // Default minRepoScoreThreshold is 4 from INITIAL_STATE
+    const lowRepos = sm.getLowScoringRepos();
+    expect(lowRepos).toContain('repo/a');
+    expect(lowRepos).not.toContain('repo/b');
+  });
+});
+
+describe('getStats', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+  });
+
+  it('should compute aggregate statistics from repo scores', () => {
+    const sm = new StateManager(false);
+    sm.updateRepoScore('repo/a', { mergedPRCount: 3, closedWithoutMergeCount: 1, signals: {} });
+    sm.updateRepoScore('repo/b', { mergedPRCount: 2, closedWithoutMergeCount: 0, signals: {} });
+
+    const stats = sm.getStats();
+    expect(stats.mergedPRs).toBe(5);
+    expect(stats.closedPRs).toBe(1);
+    expect(stats.totalTracked).toBe(2);
+    expect(stats.mergeRate).toBe('83.3%');
+  });
+
+  it('should exclude repos from excludeRepos config', () => {
+    const sm = new StateManager(false);
+    sm.updateConfig({ excludeRepos: ['excluded/repo'] });
+    sm.updateRepoScore('excluded/repo', { mergedPRCount: 10, closedWithoutMergeCount: 0, signals: {} });
+    sm.updateRepoScore('included/repo', { mergedPRCount: 1, closedWithoutMergeCount: 0, signals: {} });
+
+    const stats = sm.getStats();
+    expect(stats.mergedPRs).toBe(1);
+    expect(stats.totalTracked).toBe(1);
+  });
+
+  it('should handle zero completed PRs (0% merge rate)', () => {
+    const sm = new StateManager(false);
+    const stats = sm.getStats();
+    expect(stats.mergeRate).toBe('0.0%');
+    expect(stats.mergedPRs).toBe(0);
+    expect(stats.closedPRs).toBe(0);
+  });
+});
+
+describe('getStateManager / resetStateManager singleton', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-test-'));
+    resetStateManager();
+  });
+
+  afterEach(() => {
+    resetStateManager();
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+  });
+
+  it('should return a StateManager instance', () => {
+    const sm = getStateManager();
+    expect(sm).toBeInstanceOf(StateManager);
+  });
+
+  it('should return the same instance on subsequent calls', () => {
+    const sm1 = getStateManager();
+    const sm2 = getStateManager();
+    expect(sm1).toBe(sm2);
+  });
+
+  it('should return a new instance after resetStateManager', () => {
+    const sm1 = getStateManager();
+    resetStateManager();
+    const sm2 = getStateManager();
+    expect(sm1).not.toBe(sm2);
   });
 });

@@ -1042,6 +1042,116 @@ describe('aiPolicyBlocklist filtering in searchIssues (#108)', () => {
   });
 });
 
+describe('IssueDiscovery.formatCandidate', () => {
+  let discovery: InstanceType<typeof IssueDiscovery>;
+
+  beforeEach(() => {
+    mockOctokitInstance = {};
+    discovery = new IssueDiscovery('fake-token');
+  });
+
+  it('should format an approved candidate with status icon', () => {
+    const candidate = {
+      issue: {
+        repo: 'owner/repo',
+        number: 42,
+        title: 'Fix a bug',
+        labels: ['bug', 'help wanted'],
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-15T00:00:00Z',
+        url: 'https://github.com/owner/repo/issues/42',
+      },
+      vettingResult: {
+        checks: { noExistingPR: true, notClaimed: true, clearRequirements: false },
+        notes: ['Looks promising'],
+      },
+      projectHealth: {
+        daysSinceLastCommit: 5,
+        openIssuesCount: 100,
+        ciStatus: 'passing',
+        checkFailed: false,
+      },
+      recommendation: 'approve' as const,
+      reasonsToApprove: ['Active maintainers', 'Good repo score'],
+      reasonsToSkip: [],
+      viabilityScore: 85,
+      searchPriority: 'normal' as const,
+    };
+
+    const output = discovery.formatCandidate(candidate as any);
+    expect(output).toContain('owner/repo#42');
+    expect(output).toContain('Fix a bug');
+    expect(output).toContain('bug, help wanted');
+    expect(output).toContain('APPROVE');
+    expect(output).toContain('Active maintainers');
+    expect(output).toContain('Looks promising');
+    expect(output).toContain('5 days ago');
+  });
+
+  it('should format a skip candidate with reasons to skip', () => {
+    const candidate = {
+      issue: {
+        repo: 'stale/repo',
+        number: 10,
+        title: 'Old issue',
+        labels: [],
+        createdAt: '2024-01-01T00:00:00Z',
+        updatedAt: '2024-01-15T00:00:00Z',
+        url: 'https://github.com/stale/repo/issues/10',
+      },
+      vettingResult: {
+        checks: { noExistingPR: false },
+        notes: [],
+      },
+      projectHealth: {
+        daysSinceLastCommit: 365,
+        openIssuesCount: 500,
+        ciStatus: 'failing',
+        checkFailed: false,
+      },
+      recommendation: 'skip' as const,
+      reasonsToApprove: [],
+      reasonsToSkip: ['PR already exists', 'Stale repo'],
+      viabilityScore: 20,
+      searchPriority: 'normal' as const,
+    };
+
+    const output = discovery.formatCandidate(candidate as any);
+    expect(output).toContain('SKIP');
+    expect(output).toContain('PR already exists');
+    expect(output).toContain('Stale repo');
+  });
+
+  it('should handle checkFailed in project health', () => {
+    const candidate = {
+      issue: {
+        repo: 'owner/repo',
+        number: 1,
+        title: 'Issue',
+        labels: [],
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-15T00:00:00Z',
+        url: 'https://github.com/owner/repo/issues/1',
+      },
+      vettingResult: { checks: {}, notes: [] },
+      projectHealth: {
+        daysSinceLastCommit: 0,
+        openIssuesCount: 10,
+        ciStatus: 'unknown',
+        checkFailed: true,
+      },
+      recommendation: 'needs_review' as const,
+      reasonsToApprove: [],
+      reasonsToSkip: [],
+      viabilityScore: 50,
+      searchPriority: 'normal' as const,
+    };
+
+    const output = discovery.formatCandidate(candidate as any);
+    expect(output).toContain('unknown (API error)');
+  });
+});
+
 describe('DOC_ONLY_LABELS', () => {
   it('should contain the expected documentation labels', () => {
     expect(DOC_ONLY_LABELS.has('documentation')).toBe(true);

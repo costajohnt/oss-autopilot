@@ -19,15 +19,22 @@ vi.mock('../core/utils.js', () => ({
   parseGitHubUrl: vi.fn(),
 }));
 
+vi.mock('./validation.js', () => ({
+  validateUrl: vi.fn(),
+  PR_URL_PATTERN: /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/,
+  validateGitHubUrl: vi.fn(),
+}));
+
 import { getGitHubToken, getOctokit } from '../core/index.js';
 import { parseGitHubUrl } from '../core/utils.js';
-import { outputJson } from '../formatters/json.js';
+import { outputJson, outputJsonError } from '../formatters/json.js';
 import { runTrack, runUntrack } from './track.js';
 
 const mockGetGitHubToken = vi.mocked(getGitHubToken);
 const mockGetOctokit = vi.mocked(getOctokit);
 const mockParseGitHubUrl = vi.mocked(parseGitHubUrl);
 const mockOutputJson = vi.mocked(outputJson);
+const mockOutputJsonError = vi.mocked(outputJsonError);
 
 const TEST_PR_URL = 'https://github.com/owner/repo/pull/42';
 
@@ -62,6 +69,33 @@ describe('runTrack', () => {
     const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
     expect(allOutput).toContain('owner/repo#42');
     consoleSpy.mockRestore();
+  });
+
+  it('should exit with JSON error for invalid PR URL', async () => {
+    mockParseGitHubUrl.mockReturnValue(null as any);
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runTrack({ prUrl: 'bad-url', json: true })).rejects.toThrow('exit');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('Invalid PR URL'));
+    mockExit.mockRestore();
+  });
+
+  it('should exit with text error for invalid PR URL', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockParseGitHubUrl.mockReturnValue(null as any);
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runTrack({ prUrl: 'bad-url', json: false })).rejects.toThrow('exit');
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Invalid PR URL');
+    consoleSpy.mockRestore();
+    mockExit.mockRestore();
   });
 });
 

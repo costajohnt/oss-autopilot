@@ -2,7 +2,7 @@
  * Tests for startup command helper functions
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { parseIssueListPathFromConfig, countIssueListItems } from './startup.js';
 
 // --- Mocks for runStartup dashboard tests ---
@@ -20,6 +20,11 @@ vi.mock('./daily.js', () => ({
 
 vi.mock('./dashboard.js', () => ({
   writeDashboardFromState: vi.fn(() => '/tmp/dashboard.html'),
+}));
+
+vi.mock('../formatters/json.js', () => ({
+  outputJson: vi.fn(),
+  outputJsonError: vi.fn(),
 }));
 
 vi.mock('child_process', () => ({
@@ -183,6 +188,87 @@ Just some text, no issue list items.
   });
 });
 
+// --- detectIssueList tests ---
+
+import * as fsImport from 'fs';
+
+describe('detectIssueList', () => {
+  let detectIssueList: typeof import('./startup.js').detectIssueList;
+  let existsSyncMock: ReturnType<typeof vi.fn>;
+  let origReadFileSync: typeof fsImport.readFileSync;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const startupMod = await import('./startup.js');
+    detectIssueList = startupMod.detectIssueList;
+    const fsMod = await import('fs');
+    existsSyncMock = fsMod.existsSync as ReturnType<typeof vi.fn>;
+    origReadFileSync = (fsImport as any).readFileSync;
+  });
+
+  afterEach(() => {
+    (fsImport as any).readFileSync = origReadFileSync;
+  });
+
+  it('should return undefined when no issue list file exists', () => {
+    existsSyncMock.mockReturnValue(false);
+    const result = detectIssueList();
+    expect(result).toBeUndefined();
+  });
+
+  it('should detect issue list from config file', () => {
+    existsSyncMock.mockImplementation((p: string) => {
+      if (typeof p === 'string' && p === '.claude/oss-autopilot/config.md') return true;
+      if (typeof p === 'string' && p === 'custom/issues.md') return true;
+      return false;
+    });
+    (fsImport as any).readFileSync = vi.fn().mockImplementation((path: string) => {
+      if (path === '.claude/oss-autopilot/config.md') {
+        return '---\nissueListPath: custom/issues.md\n---\n';
+      }
+      return '- [#1](url) — Issue\n';
+    });
+
+    const result = detectIssueList();
+
+    expect(result).toBeDefined();
+    expect(result?.path).toBe('custom/issues.md');
+    expect(result?.source).toBe('configured');
+  });
+
+  it('should handle config file read error gracefully', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    existsSyncMock.mockImplementation((p: string) => {
+      if (typeof p === 'string' && p === '.claude/oss-autopilot/config.md') return true;
+      return false;
+    });
+    (fsImport as any).readFileSync = vi.fn().mockImplementation(() => {
+      throw new Error('Permission denied');
+    });
+
+    const result = detectIssueList();
+
+    // Should return undefined because config read failed and no probes match
+    expect(result).toBeUndefined();
+    consoleSpy.mockRestore();
+  });
+
+  it('should auto-detect from known probe paths', () => {
+    existsSyncMock.mockImplementation((path: string) => {
+      return typeof path === 'string' && path === 'issues.md';
+    });
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](url) — Issue\n- ~~[#2](url) — Done~~\n');
+
+    const result = detectIssueList();
+
+    expect(result).toBeDefined();
+    expect(result?.path).toBe('issues.md');
+    expect(result?.source).toBe('auto-detected');
+    expect(result?.availableCount).toBe(1);
+    expect(result?.completedCount).toBe(1);
+  });
+});
+
 // --- runStartup dashboard behavior tests ---
 
 describe('runStartup dashboard behavior', () => {
@@ -304,5 +390,122 @@ describe('runStartup dashboard behavior', () => {
     expect(daily.briefSummary).not.toContain('Dashboard opened in browser');
     expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Dashboard'), 'Dashboard write failed');
     consoleErrorSpy.mockRestore();
+  });
+
+  it('should output text summary when not in JSON mode', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const daily = makeDailyOutput(2);
+    executeDailyCheck.mockResolvedValue(daily);
+    writeDashboardFromState.mockReturnValue('/tmp/dashboard.html');
+
+    await runStartup({ json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('OSS Autopilot');
+    expect(allOutput).toContain('Dashboard');
+    consoleSpy.mockRestore();
+  });
+
+  it('should return setup incomplete when setup is not done', async () => {
+    const { getStateManager } = await import('../core/index.js');
+    const mockGetStateManager = getStateManager as ReturnType<typeof vi.fn>;
+    mockGetStateManager.mockReturnValue({
+      isSetupComplete: vi.fn(() => false),
+    });
+
+    await runStartup({ json: true });
+
+    const { outputJson } = await import('../formatters/json.js');
+    const mockOutputJson = outputJson as unknown as ReturnType<typeof vi.fn>;
+    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ setupComplete: false }));
+  });
+
+  it('should output text when setup is incomplete', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const { getStateManager } = await import('../core/index.js');
+    const mockGetStateManager = getStateManager as ReturnType<typeof vi.fn>;
+    mockGetStateManager.mockReturnValue({
+      isSetupComplete: vi.fn(() => false),
+    });
+
+    await runStartup({ json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Setup incomplete');
+    consoleSpy.mockRestore();
+  });
+
+  it('should handle auth error in JSON mode', async () => {
+    const { getStateManager, getGitHubToken } = await import('../core/index.js');
+    const mockGetStateManager = getStateManager as ReturnType<typeof vi.fn>;
+    const mockGetGitHubToken = getGitHubToken as ReturnType<typeof vi.fn>;
+    mockGetStateManager.mockReturnValue({
+      isSetupComplete: vi.fn(() => true),
+    });
+    mockGetGitHubToken.mockReturnValue(null);
+
+    await runStartup({ json: true });
+
+    const { outputJson } = await import('../formatters/json.js');
+    const mockOutputJson = outputJson as unknown as ReturnType<typeof vi.fn>;
+    expect(mockOutputJson).toHaveBeenCalledWith(
+      expect.objectContaining({ setupComplete: true, authError: expect.any(String) }),
+    );
+  });
+
+  it('should handle auth error in text mode', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { getStateManager, getGitHubToken } = await import('../core/index.js');
+    const mockGetStateManager = getStateManager as ReturnType<typeof vi.fn>;
+    const mockGetGitHubToken = getGitHubToken as ReturnType<typeof vi.fn>;
+    mockGetStateManager.mockReturnValue({
+      isSetupComplete: vi.fn(() => true),
+    });
+    mockGetGitHubToken.mockReturnValue(null);
+
+    await runStartup({ json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('authentication required');
+    consoleSpy.mockRestore();
+  });
+
+  it('should handle daily check failure in JSON mode', async () => {
+    // Reset mocks to ensure auth passes (auth error tests above may have set token to null)
+    const { getStateManager: gsm, getGitHubToken: ght } = await import('../core/index.js');
+    (gsm as ReturnType<typeof vi.fn>).mockReturnValue({ isSetupComplete: vi.fn(() => true) });
+    (ght as ReturnType<typeof vi.fn>).mockReturnValue('fake-token');
+
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+    executeDailyCheck.mockRejectedValue(new Error('Network error'));
+
+    await expect(runStartup({ json: true })).rejects.toThrow('exit');
+
+    const { outputJsonError } = await import('../formatters/json.js');
+    const mockOutputJsonError = outputJsonError as unknown as ReturnType<typeof vi.fn>;
+    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('Network error'));
+    mockExit.mockRestore();
+  });
+
+  it('should handle daily check failure in text mode', async () => {
+    // Reset mocks to ensure auth passes
+    const { getStateManager: gsm, getGitHubToken: ght } = await import('../core/index.js');
+    (gsm as ReturnType<typeof vi.fn>).mockReturnValue({ isSetupComplete: vi.fn(() => true) });
+    (ght as ReturnType<typeof vi.fn>).mockReturnValue('fake-token');
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+    executeDailyCheck.mockRejectedValue(new Error('Network error'));
+
+    await expect(runStartup({ json: false })).rejects.toThrow('exit');
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Daily check failed');
+    consoleSpy.mockRestore();
+    mockExit.mockRestore();
   });
 });

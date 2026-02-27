@@ -46,4 +46,16 @@ describe('runInit', () => {
     const call = mockOutputJson.mock.calls[0][0] as { message: string };
     expect(call.message).toContain('daily');
   });
+
+  it('should output text when not in JSON mode', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runInit({ username: 'testuser', json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Initializing');
+    expect(allOutput).toContain('testuser');
+    expect(allOutput).toContain('daily');
+    consoleSpy.mockRestore();
+  });
 });

@@ -150,4 +150,72 @@ describe('runConfig', () => {
     expect(mockOutputJsonError).toHaveBeenCalledWith('Value required');
     mockExit.mockRestore();
   });
+
+  it('should not add duplicate label', async () => {
+    await runConfig({ key: 'add-label', value: 'good first issue', json: true });
+
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+    expect(mockSave).toHaveBeenCalled();
+  });
+
+  it('should not add duplicate exclude-repo (case-insensitive)', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, excludeRepos: ['Owner/Repo'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      save: mockSave,
+    } as any);
+
+    await runConfig({ key: 'exclude-repo', value: 'owner/repo', json: true });
+
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+  });
+
+  it('should not add duplicate exclude-org (case-insensitive)', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, excludeOrgs: ['Facebook'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      save: mockSave,
+    } as any);
+
+    await runConfig({ key: 'exclude-org', value: 'facebook', json: true });
+
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+  });
+
+  it('should show current config in text mode', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runConfig({ json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Configuration');
+    consoleSpy.mockRestore();
+  });
+
+  it('should exit with text error when value is missing in text mode', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runConfig({ key: 'username', json: false })).rejects.toThrow('exit');
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Value required');
+    consoleSpy.mockRestore();
+    mockExit.mockRestore();
+  });
+
+  it('should show text success after setting config', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runConfig({ key: 'username', value: 'newuser', json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Set username');
+    expect(allOutput).toContain('newuser');
+    consoleSpy.mockRestore();
+  });
 });

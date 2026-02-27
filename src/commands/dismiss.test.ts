@@ -79,6 +79,27 @@ describe('runDismiss', () => {
     expect(mockSave).not.toHaveBeenCalled();
     expect(mockOutputJson).toHaveBeenCalledWith({ dismissed: false, url: TEST_ISSUE_URL });
   });
+
+  it('should output text when dismiss succeeds', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockDismissIssue.mockReturnValue(true);
+    await runDismiss({ issueUrl: TEST_ISSUE_URL, json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Dismissed');
+    expect(allOutput).toContain('muted');
+    consoleSpy.mockRestore();
+  });
+
+  it('should output text when issue is already dismissed', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockDismissIssue.mockReturnValue(false);
+    await runDismiss({ issueUrl: TEST_ISSUE_URL, json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('already dismissed');
+    consoleSpy.mockRestore();
+  });
 });
 
 describe('runUndismiss', () => {
@@ -108,5 +129,26 @@ describe('runUndismiss', () => {
 
     expect(mockSave).not.toHaveBeenCalled();
     expect(mockOutputJson).toHaveBeenCalledWith({ undismissed: false, url: TEST_ISSUE_URL });
+  });
+
+  it('should output text when undismiss succeeds', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockUndismissIssue.mockReturnValue(true);
+    await runUndismiss({ issueUrl: TEST_ISSUE_URL, json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Undismissed');
+    expect(allOutput).toContain('active again');
+    consoleSpy.mockRestore();
+  });
+
+  it('should output text when issue was not dismissed', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockUndismissIssue.mockReturnValue(false);
+    await runUndismiss({ issueUrl: TEST_ISSUE_URL, json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('was not dismissed');
+    consoleSpy.mockRestore();
   });
 });
