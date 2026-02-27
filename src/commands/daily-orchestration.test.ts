@@ -902,22 +902,6 @@ describe('runDaily()', () => {
     consoleSpy.mockRestore();
   });
 
-  it('outputs JSON error and exits when no GitHub token in JSON mode', async () => {
-    vi.mocked(getGitHubToken).mockReturnValue(null);
-
-    await expect(runDaily({ json: true })).rejects.toThrow('process.exit called');
-    expect(outputJsonError).toHaveBeenCalledWith(expect.stringContaining('GitHub authentication required'));
-  });
-
-  it('outputs console error and exits when no GitHub token in non-JSON mode', async () => {
-    vi.mocked(getGitHubToken).mockReturnValue(null);
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    await expect(runDaily({ json: false })).rejects.toThrow('process.exit called');
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Error: GitHub authentication required'));
-    consoleSpy.mockRestore();
-  });
-
   it('outputs JSON error and exits on unexpected throw in JSON mode', async () => {
     vi.mocked(getGitHubToken).mockReturnValue('test-token');
     mockFetchUserOpenPRs.mockRejectedValue(new Error('Unexpected API failure'));

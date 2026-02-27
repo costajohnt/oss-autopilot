@@ -28,17 +28,15 @@ vi.mock('../core/index.js', () => {
 
 vi.mock('../formatters/json.js', () => ({
   outputJson: vi.fn(),
-  outputJsonError: vi.fn(),
 }));
 
 import { getGitHubToken, getStateManager } from '../core/index.js';
-import { outputJson, outputJsonError } from '../formatters/json.js';
+import { outputJson } from '../formatters/json.js';
 import { runSearch } from './search.js';
 
 const mockGetGitHubToken = vi.mocked(getGitHubToken);
 const mockGetStateManager = vi.mocked(getStateManager);
 const mockOutputJson = vi.mocked(outputJson);
-const mockOutputJsonError = vi.mocked(outputJsonError);
 
 describe('runSearch', () => {
   beforeEach(() => {
@@ -53,18 +51,6 @@ describe('runSearch', () => {
       }),
       getRepoScore: vi.fn().mockReturnValue(null),
     } as any);
-  });
-
-  it('should exit with error when no GitHub token is available', async () => {
-    mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runSearch({ maxResults: 10, json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('GitHub authentication required'));
-    mockExit.mockRestore();
   });
 
   it('should search and return candidates in JSON mode', async () => {

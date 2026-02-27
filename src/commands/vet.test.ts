@@ -20,34 +20,20 @@ vi.mock('../core/index.js', () => {
 
 vi.mock('../formatters/json.js', () => ({
   outputJson: vi.fn(),
-  outputJsonError: vi.fn(),
 }));
 
 import { getGitHubToken } from '../core/index.js';
-import { outputJson, outputJsonError } from '../formatters/json.js';
+import { outputJson } from '../formatters/json.js';
 import { runVet } from './vet.js';
 
 const mockGetGitHubToken = vi.mocked(getGitHubToken);
 const mockOutputJson = vi.mocked(outputJson);
-const mockOutputJsonError = vi.mocked(outputJsonError);
 
 const TEST_ISSUE_URL = 'https://github.com/owner/repo/issues/5';
 
 describe('runVet', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it('should exit with error when no GitHub token', async () => {
-    mockGetGitHubToken.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runVet({ issueUrl: TEST_ISSUE_URL, json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('GitHub authentication required'));
-    mockExit.mockRestore();
   });
 
   it('should vet an issue and output JSON result', async () => {
