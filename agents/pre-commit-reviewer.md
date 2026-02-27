@@ -42,14 +42,26 @@ Then stop — do NOT proceed with review.
 **Gather the current change state:**
 
 ```bash
-# Unstaged + staged changes
+# Stage 1: Check for uncommitted changes (staged or unstaged)
 git diff
 git diff --cached
 git status --porcelain
 ```
 
-**If all three commands produce empty output**, there are no pending changes to review. Report:
-> "No uncommitted changes detected. There is nothing to review."
+**If all three commands produce empty output**, check for committed-but-not-pushed changes (common after squash-rebase or amend):
+
+```bash
+# Stage 2: Check for commits ahead of the remote tracking branch
+git log --oneline @{upstream}..HEAD 2>/dev/null || git log --oneline origin/$(git rev-parse --abbrev-ref HEAD)..HEAD 2>/dev/null || git log --oneline origin/main..HEAD 2>/dev/null
+```
+
+**If this shows commits:** Changes have been committed but not pushed. Use `git diff @{upstream}..HEAD` (or the equivalent fallback range) as the diff to review. Report:
+> "No uncommitted changes, but found {N} commit(s) not yet pushed. Reviewing committed changes."
+
+Proceed with review using this diff.
+
+**If this also shows nothing (or fails):** There are truly no changes to review. Report:
+> "No uncommitted or unpushed changes detected. There is nothing to review."
 
 Then stop — do NOT proceed with review.
 
@@ -160,6 +172,8 @@ If there are NO issues found:
 No issues found. Changes look clean and ready to commit.
 ```
 
+**Track findings for iterative review:** Note which review categories (Critical, Recommended, Test Coverage, Convention Alignment) produced findings. Save this as `categoriesWithFindings`.
+
 Then use AskUserQuestion:
 
 **If Critical or Recommended findings exist:**
@@ -172,8 +186,15 @@ Then use AskUserQuestion:
 - "Commit and push (Recommended)" — "Stage, commit, and push changes"
 - "Done for now" — "Cancel, return without committing"
 
+**When user selects "Address findings":**
+- User makes fixes (with assistance as needed)
+- After fixes, re-run the review but **only re-check the categories that had findings** (`categoriesWithFindings`). Always include a quick Critical/Bugs scan as a sanity check. Skip categories that passed cleanly in the previous round.
+  > "Re-review: Checking {categoriesWithFindings list} (targeted). Categories that passed last round are skipped."
+- Reset `categoriesWithFindings` and rebuild from the new results
+- Continue looping until all categories pass cleanly or the user selects a different option
+
 **When user selects "Show full diff" / "Show full diff first":**
-- Run `git diff` and **output the full diff as a markdown code block in your text response** so the user can read it
+- Run the appropriate diff command (use `git diff @{upstream}..HEAD` if reviewing committed-but-not-pushed changes, otherwise `git diff`) and **output the full diff as a markdown code block in your text response** so the user can read it
 - **If `git diff` fails**, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly.
 - **After** the diff is visible in your response (or user chose to continue without), use AskUserQuestion:
   ```
