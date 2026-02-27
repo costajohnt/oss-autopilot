@@ -8,7 +8,7 @@
  * we test them indirectly through the exported runDashboard() and writeDashboardFromState().
  */
 
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type {
   FetchedPR,
   DailyDigest,
@@ -55,7 +55,13 @@ vi.mock('./daily.js', () => ({
 
 import * as fs from 'fs';
 import { execFile } from 'child_process';
-import { getStateManager, getDashboardPath, PRMonitor, IssueConversationMonitor, getGitHubToken } from '../core/index.js';
+import {
+  getStateManager,
+  getDashboardPath,
+  PRMonitor,
+  IssueConversationMonitor,
+  getGitHubToken,
+} from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
 import { runDashboard, writeDashboardFromState } from './dashboard.js';
 
@@ -388,11 +394,7 @@ describe('dashboard', () => {
 
         await runDashboard({ json: false });
 
-        expect(mockWriteFileSync).toHaveBeenCalledWith(
-          '/tmp/test-dashboard.html',
-          expect.any(String),
-          { mode: 0o644 },
-        );
+        expect(mockWriteFileSync).toHaveBeenCalledWith('/tmp/test-dashboard.html', expect.any(String), { mode: 0o644 });
         expect(mockChmodSync).toHaveBeenCalledWith('/tmp/test-dashboard.html', 0o644);
       });
 
@@ -449,8 +451,12 @@ describe('dashboard', () => {
           fetchCommentedIssues: vi.fn().mockResolvedValue({ issues: [], failures: [] }),
         };
 
-        vi.mocked(PRMonitor).mockImplementation(function () { return mockPRMonitor; } as any);
-        vi.mocked(IssueConversationMonitor).mockImplementation(function () { return mockIssueMonitor; } as any);
+        vi.mocked(PRMonitor).mockImplementation(function () {
+          return mockPRMonitor;
+        } as any);
+        vi.mocked(IssueConversationMonitor).mockImplementation(function () {
+          return mockIssueMonitor;
+        } as any);
         mockGetGitHubToken.mockReturnValue('ghp_test_token');
       });
 
@@ -560,9 +566,7 @@ describe('dashboard', () => {
       });
 
       it('should handle issue conversation failures gracefully', async () => {
-        mockIssueMonitor.fetchCommentedIssues.mockRejectedValue(
-          new Error('No GitHub username configured'),
-        );
+        mockIssueMonitor.fetchCommentedIssues.mockRejectedValue(new Error('No GitHub username configured'));
 
         const state = makeState();
         const mockSM = setupMockStateManager(state);
@@ -684,9 +688,7 @@ describe('dashboard', () => {
             stats: expect.objectContaining({ activePRs: 1, mergedPRs: 5 }),
             activePRs: [pr],
             monthlyMerged: { '2026-01': 2 },
-            topRepos: expect.arrayContaining([
-              expect.objectContaining({ repo: 'owner/repo' }),
-            ]),
+            topRepos: expect.arrayContaining([expect.objectContaining({ repo: 'owner/repo' })]),
           }),
         );
       });
@@ -724,8 +726,12 @@ describe('dashboard', () => {
           fetchCommentedIssues: vi.fn().mockResolvedValue({ issues: [issue], failures: [] }),
         };
 
-        vi.mocked(PRMonitor).mockImplementation(function () { return mockPRMonitor; } as any);
-        vi.mocked(IssueConversationMonitor).mockImplementation(function () { return mockIssueMonitor; } as any);
+        vi.mocked(PRMonitor).mockImplementation(function () {
+          return mockPRMonitor;
+        } as any);
+        vi.mocked(IssueConversationMonitor).mockImplementation(function () {
+          return mockIssueMonitor;
+        } as any);
 
         await runDashboard({ json: true });
 
@@ -761,11 +767,7 @@ describe('dashboard', () => {
 
         await runDashboard({ open: true });
 
-        expect(mockExecFile).toHaveBeenCalledWith(
-          'open',
-          ['/tmp/test-dashboard.html'],
-          expect.any(Function),
-        );
+        expect(mockExecFile).toHaveBeenCalledWith('open', ['/tmp/test-dashboard.html'], expect.any(Function));
 
         Object.defineProperty(process, 'platform', { value: originalPlatform });
       });
@@ -787,17 +789,6 @@ describe('dashboard', () => {
   // ── HTML generation content tests ──────────────────────────────────
 
   describe('HTML generation', () => {
-    function generateHtml(digest: DailyDigest, state?: Partial<AgentState>): string {
-      const fullState = makeState({ lastDigest: digest, ...state });
-      const mockSM = setupMockStateManager(fullState, digest);
-      mockGetStateManager.mockReturnValue(mockSM as any);
-      mockGetGitHubToken.mockReturnValue(null);
-
-      // writeDashboardFromState is synchronous-ish and directly writes HTML
-      // We'll use runDashboard and capture the written HTML
-      return ''; // placeholder - we test via runDashboard below
-    }
-
     async function getHtmlOutput(digest: DailyDigest, stateOverrides: Partial<AgentState> = {}): Promise<string> {
       const state = makeState({ lastDigest: digest, ...stateOverrides });
       const mockSM = setupMockStateManager(state, digest);
@@ -806,7 +797,7 @@ describe('dashboard', () => {
 
       await runDashboard({ json: false });
 
-      return mockWriteFileSync.mock.calls[0]?.[1] as string ?? '';
+      return (mockWriteFileSync.mock.calls[0]?.[1] as string) ?? '';
     }
 
     it('should generate valid HTML with DOCTYPE', async () => {
@@ -1108,8 +1099,12 @@ describe('dashboard', () => {
       const mockIssueMonitor = {
         fetchCommentedIssues: vi.fn().mockResolvedValue({ issues: [issue], failures: [] }),
       };
-      vi.mocked(PRMonitor).mockImplementation(function () { return mockPRMonitor; } as any);
-      vi.mocked(IssueConversationMonitor).mockImplementation(function () { return mockIssueMonitor; } as any);
+      vi.mocked(PRMonitor).mockImplementation(function () {
+        return mockPRMonitor;
+      } as any);
+      vi.mocked(IssueConversationMonitor).mockImplementation(function () {
+        return mockIssueMonitor;
+      } as any);
 
       await runDashboard({ json: false });
 
@@ -1123,19 +1118,29 @@ describe('dashboard', () => {
     it('should pluralize reply/replies correctly', async () => {
       const issues: CommentedIssueWithResponse[] = [
         {
-          repo: 'owner/repo', number: 1, title: 'Issue 1',
+          repo: 'owner/repo',
+          number: 1,
+          title: 'Issue 1',
           url: 'https://github.com/owner/repo/issues/1',
-          userLastCommentedAt: '2026-01-10T00:00:00Z', labels: [],
-          daysSinceUserComment: 5, status: 'new_response',
-          lastResponseAuthor: 'a', lastResponseBody: 'ok',
+          userLastCommentedAt: '2026-01-10T00:00:00Z',
+          labels: [],
+          daysSinceUserComment: 5,
+          status: 'new_response',
+          lastResponseAuthor: 'a',
+          lastResponseBody: 'ok',
           lastResponseAt: '2026-01-14T00:00:00Z',
         },
         {
-          repo: 'owner/repo', number: 2, title: 'Issue 2',
+          repo: 'owner/repo',
+          number: 2,
+          title: 'Issue 2',
           url: 'https://github.com/owner/repo/issues/2',
-          userLastCommentedAt: '2026-01-10T00:00:00Z', labels: [],
-          daysSinceUserComment: 5, status: 'new_response',
-          lastResponseAuthor: 'b', lastResponseBody: 'yes',
+          userLastCommentedAt: '2026-01-10T00:00:00Z',
+          labels: [],
+          daysSinceUserComment: 5,
+          status: 'new_response',
+          lastResponseAuthor: 'b',
+          lastResponseBody: 'yes',
           lastResponseAt: '2026-01-14T00:00:00Z',
         },
       ];
@@ -1154,10 +1159,14 @@ describe('dashboard', () => {
         fetchUserClosedPRCounts: vi.fn().mockResolvedValue({ monthlyCounts: {}, monthlyOpenedCounts: {} }),
         generateDigest: vi.fn().mockReturnValue(digest),
       };
-      vi.mocked(PRMonitor).mockImplementation(function () { return mockPRMonitor; } as any);
-      vi.mocked(IssueConversationMonitor).mockImplementation(function () { return {
-        fetchCommentedIssues: vi.fn().mockResolvedValue({ issues, failures: [] }),
-      }; } as any);
+      vi.mocked(PRMonitor).mockImplementation(function () {
+        return mockPRMonitor;
+      } as any);
+      vi.mocked(IssueConversationMonitor).mockImplementation(function () {
+        return {
+          fetchCommentedIssues: vi.fn().mockResolvedValue({ issues, failures: [] }),
+        };
+      } as any);
 
       await runDashboard({ json: false });
 
@@ -1341,7 +1350,7 @@ describe('dashboard', () => {
       });
 
       // The chart should not include repos from blocked-org
-      // Check that the chart data doesn't reference this repo
+      expect(html).not.toContain('blocked-org/repo');
     });
 
     async function getHtmlOutput(digest: DailyDigest, stateOverrides: Partial<AgentState> = {}): Promise<string> {
@@ -1351,7 +1360,7 @@ describe('dashboard', () => {
       mockGetGitHubToken.mockReturnValue(null);
 
       await runDashboard({ json: false });
-      return mockWriteFileSync.mock.calls[0]?.[1] as string ?? '';
+      return (mockWriteFileSync.mock.calls[0]?.[1] as string) ?? '';
     }
   });
 
@@ -1514,7 +1523,7 @@ describe('dashboard', () => {
       mockGetGitHubToken.mockReturnValue(null);
 
       await runDashboard({ json: false });
-      return mockWriteFileSync.mock.calls[0]?.[1] as string ?? '';
+      return (mockWriteFileSync.mock.calls[0]?.[1] as string) ?? '';
     }
 
     it('should handle empty PR lists in all digest arrays', async () => {
@@ -1554,13 +1563,31 @@ describe('dashboard', () => {
         waitingOnMaintainerPRs: [makeFetchedPR({ status: 'waiting_on_maintainer', number: 15 })],
         ciBlockedPRs: [makeFetchedPR({ status: 'ci_blocked', number: 16 })],
         ciNotRunningPRs: [makeFetchedPR({ status: 'ci_not_running', number: 17 })],
-        incompleteChecklistPRs: [makeFetchedPR({ status: 'incomplete_checklist', hasIncompleteChecklist: true, number: 18 })],
+        incompleteChecklistPRs: [
+          makeFetchedPR({ status: 'incomplete_checklist', hasIncompleteChecklist: true, number: 18 }),
+        ],
         missingRequiredFilesPRs: [makeFetchedPR({ status: 'missing_required_files' as any, number: 19 })],
         needsRebasePRs: [makeFetchedPR({ status: 'needs_rebase', number: 20 })],
         shelvedPRs: [makeShelvedPRRef()],
         autoUnshelvedPRs: [makeShelvedPRRef({ number: 77, status: 'needs_response' })],
-        recentlyMergedPRs: [{ url: 'https://github.com/o/r/pull/30', repo: 'o/r', number: 30, title: 'Merged', mergedAt: '2026-01-14T00:00:00Z' }],
-        recentlyClosedPRs: [{ url: 'https://github.com/o/r/pull/31', repo: 'o/r', number: 31, title: 'Closed', closedAt: '2026-01-13T00:00:00Z' }],
+        recentlyMergedPRs: [
+          {
+            url: 'https://github.com/o/r/pull/30',
+            repo: 'o/r',
+            number: 30,
+            title: 'Merged',
+            mergedAt: '2026-01-14T00:00:00Z',
+          },
+        ],
+        recentlyClosedPRs: [
+          {
+            url: 'https://github.com/o/r/pull/31',
+            repo: 'o/r',
+            number: 31,
+            title: 'Closed',
+            closedAt: '2026-01-13T00:00:00Z',
+          },
+        ],
         summary: { totalActivePRs: 1, totalNeedingAttention: 7, totalMergedAllTime: 1, mergeRate: 50 },
       });
 
