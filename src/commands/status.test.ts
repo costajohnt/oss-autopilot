@@ -75,4 +75,58 @@ describe('runStatus', () => {
     const outputData = mockOutputJson.mock.calls[0][0] as any;
     expect(outputData.stats.totalTracked).toBeUndefined();
   });
+
+  describe('offline mode', () => {
+    it('should include offline and lastUpdated in JSON output when --offline is set', async () => {
+      mockGetStateManager.mockReturnValue({
+        getStats: vi.fn().mockReturnValue(mockStats),
+        getState: vi.fn().mockReturnValue({
+          lastRunAt: '2026-01-15T10:00:00Z',
+          lastDigestAt: '2026-01-15T09:30:00Z',
+        }),
+      } as any);
+
+      await runStatus({ json: true, offline: true });
+
+      const outputData = mockOutputJson.mock.calls[0][0] as any;
+      expect(outputData.offline).toBe(true);
+      expect(outputData.lastUpdated).toBe('2026-01-15T09:30:00Z');
+    });
+
+    it('should fall back to lastRunAt when lastDigestAt is not set', async () => {
+      await runStatus({ json: true, offline: true });
+
+      const outputData = mockOutputJson.mock.calls[0][0] as any;
+      expect(outputData.offline).toBe(true);
+      expect(outputData.lastUpdated).toBe('2026-01-15T10:00:00Z');
+    });
+
+    it('should not include offline fields when --offline is not set', async () => {
+      await runStatus({ json: true });
+
+      const outputData = mockOutputJson.mock.calls[0][0] as any;
+      expect(outputData.offline).toBeUndefined();
+      expect(outputData.lastUpdated).toBeUndefined();
+    });
+
+    it('should show offline message in text mode', async () => {
+      mockGetStateManager.mockReturnValue({
+        getStats: vi.fn().mockReturnValue(mockStats),
+        getState: vi.fn().mockReturnValue({
+          lastRunAt: '2026-01-15T10:00:00Z',
+          lastDigestAt: '2026-01-15T09:30:00Z',
+        }),
+      } as any);
+
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      await runStatus({ json: false, offline: true });
+
+      const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+      expect(allOutput).toContain('Last Updated: 2026-01-15T09:30:00Z');
+      expect(allOutput).toContain('Offline mode: showing cached data');
+      expect(allOutput).not.toContain('Last Run:');
+      consoleSpy.mockRestore();
+    });
+  });
 });
