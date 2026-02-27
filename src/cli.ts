@@ -87,8 +87,9 @@ program
   .command('status')
   .description('Show current status and stats')
   .option('--json', 'Output as JSON')
+  .option('--offline', 'Use cached data only (no GitHub API calls)')
   .action(async (options) => {
-    await runStatus({ json: options.json });
+    await runStatus({ json: options.json, offline: options.offline });
   });
 
 // Search command
@@ -212,8 +213,9 @@ program
   .description('Generate HTML stats dashboard')
   .option('--open', 'Open in browser')
   .option('--json', 'Output as JSON')
+  .option('--offline', 'Use cached data only (no GitHub API calls)')
   .action(async (options) => {
-    await runDashboard({ open: options.open, json: options.json });
+    await runDashboard({ open: options.open, json: options.json, offline: options.offline });
   });
 
 // Parse issue list command (#82)

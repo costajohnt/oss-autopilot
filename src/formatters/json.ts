@@ -90,6 +90,8 @@ export interface StatusOutput {
     needsResponse: number;
   };
   lastRunAt: string;
+  offline?: boolean;
+  lastUpdated?: string;
 }
 
 export interface SearchOutput {

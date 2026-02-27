@@ -28,16 +28,30 @@ import type {
 interface DashboardOptions {
   open?: boolean;
   json?: boolean;
+  offline?: boolean;
 }
 
 export async function runDashboard(options: DashboardOptions): Promise<void> {
   const stateManager = getStateManager();
-  const token = getGitHubToken();
+  const token = options.offline ? null : getGitHubToken();
   let digest: DailyDigest | undefined;
   let commentedIssues: CommentedIssue[] = [];
 
-  // If we have a token, fetch fresh data
-  if (token) {
+  // In offline mode, skip all GitHub API calls
+  if (options.offline) {
+    const state = stateManager.getState();
+    digest = state.lastDigest;
+    if (!digest) {
+      if (options.json) {
+        outputJson({ error: 'No cached data found. Run without --offline first.', offline: true });
+      } else {
+        console.error('No cached data found. Run without --offline first.');
+      }
+      return;
+    }
+    const lastUpdated = digest.generatedAt || state.lastDigestAt || state.lastRunAt;
+    console.error(`Offline mode: using cached data from ${lastUpdated}`);
+  } else if (token) {
     console.error('Fetching fresh data from GitHub...');
     try {
       const prMonitor = new PRMonitor(token);
@@ -183,7 +197,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
 
   if (options.json) {
     const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
-    outputJson({
+    const jsonData: Record<string, unknown> = {
       stats,
       prsByRepo,
       topRepos: topRepos.map(([repo, data]) => ({ repo, ...data })),
@@ -191,7 +205,12 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       activePRs: digest.openPRs || [],
       commentedIssues,
       issueResponses,
-    });
+    };
+    if (options.offline) {
+      jsonData.offline = true;
+      jsonData.lastUpdated = digest.generatedAt || state.lastDigestAt || state.lastRunAt;
+    }
+    outputJson(jsonData);
     return;
   }
 
@@ -203,7 +222,12 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
   fs.writeFileSync(dashboardPath, html, { mode: 0o644 });
   fs.chmodSync(dashboardPath, 0o644);
 
-  console.log(`\n📊 Dashboard generated: ${dashboardPath}`);
+  if (options.offline) {
+    const lastUpdated = digest.generatedAt || state.lastDigestAt || state.lastRunAt;
+    console.log(`\n📊 Dashboard generated (offline, cached data from ${lastUpdated}): ${dashboardPath}`);
+  } else {
+    console.log(`\n📊 Dashboard generated: ${dashboardPath}`);
+  }
 
   if (options.open) {
     // Use platform-specific open command - path is hardcoded, not user input
