@@ -99,13 +99,13 @@ describe('getOctokit', () => {
     expect(first).toBe(second);
   });
 
-  it('should create a new instance when token changes', () => {
+  it('should accept different tokens without error', () => {
+    // Verifies getOctokit handles token changes gracefully.
+    // Note: the mock constructor always returns the same mockOctokitInstance,
+    // so we cannot assert second !== first here. Caching behavior for the
+    // same token is verified in the test above.
     const first = getOctokit('token-x');
     expect(first).toBeDefined();
-    // Calling with same token should return cached instance
-    const same = getOctokit('token-x');
-    expect(same).toBe(first);
-    // Calling with different token should create new instance
     const second = getOctokit('token-y');
     expect(second).toBeDefined();
   });
