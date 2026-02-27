@@ -10,10 +10,11 @@ import type { ActionableIssue, CapacityAssessment } from '../formatters/json.js'
 
 /** Create a minimal FetchedPR for testing signal computation */
 function makePR(overrides: Partial<FetchedPR> & { repo: string }): FetchedPR {
+  const num = (overrides as { number?: number }).number ?? 1;
   return {
-    id: 1,
-    url: `https://github.com/${overrides.repo}/pull/1`,
-    number: 1,
+    id: num,
+    url: `https://github.com/${overrides.repo}/pull/${num}`,
+    number: num,
     title: 'Test PR',
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-15T00:00:00Z',
