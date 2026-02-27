@@ -35,6 +35,7 @@ export {
   formatRelativeTime,
   byDateDescending,
   getGitHubToken,
+  getGitHubTokenAsync,
   requireGitHubToken,
   resetGitHubTokenCache,
 } from './utils.js';

@@ -4,28 +4,14 @@
  * Entry point with commander for argument parsing
  *
  * Supports --json flag for structured output (used by Claude Code plugin)
+ *
+ * Performance: Command modules are lazy-loaded via dynamic import() so that
+ * only the invoked command's code is evaluated. The preAction hook uses an
+ * async token fetch to avoid blocking the event loop on `gh auth token`.
  */
 
 import { Command } from 'commander';
-import { getGitHubToken, enableDebug, debug } from './core/index.js';
-import { runDaily } from './commands/daily.js';
-import { runStatus } from './commands/status.js';
-import { runSearch } from './commands/search.js';
-import { runVet } from './commands/vet.js';
-import { runTrack, runUntrack } from './commands/track.js';
-import { runConfig } from './commands/config.js';
-import { runComments, runPost, runClaim } from './commands/comments.js';
-import { runSetup, runCheckSetup } from './commands/setup.js';
-import { runInit } from './commands/init.js';
-import { runRead } from './commands/read.js';
-import { runDashboard } from './commands/dashboard.js';
-import { runParseList } from './commands/parse-list.js';
-import { runCheckIntegration } from './commands/check-integration.js';
-import { runLocalRepos } from './commands/local-repos.js';
-import { runStartup } from './commands/startup.js';
-import { runShelve, runUnshelve } from './commands/shelve.js';
-import { runDismiss, runUndismiss } from './commands/dismiss.js';
-import { runSnooze, runUnsnooze } from './commands/snooze.js';
+import { getGitHubTokenAsync, enableDebug, debug } from './core/index.js';
 
 const VERSION = (() => {
   try {
@@ -79,6 +65,7 @@ program
   .description('Run daily check on all tracked PRs')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
+    const { runDaily } = await import('./commands/daily.js');
     await runDaily({ json: options.json });
   });
 
@@ -89,6 +76,7 @@ program
   .option('--json', 'Output as JSON')
   .option('--offline', 'Use cached data only (no GitHub API calls)')
   .action(async (options) => {
+    const { runStatus } = await import('./commands/status.js');
     await runStatus({ json: options.json, offline: options.offline });
   });
 
@@ -98,6 +86,7 @@ program
   .description('Search for new issues to work on')
   .option('--json', 'Output as JSON')
   .action(async (count, options) => {
+    const { runSearch } = await import('./commands/search.js');
     await runSearch({ maxResults: parseInt(count) || 5, json: options.json });
   });
 
@@ -107,6 +96,7 @@ program
   .description('Vet a specific issue before working on it')
   .option('--json', 'Output as JSON')
   .action(async (issueUrl, options) => {
+    const { runVet } = await import('./commands/vet.js');
     await runVet({ issueUrl, json: options.json });
   });
 
@@ -116,6 +106,7 @@ program
   .description('Add a PR to track')
   .option('--json', 'Output as JSON')
   .action(async (prUrl, options) => {
+    const { runTrack } = await import('./commands/track.js');
     await runTrack({ prUrl, json: options.json });
   });
 
@@ -125,6 +116,7 @@ program
   .description('Stop tracking a PR')
   .option('--json', 'Output as JSON')
   .action(async (prUrl, options) => {
+    const { runUntrack } = await import('./commands/track.js');
     await runUntrack({ prUrl, json: options.json });
   });
 
@@ -135,6 +127,7 @@ program
   .option('--all', 'Mark all PRs as read')
   .option('--json', 'Output as JSON')
   .action(async (prUrl, options) => {
+    const { runRead } = await import('./commands/read.js');
     await runRead({ prUrl, all: options.all, json: options.json });
   });
 
@@ -145,6 +138,7 @@ program
   .option('--bots', 'Include bot comments')
   .option('--json', 'Output as JSON')
   .action(async (prUrl, options) => {
+    const { runComments } = await import('./commands/comments.js');
     await runComments({ prUrl, showBots: options.bots, json: options.json });
   });
 
@@ -155,6 +149,7 @@ program
   .option('--stdin', 'Read message from stdin')
   .option('--json', 'Output as JSON')
   .action(async (url, messageParts, options) => {
+    const { runPost } = await import('./commands/comments.js');
     const message = options.stdin ? undefined : messageParts.join(' ');
     await runPost({ url, message, stdin: options.stdin, json: options.json });
   });
@@ -165,6 +160,7 @@ program
   .description('Claim an issue by posting a comment')
   .option('--json', 'Output as JSON')
   .action(async (issueUrl, messageParts, options) => {
+    const { runClaim } = await import('./commands/comments.js');
     const message = messageParts.length > 0 ? messageParts.join(' ') : undefined;
     await runClaim({ issueUrl, message, json: options.json });
   });
@@ -175,6 +171,7 @@ program
   .description('Show or update configuration')
   .option('--json', 'Output as JSON')
   .action(async (key, value, options) => {
+    const { runConfig } = await import('./commands/config.js');
     await runConfig({ key, value, json: options.json });
   });
 
@@ -184,6 +181,7 @@ program
   .description('Initialize with your GitHub username and import open PRs')
   .option('--json', 'Output as JSON')
   .action(async (username, options) => {
+    const { runInit } = await import('./commands/init.js');
     await runInit({ username, json: options.json });
   });
 
@@ -195,6 +193,7 @@ program
   .option('--set <settings...>', 'Set specific values (key=value)')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
+    const { runSetup } = await import('./commands/setup.js');
     await runSetup({ reset: options.reset, set: options.set, json: options.json });
   });
 
@@ -204,6 +203,7 @@ program
   .description('Check if setup is complete')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
+    const { runCheckSetup } = await import('./commands/setup.js');
     await runCheckSetup({ json: options.json });
   });
 
@@ -215,6 +215,7 @@ program
   .option('--json', 'Output as JSON')
   .option('--offline', 'Use cached data only (no GitHub API calls)')
   .action(async (options) => {
+    const { runDashboard } = await import('./commands/dashboard.js');
     await runDashboard({ open: options.open, json: options.json, offline: options.offline });
   });
 
@@ -224,6 +225,7 @@ program
   .description('Parse a markdown issue list into structured JSON')
   .option('--json', 'Output as JSON')
   .action(async (filePath, options) => {
+    const { runParseList } = await import('./commands/parse-list.js');
     await runParseList({ filePath, json: options.json });
   });
 
@@ -234,6 +236,7 @@ program
   .option('--base <branch>', 'Base branch to compare against', 'main')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
+    const { runCheckIntegration } = await import('./commands/check-integration.js');
     await runCheckIntegration({ base: options.base, json: options.json });
   });
 
@@ -245,6 +248,7 @@ program
   .option('--paths <dirs...>', 'Directories to scan')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
+    const { runLocalRepos } = await import('./commands/local-repos.js');
     await runLocalRepos({ scan: options.scan, paths: options.paths, json: options.json });
   });
 
@@ -254,6 +258,7 @@ program
   .description('Run all pre-flight checks and daily fetch in one call')
   .option('--json', 'Output as JSON')
   .action(async (options) => {
+    const { runStartup } = await import('./commands/startup.js');
     await runStartup({ json: options.json });
   });
 
@@ -263,6 +268,7 @@ program
   .description('Shelve a PR (exclude from capacity and actionable issues)')
   .option('--json', 'Output as JSON')
   .action(async (prUrl, options) => {
+    const { runShelve } = await import('./commands/shelve.js');
     await runShelve({ prUrl, json: options.json });
   });
 
@@ -272,6 +278,7 @@ program
   .description('Unshelve a PR (include in capacity and actionable issues again)')
   .option('--json', 'Output as JSON')
   .action(async (prUrl, options) => {
+    const { runUnshelve } = await import('./commands/shelve.js');
     await runUnshelve({ prUrl, json: options.json });
   });
 
@@ -281,6 +288,7 @@ program
   .description('Dismiss issue reply notifications (resurfaces on new activity)')
   .option('--json', 'Output as JSON')
   .action(async (issueUrl, options) => {
+    const { runDismiss } = await import('./commands/dismiss.js');
     await runDismiss({ issueUrl, json: options.json });
   });
 
@@ -290,6 +298,7 @@ program
   .description('Undismiss an issue (re-enable reply notifications)')
   .option('--json', 'Output as JSON')
   .action(async (issueUrl, options) => {
+    const { runUndismiss } = await import('./commands/dismiss.js');
     await runUndismiss({ issueUrl, json: options.json });
   });
 
@@ -301,6 +310,7 @@ program
   .option('--days <days>', 'Number of days to snooze (default: 7)', '7')
   .option('--json', 'Output as JSON')
   .action(async (prUrl, options) => {
+    const { runSnooze } = await import('./commands/snooze.js');
     await runSnooze({ prUrl, reason: options.reason, days: parseInt(options.days, 10), json: options.json });
   });
 
@@ -310,6 +320,7 @@ program
   .description('Unsnooze a PR (re-enable CI failure notifications)')
   .option('--json', 'Output as JSON')
   .action(async (prUrl, options) => {
+    const { runUnsnooze } = await import('./commands/snooze.js');
     await runUnsnooze({ prUrl, json: options.json });
   });
 
@@ -326,7 +337,7 @@ program.hook('preAction', async (thisCommand, actionCommand) => {
   const commandName = actionCommand.name();
 
   if (!LOCAL_ONLY_COMMANDS.includes(commandName)) {
-    const token = getGitHubToken();
+    const token = await getGitHubTokenAsync();
     if (!token) {
       console.error('Error: GitHub authentication required.');
       console.error('');

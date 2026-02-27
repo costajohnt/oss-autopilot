@@ -11,13 +11,15 @@ import {
   formatRelativeTime,
   byDateDescending,
   getGitHubToken,
+  getGitHubTokenAsync,
   requireGitHubToken,
   resetGitHubTokenCache,
 } from './utils.js';
-import { execFileSync } from 'child_process';
+import { execFileSync, execFile } from 'child_process';
 
 vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
+  execFile: vi.fn(),
 }));
 
 describe('parseGitHubUrl', () => {
@@ -290,7 +292,7 @@ describe('getGitHubToken', () => {
     expect(mockedExecFileSync).toHaveBeenCalledWith('gh', ['auth', 'token'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 5000,
+      timeout: 2000,
     });
   });
 
@@ -346,5 +348,99 @@ describe('getGitHubToken', () => {
     });
     expect(() => requireGitHubToken()).toThrow('GitHub authentication required.');
     expect(() => requireGitHubToken()).toThrow('gh auth login');
+  });
+});
+
+describe('getGitHubTokenAsync', () => {
+  const mockedExecFile = vi.mocked(execFile);
+
+  beforeEach(() => {
+    resetGitHubTokenCache();
+    mockedExecFile.mockReset();
+    delete process.env.GITHUB_TOKEN;
+  });
+
+  afterEach(() => {
+    delete process.env.GITHUB_TOKEN;
+  });
+
+  it('should return token from GITHUB_TOKEN env var', async () => {
+    process.env.GITHUB_TOKEN = 'ghp_env_async_token';
+    const token = await getGitHubTokenAsync();
+    expect(token).toBe('ghp_env_async_token');
+    expect(mockedExecFile).not.toHaveBeenCalled();
+  });
+
+  it('should fall back to gh CLI asynchronously when no env var', async () => {
+    mockedExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      cb(null, 'ghp_async_token\n');
+      return {} as ReturnType<typeof execFile>;
+    });
+    const token = await getGitHubTokenAsync();
+    expect(token).toBe('ghp_async_token');
+    expect(mockedExecFile).toHaveBeenCalledWith(
+      'gh',
+      ['auth', 'token'],
+      { encoding: 'utf-8', timeout: 2000 },
+      expect.any(Function),
+    );
+  });
+
+  it('should cache the token on subsequent calls', async () => {
+    mockedExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      cb(null, 'ghp_async_cached\n');
+      return {} as ReturnType<typeof execFile>;
+    });
+    const token1 = await getGitHubTokenAsync();
+    const token2 = await getGitHubTokenAsync();
+    expect(token1).toBe('ghp_async_cached');
+    expect(token2).toBe('ghp_async_cached');
+    expect(mockedExecFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('should return null when gh CLI fails', async () => {
+    mockedExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      cb(new Error('gh not found'), '');
+      return {} as ReturnType<typeof execFile>;
+    });
+    const token = await getGitHubTokenAsync();
+    expect(token).toBeNull();
+  });
+
+  it('should not retry after a failed attempt', async () => {
+    mockedExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      cb(new Error('gh not found'), '');
+      return {} as ReturnType<typeof execFile>;
+    });
+    const token1 = await getGitHubTokenAsync();
+    expect(token1).toBeNull();
+    const token2 = await getGitHubTokenAsync();
+    expect(token2).toBeNull();
+    expect(mockedExecFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('should share cache with synchronous getGitHubToken', async () => {
+    process.env.GITHUB_TOKEN = 'ghp_shared_cache';
+    const asyncToken = await getGitHubTokenAsync();
+    expect(asyncToken).toBe('ghp_shared_cache');
+
+    // The sync version should return the cached value without calling execFileSync
+    const syncToken = getGitHubToken();
+    expect(syncToken).toBe('ghp_shared_cache');
+  });
+
+  it('should allow re-fetch after resetGitHubTokenCache', async () => {
+    process.env.GITHUB_TOKEN = 'ghp_first_async';
+    const token1 = await getGitHubTokenAsync();
+    expect(token1).toBe('ghp_first_async');
+
+    resetGitHubTokenCache();
+    process.env.GITHUB_TOKEN = 'ghp_second_async';
+    const token2 = await getGitHubTokenAsync();
+    expect(token2).toBe('ghp_second_async');
   });
 });
