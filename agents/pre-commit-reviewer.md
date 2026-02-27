@@ -188,10 +188,18 @@ Then use AskUserQuestion:
 
 **When user selects "Address findings":**
 - User makes fixes (with assistance as needed)
-- After fixes, re-run the review but **only re-check the categories that had findings** (`categoriesWithFindings`). Always include a quick Critical/Bugs scan as a sanity check. Skip categories that passed cleanly in the previous round.
+- After fixes, **re-gather the diff** (re-run the appropriate diff commands from Phase 1, using the saved `diffRange` if working with committed-but-not-pushed changes)
+- Re-run the review but **only re-check the categories that had findings** (`categoriesWithFindings`). Always include a quick Critical/Bugs scan as a sanity check. Skip categories that passed cleanly in the previous round.
   > "Re-review: Checking {categoriesWithFindings list} (targeted). Categories that passed last round are skipped."
 - Reset `categoriesWithFindings` and rebuild from the new results
 - Continue looping until all categories pass cleanly or the user selects a different option
+
+**"Commit and push anyway" / "Commit and push (Recommended)":**
+- **If changes are uncommitted:** Stage the specific changed files (not `git add -A`), then commit following the repo's conventional commit format
+- **If changes are committed-but-not-pushed:** Changes are already committed — skip staging and committing, proceed directly to push
+- **Do NOT add AI attribution** (no Co-Authored-By, no "Generated with" mentions)
+- Push to the PR branch
+- **If any git operation fails**, report the specific error to the user and offer to retry or cancel
 
 **When user selects "Show full diff" / "Show full diff first":**
 - Run the appropriate diff command (use the saved `diffRange` for committed-but-not-pushed changes, otherwise `git diff`) and **output the full diff as a markdown code block in your text response** so the user can read it
