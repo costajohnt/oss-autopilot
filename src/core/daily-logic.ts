@@ -490,7 +490,9 @@ export function printDigest(
   console.log(`Needing Attention: ${digest.summary.totalNeedingAttention}`);
   console.log(`Merged (all time): ${digest.summary.totalMergedAllTime}`);
   console.log(`Merge Rate: ${digest.summary.mergeRate}%`);
-  console.log(`\nCapacity: ${capacity.hasCapacity ? '\u2705 Ready for new work' : '\u26A0\uFE0F  Focus on existing work'}`);
+  console.log(
+    `\nCapacity: ${capacity.hasCapacity ? '\u2705 Ready for new work' : '\u26A0\uFE0F  Focus on existing work'}`,
+  );
   console.log(`  ${capacity.reason}\n`);
 
   if (digest.ciFailingPRs.length > 0) {

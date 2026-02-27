@@ -366,7 +366,9 @@ describe('formatActionHint', () => {
 
 describe('formatBriefSummary', () => {
   it('should include active PR count', () => {
-    const digest = makeDigest({ summary: { totalActivePRs: 5, totalNeedingAttention: 0, totalMergedAllTime: 0, mergeRate: 0 } });
+    const digest = makeDigest({
+      summary: { totalActivePRs: 5, totalNeedingAttention: 0, totalMergedAllTime: 0, mergeRate: 0 },
+    });
     const result = formatBriefSummary(digest, 0);
     expect(result).toContain('5 Active PRs');
   });
@@ -529,20 +531,14 @@ describe('groupPRsByRepo (core)', () => {
   });
 
   it('should group PRs from the same repo', () => {
-    const prs = [
-      makePR({ repo: 'owner/repo', number: 1 }),
-      makePR({ repo: 'owner/repo', number: 2 }),
-    ];
+    const prs = [makePR({ repo: 'owner/repo', number: 1 }), makePR({ repo: 'owner/repo', number: 2 })];
     const groups = groupPRsByRepo(prs);
     expect(groups).toHaveLength(1);
     expect(groups[0].prs).toHaveLength(2);
   });
 
   it('should separate PRs from different repos', () => {
-    const prs = [
-      makePR({ repo: 'owner/repo-a', number: 1 }),
-      makePR({ repo: 'owner/repo-b', number: 2 }),
-    ];
+    const prs = [makePR({ repo: 'owner/repo-a', number: 1 }), makePR({ repo: 'owner/repo-b', number: 2 })];
     const groups = groupPRsByRepo(prs);
     expect(groups).toHaveLength(2);
   });
