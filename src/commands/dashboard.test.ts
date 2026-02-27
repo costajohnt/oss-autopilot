@@ -705,6 +705,7 @@ describe('dashboard', () => {
           lastResponseAuthor: 'maintainer',
           lastResponseBody: 'Thanks for the PR!',
           lastResponseAt: '2026-01-14T00:00:00Z',
+          isFromMaintainer: true,
         };
 
         const digest = makeDigest();
@@ -1079,6 +1080,7 @@ describe('dashboard', () => {
         lastResponseAuthor: 'maintainer',
         lastResponseBody: 'Great idea! Would you like to submit a PR?',
         lastResponseAt: '2026-01-14T00:00:00Z',
+        isFromMaintainer: true,
       };
 
       const digest = makeDigest();
@@ -1128,6 +1130,7 @@ describe('dashboard', () => {
           lastResponseAuthor: 'a',
           lastResponseBody: 'ok',
           lastResponseAt: '2026-01-14T00:00:00Z',
+          isFromMaintainer: true,
         },
         {
           repo: 'owner/repo',
@@ -1141,6 +1144,7 @@ describe('dashboard', () => {
           lastResponseAuthor: 'b',
           lastResponseBody: 'yes',
           lastResponseAt: '2026-01-14T00:00:00Z',
+          isFromMaintainer: true,
         },
       ];
 
