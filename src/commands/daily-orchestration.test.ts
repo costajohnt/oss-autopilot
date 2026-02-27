@@ -856,6 +856,7 @@ describe('executeDailyCheck() — issue conversation', () => {
       lastResponseAt: '2026-02-01T00:00:00Z', // After the dismiss timestamp
       labels: [],
       daysSinceUserComment: 5,
+      isFromMaintainer: true,
     };
     mockFetchCommentedIssues.mockResolvedValue({ issues: [issue], failures: [] });
     // Dismissed BEFORE the new response

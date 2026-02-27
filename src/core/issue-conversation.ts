@@ -185,7 +185,13 @@ export class IssueConversationMonitor {
       }),
     );
 
-    const timeline: Array<{ author: string; body: string; createdAt: string; isUser: boolean }> = [];
+    const timeline: Array<{
+      author: string;
+      body: string;
+      createdAt: string;
+      isUser: boolean;
+      authorAssociation: string;
+    }> = [];
     for (const comment of allComments) {
       if (!comment.user?.login) continue; // Skip comments from deleted accounts
       const author = comment.user.login;
@@ -194,6 +200,7 @@ export class IssueConversationMonitor {
         body: comment.body || '',
         createdAt: comment.created_at,
         isUser: author.toLowerCase() === username.toLowerCase(),
+        authorAssociation: (comment as Record<string, any>).author_association || '',
       });
     }
 
@@ -213,8 +220,10 @@ export class IssueConversationMonitor {
 
     const userLastCommentTime = new Date(userLastComment.createdAt);
 
-    // Find maintainer responses after the user's last comment
-    let lastResponse: { author: string; body: string; createdAt: string } | undefined;
+    // Find responses after the user's last comment
+    let lastResponse:
+      | { author: string; body: string; createdAt: string; authorAssociation: string }
+      | undefined;
     for (const entry of timeline) {
       if (entry.isUser) continue;
       if (isBotAuthor(entry.author)) continue;
@@ -228,6 +237,7 @@ export class IssueConversationMonitor {
           author: entry.author,
           body: entry.body.slice(0, 200) + (entry.body.length > 200 ? '...' : ''),
           createdAt: entry.createdAt,
+          authorAssociation: entry.authorAssociation,
         };
       }
     }
@@ -245,12 +255,15 @@ export class IssueConversationMonitor {
     };
 
     if (lastResponse) {
+      // OWNER, MEMBER, and COLLABORATOR indicate someone with repo-level permissions
+      const maintainerAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
       return {
         ...base,
         status: 'new_response' as const,
         lastResponseAuthor: lastResponse.author,
         lastResponseBody: lastResponse.body,
         lastResponseAt: lastResponse.createdAt,
+        isFromMaintainer: maintainerAssociations.has(lastResponse.authorAssociation),
       };
     }
 

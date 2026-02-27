@@ -68,7 +68,7 @@ For each issue in `actionableIssues`, include a Task tool call grouped by repo:
 | CI Blocked | Info | Report that CI needs maintainer trigger. Suggest commenting to request it. |
 | CI Not Running | Info | Investigate why CI isn't running. Check if workflows exist, if fork has actions enabled. |
 | Fork Limitation | Info | Note as expected — no action needed. |
-| Merge Conflict | Tier 2 | Identify conflicting files, recommend resolution strategy. DO NOT push. |
+| Merge Conflict | Tier 2 | Identify conflicting files, recommend resolution strategy (see pr-health-checker's "Merge Conflict Resolution Strategies" for direct resolution vs squash-and-reapply vs asking the maintainer). DO NOT push. |
 | Needs Response | Tier 2 | Analyze maintainer feedback, draft a response. DO NOT post — return for approval. |
 | Changes Requested | Tier 2 | Analyze requested changes, investigate what needs to change, recommend approach. |
 | Changes Addressed | Info | Note that changes were pushed after maintainer review — no contributor action needed, awaiting re-review. |

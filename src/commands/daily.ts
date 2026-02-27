@@ -835,9 +835,10 @@ function printDigest(digest: DailyDigest, capacity: CapacityAssessment, commente
   if (issueResponses.length > 0) {
     console.log('💬 Issue Replies:');
     for (const issue of issueResponses) {
+      const roleTag = issue.isFromMaintainer ? ' [maintainer]' : ' [community]';
       console.log(`  - ${issue.repo}#${issue.number}: ${issue.title}`);
       console.log(
-        `    @${issue.lastResponseAuthor}: ${issue.lastResponseBody.slice(0, 80)}${issue.lastResponseBody.length > 80 ? '...' : ''}`,
+        `    @${issue.lastResponseAuthor}${roleTag}: ${issue.lastResponseBody.slice(0, 80)}${issue.lastResponseBody.length > 80 ? '...' : ''}`,
       );
     }
     console.log('');
@@ -1005,10 +1006,15 @@ export function computeActionMenu(
 
   // Issue replies — positioned after address_all but before search
   if (hasIssueResponses) {
+    const maintainerCount = issueResponses.filter((i) => i.isFromMaintainer).length;
+    const communityCount = issueResponses.length - maintainerCount;
+    const parts: string[] = [];
+    if (maintainerCount > 0) parts.push(`${maintainerCount} from maintainer${maintainerCount !== 1 ? 's' : ''}`);
+    if (communityCount > 0) parts.push(`${communityCount} from community`);
     items.push({
       key: 'issue_replies',
       label: `Review ${issueResponses.length} issue repl${issueResponses.length === 1 ? 'y' : 'ies'}`,
-      description: 'Maintainers responded to your comments on issues',
+      description: parts.length > 0 ? parts.join(', ') : 'New responses to your comments on issues',
     });
   }
 

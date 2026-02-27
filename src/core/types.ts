@@ -565,7 +565,7 @@ export interface AgentConfig {
 
 /** Status of a user's comment thread on a GitHub issue. */
 export type IssueConversationStatus =
-  | 'new_response' // Maintainer responded after user's last comment
+  | 'new_response' // Someone responded after user's last comment (check isFromMaintainer to distinguish maintainer vs community)
   | 'waiting' // Last non-bot commenter is not the user; no substantive (non-acknowledgment) response found
   | 'acknowledged'; // User was the last non-bot commenter; no action needed
 
@@ -580,12 +580,17 @@ interface CommentedIssueBase {
   daysSinceUserComment: number;
 }
 
-/** Issue where a maintainer responded after the user's last comment. */
+/** Issue where someone responded after the user's last comment. */
 export interface CommentedIssueWithResponse extends CommentedIssueBase {
   status: 'new_response';
   lastResponseAuthor: string;
   lastResponseBody: string; // Truncated to 200 chars (+ "..." suffix when truncated)
   lastResponseAt: string;
+  /**
+   * True when the responder has OWNER, MEMBER, or COLLABORATOR author_association
+   * on the repository (i.e., someone with repo-level permissions, not just a community user).
+   */
+  isFromMaintainer: boolean;
 }
 
 /** Issue where no substantive maintainer response was found. */

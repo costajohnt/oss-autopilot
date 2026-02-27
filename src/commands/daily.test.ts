@@ -140,6 +140,7 @@ describe('computeActionMenu', () => {
         lastResponseAt: '2026-02-02T10:00:00Z',
         labels: ['bug'],
         daysSinceUserComment: 3,
+        isFromMaintainer: true,
       },
     ];
     const menu = computeActionMenu([], makeCapacity(), issueResponses);
@@ -169,6 +170,7 @@ describe('computeActionMenu', () => {
         lastResponseAt: '',
         labels: [],
         daysSinceUserComment: 0,
+        isFromMaintainer: true,
       },
     ];
     const menu = computeActionMenu([makeActionableIssue()], makeCapacity(), issueResponses);
@@ -190,6 +192,7 @@ describe('computeActionMenu', () => {
         lastResponseAt: '',
         labels: [],
         daysSinceUserComment: 0,
+        isFromMaintainer: true,
       },
       {
         repo: 'c/d',
@@ -203,6 +206,7 @@ describe('computeActionMenu', () => {
         lastResponseAt: '',
         labels: [],
         daysSinceUserComment: 0,
+        isFromMaintainer: false,
       },
     ];
     const menu = computeActionMenu([], makeCapacity(), issueResponses);

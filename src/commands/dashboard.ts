@@ -1501,7 +1501,7 @@ function generateDashboardHtml(
           </div>
           <div class="health-content">
             <div class="health-title"><a href="${escapeHtml(issue.url)}" target="_blank">${escapeHtml(issue.repo)}#${issue.number}</a> - ${escapeHtml(issue.title.slice(0, 50))}${issue.title.length > 50 ? '...' : ''}</div>
-            <div class="health-meta">@${escapeHtml(issue.lastResponseAuthor)}: ${escapeHtml(issue.lastResponseBody.slice(0, 60))}${issue.lastResponseBody.length > 60 ? '...' : ''}</div>
+            <div class="health-meta">@${escapeHtml(issue.lastResponseAuthor)} <span style="opacity: 0.7; font-size: 0.85em;">[${issue.isFromMaintainer ? 'maintainer' : 'community'}]</span>: ${escapeHtml(issue.lastResponseBody.slice(0, 60))}${issue.lastResponseBody.length > 60 ? '...' : ''}</div>
           </div>
         </div>
         `,
