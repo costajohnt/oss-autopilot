@@ -1105,12 +1105,15 @@ export class PRMonitor {
           }
           const [owner, name] = parts;
           const url = `/repos/${owner}/${name}`;
-          const data = await cachedRequest(cache, url, (headers) =>
-            this.octokit.repos.get({
-              owner,
-              repo: name,
-              headers,
-            }) as Promise<{ data: { stargazers_count: number }; headers: Record<string, string> }>,
+          const data = await cachedRequest(
+            cache,
+            url,
+            (headers) =>
+              this.octokit.repos.get({
+                owner,
+                repo: name,
+                headers,
+              }) as Promise<{ data: { stargazers_count: number }; headers: Record<string, string> }>,
           );
           return { repo, stars: data.stargazers_count };
         }),

@@ -39,5 +39,12 @@ export {
   resetGitHubTokenCache,
 } from './utils.js';
 export { enableDebug, isDebugEnabled, debug, warn, timed } from './logger.js';
-export { HttpCache, getHttpCache, resetHttpCache, cachedRequest, isCacheableUrl, type CacheEntry } from './http-cache.js';
+export {
+  HttpCache,
+  getHttpCache,
+  resetHttpCache,
+  cachedRequest,
+  isCacheableUrl,
+  type CacheEntry,
+} from './http-cache.js';
 export * from './types.js';

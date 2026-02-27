@@ -1061,11 +1061,14 @@ export class IssueDiscovery {
       // Get repo info (with ETag caching — repo metadata changes infrequently)
       const cache = getHttpCache();
       const url = `/repos/${owner}/${repo}`;
-      const repoData = await cachedRequest(cache, url, (headers) =>
-        this.octokit.repos.get({ owner, repo, headers }) as Promise<{
-          data: { open_issues_count: number; pushed_at: string; stargazers_count: number; forks_count: number };
-          headers: Record<string, string>;
-        }>,
+      const repoData = await cachedRequest(
+        cache,
+        url,
+        (headers) =>
+          this.octokit.repos.get({ owner, repo, headers }) as Promise<{
+            data: { open_issues_count: number; pushed_at: string; stargazers_count: number; forks_count: number };
+            headers: Record<string, string>;
+          }>,
       );
 
       // Get recent commits

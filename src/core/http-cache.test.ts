@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -41,7 +42,7 @@ describe('HttpCache', () => {
 
     it('returns null for a corrupt cache file', () => {
       // Write garbage to the cache file
-      const key = require('crypto').createHash('sha256').update('/repos/bad/data').digest('hex');
+      const key = crypto.createHash('sha256').update('/repos/bad/data').digest('hex');
       fs.writeFileSync(path.join(cacheDir, `${key}.json`), 'not valid json', 'utf-8');
 
       expect(cache.get('/repos/bad/data')).toBeNull();
@@ -49,7 +50,7 @@ describe('HttpCache', () => {
 
     it('returns null on hash collision (url mismatch)', () => {
       // Manually write a cache entry with a different URL for the same hash
-      const key = require('crypto').createHash('sha256').update('/repos/a/b').digest('hex');
+      const key = crypto.createHash('sha256').update('/repos/a/b').digest('hex');
       const entry: CacheEntry = {
         etag: '"x"',
         url: '/repos/different/url',
@@ -93,7 +94,7 @@ describe('HttpCache', () => {
   describe('evictStale', () => {
     it('removes entries older than maxAgeMs', () => {
       // Write an entry with a cachedAt in the past
-      const key = require('crypto').createHash('sha256').update('/repos/old/entry').digest('hex');
+      const key = crypto.createHash('sha256').update('/repos/old/entry').digest('hex');
       const oldEntry: CacheEntry = {
         etag: '"old"',
         url: '/repos/old/entry',
