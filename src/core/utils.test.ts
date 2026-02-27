@@ -372,7 +372,7 @@ describe('getGitHubTokenAsync', () => {
   });
 
   it('should fall back to gh CLI asynchronously when no env var', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     mockedExecFile.mockImplementation((...args: any[]) => {
       const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
       cb(null, 'ghp_async_token\n');
@@ -389,7 +389,7 @@ describe('getGitHubTokenAsync', () => {
   });
 
   it('should cache the token on subsequent calls', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     mockedExecFile.mockImplementation((...args: any[]) => {
       const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
       cb(null, 'ghp_async_cached\n');
@@ -403,7 +403,7 @@ describe('getGitHubTokenAsync', () => {
   });
 
   it('should return null when gh CLI fails', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     mockedExecFile.mockImplementation((...args: any[]) => {
       const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
       cb(new Error('gh not found'), '');
@@ -414,7 +414,7 @@ describe('getGitHubTokenAsync', () => {
   });
 
   it('should not retry after a failed attempt', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     mockedExecFile.mockImplementation((...args: any[]) => {
       const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
       cb(new Error('gh not found'), '');

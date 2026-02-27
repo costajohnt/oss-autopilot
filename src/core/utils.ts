@@ -447,18 +447,13 @@ export async function getGitHubTokenAsync(): Promise<string | null> {
   // 2. Try gh CLI asynchronously (non-blocking)
   try {
     const token = await new Promise<string>((resolve, reject) => {
-      execFile(
-        'gh',
-        ['auth', 'token'],
-        { encoding: 'utf-8', timeout: 2000 },
-        (error, stdout) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve(stdout.trim());
-          }
-        },
-      );
+      execFile('gh', ['auth', 'token'], { encoding: 'utf-8', timeout: 2000 }, (error, stdout) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(stdout.trim());
+        }
+      });
     });
 
     if (token && token.length > 0) {
