@@ -30,6 +30,7 @@ import {
   type CommentedIssue,
   type CommentedIssueWithResponse,
   type PRCheckFailure,
+  type RepoGroup,
 } from '../core/index.js';
 import {
   outputJson,
@@ -38,6 +39,9 @@ import {
   compactActionableIssues,
   compactRepoGroups,
   type DailyOutput,
+  type CapacityAssessment,
+  type ActionableIssue,
+  type ActionMenu,
 } from '../formatters/json.js';
 
 // Re-export domain functions so existing consumers (tests, dashboard, startup)
