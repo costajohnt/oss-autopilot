@@ -144,9 +144,7 @@ describe('validateGitHubUsername', () => {
 
   it('should throw for usernames exceeding 39 characters', () => {
     const long = 'a'.repeat(40);
-    expect(() => validateGitHubUsername(long)).toThrow(
-      'exceeds the maximum allowed length of 39 characters',
-    );
+    expect(() => validateGitHubUsername(long)).toThrow('exceeds the maximum allowed length of 39 characters');
   });
 
   it('should throw for usernames with a leading hyphen', () => {

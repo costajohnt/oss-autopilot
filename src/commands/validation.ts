@@ -119,9 +119,7 @@ export function validateGitHubUsername(username: string): string {
   }
 
   if (username.includes('--')) {
-    throw new Error(
-      `Invalid GitHub username "${username}". Usernames cannot contain consecutive hyphens.`,
-    );
+    throw new Error(`Invalid GitHub username "${username}". Usernames cannot contain consecutive hyphens.`);
   }
 
   return username;
