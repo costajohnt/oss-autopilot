@@ -3,7 +3,7 @@
  * Command-level state logic is tested in shelve.test.ts, dismiss.test.ts, and state.test.ts.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   PR_URL_PATTERN,
   ISSUE_URL_PATTERN,

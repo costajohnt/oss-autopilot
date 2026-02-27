@@ -1152,7 +1152,6 @@ describe('IssueDiscovery.formatCandidate', () => {
   });
 });
 
-
 describe('DOC_ONLY_LABELS', () => {
   it('should contain the expected documentation labels', () => {
     expect(DOC_ONLY_LABELS.has('documentation')).toBe(true);

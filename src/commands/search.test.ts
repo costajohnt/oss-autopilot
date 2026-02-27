@@ -166,7 +166,13 @@ describe('runSearch', () => {
     mockGetGitHubToken.mockReturnValue('ghp_test123');
     mockSearchIssues.mockResolvedValue([
       {
-        issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: 'https://github.com/owner/repo/issues/5', labels: ['bug'] },
+        issue: {
+          repo: 'owner/repo',
+          number: 5,
+          title: 'Fix bug',
+          url: 'https://github.com/owner/repo/issues/5',
+          labels: ['bug'],
+        },
         recommendation: 'approve',
         reasonsToApprove: ['Active maintainers'],
         reasonsToSkip: [],

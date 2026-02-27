@@ -3,7 +3,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { StateManager, acquireLock, releaseLock, atomicWriteFileSync, getStateManager, resetStateManager } from './state.js';
+import {
+  StateManager,
+  acquireLock,
+  releaseLock,
+  atomicWriteFileSync,
+  getStateManager,
+  resetStateManager,
+} from './state.js';
 import { StateEventType } from './types.js';
 import * as fs from 'fs';
 import * as path from 'path';

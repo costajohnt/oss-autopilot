@@ -229,9 +229,7 @@ describe('runParseList', () => {
 
     await runParseList({ filePath: 'issues.md', json: true });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(
-      expect.objectContaining({ availableCount: 1, completedCount: 1 }),
-    );
+    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ availableCount: 1, completedCount: 1 }));
   });
 
   it('should parse file and output text', async () => {

@@ -138,9 +138,7 @@ describe('runComments', () => {
       ],
     });
     const mockListComments = vi.fn().mockResolvedValue({
-      data: [
-        { user: { login: 'maintainer', type: 'User' }, body: 'Great work!', created_at: '2026-01-15T11:00:00Z' },
-      ],
+      data: [{ user: { login: 'maintainer', type: 'User' }, body: 'Great work!', created_at: '2026-01-15T11:00:00Z' }],
     });
     const mockListReviews = vi.fn().mockResolvedValue({
       data: [
@@ -465,7 +463,9 @@ describe('runClaim', () => {
       throw new Error('exit');
     });
 
-    await expect(runClaim({ issueUrl: TEST_ISSUE_URL, message: oversizedMessage, json: false })).rejects.toThrow('exit');
+    await expect(runClaim({ issueUrl: TEST_ISSUE_URL, message: oversizedMessage, json: false })).rejects.toThrow(
+      'exit',
+    );
 
     const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
     expect(allOutput).toContain('Message exceeds');

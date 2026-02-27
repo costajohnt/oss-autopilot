@@ -205,7 +205,9 @@ describe('runSetup', () => {
     await runSetup({ set: ['aiPolicyBlocklist=not-a-repo'], json: false });
 
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('All entries were invalid'));
-    expect(mockUpdateConfig).not.toHaveBeenCalledWith(expect.objectContaining({ aiPolicyBlocklist: expect.anything() }));
+    expect(mockUpdateConfig).not.toHaveBeenCalledWith(
+      expect.objectContaining({ aiPolicyBlocklist: expect.anything() }),
+    );
     consoleSpy.mockRestore();
   });
 

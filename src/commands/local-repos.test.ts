@@ -240,9 +240,7 @@ describe('runLocalRepos', () => {
 
     await runLocalRepos({ json: true });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(
-      expect.objectContaining({ fromCache: true, repos: cachedRepos }),
-    );
+    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ fromCache: true, repos: cachedRepos }));
   });
 
   it('should scan when --scan is specified even if cache exists', async () => {
@@ -257,9 +255,7 @@ describe('runLocalRepos', () => {
 
     await runLocalRepos({ scan: true, paths: ['/nonexistent'], json: true });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(
-      expect.objectContaining({ fromCache: false }),
-    );
+    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ fromCache: false }));
   });
 
   it('should output text when printing cached data', async () => {
