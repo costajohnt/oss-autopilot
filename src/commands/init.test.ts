@@ -37,9 +37,7 @@ describe('runInit', () => {
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({ githubUsername: 'testuser' });
     expect(mockSave).toHaveBeenCalled();
-    expect(mockOutputJson).toHaveBeenCalledWith(
-      expect.objectContaining({ username: 'testuser' }),
-    );
+    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ username: 'testuser' }));
   });
 
   it('should output message about daily run', async () => {

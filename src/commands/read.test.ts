@@ -26,17 +26,13 @@ describe('runRead', () => {
   it('should output v2 info when marking a specific PR as read', async () => {
     await runRead({ prUrl: TEST_PR_URL, json: true });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(
-      expect.objectContaining({ marked: false, url: TEST_PR_URL }),
-    );
+    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ marked: false, url: TEST_PR_URL }));
   });
 
   it('should output v2 info when marking all PRs as read', async () => {
     await runRead({ all: true, json: true });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(
-      expect.objectContaining({ markedAsRead: 0, all: true }),
-    );
+    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ markedAsRead: 0, all: true }));
   });
 
   it('should exit with error when neither prUrl nor --all is provided', async () => {

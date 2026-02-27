@@ -21,7 +21,7 @@ vi.mock('../core/utils.js', () => ({
 
 import { getGitHubToken, getOctokit } from '../core/index.js';
 import { parseGitHubUrl } from '../core/utils.js';
-import { outputJson, outputJsonError } from '../formatters/json.js';
+import { outputJson } from '../formatters/json.js';
 import { runTrack, runUntrack } from './track.js';
 
 const mockGetGitHubToken = vi.mocked(getGitHubToken);
@@ -73,9 +73,7 @@ describe('runUntrack', () => {
   it('should output v2 info message in JSON mode', async () => {
     await runUntrack({ prUrl: TEST_PR_URL, json: true });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(
-      expect.objectContaining({ removed: false, url: TEST_PR_URL }),
-    );
+    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ removed: false, url: TEST_PR_URL }));
   });
 
   it('should output v2 info message in text mode', async () => {

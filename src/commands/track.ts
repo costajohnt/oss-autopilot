@@ -4,7 +4,7 @@
  * These commands are preserved for backward compatibility.
  */
 
-import { getStateManager, getOctokit, getGitHubToken } from '../core/index.js';
+import { getOctokit, getGitHubToken } from '../core/index.js';
 import { outputJson, outputJsonError, type TrackOutput } from '../formatters/json.js';
 import { validateUrl, PR_URL_PATTERN, validateGitHubUrl } from './validation.js';
 import { parseGitHubUrl } from '../core/utils.js';
@@ -65,9 +65,15 @@ export async function runUntrack(options: UntrackOptions): Promise<void> {
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
 
   if (options.json) {
-    outputJson({ removed: false, url: options.prUrl, message: 'In v2, PRs are fetched fresh on each daily run — there is no local tracking list to remove from.' });
+    outputJson({
+      removed: false,
+      url: options.prUrl,
+      message: 'In v2, PRs are fetched fresh on each daily run — there is no local tracking list to remove from.',
+    });
   } else {
-    console.log('Note: In v2, PRs are fetched fresh on each daily run — there is no local tracking list to remove from.');
+    console.log(
+      'Note: In v2, PRs are fetched fresh on each daily run — there is no local tracking list to remove from.',
+    );
     console.log('Use `shelve` to temporarily hide a PR from the daily summary.');
   }
 }

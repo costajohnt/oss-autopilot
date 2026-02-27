@@ -1306,7 +1306,6 @@ export class PRMonitor {
       this.stateManager.incrementClosedCount(repo);
     }
   }
-
 }
 
 /**

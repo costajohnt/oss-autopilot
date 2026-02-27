@@ -467,7 +467,12 @@ export class StateManager {
 
     // v1 requires base PR arrays to be present (they will be dropped during migration)
     if (s.version === 1) {
-      return Array.isArray(s.activePRs) && Array.isArray(s.dormantPRs) && Array.isArray(s.mergedPRs) && Array.isArray(s.closedPRs);
+      return (
+        Array.isArray(s.activePRs) &&
+        Array.isArray(s.dormantPRs) &&
+        Array.isArray(s.mergedPRs) &&
+        Array.isArray(s.closedPRs)
+      );
     }
 
     // v2+ doesn't require PR arrays
