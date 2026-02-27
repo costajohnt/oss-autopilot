@@ -9,6 +9,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { Command } from 'commander';
 
 // ─── Mock all side-effectful imports BEFORE any module is loaded ──────────────
@@ -338,13 +340,10 @@ describe('Version detection IIFE', () => {
   it('should return a semver-like string from package.json', () => {
     // The IIFE reads from the filesystem via require('fs') and require('path').
     // We test the shape of the result by running equivalent logic directly.
-    const fs = require('fs');
-    const path = require('path');
-
     let version: string;
     try {
-      const pkgPath = path.join(__dirname, '..', 'package.json');
-      version = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
+      const pkgPath = join(__dirname, '..', 'package.json');
+      version = JSON.parse(readFileSync(pkgPath, 'utf-8')).version;
     } catch {
       version = '0.0.0';
     }
@@ -359,9 +358,8 @@ describe('Version detection IIFE', () => {
     // Simulate the IIFE behaviour when the file is missing / unreadable
     let version: string;
     try {
-      const fs = require('fs');
       // Attempt to read a path that does not exist
-      JSON.parse(fs.readFileSync('/nonexistent/path/package.json', 'utf-8')).version;
+      version = JSON.parse(readFileSync('/nonexistent/path/package.json', 'utf-8')).version;
       version = 'should-not-reach';
     } catch {
       version = '0.0.0';
@@ -373,7 +371,7 @@ describe('Version detection IIFE', () => {
   it('should fall back to "0.0.0" when package.json contains invalid JSON', () => {
     let version: string;
     try {
-      JSON.parse('not valid json').version;
+      version = JSON.parse('not valid json').version;
       version = 'should-not-reach';
     } catch {
       version = '0.0.0';
@@ -409,7 +407,7 @@ describe('Version detection IIFE', () => {
 // Arguments like '<pr-url>' and '[count]' are excluded via the character class.
 function extractRegisteredCommandsFromSource(): string[] {
   const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
-  const matches = src.matchAll(/^\s+\.command\('([^'\s<\[]+)/gm);
+  const matches = src.matchAll(/^\s+\.command\('([^'\s<[]+)/gm);
   return [...matches].map((m) => m[1]);
 }
 
