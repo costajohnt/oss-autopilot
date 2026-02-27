@@ -4,7 +4,7 @@
  */
 
 import { IssueDiscovery, getGitHubToken } from '../core/index.js';
-import { outputJson, outputJsonError } from '../formatters/json.js';
+import { outputJson } from '../formatters/json.js';
 import { validateUrl } from './validation.js';
 
 interface VetOptions {
@@ -15,19 +15,8 @@ interface VetOptions {
 export async function runVet(options: VetOptions): Promise<void> {
   validateUrl(options.issueUrl);
 
-  const token = getGitHubToken();
-  if (!token) {
-    if (options.json) {
-      outputJsonError('GitHub authentication required. Run "gh auth login" or set GITHUB_TOKEN.');
-    } else {
-      console.error('Error: GitHub authentication required.');
-      console.error('');
-      console.error('Options:');
-      console.error('  1. Use gh CLI: gh auth login');
-      console.error('  2. Set GITHUB_TOKEN environment variable');
-    }
-    process.exit(1);
-  }
+  // Token is guaranteed by the preAction hook in cli.ts for non-LOCAL_ONLY_COMMANDS.
+  const token = getGitHubToken()!;
 
   const discovery = new IssueDiscovery(token);
 
