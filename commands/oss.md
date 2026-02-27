@@ -91,7 +91,7 @@ The CLI returns structured data with new fields for the action-first flow:
         {
           "type": "ci_failing",
           "label": "[CI Failing]",
-          "pr": { "repo": "owner/repo", "number": 123, "title": "...", "url": "..." }
+          "prUrl": "https://github.com/owner/repo/pull/123"
         }
       ],
       "actionMenu": {
@@ -103,13 +103,26 @@ The CLI returns structured data with new fields for the action-first flow:
         "context": { "hasActionableIssues": true, "actionableCount": 3, "hasCapacity": true, "hasIssueResponses": false, "issueResponseCount": 0 }
       },
       "capacity": { "hasCapacity": true, ... },
-      "digest": { ... }
+      "digest": {
+        "openPRs": [ { "url": "https://github.com/owner/repo/pull/123", "repo": "owner/repo", "number": 123, "title": "...", ... } ],
+        "healthyPRs": ["https://github.com/owner/repo/pull/123"],
+        "ciFailingPRs": ["https://github.com/owner/repo/pull/456"],
+        ...
+      }
     },
     "dashboardPath": "/Users/.../.oss-autopilot/dashboard.html",
     "issueList": { "path": "open-source/potential-issue-list.md", "source": "auto-detected", "availableCount": 5, "completedCount": 3 }
   }
 }
 ```
+
+**Important: Compact JSON format (#287)**
+
+The JSON output uses a deduplicated format to reduce payload size:
+- Full PR objects live **only** in `digest.openPRs`.
+- Category arrays (`healthyPRs`, `ciFailingPRs`, etc.) contain **PR URL strings**, not full objects. Look up full PR details via: `data.daily.digest.openPRs.find(pr => pr.url === url)`.
+- `actionableIssues[].prUrl` is a URL string. Look up the full PR via: `data.daily.digest.openPRs.find(pr => pr.url === issue.prUrl)`.
+- `repoGroups[].prUrls` are URL string arrays. Look up each PR from `digest.openPRs`.
 
 **Display the `briefSummary` field with the version from `data.version`:**
 
@@ -175,17 +188,24 @@ When there are actionable issues, display them **before asking the user anything
 
 Issues are listed in priority order: `needs_response` → `needs_changes` → `ci_failing` → `merge_conflict` → `incomplete_checklist` → `approaching_dormant`. This matches the ordering from `collectActionableIssues()` in the CLI. Recently closed PRs are NOT included here — they appear in a separate informational section below (see "Recently Closed PRs").
 
-For each issue, show the enriched format using data already available on `FetchedPR`:
+For each issue, look up the full PR from `digest.openPRs` using the issue's `prUrl`:
+
+```javascript
+// For each actionable issue, resolve the full PR object:
+const pr = data.daily.digest.openPRs.find(p => p.url === issue.prUrl);
+```
+
+Then show the enriched format using the resolved PR's fields:
 
 ```
 {count} PRs Need Attention (in priority order):
 
-1. {issue.label} {issue.pr.repo}#{issue.pr.number} — {issue.pr.title} ({issue.pr.daysSinceActivity}d)
-   └─ @{issue.pr.lastMaintainerComment.author}: {formatted maintainerActionHints}
+1. {issue.label} {pr.repo}#{pr.number} — {pr.title} ({pr.daysSinceActivity}d)
+   └─ @{pr.lastMaintainerComment.author}: {formatted maintainerActionHints}
    └─ Effort: {effort} — {action summary}
 
-2. {issue.label} {issue.pr.repo}#{issue.pr.number} — {issue.pr.title} ({issue.pr.daysSinceActivity}d)
-   └─ @{issue.pr.lastMaintainerComment.author}: {formatted maintainerActionHints}
+2. {issue.label} {pr.repo}#{pr.number} — {pr.title} ({pr.daysSinceActivity}d)
+   └─ @{pr.lastMaintainerComment.author}: {formatted maintainerActionHints}
    └─ Effort: {effort} — {action summary}
 
 ... (list ALL actionable issues, no limit)
@@ -193,7 +213,7 @@ For each issue, show the enriched format using data already available on `Fetche
 ---
 ```
 
-**Maintainer hints line**: Only show if `issue.pr.lastMaintainerComment` exists. Format each hint from `issue.pr.maintainerActionHints` using these labels: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
+**Maintainer hints line**: Only show if `pr.lastMaintainerComment` exists. Format each hint from `pr.maintainerActionHints` using these labels: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
 
 **Effort estimate**: Compute at display time from issue type + hint count:
 
@@ -207,7 +227,7 @@ If an issue type doesn't match any row above, default to **Medium**.
 
 **Action summary**: Brief description based on type (e.g., "respond + code changes", "rebase + push", "investigate CI logs").
 
-Use `issue.pr.daysSinceActivity` from the CLI output (already computed).
+Use `pr.daysSinceActivity` from the resolved PR (already computed).
 
 ### Recently Closed PRs (Informational)
 
@@ -357,7 +377,14 @@ After processing all issue replies (or user chooses to stop), return to Step 3 t
 
 Show when `capacity.hasCapacity === false` (user has critical issues to address first).
 
-Display healthy PRs from `data.daily.digest.healthyPRs`:
+Look up healthy PRs by resolving each URL in `data.daily.digest.healthyPRs` against `data.daily.digest.openPRs`:
+
+```javascript
+const healthyPRs = data.daily.digest.healthyPRs.map(url =>
+  data.daily.digest.openPRs.find(pr => pr.url === url)
+);
+```
+
 ```
 Healthy PRs (no action needed):
 

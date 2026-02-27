@@ -481,7 +481,7 @@ function makeDigest(prs: FetchedPR[]): DailyDigest {
 }
 
 describe('deduplicateDigest (#287)', () => {
-  it('should convert category arrays from FetchedPR[] to number[]', () => {
+  it('should convert category arrays from FetchedPR[] to URL string[]', () => {
     const pr1 = makePR({ repo: 'owner/repo', number: 1, status: 'healthy' });
     const pr2 = makePR({ repo: 'owner/repo', number: 2, status: 'failing_ci' });
     const pr3 = makePR({ repo: 'owner/repo', number: 3, status: 'needs_response' });
@@ -494,10 +494,10 @@ describe('deduplicateDigest (#287)', () => {
     expect(compact.openPRs[0]).toHaveProperty('url');
     expect(compact.openPRs[0]).toHaveProperty('ciStatus');
 
-    // Category arrays contain PR numbers, not objects
-    expect(compact.healthyPRs).toEqual([1]);
-    expect(compact.ciFailingPRs).toEqual([2]);
-    expect(compact.prsNeedingResponse).toEqual([3]);
+    // Category arrays contain PR URLs, not objects
+    expect(compact.healthyPRs).toEqual([pr1.url]);
+    expect(compact.ciFailingPRs).toEqual([pr2.url]);
+    expect(compact.prsNeedingResponse).toEqual([pr3.url]);
   });
 
   it('should preserve non-PR fields unchanged', () => {
@@ -542,17 +542,19 @@ describe('deduplicateDigest (#287)', () => {
 });
 
 describe('compactActionableIssues (#287)', () => {
-  it('should replace pr object with prNumber', () => {
+  it('should replace pr object with prUrl', () => {
+    const pr42 = makePR({ repo: 'owner/repo', number: 42 });
+    const pr99 = makePR({ repo: 'owner/repo', number: 99 });
     const issues: ActionableIssue[] = [
-      { type: 'ci_failing', pr: makePR({ repo: 'owner/repo', number: 42 }), label: '[CI Failing]' },
-      { type: 'needs_response', pr: makePR({ repo: 'owner/repo', number: 99 }), label: '[Needs Response]' },
+      { type: 'ci_failing', pr: pr42, label: '[CI Failing]' },
+      { type: 'needs_response', pr: pr99, label: '[Needs Response]' },
     ];
 
     const compact = compactActionableIssues(issues);
 
     expect(compact).toHaveLength(2);
-    expect(compact[0]).toEqual({ type: 'ci_failing', prNumber: 42, label: '[CI Failing]' });
-    expect(compact[1]).toEqual({ type: 'needs_response', prNumber: 99, label: '[Needs Response]' });
+    expect(compact[0]).toEqual({ type: 'ci_failing', prUrl: pr42.url, label: '[CI Failing]' });
+    expect(compact[1]).toEqual({ type: 'needs_response', prUrl: pr99.url, label: '[Needs Response]' });
     // Should NOT have a pr field
     expect(compact[0]).not.toHaveProperty('pr');
   });
@@ -563,20 +565,20 @@ describe('compactActionableIssues (#287)', () => {
 });
 
 describe('compactRepoGroups (#287)', () => {
-  it('should replace prs array with prNumbers array', () => {
+  it('should replace prs array with prUrls array', () => {
+    const prA1 = makePR({ repo: 'owner/repo-a', number: 1 });
+    const prA2 = makePR({ repo: 'owner/repo-a', number: 2 });
+    const prB3 = makePR({ repo: 'owner/repo-b', number: 3 });
     const groups = [
-      {
-        repo: 'owner/repo-a',
-        prs: [makePR({ repo: 'owner/repo-a', number: 1 }), makePR({ repo: 'owner/repo-a', number: 2 })],
-      },
-      { repo: 'owner/repo-b', prs: [makePR({ repo: 'owner/repo-b', number: 3 })] },
+      { repo: 'owner/repo-a', prs: [prA1, prA2] },
+      { repo: 'owner/repo-b', prs: [prB3] },
     ];
 
     const compact = compactRepoGroups(groups);
 
     expect(compact).toHaveLength(2);
-    expect(compact[0]).toEqual({ repo: 'owner/repo-a', prNumbers: [1, 2] });
-    expect(compact[1]).toEqual({ repo: 'owner/repo-b', prNumbers: [3] });
+    expect(compact[0]).toEqual({ repo: 'owner/repo-a', prUrls: [prA1.url, prA2.url] });
+    expect(compact[1]).toEqual({ repo: 'owner/repo-b', prUrls: [prB3.url] });
     // Should NOT have a prs field
     expect(compact[0]).not.toHaveProperty('prs');
   });

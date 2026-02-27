@@ -522,7 +522,7 @@ function generateDigestOutput(
 
 /**
  * Convert a full DailyCheckResult to the compact DailyOutput for JSON serialization (#287).
- * Deduplicates PR objects: category arrays become PR number references,
+ * Deduplicates PR objects: category arrays become PR URL references,
  * full objects live only in digest.openPRs. Reduces JSON payload size ~60-70%.
  */
 function toDailyOutput(result: DailyCheckResult): DailyOutput {
@@ -544,7 +544,7 @@ function toDailyOutput(result: DailyCheckResult): DailyOutput {
  * Core daily check logic, extracted for reuse by the startup command.
  * Fetches all open PRs, updates state, and returns structured output.
  *
- * Returns a deduplicated DailyOutput where category arrays contain PR numbers
+ * Returns a deduplicated DailyOutput where category arrays contain PR URLs
  * instead of full objects (#287). Full PR objects are in digest.openPRs only.
  *
  * Orchestrates five named phases:
