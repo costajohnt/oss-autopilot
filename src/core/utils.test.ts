@@ -14,13 +14,44 @@ import {
   getGitHubTokenAsync,
   requireGitHubToken,
   resetGitHubTokenCache,
+  getDataDir,
+  getStatePath,
+  getBackupDir,
+  getDashboardPath,
 } from './utils.js';
 import { execFileSync, execFile } from 'child_process';
+import * as path from 'path';
+import * as os from 'os';
 
 vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
   execFile: vi.fn(),
 }));
+
+describe('path utility functions', () => {
+  it('getDataDir should return a path ending with .oss-autopilot', () => {
+    const dir = getDataDir();
+    expect(dir).toBe(path.join(os.homedir(), '.oss-autopilot'));
+  });
+
+  it('getStatePath should return a path ending with state.json', () => {
+    const statePath = getStatePath();
+    expect(statePath).toMatch(/state\.json$/);
+    expect(statePath).toContain('.oss-autopilot');
+  });
+
+  it('getBackupDir should return a path ending with backups', () => {
+    const backupDir = getBackupDir();
+    expect(backupDir).toMatch(/backups$/);
+    expect(backupDir).toContain('.oss-autopilot');
+  });
+
+  it('getDashboardPath should return a path ending with dashboard.html', () => {
+    const dashPath = getDashboardPath();
+    expect(dashPath).toMatch(/dashboard\.html$/);
+    expect(dashPath).toContain('.oss-autopilot');
+  });
+});
 
 describe('parseGitHubUrl', () => {
   it('should parse a valid PR URL', () => {
@@ -68,8 +99,12 @@ describe('parseGitHubUrl', () => {
     expect(parseGitHubUrl('https://github.com/owner/repo/pull/')).toBeNull();
   });
 
-  it('should return null for malformed owner with special characters', () => {
+  it('should return null for malformed owner with special characters in PR URL', () => {
     expect(parseGitHubUrl('https://github.com/owner@bad/repo/pull/1')).toBeNull();
+  });
+
+  it('should return null for malformed owner with special characters in issue URL', () => {
+    expect(parseGitHubUrl('https://github.com/owner@bad/repo/issues/1')).toBeNull();
   });
 
   it('should parse large PR numbers', () => {

@@ -9,7 +9,18 @@ vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
 }));
 
-import { scanForRepos } from './local-repos.js';
+vi.mock('../core/index.js', () => ({
+  getStateManager: vi.fn(),
+  debug: vi.fn(),
+}));
+
+vi.mock('../formatters/json.js', () => ({
+  outputJson: vi.fn(),
+}));
+
+import { scanForRepos, runLocalRepos } from './local-repos.js';
+import { getStateManager } from '../core/index.js';
+import { outputJson } from '../formatters/json.js';
 import * as fs from 'fs';
 
 vi.mock('fs', async () => {
@@ -157,5 +168,139 @@ describe('scanForRepos', () => {
 
     const result = scanForRepos(['/home/user/dev']);
     expect(result['owner/repo']).toBeDefined();
+  });
+
+  it('should handle git remote failure gracefully', () => {
+    mockExistsSync.mockReturnValue(true);
+
+    mockExecFileSync.mockImplementation((cmd, args) => {
+      const argsArr = args as string[];
+      if (cmd === 'find') {
+        return '/home/user/dev/repo/.git\n';
+      }
+      if (cmd === 'git' && argsArr.includes('get-url')) {
+        throw new Error('remote not found');
+      }
+      return '';
+    });
+
+    const result = scanForRepos(['/home/user/dev']);
+    expect(Object.keys(result)).toHaveLength(0);
+  });
+
+  it('should handle git branch failure gracefully', () => {
+    mockExistsSync.mockReturnValue(true);
+
+    mockExecFileSync.mockImplementation((cmd, args) => {
+      const argsArr = args as string[];
+      if (cmd === 'find') {
+        return '/home/user/dev/repo/.git\n';
+      }
+      if (cmd === 'git' && argsArr.includes('get-url')) {
+        return 'https://github.com/owner/repo.git\n';
+      }
+      if (cmd === 'git' && argsArr.includes('--show-current')) {
+        throw new Error('detached HEAD');
+      }
+      return '';
+    });
+
+    const result = scanForRepos(['/home/user/dev']);
+    expect(result['owner/repo']).toBeDefined();
+    expect(result['owner/repo'].currentBranch).toBeNull();
+  });
+});
+
+const mockGetStateManager = vi.mocked(getStateManager);
+const mockOutputJson = vi.mocked(outputJson);
+
+describe('runLocalRepos', () => {
+  const mockSave = vi.fn();
+  const mockSetLocalRepoCache = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: {}, localRepoCache: null }),
+      setLocalRepoCache: mockSetLocalRepoCache,
+      save: mockSave,
+    } as any);
+    mockExistsSync.mockReturnValue(false);
+  });
+
+  it('should return cached data when available and not scanning', async () => {
+    const cachedRepos = { 'owner/repo': { path: '/dev/repo', exists: true, currentBranch: 'main' } };
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({
+        config: {},
+        localRepoCache: { repos: cachedRepos, scanPaths: ['/dev'], cachedAt: '2026-01-01T00:00:00Z' },
+      }),
+      save: mockSave,
+    } as any);
+
+    await runLocalRepos({ json: true });
+
+    expect(mockOutputJson).toHaveBeenCalledWith(
+      expect.objectContaining({ fromCache: true, repos: cachedRepos }),
+    );
+  });
+
+  it('should scan when --scan is specified even if cache exists', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({
+        config: {},
+        localRepoCache: { repos: {}, scanPaths: ['/dev'], cachedAt: '2026-01-01T00:00:00Z' },
+      }),
+      setLocalRepoCache: mockSetLocalRepoCache,
+      save: mockSave,
+    } as any);
+
+    await runLocalRepos({ scan: true, paths: ['/nonexistent'], json: true });
+
+    expect(mockOutputJson).toHaveBeenCalledWith(
+      expect.objectContaining({ fromCache: false }),
+    );
+  });
+
+  it('should output text when printing cached data', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const cachedRepos = { 'owner/repo': { path: '/dev/repo', exists: true, currentBranch: 'main' } };
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({
+        config: {},
+        localRepoCache: { repos: cachedRepos, scanPaths: ['/dev'], cachedAt: '2026-01-01T00:00:00Z' },
+      }),
+      save: mockSave,
+    } as any);
+
+    await runLocalRepos({ json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Local Repos');
+    expect(allOutput).toContain('cached');
+    consoleSpy.mockRestore();
+  });
+
+  it('should output text when scanning', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runLocalRepos({ scan: true, paths: ['/nonexistent'], json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Scanning');
+    expect(allOutput).toContain('Found');
+    consoleSpy.mockRestore();
+  });
+
+  it('should handle cache save failure gracefully', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockSetLocalRepoCache.mockImplementation(() => {
+      throw new Error('Write failed');
+    });
+
+    await runLocalRepos({ scan: true, paths: ['/nonexistent'], json: true });
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to cache'));
+    consoleSpy.mockRestore();
   });
 });

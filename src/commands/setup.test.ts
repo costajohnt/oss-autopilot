@@ -15,6 +15,10 @@ vi.mock('../formatters/json.js', () => ({
   outputJson: vi.fn(),
 }));
 
+vi.mock('./validation.js', () => ({
+  validateGitHubUsername: vi.fn(),
+}));
+
 import { getStateManager } from '../core/index.js';
 import { outputJson } from '../formatters/json.js';
 import { runSetup, runCheckSetup } from './setup.js';
@@ -148,6 +152,116 @@ describe('runSetup', () => {
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({ aiPolicyBlocklist: ['valid/repo'] });
     consoleSpy.mockRestore();
+  });
+
+  it('should handle dormantDays setting', async () => {
+    await runSetup({ set: ['dormantDays=14'], json: true });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ dormantThresholdDays: 14 });
+  });
+
+  it('should handle approachingDays setting', async () => {
+    await runSetup({ set: ['approachingDays=10'], json: true });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ approachingDormantDays: 10 });
+  });
+
+  it('should handle labels setting', async () => {
+    await runSetup({ set: ['labels=bug,feature'], json: true });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ labels: ['bug', 'feature'] });
+  });
+
+  it('should handle showHealthCheck=true', async () => {
+    await runSetup({ set: ['showHealthCheck=true'], json: true });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ showHealthCheck: true });
+  });
+
+  it('should handle squashByDefault=true', async () => {
+    await runSetup({ set: ['squashByDefault=true'], json: true });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ squashByDefault: true });
+  });
+
+  it('should handle squashByDefault=false', async () => {
+    await runSetup({ set: ['squashByDefault=false'], json: true });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ squashByDefault: false });
+  });
+
+  it('should handle minStars setting', async () => {
+    await runSetup({ set: ['minStars=100'], json: true });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ minStars: 100 });
+  });
+
+  it('should handle minStars with non-numeric value (fallback to 50)', async () => {
+    await runSetup({ set: ['minStars=abc'], json: true });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ minStars: 50 });
+  });
+
+  it('should handle includeDocIssues=false', async () => {
+    await runSetup({ set: ['includeDocIssues=false'], json: true });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ includeDocIssues: false });
+  });
+
+  it('should warn for all-invalid aiPolicyBlocklist entries', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await runSetup({ set: ['aiPolicyBlocklist=not-a-repo'], json: false });
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('All entries were invalid'));
+    expect(mockUpdateConfig).not.toHaveBeenCalledWith(expect.objectContaining({ aiPolicyBlocklist: expect.anything() }));
+    consoleSpy.mockRestore();
+  });
+
+  it('should handle unknown setting key', async () => {
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await runSetup({ set: ['unknownKey=value'], json: false });
+    expect(consoleSpy).toHaveBeenCalledWith('Unknown setting: unknownKey');
+    consoleSpy.mockRestore();
+  });
+
+  it('should show text output when setup is already complete', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runSetup({ json: false });
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Setup already complete');
+    expect(allOutput).toContain('testuser');
+    consoleSpy.mockRestore();
+  });
+
+  it('should show text setup prompts when setup is incomplete', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, setupComplete: false } }),
+      updateConfig: mockUpdateConfig,
+      save: mockSave,
+    } as any);
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runSetup({ json: false });
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('SETUP_REQUIRED');
+    expect(allOutput).toContain('SETTING: username');
+    expect(allOutput).toContain('END_SETUP_PROMPTS');
+    consoleSpy.mockRestore();
+  });
+
+  it('should print settings in text mode after --set', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await runSetup({ set: ['username=alice'], json: false });
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('username: alice');
+    consoleSpy.mockRestore();
+  });
+
+  it('should not complete=true when value is not true', async () => {
+    await runSetup({ set: ['complete=false'], json: true });
+    expect(mockMarkSetupComplete).not.toHaveBeenCalled();
+  });
+
+  it('should handle setting with equals in value', async () => {
+    await runSetup({ set: ['username=user=name'], json: true });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ githubUsername: 'user=name' });
+  });
+
+  it('should handle empty set array', async () => {
+    await runSetup({ set: [], json: true });
+    // No --set values means show status
+    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ setupComplete: true }));
   });
 });
 

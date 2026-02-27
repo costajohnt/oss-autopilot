@@ -79,6 +79,27 @@ describe('runShelve', () => {
     expect(mockSave).not.toHaveBeenCalled();
     expect(mockOutputJson).toHaveBeenCalledWith({ shelved: false, url: TEST_PR_URL });
   });
+
+  it('should output text when shelve succeeds', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockShelvePR.mockReturnValue(true);
+    await runShelve({ prUrl: TEST_PR_URL, json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Shelved');
+    expect(allOutput).toContain('excluded');
+    consoleSpy.mockRestore();
+  });
+
+  it('should output text when PR is already shelved', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockShelvePR.mockReturnValue(false);
+    await runShelve({ prUrl: TEST_PR_URL, json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('already shelved');
+    consoleSpy.mockRestore();
+  });
 });
 
 describe('runUnshelve', () => {
@@ -108,5 +129,26 @@ describe('runUnshelve', () => {
 
     expect(mockSave).not.toHaveBeenCalled();
     expect(mockOutputJson).toHaveBeenCalledWith({ unshelved: false, url: TEST_PR_URL });
+  });
+
+  it('should output text when unshelve succeeds', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockUnshelvePR.mockReturnValue(true);
+    await runUnshelve({ prUrl: TEST_PR_URL, json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Unshelved');
+    expect(allOutput).toContain('active again');
+    consoleSpy.mockRestore();
+  });
+
+  it('should output text when PR was not shelved', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockUnshelvePR.mockReturnValue(false);
+    await runUnshelve({ prUrl: TEST_PR_URL, json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('was not shelved');
+    consoleSpy.mockRestore();
   });
 });

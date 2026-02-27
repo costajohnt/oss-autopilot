@@ -161,4 +161,54 @@ describe('runSearch', () => {
     expect(allOutput).toContain('No matching issues found');
     consoleSpy.mockRestore();
   });
+
+  it('should display candidates in text mode', async () => {
+    mockGetGitHubToken.mockReturnValue('ghp_test123');
+    mockSearchIssues.mockResolvedValue([
+      {
+        issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: 'https://github.com/owner/repo/issues/5', labels: ['bug'] },
+        recommendation: 'approve',
+        reasonsToApprove: ['Active maintainers'],
+        reasonsToSkip: [],
+        searchPriority: 'high',
+        viabilityScore: 85,
+      },
+    ]);
+    mockFormatCandidate.mockReturnValue('Formatted candidate text');
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await runSearch({ maxResults: 10, json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Searching for issues');
+    expect(allOutput).toContain('Found 1 candidates');
+    expect(allOutput).toContain('Formatted candidate text');
+    expect(allOutput).toContain('---');
+    consoleSpy.mockRestore();
+  });
+
+  it('should display rate limit warning in text mode', async () => {
+    mockGetGitHubToken.mockReturnValue('ghp_test123');
+    mockSearchIssues.mockResolvedValue([
+      {
+        issue: { repo: 'a/b', number: 1, title: 'X', url: 'https://github.com/a/b/issues/1', labels: [] },
+        recommendation: 'approve',
+        reasonsToApprove: [],
+        reasonsToSkip: [],
+        searchPriority: 'normal',
+        viabilityScore: 60,
+      },
+    ]);
+    mockFormatCandidate.mockReturnValue('candidate');
+    mockRateLimitWarning = 'Rate limit is low';
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await runSearch({ maxResults: 10, json: false });
+
+    const warnOutput = warnSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(warnOutput).toContain('Rate limit is low');
+    consoleSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
 });

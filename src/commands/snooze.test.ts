@@ -104,6 +104,99 @@ describe('runSnooze', () => {
     expect(mockOutputJsonError).toHaveBeenCalledWith('Snooze duration must be a positive number of days.');
     mockExit.mockRestore();
   });
+
+  it('should output text for a successful snooze', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockSnoozePR.mockReturnValue(true);
+    mockGetSnoozeInfo.mockReturnValue({ expiresAt: '2026-01-22T00:00:00Z' });
+
+    await runSnooze({ prUrl: TEST_PR_URL, reason: 'flaky CI', json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Snoozed');
+    expect(allOutput).toContain('flaky CI');
+    expect(allOutput).toContain('7 day');
+    consoleSpy.mockRestore();
+  });
+
+  it('should output text when PR is already snoozed', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockSnoozePR.mockReturnValue(false);
+    mockGetSnoozeInfo.mockReturnValue({ expiresAt: '2026-01-22T00:00:00Z' });
+
+    await runSnooze({ prUrl: TEST_PR_URL, reason: 'test', json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('already snoozed');
+    consoleSpy.mockRestore();
+  });
+
+  it('should output text error for invalid duration', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runSnooze({ prUrl: TEST_PR_URL, reason: 'test', days: 0, json: false })).rejects.toThrow('exit');
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('positive number');
+    consoleSpy.mockRestore();
+    mockExit.mockRestore();
+  });
+
+  it('should handle and report errors from snooze operation in JSON mode', async () => {
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+    mockSnoozePR.mockImplementation(() => {
+      throw new Error('State corrupted');
+    });
+
+    await expect(runSnooze({ prUrl: TEST_PR_URL, reason: 'test', json: true })).rejects.toThrow('exit');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith('Snooze failed: State corrupted');
+    mockExit.mockRestore();
+  });
+
+  it('should handle and report errors from snooze operation in text mode', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+    mockSnoozePR.mockImplementation(() => {
+      throw new Error('State corrupted');
+    });
+
+    await expect(runSnooze({ prUrl: TEST_PR_URL, reason: 'test', json: false })).rejects.toThrow('exit');
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Snooze failed');
+    consoleSpy.mockRestore();
+    mockExit.mockRestore();
+  });
+
+  it('should handle NaN snooze duration', async () => {
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runSnooze({ prUrl: TEST_PR_URL, reason: 'test', days: NaN, json: true })).rejects.toThrow('exit');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith('Snooze duration must be a positive number of days.');
+    mockExit.mockRestore();
+  });
+
+  it('should handle Infinity snooze duration', async () => {
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runSnooze({ prUrl: TEST_PR_URL, reason: 'test', days: Infinity, json: true })).rejects.toThrow('exit');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith('Snooze duration must be a positive number of days.');
+    mockExit.mockRestore();
+  });
 });
 
 describe('runUnsnooze', () => {
@@ -136,5 +229,28 @@ describe('runUnsnooze', () => {
 
     expect(mockSave).not.toHaveBeenCalled();
     expect(mockOutputJson).toHaveBeenCalledWith({ unsnoozed: false, url: TEST_PR_URL });
+  });
+
+  it('should output text for a successful unsnooze', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockUnsnoozePR.mockReturnValue(true);
+
+    await runUnsnooze({ prUrl: TEST_PR_URL, json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Unsnoozed');
+    expect(allOutput).toContain('active again');
+    consoleSpy.mockRestore();
+  });
+
+  it('should output text when PR was not snoozed', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockUnsnoozePR.mockReturnValue(false);
+
+    await runUnsnooze({ prUrl: TEST_PR_URL, json: false });
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('was not snoozed');
+    consoleSpy.mockRestore();
   });
 });

@@ -54,4 +54,18 @@ describe('runRead', () => {
     expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
+
+  it('should exit with text error when neither prUrl nor --all is provided in text mode', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('exit');
+    });
+
+    await expect(runRead({ json: false })).rejects.toThrow('exit');
+
+    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
+    expect(allOutput).toContain('Usage:');
+    consoleSpy.mockRestore();
+    mockExit.mockRestore();
+  });
 });
