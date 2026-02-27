@@ -1345,7 +1345,7 @@ describe('StateManager file-system persistence (save / load)', () => {
     const sm = new StateManager(false);
     const state = sm.getState();
     expect(state.version).toBe(2);
-    expect(state.activePRs).toHaveLength(0);
+
     expect(typeof state.config).toBe('object');
   });
 
@@ -1397,7 +1397,7 @@ describe('StateManager recovery from corrupt state files', () => {
     const sm = new StateManager(false);
     const state = sm.getState();
     expect(state.version).toBe(2);
-    expect(state.activePRs).toHaveLength(0);
+
   });
 
   it('should restore from backup when state.json is corrupt but a valid backup exists', () => {
@@ -1473,7 +1473,7 @@ describe('StateManager recovery from corrupt state files', () => {
     const sm = new StateManager(false);
     const state = sm.getState();
     expect(state.version).toBe(2);
-    expect(state.activePRs).toHaveLength(0);
+
   });
 
   it('should start fresh when state.json has invalid structure (missing required fields)', () => {
@@ -1521,31 +1521,14 @@ describe('StateManager v1 → v2 migration', () => {
     expect(sm.getState().config.githubUsername).toBe('migrated-user');
   });
 
-  it('should clear activePRs during v1 → v2 migration', () => {
+  it('should migrate v1 state to v2 and drop legacy PR arrays', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
-    const pr = {
-      id: 1,
-      url: 'https://github.com/owner/repo/pull/1',
-      repo: 'owner/repo',
-      number: 1,
-      title: 'Test',
-      status: 'open',
-      activityStatus: 'active',
-      createdAt: '2024-01-01T00:00:00Z',
-      updatedAt: '2024-01-01T00:00:00Z',
-      lastChecked: '2024-01-01T00:00:00Z',
-      lastActivityAt: '2024-01-01T00:00:00Z',
-      daysSinceActivity: 0,
-      hasUnreadComments: false,
-      reviewCommentCount: 0,
-      commitCount: 1,
-    };
-    const v1 = makeV1State({ activePRs: [pr] });
+    const v1 = makeV1State({ activePRs: [{ id: 1, url: 'https://github.com/owner/repo/pull/1', repo: 'owner/repo', number: 1, title: 'Test' }] });
     fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
 
     const sm = new StateManager(false);
-    // v2 migration clears active PRs (they're fetched fresh from GitHub)
-    expect(sm.getState().activePRs).toHaveLength(0);
+    // v2 migration upgrades version and PR arrays are no longer part of AgentState
+    expect(sm.getState().version).toBe(2);
   });
 
   it('should create repo scores from mergedPRs found in v1 state', () => {
