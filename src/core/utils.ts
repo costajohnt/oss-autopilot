@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { execFileSync } from 'child_process';
+import { execFileSync, execFile } from 'child_process';
 import { ConfigurationError } from './errors.js';
 import { debug } from './logger.js';
 
@@ -350,7 +350,7 @@ export function getGitHubToken(): string | null {
     const token = execFileSync('gh', ['auth', 'token'], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'], // Suppress stderr
-      timeout: 5000, // 5 second timeout
+      timeout: 2000, // 2 second timeout
     }).trim();
 
     if (token && token.length > 0) {
@@ -408,4 +408,68 @@ export function requireGitHubToken(): string {
 export function resetGitHubTokenCache(): void {
   cachedGitHubToken = null;
   tokenFetchAttempted = false;
+}
+
+/**
+ * Asynchronous version of {@link getGitHubToken}.
+ *
+ * Uses `execFile` (non-blocking) instead of `execFileSync` to avoid blocking
+ * the event loop during CLI cold start. Shares the same cache as the synchronous
+ * version, so a successful async fetch makes subsequent sync calls instant.
+ *
+ * @returns The GitHub token string, or `null` if no token is available
+ *
+ * @example
+ * const token = await getGitHubTokenAsync();
+ * if (token) {
+ *   // use token for API calls
+ * }
+ */
+export async function getGitHubTokenAsync(): Promise<string | null> {
+  // Return cached token if we already have one
+  if (cachedGitHubToken) {
+    return cachedGitHubToken;
+  }
+
+  // Don't retry if we already tried and failed
+  if (tokenFetchAttempted) {
+    return null;
+  }
+
+  tokenFetchAttempted = true;
+
+  // 1. Check environment variable first
+  if (process.env.GITHUB_TOKEN) {
+    cachedGitHubToken = process.env.GITHUB_TOKEN;
+    return cachedGitHubToken;
+  }
+
+  // 2. Try gh CLI asynchronously (non-blocking)
+  try {
+    const token = await new Promise<string>((resolve, reject) => {
+      execFile(
+        'gh',
+        ['auth', 'token'],
+        { encoding: 'utf-8', timeout: 2000 },
+        (error, stdout) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(stdout.trim());
+          }
+        },
+      );
+    });
+
+    if (token && token.length > 0) {
+      cachedGitHubToken = token;
+      debug(MODULE, 'Using GitHub token from gh CLI (async)');
+      return cachedGitHubToken;
+    }
+  } catch (err) {
+    // gh CLI not available or not authenticated — fall through to return null
+    debug(MODULE, 'gh auth token failed (CLI unavailable or not authenticated)', err);
+  }
+
+  return null;
 }

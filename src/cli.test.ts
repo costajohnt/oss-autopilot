@@ -13,40 +13,17 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { Command } from 'commander';
 
-// ─── Mock all side-effectful imports BEFORE any module is loaded ──────────────
+// ─── Mock core imports ───────────────────────────────────────────────────────
 
 vi.mock('./core/index.js', () => ({
-  getGitHubToken: vi.fn(),
+  getGitHubTokenAsync: vi.fn(),
   enableDebug: vi.fn(),
   debug: vi.fn(),
 }));
 
-// Mock every command runner so program.parse() in cli.ts never does real work.
-// Each is a no-op async function.
-const noop = vi.fn(async () => {});
+import { getGitHubTokenAsync, enableDebug, debug } from './core/index.js';
 
-vi.mock('./commands/daily.js', () => ({ runDaily: noop }));
-vi.mock('./commands/status.js', () => ({ runStatus: noop }));
-vi.mock('./commands/search.js', () => ({ runSearch: noop }));
-vi.mock('./commands/vet.js', () => ({ runVet: noop }));
-vi.mock('./commands/track.js', () => ({ runTrack: noop, runUntrack: noop }));
-vi.mock('./commands/config.js', () => ({ runConfig: noop }));
-vi.mock('./commands/comments.js', () => ({ runComments: noop, runPost: noop, runClaim: noop }));
-vi.mock('./commands/setup.js', () => ({ runSetup: noop, runCheckSetup: noop }));
-vi.mock('./commands/init.js', () => ({ runInit: noop }));
-vi.mock('./commands/read.js', () => ({ runRead: noop }));
-vi.mock('./commands/dashboard.js', () => ({ runDashboard: noop }));
-vi.mock('./commands/parse-list.js', () => ({ runParseList: noop }));
-vi.mock('./commands/check-integration.js', () => ({ runCheckIntegration: noop }));
-vi.mock('./commands/local-repos.js', () => ({ runLocalRepos: noop }));
-vi.mock('./commands/startup.js', () => ({ runStartup: noop }));
-vi.mock('./commands/shelve.js', () => ({ runShelve: noop, runUnshelve: noop }));
-vi.mock('./commands/dismiss.js', () => ({ runDismiss: noop, runUndismiss: noop }));
-vi.mock('./commands/snooze.js', () => ({ runSnooze: noop, runUnsnooze: noop }));
-
-import { getGitHubToken, enableDebug, debug } from './core/index.js';
-
-const mockGetGitHubToken = vi.mocked(getGitHubToken);
+const mockGetGitHubTokenAsync = vi.mocked(getGitHubTokenAsync);
 const mockEnableDebug = vi.mocked(enableDebug);
 const mockDebug = vi.mocked(debug);
 
@@ -72,6 +49,8 @@ const LOCAL_ONLY_COMMANDS = extractLocalOnlyCommandsFromSource();
 
 // ─── Helper: build a minimal Commander program with the same preAction hook ──
 
+const noop = vi.fn(async () => {});
+
 function buildTestProgram(localOnlyCommands: string[]) {
   const program = new Command();
   program.name('oss-autopilot').option('--debug', 'Enable debug logging');
@@ -93,7 +72,7 @@ function buildTestProgram(localOnlyCommands: string[]) {
 
     const commandName = actionCommand.name();
     if (!localOnlyCommands.includes(commandName)) {
-      const token = getGitHubToken();
+      const token = await getGitHubTokenAsync();
       if (!token) {
         console.error('Error: GitHub authentication required.');
         process.exit(1);
@@ -216,38 +195,38 @@ describe('preAction hook', () => {
   });
 
   it('should allow LOCAL_ONLY_COMMANDS to run without a token', async () => {
-    mockGetGitHubToken.mockReturnValue(null);
+    mockGetGitHubTokenAsync.mockResolvedValue(null);
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
 
-    // "status" is in LOCAL_ONLY_COMMANDS — should not call getGitHubToken
+    // "status" is in LOCAL_ONLY_COMMANDS — should not call getGitHubTokenAsync
     await program.parseAsync(['node', 'cli', 'status']);
 
-    expect(mockGetGitHubToken).not.toHaveBeenCalled();
+    expect(mockGetGitHubTokenAsync).not.toHaveBeenCalled();
     expect(processExitSpy).not.toHaveBeenCalled();
   });
 
   it('should allow "config" to run without a token', async () => {
-    mockGetGitHubToken.mockReturnValue(null);
+    mockGetGitHubTokenAsync.mockResolvedValue(null);
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
 
     await program.parseAsync(['node', 'cli', 'config']);
 
-    expect(mockGetGitHubToken).not.toHaveBeenCalled();
+    expect(mockGetGitHubTokenAsync).not.toHaveBeenCalled();
     expect(processExitSpy).not.toHaveBeenCalled();
   });
 
   it('should call process.exit(1) when a non-LOCAL command runs without a token', async () => {
-    mockGetGitHubToken.mockReturnValue(null);
+    mockGetGitHubTokenAsync.mockResolvedValue(null);
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
 
     await expect(program.parseAsync(['node', 'cli', 'daily'])).rejects.toThrow('process.exit called');
 
-    expect(mockGetGitHubToken).toHaveBeenCalledTimes(1);
+    expect(mockGetGitHubTokenAsync).toHaveBeenCalledTimes(1);
     expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 
   it('should call process.exit(1) when "search" runs without a token', async () => {
-    mockGetGitHubToken.mockReturnValue(null);
+    mockGetGitHubTokenAsync.mockResolvedValue(null);
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
 
     await expect(program.parseAsync(['node', 'cli', 'search'])).rejects.toThrow('process.exit called');
@@ -256,7 +235,7 @@ describe('preAction hook', () => {
   });
 
   it('should print a descriptive error message when authentication is missing', async () => {
-    mockGetGitHubToken.mockReturnValue(null);
+    mockGetGitHubTokenAsync.mockResolvedValue(null);
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
 
     await expect(program.parseAsync(['node', 'cli', 'daily'])).rejects.toThrow('process.exit called');
@@ -266,35 +245,35 @@ describe('preAction hook', () => {
   });
 
   it('should allow a non-LOCAL command to run when a token is available', async () => {
-    mockGetGitHubToken.mockReturnValue('ghp_valid_token');
+    mockGetGitHubTokenAsync.mockResolvedValue('ghp_valid_token');
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
 
     await program.parseAsync(['node', 'cli', 'daily']);
 
-    expect(mockGetGitHubToken).toHaveBeenCalledTimes(1);
+    expect(mockGetGitHubTokenAsync).toHaveBeenCalledTimes(1);
     expect(processExitSpy).not.toHaveBeenCalled();
   });
 
   it('should check the token exactly once per non-LOCAL command invocation', async () => {
-    mockGetGitHubToken.mockReturnValue('ghp_some_token');
+    mockGetGitHubTokenAsync.mockResolvedValue('ghp_some_token');
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
 
     await program.parseAsync(['node', 'cli', 'search']);
 
-    expect(mockGetGitHubToken).toHaveBeenCalledTimes(1);
+    expect(mockGetGitHubTokenAsync).toHaveBeenCalledTimes(1);
   });
 
   it('should NOT check the token for LOCAL_ONLY_COMMANDS even when a token exists', async () => {
-    mockGetGitHubToken.mockReturnValue('ghp_existing_token');
+    mockGetGitHubTokenAsync.mockResolvedValue('ghp_existing_token');
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
 
     await program.parseAsync(['node', 'cli', 'status']);
 
-    expect(mockGetGitHubToken).not.toHaveBeenCalled();
+    expect(mockGetGitHubTokenAsync).not.toHaveBeenCalled();
   });
 
   it('should call enableDebug when --debug flag is passed', async () => {
-    mockGetGitHubToken.mockReturnValue('ghp_debug_token');
+    mockGetGitHubTokenAsync.mockResolvedValue('ghp_debug_token');
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
 
     await program.parseAsync(['node', 'cli', '--debug', 'daily']);
@@ -303,7 +282,7 @@ describe('preAction hook', () => {
   });
 
   it('should call debug() with the command name when --debug is set', async () => {
-    mockGetGitHubToken.mockReturnValue('ghp_debug_token');
+    mockGetGitHubTokenAsync.mockResolvedValue('ghp_debug_token');
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
 
     await program.parseAsync(['node', 'cli', '--debug', 'daily']);
@@ -312,7 +291,7 @@ describe('preAction hook', () => {
   });
 
   it('should NOT call enableDebug when --debug flag is absent', async () => {
-    mockGetGitHubToken.mockReturnValue('ghp_token');
+    mockGetGitHubTokenAsync.mockResolvedValue('ghp_token');
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
 
     await program.parseAsync(['node', 'cli', 'daily']);
@@ -322,7 +301,7 @@ describe('preAction hook', () => {
   });
 
   it('should not call process.exit for LOCAL_ONLY_COMMANDS even when --debug is set', async () => {
-    mockGetGitHubToken.mockReturnValue(null);
+    mockGetGitHubTokenAsync.mockResolvedValue(null);
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
 
     await program.parseAsync(['node', 'cli', '--debug', 'status']);
@@ -459,5 +438,33 @@ describe('Command registration', () => {
     const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
     const debugOption = program.options.find((o) => o.long === '--debug');
     expect(debugOption).toBeDefined();
+  });
+});
+
+// ─── Lazy import verification ─────────────────────────────────────────────────
+
+describe('Lazy imports', () => {
+  it('should use dynamic import() in action handlers instead of static imports', () => {
+    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+
+    // There should be NO static imports from ./commands/*
+    const staticCommandImports = src.match(/^import .+ from '\.\/(commands\/[^']+)';$/gm);
+    expect(staticCommandImports).toBeNull();
+
+    // There SHOULD be dynamic imports inside action handlers
+    const dynamicImports = src.match(/await import\('\.\/(commands\/[^']+)'\)/g);
+    expect(dynamicImports).not.toBeNull();
+    expect(dynamicImports!.length).toBeGreaterThanOrEqual(20);
+  });
+
+  it('should use getGitHubTokenAsync instead of getGitHubToken in preAction hook', () => {
+    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+
+    // The preAction hook should use the async version
+    expect(src).toContain('await getGitHubTokenAsync()');
+
+    // There should be no synchronous getGitHubToken calls (only the async import)
+    const syncTokenCalls = src.match(/[^A]getGitHubToken\(\)/g);
+    expect(syncTokenCalls).toBeNull();
   });
 });
