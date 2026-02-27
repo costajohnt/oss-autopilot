@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.38.0](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.37.0...oss-autopilot-v0.38.0) (2026-02-27)
+
+
+### Features
+
+* add CI coverage thresholds to prevent regression ([#273](https://github.com/costajohnt/oss-autopilot/issues/273)) ([#301](https://github.com/costajohnt/oss-autopilot/issues/301)) ([b1539e1](https://github.com/costajohnt/oss-autopilot/commit/b1539e106eafbebf13c3a1c3c3562f8eb2c31c8d))
+* add macOS CI runner to test matrix ([#279](https://github.com/costajohnt/oss-autopilot/issues/279)) ([#302](https://github.com/costajohnt/oss-autopilot/issues/302)) ([cc0b88a](https://github.com/costajohnt/oss-autopilot/commit/cc0b88a75dc4df7e48da73cd7ce742bd3608371e))
+
+
+### Bug Fixes
+
+* update rollup to patch high-severity path traversal vulnerability ([#285](https://github.com/costajohnt/oss-autopilot/issues/285)) ([8a3347b](https://github.com/costajohnt/oss-autopilot/commit/8a3347b15331ae0a22fba0a507d9d63441c0c35f))
+
 ## [0.37.0](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.36.5...oss-autopilot-v0.37.0) (2026-02-25)
 
 
