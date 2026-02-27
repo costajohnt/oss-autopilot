@@ -1718,8 +1718,8 @@ describe('getStats', () => {
 
   it('should compute aggregate statistics from repo scores', () => {
     const sm = new StateManager(false);
-    sm.updateRepoScore('repo/a', { score: 7, mergedPRCount: 3, closedWithoutMergeCount: 1, signals: {} });
-    sm.updateRepoScore('repo/b', { score: 5, mergedPRCount: 2, closedWithoutMergeCount: 0, signals: {} });
+    sm.updateRepoScore('repo/a', { mergedPRCount: 3, closedWithoutMergeCount: 1, signals: {} });
+    sm.updateRepoScore('repo/b', { mergedPRCount: 2, closedWithoutMergeCount: 0, signals: {} });
 
     const stats = sm.getStats();
     expect(stats.mergedPRs).toBe(5);
@@ -1731,8 +1731,8 @@ describe('getStats', () => {
   it('should exclude repos from excludeRepos config', () => {
     const sm = new StateManager(false);
     sm.updateConfig({ excludeRepos: ['excluded/repo'] });
-    sm.updateRepoScore('excluded/repo', { score: 7, mergedPRCount: 10, closedWithoutMergeCount: 0, signals: {} });
-    sm.updateRepoScore('included/repo', { score: 5, mergedPRCount: 1, closedWithoutMergeCount: 0, signals: {} });
+    sm.updateRepoScore('excluded/repo', { mergedPRCount: 10, closedWithoutMergeCount: 0, signals: {} });
+    sm.updateRepoScore('included/repo', { mergedPRCount: 1, closedWithoutMergeCount: 0, signals: {} });
 
     const stats = sm.getStats();
     expect(stats.mergedPRs).toBe(1);
