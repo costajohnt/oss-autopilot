@@ -17,13 +17,17 @@ permissions:
 
 jobs:
   ci:
-    name: Node ${{ matrix.node-version }}
-    runs-on: ubuntu-latest
+    name: Node ${{ matrix.node-version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         node-version: [20, 22, 24]
+        include:
+          - os: macos-latest
+            node-version: 22
 
     steps:
       - name: Checkout code
