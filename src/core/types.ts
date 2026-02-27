@@ -2,18 +2,6 @@
  * Core types for the Open Source Contribution Agent
  */
 
-/** GitHub PR lifecycle status. */
-export type PRStatus = 'open' | 'merged' | 'closed' | 'draft';
-
-/**
- * How active a tracked PR is from the contributor's perspective.
- * - `active` — Recent activity from either side
- * - `needs_response` — Maintainer commented; contributor should reply
- * - `waiting` — Contributor is waiting on maintainer action
- * - `dormant` — No activity for an extended period (see `AgentConfig.dormantThresholdDays`)
- */
-export type PRActivityStatus = 'active' | 'needs_response' | 'waiting' | 'dormant';
-
 /**
  * Lifecycle of a discovered issue through the contribution pipeline.
  * - `candidate` — Discovered but not yet claimed
@@ -116,8 +104,8 @@ export type MaintainerActionHint =
 
 /**
  * Ephemeral PR data fetched fresh from GitHub on each run (v2 architecture).
- * Unlike {@link TrackedPR}, this is never persisted in local state — it represents
- * a point-in-time snapshot of a PR's current condition.
+ * This is never persisted in local state — it represents a point-in-time snapshot
+ * of a PR's current condition.
  */
 export interface FetchedPR {
   // Identity
@@ -184,51 +172,6 @@ export interface FetchedPR {
 
   /** Hints extracted from maintainer comments about what actions they are requesting. */
   maintainerActionHints: MaintainerActionHint[];
-}
-
-/**
- * Legacy v1 persisted PR record, stored in `AgentState` arrays.
- * In v2, these arrays are preserved for historical data but PRs are no longer actively
- * tracked here — see {@link FetchedPR} for the current approach.
- */
-export interface TrackedPR {
-  // Identity
-  id: number;
-  url: string;
-  repo: string; // "owner/repo"
-  number: number;
-  title: string;
-
-  // Status
-  /** GitHub lifecycle status (open, merged, closed, draft). */
-  status: PRStatus;
-  /** Contributor-perspective activity level — distinct from `status` which tracks GitHub lifecycle. */
-  activityStatus: PRActivityStatus;
-
-  // Timestamps
-  createdAt: string;
-  updatedAt: string;
-  /** ISO timestamp of when this PR was last polled by the agent. */
-  lastChecked: string;
-  mergedAt?: string;
-  closedAt?: string;
-
-  // Activity tracking
-  /** ISO timestamp of the most recent activity (comment, commit, review). */
-  lastActivityAt: string;
-  daysSinceActivity: number;
-
-  // Pending actions
-  hasUnreadComments: boolean;
-
-  // Metrics
-  reviewCommentCount: number;
-  commitCount: number;
-
-  // CI and merge status
-  ciStatus?: CIStatus;
-  hasMergeConflict?: boolean;
-  reviewDecision?: ReviewDecision;
 }
 
 /** An issue tracked through the contribution pipeline from discovery to PR submission. */
@@ -323,7 +266,7 @@ export interface ProjectHealth {
 
 /**
  * Quality score for a repository, used to prioritize issue search results.
- * Score is on a 1-10 scale: base 5, logarithmic merge bonus (max +5: 1→+2, 2→+3, 3→+4, 5+→+5),
+ * Score is on a 1-10 scale: base 5, logarithmic merge bonus (max +5: 1->+2, 2->+3, 3->+4, 5+->+5),
  * -1 per closed-without-merge (max -3), +1 if lastMergedAt is set and within 90 days,
  * +1 if responsive, -2 if hostile.
  * Repos below `AgentConfig.minRepoScoreThreshold` are deprioritized.
@@ -465,8 +408,6 @@ export interface DailyDigest {
  * Root state object persisted to `~/.oss-autopilot/state.json`.
  *
  * In v2 (current), PRs are fetched fresh from GitHub on each run via the Search API.
- * The `activePRs`, `dormantPRs`, `mergedPRs`, and `closedPRs` arrays are v1 legacy
- * data preserved for backward compatibility but not actively written to.
  * The primary runtime data lives in `lastDigest` and `repoScores`.
  */
 export interface AgentState {
@@ -504,17 +445,12 @@ export interface AgentState {
   /** Cached local repo scan results (#84). Avoids re-scanning the filesystem every session. */
   localRepoCache?: LocalRepoCache;
 
-  // Legacy v1 PR arrays — preserved for history, not actively used in v2
-  activePRs: TrackedPR[];
   activeIssues: TrackedIssue[];
-  dormantPRs: TrackedPR[];
-  mergedPRs: TrackedPR[];
-  closedPRs: TrackedPR[];
 }
 
 /** Cached results from scanning the filesystem for local git clones (#84). */
 export interface LocalRepoCache {
-  /** Map of "owner/repo" → local repo info */
+  /** Map of "owner/repo" -> local repo info */
   repos: Record<string, { path: string; exists: boolean; currentBranch: string | null }>;
   /** Directories that were scanned */
   scanPaths: string[];
@@ -655,11 +591,7 @@ export const DEFAULT_CONFIG: AgentConfig = {
 /** Initial state written to `~/.oss-autopilot/state.json` on first run. Uses v2 architecture. */
 export const INITIAL_STATE: AgentState = {
   version: 2, // v2: Fresh GitHub fetching
-  activePRs: [],
   activeIssues: [],
-  dormantPRs: [],
-  mergedPRs: [],
-  closedPRs: [],
   repoScores: {},
   config: DEFAULT_CONFIG,
   events: [],

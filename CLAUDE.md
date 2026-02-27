@@ -50,7 +50,7 @@ The system has three layers:
 2. **TypeScript CLI** (`src/cli.ts` → `dist/cli.bundle.cjs`) — Commander-based CLI that the plugin invokes with `--json` for structured output. Entry point is `src/cli.ts`, which registers subcommands from `src/commands/`. The CLI is bundled into a single CJS file via esbuild for portability.
 
 3. **Core Logic** (`src/core/`) — The domain layer. Key modules:
-   - `types.ts` — All type definitions. Two key PR types: `TrackedPR` (persisted in state, v1 legacy) and `FetchedPR` (ephemeral, fetched fresh each run in v2)
+   - `types.ts` — All type definitions. Key PR type: `FetchedPR` (ephemeral, fetched fresh each run in v2). `TrackedPR` was removed in v2.
    - `state.ts` — `StateManager` singleton. Reads/writes `~/.oss-autopilot/state.json`. Handles v1→v2 migration and auto-backups
    - `pr-monitor.ts` — `PRMonitor` class. Fetches open PRs from GitHub Search API, enriches each with CI status, review decision, merge conflicts, maintainer comments, and computes `FetchedPRStatus`
    - `github.ts` — Shared Octokit instance with `@octokit/plugin-throttling` for rate limit handling
@@ -59,7 +59,7 @@ The system has three layers:
 
 ### Key Design Decisions
 
-- **v2 "Fresh Fetch" architecture**: PRs are NOT stored in local state. On each `daily` run, all open PRs are fetched from GitHub's Search API. The `TrackedPR` arrays in state exist only for backward compatibility with v1 data.
+- **v2 "Fresh Fetch" architecture**: PRs are NOT stored in local state. On each `daily` run, all open PRs are fetched from GitHub's Search API. The `TrackedPR` type and legacy PR arrays have been fully removed as of this PR.
 - **`--json` contract**: Every CLI command supports `--json`, outputting `{ success: boolean, data?: T, error?: string, timestamp: string }` (see `src/formatters/json.ts`). The plugin layer parses this structured output.
 - **State lives in `~/.oss-autopilot/`**, not in the repo. This separates user data from plugin code.
 - **GitHub auth**: The CLI checks for a token via `gh auth token` (preferred) or `$GITHUB_TOKEN` env var. Commands that don't need GitHub access are listed in `LOCAL_ONLY_COMMANDS` in `cli.ts`.

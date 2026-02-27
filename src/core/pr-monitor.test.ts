@@ -1075,8 +1075,6 @@ describe('PRMonitor generateDigest', () => {
     vi.mocked(getStateManager).mockReturnValue({
       getState: () => ({ config: { githubUsername: 'testuser' } }),
       getStats: () => ({
-        activePRs: 0,
-        dormantPRs: 0,
         mergedPRs: 5,
         closedPRs: 2,
         activeIssues: 0,

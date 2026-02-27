@@ -1,7 +1,7 @@
 /**
  * PR Monitor - Fetches and checks PR status from GitHub.
  * v2: fetchUserOpenPRs() is stateless (no local PR tracking),
- * but trackPR() and score methods still write to state.
+ * Score methods still write to state.
  */
 
 import { Octokit } from '@octokit/rest';
@@ -1305,60 +1305,6 @@ export class PRMonitor {
     } else {
       this.stateManager.incrementClosedCount(repo);
     }
-  }
-
-  /**
-   * Track a single PR by adding it to local state.
-   * Used by the `track` and `init` commands.
-   */
-  async trackPR(prUrl: string): Promise<import('./types.js').TrackedPR> {
-    const parsed = parseGitHubUrl(prUrl);
-    if (!parsed || parsed.type !== 'pull') {
-      throw new ValidationError(`Invalid PR URL: ${prUrl}`);
-    }
-
-    const { owner, repo, number } = parsed;
-
-    const { data: ghPR } = await this.octokit.pulls.get({
-      owner,
-      repo,
-      pull_number: number,
-    });
-
-    const now = new Date();
-    const { status: ciStatus } = await this.getCIStatus(owner, repo, ghPR.head.sha);
-    const hasMergeConflict = this.hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state);
-
-    const { data: reviews } = await this.octokit.pulls.listReviews({
-      owner,
-      repo,
-      pull_number: number,
-    });
-    const reviewDecision = this.determineReviewDecision(reviews);
-
-    const pr: import('./types.js').TrackedPR = {
-      id: ghPR.id,
-      url: prUrl,
-      repo: `${owner}/${repo}`,
-      number,
-      title: ghPR.title,
-      status: ghPR.draft ? 'draft' : 'open',
-      activityStatus: 'active',
-      createdAt: ghPR.created_at,
-      updatedAt: ghPR.updated_at,
-      lastChecked: now.toISOString(),
-      lastActivityAt: ghPR.updated_at,
-      daysSinceActivity: daysBetween(new Date(ghPR.updated_at), now),
-      hasUnreadComments: false,
-      reviewCommentCount: ghPR.review_comments,
-      commitCount: ghPR.commits,
-      ciStatus,
-      hasMergeConflict,
-      reviewDecision,
-    };
-
-    this.stateManager.addActivePR(pr);
-    return pr;
   }
 }
 

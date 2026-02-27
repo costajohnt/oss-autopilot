@@ -269,12 +269,6 @@ export async function runPost(options: PostOptions): Promise<void> {
       body: message,
     });
 
-    // Mark PR as read since we just responded
-    const stateManager = getStateManager();
-    if (stateManager.markPRAsRead(options.url)) {
-      stateManager.save();
-    }
-
     if (options.json) {
       outputJson({
         commentUrl: comment.html_url,

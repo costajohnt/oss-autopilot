@@ -195,11 +195,6 @@ describe('runPost', () => {
     mockGetOctokit.mockReturnValue({
       issues: { createComment: mockCreateComment },
     } as any);
-    const mockMarkPRAsRead = vi.fn().mockReturnValue(true);
-    mockGetStateManager.mockReturnValue({
-      markPRAsRead: mockMarkPRAsRead,
-      save: vi.fn(),
-    } as any);
 
     await runPost({ url: TEST_PR_URL, message: 'Thanks!', json: true });
 
