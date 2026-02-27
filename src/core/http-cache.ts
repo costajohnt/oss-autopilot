@@ -91,7 +91,7 @@ export class HttpCache {
       cachedAt: new Date().toISOString(),
     };
     try {
-      fs.writeFileSync(this.pathFor(url), JSON.stringify(entry), 'utf-8');
+      fs.writeFileSync(this.pathFor(url), JSON.stringify(entry), { encoding: 'utf-8', mode: 0o600 });
       debug(MODULE, `Cached response for ${url}`);
     } catch (err) {
       // Non-fatal: cache write failure should not break the request
@@ -243,7 +243,7 @@ export async function cachedRequest<T>(
   const existing = cache.getInflight(url);
   if (existing) {
     debug(MODULE, `Dedup hit for ${url}`);
-    return existing as Promise<T>;
+    return (await existing) as T;
   }
 
   const doFetch = async (): Promise<T> => {
@@ -262,10 +262,13 @@ export async function cachedRequest<T>(
       }
       return response.data;
     } catch (err: unknown) {
-      // Check for 304 Not Modified
-      if (isNotModifiedError(err) && cached) {
-        debug(MODULE, `304 cache hit for ${url}`);
-        return cached.body as T;
+      // Check for 304 Not Modified — re-read cache to avoid stale closure snapshot
+      if (isNotModifiedError(err)) {
+        const freshCached = cache.get(url);
+        if (freshCached) {
+          debug(MODULE, `304 cache hit for ${url}`);
+          return freshCached.body as T;
+        }
       }
       throw err;
     }
