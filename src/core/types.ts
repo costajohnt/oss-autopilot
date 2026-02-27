@@ -189,6 +189,19 @@ export interface FetchedPR {
   maintainerActionHints: MaintainerActionHint[];
 }
 
+/**
+ * Lightweight reference used in {@link DailyDigest} for shelved and auto-unshelved PRs.
+ * Contains only the fields needed for display, avoiding duplication of the full
+ * {@link FetchedPR} objects already present in `openPRs` and the status-specific arrays.
+ */
+export interface ShelvedPRRef {
+  number: number;
+  url: string;
+  title: string;
+  repo: string;
+  daysSinceActivity: number;
+  status: FetchedPRStatus;
+}
 /** An issue tracked through the contribution pipeline from discovery to PR submission. */
 export interface TrackedIssue {
   // Identity
@@ -403,10 +416,16 @@ export interface DailyDigest {
   /** PRs merged in the last 7 days. Surfaced as wins in the dashboard. */
   recentlyMergedPRs: MergedPR[];
 
-  /** PRs manually shelved by the user (excluded from capacity and actionable issues). */
-  shelvedPRs: FetchedPR[];
-  /** PRs that were auto-unshelved this run because a maintainer engaged. */
-  autoUnshelvedPRs: FetchedPR[];
+  /**
+   * PRs manually shelved by the user (excluded from capacity and actionable issues).
+   * Stored as lightweight references — full data is available in `openPRs`.
+   */
+  shelvedPRs: ShelvedPRRef[];
+  /**
+   * PRs that were auto-unshelved this run because a maintainer engaged.
+   * Stored as lightweight references — full data is available in `openPRs`.
+   */
+  autoUnshelvedPRs: ShelvedPRRef[];
 
   summary: {
     totalActivePRs: number;

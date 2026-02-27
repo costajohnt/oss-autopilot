@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeRepoSignals, computeActionMenu, groupPRsByRepo } from './daily.js';
+import { computeRepoSignals, computeActionMenu, groupPRsByRepo, toShelvedPRRef } from './daily.js';
 import type { FetchedPR, CommentedIssue } from '../core/types.js';
 import type { ActionableIssue, CapacityAssessment } from '../formatters/json.js';
 
@@ -409,5 +409,36 @@ describe('groupPRsByRepo (#80)', () => {
     const groups = groupPRsByRepo(prs);
     expect(groups).toHaveLength(1);
     expect(groups[0].repo).toBe('owner/valid');
+  });
+});
+
+describe('toShelvedPRRef', () => {
+  it('should project only the display fields from a FetchedPR', () => {
+    const pr = makePR({
+      repo: 'owner/repo',
+      number: 42,
+      title: 'Fix bug',
+      url: 'https://github.com/owner/repo/pull/42',
+      daysSinceActivity: 14,
+      status: 'dormant',
+    });
+    const ref = toShelvedPRRef(pr);
+    expect(ref).toEqual({
+      number: 42,
+      url: 'https://github.com/owner/repo/pull/42',
+      title: 'Fix bug',
+      repo: 'owner/repo',
+      daysSinceActivity: 14,
+      status: 'dormant',
+    });
+  });
+
+  it('should not include full FetchedPR fields not needed for display', () => {
+    const pr = makePR({ repo: 'owner/repo' });
+    const ref = toShelvedPRRef(pr) as unknown as Record<string, unknown>;
+    expect(ref).not.toHaveProperty('ciStatus');
+    expect(ref).not.toHaveProperty('maintainerActionHints');
+    expect(ref).not.toHaveProperty('failingCheckNames');
+    expect(ref).not.toHaveProperty('hasMergeConflict');
   });
 });
