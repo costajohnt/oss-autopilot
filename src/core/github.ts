@@ -4,6 +4,9 @@
 
 import { Octokit } from '@octokit/rest';
 import { throttling } from '@octokit/plugin-throttling';
+import { warn } from './logger.js';
+
+const MODULE = 'github';
 
 const ThrottledOctokit = Octokit.plugin(throttling);
 
@@ -36,12 +39,14 @@ export function getOctokit(token: string): Octokit {
         const opts = options as { method: string; url: string };
         const resetAt = new Date(Date.now() + retryAfter * 1000);
         if (retryCount < 2) {
-          console.warn(
+          warn(
+            MODULE,
             `Rate limit hit (retry ${retryCount + 1}/2, waiting ${retryAfter}s, resets at ${formatResetTime(resetAt)}) — ${opts.method} ${opts.url}`,
           );
           return true;
         }
-        console.error(
+        warn(
+          MODULE,
           `Rate limit exceeded, not retrying — ${opts.method} ${opts.url} (resets at ${formatResetTime(resetAt)})`,
         );
         return false;
@@ -50,12 +55,14 @@ export function getOctokit(token: string): Octokit {
         const opts = options as { method: string; url: string };
         const resetAt = new Date(Date.now() + retryAfter * 1000);
         if (retryCount < 1) {
-          console.warn(
+          warn(
+            MODULE,
             `Secondary rate limit hit (retry ${retryCount + 1}/1, waiting ${retryAfter}s, resets at ${formatResetTime(resetAt)}) — ${opts.method} ${opts.url}`,
           );
           return true;
         }
-        console.error(
+        warn(
+          MODULE,
           `Secondary rate limit exceeded, not retrying — ${opts.method} ${opts.url} (resets at ${formatResetTime(resetAt)})`,
         );
         return false;
