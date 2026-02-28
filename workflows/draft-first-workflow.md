@@ -18,7 +18,7 @@ git status --porcelain
 
 ### 1b. CONTRIBUTING.md Compliance Check
 
-Before committing, verify the changes satisfy the target repo's contribution requirements.
+Before committing, verify the changes satisfy the target repo's contribution requirements. This checks repo-specific requirements (tests, docs, changelog, etc.); Step 7's compliance check covers general open-source best practices via the `pr-compliance-checker` agent.
 
 #### 1. Search for contribution guidelines
 
@@ -35,6 +35,10 @@ docs/DEVELOPMENT.md
 ```
 
 **If no guidelines file found:** Note "No CONTRIBUTING.md found — skipping compliance check." and proceed to Step 1c.
+
+**If a file is found but cannot be read** (permission error, encoding issue, excessively large): Note "Found {path} but could not read it: {reason}. Skipping compliance check." and proceed to Step 1c.
+
+Store the file content in session context as `contributingGuidelines` for reuse in later steps (PR body generation in Step 1e, review context in Step 2).
 
 #### 2. Extract actionable requirements
 
@@ -57,12 +61,12 @@ Ignore vague guidance (e.g., "be respectful") and focus on concrete, verifiable 
 
 For each extracted requirement, check whether the current changes satisfy it:
 
-- **Tests:** Are there new/updated test files? Does `git diff --name-only` include files in `test/`, `tests/`, `__tests__/`, `spec/`, or files matching `*.test.*`, `*.spec.*`?
-- **Documentation:** Are doc files updated if the change is user-facing?
-- **Changelog:** Is there a changelog entry if required?
-- **Code style:** Has the relevant formatter/linter been run?
+- **Tests:** Are there new/updated test files in the diff? If the requirement says "ensure tests pass", run the project's test command (from `package.json` scripts, `Makefile`, or CONTRIBUTING.md instructions) and check the exit code. If no test command is discoverable, mark as "Unable to verify automatically — manual check needed."
+- **Documentation:** Are doc files updated if the change is user-facing? Check `git diff --name-only` for files in `docs/`, `doc/`, or matching `*.md`.
+- **Changelog:** Is there a changelog entry? Check `git diff --name-only` for `CHANGELOG*`, `CHANGES*`, `HISTORY*` files.
+- **Code style:** Run the project's formatter/linter command if discoverable (from `package.json` scripts, `Makefile`, or CONTRIBUTING.md instructions) and check the exit code. If the command is not discoverable, mark as "Unable to verify automatically — manual check needed."
 - **Commit format:** Does the planned commit message match the required format?
-- **Branch target:** Is the current base branch correct?
+- **Branch target:** Parse the required branch name from the guidelines (e.g., "branch from `develop`") and compare against the current base branch. If they differ, mark as a gap.
 
 #### 4. Present compliance checklist
 
@@ -96,11 +100,11 @@ Options:
 3. "Done for now" — "Come back to this later"
 ```
 
-**"Address the gaps":** For each gap, attempt to resolve it (add changelog entry, update docs, run formatter, etc.). After addressing, re-verify and present the updated checklist. Loop until all gaps are resolved or the user chooses to proceed.
+**"Address the gaps":** For each gap, attempt to resolve it (add changelog entry, update docs, run formatter, etc.). If resolution fails for a gap (tool not installed, requires manual web interaction like CLA signing, introduces new errors), report: "Could not automatically resolve: {requirement}. Reason: {error}." Mark it as requiring manual attention and continue to the next gap. After all gaps have been attempted, re-verify and present the updated checklist. If unresolvable gaps remain, re-present the 3-option prompt. **Soft limit after 3 resolution cycles:** if gaps remain after 3 attempts, note "Some requirements could not be automatically resolved after 3 attempts" and present the proceed/done options.
 
-**"Proceed anyway":** Note which requirements were skipped and why (the user may know they don't apply). Proceed to Step 1c.
+**"Proceed anyway":** Store skipped requirements in session context as `skippedComplianceRequirements` (list of `{requirement, reason}`). Display to the user: "Proceeding with {count} skipped requirements: {list}." When generating the PR description in Step 1e, include a "Compliance Notes" section listing any consciously skipped requirements. Proceed to Step 1c.
 
-**"Done for now":** Return to the core router.
+**"Done for now":** Report: "Compliance check paused — {resolvedCount} requirements met, {gapCount} remaining. Run `/oss` to resume." Return to the core router.
 
 ### 1c. Stage and Commit
 
@@ -538,7 +542,11 @@ After viewing, re-prompt with the same options.
 
 ## Step 7: Compliance Check
 
-**For PRs that completed the full draft-first workflow** (Steps 2–6, i.e., `isNewContribution === true` and all steps completed): Skip the compliance check. The PR was already reviewed by 5+ agents, integration-checked, manually tested, and squashed. Note:
+**For PRs that completed the full draft-first workflow** (Steps 2–6, i.e., `isNewContribution === true` and all steps completed): Skip the general compliance check. The PR was already reviewed by 5+ agents, integration-checked, manually tested, and squashed. However, if `skippedComplianceRequirements` from Step 1b is non-empty, remind the user:
+
+> "Compliance check skipped — this PR went through the full draft-first review workflow. Note: {count} CONTRIBUTING.md requirement(s) were consciously skipped in Step 1b: {list}. Verify these don't need manual attention before maintainer review."
+
+If no requirements were skipped:
 
 > "Compliance check skipped — this PR went through the full draft-first review workflow."
 
