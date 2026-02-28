@@ -210,6 +210,31 @@ Settings live in `.claude/oss-autopilot/config.md` (YAML frontmatter). Run `/set
 
 PR tracking state is stored separately in `~/.oss-autopilot/state.json`.
 
+### Curated Issue List
+
+You can maintain a markdown file of pre-researched issues. Set the path during `/setup-oss` or via `setup --set issueListPath=PATH`. The parser recognizes:
+
+- **GitHub URLs** in list items (issues or PRs)
+- **Section headings** (`#`, `##`, `###`) as tier labels
+- **Checkboxes** (`[x]`), **strikethrough** (`~~text~~`), or the word **Done** to mark completed items
+
+Example file:
+
+```markdown
+## Pursue (High Priority)
+- https://github.com/facebook/react/issues/12345 — Fix useEffect cleanup order
+- https://github.com/vercel/next.js/issues/67890 — Add streaming support for app router
+
+## Maybe (Worth Investigating)
+- https://github.com/expressjs/express/issues/111 — Update error handling docs
+
+## Completed
+- [x] https://github.com/nodejs/node/issues/222 — Fix stream backpressure (Done)
+- ~~https://github.com/vitejs/vite/issues/333 — HMR race condition~~
+```
+
+The `/oss-search` command can add vetted issues to this file automatically. Issues from your curated list get a +2 score bonus during search.
+
 ## Tips
 
 **Start small:** Set `maxActivePRs` to 3-5 when starting out. Fewer active PRs with fast responses beats many stale ones.
