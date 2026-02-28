@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.40.1](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.40.0...oss-autopilot-v0.40.1) (2026-02-28)
+
+
+### Bug Fixes
+
+* validate AskUserQuestion responses to prevent auto-pilot behavior ([#413](https://github.com/costajohnt/oss-autopilot/issues/413)) ([5e96531](https://github.com/costajohnt/oss-autopilot/commit/5e96531fcd009cd8e0325a15fb355f67ee5be5ab))
+
 ## [0.40.0](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.39.1...oss-autopilot-v0.40.0) (2026-02-28)
 
 
