@@ -280,7 +280,7 @@ For CI re-runs:
 > - "not in a rerunnable state" → Report that the run cannot be rerun (still in progress or cancelled). Suggest waiting.
 > - Any other error → Report the exact error message. Do NOT push an empty commit (the issue is not permissions-related).
 >
-> **Retrigger limit:** Suggest the empty commit approach at most once per PR. If CI fails again after retriggering, the failure is likely a real issue. Note that empty retrigger commits will be squashed out during Step 5.7.
+> **Retrigger limit:** Suggest the empty commit approach at most once per PR. If CI fails again after retriggering, the failure is likely a real issue. Note that empty retrigger commits will be squashed out during the squash step (Step 5 in draft-first-workflow.md).
 
 For linting failures:
 > Run the project's lint fix command (usually `npm run lint:fix` or similar), then commit and push.

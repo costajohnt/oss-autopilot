@@ -279,7 +279,7 @@ Options:
 
 ### 7. Post Response Comment (for existing PR updates)
 
-**Skip this step if** the PR's status (from Phase A or Step 4 context) was NOT `needs_response` or `needs_changes` — i.e., no maintainer feedback was being addressed. Maintenance-only actions (rebase, CI fix where status was `ci_failing`) do not need a response comment.
+**Skip this step if** the PR's status (from Phase A or Execute section context) was NOT `needs_response` or `needs_changes` — i.e., no maintainer feedback was being addressed. Maintenance-only actions (rebase, CI fix where status was `ci_failing`) do not need a response comment.
 
 **If the push was in response to maintainer feedback:**
 

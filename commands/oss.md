@@ -52,11 +52,11 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" startup --json 2>/tmp/oss-start
 The output is a single JSON object with the standard envelope: `{ success: boolean, data?: StartupOutput, error?: string, timestamp: string }`.
 
 **Error sentinel check** (before JSON appears — only possible if the build step fails):
-- If output starts with `BUILD_FAILED`: Tell the user the CLI build failed and show the error lines. Then show error recovery steps (Step 1b).
+- If output starts with `BUILD_FAILED`: Tell the user the CLI build failed and show the error lines. Then show error recovery steps (see **Error Recovery** below).
 
 **JSON parsing** — parse the entire output as JSON:
 
-- If `success` is `false`: Show `error` field to the user. This means the daily check failed. Show error recovery steps (Step 1b).
+- If `success` is `false`: Show `error` field to the user. This means the daily check failed. Show error recovery steps (see **Error Recovery** below).
 - If `success` is `true`, extract `data` as `StartupOutput`:
 
 | Field | Meaning | Session Variable |
@@ -70,12 +70,22 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 
 **Routing based on parsed data:**
 - `data.authError` is present → Tell the user: show `data.authError` message.
-- `data.setupComplete === false` → Tell the user: "It looks like setup isn't complete yet." Use AskUserQuestion to let them choose "Run setup first (Recommended)" (launch `/setup-oss`) or "Continue with defaults". If they choose "Continue with defaults", re-run the daily check directly (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-startup-stderr.log`), use `data.version` from the startup output already received, and continue to Step 2 with the daily result as `data.daily`.
-- `data.daily` is present → Continue to Step 2 (display brief summary and action menu).
+- `data.setupComplete === false` → Tell the user: "It looks like setup isn't complete yet." Use AskUserQuestion to let them choose "Run setup first (Recommended)" (launch `/setup-oss`) or "Continue with defaults". If they choose "Continue with defaults", re-run the daily check directly (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-startup-stderr.log`), use `data.version` from the startup output already received, and continue to **Summary** with the daily result as `data.daily`.
+- `data.daily` is present → Continue to **Summary** (display brief summary and action menu).
 
-**If output is empty or not valid JSON**: Tell the user "Something went wrong running the startup check." Suggest running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" startup --json`. Then show error recovery steps (Step 1b).
+**If output is empty or not valid JSON**: Tell the user "Something went wrong running the startup check." Suggest running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" startup --json`. Then show error recovery steps (see **Error Recovery** below).
 
-## Step 2: Display Brief Summary
+## Error Recovery
+
+Show any captured error output (from `$BUILD_LOG`, stderr, or the `error` field). Then troubleshoot based on the error type:
+
+- **Build failure** (BUILD_FAILED sentinel): `cd ${CLAUDE_PLUGIN_ROOT} && npm install && npm run bundle`. Common causes: missing Node.js 20+, stale `node_modules` (delete and reinstall), npm permission issues.
+- **Auth/network error** (`success: false` with valid JSON): Check `gh auth status` and network connectivity. The CLI built fine — the daily check itself failed.
+- **Invalid output** (empty or non-JSON): Try running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" startup --json`. Check `node --version` (need 20+).
+
+---
+
+## Summary
 
 The CLI returns structured data with new fields for the action-first flow:
 
@@ -131,13 +141,13 @@ data.daily.briefSummary + " | v" + data.version
 ```
 
 Example output:
-> 📊 16 Active PRs | 3 need attention | Dashboard opened in browser | v0.26.0
+> 16 Active PRs | 3 need attention | Dashboard opened in browser | v0.26.0
 
-Then proceed to Step 2.5 (check for first-run) or Step 3 (Present Action Choices).
+Then check for first-run (below) or proceed to **Action Menu**.
 
 ---
 
-## Step 2.5: First-Run Welcome (Empty State)
+### First-Run Welcome (Empty State)
 
 If `data.daily.digest.summary.totalActivePRs === 0` AND setup is complete, this is likely the user's first run or they have no open PRs. Instead of showing an empty dashboard and action menu, show a welcome message:
 
@@ -156,15 +166,15 @@ Use AskUserQuestion with these options:
 | "Just exploring" | "Take a look around — run /oss again anytime" |
 
 **Routing:**
-- **Search for issues** → Jump to "Handle Find New Issues" (same as Step 4's search flow)
+- **Search for issues** → Jump to "Handle Find New Issues" (same as the Execute section's search flow)
 - **Import existing PRs** → Run the import command: `GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" init "$(gh api user --jq '.login')" --json`. If it succeeds, re-run `startup --json` (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" startup --json 2>/tmp/oss-startup-stderr.log`) and parse the result from the top (same routing as the initial startup call). If it fails, show the error and suggest checking `gh auth status`.
 - **Just exploring** → Show a brief tip: "Run `/oss` whenever you want to check on your contributions. It works best when you have a few open PRs to track." Then end.
 
-**Skip this step** if `totalActivePRs > 0` — go directly to Step 3.
+**Skip this step** if `totalActivePRs > 0` — go directly to **Action Menu**.
 
 ---
 
-## Step 3: Present Action Choices
+## Action Menu
 
 The CLI pre-computes the action menu in `data.daily.actionMenu`. Use these items directly in AskUserQuestion instead of manually deriving options.
 
@@ -303,21 +313,11 @@ When the user types a simple question via "Other" input (or at any point during 
 
 **Rule of thumb:** If the user's input is purely asking for information (starts with "what", "how many", "which", "where") or uses display verbs ("show", "list") without an accompanying action verb ("fix", "address", "rebase", "search"), treat it as informational. If the input contains both an informational request and an action (e.g., "show me the CI logs and fix #3"), treat it as actionable. This heuristic applies equally when the user sends a free-form message outside of an AskUserQuestion picker.
 
-**After an informational response:** When the user sends their next message, route it through the same informational-vs-actionable classification. If their follow-up is actionable or selects a menu item, return to normal Step 3 flow.
+**After an informational response:** When the user sends their next message, route it through the same informational-vs-actionable classification. If their follow-up is actionable or selects a menu item, return to normal Action Menu flow.
 
 ---
 
-## Step 1b: CLI Error Recovery
-
-Show any captured error output (from `$BUILD_LOG`, stderr, or the `error` field). Then troubleshoot based on the error type:
-
-- **Build failure** (BUILD_FAILED sentinel): `cd ${CLAUDE_PLUGIN_ROOT} && npm install && npm run bundle`. Common causes: missing Node.js 20+, stale `node_modules` (delete and reinstall), npm permission issues.
-- **Auth/network error** (`success: false` with valid JSON): Check `gh auth status` and network connectivity. The CLI built fine — the daily check itself failed.
-- **Invalid output** (empty or non-JSON): Try running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" startup --json`. Check `node --version` (need 20+).
-
----
-
-## Step 4: Action Handlers
+## Execute
 
 ### Action Tiers
 
@@ -326,7 +326,7 @@ Show any captured error output (from `$BUILD_LOG`, stderr, or the `error` field)
 | **Tier 1** — Routine Maintenance | Non-destructive, no code logic changes | Rebase, clone, fetch upstream | Execute directly (with user consent). Report result. |
 | **Tier 2** — Code Changes | Changes code or posts public content | CI fixes, conflict resolution, review responses, missing files | Investigate and recommend. All writes require explicit user approval. |
 
-**After Tier 2 code changes, ALWAYS proceed to Step 5.5 (Pre-Commit Code Review) before committing or pushing.**
+**After Tier 2 code changes, ALWAYS proceed to Pre-Commit Review before committing or pushing.**
 
 ### Phase Routing Table
 
@@ -339,7 +339,7 @@ When the user selects an action from the menu above, **read the relevant workflo
 | Specific PR selection (via "Other") | `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` | "Handle Specific PR Selection" |
 | "Review issue replies" | Handled in core (below) | "Handle Review Issue Replies" |
 | "Search for new issues" | Handled in core (below) | "Handle Find New Issues" |
-| "Done for now" | Handled in core (below) | "Step 5: Session End" |
+| "Done for now" | Handled in core (below) | "Session End" |
 
 **After completing any workflow**, return here for "After Each Action" and "Session End" logic.
 
@@ -371,7 +371,7 @@ For each issue, use AskUserQuestion to offer actions:
 - "View full thread" — Display the issue URL for the user to open in browser. After viewing, re-prompt with the same options for this issue (do not advance to the next issue).
 - "Skip" — Leave the reply undismissed. It will reappear next session. Use this when the user wants to defer action to a future session.
 
-After processing all issue replies (or user chooses to stop), return to Step 3 to present action choices again.
+After processing all issue replies (or user chooses to stop), return to **Action Menu** to present action choices again.
 
 ### Handle "View Healthy PRs"
 
@@ -395,7 +395,7 @@ Healthy PRs (no action needed):
 These PRs are progressing normally. Focus on the {count} issues that need attention.
 ```
 
-Then return to Step 3 to present action choices again.
+Then return to **Action Menu** to present action choices again.
 
 ### Handle "Find New Issues"
 
@@ -404,25 +404,40 @@ The full search workflow is in the `/oss-search` command. Tell the user:
 
 Then invoke `/oss-search`, passing session state (`hasIssueList`, `availableCount`, `completedCount`, `issueListPath`).
 
-When the user claims any issue found through search and starts implementing, set `isNewContribution = true` and `issueContext = { title, url, description }`. This activates the draft-first workflow (see Step 5.5 routing below).
+When the user claims any issue found through search and starts implementing, set `isNewContribution = true` and `issueContext = { title, url, description }`. This activates the draft-first workflow (see **Pre-Commit Review** below).
 
 ### After Each Action
 
 1. **If ANY Tier 1 actions were taken** (rebases, force pushes), regardless of whether Tier 2 actions also occurred:
    - Re-run the daily check to refresh state
-   - Return to Step 3 with updated action choices
+   - Return to **Action Menu** with updated action choices
 2. **If ONLY Tier 2 actions were taken** (comment responses, code fixes, missing file additions) with no Tier 1 actions in this round:
    - Skip the daily re-run — the existing data is still valid
    - Remove completed items from the current action list
    - Inform the user: "Skipping full refresh — showing locally updated action list. Select 'Check for more PR updates' for a fresh check."
-   - Return to Step 3 with current action choices
+   - Return to **Action Menu** with current action choices
    - **Exception:** If any completed action involved merge conflict resolution (issue type `merge_conflict` from the actionableIssues list), treat the entire batch as Tier 1 and re-run the daily check
 3. If `hasIssueList`, re-read the list file to get updated available/completed counts
 4. Continue until user selects "Done for now"
 
 ---
 
-## Step 5: Session End
+## Pre-Commit Review
+
+**Trigger:** After ANY Tier 2 code changes are made (code modified but not yet committed/pushed). This includes CI fixes, conflict resolution, addressing review feedback, adding missing files, or any other code modification.
+
+This is a quality gate that catches issues before they reach the maintainer.
+
+### Routing
+
+**Check `isNewContribution`** (set in Execute when the user claims an issue and starts implementing):
+
+- **If `isNewContribution === true`:** Read `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` and follow the Draft-First Path. This covers Steps 1 (draft creation) → 2 (review cycle) → 3 (integration check) → 4 (manual testing) → 5 (squash) → 6 (mark ready) → 7 (compliance) → 8 (list updates).
+- **If `isNewContribution === false` (or not set):** Read `${CLAUDE_PLUGIN_ROOT}/workflows/pre-commit-review.md` and follow the Standard Path for existing PR updates.
+
+---
+
+## Session End
 
 When user selects "Done for now":
 
@@ -440,22 +455,7 @@ Your PRs are tracked. Run /oss anytime to check again.
 
 ---
 
-## Step 5.5: Pre-Commit Code Review
-
-**Trigger:** After ANY Tier 2 code changes are made (code modified but not yet committed/pushed). This includes CI fixes, conflict resolution, addressing review feedback, adding missing files, or any other code modification.
-
-This is a quality gate that catches issues before they reach the maintainer.
-
-### Routing
-
-**Check `isNewContribution`** (set in Step 4 when the user claims an issue and starts implementing):
-
-- **If `isNewContribution === true`:** Read `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` and follow the Draft-First Path. This covers Steps 5.5 (draft creation) → 5.6 (review cycle) → 5.6b (integration check) → 5.7b (manual testing) → 5.7 (squash) → 5.8 (mark ready) → 6 (compliance) → 6.5 (list updates).
-- **If `isNewContribution === false` (or not set):** Read `${CLAUDE_PLUGIN_ROOT}/workflows/pre-commit-review.md` and follow the Standard Path for existing PR updates.
-
----
-
-## Important Rules
+## Rules
 
 ### Human-in-the-Loop
 1. **Tier 1 (maintenance)**: Rebase + force push is allowed after user selects "Work through all issues" or explicitly approves
@@ -464,18 +464,18 @@ This is a quality gate that catches issues before they reach the maintainer.
 4. In Phase C, present Tier 2 items one at a time for sequential approval and execution
 
 ### Workflow Control (CRITICAL)
-5. **After workflow actions, always ask what's next** - after completing a workflow action (addressing a PR, running maintenance, searching for issues), prompt the user for the next step. **Exception:** If the user asked a simple informational question (e.g., "show me a link to issue #1", "what's the status of PR #5"), respond with text only — no AskUserQuestion. See "Handling Informational Questions" in Step 3.
+5. **After workflow actions, always ask what's next** - after completing a workflow action (addressing a PR, running maintenance, searching for issues), prompt the user for the next step. **Exception:** If the user asked a simple informational question (e.g., "show me a link to issue #1", "what's the status of PR #5"), respond with text only — no AskUserQuestion. See "Handling Informational Questions" in Action Menu.
 6. **Drive the conversation** - Claude controls the flow, user responds to prompts
 7. **Session ends ONLY when user selects "Done for now"** - never assume user is finished
 8. **ALWAYS include "Done for now"** in every AskUserQuestion (when one is used — see rule 14 for the informational exception)
-9. **Draft-first workflow is mandatory** — after Step 5.5, complete all steps (5.6 → 5.6b → 5.7b → 5.7) in order before reaching Step 5.8. The `gh pr ready` call belongs exclusively in Step 5.8. Never skip to it directly.
+9. **Draft-first workflow is mandatory** — complete all draft-first workflow steps (Steps 2–5 in `draft-first-workflow.md`) in order before reaching Step 6 (Mark Ready). The `gh pr ready` call belongs exclusively in Step 6. Never skip to it directly.
 
 ### UX Guidelines
 10. Keep responses professional and concise
 11. **NEVER add AI attribution** to commits, comments, or PRs — no `Co-Authored-By` trailers, no "Generated with Claude Code", no robot emoji, no mentions of AI assistance
 12. **Display information before prompting** - show all PRs as text FIRST, then ask for action
 13. **Parse "Other" input flexibly** - accept PR numbers, URLs, repo refs like "ink#861"
-14. **Don't prompt after informational responses** - see "Handling Informational Questions" in Step 3 for details
+14. **Don't prompt after informational responses** - see "Handling Informational Questions" in Action Menu for details
 
 ### Failure Protocol
 15. **When a task or approach fails, STOP and report back to the user.** Do not silently switch to a fallback strategy, skip the failed step, or improvise a workaround. Explain what failed, why it failed, and what the options are — then let the user decide how to proceed. This applies to tool failures, automation failures, file operations, CI issues, agent failures, or any other task that does not succeed as intended. **Exception:** Fallbacks that are explicitly documented in the workflow or agent instructions (e.g., gh CLI fallback when the TypeScript CLI fails) are permitted, but ONLY if the user is informed before the fallback executes. Undocumented or improvised fallbacks are never permitted.

@@ -171,7 +171,7 @@ Populate the table using data from the Phase A agent results:
 - **PR**: `{repo}#{number}` — short form
 - **Status**: From `issue.type` (needs_response, needs_changes, ci_failing, etc.)
 - **Maintainer Ask**: 1-line summary of what the maintainer requested (from agent investigation findings)
-- **Effort**: Use the same heuristic as Step 3 display (Small/Medium/Large)
+- **Effort**: Use the same heuristic as the Action Menu display (Small/Medium/Large)
 - **Recommended Action**: Brief action description from agent findings
 
 **Key findings**: 1-line summary per PR from the agent investigation results. Focus on what the maintainer is asking and what code change is needed.
@@ -201,7 +201,7 @@ Options (ordered by priority, up to 3 PRs + Done — limited to 4 options for As
 The user selects a PR, and you:
 1. Use the findings from Phase A (do NOT re-investigate, unless staleness warning triggered and user opts to re-check)
 2. Execute the recommended action for that specific PR
-3. After completing the action, if code was changed, route to Step 5.5 (Pre-Commit Code Review) in the core router — it will read the appropriate workflow file based on `isNewContribution`. After the review completes, return here to Phase C's loop.
+3. After completing the action, if code was changed, route to Pre-Commit Review in the core router — it will read the appropriate workflow file based on `isNewContribution`. After the review completes, return here to Phase C's loop.
 
 **Action failure handling:** After executing the action for a PR:
 - **If successful**: Show "Completed: repo#123 — response posted + code pushed."
@@ -343,7 +343,7 @@ Show the vetting summary. If claimable, offer:
 - "Search GitHub instead"
 - "Done for now"
 
-### 6. After claiming → implementation → draft PR → review → ready → Step 6.5
+### 6. After claiming → implementation → draft PR → review → ready
 
 When the user claims an issue and starts implementing, set:
 - `isNewContribution = true`
@@ -354,14 +354,14 @@ When the user claims an issue and starts implementing, set:
   - Documentation-only changes → `docs/` branch, `docs:` commit
   - If ambiguous, prefer `fix/` for correcting existing behavior and `feat/` for adding new capabilities
 
-After implementation, the flow proceeds through the **draft-first workflow**:
-1. Read `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` — it detects `isNewContribution` and runs the full draft-first path
-2. Step 5.6 runs iterative review cycle (scope-aware, tied to `issueContext`)
-3. Step 5.6b checks new files are properly integrated (imports, registrations)
-4. Step 5.7b offers manual testing prompt (build/run the project locally)
-5. Step 5.7 squashes commits and rewords message
-6. Step 5.8 marks PR ready for review after user confirmation
-7. Step 6 runs compliance check
-8. Step 6.5 offers list updates (if issue came from curated list)
+After implementation, the flow proceeds through the **draft-first workflow** (`${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md`):
+1. Step 1 creates the draft PR
+2. Step 2 runs iterative review cycle (scope-aware, tied to `issueContext`)
+3. Step 3 checks new files are properly integrated (imports, registrations)
+4. Step 4 offers manual testing prompt (build/run the project locally)
+5. Step 5 squashes commits and rewords message
+6. Step 6 marks PR ready for review after user confirmation
+7. Step 7 runs compliance check
+8. Step 8 offers list updates (if issue came from curated list)
 
-**CRITICAL: Track that the current issue came from the curated list** so Step 6.5 knows to offer list updates.
+**CRITICAL: Track that the current issue came from the curated list** so Step 8 knows to offer list updates.
