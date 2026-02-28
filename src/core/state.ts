@@ -110,7 +110,7 @@ export function releaseLock(lockPath: string): void {
  */
 export function atomicWriteFileSync(filePath: string, data: string, mode?: number): void {
   const tmpPath = filePath + '.tmp';
-  fs.writeFileSync(tmpPath, data, { mode: mode ?? 0o644 });
+  fs.writeFileSync(tmpPath, data, { mode: mode ?? 0o600 });
   fs.renameSync(tmpPath, filePath);
   // Ensure permissions are correct (rename preserves the tmp file's mode,
   // but on some systems the mode from writeFileSync is masked by umask)
