@@ -4,7 +4,13 @@
     "name": "John Costa"
   },
   "metadata": {
-    "description": "AI-powered autopilot for managing open source contributions with Claude Code"
+    "description": "AI-powered autopilot for managing open source contributions with Claude Code",
+    "categories": ["productivity", "open-source", "github", "developer-tools"],
+    "screenshots": [
+      "docs/images/demo.gif",
+      "docs/images/dashboard.png"
+    ],
+    "installInstructions": "After install, restart Claude Code and run /setup-oss to configure your preferences. Then run /oss for your daily contribution check."
   },
   "plugins": [
     {
