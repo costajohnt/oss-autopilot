@@ -8,6 +8,53 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Task, mcp__
 
 This command checks your open source PRs and provides a summary of what needs attention.
 
+## Workflow Architecture
+
+This command (`oss.md`) is the **core router** that orchestrates the entire flow. It delegates complex actions to external workflow files:
+
+```
+/oss (this file)
+ │
+ ├─ Startup ─── Combined Bash Script ─── Error Recovery
+ │
+ ├─ Summary ─── First-Run Welcome (if no PRs)
+ │
+ ├─ Action Menu ─── user selects action ───┐
+ │                                          │
+ │   ┌─────────────────────────────────────┘
+ │   │
+ │   ├─ "Work through all issues" ──► workflows/work-through-issues.md
+ │   │   Parallel investigation → consolidated results → sequential execution
+ │   │
+ │   ├─ "Pick from your issue list" ──► workflows/work-through-issues.md
+ │   │   Display curated list → vet → claim → implement
+ │   │
+ │   ├─ "Search for new issues" ──► /oss-search command
+ │   │   Parallel multi-strategy search with vetting
+ │   │
+ │   ├─ "Review issue replies" ──► handled here (Execute section)
+ │   │
+ │   └─ "Done for now" ──► Session End
+ │
+ ├─ Pre-Commit Review (after any code changes) ──┐
+ │   │                                             │
+ │   ├─ New contribution? ──► workflows/draft-first-workflow.md
+ │   │   Steps 1-8: draft PR → review → integration check →
+ │   │   manual testing → squash → mark ready → compliance → list update
+ │   │
+ │   └─ Existing PR update? ──► workflows/pre-commit-review.md
+ │       Gather diff → dispatch review agents → consolidate → commit/push
+ │
+ └─ Session End
+```
+
+| Workflow File | Purpose | When Invoked |
+|---------------|---------|-------------|
+| `workflows/work-through-issues.md` | Handle PR maintenance and issue list browsing | User selects "Work through all issues", "Pick from list", or specific PRs |
+| `workflows/draft-first-workflow.md` | Full new contribution pipeline (8 steps) | After claiming an issue and implementing changes |
+| `workflows/pre-commit-review.md` | Code review gate for existing PR updates | After Tier 2 code changes to an existing PR |
+| `workflows/reference.md` | CLI command syntax and agent name reference | On demand when command syntax is needed |
+
 ## Output Style — Loading Screen Pattern
 
 **CRITICAL: Follow this pattern exactly.**
