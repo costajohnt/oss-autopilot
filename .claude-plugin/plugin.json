@@ -7,22 +7,16 @@
     "url": "https://github.com/costajohnt"
   },
   "repository": "https://github.com/costajohnt/oss-autopilot",
+  "homepage": "https://github.com/costajohnt/oss-autopilot#readme",
   "license": "MIT",
-  "entrypoint": "commands/oss.md",
-  "documentation": "https://github.com/costajohnt/oss-autopilot#readme",
-  "requiredTools": ["Bash", "Agent", "Read", "Glob", "Grep", "WebFetch"],
-  "capabilities": [
-    "pr-monitoring",
-    "issue-discovery",
-    "contribution-management",
-    "code-review",
-    "ci-diagnosis"
-  ],
   "keywords": [
     "open-source",
     "github",
     "contributions",
     "pr-management",
-    "issue-discovery"
+    "issue-discovery",
+    "pr-monitoring",
+    "code-review",
+    "ci-diagnosis"
   ]
 }
