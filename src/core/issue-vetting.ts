@@ -13,13 +13,14 @@ import {
   IssueVettingResult,
   ContributionGuidelines,
   ProjectHealth,
+  type SearchPriority,
+  type IssueCandidate,
 } from './types.js';
 import { ValidationError } from './errors.js';
 import { warn } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 import { getStateManager } from './state.js';
 import { calculateRepoQualityBonus, calculateViabilityScore } from './issue-scoring.js';
-import type { SearchPriority, IssueCandidate } from './issue-discovery.js';
 
 const MODULE = 'issue-vetting';
 

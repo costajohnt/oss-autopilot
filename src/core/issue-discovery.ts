@@ -13,7 +13,14 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, getDataDir } from './utils.js';
-import { TrackedIssue, ProjectHealth, IssueVettingResult, DEFAULT_CONFIG } from './types.js';
+import {
+  TrackedIssue,
+  ProjectHealth,
+  IssueVettingResult,
+  DEFAULT_CONFIG,
+  type SearchPriority,
+  type IssueCandidate,
+} from './types.js';
 import { ValidationError } from './errors.js';
 import { warn } from './logger.js';
 import {
@@ -23,7 +30,7 @@ import {
   applyPerRepoCap,
 } from './issue-filtering.js';
 import { IssueVetter } from './issue-vetting.js';
-import { calculateViabilityScore as calcViabilityScore } from './issue-scoring.js';
+import { calculateViabilityScore as calcViabilityScore, type ViabilityScoreParams } from './issue-scoring.js';
 
 // Re-export everything from sub-modules for backward compatibility.
 // Existing consumers (tests, CLI commands) import from './issue-discovery.js'.
@@ -39,21 +46,10 @@ export {
 } from './issue-filtering.js';
 export { calculateRepoQualityBonus, calculateViabilityScore, type ViabilityScoreParams } from './issue-scoring.js';
 export { type CheckResult } from './issue-vetting.js';
+// Re-export types that were previously defined here
+export type { SearchPriority, IssueCandidate } from './types.js';
 
 const MODULE = 'issue-discovery';
-
-export type SearchPriority = 'merged_pr' | 'starred' | 'normal';
-
-export interface IssueCandidate {
-  issue: TrackedIssue;
-  vettingResult: IssueVettingResult;
-  projectHealth: ProjectHealth;
-  recommendation: 'approve' | 'skip' | 'needs_review';
-  reasonsToSkip: string[];
-  reasonsToApprove: string[];
-  viabilityScore: number; // 0-100 scale
-  searchPriority: SearchPriority; // Priority level for sorting
-}
 
 export class IssueDiscovery {
   private octokit: Octokit;
@@ -646,8 +642,11 @@ export class IssueDiscovery {
     return batches;
   }
 
-  /** Check if an error is a GitHub rate limit error (429 or rate-limit 403). */
-  private static isRateLimitError(error: unknown): boolean {
+  /**
+   * Check if an error is a GitHub rate limit error (429 or rate-limit 403).
+   * Static proxy kept for backward compatibility with tests.
+   */
+  static isRateLimitError(error: unknown): boolean {
     return IssueVetter.isRateLimitError(error);
   }
 
@@ -670,18 +669,7 @@ export class IssueDiscovery {
    * Calculate viability score for an issue (delegates to issue-scoring module).
    * Kept on class for backward compatibility with tests that call instance.calculateViabilityScore().
    */
-  calculateViabilityScore(params: {
-    repoScore: number | null;
-    hasExistingPR: boolean;
-    isClaimed: boolean;
-    clearRequirements: boolean;
-    hasContributionGuidelines: boolean;
-    issueUpdatedAt: string;
-    closedWithoutMergeCount: number;
-    mergedPRCount: number;
-    orgHasMergedPRs: boolean;
-    repoQualityBonus?: number;
-  }): number {
+  calculateViabilityScore(params: ViabilityScoreParams): number {
     return calcViabilityScore(params);
   }
 
