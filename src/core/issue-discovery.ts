@@ -357,11 +357,13 @@ export class IssueDiscovery {
 
     // Build query parts
     const labelQuery = labels.map((l) => `label:"${l}"`).join(' ');
-    const langQuery = languages.map((l) => `language:${l}`).join(' ');
+    // When languages includes 'any', omit the language filter entirely
+    const isAnyLanguage = languages.some((l) => l.toLowerCase() === 'any');
+    const langQuery = isAnyLanguage ? '' : languages.map((l) => `language:${l}`).join(' ');
     // Phase 0 uses a broader query — established contributors don't need beginner labels
-    const establishedQuery = `is:issue is:open ${langQuery} no:assignee`;
+    const establishedQuery = `is:issue is:open ${langQuery} no:assignee`.replace(/  +/g, ' ').trim();
     // Phases 1+ use label-filtered query for discovery in unfamiliar repos
-    const baseQuery = `is:issue is:open ${labelQuery} ${langQuery} no:assignee`;
+    const baseQuery = `is:issue is:open ${labelQuery} ${langQuery} no:assignee`.replace(/  +/g, ' ').trim();
 
     // Helper to filter issues
     const includeDocIssues = config.includeDocIssues ?? true;
