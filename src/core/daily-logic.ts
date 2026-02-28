@@ -267,7 +267,7 @@ export function computeActionMenu(
     });
   }
 
-  // The orchestration layer (commands/oss.md Step 3) may insert issue-list
+  // The orchestration layer (commands/oss.md Action Menu section) may insert issue-list
   // options before the search item when a curated list is available.
 
   items.push({

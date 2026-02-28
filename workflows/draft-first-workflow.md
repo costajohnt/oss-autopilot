@@ -6,9 +6,9 @@
 
 ---
 
-## Step 5.5: Draft-First Path (new contributions only)
+## Step 1: Create Draft PR (new contributions only)
 
-### 0a. Pre-flight: Verify Changes Exist
+### 1a. Pre-flight: Verify Changes Exist
 
 ```bash
 git status --porcelain
@@ -16,7 +16,7 @@ git status --porcelain
 
 **If output is empty:** Report no changes and return to the core router (`commands/oss.md`).
 
-### 0b. Stage and Commit
+### 1b. Stage and Commit
 
 - Stage the specific changed files (not `git add -A`)
 - If staging fails for any file, report which file(s) failed and why
@@ -27,7 +27,7 @@ git status --porcelain
   - Do NOT proceed to push
 - **Do NOT add AI attribution** (no Co-Authored-By, no "Generated with" mentions)
 
-### 0c. Push
+### 1c. Push
 
 ```bash
 git push -u origin HEAD
@@ -35,7 +35,7 @@ git push -u origin HEAD
 
 **If push fails**, report the error and offer to retry or cancel.
 
-### 0d. Create Draft PR
+### 1d. Create Draft PR
 
 **Always include `--head`** to handle both fork-based and same-repo workflows. The `--head` flag is harmless for same-repo PRs and required for fork-based PRs:
 
@@ -61,9 +61,9 @@ Generate the PR title and body following the target repo's conventions (check `C
 
 > "Draft PR created: {draftPRUrl}. It's marked as a draft — maintainers can see it but won't be asked to review yet. Starting review cycle..."
 
-**CRITICAL: Do NOT call `gh pr ready` or skip to Step 5.8. You MUST complete Step 5.6 (review cycle), Step 5.6b (integration check), Step 5.7b (manual testing), and Step 5.7 (squash) first. The draft-first workflow exists to catch issues before maintainers see the PR.**
+**CRITICAL: Do NOT call `gh pr ready` or skip to Step 6. You MUST complete Step 2 (review cycle), Step 3 (integration check), Step 4 (manual testing), and Step 5 (squash) first. The draft-first workflow exists to catch issues before maintainers see the PR.**
 
-**→ Proceed to Step 5.6 (Draft PR Review Cycle) below**
+**→ Proceed to Step 2 (Draft PR Review Cycle) below**
 
 **If `gh pr create --draft` fails:**
 - Report the specific error (include stderr output)
@@ -75,21 +75,21 @@ Generate the PR title and body following the target repo's conventions (check `C
 **If non-draft fallback succeeds:**
 - Store `draftPRNumber` and `draftPRUrl` from the created PR
 - Warn: "Note: This PR is immediately visible to maintainers. The review cycle will still run, but maintainers may see the PR before review is complete."
-- Proceed to Step 5.6 (review cycle still runs). Step 5.8 (Mark Ready) will be skipped since the PR is already public.
+- Proceed to Step 2 (review cycle still runs). Step 6 (Mark Ready) will be skipped since the PR is already public.
 
-- **Do NOT proceed to Step 5.6 without a valid `draftPRNumber` and `draftPRUrl`**
+- **Do NOT proceed to Step 2 without a valid `draftPRNumber` and `draftPRUrl`**
 
 ---
 
-## Step 5.6: Draft PR Review Cycle
+## Step 2: Draft PR Review Cycle
 
-**Trigger:** After draft PR created in Step 5.5. Only for new contributions (`isNewContribution === true`).
+**Trigger:** After draft PR created in Step 1. Only for new contributions (`isNewContribution === true`).
 
 Initialize `roundNumber = 1`.
 
 ### 1. Gather Change Context
 
-Compute `baseBranch` and `mergeBase` (store in session — reused in 5.6b and 5.7):
+Compute `baseBranch` and `mergeBase` (store in session — reused in Steps 3 and 5):
 
 ```bash
 baseBranch=$(gh pr view --json baseRefName --jq '.baseRefName' 2>/dev/null || git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}' || echo "main")
@@ -254,21 +254,21 @@ Same as the pre-commit review consolidation format, but separate findings into *
 
 **"Show diff":** Output `git diff $mergeBase..HEAD` as code block. If the diff command fails, recompute `$mergeBase` and retry. If still failing, offer "Continue without diff" / "Retry" / "Done for now". Then offer: "Finalize" / "Fix something" / "Done for now".
 
-**"Finalize":** → Step 5.6b (Integration Check) below
+**"Finalize":** → Step 3 (Integration Check) below
 
 **"Done for now":** Report draft saved, return to the core router (`commands/oss.md`).
 
 ---
 
-## Step 5.6b: Integration Check for New Files
+## Step 3: Integration Check for New Files
 
-**Trigger:** After Step 5.6 finalized. Only for new contributions.
+**Trigger:** After Step 2 finalized. Only for new contributions.
 
 Review agents see diff contents but can't detect whether new files are wired into the codebase. This catches "dead code" PRs.
 
 ### Flow
 
-1. **Find new files:** `git diff --name-only --diff-filter=A "$mergeBase"..HEAD`. If `$mergeBase` is invalid, recompute it. If no new files → skip to Step 5.7b.
+1. **Find new files:** `git diff --name-only --diff-filter=A "$mergeBase"..HEAD`. If `$mergeBase` is invalid, recompute it. If no new files → skip to Step 4.
 
 2. **Check references:** For each new file, search for its name stem in the source tree (grep for imports/registrations, excluding the file itself). Adjust file extensions to match the repo's language.
 
@@ -277,13 +277,13 @@ Review agents see diff contents but can't detect whether new files are wired int
    - "Skip — files are referenced differently" — e.g., dynamically loaded, auto-discovered
    - "Done for now" — leave as draft
 
-**If all files referenced or user resolves:** → Step 5.7b (Manual Testing Prompt)
+**If all files referenced or user resolves:** → Step 4 (Manual Testing)
 
 ---
 
-## Step 5.7b: Manual Testing Prompt
+## Step 4: Manual Testing Prompt
 
-**Trigger:** After Step 5.6b (Integration Check) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
+**Trigger:** After Step 3 (Integration Check) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
 
 Automated review catches code patterns, but cannot verify runtime behavior (UI rendering, keyboard shortcuts, browser behavior, CLI output, etc.). This step gives the user a chance to manually verify the feature works before finalizing.
 
@@ -292,7 +292,7 @@ Automated review catches code patterns, but cannot verify runtime behavior (UI r
 - All relevant automated test suites pass
 - Manual testing would require non-trivial environment setup (e.g., CSP headers, specific server config, browser extension loading)
 
-When auto-skipping, note: "Skipping manual testing — non-visual change, all automated tests pass, and manual testing would require non-trivial environment setup." Then proceed directly to Step 5.7.
+When auto-skipping, note: "Skipping manual testing — non-visual change, all automated tests pass, and manual testing would require non-trivial environment setup." Then proceed directly to Step 5.
 
 ### 1. Prompt for Manual Testing
 
@@ -332,11 +332,11 @@ Options:
 **"Found issues — go back to fix":**
 - User makes fixes (with assistance as needed)
 - Stage, commit, and push the fixes
-- **If any git operation fails** (stage, commit, or push), report the specific error and offer: "Retry" / "Skip push and review locally" / "Done for now". Do NOT loop back to Step 5.6 unless the push succeeds or the user explicitly chooses to review locally
-- Loop back to Step 5.6 sub-step 1 (re-review with agents) above
+- **If any git operation fails** (stage, commit, or push), report the specific error and offer: "Retry" / "Skip push and review locally" / "Done for now". Do NOT loop back to Step 2 unless the push succeeds or the user explicitly chooses to review locally
+- Loop back to Step 2 sub-step 1 (re-review with agents) above
 
 **"Tests passed — proceed to squash" / "Skip — proceed to squash":**
-- **→ Proceed to Step 5.7 (Squash + Reword) below**
+- **→ Proceed to Step 5 (Squash + Reword) below**
 
 **"Done for now":**
 - Report: "Draft PR #{draftPRNumber} remains as a draft. Run `/oss` later to continue."
@@ -344,15 +344,15 @@ Options:
 
 ---
 
-## Step 5.7: Squash + Reword
+## Step 5: Squash + Reword
 
-**Trigger:** After Step 5.7b completes or is skipped. Only for new contributions.
+**Trigger:** After Step 4 completes or is skipped. Only for new contributions.
 
 ### Flow
 
-1. **Count commits:** Validate `$mergeBase` (recompute if invalid), then `git rev-list --count "$mergeBase"..HEAD`. If only 1 commit → skip to Step 5.8.
+1. **Count commits:** Validate `$mergeBase` (recompute if invalid), then `git rev-list --count "$mergeBase"..HEAD`. If only 1 commit → skip to Step 6.
 
-2. **Check config:** Read squash setting from `.claude/oss-autopilot/config.md` (check `repoOverrides.{repo}.squash`, then `squashByDefault`, default `true`). If `false` → Step 5.8. If `"ask"` → prompt user.
+2. **Check config:** Read squash setting from `.claude/oss-autopilot/config.md` (check `repoOverrides.{repo}.squash`, then `squashByDefault`, default `true`). If `false` → Step 6. If `"ask"` → prompt user.
 
 3. **Generate message:** Create a commit message covering all work (implementation + tests + fixes). Follow repo's commit format, include issue reference. **Present to user for approval BEFORE squashing:**
    - "Approve and squash (Recommended)" / "Edit message" / "Skip squash" / "Done for now"
@@ -369,17 +369,17 @@ Options:
    git tag -d oss-autopilot-pre-squash               # cleanup after success
    ```
    **CRITICAL: If the safety tag creation fails, do NOT proceed with the squash.** Report: "Could not create safety recovery tag. Aborting squash to protect your work." Offer: "Retry" / "Skip squash" / "Done for now".
-   On any other failure: recover via `git reset --hard oss-autopilot-pre-squash`, report error, offer retry/undo/done. If `--force-with-lease` fails with stale info, retry once with explicit lease: `git push "--force-with-lease=$branch:$(git rev-parse origin/$branch)" origin $branch`. If force push blocked by branch protection: `git reset --hard oss-autopilot-pre-squash && git push && git tag -d oss-autopilot-pre-squash`. Do NOT proceed to Step 5.8 unless push succeeded.
+   On any other failure: recover via `git reset --hard oss-autopilot-pre-squash`, report error, offer retry/undo/done. If `--force-with-lease` fails with stale info, retry once with explicit lease: `git push "--force-with-lease=$branch:$(git rev-parse origin/$branch)" origin $branch`. If force push blocked by branch protection: `git reset --hard oss-autopilot-pre-squash && git push && git tag -d oss-autopilot-pre-squash`. Do NOT proceed to Step 6 unless push succeeded.
 
-**→ Step 5.8 after successful push**
+**→ Step 6 after successful push**
 
 ---
 
-## Step 5.8: Mark Ready for Review
+## Step 6: Mark Ready for Review
 
-**Trigger:** After Step 5.7 (Squash + Reword) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
+**Trigger:** After Step 5 (Squash + Reword) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
 
-**CRITICAL: This step must NOT be reached without completing Steps 5.6 (review cycle), 5.6b (integration check), 5.7b (manual testing prompt), and 5.7 (squash). If `gh pr ready` is called before these steps, the draft-first workflow has been bypassed — this is a bug.**
+**CRITICAL: This step must NOT be reached without completing Steps 2 (review cycle), 3 (integration check), 4 (manual testing prompt), and 5 (squash). If `gh pr ready` is called before these steps, the draft-first workflow has been bypassed — this is a bug.**
 
 This is the final gate before the PR becomes visible to maintainers.
 
@@ -424,7 +424,7 @@ gh pr ready {draftPRNumber} --repo {upstream-repo}
 > **Context tip:** This was a full implementation cycle. Starting a fresh `/oss` session will free up context for more work. You can continue here if needed.
 
 Reset session state: `isNewContribution = false`, clear `issueContext`, `draftPRNumber`, `draftPRUrl`, `baseBranch`, `roundNumber`.
-**→ Proceed to Step 6 (compliance check) below**
+**→ Proceed to Step 7 (compliance check) below**
 
 **If `gh pr ready` fails:**
 - Report the specific error to the user
@@ -450,9 +450,9 @@ After viewing, re-prompt with the same options.
 
 ---
 
-## Step 6: After Creating/Updating PRs
+## Step 7: Compliance Check
 
-**For PRs that completed the full draft-first workflow** (Steps 5.6 → 5.6b → 5.7b → 5.7 → 5.8, i.e., `isNewContribution === true` and all steps completed): Skip the compliance check. The PR was already reviewed by 5+ agents, integration-checked, manually tested, and squashed. Note:
+**For PRs that completed the full draft-first workflow** (Steps 2–6, i.e., `isNewContribution === true` and all steps completed): Skip the compliance check. The PR was already reviewed by 5+ agents, integration-checked, manually tested, and squashed. Note:
 
 > "Compliance check skipped — this PR went through the full draft-first review workflow."
 
@@ -471,7 +471,7 @@ Before submitting a PR, check if the repo has a test directory:
 
 ---
 
-## Step 6.5: Post-PR List Continuity
+## Step 8: Post-PR List Continuity
 
 **Trigger:** After creating a PR for an issue that came from the curated issue list (`issueListPath`).
 
@@ -536,4 +536,4 @@ Then offer:
 **Route based on choice:**
 - "Pick another" → Read `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` — "Handle Pick Issue From List" section
 - "Search GitHub" → Return to the core router (`commands/oss.md`) — "Handle Find New Issues"
-- "Done for now" → Return to the core router (`commands/oss.md`) — "Step 5: Session End"
+- "Done for now" → Return to the core router (`commands/oss.md`) — "Session End"
