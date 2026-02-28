@@ -100,6 +100,28 @@ Also look at 2-3 existing files in the same directories as changed files to infe
 - Comment style
 - Test file location and naming patterns
 
+## Phase 2.5: Security Scan
+
+Scan the diff for common security issues. This catches problems before they reach CI (where CodeQL provides deeper static analysis).
+
+### Secrets Detection
+Look for patterns that suggest hardcoded credentials:
+- API keys: strings matching `sk-`, `pk_`, `ghp_`, `gho_`, `AKIA`, `xox[bpras]-`
+- Generic secrets: variables named `password`, `secret`, `token`, `api_key` assigned to string literals
+- Connection strings with embedded credentials
+
+### Injection Patterns
+- **Command injection**: string concatenation or template literals passed to child process functions or shell commands
+- **SQL injection**: string concatenation in SQL queries instead of parameterized queries
+- **XSS**: unescaped user input rendered as raw HTML without sanitization
+
+### Dependency Changes
+If `package.json`, `requirements.txt`, `go.mod`, `Cargo.toml`, or similar dependency files are modified:
+- Flag newly added dependencies for awareness (not a blocker, just a note)
+- Flag removed dependencies that might still be imported
+
+Report security findings under the **Critical** category in Phase 5. These should block committing.
+
 ## Phase 3: Code Quality Analysis
 
 Review the diff (from Phase 1) for:
