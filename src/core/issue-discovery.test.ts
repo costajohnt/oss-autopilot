@@ -448,6 +448,108 @@ describe('IssueDiscovery.vetIssue inconclusive downgrade', () => {
   });
 });
 
+describe('IssueDiscovery.vetIssue prior contribution detection (#373)', () => {
+  let discovery: InstanceType<typeof IssueDiscovery>;
+
+  const makeGhIssue = () => ({
+    id: 1,
+    html_url: 'https://github.com/owner/repo/issues/42',
+    title: 'Test issue with clear requirements',
+    labels: [{ name: 'good first issue' }],
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-02-01T00:00:00Z',
+    comments: 0,
+    body: `
+      This feature should add pagination to the API.
+      1. Add page parameter to GET /items
+      2. Return 20 items per page
+      The API should return a 400 error for invalid page numbers.
+    `,
+  });
+
+  beforeEach(() => {
+    mockOctokitInstance = {
+      issues: {
+        get: vi.fn().mockResolvedValue({ data: makeGhIssue() }),
+        listEventsForTimeline: vi.fn().mockResolvedValue({ data: [] }),
+      },
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({ data: { total_count: 0, items: [] } }),
+      },
+      repos: {
+        get: vi.fn().mockResolvedValue({
+          data: { open_issues_count: 5, pushed_at: '2026-02-01T00:00:00Z', stargazers_count: 100, forks_count: 20 },
+        }),
+        listCommits: vi.fn().mockResolvedValue({
+          data: [{ commit: { author: { date: '2026-02-01T00:00:00Z' } } }],
+        }),
+        getContent: vi.fn().mockRejectedValue(new Error('404 Not Found')),
+      },
+      actions: {
+        listRepoWorkflows: vi.fn().mockResolvedValue({ data: { total_count: 1 } }),
+      },
+    };
+    discovery = new IssueDiscovery('fake-token');
+  });
+
+  it('should flag prior contributions from GitHub API when not in local state', async () => {
+    // Mock the merged PR search to return 5 merged PRs
+    mockOctokitInstance.search.issuesAndPullRequests.mockImplementation((params: { q?: string }) => {
+      if (params?.q?.includes('is:merged author:@me')) {
+        return Promise.resolve({ data: { total_count: 5, items: [] } });
+      }
+      return Promise.resolve({ data: { total_count: 0, items: [] } });
+    });
+
+    const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
+    expect(candidate.reasonsToApprove).toContainEqual('Trusted project (5 PRs merged)');
+    expect(candidate.searchPriority).toBe('merged_pr');
+  });
+
+  it('should prefer local repoScore mergedPRCount over GitHub API count', async () => {
+    // Set up local state with 3 merged PRs
+    const stateManager = (discovery as unknown as { stateManager: { getRepoScore: ReturnType<typeof vi.fn> } })
+      .stateManager;
+    stateManager.getRepoScore = vi.fn().mockReturnValue({ mergedPRCount: 3, closedWithoutMergeCount: 0, score: 8 });
+
+    // GitHub API returns 5, but local state (3) should take precedence
+    mockOctokitInstance.search.issuesAndPullRequests.mockImplementation((params: { q?: string }) => {
+      if (params?.q?.includes('is:merged author:@me')) {
+        return Promise.resolve({ data: { total_count: 5, items: [] } });
+      }
+      return Promise.resolve({ data: { total_count: 0, items: [] } });
+    });
+
+    const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
+    expect(candidate.reasonsToApprove).toContainEqual('Trusted project (3 PRs merged)');
+  });
+
+  it('should handle GitHub API errors gracefully and return 0 merged count', async () => {
+    // Make all search calls fail
+    mockOctokitInstance.search.issuesAndPullRequests.mockRejectedValue(new Error('API rate limit'));
+
+    const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
+    // Should not include "Trusted project" since both API and local state have 0
+    expect(candidate.reasonsToApprove).not.toContainEqual(expect.stringContaining('Trusted project'));
+    // Recommendation downgraded because checkNoExistingPR is also inconclusive
+    expect(candidate.recommendation).toBe('needs_review');
+  });
+
+  it('should give viability score bonus for prior contributions from API', async () => {
+    // Mock with 2 merged PRs from API
+    mockOctokitInstance.search.issuesAndPullRequests.mockImplementation((params: { q?: string }) => {
+      if (params?.q?.includes('is:merged author:@me')) {
+        return Promise.resolve({ data: { total_count: 2, items: [] } });
+      }
+      return Promise.resolve({ data: { total_count: 0, items: [] } });
+    });
+
+    const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
+    // Viability score should include the +15 merged PR bonus
+    expect(candidate.viabilityScore).toBeGreaterThanOrEqual(65); // 50 base + 15 merged
+  });
+});
+
 describe('isLabelFarming', () => {
   const makeItem = (labels: string[]) => ({
     html_url: 'https://github.com/spam/repo/issues/1',

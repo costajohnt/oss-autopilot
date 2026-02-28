@@ -891,12 +891,14 @@ export class IssueDiscovery {
     });
 
     // Run all vetting checks in parallel
-    const [existingPRCheck, claimCheck, projectHealth, contributionGuidelines] = await Promise.all([
-      this.checkNoExistingPR(owner, repo, number),
-      this.checkNotClaimed(owner, repo, number, ghIssue.comments),
-      this.checkProjectHealth(owner, repo),
-      this.fetchContributionGuidelines(owner, repo),
-    ]);
+    const [existingPRCheck, claimCheck, projectHealth, contributionGuidelines, userMergedPRCount] =
+      await Promise.all([
+        this.checkNoExistingPR(owner, repo, number),
+        this.checkNotClaimed(owner, repo, number, ghIssue.comments),
+        this.checkProjectHealth(owner, repo),
+        this.fetchContributionGuidelines(owner, repo),
+        this.checkUserMergedPRsInRepo(owner, repo),
+      ]);
 
     const noExistingPR = existingPRCheck.passed;
     const notClaimed = claimCheck.passed;
@@ -968,24 +970,31 @@ export class IssueDiscovery {
     if (clearRequirements) reasonsToApprove.push('Clear requirements');
     if (contributionGuidelines) reasonsToApprove.push('Has contribution guidelines');
 
-    // Check if it's a trusted project (via repoScores or legacy trustedProjects list)
+    // Determine effective merged PR count: prefer local state (authoritative if present),
+    // fall back to live GitHub API count to detect contributions made before using oss-autopilot (#373)
     const config = this.stateManager.getState().config;
     const repoScoreRecord = this.stateManager.getRepoScore(repoFullName);
-    if (repoScoreRecord && repoScoreRecord.mergedPRCount > 0) {
+    const effectiveMergedCount =
+      repoScoreRecord && repoScoreRecord.mergedPRCount > 0
+        ? repoScoreRecord.mergedPRCount
+        : userMergedPRCount;
+    if (effectiveMergedCount > 0) {
       reasonsToApprove.push(
-        `Trusted project (${repoScoreRecord.mergedPRCount} PR${repoScoreRecord.mergedPRCount > 1 ? 's' : ''} merged)`,
+        `Trusted project (${effectiveMergedCount} PR${effectiveMergedCount > 1 ? 's' : ''} merged)`,
       );
     } else if (config.trustedProjects.includes(repoFullName)) {
       reasonsToApprove.push('Trusted project (previous PR merged)');
     }
 
     // Check for closed/rejected PR history in this repo
+    // Use effectiveMergedCount to avoid contradictory signals when API data
+    // shows merges that local state doesn't know about (#373)
     if (repoScoreRecord) {
-      if (repoScoreRecord.closedWithoutMergeCount > 0 && repoScoreRecord.mergedPRCount === 0) {
+      if (repoScoreRecord.closedWithoutMergeCount > 0 && effectiveMergedCount === 0) {
         reasonsToSkip.push('User has rejected PR(s) in this repo with no successful merges');
-      } else if (repoScoreRecord.closedWithoutMergeCount > 0 && repoScoreRecord.mergedPRCount > 0) {
+      } else if (repoScoreRecord.closedWithoutMergeCount > 0 && effectiveMergedCount > 0) {
         vettingResult.notes.push(
-          `Mixed history: ${repoScoreRecord.mergedPRCount} merged, ${repoScoreRecord.closedWithoutMergeCount} closed without merge`,
+          `Mixed history: ${effectiveMergedCount} merged, ${repoScoreRecord.closedWithoutMergeCount} closed without merge`,
         );
       }
     }
@@ -1028,7 +1037,6 @@ export class IssueDiscovery {
       vettingResult.notes.push('Repo quality bonus unavailable: could not fetch star/fork counts due to API error');
     }
 
-    // Calculate viability score
     const viabilityScore = this.calculateViabilityScore({
       repoScore: this.getRepoScore(repoFullName),
       hasExistingPR: !noExistingPR,
@@ -1037,15 +1045,14 @@ export class IssueDiscovery {
       hasContributionGuidelines: !!contributionGuidelines,
       issueUpdatedAt: ghIssue.updated_at,
       closedWithoutMergeCount: repoScoreRecord?.closedWithoutMergeCount ?? 0,
-      mergedPRCount: repoScoreRecord?.mergedPRCount ?? 0,
+      mergedPRCount: effectiveMergedCount,
       orgHasMergedPRs,
       repoQualityBonus,
     });
 
-    // Determine search priority
     const starredRepos = this.stateManager.getStarredRepos();
     let searchPriority: SearchPriority = 'normal';
-    if (repoScoreRecord && repoScoreRecord.mergedPRCount > 0) {
+    if (effectiveMergedCount > 0) {
       searchPriority = 'merged_pr';
     } else if (starredRepos.includes(repoFullName)) {
       searchPriority = 'starred';
@@ -1095,6 +1102,25 @@ export class IssueDiscovery {
         `Failed to check for existing PRs on ${owner}/${repo}#${issueNumber}: ${errorMessage}. Assuming no existing PR.`,
       );
       return { passed: true, inconclusive: true, reason: errorMessage };
+    }
+  }
+
+  /**
+   * Check how many merged PRs the authenticated user has in a repo.
+   * Uses GitHub Search API. Returns 0 on error (non-fatal).
+   */
+  private async checkUserMergedPRsInRepo(owner: string, repo: string): Promise<number> {
+    try {
+      // Use @me to search as the authenticated user
+      const { data } = await this.octokit.search.issuesAndPullRequests({
+        q: `repo:${owner}/${repo} is:pr is:merged author:@me`,
+        per_page: 1, // We only need total_count
+      });
+      return data.total_count;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      warn(MODULE, `Could not check merged PRs in ${owner}/${repo}: ${errorMessage}. Defaulting to 0.`);
+      return 0;
     }
   }
 
