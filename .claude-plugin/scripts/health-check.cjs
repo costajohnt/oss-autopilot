@@ -1,18 +1,44 @@
-// Quick PR health check — reads cached state, outputs a one-liner summary.
-// Called by SessionStart hook. Exits silently only when no PRs are tracked.
+/**
+ * Quick PR health check — reads cached state, outputs a one-liner summary.
+ *
+ * Trigger: Called by the SessionStart hook (hooks/session-start.sh, step 3).
+ * The hook captures stdout and includes it in the session's additionalContext.
+ *
+ * Behavior:
+ * - Reads ~/.oss-autopilot/state.json (cached from last /oss run)
+ * - If showHealthCheck is false in config, exits silently
+ * - If no state exists, shows a first-run hint to run /oss
+ * - If last digest is >7 days old, nudges the user to catch up
+ * - Otherwise, outputs a compact one-liner: "OSS: 15 active PRs — 1 need response, 5 awaiting re-review (2h ago)"
+ *
+ * Configuration: Set showHealthCheck to false to disable:
+ *   node dist/cli.bundle.cjs setup --set showHealthCheck=false
+ *
+ * Error handling: Errors are logged to stderr (visible in debug) but never
+ * disrupt session start — the hook always exits cleanly.
+ */
 try {
-  const s = require('fs').readFileSync(
-    require('path').join(require('os').homedir(), '.oss-autopilot', 'state.json'),
-    'utf8'
-  );
+  const statePath = require('path').join(require('os').homedir(), '.oss-autopilot', 'state.json');
+  let s;
+  try {
+    s = require('fs').readFileSync(statePath, 'utf8');
+  } catch (readErr) {
+    // State file doesn't exist — user hasn't run /oss yet
+    console.log('OSS: No PR data yet. Run /oss to get started.');
+    process.exit(0);
+  }
   const state = JSON.parse(s);
   if (state.config && state.config.showHealthCheck === false) process.exit(0);
   const lastRun = state.lastDigestAt || state.lastRunAt;
-  if (!lastRun || !state.lastDigest) process.exit(0);
+  if (!lastRun || !state.lastDigest) {
+    console.log('OSS: No PR data yet. Run /oss to get started.');
+    process.exit(0);
+  }
   const ageMs = Date.now() - new Date(lastRun).getTime();
   const ageDays = Math.floor(ageMs / 86400000);
   const ageHours = Math.floor(ageMs / 3600000);
-  const ageLabel = ageDays >= 1 ? ageDays + 'd ago' : ageHours + 'h ago';
+  const ageMinutes = Math.floor(ageMs / 60000);
+  const ageLabel = ageDays >= 1 ? ageDays + 'd ago' : ageHours >= 1 ? ageHours + 'h ago' : ageMinutes + 'm ago';
   if (ageDays > 7) {
     console.log("OSS: Haven't checked your PRs in " + ageDays + ' days. Run /oss to catch up.');
   } else {
@@ -42,5 +68,6 @@ try {
     }
   }
 } catch (e) {
-  // Silent — don't disrupt session start
+  // Log to stderr for debugging, but don't disrupt session start
+  process.stderr.write('oss-autopilot health-check: ' + (e.message || e) + '\n');
 }
