@@ -74,7 +74,7 @@ A Commander program that registers subcommands via lazy `import()` calls. Each s
 Key design:
 - **Lazy loading** — only the invoked command's module is evaluated.
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`LOCAL_ONLY_COMMANDS`** — 22 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
+- **`LOCAL_ONLY_COMMANDS`** — 19 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 
@@ -107,13 +107,12 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `dashboard` | `dashboard.ts` | Generate HTML dashboard (with `dashboard-data.ts` and `dashboard-templates.ts`) |
 | `shelve` / `unshelve` | `shelve.ts` | Temporarily hide PRs from daily digest |
 | `snooze` / `unsnooze` | `snooze.ts` | Temporarily suppress PR notifications |
-| `dismiss` / `undismiss` | `dismiss.ts` | Permanently exclude PRs |
+| `dismiss` / `undismiss` | `dismiss.ts` | Dismiss issue reply notifications (auto-resurfaces on new activity) |
 | `comments` / `post` / `claim` | `comments.ts` | Track issue conversations, post comments, claim issues |
 | `local-repos` | `local-repos.ts` | Scan for locally cloned repos |
 | `parse-list` | `parse-list.ts` | Parse a curated issue list file |
 | `check-integration` | `check-integration.ts` | Check if new files are referenced |
-| `read` | `read.ts` | Read file contents (for agent use) |
-| `validation` | `validation.ts` | Validate state and config integrity |
+| `read` | `read.ts` | Mark PR comments as read |
 
 ### Build
 
@@ -211,8 +210,9 @@ CLI Layer (startup.ts)
   │  Core Layer
   │  ├── PRMonitor.fetchUserOpenPRs()     → GitHub Search API + per-PR enrichment
   │  ├── StateManager.load()              → ~/.oss-autopilot/state.json
-  │  ├── computeActionMenu()              → Pre-computed menu items (daily-logic.ts)
-  │  └── generateDashboardHtml()          → ~/.oss-autopilot/dashboard.html
+  │  └── computeActionMenu()              → Pre-computed menu items (daily-logic.ts)
+  │
+  │  generateDashboardHtml()              → ~/.oss-autopilot/dashboard.html
   │
   │  Returns JsonOutput<StartupOutput> to stdout
   │
@@ -240,7 +240,7 @@ The root `AgentState` interface (see `src/core/types.ts` for the canonical defin
 
 ```typescript
 interface AgentState {
-  version: 2;
+  version: number;                   // Currently 2 (v2 fresh-fetch architecture)
   repoScores: Record<string, RepoScore>;
   config: AgentConfig;              // User preferences + shelved/snoozed/dismissed state
   events: StateEvent[];             // Audit log (max 1000 entries)
