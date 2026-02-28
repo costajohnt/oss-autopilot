@@ -281,6 +281,12 @@ Options:
 
 **Skip this step if** the PR's status (from Phase A or Execute section context) was NOT `needs_response` or `needs_changes` — i.e., no maintainer feedback was being addressed. Maintenance-only actions (rebase, CI fix where status was `ci_failing`) do not need a response comment.
 
+**SAFETY: Posting a public PR comment is an irreversible action visible to maintainers.** The following safeguards MUST be applied:
+
+- **Default to NOT posting** if the user's choice from AskUserQuestion is ambiguous (e.g., generic "User has answered your questions" response without a clear option selection). When in doubt, skip posting and inform the user.
+- **Respect user-level CLAUDE.md overrides.** If the user's CLAUDE.md contains instructions like "never post PR comments" or "don't post comments on behalf of the user," those override this workflow's default posting behavior. Skip this step entirely and note: "Skipping comment posting per your CLAUDE.md instructions."
+- **Never post without explicit, unambiguous user approval.**
+
 **If the push was in response to maintainer feedback:**
 
 1. Draft a brief response comment:
@@ -296,15 +302,16 @@ Options:
    Header: "PR Comment"
 
    Options:
-   1. "Post this response (Recommended)" — "Post the comment as drafted"
+   1. "Post this response" — "Post the comment as drafted"
    2. "Edit before posting" — "Modify the draft first"
-   3. "Skip — don't post a comment" — "Push is enough, no comment needed"
+   3. "Skip — don't post a comment (Recommended)" — "Push is enough, no comment needed"
    ```
 
 4. Handle choice:
-   - **"Post this response":** Write comment to `/tmp/pr-comment-{pr_number}.md` and post via `gh pr comment {pr_number} --repo {upstream_repo} --body-file /tmp/pr-comment-{pr_number}.md` (avoids shell escaping issues with inline `--body`). Verify exit code 0, then delete the temp file.
-   - **"Edit before posting":** Let the user modify the draft, re-present for approval, then post using the same method.
-   - **"Skip":** No comment posted.
+   - **"Post this response":** Confirm the user explicitly selected this option (the AskUserQuestion response must contain the exact label text or an unambiguous reference to option 1). Write comment to `/tmp/pr-comment-{pr_number}.md` and post via `gh pr comment {pr_number} --repo {upstream_repo} --body-file /tmp/pr-comment-{pr_number}.md` (avoids shell escaping issues with inline `--body`). Verify exit code 0, then delete the temp file.
+   - **"Edit before posting":** Let the user modify the draft, re-present for approval with the same AskUserQuestion, then post using the same method. The user must explicitly approve the edited version before posting.
+   - **"Skip":** No comment posted. This is the safe default.
+   - **Ambiguous or unclear response:** Treat as "Skip". Report: "Could not determine your choice — defaulting to skip (no comment posted). You can post manually via `gh pr comment`."
 
 5. **If `gh pr comment` fails (for either "Post" or "Edit" path):** Report the error, display the drafted comment so the user can copy it, and offer: "Retry" / "Copy and post manually" / "Skip". Do NOT silently proceed without the comment.
 
