@@ -636,3 +636,18 @@ export const INITIAL_STATE: AgentState = {
   events: [],
   lastRunAt: new Date().toISOString(),
 };
+
+// -- Issue discovery types (shared across issue-discovery, issue-vetting, issue-scoring) --
+
+export type SearchPriority = 'merged_pr' | 'starred' | 'normal';
+
+export interface IssueCandidate {
+  issue: TrackedIssue;
+  vettingResult: IssueVettingResult;
+  projectHealth: ProjectHealth;
+  recommendation: 'approve' | 'skip' | 'needs_review';
+  reasonsToSkip: string[];
+  reasonsToApprove: string[];
+  viabilityScore: number; // 0-100 scale
+  searchPriority: SearchPriority; // Priority level for sorting
+}
