@@ -267,7 +267,47 @@ Options:
   ```
 
 **"Commit and push anyway" / "Commit and push (Recommended)":**
-- **If `changeSource = "uncommitted"`:** Stage the specific changed files (not `git add -A`), then commit following the repo's conventional commit format
+
+**6a. Run project linter/formatter (uncommitted changes only):**
+
+**If `changeSource = "committed"`:** Skip this sub-step — changes are already committed and cannot be reformatted without amending. Proceed directly to push.
+
+**If `changeSource = "uncommitted"`:** Before staging, run the project's linter/formatter to catch formatting issues that would fail CI.
+
+1. **Detect tooling** from lint/format configs gathered in sub-step 2 (or discover now if not already loaded). Check in order — **use the first match**:
+   - `package.json` scripts: look for `lint`, `lint:fix`, `format`, or `fmt` scripts. Also check for known tools in `devDependencies` (`prettier`, `eslint`, `biome`, `xo`, `standard`)
+   - `biome.json` / `biome.jsonc` → `npx biome check --write {changed files}`
+   - `.prettierrc*` or `prettier` in devDependencies → `npx prettier --write {changed files}`
+   - `.eslintrc*` or `eslint.config.*` → `npx eslint --fix {changed files}`
+   - `Makefile` with `fmt` or `format` target → `make fmt` or `make format`
+   - `Cargo.toml` → `cargo fmt`
+   - `pyproject.toml` with `[tool.ruff]` or `[tool.black]` → `ruff format {changed files}` or `black {changed files}`
+   - `go.mod` → `gofmt -w {changed files}`
+
+   **If a `package.json` script like `lint:fix` or `format` exists**, prefer running it (e.g., `npm run lint:fix` or `npm run format`) since it's the project's canonical command. Only fall back to running tools directly (e.g., `npx prettier --write`) if no suitable script exists.
+
+2. **If no tooling detected:** Skip this sub-step. Report: "No linter/formatter detected — skipping auto-format." Proceed to staging.
+
+3. **Run the formatter** on the changed files only (not the entire repo). Use a 60-second timeout. Report what command is being run:
+   > "Running `{command}` on changed files..."
+
+4. **Handle results:**
+   - **If the command succeeds (exit 0):** Check `git status --porcelain` for additional changes. If the formatter modified files, report: "Formatter applied changes to {N} file(s). These will be included in the commit." The formatting changes will be staged along with the original changes in the next step.
+   - **If the command fails (non-zero exit):** Report the error output to the user. Do NOT block the commit — formatting failures should not prevent pushing. Warn: "Linter/formatter exited with error. Review the output above. You can still commit and push, or fix the issues first." Use AskUserQuestion:
+     ```
+     Question: "Linter reported issues. How to proceed?"
+     Header: "Lint"
+
+     Options:
+     1. "Commit anyway (Recommended)" — "Push as-is; fix lint issues in a follow-up if needed"
+     2. "Fix first" — "Address lint issues before committing"
+     3. "Done for now" — "Cancel"
+     ```
+   - **If the command times out (>60s):** Kill the process, warn: "Linter/formatter timed out after 60s — skipping." Proceed to staging.
+
+**6b. Stage, commit, and push:**
+
+- **If `changeSource = "uncommitted"`:** Stage the specific changed files (not `git add -A`) — including any files modified by the formatter in 6a — then commit following the repo's conventional commit format
 - **If `changeSource = "committed"`:** Changes are already committed — skip staging and committing, proceed directly to push
 - **Do NOT add AI attribution** (no Co-Authored-By, no "Generated with" mentions)
 - Push to the PR branch
