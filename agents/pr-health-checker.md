@@ -368,3 +368,14 @@ For missing changesets:
 - For complex issues, suggest asking the maintainer for guidance
 - **Rebase is safe to execute directly** — it replays existing commits, doesn't change code
 - **Always use --force-with-lease** (not --force) for safety. Before pushing, set upstream tracking (`git branch --set-upstream-to=origin/BRANCH BRANCH`) and fetch the remote ref (`git fetch origin BRANCH`) so the lease ref is current. **NEVER fall back to --force** if --force-with-lease fails — report the error instead
+
+---
+
+**Pre-Push Review Checkpoint:**
+
+Before any push (including force-push after rebase), if the changes include code modifications:
+1. Run the project's code review tooling on the diff
+2. Fix any issues found
+3. Only push after the review is clean
+
+This applies to all pushes — whether regular commits, post-rebase force-pushes, or CI fix commits. Pushing unreviewed code to a PR means the maintainer might see issues that could have been caught locally.
