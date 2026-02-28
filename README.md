@@ -342,10 +342,10 @@ The CLI supports `--json` on every command for structured output:
 /oss
 
 # Run CLI directly (scripting / debugging)
-GITHUB_TOKEN=$(gh auth token) node dist/cli.bundle.cjs daily --json
-GITHUB_TOKEN=$(gh auth token) node dist/cli.bundle.cjs search 10 --json
-node dist/cli.bundle.cjs status --json
-node dist/cli.bundle.cjs dashboard
+GITHUB_TOKEN=$(gh auth token) node packages/core/dist/cli.bundle.cjs daily --json
+GITHUB_TOKEN=$(gh auth token) node packages/core/dist/cli.bundle.cjs search 10 --json
+node packages/core/dist/cli.bundle.cjs status --json
+node packages/core/dist/cli.bundle.cjs dashboard
 ```
 
 All commands return `{ success, data, error, timestamp }`, useful for building your own tooling on top.
@@ -357,9 +357,9 @@ All commands return `{ success, data, error, timestamp }`, useful for building y
 ```bash
 git clone https://github.com/costajohnt/oss-autopilot.git
 cd oss-autopilot
-npm install
-npm test                    # Run all tests (vitest)
-npm start -- daily --json   # Run CLI via tsx (no bundle needed)
+pnpm install
+pnpm test                    # Run all tests (vitest)
+pnpm start -- daily --json   # Run CLI via tsx (no bundle needed)
 ```
 
 Test as a local plugin:
@@ -406,7 +406,7 @@ The CLI bundles automatically on first use. If it fails:
 find ~/.claude/plugins -name "oss-autopilot" -type d
 
 # Rebuild
-cd <path-from-find-command>
+cd <path-from-find-command>/packages/core
 npm install
 npm run bundle
 ```
@@ -440,7 +440,7 @@ Config in `.claude/oss-autopilot/config.md`. State and dashboard in `~/.oss-auto
 Yes, as long as your GitHub CLI (`gh`) has access.
 
 **Can I use this without Claude Code?**
-The CLI can run standalone (`node dist/cli.bundle.cjs daily --json`), but it's designed for the Claude Code plugin experience.
+The CLI can run standalone (`node packages/core/dist/cli.bundle.cjs daily --json`), but it's designed for the Claude Code plugin experience.
 
 **GitLab / Gitea / Bitbucket support?**
 Not yet — see [Limitations](#limitations) below.

@@ -50,7 +50,7 @@ The oss-autopilot CLI provides structured JSON output for PR data.
 
 **CLI Command Pattern:**
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" <command> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" <command> --json
 ```
 
 **Available Commands for Compliance Checking:**
@@ -63,12 +63,12 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" <
 
 **Get PR Data via CLI:**
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" status --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" status --json
 ```
 
 For a specific PR not yet tracked:
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" track https://github.com/owner/repo/pull/123 --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" track https://github.com/owner/repo/pull/123 --json
 ```
 
 **Fallback - gh CLI:**

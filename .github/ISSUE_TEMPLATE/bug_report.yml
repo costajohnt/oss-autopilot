@@ -43,7 +43,7 @@ body:
     id: cli-version
     attributes:
       label: CLI Version
-      description: "Run: node dist/cli.bundle.cjs --version (or check package.json)"
+      description: "Run: node packages/core/dist/cli.bundle.cjs --version (or check packages/core/package.json)"
       placeholder: "0.x.x"
     validations:
       required: true

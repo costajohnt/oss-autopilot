@@ -39,7 +39,7 @@ The CLI auto-builds on first run (requires Node.js 20+ and npm).
 
 ## For Developers: Project Overview
 
-oss-autopilot is a **Claude Code plugin with a TypeScript CLI backend** for managing open source contributions.
+oss-autopilot is a **Claude Code plugin with a TypeScript CLI backend** for managing open source contributions. The repo is structured as a **pnpm monorepo**.
 
 ### Architecture
 
@@ -47,9 +47,9 @@ The system has three layers:
 
 1. **Plugin Layer** (`commands/`, `agents/`, `skills/`) — Markdown-based Claude Code plugin components. Commands like `/oss` orchestrate the workflow. Agents handle specific tasks (PR response, CI diagnosis, issue scouting). Skills contain contribution best practices.
 
-2. **TypeScript CLI** (`src/cli.ts` → `dist/cli.bundle.cjs`) — Commander-based CLI that the plugin invokes with `--json` for structured output. Entry point is `src/cli.ts`, which registers subcommands from `src/commands/`. The CLI is bundled into a single CJS file via esbuild for portability.
+2. **TypeScript CLI** (`packages/core/src/cli.ts` → `packages/core/dist/cli.bundle.cjs`) — Commander-based CLI that the plugin invokes with `--json` for structured output. Entry point is `packages/core/src/cli.ts`, which registers subcommands from `packages/core/src/commands/`. The CLI is bundled into a single CJS file via esbuild for portability.
 
-3. **Core Logic** (`src/core/`) — The domain layer. Key modules:
+3. **Core Logic** (`packages/core/src/core/`) — The domain layer. Key modules:
    - `types.ts` — All type definitions. Key PR type: `FetchedPR` (ephemeral, fetched fresh each run in v2). `TrackedPR` was removed in v2.
    - `state.ts` — `StateManager` singleton. Reads/writes `~/.oss-autopilot/state.json`. Handles v1→v2 migration and auto-backups
    - `pr-monitor.ts` — `PRMonitor` class. Fetches open PRs from GitHub Search API, enriches each with CI status, review decision, merge conflicts, maintainer comments, and computes `FetchedPRStatus`
@@ -60,48 +60,63 @@ The system has three layers:
 ### Key Design Decisions
 
 - **v2 "Fresh Fetch" architecture**: PRs are NOT stored in local state. On each `daily` run, all open PRs are fetched from GitHub's Search API. The `TrackedPR` type and legacy PR arrays have been fully removed as of this PR.
-- **`--json` contract**: Every CLI command supports `--json`, outputting `{ success: boolean, data?: T, error?: string, timestamp: string }` (see `src/formatters/json.ts`). The plugin layer parses this structured output.
+- **`--json` contract**: Every CLI command supports `--json`, outputting `{ success: boolean, data?: T, error?: string, timestamp: string }` (see `packages/core/src/formatters/json.ts`). The plugin layer parses this structured output.
 - **State lives in `~/.oss-autopilot/`**, not in the repo. This separates user data from plugin code.
 - **GitHub auth**: The CLI checks for a token via `gh auth token` (preferred) or `$GITHUB_TOKEN` env var. Commands that don't need GitHub access are listed in `LOCAL_ONLY_COMMANDS` in `cli.ts`.
+- **pnpm monorepo**: Development uses pnpm workspaces. Plugin auto-build scopes `npm install` to `packages/core/` (end users don't need pnpm).
 
 ### File Structure
 
 ```
-Plugin directory:
-├── commands/oss.md, setup-oss.md    # Plugin slash commands (markdown with YAML frontmatter)
-├── agents/*.md                       # 7 specialized agents (pr-responder, issue-scout, etc.)
-├── skills/oss-contribution/SKILL.md  # Contribution best practices skill
-├── .claude-plugin/plugin.json        # Plugin manifest (version must match package.json)
-├── .claude-plugin/marketplace.json   # Marketplace catalog (required for /plugin marketplace add)
-├── src/                              # TypeScript source
-│   ├── cli.ts                        # CLI entry point (commander setup)
-│   ├── commands/                     # CLI subcommands (daily, search, track, etc.)
-│   ├── core/                         # Domain logic + tests
-│   └── formatters/json.ts            # JSON output formatter
-└── dist/cli.bundle.cjs               # Built bundle (gitignored, auto-generated)
+Repo root (also the Claude Code plugin directory):
+├── commands/oss.md, setup-oss.md       # Plugin slash commands
+├── agents/*.md                          # 7 specialized agents
+├── skills/oss-contribution/SKILL.md     # Contribution best practices skill
+├── hooks/session-start.sh               # Plugin session start hook
+├── workflows/*.md                       # Workflow orchestration files
+├── .claude-plugin/plugin.json           # Plugin manifest
+├── .claude-plugin/marketplace.json      # Marketplace catalog
+├── packages/
+│   ├── core/                            # @oss-autopilot/core (npm package)
+│   │   ├── src/
+│   │   │   ├── cli.ts                   # CLI entry point (commander setup)
+│   │   │   ├── commands/                # CLI subcommands (daily, search, track, etc.)
+│   │   │   ├── core/                    # Domain logic + tests
+│   │   │   └── formatters/json.ts       # JSON output formatter
+│   │   ├── dist/cli.bundle.cjs          # Built bundle (gitignored, auto-generated)
+│   │   ├── package.json                 # Published to npm, has bin + exports
+│   │   └── tsconfig.json
+│   └── dashboard/                       # @oss-autopilot/dashboard (placeholder)
+│       └── package.json
+├── pnpm-workspace.yaml                  # Workspace definition
+├── package.json                         # Workspace root (private, not published)
+└── CLAUDE.md
 
-~/.oss-autopilot/                     # User data (separate from plugin code)
-├── state.json                        # PR tracking state (AgentState)
-├── backups/                          # Auto-backups of state before writes
-└── dashboard.html                    # Generated HTML dashboard
+~/.oss-autopilot/                        # User data (separate from plugin code)
+├── state.json                           # PR tracking state (AgentState)
+├── backups/                             # Auto-backups of state before writes
+└── dashboard.html                       # Generated HTML dashboard
 ```
 
 ## Development Commands
 
+This project uses **pnpm** for development. Root scripts delegate to `packages/core`.
+
 ```bash
-npm install             # Install dependencies
-npm test                # Run all tests (vitest run)
-npm run test:watch      # Run tests in watch mode (vitest)
-npm run bundle          # Rebuild CLI bundle (esbuild → dist/cli.bundle.cjs)
-npm start -- daily      # Run CLI via tsx (dev mode, no bundle needed)
-npm start -- daily --json  # Test JSON output format
+pnpm install              # Install all workspace dependencies
+pnpm test                 # Run all tests (vitest run)
+pnpm run test:watch       # Run tests in watch mode (vitest)
+pnpm run bundle           # Rebuild CLI bundle (esbuild → packages/core/dist/cli.bundle.cjs)
+pnpm start -- daily       # Run CLI via tsx (dev mode, no bundle needed)
+pnpm start -- daily --json  # Test JSON output format
 ```
 
 ### Running a single test
 
-Tests use vitest and are co-located with source (`src/core/*.test.ts`). No separate vitest config file — configuration is inferred from package.json.
+Tests use vitest and are co-located with source (`packages/core/src/core/*.test.ts`). No separate vitest config file — configuration is inferred from package.json.
 
 ```bash
+cd packages/core
 npx vitest run src/core/state.test.ts           # Run one test file
 npx vitest run -t "should track a new PR"       # Run by test name
 npx vitest src/core/state.test.ts               # Watch mode for one file
@@ -111,11 +126,11 @@ npx vitest src/core/state.test.ts               # Watch mode for one file
 
 ```bash
 # Via tsx (development — no bundle needed):
-npm start -- status --json
-npm start -- daily --json
+pnpm start -- status --json
+pnpm start -- daily --json
 
-# Via bundle (production — must run npm run bundle first):
-GITHUB_TOKEN=$(gh auth token) node dist/cli.bundle.cjs daily --json
+# Via bundle (production — must run pnpm run bundle first):
+GITHUB_TOKEN=$(gh auth token) node packages/core/dist/cli.bundle.cjs daily --json
 ```
 
 ## Git Workflow
@@ -129,7 +144,7 @@ This is mandatory. Never skip this step. Never start work on a stale branch or d
 Branch naming: `feature/description`, `fix/description`, `chore/description`.
 
 Then:
-1. Make changes and test: `npm test`
+1. Make changes and test: `pnpm test`
 2. Commit with conventional format: `feat:`, `fix:`, `refactor:`
 3. Push and open PR
 

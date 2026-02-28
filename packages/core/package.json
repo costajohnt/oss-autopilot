@@ -1,0 +1,67 @@
+{
+  "name": "@oss-autopilot/core",
+  "version": "0.40.1",
+  "description": "CLI and core library for managing open source contributions",
+  "type": "module",
+  "bin": {
+    "oss-autopilot": "./dist/cli.bundle.cjs"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/core/index.js",
+      "types": "./dist/core/index.d.ts"
+    },
+    "./types": {
+      "import": "./dist/core/types.js",
+      "types": "./dist/core/types.d.ts"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/cli.bundle.cjs",
+    "start": "tsx src/cli.ts",
+    "dev": "tsx watch src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "open-source",
+    "github",
+    "contributions",
+    "cli",
+    "pr-monitoring",
+    "issue-discovery"
+  ],
+  "author": "John Costa",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/costajohnt/oss-autopilot.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/costajohnt/oss-autopilot#readme",
+  "bugs": {
+    "url": "https://github.com/costajohnt/oss-autopilot/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@octokit/plugin-throttling": "^11.0.3",
+    "@octokit/rest": "^22.0.1",
+    "commander": "^14.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "esbuild": "^0.27.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  }
+}

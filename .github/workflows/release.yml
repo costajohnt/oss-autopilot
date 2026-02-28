@@ -33,10 +33,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           NODE_ERR=$(mktemp)
-          CURRENT=$(node -e "console.log(require('./package.json').version)" 2>"$NODE_ERR") || true
+          CURRENT=$(node -e "console.log(require('./packages/core/package.json').version)" 2>"$NODE_ERR") || true
 
           if [ -z "$CURRENT" ] || [ "$CURRENT" = "undefined" ]; then
-            echo "::error::Failed to read version from package.json (got: '$CURRENT'). $(cat "$NODE_ERR")"
+            echo "::error::Failed to read version from packages/core/package.json (got: '$CURRENT'). $(cat "$NODE_ERR")"
             exit 1
           fi
           if ! echo "$CURRENT" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then

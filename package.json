@@ -1,24 +1,20 @@
 {
   "name": "oss-autopilot",
-  "version": "0.40.1",
-  "description": "AI-powered autopilot for managing open source contributions with Claude Code",
-  "type": "module",
+  "description": "AI-powered autopilot for managing open source contributions",
   "private": true,
+  "type": "module",
   "scripts": {
-    "build": "tsc",
-    "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/cli.bundle.cjs",
-    "start": "tsx src/cli.ts",
-    "dev": "tsx watch src/cli.ts",
-    "daily": "tsx src/cli.ts daily",
-    "search": "tsx src/cli.ts search",
-    "status": "tsx src/cli.ts status",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write src/",
-    "format:check": "prettier --check src/",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "test:watch": "vitest",
+    "build": "pnpm --filter @oss-autopilot/core run build",
+    "bundle": "pnpm --filter @oss-autopilot/core run bundle",
+    "start": "pnpm --filter @oss-autopilot/core run start",
+    "test": "pnpm --filter @oss-autopilot/core run test",
+    "test:watch": "pnpm --filter @oss-autopilot/core run test:watch",
+    "test:coverage": "pnpm --filter @oss-autopilot/core run test:coverage",
+    "typecheck": "pnpm --filter @oss-autopilot/core run typecheck",
+    "lint": "eslint packages/",
+    "lint:fix": "eslint packages/ --fix",
+    "format": "prettier --write packages/",
+    "format:check": "prettier --check packages/",
     "prepare": "[ -n \"$CI\" ] || simple-git-hooks"
   },
   "simple-git-hooks": {
@@ -42,26 +38,16 @@
   "bugs": {
     "url": "https://github.com/costajohnt/oss-autopilot/issues"
   },
+  "packageManager": "pnpm@10.27.0",
   "engines": {
     "node": ">=20.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^25.3.0",
-    "@vitest/coverage-v8": "^4.0.18",
-    "esbuild": "^0.27.3",
     "eslint": "^10.0.2",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
     "simple-git-hooks": "^2.13.1",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.56.1",
-    "vitest": "^4.0.16"
-  },
-  "dependencies": {
-    "@octokit/plugin-throttling": "^11.0.3",
-    "@octokit/rest": "^22.0.1",
-    "commander": "^14.0.3"
+    "typescript-eslint": "^8.56.1"
   }
 }

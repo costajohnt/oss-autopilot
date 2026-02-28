@@ -1,6 +1,6 @@
 #!/bin/bash
 # Hook: Blocks git commits when versions are out of sync across
-# package.json and .claude-plugin/plugin.json.
+# packages/core/package.json and .claude-plugin/plugin.json.
 #
 # Registered as a PreToolUse hook on Bash commands.
 
@@ -15,14 +15,14 @@ if ! echo "$COMMAND" | grep -q "git commit"; then
 fi
 
 # Extract versions
-PKG_VERSION=$(jq -r '.version' < package.json 2>/dev/null || echo "MISSING")
+PKG_VERSION=$(jq -r '.version' < packages/core/package.json 2>/dev/null || echo "MISSING")
 PLUGIN_VERSION=$(jq -r '.version' < .claude-plugin/plugin.json 2>/dev/null || echo "MISSING")
 
 # Check if versions match
 if [ "$PKG_VERSION" != "$PLUGIN_VERSION" ]; then
   cat >&2 <<EOF
 Version mismatch detected! Both must match before committing.
-  package.json:                $PKG_VERSION
+  packages/core/package.json:  $PKG_VERSION
   .claude-plugin/plugin.json:  $PLUGIN_VERSION
 EOF
   exit 2

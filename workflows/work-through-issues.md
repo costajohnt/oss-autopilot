@@ -258,7 +258,7 @@ Use AskUserQuestion with multiSelect:
 
 If the user selects repos to exclude, update config:
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" config --exclude-repo {repo} --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --exclude-repo {repo} --json
 ```
 
 Or update the config file directly to add repos to `excludeRepos`.

@@ -10,10 +10,10 @@ OSS Autopilot is a Claude Code plugin with a TypeScript CLI backend for managing
 │  commands/*.md  agents/*.md  skills/  workflows/  hooks │
 ├─────────────────────────────────────────────────────────┤
 │  CLI Layer (Node.js)                                    │
-│  src/cli.ts → commander subcommands → --json stdout     │
+│  packages/core/src/cli.ts → subcommands → --json stdout │
 ├─────────────────────────────────────────────────────────┤
 │  Core Domain Layer (TypeScript)                         │
-│  src/core/ — stateless fetchers + state management      │
+│  packages/core/src/core/ — fetchers + state management  │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -29,7 +29,7 @@ The plugin layer consists of markdown files that Claude Code discovers and execu
 | `setup-oss.md` | `/setup-oss` | First-run configuration wizard |
 | `oss-search.md` | `/oss-search` | Issue discovery with multi-strategy search |
 
-Commands invoke the CLI via bash (`node dist/cli.bundle.cjs <subcommand> --json`), parse the JSON response, and present results to the user through Claude Code's conversational interface.
+Commands invoke the CLI via bash (`node packages/core/dist/cli.bundle.cjs <subcommand> --json`), parse the JSON response, and present results to the user through Claude Code's conversational interface.
 
 ### Workflows (`workflows/`)
 
@@ -67,9 +67,9 @@ Seven specialized agents handle specific tasks autonomously:
 
 ## CLI Layer
 
-### Entry Point (`src/cli.ts`)
+### Entry Point (`packages/core/src/cli.ts`)
 
-A Commander program that registers subcommands via lazy `import()` calls. Each subcommand is a separate module in `src/commands/`. The `--json` flag on any command switches output to structured JSON.
+A Commander program that registers subcommands via lazy `import()` calls. Each subcommand is a separate module in `packages/core/src/commands/`. The `--json` flag on any command switches output to structured JSON.
 
 Key design:
 - **Lazy loading** — only the invoked command's module is evaluated.
@@ -91,7 +91,7 @@ interface JsonOutput<T> {
 
 Debug and warning output goes to stderr via the logger, so it never contaminates the JSON contract on stdout.
 
-### Subcommands (`src/commands/`)
+### Subcommands (`packages/core/src/commands/`)
 
 | Command | Module | Purpose |
 |---------|--------|---------|
@@ -117,12 +117,12 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 ### Build
 
 ```
-esbuild src/cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/cli.bundle.cjs
+esbuild src/cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/cli.bundle.cjs  # run from packages/core/
 ```
 
 The bundle is a single CommonJS file (gitignored, auto-generated). The `SessionStart` hook rebuilds it if `package.json` is newer than the bundle.
 
-## Core Domain Layer (`src/core/`)
+## Core Domain Layer (`packages/core/src/core/`)
 
 ### State Management (`state.ts`)
 
@@ -200,7 +200,7 @@ User runs /oss
        │
        ▼
 Plugin Layer (oss.md)
-  │  Runs bash: node dist/cli.bundle.cjs startup --json
+  │  Runs bash: node packages/core/dist/cli.bundle.cjs startup --json
   │
   ▼
 CLI Layer (startup.ts)
@@ -226,7 +226,7 @@ Plugin Layer (oss.md)
   │     Routes to pre-commit-review.md or draft-first-workflow.md
   │
   ├── "Search for new issues" → /oss-search command
-  │     Calls: node dist/cli.bundle.cjs search --json
+  │     Calls: node packages/core/dist/cli.bundle.cjs search --json
   │     Dispatches issue-scout agent to vet candidates
   │
   └── "Done for now" → Session End
@@ -236,7 +236,7 @@ Plugin Layer (oss.md)
 
 ### What's Stored Locally (`~/.oss-autopilot/state.json`)
 
-The root `AgentState` interface (see `src/core/types.ts` for the canonical definition):
+The root `AgentState` interface (see `packages/core/src/core/types.ts` for the canonical definition):
 
 ```typescript
 interface AgentState {
