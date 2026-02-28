@@ -17,27 +17,31 @@ git clone https://github.com/YOUR_USERNAME/oss-autopilot.git
 cd oss-autopilot
 
 # Install dependencies
-npm install
+pnpm install
 
 # Build
-npm run build
+pnpm run build
 
 # Run tests
-npm test
+pnpm test
 ```
 
 ### Project Structure
 
 ```
 oss-autopilot/
-├── src/                    # TypeScript CLI source
-│   ├── core/               # Core logic (state, PR monitoring, types)
-│   ├── commands/           # CLI commands (daily, search, track, etc.)
-│   └── formatters/         # Output formatters (JSON)
+├── packages/
+│   ├── core/               # @oss-autopilot/core (TypeScript CLI)
+│   │   ├── src/
+│   │   │   ├── core/       # Core logic (state, PR monitoring, types)
+│   │   │   ├── commands/   # CLI commands (daily, search, track, etc.)
+│   │   │   └── formatters/ # Output formatters (JSON)
+│   │   └── dist/           # Built CLI bundle (generated)
+│   └── dashboard/          # @oss-autopilot/dashboard (placeholder)
 ├── commands/               # Plugin slash commands (.md files)
 ├── agents/                 # Plugin agent definitions (.md files)
 ├── .claude-plugin/         # Plugin manifest
-└── dist/                   # Built CLI (generated)
+└── pnpm-workspace.yaml     # Workspace definition
 ```
 
 ## Making Changes
@@ -59,8 +63,8 @@ git checkout -b fix/your-bug-fix
 
 - Write code
 - Add tests if applicable
-- Run `npm test` to ensure tests pass
-- Run `npm run build` to ensure it compiles
+- Run `pnpm test` to ensure tests pass
+- Run `pnpm run build` to ensure it compiles
 - **Do NOT manually bump versions or edit CHANGELOG.md** — versioning is automated via [release-please](https://github.com/googleapis/release-please)
 
 ### 4. Commit
@@ -92,17 +96,17 @@ Then open a Pull Request on GitHub.
 
 ## Running Tests
 
-Tests use **co-location** — test files live alongside their source files as `*.test.ts` (e.g. `src/core/state.ts` → `src/core/state.test.ts`). There is no separate `tests/` directory.
+Tests use **co-location** — test files live alongside their source files as `*.test.ts` (e.g. `packages/core/src/core/state.ts` → `packages/core/src/core/state.test.ts`). There is no separate `tests/` directory.
 
 ```bash
 # Run all tests
-npm test
+pnpm test
 
 # Run tests in watch mode
-npm run test:watch
+pnpm run test:watch
 
-# Run specific test file
-npx vitest src/core/state.test.ts
+# Run specific test file (from packages/core/)
+cd packages/core && npx vitest src/core/state.test.ts
 ```
 
 ## Release Process

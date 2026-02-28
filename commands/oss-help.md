@@ -61,4 +61,4 @@ Key settings: GitHub username, max active PRs, dormant threshold, preferred lang
 
 On every session start, the plugin shows a one-liner PR status summary (e.g., "OSS: 15 active PRs — 1 need response, 5 awaiting re-review (2h ago)"). This reads cached state from your last `/oss` run — no network calls.
 
-To disable: `node dist/cli.bundle.cjs setup --set showHealthCheck=false`
+To disable: `node packages/core/dist/cli.bundle.cjs setup --set showHealthCheck=false`

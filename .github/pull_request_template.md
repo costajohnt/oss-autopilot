@@ -12,6 +12,6 @@ Closes #
 
 ## Checklist
 
-- [ ] Tests pass (`npm test`)
+- [ ] Tests pass (`pnpm test`)
 - [ ] Commits follow conventional format (`feat:`, `fix:`, `chore:`)
 - [ ] No manual version bumps or CHANGELOG edits (automated via release-please)

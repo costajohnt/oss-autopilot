@@ -18,15 +18,17 @@ if [ -d "${MARKETPLACE_DIR}/.git" ]; then
 fi
 
 # --- Step 1: Rebuild stale bundle (if needed) ---
-if [ -f "${PLUGIN_ROOT}/dist/cli.bundle.cjs" ] && [ "${PLUGIN_ROOT}/package.json" -nt "${PLUGIN_ROOT}/dist/cli.bundle.cjs" ]; then
-  if (cd "${PLUGIN_ROOT}" && npm install --silent 2>/dev/null && npm run bundle --silent 2>/dev/null); then
+if [ -f "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ] && [ "${PLUGIN_ROOT}/packages/core/package.json" -nt "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ]; then
+  if (cd "${PLUGIN_ROOT}/packages/core" && npm install --silent 2>/dev/null && npm run bundle --silent 2>/dev/null); then
     messages="CLI bundle rebuilt after plugin update."
+  else
+    messages="Warning: CLI bundle rebuild failed. Run /oss to retry, or: cd ${PLUGIN_ROOT}/packages/core && npm install && npm run bundle"
   fi
 fi
 
 # --- Step 2: Check for updates (once per day) ---
 LAST_CHECK="${HOME}/.oss-autopilot/.last-update-check"
-CURRENT=$(node -e "console.log(require('${PLUGIN_ROOT}/package.json').version)" 2>/dev/null || echo "")
+CURRENT=$(node -e "console.log(require('${PLUGIN_ROOT}/packages/core/package.json').version)" 2>/dev/null || echo "")
 
 if [ -n "$CURRENT" ]; then
   should_check=false

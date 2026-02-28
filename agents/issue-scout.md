@@ -50,7 +50,7 @@ The oss-autopilot CLI provides structured JSON output for all operations. Always
 
 **CLI Command Pattern:**
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" <command> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" <command> --json
 ```
 
 **Available Commands for Issue Scouting:**
@@ -64,7 +64,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" <
 
 **Search for Issues:**
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" search 15 --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" search 15 --json
 ```
 Returns structured data including:
 - Issue details (title, body, labels, assignees)
@@ -74,7 +74,7 @@ Returns structured data including:
 
 **Vet a Specific Issue:**
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" vet https://github.com/owner/repo/issues/123 --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" vet https://github.com/owner/repo/issues/123 --json
 ```
 Returns:
 - Claimability status (assigned, recent claims, linked PRs)
@@ -84,7 +84,7 @@ Returns:
 
 **Get Current Status:**
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" status --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" status --json
 ```
 Returns:
 - Tracked PRs with health indicators
@@ -93,7 +93,7 @@ Returns:
 
 **Claim an Issue (with user approval):**
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" claim https://github.com/owner/repo/issues/123 "Your claim message here"
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" claim https://github.com/owner/repo/issues/123 "Your claim message here"
 ```
 
 **Fallback - gh CLI:**
@@ -169,7 +169,7 @@ The `aiPolicyBlocklist` field is included in CLI search JSON output. If you disc
 1. **Use CLI Search (Primary Method)**
    The CLI handles all context loading and scoring automatically:
    ```bash
-   GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" search 15 --json
+   GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" search 15 --json
    ```
 
    The CLI automatically:
@@ -209,7 +209,7 @@ gh search issues --label "good first issue" --language typescript --state open -
 
 **Use CLI Vet Command (Primary):**
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" vet https://github.com/owner/repo/issues/123 --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" vet https://github.com/owner/repo/issues/123 --json
 ```
 
 The CLI performs comprehensive vetting including:
@@ -465,7 +465,7 @@ When user wants to claim an issue:
 3. **Post and Track**
    If approved, use the CLI claim command:
    ```bash
-   GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" claim https://github.com/owner/repo/issues/123 "Your claim message"
+   GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" claim https://github.com/owner/repo/issues/123 "Your claim message"
    ```
 
    **Fallback (if CLI claim fails — inform the user before falling back):**

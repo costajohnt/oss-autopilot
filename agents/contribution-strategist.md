@@ -58,7 +58,7 @@ You are a Contribution Strategist who helps developers maximize the impact and g
 
 Get comprehensive status via the CLI:
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" status --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" status --json
 ```
 
 This returns:

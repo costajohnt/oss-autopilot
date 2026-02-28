@@ -33,44 +33,47 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Security audit
-        run: npm audit --audit-level=high
+        run: pnpm audit --audit-level=high
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Format check
-        run: npm run format:check
+        run: pnpm run format:check
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: pnpm run typecheck
 
       - name: Run tests
-        run: npm test
+        run: pnpm run test
 
       - name: Coverage report
         if: matrix.node-version == 22
-        run: npm run test:coverage
+        run: pnpm run test:coverage
 
       - name: Build bundle
-        run: npm run bundle
+        run: pnpm run bundle
 
       - name: Verify bundle exists
         run: |
-          if [ ! -f dist/cli.bundle.cjs ]; then
-            echo "ERROR: dist/cli.bundle.cjs was not produced by the bundle step"
+          if [ ! -f packages/core/dist/cli.bundle.cjs ]; then
+            echo "ERROR: packages/core/dist/cli.bundle.cjs was not produced by the bundle step"
             exit 1
           fi
-          echo "Bundle created successfully: $(wc -c < dist/cli.bundle.cjs) bytes"
+          echo "Bundle created successfully: $(wc -c < packages/core/dist/cli.bundle.cjs) bytes"
 
   # Maintains a shields.io endpoint badge with the current passing test count.
   # Re-runs tests after CI passes on main, writes the count to .github/badges/tests.json
@@ -88,23 +91,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Run tests and update badge
         run: |
-          npx vitest run --reporter=json --outputFile=test-results.json || true
-          if [ ! -f test-results.json ]; then
+          pnpm --filter @oss-autopilot/core exec vitest run --reporter=json --outputFile=test-results.json || true
+          if [ ! -f packages/core/test-results.json ]; then
             echo "::warning::vitest did not produce test-results.json. Badge not updated."
             exit 0
           fi
-          PASSED=$(node -p "try { require('./test-results.json').numPassedTests || 0 } catch { 0 }")
+          PASSED=$(node -p "try { require('./packages/core/test-results.json').numPassedTests || 0 } catch { 0 }")
           if [ "$PASSED" -gt 0 ]; then
             mkdir -p .github/badges
             echo "{\"schemaVersion\":1,\"label\":\"tests\",\"message\":\"${PASSED} passing\",\"color\":\"success\"}" > .github/badges/tests.json
@@ -112,7 +118,7 @@ jobs:
           else
             echo "::warning::vitest ran but 0 tests passed. Badge not updated."
           fi
-          rm -f test-results.json
+          rm -f packages/core/test-results.json
 
       - name: Push badge to badges branch
         run: |

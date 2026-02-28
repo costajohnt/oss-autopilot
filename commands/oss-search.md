@@ -56,7 +56,7 @@ Task(issue-scout, "Find recently-opened issues (last 30 days) in repos where the
 ```
 Task(general-purpose, "Run the CLI search command and return the raw JSON output verbatim:
   ```bash
-  GITHUB_TOKEN=$(gh auth token) node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs\" search 10 --json
+  GITHUB_TOKEN=$(gh auth token) node \"${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs\" search 10 --json
   ```")
 ```
 

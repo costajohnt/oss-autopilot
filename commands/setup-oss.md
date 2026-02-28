@@ -15,13 +15,19 @@ Guide the user through configuring their OSS autopilot preferences.
 Build the CLI on first run (auto-installs deps):
 
 ```bash
-[ -f "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" ] || (cd "${CLAUDE_PLUGIN_ROOT}" && npm install --silent 2>&1 && npm run bundle --silent 2>&1) >/dev/null
+if [ ! -f "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ]; then
+  if ! BUILD_LOG=$(cd "${CLAUDE_PLUGIN_ROOT}/packages/core" && npm install --silent 2>&1 && npm run bundle --silent 2>&1); then
+    echo "BUILD_FAILED"; echo "$BUILD_LOG" | tail -5; exit 1
+  fi
+fi
 ```
+
+**If output starts with `BUILD_FAILED`**: Tell the user the CLI build failed and show the error lines. Suggest: `cd ${CLAUDE_PLUGIN_ROOT}/packages/core && npm install && npm run bundle`. Common causes: missing Node.js 20+, stale `node_modules`.
 
 Then check if it's working:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" checkSetup --json 2>/dev/null
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" checkSetup --json 2>/dev/null
 ```
 
 **If CLI returns valid JSON:**
@@ -39,7 +45,7 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" checkSetup --json 2>/dev/null
 Run the setup command to see current configuration:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --json 2>/dev/null
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --json 2>/dev/null
 ```
 
 If `setupComplete: true`, ask:
@@ -61,7 +67,7 @@ Confirm with user:
 
 If confirmed, set it:
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set username=USERNAME --json
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set username=USERNAME --json
 ```
 
 ## Step 3-CLI: Gather Preferences
@@ -73,7 +79,7 @@ Use AskUserQuestion to collect preferences, then set each via CLI:
 - Options: "5 (light)", "10 (moderate)", "15 (active)", "20 (heavy)"
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set maxActivePRs=NUMBER --json
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set maxActivePRs=NUMBER --json
 ```
 
 **Question 2: Dormant Threshold**
@@ -81,7 +87,7 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set maxActivePRs=NUMBER
 - Options: "14 days", "21 days", "30 days (default)", "45 days"
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set dormantDays=NUMBER --json
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set dormantDays=NUMBER --json
 ```
 
 **Question 3: Warning Threshold**
@@ -89,7 +95,7 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set dormantDays=NUMBER 
 - Options: "5 days before", "7 days before", "10 days before"
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set approachingDays=NUMBER --json
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set approachingDays=NUMBER --json
 ```
 
 **Question 4: Languages** (multi-select)
@@ -97,7 +103,7 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set approachingDays=NUM
 - Options: "TypeScript", "JavaScript", "Python", "Go", "Rust"
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set languages=typescript,javascript,python --json
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set languages=typescript,javascript,python --json
 ```
 
 **Question 5: Issue Labels** (multi-select)
@@ -105,7 +111,7 @@ node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set languages=typescrip
 - Options: "good first issue", "help wanted", "bug", "enhancement", "documentation"
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set labels="good first issue,help wanted" --json
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set labels="good first issue,help wanted" --json
 ```
 
 **Question 6: Curated Issue List**
@@ -118,7 +124,7 @@ If yes, ask for the file path:
 
 If a path is provided, validate it exists:
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set issueListPath="PATH" --json
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set issueListPath="PATH" --json
 ```
 
 If the file doesn't exist at the given path, warn the user but still save the path (they may create it later).
@@ -130,7 +136,7 @@ If the file doesn't exist at the given path, warn the user but still save the pa
 Map the answer to a config value: "Yes" → `true`, "No" → `false`, "Ask me each time" → `"ask"`.
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set squashByDefault=VALUE --json
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set squashByDefault=VALUE --json
 ```
 
 This sets the global `squashByDefault` setting. Per-repo overrides can be added later in `config.md` frontmatter under `repoOverrides`.
@@ -151,7 +157,7 @@ gh api user --jq '.login' 2>/dev/null
 ## Step 5-CLI: Mark Setup Complete
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" setup --set complete=true --json
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set complete=true --json
 ```
 
 ## Step 6-CLI: Import Existing PRs
@@ -161,7 +167,7 @@ Ask user:
 
 If yes:
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" init USERNAME --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" init USERNAME --json
 ```
 
 This fetches all open PRs from GitHub and adds them to tracking.

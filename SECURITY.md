@@ -63,7 +63,7 @@ The plugin layer (agents, commands, skills) consumes untrusted data from GitHub.
 The attack surface is intentionally minimal.
 
 - **3 production dependencies:** `@octokit/rest`, `@octokit/plugin-throttling`, `commander`. All other packages are devDependencies only.
-- **npm audit in CI:** The CI workflow runs `npm audit --audit-level=high` on every push and PR.
+- **pnpm audit in CI:** The CI workflow runs `pnpm audit --audit-level=high` on every push and PR.
 - **Dependabot:** Weekly automated dependency scanning for the npm ecosystem.
 - **CodeQL:** GitHub's CodeQL security analysis runs on pushes to main and on pull requests.
 

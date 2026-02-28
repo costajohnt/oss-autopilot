@@ -42,7 +42,7 @@ The oss-autopilot CLI tracks repository relationships and can provide context.
 
 **CLI Command Pattern:**
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" <command> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" <command> --json
 ```
 
 **Available Commands for Repo Context:**
@@ -54,7 +54,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" <
 
 **Check User's Repo Relationship:**
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" status --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" status --json
 ```
 Returns:
 - Tracked PRs in the repo (current relationship)
@@ -203,7 +203,7 @@ Repository scores are automatically cached in `~/.oss-autopilot/state.json`.
 
 To check existing cached scores:
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" status --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" status --json
 ```
 
 The CLI automatically:

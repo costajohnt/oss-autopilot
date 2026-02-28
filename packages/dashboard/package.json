@@ -1,0 +1,8 @@
+{
+  "name": "@oss-autopilot/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interactive dashboard for OSS Autopilot (Phase 3 — Preact + Vite SPA)",
+  "type": "module",
+  "license": "MIT"
+}
