@@ -141,7 +141,7 @@ data.daily.briefSummary + " | v" + data.version
 ```
 
 Example output:
-> 16 Active PRs | 3 need attention | Dashboard opened in browser | v0.26.0
+> 📊 16 Active PRs | 3 need attention | Dashboard opened in browser | v0.26.0
 
 Then check for first-run (below) or proceed to **Action Menu**.
 

@@ -134,7 +134,7 @@ export interface DailyOutput {
   summary: string; // Pre-formatted markdown for Claude to display verbatim
   briefSummary: string; // One-liner for action-first flow
   actionableIssues: CompactActionableIssue[]; // Structured list referencing PRs by URL
-  actionMenu: ActionMenu; // Pre-computed action menu for Step 3
+  actionMenu: ActionMenu; // Pre-computed action menu for Action Menu section
   commentedIssues: CommentedIssue[]; // Issues user commented on with conversation state
   repoGroups: CompactRepoGroup[]; // PRs grouped by repo for safe parallel dispatch (#80)
   failures: PRCheckFailure[]; // PRs that failed to fetch (e.g., rate limits, network errors)

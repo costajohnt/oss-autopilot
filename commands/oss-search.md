@@ -175,4 +175,4 @@ Use AskUserQuestion (if `availableCount >= 5` and advisory shown, place list opt
 - `isNewContribution = true`
 - `issueContext = { title, url, description }`
 
-This activates the draft-first workflow (Steps 5.5 through 6 in `/oss`).
+This activates the draft-first workflow (see Pre-Commit Review in `/oss`).
