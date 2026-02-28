@@ -3,15 +3,20 @@
   "version": "0.39.1",
   "description": "AI-powered autopilot for managing open source contributions - track PRs, respond to maintainers, discover issues, and maintain contribution velocity",
   "author": {
-    "name": "John Costa"
+    "name": "John Costa",
+    "url": "https://github.com/costajohnt"
   },
   "repository": "https://github.com/costajohnt/oss-autopilot",
+  "homepage": "https://github.com/costajohnt/oss-autopilot#readme",
   "license": "MIT",
   "keywords": [
     "open-source",
     "github",
     "contributions",
     "pr-management",
-    "issue-discovery"
+    "issue-discovery",
+    "pr-monitoring",
+    "code-review",
+    "ci-diagnosis"
   ]
 }
