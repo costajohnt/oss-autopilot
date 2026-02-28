@@ -8,6 +8,8 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Task, mcp__
 
 This command searches for new open source issues to contribute to using parallel multi-strategy search with automated vetting.
 
+> **Input validation:** The "AskUserQuestion Validation Protocol" from `commands/oss.md` applies to ALL `AskUserQuestion` calls in this file. After every call, check for empty/missing answers and fall back to text-based input if the picker auto-completed.
+
 ## Session State
 
 **Initialize on entry** (reset each time):

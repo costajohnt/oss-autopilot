@@ -135,6 +135,49 @@ Show any captured error output (from `$BUILD_LOG`, stderr, or the `error` field)
 
 ---
 
+## AskUserQuestion Validation Protocol
+
+**CRITICAL: Apply this protocol after EVERY AskUserQuestion call in this workflow and all sub-workflows.**
+
+Some Claude Code permission modes (e.g., `acceptEdits`) can cause `AskUserQuestion` to auto-complete without presenting the interactive picker to the user. When this happens, the tool returns an empty response like `"User has answered your questions: ."` with no actual selection.
+
+### Detection
+
+After every `AskUserQuestion` call, check the response for a valid answer. An answer is **invalid** if:
+- The response contains no identifiable selection (empty string, only whitespace, or just a period)
+- The `answers` field is missing or empty
+- The response text is exactly `"User has answered your questions: ."` with nothing after the colon except whitespace/period
+
+### Fallback
+
+If an invalid answer is detected:
+
+1. **Do NOT proceed** with any default or assumed selection. Never guess what the user intended.
+2. **Inform the user:**
+   > "The interactive picker may not be working (this can happen with `acceptEdits` permission mode). Let me show your options as text instead."
+3. **Re-present the options** as a numbered text list:
+   ```
+   Please type the number of your choice:
+   1. [first option label] — [description]
+   2. [second option label] — [description]
+   3. [third option label] — [description]
+   ...
+   ```
+4. **Wait for the user's text response** before proceeding. Parse their response as a number (mapping to the list above) or as free-text matching one of the options.
+
+### Scope
+
+This protocol applies to ALL `AskUserQuestion` calls across:
+- This file (`commands/oss.md`)
+- `workflows/work-through-issues.md`
+- `workflows/draft-first-workflow.md`
+- `workflows/pre-commit-review.md`
+- `commands/oss-search.md`
+- `commands/setup-oss.md`
+- All agent files that use `AskUserQuestion`
+
+---
+
 ## Summary
 
 The CLI returns structured data with new fields for the action-first flow:
@@ -537,3 +580,6 @@ Your PRs are tracked. Run /oss anytime to check again.
 ### Parallel Execution
 18. **Group PRs by repository** - one agent per repo, not per PR, to avoid branch checkout conflicts
 19. **Parallel execution** - when addressing multiple repos, launch ALL agents in a SINGLE message, then present consolidated results table
+
+### Input Validation
+20. **Validate every AskUserQuestion response** — see "AskUserQuestion Validation Protocol" above. Never proceed on an empty or missing answer. Always fall back to text-based input when the picker fails.

@@ -2,6 +2,7 @@
 
 > **Session state:** Expects Tier 2 code changes to exist (uncommitted or committed-but-not-pushed). This workflow handles existing PR updates.
 > **Routing check:** If `isNewContribution === true`, **STOP** — read `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` instead and follow the Draft-First Path.
+> **Input validation:** The "AskUserQuestion Validation Protocol" from `commands/oss.md` applies to ALL `AskUserQuestion` calls in this file. After every call, check for empty/missing answers and fall back to text-based input if the picker auto-completed.
 
 ---
 
