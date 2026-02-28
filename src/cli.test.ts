@@ -9,9 +9,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync } from 'fs';
+import { join, resolve } from 'path';
 import { Command } from 'commander';
+
+// Resolve cli.ts path: works from both src/ (__dirname = src/) and dist/ (__dirname = dist/)
+const CLI_TS_PATH = existsSync(join(__dirname, 'cli.ts'))
+  ? join(__dirname, 'cli.ts')
+  : resolve(__dirname, '..', 'src', 'cli.ts');
 
 // ─── Mock core imports ───────────────────────────────────────────────────────
 
@@ -37,7 +42,7 @@ const mockDebug = vi.mocked(debug);
 // never actually matched. They are tested via the length assertion below.
 
 function extractLocalOnlyCommandsFromSource(): string[] {
-  const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+  const src = readFileSync(CLI_TS_PATH, 'utf-8');
   const match = src.match(/const LOCAL_ONLY_COMMANDS = \[([\s\S]*?)\];/);
   if (!match) throw new Error('Could not locate LOCAL_ONLY_COMMANDS in cli.ts');
   const entries = match[1].match(/'([^']+)'/g);
@@ -382,7 +387,7 @@ describe('Version detection IIFE', () => {
 // matches '.command(' calls without needing 'program' on the same line.
 // Arguments like '<pr-url>' and '[count]' are excluded via the character class.
 function extractRegisteredCommandsFromSource(): string[] {
-  const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+  const src = readFileSync(CLI_TS_PATH, 'utf-8');
   const matches = src.matchAll(/^\s+\.command\('([^'\s<[]+)/gm);
   return [...matches].map((m) => m[1]);
 }
@@ -445,7 +450,7 @@ describe('Command registration', () => {
 
 describe('Lazy imports', () => {
   it('should use dynamic import() in action handlers instead of static imports', () => {
-    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+    const src = readFileSync(CLI_TS_PATH, 'utf-8');
 
     // There should be NO static imports from ./commands/*
     const staticCommandImports = src.match(/^import .+ from '\.\/(commands\/[^']+)';$/gm);
@@ -458,7 +463,7 @@ describe('Lazy imports', () => {
   });
 
   it('should use getGitHubTokenAsync instead of getGitHubToken in preAction hook', () => {
-    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+    const src = readFileSync(CLI_TS_PATH, 'utf-8');
 
     // The preAction hook should use the async version
     expect(src).toContain('await getGitHubTokenAsync()');
