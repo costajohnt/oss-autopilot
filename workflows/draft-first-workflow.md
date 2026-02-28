@@ -400,15 +400,23 @@ Options:
 
 **"Yes — help me set up testing":**
 1. Check for build/test instructions in the repo:
-   - `CONTRIBUTING.md` — look for "Development", "Testing", "Building" sections
+   - `CONTRIBUTING.md` (or `contributingGuidelines` from session context) — look for "Development", "Testing", "Building" sections
    - `README.md` — look for "Getting Started", "Development" sections
    - `package.json` scripts — `build`, `dev`, `start`, `test`
    - `Makefile`, `justfile`, `taskfile.yml` — common build targets
-2. Walk the user through building/running the project based on what's found
-3. For browser extensions: help with loading the unpacked extension
-4. For CLI tools: help with running the tool locally
-5. For web apps: help with starting the dev server
-6. After the user has tested, re-prompt:
+   - `Cargo.toml` — check `[package] name` for correct crate/binary names; check `[workspace]` members for monorepo packages
+   - `pyproject.toml`, `setup.py`, `setup.cfg` — Python project metadata
+
+2. **Verify before presenting** — before giving any build/test instructions to the user (keep verification fast — avoid full builds or unbounded searches):
+   - **Package/target names:** Read the actual build file (e.g., `Cargo.toml`, `package.json`) to get the correct package name. Do NOT guess from the repo or directory name — these often differ (e.g., repo `nickel` but package `nickel-lang-cli`). If the build file cannot be read or does not contain a package name (e.g., workspace root `Cargo.toml` without `[package]`, malformed file), note in the instructions: "Could not determine package name from {file}: {reason}. Please verify the correct package/binary name before running these commands."
+   - **File paths:** For any file path referenced in instructions, verify it exists with `ls` or `test -f`. If a path does not exist, search for the correct path before presenting (e.g., `find . -name "json.yaml" -path "*/convert/*" -maxdepth 5`). If the correct path cannot be found, note: "Referenced file `{path}` was not found. This may indicate the file was renamed or moved — verify the correct path manually."
+   - **Commands:** If practical, do a dry-run or syntax check of build commands before presenting them (e.g., `cargo check` instead of `cargo build`). Not all tools support dry-run for build scripts (e.g., `npm run build --dry-run` is NOT valid — npm only supports `--dry-run` for `publish` and `pack`). If a dry-run is not available, skip pre-verification for that command and note: "Could not pre-verify `{command}` (no dry-run available)." If a dry-run fails, include the failure prominently: "Warning: `{command}` failed during pre-verification with: `{error}`. This may indicate missing dependencies or toolchain issues."
+
+3. Walk the user through building/running the project based on verified instructions
+4. For browser extensions: help with loading the unpacked extension
+5. For CLI tools: help with running the tool locally
+6. For web apps: help with starting the dev server
+7. After the user has tested, re-prompt:
    ```
    Question: "How did testing go?"
    Header: "Testing"
