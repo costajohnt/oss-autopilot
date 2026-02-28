@@ -1359,11 +1359,7 @@ describe('Phase 3: actively maintained repos (#349)', () => {
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValueOnce({
       data: {
         total_count: 3,
-        items: [
-          makeSearchItem('found/repo1', 1),
-          makeSearchItem('found/repo2', 2),
-          makeSearchItem('found/repo3', 3),
-        ],
+        items: [makeSearchItem('found/repo1', 1), makeSearchItem('found/repo2', 2), makeSearchItem('found/repo3', 3)],
       },
     });
 

@@ -13,22 +13,10 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, getDataDir } from './utils.js';
-import {
-  TrackedIssue,
-  ProjectHealth,
-  IssueVettingResult,
-  DEFAULT_CONFIG,
-  type SearchPriority,
-  type IssueCandidate,
-} from './types.js';
+import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate } from './types.js';
 import { ValidationError } from './errors.js';
 import { warn } from './logger.js';
-import {
-  type GitHubSearchItem,
-  isDocOnlyIssue,
-  detectLabelFarmingRepos,
-  applyPerRepoCap,
-} from './issue-filtering.js';
+import { type GitHubSearchItem, isDocOnlyIssue, detectLabelFarmingRepos, applyPerRepoCap } from './issue-filtering.js';
 import { IssueVetter } from './issue-vetting.js';
 import { calculateViabilityScore as calcViabilityScore, type ViabilityScoreParams } from './issue-scoring.js';
 

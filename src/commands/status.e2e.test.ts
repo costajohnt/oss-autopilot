@@ -71,31 +71,18 @@ describe.skipIf(!BUNDLE_EXISTS)('status --json E2E', () => {
     expect(json).toHaveProperty('timestamp');
   });
 
-  it('should include stats, activePRs, dormantPRs, and lastRunAt in data', async () => {
+  it('should include stats and lastRunAt in data', async () => {
     const { json } = await runStatus({ GITHUB_TOKEN: '' });
     expect(json, 'CLI should return parseable JSON output').not.toBeNull();
     const data = json.data;
     expect(data).toHaveProperty('stats');
-    expect(data).toHaveProperty('activePRs');
-    expect(data).toHaveProperty('dormantPRs');
     expect(data).toHaveProperty('lastRunAt');
   });
 
-  it('should return empty PR arrays when no state file exists', async () => {
-    const { json } = await runStatus({ GITHUB_TOKEN: '' });
-    expect(json, 'CLI should return parseable JSON output').not.toBeNull();
-    expect(Array.isArray(json.data.activePRs)).toBe(true);
-    expect(json.data.activePRs).toHaveLength(0);
-    expect(Array.isArray(json.data.dormantPRs)).toBe(true);
-    expect(json.data.dormantPRs).toHaveLength(0);
-  });
-
-  it('should return stats with expected numeric fields', async () => {
+  it('should return stats with expected fields', async () => {
     const { json } = await runStatus({ GITHUB_TOKEN: '' });
     expect(json, 'CLI should return parseable JSON output').not.toBeNull();
     const { stats } = json.data;
-    expect(typeof stats.activePRs).toBe('number');
-    expect(typeof stats.dormantPRs).toBe('number');
     expect(typeof stats.mergedPRs).toBe('number');
     expect(typeof stats.closedPRs).toBe('number');
     expect(typeof stats.needsResponse).toBe('number');

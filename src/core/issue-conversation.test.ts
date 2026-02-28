@@ -689,7 +689,12 @@ describe('IssueConversationMonitor', () => {
     mockOctokitInstance.issues.listComments.mockResolvedValue({
       data: [
         { user: { login: 'testuser' }, body: 'I can help', created_at: '2026-02-01T10:00:00Z' },
-        { user: { login: 'maintainer' }, body: 'Go ahead', created_at: '2026-02-02T10:00:00Z', author_association: 'MEMBER' },
+        {
+          user: { login: 'maintainer' },
+          body: 'Go ahead',
+          created_at: '2026-02-02T10:00:00Z',
+          author_association: 'MEMBER',
+        },
       ],
     });
 
