@@ -297,7 +297,8 @@ export class IssueDiscovery {
 
   /**
    * Search for issues matching our criteria.
-   * Searches in priority order: merged-PR repos first (no label filter), then starred repos, then general.
+   * Searches in priority order: merged-PR repos first (no label filter), then starred repos,
+   * then general search, then actively maintained repos (#349).
    * Filters out issues from low-scoring and excluded repos.
    */
   async searchIssues(
@@ -556,11 +557,85 @@ export class IssueDiscovery {
       }
     }
 
+    // Phase 3: Actively maintained repos (#349)
+    // Searches the "long tail" of well-maintained repos (50+ stars, recently pushed,
+    // not archived) that Phase 2 may miss because they aren't trending or pre-filtered.
+    // Uses label-free query to cast a wider net focused on repo health.
+    let phase3Error: string | null = null;
+    if (allCandidates.length < maxResults) {
+      console.log('Phase 3: Searching actively maintained repos...');
+      const remainingNeeded = maxResults - allCandidates.length;
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const pushedSince = thirtyDaysAgo.toISOString().split('T')[0];
+      const phase3MinStars = config.minStars ?? 50;
+      const phase3Query =
+        `is:issue is:open no:assignee ${langQuery} stars:>=${phase3MinStars} pushed:>=${pushedSince} archived:false`
+          .replace(/  +/g, ' ')
+          .trim();
+
+      try {
+        const { data } = await this.octokit.search.issuesAndPullRequests({
+          q: phase3Query,
+          sort: 'updated',
+          order: 'desc',
+          per_page: remainingNeeded * 3,
+        });
+
+        console.log(
+          `Found ${data.total_count} issues in maintained-repo search, processing top ${data.items.length}...`,
+        );
+
+        // Filter spam, already-found repos, and already-searched repos
+        const spamRepos = detectLabelFarmingRepos(data.items);
+        const seenRepos = new Set(allCandidates.map((c) => c.issue.repo));
+        const itemsToVet = filterIssues(data.items)
+          .filter((item) => {
+            const repoFullName = item.repository_url.split('/').slice(-2).join('/');
+            return !spamRepos.has(repoFullName);
+          })
+          .filter((item) => {
+            const repoFullName = item.repository_url.split('/').slice(-2).join('/');
+            return (
+              !phase0RepoSet.has(repoFullName) && !starredRepoSet.has(repoFullName) && !seenRepos.has(repoFullName)
+            );
+          })
+          .slice(0, remainingNeeded * 2);
+
+        const {
+          candidates: results,
+          allFailed: allVetFailed,
+          rateLimitHit: vetRateLimitHit,
+        } = await this.vetIssuesParallel(
+          itemsToVet.map((i) => i.html_url),
+          remainingNeeded,
+          'normal',
+        );
+
+        allCandidates.push(...results);
+        if (allVetFailed) {
+          phase3Error = 'all vetting failed';
+        }
+        if (vetRateLimitHit) {
+          rateLimitHitDuringSearch = true;
+        }
+        console.log(`Found ${results.length} candidates from maintained-repo search`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        phase3Error = errorMessage;
+        if (IssueDiscovery.isRateLimitError(error)) {
+          rateLimitHitDuringSearch = true;
+        }
+        warn(MODULE, `Error in maintained-repo search: ${errorMessage}`);
+      }
+    }
+
     if (allCandidates.length === 0) {
       const phaseErrors = [
         phase0Error ? `Phase 0 (merged-PR repos): ${phase0Error}` : null,
         phase1Error ? `Phase 1 (starred repos): ${phase1Error}` : null,
         phase2Error ? `Phase 2 (general): ${phase2Error}` : null,
+        phase3Error ? `Phase 3 (maintained repos): ${phase3Error}` : null,
       ].filter(Boolean);
       const details = phaseErrors.length > 0 ? ` ${phaseErrors.join('. ')}.` : '';
 

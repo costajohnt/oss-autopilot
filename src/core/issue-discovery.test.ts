@@ -1152,6 +1152,198 @@ describe('IssueDiscovery.formatCandidate', () => {
   });
 });
 
+describe('Phase 3: actively maintained repos (#349)', () => {
+  let discovery: InstanceType<typeof IssueDiscovery>;
+
+  const makeSearchItem = (repo: string, num: number) => ({
+    html_url: `https://github.com/${repo}/issues/${num}`,
+    repository_url: `https://api.github.com/repos/${repo}`,
+    updated_at: new Date().toISOString(),
+    title: `Test issue ${num}`,
+    labels: [{ name: 'good first issue' }],
+    id: num,
+    comments: 0,
+    body: `1. Step one\n2. Step two\nThis should work correctly.\n${'x'.repeat(200)}`,
+    created_at: new Date().toISOString(),
+    number: num,
+  });
+
+  beforeEach(() => {
+    (getStateManager as any).mockReturnValue({
+      getState: () => ({
+        config: {
+          githubUsername: 'testuser',
+          trustedProjects: [],
+          starredRepos: [],
+          excludeRepos: [],
+          languages: ['typescript'],
+          labels: ['good first issue'],
+          maxIssueAgeDays: 90,
+          includeDocIssues: true,
+          minStars: 50,
+        },
+        repoScores: {},
+        activeIssues: [],
+      }),
+      getStarredRepos: () => [],
+      isStarredReposStale: () => false,
+      getReposWithMergedPRs: () => [],
+      getReposWithOpenPRs: () => [],
+      getLowScoringRepos: () => [],
+      getRepoScore: () => undefined,
+    });
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn(),
+      },
+      issues: {
+        get: vi.fn().mockImplementation(({ owner, repo, issue_number }: any) =>
+          Promise.resolve({
+            data: {
+              id: issue_number,
+              html_url: `https://github.com/${owner}/${repo}/issues/${issue_number}`,
+              title: `Test issue ${issue_number}`,
+              labels: [{ name: 'good first issue' }],
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              comments: 0,
+              body: `1. Step one\n2. Step two\nThis should work correctly.\n${'x'.repeat(200)}`,
+            },
+          }),
+        ),
+        listEventsForTimeline: vi.fn().mockResolvedValue({ data: [] }),
+      },
+      repos: {
+        get: vi.fn().mockResolvedValue({
+          data: { open_issues_count: 5, pushed_at: new Date().toISOString(), stargazers_count: 100, forks_count: 20 },
+        }),
+        listCommits: vi.fn().mockResolvedValue({
+          data: [{ commit: { author: { date: new Date().toISOString() } } }],
+        }),
+        getContent: vi.fn().mockRejectedValue(new Error('404 Not Found')),
+      },
+      actions: {
+        listRepoWorkflows: vi.fn().mockResolvedValue({ data: { total_count: 1 } }),
+      },
+    };
+
+    discovery = new IssueDiscovery('fake-token');
+  });
+
+  it('should search Phase 3 when earlier phases return no results', async () => {
+    // Phase 2 returns empty, Phase 3 finds a candidate
+    mockOctokitInstance.search.issuesAndPullRequests
+      .mockResolvedValueOnce({ data: { total_count: 0, items: [] } }) // Phase 2
+      .mockResolvedValueOnce({
+        data: {
+          total_count: 1,
+          items: [makeSearchItem('maintained/repo', 42)],
+        },
+      }); // Phase 3
+
+    const candidates = await discovery.searchIssues({ maxResults: 5 });
+    expect(candidates.length).toBe(1);
+    expect(candidates[0].issue.repo).toBe('maintained/repo');
+  });
+
+  it('should skip Phase 3 when earlier phases fill maxResults', async () => {
+    // Phase 2 returns enough results; vetIssue also calls search (checkNoExistingPR)
+    // so use mockResolvedValue as a default for all vetting calls
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: { total_count: 0, items: [] },
+    });
+    // Phase 2 search call returns 3 items (first call)
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValueOnce({
+      data: {
+        total_count: 3,
+        items: [
+          makeSearchItem('found/repo1', 1),
+          makeSearchItem('found/repo2', 2),
+          makeSearchItem('found/repo3', 3),
+        ],
+      },
+    });
+
+    const candidates = await discovery.searchIssues({ maxResults: 3 });
+    expect(candidates.length).toBe(3);
+    // Verify no Phase 3 query was made (check that no call includes 'archived:false')
+    const calls = mockOctokitInstance.search.issuesAndPullRequests.mock.calls;
+    const phase3Calls = calls.filter((c: any[]) => c[0]?.q?.includes('archived:false'));
+    expect(phase3Calls).toHaveLength(0);
+  });
+
+  it('should exclude repos already found in earlier phases', async () => {
+    // vetIssue calls search for checkNoExistingPR — default to empty results
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: { total_count: 0, items: [] },
+    });
+    // Phase 2 finds already/found
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValueOnce({
+      data: {
+        total_count: 1,
+        items: [makeSearchItem('already/found', 1)],
+      },
+    });
+
+    // We need to intercept Phase 3 call specifically. Since vetIssue also calls search,
+    // we use mockImplementation to check the query and return Phase 3 results when
+    // the query includes 'archived:false'.
+    const defaultImpl = mockOctokitInstance.search.issuesAndPullRequests.getMockImplementation();
+    mockOctokitInstance.search.issuesAndPullRequests.mockImplementation((params: any) => {
+      if (params?.q?.includes('archived:false')) {
+        return Promise.resolve({
+          data: {
+            total_count: 2,
+            items: [makeSearchItem('already/found', 2), makeSearchItem('new/repo', 3)],
+          },
+        });
+      }
+      // Default: empty results (for vetting calls)
+      return Promise.resolve({ data: { total_count: 0, items: [] } });
+    });
+    // Restore the Phase 2 mock (first call)
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValueOnce({
+      data: {
+        total_count: 1,
+        items: [makeSearchItem('already/found', 1)],
+      },
+    });
+
+    const candidates = await discovery.searchIssues({ maxResults: 5 });
+    const repos = candidates.map((c) => c.issue.repo);
+    expect(repos).toContain('new/repo');
+    // already/found#2 should be excluded (repo already seen in Phase 2)
+    expect(repos.filter((r) => r === 'already/found')).toHaveLength(1);
+  });
+
+  it('should handle Phase 3 API errors gracefully', async () => {
+    // Phase 2 returns empty
+    mockOctokitInstance.search.issuesAndPullRequests
+      .mockResolvedValueOnce({ data: { total_count: 0, items: [] } }) // Phase 2
+      .mockRejectedValueOnce(new Error('Network error')); // Phase 3
+
+    // Should throw since both phases returned nothing
+    await expect(discovery.searchIssues({ maxResults: 5 })).rejects.toThrow('No issue candidates found');
+  });
+
+  it('should use stars and pushed qualifiers in Phase 3 query', async () => {
+    // Phase 2 empty, Phase 3 called
+    mockOctokitInstance.search.issuesAndPullRequests
+      .mockResolvedValueOnce({ data: { total_count: 0, items: [] } }) // Phase 2
+      .mockResolvedValueOnce({ data: { total_count: 0, items: [] } }); // Phase 3
+
+    await expect(discovery.searchIssues({ maxResults: 5 })).rejects.toThrow();
+
+    // The second call is Phase 3 — verify query includes health signals
+    const phase3Call = mockOctokitInstance.search.issuesAndPullRequests.mock.calls[1];
+    const query = phase3Call[0].q;
+    expect(query).toContain('stars:>=50');
+    expect(query).toMatch(/pushed:>=/);
+    expect(query).toContain('archived:false');
+  });
+});
+
 describe('DOC_ONLY_LABELS', () => {
   it('should contain the expected documentation labels', () => {
     expect(DOC_ONLY_LABELS.has('documentation')).toBe(true);
