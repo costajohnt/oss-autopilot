@@ -14,9 +14,6 @@ import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, getDataDir } from './utils.js';
 import {
-  TrackedIssue,
-  ProjectHealth,
-  IssueVettingResult,
   DEFAULT_CONFIG,
   type SearchPriority,
   type IssueCandidate,
