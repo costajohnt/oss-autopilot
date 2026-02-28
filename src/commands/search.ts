@@ -64,7 +64,11 @@ export async function runSearch(options: SearchOptions): Promise<void> {
     outputJson<SearchOutput>(searchOutput);
   } else {
     if (candidates.length === 0) {
-      console.log('No matching issues found.');
+      if (discovery.rateLimitWarning) {
+        console.warn(`\n⚠ ${discovery.rateLimitWarning}\n`);
+      } else {
+        console.log('No matching issues found.');
+      }
       return;
     }
 
