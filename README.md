@@ -307,7 +307,7 @@ The cycle continues. Each merged PR improves your repo relationship score, surfa
 /plugin marketplace update oss-autopilot
 ```
 
-Your configuration is preserved. The CLI bundle auto-rebuilds after upgrades. See the [Changelog](CHANGELOG.md) for what's new.
+Your configuration is preserved. The CLI bundle auto-rebuilds after upgrades. See the [Changelog](packages/core/CHANGELOG.md) for what's new.
 
 ---
 
