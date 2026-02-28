@@ -200,7 +200,7 @@ export class IssueConversationMonitor {
         body: comment.body || '',
         createdAt: comment.created_at,
         isUser: author.toLowerCase() === username.toLowerCase(),
-        authorAssociation: (comment as Record<string, any>).author_association || '',
+        authorAssociation: String((comment as Record<string, unknown>).author_association ?? ''),
       });
     }
 
