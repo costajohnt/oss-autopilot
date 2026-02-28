@@ -220,7 +220,14 @@ export class IssueConversationMonitor {
 
     const userLastCommentTime = new Date(userLastComment.createdAt);
 
-    // Find responses after the user's last comment
+    // Find responses after the user's last comment.
+    // Only surface comments that are directed at the user (#343):
+    //   1. From a maintainer (OWNER/MEMBER/COLLABORATOR) — inherently authoritative
+    //   2. @mentions the user — explicitly addressed
+    // This filters out community "+1" and "me too" noise.
+    const maintainerAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+    const userMention = `@${username.toLowerCase()}`;
+
     let lastResponse: { author: string; body: string; createdAt: string; authorAssociation: string } | undefined;
     for (const entry of timeline) {
       if (entry.isUser) continue;
@@ -230,6 +237,11 @@ export class IssueConversationMonitor {
       if (entryTime > userLastCommentTime) {
         // Skip pure acknowledgments
         if (isAcknowledgmentComment(entry.body)) continue;
+
+        // Only surface comments directed at the user (#343)
+        const isFromMaintainer = maintainerAssociations.has(entry.authorAssociation);
+        const mentionsUser = entry.body.toLowerCase().includes(userMention);
+        if (!isFromMaintainer && !mentionsUser) continue;
 
         lastResponse = {
           author: entry.author,
@@ -253,8 +265,6 @@ export class IssueConversationMonitor {
     };
 
     if (lastResponse) {
-      // OWNER, MEMBER, and COLLABORATOR indicate someone with repo-level permissions
-      const maintainerAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
       return {
         ...base,
         status: 'new_response' as const,
@@ -265,10 +275,18 @@ export class IssueConversationMonitor {
       };
     }
 
-    // No substantive response found. If user is the last non-bot commenter,
-    // mark as acknowledged; otherwise mark as waiting.
-    const lastNonBotComment = [...timeline].reverse().find((e) => !isBotAuthor(e.author));
-    const status = lastNonBotComment?.isUser ? ('acknowledged' as const) : ('waiting' as const);
+    // No directed response found. Determine whether the user or a relevant
+    // commenter (maintainer / @mention) spoke last. Irrelevant community
+    // comments ("+1", "me too") are excluded from this check too (#343).
+    const lastRelevantComment = [...timeline].reverse().find((e) => {
+      if (isBotAuthor(e.author)) return false;
+      if (e.isUser) return true;
+      return (
+        maintainerAssociations.has(e.authorAssociation) ||
+        e.body.toLowerCase().includes(userMention)
+      );
+    });
+    const status = lastRelevantComment?.isUser ? ('acknowledged' as const) : ('waiting' as const);
     return { ...base, status };
   }
 }

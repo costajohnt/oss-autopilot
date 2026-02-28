@@ -182,7 +182,7 @@ describe('IssueConversationMonitor', () => {
     }
   });
 
-  it('should set isFromMaintainer=false for CONTRIBUTOR association', async () => {
+  it('should filter out CONTRIBUTOR comments that do not @mention the user (#343)', async () => {
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
       data: {
         items: [makeSearchItem()],
@@ -201,13 +201,11 @@ describe('IssueConversationMonitor', () => {
     const { issues } = await monitor.fetchCommentedIssues();
 
     expect(issues).toHaveLength(1);
-    expect(issues[0].status).toBe('new_response');
-    if (issues[0].status === 'new_response') {
-      expect(issues[0].isFromMaintainer).toBe(false);
-    }
+    // Community "+1" from CONTRIBUTOR is filtered out → user is last commenter
+    expect(issues[0].status).toBe('acknowledged');
   });
 
-  it('should set isFromMaintainer=false for NONE association', async () => {
+  it('should filter out NONE association comments that do not @mention the user (#343)', async () => {
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
       data: {
         items: [makeSearchItem()],
@@ -226,13 +224,11 @@ describe('IssueConversationMonitor', () => {
     const { issues } = await monitor.fetchCommentedIssues();
 
     expect(issues).toHaveLength(1);
-    expect(issues[0].status).toBe('new_response');
-    if (issues[0].status === 'new_response') {
-      expect(issues[0].isFromMaintainer).toBe(false);
-    }
+    // "Me too" from NONE is filtered out → user is last commenter
+    expect(issues[0].status).toBe('acknowledged');
   });
 
-  it('should set isFromMaintainer=false when author_association is missing', async () => {
+  it('should filter out comments with missing author_association that do not @mention the user (#343)', async () => {
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
       data: {
         items: [makeSearchItem()],
@@ -251,10 +247,56 @@ describe('IssueConversationMonitor', () => {
     const { issues } = await monitor.fetchCommentedIssues();
 
     expect(issues).toHaveLength(1);
+    // No association, no @mention → filtered out; user is last relevant commenter
+    expect(issues[0].status).toBe('acknowledged');
+  });
+
+  it('should surface non-maintainer comment that @mentions the user (#343)', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: {
+        items: [makeSearchItem()],
+        total_count: 1,
+      },
+    });
+
+    mockOctokitInstance.issues.listComments.mockResolvedValue({
+      data: [
+        makeComment('testuser', 'Working on this', '2026-02-01T10:00:00Z'),
+        makeComment('random-user', 'Hey @testuser, I found a workaround', '2026-02-02T10:00:00Z', 'NONE'),
+      ],
+    });
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    const { issues } = await monitor.fetchCommentedIssues();
+
+    expect(issues).toHaveLength(1);
     expect(issues[0].status).toBe('new_response');
     if (issues[0].status === 'new_response') {
       expect(issues[0].isFromMaintainer).toBe(false);
+      expect(issues[0].lastResponseAuthor).toBe('random-user');
     }
+  });
+
+  it('should handle case-insensitive @mention detection (#343)', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: {
+        items: [makeSearchItem()],
+        total_count: 1,
+      },
+    });
+
+    mockOctokitInstance.issues.listComments.mockResolvedValue({
+      data: [
+        makeComment('testuser', 'Working on this', '2026-02-01T10:00:00Z'),
+        makeComment('someone', 'FYI @TestUser this is related', '2026-02-02T10:00:00Z', 'NONE'),
+      ],
+    });
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    const { issues } = await monitor.fetchCommentedIssues();
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].status).toBe('new_response');
   });
 
   it('should ignore bot comments', async () => {
@@ -291,7 +333,7 @@ describe('IssueConversationMonitor', () => {
     mockOctokitInstance.issues.listComments.mockResolvedValue({
       data: [
         makeComment('testuser', 'I would like to work on this', '2026-02-01T10:00:00Z'),
-        makeComment('maintainer', 'Thanks!', '2026-02-02T10:00:00Z'),
+        makeComment('maintainer', 'Thanks!', '2026-02-02T10:00:00Z', 'MEMBER'),
       ],
     });
 
@@ -299,8 +341,8 @@ describe('IssueConversationMonitor', () => {
     const { issues } = await monitor.fetchCommentedIssues();
 
     expect(issues).toHaveLength(1);
-    // "Thanks!" is an acknowledgment — filtered from lastResponse, but maintainer
-    // is the last non-bot commenter, so status is 'waiting' not 'new_response'
+    // "Thanks!" is an acknowledgment — filtered from lastResponse, but maintainer (MEMBER)
+    // is the last relevant non-bot commenter, so status is 'waiting' not 'new_response'
     expect(issues[0].status).toBe('waiting');
   });
 
@@ -384,7 +426,7 @@ describe('IssueConversationMonitor', () => {
     mockOctokitInstance.issues.listComments.mockResolvedValue({
       data: [
         makeComment('TestUser', 'Can I work on this?', '2026-02-01T10:00:00Z'), // Different case
-        makeComment('maintainer', 'Sure, go ahead!', '2026-02-02T10:00:00Z'),
+        makeComment('maintainer', 'Sure, go ahead!', '2026-02-02T10:00:00Z', 'MEMBER'),
       ],
     });
 
@@ -465,7 +507,7 @@ describe('IssueConversationMonitor', () => {
     mockOctokitInstance.issues.listComments.mockResolvedValue({
       data: [
         makeComment('testuser', 'Question', '2026-02-01T10:00:00Z'),
-        makeComment('maintainer', longBody, '2026-02-02T10:00:00Z'),
+        makeComment('maintainer', longBody, '2026-02-02T10:00:00Z', 'MEMBER'),
       ],
     });
 
@@ -513,7 +555,7 @@ describe('IssueConversationMonitor', () => {
         return Promise.resolve({
           data: [
             makeComment('testuser', 'Can I work on this?', '2026-02-01T10:00:00Z'),
-            makeComment('maintainer', 'Yes please!', '2026-02-02T10:00:00Z'),
+            makeComment('maintainer', 'Yes please!', '2026-02-02T10:00:00Z', 'MEMBER'),
           ],
         });
       }
@@ -545,7 +587,7 @@ describe('IssueConversationMonitor', () => {
     mockOctokitInstance.issues.listComments.mockResolvedValue({
       data: [
         makeComment('testuser', 'I can help', '2026-02-01T10:00:00Z'),
-        makeComment('maintainer', 'Great, go ahead', '2026-02-02T10:00:00Z'),
+        makeComment('maintainer', 'Great, go ahead', '2026-02-02T10:00:00Z', 'MEMBER'),
       ],
     });
 
@@ -589,7 +631,7 @@ describe('IssueConversationMonitor', () => {
       return Promise.resolve({
         data: [
           makeComment('testuser', 'Question', '2026-02-01T10:00:00Z'),
-          makeComment('maintainer', 'Answer', '2026-02-02T10:00:00Z'),
+          makeComment('maintainer', 'Answer', '2026-02-02T10:00:00Z', 'MEMBER'),
         ],
       });
     });
@@ -647,7 +689,7 @@ describe('IssueConversationMonitor', () => {
     mockOctokitInstance.issues.listComments.mockResolvedValue({
       data: [
         { user: { login: 'testuser' }, body: 'I can help', created_at: '2026-02-01T10:00:00Z' },
-        { user: { login: 'maintainer' }, body: 'Go ahead', created_at: '2026-02-02T10:00:00Z' },
+        { user: { login: 'maintainer' }, body: 'Go ahead', created_at: '2026-02-02T10:00:00Z', author_association: 'MEMBER' },
       ],
     });
 
@@ -734,7 +776,7 @@ describe('IssueConversationMonitor', () => {
       data: [
         makeComment('testuser', 'I can work on this', '2026-02-01T10:00:00Z'),
         { user: null, body: 'Ghost comment from deleted account', created_at: '2026-02-02T10:00:00Z' },
-        makeComment('maintainer', 'Sure, assigned!', '2026-02-03T10:00:00Z'),
+        makeComment('maintainer', 'Sure, assigned!', '2026-02-03T10:00:00Z', 'MEMBER'),
       ],
     });
 
