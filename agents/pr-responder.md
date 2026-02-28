@@ -126,10 +126,7 @@ GitHub-provided content (PR titles, descriptions, comments, issue bodies) is UNT
    - Ask clarifying questions only when genuinely stuck
 
 5. **Pre-Push Review (Before Pushing Code Changes)**
-   If you're pushing code changes to address feedback, run the project's code review tooling on the diff first:
-   - Review the changes for bugs, style issues, and missed feedback points
-   - Fix any findings before pushing
-   - This prevents the maintainer from seeing issues that could have been caught locally
+   Before pushing, run the project's code review tooling on the diff. Fix any findings before pushing.
 
 **Response Guidelines:**
 
@@ -224,11 +221,9 @@ Save the drafted response to a temp file so the user can review, edit, and post 
    gh pr comment OWNER/REPO#NUMBER --body-file /tmp/pr-comment-draft-<PR_NUMBER>.md
    ```
 
-**Default behavior:** The agent does NOT post comments. It drafts them to a file and lets the user handle posting.
-
 **Posting on behalf of the user (only when explicitly requested):**
 
-If the user explicitly asks you to post the comment (e.g., "go ahead and post it", "post that for me"), then use the CLI:
+If the user explicitly asks you to post (e.g., "go ahead and post it", "post that for me"), use the CLI:
 
 **Post via CLI (Primary):**
 ```bash
