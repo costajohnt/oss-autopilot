@@ -197,19 +197,17 @@ Rate 1-10 based on weighted factors:
 
 **Caching:**
 
-Repository scores are automatically cached in the CLI state (`data/state.json`).
+Repository scores are automatically cached in `~/.oss-autopilot/state.json`.
 
 To check existing cached scores:
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" status --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" status --json
 ```
 
 The CLI automatically:
 - Updates repo scores when PRs are merged/closed
 - Tracks response times and merge rates
 - Expires cache entries after 7 days
-
-**Note:** The legacy `.claude/oss-autopilot/repo-scores.md` file may also contain cached scores but the CLI's `data/state.json` is the authoritative source.
 
 **Red Flags to Highlight:**
 - No commits in 60+ days

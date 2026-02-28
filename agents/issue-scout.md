@@ -183,11 +183,11 @@ The `aiPolicyBlocklist` field is included in CLI search JSON output. If you disc
    - `scoring`: Explanation of why each issue was scored
 
 3. **For Manual Context (when needed)**
-   Read from `.claude/oss-autopilot/`:
-   - `config.md` - Preferred languages, labels
-   - `tracked-prs.md` - Current open PRs (check for dormant ones)
-   - `pr-history.md` - Merged/closed PRs (successful relationships)
-   - `repo-scores.md` - Cached repo evaluations
+   Use `status --json` CLI output which includes:
+   - User preferences (languages, labels)
+   - Current open PRs with health indicators
+   - PR history (merged/closed PRs with success rates)
+   - Cached repo evaluation scores
 
 **Fallback Search (if CLI search fails — follow Fallback protocol above: inform the user, then try gh. If gh also fails, STOP and report both errors):**
 
@@ -333,7 +333,7 @@ Evaluate:
 
 ### 5. Repository Health Check
 
-Check if we have cached repo scores in `repo-scores.md`
+Check if we have cached repo scores via `status --json`.
 If not or stale, quick-assess:
 ```bash
 gh repo view OWNER/REPO --json description,stargazerCount,updatedAt,openIssues
