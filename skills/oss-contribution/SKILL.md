@@ -31,6 +31,17 @@ Maintainer feedback is a gift - they're investing time to help you improve. Even
 - Mark conversations as resolved after addressing
 - If you disagree, explain once briefly, then defer to their judgment
 
+### Pre-Push Review Checkpoint
+
+Before pushing commits that address review feedback:
+
+1. Run the project's code review tooling (e.g., pr-review-toolkit agents) on your diff
+2. Fix any issues found (bugs, style violations, missing error handling)
+3. Re-run until clean — no actionable findings
+4. Only then push your changes
+
+This prevents maintainers from seeing issues that could have been caught locally. It's especially important when responding to feedback — pushing sloppy fix-up commits undermines credibility.
+
 ### Things to Avoid
 
 - Being defensive or dismissive
