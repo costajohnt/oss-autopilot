@@ -113,6 +113,61 @@ Releases are automated via [release-please](https://github.com/googleapis/releas
 2. On merge to main, release-please opens or updates a release PR that bumps versions and generates the changelog
 3. A maintainer merges the release-please PR to create a GitHub release, which triggers npm publish
 
+## Maintainer Guide
+
+This section documents infrastructure settings that are not codified in the repo and would be lost if the repo were forked or transferred.
+
+### Branch Protection Rules
+
+The `main` branch should have these protection rules enabled (Settings → Branches → Branch protection rules):
+
+- **Require a pull request before merging** — at least 1 approval
+- **Require status checks to pass before merging** — the `test` CI job must pass
+- **Require branches to be up to date before merging**
+- **Do not allow bypassing the above settings** (optional, recommended for teams)
+
+### RELEASE_TOKEN (Personal Access Token)
+
+The release-please workflow (`.github/workflows/release-please.yml`) uses `secrets.RELEASE_TOKEN` instead of the default `GITHUB_TOKEN`. This is required because GitHub's security model prevents `GITHUB_TOKEN` events from triggering other workflows (to prevent infinite loops). A PAT's events do trigger downstream workflows like CI on the release branch.
+
+**Required scopes:**
+- `contents: write` — push commits and create releases
+- `pull-requests: write` — create and update the release-please PR
+
+**Creating the token:**
+1. Go to GitHub → Settings → Developer Settings → Personal Access Tokens → Fine-grained tokens
+2. Set repository access to "Only select repositories" → select `oss-autopilot`
+3. Under "Repository permissions", grant: Contents (Read and write), Pull requests (Read and write)
+4. Generate the token and add it as a repository secret: Settings → Secrets → Actions → `RELEASE_TOKEN`
+
+**Rotation:** Recommended every 6-12 months. Fine-grained tokens have configurable expiration dates.
+
+### Required Repository Settings
+
+- **GitHub Discussions**: Enabled (Settings → General → Features → Discussions)
+- **GitHub Actions**: Allow all actions and reusable workflows
+- **Merge button**: "Allow squash merging" enabled (default merge strategy)
+
+### Manual Release (if automation fails)
+
+If release-please or the release workflow fails:
+
+```bash
+# 1. Bump version manually
+npm version patch  # or minor/major
+
+# 2. Update CHANGELOG.md with the new version section
+
+# 3. Commit and push
+git add -A && git commit -m "chore: release X.Y.Z"
+git push origin main
+
+# 4. Create a GitHub release
+gh release create vX.Y.Z --generate-notes
+
+# 5. npm publish triggers automatically on release
+```
+
 ## Questions?
 
 Open an issue or start a discussion. We're happy to help!
