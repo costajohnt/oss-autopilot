@@ -247,6 +247,60 @@ The `/oss-search` command can add vetted issues to this file automatically. Issu
 
 ---
 
+## Your First Contribution (Walkthrough)
+
+Here's what a typical end-to-end contribution looks like:
+
+**Day 1 — Find an issue:**
+
+```
+You: /oss
+OSS Autopilot: No PRs tracked yet. Ready to find your first contribution?
+You: Search for new issues
+```
+
+`/oss-search` runs parallel searches across GitHub, scores results by repo health, label quality, and your language preferences, then presents vetted candidates:
+
+```
+1. vercel/next.js#12345 — Fix streaming support for app router (Score: 87)
+   Clear requirements, active maintainer, TypeScript
+2. expressjs/express#6789 — Update error handling docs (Score: 72)
+   Good first issue, well-scoped
+```
+
+**Day 1 — Claim and work:**
+
+You pick issue #1. The **issue-scout** agent drafts a claim comment, you approve it, then start working. Before pushing, **pre-commit-reviewer** catches a missing test — you add it.
+
+```
+You: Review my changes before I push
+Pre-commit reviewer: Found 1 issue: missing test for error case on line 42.
+```
+
+You fix it and submit your PR. The **pr-compliance-checker** validates it against the repo's contribution guidelines.
+
+**Day 2 — Respond to feedback:**
+
+```
+You: /oss
+OSS Autopilot: 1 active PR — 1 need response (12h ago)
+  1. vercel/next.js#99 — maintainer requested changes
+```
+
+The **pr-responder** reads the maintainer's comments, fetches relevant code context, and drafts a professional reply. You review, edit, and post it.
+
+**Day 5 — Merged!**
+
+```
+You: /oss
+OSS Autopilot: PR merged! vercel/next.js#99 🎉
+  Your merge rate: 1/1 (100%). Ready for your next contribution?
+```
+
+The cycle continues. Each merged PR improves your repo relationship score, surfacing better-matched issues over time.
+
+---
+
 ## Updating
 
 ```
