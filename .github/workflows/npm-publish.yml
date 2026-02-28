@@ -5,7 +5,7 @@ on:
     types: [published]
 
 permissions:
-  contents: read
+  contents: write # write required for gh release upload (SBOM attachment)
   id-token: write
 
 jobs:
@@ -38,3 +38,43 @@ jobs:
         run: npm publish --provenance --access public --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  sbom:
+    name: Attach SBOM to release
+    needs: publish
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.release.prerelease }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate SBOM
+        run: npx @cyclonedx/cyclonedx-npm@4.1.2 --output-file sbom.json
+
+      - name: Validate SBOM
+        run: |
+          if [ ! -s sbom.json ]; then
+            echo "::error::SBOM file is missing or empty"
+            exit 1
+          fi
+          if ! jq -e '.bomFormat == "CycloneDX"' sbom.json > /dev/null 2>&1; then
+            echo "::error::SBOM file is not valid CycloneDX format"
+            exit 1
+          fi
+          echo "SBOM validated: $(jq -r '.components | length') components found"
+
+      - name: Attach SBOM to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG_NAME" sbom.json --clobber
