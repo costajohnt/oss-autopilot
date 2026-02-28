@@ -74,10 +74,7 @@ This returns:
    - User preferences (languages, labels)
    - Repository relationship scores
 
-   **Fallback (if CLI fails — tell the user: "The oss-autopilot CLI failed: [error]. Falling back to local data."):** Read from `.claude/oss-autopilot/`. If local data is also missing, STOP and report both errors to the user — do NOT improvise a workaround.
-   - `pr-history.md` - Past merged/closed PRs
-   - `tracked-prs.md` - Current active PRs
-   - `config.md` - User preferences
+   **Fallback (if CLI fails):** Tell the user: "The oss-autopilot CLI failed: [error]." Then try `gh` CLI commands to fetch the same data directly from GitHub. If that also fails, STOP and report both errors to the user — do NOT improvise a workaround.
 
 2. **Fetch GitHub Profile Data**
    ```bash
