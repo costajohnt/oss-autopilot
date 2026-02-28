@@ -563,11 +563,18 @@ export class IssueDiscovery {
         phase2Error ? `Phase 2 (general): ${phase2Error}` : null,
       ].filter(Boolean);
       const details = phaseErrors.length > 0 ? ` ${phaseErrors.join('. ')}.` : '';
-      const rateLimitContext = rateLimitHitDuringSearch
-        ? ' GitHub API rate limits may have affected results — try again after the rate limit resets.'
-        : '';
+
+      // When rate limits caused zero results, return empty array with warning
+      // instead of throwing, so callers can handle it gracefully
+      if (rateLimitHitDuringSearch) {
+        this.rateLimitWarning =
+          `Search returned no results due to GitHub API rate limits.${details} ` +
+          `Try again after the rate limit resets.`;
+        return [];
+      }
+
       throw new ValidationError(
-        `No issue candidates found across all search phases.${details}${rateLimitContext} ` +
+        `No issue candidates found across all search phases.${details} ` +
           'Try adjusting your search criteria (languages, labels) or check your network connection.',
       );
     }
