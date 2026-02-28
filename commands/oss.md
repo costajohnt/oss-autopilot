@@ -139,14 +139,14 @@ Show any captured error output (from `$BUILD_LOG`, stderr, or the `error` field)
 
 **CRITICAL: Apply this protocol after EVERY AskUserQuestion call in this workflow and all sub-workflows.**
 
-Some Claude Code permission modes (e.g., `acceptEdits`) can cause `AskUserQuestion` to auto-complete without presenting the interactive picker to the user. When this happens, the tool returns an empty response like `"User has answered your questions: ."` with no actual selection.
+Some Claude Code auto-accept permission configurations can cause `AskUserQuestion` to auto-complete without presenting the interactive picker to the user. When this happens, the tool returns an empty response with no actual selection.
 
 ### Detection
 
 After every `AskUserQuestion` call, check the response for a valid answer. An answer is **invalid** if:
 - The response contains no identifiable selection (empty string, only whitespace, or just a period)
-- The `answers` field is missing or empty
-- The response text is exactly `"User has answered your questions: ."` with nothing after the colon except whitespace/period
+- The response text matches the pattern `"User has answered your questions:"` followed by nothing meaningful (only whitespace, periods, or empty)
+- The user selected "Other" but provided no follow-up text
 
 ### Fallback
 
@@ -154,7 +154,7 @@ If an invalid answer is detected:
 
 1. **Do NOT proceed** with any default or assumed selection. Never guess what the user intended.
 2. **Inform the user:**
-   > "The interactive picker may not be working (this can happen with `acceptEdits` permission mode). Let me show your options as text instead."
+   > "The interactive picker didn't register a selection. Showing options as text instead."
 3. **Re-present the options** as a numbered text list:
    ```
    Please type the number of your choice:
@@ -164,17 +164,11 @@ If an invalid answer is detected:
    ...
    ```
 4. **Wait for the user's text response** before proceeding. Parse their response as a number (mapping to the list above) or as free-text matching one of the options.
+5. **If the text-based fallback also returns an invalid response**, inform the user that input cannot be collected in this session and default to "Done for now" (or the safest available option). Do not retry more than once.
 
 ### Scope
 
-This protocol applies to ALL `AskUserQuestion` calls across:
-- This file (`commands/oss.md`)
-- `workflows/work-through-issues.md`
-- `workflows/draft-first-workflow.md`
-- `workflows/pre-commit-review.md`
-- `commands/oss-search.md`
-- `commands/setup-oss.md`
-- All agent files that use `AskUserQuestion`
+This protocol applies to ALL `AskUserQuestion` calls in this plugin, including commands, workflows, and agent files.
 
 ---
 
@@ -582,4 +576,4 @@ Your PRs are tracked. Run /oss anytime to check again.
 19. **Parallel execution** - when addressing multiple repos, launch ALL agents in a SINGLE message, then present consolidated results table
 
 ### Input Validation
-20. **Validate every AskUserQuestion response** — see "AskUserQuestion Validation Protocol" above. Never proceed on an empty or missing answer. Always fall back to text-based input when the picker fails.
+20. **Validate every AskUserQuestion response** per the "AskUserQuestion Validation Protocol" section above.

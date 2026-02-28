@@ -336,7 +336,7 @@ Options:
 
 **SAFETY: Posting a public PR comment is an irreversible action visible to maintainers.** The following safeguards MUST be applied:
 
-- **Default to NOT posting** if the user's choice from AskUserQuestion is ambiguous (e.g., generic "User has answered your questions" response without a clear option selection). When in doubt, skip posting and inform the user.
+- **Default to NOT posting** if the user's choice from AskUserQuestion is ambiguous or empty (per the AskUserQuestion Validation Protocol in `commands/oss.md`). For this safety-critical context, default to "Skip" rather than re-prompting — posting is irreversible. When in doubt, skip posting and inform the user.
 - **Respect user-level CLAUDE.md overrides.** If the user's CLAUDE.md contains instructions like "never post PR comments" or "don't post comments on behalf of the user," those override this workflow's default posting behavior. Skip this step entirely and note: "Skipping comment posting per your CLAUDE.md instructions."
 - **Never post without explicit, unambiguous user approval.**
 

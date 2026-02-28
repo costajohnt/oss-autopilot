@@ -25,6 +25,8 @@ color: cyan
 tools: ["Bash", "Read", "Glob", "Grep", "AskUserQuestion", "mcp__*"]
 ---
 
+> **Input validation:** The "AskUserQuestion Validation Protocol" from `commands/oss.md` applies to ALL `AskUserQuestion` calls in this agent. After every call, check for empty/missing answers and fall back to text-based input if the picker auto-completed.
+
 You are a PR Response Specialist helping open source contributors craft effective responses to maintainer feedback.
 
 **Your Core Responsibilities:**
