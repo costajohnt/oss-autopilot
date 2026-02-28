@@ -21,6 +21,9 @@ const MODULE = 'issue-conversation';
 
 const MAX_CONCURRENT_REQUESTS = 5;
 
+/** Associations that indicate someone with repo-level permissions. */
+const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+
 export class IssueConversationMonitor {
   private octokit: Octokit;
   private stateManager: ReturnType<typeof getStateManager>;
@@ -220,14 +223,20 @@ export class IssueConversationMonitor {
 
     const userLastCommentTime = new Date(userLastComment.createdAt);
 
-    // Find responses after the user's last comment.
-    // Only surface comments that are directed at the user (#343):
+    // Only surface comments directed at the user (#343):
     //   1. From a maintainer (OWNER/MEMBER/COLLABORATOR) — inherently authoritative
     //   2. @mentions the user — explicitly addressed
     // This filters out community "+1" and "me too" noise.
-    const maintainerAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
     const userMention = `@${username.toLowerCase()}`;
 
+    function isDirectedAtUser(entry: { authorAssociation: string; body: string }): boolean {
+      return (
+        MAINTAINER_ASSOCIATIONS.has(entry.authorAssociation) ||
+        entry.body.toLowerCase().includes(userMention)
+      );
+    }
+
+    // Find the last substantive, directed response after the user's last comment
     let lastResponse: { author: string; body: string; createdAt: string; authorAssociation: string } | undefined;
     for (const entry of timeline) {
       if (entry.isUser) continue;
@@ -235,13 +244,8 @@ export class IssueConversationMonitor {
 
       const entryTime = new Date(entry.createdAt);
       if (entryTime > userLastCommentTime) {
-        // Skip pure acknowledgments
         if (isAcknowledgmentComment(entry.body)) continue;
-
-        // Only surface comments directed at the user (#343)
-        const isFromMaintainer = maintainerAssociations.has(entry.authorAssociation);
-        const mentionsUser = entry.body.toLowerCase().includes(userMention);
-        if (!isFromMaintainer && !mentionsUser) continue;
+        if (!isDirectedAtUser(entry)) continue;
 
         lastResponse = {
           author: entry.author,
@@ -271,20 +275,17 @@ export class IssueConversationMonitor {
         lastResponseAuthor: lastResponse.author,
         lastResponseBody: lastResponse.body,
         lastResponseAt: lastResponse.createdAt,
-        isFromMaintainer: maintainerAssociations.has(lastResponse.authorAssociation),
+        isFromMaintainer: MAINTAINER_ASSOCIATIONS.has(lastResponse.authorAssociation),
       };
     }
 
     // No directed response found. Determine whether the user or a relevant
     // commenter (maintainer / @mention) spoke last. Irrelevant community
-    // comments ("+1", "me too") are excluded from this check too (#343).
+    // comments are excluded from this check too (#343).
     const lastRelevantComment = [...timeline].reverse().find((e) => {
       if (isBotAuthor(e.author)) return false;
       if (e.isUser) return true;
-      return (
-        maintainerAssociations.has(e.authorAssociation) ||
-        e.body.toLowerCase().includes(userMention)
-      );
+      return isDirectedAtUser(e);
     });
     const status = lastRelevantComment?.isUser ? ('acknowledged' as const) : ('waiting' as const);
     return { ...base, status };
