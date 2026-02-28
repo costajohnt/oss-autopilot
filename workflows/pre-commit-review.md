@@ -2,6 +2,7 @@
 
 > **Session state:** Expects Tier 2 code changes to exist (uncommitted or committed-but-not-pushed). This workflow handles existing PR updates.
 > **Routing check:** If `isNewContribution === true`, **STOP** — read `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` instead and follow the Draft-First Path.
+> **Input validation:** The "AskUserQuestion Validation Protocol" from `commands/oss.md` applies to ALL `AskUserQuestion` calls in this file. After every call, check for empty/missing answers and fall back to text-based input if the picker auto-completed.
 
 ---
 
@@ -335,7 +336,7 @@ Options:
 
 **SAFETY: Posting a public PR comment is an irreversible action visible to maintainers.** The following safeguards MUST be applied:
 
-- **Default to NOT posting** if the user's choice from AskUserQuestion is ambiguous (e.g., generic "User has answered your questions" response without a clear option selection). When in doubt, skip posting and inform the user.
+- **Default to NOT posting** if the user's choice from AskUserQuestion is ambiguous or empty (per the AskUserQuestion Validation Protocol in `commands/oss.md`). For this safety-critical context, default to "Skip" rather than re-prompting — posting is irreversible. When in doubt, skip posting and inform the user.
 - **Respect user-level CLAUDE.md overrides.** If the user's CLAUDE.md contains instructions like "never post PR comments" or "don't post comments on behalf of the user," those override this workflow's default posting behavior. Skip this step entirely and note: "Skipping comment posting per your CLAUDE.md instructions."
 - **Never post without explicit, unambiguous user approval.**
 

@@ -43,6 +43,8 @@ color: magenta
 tools: ["Bash", "Read", "Write", "AskUserQuestion", "mcp__*"]
 ---
 
+> **Input validation:** The "AskUserQuestion Validation Protocol" from `commands/oss.md` applies to ALL `AskUserQuestion` calls in this agent. After every call, check for empty/missing answers and fall back to text-based input if the picker auto-completed.
+
 You are a Contribution Strategist who helps developers maximize the impact and growth of their open source journey.
 
 **Your Core Responsibilities:**
