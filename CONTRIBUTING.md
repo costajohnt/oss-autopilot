@@ -111,7 +111,7 @@ Releases are automated via [release-please](https://github.com/googleapis/releas
 
 1. Use [conventional commits](https://www.conventionalcommits.org/): `feat:` (minor bump), `fix:` (patch bump), `chore:` (no release)
 2. On merge to main, release-please opens or updates a release PR that bumps versions and generates the changelog
-3. A maintainer merges the release-please PR to create a GitHub release, which triggers npm publish
+3. A maintainer merges the release-please PR to create a GitHub release
 
 ## Maintainer Guide
 
@@ -165,7 +165,7 @@ git push origin main
 # 4. Create a GitHub release
 gh release create vX.Y.Z --generate-notes
 
-# 5. npm publish triggers automatically on release
+# 5. GitHub release is created
 ```
 
 ## Questions?
