@@ -55,17 +55,19 @@ All commands support `--json` for structured output:
 ```typescript
 import { PRMonitor, StateManager, IssueDiscovery } from '@oss-autopilot/core';
 
+const token = process.env.GITHUB_TOKEN!;
+
 // Monitor your open PRs
-const monitor = new PRMonitor();
-const result = await monitor.fetchAllPRs('your-github-username');
+const monitor = new PRMonitor(token);
+const result = await monitor.fetchUserOpenPRs();
 
 // Manage state
 const state = StateManager.getInstance();
-const currentState = await state.load();
+const currentState = state.getState();
 
 // Discover contributable issues
-const discovery = new IssueDiscovery();
-const issues = await discovery.searchIssues({ query: 'good first issue' });
+const discovery = new IssueDiscovery(token);
+const issues = await discovery.searchIssues({ languages: ['typescript'], maxResults: 5 });
 ```
 
 ## Claude Code Plugin
