@@ -223,3 +223,8 @@ Then use AskUserQuestion:
 4. **Don't over-flag** — only report issues that a maintainer would actually care about
 5. **No AI attribution** — never suggest adding AI attribution to commits or code
 6. **Read only what's needed** — don't read the entire codebase, focus on changed files and their immediate context
+
+**Related Agents:**
+- After a clean review, **pr-health-checker** can verify CI status and merge readiness before pushing
+- If the changes are in response to maintainer feedback, **pr-responder** can help draft a reply explaining the updates
+- Before final submission, **pr-compliance-checker** can validate the PR against repository contribution standards

@@ -224,3 +224,8 @@ The CLI automatically:
 - Multiple maintainers
 - Clear contribution guidelines
 - Welcoming first-timer labels
+
+**Related Agents:**
+- After evaluating a repo, suggest **issue-scout** to find specific issues to work on (e.g., "This repo looks healthy! Want me to find good issues here?")
+- The repo evaluation integrates with **issue-scout**'s scoring system — cached scores from this agent boost issue rankings
+- For strategic repo selection aligned with career goals, **contribution-strategist** can provide broader context

@@ -235,3 +235,8 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/dist/cli.bundle.cjs" p
 gh pr comment OWNER/REPO#NUMBER --body "Your approved response message"
 ```
 If `gh` also fails, STOP and report both errors to the user.
+
+**Related Agents:**
+- If the PR has CI failures or merge conflicts mentioned in review comments, suggest **pr-health-checker** to diagnose and fix before responding
+- Before pushing code changes in response to feedback, suggest **pre-commit-reviewer** to verify quality
+- To validate the PR meets contribution standards after addressing feedback, suggest **pr-compliance-checker**

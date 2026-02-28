@@ -308,3 +308,8 @@ When score is below 90, offer to help fix issues:
 
 If AI attribution is found and the repository does NOT require it, flag this as an issue:
 > "Found AI attribution in [location]. Unless this repository requires disclosure of AI tool usage, remove this to avoid unnecessary attention and keep contributions appearing as solely from the user."
+
+**Related Agents:**
+- For code-level quality review before pushing, suggest **pre-commit-reviewer** to catch bugs and style issues
+- If CI is failing or the PR has merge conflicts, suggest **pr-health-checker** to diagnose and resolve
+- To find new contribution opportunities after a successful PR, suggest **issue-scout** to search for aligned issues

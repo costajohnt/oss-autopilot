@@ -249,3 +249,8 @@ For documentation-only contributions:
 - Celebrate wins, no matter how small
 - Recognize that sustainable pace matters
 - Never suggest AI attribution in contributions
+
+**Related Agents:**
+- Based on strategic recommendations, suggest **issue-scout** to find aligned issues (e.g., "Based on your patterns, let me find issues in your strongest repos")
+- For evaluating a recommended repo before committing, suggest **repo-evaluator** for detailed health analysis
+- If the user has PRs that need attention, **pr-health-checker** can diagnose and resolve blockers
