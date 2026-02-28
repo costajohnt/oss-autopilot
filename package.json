@@ -3,18 +3,7 @@
   "version": "0.40.0",
   "description": "AI-powered autopilot for managing open source contributions with Claude Code",
   "type": "module",
-  "main": "dist/cli.js",
-  "bin": {
-    "oss-autopilot": "./dist/cli.js"
-  },
-  "exports": {
-    ".": {
-      "types": "./dist/cli.d.ts",
-      "import": "./dist/cli.js",
-      "require": "./dist/cli.bundle.cjs"
-    },
-    "./cli": "./dist/cli.bundle.cjs"
-  },
+  "private": true,
   "scripts": {
     "build": "tsc",
     "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/cli.bundle.cjs",
@@ -30,8 +19,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "prepare": "[ -n \"$CI\" ] || simple-git-hooks",
-    "prepublishOnly": "npm test && npm run build && npm run bundle"
+    "prepare": "[ -n \"$CI\" ] || simple-git-hooks"
   },
   "simple-git-hooks": {
     "commit-msg": "./scripts/commit-msg.sh \"$1\""
@@ -54,17 +42,6 @@
   "bugs": {
     "url": "https://github.com/costajohnt/oss-autopilot/issues"
   },
-  "files": [
-    ".claude-plugin/",
-    "agents/",
-    "commands/",
-    "hooks/",
-    "skills/",
-    "dist/",
-    "LICENSE",
-    "README.md",
-    "CHANGELOG.md"
-  ],
   "engines": {
     "node": ">=20.0.0"
   },
