@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.40.0](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.39.1...oss-autopilot-v0.40.0) (2026-02-28)
+
+
+### Features
+
+* add /oss-help quick reference command ([#360](https://github.com/costajohnt/oss-autopilot/issues/360)) ([#401](https://github.com/costajohnt/oss-autopilot/issues/401)) ([fe1cf31](https://github.com/costajohnt/oss-autopilot/commit/fe1cf31033c314ec1916291279d0d4469ceb2fad))
+* add cross-references between all 7 agents ([#361](https://github.com/costajohnt/oss-autopilot/issues/361)) ([#402](https://github.com/costajohnt/oss-autopilot/issues/402)) ([0af5763](https://github.com/costajohnt/oss-autopilot/commit/0af576358a837032f8c9dc6862157492b701e1e3))
+* add Phase 3 search for actively maintained repos ([#349](https://github.com/costajohnt/oss-autopilot/issues/349)) ([#390](https://github.com/costajohnt/oss-autopilot/issues/390)) ([1712ddd](https://github.com/costajohnt/oss-autopilot/commit/1712ddd8daa655cf228dff43be63d7161bf60815))
+* add ROADMAP.md and enable GitHub Discussions ([#355](https://github.com/costajohnt/oss-autopilot/issues/355)) ([#398](https://github.com/costajohnt/oss-autopilot/issues/398)) ([6d76094](https://github.com/costajohnt/oss-autopilot/commit/6d76094cb16b9eacf543aca9023a70ceaff726d3))
+* add SBOM generation to release workflow ([#359](https://github.com/costajohnt/oss-autopilot/issues/359)) ([#400](https://github.com/costajohnt/oss-autopilot/issues/400)) ([ca513ef](https://github.com/costajohnt/oss-autopilot/commit/ca513eff185798875e9faf4dc7265ac83bec7ed8))
+* add security scanning to pre-commit-reviewer agent ([#367](https://github.com/costajohnt/oss-autopilot/issues/367)) ([#407](https://github.com/costajohnt/oss-autopilot/issues/407)) ([520c633](https://github.com/costajohnt/oss-autopilot/commit/520c633b23154805fb21f61dbcd512bffccd253a))
+* auto-check CONTRIBUTING.md compliance before creating PRs ([#391](https://github.com/costajohnt/oss-autopilot/issues/391)) ([a7ec3d5](https://github.com/costajohnt/oss-autopilot/commit/a7ec3d53214e0d324b344af34487bfaee510d72f))
+* run project linter/formatter before committing ([#375](https://github.com/costajohnt/oss-autopilot/issues/375)) ([#395](https://github.com/costajohnt/oss-autopilot/issues/395)) ([7338587](https://github.com/costajohnt/oss-autopilot/commit/73385874b00ac3dcc659e052bfdc641ccf705c22))
+
+
+### Bug Fixes
+
+* add end-to-end contribution walkthrough to README ([#365](https://github.com/costajohnt/oss-autopilot/issues/365)) ([#405](https://github.com/costajohnt/oss-autopilot/issues/405)) ([af9de23](https://github.com/costajohnt/oss-autopilot/commit/af9de2365a55ae3816e46b9e759b9b7588a97791))
+* add missing standard fields to plugin.json manifest ([#376](https://github.com/costajohnt/oss-autopilot/issues/376)) ([2d12dd0](https://github.com/costajohnt/oss-autopilot/commit/2d12dd0d7b5f31b4edc29fe24eb854e87bb9c1c2)), closes [#344](https://github.com/costajohnt/oss-autopilot/issues/344)
+* change default file permissions from 0o644 to 0o600 in atomicWriteFileSync ([#380](https://github.com/costajohnt/oss-autopilot/issues/380)) ([3fcc361](https://github.com/costajohnt/oss-autopilot/commit/3fcc361bb7a039936abcd816fa86e0790caae1cb)), closes [#357](https://github.com/costajohnt/oss-autopilot/issues/357)
+* detect prior contributions via GitHub API during vetting ([#393](https://github.com/costajohnt/oss-autopilot/issues/393)) ([9ceb3b7](https://github.com/costajohnt/oss-autopilot/commit/9ceb3b7e63ea8812f7b0064264bbd772024c2a76))
+* document branch protection rules and RELEASE_TOKEN management ([#366](https://github.com/costajohnt/oss-autopilot/issues/366)) ([#406](https://github.com/costajohnt/oss-autopilot/issues/406)) ([2737439](https://github.com/costajohnt/oss-autopilot/commit/27374398ce4d64054b04e7f31191d6ee4f1e2f94))
+* document curated issue list file format ([#364](https://github.com/costajohnt/oss-autopilot/issues/364)) ([#404](https://github.com/costajohnt/oss-autopilot/issues/404)) ([3618b00](https://github.com/costajohnt/oss-autopilot/commit/3618b004c8d419bc8eeba0dc533000f715605d7c))
+* document health-check hook and improve error handling ([#362](https://github.com/costajohnt/oss-autopilot/issues/362)) ([#403](https://github.com/costajohnt/oss-autopilot/issues/403)) ([ffd7bff](https://github.com/costajohnt/oss-autopilot/commit/ffd7bff470e9957b041606b53310ad77e0471a1d))
+* exclude dist/ from vitest test discovery ([#384](https://github.com/costajohnt/oss-autopilot/issues/384)) ([08c1b07](https://github.com/costajohnt/oss-autopilot/commit/08c1b074be816b88170c52c45b77e790eda4725d))
+* filter issue replies to only maintainers and [@mentions](https://github.com/mentions) ([#343](https://github.com/costajohnt/oss-autopilot/issues/343)) ([#389](https://github.com/costajohnt/oss-autopilot/issues/389)) ([c50d5a5](https://github.com/costajohnt/oss-autopilot/commit/c50d5a5a44ce86dced957c30e110fdc6d3893ed6))
+* gracefully handle rate limits in search instead of crashing ([#383](https://github.com/costajohnt/oss-autopilot/issues/383)) ([5126b6a](https://github.com/costajohnt/oss-autopilot/commit/5126b6a40a9836f80ef5a5ef553bce528c5afd84))
+* raise CI coverage thresholds to match actual coverage ([#353](https://github.com/costajohnt/oss-autopilot/issues/353)) ([#396](https://github.com/costajohnt/oss-autopilot/issues/396)) ([cf4cb28](https://github.com/costajohnt/oss-autopilot/commit/cf4cb282c3317e90ad133e9babf891052d319134))
+* remove legacy data path references from agents ([#378](https://github.com/costajohnt/oss-autopilot/issues/378)) ([4427ce6](https://github.com/costajohnt/oss-autopilot/commit/4427ce6178e0db782f4f00182bd02a1f51b9f0f7)), closes [#346](https://github.com/costajohnt/oss-autopilot/issues/346)
+* remove unused type imports from issue-discovery.ts ([#410](https://github.com/costajohnt/oss-autopilot/issues/410)) ([4f2a069](https://github.com/costajohnt/oss-autopilot/commit/4f2a06981ae2ab74f3144eafe44b17f876ac7f4f))
+* replace Record&lt;string, any&gt; with Record&lt;string, unknown&gt; in issue-conversation.ts ([#381](https://github.com/costajohnt/oss-autopilot/issues/381)) ([3f27536](https://github.com/costajohnt/oss-autopilot/commit/3f27536c13589d3a68b35ab3d95805d232fd41ac)), closes [#363](https://github.com/costajohnt/oss-autopilot/issues/363)
+* require explicit user approval before posting PR comments ([#394](https://github.com/costajohnt/oss-autopilot/issues/394)) ([20066e3](https://github.com/costajohnt/oss-autopilot/commit/20066e3057025e3dda7167962b601a408e0beb77))
+* resolve contradictory test requirement guidance in pr-compliance-checker ([#379](https://github.com/costajohnt/oss-autopilot/issues/379)) ([4b78666](https://github.com/costajohnt/oss-autopilot/commit/4b786665a259a6ee08179e5995378a51481f79f8))
+* respect 'any' language preference in CLI search ([#382](https://github.com/costajohnt/oss-autopilot/issues/382)) ([a4f1f6e](https://github.com/costajohnt/oss-autopilot/commit/a4f1f6e8fe6686ec355c41042992259b957378d3)), closes [#350](https://github.com/costajohnt/oss-autopilot/issues/350)
+* share spam repo filter across all search strategies ([#385](https://github.com/costajohnt/oss-autopilot/issues/385)) ([9685e1f](https://github.com/costajohnt/oss-autopilot/commit/9685e1fee04cfe0b1dc42eed2ef51e6299d52678)), closes [#352](https://github.com/costajohnt/oss-autopilot/issues/352)
+* verify build targets and file paths before testing instructions ([#392](https://github.com/costajohnt/oss-autopilot/issues/392)) ([0188218](https://github.com/costajohnt/oss-autopilot/commit/01882187de1e7a3b53082cf6ab5aca9a333db5a4))
+
 ## [0.39.1](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.39.0...oss-autopilot-v0.39.1) (2026-02-28)
 
 
