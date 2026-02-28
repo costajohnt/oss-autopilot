@@ -81,9 +81,13 @@ After all 3 strategies return:
 
 1. **Normalize** all results to: `{ repo, number, title, url, labels, source, metadata }`. For Strategy B, flatten `candidate.issue.{repo, number, title, url, labels}` to the top level and place `candidate.{recommendation, viabilityScore, repoScore, reasonsToApprove, reasonsToSkip}` into `metadata`.
 2. **Filter Strategy B** against `searchedRepos` — remove candidates whose repo appears in `searchedRepos`
-3. **Deduplicate** by issue URL — keep the entry with richest metadata, assign **highest-priority source tag** (Established repo > CLI search > Trending repo)
-4. **Sort** by source priority: Established repo first, then CLI search, then Trending repo
-5. **Update `searchedRepos`** — append all repos from deduplicated results
+3. **Cross-strategy spam filter** — apply label-farming detection across ALL results:
+   - Flag repos where a single issue has 5+ beginner-type labels (good first issue, hacktoberfest, easy, beginner, starter, up-for-grabs, first-timers-only, help wanted)
+   - Flag repos where 3+ issues have near-identical titles (e.g., "Add Entry X", "Create Item Y")
+   - Remove all issues from flagged repos across all strategies, log: "Filtered {count} issues from {repos} (label-farming detected)"
+4. **Deduplicate** by issue URL — keep the entry with richest metadata, assign **highest-priority source tag** (Established repo > CLI search > Trending repo)
+5. **Sort** by source priority: Established repo first, then CLI search, then Trending repo
+6. **Update `searchedRepos`** — append all repos from deduplicated results
 
 **If ALL strategies failed** (all 3 returned errors):
 Show each strategy's specific error message, then:
