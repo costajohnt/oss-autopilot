@@ -8,26 +8,12 @@ OSS Autopilot is a Claude Code plugin with a TypeScript CLI backend for managing
 ┌─────────────────────────────────────────────────────────┐
 │  Plugin Layer (Claude Code)                             │
 │  commands/*.md  agents/*.md  skills/  workflows/  hooks │
-│                                                         │
-│  Markdown files with YAML frontmatter. Claude Code      │
-│  reads and executes these as slash commands, agents,     │
-│  skills, and hooks. They orchestrate user interaction    │
-│  and dispatch work to the CLI or to subagents.           │
 ├─────────────────────────────────────────────────────────┤
 │  CLI Layer (Node.js)                                    │
 │  src/cli.ts → commander subcommands → --json stdout     │
-│                                                         │
-│  A Commander-based CLI that the plugin invokes with     │
-│  `--json`. Each subcommand returns structured JSON.     │
-│  Bundled into a single CJS file (dist/cli.bundle.cjs)  │
-│  via esbuild for portability.                           │
 ├─────────────────────────────────────────────────────────┤
 │  Core Domain Layer (TypeScript)                         │
 │  src/core/ — stateless fetchers + state management      │
-│                                                         │
-│  Pure domain logic: GitHub API clients, PR monitoring,  │
-│  issue discovery, state persistence, error types,       │
-│  caching, and concurrency utilities.                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -88,7 +74,7 @@ A Commander program that registers subcommands via lazy `import()` calls. Each s
 Key design:
 - **Lazy loading** — only the invoked command's module is evaluated.
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`LOCAL_ONLY_COMMANDS`** — commands that skip the GitHub token check (e.g., `status`, `config`, `setup`).
+- **`LOCAL_ONLY_COMMANDS`** — 22 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 
@@ -112,16 +98,17 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `startup` | `startup.ts` | Combined auth + setup + daily + dashboard (single CLI call) |
 | `daily` | `daily.ts` | Fetch all open PRs, compute digest, generate dashboard |
 | `search` | `search.ts` | Multi-strategy issue discovery |
-| `track` | `track.ts` | Add a PR to tracking state |
+| `track` / `untrack` | `track.ts` | Add or remove a PR from tracking state |
 | `status` | `status.ts` | Show contribution stats from local state |
 | `config` | `config.ts` | Read/write user configuration |
-| `setup` | `setup.ts` | First-run setup (set username, preferences) |
+| `init` | `init.ts` | Initialize with GitHub username and import open PRs |
+| `setup` / `checkSetup` | `setup.ts` | First-run setup and setup verification |
 | `vet` | `vet.ts` | Vet a single issue for claimability |
-| `dashboard` | `dashboard.ts` | Generate HTML dashboard |
+| `dashboard` | `dashboard.ts` | Generate HTML dashboard (with `dashboard-data.ts` and `dashboard-templates.ts`) |
 | `shelve` / `unshelve` | `shelve.ts` | Temporarily hide PRs from daily digest |
 | `snooze` / `unsnooze` | `snooze.ts` | Temporarily suppress PR notifications |
 | `dismiss` / `undismiss` | `dismiss.ts` | Permanently exclude PRs |
-| `comments` | `comments.ts` | Track issues user has commented on |
+| `comments` / `post` / `claim` | `comments.ts` | Track issue conversations, post comments, claim issues |
 | `local-repos` | `local-repos.ts` | Scan for locally cloned repos |
 | `parse-list` | `parse-list.ts` | Parse a curated issue list file |
 | `check-integration` | `check-integration.ts` | Check if new files are referenced |
@@ -156,7 +143,7 @@ The bundle is a single CommonJS file (gitignored, auto-generated). The `SessionS
 - Checklist completeness
 - Dormancy detection (approaching-dormant / dormant based on inactivity)
 
-The monitor is **stateless** — no PRs are stored locally. This is the v2 "Fresh Fetch" architecture: data is always live from GitHub.
+Enrichment happens inline within `fetchUserOpenPRs()` via a bounded-concurrency worker pool — there is no separate `enrichPR` method.
 
 Decomposed into focused sub-modules:
 
@@ -195,15 +182,15 @@ ETag-based caching for GitHub API responses:
 
 | Module | Purpose |
 |--------|---------|
-| `utils.ts` | GitHub URL parsing, date helpers, token detection (`gh auth token` or `$GITHUB_TOKEN`), path helpers |
-| `errors.ts` | Error hierarchy: `OssAutopilotError` → `ConfigurationError`, `ValidationError`, `GitHubApiError`, `RateLimitError` |
+| `utils.ts` | GitHub URL parsing, date helpers, token detection, path helpers |
+| `errors.ts` | Error hierarchy: `OssAutopilotError` → `ConfigurationError`, `ValidationError` |
 | `logger.ts` | Debug/warn logger. Output goes to stderr. Activated by `--debug` flag |
 | `concurrency.ts` | `runWorkerPool<T>()` — bounded-concurrency Promise pool |
 | `pagination.ts` | GitHub API pagination helper |
 | `types.ts` | All type definitions (`FetchedPR`, `DailyDigest`, `AgentState`, etc.) |
-| `daily-logic.ts` | Business logic for the daily digest (action menu computation, summary formatting) |
-| `issue-conversation.ts` | Track conversation state on issues the user has commented on |
-| `comment-utils.ts` | Shared utilities for comment analysis |
+| `daily-logic.ts` | Standalone functions for daily digest business logic (action menu computation, summary formatting) |
+| `issue-conversation.ts` | `IssueConversationMonitor` — monitors issues the user has commented on for new maintainer responses |
+| `comment-utils.ts` | Bot detection and acknowledgment comment filtering |
 
 ## Data Flow
 
@@ -222,11 +209,10 @@ CLI Layer (startup.ts)
   │  │
   │  ▼
   │  Core Layer
-  │  ├── PRMonitor.fetchUserOpenPRs()    → GitHub Search API
-  │  ├── PRMonitor.enrichPR() × N       → CI, reviews, conflicts (concurrent)
-  │  ├── StateManager.load()             → ~/.oss-autopilot/state.json
-  │  ├── DailyLogic.computeActionMenu()  → Pre-computed menu items
-  │  └── Dashboard.generate()            → ~/.oss-autopilot/dashboard.html
+  │  ├── PRMonitor.fetchUserOpenPRs()     → GitHub Search API + per-PR enrichment
+  │  ├── StateManager.load()              → ~/.oss-autopilot/state.json
+  │  ├── computeActionMenu()              → Pre-computed menu items (daily-logic.ts)
+  │  └── generateDashboardHtml()          → ~/.oss-autopilot/dashboard.html
   │
   │  Returns JsonOutput<StartupOutput> to stdout
   │
@@ -250,35 +236,40 @@ Plugin Layer (oss.md)
 
 ### What's Stored Locally (`~/.oss-autopilot/state.json`)
 
+The root `AgentState` interface (see `src/core/types.ts` for the canonical definition):
+
 ```typescript
 interface AgentState {
   version: 2;
-  config: {
-    githubUsername: string;
-    maxActivePRs: number;
-    excludeRepos: string[];
-    issueListPath?: string;
-    // ...preferences
-  };
-  trackedIssues: TrackedIssue[];    // Issues user has claimed
-  repoScores: Record<string, RepoScore>;  // Repo health scores (cached)
-  events: StateEvent[];              // Audit log (max 1000 entries)
-  shelvedPRs: ShelvedPRRef[];       // Temporarily hidden PRs
-  snoozedPRs: SnoozeInfo[];        // Temporarily suppressed notifications
-  dismissedPRs: string[];           // Permanently excluded PRs
-  localRepoCache?: LocalRepoCache;  // Cached local repo scan results
+  repoScores: Record<string, RepoScore>;
+  config: AgentConfig;              // User preferences + shelved/snoozed/dismissed state
+  events: StateEvent[];             // Audit log (max 1000 entries)
+  lastRunAt: string;
+  lastDigestAt?: string;
+  lastDigest?: DailyDigest;         // Cached for dashboard rendering
+  monthlyMergedCounts?: Record<string, number>;
+  monthlyClosedCounts?: Record<string, number>;
+  monthlyOpenedCounts?: Record<string, number>;
+  dailyActivityCounts?: Record<string, number>;
+  localRepoCache?: LocalRepoCache;
+  activeIssues: TrackedIssue[];     // Issues user has claimed
 }
 ```
 
+Shelving, snoozing, and dismissing state lives inside `config: AgentConfig`:
+- `config.shelvedPRUrls: string[]` — PR URLs temporarily hidden from daily digest
+- `config.snoozedPRs: Record<string, SnoozeInfo>` — PR URLs with snoozed CI failures
+- `config.dismissedIssues: Record<string, string>` — Issue URLs mapped to dismiss timestamps
+
 ### What's NOT Stored (v2 Design)
 
-PRs are **not** stored in state. The v1 `trackedPRs` array was removed. On every `daily` run, all open PRs are fetched fresh from GitHub's Search API. This eliminates stale-state bugs and simplifies the data model — the only source of truth for PR status is GitHub itself.
+PRs are **not** stored in state. On every `daily` run, all open PRs are fetched fresh from GitHub's Search API. This eliminates stale-state bugs — the only source of truth for PR status is GitHub itself.
 
 ### File Layout
 
 ```
 ~/.oss-autopilot/
-├── state.json          # AgentState (config, tracked issues, scores, events)
+├── state.json          # AgentState (config, issues, scores, events)
 ├── backups/            # Auto-backups before each state write
 ├── cache/              # ETag-based HTTP response cache
 └── dashboard.html      # Generated HTML status dashboard
@@ -286,25 +277,6 @@ PRs are **not** stored in state. The v1 `trackedPRs` array was removed. On every
 
 ## Security Model
 
-### Token Handling
-- GitHub token resolved via `gh auth token` (preferred) or `$GITHUB_TOKEN` env var
-- Token is cached in-memory per session, never written to disk by the CLI
-- Rate limit handling: automatic retry with backoff via `@octokit/plugin-throttling`
-
-### File Permissions
-- Data directory created with mode `0o700` (owner-only access)
-- State file uses advisory locking to prevent concurrent corruption
-
-### Output Isolation
-- Debug/warning logs go to stderr; JSON output goes to stdout
-- This prevents log noise from corrupting the structured JSON contract
-
-## Testing
-
-Tests use vitest and are co-located with source files (`src/core/*.test.ts`, `src/commands/*.test.ts`). The test suite includes unit tests, integration tests, and end-to-end tests.
-
-```bash
-npm test                                    # Run all tests
-npx vitest run src/core/state.test.ts      # Run one file
-npx vitest run -t "should track a new PR"  # Run by name
-```
+- **Token resolution**: `$GITHUB_TOKEN` env var is checked first; `gh auth token` is the fallback. Token is cached in-memory per session, never written to disk.
+- **File permissions**: Data directory created with mode `0o700` (owner-only access). State file uses advisory locking to prevent concurrent corruption.
+- **Output isolation**: Debug/warning logs go to stderr; JSON output goes to stdout. This prevents log noise from corrupting the structured JSON contract.
