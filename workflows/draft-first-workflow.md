@@ -16,7 +16,97 @@ git status --porcelain
 
 **If output is empty:** Report no changes and return to the core router (`commands/oss.md`).
 
-### 1b. Stage and Commit
+### 1b. CONTRIBUTING.md Compliance Check
+
+Before committing, verify the changes satisfy the target repo's contribution requirements. This checks repo-specific requirements (tests, docs, changelog, etc.); Step 7's compliance check covers general open-source best practices via the `pr-compliance-checker` agent.
+
+#### 1. Search for contribution guidelines
+
+Look for these files in order (stop at the first one found):
+
+```
+CONTRIBUTING.md
+.github/CONTRIBUTING.md
+docs/CONTRIBUTING.md
+HACKING.md
+docs/HACKING.md
+DEVELOPMENT.md
+docs/DEVELOPMENT.md
+```
+
+**If no guidelines file found:** Note "No CONTRIBUTING.md found — skipping compliance check." and proceed to Step 1c.
+
+**If a file is found but cannot be read** (permission error, encoding issue, excessively large): Note "Found {path} but could not read it: {reason}. Skipping compliance check." and proceed to Step 1c.
+
+Store the file content in session context as `contributingGuidelines` for reuse in later steps (PR body generation in Step 1e, review context in Step 2).
+
+#### 2. Extract actionable requirements
+
+Read the file and extract a checklist of **actionable requirements** — things a contributor must do before submitting a PR. Typical categories:
+
+| Category | Examples |
+|----------|----------|
+| **Tests** | "Add tests for new functionality", "Ensure all tests pass" |
+| **Documentation** | "Update the user manual", "Add JSDoc comments", "Update README" |
+| **Changelog** | "Add a CHANGELOG entry", "Update CHANGES.md" |
+| **Code style** | "Run `cargo fmt`", "Run `npm run lint`", "Follow the style guide" |
+| **Commit format** | "Use conventional commits", "Sign your commits" |
+| **CLA/DCO** | "Sign the CLA", "Add a Signed-off-by line" |
+| **Branch** | "Branch from `develop`", "Target the `next` branch" |
+| **Scope** | "One feature per PR", "Keep PRs small" |
+
+Ignore vague guidance (e.g., "be respectful") and focus on concrete, verifiable items.
+
+#### 3. Verify compliance
+
+For each extracted requirement, check whether the current changes satisfy it:
+
+- **Tests:** Are there new/updated test files in the diff? If the requirement says "ensure tests pass", run the project's test command (from `package.json` scripts, `Makefile`, or CONTRIBUTING.md instructions) and check the exit code. If no test command is discoverable, mark as "Unable to verify automatically — manual check needed."
+- **Documentation:** Are doc files updated if the change is user-facing? Check `git diff --name-only` for files in `docs/`, `doc/`, or matching `*.md`.
+- **Changelog:** Is there a changelog entry? Check `git diff --name-only` for `CHANGELOG*`, `CHANGES*`, `HISTORY*` files.
+- **Code style:** Run the project's formatter/linter command if discoverable (from `package.json` scripts, `Makefile`, or CONTRIBUTING.md instructions) and check the exit code. If the command is not discoverable, mark as "Unable to verify automatically — manual check needed."
+- **Commit format:** Does the planned commit message match the required format?
+- **Branch target:** Parse the required branch name from the guidelines (e.g., "branch from `develop`") and compare against the current base branch. If they differ, mark as a gap.
+
+#### 4. Present compliance checklist
+
+```
+## CONTRIBUTING.md Compliance
+
+Source: {path to guidelines file}
+
+- [x] Tests added for new functionality
+- [x] Follows conventional commit format
+- [ ] **Gap: Changelog entry required** — CONTRIBUTING.md says "Add an entry to CHANGELOG.md"
+- [ ] **Gap: Documentation update needed** — CONTRIBUTING.md says "Update the user manual for user-facing changes"
+- [x] Code formatted with project linter
+
+{count} of {total} requirements met.
+```
+
+#### 5. Handle gaps
+
+**If all requirements met:** Note "All CONTRIBUTING.md requirements satisfied." and proceed to Step 1c.
+
+**If gaps found:**
+
+```
+Question: "There are {gapCount} unmet contribution requirements. How would you like to proceed?"
+Header: "Compliance"
+
+Options:
+1. "Address the gaps (Recommended)" — "Fix the gaps before committing"
+2. "Proceed anyway" — "Some requirements may not apply to this change"
+3. "Done for now" — "Come back to this later"
+```
+
+**"Address the gaps":** For each gap, attempt to resolve it (add changelog entry, update docs, run formatter, etc.). If resolution fails for a gap (tool not installed, requires manual web interaction like CLA signing, introduces new errors), report: "Could not automatically resolve: {requirement}. Reason: {error}." Mark it as requiring manual attention and continue to the next gap. After all gaps have been attempted, re-verify and present the updated checklist. If unresolvable gaps remain, re-present the 3-option prompt. **Soft limit after 3 resolution cycles:** if gaps remain after 3 attempts, note "Some requirements could not be automatically resolved after 3 attempts" and present the proceed/done options.
+
+**"Proceed anyway":** Store skipped requirements in session context as `skippedComplianceRequirements` (list of `{requirement, reason}`). Display to the user: "Proceeding with {count} skipped requirements: {list}." When generating the PR description in Step 1e, include a "Compliance Notes" section listing any consciously skipped requirements. Proceed to Step 1c.
+
+**"Done for now":** Report: "Compliance check paused — {resolvedCount} requirements met, {gapCount} remaining. Run `/oss` to resume." Return to the core router.
+
+### 1c. Stage and Commit
 
 - Stage the specific changed files (not `git add -A`)
 - If staging fails for any file, report which file(s) failed and why
@@ -27,7 +117,7 @@ git status --porcelain
   - Do NOT proceed to push
 - **Do NOT add AI attribution** (no Co-Authored-By, no "Generated with" mentions)
 
-### 1c. Push
+### 1d. Push
 
 ```bash
 git push -u origin HEAD
@@ -35,7 +125,7 @@ git push -u origin HEAD
 
 **If push fails**, report the error and offer to retry or cancel.
 
-### 1d. Create Draft PR
+### 1e. Create Draft PR
 
 **Always include `--head`** to handle both fork-based and same-repo workflows. The `--head` flag is harmless for same-repo PRs and required for fork-based PRs:
 
@@ -452,7 +542,11 @@ After viewing, re-prompt with the same options.
 
 ## Step 7: Compliance Check
 
-**For PRs that completed the full draft-first workflow** (Steps 2–6, i.e., `isNewContribution === true` and all steps completed): Skip the compliance check. The PR was already reviewed by 5+ agents, integration-checked, manually tested, and squashed. Note:
+**For PRs that completed the full draft-first workflow** (Steps 2–6, i.e., `isNewContribution === true` and all steps completed): Skip the general compliance check. The PR was already reviewed by 5+ agents, integration-checked, manually tested, and squashed. However, if `skippedComplianceRequirements` from Step 1b is non-empty, remind the user:
+
+> "Compliance check skipped — this PR went through the full draft-first review workflow. Note: {count} CONTRIBUTING.md requirement(s) were consciously skipped in Step 1b: {list}. Verify these don't need manual attention before maintainer review."
+
+If no requirements were skipped:
 
 > "Compliance check skipped — this PR went through the full draft-first review workflow."
 
