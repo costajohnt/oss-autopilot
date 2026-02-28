@@ -464,7 +464,7 @@ Dispatch the `pr-compliance-checker` agent with the PR URL.
 
 ### Test Coverage Requirements
 
-**When implementing changes, ALWAYS include tests unless the repo has no test infrastructure.**
+**Include tests when the repo has test infrastructure and the change involves code (not docs-only, config-only, or trivial typo fixes).**
 
 Before submitting a PR, check if the repo has a test directory:
 - `test/`, `tests/`, `__tests__/`, `spec/`

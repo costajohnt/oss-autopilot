@@ -149,10 +149,13 @@ gh pr view OWNER/REPO#NUMBER --json files,additions,deletions | jq '{files: .fil
 
 **Why it matters:** Smaller PRs get reviewed faster and have fewer bugs.
 
-### 4. Tests Included (Key Validation Criterion)
-**Check:** Does the PR include tests (if applicable)?
+### 4. Tests Included (Conditional)
+**Check:** Does the PR include tests?
 
-**IMPORTANT:** When implementing changes, ALWAYS include tests unless the repo has no test infrastructure. This is a key validation criterion for quality PRs.
+Include tests UNLESS:
+- The repo has no test infrastructure (no `test/`, `tests/`, `__tests__/`, `spec/` directories)
+- The change is documentation-only or configuration-only
+- The change is a trivial typo fix
 
 ```bash
 gh pr view OWNER/REPO#NUMBER --json files | jq -r '.files[].path' | grep -iE '(test|spec|_test\.|\.test\.|\.spec\.)'
@@ -281,7 +284,7 @@ When score is below 90, offer to help fix issues:
 > Consider splitting this into multiple PRs. I can help identify logical groupings.
 
 **For missing tests:**
-> Would you like help writing tests for this change? When implementing changes, ALWAYS include tests unless the repo has no test infrastructure. If maintainer feedback mentions missing tests, prioritize adding them.
+> Would you like help writing tests for this change? Tests should be included when the repo has test infrastructure and the change involves code (not docs-only or trivial typo fixes). If maintainer feedback mentions missing tests, prioritize adding them.
 
 **For vague title:**
 > Suggested title: `[type]: [clear description of change]`
