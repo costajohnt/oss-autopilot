@@ -183,7 +183,8 @@ Show summary:
 - X open PRs imported
 
 ### Next Steps
-Run `/oss` to check your PRs and find new contribution opportunities.
+- Run `/oss` to check your PRs and find new contribution opportunities
+- Run `/oss-help` for a full reference card of commands and agents
 ```
 
 **Note:** The `squashByDefault` and `repoOverrides` settings are stored in the config frontmatter. Per-repo squash overrides can be added manually:
@@ -462,7 +463,8 @@ Show summary:
 - X open PRs imported
 
 ### Next Steps
-Run `/oss` to check your PRs and find new contribution opportunities.
+- Run `/oss` to check your PRs and find new contribution opportunities
+- Run `/oss-help` for a full reference card of commands and agents
 ```
 
 ---
