@@ -101,6 +101,8 @@ If the TypeScript CLI command fails (non-zero exit, error output, or missing bun
 
 **Curated Issue List Awareness:**
 
+The curated issue list is a markdown file of pre-researched issues. The parser extracts GitHub URLs from list items, uses headings as tier labels, and marks items as completed via checkboxes (`[x]`), strikethrough (`~~`), or "Done". See README for full format specification.
+
 When dispatched with an issue from the user's curated list (indicated by `Source: curated-list` in the dispatch prompt):
 
 1. **Apply a +2 score bonus** to the issue's base score. The user has already pre-vetted this issue, so it starts with higher confidence.
