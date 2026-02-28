@@ -90,14 +90,13 @@ export class IssueVetter {
     });
 
     // Run all vetting checks in parallel
-    const [existingPRCheck, claimCheck, projectHealth, contributionGuidelines, userMergedPRCount] =
-      await Promise.all([
-        this.checkNoExistingPR(owner, repo, number),
-        this.checkNotClaimed(owner, repo, number, ghIssue.comments),
-        this.checkProjectHealth(owner, repo),
-        this.fetchContributionGuidelines(owner, repo),
-        this.checkUserMergedPRsInRepo(owner, repo),
-      ]);
+    const [existingPRCheck, claimCheck, projectHealth, contributionGuidelines, userMergedPRCount] = await Promise.all([
+      this.checkNoExistingPR(owner, repo, number),
+      this.checkNotClaimed(owner, repo, number, ghIssue.comments),
+      this.checkProjectHealth(owner, repo),
+      this.fetchContributionGuidelines(owner, repo),
+      this.checkUserMergedPRsInRepo(owner, repo),
+    ]);
 
     const noExistingPR = existingPRCheck.passed;
     const notClaimed = claimCheck.passed;
@@ -174,9 +173,7 @@ export class IssueVetter {
     const config = this.stateManager.getState().config;
     const repoScoreRecord = this.stateManager.getRepoScore(repoFullName);
     const effectiveMergedCount =
-      repoScoreRecord && repoScoreRecord.mergedPRCount > 0
-        ? repoScoreRecord.mergedPRCount
-        : userMergedPRCount;
+      repoScoreRecord && repoScoreRecord.mergedPRCount > 0 ? repoScoreRecord.mergedPRCount : userMergedPRCount;
     if (effectiveMergedCount > 0) {
       reasonsToApprove.push(
         `Trusted project (${effectiveMergedCount} PR${effectiveMergedCount > 1 ? 's' : ''} merged)`,
@@ -396,12 +393,7 @@ export class IssueVetter {
     }
   }
 
-  async checkNotClaimed(
-    owner: string,
-    repo: string,
-    issueNumber: number,
-    commentCount: number,
-  ): Promise<CheckResult> {
+  async checkNotClaimed(owner: string, repo: string, issueNumber: number, commentCount: number): Promise<CheckResult> {
     if (commentCount === 0) return { passed: true };
 
     try {

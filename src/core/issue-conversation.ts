@@ -230,10 +230,7 @@ export class IssueConversationMonitor {
     const userMention = `@${username.toLowerCase()}`;
 
     function isDirectedAtUser(entry: { authorAssociation: string; body: string }): boolean {
-      return (
-        MAINTAINER_ASSOCIATIONS.has(entry.authorAssociation) ||
-        entry.body.toLowerCase().includes(userMention)
-      );
+      return MAINTAINER_ASSOCIATIONS.has(entry.authorAssociation) || entry.body.toLowerCase().includes(userMention);
     }
 
     // Find the last substantive, directed response after the user's last comment

@@ -109,10 +109,7 @@ export function detectLabelFarmingRepos(items: GitHubSearchItem[]): Set<string> 
  * Maintains the existing sort order — first N from each repo are kept,
  * excess issues from over-represented repos are dropped.
  */
-export function applyPerRepoCap<T extends { issue: { repo: string } }>(
-  candidates: T[],
-  maxPerRepo: number,
-): T[] {
+export function applyPerRepoCap<T extends { issue: { repo: string } }>(candidates: T[], maxPerRepo: number): T[] {
   const repoCounts = new Map<string, number>();
   const kept: T[] = [];
 
