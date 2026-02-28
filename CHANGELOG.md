@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.39.1](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.39.0...oss-autopilot-v0.39.1) (2026-02-28)
+
+
+### Bug Fixes
+
+* improve agent safety guardrails (draft-to-file, review-aware commits, pre-push review) ([#341](https://github.com/costajohnt/oss-autopilot/issues/341)) ([36a0ab8](https://github.com/costajohnt/oss-autopilot/commit/36a0ab893df362a23176c1a7ef37453d4aae784e))
+
 ## [0.39.0](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.38.0...oss-autopilot-v0.39.0) (2026-02-27)
 
 
