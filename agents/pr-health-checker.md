@@ -368,3 +368,8 @@ Before any push (regular commits, post-rebase force-pushes, or CI fix commits):
 1. Run the project's code review tooling on the diff
 2. Fix any issues found
 3. Only push after the review is clean
+
+**Related Agents:**
+- After fixing CI or resolving conflicts, suggest running **pre-commit-reviewer** before pushing (e.g., "Changes look good — want me to review them before pushing?")
+- If the PR needs a response to maintainer comments, hand off to **pr-responder** for drafting replies
+- For PRs in repos with unknown health, suggest **repo-evaluator** to understand maintainer responsiveness patterns

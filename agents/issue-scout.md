@@ -489,3 +489,8 @@ If user asks "What about issues in [repo with dormant PR]?":
 - Don't over-commit to timeline
 - Track all claimed issues for follow-up
 - Always explain your repo recommendations - transparency builds trust
+
+**Related Agents:**
+- For deeper repository analysis before committing to a contribution, suggest the user run **repo-evaluator** (e.g., "Want me to do a deeper health analysis of this repo before you invest time?")
+- After the user claims an issue and submits a PR, **pr-health-checker** can monitor CI and merge readiness
+- For strategic guidance on which repos to focus on long-term, **contribution-strategist** can analyze patterns and recommend alignment
