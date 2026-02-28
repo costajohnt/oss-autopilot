@@ -588,16 +588,23 @@ export class IssueDiscovery {
 
         // Filter spam, already-found repos, and already-searched repos
         const spamRepos = detectLabelFarmingRepos(data.items);
+        if (spamRepos.size > 0) {
+          const spamCount = data.items.filter((i) =>
+            spamRepos.has(i.repository_url.split('/').slice(-2).join('/')),
+          ).length;
+          console.log(
+            `[SPAM_FILTER] Filtered ${spamCount} issues from ${spamRepos.size} label-farming repos: ${[...spamRepos].join(', ')}`,
+          );
+        }
         const seenRepos = new Set(allCandidates.map((c) => c.issue.repo));
         const itemsToVet = filterIssues(data.items)
           .filter((item) => {
             const repoFullName = item.repository_url.split('/').slice(-2).join('/');
-            return !spamRepos.has(repoFullName);
-          })
-          .filter((item) => {
-            const repoFullName = item.repository_url.split('/').slice(-2).join('/');
             return (
-              !phase0RepoSet.has(repoFullName) && !starredRepoSet.has(repoFullName) && !seenRepos.has(repoFullName)
+              !spamRepos.has(repoFullName) &&
+              !phase0RepoSet.has(repoFullName) &&
+              !starredRepoSet.has(repoFullName) &&
+              !seenRepos.has(repoFullName)
             );
           })
           .slice(0, remainingNeeded * 2);
@@ -612,14 +619,26 @@ export class IssueDiscovery {
           'normal',
         );
 
-        allCandidates.push(...results);
+        // Apply minStars filter (same as Phase 2, #105)
+        const minStars = config.minStars ?? 50;
+        const starFiltered = results.filter((c) => {
+          if (c.projectHealth.checkFailed) return true;
+          const stars = c.projectHealth.stargazersCount ?? 0;
+          return stars >= minStars;
+        });
+        const starFilteredCount = results.length - starFiltered.length;
+        if (starFilteredCount > 0) {
+          console.log(`[STAR_FILTER] Filtered ${starFilteredCount} Phase 3 candidates below ${minStars} stars`);
+        }
+
+        allCandidates.push(...starFiltered);
         if (allVetFailed) {
           phase3Error = 'all vetting failed';
         }
         if (vetRateLimitHit) {
           rateLimitHitDuringSearch = true;
         }
-        console.log(`Found ${results.length} candidates from maintained-repo search`);
+        console.log(`Found ${starFiltered.length} candidates from maintained-repo search`);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         phase3Error = errorMessage;

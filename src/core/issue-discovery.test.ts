@@ -1286,10 +1286,9 @@ describe('Phase 3: actively maintained repos (#349)', () => {
       },
     });
 
-    // We need to intercept Phase 3 call specifically. Since vetIssue also calls search,
-    // we use mockImplementation to check the query and return Phase 3 results when
+    // Intercept Phase 3 call specifically. Since vetIssue also calls search,
+    // use mockImplementation to check the query and return Phase 3 results when
     // the query includes 'archived:false'.
-    const defaultImpl = mockOctokitInstance.search.issuesAndPullRequests.getMockImplementation();
     mockOctokitInstance.search.issuesAndPullRequests.mockImplementation((params: any) => {
       if (params?.q?.includes('archived:false')) {
         return Promise.resolve({
@@ -1323,8 +1322,19 @@ describe('Phase 3: actively maintained repos (#349)', () => {
       .mockResolvedValueOnce({ data: { total_count: 0, items: [] } }) // Phase 2
       .mockRejectedValueOnce(new Error('Network error')); // Phase 3
 
-    // Should throw since both phases returned nothing
-    await expect(discovery.searchIssues({ maxResults: 5 })).rejects.toThrow('No issue candidates found');
+    // Should throw with Phase 3 error details included
+    await expect(discovery.searchIssues({ maxResults: 5 })).rejects.toThrow(
+      /Phase 3 \(maintained repos\): Network error/,
+    );
+  });
+
+  it('should return empty array when Phase 3 hits rate limit', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests
+      .mockResolvedValueOnce({ data: { total_count: 0, items: [] } }) // Phase 2
+      .mockRejectedValueOnce(Object.assign(new Error('rate limit exceeded'), { status: 403 })); // Phase 3
+
+    const candidates = await discovery.searchIssues({ maxResults: 5 });
+    expect(candidates).toEqual([]);
   });
 
   it('should use stars and pushed qualifiers in Phase 3 query', async () => {
