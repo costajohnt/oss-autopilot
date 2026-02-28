@@ -27,7 +27,10 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
  │   │   Parallel investigation → consolidated results → sequential execution
  │   │
  │   ├─ "Pick from your issue list" ──► workflows/work-through-issues.md
- │   │   Display curated list → vet → claim → implement
+ │   │   Display curated list → vet → claim → implement → draft-first workflow
+ │   │
+ │   ├─ Specific PR (via "Other") ──► workflows/work-through-issues.md
+ │   │   Dispatch agents for selected PRs only
  │   │
  │   ├─ "Search for new issues" ──► /oss-search command
  │   │   Parallel multi-strategy search with vetting
@@ -43,14 +46,14 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
  │   │   manual testing → squash → mark ready → compliance → list update
  │   │
  │   └─ Existing PR update? ──► workflows/pre-commit-review.md
- │       Gather diff → dispatch review agents → consolidate → commit/push
+ │       Gather diff → dispatch review agents → consolidate → commit/push → post comment
  │
  └─ Session End
 ```
 
 | Workflow File | Purpose | When Invoked |
 |---------------|---------|-------------|
-| `workflows/work-through-issues.md` | Handle PR maintenance and issue list browsing | User selects "Work through all issues", "Pick from list", or specific PRs |
+| `workflows/work-through-issues.md` | Orchestrate actionable PR resolution and issue list browsing | User selects "Work through all issues", "Pick from list", or specific PRs |
 | `workflows/draft-first-workflow.md` | Full new contribution pipeline (8 steps) | After claiming an issue and implementing changes |
 | `workflows/pre-commit-review.md` | Code review gate for existing PR updates | After Tier 2 code changes to an existing PR |
 | `workflows/reference.md` | CLI command syntax and agent name reference | On demand when command syntax is needed |
