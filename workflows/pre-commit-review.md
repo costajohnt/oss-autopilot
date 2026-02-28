@@ -294,7 +294,7 @@ Options:
    > "Running `{command}` on changed files..."
 
 4. **Handle results:**
-   - **If the command succeeds (exit 0):** Check `git status --porcelain` for files modified by the formatter. Compare the modified files to the original changed files list. If the formatter modified files **outside** the original change set, warn: "Formatter modified {N} file(s) outside your original changes: {list}. Discarding those changes." Restore those files with `git checkout -- {unrelated files}`. For files within the original change set, report: "Formatter applied changes to {N} file(s). These will be included in the commit."
+   - **If the command succeeds (exit 0):** Check `git status --porcelain` for files modified by the formatter. Compare the modified files to the original changed files list. If the formatter modified files **outside** the original change set, warn: "Formatter modified {N} file(s) outside your original changes: {list}. Discarding those changes." Restore those files with `git checkout -- {unrelated files}`, then re-run `git status --porcelain` to verify they are no longer modified. If any files could not be restored, warn: "Could not discard formatter changes to {file}. These files will NOT be staged — please resolve manually." Also check for new untracked files (`??` in `git status`) created by the formatter (e.g., cache files) and warn if found — do not stage them. For files within the original change set, report: "Formatter applied changes to {N} file(s). These will be included in the commit."
    - **If the command fails (non-zero exit):** Check `git status --porcelain` for files the formatter partially modified before failing. If files were modified, inform the user: "The linter/formatter modified {N} file(s) before failing. You can undo these partial changes or keep them." Report the error output. Use AskUserQuestion:
      ```
      Question: "Linter reported issues. How to proceed?"
@@ -305,7 +305,7 @@ Options:
      2. "Commit anyway" — "Push as-is; lint issues may cause CI failures"
      3. "Undo formatter changes" — "Restore files to pre-format state and commit original code"
      ```
-     If "Undo formatter changes": run `git checkout -- {formatter-modified files}` to restore original state, then proceed to staging.
+     If "Undo formatter changes": run `git checkout -- {formatter-modified files}` to restore original state. Verify with `git status --porcelain` that the files are restored. If any files could not be restored, report: "Could not fully undo formatter changes for: {files}. Please resolve manually before staging." Do not proceed to staging until the working tree matches the user's expectation.
    - **If the command times out (>60s):** Kill the process. Check for partial file modifications (same as failure case). Use AskUserQuestion:
      ```
      Question: "Linter timed out after 60s. This may indicate a configuration issue."
