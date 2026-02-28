@@ -1,8 +1,8 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    exclude: ['dist/**', 'node_modules/**'],
+    exclude: [...configDefaults.exclude, 'dist/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary'],
