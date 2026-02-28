@@ -4,14 +4,13 @@
     "packages/core": {
       "release-type": "node",
       "component": "core",
-      "changelog-path": "../../CHANGELOG.md",
       "bump-minor-pre-major": true,
       "draft": false,
       "prerelease": false,
       "extra-files": [
         {
           "type": "json",
-          "path": "../../.claude-plugin/plugin.json",
+          "path": "/.claude-plugin/plugin.json",
           "jsonpath": "$.version"
         }
       ]

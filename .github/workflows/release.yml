@@ -79,8 +79,8 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if [ ! -f CHANGELOG.md ]; then
-            echo "::error::CHANGELOG.md not found in repository root"
+          if [ ! -f packages/core/CHANGELOG.md ]; then
+            echo "::error::packages/core/CHANGELOG.md not found"
             exit 1
           fi
 
@@ -91,7 +91,7 @@ jobs:
               if (index($0, "[" ver "]")) { found=1; next }
             }
             found { print }
-          ' CHANGELOG.md)
+          ' packages/core/CHANGELOG.md)
 
           if [ -z "$BODY" ]; then
             echo "::warning::No CHANGELOG.md entry found for version ${VERSION}. Using generic release body."

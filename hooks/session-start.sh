@@ -45,11 +45,7 @@ if [ -n "$CURRENT" ]; then
     # Validate LATEST looks like a version (digits and dots), not an error response
     if [ -n "$LATEST" ] && echo "$LATEST" | grep -qE '^[0-9]+\.' && [ "$LATEST" != "$CURRENT" ]; then
       update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). Run: /plugin update oss-autopilot"
-      if [ -n "$messages" ]; then
-        messages="${messages}\n${update_msg}"
-      else
-        messages="$update_msg"
-      fi
+      messages="${messages:+${messages}\n}${update_msg}"
     fi
   fi
 fi
@@ -57,11 +53,7 @@ fi
 # --- Step 3: Quick PR health check ---
 HEALTH=$(node "${PLUGIN_ROOT}/.claude-plugin/scripts/health-check.cjs" 2>/dev/null || echo "")
 if [ -n "$HEALTH" ]; then
-  if [ -n "$messages" ]; then
-    messages="${messages}\n${HEALTH}"
-  else
-    messages="$HEALTH"
-  fi
+  messages="${messages:+${messages}\n}${HEALTH}"
 fi
 
 # --- Output JSON ---
