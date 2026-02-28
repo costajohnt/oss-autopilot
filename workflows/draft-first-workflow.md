@@ -16,7 +16,93 @@ git status --porcelain
 
 **If output is empty:** Report no changes and return to the core router (`commands/oss.md`).
 
-### 1b. Stage and Commit
+### 1b. CONTRIBUTING.md Compliance Check
+
+Before committing, verify the changes satisfy the target repo's contribution requirements.
+
+#### 1. Search for contribution guidelines
+
+Look for these files in order (stop at the first one found):
+
+```
+CONTRIBUTING.md
+.github/CONTRIBUTING.md
+docs/CONTRIBUTING.md
+HACKING.md
+docs/HACKING.md
+DEVELOPMENT.md
+docs/DEVELOPMENT.md
+```
+
+**If no guidelines file found:** Note "No CONTRIBUTING.md found — skipping compliance check." and proceed to Step 1c.
+
+#### 2. Extract actionable requirements
+
+Read the file and extract a checklist of **actionable requirements** — things a contributor must do before submitting a PR. Typical categories:
+
+| Category | Examples |
+|----------|----------|
+| **Tests** | "Add tests for new functionality", "Ensure all tests pass" |
+| **Documentation** | "Update the user manual", "Add JSDoc comments", "Update README" |
+| **Changelog** | "Add a CHANGELOG entry", "Update CHANGES.md" |
+| **Code style** | "Run `cargo fmt`", "Run `npm run lint`", "Follow the style guide" |
+| **Commit format** | "Use conventional commits", "Sign your commits" |
+| **CLA/DCO** | "Sign the CLA", "Add a Signed-off-by line" |
+| **Branch** | "Branch from `develop`", "Target the `next` branch" |
+| **Scope** | "One feature per PR", "Keep PRs small" |
+
+Ignore vague guidance (e.g., "be respectful") and focus on concrete, verifiable items.
+
+#### 3. Verify compliance
+
+For each extracted requirement, check whether the current changes satisfy it:
+
+- **Tests:** Are there new/updated test files? Does `git diff --name-only` include files in `test/`, `tests/`, `__tests__/`, `spec/`, or files matching `*.test.*`, `*.spec.*`?
+- **Documentation:** Are doc files updated if the change is user-facing?
+- **Changelog:** Is there a changelog entry if required?
+- **Code style:** Has the relevant formatter/linter been run?
+- **Commit format:** Does the planned commit message match the required format?
+- **Branch target:** Is the current base branch correct?
+
+#### 4. Present compliance checklist
+
+```
+## CONTRIBUTING.md Compliance
+
+Source: {path to guidelines file}
+
+- [x] Tests added for new functionality
+- [x] Follows conventional commit format
+- [ ] **Gap: Changelog entry required** — CONTRIBUTING.md says "Add an entry to CHANGELOG.md"
+- [ ] **Gap: Documentation update needed** — CONTRIBUTING.md says "Update the user manual for user-facing changes"
+- [x] Code formatted with project linter
+
+{count} of {total} requirements met.
+```
+
+#### 5. Handle gaps
+
+**If all requirements met:** Note "All CONTRIBUTING.md requirements satisfied." and proceed to Step 1c.
+
+**If gaps found:**
+
+```
+Question: "There are {gapCount} unmet contribution requirements. How would you like to proceed?"
+Header: "Compliance"
+
+Options:
+1. "Address the gaps (Recommended)" — "Fix the gaps before committing"
+2. "Proceed anyway" — "Some requirements may not apply to this change"
+3. "Done for now" — "Come back to this later"
+```
+
+**"Address the gaps":** For each gap, attempt to resolve it (add changelog entry, update docs, run formatter, etc.). After addressing, re-verify and present the updated checklist. Loop until all gaps are resolved or the user chooses to proceed.
+
+**"Proceed anyway":** Note which requirements were skipped and why (the user may know they don't apply). Proceed to Step 1c.
+
+**"Done for now":** Return to the core router.
+
+### 1c. Stage and Commit
 
 - Stage the specific changed files (not `git add -A`)
 - If staging fails for any file, report which file(s) failed and why
@@ -27,7 +113,7 @@ git status --porcelain
   - Do NOT proceed to push
 - **Do NOT add AI attribution** (no Co-Authored-By, no "Generated with" mentions)
 
-### 1c. Push
+### 1d. Push
 
 ```bash
 git push -u origin HEAD
@@ -35,7 +121,7 @@ git push -u origin HEAD
 
 **If push fails**, report the error and offer to retry or cancel.
 
-### 1d. Create Draft PR
+### 1e. Create Draft PR
 
 **Always include `--head`** to handle both fork-based and same-repo workflows. The `--head` flag is harmless for same-repo PRs and required for fork-based PRs:
 
