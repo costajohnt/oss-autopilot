@@ -1,34 +1,12 @@
 import type { CommentedIssueWithResponse } from '../types';
+import { truncate, formatDate } from '../utils';
 
 interface IssueListProps {
   issues: CommentedIssueWithResponse[];
 }
 
-function truncate(text: string, max: number): string {
-  return text.length > max ? text.slice(0, max) + '...' : text;
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  } catch {
-    return iso;
-  }
-}
-
 export function IssueList({ issues }: IssueListProps) {
-  if (issues.length === 0) {
-    return (
-      <div class="issue-list">
-        <h3 class="issue-list-title">Issue Responses</h3>
-        <p class="issue-list-empty">No issue responses</p>
-      </div>
-    );
-  }
+  if (issues.length === 0) return null;
 
   return (
     <div class="issue-list">

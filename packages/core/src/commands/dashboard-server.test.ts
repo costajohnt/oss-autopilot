@@ -25,7 +25,7 @@ let capturedHandler: RequestHandler | null = null;
 // We need to mock http.createServer to capture the request handler,
 // and also provide a mock server object that has listen/close/on/once methods.
 const mockServer = {
-  listen: vi.fn((_port: number, cb: () => void) => { cb(); }),
+  listen: vi.fn((_port: number, _host: string, cb: () => void) => { cb(); }),
   close: vi.fn((cb?: () => void) => { if (cb) cb(); }),
   on: vi.fn(),
   once: vi.fn(),
@@ -377,6 +377,12 @@ describe('dashboard-server', () => {
       const result = await sendRequest('GET', '/api/data');
       const data = JSON.parse(result.body);
       expect(Array.isArray(data.issueResponses)).toBe(true);
+    });
+
+    it('should return shelvedPRUrls as an array', async () => {
+      const result = await sendRequest('GET', '/api/data');
+      const data = JSON.parse(result.body);
+      expect(Array.isArray(data.shelvedPRUrls)).toBe(true);
     });
   });
 

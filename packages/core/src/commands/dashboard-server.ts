@@ -30,6 +30,7 @@ interface DashboardJsonData {
   topRepos: Array<{ repo: string; active: number; merged: number; closed: number }>;
   monthlyMerged: Record<string, number>;
   activePRs: FetchedPR[];
+  shelvedPRUrls: string[];
   commentedIssues: CommentedIssue[];
   issueResponses: CommentedIssueWithResponse[];
   offline?: boolean;
@@ -43,7 +44,11 @@ interface ActionRequest {
   days?: number;
 }
 
-// ── MIME type map ──────────────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const VALID_ACTIONS: Set<ActionRequest['action']> = new Set(['shelve', 'unshelve', 'snooze', 'unsnooze']);
+
+const MAX_BODY_BYTES = 10_240;
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html',
@@ -80,20 +85,37 @@ function buildDashboardJson(
     topRepos: topRepos.map(([repo, data]) => ({ repo, ...data })),
     monthlyMerged,
     activePRs: digest.openPRs || [],
+    shelvedPRUrls: state.config.shelvedPRUrls || [],
     commentedIssues,
     issueResponses,
   };
 }
 
 /**
- * Read the full request body as a UTF-8 string.
+ * Read the full request body as a UTF-8 string, with a size limit.
  */
-function readBody(req: http.IncomingMessage): Promise<string> {
+function readBody(req: http.IncomingMessage, maxBytes: number = MAX_BODY_BYTES): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-    req.on('error', reject);
+    let totalLength = 0;
+    let aborted = false;
+    req.on('data', (chunk: Buffer) => {
+      if (aborted) return;
+      totalLength += chunk.length;
+      if (totalLength > maxBytes) {
+        aborted = true;
+        req.destroy();
+        reject(new Error('Body too large'));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (!aborted) resolve(Buffer.concat(chunks).toString('utf-8'));
+    });
+    req.on('error', (err) => {
+      if (!aborted) reject(err);
+    });
   });
 }
 
@@ -122,6 +144,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   const { port: requestedPort, assetsDir, token, open } = options;
 
   const stateManager = getStateManager();
+  const resolvedAssetsDir = path.resolve(assetsDir);
 
   // ── Cached data ──────────────────────────────────────────────────────────
   let cachedDigest: DailyDigest | undefined;
@@ -135,10 +158,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       cachedDigest = result.digest;
       cachedCommentedIssues = result.commentedIssues;
     } catch (error) {
-      console.error(
-        'Failed to fetch data from GitHub:',
-        error instanceof Error ? error.message : error,
-      );
+      console.error('Failed to fetch data from GitHub:', error);
       console.error('Falling back to cached data...');
       cachedDigest = stateManager.getState().lastDigest;
     }
@@ -185,7 +205,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
       sendError(res, 405, 'Method not allowed');
     } catch (error) {
-      console.error('Request error:', error instanceof Error ? error.message : error);
+      console.error(`Unhandled request error [${method} ${url}]:`, error);
       sendError(res, 500, 'Internal server error');
     }
   });
@@ -196,14 +216,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     try {
       const raw = await readBody(req);
       body = JSON.parse(raw) as ActionRequest;
-    } catch {
-      sendError(res, 400, 'Invalid JSON body');
+    } catch (e) {
+      const isBodyTooLarge = e instanceof Error && e.message === 'Body too large';
+      sendError(res, isBodyTooLarge ? 413 : 400, isBodyTooLarge ? 'Request body too large' : 'Invalid JSON body');
       return;
     }
 
-    const validActions = ['shelve', 'unshelve', 'snooze', 'unsnooze'];
-    if (!body.action || !validActions.includes(body.action)) {
-      sendError(res, 400, `Invalid action. Must be one of: ${validActions.join(', ')}`);
+    if (!body.action || !VALID_ACTIONS.has(body.action)) {
+      sendError(res, 400, `Invalid action. Must be one of: ${[...VALID_ACTIONS].join(', ')}`);
       return;
     }
 
@@ -229,6 +249,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       }
       stateManager.save();
     } catch (error) {
+      console.error(`Action "${body.action}" failed for ${body.url}:`, error);
       sendError(res, 500, `Action failed: ${error instanceof Error ? error.message : String(error)}`);
       return;
     }
@@ -257,29 +278,47 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
       sendJson(res, 200, cachedJsonData);
     } catch (error) {
+      console.error('Dashboard refresh failed:', error);
       sendError(res, 500, `Refresh failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   // ── Static file serving ──────────────────────────────────────────────────
   function serveStaticFile(requestUrl: string, res: http.ServerResponse): void {
-    // Strip query string and decode
-    const urlPath = decodeURIComponent(requestUrl.split('?')[0]);
+    // Decode URL, handling malformed percent-encoding
+    let urlPath: string;
+    try {
+      urlPath = decodeURIComponent(requestUrl.split('?')[0]);
+    } catch (err) {
+      console.error(`Malformed URL received: "${requestUrl}"`, err);
+      sendError(res, 400, 'Malformed URL');
+      return;
+    }
 
     // Resolve the file path
-    let filePath = path.join(assetsDir, urlPath === '/' ? 'index.html' : urlPath);
-    filePath = path.resolve(filePath);
+    let filePath = path.resolve(assetsDir, urlPath === '/' ? 'index.html' : '.' + urlPath);
 
     // Security: prevent path traversal
-    const resolvedAssetsDir = path.resolve(assetsDir);
     if (!filePath.startsWith(resolvedAssetsDir + path.sep) && filePath !== resolvedAssetsDir) {
       sendError(res, 403, 'Forbidden');
       return;
     }
 
-    // If file doesn't exist, serve index.html for SPA routing
-    if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-      filePath = path.join(assetsDir, 'index.html');
+    // If file doesn't exist or is a directory, serve index.html for SPA routing
+    try {
+      const stat = fs.statSync(filePath);
+      if (stat.isDirectory()) {
+        filePath = path.join(assetsDir, 'index.html');
+      }
+    } catch (err) {
+      const nodeErr = err as NodeJS.ErrnoException;
+      if (nodeErr.code === 'ENOENT') {
+        filePath = path.join(assetsDir, 'index.html');
+      } else {
+        console.error(`Failed to stat ${filePath}:`, err);
+        sendError(res, 500, 'Internal server error');
+        return;
+      }
     }
 
     const ext = path.extname(filePath).toLowerCase();
@@ -292,8 +331,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         'Content-Length': content.length,
       });
       res.end(content);
-    } catch {
-      sendError(res, 404, 'Not found');
+    } catch (error) {
+      const nodeErr = error as NodeJS.ErrnoException;
+      if (nodeErr.code === 'ENOENT') {
+        sendError(res, 404, 'Not found');
+      } else {
+        console.error(`Failed to serve static file ${filePath}:`, error);
+        sendError(res, 500, 'Failed to read file');
+      }
     }
   }
 
@@ -304,14 +349,8 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   for (let attempt = 0; attempt < MAX_PORT_ATTEMPTS; attempt++) {
     try {
       await new Promise<void>((resolve, reject) => {
-        server.once('error', (err: NodeJS.ErrnoException) => {
-          if (err.code === 'EADDRINUSE') {
-            reject(err);
-          } else {
-            reject(err);
-          }
-        });
-        server.listen(actualPort, () => resolve());
+        server.once('error', reject);
+        server.listen(actualPort, '127.0.0.1', () => resolve());
       });
       // Success — break out of retry loop
       break;

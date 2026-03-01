@@ -12,11 +12,17 @@ export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
   const [snoozeReason, setSnoozeReason] = useState('');
   const [snoozeDays, setSnoozeDays] = useState(1);
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  async function handleAction(action: ActionRequest) {
+  async function handleAction(action: ActionRequest): Promise<boolean> {
     setBusy(true);
+    setActionError(null);
     try {
       await onAction(action);
+      return true;
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Action failed');
+      return false;
     } finally {
       setBusy(false);
     }
@@ -24,6 +30,8 @@ export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
 
   return (
     <div class="action-bar">
+      {actionError && <p class="action-error">{actionError}</p>}
+
       <button
         class={`action-btn ${isShelved ? 'action-btn--unshelve' : 'action-btn--shelve'}`}
         disabled={busy}
@@ -51,7 +59,7 @@ export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
             disabled={busy}
             onClick={() =>
               handleAction({
-                action: 'unsnooze_ci',
+                action: 'unsnooze',
                 url: pr.url,
               })
             }
@@ -86,16 +94,18 @@ export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
           <button
             class="action-btn action-btn--confirm"
             disabled={busy}
-            onClick={() => {
-              handleAction({
-                action: 'snooze_ci',
+            onClick={async () => {
+              const ok = await handleAction({
+                action: 'snooze',
                 url: pr.url,
                 reason: snoozeReason || undefined,
-                durationHours: snoozeDays * 24,
+                days: snoozeDays,
               });
-              setSnoozeOpen(false);
-              setSnoozeReason('');
-              setSnoozeDays(1);
+              if (ok) {
+                setSnoozeOpen(false);
+                setSnoozeReason('');
+                setSnoozeDays(1);
+              }
             }}
           >
             Confirm Snooze

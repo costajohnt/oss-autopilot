@@ -551,6 +551,16 @@ a:hover {
   border-top: 1px solid var(--border-muted);
 }
 
+.action-error {
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--accent-error-dim);
+  color: var(--accent-error);
+  font-size: 0.85rem;
+}
+
 .action-btn {
   padding: 6px 14px;
   border: 1px solid var(--border);

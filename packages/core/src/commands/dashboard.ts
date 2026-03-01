@@ -185,8 +185,11 @@ function resolveAssetsDir(): string | null {
     if (fs.existsSync(path.join(dashboardDist, 'index.html'))) {
       return dashboardDist;
     }
-  } catch {
-    // Package not installed — fall through
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException & { code?: string }).code;
+    if (code !== 'MODULE_NOT_FOUND') {
+      console.error('Error resolving dashboard package:', error);
+    }
   }
 
   return null;

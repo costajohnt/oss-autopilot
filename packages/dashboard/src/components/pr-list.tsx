@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { FetchedPR, FetchedPRStatus } from '../types';
+import { truncate, statusColor } from '../utils';
 
 interface PRListProps {
   prs: FetchedPR[];
@@ -34,38 +35,6 @@ const HEALTHY: Set<FetchedPRStatus> = new Set([
   'dormant',
   'waiting',
 ]);
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? text.slice(0, max) + '...' : text;
-}
-
-/** Map status to a CSS color variable name (used for the dot). */
-function statusColor(status: FetchedPRStatus): string {
-  switch (status) {
-    case 'needs_response':
-    case 'needs_changes':
-    case 'failing_ci':
-    case 'merge_conflict':
-    case 'missing_required_files':
-    case 'needs_rebase':
-    case 'incomplete_checklist':
-      return 'var(--accent-error)';
-    case 'changes_addressed':
-    case 'waiting_on_maintainer':
-    case 'ci_blocked':
-    case 'ci_not_running':
-      return 'var(--accent-info)';
-    case 'healthy':
-      return 'var(--accent-open)';
-    case 'approaching_dormant':
-    case 'dormant':
-      return 'var(--accent-warning)';
-    case 'waiting':
-      return 'var(--accent-info)';
-    default:
-      return 'var(--text-muted)';
-  }
-}
 
 interface SectionDef {
   id: string;

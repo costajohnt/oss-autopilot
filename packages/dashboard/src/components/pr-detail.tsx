@@ -1,4 +1,5 @@
 import type { FetchedPR, ActionRequest } from '../types';
+import { formatDate, statusColor, ciStatusColor, truncate } from '../utils';
 import { ActionBar } from './action-bar';
 
 interface PRDetailProps {
@@ -6,18 +7,6 @@ interface PRDetailProps {
   isShelved: boolean;
   onAction: (action: ActionRequest) => Promise<void>;
   onClose: () => void;
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  } catch {
-    return iso;
-  }
 }
 
 function reviewLabel(decision: string): string {
@@ -44,33 +33,6 @@ function reviewColor(decision: string): string {
     default:
       return 'var(--text-muted)';
   }
-}
-
-function statusColor(status: string): string {
-  if (
-    [
-      'needs_response',
-      'needs_changes',
-      'failing_ci',
-      'merge_conflict',
-      'missing_required_files',
-      'needs_rebase',
-      'incomplete_checklist',
-    ].includes(status)
-  ) {
-    return 'var(--accent-error)';
-  }
-  if (['changes_addressed', 'waiting_on_maintainer', 'ci_blocked', 'ci_not_running'].includes(status)) {
-    return 'var(--accent-info)';
-  }
-  if (status === 'healthy') return 'var(--accent-open)';
-  if (['approaching_dormant', 'dormant'].includes(status)) return 'var(--accent-warning)';
-  return 'var(--text-muted)';
-}
-
-function truncateBody(body: string, max: number): string {
-  if (body.length <= max) return body;
-  return body.slice(0, max) + '...';
 }
 
 function categoryBadge(category: string): string {
@@ -117,16 +79,7 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
           <span class="pr-detail-field-label">CI Status</span>
           <span
             class="pr-detail-field-value"
-            style={{
-              color:
-                pr.ciStatus === 'passing'
-                  ? 'var(--accent-open)'
-                  : pr.ciStatus === 'failing'
-                    ? 'var(--accent-error)'
-                    : pr.ciStatus === 'pending'
-                      ? 'var(--accent-warning)'
-                      : 'var(--text-muted)',
-            }}
+            style={{ color: ciStatusColor(pr.ciStatus) }}
           >
             {pr.ciStatus.charAt(0).toUpperCase() + pr.ciStatus.slice(1)}
           </span>
@@ -169,7 +122,7 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
                 {formatDate(pr.lastMaintainerComment.createdAt)}
               </span>
               <p class="pr-detail-comment-body">
-                {truncateBody(pr.lastMaintainerComment.body, 200)}
+                {truncate(pr.lastMaintainerComment.body, 200)}
               </p>
             </div>
           </div>

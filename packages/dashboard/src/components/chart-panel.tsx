@@ -42,6 +42,15 @@ const COLORS = {
   textColor: '#8b949e',
 };
 
+const SHARED_SCALE_OPTS = {
+  ticks: { color: COLORS.textColor },
+  grid: { color: COLORS.gridColor },
+};
+
+const SHARED_LEGEND = {
+  labels: { color: COLORS.textColor, boxWidth: 12 },
+};
+
 /** Get the last 12 months of YYYY-MM keys, sorted ascending. */
 function getLast12Months(records: Record<string, number>[]): string[] {
   const allKeys = new Set<string>();
@@ -69,11 +78,6 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       monthlyOpened ?? {},
       monthlyClosed ?? {},
     ]);
-
-    // Destroy previous chart
-    if (lineChartRef.current) {
-      lineChartRef.current.destroy();
-    }
 
     const datasets = [];
 
@@ -114,21 +118,10 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            labels: { color: COLORS.textColor, boxWidth: 12 },
-          },
-        },
+        plugins: { legend: SHARED_LEGEND },
         scales: {
-          x: {
-            ticks: { color: COLORS.textColor },
-            grid: { color: COLORS.gridColor },
-          },
-          y: {
-            beginAtZero: true,
-            ticks: { color: COLORS.textColor },
-            grid: { color: COLORS.gridColor },
-          },
+          x: SHARED_SCALE_OPTS,
+          y: { beginAtZero: true, ...SHARED_SCALE_OPTS },
         },
       },
     });
@@ -143,10 +136,6 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
   useEffect(() => {
     const canvas = barCanvasRef.current;
     if (!canvas) return;
-
-    if (barChartRef.current) {
-      barChartRef.current.destroy();
-    }
 
     const repos = topRepos.slice(0, 10);
     const labels = repos.map((r) => r.repo);
@@ -177,23 +166,10 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
         responsive: true,
         maintainAspectRatio: false,
         indexAxis: 'y',
-        plugins: {
-          legend: {
-            labels: { color: COLORS.textColor, boxWidth: 12 },
-          },
-        },
+        plugins: { legend: SHARED_LEGEND },
         scales: {
-          x: {
-            stacked: true,
-            beginAtZero: true,
-            ticks: { color: COLORS.textColor },
-            grid: { color: COLORS.gridColor },
-          },
-          y: {
-            stacked: true,
-            ticks: { color: COLORS.textColor },
-            grid: { color: COLORS.gridColor },
-          },
+          x: { stacked: true, beginAtZero: true, ...SHARED_SCALE_OPTS },
+          y: { stacked: true, ...SHARED_SCALE_OPTS },
         },
       },
     });

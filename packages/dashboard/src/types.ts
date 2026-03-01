@@ -188,6 +188,7 @@ export interface DashboardData {
   topRepos: Array<{ repo: string; active: number; merged: number; closed: number }>;
   monthlyMerged: Record<string, number>;
   activePRs: FetchedPR[];
+  shelvedPRUrls: string[];
   commentedIssues: CommentedIssue[];
   issueResponses: CommentedIssueWithResponse[];
 }
@@ -195,27 +196,12 @@ export interface DashboardData {
 // -- Action types (for POST /api/action) --
 
 /** Actions a user can take from the dashboard. */
-export type ActionType =
-  | 'shelve'
-  | 'unshelve'
-  | 'dismiss_issue'
-  | 'snooze_ci'
-  | 'unsnooze_ci';
+export type ActionType = 'shelve' | 'unshelve' | 'snooze' | 'unsnooze';
 
 /** Request body for POST /api/action. */
 export interface ActionRequest {
   action: ActionType;
-  /** PR URL for shelve/unshelve/snooze_ci/unsnooze_ci, issue URL for dismiss_issue. */
   url: string;
-  /** Optional reason or metadata for the action. */
   reason?: string;
-  /** Duration in hours for snooze actions. */
-  durationHours?: number;
-}
-
-/** Response body for POST /api/action. */
-export interface ActionResponse {
-  success: boolean;
-  message: string;
-  error?: string;
+  days?: number;
 }

@@ -12,8 +12,10 @@ export function App() {
   const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
 
-  // Track shelved URLs locally (in a real app, this comes from state)
-  const shelvedUrls = useMemo(() => new Set<string>(), []);
+  const shelvedUrls = useMemo(
+    () => new Set(data?.shelvedPRUrls ?? []),
+    [data?.shelvedPRUrls],
+  );
 
   if (loading && !data) {
     return (
@@ -98,7 +100,7 @@ export function App() {
           topRepos={data.topRepos}
         />
 
-        {data.issueResponses.length > 0 && <IssueList issues={data.issueResponses} />}
+        <IssueList issues={data.issueResponses} />
       </main>
     </div>
   );
