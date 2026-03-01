@@ -21,6 +21,10 @@
   --accent-conflict: #da3633;
   --accent-info: #58a6ff;
   --accent-info-dim: rgba(88, 166, 255, 0.08);
+  --chart-border: rgba(8, 11, 16, 0.8);
+  --chart-grid: rgba(48, 54, 61, 0.3);
+  --scrollbar-track: rgba(28, 33, 40, 0.8);
+  --scrollbar-thumb: rgba(48, 54, 61, 0.6);
 }
 
 /* === Base Reset & Layout === */
