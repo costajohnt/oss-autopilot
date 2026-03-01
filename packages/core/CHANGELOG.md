@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.40.1...core-v0.41.0) (2026-03-01)
+
+
+### Features
+
+* Phase 2 — npm publish setup for @oss-autopilot/core ([#426](https://github.com/costajohnt/oss-autopilot/issues/426)) ([7395e5c](https://github.com/costajohnt/oss-autopilot/commit/7395e5c108ea2a487028befb354a5138966e2992))
+
+
+### Bug Fixes
+
+* release-please paths and hook robustness ([#424](https://github.com/costajohnt/oss-autopilot/issues/424)) ([ed759eb](https://github.com/costajohnt/oss-autopilot/commit/ed759ebf69f9c2f029c723f93c21d3170297868a))
+
 ## [0.40.1](https://github.com/costajohnt/oss-autopilot/compare/oss-autopilot-v0.40.0...oss-autopilot-v0.40.1) (2026-02-28)
 
 
