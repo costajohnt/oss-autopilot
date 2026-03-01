@@ -168,9 +168,9 @@ describe('LOCAL_ONLY_COMMANDS', () => {
   });
 
   it('should have exactly the expected number of entries (no accidental additions/deletions)', () => {
-    // 19 entries: 17 active + 'help' and 'version' which Commander intercepts before
+    // 20 entries: 18 active + 'help' and 'version' which Commander intercepts before
     // preAction fires, so they are defensive/dead entries but intentionally kept.
-    expect(LOCAL_ONLY_COMMANDS).toHaveLength(19);
+    expect(LOCAL_ONLY_COMMANDS).toHaveLength(20);
   });
 });
 
@@ -372,18 +372,13 @@ describe('Version detection IIFE', () => {
 // ─── Command registration ─────────────────────────────────────────────────────
 
 // Helper: extract command names registered in cli.ts by parsing its source.
-//
-// In cli.ts, each command is registered via method chaining across two lines:
-//   program
-//     .command('name')
-//     .description(...)
-//
-// The regex uses the multiline flag and anchors to line-start indentation so it
-// matches '.command(' calls without needing 'program' on the same line.
+// Matches `.command('name')` calls in both chained (`.command(...)`) and
+// standalone (`program.command(...)`) forms.
 // Arguments like '<pr-url>' and '[count]' are excluded via the character class.
 function extractRegisteredCommandsFromSource(): string[] {
   const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
-  const matches = src.matchAll(/^\s+\.command\('([^'\s<[]+)/gm);
+  // Match both `.command('name')` at line start and `program.command('name')` mid-line
+  const matches = src.matchAll(/\.command\('([^'\s<[]+)/gm);
   return [...matches].map((m) => m[1]);
 }
 
@@ -409,6 +404,7 @@ describe('Command registration', () => {
       'setup',
       'checkSetup',
       'dashboard',
+      'serve',
       'parse-issue-list',
       'check-integration',
       'local-repos',

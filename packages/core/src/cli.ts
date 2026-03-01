@@ -39,6 +39,7 @@ const LOCAL_ONLY_COMMANDS = [
   'setup',
   'checkSetup',
   'dashboard',
+  'serve',
   'parse-issue-list',
   'check-integration',
   'local-repos',
@@ -207,10 +208,26 @@ program
     await runCheckSetup({ json: options.json });
   });
 
-// Dashboard command
-program
-  .command('dashboard')
-  .description('Generate HTML stats dashboard')
+// Dashboard commands
+const dashboardCmd = program.command('dashboard').description('Dashboard commands');
+
+dashboardCmd
+  .command('serve')
+  .description('Start interactive dashboard server')
+  .option('--port <port>', 'Port to listen on', '3000')
+  .option('--no-open', 'Do not open browser automatically')
+  .action(async (options) => {
+    const port = parseInt(options.port, 10);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      console.error(`Invalid port number: "${options.port}". Must be an integer between 1 and 65535.`);
+      process.exit(1);
+    }
+    const { serveDashboard } = await import('./commands/dashboard.js');
+    await serveDashboard({ port, open: options.open });
+  });
+
+// Keep bare `dashboard` (no subcommand) for backward compat — generates static HTML
+dashboardCmd
   .option('--open', 'Open in browser')
   .option('--json', 'Output as JSON')
   .option('--offline', 'Use cached data only (no GitHub API calls)')

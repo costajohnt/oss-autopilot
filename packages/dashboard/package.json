@@ -4,5 +4,26 @@
   "private": true,
   "description": "Interactive dashboard for OSS Autopilot (Phase 3 — Preact + Vite SPA)",
   "type": "module",
-  "license": "MIT"
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "chart.js": "^4.4.8",
+    "preact": "^10.25.4"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.9.4",
+    "typescript": "^5.9.3",
+    "vite": "^6.3.5"
+  }
 }
