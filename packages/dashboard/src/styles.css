@@ -141,3 +141,28 @@ a:hover {
   flex-direction: column;
   gap: 24px;
 }
+
+/* === Refresh Button === */
+
+.refresh-btn {
+  margin-left: auto;
+  padding: 6px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: var(--bg-surface);
+  border-color: var(--accent-info);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
