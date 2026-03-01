@@ -372,14 +372,8 @@ describe('Version detection IIFE', () => {
 // ─── Command registration ─────────────────────────────────────────────────────
 
 // Helper: extract command names registered in cli.ts by parsing its source.
-//
-// In cli.ts, each command is registered via method chaining across two lines:
-//   program
-//     .command('name')
-//     .description(...)
-//
-// The regex uses the multiline flag and anchors to line-start indentation so it
-// matches '.command(' calls without needing 'program' on the same line.
+// Matches `.command('name')` calls in both chained (`.command(...)`) and
+// standalone (`program.command(...)`) forms.
 // Arguments like '<pr-url>' and '[count]' are excluded via the character class.
 function extractRegisteredCommandsFromSource(): string[] {
   const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
