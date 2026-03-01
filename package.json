@@ -15,6 +15,8 @@
     "lint:fix": "eslint packages/ --fix",
     "format": "prettier --write packages/",
     "format:check": "prettier --check packages/",
+    "dashboard:dev": "pnpm --filter @oss-autopilot/dashboard run dev",
+    "dashboard:build": "pnpm --filter @oss-autopilot/dashboard run build",
     "prepare": "[ -n \"$CI\" ] || simple-git-hooks"
   },
   "simple-git-hooks": {

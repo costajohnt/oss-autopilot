@@ -10,6 +10,12 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/"
+  ],
   "license": "MIT",
   "dependencies": {
     "chart.js": "^4.4.8",
