@@ -1,7 +1,11 @@
+import { useState } from 'preact/hooks';
 import { useDashboard } from './hooks/use-dashboard';
+import { StatsBar } from './components/stats-bar';
+import { FilterBar, type Filters } from './components/filter-bar';
 
 export function App() {
   const { data, loading, error, refresh } = useDashboard();
+  const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
 
   if (loading && !data) {
     return (
@@ -25,6 +29,19 @@ export function App() {
 
   if (!data) return null;
 
+  const repos = [...new Set(data.activePRs.map((pr) => pr.repo))].sort();
+  const statuses = [...new Set(data.activePRs.map((pr) => pr.status))].sort();
+
+  const filteredPRs = data.activePRs.filter((pr) => {
+    if (filters.status !== 'all' && pr.status !== filters.status) return false;
+    if (filters.repo !== 'all' && pr.repo !== filters.repo) return false;
+    if (filters.search) {
+      const term = filters.search.toLowerCase();
+      if (!pr.title.toLowerCase().includes(term)) return false;
+    }
+    return true;
+  });
+
   return (
     <div class="dashboard">
       <header class="dashboard-header">
@@ -37,8 +54,21 @@ export function App() {
           {loading ? 'Refreshing...' : 'Refresh'}
         </button>
       </header>
+
       <main class="dashboard-main">
-        <p class="shell-status">Dashboard components loading...</p>
+        <StatsBar stats={data.stats} />
+        <FilterBar
+          filters={filters}
+          onFilterChange={setFilters}
+          repos={repos}
+          statuses={statuses}
+        />
+
+        <section class="pr-list-placeholder">
+          <p class="shell-status">
+            {filteredPRs.length} PR{filteredPRs.length !== 1 ? 's' : ''} matching filters
+          </p>
+        </section>
       </main>
     </div>
   );
