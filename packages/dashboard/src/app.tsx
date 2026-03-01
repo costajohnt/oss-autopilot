@@ -1,11 +1,17 @@
-import { useState } from 'preact/hooks';
+import { useState, useMemo } from 'preact/hooks';
 import { useDashboard } from './hooks/use-dashboard';
 import { StatsBar } from './components/stats-bar';
 import { FilterBar, type Filters } from './components/filter-bar';
+import { PRList } from './components/pr-list';
+import { PRDetail } from './components/pr-detail';
 
 export function App() {
-  const { data, loading, error, refresh } = useDashboard();
+  const { data, loading, error, refresh, performAction } = useDashboard();
   const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
+  const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
+
+  // Track shelved URLs locally (in a real app, this comes from state)
+  const shelvedUrls = useMemo(() => new Set<string>(), []);
 
   if (loading && !data) {
     return (
@@ -42,6 +48,10 @@ export function App() {
     return true;
   });
 
+  const selectedPR = selectedUrl
+    ? data.activePRs.find((pr) => pr.url === selectedUrl) ?? null
+    : null;
+
   return (
     <div class="dashboard">
       <header class="dashboard-header">
@@ -64,11 +74,22 @@ export function App() {
           statuses={statuses}
         />
 
-        <section class="pr-list-placeholder">
-          <p class="shell-status">
-            {filteredPRs.length} PR{filteredPRs.length !== 1 ? 's' : ''} matching filters
-          </p>
-        </section>
+        <div class="dashboard-content">
+          <PRList
+            prs={filteredPRs}
+            selectedUrl={selectedUrl}
+            onSelect={setSelectedUrl}
+            shelvedUrls={shelvedUrls}
+          />
+          {selectedPR && (
+            <PRDetail
+              pr={selectedPR}
+              isShelved={shelvedUrls.has(selectedPR.url)}
+              onAction={performAction}
+              onClose={() => setSelectedUrl(null)}
+            />
+          )}
+        </div>
       </main>
     </div>
   );

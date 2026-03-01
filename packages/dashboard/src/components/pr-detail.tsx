@@ -1,0 +1,218 @@
+import type { FetchedPR, ActionRequest } from '../types';
+import { ActionBar } from './action-bar';
+
+interface PRDetailProps {
+  pr: FetchedPR;
+  isShelved: boolean;
+  onAction: (action: ActionRequest) => Promise<void>;
+  onClose: () => void;
+}
+
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function reviewLabel(decision: string): string {
+  switch (decision) {
+    case 'approved':
+      return 'Approved';
+    case 'changes_requested':
+      return 'Changes Requested';
+    case 'review_required':
+      return 'Review Required';
+    default:
+      return 'Unknown';
+  }
+}
+
+function reviewColor(decision: string): string {
+  switch (decision) {
+    case 'approved':
+      return 'var(--accent-open)';
+    case 'changes_requested':
+      return 'var(--accent-error)';
+    case 'review_required':
+      return 'var(--accent-warning)';
+    default:
+      return 'var(--text-muted)';
+  }
+}
+
+function statusColor(status: string): string {
+  if (
+    [
+      'needs_response',
+      'needs_changes',
+      'failing_ci',
+      'merge_conflict',
+      'missing_required_files',
+      'needs_rebase',
+      'incomplete_checklist',
+    ].includes(status)
+  ) {
+    return 'var(--accent-error)';
+  }
+  if (['changes_addressed', 'waiting_on_maintainer', 'ci_blocked', 'ci_not_running'].includes(status)) {
+    return 'var(--accent-info)';
+  }
+  if (status === 'healthy') return 'var(--accent-open)';
+  if (['approaching_dormant', 'dormant'].includes(status)) return 'var(--accent-warning)';
+  return 'var(--text-muted)';
+}
+
+function truncateBody(body: string, max: number): string {
+  if (body.length <= max) return body;
+  return body.slice(0, max) + '...';
+}
+
+function categoryBadge(category: string): string {
+  switch (category) {
+    case 'actionable':
+      return 'Actionable';
+    case 'fork_limitation':
+      return 'Fork Limitation';
+    case 'auth_gate':
+      return 'Auth Gate';
+    case 'infrastructure':
+      return 'Infrastructure';
+    default:
+      return category;
+  }
+}
+
+export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
+  return (
+    <div class="pr-detail">
+      <div class="pr-detail-header">
+        <h2 class="pr-detail-title">{pr.title}</h2>
+        <button class="pr-detail-close" onClick={onClose} aria-label="Close">
+          &times;
+        </button>
+      </div>
+
+      <div class="pr-detail-meta">
+        <span class="pr-detail-status" style={{ color: statusColor(pr.status) }}>
+          {pr.displayLabel}
+        </span>
+        <span class="pr-detail-description">{pr.displayDescription}</span>
+      </div>
+
+      <div class="pr-detail-links">
+        <a href={pr.url} target="_blank" rel="noopener noreferrer">
+          {pr.repo}#{pr.number}
+        </a>
+      </div>
+
+      <div class="pr-detail-fields">
+        {/* CI Status */}
+        <div class="pr-detail-field">
+          <span class="pr-detail-field-label">CI Status</span>
+          <span
+            class="pr-detail-field-value"
+            style={{
+              color:
+                pr.ciStatus === 'passing'
+                  ? 'var(--accent-open)'
+                  : pr.ciStatus === 'failing'
+                    ? 'var(--accent-error)'
+                    : pr.ciStatus === 'pending'
+                      ? 'var(--accent-warning)'
+                      : 'var(--text-muted)',
+            }}
+          >
+            {pr.ciStatus.charAt(0).toUpperCase() + pr.ciStatus.slice(1)}
+          </span>
+        </div>
+
+        {/* Failing checks */}
+        {pr.classifiedChecks.length > 0 && (
+          <div class="pr-detail-field">
+            <span class="pr-detail-field-label">Failing Checks</span>
+            <div class="pr-detail-checks">
+              {pr.classifiedChecks.map((check) => (
+                <div key={check.name} class="pr-detail-check">
+                  <span class="pr-detail-check-name">{check.name}</span>
+                  <span
+                    class={`pr-detail-check-badge pr-detail-check-badge--${check.category}`}
+                  >
+                    {categoryBadge(check.category)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Review Decision */}
+        <div class="pr-detail-field">
+          <span class="pr-detail-field-label">Review</span>
+          <span class="pr-detail-field-value" style={{ color: reviewColor(pr.reviewDecision) }}>
+            {reviewLabel(pr.reviewDecision)}
+          </span>
+        </div>
+
+        {/* Maintainer Comment */}
+        {pr.lastMaintainerComment && (
+          <div class="pr-detail-field">
+            <span class="pr-detail-field-label">Maintainer Comment</span>
+            <div class="pr-detail-comment">
+              <span class="pr-detail-comment-author">@{pr.lastMaintainerComment.author}</span>
+              <span class="pr-detail-comment-date">
+                {formatDate(pr.lastMaintainerComment.createdAt)}
+              </span>
+              <p class="pr-detail-comment-body">
+                {truncateBody(pr.lastMaintainerComment.body, 200)}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Checklist */}
+        {pr.hasIncompleteChecklist && pr.checklistStats && (
+          <div class="pr-detail-field">
+            <span class="pr-detail-field-label">Checklist</span>
+            <span class="pr-detail-field-value" style={{ color: 'var(--accent-warning)' }}>
+              {pr.checklistStats.checked}/{pr.checklistStats.total} checked
+            </span>
+          </div>
+        )}
+
+        {/* Days since activity */}
+        <div class="pr-detail-field">
+          <span class="pr-detail-field-label">Days Since Activity</span>
+          <span class="pr-detail-field-value">{pr.daysSinceActivity}</span>
+        </div>
+
+        {/* Merge conflict */}
+        {pr.hasMergeConflict && (
+          <div class="pr-detail-field">
+            <span class="pr-detail-field-label">Merge Conflict</span>
+            <span class="pr-detail-field-value" style={{ color: 'var(--accent-conflict)' }}>
+              Yes
+            </span>
+          </div>
+        )}
+
+        {/* Timestamps */}
+        <div class="pr-detail-field">
+          <span class="pr-detail-field-label">Created</span>
+          <span class="pr-detail-field-value">{formatDate(pr.createdAt)}</span>
+        </div>
+        <div class="pr-detail-field">
+          <span class="pr-detail-field-label">Updated</span>
+          <span class="pr-detail-field-value">{formatDate(pr.updatedAt)}</span>
+        </div>
+      </div>
+
+      <ActionBar pr={pr} isShelved={isShelved} onAction={onAction} />
+    </div>
+  );
+}
