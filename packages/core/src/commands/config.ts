@@ -4,40 +4,32 @@
  */
 
 import { getStateManager } from '../core/index.js';
-import { outputJson, outputJsonError, type ConfigOutput } from '../formatters/json.js';
+import type { ConfigOutput } from '../formatters/json.js';
 
 interface ConfigOptions {
   key?: string;
   value?: string;
-  json?: boolean;
 }
 
-function exitWithError(msg: string, json?: boolean): never {
-  if (json) {
-    outputJsonError(msg);
-  } else {
-    console.error(msg);
-  }
-  process.exit(1);
+export interface ConfigSetOutput {
+  success: true;
+  key: string;
+  value: string;
 }
 
-export async function runConfig(options: ConfigOptions): Promise<void> {
+export type ConfigCommandOutput = ConfigOutput | ConfigSetOutput;
+
+export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOutput> {
   const stateManager = getStateManager();
   const currentConfig = stateManager.getState().config;
 
   if (!options.key) {
     // Show current config
-    if (options.json) {
-      outputJson<ConfigOutput>({ config: currentConfig });
-    } else {
-      console.log('\n⚙️ Current Configuration:\n');
-      console.log(JSON.stringify(currentConfig, null, 2));
-    }
-    return;
+    return { config: currentConfig };
   }
 
   if (!options.value) {
-    exitWithError('Value required', options.json);
+    throw new Error('Value required');
   }
   const value = options.value;
 
@@ -59,9 +51,8 @@ export async function runConfig(options: ConfigOptions): Promise<void> {
     case 'exclude-repo': {
       const parts = value.split('/');
       if (parts.length !== 2 || !parts[0] || !parts[1]) {
-        exitWithError(
+        throw new Error(
           `Invalid repo format "${value}". Use "owner/repo" format. To exclude an entire org, use: config exclude-org ${value}`,
-          options.json,
         );
       }
       const valueLower = value.toLowerCase();
@@ -73,9 +64,8 @@ export async function runConfig(options: ConfigOptions): Promise<void> {
     }
     case 'exclude-org': {
       if (value.includes('/')) {
-        exitWithError(
+        throw new Error(
           `Invalid org name "${value}". Use just the org name (e.g., "facebook"), not "owner/repo" format. To exclude a specific repo, use: config exclude-repo ${value}`,
-          options.json,
         );
       }
       const currentOrgs = currentConfig.excludeOrgs ?? [];
@@ -86,14 +76,10 @@ export async function runConfig(options: ConfigOptions): Promise<void> {
       break;
     }
     default:
-      exitWithError(`Unknown config key: ${options.key}`, options.json);
+      throw new Error(`Unknown config key: ${options.key}`);
   }
 
   stateManager.save();
 
-  if (options.json) {
-    outputJson({ success: true, key: options.key, value });
-  } else {
-    console.log(`Set ${options.key} to: ${value}`);
-  }
+  return { success: true, key: options.key, value };
 }

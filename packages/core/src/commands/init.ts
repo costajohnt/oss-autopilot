@@ -4,33 +4,23 @@
  */
 
 import { getStateManager } from '../core/index.js';
-import { outputJson } from '../formatters/json.js';
 import { validateGitHubUsername } from './validation.js';
 
-interface InitOptions {
+export interface InitOutput {
   username: string;
-  json?: boolean;
+  message: string;
 }
 
-export async function runInit(options: InitOptions): Promise<void> {
+export async function runInit(options: { username: string }): Promise<InitOutput> {
   validateGitHubUsername(options.username);
   const stateManager = getStateManager();
-
-  if (!options.json) {
-    console.log(`\n🚀 Initializing for @${options.username}...\n`);
-  }
 
   // Set username in config
   stateManager.updateConfig({ githubUsername: options.username });
   stateManager.save();
 
-  if (options.json) {
-    outputJson({
-      username: options.username,
-      message: 'Username saved. Run `daily` to fetch your open PRs from GitHub.',
-    });
-  } else {
-    console.log(`Username set to @${options.username}.`);
-    console.log('Run `oss-autopilot daily` to fetch your open PRs from GitHub.');
-  }
+  return {
+    username: options.username,
+    message: 'Username saved. Run `daily` to fetch your open PRs from GitHub.',
+  };
 }

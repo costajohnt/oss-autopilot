@@ -54,6 +54,9 @@ jobs:
       - name: Format check
         run: pnpm run format:check
 
+      - name: Build core types
+        run: pnpm --filter @oss-autopilot/core run build
+
       - name: Type check
         run: pnpm run typecheck
 

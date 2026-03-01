@@ -11,13 +11,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { getStateManager, getGitHubToken } from '../core/index.js';
-import { outputJson, outputJsonError, type StartupOutput, type IssueListInfo } from '../formatters/json.js';
+import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
 import { writeDashboardFromState } from './dashboard.js';
-
-interface StartupOptions {
-  json?: boolean;
-}
 
 function getVersion(): string {
   try {
@@ -125,86 +121,65 @@ function openInBrowser(filePath: string): void {
   });
 }
 
-export async function runStartup(options: StartupOptions): Promise<void> {
+/**
+ * Run startup checks and return structured output.
+ * Returns StartupOutput with one of three shapes:
+ * 1. Setup incomplete: { version, setupComplete: false }
+ * 2. Auth failure: { version, setupComplete: true, authError: "..." }
+ * 3. Success: { version, setupComplete: true, daily, dashboardPath?, issueList? }
+ *
+ * Errors from the daily check propagate to the caller.
+ */
+export async function runStartup(): Promise<StartupOutput> {
   const version = getVersion();
   const stateManager = getStateManager();
 
   // 1. Check setup
   if (!stateManager.isSetupComplete()) {
-    if (options.json) {
-      outputJson<StartupOutput>({ version, setupComplete: false });
-    } else {
-      console.log('Setup incomplete. Run /setup-oss first.');
-    }
-    return;
+    return { version, setupComplete: false };
   }
 
   // 2. Check auth
   const token = getGitHubToken();
   if (!token) {
-    if (options.json) {
-      outputJson<StartupOutput>({
-        version,
-        setupComplete: true,
-        authError:
-          'GitHub authentication required. Install GitHub CLI (https://cli.github.com/) and run "gh auth login", or set GITHUB_TOKEN.',
-      });
-    } else {
-      console.error('Error: GitHub authentication required.');
-    }
-    return;
+    return {
+      version,
+      setupComplete: true,
+      authError:
+        'GitHub authentication required. Install GitHub CLI (https://cli.github.com/) and run "gh auth login", or set GITHUB_TOKEN.',
+    };
   }
 
   // 3. Run daily check
+  const daily = await executeDailyCheck(token);
+
+  // 4. Generate dashboard from state (just saved by daily)
+  // Skip opening on first run (0 PRs) — the welcome flow handles onboarding
+  let dashboardPath: string | undefined;
+  let dashboardOpened = false;
   try {
-    const daily = await executeDailyCheck(token);
-
-    // 4. Generate dashboard from state (just saved by daily)
-    // Skip opening on first run (0 PRs) — the welcome flow handles onboarding
-    let dashboardPath: string | undefined;
-    let dashboardOpened = false;
-    try {
-      dashboardPath = writeDashboardFromState();
-      if (daily.digest.summary.totalActivePRs > 0) {
-        openInBrowser(dashboardPath);
-        dashboardOpened = true;
-      }
-    } catch (error) {
-      console.error('[STARTUP] Dashboard generation failed:', error instanceof Error ? error.message : error);
-    }
-
-    // Append dashboard status to brief summary (only startup opens the browser, not daily)
-    if (dashboardOpened) {
-      daily.briefSummary += ' | Dashboard opened in browser';
-    }
-
-    // 5. Detect issue list
-    const issueList = detectIssueList();
-
-    // 6. Output
-    if (options.json) {
-      outputJson<StartupOutput>({
-        version,
-        setupComplete: true,
-        daily,
-        dashboardPath,
-        issueList,
-      });
-    } else {
-      console.log(`OSS Autopilot v${version}`);
-      console.log(daily.briefSummary);
-      if (dashboardPath) console.log(`Dashboard: ${dashboardPath}`);
+    dashboardPath = writeDashboardFromState();
+    if (daily.digest.summary.totalActivePRs > 0) {
+      openInBrowser(dashboardPath);
+      dashboardOpened = true;
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    if (options.json) {
-      outputJsonError(`Daily check failed: ${msg}`);
-    } else {
-      console.error(`[FATAL] Daily check failed: ${msg}`);
-      if (error instanceof Error && error.stack) {
-        console.error(error.stack);
-      }
-    }
-    process.exit(1);
+    console.error('[STARTUP] Dashboard generation failed:', error instanceof Error ? error.message : error);
   }
+
+  // Append dashboard status to brief summary (only startup opens the browser, not daily)
+  if (dashboardOpened) {
+    daily.briefSummary += ' | Dashboard opened in browser';
+  }
+
+  // 5. Detect issue list
+  const issueList = detectIssueList();
+
+  return {
+    version,
+    setupComplete: true,
+    daily,
+    dashboardPath,
+    issueList,
+  };
 }

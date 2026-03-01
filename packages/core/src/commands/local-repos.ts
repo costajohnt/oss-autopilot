@@ -8,13 +8,14 @@ import * as path from 'path';
 import * as os from 'os';
 import { execFileSync } from 'child_process';
 import { getStateManager, debug } from '../core/index.js';
-import { outputJson, type LocalReposOutput, type LocalRepoInfo } from '../formatters/json.js';
+import type { LocalReposOutput, LocalRepoInfo } from '../formatters/json.js';
 
 interface LocalReposOptions {
   scan?: boolean;
   paths?: string[];
-  json?: boolean;
 }
+
+export type { LocalReposOutput, LocalRepoInfo };
 
 /** Default directories to scan for local clones */
 const DEFAULT_SCAN_PATHS = [
@@ -68,7 +69,7 @@ function getCurrentBranch(repoPath: string): string | null {
   }
 }
 
-/** Scan directories for git repos, returning a map of owner/repo → local path */
+/** Scan directories for git repos, returning a map of owner/repo -> local path */
 export function scanForRepos(scanPaths: string[]): Record<string, LocalRepoInfo> {
   const repos: Record<string, LocalRepoInfo> = {};
 
@@ -107,7 +108,7 @@ export function scanForRepos(scanPaths: string[]): Record<string, LocalRepoInfo>
   return repos;
 }
 
-export async function runLocalRepos(options: LocalReposOptions): Promise<void> {
+export async function runLocalRepos(options: LocalReposOptions): Promise<LocalReposOutput> {
   const stateManager = getStateManager();
   const state = stateManager.getState();
   const scanPaths =
@@ -118,28 +119,15 @@ export async function runLocalRepos(options: LocalReposOptions): Promise<void> {
   // Use cached data unless --scan is specified
   if (!options.scan && state.localRepoCache) {
     const cache = state.localRepoCache;
-    const result: LocalReposOutput = {
+    return {
       repos: cache.repos,
       scanPaths: cache.scanPaths,
       cachedAt: cache.cachedAt,
       fromCache: true,
     };
-
-    if (options.json) {
-      outputJson<LocalReposOutput>(result);
-    } else {
-      console.log(`\n📁 Local Repos (cached ${cache.cachedAt})\n`);
-      printRepos(cache.repos);
-    }
-    return;
-  }
-
-  if (!options.json) {
-    console.log(`\n🔍 Scanning for local repos in ${scanPaths.length} directories...\n`);
   }
 
   const repos = scanForRepos(scanPaths);
-  const repoCount = Object.keys(repos).length;
 
   // Cache the results in state
   const cachedAt = new Date().toISOString();
@@ -148,29 +136,13 @@ export async function runLocalRepos(options: LocalReposOptions): Promise<void> {
     stateManager.save();
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.error(`Warning: Failed to cache scan results: ${msg}`);
+    debug('local-repos', `Failed to cache scan results: ${msg}`);
   }
 
-  const result: LocalReposOutput = {
+  return {
     repos,
     scanPaths,
     cachedAt,
     fromCache: false,
   };
-
-  if (options.json) {
-    outputJson<LocalReposOutput>(result);
-  } else {
-    console.log(`Found ${repoCount} repos:\n`);
-    printRepos(repos);
-  }
-}
-
-function printRepos(repos: Record<string, LocalRepoInfo>): void {
-  const entries = Object.entries(repos).sort(([a], [b]) => a.localeCompare(b));
-  for (const [remote, info] of entries) {
-    const branch = info.currentBranch ? ` (${info.currentBranch})` : '';
-    console.log(`  ${remote}${branch}`);
-    console.log(`    ${info.path}`);
-  }
 }

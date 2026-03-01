@@ -5,16 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../formatters/json.js', () => ({
-  outputJson: vi.fn(),
-  outputJsonError: vi.fn(),
-}));
-
-import { outputJson, outputJsonError } from '../formatters/json.js';
 import { runRead } from './read.js';
-
-const mockOutputJson = vi.mocked(outputJson);
-const mockOutputJsonError = vi.mocked(outputJsonError);
 
 const TEST_PR_URL = 'https://github.com/owner/repo/pull/42';
 
@@ -23,49 +14,19 @@ describe('runRead', () => {
     vi.clearAllMocks();
   });
 
-  it('should output v2 info when marking a specific PR as read', async () => {
-    await runRead({ prUrl: TEST_PR_URL, json: true });
+  it('should return v2 info when marking a specific PR as read', async () => {
+    const result = await runRead({ prUrl: TEST_PR_URL });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ marked: false, url: TEST_PR_URL }));
+    expect(result).toEqual(expect.objectContaining({ marked: false, url: TEST_PR_URL }));
   });
 
-  it('should output v2 info when marking all PRs as read', async () => {
-    await runRead({ all: true, json: true });
+  it('should return v2 info when marking all PRs as read', async () => {
+    const result = await runRead({ all: true });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ markedAsRead: 0, all: true }));
+    expect(result).toEqual(expect.objectContaining({ markedAsRead: 0, all: true }));
   });
 
-  it('should exit with error when neither prUrl nor --all is provided', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runRead({ json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith('PR URL or --all flag required');
-    mockExit.mockRestore();
-  });
-
-  it('should output text when marking all PRs as read without JSON', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await runRead({ all: true, json: false });
-
-    expect(consoleSpy).toHaveBeenCalled();
-    consoleSpy.mockRestore();
-  });
-
-  it('should exit with text error when neither prUrl nor --all is provided in text mode', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runRead({ json: false })).rejects.toThrow('exit');
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('Usage:');
-    consoleSpy.mockRestore();
-    mockExit.mockRestore();
+  it('should throw when neither prUrl nor --all is provided', async () => {
+    await expect(runRead({})).rejects.toThrow('PR URL or --all flag required');
   });
 });

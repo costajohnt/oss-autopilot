@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "oss-autopilot": {
+      "command": "npx",
+      "args": ["@oss-autopilot/mcp"]
+    }
+  }
+}

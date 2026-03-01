@@ -14,6 +14,10 @@
     "./types": {
       "import": "./dist/core/types.js",
       "types": "./dist/core/types.d.ts"
+    },
+    "./commands": {
+      "import": "./dist/commands/index.js",
+      "types": "./dist/commands/index.d.ts"
     }
   },
   "files": [

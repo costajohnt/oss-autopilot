@@ -3,7 +3,7 @@
  * Command-level state logic is tested in shelve.test.ts, dismiss.test.ts, and state.test.ts.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   PR_URL_PATTERN,
   ISSUE_URL_PATTERN,
@@ -136,27 +136,18 @@ describe('validateGitHubUrl', () => {
     expect(() => validateGitHubUrl('https://github.com/owner/repo/pull/123', PR_URL_PATTERN, 'PR')).not.toThrow();
   });
 
-  it('should exit with JSON error for invalid PR URL', () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    expect(() => validateGitHubUrl('bad-url', PR_URL_PATTERN, 'PR', true)).toThrow('exit');
-    mockExit.mockRestore();
+  it('should throw for invalid PR URL', () => {
+    expect(() => validateGitHubUrl('bad-url', PR_URL_PATTERN, 'PR')).toThrow('Invalid PR URL');
   });
 
-  it('should exit with text error for invalid issue URL', () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
+  it('should throw for invalid issue URL', () => {
+    expect(() => validateGitHubUrl('bad-url', ISSUE_URL_PATTERN, 'issue')).toThrow('Invalid issue URL');
+  });
 
-    expect(() => validateGitHubUrl('bad-url', ISSUE_URL_PATTERN, 'issue', false)).toThrow('exit');
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('Invalid issue URL');
-    consoleSpy.mockRestore();
-    mockExit.mockRestore();
+  it('should include expected format in error message', () => {
+    expect(() => validateGitHubUrl('bad-url', PR_URL_PATTERN, 'PR')).toThrow(
+      'Expected format: https://github.com/owner/repo/pull/123',
+    );
   });
 });
 

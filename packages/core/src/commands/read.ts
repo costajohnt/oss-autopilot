@@ -4,23 +4,15 @@
  * This command is a no-op preserved for backward compatibility.
  */
 
-import { outputJson, outputJsonError } from '../formatters/json.js';
 import { validateUrl } from './validation.js';
 
-interface ReadOptions {
-  prUrl?: string;
-  all?: boolean;
-  json?: boolean;
-}
+export type ReadOutput =
+  | { markedAsRead: number; all: true; message: string }
+  | { marked: boolean; url: string | undefined; message: string };
 
-export async function runRead(options: ReadOptions): Promise<void> {
+export async function runRead(options: { prUrl?: string; all?: boolean }): Promise<ReadOutput> {
   if (!options.all && !options.prUrl) {
-    if (options.json) {
-      outputJsonError('PR URL or --all flag required');
-    } else {
-      console.error('Usage: oss-autopilot read <pr-url> or oss-autopilot read --all');
-    }
-    process.exit(1);
+    throw new Error('PR URL or --all flag required');
   }
 
   if (options.prUrl) {
@@ -28,13 +20,8 @@ export async function runRead(options: ReadOptions): Promise<void> {
   }
 
   // In v2, unread state is not tracked locally — PRs are fetched fresh each run.
-  if (options.json) {
-    if (options.all) {
-      outputJson({ markedAsRead: 0, all: true, message: 'In v2, PR read state is not tracked locally.' });
-    } else {
-      outputJson({ marked: false, url: options.prUrl, message: 'In v2, PR read state is not tracked locally.' });
-    }
-  } else {
-    console.log('Note: In v2, PR read state is not tracked locally. PRs are fetched fresh on each daily run.');
+  if (options.all) {
+    return { markedAsRead: 0, all: true, message: 'In v2, PR read state is not tracked locally.' };
   }
+  return { marked: false, url: options.prUrl, message: 'In v2, PR read state is not tracked locally.' };
 }

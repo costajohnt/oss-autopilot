@@ -1,0 +1,216 @@
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+
+// Mock core dependencies before importing server
+vi.mock('@oss-autopilot/core/commands', () => ({
+  runStatus: vi.fn().mockResolvedValue({
+    success: true,
+    data: { openPRs: 2, snoozedPRs: 0, shelvedPRs: 1 },
+  }),
+  runConfig: vi.fn().mockResolvedValue({
+    success: true,
+    data: { languages: ['typescript'], username: 'testuser' },
+  }),
+  // Stubs for tools.ts imports (not used by resources but loaded via server.ts)
+  runDaily: vi.fn(),
+  runSearch: vi.fn(),
+  runVet: vi.fn(),
+  runTrack: vi.fn(),
+  runUntrack: vi.fn(),
+  runRead: vi.fn(),
+  runComments: vi.fn(),
+  runPost: vi.fn(),
+  runClaim: vi.fn(),
+  runInit: vi.fn(),
+  runSetup: vi.fn(),
+  runCheckSetup: vi.fn(),
+  runStartup: vi.fn(),
+  runShelve: vi.fn(),
+  runUnshelve: vi.fn(),
+  runDismiss: vi.fn(),
+  runUndismiss: vi.fn(),
+  runSnooze: vi.fn(),
+  runUnsnooze: vi.fn(),
+}));
+
+vi.mock('@oss-autopilot/core', () => ({
+  getStateManager: vi.fn().mockReturnValue({
+    getState: vi.fn().mockReturnValue({
+      lastDigest: {
+        generatedAt: '2026-02-28T12:00:00Z',
+        openPRs: [
+          {
+            id: 1,
+            url: 'https://github.com/octocat/hello-world/pull/42',
+            repo: 'octocat/hello-world',
+            number: 42,
+            title: 'Fix typo in README',
+            status: 'healthy',
+            displayLabel: '[Healthy]',
+            displayDescription: 'All checks passing',
+            createdAt: '2026-02-20T10:00:00Z',
+            updatedAt: '2026-02-27T15:00:00Z',
+            daysSinceActivity: 1,
+          },
+          {
+            id: 2,
+            url: 'https://github.com/octocat/spoon-knife/pull/7',
+            repo: 'octocat/spoon-knife',
+            number: 7,
+            title: 'Add contributing guide',
+            status: 'needs_response',
+            displayLabel: '[Needs Response]',
+            displayDescription: '@maintainer commented',
+            createdAt: '2026-02-18T08:00:00Z',
+            updatedAt: '2026-02-28T09:00:00Z',
+            daysSinceActivity: 0,
+          },
+        ],
+        shelvedPRs: [
+          {
+            number: 99,
+            url: 'https://github.com/octocat/hello-world/pull/99',
+            title: 'Shelved PR',
+            repo: 'octocat/hello-world',
+            daysSinceActivity: 14,
+            status: 'dormant',
+          },
+        ],
+      },
+    }),
+  }),
+}));
+
+import { createServer } from './server.js';
+
+describe('MCP resource registrations', () => {
+  let client: Client;
+
+  beforeAll(async () => {
+    const server = createServer();
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+    await server.connect(serverTransport);
+
+    client = new Client({ name: 'test-client', version: '0.0.0' });
+    await client.connect(clientTransport);
+  });
+
+  afterAll(async () => {
+    await client.close();
+  });
+
+  describe('resource listing', () => {
+    it('lists at least 4 static resources', async () => {
+      const result = await client.listResources();
+      expect(result.resources.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('lists at least 1 resource template', async () => {
+      const result = await client.listResourceTemplates();
+      expect(result.resourceTemplates.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('each static resource has name, uri, and mimeType', async () => {
+      const result = await client.listResources();
+      for (const resource of result.resources) {
+        expect(resource.name).toBeTruthy();
+        expect(resource.uri).toBeTruthy();
+        expect(resource.mimeType).toBe('application/json');
+      }
+    });
+
+    it('registers the expected static resource URIs', async () => {
+      const result = await client.listResources();
+      const uris = result.resources.map((r) => r.uri);
+      expect(uris).toContain('oss://status');
+      expect(uris).toContain('oss://config');
+      expect(uris).toContain('oss://prs');
+      expect(uris).toContain('oss://prs/shelved');
+    });
+
+    it('pr-detail template has the correct uriTemplate', async () => {
+      const result = await client.listResourceTemplates();
+      const prTemplate = result.resourceTemplates.find((t) => t.name === 'pr-detail');
+      expect(prTemplate).toBeDefined();
+      expect(prTemplate!.uriTemplate).toBe('oss://pr/{owner}/{repo}/{number}');
+    });
+  });
+
+  describe('reading static resources', () => {
+    it('reads oss://status and returns JSON', async () => {
+      const result = await client.readResource({ uri: 'oss://status' });
+      expect(result.contents).toHaveLength(1);
+      expect(result.contents[0].uri).toBe('oss://status');
+      expect(result.contents[0].mimeType).toBe('application/json');
+      const data = JSON.parse(result.contents[0].text as string);
+      expect(data.success).toBe(true);
+    });
+
+    it('reads oss://config and returns JSON', async () => {
+      const result = await client.readResource({ uri: 'oss://config' });
+      expect(result.contents).toHaveLength(1);
+      expect(result.contents[0].uri).toBe('oss://config');
+      expect(result.contents[0].mimeType).toBe('application/json');
+      const data = JSON.parse(result.contents[0].text as string);
+      expect(data.success).toBe(true);
+    });
+
+    it('reads oss://prs and returns open PRs array', async () => {
+      const result = await client.readResource({ uri: 'oss://prs' });
+      expect(result.contents).toHaveLength(1);
+      expect(result.contents[0].uri).toBe('oss://prs');
+      const data = JSON.parse(result.contents[0].text as string);
+      expect(Array.isArray(data)).toBe(true);
+      expect(data).toHaveLength(2);
+      expect(data[0].repo).toBe('octocat/hello-world');
+      expect(data[0].number).toBe(42);
+    });
+
+    it('reads oss://prs/shelved and returns shelved PRs array', async () => {
+      const result = await client.readResource({ uri: 'oss://prs/shelved' });
+      expect(result.contents).toHaveLength(1);
+      expect(result.contents[0].uri).toBe('oss://prs/shelved');
+      const data = JSON.parse(result.contents[0].text as string);
+      expect(Array.isArray(data)).toBe(true);
+      expect(data).toHaveLength(1);
+      expect(data[0].number).toBe(99);
+      expect(data[0].status).toBe('dormant');
+    });
+  });
+
+  describe('reading dynamic pr-detail resource', () => {
+    it('returns PR detail for a known PR', async () => {
+      const result = await client.readResource({
+        uri: 'oss://pr/octocat/hello-world/42',
+      });
+      expect(result.contents).toHaveLength(1);
+      expect(result.contents[0].uri).toBe('oss://pr/octocat/hello-world/42');
+      const data = JSON.parse(result.contents[0].text as string);
+      expect(data.repo).toBe('octocat/hello-world');
+      expect(data.number).toBe(42);
+      expect(data.title).toBe('Fix typo in README');
+    });
+
+    it('returns error for an unknown PR', async () => {
+      const result = await client.readResource({
+        uri: 'oss://pr/octocat/hello-world/999',
+      });
+      expect(result.contents).toHaveLength(1);
+      const data = JSON.parse(result.contents[0].text as string);
+      expect(data.error).toContain('not found');
+    });
+
+    it('lists known PRs via the template list callback', async () => {
+      const result = await client.listResources();
+      // The template list callback populates resources from openPRs
+      const prResources = result.resources.filter((r) => r.uri.startsWith('oss://pr/'));
+      expect(prResources.length).toBeGreaterThanOrEqual(2);
+
+      const uris = prResources.map((r) => r.uri);
+      expect(uris).toContain('oss://pr/octocat/hello-world/42');
+      expect(uris).toContain('oss://pr/octocat/spoon-knife/7');
+    });
+  });
+});

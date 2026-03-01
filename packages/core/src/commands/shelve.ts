@@ -5,20 +5,24 @@
  */
 
 import { getStateManager } from '../core/index.js';
-import { outputJson } from '../formatters/json.js';
 import { PR_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
-interface ShelveCommandOptions {
-  prUrl: string;
-  json?: boolean;
+export interface ShelveOutput {
+  shelved: boolean;
+  url: string;
+}
+
+export interface UnshelveOutput {
+  unshelved: boolean;
+  url: string;
 }
 
 // Re-export for backward compatibility with tests
 export { PR_URL_PATTERN };
 
-export async function runShelve(options: ShelveCommandOptions): Promise<void> {
+export async function runShelve(options: { prUrl: string }): Promise<ShelveOutput> {
   validateUrl(options.prUrl);
-  validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
+  validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');
 
   const stateManager = getStateManager();
   const added = stateManager.shelvePR(options.prUrl);
@@ -27,20 +31,12 @@ export async function runShelve(options: ShelveCommandOptions): Promise<void> {
     stateManager.save();
   }
 
-  if (options.json) {
-    outputJson({ shelved: added, url: options.prUrl });
-  } else if (added) {
-    console.log(`Shelved: ${options.prUrl}`);
-    console.log('This PR is now excluded from capacity and actionable issues.');
-    console.log('It will auto-unshelve if a maintainer engages.');
-  } else {
-    console.log('PR is already shelved.');
-  }
+  return { shelved: added, url: options.prUrl };
 }
 
-export async function runUnshelve(options: ShelveCommandOptions): Promise<void> {
+export async function runUnshelve(options: { prUrl: string }): Promise<UnshelveOutput> {
   validateUrl(options.prUrl);
-  validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR', options.json);
+  validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');
 
   const stateManager = getStateManager();
   const removed = stateManager.unshelvePR(options.prUrl);
@@ -49,12 +45,5 @@ export async function runUnshelve(options: ShelveCommandOptions): Promise<void> 
     stateManager.save();
   }
 
-  if (options.json) {
-    outputJson({ unshelved: removed, url: options.prUrl });
-  } else if (removed) {
-    console.log(`Unshelved: ${options.prUrl}`);
-    console.log('This PR is now active again.');
-  } else {
-    console.log('PR was not shelved.');
-  }
+  return { unshelved: removed, url: options.prUrl };
 }
