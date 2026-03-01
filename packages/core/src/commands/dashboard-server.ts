@@ -171,7 +171,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   }
 
   // ── Build cached JSON response ───────────────────────────────────────────
-  let cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+  let cachedJsonData: DashboardJsonData;
+  try {
+    cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+  } catch (error) {
+    console.error('Failed to build dashboard data from cached digest:', error);
+    console.error('Your state data may be corrupted. Try running: daily --json');
+    process.exit(1);
+  }
 
   // ── Request handler ──────────────────────────────────────────────────────
   const server = http.createServer(async (req, res) => {
@@ -204,7 +211,9 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       sendError(res, 405, 'Method not allowed');
     } catch (error) {
       console.error('Unhandled request error:', method, url, error);
-      sendError(res, 500, 'Internal server error');
+      if (!res.headersSent) {
+        sendError(res, 500, 'Internal server error');
+      }
     }
   });
 
@@ -313,12 +322,12 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     try {
       const stat = fs.statSync(filePath);
       if (stat.isDirectory()) {
-        filePath = path.join(assetsDir, 'index.html');
+        filePath = path.join(resolvedAssetsDir, 'index.html');
       }
     } catch (err) {
       const nodeErr = err as NodeJS.ErrnoException;
       if (nodeErr.code === 'ENOENT') {
-        filePath = path.join(assetsDir, 'index.html');
+        filePath = path.join(resolvedAssetsDir, 'index.html');
       } else {
         console.error('Failed to stat file:', filePath, err);
         sendError(res, 500, 'Internal server error');
@@ -377,9 +386,22 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   // ── Open browser ─────────────────────────────────────────────────────────
   if (open) {
     const { execFile } = await import('child_process');
-    const isWindows = process.platform === 'win32';
-    const openCmd = process.platform === 'darwin' ? 'open' : isWindows ? 'cmd' : 'xdg-open';
-    const args = isWindows ? ['/c', 'start', '', serverUrl] : [serverUrl];
+    let openCmd: string;
+    let args: string[];
+    switch (process.platform) {
+      case 'darwin':
+        openCmd = 'open';
+        args = [serverUrl];
+        break;
+      case 'win32':
+        openCmd = 'cmd';
+        args = ['/c', 'start', '', serverUrl];
+        break;
+      default:
+        openCmd = 'xdg-open';
+        args = [serverUrl];
+        break;
+    }
 
     execFile(openCmd, args, (error) => {
       if (error) {

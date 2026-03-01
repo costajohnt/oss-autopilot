@@ -209,9 +209,7 @@ program
   });
 
 // Dashboard commands
-const dashboardCmd = program
-  .command('dashboard')
-  .description('Dashboard commands');
+const dashboardCmd = program.command('dashboard').description('Dashboard commands');
 
 dashboardCmd
   .command('serve')
@@ -219,8 +217,13 @@ dashboardCmd
   .option('--port <port>', 'Port to listen on', '3000')
   .option('--no-open', 'Do not open browser automatically')
   .action(async (options) => {
+    const port = parseInt(options.port, 10);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      console.error(`Invalid port number: "${options.port}". Must be an integer between 1 and 65535.`);
+      process.exit(1);
+    }
     const { serveDashboard } = await import('./commands/dashboard.js');
-    await serveDashboard({ port: parseInt(options.port, 10), open: options.open });
+    await serveDashboard({ port, open: options.open });
   });
 
 // Keep bare `dashboard` (no subcommand) for backward compat — generates static HTML

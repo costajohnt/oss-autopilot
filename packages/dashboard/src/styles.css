@@ -561,6 +561,33 @@ a:hover {
   border-top: 1px solid var(--border-muted);
 }
 
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  margin: 0 0 12px;
+  border-radius: 8px;
+  background: var(--accent-error-dim);
+  color: var(--accent-error);
+  font-size: 0.9rem;
+}
+
+.error-banner-dismiss {
+  background: none;
+  border: 1px solid var(--accent-error);
+  color: var(--accent-error);
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.error-banner-dismiss:hover {
+  background: var(--accent-error);
+  color: var(--bg-base);
+}
+
 .action-error {
   width: 100%;
   margin: 0 0 8px;

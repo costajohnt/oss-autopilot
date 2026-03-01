@@ -383,7 +383,8 @@ describe('Version detection IIFE', () => {
 // Arguments like '<pr-url>' and '[count]' are excluded via the character class.
 function extractRegisteredCommandsFromSource(): string[] {
   const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
-  const matches = src.matchAll(/^\s+\.command\('([^'\s<[]+)/gm);
+  // Match both `.command('name')` at line start and `program.command('name')` mid-line
+  const matches = src.matchAll(/\.command\('([^'\s<[]+)/gm);
   return [...matches].map((m) => m[1]);
 }
 

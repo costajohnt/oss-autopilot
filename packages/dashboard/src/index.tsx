@@ -5,4 +5,7 @@ import './styles.css';
 const root = document.getElementById('app');
 if (root) {
   render(<App />, root);
+} else {
+  console.error('Dashboard mount point #app not found. Check that index.html contains <div id="app"></div>.');
+  document.body.textContent = 'Dashboard failed to load: mount point not found.';
 }

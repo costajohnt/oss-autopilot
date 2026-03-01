@@ -31,18 +31,30 @@ export function useDashboard() {
   const refresh = useCallback(() => load('/api/refresh', { method: 'POST' }), [load]);
 
   const performAction = useCallback(async (action: ActionRequest) => {
-    const updated = await fetchJson('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(action),
-    });
-    setData(updated);
-    setError(null);
+    try {
+      const updated = await fetchJson('/api/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(action),
+      });
+      setData(updated);
+      setError(null);
+    } catch (e) {
+      // Action may have succeeded server-side; re-fetch to stay in sync
+      try {
+        setData(await fetchJson('/api/data'));
+      } catch {
+        /* keep stale data if re-fetch also fails */
+      }
+      throw e;
+    }
   }, []);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  return { data, loading, error, refresh, performAction };
+  const clearError = useCallback(() => setError(null), []);
+
+  return { data, loading, error, clearError, refresh, performAction };
 }

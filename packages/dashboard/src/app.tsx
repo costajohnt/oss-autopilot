@@ -8,7 +8,7 @@ import { ChartPanel } from './components/chart-panel';
 import { IssueList } from './components/issue-list';
 
 export function App() {
-  const { data, loading, error, refresh, performAction } = useDashboard();
+  const { data, loading, error, clearError, refresh, performAction } = useDashboard();
   const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
 
@@ -63,6 +63,15 @@ export function App() {
           {loading ? 'Refreshing...' : 'Refresh'}
         </button>
       </header>
+
+      {error && (
+        <div class="error-banner">
+          <span>{error}</span>
+          <button class="error-banner-dismiss" onClick={clearError}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <main class="dashboard-main">
         <StatsBar stats={data.stats} />
