@@ -42,9 +42,7 @@ export function FilterBar({ filters, onFilterChange, repos, statuses }: FilterBa
       <select
         class="filter-select"
         value={filters.status}
-        onChange={(e) =>
-          onFilterChange({ ...filters, status: (e.target as HTMLSelectElement).value })
-        }
+        onChange={(e) => onFilterChange({ ...filters, status: (e.target as HTMLSelectElement).value })}
       >
         <option value="all">All Statuses</option>
         {statuses.map((s) => (
@@ -57,9 +55,7 @@ export function FilterBar({ filters, onFilterChange, repos, statuses }: FilterBa
       <select
         class="filter-select"
         value={filters.repo}
-        onChange={(e) =>
-          onFilterChange({ ...filters, repo: (e.target as HTMLSelectElement).value })
-        }
+        onChange={(e) => onFilterChange({ ...filters, repo: (e.target as HTMLSelectElement).value })}
       >
         <option value="all">All Repos</option>
         {repos.map((r) => (
@@ -74,9 +70,7 @@ export function FilterBar({ filters, onFilterChange, repos, statuses }: FilterBa
         type="text"
         placeholder="Search PRs..."
         value={filters.search}
-        onInput={(e) =>
-          onFilterChange({ ...filters, search: (e.target as HTMLInputElement).value })
-        }
+        onInput={(e) => onFilterChange({ ...filters, search: (e.target as HTMLInputElement).value })}
       />
     </div>
   );

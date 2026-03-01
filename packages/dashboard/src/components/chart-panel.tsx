@@ -73,11 +73,7 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
     const canvas = lineCanvasRef.current;
     if (!canvas) return;
 
-    const months = getLast12Months([
-      monthlyMerged,
-      monthlyOpened ?? {},
-      monthlyClosed ?? {},
-    ]);
+    const months = getLast12Months([monthlyMerged, monthlyOpened ?? {}, monthlyClosed ?? {}]);
 
     const datasets = [];
 

@@ -75,9 +75,7 @@ function buildDashboardJson(
   const topRepos = computeTopRepos(prsByRepo);
   const { monthlyMerged } = getMonthlyData(state);
   const stats = buildDashboardStats(digest, state);
-  const issueResponses = commentedIssues.filter(
-    (i): i is CommentedIssueWithResponse => i.status === 'new_response',
-  );
+  const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
 
   return {
     stats,
@@ -205,7 +203,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
       sendError(res, 405, 'Method not allowed');
     } catch (error) {
-      console.error(`Unhandled request error [${method} ${url}]:`, error);
+      console.error('Unhandled request error:', method, url, error);
       sendError(res, 500, 'Internal server error');
     }
   });
@@ -249,7 +247,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       }
       stateManager.save();
     } catch (error) {
-      console.error(`Action "${body.action}" failed for ${body.url}:`, error);
+      console.error('Action failed:', body.action, body.url, error);
       sendError(res, 500, `Action failed: ${error instanceof Error ? error.message : String(error)}`);
       return;
     }
@@ -290,15 +288,22 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     try {
       urlPath = decodeURIComponent(requestUrl.split('?')[0]);
     } catch (err) {
-      console.error(`Malformed URL received: "${requestUrl}"`, err);
+      console.error('Malformed URL received:', requestUrl, err);
       sendError(res, 400, 'Malformed URL');
       return;
     }
 
-    // Resolve the file path
-    let filePath = path.resolve(assetsDir, urlPath === '/' ? 'index.html' : '.' + urlPath);
+    // Security: reject paths with parent directory references
+    if (urlPath.includes('..')) {
+      sendError(res, 403, 'Forbidden');
+      return;
+    }
 
-    // Security: prevent path traversal
+    // Resolve the file path from sanitized URL
+    const relativePath = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
+    let filePath = path.join(resolvedAssetsDir, relativePath);
+
+    // Belt-and-suspenders: ensure resolved path is within assets directory
     if (!filePath.startsWith(resolvedAssetsDir + path.sep) && filePath !== resolvedAssetsDir) {
       sendError(res, 403, 'Forbidden');
       return;
@@ -315,7 +320,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       if (nodeErr.code === 'ENOENT') {
         filePath = path.join(assetsDir, 'index.html');
       } else {
-        console.error(`Failed to stat ${filePath}:`, err);
+        console.error('Failed to stat file:', filePath, err);
         sendError(res, 500, 'Internal server error');
         return;
       }
@@ -336,7 +341,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       if (nodeErr.code === 'ENOENT') {
         sendError(res, 404, 'Not found');
       } else {
-        console.error(`Failed to serve static file ${filePath}:`, error);
+        console.error('Failed to serve static file:', filePath, error);
         sendError(res, 500, 'Failed to read file');
       }
     }

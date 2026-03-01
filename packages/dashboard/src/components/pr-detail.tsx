@@ -77,10 +77,7 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         {/* CI Status */}
         <div class="pr-detail-field">
           <span class="pr-detail-field-label">CI Status</span>
-          <span
-            class="pr-detail-field-value"
-            style={{ color: ciStatusColor(pr.ciStatus) }}
-          >
+          <span class="pr-detail-field-value" style={{ color: ciStatusColor(pr.ciStatus) }}>
             {pr.ciStatus.charAt(0).toUpperCase() + pr.ciStatus.slice(1)}
           </span>
         </div>
@@ -93,9 +90,7 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
               {pr.classifiedChecks.map((check) => (
                 <div key={check.name} class="pr-detail-check">
                   <span class="pr-detail-check-name">{check.name}</span>
-                  <span
-                    class={`pr-detail-check-badge pr-detail-check-badge--${check.category}`}
-                  >
+                  <span class={`pr-detail-check-badge pr-detail-check-badge--${check.category}`}>
                     {categoryBadge(check.category)}
                   </span>
                 </div>
@@ -118,12 +113,8 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
             <span class="pr-detail-field-label">Maintainer Comment</span>
             <div class="pr-detail-comment">
               <span class="pr-detail-comment-author">@{pr.lastMaintainerComment.author}</span>
-              <span class="pr-detail-comment-date">
-                {formatDate(pr.lastMaintainerComment.createdAt)}
-              </span>
-              <p class="pr-detail-comment-body">
-                {truncate(pr.lastMaintainerComment.body, 200)}
-              </p>
+              <span class="pr-detail-comment-date">{formatDate(pr.lastMaintainerComment.createdAt)}</span>
+              <p class="pr-detail-comment-body">{truncate(pr.lastMaintainerComment.body, 200)}</p>
             </div>
           </div>
         )}

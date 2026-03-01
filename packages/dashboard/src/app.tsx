@@ -12,10 +12,7 @@ export function App() {
   const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
 
-  const shelvedUrls = useMemo(
-    () => new Set(data?.shelvedPRUrls ?? []),
-    [data?.shelvedPRUrls],
-  );
+  const shelvedUrls = useMemo(() => new Set(data?.shelvedPRUrls ?? []), [data?.shelvedPRUrls]);
 
   if (loading && !data) {
     return (
@@ -52,17 +49,15 @@ export function App() {
     return true;
   });
 
-  const selectedPR = selectedUrl
-    ? data.activePRs.find((pr) => pr.url === selectedUrl) ?? null
-    : null;
+  const selectedPR = selectedUrl ? (data.activePRs.find((pr) => pr.url === selectedUrl) ?? null) : null;
 
   return (
     <div class="dashboard">
       <header class="dashboard-header">
         <h1>OSS Autopilot</h1>
         <span class="dashboard-subtitle">
-          {data.stats.activePRs} active PRs &middot; {data.stats.mergedPRs} merged &middot;{' '}
-          {data.stats.mergeRate} merge rate
+          {data.stats.activePRs} active PRs &middot; {data.stats.mergedPRs} merged &middot; {data.stats.mergeRate} merge
+          rate
         </span>
         <button class="refresh-btn" onClick={refresh} disabled={loading}>
           {loading ? 'Refreshing...' : 'Refresh'}
@@ -71,20 +66,10 @@ export function App() {
 
       <main class="dashboard-main">
         <StatsBar stats={data.stats} />
-        <FilterBar
-          filters={filters}
-          onFilterChange={setFilters}
-          repos={repos}
-          statuses={statuses}
-        />
+        <FilterBar filters={filters} onFilterChange={setFilters} repos={repos} statuses={statuses} />
 
         <div class="dashboard-content">
-          <PRList
-            prs={filteredPRs}
-            selectedUrl={selectedUrl}
-            onSelect={setSelectedUrl}
-            shelvedUrls={shelvedUrls}
-          />
+          <PRList prs={filteredPRs} selectedUrl={selectedUrl} onSelect={setSelectedUrl} shelvedUrls={shelvedUrls} />
           {selectedPR && (
             <PRDetail
               pr={selectedPR}
@@ -95,10 +80,7 @@ export function App() {
           )}
         </div>
 
-        <ChartPanel
-          monthlyMerged={data.monthlyMerged}
-          topRepos={data.topRepos}
-        />
+        <ChartPanel monthlyMerged={data.monthlyMerged} topRepos={data.topRepos} />
 
         <IssueList issues={data.issueResponses} />
       </main>

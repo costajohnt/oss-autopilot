@@ -29,12 +29,7 @@ const WAITING: Set<FetchedPRStatus> = new Set([
 ]);
 
 /** Statuses that belong in the "Healthy / Stale" section. */
-const HEALTHY: Set<FetchedPRStatus> = new Set([
-  'healthy',
-  'approaching_dormant',
-  'dormant',
-  'waiting',
-]);
+const HEALTHY: Set<FetchedPRStatus> = new Set(['healthy', 'approaching_dormant', 'dormant', 'waiting']);
 
 interface SectionDef {
   id: string;
@@ -43,28 +38,11 @@ interface SectionDef {
   prs: FetchedPR[];
 }
 
-function PRRow({
-  pr,
-  selected,
-  onSelect,
-}: {
-  pr: FetchedPR;
-  selected: boolean;
-  onSelect: (url: string) => void;
-}) {
+function PRRow({ pr, selected, onSelect }: { pr: FetchedPR; selected: boolean; onSelect: (url: string) => void }) {
   return (
-    <div
-      class={`pr-row ${selected ? 'pr-row--selected' : ''}`}
-      onClick={() => onSelect(pr.url)}
-    >
+    <div class={`pr-row ${selected ? 'pr-row--selected' : ''}`} onClick={() => onSelect(pr.url)}>
       <span class="pr-row-dot" style={{ background: statusColor(pr.status) }} />
-      <a
-        class="pr-row-id"
-        href={pr.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <a class="pr-row-id" href={pr.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
         {pr.repo}#{pr.number}
       </a>
       <span class="pr-row-title">{truncate(pr.title, 50)}</span>
@@ -90,12 +68,7 @@ function Section({
         <span class="pr-section-count">{section.prs.length}</span>
       </h3>
       {section.prs.map((pr) => (
-        <PRRow
-          key={pr.url}
-          pr={pr}
-          selected={pr.url === selectedUrl}
-          onSelect={onSelect}
-        />
+        <PRRow key={pr.url} pr={pr} selected={pr.url === selectedUrl} onSelect={onSelect} />
       ))}
     </div>
   );
@@ -130,16 +103,9 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps)
 
   return (
     <div class="pr-list">
-      {sections.length === 0 && shelvedPRs.length === 0 && (
-        <p class="pr-list-empty">No PRs to display</p>
-      )}
+      {sections.length === 0 && shelvedPRs.length === 0 && <p class="pr-list-empty">No PRs to display</p>}
       {sections.map((section) => (
-        <Section
-          key={section.id}
-          section={section}
-          selectedUrl={selectedUrl}
-          onSelect={onSelect}
-        />
+        <Section key={section.id} section={section} selectedUrl={selectedUrl} onSelect={onSelect} />
       ))}
       {shelvedPRs.length > 0 && (
         <div class="pr-section pr-section--shelved">
@@ -148,20 +114,13 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps)
             style={{ borderLeftColor: 'var(--text-muted)' }}
             onClick={() => setShelvedOpen(!shelvedOpen)}
           >
-            <span class={`pr-section-chevron ${shelvedOpen ? 'pr-section-chevron--open' : ''}`}>
-              &#9656;
-            </span>
+            <span class={`pr-section-chevron ${shelvedOpen ? 'pr-section-chevron--open' : ''}`}>&#9656;</span>
             Shelved
             <span class="pr-section-count">{shelvedPRs.length}</span>
           </h3>
           {shelvedOpen &&
             shelvedPRs.map((pr) => (
-              <PRRow
-                key={pr.url}
-                pr={pr}
-                selected={pr.url === selectedUrl}
-                onSelect={onSelect}
-              />
+              <PRRow key={pr.url} pr={pr} selected={pr.url === selectedUrl} onSelect={onSelect} />
             ))}
         </div>
       )}

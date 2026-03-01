@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -25,8 +26,12 @@ let capturedHandler: RequestHandler | null = null;
 // We need to mock http.createServer to capture the request handler,
 // and also provide a mock server object that has listen/close/on/once methods.
 const mockServer = {
-  listen: vi.fn((_port: number, _host: string, cb: () => void) => { cb(); }),
-  close: vi.fn((cb?: () => void) => { if (cb) cb(); }),
+  listen: vi.fn((_port: number, _host: string, cb: () => void) => {
+    cb();
+  }),
+  close: vi.fn((cb?: () => void) => {
+    if (cb) cb();
+  }),
   on: vi.fn(),
   once: vi.fn(),
 };
@@ -68,9 +73,7 @@ vi.mock('./dashboard-data.js', () => ({
   computePRsByRepo: vi.fn(() => ({
     'owner/repo': { active: 2, merged: 5, closed: 1 },
   })),
-  computeTopRepos: vi.fn(() => [
-    ['owner/repo', { active: 2, merged: 5, closed: 1 }],
-  ]),
+  computeTopRepos: vi.fn(() => [['owner/repo', { active: 2, merged: 5, closed: 1 }]]),
   getMonthlyData: vi.fn(() => ({
     monthlyMerged: { '2026-01': 3 },
     monthlyClosed: {},
@@ -153,12 +156,8 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
 
 // ── Mock IncomingMessage and ServerResponse ──────────────────────────
 
-function createMockReq(
-  method: string,
-  url: string,
-  body?: string,
-): IncomingMessage {
-  const { EventEmitter } = require('events');
+function createMockReq(method: string, url: string, body?: string): IncomingMessage {
+  // EventEmitter imported at top of file
   const req = new EventEmitter() as IncomingMessage;
   req.method = method;
   req.url = url;
@@ -186,7 +185,7 @@ interface MockResponseResult {
 }
 
 function createMockRes(): { res: ServerResponse; result: Promise<MockResponseResult> } {
-  const { EventEmitter } = require('events');
+  // EventEmitter imported at top of file
   const resEmitter = new EventEmitter();
   let statusCode = 200;
   const headers: Record<string, string | number> = {};
@@ -390,10 +389,14 @@ describe('dashboard-server', () => {
 
   describe('POST /api/action', () => {
     it('should accept a valid shelve action and return updated data', async () => {
-      const result = await sendRequest('POST', '/api/action', JSON.stringify({
-        action: 'shelve',
-        url: 'https://github.com/owner/repo/pull/1',
-      }));
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({
+          action: 'shelve',
+          url: 'https://github.com/owner/repo/pull/1',
+        }),
+      );
       expect(result.statusCode).toBe(200);
 
       const data = JSON.parse(result.body);
@@ -403,34 +406,42 @@ describe('dashboard-server', () => {
     });
 
     it('should accept a valid unshelve action', async () => {
-      const result = await sendRequest('POST', '/api/action', JSON.stringify({
-        action: 'unshelve',
-        url: 'https://github.com/owner/repo/pull/2',
-      }));
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({
+          action: 'unshelve',
+          url: 'https://github.com/owner/repo/pull/2',
+        }),
+      );
       expect(result.statusCode).toBe(200);
       expect(mockStateManager.unshelvePR).toHaveBeenCalledWith('https://github.com/owner/repo/pull/2');
     });
 
     it('should accept a valid snooze action with reason and days', async () => {
-      const result = await sendRequest('POST', '/api/action', JSON.stringify({
-        action: 'snooze',
-        url: 'https://github.com/owner/repo/pull/3',
-        reason: 'CI flaky',
-        days: 14,
-      }));
-      expect(result.statusCode).toBe(200);
-      expect(mockStateManager.snoozePR).toHaveBeenCalledWith(
-        'https://github.com/owner/repo/pull/3',
-        'CI flaky',
-        14,
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({
+          action: 'snooze',
+          url: 'https://github.com/owner/repo/pull/3',
+          reason: 'CI flaky',
+          days: 14,
+        }),
       );
+      expect(result.statusCode).toBe(200);
+      expect(mockStateManager.snoozePR).toHaveBeenCalledWith('https://github.com/owner/repo/pull/3', 'CI flaky', 14);
     });
 
     it('should use default reason and days for snooze when not provided', async () => {
-      const result = await sendRequest('POST', '/api/action', JSON.stringify({
-        action: 'snooze',
-        url: 'https://github.com/owner/repo/pull/4',
-      }));
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({
+          action: 'snooze',
+          url: 'https://github.com/owner/repo/pull/4',
+        }),
+      );
       expect(result.statusCode).toBe(200);
       expect(mockStateManager.snoozePR).toHaveBeenCalledWith(
         'https://github.com/owner/repo/pull/4',
@@ -440,19 +451,27 @@ describe('dashboard-server', () => {
     });
 
     it('should accept a valid unsnooze action', async () => {
-      const result = await sendRequest('POST', '/api/action', JSON.stringify({
-        action: 'unsnooze',
-        url: 'https://github.com/owner/repo/pull/5',
-      }));
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({
+          action: 'unsnooze',
+          url: 'https://github.com/owner/repo/pull/5',
+        }),
+      );
       expect(result.statusCode).toBe(200);
       expect(mockStateManager.unsnoozePR).toHaveBeenCalledWith('https://github.com/owner/repo/pull/5');
     });
 
     it('should return 400 for invalid action', async () => {
-      const result = await sendRequest('POST', '/api/action', JSON.stringify({
-        action: 'invalid_action',
-        url: 'https://github.com/owner/repo/pull/1',
-      }));
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({
+          action: 'invalid_action',
+          url: 'https://github.com/owner/repo/pull/1',
+        }),
+      );
       expect(result.statusCode).toBe(400);
 
       const data = JSON.parse(result.body);
@@ -460,9 +479,13 @@ describe('dashboard-server', () => {
     });
 
     it('should return 400 for missing action field', async () => {
-      const result = await sendRequest('POST', '/api/action', JSON.stringify({
-        url: 'https://github.com/owner/repo/pull/1',
-      }));
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({
+          url: 'https://github.com/owner/repo/pull/1',
+        }),
+      );
       expect(result.statusCode).toBe(400);
 
       const data = JSON.parse(result.body);
@@ -470,9 +493,13 @@ describe('dashboard-server', () => {
     });
 
     it('should return 400 for missing url field', async () => {
-      const result = await sendRequest('POST', '/api/action', JSON.stringify({
-        action: 'shelve',
-      }));
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({
+          action: 'shelve',
+        }),
+      );
       expect(result.statusCode).toBe(400);
 
       const data = JSON.parse(result.body);
@@ -488,10 +515,14 @@ describe('dashboard-server', () => {
     });
 
     it('should return updated data with full dashboard shape after action', async () => {
-      const result = await sendRequest('POST', '/api/action', JSON.stringify({
-        action: 'shelve',
-        url: 'https://github.com/owner/repo/pull/1',
-      }));
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({
+          action: 'shelve',
+          url: 'https://github.com/owner/repo/pull/1',
+        }),
+      );
       expect(result.statusCode).toBe(200);
 
       const data = JSON.parse(result.body);

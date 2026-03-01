@@ -47,11 +47,7 @@ export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
 
       {pr.ciStatus === 'failing' && (
         <>
-          <button
-            class="action-btn action-btn--snooze"
-            disabled={busy}
-            onClick={() => setSnoozeOpen(!snoozeOpen)}
-          >
+          <button class="action-btn action-btn--snooze" disabled={busy} onClick={() => setSnoozeOpen(!snoozeOpen)}>
             Snooze CI
           </button>
           <button
@@ -86,9 +82,7 @@ export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
               min={1}
               max={30}
               value={snoozeDays}
-              onInput={(e) =>
-                setSnoozeDays(Math.max(1, parseInt((e.target as HTMLInputElement).value, 10) || 1))
-              }
+              onInput={(e) => setSnoozeDays(Math.max(1, parseInt((e.target as HTMLInputElement).value, 10) || 1))}
             />
           </label>
           <button
