@@ -168,9 +168,9 @@ describe('LOCAL_ONLY_COMMANDS', () => {
   });
 
   it('should have exactly the expected number of entries (no accidental additions/deletions)', () => {
-    // 19 entries: 17 active + 'help' and 'version' which Commander intercepts before
+    // 20 entries: 18 active + 'help' and 'version' which Commander intercepts before
     // preAction fires, so they are defensive/dead entries but intentionally kept.
-    expect(LOCAL_ONLY_COMMANDS).toHaveLength(19);
+    expect(LOCAL_ONLY_COMMANDS).toHaveLength(20);
   });
 });
 
@@ -409,6 +409,7 @@ describe('Command registration', () => {
       'setup',
       'checkSetup',
       'dashboard',
+      'serve',
       'parse-issue-list',
       'check-integration',
       'local-repos',
