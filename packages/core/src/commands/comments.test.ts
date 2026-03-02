@@ -35,7 +35,7 @@ describe('runComments', () => {
     mockRequireGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue(null as any);
 
-    await expect(runComments({ prUrl: 'invalid-url' })).rejects.toThrow('Invalid PR URL format');
+    await expect(runComments({ prUrl: 'invalid-url' })).rejects.toThrow('Invalid PR URL');
   });
 
   it('should fetch and return comments data', async () => {
@@ -161,7 +161,7 @@ describe('runPost', () => {
     mockRequireGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue(null as any);
 
-    await expect(runPost({ url: 'bad-url', message: 'Hello' })).rejects.toThrow('Invalid GitHub URL format');
+    await expect(runPost({ url: 'bad-url', message: 'Hello' })).rejects.toThrow('Invalid issue or PR URL');
   });
 
   it('should throw error when message exceeds maximum length', async () => {
@@ -220,9 +220,7 @@ describe('runClaim', () => {
     mockRequireGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
 
-    await expect(runClaim({ issueUrl: TEST_PR_URL })).rejects.toThrow(
-      'Invalid issue URL format (must be an issue, not a PR)',
-    );
+    await expect(runClaim({ issueUrl: TEST_PR_URL })).rejects.toThrow('Invalid issue URL');
   });
 
   it('should throw error when claim message exceeds maximum length', async () => {
@@ -267,6 +265,33 @@ describe('runClaim', () => {
       commentUrl: 'https://github.com/owner/repo/issues/10#issuecomment-1',
       issueUrl: TEST_ISSUE_URL,
     });
+  });
+
+  it('should still return success when state save fails (comment already posted)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 10, type: 'issues' });
+
+    const mockCreateComment = vi.fn().mockResolvedValue({
+      data: { html_url: 'https://github.com/owner/repo/issues/10#issuecomment-1' },
+    });
+    mockGetOctokit.mockReturnValue({
+      issues: { createComment: mockCreateComment },
+    } as any);
+
+    mockGetStateManager.mockReturnValue({
+      addIssue: vi.fn().mockImplementation(() => {
+        throw new Error('Disk full');
+      }),
+      save: vi.fn(),
+    } as any);
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await runClaim({ issueUrl: TEST_ISSUE_URL });
+
+    expect(result.commentUrl).toBe('https://github.com/owner/repo/issues/10#issuecomment-1');
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Warning: Comment posted on'));
+    consoleSpy.mockRestore();
   });
 
   it('should propagate API errors', async () => {

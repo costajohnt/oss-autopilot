@@ -178,9 +178,13 @@ describe('runSetup', () => {
     expect(mockUpdateConfig).toHaveBeenCalledWith({ minStars: 100 });
   });
 
-  it('should handle minStars with non-numeric value (fallback to 50)', async () => {
-    await runSetup({ set: ['minStars=abc'] });
-    expect(mockUpdateConfig).toHaveBeenCalledWith({ minStars: 50 });
+  it('should throw for minStars with non-numeric value', async () => {
+    await expect(runSetup({ set: ['minStars=abc'] })).rejects.toThrow('Invalid value for minStars');
+  });
+
+  it('should accept minStars=0', async () => {
+    await runSetup({ set: ['minStars=0'] });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ minStars: 0 });
   });
 
   it('should handle includeDocIssues=false', async () => {

@@ -131,10 +131,18 @@ program
   .action(async (count, options) => {
     try {
       const { runSearch } = await import('./commands/search.js');
-      if (!options.json) {
-        console.log(`\nSearching for issues (max ${parseInt(count) || 5})...\n`);
+      let maxResults = 5;
+      if (count !== undefined) {
+        const parsed = Number(count);
+        if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {
+          throw new Error(`Invalid count "${count}". Must be a positive integer.`);
+        }
+        maxResults = parsed;
       }
-      const data = await runSearch({ maxResults: parseInt(count) || 5 });
+      if (!options.json) {
+        console.log(`\nSearching for issues (max ${maxResults})...\n`);
+      }
+      const data = await runSearch({ maxResults });
       if (options.json) {
         outputJson(data);
       } else {
@@ -509,13 +517,17 @@ dashboardCmd
   .option('--port <port>', 'Port to listen on', '3000')
   .option('--no-open', 'Do not open browser automatically')
   .action(async (options) => {
-    const port = parseInt(options.port, 10);
-    if (isNaN(port) || port < 1 || port > 65535) {
-      console.error(`Invalid port number: "${options.port}". Must be an integer between 1 and 65535.`);
-      process.exit(1);
+    try {
+      const port = parseInt(options.port, 10);
+      if (isNaN(port) || port < 1 || port > 65535) {
+        console.error(`Invalid port number: "${options.port}". Must be an integer between 1 and 65535.`);
+        process.exit(1);
+      }
+      const { serveDashboard } = await import('./commands/dashboard.js');
+      await serveDashboard({ port, open: options.open });
+    } catch (err) {
+      handleCommandError(err);
     }
-    const { serveDashboard } = await import('./commands/dashboard.js');
-    await serveDashboard({ port, open: options.open });
   });
 
 // Keep bare `dashboard` (no subcommand) for backward compat — generates static HTML
@@ -524,8 +536,12 @@ dashboardCmd
   .option('--json', 'Output as JSON')
   .option('--offline', 'Use cached data only (no GitHub API calls)')
   .action(async (options) => {
-    const { runDashboard } = await import('./commands/dashboard.js');
-    await runDashboard({ open: options.open, json: options.json, offline: options.offline });
+    try {
+      const { runDashboard } = await import('./commands/dashboard.js');
+      await runDashboard({ open: options.open, json: options.json, offline: options.offline });
+    } catch (err) {
+      handleCommandError(err, options.json);
+    }
   });
 
 // Parse issue list command (#82)

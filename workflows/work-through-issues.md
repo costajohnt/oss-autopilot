@@ -74,7 +74,6 @@ For each issue in `actionableIssues`, include a Task tool call grouped by repo:
 | Changes Requested | Tier 2 | Analyze requested changes, investigate what needs to change, recommend approach. |
 | Changes Addressed | Info | Note that changes were pushed after maintainer review — no contributor action needed, awaiting re-review. |
 | Missing Required Files | Tier 2 | Identify what's missing (changeset, CLA, etc.), draft the file. DO NOT push. |
-| Approaching Dormant | Tier 2 | Assess if still relevant, recommend follow-up action. |
 
 **Agent dispatch prompt template for comprehensive PR check:**
 
@@ -160,12 +159,12 @@ Only show this section if there are Tier 2 items remaining after Phase A:
 |---|-----|--------|---------------|--------|-------------------|
 | 1 | repo#123 | needs_response | Requested shortcut change + tooltip | Small | Code change + respond |
 | 2 | repo#456 | needs_changes | Fix trailing newline, sync docs | Medium | Code changes + push |
-| 3 | repo#789 | approaching_dormant | No activity in 12 days | Small | Post follow-up comment |
+| 3 | repo#789 | incomplete_checklist | Missing changelog entry | Small | Add changeset file |
 
 **Key findings:**
 - **repo#123**: Maintainer wants X. 2-line fix in `file.ts`.
 - **repo#456**: 3 changes requested. Tests need updating.
-- **repo#789**: Stale — needs a polite check-in comment.
+- **repo#789**: Missing changelog entry required by changeset-bot.
 ```
 
 Populate the table using data from the Phase A agent results:
@@ -258,7 +257,7 @@ Use AskUserQuestion with multiSelect:
 
 If the user selects repos to exclude, update config:
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --exclude-repo {repo} --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config exclude-repo {repo} --json
 ```
 
 Or update the config file directly to add repos to `excludeRepos`.

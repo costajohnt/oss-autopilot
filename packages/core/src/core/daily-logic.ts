@@ -12,6 +12,7 @@
  */
 
 import { formatRelativeTime } from './utils.js';
+import { warn } from './logger.js';
 import type {
   FetchedPR,
   FetchedPRStatus,
@@ -64,7 +65,7 @@ function buildRepoMap(prs: FetchedPR[], label: string): Map<string, FetchedPR[]>
   const repoMap = new Map<string, FetchedPR[]>();
   for (const pr of prs) {
     if (!pr.repo) {
-      console.warn(`[${label}] Skipping PR #${pr.number} (${pr.url}) with empty repo field`);
+      warn(label, `Skipping PR #${pr.number} (${pr.url}) with empty repo field`);
       continue;
     }
     const existing = repoMap.get(pr.repo) || [];

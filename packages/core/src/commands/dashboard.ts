@@ -52,7 +52,9 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       digest = stateManager.getState().lastDigest;
     }
   } else {
-    // No token and not offline — fall back to cached digest
+    // No token and not offline — fall back to cached digest with warning
+    console.error('Warning: No GitHub token found. Using cached data (may be stale).');
+    console.error('Set GITHUB_TOKEN or run `gh auth login` for fresh data.');
     digest = stateManager.getState().lastDigest;
   }
 
@@ -101,7 +103,6 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
   // Write to file in ~/.oss-autopilot/
   const dashboardPath = getDashboardPath();
   fs.writeFileSync(dashboardPath, html, { mode: 0o644 });
-  fs.chmodSync(dashboardPath, 0o644);
 
   if (options.offline) {
     const lastUpdated = digest.generatedAt || state.lastDigestAt || state.lastRunAt;
@@ -150,7 +151,6 @@ export function writeDashboardFromState(): string {
 
   const dashboardPath = getDashboardPath();
   fs.writeFileSync(dashboardPath, html, { mode: 0o644 });
-  fs.chmodSync(dashboardPath, 0o644);
 
   return dashboardPath;
 }

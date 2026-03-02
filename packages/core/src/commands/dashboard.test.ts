@@ -29,7 +29,6 @@ import {
 // ── Mocks ────────────────────────────────────────────────────────────
 vi.mock('fs', () => ({
   writeFileSync: vi.fn(),
-  chmodSync: vi.fn(),
 }));
 
 vi.mock('child_process', () => ({
@@ -76,7 +75,7 @@ const mockGetDashboardPath = vi.mocked(getDashboardPath);
 const mockGetGitHubToken = vi.mocked(getGitHubToken);
 const mockOutputJson = vi.mocked(outputJson);
 const mockWriteFileSync = vi.mocked(fs.writeFileSync);
-const mockChmodSync = vi.mocked(fs.chmodSync);
+
 const mockExecFile = vi.mocked(execFile);
 
 // ── Test Data Factories — thin wrappers over shared factories ────────
@@ -355,7 +354,6 @@ describe('dashboard', () => {
         await runDashboard({ json: false });
 
         expect(mockWriteFileSync).toHaveBeenCalledWith('/tmp/test-dashboard.html', expect.any(String), { mode: 0o644 });
-        expect(mockChmodSync).toHaveBeenCalledWith('/tmp/test-dashboard.html', 0o644);
       });
 
       it('should output error when no digest and no token', async () => {
@@ -1453,7 +1451,6 @@ describe('dashboard', () => {
         expect.stringContaining('<!DOCTYPE html>'),
         { mode: 0o644 },
       );
-      expect(mockChmodSync).toHaveBeenCalledWith('/tmp/test-dashboard.html', 0o644);
     });
 
     it('should use monthly counts from state', () => {

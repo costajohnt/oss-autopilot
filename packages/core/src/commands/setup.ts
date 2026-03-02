@@ -4,7 +4,17 @@
  */
 
 import { getStateManager, DEFAULT_CONFIG } from '../core/index.js';
+import { ValidationError } from '../core/errors.js';
 import { validateGitHubUsername } from './validation.js';
+
+/** Parse and validate a positive integer setting value. */
+function parsePositiveInt(value: string, settingName: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {
+    throw new ValidationError(`Invalid value for ${settingName}: "${value}". Must be a positive integer.`);
+  }
+  return parsed;
+}
 
 interface SetupOptions {
   reset?: boolean;
@@ -69,18 +79,24 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
           stateManager.updateConfig({ githubUsername: value });
           results[key] = value;
           break;
-        case 'maxActivePRs':
-          stateManager.updateConfig({ maxActivePRs: parseInt(value) || 10 });
-          results[key] = value;
+        case 'maxActivePRs': {
+          const maxPRs = parsePositiveInt(value, 'maxActivePRs');
+          stateManager.updateConfig({ maxActivePRs: maxPRs });
+          results[key] = String(maxPRs);
           break;
-        case 'dormantDays':
-          stateManager.updateConfig({ dormantThresholdDays: parseInt(value) || 30 });
-          results[key] = value;
+        }
+        case 'dormantDays': {
+          const dormant = parsePositiveInt(value, 'dormantDays');
+          stateManager.updateConfig({ dormantThresholdDays: dormant });
+          results[key] = String(dormant);
           break;
-        case 'approachingDays':
-          stateManager.updateConfig({ approachingDormantDays: parseInt(value) || 25 });
-          results[key] = value;
+        }
+        case 'approachingDays': {
+          const approaching = parsePositiveInt(value, 'approachingDays');
+          stateManager.updateConfig({ approachingDormantDays: approaching });
+          results[key] = String(approaching);
           break;
+        }
         case 'languages':
           stateManager.updateConfig({ languages: value.split(',').map((l) => l.trim()) });
           results[key] = value;
@@ -103,9 +119,12 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
           }
           break;
         case 'minStars': {
-          const parsed = parseInt(value);
-          stateManager.updateConfig({ minStars: isNaN(parsed) ? 50 : parsed });
-          results[key] = value;
+          const stars = Number(value);
+          if (!Number.isFinite(stars) || !Number.isInteger(stars) || stars < 0) {
+            throw new ValidationError(`Invalid value for minStars: "${value}". Must be a non-negative integer.`);
+          }
+          stateManager.updateConfig({ minStars: stars });
+          results[key] = String(stars);
           break;
         }
         case 'includeDocIssues':

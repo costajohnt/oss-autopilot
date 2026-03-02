@@ -4,29 +4,106 @@
 
 ## CLI Commands
 
-All commands support `--json` flag for structured output:
+All commands support `--json` flag for structured output.
+
+**Prefix:** `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs"`
+
+Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `config`, `local-repos`, `parse-issue-list`, `dashboard` (offline mode).
+
+### Core Workflow
 
 ```bash
 # Startup (preferred entry point — combines auth, setup, daily, dashboard, issue list)
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json
+<prefix> startup --json
 
-# Daily check (syncs and checks all PRs — standalone, without dashboard/issue list)
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" daily --json
+# Daily check (syncs and checks all PRs)
+<prefix> daily --json
 
-# Status overview
-node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" status --json
+# Status overview (local-only)
+<prefix> status --json
+```
 
-# Search for issues
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" search 10 --json
+### Issue Discovery
 
+```bash
+# Search for issues (n = number of results, default 5)
+<prefix> search [n] --json
+
+# Deep-vet a specific issue
+<prefix> vet <issue-url> --json
+
+# Claim an issue with optional message
+<prefix> claim <issue-url> [message...] --json
+
+# Parse an issue list from a file
+<prefix> parse-issue-list <path> --json
+```
+
+### PR Management
+
+```bash
 # Track a PR
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" track <pr-url> --json
+<prefix> track <pr-url> --json
 
-# View comments
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" comments <pr-url> --json
+# Untrack a PR
+<prefix> untrack <pr-url> --json
 
-# Post comment
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" post <url> "message" --json
+# Read PR details (or read all if no URL given)
+<prefix> read [pr-url] --json
+
+# View comments on a PR
+<prefix> comments <pr-url> --json [--show-bots]
+
+# Post a comment to an issue or PR
+<prefix> post <url> "message" --json
+
+# Shelve/unshelve a PR (deprioritize/restore)
+<prefix> shelve <pr-url> --json
+<prefix> unshelve <pr-url> --json
+
+# Snooze/unsnooze a PR (hide temporarily)
+<prefix> snooze <pr-url> --json [--days N] [--reason "text"]
+<prefix> unsnooze <pr-url> --json
+
+# Dismiss/undismiss a URL
+<prefix> dismiss <url> --json
+<prefix> undismiss <url> --json
+```
+
+### Dashboard
+
+```bash
+# Generate static HTML dashboard
+<prefix> dashboard --json [--open] [--offline]
+
+# Serve interactive dashboard SPA
+<prefix> dashboard serve --port 3000 [--open]
+```
+
+### Configuration
+
+```bash
+# View/set config (local-only)
+<prefix> config [key] [value] --json
+
+# Interactive setup (local-only)
+<prefix> setup --json [--set key=value...] [--reset]
+
+# Check setup status (local-only)
+<prefix> checkSetup --json
+
+# Quick init with username (local-only)
+<prefix> init <username> --json
+```
+
+### Utilities
+
+```bash
+# Scan for local git repos
+<prefix> local-repos --json [--scan] [--clear-cache]
+
+# Check GitHub integration
+<prefix> check-integration --json
 ```
 
 ---

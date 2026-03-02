@@ -81,10 +81,7 @@ Run these checks for any PR:
 ### 1. Issue Reference (Required)
 **Check:** Does the PR reference an issue?
 
-**Via CLI (if PR is tracked):**
-The `status --json` output includes PR body for analysis.
-
-**Via gh CLI (fallback — follow Fallback protocol above: inform the user, then try gh):**
+**Via gh CLI:**
 ```bash
 gh pr view OWNER/REPO#NUMBER --json body | jq -r '.body'
 ```
@@ -131,10 +128,7 @@ Closes #[issue-number]
 ### 3. Focused Changes (Important)
 **Check:** Is the PR atomic and focused?
 
-**Via CLI (if PR is tracked):**
-The `status --json` output includes `additions`, `deletions`, and file count.
-
-**Via gh CLI (for detailed file list):**
+**Via gh CLI:**
 ```bash
 gh pr view OWNER/REPO#NUMBER --json files,additions,deletions | jq '{files: .files | length, additions: .additions, deletions: .deletions}'
 ```

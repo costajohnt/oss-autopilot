@@ -10,7 +10,8 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getStateManager, getGitHubToken } from '../core/index.js';
-import { errorMessage } from '../core/errors.js';
+import { errorMessage, ValidationError } from '../core/errors.js';
+import { validateUrl, validateGitHubUrl, validateMessage, PR_URL_PATTERN } from './validation.js';
 import { fetchDashboardData, computePRsByRepo, computeTopRepos, getMonthlyData } from './dashboard-data.js';
 import { buildDashboardStats, type DashboardStats } from './dashboard-templates.js';
 import type { DailyDigest, AgentState, CommentedIssue, CommentedIssueWithResponse, FetchedPR } from '../core/types.js';
@@ -239,6 +240,42 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       return;
     }
 
+    // Validate URL format — same checks as CLI commands
+    try {
+      validateUrl(body.url);
+      validateGitHubUrl(body.url, PR_URL_PATTERN, 'PR');
+    } catch (err) {
+      if (err instanceof ValidationError) {
+        sendError(res, 400, err.message);
+      } else {
+        console.error('Unexpected error during URL validation:', err);
+        sendError(res, 400, 'Invalid URL');
+      }
+      return;
+    }
+
+    // Validate snooze-specific fields
+    if (body.action === 'snooze') {
+      const days = body.days ?? 7;
+      if (typeof days !== 'number' || !Number.isFinite(days) || days <= 0) {
+        sendError(res, 400, 'Snooze days must be a positive finite number');
+        return;
+      }
+      if (body.reason !== undefined) {
+        try {
+          validateMessage(String(body.reason));
+        } catch (err) {
+          if (err instanceof ValidationError) {
+            sendError(res, 400, err.message);
+          } else {
+            console.error('Unexpected error during message validation:', err);
+            sendError(res, 400, 'Invalid reason');
+          }
+          return;
+        }
+      }
+    }
+
     try {
       switch (body.action) {
         case 'shelve':
@@ -248,7 +285,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
           stateManager.unshelvePR(body.url);
           break;
         case 'snooze':
-          stateManager.snoozePR(body.url, body.reason || 'Snoozed via dashboard', body.days || 7);
+          stateManager.snoozePR(body.url, body.reason || 'Snoozed via dashboard', body.days ?? 7);
           break;
         case 'unsnooze':
           stateManager.unsnoozePR(body.url);

@@ -6,7 +6,14 @@
 import { getStateManager, getOctokit, parseGitHubUrl, requireGitHubToken } from '../core/index.js';
 import { paginateAll } from '../core/pagination.js';
 import { type CommentsOutput, type PostOutput, type ClaimOutput } from '../formatters/json.js';
-import { validateUrl, validateMessage } from './validation.js';
+import {
+  validateUrl,
+  validateMessage,
+  validateGitHubUrl,
+  PR_URL_PATTERN,
+  ISSUE_OR_PR_URL_PATTERN,
+  ISSUE_URL_PATTERN,
+} from './validation.js';
 
 export { type CommentsOutput, type PostOutput, type ClaimOutput } from '../formatters/json.js';
 
@@ -27,6 +34,7 @@ interface ClaimOptions {
 
 export async function runComments(options: CommentsOptions): Promise<CommentsOutput> {
   validateUrl(options.prUrl);
+  validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');
 
   const token = requireGitHubToken();
 
@@ -131,6 +139,7 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
 
 export async function runPost(options: PostOptions): Promise<PostOutput> {
   validateUrl(options.url);
+  validateGitHubUrl(options.url, ISSUE_OR_PR_URL_PATTERN, 'issue or PR');
 
   if (!options.message.trim()) {
     throw new Error('No message provided');
@@ -164,6 +173,7 @@ export async function runPost(options: PostOptions): Promise<PostOutput> {
 
 export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
   validateUrl(options.issueUrl);
+  validateGitHubUrl(options.issueUrl, ISSUE_URL_PATTERN, 'issue');
 
   const token = requireGitHubToken();
 
@@ -189,21 +199,27 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
     body: message,
   });
 
-  // Add to tracked issues
-  const stateManager = getStateManager();
-  stateManager.addIssue({
-    id: number,
-    url: options.issueUrl,
-    repo: `${owner}/${repo}`,
-    number,
-    title: '(claimed)',
-    status: 'claimed',
-    labels: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    vetted: false,
-  });
-  stateManager.save();
+  // Add to tracked issues — non-fatal if state save fails (comment already posted)
+  try {
+    const stateManager = getStateManager();
+    stateManager.addIssue({
+      id: number,
+      url: options.issueUrl,
+      repo: `${owner}/${repo}`,
+      number,
+      title: '(claimed)',
+      status: 'claimed',
+      labels: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      vetted: false,
+    });
+    stateManager.save();
+  } catch (error) {
+    console.error(
+      `Warning: Comment posted on ${options.issueUrl} but failed to save to local state: ${error instanceof Error ? error.message : error}`,
+    );
+  }
 
   return {
     commentUrl: comment.html_url,
