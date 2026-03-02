@@ -12,8 +12,7 @@ import * as path from 'path';
 import { getStateManager, getGitHubToken } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
 import { fetchDashboardData, computePRsByRepo, computeTopRepos, getMonthlyData } from './dashboard-data.js';
-import { buildDashboardStats } from './dashboard-templates.js';
-import type { DashboardStats } from './dashboard-templates.js';
+import { buildDashboardStats, type DashboardStats } from './dashboard-templates.js';
 import type { DailyDigest, AgentState, CommentedIssue, CommentedIssueWithResponse, FetchedPR } from '../core/types.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
