@@ -15,7 +15,6 @@ import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
 import { writeDashboardFromState } from './dashboard.js';
 
-
 /**
  * Parse issueListPath from a config file's YAML frontmatter.
  * Returns the path string or undefined if not found.
