@@ -4,31 +4,18 @@
 
 import { describe, it, expect } from 'vitest';
 import { computeDisplayLabel } from './display-utils.js';
-import type { FetchedPR } from './types.js';
+import { makeFetchedPR } from './test-utils.js';
 
-function makePR(overrides: Partial<FetchedPR> = {}): FetchedPR {
-  return {
-    id: 1,
-    url: 'https://github.com/owner/repo/pull/1',
-    repo: 'owner/repo',
-    number: 1,
-    title: 'Test PR',
-    status: 'healthy',
+function makePR(overrides: Parameters<typeof makeFetchedPR>[0] = {}) {
+  return makeFetchedPR({
     createdAt: '2026-02-07T10:00:00Z',
     updatedAt: '2026-02-07T10:00:00Z',
-    daysSinceActivity: 0,
-    ciStatus: 'passing',
-    failingCheckNames: [],
-    classifiedChecks: [],
-    hasMergeConflict: false,
-    reviewDecision: 'review_required',
-    hasUnrespondedComment: false,
-    hasIncompleteChecklist: false,
-    maintainerActionHints: [],
     displayLabel: '',
     displayDescription: '',
+    reviewDecision: 'review_required',
+    daysSinceActivity: 0,
     ...overrides,
-  };
+  });
 }
 
 describe('computeDisplayLabel', () => {

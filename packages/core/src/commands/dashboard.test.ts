@@ -19,6 +19,12 @@ import type {
   CommentedIssueWithResponse,
   RepoScore,
 } from '../core/types.js';
+import {
+  makeFetchedPR as _makeFetchedPR,
+  makeDailyDigest,
+  makeShelvedPRRef as _makeShelvedPRRef,
+  makeAgentState,
+} from '../core/test-utils.js';
 
 // ── Mocks ────────────────────────────────────────────────────────────
 vi.mock('fs', () => ({
@@ -73,81 +79,38 @@ const mockWriteFileSync = vi.mocked(fs.writeFileSync);
 const mockChmodSync = vi.mocked(fs.chmodSync);
 const mockExecFile = vi.mocked(execFile);
 
-// ── Test Data Factories ──────────────────────────────────────────────
+// ── Test Data Factories — thin wrappers over shared factories ────────
 
 function makeFetchedPR(overrides: Partial<FetchedPR> = {}): FetchedPR {
-  return {
-    id: 1,
-    url: 'https://github.com/owner/repo/pull/1',
-    repo: 'owner/repo',
-    number: 1,
-    title: 'Test PR',
-    status: 'healthy',
-    displayLabel: '[Healthy]',
-    displayDescription: 'Everything looks good',
+  return _makeFetchedPR({
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-15T00:00:00Z',
     daysSinceActivity: 5,
-    ciStatus: 'passing',
-    failingCheckNames: [],
-    classifiedChecks: [],
-    hasMergeConflict: false,
-    reviewDecision: 'approved',
-    hasUnrespondedComment: false,
-    hasIncompleteChecklist: false,
-    maintainerActionHints: [],
     ...overrides,
-  };
+  });
 }
 
 function makeShelvedPRRef(overrides: Partial<ShelvedPRRef> = {}): ShelvedPRRef {
-  return {
+  return _makeShelvedPRRef({
     number: 99,
     url: 'https://github.com/owner/shelved-repo/pull/99',
-    title: 'Shelved PR',
     repo: 'owner/shelved-repo',
     daysSinceActivity: 40,
     status: 'dormant',
     ...overrides,
-  };
+  });
 }
 
 function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
-  return {
+  return makeDailyDigest({
     generatedAt: '2026-01-15T12:00:00Z',
-    openPRs: [],
-    prsNeedingResponse: [],
-    ciFailingPRs: [],
-    ciBlockedPRs: [],
-    ciNotRunningPRs: [],
-    mergeConflictPRs: [],
-    needsRebasePRs: [],
-    missingRequiredFilesPRs: [],
-    incompleteChecklistPRs: [],
-    needsChangesPRs: [],
-    changesAddressedPRs: [],
-    waitingOnMaintainerPRs: [],
-    approachingDormant: [],
-    dormantPRs: [],
-    healthyPRs: [],
-    recentlyClosedPRs: [],
-    recentlyMergedPRs: [],
-    shelvedPRs: [],
-    autoUnshelvedPRs: [],
-    summary: {
-      totalActivePRs: 0,
-      totalNeedingAttention: 0,
-      totalMergedAllTime: 10,
-      mergeRate: 83.3,
-    },
+    summary: { totalActivePRs: 0, totalNeedingAttention: 0, totalMergedAllTime: 10, mergeRate: 83.3 },
     ...overrides,
-  };
+  });
 }
 
 function makeState(overrides: Partial<AgentState> = {}): AgentState {
-  return {
-    version: 2,
-    repoScores: {},
+  return makeAgentState({
     config: {
       setupComplete: true,
       maxActivePRs: 10,
@@ -163,11 +126,9 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
       starredRepos: [],
       shelvedPRUrls: [],
     },
-    events: [],
     lastRunAt: '2026-01-15T12:00:00Z',
-    activeIssues: [],
     ...overrides,
-  };
+  });
 }
 
 function makeRepoScore(overrides: Partial<RepoScore> = {}): RepoScore {
