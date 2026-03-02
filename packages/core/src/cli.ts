@@ -11,7 +11,7 @@
  */
 
 import { Command } from 'commander';
-import { getGitHubTokenAsync, enableDebug, debug, formatRelativeTime } from './core/index.js';
+import { getGitHubTokenAsync, enableDebug, debug, formatRelativeTime, getCLIVersion } from './core/index.js';
 import { errorMessage } from './core/errors.js';
 import { outputJson, outputJsonError } from './formatters/json.js';
 
@@ -36,19 +36,7 @@ function handleCommandError(err: unknown, json?: boolean): never {
   process.exit(1);
 }
 
-const VERSION = (() => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const fs = require('fs');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const path = require('path');
-    const pkgPath = path.join(path.dirname(process.argv[1]), '..', 'package.json');
-    return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
-  } catch (_err) {
-    // package.json may not be readable in all bundle/install configurations — fall back to safe default
-    return '0.0.0';
-  }
-})();
+const VERSION = getCLIVersion();
 
 // Commands that skip the preAction GitHub token check.
 // startup handles auth internally (returns authError in JSON instead of process.exit).
