@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.4](https://github.com/costajohnt/oss-autopilot/compare/core-v0.42.3...core-v0.42.4) (2026-03-02)
+
+
+### Bug Fixes
+
+* auto-undismiss PRs on new activity and re-throw commit date rate limits ([#468](https://github.com/costajohnt/oss-autopilot/issues/468), [#469](https://github.com/costajohnt/oss-autopilot/issues/469)) ([#472](https://github.com/costajohnt/oss-autopilot/issues/472)) ([ceba992](https://github.com/costajohnt/oss-autopilot/commit/ceba992b1d8899d5fc5a63c06ace68af33e36a54))
+
 ## [0.42.3](https://github.com/costajohnt/oss-autopilot/compare/core-v0.42.2...core-v0.42.3) (2026-03-02)
 
 
