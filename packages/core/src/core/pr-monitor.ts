@@ -381,6 +381,11 @@ export class PRMonitor {
       // If the contributor pushed a commit after the maintainer's comment,
       // the changes have been addressed — waiting for maintainer re-review
       if (latestCommitDate && lastMaintainerCommentDate && latestCommitDate > lastMaintainerCommentDate) {
+        // Safety net (#431): if a CHANGES_REQUESTED review was submitted after
+        // the commit, the maintainer still expects changes — don't mask it
+        if (latestChangesRequestedDate && latestCommitDate < latestChangesRequestedDate) {
+          return 'needs_response';
+        }
         if (ciStatus === 'failing') return 'failing_ci';
         return 'changes_addressed';
       }

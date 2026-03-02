@@ -140,11 +140,11 @@ export function checkUnrespondedComments(
   for (const review of reviews) {
     if (!review.submitted_at) continue;
     const body = (review.body || '').trim();
-    // Include COMMENTED reviews even without body text — they indicate
-    // inline review comments were posted and may need a response (#151).
-    // Skip other empty-body reviews (APPROVED, CHANGES_REQUESTED, DISMISSED)
-    // as those are state changes without comment text.
-    if (!body && review.state !== 'COMMENTED') continue;
+    // Include COMMENTED and CHANGES_REQUESTED reviews even without body text —
+    // they indicate inline review comments were posted and need a response (#151, #431).
+    // CHANGES_REQUESTED with only inline comments is actionable maintainer feedback.
+    // Skip other empty-body reviews (APPROVED, DISMISSED) as those are state changes.
+    if (!body && review.state !== 'COMMENTED' && review.state !== 'CHANGES_REQUESTED') continue;
     const author = review.user?.login || 'unknown';
 
     // For inline-only COMMENTED reviews, skip pure self-replies (#199)
@@ -158,7 +158,9 @@ export function checkUnrespondedComments(
     const resolvedBody =
       body ||
       (review.id != null ? getInlineCommentBody(review.id, reviewComments) : undefined) ||
-      '(posted inline review comments)';
+      (review.state === 'CHANGES_REQUESTED'
+        ? '(requested changes via inline review comments)'
+        : '(posted inline review comments)');
 
     timeline.push({
       author,
