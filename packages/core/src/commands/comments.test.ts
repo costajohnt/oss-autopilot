@@ -220,9 +220,7 @@ describe('runClaim', () => {
     mockRequireGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
 
-    await expect(runClaim({ issueUrl: TEST_PR_URL })).rejects.toThrow(
-      'Invalid issue URL',
-    );
+    await expect(runClaim({ issueUrl: TEST_PR_URL })).rejects.toThrow('Invalid issue URL');
   });
 
   it('should throw error when claim message exceeds maximum length', async () => {
@@ -292,9 +290,7 @@ describe('runClaim', () => {
     const result = await runClaim({ issueUrl: TEST_ISSUE_URL });
 
     expect(result.commentUrl).toBe('https://github.com/owner/repo/issues/10#issuecomment-1');
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Warning: Comment posted on'),
-    );
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Warning: Comment posted on'));
     consoleSpy.mockRestore();
   });
 
