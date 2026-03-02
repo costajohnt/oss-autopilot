@@ -3205,3 +3205,115 @@ describe('review comment fetch error handling (#229)', () => {
     errorSpy.mockRestore();
   });
 });
+
+describe('commitDatePromise error handling (#469)', () => {
+  const prUrl = 'https://github.com/owner/repo/pull/1';
+
+  const makeSearchItem = (url: string) => ({
+    html_url: url,
+    title: 'Test PR',
+    pull_request: { html_url: url },
+    created_at: '2026-02-01T00:00:00Z',
+    updated_at: '2026-02-07T00:00:00Z',
+  });
+
+  /** Build mocks where repos.getCommit fails with the given error, and reviews trigger needCommitDate */
+  const makeMocksWithCommitDateError = (error: { status?: number; message?: string }) => {
+    const err = Object.assign(new Error(error.message ?? 'Request failed'), { status: error.status });
+    return {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: { total_count: 1, items: [makeSearchItem(prUrl)] },
+        }),
+      },
+      pulls: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            id: 1,
+            title: 'Test PR',
+            created_at: '2026-02-01T00:00:00Z',
+            updated_at: '2026-02-07T00:00:00Z',
+            head: { sha: 'abc123' },
+            mergeable: true,
+            mergeable_state: 'clean',
+            body: '',
+            draft: false,
+            review_comments: 0,
+            commits: 1,
+          },
+        }),
+        // Return CHANGES_REQUESTED review to trigger needCommitDate
+        listReviews: vi.fn().mockResolvedValue({
+          data: [{ state: 'CHANGES_REQUESTED', user: { login: 'reviewer' }, submitted_at: '2026-02-05T00:00:00Z' }],
+        }),
+        listReviewComments: vi.fn().mockResolvedValue({ data: [] }),
+      },
+      issues: {
+        listComments: vi.fn().mockResolvedValue({ data: [] }),
+      },
+      repos: {
+        getCombinedStatusForRef: vi.fn().mockResolvedValue({
+          data: { state: 'success', statuses: [] },
+        }),
+        getCommit: vi.fn().mockRejectedValue(err),
+      },
+      checks: {
+        listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [] } }),
+      },
+    };
+  };
+
+  beforeEach(() => {
+    vi.mocked(getStateManager).mockReturnValue({
+      getState: () => ({
+        config: {
+          githubUsername: 'testuser',
+          excludeRepos: [],
+          excludeOrgs: [],
+          shelvedPRUrls: [],
+          dormantThresholdDays: 30,
+          approachingDormantDays: 25,
+        },
+      }),
+    } as any);
+  });
+
+  it('should re-throw 429 rate limit error from getCommit (surfaces in failures)', async () => {
+    mockOctokitInstance = makeMocksWithCommitDateError({ status: 429, message: 'rate limit exceeded' });
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs, failures } = await monitor.fetchUserOpenPRs();
+
+    // Rate limit error should propagate and appear in failures
+    expect(prs).toHaveLength(0);
+    expect(failures).toHaveLength(1);
+    expect(failures[0].error).toContain('rate limit exceeded');
+  });
+
+  it('should re-throw 403 rate limit error from getCommit (surfaces in failures)', async () => {
+    mockOctokitInstance = makeMocksWithCommitDateError({ status: 403, message: 'API rate limit exceeded' });
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs, failures } = await monitor.fetchUserOpenPRs();
+
+    expect(prs).toHaveLength(0);
+    expect(failures).toHaveLength(1);
+    expect(failures[0].error).toContain('API rate limit exceeded');
+  });
+
+  it('should degrade gracefully on non-rate-limit errors from getCommit', async () => {
+    mockOctokitInstance = makeMocksWithCommitDateError({ status: 500, message: 'Internal Server Error' });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
+
+    // PR should still be returned — non-rate-limit error is gracefully degraded
+    expect(prs).toHaveLength(1);
+    expect(prs[0].url).toBe(prUrl);
+    // Warn path should have been exercised (routes through console.error via logger.warn)
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to fetch commit date'));
+
+    errorSpy.mockRestore();
+  });
+});
