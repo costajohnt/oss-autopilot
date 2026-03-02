@@ -276,7 +276,27 @@ export class PRMonitor {
       ? this.octokit.repos
           .getCommit({ owner, repo, ref: ghPR.head.sha })
           .then((res) => res.data.commit.author?.date)
-          .catch(() => undefined)
+          .catch((err: unknown) => {
+            // Rate limit errors must propagate — silently swallowing them produces
+            // misleading status (e.g. needs_changes when changes were addressed) (#469).
+            const status = getHttpStatusCode(err);
+            if (status === 429) throw err;
+            if (status === 403) {
+              const msg = errorMessage(err).toLowerCase();
+              if (msg.includes('rate limit') || msg.includes('abuse detection')) throw err;
+              // Non-rate-limit 403 (DMCA, private repo, SSO) — degrade gracefully
+              warn(
+                'pr-monitor',
+                `403 fetching commit date for ${owner}/${repo}@${ghPR.head.sha.slice(0, 7)}: ${errorMessage(err)}`,
+              );
+              return undefined;
+            }
+            warn(
+              'pr-monitor',
+              `Failed to fetch commit date for ${owner}/${repo}@${ghPR.head.sha.slice(0, 7)}: ${errorMessage(err)}`,
+            );
+            return undefined;
+          })
       : Promise.resolve(undefined);
 
     const [{ status: ciStatus, failingCheckNames, failingCheckConclusions }, latestCommitDate] = await Promise.all([

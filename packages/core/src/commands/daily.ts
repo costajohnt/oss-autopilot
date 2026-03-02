@@ -445,14 +445,16 @@ function generateDigestOutput(
       const responseTime = new Date(issue.lastResponseAt).getTime();
       const dismissTime = new Date(dismissedAt).getTime();
       if (isNaN(responseTime) || isNaN(dismissTime)) {
-        // Invalid timestamp — fail open (include issue to be safe)
+        // Invalid timestamp — fail open (include issue to be safe) without
+        // permanently removing dismiss record (may be a transient data issue)
         console.error(`[DAILY] Invalid timestamp in dismiss check for ${issue.url}, including issue`);
-        stateManager.undismissIssue(issue.url);
-        hasAutoUndismissed = true;
         return true;
       }
       if (responseTime > dismissTime) {
         // New activity after dismiss — auto-undismiss and resurface
+        console.error(
+          `[DAILY] Auto-undismissing issue ${issue.url}: new response at ${issue.lastResponseAt} after dismiss at ${dismissedAt}`,
+        );
         stateManager.undismissIssue(issue.url);
         hasAutoUndismissed = true;
         return true;
@@ -461,9 +463,6 @@ function generateDigestOutput(
     // Still dismissed (last response is at or before dismiss timestamp)
     return false;
   });
-  if (hasAutoUndismissed) {
-    stateManager.save();
-  }
 
   const issueResponses = filteredCommentedIssues.filter(
     (i): i is CommentedIssueWithResponse => i.status === 'new_response',
@@ -472,9 +471,39 @@ function generateDigestOutput(
   const snoozedUrls = new Set(
     Object.keys(stateManager.getState().config.snoozedPRs ?? {}).filter((url) => stateManager.isSnoozed(url)),
   );
-  // Filter dismissed PR URLs from actionable issues (#416)
-  const dismissedUrls = new Set(Object.keys(stateManager.getState().config.dismissedIssues ?? {}));
-  const nonDismissedPRs = activePRs.filter((pr) => !dismissedUrls.has(pr.url));
+  // Filter dismissed PRs: suppress if dismissed after last activity, auto-undismiss if new activity (#416, #468)
+  const nonDismissedPRs = activePRs.filter((pr) => {
+    const dismissedAt = stateManager.getIssueDismissedAt(pr.url);
+    if (!dismissedAt) return true; // Not dismissed — include
+    const activityTime = new Date(pr.updatedAt).getTime();
+    const dismissTime = new Date(dismissedAt).getTime();
+    if (isNaN(activityTime) || isNaN(dismissTime)) {
+      // Invalid timestamp — fail open (include PR to be safe) without
+      // permanently removing dismiss record (may be a transient data issue)
+      console.error(`[DAILY] Invalid timestamp in PR dismiss check for ${pr.url}, including PR`);
+      return true;
+    }
+    if (activityTime > dismissTime) {
+      // New activity after dismiss — auto-undismiss and resurface
+      console.error(
+        `[DAILY] Auto-undismissing PR ${pr.url}: new activity at ${pr.updatedAt} after dismiss at ${dismissedAt}`,
+      );
+      stateManager.undismissIssue(pr.url);
+      hasAutoUndismissed = true;
+      return true;
+    }
+    // Still dismissed (last activity is at or before dismiss timestamp)
+    return false;
+  });
+
+  // Persist auto-undismiss state changes (issue + PR combined into one save)
+  if (hasAutoUndismissed) {
+    try {
+      stateManager.save();
+    } catch (error) {
+      console.error('[DAILY] Failed to persist auto-undismissed state:', errorMessage(error));
+    }
+  }
   const actionableIssues = collectActionableIssues(nonDismissedPRs, snoozedUrls);
   digest.summary.totalNeedingAttention = actionableIssues.length;
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length);
