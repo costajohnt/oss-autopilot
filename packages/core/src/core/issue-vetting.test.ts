@@ -84,9 +84,9 @@ function makeDefaultState(overrides: Partial<AgentState> = {}): Partial<AgentSta
   };
 }
 
-function makeStateManager(overrides: Record<string, unknown> = {}): ReturnType<
-  typeof import('./state.js').getStateManager
-> {
+function makeStateManager(
+  overrides: Record<string, unknown> = {},
+): ReturnType<typeof import('./state.js').getStateManager> {
   return {
     getState: vi.fn().mockReturnValue(makeDefaultState()),
     getRepoScore: vi.fn().mockReturnValue(undefined),
@@ -167,7 +167,8 @@ describe('analyzeRequirements', () => {
   });
 
   it('returns true with bullet steps + code block', () => {
-    const body = '- Run the following command:\n```\nnpm install\n```\nThen check output for errors in the console output area.';
+    const body =
+      '- Run the following command:\n```\nnpm install\n```\nThen check output for errors in the console output area.';
     expect(vetter.analyzeRequirements(body)).toBe(true);
   });
 
@@ -177,7 +178,8 @@ describe('analyzeRequirements', () => {
   });
 
   it('detects asterisk bullet lists', () => {
-    const body = '* First item in the list here\n* Second item in the list here\nIt should display correctly when rendered.';
+    const body =
+      '* First item in the list here\n* Second item in the list here\nIt should display correctly when rendered.';
     expect(vetter.analyzeRequirements(body)).toBe(true);
   });
 });
@@ -303,9 +305,7 @@ describe('checkNoExistingPR', () => {
     mockFn(octokit.search.issuesAndPullRequests).mockResolvedValue({
       data: { total_count: 0, items: [] },
     });
-    vi.mocked(paginateAll).mockResolvedValue([
-      { event: 'cross-referenced', source: { issue: { pull_request: {} } } },
-    ]);
+    vi.mocked(paginateAll).mockResolvedValue([{ event: 'cross-referenced', source: { issue: { pull_request: {} } } }]);
 
     const result = await vetter.checkNoExistingPR('owner', 'repo', 1);
     expect(result.passed).toBe(false);
@@ -361,9 +361,7 @@ describe('checkNotClaimed', () => {
   });
 
   it('returns not passed when claim phrase found', async () => {
-    mockFn(octokit.paginate).mockResolvedValue([
-      { body: "I'm working on this already." },
-    ]);
+    mockFn(octokit.paginate).mockResolvedValue([{ body: "I'm working on this already." }]);
 
     const result = await vetter.checkNotClaimed('owner', 'repo', 1, 1);
     expect(result.passed).toBe(false);
@@ -385,19 +383,14 @@ describe('checkNotClaimed', () => {
   });
 
   it('is case-insensitive', async () => {
-    mockFn(octokit.paginate).mockResolvedValue([
-      { body: "I'M WORKING ON THIS" },
-    ]);
+    mockFn(octokit.paginate).mockResolvedValue([{ body: "I'M WORKING ON THIS" }]);
 
     const result = await vetter.checkNotClaimed('owner', 'repo', 1, 1);
     expect(result.passed).toBe(false);
   });
 
   it('handles comments with null body', async () => {
-    mockFn(octokit.paginate).mockResolvedValue([
-      { body: null },
-      { body: '' },
-    ]);
+    mockFn(octokit.paginate).mockResolvedValue([{ body: null }, { body: '' }]);
 
     const result = await vetter.checkNotClaimed('owner', 'repo', 1, 2);
     expect(result.passed).toBe(true);
@@ -692,13 +685,9 @@ describe('vetIssue', () => {
   });
 
   it('propagates error when issue fetch fails', async () => {
-    mockFn(octokit.issues.get).mockRejectedValue(
-      Object.assign(new Error('Not Found'), { status: 404 }),
-    );
+    mockFn(octokit.issues.get).mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
 
-    await expect(
-      vetter.vetIssue(`https://github.com/${owner}/repo/issues/42`),
-    ).rejects.toThrow('Not Found');
+    await expect(vetter.vetIssue(`https://github.com/${owner}/repo/issues/42`)).rejects.toThrow('Not Found');
   });
 
   it('returns approved candidate when all checks pass', async () => {
@@ -777,9 +766,7 @@ describe('vetIssue', () => {
   });
 
   it('gives trusted project credit for repos with merged PRs in state', async () => {
-    stateManager.getRepoScore.mockReturnValue(
-      makeRepoScore({ repo: `${owner}/repo`, score: 8, mergedPRCount: 2 }),
-    );
+    stateManager.getRepoScore.mockReturnValue(makeRepoScore({ repo: `${owner}/repo`, score: 8, mergedPRCount: 2 }));
 
     const candidate = await vetter.vetIssue(`https://github.com/${owner}/repo/issues/42`);
     expect(candidate.reasonsToApprove).toContainEqual(expect.stringContaining('2 PRs merged'));
