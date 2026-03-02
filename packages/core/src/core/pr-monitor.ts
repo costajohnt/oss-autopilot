@@ -43,6 +43,7 @@ import { analyzeChecklist } from './checklist-analysis.js';
 import { extractMaintainerActionHints } from './maintainer-analysis.js';
 import { computeDisplayLabel } from './display-utils.js';
 import {
+  type PRCountsResult,
   fetchUserMergedPRCounts as fetchUserMergedPRCountsImpl,
   fetchUserClosedPRCounts as fetchUserClosedPRCountsImpl,
   fetchRecentlyClosedPRs as fetchRecentlyClosedPRsImpl,
@@ -509,12 +510,7 @@ export class PRMonitor {
    * Fetch merged PR counts and latest merge dates per repository for the configured user.
    * Delegates to github-stats module.
    */
-  async fetchUserMergedPRCounts(): Promise<{
-    repos: Map<string, { count: number; lastMergedAt: string }>;
-    monthlyCounts: Record<string, number>;
-    monthlyOpenedCounts: Record<string, number>;
-    dailyActivityCounts: Record<string, number>;
-  }> {
+  async fetchUserMergedPRCounts(): Promise<PRCountsResult<{ count: number; lastMergedAt: string }>> {
     const config = this.stateManager.getState().config;
     return fetchUserMergedPRCountsImpl(this.octokit, config.githubUsername);
   }
@@ -523,12 +519,7 @@ export class PRMonitor {
    * Fetch closed-without-merge PR counts per repository for the configured user.
    * Delegates to github-stats module.
    */
-  async fetchUserClosedPRCounts(): Promise<{
-    repos: Map<string, number>;
-    monthlyCounts: Record<string, number>;
-    monthlyOpenedCounts: Record<string, number>;
-    dailyActivityCounts: Record<string, number>;
-  }> {
+  async fetchUserClosedPRCounts(): Promise<PRCountsResult<number>> {
     const config = this.stateManager.getState().config;
     return fetchUserClosedPRCountsImpl(this.octokit, config.githubUsername);
   }
