@@ -147,4 +147,11 @@ describe('runSearch', () => {
 
     expect(result.candidates).toEqual([]);
   });
+
+  it('should propagate errors from searchIssues (#414)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockSearchIssues.mockRejectedValue(new Error('API rate limit exceeded'));
+
+    await expect(runSearch({ maxResults: 5 })).rejects.toThrow('API rate limit exceeded');
+  });
 });
