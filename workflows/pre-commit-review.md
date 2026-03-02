@@ -112,10 +112,14 @@ Task(pr-review-toolkit:code-reviewer,
      scan existing APIs in the same module for naming patterns. Flag double-negative boolean
      names (e.g., nonInteractive when the codebase uses positive booleans like interactive).
    - JS/TS truthiness: Flag !obj.prop when the intent is to check for false specifically
-     but undefined would also match. Flag === false vs !prop inconsistencies.
+     but undefined would also match. Flag === false vs !prop inconsistencies. Flag boolean
+     coercion of values that could be 0, "", or null where the intent is only to check
+     for undefined.
    - Documentation accuracy: If docs/README/JSDoc are changed, cross-reference factual claims
-     against the actual code. Flag 'automatically disabled when X' claims that aren't
-     implemented in code.
+     against the actual code. Check that option descriptions match defaults (don't say
+     "Enable X" for a feature that's on by default). If code behavior changed but docs
+     were NOT changed, flag any docs/JSDoc/comments on the changed functions that describe
+     the old behavior.
 
    Diff:
    {git diff output}")
@@ -221,11 +225,11 @@ After all agents complete, merge their outputs into a unified report. Deduplicat
 ### Minor ({count}) — Nice to have
 - **{file}:{line}** — {description}
 
-### Test Coverage & Assertion Quality
+### Test Coverage & Quality
 - {assessment from pr-test-analyzer, including assertion strength concerns}
 
 ### Documentation Accuracy
-- {any doc/README claims that don't match the code, if docs were changed}
+- {any doc/README claims that don't match the code, or stale docs not updated after code changes}
 
 ### Convention Alignment
 - {any style/convention/naming mismatches}
