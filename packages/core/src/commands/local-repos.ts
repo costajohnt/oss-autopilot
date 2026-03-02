@@ -137,7 +137,7 @@ export async function runLocalRepos(options: LocalReposOptions): Promise<LocalRe
     stateManager.save();
   } catch (error) {
     const msg = errorMessage(error);
-    debug('local-repos', `Failed to cache scan results: ${msg}`);
+    console.error(`Warning: Failed to cache scan results: ${msg}`);
   }
 
   return {

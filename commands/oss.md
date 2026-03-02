@@ -284,7 +284,7 @@ Your curated issue list is depleted ({completedCount} done). Time to find new is
 
 When there are actionable issues, display them **before asking the user anything**.
 
-Issues are listed in priority order: `needs_response` → `needs_changes` → `ci_failing` → `merge_conflict` → `incomplete_checklist` → `approaching_dormant`. This matches the ordering from `collectActionableIssues()` in the CLI. Recently closed PRs are NOT included here — they appear in a separate informational section below (see "Recently Closed PRs").
+Issues are listed in priority order: `needs_response` → `needs_changes` → `ci_failing` → `merge_conflict` → `incomplete_checklist`. This matches the ordering from `collectActionableIssues()` in the CLI. Recently closed PRs are NOT included here — they appear in a separate informational section below (see "Recently Closed PRs").
 
 For each issue, look up the full PR from `digest.openPRs` using the issue's `prUrl`:
 
@@ -317,7 +317,7 @@ Then show the enriched format using the resolved PR's fields:
 
 | Effort | Condition |
 |--------|-----------|
-| **Small** | `needs_response` with 0-1 hints (just a reply), `incomplete_checklist`, `approaching_dormant` |
+| **Small** | `needs_response` with 0-1 hints (just a reply), `incomplete_checklist` |
 | **Medium** | `needs_response` with 2+ hints (reply + code changes), `needs_changes` with 0-2 hints, `ci_failing` |
 | **Large** | `merge_conflict`, `needs_changes` with 3+ hints |
 

@@ -101,7 +101,11 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   digest.summary.totalActivePRs = prs.length - freshShelved.length;
 
   stateManager.setLastDigest(digest);
-  stateManager.save();
+  try {
+    stateManager.save();
+  } catch (error) {
+    console.error('Warning: Failed to save dashboard digest to state:', errorMessage(error));
+  }
   console.error(`Refreshed: ${prs.length} PRs fetched`);
 
   return { digest, commentedIssues };

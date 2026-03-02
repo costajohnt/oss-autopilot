@@ -57,7 +57,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 
 | Command | Purpose |
 |---------|---------|
-| `search [n] --json` | Search for new issues (n = number of results, default 10) |
+| `search [n] --json` | Search for new issues (n = number of results, default 5) |
 | `vet <issue-url> --json` | Deep-vet a specific issue for suitability |
 | `status --json` | Get current stats, tracked PRs, and history |
 | `claim <issue-url> [message]` | Claim an issue with optional message |

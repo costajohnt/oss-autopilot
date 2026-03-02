@@ -74,7 +74,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 ```bash
 GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" daily --json
 ```
-Returns PRs with `hasUnreadComments: true` or recent maintainer activity.
+Returns PRs with `status: "needs_response"` or `status: "needs_changes"` indicating recent maintainer activity.
 
 **Fallback - gh CLI:**
 If the TypeScript CLI command fails (non-zero exit, error output, or missing bundle), tell the user: "The oss-autopilot CLI failed: [error]. Falling back to gh CLI." Then attempt the `gh` equivalent. If `gh` also fails, STOP and report both errors to the user — do NOT improvise a workaround.
