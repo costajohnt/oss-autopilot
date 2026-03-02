@@ -7,8 +7,12 @@ import { Octokit } from '@octokit/rest';
 import { extractOwnerRepo, parseGitHubUrl, isOwnRepo } from './utils.js';
 import { ClosedPR, MergedPR } from './types.js';
 import { debug, warn } from './logger.js';
+import { getHttpCache } from './http-cache.js';
 
 const MODULE = 'github-stats';
+
+/** TTL for cached PR count results (1 hour). */
+export const PR_COUNTS_CACHE_TTL_MS = 60 * 60 * 1000;
 
 /** Shape of a search result item from octokit.search.issuesAndPullRequests. */
 type SearchItem = {
@@ -24,6 +28,29 @@ export interface PRCountsResult<R> {
   monthlyCounts: Record<string, number>;
   monthlyOpenedCounts: Record<string, number>;
   dailyActivityCounts: Record<string, number>;
+}
+
+/** Serialized shape of a cached PRCountsResult (Map stored as entries array). */
+interface CachedPRCounts {
+  reposEntries: [string, unknown][];
+  monthlyCounts: Record<string, number>;
+  monthlyOpenedCounts: Record<string, number>;
+  dailyActivityCounts: Record<string, number>;
+}
+
+/** Type guard for deserialized cache data — prevents crashes on corrupt/stale cache. */
+function isCachedPRCounts(v: unknown): v is CachedPRCounts {
+  if (typeof v !== 'object' || v === null) return false;
+  const obj = v as Record<string, unknown>;
+  return (
+    Array.isArray(obj.reposEntries) &&
+    typeof obj.monthlyCounts === 'object' &&
+    obj.monthlyCounts !== null &&
+    typeof obj.monthlyOpenedCounts === 'object' &&
+    obj.monthlyOpenedCounts !== null &&
+    typeof obj.dailyActivityCounts === 'object' &&
+    obj.dailyActivityCounts !== null
+  );
 }
 
 /**
@@ -43,6 +70,20 @@ async function fetchUserPRCounts<R>(
 ): Promise<PRCountsResult<R>> {
   if (!githubUsername) {
     return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {} };
+  }
+
+  // Check for a fresh cached result (avoids 10-20 paginated API calls)
+  const cache = getHttpCache();
+  const cacheKey = `pr-counts:${label}:${githubUsername}`;
+  const cached = cache.getIfFresh(cacheKey, PR_COUNTS_CACHE_TTL_MS);
+  if (cached && isCachedPRCounts(cached)) {
+    debug(MODULE, `Using cached ${label} PR counts for @${githubUsername}`);
+    return {
+      repos: new Map(cached.reposEntries),
+      monthlyCounts: cached.monthlyCounts,
+      monthlyOpenedCounts: cached.monthlyOpenedCounts,
+      dailyActivityCounts: cached.dailyActivityCounts,
+    };
   }
 
   debug(MODULE, `Fetching ${label} PR counts for @${githubUsername}...`);
@@ -111,6 +152,15 @@ async function fetchUserPRCounts<R>(
   }
 
   debug(MODULE, `Found ${fetched} ${label} PRs across ${repos.size} repos`);
+
+  // Cache the aggregated result (Map → entries array for JSON serialization)
+  cache.set(cacheKey, '', {
+    reposEntries: Array.from(repos.entries()),
+    monthlyCounts,
+    monthlyOpenedCounts,
+    dailyActivityCounts,
+  });
+
   return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts };
 }
 
