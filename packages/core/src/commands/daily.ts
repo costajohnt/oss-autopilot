@@ -31,6 +31,7 @@ import {
   type PRCheckFailure,
   type RepoGroup,
 } from '../core/index.js';
+import { errorMessage } from '../core/errors.js';
 import {
   deduplicateDigest,
   compactActionableIssues,
@@ -125,15 +126,15 @@ async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<Fetched
       prMonitor.fetchUserMergedPRCounts(),
       prMonitor.fetchUserClosedPRCounts(),
       prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
-        console.error(`Warning: Failed to fetch recently closed PRs: ${err instanceof Error ? err.message : err}`);
+        console.error(`Warning: Failed to fetch recently closed PRs: ${errorMessage(err)}`);
         return [];
       }),
       prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
-        console.error(`Warning: Failed to fetch recently merged PRs: ${err instanceof Error ? err.message : err}`);
+        console.error(`Warning: Failed to fetch recently merged PRs: ${errorMessage(err)}`);
         return [];
       }),
       issueMonitor.fetchCommentedIssues().catch((error) => {
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg = errorMessage(error);
         if (msg.includes('No GitHub username configured')) {
           console.error(`[DAILY] Issue conversation tracking requires setup: ${msg}`);
         } else {
@@ -210,10 +211,7 @@ async function updateRepoScores(
       stateManager.updateRepoScore(repo, { mergedPRCount: count, lastMergedAt: lastMergedAt || undefined });
     } catch (error) {
       mergedCountFailures++;
-      console.error(
-        `[DAILY] Failed to update merged count for ${repo}:`,
-        error instanceof Error ? error.message : error,
-      );
+      console.error(`[DAILY] Failed to update merged count for ${repo}:`, errorMessage(error));
     }
   }
   if (mergedCountFailures === mergedCounts.size && mergedCounts.size > 0) {
@@ -237,10 +235,7 @@ async function updateRepoScores(
       stateManager.updateRepoScore(repo, { closedWithoutMergeCount: count });
     } catch (error) {
       closedCountFailures++;
-      console.error(
-        `[DAILY] Failed to update closed count for ${repo}:`,
-        error instanceof Error ? error.message : error,
-      );
+      console.error(`[DAILY] Failed to update closed count for ${repo}:`, errorMessage(error));
     }
   }
   if (closedCountFailures === closedCounts.size && closedCounts.size > 0) {
@@ -259,7 +254,7 @@ async function updateRepoScores(
       stateManager.updateRepoScore(repo, { signals });
     } catch (error) {
       signalUpdateFailures++;
-      console.error(`[DAILY] Failed to update signals for ${repo}:`, error instanceof Error ? error.message : error);
+      console.error(`[DAILY] Failed to update signals for ${repo}:`, errorMessage(error));
     }
   }
   if (signalUpdateFailures === repoSignals.size && repoSignals.size > 0) {
@@ -274,7 +269,7 @@ async function updateRepoScores(
   try {
     starCounts = await prMonitor.fetchRepoStarCounts(allRepos);
   } catch (error) {
-    console.error('[DAILY] Failed to fetch repo star counts:', error instanceof Error ? error.message : error);
+    console.error('[DAILY] Failed to fetch repo star counts:', errorMessage(error));
     console.error(
       '[DAILY] Dashboard minStars filter will use cached star counts (or be skipped for repos without cached data).',
     );
@@ -286,7 +281,7 @@ async function updateRepoScores(
       stateManager.updateRepoScore(repo, { stargazersCount: stars });
     } catch (error) {
       starUpdateFailures++;
-      console.error(`[DAILY] Failed to update star count for ${repo}:`, error instanceof Error ? error.message : error);
+      console.error(`[DAILY] Failed to update star count for ${repo}:`, errorMessage(error));
     }
   }
   if (starUpdateFailures === starCounts.size && starCounts.size > 0) {
@@ -300,7 +295,7 @@ async function updateRepoScores(
       stateManager.addTrustedProject(repo);
     } catch (error) {
       trustSyncFailures++;
-      console.error(`[DAILY] Failed to sync trusted project ${repo}:`, error instanceof Error ? error.message : error);
+      console.error(`[DAILY] Failed to sync trusted project ${repo}:`, errorMessage(error));
     }
   }
   if (trustSyncFailures === mergedCounts.size && mergedCounts.size > 0) {
@@ -328,13 +323,13 @@ function updateAnalytics(
   try {
     stateManager.setMonthlyMergedCounts(monthlyCounts);
   } catch (error) {
-    console.error('[DAILY] Failed to store monthly merged counts:', error instanceof Error ? error.message : error);
+    console.error('[DAILY] Failed to store monthly merged counts:', errorMessage(error));
   }
 
   try {
     stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
   } catch (error) {
-    console.error('[DAILY] Failed to store monthly closed counts:', error instanceof Error ? error.message : error);
+    console.error('[DAILY] Failed to store monthly closed counts:', errorMessage(error));
   }
 
   try {
@@ -352,10 +347,7 @@ function updateAnalytics(
     }
     stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
   } catch (error) {
-    console.error(
-      '[DAILY] Failed to compute/store monthly opened counts:',
-      error instanceof Error ? error.message : error,
-    );
+    console.error('[DAILY] Failed to compute/store monthly opened counts:', errorMessage(error));
   }
 }
 
@@ -384,7 +376,7 @@ function partitionPRs(
       stateManager.save();
     }
   } catch (error) {
-    console.error('[DAILY] Failed to expire/persist snoozes:', error instanceof Error ? error.message : error);
+    console.error('[DAILY] Failed to expire/persist snoozes:', errorMessage(error));
   }
 
   // Partition PRs into active vs shelved, auto-unshelving when maintainers engage

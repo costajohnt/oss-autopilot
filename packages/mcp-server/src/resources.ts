@@ -8,7 +8,7 @@ import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { runStatus, runConfig } from '@oss-autopilot/core/commands';
 import { getStateManager, splitRepo } from '@oss-autopilot/core';
-import { errorMessage } from './tools.js';
+import { errorMessage } from '@oss-autopilot/core';
 
 /** Build a standard MCP resource response with a single JSON content entry. */
 function resourceContent(uri: URL, data: unknown) {

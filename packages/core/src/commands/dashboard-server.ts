@@ -10,6 +10,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getStateManager, getGitHubToken } from '../core/index.js';
+import { errorMessage } from '../core/errors.js';
 import { fetchDashboardData, computePRsByRepo, computeTopRepos, getMonthlyData } from './dashboard-data.js';
 import { buildDashboardStats } from './dashboard-templates.js';
 import type { DashboardStats } from './dashboard-templates.js';
@@ -257,7 +258,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       stateManager.save();
     } catch (error) {
       console.error('Action failed:', body.action, body.url, error);
-      sendError(res, 500, `Action failed: ${error instanceof Error ? error.message : String(error)}`);
+      sendError(res, 500, `Action failed: ${errorMessage(error)}`);
       return;
     }
 
@@ -286,7 +287,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       sendJson(res, 200, cachedJsonData);
     } catch (error) {
       console.error('Dashboard refresh failed:', error);
-      sendError(res, 500, `Refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+      sendError(res, 500, `Refresh failed: ${errorMessage(error)}`);
     }
   }
 

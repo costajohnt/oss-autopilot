@@ -8,6 +8,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { execFileSync } from 'child_process';
 import { getStateManager, debug } from '../core/index.js';
+import { errorMessage } from '../core/errors.js';
 import type { LocalReposOutput, LocalRepoInfo } from '../formatters/json.js';
 
 interface LocalReposOptions {
@@ -135,7 +136,7 @@ export async function runLocalRepos(options: LocalReposOptions): Promise<LocalRe
     stateManager.setLocalRepoCache({ repos, scanPaths, cachedAt });
     stateManager.save();
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = errorMessage(error);
     debug('local-repos', `Failed to cache scan results: ${msg}`);
   }
 

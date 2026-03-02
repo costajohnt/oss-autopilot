@@ -16,7 +16,7 @@ import {
   type SearchPriority,
   type IssueCandidate,
 } from './types.js';
-import { ValidationError } from './errors.js';
+import { ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
 import { warn } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 import { getStateManager } from './state.js';
@@ -300,7 +300,7 @@ export class IssueVetter {
           if (IssueVetter.isRateLimitError(error)) {
             rateLimitFailures++;
           }
-          warn(MODULE, `Error vetting issue ${url}:`, error instanceof Error ? error.message : error);
+          warn(MODULE, `Error vetting issue ${url}:`, errorMessage(error));
         });
 
       pending.push(task);
@@ -330,10 +330,10 @@ export class IssueVetter {
 
   /** Check if an error is a GitHub rate limit error (429 or rate-limit 403). */
   static isRateLimitError(error: unknown): boolean {
-    const status = (error as { status?: number })?.status;
+    const status = getHttpStatusCode(error);
     if (status === 429) return true;
     if (status === 403) {
-      const msg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+      const msg = errorMessage(error).toLowerCase();
       return msg.includes('rate limit');
     }
     return false;
@@ -365,12 +365,12 @@ export class IssueVetter {
 
       return { passed: data.total_count === 0 && linkedPRs.length === 0 };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errMsg = errorMessage(error);
       warn(
         MODULE,
-        `Failed to check for existing PRs on ${owner}/${repo}#${issueNumber}: ${errorMessage}. Assuming no existing PR.`,
+        `Failed to check for existing PRs on ${owner}/${repo}#${issueNumber}: ${errMsg}. Assuming no existing PR.`,
       );
-      return { passed: true, inconclusive: true, reason: errorMessage };
+      return { passed: true, inconclusive: true, reason: errMsg };
     }
   }
 
@@ -387,8 +387,8 @@ export class IssueVetter {
       });
       return data.total_count;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      warn(MODULE, `Could not check merged PRs in ${owner}/${repo}: ${errorMessage}. Defaulting to 0.`);
+      const errMsg = errorMessage(error);
+      warn(MODULE, `Could not check merged PRs in ${owner}/${repo}: ${errMsg}. Defaulting to 0.`);
       return 0;
     }
   }
@@ -440,12 +440,9 @@ export class IssueVetter {
 
       return { passed: true };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      warn(
-        MODULE,
-        `Failed to check claim status on ${owner}/${repo}#${issueNumber}: ${errorMessage}. Assuming not claimed.`,
-      );
-      return { passed: true, inconclusive: true, reason: errorMessage };
+      const errMsg = errorMessage(error);
+      warn(MODULE, `Failed to check claim status on ${owner}/${repo}#${issueNumber}: ${errMsg}. Assuming not claimed.`);
+      return { passed: true, inconclusive: true, reason: errMsg };
     }
   }
 
@@ -487,8 +484,8 @@ export class IssueVetter {
           ciStatus = 'passing'; // Assume passing if workflows exist
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        warn(MODULE, `Failed to check CI status for ${owner}/${repo}: ${errorMessage}. Defaulting to unknown.`);
+        const errMsg = errorMessage(error);
+        warn(MODULE, `Failed to check CI status for ${owner}/${repo}: ${errMsg}. Defaulting to unknown.`);
       }
 
       return {
@@ -503,8 +500,8 @@ export class IssueVetter {
         forksCount: repoData.forks_count,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      warn(MODULE, `Error checking project health for ${owner}/${repo}: ${errorMessage}`);
+      const errMsg = errorMessage(error);
+      warn(MODULE, `Error checking project health for ${owner}/${repo}: ${errMsg}`);
       return {
         repo: `${owner}/${repo}`,
         lastCommitAt: '',
@@ -514,7 +511,7 @@ export class IssueVetter {
         ciStatus: 'unknown',
         isActive: false,
         checkFailed: true,
-        failureReason: errorMessage,
+        failureReason: errMsg,
       };
     }
   }

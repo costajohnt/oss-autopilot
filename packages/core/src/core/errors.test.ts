@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { OssAutopilotError, ConfigurationError, ValidationError } from './errors.js';
+import { OssAutopilotError, ConfigurationError, ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
 
 describe('Custom Error Hierarchy', () => {
   describe('OssAutopilotError', () => {
@@ -69,5 +69,62 @@ describe('Custom Error Hierarchy', () => {
       expect(configErr).not.toBeInstanceOf(ValidationError);
       expect(validationErr).not.toBeInstanceOf(ConfigurationError);
     });
+  });
+});
+
+describe('errorMessage', () => {
+  it('extracts message from Error instances', () => {
+    expect(errorMessage(new Error('something broke'))).toBe('something broke');
+  });
+
+  it('extracts message from custom error subclasses', () => {
+    expect(errorMessage(new ValidationError('bad input'))).toBe('bad input');
+  });
+
+  it('converts string to string', () => {
+    expect(errorMessage('string error')).toBe('string error');
+  });
+
+  it('converts null to "null"', () => {
+    expect(errorMessage(null)).toBe('null');
+  });
+
+  it('converts undefined to "undefined"', () => {
+    expect(errorMessage(undefined)).toBe('undefined');
+  });
+
+  it('converts number to string', () => {
+    expect(errorMessage(42)).toBe('42');
+  });
+});
+
+describe('getHttpStatusCode', () => {
+  it('extracts numeric status from error-like objects', () => {
+    expect(getHttpStatusCode({ status: 404 })).toBe(404);
+    expect(getHttpStatusCode({ status: 500, message: 'fail' })).toBe(500);
+  });
+
+  it('returns undefined for non-numeric status', () => {
+    expect(getHttpStatusCode({ status: 'not a number' })).toBeUndefined();
+  });
+
+  it('returns undefined for NaN and Infinity status', () => {
+    expect(getHttpStatusCode({ status: NaN })).toBeUndefined();
+    expect(getHttpStatusCode({ status: Infinity })).toBeUndefined();
+  });
+
+  it('returns undefined for objects without status', () => {
+    expect(getHttpStatusCode(new Error('no status'))).toBeUndefined();
+    expect(getHttpStatusCode({ code: 404 })).toBeUndefined();
+  });
+
+  it('returns undefined for null and undefined', () => {
+    expect(getHttpStatusCode(null)).toBeUndefined();
+    expect(getHttpStatusCode(undefined)).toBeUndefined();
+  });
+
+  it('returns undefined for primitives', () => {
+    expect(getHttpStatusCode('string')).toBeUndefined();
+    expect(getHttpStatusCode(42)).toBeUndefined();
   });
 });

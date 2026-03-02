@@ -26,7 +26,7 @@ import {
   DetermineStatusInput,
 } from './types.js';
 import { runWorkerPool } from './concurrency.js';
-import { ConfigurationError, ValidationError } from './errors.js';
+import { ConfigurationError, ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
 import { paginateAll } from './pagination.js';
 import { debug, warn, timed } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
@@ -162,9 +162,9 @@ export class PRMonitor {
             const pr = await this.fetchPRDetails(item.html_url);
             if (pr) prs.push(pr);
           } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            warn('pr-monitor', `Error fetching ${item.html_url}: ${errorMessage}`);
-            failures.push({ prUrl: item.html_url, error: errorMessage });
+            const errMsg = errorMessage(error);
+            warn('pr-monitor', `Error fetching ${item.html_url}: ${errMsg}`);
+            failures.push({ prUrl: item.html_url, error: errMsg });
           }
         },
         MAX_CONCURRENT_REQUESTS,
@@ -221,14 +221,14 @@ export class PRMonitor {
       paginateAll((page) =>
         this.octokit.pulls.listReviewComments({ owner, repo, pull_number: number, per_page: 100, page }),
       ).catch((err: unknown) => {
-        const status = (err as { status?: number })?.status;
+        const status = getHttpStatusCode(err);
         // Rate limit errors must propagate — silently swallowing them hides
         // a systemic problem and produces misleading results (#229).
         if (status === 429) {
           throw err;
         }
         if (status === 403) {
-          const msg = ((err as { message?: string })?.message ?? '').toLowerCase();
+          const msg = errorMessage(err).toLowerCase();
           if (msg.includes('rate limit') || msg.includes('abuse detection')) {
             throw err;
           }
@@ -453,7 +453,7 @@ export class PRMonitor {
         this.octokit.repos.getCombinedStatusForRef({ owner, repo, ref: sha }),
         // 404 is expected for repos without check runs configured; log other errors for debugging
         this.octokit.checks.listForRef({ owner, repo, ref: sha }).catch((err: unknown) => {
-          const status = (err as { status?: number })?.status;
+          const status = getHttpStatusCode(err);
           if (status === 404) {
             debug('pr-monitor', `Check runs 404 for ${owner}/${repo}@${sha.slice(0, 7)} (no checks configured)`);
           } else {
@@ -487,8 +487,8 @@ export class PRMonitor {
 
       return mergeStatuses(checkRunAnalysis, combinedAnalysis, checkRuns.length);
     } catch (error) {
-      const statusCode = (error as { status?: number }).status;
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const statusCode = getHttpStatusCode(error);
+      const errMsg = errorMessage(error);
 
       if (statusCode === 401) {
         warn('pr-monitor', `CI check failed for ${owner}/${repo}: Invalid token`);
@@ -499,7 +499,7 @@ export class PRMonitor {
         debug('pr-monitor', `CI check 404 for ${owner}/${repo} (no CI configured)`);
         return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
       } else {
-        warn('pr-monitor', `Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage}`);
+        warn('pr-monitor', `Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errMsg}`);
       }
       return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
     }
@@ -579,10 +579,7 @@ export class PRMonitor {
           results.set(result.value.repo, result.value.stars);
         } else {
           chunkFailures++;
-          warn(
-            MODULE,
-            `Failed to fetch stars for ${chunk[j]}: ${result.reason instanceof Error ? result.reason.message : result.reason}`,
-          );
+          warn(MODULE, `Failed to fetch stars for ${chunk[j]}: ${errorMessage(result.reason)}`);
         }
       }
       // If entire chunk failed, likely a systemic issue (rate limit, auth, outage) — abort remaining

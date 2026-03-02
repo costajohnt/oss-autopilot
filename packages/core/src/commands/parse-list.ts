@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ParseIssueListOutput, ParsedIssueItem } from '../formatters/json.js';
+import { errorMessage } from '../core/errors.js';
 
 interface ParseListOptions {
   filePath: string;
@@ -115,7 +116,7 @@ export async function runParseList(options: ParseListOptions): Promise<ParseIssu
   try {
     content = fs.readFileSync(filePath, 'utf-8');
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = errorMessage(error);
     throw new Error(`Failed to read file: ${msg}`, { cause: error });
   }
 

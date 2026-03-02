@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { getStateManager, getDashboardPath, getGitHubToken } from '../core/index.js';
+import { errorMessage } from '../core/errors.js';
 import { outputJson } from '../formatters/json.js';
 import type { CommentedIssue, CommentedIssueWithResponse, DailyDigest } from '../core/types.js';
 import { fetchDashboardData, computePRsByRepo, computeTopRepos, getMonthlyData } from './dashboard-data.js';
@@ -46,7 +47,7 @@ export async function runDashboard(options: DashboardOptions): Promise<void> {
       digest = result.digest;
       commentedIssues = result.commentedIssues;
     } catch (error) {
-      console.error('Failed to fetch fresh data:', error instanceof Error ? error.message : error);
+      console.error('Failed to fetch fresh data:', errorMessage(error));
       console.error('Falling back to cached data (issue conversations unavailable)...');
       digest = stateManager.getState().lastDigest;
     }

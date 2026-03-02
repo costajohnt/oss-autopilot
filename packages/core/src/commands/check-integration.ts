@@ -7,6 +7,7 @@ import * as path from 'path';
 import { execFileSync } from 'child_process';
 import type { CheckIntegrationOutput, NewFileInfo } from '../formatters/json.js';
 import { debug } from '../core/index.js';
+import { errorMessage } from '../core/errors.js';
 
 interface CheckIntegrationOptions {
   base: string;
@@ -92,7 +93,7 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
     }).trim();
     newFiles = output ? output.split('\n').filter(Boolean) : [];
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = errorMessage(error);
     throw new Error(`Failed to run git diff: ${msg}`, { cause: error });
   }
 
@@ -155,9 +156,9 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
       } catch (error: unknown) {
         // git grep exit code 1 = no matches (expected), exit code 2+ = real error
         const exitCode =
-          error && typeof error === 'object' && 'status' in error ? (error as { status: number }).status : null;
-        if (exitCode !== null && exitCode !== 1) {
-          const msg = error instanceof Error ? error.message : String(error);
+          error && typeof error === 'object' && 'status' in error ? (error as { status: unknown }).status : undefined;
+        if (exitCode !== undefined && exitCode !== 1) {
+          const msg = errorMessage(error);
           debug('check-integration', `git grep failed for "${pattern}": ${msg}`);
         }
       }
