@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.6](https://github.com/costajohnt/oss-autopilot/compare/core-v0.42.5...core-v0.42.6) (2026-03-02)
+
+
+### Bug Fixes
+
+* handle GitHub Search API failures on deep pagination of merged PR counts ([#477](https://github.com/costajohnt/oss-autopilot/issues/477)) ([6ea06bc](https://github.com/costajohnt/oss-autopilot/commit/6ea06bc289efeea3a8f738a70bd994fbbfa037fb))
+
 ## [0.42.5](https://github.com/costajohnt/oss-autopilot/compare/core-v0.42.4...core-v0.42.5) (2026-03-02)
 
 
