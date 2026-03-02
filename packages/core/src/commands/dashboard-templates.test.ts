@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { escapeHtml, buildDashboardStats, generateDashboardHtml, type DashboardStats } from './dashboard-templates.js';
 import type {
-  FetchedPR,
   DailyDigest,
   AgentState,
   CommentedIssueWithResponse,
@@ -9,72 +8,14 @@ import type {
   MergedPR,
   ClosedPR,
 } from '../core/types.js';
+import { makeFetchedPR, makeDailyDigest as makeDigest, makeAgentState } from '../core/test-utils.js';
 
 // ---------------------------------------------------------------------------
-// Factories
+// Factories — thin wrappers over shared factories with file-specific defaults
 // ---------------------------------------------------------------------------
-
-function makeFetchedPR(overrides: Partial<FetchedPR> = {}): FetchedPR {
-  return {
-    id: 1,
-    url: 'https://github.com/owner/repo/pull/1',
-    repo: 'owner/repo',
-    number: 1,
-    title: 'Fix bug',
-    status: 'healthy',
-    displayLabel: '[Healthy]',
-    displayDescription: 'All checks passing',
-    createdAt: '2025-06-01T00:00:00Z',
-    updatedAt: '2025-06-15T00:00:00Z',
-    daysSinceActivity: 2,
-    ciStatus: 'passing',
-    failingCheckNames: [],
-    classifiedChecks: [],
-    hasMergeConflict: false,
-    reviewDecision: 'approved',
-    hasUnrespondedComment: false,
-    hasIncompleteChecklist: false,
-    maintainerActionHints: [],
-    ...overrides,
-  };
-}
-
-function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
-  return {
-    generatedAt: '2025-06-20T00:00:00Z',
-    openPRs: [],
-    prsNeedingResponse: [],
-    ciFailingPRs: [],
-    ciBlockedPRs: [],
-    ciNotRunningPRs: [],
-    mergeConflictPRs: [],
-    needsRebasePRs: [],
-    missingRequiredFilesPRs: [],
-    incompleteChecklistPRs: [],
-    needsChangesPRs: [],
-    changesAddressedPRs: [],
-    waitingOnMaintainerPRs: [],
-    approachingDormant: [],
-    dormantPRs: [],
-    healthyPRs: [],
-    recentlyClosedPRs: [],
-    recentlyMergedPRs: [],
-    shelvedPRs: [],
-    autoUnshelvedPRs: [],
-    summary: {
-      totalActivePRs: 0,
-      totalNeedingAttention: 0,
-      totalMergedAllTime: 0,
-      mergeRate: 0,
-    },
-    ...overrides,
-  };
-}
 
 function makeState(overrides: Partial<AgentState> = {}): AgentState {
-  return {
-    version: 2,
-    repoScores: {},
+  return makeAgentState({
     config: {
       setupComplete: true,
       maxActivePRs: 5,
@@ -89,11 +30,8 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
       minRepoScoreThreshold: 4,
       starredRepos: [],
     },
-    events: [],
-    lastRunAt: '2025-06-20T00:00:00Z',
-    activeIssues: [],
     ...overrides,
-  };
+  });
 }
 
 function makeStats(overrides: Partial<DashboardStats> = {}): DashboardStats {

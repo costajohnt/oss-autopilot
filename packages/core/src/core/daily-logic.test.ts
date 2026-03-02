@@ -21,79 +21,22 @@ import {
   ACTIVE_MAINTAINER_STATUSES,
   STALE_STATUSES,
 } from './daily-logic.js';
-import type { FetchedPR, DailyDigest, MaintainerActionHint } from './types.js';
-import type { CapacityAssessment } from '../formatters/json.js';
+import type { FetchedPR, MaintainerActionHint } from './types.js';
+import { makeFetchedPR, makeDailyDigest, makeCapacityAssessment as makeCapacity } from './test-utils.js';
 
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
 function makePR(overrides: Partial<FetchedPR> & { repo: string }): FetchedPR {
-  return {
-    id: 1,
-    url: `https://github.com/${overrides.repo}/pull/${overrides.number ?? 1}`,
-    number: overrides.number ?? 1,
-    title: 'Test PR',
-    createdAt: '2026-01-01T00:00:00Z',
-    updatedAt: '2026-01-15T00:00:00Z',
-    daysSinceActivity: 5,
-    ciStatus: 'passing',
-    failingCheckNames: [],
-    classifiedChecks: [],
-    hasMergeConflict: false,
-    reviewDecision: 'approved',
-    hasUnrespondedComment: false,
-    hasIncompleteChecklist: false,
-    maintainerActionHints: [],
-    status: 'healthy',
-    displayLabel: '[Healthy]',
-    displayDescription: 'Everything looks good',
-    ...overrides,
-  };
+  return makeFetchedPR({ daysSinceActivity: 5, ...overrides });
 }
 
-function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
-  return {
-    generatedAt: '2026-01-25T10:00:00Z',
-    openPRs: [],
-    prsNeedingResponse: [],
-    ciFailingPRs: [],
-    ciBlockedPRs: [],
-    ciNotRunningPRs: [],
-    mergeConflictPRs: [],
-    needsRebasePRs: [],
-    missingRequiredFilesPRs: [],
-    incompleteChecklistPRs: [],
-    needsChangesPRs: [],
-    changesAddressedPRs: [],
-    waitingOnMaintainerPRs: [],
-    approachingDormant: [],
-    dormantPRs: [],
-    healthyPRs: [],
-    recentlyClosedPRs: [],
-    recentlyMergedPRs: [],
-    shelvedPRs: [],
-    autoUnshelvedPRs: [],
-    summary: {
-      totalActivePRs: 3,
-      totalNeedingAttention: 1,
-      totalMergedAllTime: 10,
-      mergeRate: 80,
-    },
+function makeDigest(overrides: Parameters<typeof makeDailyDigest>[0] = {}) {
+  return makeDailyDigest({
+    summary: { totalActivePRs: 3, totalNeedingAttention: 1, totalMergedAllTime: 10, mergeRate: 80 },
     ...overrides,
-  };
-}
-
-function makeCapacity(overrides: Partial<CapacityAssessment> = {}): CapacityAssessment {
-  return {
-    hasCapacity: true,
-    activePRCount: 3,
-    maxActivePRs: 10,
-    shelvedPRCount: 0,
-    criticalIssueCount: 0,
-    reason: 'You have capacity',
-    ...overrides,
-  };
+  });
 }
 
 // ---------------------------------------------------------------------------
