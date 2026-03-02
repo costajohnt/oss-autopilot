@@ -28,6 +28,7 @@ export {
   daysBetween,
   splitRepo,
   isOwnRepo,
+  getCLIVersion,
   getDataDir,
   getStatePath,
   getBackupDir,

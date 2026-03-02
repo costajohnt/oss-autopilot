@@ -269,6 +269,20 @@ export function isOwnRepo(owner: string, username: string): boolean {
 }
 
 /**
+ * Read the CLI package version from package.json relative to the running CLI bundle.
+ * Resolves `../package.json` from `process.argv[1]` (the bundle entry point).
+ * Falls back to '0.0.0' if the file is unreadable.
+ */
+export function getCLIVersion(): string {
+  try {
+    const pkgPath = path.join(path.dirname(process.argv[1]), '..', 'package.json');
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
+  } catch {
+    return '0.0.0';
+  }
+}
+
+/**
  * Formats a timestamp as a human-readable relative time string.
  *
  * Returns minutes for < 1 hour, hours for < 1 day, days for < 30 days,

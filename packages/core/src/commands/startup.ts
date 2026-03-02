@@ -8,23 +8,12 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
 import { execFile } from 'child_process';
-import { getStateManager, getGitHubToken } from '../core/index.js';
+import { getStateManager, getGitHubToken, getCLIVersion } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
 import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
 import { writeDashboardFromState } from './dashboard.js';
-
-function getVersion(): string {
-  try {
-    const pkgPath = path.join(path.dirname(process.argv[1]), '..', 'package.json');
-    return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
-  } catch (error) {
-    console.error('[STARTUP] Failed to detect CLI version:', errorMessage(error));
-    return '0.0.0';
-  }
-}
 
 /**
  * Parse issueListPath from a config file's YAML frontmatter.
@@ -129,7 +118,7 @@ function openInBrowser(filePath: string): void {
  * Errors from the daily check propagate to the caller.
  */
 export async function runStartup(): Promise<StartupOutput> {
-  const version = getVersion();
+  const version = getCLIVersion();
   const stateManager = getStateManager();
 
   // 1. Check setup

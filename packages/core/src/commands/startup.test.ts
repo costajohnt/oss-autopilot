@@ -12,6 +12,7 @@ vi.mock('../core/index.js', () => ({
     isSetupComplete: vi.fn(() => true),
   })),
   getGitHubToken: vi.fn(() => 'fake-token'),
+  getCLIVersion: vi.fn(() => '0.0.0-test'),
 }));
 
 vi.mock('./daily.js', () => ({
