@@ -600,64 +600,6 @@ export class PRMonitor {
   }
 
   /**
-   * Shared helper: search for recent PRs and filter out own repos, excluded repos/orgs.
-   * Returns parsed search results that pass all filters.
-   */
-  private async fetchRecentPRs<T>(
-    query: string,
-    label: string,
-    days: number,
-    mapItem: (
-      item: { html_url: string; title: string; closed_at: string | null; pull_request?: { merged_at?: string | null } },
-      parsed: { owner: string; repo: string; number: number },
-    ) => T,
-  ): Promise<T[]> {
-    const config = this.stateManager.getState().config;
-
-    if (!config.githubUsername) {
-      warn(MODULE, `Skipping recently ${label} PRs fetch: no githubUsername configured. Run /setup-oss to configure.`);
-      return [];
-    }
-
-    const sinceDate = new Date();
-    sinceDate.setDate(sinceDate.getDate() - days);
-    const since = sinceDate.toISOString().split('T')[0]; // YYYY-MM-DD
-
-    debug(MODULE, `Fetching recently ${label} PRs for @${config.githubUsername} (since ${since})...`);
-
-    const { data } = await this.octokit.search.issuesAndPullRequests({
-      q: query.replace('{username}', config.githubUsername).replace('{since}', since),
-      sort: 'updated',
-      order: 'desc',
-      per_page: 100,
-    });
-
-    const results: T[] = [];
-
-    for (const item of data.items) {
-      const parsed = parseGitHubUrl(item.html_url);
-      if (!parsed) {
-        warn(MODULE, `Could not parse GitHub URL from API response: ${item.html_url}`);
-        continue;
-      }
-
-      const repo = `${parsed.owner}/${parsed.repo}`;
-
-      // Skip own repos
-      if (parsed.owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
-
-      // Skip excluded repos and orgs
-      if (config.excludeRepos.includes(repo)) continue;
-      if (config.excludeOrgs?.some((org) => parsed.owner.toLowerCase() === org.toLowerCase())) continue;
-
-      results.push(mapItem(item, { owner: parsed.owner, repo, number: parsed.number }));
-    }
-
-    debug(MODULE, `Found ${results.length} recently ${label} PRs`);
-    return results;
-  }
-
-  /**
    * Fetch PRs closed without merge in the last N days.
    * Delegates to github-stats module.
    */

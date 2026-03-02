@@ -6,7 +6,6 @@
 import { Octokit } from '@octokit/rest';
 import { extractOwnerRepo, parseGitHubUrl } from './utils.js';
 import { ClosedPR, MergedPR } from './types.js';
-import { ValidationError } from './errors.js';
 import { debug, warn } from './logger.js';
 
 const MODULE = 'github-stats';
@@ -196,59 +195,6 @@ export async function fetchUserClosedPRCounts(
 
   debug(MODULE, `Found ${fetched} closed (unmerged) PRs across ${repos.size} repos`);
   return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts };
-}
-
-/**
- * Fetch GitHub star counts for a list of repositories.
- * Used to populate stargazersCount in repo scores for dashboard filtering by minStars.
- * Fetches concurrently with per-repo error isolation (missing/private repos are skipped).
- */
-export async function fetchRepoStarCounts(octokit: Octokit, repos: string[]): Promise<Map<string, number>> {
-  if (repos.length === 0) return new Map();
-
-  debug(MODULE, `Fetching star counts for ${repos.length} repos...`);
-  const results = new Map<string, number>();
-
-  // Fetch in parallel chunks to avoid overwhelming the API
-  const chunkSize = 10;
-  for (let i = 0; i < repos.length; i += chunkSize) {
-    const chunk = repos.slice(i, i + chunkSize);
-    const settled = await Promise.allSettled(
-      chunk.map(async (repo) => {
-        const parts = repo.split('/');
-        if (parts.length !== 2 || !parts[0] || !parts[1]) {
-          throw new ValidationError(`Malformed repo identifier: "${repo}"`);
-        }
-        const [owner, name] = parts;
-        const { data } = await octokit.repos.get({ owner, repo: name });
-        return { repo, stars: data.stargazers_count };
-      }),
-    );
-    let chunkFailures = 0;
-    for (let j = 0; j < settled.length; j++) {
-      const result = settled[j];
-      if (result.status === 'fulfilled') {
-        results.set(result.value.repo, result.value.stars);
-      } else {
-        chunkFailures++;
-        warn(
-          MODULE,
-          `Failed to fetch stars for ${chunk[j]}: ${result.reason instanceof Error ? result.reason.message : result.reason}`,
-        );
-      }
-    }
-    // If entire chunk failed, likely a systemic issue (rate limit, auth, outage) — abort remaining
-    if (chunkFailures === chunk.length && chunk.length > 0) {
-      const remaining = repos.length - i - chunkSize;
-      if (remaining > 0) {
-        warn(MODULE, `Entire chunk failed, aborting remaining ${remaining} repos`);
-      }
-      break;
-    }
-  }
-
-  debug(MODULE, `Fetched star counts for ${results.size}/${repos.length} repos`);
-  return results;
 }
 
 /**
