@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.41.0...core-v0.42.0) (2026-03-02)
+
+
+### Features
+
+* add MCP server package (Phase 4) ([#429](https://github.com/costajohnt/oss-autopilot/issues/429)) ([ca336be](https://github.com/costajohnt/oss-autopilot/commit/ca336be7df44bfdc758d00a8e88719159f5cf894))
+* Phase 3 — interactive dashboard with Preact + Vite ([#427](https://github.com/costajohnt/oss-autopilot/issues/427)) ([ed2959f](https://github.com/costajohnt/oss-autopilot/commit/ed2959f2b6d879e94af6fff9aea24cf2f82383c8))
+
 ## [0.41.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.40.1...core-v0.41.0) (2026-03-01)
 
 
