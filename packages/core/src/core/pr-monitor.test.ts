@@ -475,6 +475,30 @@ describe('PRMonitor determineStatus — remaining paths', () => {
       }),
     ).toBe('merge_conflict');
   });
+
+  it('should return needs_response when CHANGES_REQUESTED review is after commit (#431)', () => {
+    // Scenario: commit at 14:00, CHANGES_REQUESTED review at 14:02,
+    // but lastMaintainerCommentDate points to an older comment (12:00)
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        latestCommitDate: '2026-03-01T14:00:00Z',
+        lastMaintainerCommentDate: '2026-02-28T12:00:00Z', // stale — older comment
+        latestChangesRequestedDate: '2026-03-01T14:02:00Z', // after commit
+      }),
+    ).toBe('needs_response');
+  });
+
+  it('should return changes_addressed when commit is after both comment and review (#431)', () => {
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        latestCommitDate: '2026-03-02T10:00:00Z', // after everything
+        lastMaintainerCommentDate: '2026-03-01T12:00:00Z',
+        latestChangesRequestedDate: '2026-03-01T14:02:00Z', // before commit
+      }),
+    ).toBe('changes_addressed');
+  });
 });
 
 describe('PRMonitor analyzeChecklist', () => {
@@ -1547,14 +1571,42 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
     expect(result.hasUnrespondedComment).toBe(false);
   });
 
-  it('should skip CHANGES_REQUESTED reviews with empty body (#151)', () => {
+  it('should include CHANGES_REQUESTED reviews with empty body as actionable (#431)', () => {
     const result = checkUnrespondedComments(
       [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
       [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'CHANGES_REQUESTED' }],
       [],
       'testuser',
     );
-    expect(result.hasUnrespondedComment).toBe(false);
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('reviewer');
+  });
+
+  it('should resolve inline comment body for CHANGES_REQUESTED reviews (#431)', () => {
+    const result = checkUnrespondedComments(
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
+      [
+        {
+          user: { login: 'reviewer' },
+          body: '',
+          submitted_at: '2026-02-07T12:00:00Z',
+          state: 'CHANGES_REQUESTED',
+          id: 100,
+        },
+      ],
+      [
+        {
+          id: 1,
+          user: { login: 'reviewer' },
+          body: 'Fix this method',
+          created_at: '2026-02-07T12:00:00Z',
+          pull_request_review_id: 100,
+        },
+      ],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.body).toBe('Fix this method');
   });
 
   it('should ignore user own COMMENTED reviews (#151)', () => {
@@ -1570,6 +1622,20 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
     expect(result.hasUnrespondedComment).toBe(false);
   });
 
+  it('should ignore user own CHANGES_REQUESTED reviews (#431)', () => {
+    const result = checkUnrespondedComments(
+      [],
+      [
+        // User's own CHANGES_REQUESTED review — should not trigger needs_response
+        // (GitHub normally prevents this, but defense-in-depth)
+        { user: { login: 'testuser' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'CHANGES_REQUESTED' },
+      ],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
   it('should use synthetic body for inline-only COMMENTED reviews (#151)', () => {
     const result = checkUnrespondedComments(
       [],
@@ -1578,6 +1644,16 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
       'testuser',
     );
     expect(result.lastMaintainerComment?.body).toBe('(posted inline review comments)');
+  });
+
+  it('should use specific synthetic body for inline-only CHANGES_REQUESTED reviews (#431)', () => {
+    const result = checkUnrespondedComments(
+      [],
+      [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'CHANGES_REQUESTED' }],
+      [],
+      'testuser',
+    );
+    expect(result.lastMaintainerComment?.body).toBe('(requested changes via inline review comments)');
   });
 
   it('should still skip APPROVED reviews with no body (#151)', () => {
