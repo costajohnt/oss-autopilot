@@ -27,7 +27,7 @@ export function validateGitHubUrl(url: string, pattern: RegExp, entityType: 'PR'
 
   const example =
     entityType === 'PR' ? 'https://github.com/owner/repo/pull/123' : 'https://github.com/owner/repo/issues/123';
-  throw new Error(`Invalid ${entityType} URL: ${url}. Expected format: ${example}`);
+  throw new ValidationError(`Invalid ${entityType} URL: ${url}. Expected format: ${example}`);
 }
 
 /**
@@ -36,7 +36,7 @@ export function validateGitHubUrl(url: string, pattern: RegExp, entityType: 'PR'
  */
 export function validateUrl(url: string): string {
   if (url.length > MAX_URL_LENGTH) {
-    throw new Error(`URL exceeds maximum length of ${MAX_URL_LENGTH} characters`);
+    throw new ValidationError(`URL exceeds maximum length of ${MAX_URL_LENGTH} characters`);
   }
   return url;
 }
@@ -47,7 +47,7 @@ export function validateUrl(url: string): string {
  */
 export function validatePRNumber(num: number): number {
   if (!Number.isInteger(num) || num < 1 || num > MAX_PR_NUMBER) {
-    throw new Error(`PR number must be a positive integer up to ${MAX_PR_NUMBER}`);
+    throw new ValidationError(`PR number must be a positive integer up to ${MAX_PR_NUMBER}`);
   }
   return num;
 }
@@ -58,7 +58,7 @@ export function validatePRNumber(num: number): number {
  */
 export function validateMessage(message: string): string {
   if (message.length > MAX_MESSAGE_LENGTH) {
-    throw new Error(`Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters`);
+    throw new ValidationError(`Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters`);
   }
   return message;
 }
@@ -69,7 +69,7 @@ export function validateMessage(message: string): string {
  */
 export function validateRepoIdentifier(repo: string): string {
   if (!REPO_PATTERN.test(repo)) {
-    throw new Error(`Invalid repository format: "${repo}". Expected "owner/repo".`);
+    throw new ValidationError(`Invalid repository format: "${repo}". Expected "owner/repo".`);
   }
   return repo;
 }
