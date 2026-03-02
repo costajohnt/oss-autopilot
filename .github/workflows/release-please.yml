@@ -16,6 +16,8 @@ jobs:
     outputs:
       core-released: ${{ steps.release.outputs['packages/core--release_created'] }}
       core-tag: ${{ steps.release.outputs['packages/core--tag_name'] }}
+      mcp-released: ${{ steps.release.outputs['packages/mcp-server--release_created'] }}
+      mcp-tag: ${{ steps.release.outputs['packages/mcp-server--tag_name'] }}
     steps:
       # Uses a PAT so that the push to the release branch triggers CI.
       # GITHUB_TOKEN events don't trigger other workflows (prevents loops),
@@ -55,5 +57,39 @@ jobs:
 
       - name: Publish @oss-autopilot/core
         run: pnpm --filter @oss-autopilot/core publish --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-mcp-npm:
+    name: Publish MCP server to npm
+    needs: release-please
+    if: needs.release-please.outputs.mcp-released == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout tagged release
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.mcp-tag }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build core (required by mcp-server)
+        run: pnpm --filter @oss-autopilot/core run build
+
+      - name: Publish @oss-autopilot/mcp
+        run: pnpm --filter @oss-autopilot/mcp publish --access public --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

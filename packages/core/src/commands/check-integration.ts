@@ -5,13 +5,14 @@
 
 import * as path from 'path';
 import { execFileSync } from 'child_process';
-import { outputJson, outputJsonError, type CheckIntegrationOutput, type NewFileInfo } from '../formatters/json.js';
+import type { CheckIntegrationOutput, NewFileInfo } from '../formatters/json.js';
 import { debug } from '../core/index.js';
 
 interface CheckIntegrationOptions {
   base: string;
-  json?: boolean;
 }
+
+export type { CheckIntegrationOutput, NewFileInfo };
 
 /** File extensions we consider "code" that should be imported/referenced */
 const CODE_EXTENSIONS = new Set([
@@ -79,7 +80,7 @@ function suggestEntryPoints(newFile: string, existingFiles: string[]): string[] 
   return [...new Set(suggestions)];
 }
 
-export async function runCheckIntegration(options: CheckIntegrationOptions): Promise<void> {
+export async function runCheckIntegration(options: CheckIntegrationOptions): Promise<CheckIntegrationOutput> {
   const base = options.base;
 
   // Get new files added in this branch vs base
@@ -92,12 +93,7 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
     newFiles = output ? output.split('\n').filter(Boolean) : [];
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    if (options.json) {
-      outputJsonError(`Failed to run git diff: ${msg}`);
-    } else {
-      console.error(`Error: Failed to run git diff: ${msg}`);
-    }
-    process.exit(1);
+    throw new Error(`Failed to run git diff: ${msg}`, { cause: error });
   }
 
   // Filter to code files, excluding tests, configs, etc.
@@ -108,13 +104,7 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
   });
 
   if (codeFiles.length === 0) {
-    const result: CheckIntegrationOutput = { newFiles: [], unreferencedCount: 0 };
-    if (options.json) {
-      outputJson<CheckIntegrationOutput>(result);
-    } else {
-      console.log('\nNo new code files to check.');
-    }
-    return;
+    return { newFiles: [], unreferencedCount: 0 };
   }
 
   // Get all tracked files in the repo for reference checking
@@ -128,7 +118,7 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
       .split('\n')
       .filter(Boolean);
   } catch (err) {
-    // git ls-files failed (e.g. not a git repo) — proceed without reference list
+    // git ls-files failed (e.g. not a git repo) -- proceed without reference list
     debug('check-integration', 'git ls-files failed, reference checking will be skipped', err);
     allFiles = [];
   }
@@ -168,7 +158,7 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
           error && typeof error === 'object' && 'status' in error ? (error as { status: number }).status : null;
         if (exitCode !== null && exitCode !== 1) {
           const msg = error instanceof Error ? error.message : String(error);
-          console.error(`Warning: git grep failed for "${pattern}": ${msg}`);
+          debug('check-integration', `git grep failed for "${pattern}": ${msg}`);
         }
       }
     }
@@ -191,25 +181,5 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
   }
 
   const unreferencedCount = results.filter((r) => !r.isIntegrated).length;
-  const output: CheckIntegrationOutput = { newFiles: results, unreferencedCount };
-
-  if (options.json) {
-    outputJson<CheckIntegrationOutput>(output);
-  } else {
-    console.log(`\n🔍 Integration Check (base: ${base})\n`);
-    console.log(`New files: ${results.length} | Unreferenced: ${unreferencedCount}\n`);
-
-    for (const file of results) {
-      const status = file.isIntegrated ? '✅' : '⚠️';
-      console.log(`${status} ${file.path}`);
-      if (file.isIntegrated) {
-        console.log(`   Referenced by: ${file.referencedBy.join(', ')}`);
-      } else {
-        console.log('   Not referenced by any file');
-        if (file.suggestedEntryPoints && file.suggestedEntryPoints.length > 0) {
-          console.log(`   Suggested entry points: ${file.suggestedEntryPoints.join(', ')}`);
-        }
-      }
-    }
-  }
+  return { newFiles: results, unreferencedCount };
 }

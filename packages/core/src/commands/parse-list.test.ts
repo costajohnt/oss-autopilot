@@ -5,11 +5,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { parseIssueList, runParseList } from './parse-list.js';
 
-vi.mock('../formatters/json.js', () => ({
-  outputJson: vi.fn(),
-  outputJsonError: vi.fn(),
-}));
-
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
   return {
@@ -20,12 +15,9 @@ vi.mock('fs', async () => {
 });
 
 import * as fs from 'fs';
-import { outputJson, outputJsonError } from '../formatters/json.js';
 
 const mockExistsSync = vi.mocked(fs.existsSync);
 const mockReadFileSync = vi.mocked(fs.readFileSync);
-const mockOutputJson = vi.mocked(outputJson);
-const mockOutputJsonError = vi.mocked(outputJsonError);
 
 describe('parseIssueList', () => {
   it('should parse basic issue list with URLs', () => {
@@ -193,92 +185,30 @@ describe('runParseList', () => {
     vi.clearAllMocks();
   });
 
-  it('should exit with JSON error when file not found', async () => {
+  it('should throw error when file not found', async () => {
     mockExistsSync.mockReturnValue(false);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
 
-    await expect(runParseList({ filePath: 'nonexistent.md', json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('File not found'));
-    mockExit.mockRestore();
+    await expect(runParseList({ filePath: 'nonexistent.md' })).rejects.toThrow('File not found');
   });
 
-  it('should exit with text error when file not found', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockExistsSync.mockReturnValue(false);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runParseList({ filePath: 'nonexistent.md', json: false })).rejects.toThrow('exit');
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('File not found');
-    consoleSpy.mockRestore();
-    mockExit.mockRestore();
-  });
-
-  it('should parse file and output JSON', async () => {
+  it('should parse file and return result', async () => {
     mockExistsSync.mockReturnValue(true);
     mockReadFileSync.mockReturnValue(`# Issues
 - https://github.com/a/b/issues/1 Available
 - ~~https://github.com/a/b/issues/2 Done~~
 `);
 
-    await runParseList({ filePath: 'issues.md', json: true });
+    const result = await runParseList({ filePath: 'issues.md' });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ availableCount: 1, completedCount: 1 }));
+    expect(result).toEqual(expect.objectContaining({ availableCount: 1, completedCount: 1 }));
   });
 
-  it('should parse file and output text', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockReturnValue(`# Issues
-- https://github.com/a/b/issues/1 Available item
-- ~~https://github.com/a/b/issues/2 Done item~~
-`);
-
-    await runParseList({ filePath: 'issues.md', json: false });
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('Issue List');
-    expect(allOutput).toContain('Available');
-    expect(allOutput).toContain('Completed');
-    consoleSpy.mockRestore();
-  });
-
-  it('should handle read error in JSON mode', async () => {
+  it('should throw error on read failure', async () => {
     mockExistsSync.mockReturnValue(true);
     mockReadFileSync.mockImplementation(() => {
       throw new Error('Permission denied');
     });
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
 
-    await expect(runParseList({ filePath: 'issues.md', json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('Failed to read'));
-    mockExit.mockRestore();
-  });
-
-  it('should handle read error in text mode', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockImplementation(() => {
-      throw new Error('Permission denied');
-    });
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runParseList({ filePath: 'issues.md', json: false })).rejects.toThrow('exit');
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('Failed to read');
-    consoleSpy.mockRestore();
-    mockExit.mockRestore();
+    await expect(runParseList({ filePath: 'issues.md' })).rejects.toThrow('Failed to read');
   });
 });

@@ -3,35 +3,32 @@
  * Handles GitHub comment interactions
  */
 
-import { getStateManager, getOctokit, parseGitHubUrl, formatRelativeTime, getGitHubToken } from '../core/index.js';
+import { getStateManager, getOctokit, parseGitHubUrl, requireGitHubToken } from '../core/index.js';
 import { paginateAll } from '../core/pagination.js';
-import { outputJson, outputJsonError } from '../formatters/json.js';
+import { type CommentsOutput, type PostOutput, type ClaimOutput } from '../formatters/json.js';
 import { validateUrl, validateMessage } from './validation.js';
+
+export { type CommentsOutput, type PostOutput, type ClaimOutput } from '../formatters/json.js';
 
 interface CommentsOptions {
   prUrl: string;
   showBots?: boolean;
-  json?: boolean;
 }
 
 interface PostOptions {
   url: string;
-  message?: string;
-  stdin?: boolean;
-  json?: boolean;
+  message: string;
 }
 
 interface ClaimOptions {
   issueUrl: string;
   message?: string;
-  json?: boolean;
 }
 
-export async function runComments(options: CommentsOptions): Promise<void> {
+export async function runComments(options: CommentsOptions): Promise<CommentsOutput> {
   validateUrl(options.prUrl);
 
-  // Token is guaranteed by the preAction hook in cli.ts for non-LOCAL_ONLY_COMMANDS.
-  const token = getGitHubToken()!;
+  const token = requireGitHubToken();
 
   const stateManager = getStateManager();
   const octokit = getOctokit(token);
@@ -39,12 +36,7 @@ export async function runComments(options: CommentsOptions): Promise<void> {
   // Parse PR URL
   const parsed = parseGitHubUrl(options.prUrl);
   if (!parsed || parsed.type !== 'pull') {
-    if (options.json) {
-      outputJsonError('Invalid PR URL format');
-    } else {
-      console.error('Invalid PR URL format');
-    }
-    process.exit(1);
+    throw new Error('Invalid PR URL format');
   }
 
   const { owner, repo, number: pull_number } = parsed;
@@ -105,259 +97,118 @@ export async function runComments(options: CommentsOptions): Promise<void> {
     .filter((r) => filterComment(r) && r.body && r.body.trim())
     .sort((a, b) => new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime());
 
-  if (options.json) {
-    outputJson({
-      pr: {
-        title: pr.title,
-        state: pr.state,
-        mergeable: pr.mergeable,
-        head: pr.head.ref,
-        base: pr.base.ref,
-        url: pr.html_url,
-      },
-      reviews: relevantReviews.map((r) => ({
-        user: r.user?.login,
-        state: r.state,
-        body: r.body,
-        submittedAt: r.submitted_at,
-      })),
-      reviewComments: relevantReviewComments.map((c) => ({
-        user: c.user?.login,
-        body: c.body,
-        path: c.path,
-        createdAt: c.created_at,
-      })),
-      issueComments: relevantIssueComments.map((c) => ({
-        user: c.user?.login,
-        body: c.body,
-        createdAt: c.created_at,
-      })),
-      summary: {
-        reviewCount: relevantReviews.length,
-        inlineCommentCount: relevantReviewComments.length,
-        discussionCommentCount: relevantIssueComments.length,
-      },
-    });
-    return;
-  }
-
-  // Text output
-  console.log(`\n💬 Fetching comments for: ${options.prUrl}\n`);
-  console.log(`## ${pr.title}\n`);
-  console.log(`**Status:** ${pr.state} | **Mergeable:** ${pr.mergeable ?? 'checking...'}`);
-  console.log(`**Branch:** ${pr.head.ref} → ${pr.base.ref}`);
-  console.log(`**URL:** ${pr.html_url}\n`);
-
-  if (relevantReviews.length > 0) {
-    console.log('### Reviews (newest first)\n');
-    for (const review of relevantReviews) {
-      const state = review.state === 'APPROVED' ? '✅' : review.state === 'CHANGES_REQUESTED' ? '❌' : '💬';
-      const time = review.submitted_at ? formatRelativeTime(review.submitted_at) : '';
-      console.log(`${state} **@${review.user?.login}** (${review.state}) - ${time}`);
-      if (review.body) {
-        console.log(`> ${review.body.split('\n').join('\n> ')}\n`);
-      }
-    }
-  }
-
-  if (relevantReviewComments.length > 0) {
-    console.log('### Inline Comments (newest first)\n');
-    for (const comment of relevantReviewComments) {
-      const time = formatRelativeTime(comment.created_at);
-      console.log(`**@${comment.user?.login}** on \`${comment.path}\` - ${time}`);
-      console.log(`> ${comment.body.split('\n').join('\n> ')}`);
-      if (comment.diff_hunk) {
-        console.log(`\`\`\`diff\n${comment.diff_hunk.slice(-500)}\n\`\`\``);
-      }
-      console.log('');
-    }
-  }
-
-  if (relevantIssueComments.length > 0) {
-    console.log('### Discussion (newest first)\n');
-    for (const comment of relevantIssueComments) {
-      const time = formatRelativeTime(comment.created_at);
-      console.log(`**@${comment.user?.login}** - ${time}`);
-      console.log(`> ${comment.body?.split('\n').join('\n> ')}\n`);
-    }
-  }
-
-  if (relevantReviewComments.length === 0 && relevantIssueComments.length === 0 && relevantReviews.length === 0) {
-    console.log('No comments from other users.\n');
-  }
-
-  console.log('---');
-  console.log(
-    `**Summary:** ${relevantReviews.length} reviews, ${relevantReviewComments.length} inline comments, ${relevantIssueComments.length} discussion comments`,
-  );
+  return {
+    pr: {
+      title: pr.title,
+      state: pr.state,
+      mergeable: pr.mergeable,
+      head: pr.head.ref,
+      base: pr.base.ref,
+      url: pr.html_url,
+    },
+    reviews: relevantReviews.map((r) => ({
+      user: r.user?.login,
+      state: r.state,
+      body: r.body ?? null,
+      submittedAt: r.submitted_at ?? null,
+    })),
+    reviewComments: relevantReviewComments.map((c) => ({
+      user: c.user?.login,
+      body: c.body,
+      path: c.path,
+      createdAt: c.created_at,
+    })),
+    issueComments: relevantIssueComments.map((c) => ({
+      user: c.user?.login,
+      body: c.body,
+      createdAt: c.created_at,
+    })),
+    summary: {
+      reviewCount: relevantReviews.length,
+      inlineCommentCount: relevantReviewComments.length,
+      discussionCommentCount: relevantIssueComments.length,
+    },
+  };
 }
 
-export async function runPost(options: PostOptions): Promise<void> {
+export async function runPost(options: PostOptions): Promise<PostOutput> {
   validateUrl(options.url);
 
-  // Token is guaranteed by the preAction hook in cli.ts for non-LOCAL_ONLY_COMMANDS.
-  const token = getGitHubToken()!;
-
-  let message = options.message;
-
-  // Read from stdin if specified
-  if (options.stdin) {
-    const chunks: Buffer[] = [];
-    for await (const chunk of process.stdin) {
-      chunks.push(chunk);
-    }
-    message = Buffer.concat(chunks).toString('utf-8').trim();
+  if (!options.message.trim()) {
+    throw new Error('No message provided');
   }
 
-  if (!message) {
-    if (options.json) {
-      outputJsonError('No message provided');
-    } else {
-      console.error('Error: No message provided');
-    }
-    process.exit(1);
-  }
+  validateMessage(options.message);
 
-  try {
-    validateMessage(message);
-  } catch (error) {
-    if (options.json) {
-      outputJsonError(error instanceof Error ? error.message : 'Invalid message');
-    } else {
-      console.error(`Error: ${error instanceof Error ? error.message : 'Invalid message'}`);
-    }
-    process.exit(1);
-  }
+  const token = requireGitHubToken();
 
   // Parse URL
   const parsed = parseGitHubUrl(options.url);
   if (!parsed) {
-    if (options.json) {
-      outputJsonError('Invalid GitHub URL format');
-    } else {
-      console.error('Invalid GitHub URL format');
-    }
-    process.exit(1);
+    throw new Error('Invalid GitHub URL format');
   }
 
   const { owner, repo, number } = parsed;
   const octokit = getOctokit(token);
 
-  if (!options.json) {
-    console.log('\n📝 Posting comment to:', options.url);
-    console.log('---');
-    console.log(message);
-    console.log('---\n');
-  }
+  const { data: comment } = await octokit.issues.createComment({
+    owner,
+    repo,
+    issue_number: number,
+    body: options.message,
+  });
 
-  try {
-    const { data: comment } = await octokit.issues.createComment({
-      owner,
-      repo,
-      issue_number: number,
-      body: message,
-    });
-
-    if (options.json) {
-      outputJson({
-        commentUrl: comment.html_url,
-        url: options.url,
-      });
-    } else {
-      console.log('✅ Comment posted successfully!');
-      console.log(`   ${comment.html_url}`);
-    }
-  } catch (error) {
-    if (options.json) {
-      outputJsonError(error instanceof Error ? error.message : 'Unknown error');
-    } else {
-      console.error('❌ Failed to post comment:', error instanceof Error ? error.message : error);
-    }
-    process.exit(1);
-  }
+  return {
+    commentUrl: comment.html_url,
+    url: options.url,
+  };
 }
 
-export async function runClaim(options: ClaimOptions): Promise<void> {
+export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
   validateUrl(options.issueUrl);
 
-  // Token is guaranteed by the preAction hook in cli.ts for non-LOCAL_ONLY_COMMANDS.
-  const token = getGitHubToken()!;
+  const token = requireGitHubToken();
 
   // Default claim message or custom
   const message = options.message || "Hi! I'd like to work on this issue. Could you assign it to me?";
 
-  try {
-    validateMessage(message);
-  } catch (error) {
-    if (options.json) {
-      outputJsonError(error instanceof Error ? error.message : 'Invalid message');
-    } else {
-      console.error(`Error: ${error instanceof Error ? error.message : 'Invalid message'}`);
-    }
-    process.exit(1);
-  }
+  validateMessage(message);
 
   // Parse URL
   const parsed = parseGitHubUrl(options.issueUrl);
   if (!parsed || parsed.type !== 'issues') {
-    if (options.json) {
-      outputJsonError('Invalid issue URL format (must be an issue, not a PR)');
-    } else {
-      console.error('Invalid issue URL format (must be an issue, not a PR)');
-    }
-    process.exit(1);
+    throw new Error('Invalid issue URL format (must be an issue, not a PR)');
   }
 
   const { owner, repo, number } = parsed;
 
-  if (!options.json) {
-    console.log('\n🙋 Claiming issue:', options.issueUrl);
-    console.log('---');
-    console.log(message);
-    console.log('---\n');
-  }
-
   const octokit = getOctokit(token);
 
-  try {
-    const { data: comment } = await octokit.issues.createComment({
-      owner,
-      repo,
-      issue_number: number,
-      body: message,
-    });
+  const { data: comment } = await octokit.issues.createComment({
+    owner,
+    repo,
+    issue_number: number,
+    body: message,
+  });
 
-    // Add to tracked issues
-    const stateManager = getStateManager();
-    stateManager.addIssue({
-      id: number,
-      url: options.issueUrl,
-      repo: `${owner}/${repo}`,
-      number,
-      title: '(claimed)',
-      status: 'claimed',
-      labels: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      vetted: false,
-    });
-    stateManager.save();
+  // Add to tracked issues
+  const stateManager = getStateManager();
+  stateManager.addIssue({
+    id: number,
+    url: options.issueUrl,
+    repo: `${owner}/${repo}`,
+    number,
+    title: '(claimed)',
+    status: 'claimed',
+    labels: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    vetted: false,
+  });
+  stateManager.save();
 
-    if (options.json) {
-      outputJson({
-        commentUrl: comment.html_url,
-        issueUrl: options.issueUrl,
-      });
-    } else {
-      console.log('✅ Issue claimed!');
-      console.log(`   ${comment.html_url}`);
-    }
-  } catch (error) {
-    if (options.json) {
-      outputJsonError(error instanceof Error ? error.message : 'Unknown error');
-    } else {
-      console.error('❌ Failed to claim issue:', error instanceof Error ? error.message : error);
-    }
-    process.exit(1);
-  }
+  return {
+    commentUrl: comment.html_url,
+    issueUrl: options.issueUrl,
+  };
 }

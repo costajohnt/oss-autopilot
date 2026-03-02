@@ -6,13 +6,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../core/index.js', () => ({
   getStateManager: vi.fn(),
-  getGitHubToken: vi.fn(),
+  requireGitHubToken: vi.fn(),
   getOctokit: vi.fn(),
-}));
-
-vi.mock('../formatters/json.js', () => ({
-  outputJson: vi.fn(),
-  outputJsonError: vi.fn(),
 }));
 
 vi.mock('../core/utils.js', () => ({
@@ -25,23 +20,20 @@ vi.mock('./validation.js', () => ({
   validateGitHubUrl: vi.fn(),
 }));
 
-import { getGitHubToken, getOctokit } from '../core/index.js';
+import { requireGitHubToken, getOctokit } from '../core/index.js';
 import { parseGitHubUrl } from '../core/utils.js';
-import { outputJson, outputJsonError } from '../formatters/json.js';
 import { runTrack, runUntrack } from './track.js';
 
-const mockGetGitHubToken = vi.mocked(getGitHubToken);
+const mockRequireGitHubToken = vi.mocked(requireGitHubToken);
 const mockGetOctokit = vi.mocked(getOctokit);
 const mockParseGitHubUrl = vi.mocked(parseGitHubUrl);
-const mockOutputJson = vi.mocked(outputJson);
-const mockOutputJsonError = vi.mocked(outputJsonError);
 
 const TEST_PR_URL = 'https://github.com/owner/repo/pull/42';
 
 describe('runTrack', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetGitHubToken.mockReturnValue('ghp_test123');
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue({ type: 'pull', owner: 'owner', repo: 'repo', number: 42 });
     mockGetOctokit.mockReturnValue({
       pulls: {
@@ -52,50 +44,18 @@ describe('runTrack', () => {
     } as any);
   });
 
-  it('should fetch PR info and output it', async () => {
-    await runTrack({ prUrl: TEST_PR_URL, json: true });
+  it('should fetch PR info and return it', async () => {
+    const result = await runTrack({ prUrl: TEST_PR_URL });
 
-    expect(mockOutputJson).toHaveBeenCalledWith({
+    expect(result).toEqual({
       pr: { repo: 'owner/repo', number: 42, title: 'Test PR', url: TEST_PR_URL },
     });
   });
 
-  it('should output text when not in JSON mode', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await runTrack({ prUrl: TEST_PR_URL, json: false });
-
-    expect(consoleSpy).toHaveBeenCalled();
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('owner/repo#42');
-    consoleSpy.mockRestore();
-  });
-
-  it('should exit with JSON error for invalid PR URL', async () => {
+  it('should throw for invalid PR URL', async () => {
     mockParseGitHubUrl.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
 
-    await expect(runTrack({ prUrl: 'bad-url', json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('Invalid PR URL'));
-    mockExit.mockRestore();
-  });
-
-  it('should exit with text error for invalid PR URL', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockParseGitHubUrl.mockReturnValue(null as any);
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runTrack({ prUrl: 'bad-url', json: false })).rejects.toThrow('exit');
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('Invalid PR URL');
-    consoleSpy.mockRestore();
-    mockExit.mockRestore();
+    await expect(runTrack({ prUrl: 'bad-url' })).rejects.toThrow('Invalid PR URL');
   });
 });
 
@@ -104,18 +64,10 @@ describe('runUntrack', () => {
     vi.clearAllMocks();
   });
 
-  it('should output v2 info message in JSON mode', async () => {
-    await runUntrack({ prUrl: TEST_PR_URL, json: true });
+  it('should return v2 info message', async () => {
+    const result = await runUntrack({ prUrl: TEST_PR_URL });
 
-    expect(mockOutputJson).toHaveBeenCalledWith(expect.objectContaining({ removed: false, url: TEST_PR_URL }));
-  });
-
-  it('should output v2 info message in text mode', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await runUntrack({ prUrl: TEST_PR_URL, json: false });
-
-    expect(consoleSpy).toHaveBeenCalled();
-    consoleSpy.mockRestore();
+    expect(result).toEqual(expect.objectContaining({ removed: false, url: TEST_PR_URL }));
+    expect(result.message).toContain('v2');
   });
 });

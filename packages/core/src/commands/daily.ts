@@ -11,7 +11,7 @@ import {
   getStateManager,
   PRMonitor,
   IssueConversationMonitor,
-  getGitHubToken,
+  requireGitHubToken,
   CRITICAL_STATUSES,
   computeRepoSignals,
   groupPRsByRepo,
@@ -21,7 +21,6 @@ import {
   toShelvedPRRef,
   formatBriefSummary,
   formatSummary,
-  printDigest,
   type DailyDigest,
   type FetchedPR,
   type ShelvedPRRef,
@@ -33,8 +32,6 @@ import {
   type RepoGroup,
 } from '../core/index.js';
 import {
-  outputJson,
-  outputJsonError,
   deduplicateDigest,
   compactActionableIssues,
   compactRepoGroups,
@@ -64,7 +61,7 @@ export {
  * Consumed by printDigest() (text mode) and converted to DailyOutput (JSON mode)
  * via toDailyOutput() which deduplicates PR objects.
  */
-interface DailyCheckResult {
+export interface DailyCheckResult {
   digest: DailyDigest;
   updates: unknown[];
   capacity: CapacityAssessment;
@@ -75,30 +72,6 @@ interface DailyCheckResult {
   commentedIssues: CommentedIssue[];
   repoGroups: RepoGroup[];
   failures: PRCheckFailure[];
-}
-
-interface DailyOptions {
-  json?: boolean;
-}
-
-export async function runDaily(options: DailyOptions): Promise<void> {
-  // Token is guaranteed by the preAction hook in cli.ts for non-LOCAL_ONLY_COMMANDS.
-  const token = getGitHubToken()!;
-
-  try {
-    await runDailyInner(token, options);
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    if (options.json) {
-      outputJsonError(`Daily check failed: ${msg}`);
-    } else {
-      console.error(`[FATAL] Daily check failed: ${msg}`);
-      if (error instanceof Error && error.stack) {
-        console.error(error.stack);
-      }
-    }
-    process.exit(1);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -573,7 +546,7 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
 
 /**
  * Internal daily check returning full (non-deduplicated) result.
- * Used by runDailyInner for text-mode output where full PR objects are needed.
+ * Used by runDaily for text-mode output where full PR objects are needed.
  */
 async function executeDailyCheckInternal(token: string): Promise<DailyCheckResult> {
   const prMonitor = new PRMonitor(token);
@@ -606,12 +579,21 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   return generateDigestOutput(digest, activePRs, shelvedPRs, commentedIssues, failures);
 }
 
-async function runDailyInner(token: string, options: DailyOptions): Promise<void> {
-  if (options.json) {
-    const result = await executeDailyCheck(token);
-    outputJson<DailyOutput>(result);
-  } else {
-    const result = await executeDailyCheckInternal(token);
-    printDigest(result.digest, result.capacity, result.commentedIssues);
-  }
+/**
+ * Run the daily check and return deduplicated DailyOutput.
+ * Errors propagate to the caller.
+ */
+export async function runDaily(): Promise<DailyOutput> {
+  // Token is guaranteed by the preAction hook in cli.ts for non-LOCAL_ONLY_COMMANDS.
+  const token = requireGitHubToken();
+  return executeDailyCheck(token);
+}
+
+/**
+ * Run the daily check and return the full (non-deduplicated) result.
+ * Used by CLI text mode where printDigest() needs full PR objects.
+ */
+export async function runDailyForDisplay(): Promise<DailyCheckResult> {
+  const token = requireGitHubToken();
+  return executeDailyCheckInternal(token);
 }

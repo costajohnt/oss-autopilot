@@ -310,6 +310,68 @@ export interface CheckIntegrationOutput {
   unreferencedCount: number;
 }
 
+/** Output of the vet command */
+export interface VetOutput {
+  issue: {
+    repo: string;
+    number: number;
+    title: string;
+    url: string;
+    labels: string[];
+  };
+  recommendation: 'approve' | 'skip' | 'needs_review';
+  reasonsToApprove: string[];
+  reasonsToSkip: string[];
+  projectHealth: unknown;
+  vettingResult: unknown;
+}
+
+/** Output of the comments command */
+export interface CommentsOutput {
+  pr: {
+    title: string;
+    state: string;
+    mergeable: boolean | null;
+    head: string;
+    base: string;
+    url: string;
+  };
+  reviews: Array<{
+    user: string | undefined;
+    state: string;
+    body: string | null;
+    submittedAt: string | null;
+  }>;
+  reviewComments: Array<{
+    user: string | undefined;
+    body: string;
+    path: string;
+    createdAt: string;
+  }>;
+  issueComments: Array<{
+    user: string | undefined;
+    body: string | undefined;
+    createdAt: string;
+  }>;
+  summary: {
+    reviewCount: number;
+    inlineCommentCount: number;
+    discussionCommentCount: number;
+  };
+}
+
+/** Output of the post command */
+export interface PostOutput {
+  commentUrl: string;
+  url: string;
+}
+
+/** Output of the claim command */
+export interface ClaimOutput {
+  commentUrl: string;
+  issueUrl: string;
+}
+
 /** Info about a local git clone (#84) */
 export interface LocalRepoInfo {
   path: string;

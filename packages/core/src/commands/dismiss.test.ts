@@ -37,17 +37,10 @@ vi.mock('../core/index.js', () => ({
   getStateManager: vi.fn(),
 }));
 
-vi.mock('../formatters/json.js', () => ({
-  outputJson: vi.fn(),
-  outputJsonError: vi.fn(),
-}));
-
 import { getStateManager } from '../core/index.js';
-import { outputJson } from '../formatters/json.js';
 import { runDismiss, runUndismiss } from './dismiss.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
-const mockOutputJson = vi.mocked(outputJson);
 
 const TEST_ISSUE_URL = 'https://github.com/owner/repo/issues/1';
 
@@ -65,40 +58,19 @@ describe('runDismiss', () => {
 
   it('should dismiss an issue and save state', async () => {
     mockDismissIssue.mockReturnValue(true);
-    await runDismiss({ issueUrl: TEST_ISSUE_URL, json: true });
+    const result = await runDismiss({ issueUrl: TEST_ISSUE_URL });
 
     expect(mockDismissIssue).toHaveBeenCalledWith(TEST_ISSUE_URL, expect.any(String));
     expect(mockSave).toHaveBeenCalled();
-    expect(mockOutputJson).toHaveBeenCalledWith({ dismissed: true, url: TEST_ISSUE_URL });
+    expect(result).toEqual({ dismissed: true, url: TEST_ISSUE_URL });
   });
 
   it('should not save state when issue is already dismissed', async () => {
     mockDismissIssue.mockReturnValue(false);
-    await runDismiss({ issueUrl: TEST_ISSUE_URL, json: true });
+    const result = await runDismiss({ issueUrl: TEST_ISSUE_URL });
 
     expect(mockSave).not.toHaveBeenCalled();
-    expect(mockOutputJson).toHaveBeenCalledWith({ dismissed: false, url: TEST_ISSUE_URL });
-  });
-
-  it('should output text when dismiss succeeds', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    mockDismissIssue.mockReturnValue(true);
-    await runDismiss({ issueUrl: TEST_ISSUE_URL, json: false });
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('Dismissed');
-    expect(allOutput).toContain('muted');
-    consoleSpy.mockRestore();
-  });
-
-  it('should output text when issue is already dismissed', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    mockDismissIssue.mockReturnValue(false);
-    await runDismiss({ issueUrl: TEST_ISSUE_URL, json: false });
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('already dismissed');
-    consoleSpy.mockRestore();
+    expect(result).toEqual({ dismissed: false, url: TEST_ISSUE_URL });
   });
 });
 
@@ -116,39 +88,18 @@ describe('runUndismiss', () => {
 
   it('should undismiss an issue and save state', async () => {
     mockUndismissIssue.mockReturnValue(true);
-    await runUndismiss({ issueUrl: TEST_ISSUE_URL, json: true });
+    const result = await runUndismiss({ issueUrl: TEST_ISSUE_URL });
 
     expect(mockUndismissIssue).toHaveBeenCalledWith(TEST_ISSUE_URL);
     expect(mockSave).toHaveBeenCalled();
-    expect(mockOutputJson).toHaveBeenCalledWith({ undismissed: true, url: TEST_ISSUE_URL });
+    expect(result).toEqual({ undismissed: true, url: TEST_ISSUE_URL });
   });
 
   it('should not save state when issue was not dismissed', async () => {
     mockUndismissIssue.mockReturnValue(false);
-    await runUndismiss({ issueUrl: TEST_ISSUE_URL, json: true });
+    const result = await runUndismiss({ issueUrl: TEST_ISSUE_URL });
 
     expect(mockSave).not.toHaveBeenCalled();
-    expect(mockOutputJson).toHaveBeenCalledWith({ undismissed: false, url: TEST_ISSUE_URL });
-  });
-
-  it('should output text when undismiss succeeds', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    mockUndismissIssue.mockReturnValue(true);
-    await runUndismiss({ issueUrl: TEST_ISSUE_URL, json: false });
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('Undismissed');
-    expect(allOutput).toContain('active again');
-    consoleSpy.mockRestore();
-  });
-
-  it('should output text when issue was not dismissed', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-    mockUndismissIssue.mockReturnValue(false);
-    await runUndismiss({ issueUrl: TEST_ISSUE_URL, json: false });
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('was not dismissed');
-    consoleSpy.mockRestore();
+    expect(result).toEqual({ undismissed: false, url: TEST_ISSUE_URL });
   });
 });

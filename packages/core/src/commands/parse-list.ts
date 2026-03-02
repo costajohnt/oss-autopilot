@@ -5,12 +5,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { outputJson, outputJsonError, type ParseIssueListOutput, type ParsedIssueItem } from '../formatters/json.js';
+import type { ParseIssueListOutput, ParsedIssueItem } from '../formatters/json.js';
 
 interface ParseListOptions {
   filePath: string;
-  json?: boolean;
 }
+
+export type { ParseIssueListOutput, ParsedIssueItem };
 
 /** Extract GitHub issue/PR URLs from a markdown line */
 function extractGitHubUrl(line: string): { repo: string; number: number; url: string } | null {
@@ -27,7 +28,7 @@ function extractGitHubUrl(line: string): { repo: string; number: number; url: st
 
 /** Extract issue title from a markdown line (text after URL or checkbox) */
 function extractTitle(line: string): string {
-  // Remove markdown link syntax: [title](url) → title
+  // Remove markdown link syntax: [title](url) -> title
   let cleaned = line.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
   // Remove bare URLs
   cleaned = cleaned.replace(/https?:\/\/\S+/g, '');
@@ -40,7 +41,7 @@ function extractTitle(line: string): string {
   // Remove "Done" markers
   cleaned = cleaned.replace(/\b(Done|DONE|done)\b/g, '');
   // Remove leading/trailing punctuation and whitespace
-  cleaned = cleaned.replace(/^[\s\-–—:]+/, '').replace(/[\s\-–—:]+$/, '');
+  cleaned = cleaned.replace(/^[\s\-\u2013\u2014:]+/, '').replace(/[\s\-\u2013\u2014:]+$/, '');
   return cleaned.trim();
 }
 
@@ -75,7 +76,7 @@ export function parseIssueList(content: string): ParseIssueListOutput {
       continue;
     }
 
-    // Extract GitHub URL — skip lines without one
+    // Extract GitHub URL -- skip lines without one
     const ghUrl = extractGitHubUrl(line);
     if (!ghUrl) continue;
 
@@ -103,16 +104,11 @@ export function parseIssueList(content: string): ParseIssueListOutput {
   };
 }
 
-export async function runParseList(options: ParseListOptions): Promise<void> {
+export async function runParseList(options: ParseListOptions): Promise<ParseIssueListOutput> {
   const filePath = path.resolve(options.filePath);
 
   if (!fs.existsSync(filePath)) {
-    if (options.json) {
-      outputJsonError(`File not found: ${filePath}`);
-    } else {
-      console.error(`Error: File not found: ${filePath}`);
-    }
-    process.exit(1);
+    throw new Error(`File not found: ${filePath}`);
   }
 
   let content: string;
@@ -120,34 +116,8 @@ export async function runParseList(options: ParseListOptions): Promise<void> {
     content = fs.readFileSync(filePath, 'utf-8');
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
-    if (options.json) {
-      outputJsonError(`Failed to read file: ${msg}`);
-    } else {
-      console.error(`Error: Failed to read file: ${msg}`);
-    }
-    process.exit(1);
+    throw new Error(`Failed to read file: ${msg}`, { cause: error });
   }
 
-  const result = parseIssueList(content);
-
-  if (options.json) {
-    outputJson<ParseIssueListOutput>(result);
-  } else {
-    console.log(`\n📋 Issue List: ${filePath}\n`);
-    console.log(`Available: ${result.availableCount} | Completed: ${result.completedCount}\n`);
-
-    if (result.available.length > 0) {
-      console.log('--- Available ---');
-      for (const item of result.available) {
-        console.log(`  [${item.tier}] ${item.repo}#${item.number}: ${item.title}`);
-      }
-    }
-
-    if (result.completed.length > 0) {
-      console.log('\n--- Completed ---');
-      for (const item of result.completed) {
-        console.log(`  [${item.tier}] ${item.repo}#${item.number}: ${item.title}`);
-      }
-    }
-  }
+  return parseIssueList(content);
 }

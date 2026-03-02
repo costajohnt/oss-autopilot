@@ -3,7 +3,6 @@
  */
 
 import { ValidationError } from '../core/errors.js';
-import { outputJsonError } from '../formatters/json.js';
 
 /** Matches GitHub PR URLs: https://github.com/owner/repo/pull/123 */
 export const PR_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
@@ -21,21 +20,14 @@ const MAX_MESSAGE_LENGTH = 1000;
 const REPO_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
 
 /**
- * Validate a GitHub URL against a pattern. Exits with error if invalid.
+ * Validate a GitHub URL against a pattern. Throws if invalid.
  */
-export function validateGitHubUrl(url: string, pattern: RegExp, entityType: 'PR' | 'issue', json?: boolean): void {
+export function validateGitHubUrl(url: string, pattern: RegExp, entityType: 'PR' | 'issue'): void {
   if (pattern.test(url)) return;
 
   const example =
     entityType === 'PR' ? 'https://github.com/owner/repo/pull/123' : 'https://github.com/owner/repo/issues/123';
-  const msg = `Invalid ${entityType} URL: ${url}. Expected format: ${example}`;
-
-  if (json) {
-    outputJsonError(msg);
-  } else {
-    console.error(`Error: ${msg}`);
-  }
-  process.exit(1);
+  throw new Error(`Invalid ${entityType} URL: ${url}. Expected format: ${example}`);
 }
 
 /**

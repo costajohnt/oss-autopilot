@@ -8,18 +8,10 @@ vi.mock('../core/index.js', () => ({
   getStateManager: vi.fn(),
 }));
 
-vi.mock('../formatters/json.js', () => ({
-  outputJson: vi.fn(),
-  outputJsonError: vi.fn(),
-}));
-
 import { getStateManager } from '../core/index.js';
-import { outputJson, outputJsonError } from '../formatters/json.js';
 import { runConfig } from './config.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
-const mockOutputJson = vi.mocked(outputJson);
-const mockOutputJsonError = vi.mocked(outputJsonError);
 
 const DEFAULT_CONFIG = {
   githubUsername: 'testuser',
@@ -48,38 +40,39 @@ describe('runConfig', () => {
     } as any);
   });
 
-  it('should show current config in JSON mode when no key specified', async () => {
-    await runConfig({ json: true });
+  it('should return current config when no key specified', async () => {
+    const result = await runConfig({});
 
-    expect(mockOutputJson).toHaveBeenCalledWith({ config: DEFAULT_CONFIG });
+    expect(result).toEqual({ config: DEFAULT_CONFIG });
   });
 
   it('should set username config', async () => {
-    await runConfig({ key: 'username', value: 'newuser', json: true });
+    const result = await runConfig({ key: 'username', value: 'newuser' });
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({ githubUsername: 'newuser' });
     expect(mockSave).toHaveBeenCalled();
-    expect(mockOutputJson).toHaveBeenCalledWith({ success: true, key: 'username', value: 'newuser' });
+    expect(result).toEqual({ success: true, key: 'username', value: 'newuser' });
   });
 
   it('should add a language', async () => {
-    await runConfig({ key: 'add-language', value: 'python', json: true });
+    const result = await runConfig({ key: 'add-language', value: 'python' });
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({
       languages: ['typescript', 'javascript', 'python'],
     });
     expect(mockSave).toHaveBeenCalled();
+    expect(result).toEqual({ success: true, key: 'add-language', value: 'python' });
   });
 
   it('should not add duplicate language', async () => {
-    await runConfig({ key: 'add-language', value: 'typescript', json: true });
+    await runConfig({ key: 'add-language', value: 'typescript' });
 
     expect(mockUpdateConfig).not.toHaveBeenCalled();
     expect(mockSave).toHaveBeenCalled();
   });
 
   it('should add a label', async () => {
-    await runConfig({ key: 'add-label', value: 'bug', json: true });
+    await runConfig({ key: 'add-label', value: 'bug' });
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({
       labels: ['good first issue', 'help wanted', 'bug'],
@@ -88,7 +81,7 @@ describe('runConfig', () => {
   });
 
   it('should exclude a repo with valid format', async () => {
-    await runConfig({ key: 'exclude-repo', value: 'owner/repo', json: true });
+    await runConfig({ key: 'exclude-repo', value: 'owner/repo' });
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({
       excludeRepos: ['owner/repo'],
@@ -97,19 +90,12 @@ describe('runConfig', () => {
     expect(mockSave).toHaveBeenCalled();
   });
 
-  it('should exit with error for invalid repo format in exclude-repo', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runConfig({ key: 'exclude-repo', value: 'invalid', json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('Invalid repo format'));
-    mockExit.mockRestore();
+  it('should throw error for invalid repo format in exclude-repo', async () => {
+    await expect(runConfig({ key: 'exclude-repo', value: 'invalid' })).rejects.toThrow('Invalid repo format');
   });
 
   it('should exclude an org', async () => {
-    await runConfig({ key: 'exclude-org', value: 'facebook', json: true });
+    await runConfig({ key: 'exclude-org', value: 'facebook' });
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({
       excludeOrgs: ['facebook'],
@@ -118,41 +104,20 @@ describe('runConfig', () => {
     expect(mockSave).toHaveBeenCalled();
   });
 
-  it('should exit with error for invalid org name with slash', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runConfig({ key: 'exclude-org', value: 'owner/repo', json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith(expect.stringContaining('Invalid org name'));
-    mockExit.mockRestore();
+  it('should throw error for invalid org name with slash', async () => {
+    await expect(runConfig({ key: 'exclude-org', value: 'owner/repo' })).rejects.toThrow('Invalid org name');
   });
 
-  it('should exit with error for unknown config key', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runConfig({ key: 'unknown-key', value: 'val', json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith('Unknown config key: unknown-key');
-    mockExit.mockRestore();
+  it('should throw error for unknown config key', async () => {
+    await expect(runConfig({ key: 'unknown-key', value: 'val' })).rejects.toThrow('Unknown config key: unknown-key');
   });
 
-  it('should exit with error when value is missing', async () => {
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runConfig({ key: 'username', json: true })).rejects.toThrow('exit');
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith('Value required');
-    mockExit.mockRestore();
+  it('should throw error when value is missing', async () => {
+    await expect(runConfig({ key: 'username' })).rejects.toThrow('Value required');
   });
 
   it('should not add duplicate label', async () => {
-    await runConfig({ key: 'add-label', value: 'good first issue', json: true });
+    await runConfig({ key: 'add-label', value: 'good first issue' });
 
     expect(mockUpdateConfig).not.toHaveBeenCalled();
     expect(mockSave).toHaveBeenCalled();
@@ -166,7 +131,7 @@ describe('runConfig', () => {
       save: mockSave,
     } as any);
 
-    await runConfig({ key: 'exclude-repo', value: 'owner/repo', json: true });
+    await runConfig({ key: 'exclude-repo', value: 'owner/repo' });
 
     expect(mockUpdateConfig).not.toHaveBeenCalled();
   });
@@ -179,43 +144,8 @@ describe('runConfig', () => {
       save: mockSave,
     } as any);
 
-    await runConfig({ key: 'exclude-org', value: 'facebook', json: true });
+    await runConfig({ key: 'exclude-org', value: 'facebook' });
 
     expect(mockUpdateConfig).not.toHaveBeenCalled();
-  });
-
-  it('should show current config in text mode', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await runConfig({ json: false });
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('Configuration');
-    consoleSpy.mockRestore();
-  });
-
-  it('should exit with text error when value is missing in text mode', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const mockExit = vi.spyOn(process, 'exit').mockImplementation(() => {
-      throw new Error('exit');
-    });
-
-    await expect(runConfig({ key: 'username', json: false })).rejects.toThrow('exit');
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('Value required');
-    consoleSpy.mockRestore();
-    mockExit.mockRestore();
-  });
-
-  it('should show text success after setting config', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await runConfig({ key: 'username', value: 'newuser', json: false });
-
-    const allOutput = consoleSpy.mock.calls.map((c) => c[0]).join('\n');
-    expect(allOutput).toContain('Set username');
-    expect(allOutput).toContain('newuser');
-    consoleSpy.mockRestore();
   });
 });

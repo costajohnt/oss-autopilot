@@ -83,26 +83,16 @@ vi.mock('../core/index.js', async (importOriginal) => {
       getIssueDismissedAt: mockGetIssueDismissedAt,
       undismissIssue: mockUndismissIssue,
     })),
-    getGitHubToken: vi.fn(() => 'test-token'),
+    requireGitHubToken: vi.fn(() => 'test-token'),
     formatRelativeTime: vi.fn(() => '2 days ago'),
     PRMonitor: MockPRMonitor,
     IssueConversationMonitor: MockIssueConversationMonitor,
   };
 });
 
-vi.mock('../formatters/json.js', async () => {
-  const actual = await vi.importActual<typeof import('../formatters/json.js')>('../formatters/json.js');
-  return {
-    ...actual,
-    outputJson: vi.fn(),
-    outputJsonError: vi.fn(),
-  };
-});
-
 // Import AFTER all mocks are declared
-import { executeDailyCheck, runDaily } from './daily.js';
-import { getGitHubToken } from '../core/index.js';
-import { outputJson, outputJsonError } from '../formatters/json.js';
+import { executeDailyCheck, runDaily, runDailyForDisplay } from './daily.js';
+import { requireGitHubToken } from '../core/index.js';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -881,50 +871,38 @@ describe('executeDailyCheck() — issue conversation', () => {
 // ---------------------------------------------------------------------------
 
 describe('runDaily()', () => {
-  beforeEach(() => {
-    // Suppress process.exit in tests
-    vi.spyOn(process, 'exit').mockImplementation((() => {
-      throw new Error('process.exit called');
-    }) as never);
+  it('returns a DailyOutput with deduplicated data', async () => {
+    vi.mocked(requireGitHubToken).mockReturnValue('test-token');
+
+    const result = await runDaily();
+
+    expect(result).toHaveProperty('digest');
+    expect(result).toHaveProperty('capacity');
+    expect(result).toHaveProperty('summary');
+    expect(result).toHaveProperty('briefSummary');
   });
 
-  it('outputs JSON when --json flag is set', async () => {
-    vi.mocked(getGitHubToken).mockReturnValue('test-token');
-
-    await runDaily({ json: true });
-
-    expect(outputJson).toHaveBeenCalledOnce();
-    const [arg] = vi.mocked(outputJson).mock.calls[0];
-    expect(arg).toHaveProperty('digest');
-    expect(arg).toHaveProperty('capacity');
-  });
-
-  it('prints to console in non-JSON mode', async () => {
-    vi.mocked(getGitHubToken).mockReturnValue('test-token');
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-    await runDaily({ json: false });
-
-    expect(outputJson).not.toHaveBeenCalled();
-    expect(consoleSpy).toHaveBeenCalled();
-    consoleSpy.mockRestore();
-  });
-
-  it('outputs JSON error and exits on unexpected throw in JSON mode', async () => {
-    vi.mocked(getGitHubToken).mockReturnValue('test-token');
+  it('propagates errors to the caller', async () => {
+    vi.mocked(requireGitHubToken).mockReturnValue('test-token');
     mockFetchUserOpenPRs.mockRejectedValue(new Error('Unexpected API failure'));
 
-    await expect(runDaily({ json: true })).rejects.toThrow('process.exit called');
-    expect(outputJsonError).toHaveBeenCalledWith(expect.stringContaining('Daily check failed'));
+    await expect(runDaily()).rejects.toThrow('Unexpected API failure');
   });
+});
 
-  it('outputs fatal console error and exits on unexpected throw in non-JSON mode', async () => {
-    vi.mocked(getGitHubToken).mockReturnValue('test-token');
-    mockFetchUserOpenPRs.mockRejectedValue(new Error('Unexpected API failure'));
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+describe('runDailyForDisplay()', () => {
+  it('returns a full DailyCheckResult with non-deduplicated data', async () => {
+    vi.mocked(requireGitHubToken).mockReturnValue('test-token');
 
-    await expect(runDaily({ json: false })).rejects.toThrow('process.exit called');
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[FATAL]'));
-    consoleSpy.mockRestore();
+    const result = await runDailyForDisplay();
+
+    // Full result has digest with FetchedPR objects (not URL strings)
+    expect(result).toHaveProperty('digest');
+    expect(result).toHaveProperty('capacity');
+    expect(result).toHaveProperty('repoGroups');
+    // repoGroups in full result have .prs (not .prUrls)
+    if (result.repoGroups.length > 0) {
+      expect(result.repoGroups[0]).toHaveProperty('prs');
+    }
   });
 });
