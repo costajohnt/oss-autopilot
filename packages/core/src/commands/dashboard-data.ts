@@ -71,13 +71,18 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   const { monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
   const { monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
 
+  // Guard: skip overwriting when data is empty to avoid wiping chart data on transient API failures.
   try {
-    stateManager.setMonthlyMergedCounts(monthlyCounts);
+    if (Object.keys(monthlyCounts).length > 0) {
+      stateManager.setMonthlyMergedCounts(monthlyCounts);
+    }
   } catch (error) {
     console.error('[DASHBOARD] Failed to store monthly merged counts:', errorMessage(error));
   }
   try {
-    stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+    if (Object.keys(monthlyClosedCounts).length > 0) {
+      stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+    }
   } catch (error) {
     console.error('[DASHBOARD] Failed to store monthly closed counts:', errorMessage(error));
   }
@@ -92,7 +97,9 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
         combinedOpenedCounts[month] = (combinedOpenedCounts[month] || 0) + 1;
       }
     }
-    stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
+    if (Object.keys(combinedOpenedCounts).length > 0) {
+      stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
+    }
   } catch (error) {
     console.error('[DASHBOARD] Failed to store monthly opened counts:', errorMessage(error));
   }

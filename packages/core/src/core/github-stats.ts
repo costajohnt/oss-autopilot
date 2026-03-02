@@ -177,7 +177,10 @@ async function fetchUserPRCounts<R>(
 
   debug(MODULE, `Found ${fetched} ${label} PRs across ${repos.size} repos`);
 
-  // Cache the aggregated result (Map → entries array for JSON serialization)
+  // Cache the aggregated result (Map → entries array for JSON serialization).
+  // Note: truncated results (from pagination cap) are cached with the same TTL. This is an
+  // accepted tradeoff — prolific contributors (300+ PRs) may see slightly incomplete stats
+  // for up to 24 hours, but these are cosmetic and self-heal on the next cache expiry.
   cache.set(cacheKey, '', {
     reposEntries: Array.from(repos.entries()),
     monthlyCounts,

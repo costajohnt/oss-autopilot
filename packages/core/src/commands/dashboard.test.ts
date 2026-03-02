@@ -553,6 +553,11 @@ describe('dashboard', () => {
       });
 
       it('should handle stateManager.setMonthlyMergedCounts failure', async () => {
+        // Provide non-empty monthlyCounts so the setter is actually called (empty data is skipped to prevent wipes)
+        mockPRMonitor.fetchUserMergedPRCounts.mockResolvedValue({
+          monthlyCounts: { '2026-01': 1 },
+          monthlyOpenedCounts: {},
+        });
         const state = makeState();
         const mockSM = setupMockStateManager(state);
         mockSM.setMonthlyMergedCounts.mockImplementation(() => {
@@ -571,6 +576,11 @@ describe('dashboard', () => {
       });
 
       it('should handle stateManager.setMonthlyClosedCounts failure', async () => {
+        // Provide non-empty monthlyCounts so the setter is actually called (empty data is skipped to prevent wipes)
+        mockPRMonitor.fetchUserClosedPRCounts.mockResolvedValue({
+          monthlyCounts: { '2026-01': 1 },
+          monthlyOpenedCounts: {},
+        });
         const state = makeState();
         const mockSM = setupMockStateManager(state);
         mockSM.setMonthlyClosedCounts.mockImplementation(() => {
@@ -588,6 +598,11 @@ describe('dashboard', () => {
       });
 
       it('should handle stateManager.setMonthlyOpenedCounts failure', async () => {
+        // Provide non-empty monthlyOpenedCounts so combined counts are non-empty and the setter is called
+        mockPRMonitor.fetchUserMergedPRCounts.mockResolvedValue({
+          monthlyCounts: {},
+          monthlyOpenedCounts: { '2026-01': 1 },
+        });
         const state = makeState();
         const mockSM = setupMockStateManager(state);
         mockSM.setMonthlyOpenedCounts.mockImplementation(() => {

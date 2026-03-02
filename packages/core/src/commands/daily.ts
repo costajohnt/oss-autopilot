@@ -325,15 +325,21 @@ function updateAnalytics(
 ): void {
   const stateManager = getStateManager();
 
-  // Store monthly chart data (non-critical — each metric isolated so partial failures don't leave inconsistent state)
+  // Store monthly chart data (non-critical — each metric isolated so partial failures don't leave inconsistent state).
+  // Guard: skip overwriting when the data is empty to avoid wiping existing chart data on transient API failures.
+  // An empty object means the fetch failed and fell back to emptyPRCountsResult(), so we preserve previous state.
   try {
-    stateManager.setMonthlyMergedCounts(monthlyCounts);
+    if (Object.keys(monthlyCounts).length > 0) {
+      stateManager.setMonthlyMergedCounts(monthlyCounts);
+    }
   } catch (error) {
     console.error('[DAILY] Failed to store monthly merged counts:', errorMessage(error));
   }
 
   try {
-    stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+    if (Object.keys(monthlyClosedCounts).length > 0) {
+      stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+    }
   } catch (error) {
     console.error('[DAILY] Failed to store monthly closed counts:', errorMessage(error));
   }
@@ -351,7 +357,9 @@ function updateAnalytics(
         combinedOpenedCounts[month] = (combinedOpenedCounts[month] || 0) + 1;
       }
     }
-    stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
+    if (Object.keys(combinedOpenedCounts).length > 0) {
+      stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
+    }
   } catch (error) {
     console.error('[DAILY] Failed to compute/store monthly opened counts:', errorMessage(error));
   }
