@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  escapeHtml,
-  buildDashboardStats,
-  generateDashboardHtml,
-  type DashboardStats,
-} from './dashboard-templates.js';
+import { escapeHtml, buildDashboardStats, generateDashboardHtml, type DashboardStats } from './dashboard-templates.js';
 import type {
   FetchedPR,
   DailyDigest,
@@ -122,9 +117,7 @@ describe('escapeHtml', () => {
   });
 
   it('escapes angle brackets', () => {
-    expect(escapeHtml('<script>alert("xss")</script>')).toBe(
-      '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;',
-    );
+    expect(escapeHtml('<script>alert("xss")</script>')).toBe('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;');
   });
 
   it('escapes double quotes', () => {
@@ -267,15 +260,17 @@ describe('buildDashboardStats', () => {
 
 describe('generateDashboardHtml', () => {
   /** Shorthand that defaults every argument so tests only supply what they care about. */
-  function renderHtml(options: {
-    stats?: DashboardStats;
-    monthly?: Record<string, number>;
-    monthlyClosed?: Record<string, number>;
-    monthlyOpened?: Record<string, number>;
-    digest?: DailyDigest;
-    state?: AgentState;
-    issueResponses?: CommentedIssueWithResponse[];
-  } = {}): string {
+  function renderHtml(
+    options: {
+      stats?: DashboardStats;
+      monthly?: Record<string, number>;
+      monthlyClosed?: Record<string, number>;
+      monthlyOpened?: Record<string, number>;
+      digest?: DailyDigest;
+      state?: AgentState;
+      issueResponses?: CommentedIssueWithResponse[];
+    } = {},
+  ): string {
     return generateDashboardHtml(
       options.stats ?? makeStats(),
       options.monthly ?? {},
