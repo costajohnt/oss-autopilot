@@ -10,26 +10,44 @@ import { debug, warn } from './logger.js';
 
 const MODULE = 'github-stats';
 
-/**
- * Fetch merged PR counts and latest merge dates per repository for the configured user.
- * Also builds a monthly histogram of all merges for the contribution timeline.
- */
-export async function fetchUserMergedPRCounts(
-  octokit: Octokit,
-  githubUsername: string,
-): Promise<{
-  repos: Map<string, { count: number; lastMergedAt: string }>;
+/** Shape of a search result item from octokit.search.issuesAndPullRequests. */
+type SearchItem = {
+  html_url: string;
+  created_at?: string;
+  closed_at: string | null;
+  pull_request?: { merged_at?: string | null };
+};
+
+/** Return type shared by both merged and closed PR count functions. */
+export interface PRCountsResult<R> {
+  repos: Map<string, R>;
   monthlyCounts: Record<string, number>;
   monthlyOpenedCounts: Record<string, number>;
   dailyActivityCounts: Record<string, number>;
-}> {
+}
+
+/**
+ * Shared paginated search for user PR counts with histogram tracking.
+ *
+ * Handles: pagination, owner extraction, skip-own-repos, monthly/daily histograms.
+ * The `accumulateRepo` callback handles per-repo data and returns the primary date
+ * string (e.g. mergedAt or closedAt) used for monthly counts and daily activity.
+ * Return an empty string to skip histogram tracking for that item.
+ */
+async function fetchUserPRCounts<R>(
+  octokit: Octokit,
+  githubUsername: string,
+  query: string,
+  label: string,
+  accumulateRepo: (repos: Map<string, R>, repo: string, item: SearchItem) => string,
+): Promise<PRCountsResult<R>> {
   if (!githubUsername) {
     return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {} };
   }
 
-  debug(MODULE, `Fetching merged PR counts for @${githubUsername}...`);
+  debug(MODULE, `Fetching ${label} PR counts for @${githubUsername}...`);
 
-  const repos = new Map<string, { count: number; lastMergedAt: string }>();
+  const repos = new Map<string, R>();
   const monthlyCounts: Record<string, number> = {};
   const monthlyOpenedCounts: Record<string, number> = {};
   const dailyActivityCounts: Record<string, number> = {};
@@ -38,7 +56,7 @@ export async function fetchUserMergedPRCounts(
 
   while (true) {
     const { data } = await octokit.search.issuesAndPullRequests({
-      q: `is:pr is:merged author:${githubUsername}`,
+      q: `is:pr ${query} author:${githubUsername}`,
       sort: 'updated',
       order: 'desc',
       per_page: 100,
@@ -48,7 +66,7 @@ export async function fetchUserMergedPRCounts(
     for (const item of data.items) {
       const parsed = extractOwnerRepo(item.html_url);
       if (!parsed) {
-        warn(MODULE, `Skipping merged PR with unparseable URL: ${item.html_url}`);
+        warn(MODULE, `Skipping ${label} PR with unparseable URL: ${item.html_url}`);
         continue;
       }
 
@@ -60,40 +78,25 @@ export async function fetchUserMergedPRCounts(
 
       // Note: excludeRepos/excludeOrgs are intentionally NOT filtered here.
       // Those filters control issue discovery/search, not historical statistics.
-      // A merged PR is a merged PR regardless of current tracking preferences.
 
-      const mergedAt = item.pull_request?.merged_at || item.closed_at || '';
+      // Per-repo accumulation + get primary date for histograms
+      const primaryDate = accumulateRepo(repos, repo, item);
 
-      // Per-repo tracking
-      const existing = repos.get(repo);
-      if (existing) {
-        existing.count += 1;
-        if (mergedAt && mergedAt > existing.lastMergedAt) {
-          existing.lastMergedAt = mergedAt;
-        }
-      } else {
-        repos.set(repo, { count: 1, lastMergedAt: mergedAt });
-      }
-
-      // Monthly histogram (every PR counted individually)
-      if (mergedAt) {
-        const month = mergedAt.slice(0, 7); // "YYYY-MM"
+      // Monthly histogram for primary date (merged/closed)
+      if (primaryDate) {
+        const month = primaryDate.slice(0, 7); // "YYYY-MM"
         monthlyCounts[month] = (monthlyCounts[month] || 0) + 1;
+        // Daily activity for primary date
+        const day = primaryDate.slice(0, 10);
+        if (day.length === 10) dailyActivityCounts[day] = (dailyActivityCounts[day] || 0) + 1;
       }
 
-      // Track when this PR was opened (for monthly opened histogram)
+      // Track when this PR was opened (for monthly opened histogram + daily activity)
       if (item.created_at) {
         const openedMonth = item.created_at.slice(0, 7); // "YYYY-MM"
         monthlyOpenedCounts[openedMonth] = (monthlyOpenedCounts[openedMonth] || 0) + 1;
-        // Daily activity: PR opened
         const openedDay = item.created_at.slice(0, 10);
         if (openedDay.length === 10) dailyActivityCounts[openedDay] = (dailyActivityCounts[openedDay] || 0) + 1;
-      }
-
-      // Daily activity: PR merged
-      if (mergedAt) {
-        const mergedDay = mergedAt.slice(0, 10);
-        if (mergedDay.length === 10) dailyActivityCounts[mergedDay] = (dailyActivityCounts[mergedDay] || 0) + 1;
       }
     }
 
@@ -107,94 +110,50 @@ export async function fetchUserMergedPRCounts(
     page++;
   }
 
-  debug(MODULE, `Found ${fetched} merged PRs across ${repos.size} repos`);
+  debug(MODULE, `Found ${fetched} ${label} PRs across ${repos.size} repos`);
   return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts };
+}
+
+/**
+ * Fetch merged PR counts and latest merge dates per repository for the configured user.
+ * Also builds a monthly histogram of all merges for the contribution timeline.
+ */
+export function fetchUserMergedPRCounts(
+  octokit: Octokit,
+  githubUsername: string,
+): Promise<PRCountsResult<{ count: number; lastMergedAt: string }>> {
+  return fetchUserPRCounts(octokit, githubUsername, 'is:merged', 'merged', (repos, repo, item) => {
+    if (!item.pull_request?.merged_at) {
+      warn(
+        MODULE,
+        `merged_at missing for merged PR ${item.html_url}${item.closed_at ? ', falling back to closed_at' : ', no date available'}`,
+      );
+    }
+    const mergedAt = item.pull_request?.merged_at || item.closed_at || '';
+
+    const existing = repos.get(repo);
+    if (existing) {
+      existing.count += 1;
+      if (mergedAt && mergedAt > existing.lastMergedAt) {
+        existing.lastMergedAt = mergedAt;
+      }
+    } else {
+      repos.set(repo, { count: 1, lastMergedAt: mergedAt });
+    }
+
+    return mergedAt;
+  });
 }
 
 /**
  * Fetch closed-without-merge PR counts per repository for the configured user.
  * Used to populate closedWithoutMergeCount in repo scores for accurate merge rate.
  */
-export async function fetchUserClosedPRCounts(
-  octokit: Octokit,
-  githubUsername: string,
-): Promise<{
-  repos: Map<string, number>;
-  monthlyCounts: Record<string, number>;
-  monthlyOpenedCounts: Record<string, number>;
-  dailyActivityCounts: Record<string, number>;
-}> {
-  if (!githubUsername) {
-    return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {} };
-  }
-
-  debug(MODULE, `Fetching closed PR counts for @${githubUsername}...`);
-
-  const repos = new Map<string, number>();
-  const monthlyCounts: Record<string, number> = {};
-  const monthlyOpenedCounts: Record<string, number> = {};
-  const dailyActivityCounts: Record<string, number> = {};
-  let page = 1;
-  let fetched = 0;
-
-  while (true) {
-    const { data } = await octokit.search.issuesAndPullRequests({
-      q: `is:pr is:closed is:unmerged author:${githubUsername}`,
-      sort: 'updated',
-      order: 'desc',
-      per_page: 100,
-      page,
-    });
-
-    for (const item of data.items) {
-      const parsed = extractOwnerRepo(item.html_url);
-      if (!parsed) {
-        warn(MODULE, `Skipping closed PR with unparseable URL: ${item.html_url}`);
-        continue;
-      }
-
-      const { owner } = parsed;
-      const repo = `${owner}/${parsed.repo}`;
-
-      // Skip own repos
-      if (owner.toLowerCase() === githubUsername.toLowerCase()) continue;
-
-      // Note: excludeRepos/excludeOrgs are intentionally NOT filtered here.
-      // Those filters control issue discovery/search, not historical statistics.
-      // A closed PR is a closed PR regardless of current tracking preferences.
-
-      repos.set(repo, (repos.get(repo) || 0) + 1);
-
-      // Track when this PR was closed (for monthly closed histogram)
-      if (item.closed_at) {
-        const closedMonth = item.closed_at.slice(0, 7); // "YYYY-MM"
-        monthlyCounts[closedMonth] = (monthlyCounts[closedMonth] || 0) + 1;
-        // Daily activity: PR closed
-        const closedDay = item.closed_at.slice(0, 10);
-        if (closedDay.length === 10) dailyActivityCounts[closedDay] = (dailyActivityCounts[closedDay] || 0) + 1;
-      }
-
-      // Track when this PR was opened (for monthly opened histogram)
-      if (item.created_at) {
-        const openedMonth = item.created_at.slice(0, 7); // "YYYY-MM"
-        monthlyOpenedCounts[openedMonth] = (monthlyOpenedCounts[openedMonth] || 0) + 1;
-        // Daily activity: PR opened
-        const openedDay = item.created_at.slice(0, 10);
-        if (openedDay.length === 10) dailyActivityCounts[openedDay] = (dailyActivityCounts[openedDay] || 0) + 1;
-      }
-    }
-
-    fetched += data.items.length;
-
-    if (fetched >= data.total_count || fetched >= 1000 || data.items.length === 0) {
-      break;
-    }
-
-    page++;
-  }
-
-  debug(MODULE, `Found ${fetched} closed (unmerged) PRs across ${repos.size} repos`);
-  return { repos, monthlyCounts, monthlyOpenedCounts, dailyActivityCounts };
+export function fetchUserClosedPRCounts(octokit: Octokit, githubUsername: string): Promise<PRCountsResult<number>> {
+  return fetchUserPRCounts(octokit, githubUsername, 'is:closed is:unmerged', 'closed', (repos, repo, item) => {
+    repos.set(repo, (repos.get(repo) || 0) + 1);
+    return item.closed_at || '';
+  });
 }
 
 /**
