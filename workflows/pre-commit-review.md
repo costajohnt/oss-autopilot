@@ -72,7 +72,7 @@ Evaluate from largest to smallest — **first match wins**:
 | **Medium** | ≥ 50 diff lines OR 3–5 files |
 | **Small** | Everything else (< 50 diff lines AND ≤ 2 files) |
 
-Save as `changeSize` for use in sub-step 3. Report: "> Change size: {tier} ({N} diff lines, {M} files) — dispatching {K} agents."
+Save as `changeSize` for informational reporting. Report: "> Change size: {tier} ({N} diff lines, {M} files) — dispatching full review suite."
 
 **If classification fails** (command errors, unparseable output, or both counts are zero despite `git status --porcelain` showing changes): default to **Large** to ensure maximum review coverage and warn: "Could not determine change size — defaulting to Large for comprehensive review."
 
@@ -82,21 +82,15 @@ Save as `changeSize` for use in sub-step 3. Report: "> Change size: {tier} ({N} 
 
 Pass `reviewDiff` (from sub-step 2) as context to each agent.
 
-**Initialize tracking:** Set `reviewPass = 1` and `agentsWithFindings = []` (empty list). These are used in the re-review loop (sub-step 6) to enable targeted re-dispatch.
+**Initialize tracking:** Set `reviewPass = 1` and `agentsWithFindings = []` (empty list). These are used in the convergence loop (sub-step 5) to enable targeted re-dispatch.
 
 **IMPORTANT: Always include `Working directory: {local repo path}` in every agent prompt so agents can find and read files in the correct location. Without this, agents inherit the parent session's working directory and file lookups will fail.**
 
-**Scale dispatch based on `changeSize`** (from sub-step 2):
+**Always dispatch the full base agent suite** regardless of change size. The convergence loop (sub-step 5) depends on comprehensive coverage — scaling down agents undermines the guarantee that fixes don't introduce new problems.
 
-| Size | Agents to dispatch |
-|------|--------------------|
-| **Small** | `code-reviewer` + `silent-failure-hunter` |
-| **Medium** | Small agents + `code-simplifier` |
-| **Large** | Medium agents + `pr-test-analyzer` + conditional agents below |
+**Base agents (always dispatched):** `code-reviewer`, `silent-failure-hunter`, `code-simplifier`, `pr-test-analyzer`, `comment-analyzer`
 
-> **Rationale:** Typical review-response changes (10–50 lines, 1–2 files) don't need 4–6 agents. Scaling reduces latency and token cost for the common case while keeping the full suite for larger contributions.
-
-**Agent prompts** (dispatch only those selected by the tier above; include the full `git diff` output in each):
+**Agent prompts** (dispatch ALL base agents plus any conditional agents in a SINGLE message; include the full `git diff` output in each):
 
 ```
 Task(pr-review-toolkit:code-reviewer,
@@ -160,9 +154,18 @@ Task(pr-review-toolkit:pr-test-analyzer,
 
    Diff:
    {git diff output}")
+
+Task(pr-review-toolkit:comment-analyzer,
+  "Review comments in the following code changes for accuracy, completeness,
+   and long-term maintainability.
+   Working directory: {local repo path}
+   Changed files: {changed files list}
+
+   Diff:
+   {git diff output}")
 ```
 
-**Conditional agents — Large changes only (dispatch in the SAME message if applicable):**
+**Conditional agents (dispatch in the SAME message if applicable):**
 
 - **`pr-review-toolkit:type-design-analyzer`** — dispatch only if changed files include TypeScript (`.ts`, `.tsx`) or other typed languages
   ```
@@ -174,18 +177,6 @@ Task(pr-review-toolkit:pr-test-analyzer,
 
      Diff:
      {git diff output for .ts/.tsx files}")
-  ```
-
-- **`pr-review-toolkit:comment-analyzer`** — dispatch only if 5+ files were changed (smaller changes rarely warrant dedicated comment review)
-  ```
-  Task(pr-review-toolkit:comment-analyzer,
-    "Review comments in the following code changes for accuracy, completeness,
-     and long-term maintainability.
-     Working directory: {local repo path}
-     Changed files: {changed files list}
-
-     Diff:
-     {git diff output}")
   ```
 
 **Fallback:** If the PR review toolkit agents are unavailable (Task tool returns an error for those agent types), inform the user and dispatch the local `pre-commit-reviewer` agent instead:
@@ -206,7 +197,7 @@ Task(pre-commit-reviewer,
 
 After all agents complete, merge their outputs into a unified report. Deduplicate findings that multiple agents flagged.
 
-**Track which agents found issues:** For each agent that reported Critical or Recommended findings, add its name to `agentsWithFindings`. This list is used in sub-step 6 to enable targeted re-dispatch on subsequent passes.
+**Track which agents found issues:** For each agent that reported Critical or Recommended findings, add its name to `agentsWithFindings`. This list is used in the convergence loop (sub-step 5) to enable targeted re-dispatch on subsequent passes.
 
 **If any agent did not complete or returned an error**, note it in the report:
 > "Warning: {agent-name} did not complete. Its findings are not included."
@@ -242,22 +233,43 @@ If NO issues found across all agents:
 All agents passed. No issues found — changes are clean and ready to commit.
 ```
 
-### 5. User Decision Point
+### 5. Automatic Convergence Loop
 
-Use AskUserQuestion based on findings:
+After consolidating findings (sub-step 4), automatically fix and re-review until convergence. **Do not prompt the user during this loop** — it runs fully autonomously.
 
-**If Critical or Recommended issues exist:**
-```
-Question: "How would you like to proceed?"
-Header: "Review"
+**Loop bound:** Maximum 5 passes total (including the initial review pass). If convergence is not reached after 5 passes, present remaining findings to the user and proceed to sub-step 6.
 
-Options:
-1. "Address findings" — "Fix issues, then re-review"
-2. "Show full diff" — "Display complete diff for manual review"
-3. "Commit and push anyway" — "Skip fixes and push current changes"
-```
+**Convergence criteria:** Zero Critical and zero Recommended findings in the latest pass. Minor findings do not block convergence.
 
-**If only Minor issues or no issues:**
+**Procedure:**
+
+1. **Check for convergence:** If the consolidated report has zero Critical and zero Recommended findings, convergence is reached. Report the pass summary:
+   > "Review converged on pass {reviewPass}. {minor_count} minor finding(s) noted — changes are clean and ready to commit."
+   Proceed to sub-step 6 (User Decision Point) with the "clean" prompt.
+
+2. **If Critical or Recommended findings exist:** Report the pass summary:
+   > "Pass {reviewPass}: {critical_count} Critical, {recommended_count} Recommended, {minor_count} Minor. Fixing actionable findings..."
+
+3. **Fix all Critical and Recommended findings.** Minor findings are noted but not auto-fixed. Apply fixes using standard editing tools.
+
+4. **Increment `reviewPass`.** Loop back to sub-step 2 (Gather Change Context) to re-gather the updated diff after fixes.
+
+5. **Targeted re-dispatch (pass 2+):** Instead of re-dispatching ALL agents, only re-run the agents in `agentsWithFindings` from the previous pass plus `code-reviewer` as a baseline quality gate. Reset `agentsWithFindings` before collecting new results. Report:
+   > "Re-review pass {reviewPass}: Re-dispatching {agent list} (targeted) + code-reviewer (baseline). Agents that passed cleanly are skipped."
+
+6. **Re-consolidate** (sub-step 4) and return to step 1 of this procedure.
+
+**Cross-pass deduplication:** Deduplicate findings against previous passes. A finding referencing the same file, line range (±5 lines), and substantially similar description is a duplicate — do not re-report it. Only new or materially changed findings count toward convergence criteria.
+
+**If max passes reached without convergence:**
+> "Review did not converge after 5 passes. {remaining_count} finding(s) remain — presenting for manual review."
+Present the latest consolidated report and proceed to sub-step 6 with the "unresolved findings" prompt.
+
+### 6. User Decision Point and Action
+
+Use AskUserQuestion based on convergence outcome:
+
+**If convergence was reached (no Critical or Recommended findings):**
 ```
 Question: "Changes look clean. Ready to commit?"
 Header: "Review"
@@ -268,16 +280,16 @@ Options:
 3. "Done for now" — "Cancel, return to main flow"
 ```
 
-### 6. Handle User Choice
+**If max passes reached without convergence (unresolved findings remain):**
+```
+Question: "Review loop completed with remaining findings. How would you like to proceed?"
+Header: "Review"
 
-**"Address findings":**
-- User makes fixes (with assistance as needed)
-- After fixes, increment `reviewPass` and loop back to sub-step 2 to re-gather changes
-- **Targeted re-dispatch (pass 2+):** Instead of re-dispatching ALL agents, only re-run the agents listed in `agentsWithFindings` from the previous pass. In addition, always include `code-reviewer` as a sanity check even if it was not in `agentsWithFindings` — it serves as the baseline quality gate. Report which agents are being re-dispatched:
-  > "Re-review pass {reviewPass}: Re-dispatching {agentsWithFindings list} (targeted) + code-reviewer (sanity check). Agents that passed cleanly last round are skipped."
-- Reset `agentsWithFindings` to empty before collecting new results. After agents complete, rebuild `agentsWithFindings` from this pass's results
-- **If `agentsWithFindings` is empty after a pass** (all re-dispatched agents passed cleanly), the review is clean — present the "no issues" decision prompt from sub-step 5
-- Continue until user is satisfied or selects a different option
+Options:
+1. "Show full diff" — "Display complete diff for manual review"
+2. "Commit and push anyway" — "Push current changes despite remaining findings"
+3. "Done for now" — "Cancel, return to main flow"
+```
 
 **"Show full diff" / "Show full diff first":**
 - Run the appropriate diff command based on `changeSource` (`git diff` for uncommitted, or the same `diffRange` that succeeded during the gather phase for committed-but-not-pushed) and **output the full diff as a markdown code block in your text response** so the user can read it
