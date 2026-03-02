@@ -212,6 +212,18 @@ describe('checkUnrespondedComments', () => {
     expect(result.hasUnrespondedComment).toBe(false);
   });
 
+  it('should include CHANGES_REQUESTED review with empty body as actionable (#431)', () => {
+    const result = checkUnrespondedComments(
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
+      [{ user: { login: 'reviewer' }, body: '', submitted_at: '2026-02-07T12:00:00Z', state: 'CHANGES_REQUESTED' }],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('reviewer');
+    expect(result.lastMaintainerComment?.body).toBe('(requested changes via inline review comments)');
+  });
+
   it('should be case-insensitive for username matching', () => {
     const result = checkUnrespondedComments(
       [{ user: { login: 'TestUser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],

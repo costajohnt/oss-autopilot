@@ -17,8 +17,6 @@ export interface UndismissOutput {
   url: string;
 }
 
-// Re-export for tests
-export { ISSUE_OR_PR_URL_PATTERN };
 
 export async function runDismiss(options: { url: string }): Promise<DismissOutput> {
   validateUrl(options.url);
