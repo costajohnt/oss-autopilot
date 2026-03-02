@@ -26,6 +26,15 @@ export function debug(module: string, message: string, ...args: unknown[]): void
 }
 
 /**
+ * Log an informational message. Always outputs to stderr.
+ * Use for user-facing progress indicators during long-running operations.
+ */
+export function info(module: string, message: string, ...args: unknown[]): void {
+  const timestamp = new Date().toISOString();
+  console.error(`[${timestamp}] [INFO] [${module}] ${message}`, ...args);
+}
+
+/**
  * Log a warning. Always outputs.
  */
 export function warn(module: string, message: string, ...args: unknown[]): void {

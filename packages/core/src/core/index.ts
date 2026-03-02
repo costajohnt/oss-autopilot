@@ -42,7 +42,7 @@ export {
   resetGitHubTokenCache,
 } from './utils.js';
 export { OssAutopilotError, ConfigurationError, ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
-export { enableDebug, isDebugEnabled, debug, warn, timed } from './logger.js';
+export { enableDebug, isDebugEnabled, debug, info, warn, timed } from './logger.js';
 export { HttpCache, getHttpCache, resetHttpCache, cachedRequest, type CacheEntry } from './http-cache.js';
 export {
   CRITICAL_STATUSES,

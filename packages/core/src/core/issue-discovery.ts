@@ -15,7 +15,7 @@ import { getStateManager } from './state.js';
 import { daysBetween, getDataDir } from './utils.js';
 import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate } from './types.js';
 import { ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
-import { warn } from './logger.js';
+import { debug, info, warn } from './logger.js';
 import { type GitHubSearchItem, isDocOnlyIssue, detectLabelFarmingRepos, applyPerRepoCap } from './issue-filtering.js';
 import { IssueVetter } from './issue-vetting.js';
 import { calculateViabilityScore as calcViabilityScore, type ViabilityScoreParams } from './issue-scoring.js';
@@ -60,7 +60,7 @@ export class IssueDiscovery {
    * Updates the state manager with the list and timestamp.
    */
   async fetchStarredRepos(): Promise<string[]> {
-    console.log('Fetching starred repositories...');
+    info(MODULE, 'Fetching starred repositories...');
     const starredRepos: string[] = [];
 
     try {
@@ -89,12 +89,12 @@ export class IssueDiscovery {
         pageCount++;
         // Limit to 5 pages (500 repos) to avoid excessive API usage
         if (pageCount >= 5) {
-          console.log('Reached pagination limit for starred repos (500)');
+          info(MODULE, 'Reached pagination limit for starred repos (500)');
           break;
         }
       }
 
-      console.log(`Fetched ${starredRepos.length} starred repositories`);
+      info(MODULE, `Fetched ${starredRepos.length} starred repositories`);
       this.stateManager.setStarredRepos(starredRepos);
       return starredRepos;
     } catch (error) {
@@ -205,7 +205,8 @@ export class IssueDiscovery {
     const includeDocIssues = config.includeDocIssues ?? true;
     const aiBlocklisted = new Set(config.aiPolicyBlocklist ?? DEFAULT_CONFIG.aiPolicyBlocklist ?? []);
     if (aiBlocklisted.size > 0) {
-      console.log(
+      debug(
+        MODULE,
         `[AI_POLICY_FILTER] Filtering issues from ${aiBlocklisted.size} blocklisted repo(s): ${[...aiBlocklisted].join(', ')}`,
       );
     }
@@ -237,7 +238,8 @@ export class IssueDiscovery {
     if (phase0Repos.length > 0) {
       const mergedInPhase0 = Math.min(mergedPRRepos.length, phase0Repos.length);
       const openInPhase0 = phase0Repos.length - mergedInPhase0;
-      console.log(
+      info(
+        MODULE,
         `Phase 0: Searching issues in ${phase0Repos.length} repos (${mergedInPhase0} merged-PR, ${openInPhase0} open-PR, no label filter)...`,
       );
 
@@ -258,7 +260,7 @@ export class IssueDiscovery {
           if (rateLimitHit) {
             rateLimitHitDuringSearch = true;
           }
-          console.log(`Found ${mergedCandidates.length} candidates from merged-PR repos`);
+          info(MODULE, `Found ${mergedCandidates.length} candidates from merged-PR repos`);
         }
       }
 
@@ -280,7 +282,7 @@ export class IssueDiscovery {
           if (rateLimitHit) {
             rateLimitHitDuringSearch = true;
           }
-          console.log(`Found ${openCandidates.length} candidates from open-PR repos`);
+          info(MODULE, `Found ${openCandidates.length} candidates from open-PR repos`);
         }
       }
     }
@@ -289,7 +291,7 @@ export class IssueDiscovery {
     if (allCandidates.length < maxResults && starredRepos.length > 0) {
       const reposToSearch = starredRepos.filter((r) => !phase0RepoSet.has(r));
       if (reposToSearch.length > 0) {
-        console.log(`Phase 1: Searching issues in ${reposToSearch.length} starred repos...`);
+        info(MODULE, `Phase 1: Searching issues in ${reposToSearch.length} starred repos...`);
         const remainingNeeded = maxResults - allCandidates.length;
         if (remainingNeeded > 0) {
           const {
@@ -304,7 +306,7 @@ export class IssueDiscovery {
           if (rateLimitHit) {
             rateLimitHitDuringSearch = true;
           }
-          console.log(`Found ${starredCandidates.length} candidates from starred repos`);
+          info(MODULE, `Found ${starredCandidates.length} candidates from starred repos`);
         }
       }
     }
@@ -312,7 +314,7 @@ export class IssueDiscovery {
     // Phase 2: General search (if still need more)
     let phase2Error: string | null = null;
     if (allCandidates.length < maxResults) {
-      console.log('Phase 2: General issue search...');
+      info(MODULE, 'Phase 2: General issue search...');
       const remainingNeeded = maxResults - allCandidates.length;
       try {
         const { data } = await this.octokit.search.issuesAndPullRequests({
@@ -322,7 +324,7 @@ export class IssueDiscovery {
           per_page: remainingNeeded * 3, // Fetch extra since some will be filtered
         });
 
-        console.log(`Found ${data.total_count} issues in general search, processing top ${data.items.length}...`);
+        info(MODULE, `Found ${data.total_count} issues in general search, processing top ${data.items.length}...`);
 
         // Detect and filter label-farming repos (#97)
         const spamRepos = detectLabelFarmingRepos(data.items);
@@ -330,7 +332,8 @@ export class IssueDiscovery {
           const spamCount = data.items.filter((i) =>
             spamRepos.has(i.repository_url.split('/').slice(-2).join('/')),
           ).length;
-          console.log(
+          debug(
+            MODULE,
             `[SPAM_FILTER] Filtered ${spamCount} issues from ${spamRepos.size} label-farming repos: ${[...spamRepos].join(', ')}`,
           );
         }
@@ -371,7 +374,7 @@ export class IssueDiscovery {
         });
         const starFilteredCount = results.length - starFiltered.length;
         if (starFilteredCount > 0) {
-          console.log(`[STAR_FILTER] Filtered ${starFilteredCount} candidates below ${minStars} stars`);
+          debug(MODULE, `[STAR_FILTER] Filtered ${starFilteredCount} candidates below ${minStars} stars`);
         }
 
         allCandidates.push(...starFiltered);
@@ -381,7 +384,7 @@ export class IssueDiscovery {
         if (vetRateLimitHit) {
           rateLimitHitDuringSearch = true;
         }
-        console.log(`Found ${starFiltered.length} candidates from general search`);
+        info(MODULE, `Found ${starFiltered.length} candidates from general search`);
       } catch (error) {
         const errMsg = errorMessage(error);
         phase2Error = errMsg;
@@ -398,7 +401,7 @@ export class IssueDiscovery {
     // Uses label-free query to cast a wider net focused on repo health.
     let phase3Error: string | null = null;
     if (allCandidates.length < maxResults) {
-      console.log('Phase 3: Searching actively maintained repos...');
+      info(MODULE, 'Phase 3: Searching actively maintained repos...');
       const remainingNeeded = maxResults - allCandidates.length;
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -417,7 +420,8 @@ export class IssueDiscovery {
           per_page: remainingNeeded * 3,
         });
 
-        console.log(
+        info(
+          MODULE,
           `Found ${data.total_count} issues in maintained-repo search, processing top ${data.items.length}...`,
         );
 
@@ -427,7 +431,8 @@ export class IssueDiscovery {
           const spamCount = data.items.filter((i) =>
             spamRepos.has(i.repository_url.split('/').slice(-2).join('/')),
           ).length;
-          console.log(
+          debug(
+            MODULE,
             `[SPAM_FILTER] Filtered ${spamCount} issues from ${spamRepos.size} label-farming repos: ${[...spamRepos].join(', ')}`,
           );
         }
@@ -463,7 +468,7 @@ export class IssueDiscovery {
         });
         const starFilteredCount = results.length - starFiltered.length;
         if (starFilteredCount > 0) {
-          console.log(`[STAR_FILTER] Filtered ${starFilteredCount} Phase 3 candidates below ${minStars} stars`);
+          debug(MODULE, `[STAR_FILTER] Filtered ${starFilteredCount} Phase 3 candidates below ${minStars} stars`);
         }
 
         allCandidates.push(...starFiltered);
@@ -473,7 +478,7 @@ export class IssueDiscovery {
         if (vetRateLimitHit) {
           rateLimitHitDuringSearch = true;
         }
-        console.log(`Found ${starFiltered.length} candidates from maintained-repo search`);
+        info(MODULE, `Found ${starFiltered.length} candidates from maintained-repo search`);
       } catch (error) {
         const errMsg = errorMessage(error);
         phase3Error = errMsg;
@@ -693,7 +698,7 @@ export class IssueDiscovery {
     content += `- **Recommendation**: Y = approve, N = skip, ? = needs_review\n`;
 
     fs.writeFileSync(outputFile, content, 'utf-8');
-    console.log(`Saved ${sorted.length} issues to ${outputFile}`);
+    info(MODULE, `Saved ${sorted.length} issues to ${outputFile}`);
 
     return outputFile;
   }
