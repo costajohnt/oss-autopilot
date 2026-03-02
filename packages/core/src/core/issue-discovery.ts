@@ -14,7 +14,7 @@ import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, getDataDir } from './utils.js';
 import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate } from './types.js';
-import { ValidationError } from './errors.js';
+import { ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
 import { warn } from './logger.js';
 import { type GitHubSearchItem, isDocOnlyIssue, detectLabelFarmingRepos, applyPerRepoCap } from './issue-filtering.js';
 import { IssueVetter } from './issue-vetting.js';
@@ -99,21 +99,21 @@ export class IssueDiscovery {
       return starredRepos;
     } catch (error) {
       const cachedRepos = this.stateManager.getStarredRepos();
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      warn(MODULE, 'Error fetching starred repos:', errorMessage);
+      const errMsg = errorMessage(error);
+      warn(MODULE, 'Error fetching starred repos:', errMsg);
 
       if (cachedRepos.length === 0) {
         warn(
           MODULE,
           `Failed to fetch starred repositories from GitHub API. ` +
-            `No cached repos available. Error: ${errorMessage}\n` +
+            `No cached repos available. Error: ${errMsg}\n` +
             `Tip: Ensure your GITHUB_TOKEN has the 'read:user' scope and try again.`,
         );
       } else {
         warn(
           MODULE,
           `Failed to fetch starred repositories from GitHub API. ` +
-            `Using ${cachedRepos.length} cached repos instead. Error: ${errorMessage}`,
+            `Using ${cachedRepos.length} cached repos instead. Error: ${errMsg}`,
         );
       }
       return cachedRepos;
@@ -164,11 +164,11 @@ export class IssueDiscovery {
       }
     } catch (error) {
       // Fail fast on auth errors — no point searching with a bad token
-      if ((error as { status?: number })?.status === 401) {
+      if (getHttpStatusCode(error) === 401) {
         throw error;
       }
       // Non-fatal: proceed with search for transient/network errors
-      warn(MODULE, 'Could not check rate limit:', error instanceof Error ? error.message : error);
+      warn(MODULE, 'Could not check rate limit:', errorMessage(error));
     }
 
     // Get merged-PR repos (highest merge probability)
@@ -383,12 +383,12 @@ export class IssueDiscovery {
         }
         console.log(`Found ${starFiltered.length} candidates from general search`);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        phase2Error = errorMessage;
+        const errMsg = errorMessage(error);
+        phase2Error = errMsg;
         if (IssueVetter.isRateLimitError(error)) {
           rateLimitHitDuringSearch = true;
         }
-        warn(MODULE, `Error in general issue search: ${errorMessage}`);
+        warn(MODULE, `Error in general issue search: ${errMsg}`);
       }
     }
 
@@ -475,12 +475,12 @@ export class IssueDiscovery {
         }
         console.log(`Found ${starFiltered.length} candidates from maintained-repo search`);
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        phase3Error = errorMessage;
+        const errMsg = errorMessage(error);
+        phase3Error = errMsg;
         if (IssueVetter.isRateLimitError(error)) {
           rateLimitHitDuringSearch = true;
         }
-        warn(MODULE, `Error in maintained-repo search: ${errorMessage}`);
+        warn(MODULE, `Error in maintained-repo search: ${errMsg}`);
       }
     }
 
@@ -598,11 +598,7 @@ export class IssueDiscovery {
           rateLimitFailures++;
         }
         const batchRepos = batch.join(', ');
-        warn(
-          MODULE,
-          `Error searching issues in batch [${batchRepos}]:`,
-          error instanceof Error ? error.message : error,
-        );
+        warn(MODULE, `Error searching issues in batch [${batchRepos}]:`, errorMessage(error));
       }
     }
 

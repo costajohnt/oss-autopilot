@@ -5,6 +5,7 @@
  */
 
 import { getStateManager, PRMonitor, IssueConversationMonitor } from '../core/index.js';
+import { errorMessage } from '../core/errors.js';
 import { toShelvedPRRef } from './daily.js';
 import type { DailyDigest, AgentState, ClosedPR, MergedPR, CommentedIssue } from '../core/types.js';
 
@@ -27,17 +28,17 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     await Promise.all([
       prMonitor.fetchUserOpenPRs(),
       prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
-        console.error(`Warning: Failed to fetch recently closed PRs: ${err instanceof Error ? err.message : err}`);
+        console.error(`Warning: Failed to fetch recently closed PRs: ${errorMessage(err)}`);
         return [];
       }),
       prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
-        console.error(`Warning: Failed to fetch recently merged PRs: ${err instanceof Error ? err.message : err}`);
+        console.error(`Warning: Failed to fetch recently merged PRs: ${errorMessage(err)}`);
         return [];
       }),
       prMonitor.fetchUserMergedPRCounts(),
       prMonitor.fetchUserClosedPRCounts(),
       issueMonitor.fetchCommentedIssues().catch((error) => {
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg = errorMessage(error);
         if (msg.includes('No GitHub username configured')) {
           console.error(`[DASHBOARD] Issue conversation tracking requires setup: ${msg}`);
         } else {
@@ -66,12 +67,12 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   try {
     stateManager.setMonthlyMergedCounts(monthlyCounts);
   } catch (error) {
-    console.error('[DASHBOARD] Failed to store monthly merged counts:', error instanceof Error ? error.message : error);
+    console.error('[DASHBOARD] Failed to store monthly merged counts:', errorMessage(error));
   }
   try {
     stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
   } catch (error) {
-    console.error('[DASHBOARD] Failed to store monthly closed counts:', error instanceof Error ? error.message : error);
+    console.error('[DASHBOARD] Failed to store monthly closed counts:', errorMessage(error));
   }
   try {
     const combinedOpenedCounts: Record<string, number> = { ...openedFromMerged };
@@ -86,7 +87,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     }
     stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
   } catch (error) {
-    console.error('[DASHBOARD] Failed to store monthly opened counts:', error instanceof Error ? error.message : error);
+    console.error('[DASHBOARD] Failed to store monthly opened counts:', errorMessage(error));
   }
 
   const digest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);

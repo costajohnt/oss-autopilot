@@ -12,6 +12,7 @@
 
 import { Command } from 'commander';
 import { getGitHubTokenAsync, enableDebug, debug, formatRelativeTime } from './core/index.js';
+import { errorMessage } from './core/errors.js';
 import { outputJson, outputJsonError } from './formatters/json.js';
 
 /** Print local repos in human-readable format */
@@ -26,7 +27,7 @@ function printRepos(repos: Record<string, { path: string; currentBranch: string 
 
 /** Shared error handler for CLI action catch blocks. */
 function handleCommandError(err: unknown, json?: boolean): never {
-  const msg = err instanceof Error ? err.message : String(err);
+  const msg = errorMessage(err);
   if (json) {
     outputJsonError(msg);
   } else {

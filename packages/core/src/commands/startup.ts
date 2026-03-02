@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execFile } from 'child_process';
 import { getStateManager, getGitHubToken } from '../core/index.js';
+import { errorMessage } from '../core/errors.js';
 import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
 import { writeDashboardFromState } from './dashboard.js';
@@ -20,7 +21,7 @@ function getVersion(): string {
     const pkgPath = path.join(path.dirname(process.argv[1]), '..', 'package.json');
     return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
   } catch (error) {
-    console.error('[STARTUP] Failed to detect CLI version:', error instanceof Error ? error.message : error);
+    console.error('[STARTUP] Failed to detect CLI version:', errorMessage(error));
     return '0.0.0';
   }
 }
@@ -78,7 +79,7 @@ export function detectIssueList(): IssueListInfo | undefined {
         source = 'configured';
       }
     } catch (error) {
-      console.error('[STARTUP] Failed to read config:', error instanceof Error ? error.message : error);
+      console.error('[STARTUP] Failed to read config:', errorMessage(error));
     }
   }
 
@@ -102,10 +103,7 @@ export function detectIssueList(): IssueListInfo | undefined {
     const { availableCount, completedCount } = countIssueListItems(content);
     return { path: issueListPath, source, availableCount, completedCount };
   } catch (error) {
-    console.error(
-      `[STARTUP] Failed to read issue list at ${issueListPath}:`,
-      error instanceof Error ? error.message : error,
-    );
+    console.error(`[STARTUP] Failed to read issue list at ${issueListPath}:`, errorMessage(error));
     return { path: issueListPath, source, availableCount: 0, completedCount: 0 };
   }
 }
@@ -164,7 +162,7 @@ export async function runStartup(): Promise<StartupOutput> {
       dashboardOpened = true;
     }
   } catch (error) {
-    console.error('[STARTUP] Dashboard generation failed:', error instanceof Error ? error.message : error);
+    console.error('[STARTUP] Dashboard generation failed:', errorMessage(error));
   }
 
   // Append dashboard status to brief summary (only startup opens the browser, not daily)

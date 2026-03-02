@@ -15,6 +15,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { getCacheDir } from './utils.js';
 import { debug } from './logger.js';
+import { getHttpStatusCode } from './errors.js';
 
 const MODULE = 'http-cache';
 
@@ -290,8 +291,5 @@ export async function cachedRequest<T>(
  * Octokit throws a RequestError with status 304 for conditional requests.
  */
 function isNotModifiedError(err: unknown): boolean {
-  if (err && typeof err === 'object' && 'status' in err) {
-    return (err as { status: number }).status === 304;
-  }
-  return false;
+  return getHttpStatusCode(err) === 304;
 }

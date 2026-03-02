@@ -18,7 +18,7 @@ import {
   SnoozeInfo,
 } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
-import { ValidationError } from './errors.js';
+import { ValidationError, errorMessage } from './errors.js';
 import { debug, warn } from './logger.js';
 
 const MODULE = 'state';
@@ -313,8 +313,7 @@ export class StateManager {
       debug(MODULE, 'Migration complete!');
       return true;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      warn(MODULE, `Failed to migrate state: ${errorMessage}`);
+      warn(MODULE, `Failed to migrate state: ${errorMessage(error)}`);
 
       // Clean up partial migration to avoid inconsistent state
       const newStatePath = getStatePath();
@@ -544,11 +543,11 @@ export class StateManager {
         try {
           fs.unlinkSync(path.join(backupDir, file));
         } catch (error) {
-          warn(MODULE, `Could not delete old backup ${file}:`, error instanceof Error ? error.message : error);
+          warn(MODULE, `Could not delete old backup ${file}:`, errorMessage(error));
         }
       }
     } catch (error) {
-      warn(MODULE, 'Could not clean up backups:', error instanceof Error ? error.message : error);
+      warn(MODULE, 'Could not clean up backups:', errorMessage(error));
     }
   }
 

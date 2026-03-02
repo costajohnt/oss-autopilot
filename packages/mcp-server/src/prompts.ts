@@ -10,7 +10,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { runDaily, runComments, runSearch } from '@oss-autopilot/core/commands';
-import { errorMessage } from './tools.js';
+import { errorMessage } from '@oss-autopilot/core';
 
 /** Build a single-message prompt result with a user text message. */
 function userMessage(text: string) {

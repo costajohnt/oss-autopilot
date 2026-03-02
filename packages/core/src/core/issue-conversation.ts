@@ -14,7 +14,7 @@ import { getStateManager } from './state.js';
 import { daysBetween, splitRepo, extractOwnerRepo } from './utils.js';
 import { runWorkerPool } from './concurrency.js';
 import type { CommentedIssue, IssueConversationStatus } from './types.js';
-import { ConfigurationError } from './errors.js';
+import { ConfigurationError, errorMessage } from './errors.js';
 import { debug, warn } from './logger.js';
 
 const MODULE = 'issue-conversation';
@@ -135,7 +135,7 @@ export class IssueConversationMonitor {
             });
           }
         } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error);
+          const msg = errorMessage(error);
           failures.push({ issueUrl: item.html_url, error: msg });
           warn(MODULE, `Error analyzing issue ${item.html_url}: ${msg}`);
         }
