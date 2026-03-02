@@ -79,7 +79,7 @@ async function fetchUserPRCounts<R>(
   if (cached && isCachedPRCounts(cached)) {
     debug(MODULE, `Using cached ${label} PR counts for @${githubUsername}`);
     return {
-      repos: new Map(cached.reposEntries),
+      repos: new Map(cached.reposEntries as [string, R][]),
       monthlyCounts: cached.monthlyCounts,
       monthlyOpenedCounts: cached.monthlyOpenedCounts,
       dailyActivityCounts: cached.dailyActivityCounts,
