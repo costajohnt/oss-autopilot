@@ -696,21 +696,21 @@ program
 
 // Dismiss command
 program
-  .command('dismiss <issue-url>')
-  .description('Dismiss issue reply notifications (resurfaces on new activity)')
+  .command('dismiss <url>')
+  .description('Dismiss notifications for an issue or PR (resurfaces on new activity)')
   .option('--json', 'Output as JSON')
-  .action(async (issueUrl, options) => {
+  .action(async (url, options) => {
     try {
       const { runDismiss } = await import('./commands/dismiss.js');
-      const data = await runDismiss({ issueUrl });
+      const data = await runDismiss({ url });
       if (options.json) {
         outputJson(data);
       } else if (data.dismissed) {
-        console.log(`Dismissed: ${issueUrl}`);
-        console.log('Issue reply notifications are now muted.');
+        console.log(`Dismissed: ${url}`);
+        console.log('Notifications are now muted.');
         console.log('New responses after this point will resurface automatically.');
       } else {
-        console.log('Issue is already dismissed.');
+        console.log('Already dismissed.');
       }
     } catch (err) {
       handleCommandError(err, options.json);
@@ -719,20 +719,20 @@ program
 
 // Undismiss command
 program
-  .command('undismiss <issue-url>')
-  .description('Undismiss an issue (re-enable reply notifications)')
+  .command('undismiss <url>')
+  .description('Undismiss an issue or PR (re-enable notifications)')
   .option('--json', 'Output as JSON')
-  .action(async (issueUrl, options) => {
+  .action(async (url, options) => {
     try {
       const { runUndismiss } = await import('./commands/dismiss.js');
-      const data = await runUndismiss({ issueUrl });
+      const data = await runUndismiss({ url });
       if (options.json) {
         outputJson(data);
       } else if (data.undismissed) {
-        console.log(`Undismissed: ${issueUrl}`);
-        console.log('Issue reply notifications are active again.');
+        console.log(`Undismissed: ${url}`);
+        console.log('Notifications are active again.');
       } else {
-        console.log('Issue was not dismissed.');
+        console.log('Was not dismissed.');
       }
     } catch (err) {
       handleCommandError(err, options.json);

@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import {
   PR_URL_PATTERN,
   ISSUE_URL_PATTERN,
+  ISSUE_OR_PR_URL_PATTERN,
   validateUrl,
   validatePRNumber,
   validateMessage,
@@ -43,6 +44,28 @@ describe('ISSUE_URL_PATTERN', () => {
     expect(ISSUE_URL_PATTERN.test('https://github.com/owner/repo/pull/123')).toBe(false);
     expect(ISSUE_URL_PATTERN.test('https://github.com/owner/repo/issues/')).toBe(false);
     expect(ISSUE_URL_PATTERN.test('not-a-url')).toBe(false);
+  });
+});
+
+describe('ISSUE_OR_PR_URL_PATTERN (#416)', () => {
+  it.each([
+    ['https://github.com/owner/repo/issues/123', 'issue URL'],
+    ['https://github.com/owner/repo/pull/123', 'PR URL'],
+    ['https://github.com/my-org/my-repo/pull/1', 'hyphenated PR'],
+    ['https://github.com/owner/repo.js/pull/42', 'dotted repo PR'],
+  ])('should match %s (%s)', (url) => {
+    expect(ISSUE_OR_PR_URL_PATTERN.test(url)).toBe(true);
+  });
+
+  it.each([
+    ['https://gitlab.com/owner/repo/pull/1', 'non-GitHub host'],
+    ['http://github.com/owner/repo/pull/1', 'HTTP (non-HTTPS)'],
+    ['https://github.com/owner/repo/pull/123/', 'trailing slash'],
+    ['https://github.com/owner/repo/pulls', 'pulls listing'],
+    ['https://github.com/owner/repo', 'bare repo URL'],
+    ['', 'empty string'],
+  ])('should reject %s (%s)', (url) => {
+    expect(ISSUE_OR_PR_URL_PATTERN.test(url)).toBe(false);
   });
 });
 
@@ -147,6 +170,15 @@ describe('validateGitHubUrl', () => {
   it('should include expected format in error message', () => {
     expect(() => validateGitHubUrl('bad-url', PR_URL_PATTERN, 'PR')).toThrow(
       'Expected format: https://github.com/owner/repo/pull/123',
+    );
+  });
+
+  it('should throw with combined format for issue or PR (#416)', () => {
+    expect(() => validateGitHubUrl('bad-url', ISSUE_OR_PR_URL_PATTERN, 'issue or PR')).toThrow(
+      'Invalid issue or PR URL',
+    );
+    expect(() => validateGitHubUrl('bad-url', ISSUE_OR_PR_URL_PATTERN, 'issue or PR')).toThrow(
+      'Expected format: https://github.com/owner/repo/issues/123 or https://github.com/owner/repo/pull/123',
     );
   });
 });

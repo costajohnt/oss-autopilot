@@ -10,6 +10,9 @@ export const PR_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/
 /** Matches GitHub issue URLs: https://github.com/owner/repo/issues/123 */
 export const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+$/;
 
+/** Matches GitHub issue or PR URLs: /issues/123 or /pull/123 */
+export const ISSUE_OR_PR_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/(issues|pull)\/\d+$/;
+
 /** Maximum allowed URL length */
 const MAX_URL_LENGTH = 2048;
 /** Maximum allowed PR/issue number */
@@ -22,12 +25,15 @@ const REPO_PATTERN = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
 /**
  * Validate a GitHub URL against a pattern. Throws if invalid.
  */
-export function validateGitHubUrl(url: string, pattern: RegExp, entityType: 'PR' | 'issue'): void {
+export function validateGitHubUrl(url: string, pattern: RegExp, entityType: 'PR' | 'issue' | 'issue or PR'): void {
   if (pattern.test(url)) return;
 
-  const example =
-    entityType === 'PR' ? 'https://github.com/owner/repo/pull/123' : 'https://github.com/owner/repo/issues/123';
-  throw new ValidationError(`Invalid ${entityType} URL: ${url}. Expected format: ${example}`);
+  const examples: Record<string, string> = {
+    PR: 'https://github.com/owner/repo/pull/123',
+    issue: 'https://github.com/owner/repo/issues/123',
+    'issue or PR': 'https://github.com/owner/repo/issues/123 or https://github.com/owner/repo/pull/123',
+  };
+  throw new ValidationError(`Invalid ${entityType} URL: ${url}. Expected format: ${examples[entityType]}`);
 }
 
 /**

@@ -473,7 +473,10 @@ function generateDigestOutput(
   const snoozedUrls = new Set(
     Object.keys(stateManager.getState().config.snoozedPRs ?? {}).filter((url) => stateManager.isSnoozed(url)),
   );
-  const actionableIssues = collectActionableIssues(activePRs, snoozedUrls);
+  // Filter dismissed PR URLs from actionable issues (#416)
+  const dismissedUrls = new Set(Object.keys(stateManager.getState().config.dismissedIssues ?? {}));
+  const nonDismissedPRs = activePRs.filter((pr) => !dismissedUrls.has(pr.url));
+  const actionableIssues = collectActionableIssues(nonDismissedPRs, snoozedUrls);
   digest.summary.totalNeedingAttention = actionableIssues.length;
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length);
   const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues);

@@ -561,6 +561,43 @@ describe('executeDailyCheck() — snoozed PR filtering', () => {
 });
 
 // ---------------------------------------------------------------------------
+// executeDailyCheck() — dismissed PR URL filtering (#416)
+// ---------------------------------------------------------------------------
+
+describe('executeDailyCheck() — dismissed PR URL filtering (#416)', () => {
+  it('excludes dismissed PR URLs from actionableIssues', async () => {
+    const dismissedPR = makePR({ repo: 'owner/repo', number: 1, status: 'needs_response' });
+    const activePR = makePR({ repo: 'owner/repo', number: 2, status: 'needs_response' });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [dismissedPR, activePR], failures: [] });
+    mockGenerateDigest.mockReturnValue(makeDigest([dismissedPR, activePR]));
+    mockIsPRShelved.mockReturnValue(false);
+
+    mockGetState.mockReturnValue(
+      makeDefaultState({
+        config: {
+          setupComplete: true,
+          githubUsername: 'testuser',
+          maxActivePRs: 10,
+          languages: [],
+          labels: [],
+          excludeRepos: [],
+          trustedProjects: [],
+          shelvedPRUrls: [],
+          dismissedIssues: { [dismissedPR.url]: '2026-01-01T00:00:00Z' },
+          snoozedPRs: {},
+        },
+      }),
+    );
+
+    const result = await executeDailyCheck('test-token');
+
+    const needsResponseIssues = result.actionableIssues.filter((i) => i.type === 'needs_response');
+    expect(needsResponseIssues).toHaveLength(1);
+    expect(needsResponseIssues[0].prUrl).toBe(activePR.url);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // executeDailyCheck() — JSON output shape
 // ---------------------------------------------------------------------------
 

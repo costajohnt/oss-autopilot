@@ -3,34 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ISSUE_URL_PATTERN } from './dismiss.js';
-
-describe('ISSUE_URL_PATTERN', () => {
-  it.each([
-    ['https://github.com/owner/repo/issues/123', 'standard URL'],
-    ['https://github.com/my-org/my-repo/issues/1', 'hyphenated names'],
-    ['https://github.com/owner/repo.js/issues/42', 'dotted repo name'],
-    ['https://github.com/my_org/my_repo/issues/7', 'underscored names'],
-    ['https://github.com/owner/repo/issues/99999', 'large issue number'],
-  ])('should match %s (%s)', (url) => {
-    expect(ISSUE_URL_PATTERN.test(url)).toBe(true);
-  });
-
-  it.each([
-    ['https://github.com/owner/repo/pull/123', 'PR URL'],
-    ['https://gitlab.com/owner/repo/issues/1', 'non-GitHub host'],
-    ['http://github.com/owner/repo/issues/1', 'HTTP (non-HTTPS)'],
-    ['https://github.com/owner/repo/issues/123/', 'trailing slash'],
-    ['https://github.com/owner/repo/issues/123?q=test', 'query parameters'],
-    ['https://github.com/owner/repo/issues/123#comment', 'fragment identifier'],
-    ['https://github.com/owner/repo/issues/', 'missing issue number'],
-    ['https://github.com/owner/repo', 'bare repo URL'],
-    ['', 'empty string'],
-    ['https://github.com/owner/repo/issues/123/timeline', 'extra path segments'],
-  ])('should reject %s (%s)', (url) => {
-    expect(ISSUE_URL_PATTERN.test(url)).toBe(false);
-  });
-});
+// Pattern tests are in validation.test.ts (canonical home for URL patterns)
 
 // Mock getStateManager for command-level tests
 vi.mock('../core/index.js', () => ({
@@ -43,6 +16,7 @@ import { runDismiss, runUndismiss } from './dismiss.js';
 const mockGetStateManager = vi.mocked(getStateManager);
 
 const TEST_ISSUE_URL = 'https://github.com/owner/repo/issues/1';
+const TEST_PR_URL = 'https://github.com/owner/repo/pull/42';
 
 describe('runDismiss', () => {
   const mockSave = vi.fn();
@@ -58,16 +32,25 @@ describe('runDismiss', () => {
 
   it('should dismiss an issue and save state', async () => {
     mockDismissIssue.mockReturnValue(true);
-    const result = await runDismiss({ issueUrl: TEST_ISSUE_URL });
+    const result = await runDismiss({ url: TEST_ISSUE_URL });
 
     expect(mockDismissIssue).toHaveBeenCalledWith(TEST_ISSUE_URL, expect.any(String));
     expect(mockSave).toHaveBeenCalled();
     expect(result).toEqual({ dismissed: true, url: TEST_ISSUE_URL });
   });
 
+  it('should dismiss a PR URL and save state (#416)', async () => {
+    mockDismissIssue.mockReturnValue(true);
+    const result = await runDismiss({ url: TEST_PR_URL });
+
+    expect(mockDismissIssue).toHaveBeenCalledWith(TEST_PR_URL, expect.any(String));
+    expect(mockSave).toHaveBeenCalled();
+    expect(result).toEqual({ dismissed: true, url: TEST_PR_URL });
+  });
+
   it('should not save state when issue is already dismissed', async () => {
     mockDismissIssue.mockReturnValue(false);
-    const result = await runDismiss({ issueUrl: TEST_ISSUE_URL });
+    const result = await runDismiss({ url: TEST_ISSUE_URL });
 
     expect(mockSave).not.toHaveBeenCalled();
     expect(result).toEqual({ dismissed: false, url: TEST_ISSUE_URL });
@@ -88,16 +71,25 @@ describe('runUndismiss', () => {
 
   it('should undismiss an issue and save state', async () => {
     mockUndismissIssue.mockReturnValue(true);
-    const result = await runUndismiss({ issueUrl: TEST_ISSUE_URL });
+    const result = await runUndismiss({ url: TEST_ISSUE_URL });
 
     expect(mockUndismissIssue).toHaveBeenCalledWith(TEST_ISSUE_URL);
     expect(mockSave).toHaveBeenCalled();
     expect(result).toEqual({ undismissed: true, url: TEST_ISSUE_URL });
   });
 
+  it('should undismiss a PR URL and save state (#416)', async () => {
+    mockUndismissIssue.mockReturnValue(true);
+    const result = await runUndismiss({ url: TEST_PR_URL });
+
+    expect(mockUndismissIssue).toHaveBeenCalledWith(TEST_PR_URL);
+    expect(mockSave).toHaveBeenCalled();
+    expect(result).toEqual({ undismissed: true, url: TEST_PR_URL });
+  });
+
   it('should not save state when issue was not dismissed', async () => {
     mockUndismissIssue.mockReturnValue(false);
-    const result = await runUndismiss({ issueUrl: TEST_ISSUE_URL });
+    const result = await runUndismiss({ url: TEST_ISSUE_URL });
 
     expect(mockSave).not.toHaveBeenCalled();
     expect(result).toEqual({ undismissed: false, url: TEST_ISSUE_URL });

@@ -301,26 +301,26 @@ export function registerTools(server: McpServer): void {
     wrapTool(runUnshelve),
   );
 
-  // 18. dismiss — Dismiss an issue
+  // 18. dismiss — Dismiss an issue or PR
   server.registerTool(
     'dismiss',
     {
-      description: 'Dismiss a GitHub issue so it no longer appears in search results.',
+      description: 'Dismiss a GitHub issue or PR so it no longer appears in notifications.',
       inputSchema: {
-        issueUrl: z.string().describe('Full GitHub issue URL to dismiss'),
+        url: z.string().describe('Full GitHub issue or PR URL to dismiss'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
     wrapTool(runDismiss),
   );
 
-  // 19. undismiss — Undismiss an issue
+  // 19. undismiss — Undismiss an issue or PR
   server.registerTool(
     'undismiss',
     {
-      description: 'Undismiss a previously dismissed issue, allowing it to appear in search results again.',
+      description: 'Undismiss a previously dismissed issue or PR, re-enabling notifications.',
       inputSchema: {
-        issueUrl: z.string().describe('Full GitHub issue URL to undismiss'),
+        url: z.string().describe('Full GitHub issue or PR URL to undismiss'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
