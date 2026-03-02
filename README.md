@@ -9,12 +9,15 @@ OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you 
 ![CI](https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg)
 ![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/costajohnt/oss-autopilot/badges/.github/badges/tests.json)
 ![License](https://img.shields.io/badge/license-MIT-green)
-[![npm](https://img.shields.io/npm/v/oss-autopilot)](https://www.npmjs.com/package/oss-autopilot)
+[![npm @oss-autopilot/core](https://img.shields.io/npm/v/@oss-autopilot/core)](https://www.npmjs.com/package/@oss-autopilot/core)
+[![npm @oss-autopilot/mcp](https://img.shields.io/npm/v/@oss-autopilot/mcp)](https://www.npmjs.com/package/@oss-autopilot/mcp)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 
 ![OSS Autopilot Demo](docs/images/demo.gif)
 
 ## Install in 60 Seconds
+
+### Claude Code Plugin (recommended)
 
 **Prerequisites:** [Claude Code](https://claude.ai/claude-code), Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh auth login`)
 
@@ -24,6 +27,40 @@ OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you 
 ```
 
 Restart Claude Code, then run `/setup-oss`. Done.
+
+### MCP Server (Cursor, Claude Desktop, Codex, Windsurf)
+
+```bash
+npx @oss-autopilot/mcp@latest --init <your-github-username>
+```
+
+Then add to your MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "oss-autopilot": {
+      "command": "npx",
+      "args": ["@oss-autopilot/mcp@latest"]
+    }
+  }
+}
+```
+
+The MCP server exposes 21 tools, 5 resources, and 3 prompts — the full OSS Autopilot feature set.
+
+### npm Package (programmatic use)
+
+```bash
+npm install @oss-autopilot/core
+```
+
+```typescript
+import { runDaily, runSearch, runStatus } from '@oss-autopilot/core/commands';
+
+const digest = await runDaily();
+const issues = await runSearch({ maxResults: 10 });
+```
 
 ## What Happens When You Run `/oss`
 
@@ -303,37 +340,54 @@ The cycle continues. Each merged PR improves your repo relationship score, surfa
 
 ## Updating
 
+**Plugin:**
 ```
 /plugin marketplace update oss-autopilot
 ```
 
-Your configuration is preserved. The CLI bundle auto-rebuilds after upgrades. See the [Changelog](packages/core/CHANGELOG.md) for what's new.
+**MCP server / CLI:** Uses `npx @latest` by default, so you always get the latest version. Or pin a version in your config.
+
+Your configuration is preserved across updates. See the [Changelog](packages/core/CHANGELOG.md) for what's new.
 
 ---
 
 ## How It Works
 
-OSS Autopilot uses a hybrid architecture: deterministic TypeScript for speed and reliability, Claude for judgment and communication.
+OSS Autopilot is a **pnpm monorepo** with three packages, plus a plugin layer:
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Claude Code Plugin Layer                       │
-│  - /oss and /setup-oss commands                 │
-│  - 7 specialized agents for different tasks     │
-│  - Pre-commit hooks enforcing workflow rules    │
-│  - Contribution best-practice skills            │
-├─────────────────────────────────────────────────┤
-│  TypeScript CLI (deterministic, fast)           │
-│  - Fetches all open PRs from GitHub Search API  │
-│  - Outputs structured JSON for Claude to parse  │
-│  - Generates HTML dashboard                     │
-├─────────────────────────────────────────────────┤
-│  Core Logic (tested, type-safe)                 │
-│  - State management with auto-backups           │
-│  - PR health monitoring and status detection    │
-│  - Capacity assessment                          │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  Claude Code Plugin Layer                        │
+│  /oss and /setup-oss commands                    │
+│  7 specialized agents, contribution skills       │
+├──────────────────────────────────────────────────┤
+│                                                  │
+│  ┌──────────────┐  ┌──────────────────────────┐  │
+│  │ MCP Server   │  │ Interactive Dashboard     │  │
+│  │ @oss-auto-   │  │ @oss-autopilot/dashboard │  │
+│  │ pilot/mcp    │  │ Preact + Vite             │  │
+│  │              │  │ Charts, PR health view    │  │
+│  │ 21 tools     │  │                          │  │
+│  │ 5 resources  │  │                          │  │
+│  │ 3 prompts    │  │                          │  │
+│  └──────┬───────┘  └────────────┬─────────────┘  │
+│         │                       │                │
+│  ┌──────┴───────────────────────┴─────────────┐  │
+│  │ Core Library — @oss-autopilot/core         │  │
+│  │ PR monitoring, issue discovery, state mgmt │  │
+│  │ GitHub API, CLI, structured JSON output    │  │
+│  └────────────────────────────────────────────┘  │
+│                                                  │
+└──────────────────────────────────────────────────┘
 ```
+
+| Package | npm | Description |
+|---------|-----|-------------|
+| `@oss-autopilot/core` | [![npm](https://img.shields.io/npm/v/@oss-autopilot/core)](https://www.npmjs.com/package/@oss-autopilot/core) | Core library + CLI. PR monitoring, issue discovery, state management, GitHub API. |
+| `@oss-autopilot/mcp` | [![npm](https://img.shields.io/npm/v/@oss-autopilot/mcp)](https://www.npmjs.com/package/@oss-autopilot/mcp) | MCP server for Cursor, Claude Desktop, Codex, Windsurf, and any MCP client. |
+| `@oss-autopilot/dashboard` | — | Interactive HTML dashboard with charts and PR health view. |
+
+### CLI
 
 The CLI supports `--json` on every command for structured output:
 
@@ -342,13 +396,25 @@ The CLI supports `--json` on every command for structured output:
 /oss
 
 # Run CLI directly (scripting / debugging)
-GITHUB_TOKEN=$(gh auth token) node packages/core/dist/cli.bundle.cjs daily --json
-GITHUB_TOKEN=$(gh auth token) node packages/core/dist/cli.bundle.cjs search 10 --json
-node packages/core/dist/cli.bundle.cjs status --json
-node packages/core/dist/cli.bundle.cjs dashboard
+GITHUB_TOKEN=$(gh auth token) npx @oss-autopilot/core daily --json
+GITHUB_TOKEN=$(gh auth token) npx @oss-autopilot/core search 10 --json
+npx @oss-autopilot/core status --json
+npx @oss-autopilot/core dashboard
 ```
 
 All commands return `{ success, data, error, timestamp }`, useful for building your own tooling on top.
+
+### MCP Server
+
+The MCP server wraps every CLI command as an MCP tool, making OSS Autopilot available to any MCP-compatible client:
+
+| Feature | What's exposed |
+|---------|---------------|
+| **21 tools** | `daily`, `status`, `search`, `vet`, `track`, `untrack`, `read`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `snooze`, `unsnooze` |
+| **5 resources** | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}` |
+| **3 prompts** | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues) |
+
+Supports both **stdio** (default) and **HTTP/SSE** (`--http --port 3100`) transports.
 
 ---
 
@@ -357,9 +423,27 @@ All commands return `{ success, data, error, timestamp }`, useful for building y
 ```bash
 git clone https://github.com/costajohnt/oss-autopilot.git
 cd oss-autopilot
-pnpm install
-pnpm test                    # Run all tests (vitest)
+pnpm install                 # Install all workspace dependencies
+pnpm test                    # Run all tests across all packages
 pnpm start -- daily --json   # Run CLI via tsx (no bundle needed)
+pnpm run bundle              # Rebuild CLI bundle (esbuild)
+```
+
+### Project Structure
+
+```
+├── commands/                    # Plugin slash commands (/oss, /setup-oss)
+├── agents/                      # 7 specialized agents (PR responder, issue scout, etc.)
+├── skills/                      # Contribution best practices
+├── packages/
+│   ├── core/                    # @oss-autopilot/core — CLI + core library
+│   │   ├── src/commands/        # CLI subcommands
+│   │   ├── src/core/            # Domain logic + tests
+│   │   └── dist/cli.bundle.cjs  # Built bundle (auto-generated)
+│   ├── mcp-server/              # @oss-autopilot/mcp — MCP server
+│   │   └── src/                 # Tools, resources, prompts, server
+│   └── dashboard/               # @oss-autopilot/dashboard — Interactive UI
+└── pnpm-workspace.yaml          # Workspace definition
 ```
 
 Test as a local plugin:
@@ -440,7 +524,7 @@ Config in `.claude/oss-autopilot/config.md`. State and dashboard in `~/.oss-auto
 Yes, as long as your GitHub CLI (`gh`) has access.
 
 **Can I use this without Claude Code?**
-The CLI can run standalone (`node packages/core/dist/cli.bundle.cjs daily --json`), but it's designed for the Claude Code plugin experience.
+Yes. The **MCP server** (`npx @oss-autopilot/mcp`) works with Cursor, Claude Desktop, Codex, Windsurf, and any MCP client. The **CLI** (`npx @oss-autopilot/core daily --json`) runs standalone. The **npm package** (`@oss-autopilot/core`) can be imported programmatically. The Claude Code plugin provides the best experience with specialized agents and skills, but all core functionality is available through any path.
 
 **GitLab / Gitea / Bitbucket support?**
 Not yet — see [Limitations](#limitations) below.
