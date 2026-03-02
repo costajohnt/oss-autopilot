@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.2](https://github.com/costajohnt/oss-autopilot/compare/core-v0.42.1...core-v0.42.2) (2026-03-02)
+
+
+### Bug Fixes
+
+* dismiss command accepts PR URLs and filters them from actionable items ([#416](https://github.com/costajohnt/oss-autopilot/issues/416)) ([#464](https://github.com/costajohnt/oss-autopilot/issues/464)) ([20f6f3c](https://github.com/costajohnt/oss-autopilot/commit/20f6f3cec5c47a6e0524679dfd8f82377690c89a))
+* include CHANGES_REQUESTED reviews with empty body in timeline ([#431](https://github.com/costajohnt/oss-autopilot/issues/431)) ([#462](https://github.com/costajohnt/oss-autopilot/issues/462)) ([4b8f664](https://github.com/costajohnt/oss-autopilot/commit/4b8f664f2367b6659dadd05b76e1c1bb10138277))
+* remove dead code, extract Phase 2/3 helper, and add error path tests ([#414](https://github.com/costajohnt/oss-autopilot/issues/414)) ([#465](https://github.com/costajohnt/oss-autopilot/issues/465)) ([1d8cd3b](https://github.com/costajohnt/oss-autopilot/commit/1d8cd3b9a7bc2c59f2d2acb82bda4951278fb9d3))
+
 ## [0.42.1](https://github.com/costajohnt/oss-autopilot/compare/core-v0.42.0...core-v0.42.1) (2026-03-02)
 
 
