@@ -44,38 +44,36 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
   // Get PR details
   const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number });
 
-  // Get review comments (inline code comments)
-  const reviewComments = await paginateAll((page) =>
-    octokit.pulls.listReviewComments({
-      owner,
-      repo,
-      pull_number,
-      per_page: 100,
-      page,
-    }),
-  );
-
-  // Get issue comments (general PR discussion)
-  const issueComments = await paginateAll((page) =>
-    octokit.issues.listComments({
-      owner,
-      repo,
-      issue_number: pull_number,
-      per_page: 100,
-      page,
-    }),
-  );
-
-  // Get reviews
-  const reviews = await paginateAll((page) =>
-    octokit.pulls.listReviews({
-      owner,
-      repo,
-      pull_number,
-      per_page: 100,
-      page,
-    }),
-  );
+  // Fetch review comments, issue comments, and reviews in parallel
+  const [reviewComments, issueComments, reviews] = await Promise.all([
+    paginateAll((page) =>
+      octokit.pulls.listReviewComments({
+        owner,
+        repo,
+        pull_number,
+        per_page: 100,
+        page,
+      }),
+    ),
+    paginateAll((page) =>
+      octokit.issues.listComments({
+        owner,
+        repo,
+        issue_number: pull_number,
+        per_page: 100,
+        page,
+      }),
+    ),
+    paginateAll((page) =>
+      octokit.pulls.listReviews({
+        owner,
+        repo,
+        pull_number,
+        per_page: 100,
+        page,
+      }),
+    ),
+  ]);
 
   // Filter out own comments, optionally show bots
   const username = stateManager.getState().config.githubUsername;

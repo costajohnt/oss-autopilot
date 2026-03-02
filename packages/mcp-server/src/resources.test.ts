@@ -35,6 +35,10 @@ vi.mock('@oss-autopilot/core/commands', () => ({
 }));
 
 vi.mock('@oss-autopilot/core', () => ({
+  splitRepo: (fullName: string) => {
+    const [owner, repo] = fullName.split('/');
+    return { owner, repo };
+  },
   getStateManager: vi.fn().mockReturnValue({
     getState: vi.fn().mockReturnValue({
       lastDigest: {
