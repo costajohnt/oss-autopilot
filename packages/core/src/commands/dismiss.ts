@@ -17,7 +17,6 @@ export interface UndismissOutput {
   url: string;
 }
 
-
 export async function runDismiss(options: { url: string }): Promise<DismissOutput> {
   validateUrl(options.url);
   validateGitHubUrl(options.url, ISSUE_OR_PR_URL_PATTERN, 'issue or PR');
