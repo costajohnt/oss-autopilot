@@ -107,6 +107,20 @@ Task(pr-review-toolkit:code-reviewer,
    Convention notes: {any CONTRIBUTING.md or lint config findings}
    Changed files: {changed files list}
 
+   Additional checks:
+   - API naming conventions: If new public API surface is added (exports, options, CLI flags),
+     scan existing APIs in the same module for naming patterns. Flag double-negative boolean
+     names (e.g., nonInteractive when the codebase uses positive booleans like interactive).
+   - JS/TS truthiness: Flag !obj.prop when the intent is to check for false specifically
+     but undefined would also match. Flag === false vs !prop inconsistencies. Flag boolean
+     coercion of values that could be 0, "", or null where the intent is only to check
+     for undefined.
+   - Documentation accuracy: If docs/README/JSDoc are changed, cross-reference factual claims
+     against the actual code. Check that option descriptions match defaults (don't say
+     "Enable X" for a feature that's on by default). If code behavior changed but docs
+     were NOT changed, flag any docs/JSDoc/comments on the changed functions that describe
+     the old behavior.
+
    Diff:
    {git diff output}")
 
@@ -129,11 +143,20 @@ Task(pr-review-toolkit:code-simplifier,
    {git diff output}")
 
 Task(pr-review-toolkit:pr-test-analyzer,
-  "Analyze test coverage for the following code changes. Check if modified code paths
-   have tests, identify gaps, and recommend what tests should be added.
+  "Analyze test coverage and assertion quality for the following code changes.
    Working directory: {local repo path}
    Test directory: {test dir path}
    Changed files: {changed files list}
+
+   Coverage: Check if modified code paths have tests, identify gaps.
+
+   Assertion strength: For each new or modified test, ask 'If I broke the feature under
+   test, would this test actually catch it?' Flag:
+   - Assertions too broad (only checking final output, not intermediate states)
+   - Test names claiming comprehensive coverage but only checking a subset
+   - Tests that would still pass if the feature regressed (e.g., only .toBeDefined()
+     when a specific value is expected)
+   - Override/disable tests that don't prove the override is working, just that code runs
 
    Diff:
    {git diff output}")
@@ -202,11 +225,14 @@ After all agents complete, merge their outputs into a unified report. Deduplicat
 ### Minor ({count}) — Nice to have
 - **{file}:{line}** — {description}
 
-### Test Coverage
-- {assessment from pr-test-analyzer}
+### Test Coverage & Quality
+- {assessment from pr-test-analyzer, including assertion strength concerns}
+
+### Documentation Accuracy
+- {any doc/README claims that don't match the code, or stale docs not updated after code changes}
 
 ### Convention Alignment
-- {any style/convention mismatches}
+- {any style/convention/naming mismatches}
 ```
 
 If NO issues found across all agents:

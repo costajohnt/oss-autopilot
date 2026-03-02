@@ -102,6 +102,11 @@ Also look at 2-3 existing files in the same directories as changed files to infe
 - Comment style
 - Test file location and naming patterns
 
+**API naming convention scan:** If the diff adds new public API surface (exported functions, options, CLI flags, config keys), scan existing APIs in the same module for naming patterns:
+- Positive vs negative booleans — if the codebase uses `interactive`, don't introduce `nonInteractive` (double negative)
+- Consistent casing — if existing options use camelCase, don't introduce snake_case
+- Prefix/suffix conventions — if getters use `getX()`, don't introduce `fetchX()` unless that's an established pattern
+
 ## Phase 2.5: Security Scan
 
 Scan the diff for common security issues. This catches problems before they reach CI (where CodeQL provides deeper static analysis).
@@ -139,12 +144,16 @@ Review the diff (from Phase 1) for:
 - **Style mismatches**: Naming inconsistent with repo conventions, wrong indentation, import order
 - **Missing error handling**: Unhandled promise rejections, missing try/catch for I/O
 - **Unnecessary complexity**: Overly nested logic, duplicate code that could be simplified
+- **Truthiness gotchas** (JS/TS only):
+  - Flag `!obj.prop` when the intent is to check for `false` specifically but `undefined` would also match
+  - Flag `=== false` when `!prop` would suffice and `undefined` is not a concern
+  - Flag boolean coercion of values that could be `0`, `""`, or `null` where the intent is only to check for `undefined`
 
 ### Minor (nice to have)
 - **Readability**: Unclear variable names, missing context in complex logic
 - **Consistency**: Mixed patterns within the same file
 
-## Phase 4: Test Coverage Assessment
+## Phase 4: Test Coverage and Quality Assessment
 
 Check if the changes should include tests:
 
@@ -164,6 +173,23 @@ Check if the changes should include tests:
    - Refactoring → existing tests should still pass
    - Config/docs changes → no tests needed
 
+4. **Test assertion strength** — For each new or modified test, ask: "If I broke the feature under test, would this test actually catch it?"
+   - Flag assertions that are too broad (e.g., checking only final output without verifying intermediate states)
+   - Flag test names that claim comprehensive coverage but only check a subset of behavior
+   - Flag tests that would still pass if the feature regressed (e.g., only checking `.toBeDefined()` or `.toBeTruthy()` when a specific value is expected)
+   - Verify that "override" or "disable" tests actually prove the override is working, not just that the code runs without error
+
+## Phase 4.5: Documentation Accuracy
+
+If the diff includes changes to README, docs, JSDoc, or code comments:
+
+1. **Cross-reference claims against code** — For each factual statement (e.g., "X is automatically disabled when Y"), verify that the actual code implements that behavior
+2. **Check option descriptions match defaults** — Don't say "Enable X" for a feature that's on by default; use "Disable X" or "Control whether X is enabled (default: on)"
+
+Regardless of whether docs were changed:
+
+3. **Flag stale documentation** — If code behavior changed (new defaults, renamed options, removed features, changed signatures), check whether any docs, README sections, JSDoc, or inline comments on the changed functions describe that behavior and need updating
+
 ## Phase 5: Consolidated Report
 
 Present findings in this format:
@@ -182,11 +208,16 @@ Present findings in this format:
 ### Minor ({count})
 - **{file}:{line}** — {description}
 
-### Test Coverage
+### Test Coverage & Quality
 - {assessment of whether tests are needed and what's missing}
+- {test assertion strength concerns, if any}
+
+### Documentation Accuracy
+- {any doc/README claims that don't match the code, or stale docs not updated after code changes}
 
 ### Convention Alignment
 - {any style/convention mismatches with the target repo}
+- {API naming deviations, if new public API was added}
 ```
 
 If there are NO issues found:
