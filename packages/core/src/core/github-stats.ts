@@ -4,7 +4,7 @@
  */
 
 import { Octokit } from '@octokit/rest';
-import { extractOwnerRepo, parseGitHubUrl } from './utils.js';
+import { extractOwnerRepo, parseGitHubUrl, isOwnRepo } from './utils.js';
 import { ClosedPR, MergedPR } from './types.js';
 import { debug, warn } from './logger.js';
 
@@ -74,7 +74,7 @@ async function fetchUserPRCounts<R>(
       const repo = `${owner}/${parsed.repo}`;
 
       // Skip own repos (PRs to your own repos aren't OSS contributions)
-      if (owner.toLowerCase() === githubUsername.toLowerCase()) continue;
+      if (isOwnRepo(owner, githubUsername)) continue;
 
       // Note: excludeRepos/excludeOrgs are intentionally NOT filtered here.
       // Those filters control issue discovery/search, not historical statistics.
@@ -201,7 +201,7 @@ export async function fetchRecentPRs<T>(
     const repo = `${parsed.owner}/${parsed.repo}`;
 
     // Skip own repos
-    if (parsed.owner.toLowerCase() === config.githubUsername.toLowerCase()) continue;
+    if (isOwnRepo(parsed.owner, config.githubUsername)) continue;
 
     // Skip excluded repos and orgs
     if (config.excludeRepos.includes(repo)) continue;

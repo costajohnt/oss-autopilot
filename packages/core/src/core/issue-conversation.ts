@@ -11,7 +11,7 @@ import { getOctokit } from './github.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 import { paginateAll } from './pagination.js';
 import { getStateManager } from './state.js';
-import { daysBetween, splitRepo, extractOwnerRepo } from './utils.js';
+import { daysBetween, splitRepo, extractOwnerRepo, isOwnRepo } from './utils.js';
 import { runWorkerPool } from './concurrency.js';
 import type { CommentedIssue, IssueConversationStatus } from './types.js';
 import { ConfigurationError, errorMessage } from './errors.js';
@@ -96,7 +96,7 @@ export class IssueConversationMonitor {
       const repoFullName = `${owner}/${repo}`;
 
       // Skip issues in user-owned repos (we only care about contributing to others' projects)
-      if (owner.toLowerCase() === username.toLowerCase()) continue;
+      if (isOwnRepo(owner, username)) continue;
 
       // Skip user-authored issues
       if (item.user?.login?.toLowerCase() === username.toLowerCase()) continue;
