@@ -6,6 +6,7 @@
 
 import { getStateManager, PRMonitor, IssueConversationMonitor } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
+import { emptyPRCountsResult } from '../core/github-stats.js';
 import { toShelvedPRRef } from './daily.js';
 import type { DailyDigest, AgentState, ClosedPR, MergedPR, CommentedIssue } from '../core/types.js';
 
@@ -35,8 +36,14 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
         console.error(`Warning: Failed to fetch recently merged PRs: ${errorMessage(err)}`);
         return [];
       }),
-      prMonitor.fetchUserMergedPRCounts(),
-      prMonitor.fetchUserClosedPRCounts(),
+      prMonitor.fetchUserMergedPRCounts().catch((err) => {
+        console.error(`Warning: Failed to fetch merged PR counts: ${errorMessage(err)}`);
+        return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
+      }),
+      prMonitor.fetchUserClosedPRCounts().catch((err) => {
+        console.error(`Warning: Failed to fetch closed PR counts: ${errorMessage(err)}`);
+        return emptyPRCountsResult<number>();
+      }),
       issueMonitor.fetchCommentedIssues().catch((error) => {
         const msg = errorMessage(error);
         if (msg.includes('No GitHub username configured')) {
@@ -64,13 +71,18 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   const { monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
   const { monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
 
+  // Guard: skip overwriting when data is empty to avoid wiping chart data on transient API failures.
   try {
-    stateManager.setMonthlyMergedCounts(monthlyCounts);
+    if (Object.keys(monthlyCounts).length > 0) {
+      stateManager.setMonthlyMergedCounts(monthlyCounts);
+    }
   } catch (error) {
     console.error('[DASHBOARD] Failed to store monthly merged counts:', errorMessage(error));
   }
   try {
-    stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+    if (Object.keys(monthlyClosedCounts).length > 0) {
+      stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+    }
   } catch (error) {
     console.error('[DASHBOARD] Failed to store monthly closed counts:', errorMessage(error));
   }
@@ -85,7 +97,9 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
         combinedOpenedCounts[month] = (combinedOpenedCounts[month] || 0) + 1;
       }
     }
-    stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
+    if (Object.keys(combinedOpenedCounts).length > 0) {
+      stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
+    }
   } catch (error) {
     console.error('[DASHBOARD] Failed to store monthly opened counts:', errorMessage(error));
   }

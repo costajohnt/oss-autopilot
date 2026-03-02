@@ -32,6 +32,7 @@ import {
   type RepoGroup,
 } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
+import { emptyPRCountsResult } from '../core/github-stats.js';
 import {
   deduplicateDigest,
   compactActionableIssues,
@@ -118,12 +119,18 @@ async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<Fetched
   }
 
   // Fetch merged PR counts, closed PR counts, recently closed PRs, recently merged PRs, and commented issues in parallel
-  // Recently closed/merged are non-critical (cosmetic sections), so isolate their failure
+  // All stats fetches are non-critical (cosmetic/scoring), so isolate their failure
   const issueMonitor = new IssueConversationMonitor(token);
   const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs, issueConversationResult] = await Promise.all(
     [
-      prMonitor.fetchUserMergedPRCounts(),
-      prMonitor.fetchUserClosedPRCounts(),
+      prMonitor.fetchUserMergedPRCounts().catch((err) => {
+        console.error(`Warning: Failed to fetch merged PR counts: ${errorMessage(err)}`);
+        return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
+      }),
+      prMonitor.fetchUserClosedPRCounts().catch((err) => {
+        console.error(`Warning: Failed to fetch closed PR counts: ${errorMessage(err)}`);
+        return emptyPRCountsResult<number>();
+      }),
       prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
         console.error(`Warning: Failed to fetch recently closed PRs: ${errorMessage(err)}`);
         return [];
@@ -318,15 +325,21 @@ function updateAnalytics(
 ): void {
   const stateManager = getStateManager();
 
-  // Store monthly chart data (non-critical — each metric isolated so partial failures don't leave inconsistent state)
+  // Store monthly chart data (non-critical — each metric isolated so partial failures don't leave inconsistent state).
+  // Guard: skip overwriting when the data is empty to avoid wiping existing chart data on transient API failures.
+  // An empty object means the fetch failed and fell back to emptyPRCountsResult(), so we preserve previous state.
   try {
-    stateManager.setMonthlyMergedCounts(monthlyCounts);
+    if (Object.keys(monthlyCounts).length > 0) {
+      stateManager.setMonthlyMergedCounts(monthlyCounts);
+    }
   } catch (error) {
     console.error('[DAILY] Failed to store monthly merged counts:', errorMessage(error));
   }
 
   try {
-    stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+    if (Object.keys(monthlyClosedCounts).length > 0) {
+      stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+    }
   } catch (error) {
     console.error('[DAILY] Failed to store monthly closed counts:', errorMessage(error));
   }
@@ -344,7 +357,9 @@ function updateAnalytics(
         combinedOpenedCounts[month] = (combinedOpenedCounts[month] || 0) + 1;
       }
     }
-    stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
+    if (Object.keys(combinedOpenedCounts).length > 0) {
+      stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
+    }
   } catch (error) {
     console.error('[DAILY] Failed to compute/store monthly opened counts:', errorMessage(error));
   }
