@@ -829,10 +829,10 @@ export class StateManager {
   // === Dismiss / Undismiss Issues ===
 
   /**
-   * Dismiss an issue by URL. Dismissed issues are excluded from `new_response` notifications
+   * Dismiss an issue or PR by URL. Dismissed URLs are excluded from `new_response` notifications
    * until new activity occurs after the dismiss timestamp.
-   * @param url - The full GitHub issue URL.
-   * @param timestamp - ISO timestamp of when the issue was dismissed.
+   * @param url - The full GitHub issue or PR URL.
+   * @param timestamp - ISO timestamp of when the issue/PR was dismissed.
    * @returns true if newly dismissed, false if already dismissed.
    */
   dismissIssue(url: string, timestamp: string): boolean {
@@ -847,8 +847,8 @@ export class StateManager {
   }
 
   /**
-   * Undismiss an issue by URL.
-   * @param url - The full GitHub issue URL.
+   * Undismiss an issue or PR by URL.
+   * @param url - The full GitHub issue or PR URL.
    * @returns true if found and removed, false if not dismissed.
    */
   undismissIssue(url: string): boolean {
@@ -860,8 +860,8 @@ export class StateManager {
   }
 
   /**
-   * Get the timestamp when an issue was dismissed.
-   * @param url - The full GitHub issue URL.
+   * Get the timestamp when an issue or PR was dismissed.
+   * @param url - The full GitHub issue or PR URL.
    * @returns The ISO dismiss timestamp, or undefined if not dismissed.
    */
   getIssueDismissedAt(url: string): string | undefined {

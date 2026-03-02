@@ -147,7 +147,8 @@ export function checkUnrespondedComments(
     if (!body && review.state !== 'COMMENTED' && review.state !== 'CHANGES_REQUESTED') continue;
     const author = review.user?.login || 'unknown';
 
-    // For inline-only COMMENTED reviews, skip pure self-replies (#199)
+    // For inline-only COMMENTED reviews, skip pure self-replies (#199).
+    // CHANGES_REQUESTED reviews are always actionable regardless of self-replies.
     if (!body && review.state === 'COMMENTED' && review.id != null) {
       if (isAllSelfReplies(review.id, reviewComments)) {
         continue;

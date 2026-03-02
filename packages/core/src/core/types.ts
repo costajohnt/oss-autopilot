@@ -556,7 +556,7 @@ export interface AgentConfig {
   /** PR URLs manually shelved by the user. Shelved PRs are excluded from capacity and actionable issues. Auto-unshelved when maintainers engage. */
   shelvedPRUrls?: string[];
 
-  /** Issue URLs dismissed by the user, mapped to ISO timestamp of when dismissed. Issues with new responses after the dismiss timestamp resurface automatically. */
+  /** Issue/PR URLs dismissed by the user, mapped to ISO timestamp of when dismissed. Issues with new responses after the dismiss timestamp resurface automatically. Named dismissedIssues for state backward compatibility (#416). */
   dismissedIssues?: Record<string, string>;
 
   /** PR URLs with snoozed CI failures, mapped to snooze metadata. Snoozed PRs are excluded from actionable CI failure list until expiry. */
