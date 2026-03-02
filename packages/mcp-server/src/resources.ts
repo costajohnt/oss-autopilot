@@ -7,7 +7,7 @@
 import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { runStatus, runConfig } from '@oss-autopilot/core/commands';
-import { getStateManager } from '@oss-autopilot/core';
+import { getStateManager, splitRepo } from '@oss-autopilot/core';
 import { errorMessage } from './tools.js';
 
 /** Build a standard MCP resource response with a single JSON content entry. */
@@ -103,7 +103,7 @@ export function registerResources(server: McpServer): void {
           const openPRs = getStateManager().getState().lastDigest?.openPRs ?? [];
           return {
             resources: openPRs.map((pr) => {
-              const [owner, repo] = pr.repo.split('/');
+              const { owner, repo } = splitRepo(pr.repo);
               return {
                 uri: `oss://pr/${owner}/${repo}/${pr.number}`,
                 name: `${pr.repo}#${pr.number}`,
