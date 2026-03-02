@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.1](https://github.com/costajohnt/oss-autopilot/compare/core-v0.42.0...core-v0.42.1) (2026-03-02)
+
+
+### Bug Fixes
+
+* use ValidationError consistently in validation.ts ([#437](https://github.com/costajohnt/oss-autopilot/issues/437)) ([#443](https://github.com/costajohnt/oss-autopilot/issues/443)) ([6650806](https://github.com/costajohnt/oss-autopilot/commit/665080634880a36610030216a81d76e958a66fbb))
+
+
+### Performance Improvements
+
+* add time-based caching for merged/closed PR count API calls ([#449](https://github.com/costajohnt/oss-autopilot/issues/449)) ([ff0132f](https://github.com/costajohnt/oss-autopilot/commit/ff0132fa1281c5027823bb891dc1e06b2e17f291))
+
 ## [0.42.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.41.0...core-v0.42.0) (2026-03-02)
 
 
