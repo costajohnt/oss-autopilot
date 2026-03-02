@@ -63,6 +63,19 @@ export class HttpCache {
   }
 
   /**
+   * Return the cached body if the entry exists and is younger than `maxAgeMs`.
+   * Useful for time-based caching where ETag validation isn't applicable
+   * (e.g., caching aggregated results from paginated API calls).
+   */
+  getIfFresh(key: string, maxAgeMs: number): unknown | null {
+    const entry = this.get(key);
+    if (!entry) return null;
+    const age = Date.now() - new Date(entry.cachedAt).getTime();
+    if (!Number.isFinite(age) || age < 0 || age > maxAgeMs) return null;
+    return entry.body;
+  }
+
+  /**
    * Look up a cached response. Returns `null` if no cache entry exists.
    */
   get(url: string): CacheEntry | null {

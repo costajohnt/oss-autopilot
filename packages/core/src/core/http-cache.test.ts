@@ -72,6 +72,50 @@ describe('HttpCache', () => {
     });
   });
 
+  describe('getIfFresh', () => {
+    it('returns null when no entry exists', () => {
+      expect(cache.getIfFresh('/repos/missing', 60_000)).toBeNull();
+    });
+
+    it('returns body when entry is within TTL', () => {
+      cache.set('/repos/o/r', '', { count: 42 });
+      const result = cache.getIfFresh('/repos/o/r', 60_000);
+      expect(result).toEqual({ count: 42 });
+    });
+
+    it('returns null when entry is older than TTL', () => {
+      // Manually write an old entry
+      const key = crypto.createHash('sha256').update('/repos/old').digest('hex');
+      const entry: CacheEntry = {
+        etag: '',
+        url: '/repos/old',
+        body: { count: 1 },
+        cachedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
+      };
+      fs.writeFileSync(path.join(cacheDir, `${key}.json`), JSON.stringify(entry), 'utf-8');
+
+      expect(cache.getIfFresh('/repos/old', 60 * 60 * 1000)).toBeNull(); // 1 hour TTL
+    });
+
+    it('returns null when cachedAt is invalid (NaN age)', () => {
+      const key = crypto.createHash('sha256').update('/repos/bad-date').digest('hex');
+      const entry: CacheEntry = {
+        etag: '',
+        url: '/repos/bad-date',
+        body: { count: 1 },
+        cachedAt: 'not-a-valid-date',
+      };
+      fs.writeFileSync(path.join(cacheDir, `${key}.json`), JSON.stringify(entry), 'utf-8');
+
+      expect(cache.getIfFresh('/repos/bad-date', 60_000)).toBeNull();
+    });
+
+    it('returns body for recently written entry with small TTL', () => {
+      cache.set('/repos/fresh', '', { data: 'fresh' });
+      expect(cache.getIfFresh('/repos/fresh', 1000)).not.toBeNull();
+    });
+  });
+
   describe('inflight deduplication', () => {
     it('reports no inflight for unknown URL', () => {
       expect(cache.hasInflight('/repos/x/y')).toBe(false);

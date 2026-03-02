@@ -17,6 +17,23 @@ vi.mock('./state.js', () => ({
   })),
 }));
 
+// Mock getHttpCache so github-stats caching doesn't leak between tests.
+// Preserve the real module (cachedRequest, HttpCache) — only stub the singleton.
+vi.mock('./http-cache.js', async () => {
+  const actual = await vi.importActual<typeof import('./http-cache.js')>('./http-cache.js');
+  return {
+    ...actual,
+    getHttpCache: vi.fn(() => ({
+      getIfFresh: () => null,
+      get: () => null,
+      set: () => {},
+      hasInflight: () => false,
+      getInflight: () => undefined,
+      setInflight: () => () => {},
+    })),
+  };
+});
+
 // Import after mocks are set up
 const { PRMonitor, computeDisplayLabel, classifyCICheck, classifyFailingChecks, isConditionalChecklistItem } =
   await import('./pr-monitor.js');
