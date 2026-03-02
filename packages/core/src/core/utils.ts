@@ -261,6 +261,14 @@ export function splitRepo(repoFullName: string): { owner: string; repo: string }
 }
 
 /**
+ * Case-insensitive check whether a repo owner matches the given GitHub username.
+ * Used to skip a user's own repos (PRs to your own repos aren't OSS contributions).
+ */
+export function isOwnRepo(owner: string, username: string): boolean {
+  return owner.toLowerCase() === username.toLowerCase();
+}
+
+/**
  * Formats a timestamp as a human-readable relative time string.
  *
  * Returns minutes for < 1 hour, hours for < 1 day, days for < 30 days,

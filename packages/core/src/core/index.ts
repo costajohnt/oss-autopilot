@@ -27,6 +27,7 @@ export {
   parseGitHubUrl,
   daysBetween,
   splitRepo,
+  isOwnRepo,
   getDataDir,
   getStatePath,
   getBackupDir,
