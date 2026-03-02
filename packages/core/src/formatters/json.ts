@@ -129,7 +129,6 @@ export interface CompactRepoGroup {
 
 export interface DailyOutput {
   digest: DailyDigestCompact;
-  updates: unknown[]; // Legacy field, always empty in v2
   capacity: CapacityAssessment;
   summary: string; // Pre-formatted markdown for Claude to display verbatim
   briefSummary: string; // One-liner for action-first flow

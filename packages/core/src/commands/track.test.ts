@@ -57,6 +57,16 @@ describe('runTrack', () => {
 
     await expect(runTrack({ prUrl: 'bad-url' })).rejects.toThrow('Invalid PR URL');
   });
+
+  it('should propagate API errors from octokit (#414)', async () => {
+    mockGetOctokit.mockReturnValue({
+      pulls: {
+        get: vi.fn().mockRejectedValue(new Error('Not Found')),
+      },
+    } as any);
+
+    await expect(runTrack({ prUrl: TEST_PR_URL })).rejects.toThrow('Not Found');
+  });
 });
 
 describe('runUntrack', () => {

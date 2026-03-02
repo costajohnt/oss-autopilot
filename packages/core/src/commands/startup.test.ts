@@ -304,7 +304,6 @@ describe('runStartup behavior', () => {
           totalNeedingAttention: 0,
         },
       },
-      updates: [],
       capacity: {
         hasCapacity: true,
         activePRCount: totalActivePRs,

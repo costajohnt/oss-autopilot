@@ -260,8 +260,6 @@ describe('executeDailyCheck()', () => {
     expect(result).toHaveProperty('commentedIssues');
     expect(result).toHaveProperty('repoGroups');
     expect(result).toHaveProperty('failures');
-    expect(Array.isArray(result.updates)).toBe(true);
-    expect(result.updates).toHaveLength(0);
   });
 
   it('returns empty failures when all PRs fetch successfully', async () => {

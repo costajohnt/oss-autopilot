@@ -131,6 +131,63 @@ export class IssueDiscovery {
   }
 
   /**
+   * Shared pipeline for Phases 2 and 3: spam-filter, repo-exclusion, vetting, and star-count filter.
+   * Extracts the common logic so each phase only needs to supply search results and context.
+   */
+  private async filterVetAndScore(
+    items: GitHubSearchItem[],
+    filterIssues: (items: GitHubSearchItem[]) => GitHubSearchItem[],
+    excludedRepoSets: Set<string>[],
+    remainingNeeded: number,
+    minStars: number,
+    phaseLabel: string,
+  ): Promise<{ candidates: IssueCandidate[]; allVetFailed: boolean; rateLimitHit: boolean }> {
+    const spamRepos = detectLabelFarmingRepos(items);
+    if (spamRepos.size > 0) {
+      const spamCount = items.filter((i) => spamRepos.has(i.repository_url.split('/').slice(-2).join('/'))).length;
+      debug(
+        MODULE,
+        `[SPAM_FILTER] Filtered ${spamCount} issues from ${spamRepos.size} label-farming repos: ${[...spamRepos].join(', ')}`,
+      );
+    }
+
+    const itemsToVet = filterIssues(items)
+      .filter((item) => {
+        const repoFullName = item.repository_url.split('/').slice(-2).join('/');
+        if (spamRepos.has(repoFullName)) return false;
+        return excludedRepoSets.every((s) => !s.has(repoFullName));
+      })
+      .slice(0, remainingNeeded * 2);
+
+    if (itemsToVet.length === 0) {
+      debug(MODULE, `[${phaseLabel}] All ${items.length} items filtered before vetting`);
+      return { candidates: [], allVetFailed: false, rateLimitHit: false };
+    }
+
+    const {
+      candidates: results,
+      allFailed: allVetFailed,
+      rateLimitHit,
+    } = await this.vetter.vetIssuesParallel(
+      itemsToVet.map((i) => i.html_url),
+      remainingNeeded,
+      'normal',
+    );
+
+    const starFiltered = results.filter((c) => {
+      if (c.projectHealth.checkFailed) return true;
+      const stars = c.projectHealth.stargazersCount ?? 0;
+      return stars >= minStars;
+    });
+    const starFilteredCount = results.length - starFiltered.length;
+    if (starFilteredCount > 0) {
+      debug(MODULE, `[STAR_FILTER] Filtered ${starFilteredCount} ${phaseLabel} candidates below ${minStars} stars`);
+    }
+
+    return { candidates: starFiltered, allVetFailed, rateLimitHit };
+  }
+
+  /**
    * Search for issues matching our criteria.
    * Searches in priority order: merged-PR repos first (no label filter), then starred repos,
    * then general search, then actively maintained repos (#349).
@@ -147,6 +204,7 @@ export class IssueDiscovery {
     const languages = options.languages || config.languages;
     const labels = options.labels || config.labels;
     const maxResults = options.maxResults || 10;
+    const minStars = config.minStars ?? 50;
 
     const allCandidates: IssueCandidate[] = [];
     let phase0Error: string | null = null;
@@ -326,56 +384,19 @@ export class IssueDiscovery {
 
         info(MODULE, `Found ${data.total_count} issues in general search, processing top ${data.items.length}...`);
 
-        // Detect and filter label-farming repos (#97)
-        const spamRepos = detectLabelFarmingRepos(data.items);
-        if (spamRepos.size > 0) {
-          const spamCount = data.items.filter((i) =>
-            spamRepos.has(i.repository_url.split('/').slice(-2).join('/')),
-          ).length;
-          debug(
-            MODULE,
-            `[SPAM_FILTER] Filtered ${spamCount} issues from ${spamRepos.size} label-farming repos: ${[...spamRepos].join(', ')}`,
-          );
-        }
-
-        // Filter and exclude already-found repos
         const seenRepos = new Set(allCandidates.map((c) => c.issue.repo));
-        const itemsToVet = filterIssues(data.items)
-          .filter((item) => {
-            const repoFullName = item.repository_url.split('/').slice(-2).join('/');
-            return !spamRepos.has(repoFullName);
-          })
-          .filter((item) => {
-            const repoFullName = item.repository_url.split('/').slice(-2).join('/');
-            // Skip if already searched in earlier phases
-            return (
-              !phase0RepoSet.has(repoFullName) && !starredRepoSet.has(repoFullName) && !seenRepos.has(repoFullName)
-            );
-          })
-          .slice(0, remainingNeeded * 2);
-
         const {
-          candidates: results,
-          allFailed: allVetFailed,
+          candidates: starFiltered,
+          allVetFailed,
           rateLimitHit: vetRateLimitHit,
-        } = await this.vetter.vetIssuesParallel(
-          itemsToVet.map((i) => i.html_url),
+        } = await this.filterVetAndScore(
+          data.items,
+          filterIssues,
+          [phase0RepoSet, starredRepoSet, seenRepos],
           remainingNeeded,
-          'normal',
+          minStars,
+          'Phase 2',
         );
-
-        // Apply minStars filter to Phase 2 results (#105)
-        // Phase 0/1 are exempt — if you've already contributed to or starred a repo, star count is irrelevant.
-        const minStars = config.minStars ?? 50;
-        const starFiltered = results.filter((c) => {
-          if (c.projectHealth.checkFailed) return true; // Don't penalize repos we couldn't check
-          const stars = c.projectHealth.stargazersCount ?? 0;
-          return stars >= minStars;
-        });
-        const starFilteredCount = results.length - starFiltered.length;
-        if (starFilteredCount > 0) {
-          debug(MODULE, `[STAR_FILTER] Filtered ${starFilteredCount} candidates below ${minStars} stars`);
-        }
 
         allCandidates.push(...starFiltered);
         if (allVetFailed) {
@@ -406,9 +427,8 @@ export class IssueDiscovery {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const pushedSince = thirtyDaysAgo.toISOString().split('T')[0];
-      const phase3MinStars = config.minStars ?? 50;
       const phase3Query =
-        `is:issue is:open no:assignee ${langQuery} stars:>=${phase3MinStars} pushed:>=${pushedSince} archived:false`
+        `is:issue is:open no:assignee ${langQuery} stars:>=${minStars} pushed:>=${pushedSince} archived:false`
           .replace(/  +/g, ' ')
           .trim();
 
@@ -425,51 +445,19 @@ export class IssueDiscovery {
           `Found ${data.total_count} issues in maintained-repo search, processing top ${data.items.length}...`,
         );
 
-        // Filter spam, already-found repos, and already-searched repos
-        const spamRepos = detectLabelFarmingRepos(data.items);
-        if (spamRepos.size > 0) {
-          const spamCount = data.items.filter((i) =>
-            spamRepos.has(i.repository_url.split('/').slice(-2).join('/')),
-          ).length;
-          debug(
-            MODULE,
-            `[SPAM_FILTER] Filtered ${spamCount} issues from ${spamRepos.size} label-farming repos: ${[...spamRepos].join(', ')}`,
-          );
-        }
         const seenRepos = new Set(allCandidates.map((c) => c.issue.repo));
-        const itemsToVet = filterIssues(data.items)
-          .filter((item) => {
-            const repoFullName = item.repository_url.split('/').slice(-2).join('/');
-            return (
-              !spamRepos.has(repoFullName) &&
-              !phase0RepoSet.has(repoFullName) &&
-              !starredRepoSet.has(repoFullName) &&
-              !seenRepos.has(repoFullName)
-            );
-          })
-          .slice(0, remainingNeeded * 2);
-
         const {
-          candidates: results,
-          allFailed: allVetFailed,
+          candidates: starFiltered,
+          allVetFailed,
           rateLimitHit: vetRateLimitHit,
-        } = await this.vetter.vetIssuesParallel(
-          itemsToVet.map((i) => i.html_url),
+        } = await this.filterVetAndScore(
+          data.items,
+          filterIssues,
+          [phase0RepoSet, starredRepoSet, seenRepos],
           remainingNeeded,
-          'normal',
+          minStars,
+          'Phase 3',
         );
-
-        // Apply minStars filter (same as Phase 2, #105)
-        const minStars = config.minStars ?? 50;
-        const starFiltered = results.filter((c) => {
-          if (c.projectHealth.checkFailed) return true;
-          const stars = c.projectHealth.stargazersCount ?? 0;
-          return stars >= minStars;
-        });
-        const starFilteredCount = results.length - starFiltered.length;
-        if (starFilteredCount > 0) {
-          debug(MODULE, `[STAR_FILTER] Filtered ${starFilteredCount} Phase 3 candidates below ${minStars} stars`);
-        }
 
         allCandidates.push(...starFiltered);
         if (allVetFailed) {

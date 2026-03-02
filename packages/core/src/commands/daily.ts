@@ -64,7 +64,6 @@ export {
  */
 export interface DailyCheckResult {
   digest: DailyDigest;
-  updates: unknown[];
   capacity: CapacityAssessment;
   summary: string;
   briefSummary: string;
@@ -484,7 +483,6 @@ function generateDigestOutput(
 
   return {
     digest,
-    updates: [],
     capacity,
     summary,
     briefSummary,
@@ -508,7 +506,6 @@ function generateDigestOutput(
 function toDailyOutput(result: DailyCheckResult): DailyOutput {
   return {
     digest: deduplicateDigest(result.digest),
-    updates: result.updates,
     capacity: result.capacity,
     summary: result.summary,
     briefSummary: result.briefSummary,
