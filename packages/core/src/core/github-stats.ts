@@ -106,7 +106,7 @@ async function fetchUserPRCounts<R>(
   const dailyActivityCounts: Record<string, number> = {};
   let page = 1;
   let fetched = 0;
-  let lastTotalCount = 0;
+  let totalCount!: number;
 
   while (true) {
     const { data } = await octokit.search.issuesAndPullRequests({
@@ -117,7 +117,7 @@ async function fetchUserPRCounts<R>(
       page,
     });
 
-    lastTotalCount = data.total_count;
+    totalCount = data.total_count;
 
     for (const item of data.items) {
       const parsed = extractOwnerRepo(item.html_url);
@@ -168,10 +168,10 @@ async function fetchUserPRCounts<R>(
     page++;
   }
 
-  if (fetched < lastTotalCount && page >= MAX_PAGINATION_PAGES) {
+  if (fetched < totalCount && page >= MAX_PAGINATION_PAGES) {
     warn(
       MODULE,
-      `Pagination capped at ${MAX_PAGINATION_PAGES} pages: fetched ${fetched} of ${lastTotalCount} ${label} PRs. Stats may be incomplete for prolific contributors.`,
+      `Pagination capped at ${MAX_PAGINATION_PAGES} pages: fetched ${fetched} of ${totalCount} ${label} PRs. Stats may be incomplete for prolific contributors.`,
     );
   }
 
