@@ -11,8 +11,15 @@ import { getHttpCache } from './http-cache.js';
 
 const MODULE = 'github-stats';
 
-/** TTL for cached PR count results (1 hour). */
-export const PR_COUNTS_CACHE_TTL_MS = 60 * 60 * 1000;
+/** TTL for cached PR count results (24 hours — these stats change slowly). */
+export const PR_COUNTS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Maximum number of pages to fetch during paginated PR count searches.
+ * GitHub's Search API becomes unreliable (500s, ECONNRESET) at deep pages (4-5+).
+ * 3 pages × 100 per_page = 300 results, which covers the vast majority of users.
+ */
+const MAX_PAGINATION_PAGES = 3;
 
 /** Shape of a search result item from octokit.search.issuesAndPullRequests. */
 type SearchItem = {
@@ -28,6 +35,11 @@ export interface PRCountsResult<R> {
   monthlyCounts: Record<string, number>;
   monthlyOpenedCounts: Record<string, number>;
   dailyActivityCounts: Record<string, number>;
+}
+
+/** Returns an empty PRCountsResult. Used as the fallback when stats fetches fail or username is empty. */
+export function emptyPRCountsResult<R>(): PRCountsResult<R> {
+  return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {} };
 }
 
 /** Serialized shape of a cached PRCountsResult (Map stored as entries array). */
@@ -69,7 +81,7 @@ async function fetchUserPRCounts<R>(
   accumulateRepo: (repos: Map<string, R>, repo: string, item: SearchItem) => string,
 ): Promise<PRCountsResult<R>> {
   if (!githubUsername) {
-    return { repos: new Map(), monthlyCounts: {}, monthlyOpenedCounts: {}, dailyActivityCounts: {} };
+    return emptyPRCountsResult<R>();
   }
 
   // Check for a fresh cached result (avoids 10-20 paginated API calls)
@@ -94,6 +106,7 @@ async function fetchUserPRCounts<R>(
   const dailyActivityCounts: Record<string, number> = {};
   let page = 1;
   let fetched = 0;
+  let lastTotalCount = 0;
 
   while (true) {
     const { data } = await octokit.search.issuesAndPullRequests({
@@ -103,6 +116,8 @@ async function fetchUserPRCounts<R>(
       per_page: 100,
       page,
     });
+
+    lastTotalCount = data.total_count;
 
     for (const item of data.items) {
       const parsed = extractOwnerRepo(item.html_url);
@@ -143,12 +158,21 @@ async function fetchUserPRCounts<R>(
 
     fetched += data.items.length;
 
-    // Stop if we've fetched all results or hit the API limit (1000)
-    if (fetched >= data.total_count || fetched >= 1000 || data.items.length === 0) {
+    // Stop if we've fetched all results, hit the API limit (1000), or reached max pages
+    // GitHub Search API returns 500/ECONNRESET on deep pagination (page 4-5+),
+    // so we cap at MAX_PAGINATION_PAGES to avoid taking down the entire startup flow.
+    if (fetched >= data.total_count || fetched >= 1000 || data.items.length === 0 || page >= MAX_PAGINATION_PAGES) {
       break;
     }
 
     page++;
+  }
+
+  if (fetched < lastTotalCount && page >= MAX_PAGINATION_PAGES) {
+    warn(
+      MODULE,
+      `Pagination capped at ${MAX_PAGINATION_PAGES} pages: fetched ${fetched} of ${lastTotalCount} ${label} PRs. Stats may be incomplete for prolific contributors.`,
+    );
   }
 
   debug(MODULE, `Found ${fetched} ${label} PRs across ${repos.size} repos`);

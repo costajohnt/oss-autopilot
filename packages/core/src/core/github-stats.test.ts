@@ -106,13 +106,13 @@ describe('fetchUserPRCounts caching', () => {
       dailyActivityCounts: {},
     });
 
-    // Backdate the cache entry to 2 hours ago
+    // Backdate the cache entry to 25 hours ago (exceeds the 24-hour TTL)
     const cacheFiles = fs.readdirSync(testCacheDir).filter((f) => f.endsWith('.json'));
     for (const file of cacheFiles) {
       const filePath = path.join(testCacheDir, file);
       const entry = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
       if (entry.url === 'pr-counts:merged:testuser') {
-        entry.cachedAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+        entry.cachedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
         fs.writeFileSync(filePath, JSON.stringify(entry), 'utf-8');
       }
     }

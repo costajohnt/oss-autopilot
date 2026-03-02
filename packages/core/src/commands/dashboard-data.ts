@@ -6,6 +6,7 @@
 
 import { getStateManager, PRMonitor, IssueConversationMonitor } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
+import { emptyPRCountsResult } from '../core/github-stats.js';
 import { toShelvedPRRef } from './daily.js';
 import type { DailyDigest, AgentState, ClosedPR, MergedPR, CommentedIssue } from '../core/types.js';
 
@@ -35,8 +36,14 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
         console.error(`Warning: Failed to fetch recently merged PRs: ${errorMessage(err)}`);
         return [];
       }),
-      prMonitor.fetchUserMergedPRCounts(),
-      prMonitor.fetchUserClosedPRCounts(),
+      prMonitor.fetchUserMergedPRCounts().catch((err) => {
+        console.error(`Warning: Failed to fetch merged PR counts: ${errorMessage(err)}`);
+        return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
+      }),
+      prMonitor.fetchUserClosedPRCounts().catch((err) => {
+        console.error(`Warning: Failed to fetch closed PR counts: ${errorMessage(err)}`);
+        return emptyPRCountsResult<number>();
+      }),
       issueMonitor.fetchCommentedIssues().catch((error) => {
         const msg = errorMessage(error);
         if (msg.includes('No GitHub username configured')) {

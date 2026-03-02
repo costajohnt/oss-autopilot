@@ -32,6 +32,7 @@ import {
   type RepoGroup,
 } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
+import { emptyPRCountsResult } from '../core/github-stats.js';
 import {
   deduplicateDigest,
   compactActionableIssues,
@@ -118,12 +119,18 @@ async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<Fetched
   }
 
   // Fetch merged PR counts, closed PR counts, recently closed PRs, recently merged PRs, and commented issues in parallel
-  // Recently closed/merged are non-critical (cosmetic sections), so isolate their failure
+  // All stats fetches are non-critical (cosmetic/scoring), so isolate their failure
   const issueMonitor = new IssueConversationMonitor(token);
   const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs, issueConversationResult] = await Promise.all(
     [
-      prMonitor.fetchUserMergedPRCounts(),
-      prMonitor.fetchUserClosedPRCounts(),
+      prMonitor.fetchUserMergedPRCounts().catch((err) => {
+        console.error(`Warning: Failed to fetch merged PR counts: ${errorMessage(err)}`);
+        return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
+      }),
+      prMonitor.fetchUserClosedPRCounts().catch((err) => {
+        console.error(`Warning: Failed to fetch closed PR counts: ${errorMessage(err)}`);
+        return emptyPRCountsResult<number>();
+      }),
       prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
         console.error(`Warning: Failed to fetch recently closed PRs: ${errorMessage(err)}`);
         return [];
