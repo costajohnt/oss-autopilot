@@ -144,7 +144,10 @@ Review the diff (from Phase 1) for:
 - **Style mismatches**: Naming inconsistent with repo conventions, wrong indentation, import order
 - **Missing error handling**: Unhandled promise rejections, missing try/catch for I/O
 - **Unnecessary complexity**: Overly nested logic, duplicate code that could be simplified
-- **Truthiness gotchas** (JS/TS only): Flag `!obj.prop` when the intent is to check for `false` specifically but `undefined` would also match; flag `=== false` when `!prop` would suffice and `undefined` is not a concern; flag boolean coercion of values that could be `0`, `""`, or `null` where the intent is only to check for `undefined`
+- **Truthiness gotchas** (JS/TS only):
+  - Flag `!obj.prop` when the intent is to check for `false` specifically but `undefined` would also match
+  - Flag `=== false` when `!prop` would suffice and `undefined` is not a concern
+  - Flag boolean coercion of values that could be `0`, `""`, or `null` where the intent is only to check for `undefined`
 
 ### Minor (nice to have)
 - **Readability**: Unclear variable names, missing context in complex logic
@@ -182,7 +185,10 @@ If the diff includes changes to README, docs, JSDoc, or code comments:
 
 1. **Cross-reference claims against code** — For each factual statement (e.g., "X is automatically disabled when Y"), verify that the actual code implements that behavior
 2. **Check option descriptions match defaults** — Don't say "Enable X" for a feature that's on by default; use "Disable X" or "Control whether X is enabled (default: on)"
-3. **Flag stale documentation** — If code behavior changed but docs describing that behavior weren't updated
+
+Regardless of whether docs were changed:
+
+3. **Flag stale documentation** — If code behavior changed (new defaults, renamed options, removed features, changed signatures), check whether any docs, README sections, JSDoc, or inline comments on the changed functions describe that behavior and need updating
 
 ## Phase 5: Consolidated Report
 
@@ -207,7 +213,7 @@ Present findings in this format:
 - {test assertion strength concerns, if any}
 
 ### Documentation Accuracy
-- {any doc/README claims that don't match the code, if docs were changed}
+- {any doc/README claims that don't match the code, or stale docs not updated after code changes}
 
 ### Convention Alignment
 - {any style/convention mismatches with the target repo}
