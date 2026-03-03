@@ -17,12 +17,23 @@ if [ -d "${MARKETPLACE_DIR}/.git" ]; then
   (cd "${MARKETPLACE_DIR}" && git pull --ff-only) >/dev/null 2>&1 || true
 fi
 
-# --- Step 1: Rebuild stale bundle (if needed) ---
+# --- Step 1: Rebuild stale CLI bundle (if needed) ---
 if [ -f "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ] && [ "${PLUGIN_ROOT}/packages/core/package.json" -nt "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ]; then
   if (cd "${PLUGIN_ROOT}/packages/core" && npm install --silent 2>/dev/null && npm run bundle --silent 2>/dev/null); then
     messages="CLI bundle rebuilt after plugin update."
   else
     messages="Warning: CLI bundle rebuild failed. Run /oss to retry, or: cd ${PLUGIN_ROOT}/packages/core && npm install && npm run bundle"
+  fi
+fi
+
+# --- Step 1.5: Build dashboard SPA if missing or stale ---
+DASHBOARD_INDEX="${PLUGIN_ROOT}/packages/dashboard/dist/index.html"
+DASHBOARD_PKG="${PLUGIN_ROOT}/packages/dashboard/package.json"
+if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ "${DASHBOARD_PKG}" -nt "${DASHBOARD_INDEX}" ]; }; then
+  if (cd "${PLUGIN_ROOT}/packages/dashboard" && npm install --silent 2>/dev/null && npm run build --silent 2>/dev/null); then
+    messages="${messages:+${messages}\n}Dashboard SPA built successfully."
+  else
+    messages="${messages:+${messages}\n}Warning: Dashboard SPA build failed. The static HTML fallback will be used. To fix: cd ${PLUGIN_ROOT}/packages/dashboard && npm install && npm run build"
   fi
 fi
 
