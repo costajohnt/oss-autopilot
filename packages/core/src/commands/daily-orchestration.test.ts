@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { FetchedPR, DailyDigest, CommentedIssue } from '../core/types.js';
+import { makeFetchedPR } from '../core/test-utils.js';
 import type { FetchPRsResult } from '../core/pr-monitor.js';
 
 // ---------------------------------------------------------------------------
@@ -98,30 +99,9 @@ import { requireGitHubToken } from '../core/index.js';
 // Test helpers
 // ---------------------------------------------------------------------------
 
-/** Create a minimal FetchedPR for orchestration testing */
-function makePR(overrides: Partial<FetchedPR> & { repo: string; number?: number }): FetchedPR {
-  const num = overrides.number ?? 1;
-  return {
-    id: num,
-    url: `https://github.com/${overrides.repo}/pull/${num}`,
-    number: num,
-    title: 'Test PR',
-    createdAt: '2026-01-01T00:00:00Z',
-    updatedAt: '2026-01-15T00:00:00Z',
-    daysSinceActivity: 5,
-    ciStatus: 'passing',
-    failingCheckNames: [],
-    classifiedChecks: [],
-    hasMergeConflict: false,
-    reviewDecision: 'approved',
-    hasUnrespondedComment: false,
-    hasIncompleteChecklist: false,
-    maintainerActionHints: [],
-    status: 'healthy',
-    displayLabel: '[Healthy]',
-    displayDescription: 'Everything looks good — normal review cycle',
-    ...overrides,
-  };
+/** Create a FetchedPR with repo as required (mirrors orchestration's per-repo grouping). */
+function makePR(overrides: Parameters<typeof makeFetchedPR>[0] & { repo: string }) {
+  return makeFetchedPR({ daysSinceActivity: 5, ...overrides });
 }
 
 /** Build a minimal DailyDigest for mock responses */

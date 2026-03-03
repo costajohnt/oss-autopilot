@@ -5,33 +5,13 @@
 import { describe, it, expect } from 'vitest';
 import { computeRepoSignals, computeActionMenu, groupPRsByRepo, toShelvedPRRef } from './daily.js';
 import { deduplicateDigest, compactActionableIssues, compactRepoGroups } from '../formatters/json.js';
-import type { FetchedPR, DailyDigest, CommentedIssue } from '../core/types.js';
+import type { DailyDigest, CommentedIssue } from '../core/types.js';
 import type { ActionableIssue, CapacityAssessment } from '../formatters/json.js';
+import { makeFetchedPR } from '../core/test-utils.js';
 
-/** Create a minimal FetchedPR for testing signal computation */
-function makePR(overrides: Partial<FetchedPR> & { repo: string }): FetchedPR {
-  const num = (overrides as { number?: number }).number ?? 1;
-  return {
-    id: num,
-    url: `https://github.com/${overrides.repo}/pull/${num}`,
-    number: num,
-    title: 'Test PR',
-    createdAt: '2026-01-01T00:00:00Z',
-    updatedAt: '2026-01-15T00:00:00Z',
-    daysSinceActivity: 5,
-    ciStatus: 'passing',
-    failingCheckNames: [],
-    classifiedChecks: [],
-    hasMergeConflict: false,
-    reviewDecision: 'approved',
-    hasUnrespondedComment: false,
-    hasIncompleteChecklist: false,
-    maintainerActionHints: [],
-    status: 'healthy',
-    displayLabel: '[Healthy]',
-    displayDescription: 'Everything looks good — normal review cycle',
-    ...overrides,
-  };
+/** Create a FetchedPR with repo as required (mirrors daily command's per-repo grouping). */
+function makePR(overrides: Parameters<typeof makeFetchedPR>[0] & { repo: string }) {
+  return makeFetchedPR({ daysSinceActivity: 5, ...overrides });
 }
 
 /** Create a minimal CapacityAssessment for testing */
