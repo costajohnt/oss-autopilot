@@ -1472,6 +1472,82 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
   });
 });
 
+describe('PRMonitor non-actionable CI failures return ci_blocked (Issue #502)', () => {
+  beforeEach(() => {
+    mockOctokitInstance = {};
+  });
+
+  function callDetermineStatus(
+    overrides: Partial<{
+      ciStatus: string;
+      hasMergeConflict: boolean;
+      hasUnrespondedComment: boolean;
+      hasIncompleteChecklist: boolean;
+      reviewDecision: string;
+      daysSinceActivity: number;
+      dormantThreshold: number;
+      approachingThreshold: number;
+      latestCommitDate: string | undefined;
+      lastMaintainerCommentDate: string | undefined;
+      latestChangesRequestedDate: string | undefined;
+      hasActionableCIFailure: boolean;
+    }> = {},
+  ) {
+    const monitor = new PRMonitor('fake-token');
+    const defaults = {
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'review_required',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: undefined as string | undefined,
+      lastMaintainerCommentDate: undefined as string | undefined,
+      latestChangesRequestedDate: undefined as string | undefined,
+    };
+    return (monitor as any).determineStatus({ ...defaults, ...overrides });
+  }
+
+  it('should return ci_blocked when CI is failing but no checks are actionable', () => {
+    expect(callDetermineStatus({ ciStatus: 'failing', hasActionableCIFailure: false })).toBe('ci_blocked');
+  });
+
+  it('should return failing_ci when CI is failing and checks are actionable', () => {
+    expect(callDetermineStatus({ ciStatus: 'failing', hasActionableCIFailure: true })).toBe('failing_ci');
+  });
+
+  it('should return changes_addressed (comment path) when CI failing but not actionable', () => {
+    expect(
+      callDetermineStatus({
+        ciStatus: 'failing',
+        hasActionableCIFailure: false,
+        hasUnrespondedComment: true,
+        latestCommitDate: '2026-02-08T12:00:00Z',
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toBe('changes_addressed');
+  });
+
+  it('should return changes_addressed (review path) when CI failing but not actionable', () => {
+    expect(
+      callDetermineStatus({
+        ciStatus: 'failing',
+        hasActionableCIFailure: false,
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-09T10:00:00Z',
+        latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+      }),
+    ).toBe('changes_addressed');
+  });
+
+  it('should default hasActionableCIFailure to true for backward compatibility', () => {
+    // hasActionableCIFailure intentionally omitted — determineStatus defaults it to true
+    expect(callDetermineStatus({ ciStatus: 'failing' })).toBe('failing_ci');
+  });
+});
+
 describe('isAcknowledgmentComment (Issue #69)', () => {
   it('should detect "thanks" as acknowledgment', () => {
     expect(isAcknowledgmentComment('thanks')).toBe(true);

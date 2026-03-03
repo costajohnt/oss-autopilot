@@ -39,7 +39,14 @@ const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr:
   },
   ci_blocked: {
     label: '[CI Blocked]',
-    description: () => 'CI cannot run (first-time contributor approval needed)',
+    description: (pr) => {
+      const checks = pr.classifiedChecks || [];
+      if (checks.length > 0 && checks.every((c) => c.category !== 'actionable')) {
+        const categories = [...new Set(checks.map((c) => c.category))];
+        return `All failing checks are non-actionable (${categories.join(', ')})`;
+      }
+      return 'CI checks are failing but no action is needed from you';
+    },
   },
   ci_not_running: {
     label: '[CI Not Running]',

@@ -316,7 +316,12 @@ export class PRMonitor {
     // Find the date of the latest changes_requested review (delegated to review-analysis module)
     const latestChangesRequestedDate = getLatestChangesRequestedDate(reviews);
 
+    // Classify failing checks (delegated to ci-analysis module)
+    const classifiedChecks = classifyFailingChecks(failingCheckNames, failingCheckConclusions);
+
     // Determine status
+    const hasActionableCIFailure =
+      ciStatus === 'failing' && classifiedChecks.some((c) => c.category === 'actionable');
     const status = this.determineStatus({
       ciStatus,
       hasMergeConflict,
@@ -329,10 +334,8 @@ export class PRMonitor {
       latestCommitDate,
       lastMaintainerCommentDate: lastMaintainerComment?.createdAt,
       latestChangesRequestedDate,
+      hasActionableCIFailure,
     });
-
-    // Classify failing checks (delegated to ci-analysis module)
-    const classifiedChecks = classifyFailingChecks(failingCheckNames, failingCheckConclusions);
 
     return this.buildFetchedPR({
       id: ghPR.id,
@@ -393,6 +396,7 @@ export class PRMonitor {
       latestCommitDate,
       lastMaintainerCommentDate,
       latestChangesRequestedDate,
+      hasActionableCIFailure = true,
     } = input;
 
     // Priority order: needs_response/needs_changes/changes_addressed > failing_ci > merge_conflict > incomplete_checklist > dormant > approaching_dormant > waiting_on_maintainer > waiting/healthy
@@ -406,7 +410,9 @@ export class PRMonitor {
         if (latestChangesRequestedDate && latestCommitDate < latestChangesRequestedDate) {
           return 'needs_response';
         }
-        if (ciStatus === 'failing') return 'failing_ci';
+        if (ciStatus === 'failing' && hasActionableCIFailure) return 'failing_ci';
+        // Non-actionable CI failures (infrastructure, fork, auth) don't block changes_addressed —
+        // the contributor can't fix them, so the relevant status is "waiting for re-review" (#502)
         return 'changes_addressed';
       }
       return 'needs_response';
@@ -419,12 +425,13 @@ export class PRMonitor {
         return 'needs_changes';
       }
       // Commit is after review — changes have been addressed
-      if (ciStatus === 'failing') return 'failing_ci';
+      if (ciStatus === 'failing' && hasActionableCIFailure) return 'failing_ci';
+      // Non-actionable CI failures don't block changes_addressed (#502)
       return 'changes_addressed';
     }
 
     if (ciStatus === 'failing') {
-      return 'failing_ci';
+      return hasActionableCIFailure ? 'failing_ci' : 'ci_blocked';
     }
 
     if (hasMergeConflict) {
