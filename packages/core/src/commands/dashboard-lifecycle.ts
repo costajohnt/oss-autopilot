@@ -5,11 +5,7 @@
  */
 
 import { spawn } from 'child_process';
-import {
-  findRunningDashboardServer,
-  isDashboardServerRunning,
-  readDashboardServerInfo,
-} from './dashboard-server.js';
+import { findRunningDashboardServer, isDashboardServerRunning, readDashboardServerInfo } from './dashboard-server.js';
 import { resolveAssetsDir } from './dashboard.js';
 
 const DEFAULT_PORT = 3000;
@@ -100,7 +96,9 @@ export async function launchDashboardServer(options?: { port?: number }): Promis
       // ESRCH = process already exited, which is fine
       const code = (err as NodeJS.ErrnoException).code;
       if (code !== 'ESRCH') {
-        console.error(`[STARTUP] Failed to kill orphan dashboard process (PID ${child.pid}): ${(err as Error).message}`);
+        console.error(
+          `[STARTUP] Failed to kill orphan dashboard process (PID ${child.pid}): ${(err as Error).message}`,
+        );
       }
     }
   }

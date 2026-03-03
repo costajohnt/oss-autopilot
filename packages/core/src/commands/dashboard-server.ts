@@ -82,8 +82,10 @@ export function readDashboardServerInfo(): DashboardServerInfo | null {
     const content = fs.readFileSync(getDashboardPidPath(), 'utf-8');
     const parsed = JSON.parse(content);
     if (
-      typeof parsed !== 'object' || parsed === null ||
-      typeof parsed.pid !== 'number' || typeof parsed.port !== 'number' ||
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      typeof parsed.pid !== 'number' ||
+      typeof parsed.port !== 'number' ||
       typeof parsed.startedAt !== 'string'
     ) {
       console.error('[DASHBOARD] PID file has invalid structure, ignoring');
@@ -120,7 +122,10 @@ export function isDashboardServerRunning(port: number): Promise<boolean> {
       resolve(res.statusCode === 200);
     });
     req.on('error', () => resolve(false));
-    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(false);
+    });
   });
 }
 

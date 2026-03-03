@@ -91,11 +91,7 @@ describe('launchDashboardServer', () => {
 
     const result = await launchDashboardServer({ port: 8080 });
 
-    expect(mockSpawn).toHaveBeenCalledWith(
-      'node',
-      expect.arrayContaining(['--port', '8080']),
-      expect.anything(),
-    );
+    expect(mockSpawn).toHaveBeenCalledWith('node', expect.arrayContaining(['--port', '8080']), expect.anything());
     expect(result?.port).toBe(8080);
   });
 
