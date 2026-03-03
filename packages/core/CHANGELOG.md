@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.43.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.42.6...core-v0.43.0) (2026-03-03)
+
+
+### Features
+
+* launch interactive SPA dashboard from startup ([#493](https://github.com/costajohnt/oss-autopilot/issues/493)) ([ee3ab26](https://github.com/costajohnt/oss-autopilot/commit/ee3ab2643658edb916e11b9e9e6420bca9e8090a))
+
 ## [0.42.6](https://github.com/costajohnt/oss-autopilot/compare/core-v0.42.5...core-v0.42.6) (2026-03-02)
 
 
