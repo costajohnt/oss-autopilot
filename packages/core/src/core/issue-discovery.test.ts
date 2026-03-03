@@ -21,17 +21,23 @@ vi.mock('./http-cache.js', () => ({
     setInflight: vi.fn().mockReturnValue(() => {}),
   }),
   // Pass through to the fetcher so octokit mocks are still exercised
-  cachedRequest: vi.fn().mockImplementation(async (_cache: unknown, _url: string, fetcher: (h: Record<string, string>) => Promise<{ data: unknown }>) => {
-    const response = await fetcher({});
-    return response.data;
-  }),
-  cachedTimeBased: vi.fn().mockImplementation(async (cache: any, _key: string, _maxAgeMs: number, fetcher: () => Promise<unknown>) => {
-    const cached = cache.getIfFresh(_key, _maxAgeMs);
-    if (cached) return cached;
-    const result = await fetcher();
-    cache.set(_key, '', result);
-    return result;
-  }),
+  cachedRequest: vi
+    .fn()
+    .mockImplementation(
+      async (_cache: unknown, _url: string, fetcher: (h: Record<string, string>) => Promise<{ data: unknown }>) => {
+        const response = await fetcher({});
+        return response.data;
+      },
+    ),
+  cachedTimeBased: vi
+    .fn()
+    .mockImplementation(async (cache: any, _key: string, _maxAgeMs: number, fetcher: () => Promise<unknown>) => {
+      const cached = cache.getIfFresh(_key, _maxAgeMs);
+      if (cached) return cached;
+      const result = await fetcher();
+      cache.set(_key, '', result);
+      return result;
+    }),
 }));
 
 vi.mock('./state.js', () => ({
@@ -1494,7 +1500,9 @@ describe('Search result caching (#487)', () => {
       issues: { get: vi.fn(), listEventsForTimeline: vi.fn().mockResolvedValue({ data: [] }) },
       search: { issuesAndPullRequests: vi.fn().mockResolvedValue({ data: { total_count: 0, items: [] } }) },
       repos: {
-        get: vi.fn().mockResolvedValue({ data: { open_issues_count: 0, pushed_at: new Date().toISOString(), stargazers_count: 100, forks_count: 10 } }),
+        get: vi.fn().mockResolvedValue({
+          data: { open_issues_count: 0, pushed_at: new Date().toISOString(), stargazers_count: 100, forks_count: 10 },
+        }),
         listCommits: vi.fn().mockResolvedValue({ data: [{ commit: { author: { date: new Date().toISOString() } } }] }),
         getContent: vi.fn().mockRejectedValue(new Error('404 Not Found')),
       },

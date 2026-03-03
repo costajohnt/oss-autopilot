@@ -71,15 +71,10 @@ export class IssueDiscovery {
     per_page: number;
   }): Promise<{ total_count: number; items: GitHubSearchItem[] }> {
     const cacheKey = `search:${params.q}:${params.sort}:${params.order}:${params.per_page}`;
-    return cachedTimeBased(
-      getHttpCache(),
-      cacheKey,
-      SEARCH_CACHE_TTL_MS,
-      async () => {
-        const { data } = await this.octokit.search.issuesAndPullRequests(params);
-        return data;
-      },
-    );
+    return cachedTimeBased(getHttpCache(), cacheKey, SEARCH_CACHE_TTL_MS, async () => {
+      const { data } = await this.octokit.search.issuesAndPullRequests(params);
+      return data;
+    });
   }
 
   /**

@@ -12,16 +12,9 @@ interface ActionBarOptions {
 }
 
 function renderActionBar(options: ActionBarOptions = {}) {
-  const {
-    pr = makePR(),
-    isShelved = false,
-    isDismissed = false,
-    onAction = vi.fn(),
-  } = options;
+  const { pr = makePR(), isShelved = false, isDismissed = false, onAction = vi.fn() } = options;
 
-  return render(
-    <ActionBar pr={pr} isShelved={isShelved} isDismissed={isDismissed} onAction={onAction} />,
-  );
+  return render(<ActionBar pr={pr} isShelved={isShelved} isDismissed={isDismissed} onAction={onAction} />);
 }
 
 describe('ActionBar', () => {

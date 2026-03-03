@@ -90,9 +90,23 @@ const localOnlySet = new Set(LOCAL_ONLY_COMMANDS);
 
 describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
   const expectedLocalOnly = [
-    'status', 'config', 'read', 'untrack', 'setup', 'checkSetup',
-    'serve', 'parse-issue-list', 'check-integration', 'local-repos',
-    'startup', 'shelve', 'unshelve', 'dismiss', 'undismiss', 'snooze', 'unsnooze',
+    'status',
+    'config',
+    'read',
+    'untrack',
+    'setup',
+    'checkSetup',
+    'serve',
+    'parse-issue-list',
+    'check-integration',
+    'local-repos',
+    'startup',
+    'shelve',
+    'unshelve',
+    'dismiss',
+    'undismiss',
+    'snooze',
+    'unsnooze',
   ];
 
   const expectedTokenRequired = ['daily', 'search', 'vet', 'track', 'comments', 'post', 'init', 'claim'];

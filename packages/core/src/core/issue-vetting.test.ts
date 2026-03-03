@@ -19,13 +19,15 @@ vi.mock('./http-cache.js', () => ({
     setInflight: vi.fn().mockReturnValue(() => {}),
   }),
   cachedRequest: vi.fn(),
-  cachedTimeBased: vi.fn().mockImplementation(async (cache: any, _key: string, _maxAgeMs: number, fetcher: () => Promise<unknown>) => {
-    const cached = cache.getIfFresh(_key, _maxAgeMs);
-    if (cached) return cached;
-    const result = await fetcher();
-    cache.set(_key, '', result);
-    return result;
-  }),
+  cachedTimeBased: vi
+    .fn()
+    .mockImplementation(async (cache: any, _key: string, _maxAgeMs: number, fetcher: () => Promise<unknown>) => {
+      const cached = cache.getIfFresh(_key, _maxAgeMs);
+      if (cached) return cached;
+      const result = await fetcher();
+      cache.set(_key, '', result);
+      return result;
+    }),
 }));
 
 vi.mock('./logger.js', () => ({
