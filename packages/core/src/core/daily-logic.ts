@@ -610,5 +610,5 @@ export function printDigest(
   }
 
   console.log('Run with --json for structured output');
-  console.log('Run "dashboard --open" for browser view');
+  console.log('Run "dashboard serve" for browser view');
 }

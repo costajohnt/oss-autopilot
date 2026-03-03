@@ -49,7 +49,6 @@ const LOCAL_ONLY_COMMANDS = [
   'version',
   'setup',
   'checkSetup',
-  'dashboard',
   'serve',
   'parse-issue-list',
   'check-integration',
@@ -530,20 +529,6 @@ dashboardCmd
     }
   });
 
-// Keep bare `dashboard` (no subcommand) for backward compat — generates static HTML
-dashboardCmd
-  .option('--open', 'Open in browser')
-  .option('--json', 'Output as JSON')
-  .option('--offline', 'Use cached data only (no GitHub API calls)')
-  .action(async (options) => {
-    try {
-      const { runDashboard } = await import('./commands/dashboard.js');
-      await runDashboard({ open: options.open, json: options.json, offline: options.offline });
-    } catch (err) {
-      handleCommandError(err, options.json);
-    }
-  });
-
 // Parse issue list command (#82)
 program
   .command('parse-issue-list <path>')
@@ -657,7 +642,6 @@ program
         } else {
           console.log(`OSS Autopilot v${data.version}`);
           console.log(data.daily?.briefSummary ?? '');
-          if (data.dashboardPath) console.log(`Dashboard: ${data.dashboardPath}`);
         }
       }
     } catch (err) {

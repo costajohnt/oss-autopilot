@@ -8,13 +8,15 @@
 
 import type { DailyDigest, AgentState, CommentedIssueWithResponse } from '../core/types.js';
 
-import { escapeHtml, type DashboardStats } from './dashboard-formatters.js';
+import { escapeHtml } from './dashboard-formatters.js';
+import type { DashboardStats } from './dashboard-data.js';
 import { DASHBOARD_CSS } from './dashboard-styles.js';
 import { SVG_ICONS, truncateTitle, renderHealthItems, titleMeta } from './dashboard-components.js';
 import { generateDashboardScripts } from './dashboard-scripts.js';
 
-// Re-export public API so existing consumers don't break
-export { escapeHtml, buildDashboardStats, type DashboardStats } from './dashboard-formatters.js';
+// Re-export public API so consumers can import from this module
+export { escapeHtml } from './dashboard-formatters.js';
+export { buildDashboardStats, type DashboardStats } from './dashboard-data.js';
 
 export function generateDashboardHtml(
   stats: DashboardStats,

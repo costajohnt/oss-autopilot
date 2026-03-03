@@ -179,6 +179,27 @@ interface CommentedIssueWithoutResponse extends CommentedIssueBase {
 /** A GitHub issue the user has commented on, with conversation state. */
 export type CommentedIssue = CommentedIssueWithResponse | CommentedIssueWithoutResponse;
 
+// -- Recently merged/closed PR types --
+
+/** Minimal record of a PR that was merged, used in the daily digest. */
+export interface MergedPR {
+  url: string;
+  repo: string;
+  number: number;
+  title: string;
+  mergedAt: string;
+}
+
+/** Minimal record of a PR that was closed without merge. */
+export interface ClosedPR {
+  url: string;
+  repo: string;
+  number: number;
+  title: string;
+  closedAt: string;
+  closedBy?: string;
+}
+
 // -- Dashboard API response --
 
 /** The shape of the GET /api/data response from the dashboard server. */
@@ -191,6 +212,9 @@ export interface DashboardData {
   monthlyClosed: Record<string, number>;
   activePRs: FetchedPR[];
   shelvedPRUrls: string[];
+  recentlyMergedPRs: MergedPR[];
+  recentlyClosedPRs: ClosedPR[];
+  autoUnshelvedPRs: ShelvedPRRef[];
   commentedIssues: CommentedIssue[];
   issueResponses: CommentedIssueWithResponse[];
 }

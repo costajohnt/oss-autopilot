@@ -86,7 +86,7 @@ Repo root (also the Claude Code plugin directory):
 │   │   ├── dist/cli.bundle.cjs          # Built bundle (gitignored, auto-generated)
 │   │   ├── package.json                 # Published to npm, has bin + exports
 │   │   └── tsconfig.json
-│   └── dashboard/                       # @oss-autopilot/dashboard (placeholder)
+│   └── dashboard/                       # @oss-autopilot/dashboard (interactive SPA)
 │       └── package.json
 ├── pnpm-workspace.yaml                  # Workspace definition
 ├── package.json                         # Workspace root (private, not published)
@@ -95,7 +95,7 @@ Repo root (also the Claude Code plugin directory):
 ~/.oss-autopilot/                        # User data (separate from plugin code)
 ├── state.json                           # PR tracking state (AgentState)
 ├── backups/                             # Auto-backups of state before writes
-└── dashboard.html                       # Generated HTML dashboard
+└── dashboard-server.pid                 # PID file for interactive SPA dashboard server
 ```
 
 ## Development Commands

@@ -19,7 +19,7 @@ let tokenFetchAttempted = false;
  * Returns the oss-autopilot data directory path, creating it if it does not exist.
  *
  * The directory is located at `~/.oss-autopilot/` and serves as the root for
- * all persisted user data (state, backups, dashboard).
+ * all persisted user data (state, backups, cache).
  *
  * @returns Absolute path to the data directory (e.g., `/Users/you/.oss-autopilot`)
  *
@@ -91,11 +91,8 @@ export function getCacheDir(): string {
 }
 
 /**
- * Returns the path to the generated HTML dashboard file (`~/.oss-autopilot/dashboard.html`).
- *
- * Implicitly creates the data directory via {@link getDataDir} if it does not exist.
- *
- * @returns Absolute path to `dashboard.html`
+ * Returns the path to the static HTML dashboard file (~/.oss-autopilot/dashboard.html).
+ * Used as a fallback when the interactive SPA dashboard cannot be launched.
  *
  * @example
  * const dashPath = getDashboardPath();

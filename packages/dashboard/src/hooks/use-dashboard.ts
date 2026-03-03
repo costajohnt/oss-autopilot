@@ -43,8 +43,8 @@ export function useDashboard() {
       // Action may have succeeded server-side; re-fetch to stay in sync
       try {
         setData(await fetchJson('/api/data'));
-      } catch {
-        /* keep stale data if re-fetch also fails */
+      } catch (refetchErr) {
+        console.error('Failed to re-fetch dashboard data after action error:', refetchErr);
       }
       throw e;
     }

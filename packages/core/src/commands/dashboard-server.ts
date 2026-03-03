@@ -12,9 +12,25 @@ import * as path from 'path';
 import { getStateManager, getGitHubToken, getDataDir } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { validateUrl, validateGitHubUrl, validateMessage, PR_URL_PATTERN } from './validation.js';
-import { fetchDashboardData, computePRsByRepo, computeTopRepos, getMonthlyData } from './dashboard-data.js';
-import { buildDashboardStats, type DashboardStats } from './dashboard-templates.js';
-import type { DailyDigest, AgentState, CommentedIssue, CommentedIssueWithResponse, FetchedPR } from '../core/types.js';
+import {
+  fetchDashboardData,
+  computePRsByRepo,
+  computeTopRepos,
+  getMonthlyData,
+  buildDashboardStats,
+  type DashboardStats,
+} from './dashboard-data.js';
+import { openInBrowser } from './startup.js';
+import type {
+  DailyDigest,
+  AgentState,
+  CommentedIssue,
+  CommentedIssueWithResponse,
+  FetchedPR,
+  MergedPR,
+  ClosedPR,
+  ShelvedPRRef,
+} from '../core/types.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -40,6 +56,9 @@ interface DashboardJsonData {
   monthlyClosed: Record<string, number>;
   activePRs: FetchedPR[];
   shelvedPRUrls: string[];
+  recentlyMergedPRs: MergedPR[];
+  recentlyClosedPRs: ClosedPR[];
+  autoUnshelvedPRs: ShelvedPRRef[];
   commentedIssues: CommentedIssue[];
   issueResponses: CommentedIssueWithResponse[];
   offline?: boolean;
@@ -163,7 +182,6 @@ export async function findRunningDashboardServer(): Promise<{ port: number; url:
 
 /**
  * Build the JSON payload that the SPA expects from GET /api/data.
- * Same shape as the existing `dashboard --json` output.
  */
 function buildDashboardJson(
   digest: DailyDigest,
@@ -185,6 +203,9 @@ function buildDashboardJson(
     monthlyClosed,
     activePRs: digest.openPRs || [],
     shelvedPRUrls: state.config.shelvedPRUrls || [],
+    recentlyMergedPRs: digest.recentlyMergedPRs || [],
+    recentlyClosedPRs: digest.recentlyClosedPRs || [],
+    autoUnshelvedPRs: digest.autoUnshelvedPRs || [],
     commentedIssues,
     issueResponses,
   };
@@ -246,24 +267,11 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   const resolvedAssetsDir = path.resolve(assetsDir);
 
   // ── Cached data ──────────────────────────────────────────────────────────
-  let cachedDigest: DailyDigest | undefined;
+  // Start immediately with state.json data (written by the daily check that
+  // precedes this server launch). A background GitHub fetch refreshes the
+  // cache after the port is bound, so the startup poller sees us in time.
+  let cachedDigest: DailyDigest = stateManager.getState().lastDigest!;
   let cachedCommentedIssues: CommentedIssue[] = [];
-
-  // Fetch initial data
-  if (token) {
-    try {
-      console.error('Fetching dashboard data from GitHub...');
-      const result = await fetchDashboardData(token);
-      cachedDigest = result.digest;
-      cachedCommentedIssues = result.commentedIssues;
-    } catch (error) {
-      console.error('Failed to fetch data from GitHub:', error);
-      console.error('Falling back to cached data...');
-      cachedDigest = stateManager.getState().lastDigest;
-    }
-  } else {
-    cachedDigest = stateManager.getState().lastDigest;
-  }
 
   if (!cachedDigest) {
     console.error('No dashboard data available. Run the daily check first:');
@@ -399,9 +407,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     }
 
     // Rebuild dashboard data from cached digest + updated state
-    if (cachedDigest) {
-      cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
-    }
+    cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
 
     sendJson(res, 200, cachedJsonData);
   }
@@ -523,32 +529,25 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   const serverUrl = `http://localhost:${actualPort}`;
   console.error(`Dashboard server running at ${serverUrl}`);
 
+  // ── Background refresh ─────────────────────────────────────────────────
+  // Port is bound and PID file written — now fetch fresh data from GitHub
+  // so subsequent /api/data requests get live data instead of cached state.
+  if (token) {
+    fetchDashboardData(token)
+      .then((result) => {
+        cachedDigest = result.digest;
+        cachedCommentedIssues = result.commentedIssues;
+        cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+        console.error('Background data refresh complete');
+      })
+      .catch((error) => {
+        console.error('Background data refresh failed (serving cached data):', errorMessage(error));
+      });
+  }
+
   // ── Open browser ─────────────────────────────────────────────────────────
   if (open) {
-    const { execFile } = await import('child_process');
-    let openCmd: string;
-    let args: string[];
-    switch (process.platform) {
-      case 'darwin':
-        openCmd = 'open';
-        args = [serverUrl];
-        break;
-      case 'win32':
-        openCmd = 'cmd';
-        args = ['/c', 'start', '', serverUrl];
-        break;
-      default:
-        openCmd = 'xdg-open';
-        args = [serverUrl];
-        break;
-    }
-
-    execFile(openCmd, args, (error) => {
-      if (error) {
-        console.error('Failed to open browser:', error.message);
-        console.error(`Open manually: ${serverUrl}`);
-      }
-    });
+    openInBrowser(serverUrl);
   }
 
   // ── Clean shutdown ───────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
  */
 
 import type { DailyDigest, AgentState } from '../core/types.js';
-import type { DashboardStats } from './dashboard-formatters.js';
+import type { DashboardStats } from './dashboard-data.js';
 
 /** Static client-side JS: theme toggle + filter/search logic. */
 const THEME_AND_FILTER_SCRIPT = `

@@ -1,16 +1,7 @@
 /**
- * Dashboard data formatting helpers: escapeHtml, DashboardStats, and stats builder.
+ * Dashboard HTML formatting helpers.
+ * Used by dashboard-templates.ts and dashboard-components.ts for static HTML generation.
  */
-
-import type { DailyDigest, AgentState } from '../core/types.js';
-
-export interface DashboardStats {
-  activePRs: number;
-  shelvedPRs: number;
-  mergedPRs: number;
-  closedPRs: number;
-  mergeRate: string;
-}
 
 /**
  * Escape HTML special characters to prevent XSS when interpolating
@@ -26,20 +17,4 @@ export function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-export function buildDashboardStats(digest: DailyDigest, state: Readonly<AgentState>): DashboardStats {
-  const summary = digest.summary || {
-    totalActivePRs: 0,
-    totalMergedAllTime: 0,
-    mergeRate: 0,
-    totalNeedingAttention: 0,
-  };
-  return {
-    activePRs: summary.totalActivePRs,
-    shelvedPRs: (digest.shelvedPRs || []).length,
-    mergedPRs: summary.totalMergedAllTime,
-    closedPRs: Object.values(state.repoScores || {}).reduce((sum, s) => sum + (s.closedWithoutMergeCount || 0), 0),
-    mergeRate: `${(summary.mergeRate ?? 0).toFixed(1)}%`,
-  };
 }

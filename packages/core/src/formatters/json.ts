@@ -267,16 +267,17 @@ export interface IssueListInfo {
  * Three valid shapes:
  * 1. Setup incomplete: { version, setupComplete: false }
  * 2. Auth failure: { version, setupComplete: true, authError: "..." }
- * 3. Success: { version, setupComplete: true, daily, dashboardPath?, dashboardUrl?, issueList? }
+ * 3. Success: { version, setupComplete: true, daily, dashboardUrl?, issueList? }
  */
 export interface StartupOutput {
   version: string;
   setupComplete: boolean;
   authError?: string;
   daily?: DailyOutput;
-  dashboardPath?: string;
   /** URL of the interactive SPA dashboard server, when running (e.g., "http://localhost:3000") */
   dashboardUrl?: string;
+  /** Path to the static HTML dashboard file (fallback when SPA cannot launch) */
+  dashboardPath?: string;
   issueList?: IssueListInfo;
 }
 

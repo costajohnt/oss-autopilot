@@ -1,7 +1,7 @@
 /**
  * Startup command
  * Combines all pre-flight checks into a single CLI invocation:
- * auth check, setup check, daily fetch, dashboard generation, version detection, issue list detection.
+ * auth check, setup check, daily fetch, dashboard launch, version detection, issue list detection.
  *
  * Replaces the ~100-line inline bash script in commands/oss.md with a single
  * `node cli.bundle.cjs startup --json` call, reducing UI noise in Claude Code.
@@ -9,13 +9,12 @@
 
 import * as fs from 'fs';
 import { execFile } from 'child_process';
-import { getStateManager, getGitHubToken, getCLIVersion, getStatePath, getDashboardPath } from '../core/index.js';
+import { getStateManager, getGitHubToken, getCLIVersion } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
-import { warn } from '../core/logger.js';
 import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
-import { writeDashboardFromState } from './dashboard.js';
 import { launchDashboardServer } from './dashboard-lifecycle.js';
+import { writeDashboardFromState } from './dashboard.js';
 
 /**
  * Parse issueListPath from a config file's YAML frontmatter.
@@ -99,21 +98,21 @@ export function detectIssueList(): IssueListInfo | undefined {
   }
 }
 
-function openInBrowser(filePath: string): void {
+export function openInBrowser(url: string): void {
   let openCmd: string;
   let args: string[];
   switch (process.platform) {
     case 'darwin':
       openCmd = 'open';
-      args = [filePath];
+      args = [url];
       break;
     case 'win32':
       openCmd = 'cmd';
-      args = ['/c', 'start', '', filePath];
+      args = ['/c', 'start', '', url];
       break;
     default:
       openCmd = 'xdg-open';
-      args = [filePath];
+      args = [url];
       break;
   }
   execFile(openCmd, args, (error) => {
@@ -124,29 +123,11 @@ function openInBrowser(filePath: string): void {
 }
 
 /**
- * Check whether the dashboard HTML file is at least as recent as state.json.
- * Returns true when the dashboard exists and its mtime >= state mtime,
- * meaning there is no need to regenerate it.
- */
-function isDashboardFresh(): boolean {
-  try {
-    const dashPath = getDashboardPath();
-    if (!fs.existsSync(dashPath)) return false;
-    const dashMtime = fs.statSync(dashPath).mtimeMs;
-    const stateMtime = fs.statSync(getStatePath()).mtimeMs;
-    return dashMtime >= stateMtime;
-  } catch (error) {
-    warn('startup', `Failed to check dashboard freshness, will regenerate: ${errorMessage(error)}`);
-    return false;
-  }
-}
-
-/**
  * Run startup checks and return structured output.
  * Returns StartupOutput with one of three shapes:
  * 1. Setup incomplete: { version, setupComplete: false }
  * 2. Auth failure: { version, setupComplete: true, authError: "..." }
- * 3. Success: { version, setupComplete: true, daily, dashboardPath?, dashboardUrl?, issueList? }
+ * 3. Success: { version, setupComplete: true, daily, dashboardUrl?, dashboardPath?, issueList? }
  *
  * Errors from the daily check propagate to the caller.
  */
@@ -173,39 +154,37 @@ export async function runStartup(): Promise<StartupOutput> {
   // 3. Run daily check
   const daily = await executeDailyCheck(token);
 
-  // 4. Generate static HTML dashboard (serves as fallback + snapshot).
-  //    Skip regeneration if the dashboard HTML is already newer than state.json.
-  let dashboardPath: string | undefined;
-  try {
-    if (isDashboardFresh()) {
-      dashboardPath = getDashboardPath();
-      console.error('[STARTUP] Dashboard HTML is fresh, skipping regeneration');
-    } else {
-      dashboardPath = writeDashboardFromState();
-    }
-  } catch (error) {
-    console.error('[STARTUP] Dashboard generation failed:', errorMessage(error));
-  }
-
-  // 5. Launch interactive SPA dashboard (preferred) with static HTML fallback
+  // 4. Launch interactive SPA dashboard (with static HTML fallback)
   // Skip opening on first run (0 PRs) — the welcome flow handles onboarding
   let dashboardUrl: string | undefined;
+  let dashboardPath: string | undefined;
   let dashboardOpened = false;
-  if (daily.digest.summary.totalActivePRs > 0) {
-    let spaResult: Awaited<ReturnType<typeof launchDashboardServer>> = null;
+
+  function tryStaticHtmlFallback(): boolean {
     try {
-      spaResult = await launchDashboardServer();
+      dashboardPath = writeDashboardFromState();
+      openInBrowser(dashboardPath);
+      return true;
+    } catch (htmlError) {
+      console.error('[STARTUP] Static HTML dashboard fallback also failed:', errorMessage(htmlError));
+      return false;
+    }
+  }
+
+  if (daily.digest.summary.totalActivePRs > 0) {
+    try {
+      const spaResult = await launchDashboardServer();
+      if (spaResult) {
+        dashboardUrl = spaResult.url;
+        openInBrowser(spaResult.url);
+        dashboardOpened = true;
+      } else {
+        console.error('[STARTUP] Dashboard SPA assets not found, falling back to static HTML dashboard');
+        dashboardOpened = tryStaticHtmlFallback();
+      }
     } catch (error) {
       console.error('[STARTUP] SPA dashboard launch failed:', errorMessage(error));
-    }
-    if (spaResult) {
-      dashboardUrl = spaResult.url;
-      openInBrowser(spaResult.url);
-      dashboardOpened = true;
-    } else if (dashboardPath) {
-      // SPA unavailable (assets not built) — fall back to static HTML
-      openInBrowser(dashboardPath);
-      dashboardOpened = true;
+      dashboardOpened = tryStaticHtmlFallback();
     }
   }
 
@@ -214,15 +193,15 @@ export async function runStartup(): Promise<StartupOutput> {
     daily.briefSummary += ' | Dashboard opened in browser';
   }
 
-  // 6. Detect issue list
+  // 5. Detect issue list
   const issueList = detectIssueList();
 
   return {
     version,
     setupComplete: true,
     daily,
-    dashboardPath,
     dashboardUrl,
+    dashboardPath,
     issueList,
   };
 }

@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computePRsByRepo, computeTopRepos, getMonthlyData } from './dashboard-data.js';
-import type { DailyDigest, AgentState } from '../core/types.js';
+import { buildDashboardStats, computePRsByRepo, computeTopRepos, getMonthlyData } from './dashboard-data.js';
+import type { DailyDigest, AgentState, ShelvedPRRef } from '../core/types.js';
 
 function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
   return {
@@ -49,6 +49,108 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     ...overrides,
   } as AgentState;
 }
+
+// ---------------------------------------------------------------------------
+// buildDashboardStats
+// ---------------------------------------------------------------------------
+
+describe('buildDashboardStats', () => {
+  it('returns zeros when digest has no summary', () => {
+    const digest = makeDigest();
+    // Remove summary to trigger the default fallback
+    (digest as any).summary = undefined;
+    const stats = buildDashboardStats(digest, makeState());
+    expect(stats).toEqual({
+      activePRs: 0,
+      shelvedPRs: 0,
+      mergedPRs: 0,
+      closedPRs: 0,
+      mergeRate: '0.0%',
+    });
+  });
+
+  it('pulls activePRs from summary.totalActivePRs', () => {
+    const digest = makeDigest({
+      summary: { totalActivePRs: 5, totalNeedingAttention: 2, totalMergedAllTime: 10, mergeRate: 80 },
+    });
+    const stats = buildDashboardStats(digest, makeState());
+    expect(stats.activePRs).toBe(5);
+  });
+
+  it('counts shelvedPRs from digest.shelvedPRs array length', () => {
+    const shelvedPRs: ShelvedPRRef[] = [
+      { number: 1, url: 'u1', title: 't1', repo: 'r/1', daysSinceActivity: 5, status: 'healthy' },
+      { number: 2, url: 'u2', title: 't2', repo: 'r/2', daysSinceActivity: 10, status: 'dormant' },
+    ];
+    const digest = makeDigest({ shelvedPRs });
+    const stats = buildDashboardStats(digest, makeState());
+    expect(stats.shelvedPRs).toBe(2);
+  });
+
+  it('pulls mergedPRs from summary.totalMergedAllTime', () => {
+    const digest = makeDigest({
+      summary: { totalActivePRs: 0, totalNeedingAttention: 0, totalMergedAllTime: 42, mergeRate: 85 },
+    });
+    const stats = buildDashboardStats(digest, makeState());
+    expect(stats.mergedPRs).toBe(42);
+  });
+
+  it('sums closedWithoutMergeCount across all repoScores', () => {
+    const state = makeState({
+      repoScores: {
+        'a/b': {
+          repo: 'a/b',
+          score: 5,
+          mergedPRCount: 1,
+          closedWithoutMergeCount: 3,
+          avgResponseDays: null,
+          lastEvaluatedAt: '2025-06-01T00:00:00Z',
+          signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
+        },
+        'c/d': {
+          repo: 'c/d',
+          score: 7,
+          mergedPRCount: 2,
+          closedWithoutMergeCount: 1,
+          avgResponseDays: null,
+          lastEvaluatedAt: '2025-06-01T00:00:00Z',
+          signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
+        },
+      },
+    });
+    const stats = buildDashboardStats(makeDigest(), state);
+    expect(stats.closedPRs).toBe(4); // 3 + 1
+  });
+
+  it('formats mergeRate as a percentage string', () => {
+    const digest = makeDigest({
+      summary: { totalActivePRs: 0, totalNeedingAttention: 0, totalMergedAllTime: 0, mergeRate: 72.3456 },
+    });
+    const stats = buildDashboardStats(digest, makeState());
+    expect(stats.mergeRate).toBe('72.3%');
+  });
+
+  it('handles null/undefined mergeRate gracefully', () => {
+    const digest = makeDigest();
+    (digest.summary as any).mergeRate = null;
+    const stats = buildDashboardStats(digest, makeState());
+    expect(stats.mergeRate).toBe('0.0%');
+  });
+
+  it('handles missing repoScores gracefully', () => {
+    const state = makeState();
+    (state as any).repoScores = undefined;
+    const stats = buildDashboardStats(makeDigest(), state);
+    expect(stats.closedPRs).toBe(0);
+  });
+
+  it('handles missing shelvedPRs array', () => {
+    const digest = makeDigest();
+    (digest as any).shelvedPRs = undefined;
+    const stats = buildDashboardStats(digest, makeState());
+    expect(stats.shelvedPRs).toBe(0);
+  });
+});
 
 describe('computePRsByRepo', () => {
   it('should group active PRs by repo', () => {

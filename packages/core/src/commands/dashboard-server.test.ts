@@ -82,10 +82,6 @@ vi.mock('./dashboard-data.js', () => ({
     monthlyClosed: {},
     monthlyOpened: {},
   })),
-}));
-
-// Mock dashboard-templates
-vi.mock('./dashboard-templates.js', () => ({
   buildDashboardStats: vi.fn(() => ({
     activePRs: 2,
     shelvedPRs: 0,
@@ -362,6 +358,12 @@ describe('dashboard-server', () => {
       expect(data).toHaveProperty('activePRs');
       expect(data).toHaveProperty('commentedIssues');
       expect(data).toHaveProperty('issueResponses');
+      expect(data).toHaveProperty('recentlyMergedPRs');
+      expect(data).toHaveProperty('recentlyClosedPRs');
+      expect(data).toHaveProperty('autoUnshelvedPRs');
+      expect(Array.isArray(data.recentlyMergedPRs)).toBe(true);
+      expect(Array.isArray(data.recentlyClosedPRs)).toBe(true);
+      expect(Array.isArray(data.autoUnshelvedPRs)).toBe(true);
     });
 
     it('should return stats with correct values', async () => {

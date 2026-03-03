@@ -104,7 +104,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `init` | `init.ts` | Initialize with GitHub username and import open PRs |
 | `setup` / `checkSetup` | `setup.ts` | First-run setup and setup verification |
 | `vet` | `vet.ts` | Vet a single issue for claimability |
-| `dashboard` | `dashboard.ts` | Generate HTML dashboard (with `dashboard-data.ts` and `dashboard-templates.ts`) |
+| `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-templates.ts`, `dashboard-server.ts`) |
 | `shelve` / `unshelve` | `shelve.ts` | Temporarily hide PRs from daily digest |
 | `snooze` / `unsnooze` | `snooze.ts` | Temporarily suppress PR notifications |
 | `dismiss` / `undismiss` | `dismiss.ts` | Dismiss issue reply notifications (auto-resurfaces on new activity) |
@@ -212,7 +212,7 @@ CLI Layer (startup.ts)
   │  ├── StateManager.load()              → ~/.oss-autopilot/state.json
   │  └── computeActionMenu()              → Pre-computed menu items (daily-logic.ts)
   │
-  │  generateDashboardHtml()              → ~/.oss-autopilot/dashboard.html
+  │  launchDashboardServer()              → http://localhost:3000 (SPA dashboard)
   │
   │  Returns JsonOutput<StartupOutput> to stdout
   │
@@ -272,7 +272,7 @@ PRs are **not** stored in state. On every `daily` run, all open PRs are fetched 
 ├── state.json          # AgentState (config, issues, scores, events)
 ├── backups/            # Auto-backups before each state write
 ├── cache/              # ETag-based HTTP response cache
-└── dashboard.html      # Generated HTML status dashboard
+└── dashboard-server.pid  # Running dashboard server PID + port
 ```
 
 ## Security Model
