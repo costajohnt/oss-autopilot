@@ -1,11 +1,11 @@
 /**
  * Dashboard data fetching and aggregation.
  * Handles GitHub API calls, PR grouping, stats computation, and monthly chart data.
- * Separates data concerns from template generation and command orchestration.
+ * Consumed by the dashboard HTTP server (dashboard-server.ts) for the SPA API.
  */
 
 import { getStateManager, PRMonitor, IssueConversationMonitor } from '../core/index.js';
-import { errorMessage } from '../core/errors.js';
+import { errorMessage, getHttpStatusCode } from '../core/errors.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
 import { toShelvedPRRef } from './daily.js';
 import type { DailyDigest, AgentState, ClosedPR, MergedPR, CommentedIssue } from '../core/types.js';
@@ -44,6 +44,16 @@ export interface DashboardFetchResult {
  * Returns the digest and commented issues, updating state as a side effect.
  * Throws if the fetch fails entirely (caller should fall back to cached data).
  */
+function isRateLimitOrAuthError(err: unknown): boolean {
+  const status = getHttpStatusCode(err);
+  if (status === 401 || status === 429) return true;
+  if (status === 403) {
+    const msg = errorMessage(err).toLowerCase();
+    return msg.includes('rate limit') || msg.includes('abuse detection');
+  }
+  return false;
+}
+
 export async function fetchDashboardData(token: string): Promise<DashboardFetchResult> {
   const stateManager = getStateManager();
   const prMonitor = new PRMonitor(token);
@@ -53,18 +63,22 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     await Promise.all([
       prMonitor.fetchUserOpenPRs(),
       prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
+        if (isRateLimitOrAuthError(err)) throw err;
         console.error(`Warning: Failed to fetch recently closed PRs: ${errorMessage(err)}`);
         return [];
       }),
       prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
+        if (isRateLimitOrAuthError(err)) throw err;
         console.error(`Warning: Failed to fetch recently merged PRs: ${errorMessage(err)}`);
         return [];
       }),
       prMonitor.fetchUserMergedPRCounts().catch((err) => {
+        if (isRateLimitOrAuthError(err)) throw err;
         console.error(`Warning: Failed to fetch merged PR counts: ${errorMessage(err)}`);
         return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
       }),
       prMonitor.fetchUserClosedPRCounts().catch((err) => {
+        if (isRateLimitOrAuthError(err)) throw err;
         console.error(`Warning: Failed to fetch closed PR counts: ${errorMessage(err)}`);
         return emptyPRCountsResult<number>();
       }),

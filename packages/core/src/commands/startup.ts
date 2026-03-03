@@ -97,7 +97,7 @@ export function detectIssueList(): IssueListInfo | undefined {
   }
 }
 
-function openInBrowser(url: string): void {
+export function openInBrowser(url: string): void {
   let openCmd: string;
   let args: string[];
   switch (process.platform) {

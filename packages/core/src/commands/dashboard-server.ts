@@ -13,6 +13,7 @@ import { getStateManager, getGitHubToken, getDataDir } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { validateUrl, validateGitHubUrl, validateMessage, PR_URL_PATTERN } from './validation.js';
 import { fetchDashboardData, computePRsByRepo, computeTopRepos, getMonthlyData, buildDashboardStats, type DashboardStats } from './dashboard-data.js';
+import { openInBrowser } from './startup.js';
 import type { DailyDigest, AgentState, CommentedIssue, CommentedIssueWithResponse, FetchedPR, MergedPR, ClosedPR, ShelvedPRRef } from '../core/types.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -165,7 +166,6 @@ export async function findRunningDashboardServer(): Promise<{ port: number; url:
 
 /**
  * Build the JSON payload that the SPA expects from GET /api/data.
- * Same shape as the existing `dashboard --json` output.
  */
 function buildDashboardJson(
   digest: DailyDigest,
@@ -391,9 +391,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     }
 
     // Rebuild dashboard data from cached digest + updated state
-    if (cachedDigest) {
-      cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
-    }
+    cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
 
     sendJson(res, 200, cachedJsonData);
   }
@@ -533,30 +531,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
   // ── Open browser ─────────────────────────────────────────────────────────
   if (open) {
-    const { execFile } = await import('child_process');
-    let openCmd: string;
-    let args: string[];
-    switch (process.platform) {
-      case 'darwin':
-        openCmd = 'open';
-        args = [serverUrl];
-        break;
-      case 'win32':
-        openCmd = 'cmd';
-        args = ['/c', 'start', '', serverUrl];
-        break;
-      default:
-        openCmd = 'xdg-open';
-        args = [serverUrl];
-        break;
-    }
-
-    execFile(openCmd, args, (error) => {
-      if (error) {
-        console.error('Failed to open browser:', error.message);
-        console.error(`Open manually: ${serverUrl}`);
-      }
-    });
+    openInBrowser(serverUrl);
   }
 
   // ── Clean shutdown ───────────────────────────────────────────────────────

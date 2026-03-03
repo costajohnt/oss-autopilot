@@ -8,7 +8,7 @@ All commands support `--json` flag for structured output.
 
 **Prefix:** `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs"`
 
-Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `config`, `local-repos`, `parse-issue-list`, `dashboard` (offline mode).
+Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `config`, `local-repos`, `parse-issue-list`, `serve`.
 
 ### Core Workflow
 

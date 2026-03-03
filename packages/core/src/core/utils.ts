@@ -19,7 +19,7 @@ let tokenFetchAttempted = false;
  * Returns the oss-autopilot data directory path, creating it if it does not exist.
  *
  * The directory is located at `~/.oss-autopilot/` and serves as the root for
- * all persisted user data (state, backups, dashboard).
+ * all persisted user data (state, backups, cache).
  *
  * @returns Absolute path to the data directory (e.g., `/Users/you/.oss-autopilot`)
  *

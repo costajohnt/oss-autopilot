@@ -364,6 +364,7 @@ describe('runStartup behavior', () => {
     const daily = makeDailyOutput(3);
     executeDailyCheck.mockResolvedValue(daily);
     launchDashboardServer.mockResolvedValue(null);
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const result = await runStartup();
 
@@ -371,6 +372,8 @@ describe('runStartup behavior', () => {
     // No static HTML fallback — SPA is the only dashboard
     expect(execFile).not.toHaveBeenCalled();
     expect(result.dashboardUrl).toBeUndefined();
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Dashboard SPA assets not found'));
+    consoleSpy.mockRestore();
   });
 
   it('should return setup incomplete when setup is not done', async () => {
