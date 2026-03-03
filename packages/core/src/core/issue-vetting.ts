@@ -18,7 +18,7 @@ import {
 } from './types.js';
 import { ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
 import { warn } from './logger.js';
-import { getHttpCache, cachedRequest } from './http-cache.js';
+import { getHttpCache, cachedRequest, cachedTimeBased } from './http-cache.js';
 import { getStateManager } from './state.js';
 import { calculateRepoQualityBonus, calculateViabilityScore } from './issue-scoring.js';
 
@@ -37,6 +37,8 @@ export interface CheckResult {
 // Cache for contribution guidelines (expires after 1 hour, max 100 entries)
 const guidelinesCache = new Map<string, { guidelines: ContributionGuidelines | undefined; fetchedAt: number }>();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+/** TTL for cached project health results (4 hours). Health data (stars, commits, CI) changes slowly. */
+const HEALTH_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 const CACHE_MAX_SIZE = 100;
 
 function pruneCache(): void {
@@ -447,58 +449,62 @@ export class IssueVetter {
   }
 
   async checkProjectHealth(owner: string, repo: string): Promise<ProjectHealth> {
+    const cache = getHttpCache();
+    const healthCacheKey = `health:${owner}/${repo}`;
+
     try {
-      // Get repo info (with ETag caching — repo metadata changes infrequently)
-      const cache = getHttpCache();
-      const url = `/repos/${owner}/${repo}`;
-      const repoData = await cachedRequest(
-        cache,
-        url,
-        (headers) =>
-          this.octokit.repos.get({ owner, repo, headers }) as Promise<{
-            data: { open_issues_count: number; pushed_at: string; stargazers_count: number; forks_count: number };
-            headers: Record<string, string>;
-          }>,
-      );
+      return await cachedTimeBased(cache, healthCacheKey, HEALTH_CACHE_TTL_MS, async () => {
+        // Get repo info (with ETag caching — repo metadata changes infrequently)
+        const url = `/repos/${owner}/${repo}`;
+        const repoData = await cachedRequest(
+          cache,
+          url,
+          (headers) =>
+            this.octokit.repos.get({ owner, repo, headers }) as Promise<{
+              data: { open_issues_count: number; pushed_at: string; stargazers_count: number; forks_count: number };
+              headers: Record<string, string>;
+            }>,
+        );
 
-      // Get recent commits
-      const { data: commits } = await this.octokit.repos.listCommits({
-        owner,
-        repo,
-        per_page: 1,
-      });
-
-      const lastCommit = commits[0];
-      const lastCommitAt = lastCommit?.commit?.author?.date || repoData.pushed_at;
-      const daysSinceLastCommit = daysBetween(new Date(lastCommitAt));
-
-      // Check CI status (simplified - just check if workflows exist)
-      let ciStatus: 'passing' | 'failing' | 'unknown' = 'unknown';
-      try {
-        const { data: workflows } = await this.octokit.actions.listRepoWorkflows({
+        // Get recent commits
+        const { data: commits } = await this.octokit.repos.listCommits({
           owner,
           repo,
           per_page: 1,
         });
-        if (workflows.total_count > 0) {
-          ciStatus = 'passing'; // Assume passing if workflows exist
-        }
-      } catch (error) {
-        const errMsg = errorMessage(error);
-        warn(MODULE, `Failed to check CI status for ${owner}/${repo}: ${errMsg}. Defaulting to unknown.`);
-      }
 
-      return {
-        repo: `${owner}/${repo}`,
-        lastCommitAt,
-        daysSinceLastCommit,
-        openIssuesCount: repoData.open_issues_count,
-        avgIssueResponseDays: 0, // Would need more API calls to calculate
-        ciStatus,
-        isActive: daysSinceLastCommit < 30,
-        stargazersCount: repoData.stargazers_count,
-        forksCount: repoData.forks_count,
-      };
+        const lastCommit = commits[0];
+        const lastCommitAt = lastCommit?.commit?.author?.date || repoData.pushed_at;
+        const daysSinceLastCommit = daysBetween(new Date(lastCommitAt));
+
+        // Check CI status (simplified - just check if workflows exist)
+        let ciStatus: 'passing' | 'failing' | 'unknown' = 'unknown';
+        try {
+          const { data: workflows } = await this.octokit.actions.listRepoWorkflows({
+            owner,
+            repo,
+            per_page: 1,
+          });
+          if (workflows.total_count > 0) {
+            ciStatus = 'passing'; // Assume passing if workflows exist
+          }
+        } catch (error) {
+          const errMsg = errorMessage(error);
+          warn(MODULE, `Failed to check CI status for ${owner}/${repo}: ${errMsg}. Defaulting to unknown.`);
+        }
+
+        return {
+          repo: `${owner}/${repo}`,
+          lastCommitAt,
+          daysSinceLastCommit,
+          openIssuesCount: repoData.open_issues_count,
+          avgIssueResponseDays: 0, // Would need more API calls to calculate
+          ciStatus,
+          isActive: daysSinceLastCommit < 30,
+          stargazersCount: repoData.stargazers_count,
+          forksCount: repoData.forks_count,
+        };
+      });
     } catch (error) {
       const errMsg = errorMessage(error);
       warn(MODULE, `Error checking project health for ${owner}/${repo}: ${errMsg}`);

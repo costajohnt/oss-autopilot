@@ -11,6 +11,29 @@ vi.mock('./github.js', () => ({
   checkRateLimit: vi.fn().mockResolvedValue({ remaining: 30, limit: 30, resetAt: new Date().toISOString() }),
 }));
 
+vi.mock('./http-cache.js', () => ({
+  getHttpCache: vi.fn().mockReturnValue({
+    getIfFresh: vi.fn().mockReturnValue(null),
+    get: vi.fn().mockReturnValue(null),
+    set: vi.fn(),
+    hasInflight: vi.fn().mockReturnValue(false),
+    getInflight: vi.fn().mockReturnValue(undefined),
+    setInflight: vi.fn().mockReturnValue(() => {}),
+  }),
+  // Pass through to the fetcher so octokit mocks are still exercised
+  cachedRequest: vi.fn().mockImplementation(async (_cache: unknown, _url: string, fetcher: (h: Record<string, string>) => Promise<{ data: unknown }>) => {
+    const response = await fetcher({});
+    return response.data;
+  }),
+  cachedTimeBased: vi.fn().mockImplementation(async (cache: any, _key: string, _maxAgeMs: number, fetcher: () => Promise<unknown>) => {
+    const cached = cache.getIfFresh(_key, _maxAgeMs);
+    if (cached) return cached;
+    const result = await fetcher();
+    cache.set(_key, '', result);
+    return result;
+  }),
+}));
+
 vi.mock('./state.js', () => ({
   getStateManager: vi.fn(() => ({
     getState: () => ({
@@ -1454,6 +1477,55 @@ describe('Phase 3: actively maintained repos (#349)', () => {
     expect(query).toContain('stars:>=50');
     expect(query).toMatch(/pushed:>=/);
     expect(query).toContain('archived:false');
+  });
+});
+
+describe('Search result caching (#487)', () => {
+  let discovery: InstanceType<typeof IssueDiscovery>;
+  let mockCache: any;
+
+  beforeEach(async () => {
+    const { getHttpCache } = await import('./http-cache.js');
+    mockCache = (getHttpCache as any)();
+    mockCache.getIfFresh.mockReturnValue(null);
+    mockCache.set.mockClear();
+
+    mockOctokitInstance = {
+      issues: { get: vi.fn(), listEventsForTimeline: vi.fn().mockResolvedValue({ data: [] }) },
+      search: { issuesAndPullRequests: vi.fn().mockResolvedValue({ data: { total_count: 0, items: [] } }) },
+      repos: {
+        get: vi.fn().mockResolvedValue({ data: { open_issues_count: 0, pushed_at: new Date().toISOString(), stargazers_count: 100, forks_count: 10 } }),
+        listCommits: vi.fn().mockResolvedValue({ data: [{ commit: { author: { date: new Date().toISOString() } } }] }),
+        getContent: vi.fn().mockRejectedValue(new Error('404 Not Found')),
+      },
+      actions: { listRepoWorkflows: vi.fn().mockResolvedValue({ data: { total_count: 0 } }) },
+      paginate: { iterator: vi.fn() },
+      activity: { listReposStarredByAuthenticatedUser: vi.fn() },
+    };
+    discovery = new IssueDiscovery('fake-token');
+  });
+
+  it('should call cache.set after a fresh search API call', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: { total_count: 0, items: [] },
+    });
+
+    await expect(discovery.searchIssues({ maxResults: 1 })).rejects.toThrow();
+
+    // cache.set should have been called for the Phase 2 search
+    expect(mockCache.set).toHaveBeenCalled();
+    const setCall = mockCache.set.mock.calls[0];
+    expect(setCall[0]).toMatch(/^search:/); // cache key starts with search:
+  });
+
+  it('should return cached results when getIfFresh returns data', async () => {
+    const cachedData = { total_count: 0, items: [] };
+    mockCache.getIfFresh.mockReturnValue(cachedData);
+
+    await expect(discovery.searchIssues({ maxResults: 1 })).rejects.toThrow();
+
+    // Octokit search should NOT have been called (cached results used)
+    expect(mockOctokitInstance.search.issuesAndPullRequests).not.toHaveBeenCalled();
   });
 });
 

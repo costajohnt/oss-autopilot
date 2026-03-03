@@ -29,6 +29,9 @@ const CURRENT_STATE_VERSION = 2;
 // Maximum number of events to retain in the event log
 const MAX_EVENTS = 1000;
 
+/** Repo scores older than this are considered stale and excluded from low-scoring lists. */
+const SCORE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
 // Lock file timeout: if a lock is older than this, it is considered stale
 const LOCK_TIMEOUT_MS = 30_000; // 30 seconds
 
@@ -1164,8 +1167,18 @@ export class StateManager {
    */
   getLowScoringRepos(maxScore?: number): string[] {
     const threshold = maxScore ?? this.state.config.minRepoScoreThreshold;
+    const now = Date.now();
     return Object.values(this.state.repoScores)
-      .filter((rs) => rs.score <= threshold)
+      .filter((rs) => {
+        if (rs.score > threshold) return false;
+        // Stale scores (>30 days) should not permanently block repos (#487)
+        const age = now - new Date(rs.lastEvaluatedAt).getTime();
+        if (!Number.isFinite(age)) {
+          warn(MODULE, `Invalid lastEvaluatedAt for repo ${rs.repo}: "${rs.lastEvaluatedAt}", treating as stale`);
+          return false;
+        }
+        return age <= SCORE_TTL_MS;
+      })
       .sort((a, b) => a.score - b.score)
       .map((rs) => rs.repo);
   }

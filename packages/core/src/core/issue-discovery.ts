@@ -16,6 +16,7 @@ import { daysBetween, getDataDir } from './utils.js';
 import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate } from './types.js';
 import { ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
 import { debug, info, warn } from './logger.js';
+import { getHttpCache, cachedTimeBased } from './http-cache.js';
 import { type GitHubSearchItem, isDocOnlyIssue, detectLabelFarmingRepos, applyPerRepoCap } from './issue-filtering.js';
 import { IssueVetter } from './issue-vetting.js';
 import { calculateViabilityScore as calcViabilityScore, type ViabilityScoreParams } from './issue-scoring.js';
@@ -39,6 +40,9 @@ export type { SearchPriority, IssueCandidate } from './types.js';
 
 const MODULE = 'issue-discovery';
 
+/** TTL for cached search API results (15 minutes). */
+const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
+
 export class IssueDiscovery {
   private octokit: Octokit;
   private stateManager: ReturnType<typeof getStateManager>;
@@ -53,6 +57,29 @@ export class IssueDiscovery {
     this.octokit = getOctokit(githubToken);
     this.stateManager = getStateManager();
     this.vetter = new IssueVetter(this.octokit, this.stateManager);
+  }
+
+  /**
+   * Wrap octokit.search.issuesAndPullRequests with time-based caching.
+   * Repeated identical queries within SEARCH_CACHE_TTL_MS return cached results
+   * without consuming GitHub API rate limit points.
+   */
+  private async cachedSearch(params: {
+    q: string;
+    sort: string;
+    order: string;
+    per_page: number;
+  }): Promise<{ total_count: number; items: GitHubSearchItem[] }> {
+    const cacheKey = `search:${params.q}:${params.sort}:${params.order}:${params.per_page}`;
+    return cachedTimeBased(
+      getHttpCache(),
+      cacheKey,
+      SEARCH_CACHE_TTL_MS,
+      async () => {
+        const { data } = await this.octokit.search.issuesAndPullRequests(params);
+        return data;
+      },
+    );
   }
 
   /**
@@ -375,7 +402,7 @@ export class IssueDiscovery {
       info(MODULE, 'Phase 2: General issue search...');
       const remainingNeeded = maxResults - allCandidates.length;
       try {
-        const { data } = await this.octokit.search.issuesAndPullRequests({
+        const data = await this.cachedSearch({
           q: baseQuery,
           sort: 'created',
           order: 'desc',
@@ -433,7 +460,7 @@ export class IssueDiscovery {
           .trim();
 
       try {
-        const { data } = await this.octokit.search.issuesAndPullRequests({
+        const data = await this.cachedSearch({
           q: phase3Query,
           sort: 'updated',
           order: 'desc',
@@ -568,7 +595,7 @@ export class IssueDiscovery {
         const repoFilter = batch.map((r) => `repo:${r}`).join(' OR ');
         const batchQuery = `${baseQuery} (${repoFilter})`;
 
-        const { data } = await this.octokit.search.issuesAndPullRequests({
+        const data = await this.cachedSearch({
           q: batchQuery,
           sort: 'created',
           order: 'desc',

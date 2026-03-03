@@ -1705,6 +1705,33 @@ describe('getLowScoringRepos', () => {
     expect(lowRepos).toContain('repo/a');
     expect(lowRepos).not.toContain('repo/b');
   });
+
+  it('should exclude repos with stale scores (>30 days) so they can be re-evaluated (#487)', () => {
+    const sm = new StateManager(false);
+    // Create a low-scoring repo with a fresh evaluation
+    sm.updateRepoScore('fresh/low', { closedWithoutMergeCount: 3, signals: {} });
+    expect(sm.getLowScoringRepos(3)).toContain('fresh/low');
+
+    // Manually backdate the lastEvaluatedAt to 31 days ago
+    const state = sm.getState();
+    const staleDate = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+    state.repoScores['fresh/low'].lastEvaluatedAt = staleDate;
+
+    // Stale score should be excluded — repo gets a chance to be re-evaluated
+    expect(sm.getLowScoringRepos(3)).not.toContain('fresh/low');
+  });
+
+  it('should include repos with recent scores (<30 days) in low-scoring list', () => {
+    const sm = new StateManager(false);
+    sm.updateRepoScore('recent/low', { closedWithoutMergeCount: 3, signals: {} });
+
+    // Backdate to 10 days ago (still within TTL)
+    const state = sm.getState();
+    const recentDate = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+    state.repoScores['recent/low'].lastEvaluatedAt = recentDate;
+
+    expect(sm.getLowScoringRepos(3)).toContain('recent/low');
+  });
 });
 
 describe('getStats', () => {
