@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.43.1...core-v0.44.0) (2026-03-03)
+
+
+### Features
+
+* SPA dashboard with static HTML fallback, cold-start fix, recent activity ([#497](https://github.com/costajohnt/oss-autopilot/issues/497)) ([47e9f26](https://github.com/costajohnt/oss-autopilot/commit/47e9f26f5e43534e955b3da69b53c1413578edab))
+
 ## [0.43.1](https://github.com/costajohnt/oss-autopilot/compare/core-v0.43.0...core-v0.43.1) (2026-03-03)
 
 
