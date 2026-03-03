@@ -87,7 +87,7 @@ What would you like to do?
 
 Then Claude walks you through each issue: drafting responses, diagnosing CI failures, resolving conflicts, until everything is handled.
 
-An HTML dashboard also opens in your browser with charts showing your contribution timeline, merge rate, and PR health at a glance.
+An interactive dashboard also opens in your browser at `http://localhost:3000` with charts showing your contribution timeline, merge rate, and PR health at a glance.
 
 ### When You Search for Issues
 
@@ -194,13 +194,15 @@ Issues from spam repos (label farming, templated mass issues) and inactive proje
 
 ### Dashboard
 
-The dashboard (`~/.oss-autopilot/dashboard.html`) auto-opens each time you run `/oss`. It includes:
+An interactive dashboard auto-opens at `http://localhost:3000` each time you run `/oss`. It includes:
 
 ![OSS Autopilot Dashboard](docs/images/dashboard.png)
 
 - **Status Overview** - Doughnut chart of PR states (active, merged, closed, dormant)
 - **Repository Breakdown** - Top 10 repos by total PRs with stacked bars
 - **Contribution Timeline** - Monthly view of PRs opened, merged, and closed
+
+The dashboard is a Preact SPA served locally. You can also launch it directly with `npx @oss-autopilot/core dashboard serve`.
 
 ### Curated Issue Lists
 
@@ -501,7 +503,7 @@ npm run bundle
 <details>
 <summary>Dashboard doesn't open</summary>
 
-The dashboard is at `~/.oss-autopilot/dashboard.html`. If it doesn't open automatically, open it manually in your browser.
+The interactive dashboard runs at `http://localhost:3000`. If it doesn't open automatically, try launching it manually with `npx @oss-autopilot/core dashboard serve`, then open `http://localhost:3000` in your browser.
 </details>
 
 <details>
@@ -520,7 +522,7 @@ The dashboard is at `~/.oss-autopilot/dashboard.html`. If it doesn't open automa
 No. Claude drafts responses and suggests actions. Nothing is posted to GitHub without your explicit approval.
 
 **Where is my data stored?**
-Config in `.claude/oss-autopilot/config.md`. State and dashboard in `~/.oss-autopilot/`. Nothing is sent to external servers beyond GitHub API calls to fetch your PR data.
+Config in `.claude/oss-autopilot/config.md`. State in `~/.oss-autopilot/`. The dashboard runs locally at `http://localhost:3000`. Nothing is sent to external servers beyond GitHub API calls to fetch your PR data.
 
 **Does it work with private repos?**
 Yes, as long as your GitHub CLI (`gh`) has access.

@@ -6,6 +6,7 @@ import { PRList } from './components/pr-list';
 import { PRDetail } from './components/pr-detail';
 import { ChartPanel } from './components/chart-panel';
 import { IssueList } from './components/issue-list';
+import { RecentActivity } from './components/recent-activity';
 
 export function App() {
   const { data, loading, error, clearError, refresh, performAction } = useDashboard();
@@ -94,6 +95,12 @@ export function App() {
           monthlyOpened={data.monthlyOpened}
           monthlyClosed={data.monthlyClosed}
           topRepos={data.topRepos}
+        />
+
+        <RecentActivity
+          mergedPRs={data.recentlyMergedPRs ?? []}
+          closedPRs={data.recentlyClosedPRs ?? []}
+          autoUnshelvedPRs={data.autoUnshelvedPRs ?? []}
         />
 
         <IssueList issues={data.issueResponses} />

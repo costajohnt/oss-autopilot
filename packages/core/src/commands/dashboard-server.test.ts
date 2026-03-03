@@ -82,10 +82,6 @@ vi.mock('./dashboard-data.js', () => ({
     monthlyClosed: {},
     monthlyOpened: {},
   })),
-}));
-
-// Mock dashboard-templates
-vi.mock('./dashboard-templates.js', () => ({
   buildDashboardStats: vi.fn(() => ({
     activePRs: 2,
     shelvedPRs: 0,

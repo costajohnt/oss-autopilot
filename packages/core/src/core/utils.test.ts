@@ -17,7 +17,6 @@ import {
   getDataDir,
   getStatePath,
   getBackupDir,
-  getDashboardPath,
 } from './utils.js';
 import { execFileSync, execFile } from 'child_process';
 import * as path from 'path';
@@ -44,12 +43,6 @@ describe('path utility functions', () => {
     const backupDir = getBackupDir();
     expect(backupDir).toMatch(/backups$/);
     expect(backupDir).toContain('.oss-autopilot');
-  });
-
-  it('getDashboardPath should return a path ending with dashboard.html', () => {
-    const dashPath = getDashboardPath();
-    expect(dashPath).toMatch(/dashboard\.html$/);
-    expect(dashPath).toContain('.oss-autopilot');
   });
 });
 

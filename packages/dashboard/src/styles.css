@@ -819,6 +819,116 @@ a:hover {
   color: var(--text-muted);
 }
 
+/* === Recent Activity === */
+
+.recent-activity {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  padding: 20px;
+}
+
+.recent-activity-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.recent-activity-section {
+  margin-bottom: 16px;
+}
+
+.recent-activity-section:last-child {
+  margin-bottom: 0;
+}
+
+.recent-activity-section-title {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
+
+.recent-activity-section-title--merged {
+  color: var(--accent-merged);
+}
+
+.recent-activity-section-title--closed {
+  color: var(--accent-error);
+}
+
+.recent-activity-section-title--unshelved {
+  color: var(--accent-info);
+}
+
+.recent-activity-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recent-activity-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border-radius: 6px;
+  font-size: 0.8125rem;
+}
+
+.recent-activity-badge {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.recent-activity-badge--merged {
+  color: var(--accent-merged);
+  background: var(--accent-merged-dim);
+}
+
+.recent-activity-badge--closed {
+  color: var(--accent-error);
+  background: var(--accent-error-dim);
+}
+
+.recent-activity-badge--unshelved {
+  color: var(--accent-info);
+  background: var(--accent-info-dim);
+}
+
+.recent-activity-link {
+  color: var(--accent-info);
+  text-decoration: none;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.recent-activity-link:hover {
+  text-decoration: underline;
+}
+
+.recent-activity-item-title {
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-activity-date {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
 /* === Scrollbar === */
 
 ::-webkit-scrollbar {

@@ -10,6 +10,30 @@ import { emptyPRCountsResult } from '../core/github-stats.js';
 import { toShelvedPRRef } from './daily.js';
 import type { DailyDigest, AgentState, ClosedPR, MergedPR, CommentedIssue } from '../core/types.js';
 
+export interface DashboardStats {
+  activePRs: number;
+  shelvedPRs: number;
+  mergedPRs: number;
+  closedPRs: number;
+  mergeRate: string;
+}
+
+export function buildDashboardStats(digest: DailyDigest, state: Readonly<AgentState>): DashboardStats {
+  const summary = digest.summary || {
+    totalActivePRs: 0,
+    totalMergedAllTime: 0,
+    mergeRate: 0,
+    totalNeedingAttention: 0,
+  };
+  return {
+    activePRs: summary.totalActivePRs,
+    shelvedPRs: (digest.shelvedPRs || []).length,
+    mergedPRs: summary.totalMergedAllTime,
+    closedPRs: Object.values(state.repoScores || {}).reduce((sum, s) => sum + (s.closedWithoutMergeCount || 0), 0),
+    mergeRate: `${(summary.mergeRate ?? 0).toFixed(1)}%`,
+  };
+}
+
 export interface DashboardFetchResult {
   digest: DailyDigest;
   commentedIssues: CommentedIssue[];
@@ -127,7 +151,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
 
 /**
  * Compute PRs grouped by repository from a digest and state.
- * Used for chart data in both JSON and HTML output.
+ * Used for chart data in the dashboard API.
  */
 export function computePRsByRepo(
   digest: DailyDigest,

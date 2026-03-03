@@ -26,7 +26,7 @@ function sleep(ms: number): Promise<void> {
  * Launch the interactive dashboard SPA server as a detached background process.
  *
  * Returns the server URL if launched successfully, or null if the SPA assets
- * are not available (caller should fall back to static HTML).
+ * are not available (dashboard is skipped).
  *
  * If a server is already running (detected via PID file + health probe),
  * returns its URL without launching a new one.

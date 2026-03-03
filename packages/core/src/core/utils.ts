@@ -91,21 +91,6 @@ export function getCacheDir(): string {
 }
 
 /**
- * Returns the path to the generated HTML dashboard file (`~/.oss-autopilot/dashboard.html`).
- *
- * Implicitly creates the data directory via {@link getDataDir} if it does not exist.
- *
- * @returns Absolute path to `dashboard.html`
- *
- * @example
- * const dashPath = getDashboardPath();
- * // "/Users/you/.oss-autopilot/dashboard.html"
- */
-export function getDashboardPath(): string {
-  return path.join(getDataDir(), 'dashboard.html');
-}
-
-/**
  * Represents a parsed GitHub pull request or issue URL.
  *
  * @property owner - The repository owner (e.g., `"facebook"`)

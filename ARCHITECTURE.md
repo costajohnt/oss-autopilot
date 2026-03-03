@@ -212,7 +212,7 @@ CLI Layer (startup.ts)
   │  ├── StateManager.load()              → ~/.oss-autopilot/state.json
   │  └── computeActionMenu()              → Pre-computed menu items (daily-logic.ts)
   │
-  │  generateDashboardHtml()              → ~/.oss-autopilot/dashboard.html
+  │  launchDashboardServer()              → http://localhost:3000 (SPA dashboard)
   │
   │  Returns JsonOutput<StartupOutput> to stdout
   │
@@ -272,7 +272,7 @@ PRs are **not** stored in state. On every `daily` run, all open PRs are fetched 
 ├── state.json          # AgentState (config, issues, scores, events)
 ├── backups/            # Auto-backups before each state write
 ├── cache/              # ETag-based HTTP response cache
-└── dashboard.html      # Generated HTML status dashboard
+└── dashboard-server.pid  # Running dashboard server PID + port
 ```
 
 ## Security Model

@@ -12,9 +12,8 @@ import * as path from 'path';
 import { getStateManager, getGitHubToken, getDataDir } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { validateUrl, validateGitHubUrl, validateMessage, PR_URL_PATTERN } from './validation.js';
-import { fetchDashboardData, computePRsByRepo, computeTopRepos, getMonthlyData } from './dashboard-data.js';
-import { buildDashboardStats, type DashboardStats } from './dashboard-templates.js';
-import type { DailyDigest, AgentState, CommentedIssue, CommentedIssueWithResponse, FetchedPR } from '../core/types.js';
+import { fetchDashboardData, computePRsByRepo, computeTopRepos, getMonthlyData, buildDashboardStats, type DashboardStats } from './dashboard-data.js';
+import type { DailyDigest, AgentState, CommentedIssue, CommentedIssueWithResponse, FetchedPR, MergedPR, ClosedPR, ShelvedPRRef } from '../core/types.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -40,6 +39,9 @@ interface DashboardJsonData {
   monthlyClosed: Record<string, number>;
   activePRs: FetchedPR[];
   shelvedPRUrls: string[];
+  recentlyMergedPRs: MergedPR[];
+  recentlyClosedPRs: ClosedPR[];
+  autoUnshelvedPRs: ShelvedPRRef[];
   commentedIssues: CommentedIssue[];
   issueResponses: CommentedIssueWithResponse[];
   offline?: boolean;
@@ -185,6 +187,9 @@ function buildDashboardJson(
     monthlyClosed,
     activePRs: digest.openPRs || [],
     shelvedPRUrls: state.config.shelvedPRUrls || [],
+    recentlyMergedPRs: digest.recentlyMergedPRs || [],
+    recentlyClosedPRs: digest.recentlyClosedPRs || [],
+    autoUnshelvedPRs: digest.autoUnshelvedPRs || [],
     commentedIssues,
     issueResponses,
   };

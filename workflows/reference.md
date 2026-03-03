@@ -73,9 +73,6 @@ Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `
 ### Dashboard
 
 ```bash
-# Generate static HTML dashboard
-<prefix> dashboard --json [--open] [--offline]
-
 # Serve interactive dashboard SPA
 <prefix> dashboard serve --port 3000 [--open]
 ```

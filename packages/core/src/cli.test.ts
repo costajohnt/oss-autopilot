@@ -110,10 +110,6 @@ describe('LOCAL_ONLY_COMMANDS', () => {
     expect(LOCAL_ONLY_COMMANDS).toContain('checkSetup');
   });
 
-  it('should contain "dashboard"', () => {
-    expect(LOCAL_ONLY_COMMANDS).toContain('dashboard');
-  });
-
   it('should contain "parse-issue-list"', () => {
     expect(LOCAL_ONLY_COMMANDS).toContain('parse-issue-list');
   });
@@ -168,9 +164,9 @@ describe('LOCAL_ONLY_COMMANDS', () => {
   });
 
   it('should have exactly the expected number of entries (no accidental additions/deletions)', () => {
-    // 20 entries: 18 active + 'help' and 'version' which Commander intercepts before
+    // 19 entries: 17 active + 'help' and 'version' which Commander intercepts before
     // preAction fires, so they are defensive/dead entries but intentionally kept.
-    expect(LOCAL_ONLY_COMMANDS).toHaveLength(20);
+    expect(LOCAL_ONLY_COMMANDS).toHaveLength(19);
   });
 });
 
