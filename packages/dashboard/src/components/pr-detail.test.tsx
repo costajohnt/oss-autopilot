@@ -13,17 +13,13 @@ interface PRDetailOptions {
 }
 
 function renderPRDetail(options: PRDetailOptions = {}) {
-  const {
-    pr = makePR(),
-    isShelved = false,
-    isDismissed = false,
-    onAction = vi.fn(),
-    onClose = vi.fn(),
-  } = options;
+  const { pr = makePR(), isShelved = false, isDismissed = false, onAction = vi.fn(), onClose = vi.fn() } = options;
 
   return {
     onClose,
-    ...render(<PRDetail pr={pr} isShelved={isShelved} isDismissed={isDismissed} onAction={onAction} onClose={onClose} />),
+    ...render(
+      <PRDetail pr={pr} isShelved={isShelved} isDismissed={isDismissed} onAction={onAction} onClose={onClose} />,
+    ),
   };
 }
 

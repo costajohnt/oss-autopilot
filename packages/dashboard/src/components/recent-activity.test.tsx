@@ -42,9 +42,7 @@ describe('RecentActivity', () => {
     const closed = [makeClosedPR()];
     const unshelved = [makeShelvedRef()];
 
-    const { container } = render(
-      <RecentActivity mergedPRs={merged} closedPRs={closed} autoUnshelvedPRs={unshelved} />,
-    );
+    const { container } = render(<RecentActivity mergedPRs={merged} closedPRs={closed} autoUnshelvedPRs={unshelved} />);
 
     expect(container.querySelectorAll('.recent-activity-section')).toHaveLength(3);
   });

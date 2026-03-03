@@ -49,26 +49,20 @@ describe('statusColor', () => {
     expect(statusColor(status)).toBe('var(--accent-error)');
   });
 
-  it.each([
-    'changes_addressed',
-    'waiting_on_maintainer',
-    'ci_blocked',
-    'ci_not_running',
-    'waiting',
-  ] as const)('returns info color for waiting status "%s"', (status) => {
-    expect(statusColor(status)).toBe('var(--accent-info)');
-  });
+  it.each(['changes_addressed', 'waiting_on_maintainer', 'ci_blocked', 'ci_not_running', 'waiting'] as const)(
+    'returns info color for waiting status "%s"',
+    (status) => {
+      expect(statusColor(status)).toBe('var(--accent-info)');
+    },
+  );
 
   it('returns open color for healthy status', () => {
     expect(statusColor('healthy')).toBe('var(--accent-open)');
   });
 
-  it.each(['approaching_dormant', 'dormant'] as const)(
-    'returns warning color for staleness status "%s"',
-    (status) => {
-      expect(statusColor(status)).toBe('var(--accent-warning)');
-    },
-  );
+  it.each(['approaching_dormant', 'dormant'] as const)('returns warning color for staleness status "%s"', (status) => {
+    expect(statusColor(status)).toBe('var(--accent-warning)');
+  });
 
   it('returns muted color for unknown status', () => {
     expect(statusColor('unknown_status')).toBe('var(--text-muted)');

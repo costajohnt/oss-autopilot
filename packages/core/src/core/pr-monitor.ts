@@ -320,8 +320,7 @@ export class PRMonitor {
     const classifiedChecks = classifyFailingChecks(failingCheckNames, failingCheckConclusions);
 
     // Determine status
-    const hasActionableCIFailure =
-      ciStatus === 'failing' && classifiedChecks.some((c) => c.category === 'actionable');
+    const hasActionableCIFailure = ciStatus === 'failing' && classifiedChecks.some((c) => c.category === 'actionable');
     const status = this.determineStatus({
       ciStatus,
       hasMergeConflict,

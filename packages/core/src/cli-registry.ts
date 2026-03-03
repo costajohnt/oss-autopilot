@@ -264,7 +264,9 @@ export const commands: CLICommandDef[] = [
             if (options.json) {
               outputJson(data);
             } else {
-              console.log('Note: In v2, PR read state is not tracked locally. PRs are fetched fresh on each daily run.');
+              console.log(
+                'Note: In v2, PR read state is not tracked locally. PRs are fetched fresh on each daily run.',
+              );
             }
           } catch (err) {
             handleCommandError(err, options.json);

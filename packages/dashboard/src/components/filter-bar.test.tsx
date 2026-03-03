@@ -13,18 +13,11 @@ interface FilterBarOptions {
 }
 
 function renderFilterBar(options: FilterBarOptions = {}) {
-  const {
-    filters = defaultFilters,
-    onFilterChange = vi.fn(),
-    repos = [],
-    statuses = [],
-  } = options;
+  const { filters = defaultFilters, onFilterChange = vi.fn(), repos = [], statuses = [] } = options;
 
   return {
     onFilterChange,
-    ...render(
-      <FilterBar filters={filters} onFilterChange={onFilterChange} repos={repos} statuses={statuses} />,
-    ),
+    ...render(<FilterBar filters={filters} onFilterChange={onFilterChange} repos={repos} statuses={statuses} />),
   };
 }
 
