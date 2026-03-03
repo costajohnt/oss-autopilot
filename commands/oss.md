@@ -1,7 +1,7 @@
 ---
 name: oss
 description: "Daily OSS contribution check - uses CLI with --json for structured data"
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Task, mcp__*
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, mcp__*
 ---
 
 # OSS Autopilot Daily Check

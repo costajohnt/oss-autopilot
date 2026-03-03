@@ -1,7 +1,7 @@
 ---
 name: setup-oss
 description: Configure OSS autopilot preferences
-allowed-tools: Bash, Write, Read, Glob, AskUserQuestion, mcp__*
+allowed-tools: Bash, Write, Read, Glob, mcp__*
 ---
 
 # OSS Autopilot Setup

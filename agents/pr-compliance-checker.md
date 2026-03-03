@@ -31,7 +31,7 @@ User wants pre-submission guidance on PR quality.
 
 model: inherit
 color: orange
-tools: ["Bash", "Read", "Glob", "Grep", "WebFetch", "AskUserQuestion", "mcp__*"]
+tools: ["Bash", "Read", "Glob", "Grep", "WebFetch", "mcp__*"]
 ---
 
 > **Input validation:** The "AskUserQuestion Validation Protocol" from `commands/oss.md` applies to ALL `AskUserQuestion` calls in this agent. After every call, check for empty/missing answers and fall back to text-based input if the picker auto-completed.

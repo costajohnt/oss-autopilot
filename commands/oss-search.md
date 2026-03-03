@@ -1,7 +1,7 @@
 ---
 name: oss-search
 description: "Search for new open source issues to contribute to — parallel multi-strategy search with vetting"
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Task, mcp__*
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, mcp__*
 ---
 
 # OSS Issue Search
