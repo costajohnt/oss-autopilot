@@ -113,6 +113,69 @@ describe('isAllSelfReplies', () => {
     expect(result).toBe(true);
   });
 
+  it('should return false when self-reply contains a question mark (#498)', () => {
+    const result = isAllSelfReplies(200, [
+      {
+        id: 1000,
+        user: { login: 'maintainer' },
+        body: "Shouldn't this be part of the previous condition only?",
+        created_at: '2026-02-07T10:00:00Z',
+        pull_request_review_id: 100,
+      },
+      {
+        id: 1001,
+        user: { login: 'maintainer' },
+        body: 'Could you please elaborate on this?',
+        created_at: '2026-02-25T10:00:00Z',
+        in_reply_to_id: 1000,
+        pull_request_review_id: 200,
+      },
+    ]);
+    expect(result).toBe(false);
+  });
+
+  it('should return false when self-reply has null body (#498)', () => {
+    const result = isAllSelfReplies(200, [
+      {
+        id: 1000,
+        user: { login: 'maintainer' },
+        body: 'Original comment',
+        created_at: '2026-02-07T10:00:00Z',
+        pull_request_review_id: 100,
+      },
+      {
+        id: 1001,
+        user: { login: 'maintainer' },
+        body: null,
+        created_at: '2026-02-07T11:00:00Z',
+        in_reply_to_id: 1000,
+        pull_request_review_id: 200,
+      },
+    ]);
+    expect(result).toBe(false);
+  });
+
+  it('should return true when self-reply has no question mark', () => {
+    const result = isAllSelfReplies(200, [
+      {
+        id: 1000,
+        user: { login: 'maintainer' },
+        body: 'Original comment',
+        created_at: '2026-02-07T10:00:00Z',
+        pull_request_review_id: 100,
+      },
+      {
+        id: 1001,
+        user: { login: 'maintainer' },
+        body: 'Actually, I meant the other file too.',
+        created_at: '2026-02-07T11:00:00Z',
+        in_reply_to_id: 1000,
+        pull_request_review_id: 200,
+      },
+    ]);
+    expect(result).toBe(true);
+  });
+
   it('should be case-insensitive when checking authors', () => {
     const result = isAllSelfReplies(200, [
       {
@@ -222,6 +285,42 @@ describe('checkUnrespondedComments', () => {
     expect(result.hasUnrespondedComment).toBe(true);
     expect(result.lastMaintainerComment?.author).toBe('reviewer');
     expect(result.lastMaintainerComment?.body).toBe('(requested changes via inline review comments)');
+  });
+
+  it('should detect maintainer self-reply with question as needing response (#498)', () => {
+    const reviewComments = [
+      {
+        id: 1000,
+        user: { login: 'stefan6419846' },
+        body: "Shouldn't this be part of the previous condition only?",
+        created_at: '2026-02-08T10:00:00Z',
+        pull_request_review_id: 100,
+      },
+      {
+        id: 1001,
+        user: { login: 'stefan6419846' },
+        body: 'Could you please elaborate on this?',
+        created_at: '2026-02-25T10:00:00Z',
+        in_reply_to_id: 1000,
+        pull_request_review_id: 300,
+      },
+    ];
+    const result = checkUnrespondedComments(
+      [],
+      [
+        {
+          user: { login: 'stefan6419846' },
+          body: '',
+          submitted_at: '2026-02-25T10:00:00Z',
+          state: 'COMMENTED',
+          id: 300,
+        },
+      ],
+      reviewComments,
+      'prauthor',
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('stefan6419846');
   });
 
   it('should be case-insensitive for username matching', () => {

@@ -92,7 +92,14 @@ export function isAllSelfReplies(reviewId: number, reviewComments: ReviewComment
     if (!comment.in_reply_to_id) return false; // New thread, not a reply
     const parentAuthor = authorMap.get(comment.in_reply_to_id);
     const commentAuthor = comment.user?.login?.toLowerCase();
-    return parentAuthor != null && commentAuthor != null && parentAuthor === commentAuthor;
+    if (parentAuthor == null || commentAuthor == null || parentAuthor !== commentAuthor) return false;
+    // A self-reply containing a question mark is likely a follow-up question
+    // directed at the PR author, not an informational addendum (#498).
+    // Null/empty body on a self-reply is anomalous — surface it rather than
+    // silently filtering, since the safe direction is to notify.
+    if (!comment.body) return false;
+    if (comment.body.includes('?')) return false;
+    return true;
   });
 }
 
