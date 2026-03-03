@@ -31,7 +31,7 @@ Merge conflicts are a health issue this agent handles.
 
 model: inherit
 color: yellow
-tools: ["Bash", "Read", "Write", "Grep", "AskUserQuestion", "mcp__*"]
+tools: ["Bash", "Read", "Write", "Grep", "mcp__*"]
 ---
 
 > **Input validation:** The "AskUserQuestion Validation Protocol" from `commands/oss.md` applies to ALL `AskUserQuestion` calls in this agent. After every call, check for empty/missing answers and fall back to text-based input if the picker auto-completed.

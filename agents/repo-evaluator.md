@@ -22,7 +22,7 @@ User wants to predict maintainer engagement before contributing.
 
 model: inherit
 color: blue
-tools: ["Bash", "Read", "Write", "Glob", "AskUserQuestion", "mcp__*"]
+tools: ["Bash", "Read", "Write", "Glob", "mcp__*"]
 ---
 
 > **Input validation:** The "AskUserQuestion Validation Protocol" from `commands/oss.md` applies to ALL `AskUserQuestion` calls in this agent. After every call, check for empty/missing answers and fall back to text-based input if the picker auto-completed.
