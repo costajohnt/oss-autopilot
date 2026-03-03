@@ -31,7 +31,7 @@ import {
   type PRCheckFailure,
   type RepoGroup,
 } from '../core/index.js';
-import { errorMessage } from '../core/errors.js';
+import { errorMessage, getHttpStatusCode } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
 import {
@@ -45,6 +45,17 @@ import {
 } from '../formatters/json.js';
 
 const MODULE = 'daily';
+
+/** Return true for errors that should propagate (not degrade gracefully). */
+function isRateLimitOrAuthError(err: unknown): boolean {
+  const status = getHttpStatusCode(err);
+  if (status === 401 || status === 429) return true;
+  if (status === 403) {
+    const msg = errorMessage(err).toLowerCase();
+    return msg.includes('rate limit') || msg.includes('abuse detection');
+  }
+  return false;
+}
 
 // Re-export domain functions so existing consumers (tests, dashboard, startup)
 // can continue importing from './daily.js' without changes.
@@ -127,22 +138,27 @@ async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<Fetched
   const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs, issueConversationResult] = await Promise.all(
     [
       prMonitor.fetchUserMergedPRCounts().catch((err) => {
+        if (isRateLimitOrAuthError(err)) throw err;
         warn(MODULE, `Failed to fetch merged PR counts: ${errorMessage(err)}`);
         return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
       }),
       prMonitor.fetchUserClosedPRCounts().catch((err) => {
+        if (isRateLimitOrAuthError(err)) throw err;
         warn(MODULE, `Failed to fetch closed PR counts: ${errorMessage(err)}`);
         return emptyPRCountsResult<number>();
       }),
       prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
+        if (isRateLimitOrAuthError(err)) throw err;
         warn(MODULE, `Failed to fetch recently closed PRs: ${errorMessage(err)}`);
         return [];
       }),
       prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
+        if (isRateLimitOrAuthError(err)) throw err;
         warn(MODULE, `Failed to fetch recently merged PRs: ${errorMessage(err)}`);
         return [];
       }),
       issueMonitor.fetchCommentedIssues().catch((error) => {
+        if (isRateLimitOrAuthError(error)) throw error;
         const msg = errorMessage(error);
         if (msg.includes('No GitHub username configured')) {
           warn(MODULE, `Issue conversation tracking requires setup: ${msg}`);

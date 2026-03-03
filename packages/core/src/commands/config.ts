@@ -37,8 +37,7 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
   // Handle specific config keys
   switch (options.key) {
     case 'username':
-      validateGitHubUsername(value);
-      stateManager.updateConfig({ githubUsername: value });
+      stateManager.updateConfig({ githubUsername: validateGitHubUsername(value) });
       break;
     case 'add-language':
       if (!currentConfig.languages.includes(value)) {

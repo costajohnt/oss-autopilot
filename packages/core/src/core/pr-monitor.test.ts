@@ -2435,6 +2435,24 @@ describe('getCIStatus error handling (#182)', () => {
     await expect(callGetCIStatus()).rejects.toThrow('Forbidden');
   });
 
+  it('should re-throw 429 from listForRef even when getCombinedStatusForRef succeeds (#481)', async () => {
+    mockOctokitInstance = {
+      repos: { getCombinedStatusForRef: vi.fn().mockResolvedValue(emptyCombinedStatus) },
+      checks: { listForRef: vi.fn().mockRejectedValue(httpError('rate limit exceeded', 429)) },
+    };
+
+    await expect(callGetCIStatus()).rejects.toThrow('rate limit exceeded');
+  });
+
+  it('should re-throw rate-limit 403 from listForRef even when getCombinedStatusForRef succeeds (#481)', async () => {
+    mockOctokitInstance = {
+      repos: { getCombinedStatusForRef: vi.fn().mockResolvedValue(emptyCombinedStatus) },
+      checks: { listForRef: vi.fn().mockRejectedValue(httpError('API rate limit exceeded', 403)) },
+    };
+
+    await expect(callGetCIStatus()).rejects.toThrow('API rate limit exceeded');
+  });
+
   it('should return unknown status on 404 without logging an error', async () => {
     mockBothEndpointsRejecting(httpError('Not Found', 404));
 
