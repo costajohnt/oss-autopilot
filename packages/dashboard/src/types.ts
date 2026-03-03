@@ -187,6 +187,8 @@ export interface DashboardData {
   prsByRepo: Record<string, { active: number; merged: number; closed: number }>;
   topRepos: Array<{ repo: string; active: number; merged: number; closed: number }>;
   monthlyMerged: Record<string, number>;
+  monthlyOpened: Record<string, number>;
+  monthlyClosed: Record<string, number>;
   activePRs: FetchedPR[];
   shelvedPRUrls: string[];
   commentedIssues: CommentedIssue[];

@@ -257,6 +257,9 @@ export function daysBetween(from: Date, to: Date = new Date()): number {
  */
 export function splitRepo(repoFullName: string): { owner: string; repo: string } {
   const [owner, repo] = repoFullName.split('/');
+  if (!owner || !repo) {
+    throw new Error(`Invalid repo format: expected "owner/repo", got "${repoFullName}"`);
+  }
   return { owner, repo };
 }
 

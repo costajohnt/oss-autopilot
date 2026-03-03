@@ -2423,26 +2423,16 @@ describe('getCIStatus error handling (#182)', () => {
     errorSpy.mockRestore();
   });
 
-  it('should return unknown status on 401 unauthorized and log AUTH ERROR', async () => {
+  it('should re-throw 401 unauthorized error (#481)', async () => {
     mockBothEndpointsRejecting(httpError('Unauthorized', 401));
 
-    const result = await callGetCIStatus();
-
-    expect(result.status).toBe('unknown');
-    expect(result.failingCheckNames).toEqual([]);
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('CI check failed'));
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid token'));
+    await expect(callGetCIStatus()).rejects.toThrow('Unauthorized');
   });
 
-  it('should return unknown status on 403 rate limit and log RATE LIMIT', async () => {
+  it('should re-throw 403 rate limit error (#481)', async () => {
     mockBothEndpointsRejecting(httpError('Forbidden', 403));
 
-    const result = await callGetCIStatus();
-
-    expect(result.status).toBe('unknown');
-    expect(result.failingCheckNames).toEqual([]);
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('CI check failed'));
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Rate limit exceeded'));
+    await expect(callGetCIStatus()).rejects.toThrow('Forbidden');
   });
 
   it('should return unknown status on 404 without logging an error', async () => {

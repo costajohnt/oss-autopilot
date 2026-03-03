@@ -8,10 +8,17 @@ export async function runWorkerPool<T>(
   concurrency: number,
 ): Promise<void> {
   let index = 0;
+  let aborted = false;
   const poolWorker = async () => {
     while (index < items.length) {
+      if (aborted) break;
       const item = items[index++];
-      await worker(item);
+      try {
+        await worker(item);
+      } catch (err) {
+        aborted = true;
+        throw err;
+      }
     }
   };
   const workerCount = Math.min(concurrency, items.length);

@@ -112,6 +112,12 @@ describe('runConfig', () => {
     await expect(runConfig({ key: 'unknown-key', value: 'val' })).rejects.toThrow('Unknown config key: unknown-key');
   });
 
+  it('should reject an invalid GitHub username', async () => {
+    await expect(runConfig({ key: 'username', value: '-invalid' })).rejects.toThrow('cannot start with a hyphen');
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
   it('should throw error when value is missing', async () => {
     await expect(runConfig({ key: 'username' })).rejects.toThrow('Value required');
   });

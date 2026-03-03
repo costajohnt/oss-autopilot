@@ -516,10 +516,8 @@ export class PRMonitor {
       const statusCode = getHttpStatusCode(error);
       const errMsg = errorMessage(error);
 
-      if (statusCode === 401) {
-        warn('pr-monitor', `CI check failed for ${owner}/${repo}: Invalid token`);
-      } else if (statusCode === 403) {
-        warn('pr-monitor', `CI check failed for ${owner}/${repo}: Rate limit exceeded`);
+      if (statusCode === 401 || statusCode === 403) {
+        throw error;
       } else if (statusCode === 404) {
         // Repo might not have CI configured, this is normal
         debug('pr-monitor', `CI check 404 for ${owner}/${repo} (no CI configured)`);

@@ -32,6 +32,7 @@ import {
   type RepoGroup,
 } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
+import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
 import {
   deduplicateDigest,
@@ -42,6 +43,8 @@ import {
   type ActionableIssue,
   type ActionMenu,
 } from '../formatters/json.js';
+
+const MODULE = 'daily';
 
 // Re-export domain functions so existing consumers (tests, dashboard, startup)
 // can continue importing from './daily.js' without changes.
@@ -115,7 +118,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<Fetched
 
   // Log any failures (but continue with successful checks)
   if (failures.length > 0) {
-    console.error(`Warning: ${failures.length} PR fetch(es) failed`);
+    warn(MODULE, `${failures.length} PR fetch(es) failed`);
   }
 
   // Fetch merged PR counts, closed PR counts, recently closed PRs, recently merged PRs, and commented issues in parallel
@@ -124,27 +127,27 @@ async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<Fetched
   const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs, issueConversationResult] = await Promise.all(
     [
       prMonitor.fetchUserMergedPRCounts().catch((err) => {
-        console.error(`Warning: Failed to fetch merged PR counts: ${errorMessage(err)}`);
+        warn(MODULE, `Failed to fetch merged PR counts: ${errorMessage(err)}`);
         return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
       }),
       prMonitor.fetchUserClosedPRCounts().catch((err) => {
-        console.error(`Warning: Failed to fetch closed PR counts: ${errorMessage(err)}`);
+        warn(MODULE, `Failed to fetch closed PR counts: ${errorMessage(err)}`);
         return emptyPRCountsResult<number>();
       }),
       prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
-        console.error(`Warning: Failed to fetch recently closed PRs: ${errorMessage(err)}`);
+        warn(MODULE, `Failed to fetch recently closed PRs: ${errorMessage(err)}`);
         return [];
       }),
       prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
-        console.error(`Warning: Failed to fetch recently merged PRs: ${errorMessage(err)}`);
+        warn(MODULE, `Failed to fetch recently merged PRs: ${errorMessage(err)}`);
         return [];
       }),
       issueMonitor.fetchCommentedIssues().catch((error) => {
         const msg = errorMessage(error);
         if (msg.includes('No GitHub username configured')) {
-          console.error(`[DAILY] Issue conversation tracking requires setup: ${msg}`);
+          warn(MODULE, `Issue conversation tracking requires setup: ${msg}`);
         } else {
-          console.error(`[DAILY] Issue conversation fetch failed: ${msg}`);
+          warn(MODULE, `Issue conversation fetch failed: ${msg}`);
         }
         return {
           issues: [] as CommentedIssue[],
@@ -156,7 +159,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<Fetched
 
   const commentedIssues = issueConversationResult.issues;
   if (issueConversationResult.failures.length > 0) {
-    console.error(`[DAILY] ${issueConversationResult.failures.length} issue conversation check(s) failed`);
+    warn(MODULE, `${issueConversationResult.failures.length} issue conversation check(s) failed`);
   }
 
   const { repos: mergedCounts, monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
@@ -199,8 +202,9 @@ async function updateRepoScores(
   // skip the reset to avoid wiping scores due to transient API failures.
   const existingReposWithMerges = Object.values(stateManager.getState().repoScores).filter((s) => s.mergedPRCount > 0);
   if (mergedCounts.size === 0 && existingReposWithMerges.length > 0) {
-    console.error(
-      `[DAILY] Skipping stale repo reset: API returned 0 merged PR results but state has ${existingReposWithMerges.length} repo(s) with merges. Possible API issue.`,
+    warn(
+      MODULE,
+      `Skipping stale repo reset: API returned 0 merged PR results but state has ${existingReposWithMerges.length} repo(s) with merges. Possible API issue.`,
     );
   } else {
     for (const score of Object.values(stateManager.getState().repoScores)) {
@@ -217,11 +221,11 @@ async function updateRepoScores(
       stateManager.updateRepoScore(repo, { mergedPRCount: count, lastMergedAt: lastMergedAt || undefined });
     } catch (error) {
       mergedCountFailures++;
-      console.error(`[DAILY] Failed to update merged count for ${repo}:`, errorMessage(error));
+      warn(MODULE, `Failed to update merged count for ${repo}: ${errorMessage(error)}`);
     }
   }
   if (mergedCountFailures === mergedCounts.size && mergedCounts.size > 0) {
-    console.error(`[DAILY_ALL_MERGED_COUNT_UPDATES_FAILED] All ${mergedCounts.size} merged count update(s) failed.`);
+    warn(MODULE, `[ALL_MERGED_COUNT_UPDATES_FAILED] All ${mergedCounts.size} merged count update(s) failed.`);
   }
 
   // Populate closedWithoutMergeCount in repo scores.
@@ -231,8 +235,9 @@ async function updateRepoScores(
     (s) => (s.closedWithoutMergeCount || 0) > 0,
   );
   if (closedCounts.size === 0 && existingReposWithClosed.length > 0) {
-    console.error(
-      `[DAILY] Warning: API returned 0 closed PR results but state has ${existingReposWithClosed.length} repo(s) with closed PRs. Possible transient API issue.`,
+    warn(
+      MODULE,
+      `API returned 0 closed PR results but state has ${existingReposWithClosed.length} repo(s) with closed PRs. Possible transient API issue.`,
     );
   }
   let closedCountFailures = 0;
@@ -241,11 +246,11 @@ async function updateRepoScores(
       stateManager.updateRepoScore(repo, { closedWithoutMergeCount: count });
     } catch (error) {
       closedCountFailures++;
-      console.error(`[DAILY] Failed to update closed count for ${repo}:`, errorMessage(error));
+      warn(MODULE, `Failed to update closed count for ${repo}: ${errorMessage(error)}`);
     }
   }
   if (closedCountFailures === closedCounts.size && closedCounts.size > 0) {
-    console.error(`[DAILY_ALL_CLOSED_COUNT_UPDATES_FAILED] All ${closedCounts.size} closed count update(s) failed.`);
+    warn(MODULE, `[ALL_CLOSED_COUNT_UPDATES_FAILED] All ${closedCounts.size} closed count update(s) failed.`);
   }
 
   // Update repo signals from observed open PR data (responsiveness, active maintainers).
@@ -260,12 +265,13 @@ async function updateRepoScores(
       stateManager.updateRepoScore(repo, { signals });
     } catch (error) {
       signalUpdateFailures++;
-      console.error(`[DAILY] Failed to update signals for ${repo}:`, errorMessage(error));
+      warn(MODULE, `Failed to update signals for ${repo}: ${errorMessage(error)}`);
     }
   }
   if (signalUpdateFailures === repoSignals.size && repoSignals.size > 0) {
-    console.error(
-      `[DAILY_ALL_SIGNAL_UPDATES_FAILED] All ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`,
+    warn(
+      MODULE,
+      `[ALL_SIGNAL_UPDATES_FAILED] All ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`,
     );
   }
 
@@ -275,9 +281,10 @@ async function updateRepoScores(
   try {
     starCounts = await prMonitor.fetchRepoStarCounts(allRepos);
   } catch (error) {
-    console.error('[DAILY] Failed to fetch repo star counts:', errorMessage(error));
-    console.error(
-      '[DAILY] Dashboard minStars filter will use cached star counts (or be skipped for repos without cached data).',
+    warn(MODULE, `Failed to fetch repo star counts: ${errorMessage(error)}`);
+    warn(
+      MODULE,
+      'Dashboard minStars filter will use cached star counts (or be skipped for repos without cached data).',
     );
     starCounts = new Map();
   }
@@ -287,11 +294,11 @@ async function updateRepoScores(
       stateManager.updateRepoScore(repo, { stargazersCount: stars });
     } catch (error) {
       starUpdateFailures++;
-      console.error(`[DAILY] Failed to update star count for ${repo}:`, errorMessage(error));
+      warn(MODULE, `Failed to update star count for ${repo}: ${errorMessage(error)}`);
     }
   }
   if (starUpdateFailures === starCounts.size && starCounts.size > 0) {
-    console.error(`[DAILY_ALL_STAR_COUNT_UPDATES_FAILED] All ${starCounts.size} star count update(s) failed.`);
+    warn(MODULE, `[ALL_STAR_COUNT_UPDATES_FAILED] All ${starCounts.size} star count update(s) failed.`);
   }
 
   // Auto-sync trustedProjects from repos with merged PRs
@@ -301,12 +308,13 @@ async function updateRepoScores(
       stateManager.addTrustedProject(repo);
     } catch (error) {
       trustSyncFailures++;
-      console.error(`[DAILY] Failed to sync trusted project ${repo}:`, errorMessage(error));
+      warn(MODULE, `Failed to sync trusted project ${repo}: ${errorMessage(error)}`);
     }
   }
   if (trustSyncFailures === mergedCounts.size && mergedCounts.size > 0) {
-    console.error(
-      `[DAILY_ALL_TRUST_SYNCS_FAILED] All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`,
+    warn(
+      MODULE,
+      `[ALL_TRUST_SYNCS_FAILED] All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`,
     );
   }
 }
@@ -333,7 +341,7 @@ function updateAnalytics(
       stateManager.setMonthlyMergedCounts(monthlyCounts);
     }
   } catch (error) {
-    console.error('[DAILY] Failed to store monthly merged counts:', errorMessage(error));
+    warn(MODULE, `Failed to store monthly merged counts: ${errorMessage(error)}`);
   }
 
   try {
@@ -341,7 +349,7 @@ function updateAnalytics(
       stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
     }
   } catch (error) {
-    console.error('[DAILY] Failed to store monthly closed counts:', errorMessage(error));
+    warn(MODULE, `Failed to store monthly closed counts: ${errorMessage(error)}`);
   }
 
   try {
@@ -361,7 +369,7 @@ function updateAnalytics(
       stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
     }
   } catch (error) {
-    console.error('[DAILY] Failed to compute/store monthly opened counts:', errorMessage(error));
+    warn(MODULE, `Failed to compute/store monthly opened counts: ${errorMessage(error)}`);
   }
 }
 
@@ -383,14 +391,14 @@ function partitionPRs(
   try {
     const expiredSnoozes = stateManager.expireSnoozes();
     if (expiredSnoozes.length > 0) {
-      console.error(`[DAILY] ${expiredSnoozes.length} snoozed PR(s) expired and will resurface:`);
+      warn(MODULE, `${expiredSnoozes.length} snoozed PR(s) expired and will resurface:`);
       for (const url of expiredSnoozes) {
-        console.error(`  - ${url}`);
+        warn(MODULE, `  - ${url}`);
       }
       stateManager.save();
     }
   } catch (error) {
-    console.error('[DAILY] Failed to expire/persist snoozes:', errorMessage(error));
+    warn(MODULE, `Failed to expire/persist snoozes: ${errorMessage(error)}`);
   }
 
   // Partition PRs into active vs shelved, auto-unshelving when maintainers engage
@@ -462,13 +470,14 @@ function generateDigestOutput(
       if (isNaN(responseTime) || isNaN(dismissTime)) {
         // Invalid timestamp — fail open (include issue to be safe) without
         // permanently removing dismiss record (may be a transient data issue)
-        console.error(`[DAILY] Invalid timestamp in dismiss check for ${issue.url}, including issue`);
+        warn(MODULE, `Invalid timestamp in dismiss check for ${issue.url}, including issue`);
         return true;
       }
       if (responseTime > dismissTime) {
         // New activity after dismiss — auto-undismiss and resurface
-        console.error(
-          `[DAILY] Auto-undismissing issue ${issue.url}: new response at ${issue.lastResponseAt} after dismiss at ${dismissedAt}`,
+        warn(
+          MODULE,
+          `Auto-undismissing issue ${issue.url}: new response at ${issue.lastResponseAt} after dismiss at ${dismissedAt}`,
         );
         stateManager.undismissIssue(issue.url);
         hasAutoUndismissed = true;
@@ -495,14 +504,12 @@ function generateDigestOutput(
     if (isNaN(activityTime) || isNaN(dismissTime)) {
       // Invalid timestamp — fail open (include PR to be safe) without
       // permanently removing dismiss record (may be a transient data issue)
-      console.error(`[DAILY] Invalid timestamp in PR dismiss check for ${pr.url}, including PR`);
+      warn(MODULE, `Invalid timestamp in PR dismiss check for ${pr.url}, including PR`);
       return true;
     }
     if (activityTime > dismissTime) {
       // New activity after dismiss — auto-undismiss and resurface
-      console.error(
-        `[DAILY] Auto-undismissing PR ${pr.url}: new activity at ${pr.updatedAt} after dismiss at ${dismissedAt}`,
-      );
+      warn(MODULE, `Auto-undismissing PR ${pr.url}: new activity at ${pr.updatedAt} after dismiss at ${dismissedAt}`);
       stateManager.undismissIssue(pr.url);
       hasAutoUndismissed = true;
       return true;
@@ -516,7 +523,7 @@ function generateDigestOutput(
     try {
       stateManager.save();
     } catch (error) {
-      console.error('[DAILY] Failed to persist auto-undismissed state:', errorMessage(error));
+      warn(MODULE, `Failed to persist auto-undismissed state: ${errorMessage(error)}`);
     }
   }
   const actionableIssues = collectActionableIssues(nonDismissedPRs, snoozedUrls);

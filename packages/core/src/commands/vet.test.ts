@@ -53,6 +53,25 @@ describe('runVet', () => {
     });
   });
 
+  it('should reject a non-GitHub issue URL', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+
+    await expect(runVet({ issueUrl: 'https://example.com/not-github' })).rejects.toThrow('Invalid issue URL');
+  });
+
+  it('should reject a PR URL (not an issue URL)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+
+    await expect(runVet({ issueUrl: 'https://github.com/owner/repo/pull/5' })).rejects.toThrow('Invalid issue URL');
+  });
+
+  it('should reject a URL that exceeds maximum length', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    const longUrl = 'https://github.com/' + 'a'.repeat(2100);
+
+    await expect(runVet({ issueUrl: longUrl })).rejects.toThrow('exceeds maximum length');
+  });
+
   it('should propagate errors from vetIssue', async () => {
     mockRequireGitHubToken.mockReturnValue('ghp_test123');
     mockVetIssue.mockRejectedValue(new Error('Issue not found'));

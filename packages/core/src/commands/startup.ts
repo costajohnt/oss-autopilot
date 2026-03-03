@@ -9,7 +9,7 @@
 
 import * as fs from 'fs';
 import { execFile } from 'child_process';
-import { getStateManager, getGitHubToken, getCLIVersion } from '../core/index.js';
+import { getStateManager, getGitHubToken, getCLIVersion, getStatePath, getDashboardPath } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
 import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
@@ -154,10 +154,28 @@ export async function runStartup(): Promise<StartupOutput> {
   // 3. Run daily check
   const daily = await executeDailyCheck(token);
 
-  // 4. Generate static HTML dashboard (always — serves as fallback + snapshot)
+  // 4. Generate static HTML dashboard (serves as fallback + snapshot).
+  //    Skip regeneration if the dashboard HTML is already newer than state.json.
   let dashboardPath: string | undefined;
   try {
-    dashboardPath = writeDashboardFromState();
+    const statePath = getStatePath();
+    const dashPath = getDashboardPath();
+    let dashboardFresh = false;
+    if (fs.existsSync(dashPath)) {
+      try {
+        const stateMtime = fs.statSync(statePath).mtimeMs;
+        const dashMtime = fs.statSync(dashPath).mtimeMs;
+        dashboardFresh = dashMtime >= stateMtime;
+      } catch {
+        // If stat fails, regenerate to be safe
+      }
+    }
+    if (dashboardFresh) {
+      dashboardPath = dashPath;
+      console.error('[STARTUP] Dashboard HTML is fresh, skipping regeneration');
+    } else {
+      dashboardPath = writeDashboardFromState();
+    }
   } catch (error) {
     console.error('[STARTUP] Dashboard generation failed:', errorMessage(error));
   }
