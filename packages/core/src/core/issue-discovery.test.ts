@@ -350,13 +350,17 @@ describe('IssueDiscovery.analyzeRequirements (via vetIssue internals)', () => {
 describe('IssueDiscovery.vetIssue inconclusive downgrade', () => {
   let discovery: InstanceType<typeof IssueDiscovery>;
 
+  // Use relative dates so tests don't become flaky as wall-clock time passes thresholds
+  const recentDate = () => new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(); // 5 days ago
+  const olderDate = () => new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(); // 20 days ago
+
   const makeGhIssue = () => ({
     id: 1,
     html_url: 'https://github.com/owner/repo/issues/42',
     title: 'Test issue with clear requirements',
     labels: [{ name: 'good first issue' }],
-    created_at: '2026-01-01T00:00:00Z',
-    updated_at: '2026-02-01T00:00:00Z',
+    created_at: olderDate(),
+    updated_at: recentDate(),
     comments: 0,
     body: `
       This feature should add pagination to the API.
@@ -367,6 +371,7 @@ describe('IssueDiscovery.vetIssue inconclusive downgrade', () => {
   });
 
   beforeEach(() => {
+    const recent = recentDate();
     mockOctokitInstance = {
       issues: {
         get: vi.fn().mockResolvedValue({ data: makeGhIssue() }),
@@ -377,10 +382,10 @@ describe('IssueDiscovery.vetIssue inconclusive downgrade', () => {
       },
       repos: {
         get: vi.fn().mockResolvedValue({
-          data: { open_issues_count: 5, pushed_at: '2026-02-01T00:00:00Z', stargazers_count: 100, forks_count: 20 },
+          data: { open_issues_count: 5, pushed_at: recent, stargazers_count: 100, forks_count: 20 },
         }),
         listCommits: vi.fn().mockResolvedValue({
-          data: [{ commit: { author: { date: '2026-02-01T00:00:00Z' } } }],
+          data: [{ commit: { author: { date: recent } } }],
         }),
         getContent: vi.fn().mockRejectedValue(new Error('404 Not Found')),
       },
