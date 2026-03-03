@@ -8,7 +8,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "exports": {
     "./package.json": "./package.json"
@@ -24,7 +26,10 @@
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.9.4",
+    "@testing-library/preact": "^3.2.4",
+    "jsdom": "^28.1.0",
     "typescript": "^5.9.3",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vitest": "^4.0.18"
   }
 }
