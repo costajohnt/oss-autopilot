@@ -14,6 +14,7 @@ import { errorMessage } from '../core/errors.js';
 import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
 import { writeDashboardFromState } from './dashboard.js';
+import { launchDashboardServer } from './dashboard-lifecycle.js';
 
 /**
  * Parse issueListPath from a config file's YAML frontmatter.
@@ -98,9 +99,22 @@ export function detectIssueList(): IssueListInfo | undefined {
 }
 
 function openInBrowser(filePath: string): void {
-  const isWindows = process.platform === 'win32';
-  const openCmd = process.platform === 'darwin' ? 'open' : isWindows ? 'cmd' : 'xdg-open';
-  const args = isWindows ? ['/c', 'start', '', filePath] : [filePath];
+  let openCmd: string;
+  let args: string[];
+  switch (process.platform) {
+    case 'darwin':
+      openCmd = 'open';
+      args = [filePath];
+      break;
+    case 'win32':
+      openCmd = 'cmd';
+      args = ['/c', 'start', '', filePath];
+      break;
+    default:
+      openCmd = 'xdg-open';
+      args = [filePath];
+      break;
+  }
   execFile(openCmd, args, (error) => {
     if (error) {
       console.error(`[STARTUP] Failed to open dashboard in browser: ${error.message}`);
@@ -113,7 +127,7 @@ function openInBrowser(filePath: string): void {
  * Returns StartupOutput with one of three shapes:
  * 1. Setup incomplete: { version, setupComplete: false }
  * 2. Auth failure: { version, setupComplete: true, authError: "..." }
- * 3. Success: { version, setupComplete: true, daily, dashboardPath?, issueList? }
+ * 3. Success: { version, setupComplete: true, daily, dashboardPath?, dashboardUrl?, issueList? }
  *
  * Errors from the daily check propagate to the caller.
  */
@@ -140,18 +154,34 @@ export async function runStartup(): Promise<StartupOutput> {
   // 3. Run daily check
   const daily = await executeDailyCheck(token);
 
-  // 4. Generate dashboard from state (just saved by daily)
-  // Skip opening on first run (0 PRs) — the welcome flow handles onboarding
+  // 4. Generate static HTML dashboard (always — serves as fallback + snapshot)
   let dashboardPath: string | undefined;
-  let dashboardOpened = false;
   try {
     dashboardPath = writeDashboardFromState();
-    if (daily.digest.summary.totalActivePRs > 0) {
+  } catch (error) {
+    console.error('[STARTUP] Dashboard generation failed:', errorMessage(error));
+  }
+
+  // 5. Launch interactive SPA dashboard (preferred) with static HTML fallback
+  // Skip opening on first run (0 PRs) — the welcome flow handles onboarding
+  let dashboardUrl: string | undefined;
+  let dashboardOpened = false;
+  if (daily.digest.summary.totalActivePRs > 0) {
+    let spaResult: Awaited<ReturnType<typeof launchDashboardServer>> = null;
+    try {
+      spaResult = await launchDashboardServer();
+    } catch (error) {
+      console.error('[STARTUP] SPA dashboard launch failed:', errorMessage(error));
+    }
+    if (spaResult) {
+      dashboardUrl = spaResult.url;
+      openInBrowser(spaResult.url);
+      dashboardOpened = true;
+    } else if (dashboardPath) {
+      // SPA unavailable (assets not built) — fall back to static HTML
       openInBrowser(dashboardPath);
       dashboardOpened = true;
     }
-  } catch (error) {
-    console.error('[STARTUP] Dashboard generation failed:', errorMessage(error));
   }
 
   // Append dashboard status to brief summary (only startup opens the browser, not daily)
@@ -159,7 +189,7 @@ export async function runStartup(): Promise<StartupOutput> {
     daily.briefSummary += ' | Dashboard opened in browser';
   }
 
-  // 5. Detect issue list
+  // 6. Detect issue list
   const issueList = detectIssueList();
 
   return {
@@ -167,6 +197,7 @@ export async function runStartup(): Promise<StartupOutput> {
     setupComplete: true,
     daily,
     dashboardPath,
+    dashboardUrl,
     issueList,
   };
 }
