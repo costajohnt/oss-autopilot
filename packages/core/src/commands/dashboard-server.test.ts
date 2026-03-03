@@ -59,6 +59,8 @@ const mockStateManager = {
   unshelvePR: vi.fn().mockReturnValue(true),
   snoozePR: vi.fn().mockReturnValue(true),
   unsnoozePR: vi.fn().mockReturnValue(true),
+  dismissIssue: vi.fn().mockReturnValue(true),
+  undismissIssue: vi.fn().mockReturnValue(false),
 };
 
 // Create a temp dir for PID file tests (needs to exist before mock is evaluated)

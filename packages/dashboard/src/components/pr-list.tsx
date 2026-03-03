@@ -7,6 +7,7 @@ interface PRListProps {
   selectedUrl: string | null;
   onSelect: (url: string) => void;
   shelvedUrls: Set<string>;
+  dismissedUrls: Set<string>;
 }
 
 /** Statuses that belong in the "Action Required" section. */
@@ -74,11 +75,13 @@ function Section({
   );
 }
 
-export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps) {
+export function PRList({ prs, selectedUrl, onSelect, shelvedUrls, dismissedUrls }: PRListProps) {
   const [shelvedOpen, setShelvedOpen] = useState(false);
+  const [dismissedOpen, setDismissedOpen] = useState(false);
 
-  const activePRs = prs.filter((pr) => !shelvedUrls.has(pr.url));
+  const activePRs = prs.filter((pr) => !shelvedUrls.has(pr.url) && !dismissedUrls.has(pr.url));
   const shelvedPRs = prs.filter((pr) => shelvedUrls.has(pr.url));
+  const dismissedPRs = prs.filter((pr) => dismissedUrls.has(pr.url) && !shelvedUrls.has(pr.url));
 
   const sections: SectionDef[] = [
     {
@@ -103,10 +106,29 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps)
 
   return (
     <div class="pr-list">
-      {sections.length === 0 && shelvedPRs.length === 0 && <p class="pr-list-empty">No PRs to display</p>}
+      {sections.length === 0 && shelvedPRs.length === 0 && dismissedPRs.length === 0 && (
+        <p class="pr-list-empty">No PRs to display</p>
+      )}
       {sections.map((section) => (
         <Section key={section.id} section={section} selectedUrl={selectedUrl} onSelect={onSelect} />
       ))}
+      {dismissedPRs.length > 0 && (
+        <div class="pr-section pr-section--shelved">
+          <h3
+            class="pr-section-header pr-section-header--collapsible"
+            style={{ borderLeftColor: 'var(--text-muted)' }}
+            onClick={() => setDismissedOpen(!dismissedOpen)}
+          >
+            <span class={`pr-section-chevron ${dismissedOpen ? 'pr-section-chevron--open' : ''}`}>&#9656;</span>
+            Dismissed
+            <span class="pr-section-count">{dismissedPRs.length}</span>
+          </h3>
+          {dismissedOpen &&
+            dismissedPRs.map((pr) => (
+              <PRRow key={pr.url} pr={pr} selected={pr.url === selectedUrl} onSelect={onSelect} />
+            ))}
+        </div>
+      )}
       {shelvedPRs.length > 0 && (
         <div class="pr-section pr-section--shelved">
           <h3
