@@ -91,6 +91,18 @@ export function getCacheDir(): string {
 }
 
 /**
+ * Returns the path to the static HTML dashboard file (~/.oss-autopilot/dashboard.html).
+ * Used as a fallback when the interactive SPA dashboard cannot be launched.
+ *
+ * @example
+ * const dashPath = getDashboardPath();
+ * // "/Users/you/.oss-autopilot/dashboard.html"
+ */
+export function getDashboardPath(): string {
+  return path.join(getDataDir(), 'dashboard.html');
+}
+
+/**
  * Represents a parsed GitHub pull request or issue URL.
  *
  * @property owner - The repository owner (e.g., `"facebook"`)

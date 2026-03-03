@@ -33,6 +33,7 @@ export {
   getStatePath,
   getBackupDir,
   getCacheDir,
+  getDashboardPath,
   formatRelativeTime,
   byDateDescending,
   getGitHubToken,

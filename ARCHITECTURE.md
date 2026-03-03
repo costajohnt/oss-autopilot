@@ -104,7 +104,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `init` | `init.ts` | Initialize with GitHub username and import open PRs |
 | `setup` / `checkSetup` | `setup.ts` | First-run setup and setup verification |
 | `vet` | `vet.ts` | Vet a single issue for claimability |
-| `dashboard` | `dashboard.ts` | Generate HTML dashboard (with `dashboard-data.ts` and `dashboard-templates.ts`) |
+| `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-templates.ts`, `dashboard-server.ts`) |
 | `shelve` / `unshelve` | `shelve.ts` | Temporarily hide PRs from daily digest |
 | `snooze` / `unsnooze` | `snooze.ts` | Temporarily suppress PR notifications |
 | `dismiss` / `undismiss` | `dismiss.ts` | Dismiss issue reply notifications (auto-resurfaces on new activity) |

@@ -14,6 +14,7 @@ import { errorMessage } from '../core/errors.js';
 import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
 import { launchDashboardServer } from './dashboard-lifecycle.js';
+import { writeDashboardFromState } from './dashboard.js';
 
 /**
  * Parse issueListPath from a config file's YAML frontmatter.
@@ -126,7 +127,7 @@ export function openInBrowser(url: string): void {
  * Returns StartupOutput with one of three shapes:
  * 1. Setup incomplete: { version, setupComplete: false }
  * 2. Auth failure: { version, setupComplete: true, authError: "..." }
- * 3. Success: { version, setupComplete: true, daily, dashboardUrl?, issueList? }
+ * 3. Success: { version, setupComplete: true, daily, dashboardUrl?, dashboardPath?, issueList? }
  *
  * Errors from the daily check propagate to the caller.
  */
@@ -153,10 +154,23 @@ export async function runStartup(): Promise<StartupOutput> {
   // 3. Run daily check
   const daily = await executeDailyCheck(token);
 
-  // 4. Launch interactive SPA dashboard
+  // 4. Launch interactive SPA dashboard (with static HTML fallback)
   // Skip opening on first run (0 PRs) — the welcome flow handles onboarding
   let dashboardUrl: string | undefined;
+  let dashboardPath: string | undefined;
   let dashboardOpened = false;
+
+  function tryStaticHtmlFallback(): boolean {
+    try {
+      dashboardPath = writeDashboardFromState();
+      openInBrowser(dashboardPath);
+      return true;
+    } catch (htmlError) {
+      console.error('[STARTUP] Static HTML dashboard fallback also failed:', errorMessage(htmlError));
+      return false;
+    }
+  }
+
   if (daily.digest.summary.totalActivePRs > 0) {
     try {
       const spaResult = await launchDashboardServer();
@@ -165,10 +179,12 @@ export async function runStartup(): Promise<StartupOutput> {
         openInBrowser(spaResult.url);
         dashboardOpened = true;
       } else {
-        console.error('[STARTUP] Dashboard SPA assets not found. Run: cd packages/dashboard && pnpm run build');
+        console.error('[STARTUP] Dashboard SPA assets not found, falling back to static HTML dashboard');
+        dashboardOpened = tryStaticHtmlFallback();
       }
     } catch (error) {
       console.error('[STARTUP] SPA dashboard launch failed:', errorMessage(error));
+      dashboardOpened = tryStaticHtmlFallback();
     }
   }
 
@@ -185,6 +201,7 @@ export async function runStartup(): Promise<StartupOutput> {
     setupComplete: true,
     daily,
     dashboardUrl,
+    dashboardPath,
     issueList,
   };
 }

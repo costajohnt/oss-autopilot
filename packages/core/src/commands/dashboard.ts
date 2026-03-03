@@ -1,10 +1,42 @@
 /**
  * Dashboard command — serves the interactive Preact SPA dashboard.
+ * Also provides writeDashboardFromState() for generating a static HTML fallback
+ * when the SPA cannot be launched (e.g., assets not built).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { getGitHubToken } from '../core/index.js';
+import { getStateManager, getDashboardPath, getGitHubToken } from '../core/index.js';
+import { getMonthlyData } from './dashboard-data.js';
+import { buildDashboardStats, generateDashboardHtml } from './dashboard-templates.js';
+
+// ── Static HTML fallback ────────────────────────────────────────────────────
+
+/**
+ * Generate dashboard HTML from state (no GitHub fetch).
+ * Call after executeDailyCheck() which saves fresh data to state.
+ * Returns the path to the generated dashboard HTML file.
+ *
+ * Used as a safety net when the interactive SPA dashboard cannot be launched.
+ */
+export function writeDashboardFromState(): string {
+  const stateManager = getStateManager();
+  const state = stateManager.getState();
+  const digest = state.lastDigest;
+
+  if (!digest) {
+    throw new Error('No digest data available. Run daily check first.');
+  }
+
+  const { monthlyMerged, monthlyClosed, monthlyOpened } = getMonthlyData(state);
+  const stats = buildDashboardStats(digest, state);
+  const html = generateDashboardHtml(stats, monthlyMerged, monthlyClosed, monthlyOpened, digest, state);
+
+  const dashboardPath = getDashboardPath();
+  fs.writeFileSync(dashboardPath, html, { mode: 0o644 });
+
+  return dashboardPath;
+}
 
 // ── Serve (interactive dashboard) ──────────────────────────────────────────
 

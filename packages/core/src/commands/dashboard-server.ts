@@ -254,7 +254,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   // Start immediately with state.json data (written by the daily check that
   // precedes this server launch). A background GitHub fetch refreshes the
   // cache after the port is bound, so the startup poller sees us in time.
-  let cachedDigest: DailyDigest | undefined = stateManager.getState().lastDigest;
+  let cachedDigest: DailyDigest = stateManager.getState().lastDigest!;
   let cachedCommentedIssues: CommentedIssue[] = [];
 
   if (!cachedDigest) {

@@ -389,7 +389,7 @@ OSS Autopilot is a **pnpm monorepo** with three packages, plus a plugin layer:
 |---------|-----|-------------|
 | `@oss-autopilot/core` | [![npm](https://img.shields.io/npm/v/@oss-autopilot/core)](https://www.npmjs.com/package/@oss-autopilot/core) | Core library + CLI. PR monitoring, issue discovery, state management, GitHub API. |
 | `@oss-autopilot/mcp` | [![npm](https://img.shields.io/npm/v/@oss-autopilot/mcp)](https://www.npmjs.com/package/@oss-autopilot/mcp) | MCP server for Cursor, Claude Desktop, Codex, Windsurf, and any MCP client. |
-| `@oss-autopilot/dashboard` | — | Interactive HTML dashboard with charts and PR health view. |
+| `@oss-autopilot/dashboard` | — | Interactive Preact SPA dashboard with charts and PR health view. |
 
 ### CLI
 
@@ -403,7 +403,7 @@ The CLI supports `--json` on every command for structured output:
 GITHUB_TOKEN=$(gh auth token) npx @oss-autopilot/core daily --json
 GITHUB_TOKEN=$(gh auth token) npx @oss-autopilot/core search 10 --json
 npx @oss-autopilot/core status --json
-npx @oss-autopilot/core dashboard
+npx @oss-autopilot/core dashboard serve
 ```
 
 All commands return `{ success, data, error, timestamp }`, useful for building your own tooling on top.
