@@ -246,24 +246,11 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   const resolvedAssetsDir = path.resolve(assetsDir);
 
   // ── Cached data ──────────────────────────────────────────────────────────
-  let cachedDigest: DailyDigest | undefined;
+  // Start immediately with state.json data (written by the daily check that
+  // precedes this server launch). A background GitHub fetch refreshes the
+  // cache after the port is bound, so the startup poller sees us in time.
+  let cachedDigest: DailyDigest | undefined = stateManager.getState().lastDigest;
   let cachedCommentedIssues: CommentedIssue[] = [];
-
-  // Fetch initial data
-  if (token) {
-    try {
-      console.error('Fetching dashboard data from GitHub...');
-      const result = await fetchDashboardData(token);
-      cachedDigest = result.digest;
-      cachedCommentedIssues = result.commentedIssues;
-    } catch (error) {
-      console.error('Failed to fetch data from GitHub:', error);
-      console.error('Falling back to cached data...');
-      cachedDigest = stateManager.getState().lastDigest;
-    }
-  } else {
-    cachedDigest = stateManager.getState().lastDigest;
-  }
 
   if (!cachedDigest) {
     console.error('No dashboard data available. Run the daily check first:');
@@ -522,6 +509,22 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
   const serverUrl = `http://localhost:${actualPort}`;
   console.error(`Dashboard server running at ${serverUrl}`);
+
+  // ── Background refresh ─────────────────────────────────────────────────
+  // Port is bound and PID file written — now fetch fresh data from GitHub
+  // so subsequent /api/data requests get live data instead of cached state.
+  if (token) {
+    fetchDashboardData(token)
+      .then((result) => {
+        cachedDigest = result.digest;
+        cachedCommentedIssues = result.commentedIssues;
+        cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+        console.error('Background data refresh complete');
+      })
+      .catch((error) => {
+        console.error('Background data refresh failed (serving cached data):', errorMessage(error));
+      });
+  }
 
   // ── Open browser ─────────────────────────────────────────────────────────
   if (open) {
