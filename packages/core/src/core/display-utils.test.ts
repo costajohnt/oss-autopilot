@@ -95,4 +95,24 @@ describe('computeDisplayLabel', () => {
     const result = computeDisplayLabel(makePR({ status: 'needs_changes' }));
     expect(result.displayLabel).toBe('[Needs Changes]');
   });
+
+  it('should return non-actionable description for ci_blocked with classified checks', () => {
+    const result = computeDisplayLabel(
+      makePR({
+        status: 'ci_blocked',
+        classifiedChecks: [
+          { name: 'Facebook Internal - Linter', category: 'infrastructure' },
+          { name: 'Vercel Deploy', category: 'fork_limitation' },
+        ],
+      }),
+    );
+    expect(result.displayLabel).toBe('[CI Blocked]');
+    expect(result.displayDescription).toBe('All failing checks are non-actionable (infrastructure, fork_limitation)');
+  });
+
+  it('should return default ci_blocked description when no classified checks', () => {
+    const result = computeDisplayLabel(makePR({ status: 'ci_blocked' }));
+    expect(result.displayLabel).toBe('[CI Blocked]');
+    expect(result.displayDescription).toBe('CI checks are failing but no action is needed from you');
+  });
 });

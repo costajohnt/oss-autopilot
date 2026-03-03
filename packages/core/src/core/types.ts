@@ -62,6 +62,8 @@ export interface DetermineStatusInput {
   latestCommitDate?: string;
   lastMaintainerCommentDate?: string;
   latestChangesRequestedDate?: string;
+  /** True if at least one failing CI check is classified as 'actionable'. */
+  hasActionableCIFailure?: boolean;
 }
 
 /**
@@ -71,8 +73,7 @@ export interface DetermineStatusInput {
  * **Action required (contributor must act):**
  * - `needs_response` — Maintainer commented after the contributor's last activity
  * - `needs_changes` — Reviewer requested changes (via review, not just a comment)
- * - `failing_ci` — One or more CI checks are failing
- * - `ci_blocked` — CI cannot run (e.g., first-time contributor approval needed) *(reserved)*
+ * - `failing_ci` — One or more CI checks are failing (at least one is actionable)
  * - `ci_not_running` — No CI checks have been triggered *(reserved)*
  * - `merge_conflict` — PR has merge conflicts with the base branch
  * - `needs_rebase` — PR branch is significantly behind upstream *(reserved)*
@@ -80,6 +81,7 @@ export interface DetermineStatusInput {
  * - `incomplete_checklist` — PR body has unchecked required checkboxes
  *
  * **Waiting (no action needed right now):**
+ * - `ci_blocked` — All failing CI checks are non-actionable (infrastructure, fork limitation, auth gate)
  * - `changes_addressed` — Contributor pushed commits after reviewer feedback; awaiting re-review
  * - `waiting` — CI is pending or no specific action needed
  * - `waiting_on_maintainer` — PR is approved and CI passes; waiting for maintainer to merge
