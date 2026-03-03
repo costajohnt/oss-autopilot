@@ -391,10 +391,8 @@ function partitionPRs(
   try {
     const expiredSnoozes = stateManager.expireSnoozes();
     if (expiredSnoozes.length > 0) {
-      warn(MODULE, `${expiredSnoozes.length} snoozed PR(s) expired and will resurface:`);
-      for (const url of expiredSnoozes) {
-        warn(MODULE, `  - ${url}`);
-      }
+      const urls = expiredSnoozes.map((url) => `  - ${url}`).join('\n');
+      warn(MODULE, `${expiredSnoozes.length} snoozed PR(s) expired and will resurface:\n${urls}`);
       stateManager.save();
     }
   } catch (error) {
