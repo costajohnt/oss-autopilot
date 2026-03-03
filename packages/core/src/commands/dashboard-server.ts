@@ -12,9 +12,25 @@ import * as path from 'path';
 import { getStateManager, getGitHubToken, getDataDir } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { validateUrl, validateGitHubUrl, validateMessage, PR_URL_PATTERN } from './validation.js';
-import { fetchDashboardData, computePRsByRepo, computeTopRepos, getMonthlyData, buildDashboardStats, type DashboardStats } from './dashboard-data.js';
+import {
+  fetchDashboardData,
+  computePRsByRepo,
+  computeTopRepos,
+  getMonthlyData,
+  buildDashboardStats,
+  type DashboardStats,
+} from './dashboard-data.js';
 import { openInBrowser } from './startup.js';
-import type { DailyDigest, AgentState, CommentedIssue, CommentedIssueWithResponse, FetchedPR, MergedPR, ClosedPR, ShelvedPRRef } from '../core/types.js';
+import type {
+  DailyDigest,
+  AgentState,
+  CommentedIssue,
+  CommentedIssueWithResponse,
+  FetchedPR,
+  MergedPR,
+  ClosedPR,
+  ShelvedPRRef,
+} from '../core/types.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 

@@ -510,7 +510,9 @@ describe('runStartup behavior', () => {
     const daily = makeDailyOutput(3);
     executeDailyCheck.mockResolvedValue(daily);
     launchDashboardServer.mockResolvedValue(null);
-    writeDashboardFromState.mockImplementation(() => { throw new Error('No digest data'); });
+    writeDashboardFromState.mockImplementation(() => {
+      throw new Error('No digest data');
+    });
 
     const result = await runStartup();
 
@@ -530,7 +532,9 @@ describe('runStartup behavior', () => {
     const daily = makeDailyOutput(5);
     executeDailyCheck.mockResolvedValue(daily);
     launchDashboardServer.mockRejectedValue(new Error('spawn ENOENT'));
-    writeDashboardFromState.mockImplementation(() => { throw new Error('No digest data'); });
+    writeDashboardFromState.mockImplementation(() => {
+      throw new Error('No digest data');
+    });
 
     const result = await runStartup();
 
@@ -539,7 +543,10 @@ describe('runStartup behavior', () => {
     expect(result.dashboardPath).toBeUndefined();
     expect(execFile).not.toHaveBeenCalled();
     expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Static HTML dashboard fallback also failed'), 'No digest data');
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Static HTML dashboard fallback also failed'),
+      'No digest data',
+    );
     consoleSpy.mockRestore();
   });
 });
