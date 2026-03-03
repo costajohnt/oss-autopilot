@@ -66,8 +66,8 @@ export class IssueDiscovery {
    */
   private async cachedSearch(params: {
     q: string;
-    sort: string;
-    order: string;
+    sort: 'created' | 'updated' | 'comments' | 'reactions' | 'interactions';
+    order: 'asc' | 'desc';
     per_page: number;
   }): Promise<{ total_count: number; items: GitHubSearchItem[] }> {
     const cacheKey = `search:${params.q}:${params.sort}:${params.order}:${params.per_page}`;

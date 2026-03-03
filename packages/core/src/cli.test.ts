@@ -1,11 +1,12 @@
 /**
- * Tests for cli.ts entry point
+ * Tests for CLI entry point and command registry
  *
- * Since cli.ts calls program.parse() at module level, we test its logic by:
- * 1. Exercising preAction hook behavior via a minimal Commander replica
- * 2. Validating LOCAL_ONLY_COMMANDS membership expectations
- * 3. Verifying version detection IIFE graceful fallback
- * 4. Confirming all expected subcommands are registered
+ * Tests the registry pattern (cli-registry.ts) and preAction hook (cli.ts):
+ * 1. Validates local-only command membership via the registry's localOnly flags
+ * 2. Exercises preAction hook behavior via a minimal Commander replica
+ * 3. Verifies version detection IIFE graceful fallback
+ * 4. Confirms all expected subcommands are registered in the registry
+ * 5. Verifies lazy-loading pattern in cli-registry.ts
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -19,6 +20,16 @@ vi.mock('./core/index.js', () => ({
   getGitHubTokenAsync: vi.fn(),
   enableDebug: vi.fn(),
   debug: vi.fn(),
+  getCLIVersion: vi.fn().mockReturnValue('0.0.0-test'),
+}));
+
+vi.mock('./core/errors.js', () => ({
+  errorMessage: vi.fn((err: unknown) => String(err)),
+}));
+
+vi.mock('./formatters/json.js', () => ({
+  outputJson: vi.fn(),
+  outputJsonError: vi.fn(),
 }));
 
 import { getGitHubTokenAsync, enableDebug, debug } from './core/index.js';
@@ -27,31 +38,20 @@ const mockGetGitHubTokenAsync = vi.mocked(getGitHubTokenAsync);
 const mockEnableDebug = vi.mocked(enableDebug);
 const mockDebug = vi.mocked(debug);
 
-// ─── LOCAL_ONLY_COMMANDS extracted directly from cli.ts source ───────────────
+// ─── Import registry directly ────────────────────────────────────────────────
 //
-// We read cli.ts at test time to extract the actual LOCAL_ONLY_COMMANDS array
-// so tests stay in sync automatically rather than relying on a manually maintained copy.
-//
-// NOTE: 'help' and 'version' are included in cli.ts's list as a defensive measure,
-// but Commander handles those built-ins before preAction ever fires, so they are
-// never actually matched. They are tested via the length assertion below.
+// The registry is the single source of truth for command definitions.
+// Tests import it directly instead of parsing source code with regex.
 
-function extractLocalOnlyCommandsFromSource(): string[] {
-  const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
-  const match = src.match(/const LOCAL_ONLY_COMMANDS = \[([\s\S]*?)\];/);
-  if (!match) throw new Error('Could not locate LOCAL_ONLY_COMMANDS in cli.ts');
-  const entries = match[1].match(/'([^']+)'/g);
-  if (!entries) throw new Error('Could not parse LOCAL_ONLY_COMMANDS entries from cli.ts');
-  return entries.map((s) => s.replace(/'/g, ''));
-}
+import { commands } from './cli-registry.js';
 
-const LOCAL_ONLY_COMMANDS = extractLocalOnlyCommandsFromSource();
+const LOCAL_ONLY_COMMANDS = commands.filter((c) => c.localOnly).map((c) => c.name);
 
 // ─── Helper: build a minimal Commander program with the same preAction hook ──
 
-const noop = vi.fn(async () => {});
+async function noop(): Promise<void> {}
 
-function buildTestProgram(localOnlyCommands: string[]) {
+function buildTestProgram(localOnlySet: Set<string>) {
   const program = new Command();
   program.name('oss-autopilot').option('--debug', 'Enable debug logging');
 
@@ -71,7 +71,7 @@ function buildTestProgram(localOnlyCommands: string[]) {
     }
 
     const commandName = actionCommand.name();
-    if (!localOnlyCommands.includes(commandName)) {
+    if (!localOnlySet.has(commandName)) {
       const token = await getGitHubTokenAsync();
       if (!token) {
         console.error('Error: GitHub authentication required.');
@@ -83,90 +83,30 @@ function buildTestProgram(localOnlyCommands: string[]) {
   return program;
 }
 
+// Build the Set the same way cli.ts does
+const localOnlySet = new Set(LOCAL_ONLY_COMMANDS);
+
 // ─── LOCAL_ONLY_COMMANDS membership ──────────────────────────────────────────
 
-describe('LOCAL_ONLY_COMMANDS', () => {
-  it('should contain "status"', () => {
-    expect(LOCAL_ONLY_COMMANDS).toContain('status');
+describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
+  const expectedLocalOnly = [
+    'status', 'config', 'read', 'untrack', 'setup', 'checkSetup',
+    'serve', 'parse-issue-list', 'check-integration', 'local-repos',
+    'startup', 'shelve', 'unshelve', 'dismiss', 'undismiss', 'snooze', 'unsnooze',
+  ];
+
+  const expectedTokenRequired = ['daily', 'search', 'vet', 'track', 'comments', 'post', 'init', 'claim'];
+
+  it.each(expectedLocalOnly)('should contain local-only command "%s"', (cmd) => {
+    expect(LOCAL_ONLY_COMMANDS).toContain(cmd);
   });
 
-  it('should contain "config"', () => {
-    expect(LOCAL_ONLY_COMMANDS).toContain('config');
+  it.each(expectedTokenRequired)('should NOT contain token-required command "%s"', (cmd) => {
+    expect(LOCAL_ONLY_COMMANDS).not.toContain(cmd);
   });
 
-  it('should contain "read"', () => {
-    expect(LOCAL_ONLY_COMMANDS).toContain('read');
-  });
-
-  it('should contain "untrack"', () => {
-    expect(LOCAL_ONLY_COMMANDS).toContain('untrack');
-  });
-
-  it('should contain "setup"', () => {
-    expect(LOCAL_ONLY_COMMANDS).toContain('setup');
-  });
-
-  it('should contain "checkSetup"', () => {
-    expect(LOCAL_ONLY_COMMANDS).toContain('checkSetup');
-  });
-
-  it('should contain "parse-issue-list"', () => {
-    expect(LOCAL_ONLY_COMMANDS).toContain('parse-issue-list');
-  });
-
-  it('should contain "check-integration"', () => {
-    expect(LOCAL_ONLY_COMMANDS).toContain('check-integration');
-  });
-
-  it('should contain "local-repos"', () => {
-    expect(LOCAL_ONLY_COMMANDS).toContain('local-repos');
-  });
-
-  it('should contain "startup"', () => {
-    expect(LOCAL_ONLY_COMMANDS).toContain('startup');
-  });
-
-  it('should contain shelve/unshelve, dismiss/undismiss, snooze/unsnooze commands', () => {
-    expect(LOCAL_ONLY_COMMANDS).toContain('shelve');
-    expect(LOCAL_ONLY_COMMANDS).toContain('unshelve');
-    expect(LOCAL_ONLY_COMMANDS).toContain('dismiss');
-    expect(LOCAL_ONLY_COMMANDS).toContain('undismiss');
-    expect(LOCAL_ONLY_COMMANDS).toContain('snooze');
-    expect(LOCAL_ONLY_COMMANDS).toContain('unsnooze');
-  });
-
-  it('should NOT contain token-required commands like "daily"', () => {
-    expect(LOCAL_ONLY_COMMANDS).not.toContain('daily');
-  });
-
-  it('should NOT contain token-required commands like "search"', () => {
-    expect(LOCAL_ONLY_COMMANDS).not.toContain('search');
-  });
-
-  it('should NOT contain token-required commands like "vet"', () => {
-    expect(LOCAL_ONLY_COMMANDS).not.toContain('vet');
-  });
-
-  it('should NOT contain token-required commands like "track"', () => {
-    expect(LOCAL_ONLY_COMMANDS).not.toContain('track');
-  });
-
-  it('should NOT contain token-required commands like "comments"', () => {
-    expect(LOCAL_ONLY_COMMANDS).not.toContain('comments');
-  });
-
-  it('should NOT contain token-required commands like "post"', () => {
-    expect(LOCAL_ONLY_COMMANDS).not.toContain('post');
-  });
-
-  it('should NOT contain token-required commands like "init"', () => {
-    expect(LOCAL_ONLY_COMMANDS).not.toContain('init');
-  });
-
-  it('should have exactly the expected number of entries (no accidental additions/deletions)', () => {
-    // 19 entries: 17 active + 'help' and 'version' which Commander intercepts before
-    // preAction fires, so they are defensive/dead entries but intentionally kept.
-    expect(LOCAL_ONLY_COMMANDS).toHaveLength(19);
+  it('should have exactly the expected number of local-only entries', () => {
+    expect(LOCAL_ONLY_COMMANDS).toHaveLength(expectedLocalOnly.length);
   });
 });
 
@@ -192,9 +132,9 @@ describe('preAction hook', () => {
 
   it('should allow LOCAL_ONLY_COMMANDS to run without a token', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue(null);
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
 
-    // "status" is in LOCAL_ONLY_COMMANDS — should not call getGitHubTokenAsync
+    // "status" is local-only — should not call getGitHubTokenAsync
     await program.parseAsync(['node', 'cli', 'status']);
 
     expect(mockGetGitHubTokenAsync).not.toHaveBeenCalled();
@@ -203,7 +143,7 @@ describe('preAction hook', () => {
 
   it('should allow "config" to run without a token', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue(null);
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
 
     await program.parseAsync(['node', 'cli', 'config']);
 
@@ -213,7 +153,7 @@ describe('preAction hook', () => {
 
   it('should call process.exit(1) when a non-LOCAL command runs without a token', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue(null);
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
 
     await expect(program.parseAsync(['node', 'cli', 'daily'])).rejects.toThrow('process.exit called');
 
@@ -223,7 +163,7 @@ describe('preAction hook', () => {
 
   it('should call process.exit(1) when "search" runs without a token', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue(null);
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
 
     await expect(program.parseAsync(['node', 'cli', 'search'])).rejects.toThrow('process.exit called');
 
@@ -232,7 +172,7 @@ describe('preAction hook', () => {
 
   it('should print a descriptive error message when authentication is missing', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue(null);
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
 
     await expect(program.parseAsync(['node', 'cli', 'daily'])).rejects.toThrow('process.exit called');
 
@@ -242,7 +182,7 @@ describe('preAction hook', () => {
 
   it('should allow a non-LOCAL command to run when a token is available', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue('ghp_valid_token');
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
 
     await program.parseAsync(['node', 'cli', 'daily']);
 
@@ -252,7 +192,7 @@ describe('preAction hook', () => {
 
   it('should check the token exactly once per non-LOCAL command invocation', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue('ghp_some_token');
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
 
     await program.parseAsync(['node', 'cli', 'search']);
 
@@ -261,7 +201,7 @@ describe('preAction hook', () => {
 
   it('should NOT check the token for LOCAL_ONLY_COMMANDS even when a token exists', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue('ghp_existing_token');
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
 
     await program.parseAsync(['node', 'cli', 'status']);
 
@@ -270,7 +210,7 @@ describe('preAction hook', () => {
 
   it('should call enableDebug when --debug flag is passed', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue('ghp_debug_token');
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
 
     await program.parseAsync(['node', 'cli', '--debug', 'daily']);
 
@@ -279,7 +219,7 @@ describe('preAction hook', () => {
 
   it('should call debug() with the command name when --debug is set', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue('ghp_debug_token');
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
 
     await program.parseAsync(['node', 'cli', '--debug', 'daily']);
 
@@ -288,7 +228,7 @@ describe('preAction hook', () => {
 
   it('should NOT call enableDebug when --debug flag is absent', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue('ghp_token');
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
 
     await program.parseAsync(['node', 'cli', 'daily']);
 
@@ -298,7 +238,7 @@ describe('preAction hook', () => {
 
   it('should not call process.exit for LOCAL_ONLY_COMMANDS even when --debug is set', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue(null);
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
 
     await program.parseAsync(['node', 'cli', '--debug', 'status']);
 
@@ -365,24 +305,11 @@ describe('Version detection IIFE', () => {
   });
 });
 
-// ─── Command registration ─────────────────────────────────────────────────────
-
-// Helper: extract command names registered in cli.ts by parsing its source.
-// Matches `.command('name')` calls in both chained (`.command(...)`) and
-// standalone (`program.command(...)`) forms.
-// Arguments like '<pr-url>' and '[count]' are excluded via the character class.
-function extractRegisteredCommandsFromSource(): string[] {
-  const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
-  // Match both `.command('name')` at line start and `program.command('name')` mid-line
-  const matches = src.matchAll(/\.command\('([^'\s<[]+)/gm);
-  return [...matches].map((m) => m[1]);
-}
+// ─── Command registration (registry-based) ──────────────────────────────────
 
 describe('Command registration', () => {
-  it('should register all expected subcommands', () => {
-    // Extract command names directly from cli.ts source so this test tracks
-    // additions and deletions in the real entry point automatically.
-    const registeredInCli = extractRegisteredCommandsFromSource();
+  it('should register all expected subcommands in the registry', () => {
+    const registeredNames = commands.map((c) => c.name);
 
     const expectedCommands = [
       'daily',
@@ -399,7 +326,6 @@ describe('Command registration', () => {
       'init',
       'setup',
       'checkSetup',
-      'dashboard',
       'serve',
       'parse-issue-list',
       'check-integration',
@@ -414,22 +340,46 @@ describe('Command registration', () => {
     ];
 
     for (const name of expectedCommands) {
-      expect(registeredInCli).toContain(name);
+      expect(registeredNames).toContain(name);
     }
 
-    // Enforce exact count so additions to cli.ts are noticed here too.
-    expect(registeredInCli).toHaveLength(expectedCommands.length);
+    // Enforce exact count so additions to the registry are noticed here too.
+    expect(registeredNames).toHaveLength(expectedCommands.length);
+  });
+
+  it('should have a register function on every command definition', () => {
+    for (const cmd of commands) {
+      expect(typeof cmd.register).toBe('function');
+      expect(typeof cmd.name).toBe('string');
+      expect(cmd.name.length).toBeGreaterThan(0);
+    }
   });
 
   it('should register the program with name "oss-autopilot"', () => {
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
     expect(program.name()).toBe('oss-autopilot');
   });
 
   it('should expose a --debug global option', () => {
-    const program = buildTestProgram(LOCAL_ONLY_COMMANDS);
+    const program = buildTestProgram(localOnlySet);
     const debugOption = program.options.find((o) => o.long === '--debug');
     expect(debugOption).toBeDefined();
+  });
+
+  it('should successfully register all commands on a Commander program', () => {
+    const program = new Command();
+    program.name('test-program');
+
+    // Register all commands from the registry
+    for (const cmd of commands) {
+      cmd.register(program);
+    }
+
+    // Verify commands were registered by checking program.commands
+    const registeredNames = program.commands.map((c) => c.name());
+    expect(registeredNames).toContain('daily');
+    expect(registeredNames).toContain('status');
+    expect(registeredNames).toContain('dashboard'); // parent of 'serve'
   });
 });
 
@@ -437,11 +387,14 @@ describe('Command registration', () => {
 
 describe('Lazy imports', () => {
   it('should use dynamic import() in action handlers instead of static imports', () => {
-    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+    // Read cli-registry.ts where command definitions now live
+    const src = readFileSync(join(__dirname, 'cli-registry.ts'), 'utf-8');
 
-    // There should be NO static imports from ./commands/*
+    // There should be NO static imports from ./commands/* or ./core/index.js
     const staticCommandImports = src.match(/^import .+ from '\.\/(commands\/[^']+)';$/gm);
     expect(staticCommandImports).toBeNull();
+    const staticCoreBarrelImport = src.match(/^import .+ from '\.\/core\/index\.js';$/gm);
+    expect(staticCoreBarrelImport).toBeNull();
 
     // There SHOULD be dynamic imports inside action handlers
     const dynamicImports = src.match(/await import\('\.\/(commands\/[^']+)'\)/g);
@@ -449,7 +402,20 @@ describe('Lazy imports', () => {
     expect(dynamicImports!.length).toBeGreaterThanOrEqual(20);
   });
 
-  it('should use getGitHubTokenAsync instead of getGitHubToken in preAction hook', () => {
+  it('cli.ts should not have static imports from commands/', () => {
+    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+
+    // cli.ts should import from cli-registry, not from commands/ directly
+    const staticCommandImports = src.match(/^import .+ from '\.\/(commands\/[^']+)';$/gm);
+    expect(staticCommandImports).toBeNull();
+  });
+
+  it('cli.ts should import from cli-registry', () => {
+    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+    expect(src).toContain("from './cli-registry.js'");
+  });
+
+  it('should use getGitHubTokenAsync in preAction hook', () => {
     const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
 
     // The preAction hook should use the async version
