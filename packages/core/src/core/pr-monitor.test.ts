@@ -45,6 +45,7 @@ const { analyzeChecklist } = await import('./checklist-analysis.js');
 const { extractMaintainerActionHints } = await import('./maintainer-analysis.js');
 const { determineReviewDecision, getLatestChangesRequestedDate, checkUnrespondedComments, isAllSelfReplies } =
   await import('./review-analysis.js');
+const { makeFetchedPR } = await import('./test-utils.js');
 
 describe('PRMonitor CI status deduplication', () => {
   const emptyCombinedStatus = {
@@ -1020,29 +1021,8 @@ describe('PRMonitor getCIStatus auth-gate filtering', () => {
 });
 
 describe('PRMonitor generateDigest', () => {
-  function makeFetchedPR(overrides: Partial<import('./types.js').FetchedPR> = {}): import('./types.js').FetchedPR {
-    return {
-      id: 1,
-      url: 'https://github.com/owner/repo/pull/1',
-      repo: 'owner/repo',
-      number: 1,
-      title: 'Test PR',
-      status: 'healthy',
-      displayLabel: '[Healthy]',
-      displayDescription: 'Everything looks good — normal review cycle',
-      createdAt: '2026-02-01T00:00:00Z',
-      updatedAt: '2026-02-07T00:00:00Z',
-      daysSinceActivity: 1,
-      ciStatus: 'passing',
-      failingCheckNames: [],
-      classifiedChecks: [],
-      hasMergeConflict: false,
-      reviewDecision: 'review_required',
-      hasUnrespondedComment: false,
-      hasIncompleteChecklist: false,
-      maintainerActionHints: [],
-      ...overrides,
-    };
+  function makeDigestPR(overrides: Parameters<typeof makeFetchedPR>[0] = {}) {
+    return makeFetchedPR({ reviewDecision: 'review_required', ...overrides });
   }
 
   beforeEach(() => {
@@ -1064,17 +1044,17 @@ describe('PRMonitor generateDigest', () => {
 
   it('should categorize PRs by status', () => {
     const prs = [
-      makeFetchedPR({ status: 'needs_response', number: 1 }),
-      makeFetchedPR({ status: 'failing_ci', number: 2 }),
-      makeFetchedPR({ status: 'merge_conflict', number: 3 }),
-      makeFetchedPR({ status: 'healthy', number: 4 }),
-      makeFetchedPR({ status: 'dormant', number: 5 }),
-      makeFetchedPR({ status: 'approaching_dormant', number: 6 }),
-      makeFetchedPR({ status: 'needs_changes', number: 7 }),
-      makeFetchedPR({ status: 'changes_addressed', number: 8 }),
-      makeFetchedPR({ status: 'waiting_on_maintainer', number: 9 }),
-      makeFetchedPR({ status: 'incomplete_checklist', number: 10 }),
-      makeFetchedPR({ status: 'waiting', number: 11 }),
+      makeDigestPR({ status: 'needs_response', number: 1 }),
+      makeDigestPR({ status: 'failing_ci', number: 2 }),
+      makeDigestPR({ status: 'merge_conflict', number: 3 }),
+      makeDigestPR({ status: 'healthy', number: 4 }),
+      makeDigestPR({ status: 'dormant', number: 5 }),
+      makeDigestPR({ status: 'approaching_dormant', number: 6 }),
+      makeDigestPR({ status: 'needs_changes', number: 7 }),
+      makeDigestPR({ status: 'changes_addressed', number: 8 }),
+      makeDigestPR({ status: 'waiting_on_maintainer', number: 9 }),
+      makeDigestPR({ status: 'incomplete_checklist', number: 10 }),
+      makeDigestPR({ status: 'waiting', number: 11 }),
     ];
 
     const monitor = new PRMonitor('fake-token');
@@ -1094,18 +1074,18 @@ describe('PRMonitor generateDigest', () => {
 
   it('should calculate totalNeedingAttention correctly', () => {
     const prs = [
-      makeFetchedPR({ status: 'needs_response', number: 1 }),
-      makeFetchedPR({ status: 'needs_changes', number: 2 }),
-      makeFetchedPR({ status: 'failing_ci', number: 3 }),
-      makeFetchedPR({ status: 'merge_conflict', number: 4 }),
-      makeFetchedPR({ status: 'needs_rebase', number: 5 }),
-      makeFetchedPR({ status: 'missing_required_files', number: 6 }),
-      makeFetchedPR({ status: 'incomplete_checklist', number: 7 }),
+      makeDigestPR({ status: 'needs_response', number: 1 }),
+      makeDigestPR({ status: 'needs_changes', number: 2 }),
+      makeDigestPR({ status: 'failing_ci', number: 3 }),
+      makeDigestPR({ status: 'merge_conflict', number: 4 }),
+      makeDigestPR({ status: 'needs_rebase', number: 5 }),
+      makeDigestPR({ status: 'missing_required_files', number: 6 }),
+      makeDigestPR({ status: 'incomplete_checklist', number: 7 }),
       // These should NOT count toward totalNeedingAttention
-      makeFetchedPR({ status: 'healthy', number: 8 }),
-      makeFetchedPR({ status: 'waiting', number: 9 }),
-      makeFetchedPR({ status: 'dormant', number: 10 }),
-      makeFetchedPR({ status: 'waiting_on_maintainer', number: 11 }),
+      makeDigestPR({ status: 'healthy', number: 8 }),
+      makeDigestPR({ status: 'waiting', number: 9 }),
+      makeDigestPR({ status: 'dormant', number: 10 }),
+      makeDigestPR({ status: 'waiting_on_maintainer', number: 11 }),
     ];
 
     const monitor = new PRMonitor('fake-token');
@@ -1764,29 +1744,8 @@ describe('isAcknowledgmentComment (Issue #69)', () => {
 });
 
 describe('computeDisplayLabel (#79)', () => {
-  function makePR(overrides: Partial<import('./types.js').FetchedPR> = {}): import('./types.js').FetchedPR {
-    return {
-      id: 1,
-      url: 'https://github.com/owner/repo/pull/1',
-      repo: 'owner/repo',
-      number: 1,
-      title: 'Test PR',
-      status: 'healthy',
-      displayLabel: '',
-      displayDescription: '',
-      createdAt: '2026-02-01T00:00:00Z',
-      updatedAt: '2026-02-07T00:00:00Z',
-      daysSinceActivity: 1,
-      ciStatus: 'passing',
-      failingCheckNames: [],
-      classifiedChecks: [],
-      hasMergeConflict: false,
-      reviewDecision: 'review_required',
-      hasUnrespondedComment: false,
-      hasIncompleteChecklist: false,
-      maintainerActionHints: [],
-      ...overrides,
-    };
+  function makePR(overrides: Parameters<typeof makeFetchedPR>[0] = {}) {
+    return makeFetchedPR({ displayLabel: '', displayDescription: '', reviewDecision: 'review_required', ...overrides });
   }
 
   it('should return [Healthy] for healthy status', () => {
