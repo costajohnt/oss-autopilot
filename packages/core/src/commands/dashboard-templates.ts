@@ -9,7 +9,7 @@
 import type { DailyDigest, AgentState, CommentedIssueWithResponse } from '../core/types.js';
 
 import { escapeHtml } from './dashboard-formatters.js';
-import { buildDashboardStats, type DashboardStats } from './dashboard-data.js';
+import type { DashboardStats } from './dashboard-data.js';
 import { DASHBOARD_CSS } from './dashboard-styles.js';
 import { SVG_ICONS, truncateTitle, renderHealthItems, titleMeta } from './dashboard-components.js';
 import { generateDashboardScripts } from './dashboard-scripts.js';
