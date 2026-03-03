@@ -2423,26 +2423,34 @@ describe('getCIStatus error handling (#182)', () => {
     errorSpy.mockRestore();
   });
 
-  it('should return unknown status on 401 unauthorized and log AUTH ERROR', async () => {
+  it('should re-throw 401 unauthorized error (#481)', async () => {
     mockBothEndpointsRejecting(httpError('Unauthorized', 401));
 
-    const result = await callGetCIStatus();
-
-    expect(result.status).toBe('unknown');
-    expect(result.failingCheckNames).toEqual([]);
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('CI check failed'));
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid token'));
+    await expect(callGetCIStatus()).rejects.toThrow('Unauthorized');
   });
 
-  it('should return unknown status on 403 rate limit and log RATE LIMIT', async () => {
+  it('should re-throw 403 rate limit error (#481)', async () => {
     mockBothEndpointsRejecting(httpError('Forbidden', 403));
 
-    const result = await callGetCIStatus();
+    await expect(callGetCIStatus()).rejects.toThrow('Forbidden');
+  });
 
-    expect(result.status).toBe('unknown');
-    expect(result.failingCheckNames).toEqual([]);
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('CI check failed'));
-    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Rate limit exceeded'));
+  it('should re-throw 429 from listForRef even when getCombinedStatusForRef succeeds (#481)', async () => {
+    mockOctokitInstance = {
+      repos: { getCombinedStatusForRef: vi.fn().mockResolvedValue(emptyCombinedStatus) },
+      checks: { listForRef: vi.fn().mockRejectedValue(httpError('rate limit exceeded', 429)) },
+    };
+
+    await expect(callGetCIStatus()).rejects.toThrow('rate limit exceeded');
+  });
+
+  it('should re-throw rate-limit 403 from listForRef even when getCombinedStatusForRef succeeds (#481)', async () => {
+    mockOctokitInstance = {
+      repos: { getCombinedStatusForRef: vi.fn().mockResolvedValue(emptyCombinedStatus) },
+      checks: { listForRef: vi.fn().mockRejectedValue(httpError('API rate limit exceeded', 403)) },
+    };
+
+    await expect(callGetCIStatus()).rejects.toThrow('API rate limit exceeded');
   });
 
   it('should return unknown status on 404 without logging an error', async () => {

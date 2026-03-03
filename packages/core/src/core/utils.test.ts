@@ -203,10 +203,12 @@ describe('splitRepo', () => {
     expect(splitRepo('my-org/my-repo')).toEqual({ owner: 'my-org', repo: 'my-repo' });
   });
 
-  it('should handle input with no slash', () => {
-    const result = splitRepo('noslash');
-    expect(result.owner).toBe('noslash');
-    expect(result.repo).toBeUndefined();
+  it('should throw for input with no slash', () => {
+    expect(() => splitRepo('noslash')).toThrow('Invalid repo format: expected "owner/repo", got "noslash"');
+  });
+
+  it('should throw for empty string', () => {
+    expect(() => splitRepo('')).toThrow('Invalid repo format: expected "owner/repo", got ""');
   });
 
   it('should handle extra slashes (takes first two parts)', () => {

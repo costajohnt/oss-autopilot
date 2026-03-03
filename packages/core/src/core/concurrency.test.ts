@@ -67,6 +67,27 @@ describe('runWorkerPool', () => {
     ).rejects.toThrow('item 2 failed');
   });
 
+  it('aborts remaining items when a worker throws', async () => {
+    const items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const processed: number[] = [];
+
+    await expect(
+      runWorkerPool(
+        items,
+        async (item) => {
+          // Simulate async work so multiple workers can pick up items
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          if (item === 3) throw new Error('item 3 failed');
+          processed.push(item);
+        },
+        2,
+      ),
+    ).rejects.toThrow('item 3 failed');
+
+    // Not all items should have been processed — the abort flag stops remaining work
+    expect(processed.length).toBeLessThan(items.length - 1);
+  });
+
   it('processes items in order with concurrency=1', async () => {
     const items = ['a', 'b', 'c', 'd', 'e'];
     const processed: string[] = [];

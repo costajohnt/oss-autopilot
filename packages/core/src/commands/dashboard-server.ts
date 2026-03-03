@@ -36,6 +36,8 @@ interface DashboardJsonData {
   prsByRepo: Record<string, { active: number; merged: number; closed: number }>;
   topRepos: Array<{ repo: string; active: number; merged: number; closed: number }>;
   monthlyMerged: Record<string, number>;
+  monthlyOpened: Record<string, number>;
+  monthlyClosed: Record<string, number>;
   activePRs: FetchedPR[];
   shelvedPRUrls: string[];
   commentedIssues: CommentedIssue[];
@@ -170,7 +172,7 @@ function buildDashboardJson(
 ): DashboardJsonData {
   const prsByRepo = computePRsByRepo(digest, state);
   const topRepos = computeTopRepos(prsByRepo);
-  const { monthlyMerged } = getMonthlyData(state);
+  const { monthlyMerged, monthlyOpened, monthlyClosed } = getMonthlyData(state);
   const stats = buildDashboardStats(digest, state);
   const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
 
@@ -179,6 +181,8 @@ function buildDashboardJson(
     prsByRepo,
     topRepos: topRepos.map(([repo, data]) => ({ repo, ...data })),
     monthlyMerged,
+    monthlyOpened,
+    monthlyClosed,
     activePRs: digest.openPRs || [],
     shelvedPRUrls: state.config.shelvedPRUrls || [],
     commentedIssues,

@@ -460,9 +460,7 @@ export class PRMonitor {
    * Check if PR has merge conflict
    */
   private hasMergeConflict(mergeable: boolean | null, mergeableState: string | null): boolean {
-    if (mergeable === false) return true;
-    if (mergeableState === 'dirty') return true;
-    return false;
+    return mergeable === false || mergeableState === 'dirty';
   }
 
   /**
@@ -480,6 +478,12 @@ export class PRMonitor {
         // 404 is expected for repos without check runs configured; log other errors for debugging
         this.octokit.checks.listForRef({ owner, repo, ref: sha }).catch((err: unknown) => {
           const status = getHttpStatusCode(err);
+          // Rate limit errors must propagate — matches listReviewComments pattern (#481)
+          if (status === 429) throw err;
+          if (status === 403) {
+            const msg = errorMessage(err).toLowerCase();
+            if (msg.includes('rate limit') || msg.includes('abuse detection')) throw err;
+          }
           if (status === 404) {
             debug('pr-monitor', `Check runs 404 for ${owner}/${repo}@${sha.slice(0, 7)} (no checks configured)`);
           } else {
@@ -514,18 +518,15 @@ export class PRMonitor {
       return mergeStatuses(checkRunAnalysis, combinedAnalysis, checkRuns.length);
     } catch (error) {
       const statusCode = getHttpStatusCode(error);
-      const errMsg = errorMessage(error);
 
-      if (statusCode === 401) {
-        warn('pr-monitor', `CI check failed for ${owner}/${repo}: Invalid token`);
-      } else if (statusCode === 403) {
-        warn('pr-monitor', `CI check failed for ${owner}/${repo}: Rate limit exceeded`);
+      if (statusCode === 401 || statusCode === 403 || statusCode === 429) {
+        throw error;
       } else if (statusCode === 404) {
         // Repo might not have CI configured, this is normal
         debug('pr-monitor', `CI check 404 for ${owner}/${repo} (no CI configured)`);
         return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
       } else {
-        warn('pr-monitor', `Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errMsg}`);
+        warn('pr-monitor', `Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage(error)}`);
       }
       return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
     }

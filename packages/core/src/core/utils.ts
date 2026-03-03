@@ -246,10 +246,9 @@ export function daysBetween(from: Date, to: Date = new Date()): number {
 /**
  * Splits an `"owner/repo"` string into its owner and repo components.
  *
- * Does not validate the input format; if no `/` is present, `repo` will be `undefined`.
- *
  * @param repoFullName - Full repository name in `"owner/repo"` format
  * @returns Object with `owner` and `repo` string properties
+ * @throws {Error} If the input does not contain both an owner and repo separated by `/`
  *
  * @example
  * splitRepo('facebook/react')
@@ -257,6 +256,9 @@ export function daysBetween(from: Date, to: Date = new Date()): number {
  */
 export function splitRepo(repoFullName: string): { owner: string; repo: string } {
   const [owner, repo] = repoFullName.split('/');
+  if (!owner || !repo) {
+    throw new Error(`Invalid repo format: expected "owner/repo", got "${repoFullName}"`);
+  }
   return { owner, repo };
 }
 

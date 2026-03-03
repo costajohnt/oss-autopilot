@@ -5,6 +5,7 @@
 
 import { getStateManager } from '../core/index.js';
 import type { ConfigOutput } from '../formatters/json.js';
+import { validateGitHubUsername } from './validation.js';
 
 interface ConfigOptions {
   key?: string;
@@ -36,7 +37,7 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
   // Handle specific config keys
   switch (options.key) {
     case 'username':
-      stateManager.updateConfig({ githubUsername: value });
+      stateManager.updateConfig({ githubUsername: validateGitHubUsername(value) });
       break;
     case 'add-language':
       if (!currentConfig.languages.includes(value)) {

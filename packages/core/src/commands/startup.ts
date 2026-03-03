@@ -9,8 +9,9 @@
 
 import * as fs from 'fs';
 import { execFile } from 'child_process';
-import { getStateManager, getGitHubToken, getCLIVersion } from '../core/index.js';
+import { getStateManager, getGitHubToken, getCLIVersion, getStatePath, getDashboardPath } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
+import { warn } from '../core/logger.js';
 import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
 import { writeDashboardFromState } from './dashboard.js';
@@ -123,6 +124,24 @@ function openInBrowser(filePath: string): void {
 }
 
 /**
+ * Check whether the dashboard HTML file is at least as recent as state.json.
+ * Returns true when the dashboard exists and its mtime >= state mtime,
+ * meaning there is no need to regenerate it.
+ */
+function isDashboardFresh(): boolean {
+  try {
+    const dashPath = getDashboardPath();
+    if (!fs.existsSync(dashPath)) return false;
+    const dashMtime = fs.statSync(dashPath).mtimeMs;
+    const stateMtime = fs.statSync(getStatePath()).mtimeMs;
+    return dashMtime >= stateMtime;
+  } catch (error) {
+    warn('startup', `Failed to check dashboard freshness, will regenerate: ${errorMessage(error)}`);
+    return false;
+  }
+}
+
+/**
  * Run startup checks and return structured output.
  * Returns StartupOutput with one of three shapes:
  * 1. Setup incomplete: { version, setupComplete: false }
@@ -154,10 +173,16 @@ export async function runStartup(): Promise<StartupOutput> {
   // 3. Run daily check
   const daily = await executeDailyCheck(token);
 
-  // 4. Generate static HTML dashboard (always — serves as fallback + snapshot)
+  // 4. Generate static HTML dashboard (serves as fallback + snapshot).
+  //    Skip regeneration if the dashboard HTML is already newer than state.json.
   let dashboardPath: string | undefined;
   try {
-    dashboardPath = writeDashboardFromState();
+    if (isDashboardFresh()) {
+      dashboardPath = getDashboardPath();
+      console.error('[STARTUP] Dashboard HTML is fresh, skipping regeneration');
+    } else {
+      dashboardPath = writeDashboardFromState();
+    }
   } catch (error) {
     console.error('[STARTUP] Dashboard generation failed:', errorMessage(error));
   }

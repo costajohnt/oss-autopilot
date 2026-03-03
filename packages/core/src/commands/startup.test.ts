@@ -13,6 +13,8 @@ vi.mock('../core/index.js', () => ({
   })),
   getGitHubToken: vi.fn(() => 'fake-token'),
   getCLIVersion: vi.fn(() => '0.0.0-test'),
+  getStatePath: vi.fn(() => '/tmp/state.json'),
+  getDashboardPath: vi.fn(() => '/tmp/dashboard.html'),
 }));
 
 vi.mock('./daily.js', () => ({
@@ -37,6 +39,7 @@ vi.mock('fs', async () => {
   return {
     ...actual,
     existsSync: vi.fn(() => false),
+    statSync: vi.fn(() => ({ mtimeMs: 0 })),
   };
 });
 
@@ -278,6 +281,8 @@ describe('runStartup behavior', () => {
   let writeDashboardFromState: ReturnType<typeof vi.fn>;
   let execFile: ReturnType<typeof vi.fn>;
   let launchDashboardServer: ReturnType<typeof vi.fn>;
+  let existsSyncMock: ReturnType<typeof vi.fn>;
+  let statSyncMock: ReturnType<typeof vi.fn>;
 
   function makeDailyOutput(totalActivePRs: number) {
     return {
@@ -355,6 +360,15 @@ describe('runStartup behavior', () => {
     launchDashboardServer = lifecycleMod.launchDashboardServer as unknown as ReturnType<typeof vi.fn>;
     // Default: SPA not available (assets not built)
     launchDashboardServer.mockResolvedValue(null);
+
+    // Set up fs mocks for dashboard freshness check:
+    // By default, dashboard doesn't exist (existsSync returns false for dashboard path)
+    // so writeDashboardFromState is always called.
+    const fsMod = await import('fs');
+    existsSyncMock = fsMod.existsSync as ReturnType<typeof vi.fn>;
+    statSyncMock = fsMod.statSync as ReturnType<typeof vi.fn>;
+    existsSyncMock.mockReturnValue(false);
+    statSyncMock.mockReturnValue({ mtimeMs: 0 });
   });
 
   it('should NOT open browser when totalActivePRs is 0', async () => {

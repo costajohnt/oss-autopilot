@@ -89,7 +89,12 @@ export function App() {
           )}
         </div>
 
-        <ChartPanel monthlyMerged={data.monthlyMerged} topRepos={data.topRepos} />
+        <ChartPanel
+          monthlyMerged={data.monthlyMerged}
+          monthlyOpened={data.monthlyOpened}
+          monthlyClosed={data.monthlyClosed}
+          topRepos={data.topRepos}
+        />
 
         <IssueList issues={data.issueResponses} />
       </main>
