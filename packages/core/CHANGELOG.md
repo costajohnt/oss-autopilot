@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.1](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.0...core-v0.44.1) (2026-03-03)
+
+
+### Bug Fixes
+
+* add escapeHtml XSS tests and consolidate duplicate test factories ([#510](https://github.com/costajohnt/oss-autopilot/issues/510)) ([de805ff](https://github.com/costajohnt/oss-autopilot/commit/de805ffbb3792b2bbf375375e77d89654d138f63)), closes [#486](https://github.com/costajohnt/oss-autopilot/issues/486)
+* add search result caching, project health caching, and repo score TTL ([#511](https://github.com/costajohnt/oss-autopilot/issues/511)) ([b8802ca](https://github.com/costajohnt/oss-autopilot/commit/b8802ca2d175a789c310156088ccd21ee1e93167)), closes [#487](https://github.com/costajohnt/oss-autopilot/issues/487)
+* exclude cli-registry.ts from coverage thresholds ([#516](https://github.com/costajohnt/oss-autopilot/issues/516)) ([91aaa66](https://github.com/costajohnt/oss-autopilot/commit/91aaa66be38626b31a11bd3aaa6c71214f29897f))
+* extract CLI command registry, fix build config ([#488](https://github.com/costajohnt/oss-autopilot/issues/488)) ([#512](https://github.com/costajohnt/oss-autopilot/issues/512)) ([22d8e55](https://github.com/costajohnt/oss-autopilot/commit/22d8e55778d9310e58f32db70cdc1199e35a345f))
+* filter dismissed PRs from dashboard Action Required section ([#507](https://github.com/costajohnt/oss-autopilot/issues/507)) ([9a1b04e](https://github.com/costajohnt/oss-autopilot/commit/9a1b04eb08ffabfafe070986acfe40833b565e67)), closes [#501](https://github.com/costajohnt/oss-autopilot/issues/501)
+* prevent self-reply filter from silencing maintainer follow-up questions ([#505](https://github.com/costajohnt/oss-autopilot/issues/505)) ([dec498d](https://github.com/costajohnt/oss-autopilot/commit/dec498dc0dcf5449709a0e7283f4deeaceda41dc)), closes [#498](https://github.com/costajohnt/oss-autopilot/issues/498)
+* resolve prettier formatting violations across 11 files ([#515](https://github.com/costajohnt/oss-autopilot/issues/515)) ([d3327be](https://github.com/costajohnt/oss-autopilot/commit/d3327bebb860be805df99982c4bf83f165244a4c))
+* return ci_blocked instead of failing_ci for non-actionable CI failures ([#509](https://github.com/costajohnt/oss-autopilot/issues/509)) ([fa3192c](https://github.com/costajohnt/oss-autopilot/commit/fa3192cf4546c9e6e392804dac7f6bbd459fae6d)), closes [#502](https://github.com/costajohnt/oss-autopilot/issues/502)
+
 ## [0.44.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.43.1...core-v0.44.0) (2026-03-03)
 
 
