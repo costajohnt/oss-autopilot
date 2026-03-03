@@ -300,6 +300,32 @@ export async function cachedRequest<T>(
 }
 
 /**
+ * Time-based cache wrapper (no ETag / conditional requests).
+ *
+ * If a cached result exists and is younger than `maxAgeMs`, returns it.
+ * Otherwise calls `fetcher`, caches the result, and returns it.
+ *
+ * Use this for expensive operations whose results change slowly
+ * (e.g. search queries, project health checks).
+ */
+export async function cachedTimeBased<T>(
+  cache: HttpCache,
+  key: string,
+  maxAgeMs: number,
+  fetcher: () => Promise<T>,
+): Promise<T> {
+  const cached = cache.getIfFresh(key, maxAgeMs);
+  if (cached) {
+    debug(MODULE, `Time-based cache hit for ${key}`);
+    return cached as T;
+  }
+
+  const result = await fetcher();
+  cache.set(key, '', result);
+  return result;
+}
+
+/**
  * Detect whether an error is a 304 Not Modified response.
  * Octokit throws a RequestError with status 304 for conditional requests.
  */

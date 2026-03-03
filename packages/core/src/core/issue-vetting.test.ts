@@ -10,8 +10,22 @@ vi.mock('./pagination.js', () => ({
 }));
 
 vi.mock('./http-cache.js', () => ({
-  getHttpCache: vi.fn().mockReturnValue({}),
+  getHttpCache: vi.fn().mockReturnValue({
+    getIfFresh: vi.fn().mockReturnValue(null),
+    get: vi.fn().mockReturnValue(null),
+    set: vi.fn(),
+    hasInflight: vi.fn().mockReturnValue(false),
+    getInflight: vi.fn().mockReturnValue(undefined),
+    setInflight: vi.fn().mockReturnValue(() => {}),
+  }),
   cachedRequest: vi.fn(),
+  cachedTimeBased: vi.fn().mockImplementation(async (cache: any, _key: string, _maxAgeMs: number, fetcher: () => Promise<unknown>) => {
+    const cached = cache.getIfFresh(_key, _maxAgeMs);
+    if (cached) return cached;
+    const result = await fetcher();
+    cache.set(_key, '', result);
+    return result;
+  }),
 }));
 
 vi.mock('./logger.js', () => ({
@@ -504,6 +518,45 @@ describe('checkProjectHealth', () => {
     expect(health.daysSinceLastCommit).toBe(999);
     expect(health.stargazersCount).toBeUndefined();
     expect(health.forksCount).toBeUndefined();
+  });
+
+  it('returns cached health when getIfFresh returns data (#487)', async () => {
+    const { getHttpCache } = await import('./http-cache.js');
+    const mockCache = (getHttpCache as any)();
+    const cachedHealth = {
+      repo: 'owner/repo',
+      lastCommitAt: '2025-06-30T00:00:00Z',
+      daysSinceLastCommit: 1,
+      openIssuesCount: 10,
+      avgIssueResponseDays: 0,
+      ciStatus: 'passing',
+      isActive: true,
+      stargazersCount: 500,
+      forksCount: 50,
+    };
+    mockCache.getIfFresh.mockReturnValueOnce(cachedHealth);
+    vi.mocked(cachedRequest).mockClear();
+
+    const health = await vetter.checkProjectHealth('owner', 'repo');
+    expect(health).toEqual(cachedHealth);
+    // API should NOT have been called (cachedRequest is used for repo.get)
+    expect(cachedRequest).not.toHaveBeenCalled();
+  });
+
+  it('caches health result after fresh API call (#487)', async () => {
+    const { getHttpCache } = await import('./http-cache.js');
+    const mockCache = (getHttpCache as any)();
+    mockCache.getIfFresh.mockReturnValue(null);
+    mockCache.set.mockClear();
+
+    const health = await vetter.checkProjectHealth('owner', 'repo');
+    expect(health.isActive).toBe(true);
+    // cache.set should have been called with the health result
+    expect(mockCache.set).toHaveBeenCalledWith(
+      'health:owner/repo',
+      '',
+      expect.objectContaining({ repo: 'owner/repo', isActive: true }),
+    );
   });
 });
 
