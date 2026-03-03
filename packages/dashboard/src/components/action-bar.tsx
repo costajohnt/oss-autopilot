@@ -4,10 +4,11 @@ import type { FetchedPR, ActionRequest } from '../types';
 interface ActionBarProps {
   pr: FetchedPR;
   isShelved: boolean;
+  isDismissed: boolean;
   onAction: (action: ActionRequest) => Promise<void>;
 }
 
-export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
+export function ActionBar({ pr, isShelved, isDismissed, onAction }: ActionBarProps) {
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [snoozeReason, setSnoozeReason] = useState('');
   const [snoozeDays, setSnoozeDays] = useState(1);
@@ -43,6 +44,19 @@ export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
         }
       >
         {isShelved ? 'Unshelve' : 'Shelve'}
+      </button>
+
+      <button
+        class={`action-btn ${isDismissed ? 'action-btn--unshelve' : 'action-btn--shelve'}`}
+        disabled={busy}
+        onClick={() =>
+          handleAction({
+            action: isDismissed ? 'undismiss' : 'dismiss',
+            url: pr.url,
+          })
+        }
+      >
+        {isDismissed ? 'Undismiss' : 'Dismiss'}
       </button>
 
       {pr.ciStatus === 'failing' && (

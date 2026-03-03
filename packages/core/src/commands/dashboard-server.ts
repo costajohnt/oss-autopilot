@@ -11,7 +11,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getStateManager, getGitHubToken, getDataDir } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
-import { validateUrl, validateGitHubUrl, validateMessage, PR_URL_PATTERN } from './validation.js';
+import {
+  validateUrl,
+  validateGitHubUrl,
+  validateMessage,
+  PR_URL_PATTERN,
+  ISSUE_OR_PR_URL_PATTERN,
+} from './validation.js';
 import {
   fetchDashboardData,
   computePRsByRepo,
@@ -56,6 +62,7 @@ interface DashboardJsonData {
   monthlyClosed: Record<string, number>;
   activePRs: FetchedPR[];
   shelvedPRUrls: string[];
+  dismissedUrls: string[];
   recentlyMergedPRs: MergedPR[];
   recentlyClosedPRs: ClosedPR[];
   autoUnshelvedPRs: ShelvedPRRef[];
@@ -66,7 +73,7 @@ interface DashboardJsonData {
 }
 
 interface ActionRequest {
-  action: 'shelve' | 'unshelve' | 'snooze' | 'unsnooze';
+  action: 'shelve' | 'unshelve' | 'snooze' | 'unsnooze' | 'dismiss' | 'undismiss';
   url: string;
   reason?: string;
   days?: number;
@@ -74,7 +81,14 @@ interface ActionRequest {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const VALID_ACTIONS: Set<ActionRequest['action']> = new Set(['shelve', 'unshelve', 'snooze', 'unsnooze']);
+const VALID_ACTIONS: Set<ActionRequest['action']> = new Set([
+  'shelve',
+  'unshelve',
+  'snooze',
+  'unsnooze',
+  'dismiss',
+  'undismiss',
+]);
 
 const MAX_BODY_BYTES = 10_240;
 
@@ -203,6 +217,7 @@ function buildDashboardJson(
     monthlyClosed,
     activePRs: digest.openPRs || [],
     shelvedPRUrls: state.config.shelvedPRUrls || [],
+    dismissedUrls: Object.keys(state.config.dismissedIssues || {}),
     recentlyMergedPRs: digest.recentlyMergedPRs || [],
     recentlyClosedPRs: digest.recentlyClosedPRs || [],
     autoUnshelvedPRs: digest.autoUnshelvedPRs || [],
@@ -348,10 +363,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       return;
     }
 
-    // Validate URL format — same checks as CLI commands
+    // Validate URL format — same checks as CLI commands.
+    // Dismiss/undismiss accepts both PR and issue URLs; other actions are PR-only.
+    const isDismissAction = body.action === 'dismiss' || body.action === 'undismiss';
+    const urlPattern = isDismissAction ? ISSUE_OR_PR_URL_PATTERN : PR_URL_PATTERN;
+    const urlType = isDismissAction ? 'issue or PR' : 'PR';
     try {
       validateUrl(body.url);
-      validateGitHubUrl(body.url, PR_URL_PATTERN, 'PR');
+      validateGitHubUrl(body.url, urlPattern, urlType);
     } catch (err) {
       if (err instanceof ValidationError) {
         sendError(res, 400, err.message);
@@ -388,6 +407,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       switch (body.action) {
         case 'shelve':
           stateManager.shelvePR(body.url);
+          stateManager.undismissIssue(body.url); // prevent dual state
           break;
         case 'unshelve':
           stateManager.unshelvePR(body.url);
@@ -397,6 +417,13 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
           break;
         case 'unsnooze':
           stateManager.unsnoozePR(body.url);
+          break;
+        case 'dismiss':
+          stateManager.dismissIssue(body.url, new Date().toISOString());
+          stateManager.unshelvePR(body.url); // prevent dual state
+          break;
+        case 'undismiss':
+          stateManager.undismissIssue(body.url);
           break;
       }
       stateManager.save();

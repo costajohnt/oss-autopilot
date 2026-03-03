@@ -212,6 +212,7 @@ export interface DashboardData {
   monthlyClosed: Record<string, number>;
   activePRs: FetchedPR[];
   shelvedPRUrls: string[];
+  dismissedUrls: string[];
   recentlyMergedPRs: MergedPR[];
   recentlyClosedPRs: ClosedPR[];
   autoUnshelvedPRs: ShelvedPRRef[];
@@ -222,7 +223,7 @@ export interface DashboardData {
 // -- Action types (for POST /api/action) --
 
 /** Actions a user can take from the dashboard. */
-export type ActionType = 'shelve' | 'unshelve' | 'snooze' | 'unsnooze';
+export type ActionType = 'shelve' | 'unshelve' | 'snooze' | 'unsnooze' | 'dismiss' | 'undismiss';
 
 /** Request body for POST /api/action. */
 export interface ActionRequest {
