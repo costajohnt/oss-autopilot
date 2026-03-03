@@ -67,7 +67,7 @@ const issues = await runSearch({ maxResults: 10 });
 Claude checks every open PR you have across all of GitHub and tells you what needs your attention:
 
 ```
-📊 15 Active PRs | 2 need attention | Dashboard opened in browser | v0.25.1
+📊 15 Active PRs | 2 need attention | Dashboard opened in browser | v0.42.6
 
 2 PRs Need Attention (in priority order):
 
@@ -227,7 +227,9 @@ Claude automatically dispatches these based on context:
 | Command | Description |
 |---------|-------------|
 | `/oss` | Check your PRs, see what needs attention, take action |
+| `/oss-search` | Search for new open source issues to contribute to |
 | `/setup-oss` | Configure preferences and import existing PRs |
+| `/oss-help` | Quick reference card for commands, agents, and workflows |
 
 ---
 

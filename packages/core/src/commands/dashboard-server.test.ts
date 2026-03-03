@@ -9,7 +9,7 @@
  * TCP server. This avoids port conflicts and ESM spy limitations.
  */
 
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -36,15 +36,14 @@ const mockServer = {
   once: vi.fn(),
 };
 
-vi.mock('http', async () => {
+vi.mock('http', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('http')>();
   return {
+    ...actual,
     createServer: vi.fn((handler: RequestHandler) => {
       capturedHandler = handler;
       return mockServer;
     }),
-    // Need to re-export IncomingMessage and ServerResponse for type compatibility
-    IncomingMessage: class {},
-    ServerResponse: class {},
   };
 });
 
@@ -62,9 +61,13 @@ const mockStateManager = {
   unsnoozePR: vi.fn().mockReturnValue(true),
 };
 
+// Create a temp dir for PID file tests (needs to exist before mock is evaluated)
+const pidTestDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-pid-test-'));
+
 vi.mock('../core/index.js', () => ({
   getStateManager: vi.fn(() => mockStateManager),
   getGitHubToken: vi.fn(() => null),
+  getDataDir: vi.fn(() => pidTestDir),
 }));
 
 // Mock fetchDashboardData so we never call GitHub
@@ -92,7 +95,16 @@ vi.mock('./dashboard-templates.js', () => ({
   })),
 }));
 
-import { startDashboardServer } from './dashboard-server.js';
+import {
+  startDashboardServer,
+  getDashboardPidPath,
+  writeDashboardServerInfo,
+  readDashboardServerInfo,
+  removeDashboardServerInfo,
+  isDashboardServerRunning,
+  findRunningDashboardServer,
+  type DashboardServerInfo,
+} from './dashboard-server.js';
 
 // ── Test Data ────────────────────────────────────────────────────────
 
@@ -256,9 +268,14 @@ describe('dashboard-server', () => {
   });
 
   afterAll(() => {
-    // Clean up temp directory
+    // Clean up temp directories
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+    try {
+      fs.rmSync(pidTestDir, { recursive: true, force: true });
     } catch {
       // Ignore cleanup errors
     }
@@ -594,6 +611,118 @@ describe('dashboard-server', () => {
       const result = await sendRequest('GET', '/');
       expect(result.headers['Content-Length']).toBeDefined();
       expect(Number(result.headers['Content-Length'])).toBeGreaterThan(0);
+    });
+  });
+
+  // ── PID file management ──────────────────────────────────────────
+
+  describe('PID file management', () => {
+    afterEach(() => {
+      // Clean up any PID files left by tests
+      removeDashboardServerInfo();
+    });
+
+    it('getDashboardPidPath should return a path ending with dashboard-server.pid', () => {
+      const pidPath = getDashboardPidPath();
+      expect(pidPath).toMatch(/dashboard-server\.pid$/);
+      expect(path.dirname(pidPath)).toBe(pidTestDir);
+    });
+
+    it('writeDashboardServerInfo should write valid JSON', () => {
+      const info: DashboardServerInfo = { pid: 12345, port: 3000, startedAt: '2026-01-15T12:00:00Z' };
+      writeDashboardServerInfo(info);
+
+      const pidPath = getDashboardPidPath();
+      const content = fs.readFileSync(pidPath, 'utf-8');
+      const parsed = JSON.parse(content);
+
+      expect(parsed).toEqual(info);
+    });
+
+    it('readDashboardServerInfo should return the written info', () => {
+      const info: DashboardServerInfo = { pid: 99999, port: 8080, startedAt: '2026-02-01T00:00:00Z' };
+      writeDashboardServerInfo(info);
+
+      const result = readDashboardServerInfo();
+      expect(result).toEqual(info);
+    });
+
+    it('readDashboardServerInfo should return null for missing file', () => {
+      // Ensure no PID file exists
+      removeDashboardServerInfo();
+
+      const result = readDashboardServerInfo();
+      expect(result).toBeNull();
+    });
+
+    it('readDashboardServerInfo should return null for corrupt file', () => {
+      const pidPath = getDashboardPidPath();
+      fs.writeFileSync(pidPath, 'not valid json {{{');
+
+      const result = readDashboardServerInfo();
+      expect(result).toBeNull();
+    });
+
+    it('readDashboardServerInfo should return null for structurally invalid JSON', () => {
+      const pidPath = getDashboardPidPath();
+      // Valid JSON but wrong shape (pid is a string, port missing)
+      fs.writeFileSync(pidPath, JSON.stringify({ pid: 'not-a-number', startedAt: '2026-01-01' }));
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const result = readDashboardServerInfo();
+
+      expect(result).toBeNull();
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('invalid structure'));
+      consoleSpy.mockRestore();
+    });
+
+    it('removeDashboardServerInfo should remove the PID file', () => {
+      const info: DashboardServerInfo = { pid: 11111, port: 4000, startedAt: '2026-01-01T00:00:00Z' };
+      writeDashboardServerInfo(info);
+
+      const pidPath = getDashboardPidPath();
+      expect(fs.existsSync(pidPath)).toBe(true);
+
+      removeDashboardServerInfo();
+      expect(fs.existsSync(pidPath)).toBe(false);
+    });
+
+    it('removeDashboardServerInfo should handle missing file gracefully', () => {
+      // Ensure no PID file exists
+      removeDashboardServerInfo();
+
+      // Should not throw
+      expect(() => removeDashboardServerInfo()).not.toThrow();
+    });
+  });
+
+  // ── Health probe ───────────────────────────────────────────────
+
+  describe('health probe', () => {
+    it('isDashboardServerRunning should return false for unreachable port', async () => {
+      // Use a port that is almost certainly not in use
+      const result = await isDashboardServerRunning(19999);
+      expect(result).toBe(false);
+    });
+
+    it('findRunningDashboardServer should return null when no PID file exists', async () => {
+      // Ensure no PID file exists
+      removeDashboardServerInfo();
+
+      const result = await findRunningDashboardServer();
+      expect(result).toBeNull();
+    });
+
+    it('findRunningDashboardServer should clean up stale PID file for dead process', async () => {
+      // Write a PID file referencing a PID that almost certainly does not exist
+      const info: DashboardServerInfo = { pid: 2147483647, port: 19998, startedAt: '2026-01-01T00:00:00Z' };
+      writeDashboardServerInfo(info);
+
+      const result = await findRunningDashboardServer();
+      expect(result).toBeNull();
+
+      // PID file should be cleaned up
+      expect(readDashboardServerInfo()).toBeNull();
     });
   });
 });

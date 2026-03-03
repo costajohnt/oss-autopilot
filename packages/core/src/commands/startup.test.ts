@@ -27,6 +27,10 @@ vi.mock('child_process', () => ({
   execFile: vi.fn(),
 }));
 
+vi.mock('./dashboard-lifecycle.js', () => ({
+  launchDashboardServer: vi.fn(),
+}));
+
 // Mock fs so detectIssueList doesn't hit the real filesystem
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
@@ -273,6 +277,7 @@ describe('runStartup behavior', () => {
   let executeDailyCheck: ReturnType<typeof vi.fn>;
   let writeDashboardFromState: ReturnType<typeof vi.fn>;
   let execFile: ReturnType<typeof vi.fn>;
+  let launchDashboardServer: ReturnType<typeof vi.fn>;
 
   function makeDailyOutput(totalActivePRs: number) {
     return {
@@ -345,6 +350,11 @@ describe('runStartup behavior', () => {
 
     const cpMod = await import('child_process');
     execFile = cpMod.execFile as unknown as ReturnType<typeof vi.fn>;
+
+    const lifecycleMod = await import('./dashboard-lifecycle.js');
+    launchDashboardServer = lifecycleMod.launchDashboardServer as unknown as ReturnType<typeof vi.fn>;
+    // Default: SPA not available (assets not built)
+    launchDashboardServer.mockResolvedValue(null);
   });
 
   it('should NOT open browser when totalActivePRs is 0', async () => {
@@ -359,25 +369,34 @@ describe('runStartup behavior', () => {
     expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
   });
 
-  it('should open browser when totalActivePRs > 0', async () => {
+  it('should fall back to static HTML when SPA unavailable and totalActivePRs > 0', async () => {
     const daily = makeDailyOutput(3);
     executeDailyCheck.mockResolvedValue(daily);
     writeDashboardFromState.mockReturnValue('/tmp/dashboard.html');
+    launchDashboardServer.mockResolvedValue(null);
 
     const result = await runStartup();
 
     expect(writeDashboardFromState).toHaveBeenCalled();
-    expect(execFile).toHaveBeenCalled();
+    expect(launchDashboardServer).toHaveBeenCalled();
+    // Falls back to opening static HTML
+    expect(execFile).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining(['/tmp/dashboard.html']),
+      expect.any(Function),
+    );
     expect(result.daily?.briefSummary).toContain('Dashboard opened in browser');
+    expect(result.dashboardUrl).toBeUndefined();
   });
 
-  it('should not open browser when dashboard generation fails', async () => {
+  it('should not open browser when dashboard generation fails and SPA unavailable', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const daily = makeDailyOutput(5);
     executeDailyCheck.mockResolvedValue(daily);
     writeDashboardFromState.mockImplementation(() => {
       throw new Error('Dashboard write failed');
     });
+    launchDashboardServer.mockResolvedValue(null);
 
     const result = await runStartup();
 
@@ -436,5 +455,86 @@ describe('runStartup behavior', () => {
     expect(result.setupComplete).toBe(true);
     expect(result.daily).toBeDefined();
     expect(result.dashboardPath).toBe('/tmp/dashboard.html');
+  });
+
+  it('should open SPA dashboard URL when SPA launches successfully', async () => {
+    const daily = makeDailyOutput(5);
+    executeDailyCheck.mockResolvedValue(daily);
+    writeDashboardFromState.mockReturnValue('/tmp/dashboard.html');
+    launchDashboardServer.mockResolvedValue({ url: 'http://localhost:3000', port: 3000, alreadyRunning: false });
+
+    const result = await runStartup();
+
+    // Opens SPA URL, not static HTML
+    expect(execFile).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining(['http://localhost:3000']),
+      expect.any(Function),
+    );
+    expect(result.dashboardUrl).toBe('http://localhost:3000');
+    expect(result.dashboardPath).toBe('/tmp/dashboard.html');
+    expect(result.daily?.briefSummary).toContain('Dashboard opened in browser');
+  });
+
+  it('should reuse existing SPA server without launching new one', async () => {
+    const daily = makeDailyOutput(3);
+    executeDailyCheck.mockResolvedValue(daily);
+    writeDashboardFromState.mockReturnValue('/tmp/dashboard.html');
+    launchDashboardServer.mockResolvedValue({ url: 'http://localhost:3001', port: 3001, alreadyRunning: true });
+
+    const result = await runStartup();
+
+    expect(result.dashboardUrl).toBe('http://localhost:3001');
+    expect(execFile).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining(['http://localhost:3001']),
+      expect.any(Function),
+    );
+  });
+
+  it('should not launch SPA when totalActivePRs is 0', async () => {
+    const daily = makeDailyOutput(0);
+    executeDailyCheck.mockResolvedValue(daily);
+    writeDashboardFromState.mockReturnValue('/tmp/dashboard.html');
+
+    const result = await runStartup();
+
+    expect(launchDashboardServer).not.toHaveBeenCalled();
+    expect(execFile).not.toHaveBeenCalled();
+    expect(result.dashboardUrl).toBeUndefined();
+  });
+
+  it('should always generate static HTML even when SPA succeeds', async () => {
+    const daily = makeDailyOutput(3);
+    executeDailyCheck.mockResolvedValue(daily);
+    writeDashboardFromState.mockReturnValue('/tmp/dashboard.html');
+    launchDashboardServer.mockResolvedValue({ url: 'http://localhost:3000', port: 3000, alreadyRunning: false });
+
+    const result = await runStartup();
+
+    // Static HTML is always generated (fallback + snapshot)
+    expect(writeDashboardFromState).toHaveBeenCalled();
+    expect(result.dashboardPath).toBe('/tmp/dashboard.html');
+  });
+
+  it('should handle launchDashboardServer throwing by falling back to static HTML', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const daily = makeDailyOutput(5);
+    executeDailyCheck.mockResolvedValue(daily);
+    writeDashboardFromState.mockReturnValue('/tmp/dashboard.html');
+    launchDashboardServer.mockRejectedValue(new Error('spawn ENOENT'));
+
+    const result = await runStartup();
+
+    // Should not crash — falls back to static HTML
+    expect(result.dashboardUrl).toBeUndefined();
+    expect(result.dashboardPath).toBe('/tmp/dashboard.html');
+    expect(execFile).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining(['/tmp/dashboard.html']),
+      expect.any(Function),
+    );
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('SPA dashboard launch failed'), 'spawn ENOENT');
+    consoleSpy.mockRestore();
   });
 });

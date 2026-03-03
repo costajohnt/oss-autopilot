@@ -166,7 +166,7 @@ interface ServeOptions {
  * Resolve the SPA assets directory from packages/dashboard/dist/.
  * Tries multiple strategies to locate it across dev (tsx) and bundled (cjs) modes.
  */
-function resolveAssetsDir(): string | null {
+export function resolveAssetsDir(): string | null {
   // Strategy 1: relative to this source file (works in dev with tsx)
   const devPath = path.resolve(__dirname, '../../dashboard/dist');
   if (fs.existsSync(path.join(devPath, 'index.html'))) {

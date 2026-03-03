@@ -116,7 +116,8 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 | `data.setupComplete` | Whether setup is done | If `false`, prompt setup |
 | `data.authError` | Set when no GitHub token | If present, show auth instructions |
 | `data.daily` | DailyOutput (same shape as before) | Extract `briefSummary`, `actionableIssues`, `actionMenu`, etc. |
-| `data.dashboardPath` | Path to generated dashboard HTML | Mention dashboard opened |
+| `data.dashboardPath` | Path to generated dashboard HTML (static fallback) | Always present on success |
+| `data.dashboardUrl` | URL of interactive dashboard SPA (e.g., `http://localhost:3000`) | If present, show `Dashboard: <url>` so user can re-open it |
 | `data.issueList` | Issue list info (if detected) | `hasIssueList` = present; extract `path`, `source`, `availableCount`, `completedCount` |
 
 **Routing based on parsed data:**
@@ -229,7 +230,12 @@ data.daily.briefSummary + " | v" + data.version
 ```
 
 Example output:
-> 📊 16 Active PRs | 3 need attention | Dashboard opened in browser | v0.26.0
+> 📊 16 Active PRs | 3 need attention | Interactive dashboard opened in browser | v0.42.6
+
+If `data.dashboardUrl` is present, show it on a separate line so the user can re-open it:
+```
+Dashboard: data.dashboardUrl
+```
 
 Then check for first-run (below) or proceed to **Action Menu**.
 
