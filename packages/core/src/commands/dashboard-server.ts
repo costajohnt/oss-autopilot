@@ -325,7 +325,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   try {
     cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
   } catch (error) {
-    throw new Error(`Failed to build dashboard data: ${errorMessage(error)}. State data may be corrupted — try running: daily --json`);
+    throw new Error(`Failed to build dashboard data: ${errorMessage(error)}. State data may be corrupted — try running: daily --json`, { cause: error });
   }
 
   // ── Request handler ──────────────────────────────────────────────────────
@@ -500,7 +500,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     let urlPath: string;
     try {
       urlPath = decodeURIComponent(requestUrl.split('?')[0]);
-    } catch (err) {
+    } catch (_err) {
       warn(MODULE, `Malformed URL received: ${requestUrl}`);
       sendError(res, 400, 'Malformed URL');
       return;
@@ -581,7 +581,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         actualPort++;
         continue;
       }
-      throw new Error(`Failed to start server: ${nodeErr.message}`);
+      throw new Error(`Failed to start server: ${nodeErr.message}`, { cause: err });
     }
   }
 
