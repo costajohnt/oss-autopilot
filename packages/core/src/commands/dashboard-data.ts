@@ -5,9 +5,12 @@
  */
 
 import { getStateManager, PRMonitor, IssueConversationMonitor } from '../core/index.js';
-import { errorMessage, getHttpStatusCode } from '../core/errors.js';
+import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
+import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
 import { toShelvedPRRef } from './daily.js';
+
+const MODULE = 'dashboard-data';
 import type { DailyDigest, AgentState, ClosedPR, MergedPR, CommentedIssue } from '../core/types.js';
 
 export interface DashboardStats {
@@ -34,95 +37,33 @@ export function buildDashboardStats(digest: DailyDigest, state: Readonly<AgentSt
   };
 }
 
-export interface DashboardFetchResult {
-  digest: DailyDigest;
-  commentedIssues: CommentedIssue[];
-}
-
 /**
- * Fetch fresh dashboard data from GitHub.
- * Returns the digest and commented issues, updating state as a side effect.
- * Throws if the fetch fails entirely (caller should fall back to cached data).
+ * Persist monthly chart analytics (merged, closed, opened) to state.
+ * Each metric is isolated so partial failures don't produce inconsistent state.
+ * Skips overwriting when data is empty to avoid wiping chart data on transient API failures.
  */
-function isRateLimitOrAuthError(err: unknown): boolean {
-  const status = getHttpStatusCode(err);
-  if (status === 401 || status === 429) return true;
-  if (status === 403) {
-    const msg = errorMessage(err).toLowerCase();
-    return msg.includes('rate limit') || msg.includes('abuse detection');
-  }
-  return false;
-}
-
-export async function fetchDashboardData(token: string): Promise<DashboardFetchResult> {
+export function updateMonthlyAnalytics(
+  prs: Array<{ createdAt?: string }>,
+  monthlyCounts: Record<string, number>,
+  monthlyClosedCounts: Record<string, number>,
+  openedFromMerged: Record<string, number>,
+  openedFromClosed: Record<string, number>,
+): void {
   const stateManager = getStateManager();
-  const prMonitor = new PRMonitor(token);
-  const issueMonitor = new IssueConversationMonitor(token);
 
-  const [{ prs, failures }, recentlyClosedPRs, recentlyMergedPRs, mergedResult, closedResult, fetchedIssues] =
-    await Promise.all([
-      prMonitor.fetchUserOpenPRs(),
-      prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
-        if (isRateLimitOrAuthError(err)) throw err;
-        console.error(`Warning: Failed to fetch recently closed PRs: ${errorMessage(err)}`);
-        return [];
-      }),
-      prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
-        if (isRateLimitOrAuthError(err)) throw err;
-        console.error(`Warning: Failed to fetch recently merged PRs: ${errorMessage(err)}`);
-        return [];
-      }),
-      prMonitor.fetchUserMergedPRCounts().catch((err) => {
-        if (isRateLimitOrAuthError(err)) throw err;
-        console.error(`Warning: Failed to fetch merged PR counts: ${errorMessage(err)}`);
-        return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
-      }),
-      prMonitor.fetchUserClosedPRCounts().catch((err) => {
-        if (isRateLimitOrAuthError(err)) throw err;
-        console.error(`Warning: Failed to fetch closed PR counts: ${errorMessage(err)}`);
-        return emptyPRCountsResult<number>();
-      }),
-      issueMonitor.fetchCommentedIssues().catch((error) => {
-        const msg = errorMessage(error);
-        if (msg.includes('No GitHub username configured')) {
-          console.error(`[DASHBOARD] Issue conversation tracking requires setup: ${msg}`);
-        } else {
-          console.error(`[DASHBOARD] Issue conversation fetch failed: ${msg}`);
-        }
-        return {
-          issues: [] as CommentedIssue[],
-          failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
-        };
-      }),
-    ]);
-
-  const commentedIssues = fetchedIssues.issues;
-  if (fetchedIssues.failures.length > 0) {
-    console.error(`[DASHBOARD] ${fetchedIssues.failures.length} issue conversation check(s) failed`);
-  }
-
-  if (failures.length > 0) {
-    console.error(`Warning: ${failures.length} PR fetch(es) failed`);
-  }
-
-  // Store monthly chart data (opened/merged/closed) so charts have data
-  const { monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
-  const { monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
-
-  // Guard: skip overwriting when data is empty to avoid wiping chart data on transient API failures.
   try {
     if (Object.keys(monthlyCounts).length > 0) {
       stateManager.setMonthlyMergedCounts(monthlyCounts);
     }
   } catch (error) {
-    console.error('[DASHBOARD] Failed to store monthly merged counts:', errorMessage(error));
+    warn(MODULE, `Failed to store monthly merged counts: ${errorMessage(error)}`);
   }
   try {
     if (Object.keys(monthlyClosedCounts).length > 0) {
       stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
     }
   } catch (error) {
-    console.error('[DASHBOARD] Failed to store monthly closed counts:', errorMessage(error));
+    warn(MODULE, `Failed to store monthly closed counts: ${errorMessage(error)}`);
   }
   try {
     const combinedOpenedCounts: Record<string, number> = { ...openedFromMerged };
@@ -139,8 +80,75 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
     }
   } catch (error) {
-    console.error('[DASHBOARD] Failed to store monthly opened counts:', errorMessage(error));
+    warn(MODULE, `Failed to store monthly opened counts: ${errorMessage(error)}`);
   }
+}
+
+export interface DashboardFetchResult {
+  digest: DailyDigest;
+  commentedIssues: CommentedIssue[];
+}
+
+/**
+ * Fetch fresh dashboard data from GitHub.
+ * Returns the digest and commented issues, updating state as a side effect.
+ * Throws if the fetch fails entirely (caller should fall back to cached data).
+ */
+export async function fetchDashboardData(token: string): Promise<DashboardFetchResult> {
+  const stateManager = getStateManager();
+  const prMonitor = new PRMonitor(token);
+  const issueMonitor = new IssueConversationMonitor(token);
+
+  const [{ prs, failures }, recentlyClosedPRs, recentlyMergedPRs, mergedResult, closedResult, fetchedIssues] =
+    await Promise.all([
+      prMonitor.fetchUserOpenPRs(),
+      prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
+        if (isRateLimitOrAuthError(err)) throw err;
+        warn(MODULE, `Failed to fetch recently closed PRs: ${errorMessage(err)}`);
+        return [];
+      }),
+      prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
+        if (isRateLimitOrAuthError(err)) throw err;
+        warn(MODULE, `Failed to fetch recently merged PRs: ${errorMessage(err)}`);
+        return [];
+      }),
+      prMonitor.fetchUserMergedPRCounts().catch((err) => {
+        if (isRateLimitOrAuthError(err)) throw err;
+        warn(MODULE, `Failed to fetch merged PR counts: ${errorMessage(err)}`);
+        return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
+      }),
+      prMonitor.fetchUserClosedPRCounts().catch((err) => {
+        if (isRateLimitOrAuthError(err)) throw err;
+        warn(MODULE, `Failed to fetch closed PR counts: ${errorMessage(err)}`);
+        return emptyPRCountsResult<number>();
+      }),
+      issueMonitor.fetchCommentedIssues().catch((error) => {
+        const msg = errorMessage(error);
+        if (msg.includes('No GitHub username configured')) {
+          warn(MODULE, `Issue conversation tracking requires setup: ${msg}`);
+        } else {
+          warn(MODULE, `Issue conversation fetch failed: ${msg}`);
+        }
+        return {
+          issues: [] as CommentedIssue[],
+          failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
+        };
+      }),
+    ]);
+
+  const commentedIssues = fetchedIssues.issues;
+  if (fetchedIssues.failures.length > 0) {
+    warn(MODULE, `${fetchedIssues.failures.length} issue conversation check(s) failed`);
+  }
+
+  if (failures.length > 0) {
+    warn(MODULE, `${failures.length} PR fetch(es) failed`);
+  }
+
+  // Store monthly chart data (opened/merged/closed) so charts have data
+  const { monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
+  const { monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
+  updateMonthlyAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
 
   const digest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);
 
@@ -156,9 +164,9 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   try {
     stateManager.save();
   } catch (error) {
-    console.error('Warning: Failed to save dashboard digest to state:', errorMessage(error));
+    warn(MODULE, `Failed to save dashboard digest to state: ${errorMessage(error)}`);
   }
-  console.error(`Refreshed: ${prs.length} PRs fetched`);
+  warn(MODULE, `Refreshed: ${prs.length} PRs fetched`);
 
   return { digest, commentedIssues };
 }

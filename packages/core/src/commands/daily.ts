@@ -31,9 +31,10 @@ import {
   type PRCheckFailure,
   type RepoGroup,
 } from '../core/index.js';
-import { errorMessage, getHttpStatusCode } from '../core/errors.js';
+import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
+import { updateMonthlyAnalytics } from './dashboard-data.js';
 import {
   deduplicateDigest,
   compactActionableIssues,
@@ -45,17 +46,6 @@ import {
 } from '../formatters/json.js';
 
 const MODULE = 'daily';
-
-/** Return true for errors that should propagate (not degrade gracefully). */
-function isRateLimitOrAuthError(err: unknown): boolean {
-  const status = getHttpStatusCode(err);
-  if (status === 401 || status === 429) return true;
-  if (status === 403) {
-    const msg = errorMessage(err).toLowerCase();
-    return msg.includes('rate limit') || msg.includes('abuse detection');
-  }
-  return false;
-}
 
 // Re-export domain functions so existing consumers (tests, dashboard, startup)
 // can continue importing from './daily.js' without changes.
@@ -335,59 +325,7 @@ async function updateRepoScores(
   }
 }
 
-/**
- * Phase 3: Persist monthly chart analytics to state.
- * Stores merged, closed, and combined opened counts per month.
- * Each metric is isolated so partial failures don't produce inconsistent state.
- */
-function updateAnalytics(
-  prs: FetchedPR[],
-  monthlyCounts: Record<string, number>,
-  monthlyClosedCounts: Record<string, number>,
-  openedFromMerged: Record<string, number>,
-  openedFromClosed: Record<string, number>,
-): void {
-  const stateManager = getStateManager();
 
-  // Store monthly chart data (non-critical — each metric isolated so partial failures don't leave inconsistent state).
-  // Guard: skip overwriting when the data is empty to avoid wiping existing chart data on transient API failures.
-  // An empty object means the fetch failed and fell back to emptyPRCountsResult(), so we preserve previous state.
-  try {
-    if (Object.keys(monthlyCounts).length > 0) {
-      stateManager.setMonthlyMergedCounts(monthlyCounts);
-    }
-  } catch (error) {
-    warn(MODULE, `Failed to store monthly merged counts: ${errorMessage(error)}`);
-  }
-
-  try {
-    if (Object.keys(monthlyClosedCounts).length > 0) {
-      stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
-    }
-  } catch (error) {
-    warn(MODULE, `Failed to store monthly closed counts: ${errorMessage(error)}`);
-  }
-
-  try {
-    // Build combined monthly opened counts from merged + closed + currently-open PRs
-    const combinedOpenedCounts: Record<string, number> = { ...openedFromMerged };
-    for (const [month, count] of Object.entries(openedFromClosed)) {
-      combinedOpenedCounts[month] = (combinedOpenedCounts[month] || 0) + count;
-    }
-    // Add currently-open PR creation dates
-    for (const pr of prs) {
-      if (pr.createdAt) {
-        const month = pr.createdAt.slice(0, 7);
-        combinedOpenedCounts[month] = (combinedOpenedCounts[month] || 0) + 1;
-      }
-    }
-    if (Object.keys(combinedOpenedCounts).length > 0) {
-      stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
-    }
-  } catch (error) {
-    warn(MODULE, `Failed to compute/store monthly opened counts: ${errorMessage(error)}`);
-  }
-}
 
 /**
  * Phase 4: Expire snoozes and partition PRs into active vs shelved buckets.
@@ -627,7 +565,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   await updateRepoScores(prMonitor, prs, mergedCounts, closedCounts);
 
   // Phase 3: Persist monthly analytics
-  updateAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
+  updateMonthlyAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
 
   // Phase 4: Expire snoozes, partition PRs, generate and save digest
   const { activePRs, shelvedPRs, digest } = partitionPRs(prMonitor, prs, recentlyClosedPRs, recentlyMergedPRs);

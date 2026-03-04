@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { IssueVetter } from './issue-vetting.js';
+import { isRateLimitError } from './errors.js';
 import type { Octokit } from '@octokit/rest';
 import type { IssueCandidate, AgentState, RepoScore } from './types.js';
 
@@ -259,31 +260,31 @@ describe('parseContributionGuidelines', () => {
   });
 });
 
-describe('IssueVetter.isRateLimitError', () => {
+describe('isRateLimitError (shared from errors.ts)', () => {
   it('returns true for 429 status', () => {
     const error = Object.assign(new Error('Too Many Requests'), { status: 429 });
-    expect(IssueVetter.isRateLimitError(error)).toBe(true);
+    expect(isRateLimitError(error)).toBe(true);
   });
 
   it('returns true for 403 with rate limit message', () => {
     const error = Object.assign(new Error('API rate limit exceeded'), { status: 403 });
-    expect(IssueVetter.isRateLimitError(error)).toBe(true);
+    expect(isRateLimitError(error)).toBe(true);
   });
 
   it('returns false for 403 without rate limit message', () => {
     const error = Object.assign(new Error('Resource not accessible'), { status: 403 });
-    expect(IssueVetter.isRateLimitError(error)).toBe(false);
+    expect(isRateLimitError(error)).toBe(false);
   });
 
   it('returns false for other HTTP status codes', () => {
-    expect(IssueVetter.isRateLimitError(Object.assign(new Error('Not Found'), { status: 404 }))).toBe(false);
-    expect(IssueVetter.isRateLimitError(Object.assign(new Error('Server Error'), { status: 500 }))).toBe(false);
+    expect(isRateLimitError(Object.assign(new Error('Not Found'), { status: 404 }))).toBe(false);
+    expect(isRateLimitError(Object.assign(new Error('Server Error'), { status: 500 }))).toBe(false);
   });
 
   it('returns false for non-HTTP errors', () => {
-    expect(IssueVetter.isRateLimitError(new Error('Network error'))).toBe(false);
-    expect(IssueVetter.isRateLimitError('string error')).toBe(false);
-    expect(IssueVetter.isRateLimitError(null)).toBe(false);
+    expect(isRateLimitError(new Error('Network error'))).toBe(false);
+    expect(isRateLimitError('string error')).toBe(false);
+    expect(isRateLimitError(null)).toBe(false);
   });
 });
 
@@ -583,17 +584,19 @@ describe('fetchContributionGuidelines', () => {
   });
 
   it('tries multiple file paths until found', async () => {
-    mockFn(octokit.repos.getContent)
-      .mockRejectedValueOnce(new Error('404 Not Found'))
-      .mockResolvedValueOnce({
-        data: { content: Buffer.from('Run jest.').toString('base64') },
-      });
+    // All 4 paths are probed in parallel; only .github/CONTRIBUTING.md succeeds
+    mockFn(octokit.repos.getContent).mockImplementation(({ path }: { path: string }) => {
+      if (path === '.github/CONTRIBUTING.md') {
+        return Promise.resolve({ data: { content: Buffer.from('Run jest.').toString('base64') } });
+      }
+      return Promise.reject(new Error('404 Not Found'));
+    });
 
     const owner = uniqueOwner('fetch');
     const result = await vetter.fetchContributionGuidelines(owner, 'repo');
     expect(result).toBeDefined();
     expect(result!.testFramework).toBe('Jest');
-    expect(octokit.repos.getContent).toHaveBeenCalledTimes(2);
+    expect(octokit.repos.getContent).toHaveBeenCalledTimes(4);
   });
 
   it('returns undefined when no file found at any path', async () => {

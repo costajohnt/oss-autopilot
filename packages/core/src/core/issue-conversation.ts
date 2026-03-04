@@ -11,7 +11,7 @@ import { getOctokit } from './github.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 import { paginateAll } from './pagination.js';
 import { getStateManager } from './state.js';
-import { daysBetween, splitRepo, extractOwnerRepo, isOwnRepo } from './utils.js';
+import { daysBetween, splitRepo, extractOwnerRepo, isOwnRepo, DEFAULT_CONCURRENCY } from './utils.js';
 import { runWorkerPool } from './concurrency.js';
 import type { CommentedIssue, IssueConversationStatus } from './types.js';
 import { ConfigurationError, errorMessage } from './errors.js';
@@ -19,7 +19,7 @@ import { debug, warn } from './logger.js';
 
 const MODULE = 'issue-conversation';
 
-const MAX_CONCURRENT_REQUESTS = 5;
+const MAX_CONCURRENT_REQUESTS = DEFAULT_CONCURRENCY;
 
 /** Associations that indicate someone with repo-level permissions. */
 const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
