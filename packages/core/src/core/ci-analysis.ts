@@ -9,7 +9,7 @@ import { CIFailureCategory, ClassifiedCheck, CIStatusResult } from './types.js';
  * Known CI check name patterns that indicate fork limitations rather than real failures (#81).
  * These are deployment/preview services that require repo-level secrets unavailable in forks.
  */
-export const FORK_LIMITATION_PATTERNS: RegExp[] = [
+const FORK_LIMITATION_PATTERNS: RegExp[] = [
   /vercel/i,
   /netlify/i,
   /\bpreview\s*deploy/i,
@@ -24,13 +24,13 @@ export const FORK_LIMITATION_PATTERNS: RegExp[] = [
  * Known CI check name patterns that indicate authorization gates (#81).
  * These require maintainer approval and are not real failures.
  */
-export const AUTH_GATE_PATTERNS: RegExp[] = [/authoriz/i, /approval/i, /\bcla\b/i, /license\/cla/i];
+const AUTH_GATE_PATTERNS: RegExp[] = [/authoriz/i, /approval/i, /\bcla\b/i, /license\/cla/i];
 
 /**
  * Known CI check name patterns that indicate infrastructure/transient failures (#145).
  * These are runner issues, dependency install problems, or service outages — not code failures.
  */
-export const INFRASTRUCTURE_PATTERNS: RegExp[] = [
+const INFRASTRUCTURE_PATTERNS: RegExp[] = [
   /\binstall\s*(os\s*)?dep(endenc|s\b)/i,
   /\bsetup\s+fail(ed|ure)?\b/i,
   /\bservice\s*unavailable/i,
@@ -117,7 +117,7 @@ export function analyzeCheckRuns(checkRuns: Array<{ name: string; conclusion: st
 }
 
 /** Result shape from analyzeCheckRuns, used by mergeStatuses. */
-export interface CheckRunAnalysis {
+interface CheckRunAnalysis {
   hasFailingChecks: boolean;
   hasPendingChecks: boolean;
   hasSuccessfulChecks: boolean;
@@ -126,7 +126,7 @@ export interface CheckRunAnalysis {
 }
 
 /** Result shape from analyzeCombinedStatus, used by mergeStatuses. */
-export interface CombinedStatusAnalysis {
+interface CombinedStatusAnalysis {
   effectiveCombinedState: string;
   hasStatuses: boolean;
   failingStatusNames: string[];

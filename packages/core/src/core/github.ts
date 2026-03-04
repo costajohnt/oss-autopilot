@@ -35,7 +35,7 @@ export function getOctokit(token: string): Octokit {
   _octokit = new ThrottledOctokit({
     auth: token,
     throttle: {
-      onRateLimit: (retryAfter, options, octokit, retryCount) => {
+      onRateLimit: (retryAfter, options, _octokit, retryCount) => {
         const opts = options as { method: string; url: string };
         const resetAt = new Date(Date.now() + retryAfter * 1000);
         if (retryCount < 2) {
@@ -51,7 +51,7 @@ export function getOctokit(token: string): Octokit {
         );
         return false;
       },
-      onSecondaryRateLimit: (retryAfter, options, octokit, retryCount) => {
+      onSecondaryRateLimit: (retryAfter, options, _octokit, retryCount) => {
         const opts = options as { method: string; url: string };
         const resetAt = new Date(Date.now() + retryAfter * 1000);
         if (retryCount < 1) {

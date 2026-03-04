@@ -223,7 +223,7 @@ export function getHttpCache(): HttpCache {
 }
 
 /** Reset the singleton (for tests). */
-export function resetHttpCache(): void {
+function resetHttpCache(): void {
   _httpCache = null;
 }
 

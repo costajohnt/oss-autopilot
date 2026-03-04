@@ -237,7 +237,7 @@ export function fetchUserClosedPRCounts(octokit: Octokit, githubUsername: string
  * Shared helper: search for recent PRs and filter out own repos, excluded repos/orgs.
  * Returns parsed search results that pass all filters.
  */
-export async function fetchRecentPRs<T>(
+async function fetchRecentPRs<T>(
   octokit: Octokit,
   config: { githubUsername: string; excludeRepos: string[]; excludeOrgs?: string[] },
   query: string,

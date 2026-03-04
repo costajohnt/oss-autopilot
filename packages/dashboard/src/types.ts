@@ -7,12 +7,6 @@
 
 import type {
   FetchedPRStatus,
-  CIStatus,
-  ReviewDecision,
-  CIFailureCategory,
-  MaintainerActionHint,
-  IssueConversationStatus,
-  ClassifiedCheck,
   ShelvedPRRef,
   FetchedPR,
   CommentedIssue,
@@ -24,12 +18,6 @@ import type {
 // Re-export shared types so consumers keep using `import { X } from '../types'`
 export type {
   FetchedPRStatus,
-  CIStatus,
-  ReviewDecision,
-  CIFailureCategory,
-  MaintainerActionHint,
-  IssueConversationStatus,
-  ClassifiedCheck,
   ShelvedPRRef,
   FetchedPR,
   CommentedIssue,
