@@ -325,8 +325,6 @@ async function updateRepoScores(
   }
 }
 
-
-
 /**
  * Phase 4: Expire snoozes and partition PRs into active vs shelved buckets.
  * Auto-unshelves PRs where maintainers have engaged, generates the digest,

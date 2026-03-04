@@ -265,7 +265,10 @@ function readBody(req: http.IncomingMessage, maxBytes: number = MAX_BODY_BYTES):
 function setSecurityHeaders(res: http.ServerResponse): void {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'");
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
+  );
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 }
 
@@ -317,7 +320,9 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   let cachedCommentedIssues: CommentedIssue[] = [];
 
   if (!cachedDigest) {
-    throw new Error('No dashboard data available. Run the daily check first: GITHUB_TOKEN=$(gh auth token) npm start -- daily');
+    throw new Error(
+      'No dashboard data available. Run the daily check first: GITHUB_TOKEN=$(gh auth token) npm start -- daily',
+    );
   }
 
   // ── Build cached JSON response ───────────────────────────────────────────
@@ -325,7 +330,10 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   try {
     cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
   } catch (error) {
-    throw new Error(`Failed to build dashboard data: ${errorMessage(error)}. State data may be corrupted — try running: daily --json`, { cause: error });
+    throw new Error(
+      `Failed to build dashboard data: ${errorMessage(error)}. State data may be corrupted — try running: daily --json`,
+      { cause: error },
+    );
   }
 
   // ── Request handler ──────────────────────────────────────────────────────
