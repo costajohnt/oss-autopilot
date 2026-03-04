@@ -72,18 +72,14 @@ export function updateMonthlyAnalytics(
 
   try {
     if (Object.keys(monthlyCounts).length > 0) {
-      stateManager.setMonthlyMergedCounts(
-        mergeMonthlyCounts(state.monthlyMergedCounts || {}, monthlyCounts),
-      );
+      stateManager.setMonthlyMergedCounts(mergeMonthlyCounts(state.monthlyMergedCounts || {}, monthlyCounts));
     }
   } catch (error) {
     warn(MODULE, `Failed to store monthly merged counts: ${errorMessage(error)}`);
   }
   try {
     if (Object.keys(monthlyClosedCounts).length > 0) {
-      stateManager.setMonthlyClosedCounts(
-        mergeMonthlyCounts(state.monthlyClosedCounts || {}, monthlyClosedCounts),
-      );
+      stateManager.setMonthlyClosedCounts(mergeMonthlyCounts(state.monthlyClosedCounts || {}, monthlyClosedCounts));
     }
   } catch (error) {
     warn(MODULE, `Failed to store monthly closed counts: ${errorMessage(error)}`);
@@ -100,9 +96,7 @@ export function updateMonthlyAnalytics(
       }
     }
     if (Object.keys(combinedOpenedCounts).length > 0) {
-      stateManager.setMonthlyOpenedCounts(
-        mergeMonthlyCounts(state.monthlyOpenedCounts || {}, combinedOpenedCounts),
-      );
+      stateManager.setMonthlyOpenedCounts(mergeMonthlyCounts(state.monthlyOpenedCounts || {}, combinedOpenedCounts));
     }
   } catch (error) {
     warn(MODULE, `Failed to store monthly opened counts: ${errorMessage(error)}`);

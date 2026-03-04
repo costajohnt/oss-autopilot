@@ -3,7 +3,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildDashboardStats, computePRsByRepo, computeTopRepos, getMonthlyData, mergeMonthlyCounts } from './dashboard-data.js';
+import {
+  buildDashboardStats,
+  computePRsByRepo,
+  computeTopRepos,
+  getMonthlyData,
+  mergeMonthlyCounts,
+} from './dashboard-data.js';
 import type { DailyDigest, AgentState, ShelvedPRRef } from '../core/types.js';
 
 function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
