@@ -38,9 +38,27 @@ export function buildDashboardStats(digest: DailyDigest, state: Readonly<AgentSt
 }
 
 /**
+ * Merge fresh API counts into existing stored counts.
+ * Months present in the fresh data are updated; months only in the existing data are preserved.
+ * This prevents historical data loss when the API returns incomplete results
+ * (e.g. due to pagination limits or transient failures).
+ */
+export function mergeMonthlyCounts(
+  existing: Record<string, number>,
+  fresh: Record<string, number>,
+): Record<string, number> {
+  const merged = { ...existing };
+  for (const [month, count] of Object.entries(fresh)) {
+    merged[month] = count;
+  }
+  return merged;
+}
+
+/**
  * Persist monthly chart analytics (merged, closed, opened) to state.
  * Each metric is isolated so partial failures don't produce inconsistent state.
- * Skips overwriting when data is empty to avoid wiping chart data on transient API failures.
+ * Fresh API results are merged into existing data so historical months are preserved.
+ * Skips updating when fresh data is empty to avoid wiping chart data on transient API failures.
  */
 export function updateMonthlyAnalytics(
   prs: Array<{ createdAt?: string }>,
@@ -50,17 +68,22 @@ export function updateMonthlyAnalytics(
   openedFromClosed: Record<string, number>,
 ): void {
   const stateManager = getStateManager();
+  const state = stateManager.getState();
 
   try {
     if (Object.keys(monthlyCounts).length > 0) {
-      stateManager.setMonthlyMergedCounts(monthlyCounts);
+      stateManager.setMonthlyMergedCounts(
+        mergeMonthlyCounts(state.monthlyMergedCounts || {}, monthlyCounts),
+      );
     }
   } catch (error) {
     warn(MODULE, `Failed to store monthly merged counts: ${errorMessage(error)}`);
   }
   try {
     if (Object.keys(monthlyClosedCounts).length > 0) {
-      stateManager.setMonthlyClosedCounts(monthlyClosedCounts);
+      stateManager.setMonthlyClosedCounts(
+        mergeMonthlyCounts(state.monthlyClosedCounts || {}, monthlyClosedCounts),
+      );
     }
   } catch (error) {
     warn(MODULE, `Failed to store monthly closed counts: ${errorMessage(error)}`);
@@ -77,7 +100,9 @@ export function updateMonthlyAnalytics(
       }
     }
     if (Object.keys(combinedOpenedCounts).length > 0) {
-      stateManager.setMonthlyOpenedCounts(combinedOpenedCounts);
+      stateManager.setMonthlyOpenedCounts(
+        mergeMonthlyCounts(state.monthlyOpenedCounts || {}, combinedOpenedCounts),
+      );
     }
   } catch (error) {
     warn(MODULE, `Failed to store monthly opened counts: ${errorMessage(error)}`);
