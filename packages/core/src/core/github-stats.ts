@@ -86,7 +86,7 @@ async function fetchUserPRCounts<R>(
 
   // Check for a fresh cached result (avoids 10-20 paginated API calls)
   const cache = getHttpCache();
-  const cacheKey = `pr-counts:${label}:${githubUsername}`;
+  const cacheKey = `pr-counts:v2:${label}:${githubUsername}`;
   const cached = cache.getIfFresh(cacheKey, PR_COUNTS_CACHE_TTL_MS);
   if (cached && isCachedPRCounts(cached)) {
     debug(MODULE, `Using cached ${label} PR counts for @${githubUsername}`);
@@ -110,7 +110,7 @@ async function fetchUserPRCounts<R>(
 
   while (true) {
     const { data } = await octokit.search.issuesAndPullRequests({
-      q: `is:pr ${query} author:${githubUsername}`,
+      q: `is:pr ${query} author:${githubUsername} -user:${githubUsername}`,
       sort: 'updated',
       order: 'desc',
       per_page: 100,

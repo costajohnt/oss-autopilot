@@ -420,8 +420,16 @@ describe('StateManager state validity', () => {
   });
 
   it('should aggregate stats correctly from repo scores', () => {
-    stateManager.updateRepoScore('owner/repo-a', { mergedPRCount: 3, closedWithoutMergeCount: 1 });
-    stateManager.updateRepoScore('owner/repo-b', { mergedPRCount: 2, closedWithoutMergeCount: 0 });
+    stateManager.updateRepoScore('owner/repo-a', {
+      mergedPRCount: 3,
+      closedWithoutMergeCount: 1,
+      stargazersCount: 100,
+    });
+    stateManager.updateRepoScore('owner/repo-b', {
+      mergedPRCount: 2,
+      closedWithoutMergeCount: 0,
+      stargazersCount: 200,
+    });
 
     const stats = stateManager.getStats();
     expect(stats.mergedPRs).toBe(5);
@@ -857,8 +865,16 @@ describe('StateManager getStats exclusion filtering', () => {
   });
 
   it('should exclude repos in excludeRepos from merged/closed totals', () => {
-    stateManager.updateRepoScore('owner/included', { mergedPRCount: 3, closedWithoutMergeCount: 1 });
-    stateManager.updateRepoScore('owner/excluded', { mergedPRCount: 10, closedWithoutMergeCount: 5 });
+    stateManager.updateRepoScore('owner/included', {
+      mergedPRCount: 3,
+      closedWithoutMergeCount: 1,
+      stargazersCount: 100,
+    });
+    stateManager.updateRepoScore('owner/excluded', {
+      mergedPRCount: 10,
+      closedWithoutMergeCount: 5,
+      stargazersCount: 100,
+    });
     stateManager.updateConfig({ excludeRepos: ['owner/excluded'] });
 
     const stats = stateManager.getStats();
@@ -868,9 +884,9 @@ describe('StateManager getStats exclusion filtering', () => {
   });
 
   it('should exclude all repos for an org in excludeOrgs', () => {
-    stateManager.updateRepoScore('bad-org/repo-a', { mergedPRCount: 5 });
-    stateManager.updateRepoScore('bad-org/repo-b', { mergedPRCount: 3 });
-    stateManager.updateRepoScore('good-org/repo-c', { mergedPRCount: 2 });
+    stateManager.updateRepoScore('bad-org/repo-a', { mergedPRCount: 5, stargazersCount: 100 });
+    stateManager.updateRepoScore('bad-org/repo-b', { mergedPRCount: 3, stargazersCount: 100 });
+    stateManager.updateRepoScore('good-org/repo-c', { mergedPRCount: 2, stargazersCount: 100 });
     stateManager.updateConfig({ excludeOrgs: ['bad-org'] });
 
     const stats = stateManager.getStats();
@@ -879,7 +895,7 @@ describe('StateManager getStats exclusion filtering', () => {
   });
 
   it('should match excludeOrgs case-insensitively', () => {
-    stateManager.updateRepoScore('MyOrg/repo', { mergedPRCount: 4 });
+    stateManager.updateRepoScore('MyOrg/repo', { mergedPRCount: 4, stargazersCount: 100 });
     stateManager.updateConfig({ excludeOrgs: ['myorg'] });
 
     const stats = stateManager.getStats();
@@ -888,7 +904,7 @@ describe('StateManager getStats exclusion filtering', () => {
   });
 
   it('should match excludeRepos case-insensitively', () => {
-    stateManager.updateRepoScore('facebook/react', { mergedPRCount: 5 });
+    stateManager.updateRepoScore('facebook/react', { mergedPRCount: 5, stargazersCount: 100 });
     stateManager.updateConfig({ excludeRepos: ['Facebook/React'] });
 
     const stats = stateManager.getStats();
@@ -897,9 +913,9 @@ describe('StateManager getStats exclusion filtering', () => {
   });
 
   it('should exclude by both excludeRepos and excludeOrgs simultaneously', () => {
-    stateManager.updateRepoScore('org-a/repo-1', { mergedPRCount: 1 });
-    stateManager.updateRepoScore('org-b/repo-2', { mergedPRCount: 2 });
-    stateManager.updateRepoScore('org-c/repo-3', { mergedPRCount: 3 });
+    stateManager.updateRepoScore('org-a/repo-1', { mergedPRCount: 1, stargazersCount: 100 });
+    stateManager.updateRepoScore('org-b/repo-2', { mergedPRCount: 2, stargazersCount: 100 });
+    stateManager.updateRepoScore('org-c/repo-3', { mergedPRCount: 3, stargazersCount: 100 });
     stateManager.updateConfig({ excludeRepos: ['org-a/repo-1'], excludeOrgs: ['org-b'] });
 
     const stats = stateManager.getStats();
@@ -908,7 +924,7 @@ describe('StateManager getStats exclusion filtering', () => {
   });
 
   it('should work when excludeOrgs is undefined', () => {
-    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 2 });
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 2, stargazersCount: 100 });
     // excludeOrgs is not set (undefined) — should not crash
     const stats = stateManager.getStats();
     expect(stats.mergedPRs).toBe(2);
@@ -935,17 +951,43 @@ describe('StateManager getStats exclusion filtering', () => {
   });
 
   it('should compute correct mergeRate excluding filtered repos', () => {
-    stateManager.updateRepoScore('owner/included', { mergedPRCount: 1, closedWithoutMergeCount: 1 });
-    stateManager.updateRepoScore('owner/excluded', { mergedPRCount: 100, closedWithoutMergeCount: 0 });
+    stateManager.updateRepoScore('owner/included', {
+      mergedPRCount: 1,
+      closedWithoutMergeCount: 1,
+      stargazersCount: 100,
+    });
+    stateManager.updateRepoScore('owner/excluded', {
+      mergedPRCount: 100,
+      closedWithoutMergeCount: 0,
+      stargazersCount: 100,
+    });
     stateManager.updateConfig({ excludeRepos: ['owner/excluded'] });
 
     const stats = stateManager.getStats();
     expect(stats.mergeRate).toBe('50.0%');
   });
 
+  it('should exclude repos with fewer than 50 stars', () => {
+    stateManager.updateRepoScore('owner/big-repo', { mergedPRCount: 5, stargazersCount: 100 });
+    stateManager.updateRepoScore('owner/small-repo', { mergedPRCount: 3, stargazersCount: 10 });
+    stateManager.updateRepoScore('owner/no-stars', { mergedPRCount: 2 }); // stargazersCount undefined
+
+    const stats = stateManager.getStats();
+    expect(stats.mergedPRs).toBe(5);
+    expect(stats.totalTracked).toBe(1);
+  });
+
+  it('should include repos with exactly 50 stars', () => {
+    stateManager.updateRepoScore('owner/boundary-repo', { mergedPRCount: 4, stargazersCount: 50 });
+
+    const stats = stateManager.getStats();
+    expect(stats.mergedPRs).toBe(4);
+    expect(stats.totalTracked).toBe(1);
+  });
+
   it('should return all repos when no exclusions are set', () => {
-    stateManager.updateRepoScore('a/b', { mergedPRCount: 2 });
-    stateManager.updateRepoScore('c/d', { mergedPRCount: 1 });
+    stateManager.updateRepoScore('a/b', { mergedPRCount: 2, stargazersCount: 100 });
+    stateManager.updateRepoScore('c/d', { mergedPRCount: 1, stargazersCount: 100 });
 
     const stats = stateManager.getStats();
     expect(stats.mergedPRs).toBe(3);
@@ -1745,8 +1787,8 @@ describe('getStats', () => {
 
   it('should compute aggregate statistics from repo scores', () => {
     const sm = new StateManager(false);
-    sm.updateRepoScore('repo/a', { mergedPRCount: 3, closedWithoutMergeCount: 1, signals: {} });
-    sm.updateRepoScore('repo/b', { mergedPRCount: 2, closedWithoutMergeCount: 0, signals: {} });
+    sm.updateRepoScore('repo/a', { mergedPRCount: 3, closedWithoutMergeCount: 1, signals: {}, stargazersCount: 100 });
+    sm.updateRepoScore('repo/b', { mergedPRCount: 2, closedWithoutMergeCount: 0, signals: {}, stargazersCount: 200 });
 
     const stats = sm.getStats();
     expect(stats.mergedPRs).toBe(5);
@@ -1758,8 +1800,18 @@ describe('getStats', () => {
   it('should exclude repos from excludeRepos config', () => {
     const sm = new StateManager(false);
     sm.updateConfig({ excludeRepos: ['excluded/repo'] });
-    sm.updateRepoScore('excluded/repo', { mergedPRCount: 10, closedWithoutMergeCount: 0, signals: {} });
-    sm.updateRepoScore('included/repo', { mergedPRCount: 1, closedWithoutMergeCount: 0, signals: {} });
+    sm.updateRepoScore('excluded/repo', {
+      mergedPRCount: 10,
+      closedWithoutMergeCount: 0,
+      signals: {},
+      stargazersCount: 100,
+    });
+    sm.updateRepoScore('included/repo', {
+      mergedPRCount: 1,
+      closedWithoutMergeCount: 0,
+      signals: {},
+      stargazersCount: 100,
+    });
 
     const stats = sm.getStats();
     expect(stats.mergedPRs).toBe(1);
