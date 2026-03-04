@@ -171,6 +171,7 @@ function createMockReq(method: string, url: string, body?: string): IncomingMess
   const req = new EventEmitter() as IncomingMessage;
   req.method = method;
   req.url = url;
+  req.headers = {};
 
   // For POST requests, simulate body streaming
   if (body !== undefined) {
@@ -202,6 +203,11 @@ function createMockRes(): { res: ServerResponse; result: Promise<MockResponseRes
   const chunks: Buffer[] = [];
 
   const res = resEmitter as unknown as ServerResponse;
+
+  res.setHeader = vi.fn((name: string, value: string | number) => {
+    headers[name.toLowerCase()] = value;
+    return res;
+  });
 
   res.writeHead = vi.fn((code: number, hdrs?: Record<string, string | number>) => {
     statusCode = code;

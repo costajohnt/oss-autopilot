@@ -2,6 +2,9 @@
  * Shared utility functions
  */
 
+/** Default concurrency limit for parallel GitHub API requests. */
+export const DEFAULT_CONCURRENCY = 5;
+
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -237,7 +240,7 @@ export function extractOwnerRepo(url: string): { owner: string; repo: string } |
  * // -9
  */
 export function daysBetween(from: Date, to: Date = new Date()): number {
-  return Math.floor((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.max(0, Math.floor((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)));
 }
 
 /**
@@ -301,6 +304,7 @@ export function getCLIVersion(): string {
 export function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
   const diffMs = Date.now() - date.getTime();
+  if (diffMs < 0) return 'just now';
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);

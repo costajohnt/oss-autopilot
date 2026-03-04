@@ -14,7 +14,7 @@ import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, getDataDir } from './utils.js';
 import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate } from './types.js';
-import { ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
+import { ValidationError, errorMessage, getHttpStatusCode, isRateLimitError } from './errors.js';
 import { debug, info, warn } from './logger.js';
 import { getHttpCache, cachedTimeBased } from './http-cache.js';
 import { type GitHubSearchItem, isDocOnlyIssue, detectLabelFarmingRepos, applyPerRepoCap } from './issue-filtering.js';
@@ -431,7 +431,7 @@ export class IssueDiscovery {
       } catch (error) {
         const errMsg = errorMessage(error);
         phase2Error = errMsg;
-        if (IssueVetter.isRateLimitError(error)) {
+        if (isRateLimitError(error)) {
           rateLimitHitDuringSearch = true;
         }
         warn(MODULE, `Error in general issue search: ${errMsg}`);
@@ -492,7 +492,7 @@ export class IssueDiscovery {
       } catch (error) {
         const errMsg = errorMessage(error);
         phase3Error = errMsg;
-        if (IssueVetter.isRateLimitError(error)) {
+        if (isRateLimitError(error)) {
           rateLimitHitDuringSearch = true;
         }
         warn(MODULE, `Error in maintained-repo search: ${errMsg}`);
@@ -609,7 +609,7 @@ export class IssueDiscovery {
         }
       } catch (error) {
         failedBatches++;
-        if (IssueVetter.isRateLimitError(error)) {
+        if (isRateLimitError(error)) {
           rateLimitFailures++;
         }
         const batchRepos = batch.join(', ');
@@ -639,14 +639,6 @@ export class IssueDiscovery {
       batches.push(repos.slice(i, i + batchSize));
     }
     return batches;
-  }
-
-  /**
-   * Check if an error is a GitHub rate limit error (429 or rate-limit 403).
-   * Static proxy kept for backward compatibility with tests.
-   */
-  static isRateLimitError(error: unknown): boolean {
-    return IssueVetter.isRateLimitError(error);
   }
 
   /**

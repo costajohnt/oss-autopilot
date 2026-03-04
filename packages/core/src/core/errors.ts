@@ -2,6 +2,10 @@
  * Custom error type hierarchy for oss-autopilot.
  * Provides structured error codes and specific error classes
  * for different failure categories.
+ *
+ * Error strategy: Rate-limit and auth errors (429, 401, 403+rate-limit) always
+ * propagate to the caller via isRateLimitError/isRateLimitOrAuthError.
+ * Other errors degrade gracefully — modules return partial results and log warnings.
  */
 
 /**
@@ -54,4 +58,26 @@ export function getHttpStatusCode(error: unknown): number | undefined {
     return typeof status === 'number' && Number.isFinite(status) ? status : undefined;
   }
   return undefined;
+}
+
+/** Check if an error is a GitHub rate limit error (429 or rate-limit 403). */
+export function isRateLimitError(error: unknown): boolean {
+  const status = getHttpStatusCode(error);
+  if (status === 429) return true;
+  if (status === 403) {
+    const msg = errorMessage(error).toLowerCase();
+    return msg.includes('rate limit');
+  }
+  return false;
+}
+
+/** Return true for errors that should propagate (not degrade gracefully): rate limits, auth failures, abuse detection. */
+export function isRateLimitOrAuthError(err: unknown): boolean {
+  const status = getHttpStatusCode(err);
+  if (status === 401 || status === 429) return true;
+  if (status === 403) {
+    const msg = errorMessage(err).toLowerCase();
+    return msg.includes('rate limit') || msg.includes('abuse detection');
+  }
+  return false;
 }

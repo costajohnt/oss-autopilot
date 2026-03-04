@@ -15,7 +15,7 @@
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
-import { daysBetween, parseGitHubUrl, extractOwnerRepo } from './utils.js';
+import { daysBetween, parseGitHubUrl, extractOwnerRepo, DEFAULT_CONCURRENCY } from './utils.js';
 import {
   FetchedPR,
   FetchedPRStatus,
@@ -57,8 +57,7 @@ export { isConditionalChecklistItem } from './checklist-analysis.js';
 
 const MODULE = 'pr-monitor';
 
-// Concurrency limit for parallel API calls
-const MAX_CONCURRENT_REQUESTS = 5;
+const MAX_CONCURRENT_REQUESTS = DEFAULT_CONCURRENCY;
 
 export interface PRCheckFailure {
   prUrl: string;
@@ -607,7 +606,7 @@ export class PRMonitor {
       }
       // If entire chunk failed, likely a systemic issue (rate limit, auth, outage) — abort remaining
       if (chunkFailures === chunk.length && chunk.length > 0) {
-        const remaining = repos.length - i - chunkSize;
+        const remaining = uniqueRepos.length - i - chunkSize;
         if (remaining > 0) {
           warn(MODULE, `Entire chunk failed, aborting remaining ${remaining} repos`);
         }

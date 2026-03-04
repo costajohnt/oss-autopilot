@@ -7,7 +7,7 @@
 
 import { Octokit } from '@octokit/rest';
 import { paginateAll } from './pagination.js';
-import { parseGitHubUrl, daysBetween } from './utils.js';
+import { parseGitHubUrl, daysBetween, DEFAULT_CONCURRENCY } from './utils.js';
 import {
   TrackedIssue,
   IssueVettingResult,
@@ -16,7 +16,7 @@ import {
   type SearchPriority,
   type IssueCandidate,
 } from './types.js';
-import { ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
+import { ValidationError, errorMessage, isRateLimitError } from './errors.js';
 import { warn } from './logger.js';
 import { getHttpCache, cachedRequest, cachedTimeBased } from './http-cache.js';
 import { getStateManager } from './state.js';
@@ -24,8 +24,7 @@ import { calculateRepoQualityBonus, calculateViabilityScore } from './issue-scor
 
 const MODULE = 'issue-vetting';
 
-// Concurrency limit for parallel API calls
-const MAX_CONCURRENT_REQUESTS = 5;
+const MAX_CONCURRENT_REQUESTS = DEFAULT_CONCURRENCY;
 
 /** Result of a vetting check that may be inconclusive due to API errors. */
 export interface CheckResult {
@@ -278,7 +277,7 @@ export class IssueVetter {
     priority?: SearchPriority,
   ): Promise<{ candidates: IssueCandidate[]; allFailed: boolean; rateLimitHit: boolean }> {
     const candidates: IssueCandidate[] = [];
-    const pending: Promise<void>[] = [];
+    const pending = new Map<string, Promise<void>>();
     let failedVettingCount = 0;
     let rateLimitFailures = 0;
     let attemptedCount = 0;
@@ -299,24 +298,23 @@ export class IssueVetter {
         })
         .catch((error) => {
           failedVettingCount++;
-          if (IssueVetter.isRateLimitError(error)) {
+          if (isRateLimitError(error)) {
             rateLimitFailures++;
           }
           warn(MODULE, `Error vetting issue ${url}:`, errorMessage(error));
-        });
+        })
+        .finally(() => pending.delete(url));
 
-      pending.push(task);
+      pending.set(url, task);
 
-      // Limit concurrency
-      if (pending.length >= MAX_CONCURRENT_REQUESTS) {
-        // Wait for at least one to complete, then remove it
-        const completed = await Promise.race(pending.map((p, i) => p.then(() => i)));
-        pending.splice(completed, 1);
+      // Limit concurrency — wait for at least one to complete before launching more
+      if (pending.size >= MAX_CONCURRENT_REQUESTS) {
+        await Promise.race(pending.values());
       }
     }
 
     // Wait for remaining
-    await Promise.allSettled(pending);
+    await Promise.allSettled(pending.values());
 
     const allFailed = failedVettingCount === attemptedCount && attemptedCount > 0;
     if (allFailed) {
@@ -328,17 +326,6 @@ export class IssueVetter {
     }
 
     return { candidates: candidates.slice(0, maxResults), allFailed, rateLimitHit: rateLimitFailures > 0 };
-  }
-
-  /** Check if an error is a GitHub rate limit error (429 or rate-limit 403). */
-  static isRateLimitError(error: unknown): boolean {
-    const status = getHttpStatusCode(error);
-    if (status === 429) return true;
-    if (status === 403) {
-      const msg = errorMessage(error).toLowerCase();
-      return msg.includes('rate limit');
-    }
-    return false;
   }
 
   async checkNoExistingPR(owner: string, repo: string, issueNumber: number): Promise<CheckResult> {
@@ -533,27 +520,30 @@ export class IssueVetter {
 
     const filesToCheck = ['CONTRIBUTING.md', '.github/CONTRIBUTING.md', 'docs/CONTRIBUTING.md', 'contributing.md'];
 
-    for (const file of filesToCheck) {
-      try {
-        const { data } = await this.octokit.repos.getContent({
-          owner,
-          repo,
-          path: file,
-        });
+    // Probe all paths in parallel — take the first success in priority order
+    const results = await Promise.allSettled(
+      filesToCheck.map((file) =>
+        this.octokit.repos.getContent({ owner, repo, path: file }).then(({ data }) => {
+          if ('content' in data) {
+            return Buffer.from(data.content, 'base64').toString('utf-8');
+          }
+          return null;
+        }),
+      ),
+    );
 
-        if ('content' in data) {
-          const content = Buffer.from(data.content, 'base64').toString('utf-8');
-          const guidelines = this.parseContributionGuidelines(content);
-
-          // Cache the result and prune if needed
-          guidelinesCache.set(cacheKey, { guidelines, fetchedAt: Date.now() });
-          pruneCache();
-          return guidelines;
-        }
-      } catch (error) {
-        // File not found is expected; only log unexpected errors
-        if (error instanceof Error && !error.message.includes('404') && !error.message.includes('Not Found')) {
-          warn(MODULE, `Unexpected error fetching ${file} from ${owner}/${repo}: ${error.message}`);
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result.status === 'fulfilled' && result.value) {
+        const guidelines = this.parseContributionGuidelines(result.value);
+        guidelinesCache.set(cacheKey, { guidelines, fetchedAt: Date.now() });
+        pruneCache();
+        return guidelines;
+      }
+      if (result.status === 'rejected') {
+        const msg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        if (!msg.includes('404') && !msg.includes('Not Found')) {
+          warn(MODULE, `Unexpected error fetching ${filesToCheck[i]} from ${owner}/${repo}: ${msg}`);
         }
       }
     }

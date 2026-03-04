@@ -66,7 +66,7 @@ describe('analyzeChecklist', () => {
     const body = '- [x] Required task\n- [ ] Optional screenshot (if applicable)\n- [ ] Migration (optional)';
     const result = analyzeChecklist(body);
     expect(result.hasIncompleteChecklist).toBe(false);
-    expect(result.checklistStats).toEqual({ checked: 1, total: 3 });
+    expect(result.checklistStats).toEqual({ checked: 1, total: 1 });
   });
 
   it('should flag when non-conditional items are unchecked', () => {

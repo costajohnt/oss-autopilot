@@ -555,7 +555,7 @@ describe('PRMonitor analyzeChecklist', () => {
     ].join('\n');
     const result = analyzeChecklist(body);
     expect(result.hasIncompleteChecklist).toBe(false);
-    expect(result.checklistStats).toEqual({ checked: 3, total: 4 });
+    expect(result.checklistStats).toEqual({ checked: 3, total: 3 });
   });
 
   it('should still flag non-conditional unchecked items alongside conditional ones (#152)', () => {
@@ -564,7 +564,7 @@ describe('PRMonitor analyzeChecklist', () => {
     );
     const result = analyzeChecklist(body);
     expect(result.hasIncompleteChecklist).toBe(true);
-    expect(result.checklistStats).toEqual({ checked: 1, total: 3 });
+    expect(result.checklistStats).toEqual({ checked: 1, total: 2 });
   });
 
   it('should handle multiple conditional patterns (#152)', () => {
@@ -576,7 +576,7 @@ describe('PRMonitor analyzeChecklist', () => {
     ].join('\n');
     const result = analyzeChecklist(body);
     expect(result.hasIncompleteChecklist).toBe(false);
-    expect(result.checklistStats).toEqual({ checked: 1, total: 4 });
+    expect(result.checklistStats).toEqual({ checked: 1, total: 1 });
   });
 
   it('should handle "N/A" and "optional" patterns (#152)', () => {
@@ -587,7 +587,7 @@ describe('PRMonitor analyzeChecklist', () => {
     ].join('\n');
     const result = analyzeChecklist(body);
     expect(result.hasIncompleteChecklist).toBe(false);
-    expect(result.checklistStats).toEqual({ checked: 1, total: 3 });
+    expect(result.checklistStats).toEqual({ checked: 1, total: 1 });
   });
 });
 

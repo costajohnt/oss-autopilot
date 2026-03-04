@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getStateManager, getGitHubToken, getDataDir } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
+import { warn } from '../core/logger.js';
 import {
   validateUrl,
   validateGitHubUrl,
@@ -90,7 +91,11 @@ const VALID_ACTIONS: Set<ActionRequest['action']> = new Set([
   'undismiss',
 ]);
 
+const MODULE = 'dashboard-server';
+
 const MAX_BODY_BYTES = 10_240;
+
+const REQUEST_TIMEOUT_MS = 30_000;
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html',
@@ -123,14 +128,14 @@ export function readDashboardServerInfo(): DashboardServerInfo | null {
       typeof parsed.port !== 'number' ||
       typeof parsed.startedAt !== 'string'
     ) {
-      console.error('[DASHBOARD] PID file has invalid structure, ignoring');
+      warn(MODULE, 'PID file has invalid structure, ignoring');
       return null;
     }
     return parsed as DashboardServerInfo;
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code !== 'ENOENT') {
-      console.error(`[DASHBOARD] Failed to read PID file: ${(err as Error).message}`);
+      warn(MODULE, `Failed to read PID file: ${(err as Error).message}`);
     }
     return null;
   }
@@ -142,7 +147,7 @@ export function removeDashboardServerInfo(): void {
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code !== 'ENOENT') {
-      console.error(`[DASHBOARD] Failed to remove PID file: ${(err as Error).message}`);
+      warn(MODULE, `Failed to remove PID file: ${(err as Error).message}`);
     }
   }
 }
@@ -174,7 +179,7 @@ export async function findRunningDashboardServer(): Promise<{ port: number; url:
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code !== 'ESRCH' && code !== 'EPERM') {
-      console.error(`[DASHBOARD] Unexpected error checking PID ${info.pid}: ${(err as Error).message}`);
+      warn(MODULE, `Unexpected error checking PID ${info.pid}: ${(err as Error).message}`);
     }
     // ESRCH = no process at that PID; EPERM = PID recycled to another user's process
     // Either way, our dashboard server is no longer running — clean up stale PID file
@@ -255,9 +260,35 @@ function readBody(req: http.IncomingMessage, maxBytes: number = MAX_BODY_BYTES):
 }
 
 /**
+ * Set security headers on every response.
+ */
+function setSecurityHeaders(res: http.ServerResponse): void {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'",
+  );
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+}
+
+/**
+ * Validate that POST requests originate from the local dashboard.
+ * Returns true if the Origin is acceptable, false otherwise.
+ */
+function isValidOrigin(req: http.IncomingMessage, port: number): boolean {
+  const origin = req.headers['origin'];
+  if (!origin) return true; // No Origin header = same-origin request (non-browser or same-page)
+  const allowed = [`http://localhost:${port}`, `http://127.0.0.1:${port}`];
+  return allowed.includes(origin);
+}
+
+/**
  * Send a JSON response.
  */
 function sendJson(res: http.ServerResponse, statusCode: number, data: unknown): void {
+  setSecurityHeaders(res);
+  res.setHeader('Cache-Control', 'no-store');
   const body = JSON.stringify(data);
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
@@ -289,9 +320,9 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   let cachedCommentedIssues: CommentedIssue[] = [];
 
   if (!cachedDigest) {
-    console.error('No dashboard data available. Run the daily check first:');
-    console.error('  GITHUB_TOKEN=$(gh auth token) npm start -- daily');
-    process.exit(1);
+    throw new Error(
+      'No dashboard data available. Run the daily check first: GITHUB_TOKEN=$(gh auth token) npm start -- daily',
+    );
   }
 
   // ── Build cached JSON response ───────────────────────────────────────────
@@ -299,9 +330,10 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   try {
     cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
   } catch (error) {
-    console.error('Failed to build dashboard data from cached digest:', error);
-    console.error('Your state data may be corrupted. Try running: daily --json');
-    process.exit(1);
+    throw new Error(
+      `Failed to build dashboard data: ${errorMessage(error)}. State data may be corrupted — try running: daily --json`,
+      { cause: error },
+    );
   }
 
   // ── Request handler ──────────────────────────────────────────────────────
@@ -317,11 +349,19 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       }
 
       if (url === '/api/action' && method === 'POST') {
+        if (!isValidOrigin(req, actualPort)) {
+          sendError(res, 403, 'Invalid origin');
+          return;
+        }
         await handleAction(req, res);
         return;
       }
 
       if (url === '/api/refresh' && method === 'POST') {
+        if (!isValidOrigin(req, actualPort)) {
+          sendError(res, 403, 'Invalid origin');
+          return;
+        }
         await handleRefresh(req, res);
         return;
       }
@@ -334,12 +374,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
       sendError(res, 405, 'Method not allowed');
     } catch (error) {
-      console.error('Unhandled request error:', method, url, error);
+      warn(MODULE, `Unhandled request error: ${method} ${url} ${errorMessage(error)}`);
       if (!res.headersSent) {
         sendError(res, 500, 'Internal server error');
       }
     }
   });
+
+  server.requestTimeout = REQUEST_TIMEOUT_MS;
 
   // ── POST /api/action handler ─────────────────────────────────────────────
   async function handleAction(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -375,7 +417,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       if (err instanceof ValidationError) {
         sendError(res, 400, err.message);
       } else {
-        console.error('Unexpected error during URL validation:', err);
+        warn(MODULE, `Unexpected error during URL validation: ${errorMessage(err)}`);
         sendError(res, 400, 'Invalid URL');
       }
       return;
@@ -395,7 +437,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
           if (err instanceof ValidationError) {
             sendError(res, 400, err.message);
           } else {
-            console.error('Unexpected error during message validation:', err);
+            warn(MODULE, `Unexpected error during message validation: ${errorMessage(err)}`);
             sendError(res, 400, 'Invalid reason');
           }
           return;
@@ -428,8 +470,8 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       }
       stateManager.save();
     } catch (error) {
-      console.error('Action failed:', body.action, body.url, error);
-      sendError(res, 500, `Action failed: ${errorMessage(error)}`);
+      warn(MODULE, `Action failed: ${body.action} ${body.url} ${errorMessage(error)}`);
+      sendError(res, 500, 'Action failed');
       return;
     }
 
@@ -448,15 +490,15 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     }
 
     try {
-      console.error('Refreshing dashboard data from GitHub...');
+      warn(MODULE, 'Refreshing dashboard data from GitHub...');
       const result = await fetchDashboardData(currentToken);
       cachedDigest = result.digest;
       cachedCommentedIssues = result.commentedIssues;
       cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
       sendJson(res, 200, cachedJsonData);
     } catch (error) {
-      console.error('Dashboard refresh failed:', error);
-      sendError(res, 500, `Refresh failed: ${errorMessage(error)}`);
+      warn(MODULE, `Dashboard refresh failed: ${errorMessage(error)}`);
+      sendError(res, 500, 'Refresh failed');
     }
   }
 
@@ -466,8 +508,8 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     let urlPath: string;
     try {
       urlPath = decodeURIComponent(requestUrl.split('?')[0]);
-    } catch (err) {
-      console.error('Malformed URL received:', requestUrl, err);
+    } catch (_err) {
+      warn(MODULE, `Malformed URL received: ${requestUrl}`);
       sendError(res, 400, 'Malformed URL');
       return;
     }
@@ -499,7 +541,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       if (nodeErr.code === 'ENOENT') {
         filePath = path.join(resolvedAssetsDir, 'index.html');
       } else {
-        console.error('Failed to stat file:', filePath, err);
+        warn(MODULE, `Failed to stat file: ${filePath}`);
         sendError(res, 500, 'Internal server error');
         return;
       }
@@ -510,9 +552,11 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
     try {
       const content = fs.readFileSync(filePath);
+      setSecurityHeaders(res);
       res.writeHead(200, {
         'Content-Type': contentType,
         'Content-Length': content.length,
+        'Cache-Control': 'public, max-age=3600',
       });
       res.end(content);
     } catch (error) {
@@ -520,7 +564,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       if (nodeErr.code === 'ENOENT') {
         sendError(res, 404, 'Not found');
       } else {
-        console.error('Failed to serve static file:', filePath, error);
+        warn(MODULE, `Failed to serve static file: ${filePath}`);
         sendError(res, 500, 'Failed to read file');
       }
     }
@@ -541,12 +585,11 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     } catch (err) {
       const nodeErr = err as NodeJS.ErrnoException;
       if (nodeErr.code === 'EADDRINUSE' && attempt < MAX_PORT_ATTEMPTS - 1) {
-        console.error(`Port ${actualPort} is in use, trying ${actualPort + 1}...`);
+        warn(MODULE, `Port ${actualPort} is in use, trying ${actualPort + 1}...`);
         actualPort++;
         continue;
       }
-      console.error(`Failed to start server: ${nodeErr.message}`);
-      process.exit(1);
+      throw new Error(`Failed to start server: ${nodeErr.message}`, { cause: err });
     }
   }
 
@@ -554,7 +597,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   writeDashboardServerInfo({ pid: process.pid, port: actualPort, startedAt: new Date().toISOString() });
 
   const serverUrl = `http://localhost:${actualPort}`;
-  console.error(`Dashboard server running at ${serverUrl}`);
+  warn(MODULE, `Dashboard server running at ${serverUrl}`);
 
   // ── Background refresh ─────────────────────────────────────────────────
   // Port is bound and PID file written — now fetch fresh data from GitHub
@@ -565,10 +608,10 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         cachedDigest = result.digest;
         cachedCommentedIssues = result.commentedIssues;
         cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
-        console.error('Background data refresh complete');
+        warn(MODULE, 'Background data refresh complete');
       })
       .catch((error) => {
-        console.error('Background data refresh failed (serving cached data):', errorMessage(error));
+        warn(MODULE, `Background data refresh failed (serving cached data): ${errorMessage(error)}`);
       });
   }
 
@@ -579,7 +622,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
   // ── Clean shutdown ───────────────────────────────────────────────────────
   const shutdown = () => {
-    console.error('\nShutting down dashboard server...');
+    warn(MODULE, 'Shutting down dashboard server...');
     removeDashboardServerInfo();
     server.close(() => {
       process.exit(0);

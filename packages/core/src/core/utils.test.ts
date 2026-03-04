@@ -174,10 +174,10 @@ describe('daysBetween', () => {
     expect(daysBetween(from, to)).toBe(365);
   });
 
-  it('should return negative for reversed dates', () => {
+  it('should clamp to zero for reversed dates', () => {
     const from = new Date('2026-01-10T00:00:00Z');
     const to = new Date('2026-01-01T00:00:00Z');
-    expect(daysBetween(from, to)).toBe(-9);
+    expect(daysBetween(from, to)).toBe(0);
   });
 
   it('should handle leap year', () => {

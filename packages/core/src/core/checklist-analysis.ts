@@ -45,8 +45,11 @@ export function analyzeChecklist(body: string): {
   // Filter out conditional checklist items that are intentionally unchecked
   const nonConditionalUnchecked = uncheckedLines.filter((line) => !isConditionalChecklistItem(line));
 
+  // Use consistent total that excludes conditional items (matches hasIncompleteChecklist logic)
+  const effectiveTotal = checked + nonConditionalUnchecked.length;
+
   return {
     hasIncompleteChecklist: nonConditionalUnchecked.length > 0,
-    checklistStats: { checked, total },
+    checklistStats: { checked, total: effectiveTotal },
   };
 }

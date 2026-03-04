@@ -855,38 +855,7 @@ describe('calculateViabilityScore with repoQualityBonus', () => {
   });
 });
 
-describe('IssueDiscovery.isRateLimitError', () => {
-  const isRateLimitError = (IssueDiscovery as any).isRateLimitError;
-
-  it('should return true for HTTP 429', () => {
-    const error = Object.assign(new Error('Too Many Requests'), { status: 429 });
-    expect(isRateLimitError(error)).toBe(true);
-  });
-
-  it('should return true for HTTP 403 with "rate limit" in message', () => {
-    const error = Object.assign(new Error('API rate limit exceeded'), { status: 403 });
-    expect(isRateLimitError(error)).toBe(true);
-  });
-
-  it('should return false for HTTP 403 without rate limit message', () => {
-    const error = Object.assign(new Error('Resource not accessible by integration'), { status: 403 });
-    expect(isRateLimitError(error)).toBe(false);
-  });
-
-  it('should return false for HTTP 500', () => {
-    const error = Object.assign(new Error('Internal Server Error'), { status: 500 });
-    expect(isRateLimitError(error)).toBe(false);
-  });
-
-  it('should return false for errors without status', () => {
-    expect(isRateLimitError(new Error('Network timeout'))).toBe(false);
-  });
-
-  it('should return false for null/undefined', () => {
-    expect(isRateLimitError(null)).toBe(false);
-    expect(isRateLimitError(undefined)).toBe(false);
-  });
-});
+// isRateLimitError tests are in errors.test.ts (shared function moved to errors.ts)
 
 describe('isDocOnlyIssue (#105)', () => {
   const makeItem = (labels: string[]) => ({

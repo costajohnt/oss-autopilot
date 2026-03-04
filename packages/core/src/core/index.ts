@@ -40,8 +40,17 @@ export {
   getGitHubTokenAsync,
   requireGitHubToken,
   resetGitHubTokenCache,
+  DEFAULT_CONCURRENCY,
 } from './utils.js';
-export { OssAutopilotError, ConfigurationError, ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
+export {
+  OssAutopilotError,
+  ConfigurationError,
+  ValidationError,
+  errorMessage,
+  getHttpStatusCode,
+  isRateLimitError,
+  isRateLimitOrAuthError,
+} from './errors.js';
 export { enableDebug, isDebugEnabled, debug, info, warn, timed } from './logger.js';
 export { HttpCache, getHttpCache, cachedRequest, type CacheEntry } from './http-cache.js';
 export {
