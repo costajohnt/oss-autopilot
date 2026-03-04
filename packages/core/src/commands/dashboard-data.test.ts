@@ -3,7 +3,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildDashboardStats, computePRsByRepo, computeTopRepos, getMonthlyData } from './dashboard-data.js';
+import {
+  buildDashboardStats,
+  computePRsByRepo,
+  computeTopRepos,
+  getMonthlyData,
+  mergeMonthlyCounts,
+} from './dashboard-data.js';
 import type { DailyDigest, AgentState, ShelvedPRRef } from '../core/types.js';
 
 function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
@@ -274,5 +280,48 @@ describe('getMonthlyData', () => {
     expect(result.monthlyMerged).toEqual({});
     expect(result.monthlyClosed).toEqual({});
     expect(result.monthlyOpened).toEqual({});
+  });
+});
+
+describe('mergeMonthlyCounts', () => {
+  it('preserves existing months not in fresh data', () => {
+    const existing = { '2025-06': 9, '2025-07': 26, '2026-01': 11 };
+    const fresh = { '2026-02': 14, '2026-03': 4 };
+    const result = mergeMonthlyCounts(existing, fresh);
+    expect(result).toEqual({
+      '2025-06': 9,
+      '2025-07': 26,
+      '2026-01': 11,
+      '2026-02': 14,
+      '2026-03': 4,
+    });
+  });
+
+  it('updates existing months when fresh data has them', () => {
+    const existing = { '2026-02': 10, '2026-03': 2 };
+    const fresh = { '2026-02': 14, '2026-03': 4 };
+    const result = mergeMonthlyCounts(existing, fresh);
+    expect(result).toEqual({ '2026-02': 14, '2026-03': 4 });
+  });
+
+  it('returns copy of existing when fresh is empty', () => {
+    const existing = { '2025-06': 9, '2025-07': 26 };
+    const result = mergeMonthlyCounts(existing, {});
+    expect(result).toEqual(existing);
+    expect(result).not.toBe(existing);
+  });
+
+  it('returns fresh data when existing is empty', () => {
+    const fresh = { '2026-02': 14, '2026-03': 4 };
+    const result = mergeMonthlyCounts({}, fresh);
+    expect(result).toEqual(fresh);
+  });
+
+  it('does not mutate inputs', () => {
+    const existing = { '2026-01': 5 };
+    const fresh = { '2026-02': 10 };
+    mergeMonthlyCounts(existing, fresh);
+    expect(existing).toEqual({ '2026-01': 5 });
+    expect(fresh).toEqual({ '2026-02': 10 });
   });
 });
