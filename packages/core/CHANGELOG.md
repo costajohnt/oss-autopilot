@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.4](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.3...core-v0.44.4) (2026-03-04)
+
+
+### Bug Fixes
+
+* **hooks:** prevent --silent from being passed to tsc during dashboard build ([82dc1b3](https://github.com/costajohnt/oss-autopilot/commit/82dc1b3b562470abce0d05629c7f4ca421aeb1d8))
+* **release:** track all plugin files in core releases, not just packages/core ([f95ebe0](https://github.com/costajohnt/oss-autopilot/commit/f95ebe0d6bb42d607f64b1a3eda2b3c9ad495534))
+* **release:** track hooks, workflows, and plugin config in core releases ([a065a3c](https://github.com/costajohnt/oss-autopilot/commit/a065a3c0bf6ea1821e6a9048feb0ec48a9cef496))
+
 ## [0.44.3](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.2...core-v0.44.3) (2026-03-04)
 
 
