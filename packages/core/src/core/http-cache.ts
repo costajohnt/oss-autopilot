@@ -222,11 +222,6 @@ export function getHttpCache(): HttpCache {
   return _httpCache;
 }
 
-/** Reset the singleton (for tests). */
-export function resetHttpCache(): void {
-  _httpCache = null;
-}
-
 // ---------------------------------------------------------------------------
 // Octokit integration helpers
 // ---------------------------------------------------------------------------

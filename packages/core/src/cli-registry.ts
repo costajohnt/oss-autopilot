@@ -13,7 +13,7 @@ import type { Command } from 'commander';
 import { errorMessage } from './core/errors.js';
 import { outputJson, outputJsonError } from './formatters/json.js';
 
-export interface CLICommandDef {
+interface CLICommandDef {
   /** Command name (used to build the local-only set for the preAction hook). */
   name: string;
   /** If true, skip the preAction GitHub token check. */

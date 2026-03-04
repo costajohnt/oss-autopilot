@@ -6,7 +6,7 @@
  * override bag — callers only specify the fields relevant to their test.
  */
 
-import type { FetchedPR, DailyDigest, ShelvedPRRef, AgentState } from './types.js';
+import type { FetchedPR, DailyDigest } from './types.js';
 import type { CapacityAssessment } from '../formatters/json.js';
 
 // ---------------------------------------------------------------------------
@@ -77,22 +77,6 @@ export function makeDailyDigest(overrides: Partial<DailyDigest> = {}): DailyDige
 }
 
 // ---------------------------------------------------------------------------
-// ShelvedPRRef
-// ---------------------------------------------------------------------------
-
-export function makeShelvedPRRef(overrides: Partial<ShelvedPRRef> = {}): ShelvedPRRef {
-  return {
-    number: 1,
-    url: 'https://github.com/owner/repo/pull/1',
-    title: 'Shelved PR',
-    repo: 'owner/repo',
-    daysSinceActivity: 45,
-    status: 'healthy',
-    ...overrides,
-  };
-}
-
-// ---------------------------------------------------------------------------
 // CapacityAssessment
 // ---------------------------------------------------------------------------
 
@@ -104,35 +88,6 @@ export function makeCapacityAssessment(overrides: Partial<CapacityAssessment> = 
     shelvedPRCount: 0,
     criticalIssueCount: 0,
     reason: 'You have capacity',
-    ...overrides,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// AgentState (partial — for tests that need a state object)
-// ---------------------------------------------------------------------------
-
-export function makeAgentState(overrides: Partial<AgentState> = {}): AgentState {
-  return {
-    version: 2,
-    repoScores: {},
-    config: {
-      setupComplete: false,
-      githubUsername: 'testuser',
-      excludeRepos: [],
-      maxActivePRs: 10,
-      dormantThresholdDays: 30,
-      approachingDormantDays: 25,
-      maxIssueAgeDays: 90,
-      languages: [],
-      labels: [],
-      trustedProjects: [],
-      minRepoScoreThreshold: 4,
-      starredRepos: [],
-    },
-    events: [],
-    lastRunAt: '2025-06-20T00:00:00Z',
-    activeIssues: [],
     ...overrides,
   };
 }
