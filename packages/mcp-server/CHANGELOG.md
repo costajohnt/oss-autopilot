@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/costajohnt/oss-autopilot/compare/mcp-v1.0.1...mcp-v1.0.2) (2026-03-04)
+
+
+### Bug Fixes
+
+* exclude own repos from PR counts and filter by star count ([#544](https://github.com/costajohnt/oss-autopilot/issues/544)) ([12eeeaa](https://github.com/costajohnt/oss-autopilot/commit/12eeeaa5a7ebc369714f9c880d5f39a6ff3f8fa7))
+
 ## [1.0.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v1.0.0...mcp-v1.0.1) (2026-03-02)
 
 
