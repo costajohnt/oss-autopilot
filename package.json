@@ -20,6 +20,7 @@
     "prepare": "[ -n \"$CI\" ] || simple-git-hooks"
   },
   "simple-git-hooks": {
+    "pre-commit": "pnpm format:check",
     "commit-msg": "./scripts/commit-msg.sh \"$1\""
   },
   "keywords": [
