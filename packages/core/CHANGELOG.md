@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.6](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.5...core-v0.44.6) (2026-03-04)
+
+
+### Bug Fixes
+
+* exclude own repos from PR counts and filter by star count ([#544](https://github.com/costajohnt/oss-autopilot/issues/544)) ([12eeeaa](https://github.com/costajohnt/oss-autopilot/commit/12eeeaa5a7ebc369714f9c880d5f39a6ff3f8fa7))
+* resolve hono security vulnerabilities via pnpm overrides ([#546](https://github.com/costajohnt/oss-autopilot/issues/546)) ([eaf90b1](https://github.com/costajohnt/oss-autopilot/commit/eaf90b1e5f1b59909cd6ef069562e0950bc670e5))
+
 ## [0.44.5](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.4...core-v0.44.5) (2026-03-04)
 
 
