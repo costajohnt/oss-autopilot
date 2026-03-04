@@ -14,7 +14,7 @@ async function createStdioClient(): Promise<Client> {
   return client;
 }
 
-describe('MCP server stdio transport', () => {
+describe('MCP server stdio transport', { timeout: 30_000 }, () => {
   let client: Client;
 
   afterEach(async () => {

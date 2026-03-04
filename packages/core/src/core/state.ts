@@ -1200,6 +1200,7 @@ export class StateManager {
 
     for (const [repoKey, score] of Object.entries(this.state.repoScores)) {
       if (this.isExcluded(repoKey)) continue;
+      if ((score.stargazersCount ?? 0) < 50) continue;
       totalTracked++;
       totalMerged += score.mergedPRCount;
       totalClosed += score.closedWithoutMergeCount;

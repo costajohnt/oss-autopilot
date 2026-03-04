@@ -74,8 +74,18 @@ describe('fetchUserPRCounts caching', () => {
     expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(1);
 
     // Verify the result was cached
-    const cached = testCache.getIfFresh('pr-counts:merged:testuser', PR_COUNTS_CACHE_TTL_MS);
+    const cached = testCache.getIfFresh('pr-counts:v2:merged:testuser', PR_COUNTS_CACHE_TTL_MS);
     expect(cached).not.toBeNull();
+  });
+
+  it('should exclude own repos via -user: qualifier in search query', async () => {
+    const items = [makeMergedItem('org', 'repo', '2025-06-01T00:00:00Z')];
+    const octokit = makeOctokit(items);
+
+    await fetchUserMergedPRCounts(octokit, 'testuser');
+
+    const call = octokit.search.issuesAndPullRequests.mock.calls[0][0];
+    expect(call.q).toContain('-user:testuser');
   });
 
   it('should return cached result on second call without hitting API', async () => {
@@ -99,7 +109,7 @@ describe('fetchUserPRCounts caching', () => {
     const octokit = makeOctokit(items);
 
     // Seed the cache with an old entry
-    testCache.set('pr-counts:merged:testuser', '', {
+    testCache.set('pr-counts:v2:merged:testuser', '', {
       reposEntries: [['org/old-repo', { count: 5, lastMergedAt: '2025-01-01T00:00:00Z' }]],
       monthlyCounts: { '2025-01': 5 },
       monthlyOpenedCounts: {},
@@ -111,7 +121,7 @@ describe('fetchUserPRCounts caching', () => {
     for (const file of cacheFiles) {
       const filePath = path.join(testCacheDir, file);
       const entry = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      if (entry.url === 'pr-counts:merged:testuser') {
+      if (entry.url === 'pr-counts:v2:merged:testuser') {
         entry.cachedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
         fs.writeFileSync(filePath, JSON.stringify(entry), 'utf-8');
       }
@@ -137,8 +147,8 @@ describe('fetchUserPRCounts caching', () => {
     expect(closedOctokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(1);
 
     // Verify separate cache keys
-    expect(testCache.getIfFresh('pr-counts:merged:testuser', PR_COUNTS_CACHE_TTL_MS)).not.toBeNull();
-    expect(testCache.getIfFresh('pr-counts:closed:testuser', PR_COUNTS_CACHE_TTL_MS)).not.toBeNull();
+    expect(testCache.getIfFresh('pr-counts:v2:merged:testuser', PR_COUNTS_CACHE_TTL_MS)).not.toBeNull();
+    expect(testCache.getIfFresh('pr-counts:v2:closed:testuser', PR_COUNTS_CACHE_TTL_MS)).not.toBeNull();
   });
 
   it('should reconstruct Map correctly from cached entries', async () => {
