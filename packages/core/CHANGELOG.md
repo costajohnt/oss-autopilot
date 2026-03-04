@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.5](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.4...core-v0.44.5) (2026-03-04)
+
+
+### Bug Fixes
+
+* merge monthly counts into existing state instead of overwriting ([#538](https://github.com/costajohnt/oss-autopilot/issues/538)) ([ae8c418](https://github.com/costajohnt/oss-autopilot/commit/ae8c418b824616bc7cef77c6998bebe9bb7466a4))
+
 ## [0.44.4](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.3...core-v0.44.4) (2026-03-04)
 
 
