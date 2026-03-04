@@ -33,9 +33,9 @@ if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ "${DASHBOAR
   # Dashboard depends on @oss-autopilot/core types via workspace:* protocol.
   # Use pnpm if available (required for workspace: resolution), fall back to npm.
   if command -v pnpm &>/dev/null; then
-    dashboard_build() { cd "${PLUGIN_ROOT}" && pnpm install --silent 2>/dev/null && pnpm --filter @oss-autopilot/core run build --silent 2>/dev/null && pnpm --filter @oss-autopilot/dashboard run build --silent 2>/dev/null; }
+    dashboard_build() { cd "${PLUGIN_ROOT}" && pnpm install --silent 2>/dev/null && pnpm --silent --filter @oss-autopilot/core run build 2>/dev/null && pnpm --silent --filter @oss-autopilot/dashboard run build 2>/dev/null; }
   else
-    dashboard_build() { cd "${PLUGIN_ROOT}/packages/dashboard" && npm install --silent 2>/dev/null && npm run build --silent 2>/dev/null; }
+    dashboard_build() { cd "${PLUGIN_ROOT}/packages/dashboard" && npm install --silent 2>/dev/null && npm run build 2>/dev/null; }
   fi
   if (dashboard_build); then
     messages="${messages:+${messages}\n}Dashboard SPA built successfully."
