@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.8](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.7...core-v0.44.8) (2026-03-05)
+
+
+### Bug Fixes
+
+* eliminate ReDoS vulnerability in analyzeRequirements regex ([#557](https://github.com/costajohnt/oss-autopilot/issues/557)) ([3b99da6](https://github.com/costajohnt/oss-autopilot/commit/3b99da66539b230d7542581e8730208c1f8d78a7))
+
 ## [0.44.7](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.6...core-v0.44.7) (2026-03-05)
 
 
