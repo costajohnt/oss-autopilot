@@ -473,6 +473,7 @@ export class PRMonitor {
       return { status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier };
     }
 
+    // Default: no actionable issues found. Covers pending CI, no reviews yet, etc.
     return { status: 'waiting_on_maintainer', waitReason: 'pending_review', stalenessTier };
   }
 

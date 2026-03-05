@@ -56,7 +56,7 @@ try {
     if (segments.length > 0) {
       console.log('OSS: ' + total + ' active PRs — ' + segments.join(', ') + ' (' + ageLabel + ')');
     } else {
-      console.log('OSS: ' + total + ' active PRs, all healthy (' + ageLabel + ')');
+      console.log('OSS: ' + total + ' active PRs, all on track (' + ageLabel + ')');
     }
   }
 } catch (e) {
