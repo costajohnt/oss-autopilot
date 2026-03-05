@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.9](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.8...core-v0.44.9) (2026-03-05)
+
+
+### Bug Fixes
+
+* update stale comments referencing removed changes_addressed status ([#565](https://github.com/costajohnt/oss-autopilot/issues/565)) ([b779465](https://github.com/costajohnt/oss-autopilot/commit/b7794653bacbb8dbad3db8fa12cf225847ef4be9))
+
 ## [0.44.8](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.7...core-v0.44.8) (2026-03-05)
 
 
