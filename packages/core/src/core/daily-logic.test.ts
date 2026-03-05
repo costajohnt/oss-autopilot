@@ -44,29 +44,21 @@ function makeDigest(overrides: Parameters<typeof makeDailyDigest>[0] = {}) {
 // ---------------------------------------------------------------------------
 
 describe('CRITICAL_STATUSES', () => {
-  it('should contain exactly the four critical statuses', () => {
-    expect(CRITICAL_STATUSES.has('needs_response')).toBe(true);
-    expect(CRITICAL_STATUSES.has('needs_changes')).toBe(true);
-    expect(CRITICAL_STATUSES.has('failing_ci')).toBe(true);
-    expect(CRITICAL_STATUSES.has('merge_conflict')).toBe(true);
-    expect(CRITICAL_STATUSES.size).toBe(4);
+  it('should contain exactly the one critical status', () => {
+    expect(CRITICAL_STATUSES.has('needs_addressing')).toBe(true);
+    expect(CRITICAL_STATUSES.size).toBe(1);
   });
 
   it('should not contain non-critical statuses', () => {
-    expect(CRITICAL_STATUSES.has('healthy')).toBe(false);
-    expect(CRITICAL_STATUSES.has('dormant')).toBe(false);
     expect(CRITICAL_STATUSES.has('waiting_on_maintainer')).toBe(false);
   });
 });
 
 describe('ACTIVE_MAINTAINER_STATUSES', () => {
   it('should contain expected active maintainer statuses', () => {
-    expect(ACTIVE_MAINTAINER_STATUSES.has('healthy')).toBe(true);
     expect(ACTIVE_MAINTAINER_STATUSES.has('waiting_on_maintainer')).toBe(true);
-    expect(ACTIVE_MAINTAINER_STATUSES.has('changes_addressed')).toBe(true);
-    expect(ACTIVE_MAINTAINER_STATUSES.has('needs_response')).toBe(true);
-    expect(ACTIVE_MAINTAINER_STATUSES.has('needs_changes')).toBe(true);
-    expect(ACTIVE_MAINTAINER_STATUSES.size).toBe(5);
+    expect(ACTIVE_MAINTAINER_STATUSES.has('needs_addressing')).toBe(true);
+    expect(ACTIVE_MAINTAINER_STATUSES.size).toBe(2);
   });
 });
 
@@ -84,7 +76,7 @@ describe('STALE_STATUSES', () => {
 
 describe('assessCapacity', () => {
   it('should report capacity when under limit with no critical issues', () => {
-    const prs = [makePR({ repo: 'owner/repo', status: 'healthy' })];
+    const prs = [makePR({ repo: 'owner/repo', status: 'waiting_on_maintainer' })];
     const result = assessCapacity(prs, 10, 0);
 
     expect(result.hasCapacity).toBe(true);
@@ -95,7 +87,9 @@ describe('assessCapacity', () => {
   });
 
   it('should report no capacity when at PR limit', () => {
-    const prs = Array.from({ length: 5 }, (_, i) => makePR({ repo: 'owner/repo', number: i + 1, status: 'healthy' }));
+    const prs = Array.from({ length: 5 }, (_, i) =>
+      makePR({ repo: 'owner/repo', number: i + 1, status: 'waiting_on_maintainer' }),
+    );
     const result = assessCapacity(prs, 5, 0);
 
     expect(result.hasCapacity).toBe(false);
@@ -103,7 +97,7 @@ describe('assessCapacity', () => {
   });
 
   it('should report no capacity when critical issues exist', () => {
-    const prs = [makePR({ repo: 'owner/repo', status: 'needs_response' })];
+    const prs = [makePR({ repo: 'owner/repo', status: 'needs_addressing', actionReason: 'needs_response' })];
     const result = assessCapacity(prs, 10, 0);
 
     expect(result.hasCapacity).toBe(false);
@@ -113,7 +107,13 @@ describe('assessCapacity', () => {
 
   it('should report no capacity when both at limit and critical issues exist', () => {
     const prs = Array.from({ length: 5 }, (_, i) =>
-      makePR({ repo: 'owner/repo', number: i + 1, status: i === 0 ? 'needs_response' : 'healthy' }),
+      makePR({
+        repo: 'owner/repo',
+        number: i + 1,
+        ...(i === 0
+          ? { status: 'needs_addressing' as const, actionReason: 'needs_response' as const }
+          : { status: 'waiting_on_maintainer' as const }),
+      }),
     );
     const result = assessCapacity(prs, 5, 0);
 
@@ -122,12 +122,12 @@ describe('assessCapacity', () => {
     expect(result.reason).toContain('critical issue');
   });
 
-  it('should count all four critical statuses', () => {
+  it('should count needs_addressing as the critical status', () => {
     const prs = [
-      makePR({ repo: 'owner/repo', number: 1, status: 'needs_response' }),
-      makePR({ repo: 'owner/repo', number: 2, status: 'needs_changes' }),
-      makePR({ repo: 'owner/repo', number: 3, status: 'failing_ci' }),
-      makePR({ repo: 'owner/repo', number: 4, status: 'merge_conflict' }),
+      makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'needs_response' }),
+      makePR({ repo: 'owner/repo', number: 2, status: 'needs_addressing', actionReason: 'needs_changes' }),
+      makePR({ repo: 'owner/repo', number: 3, status: 'needs_addressing', actionReason: 'failing_ci' }),
+      makePR({ repo: 'owner/repo', number: 4, status: 'needs_addressing', actionReason: 'merge_conflict' }),
     ];
     const result = assessCapacity(prs, 10, 0);
 
@@ -135,7 +135,7 @@ describe('assessCapacity', () => {
   });
 
   it('should include shelved PR count in reason when present', () => {
-    const prs = [makePR({ repo: 'owner/repo', status: 'healthy' })];
+    const prs = [makePR({ repo: 'owner/repo', status: 'waiting_on_maintainer' })];
     const result = assessCapacity(prs, 10, 3);
 
     expect(result.shelvedPRCount).toBe(3);
@@ -143,7 +143,7 @@ describe('assessCapacity', () => {
   });
 
   it('should not mention shelved when count is zero', () => {
-    const prs = [makePR({ repo: 'owner/repo', status: 'healthy' })];
+    const prs = [makePR({ repo: 'owner/repo', status: 'waiting_on_maintainer' })];
     const result = assessCapacity(prs, 10, 0);
 
     expect(result.reason).not.toContain('shelved');
@@ -158,7 +158,7 @@ describe('assessCapacity', () => {
   });
 
   it('should use singular "issue" for exactly 1 critical issue', () => {
-    const prs = [makePR({ repo: 'owner/repo', status: 'failing_ci' })];
+    const prs = [makePR({ repo: 'owner/repo', status: 'needs_addressing', actionReason: 'failing_ci' })];
     const result = assessCapacity(prs, 10, 0);
 
     expect(result.reason).toContain('1 critical issue need');
@@ -167,8 +167,8 @@ describe('assessCapacity', () => {
 
   it('should use plural "issues" for multiple critical issues', () => {
     const prs = [
-      makePR({ repo: 'owner/repo', number: 1, status: 'failing_ci' }),
-      makePR({ repo: 'owner/repo', number: 2, status: 'needs_response' }),
+      makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'failing_ci' }),
+      makePR({ repo: 'owner/repo', number: 2, status: 'needs_addressing', actionReason: 'needs_response' }),
     ];
     const result = assessCapacity(prs, 10, 0);
 
@@ -188,7 +188,7 @@ describe('collectActionableIssues', () => {
 
   it('should return empty array when all PRs are healthy', () => {
     const prs = [
-      makePR({ repo: 'owner/repo', number: 1, status: 'healthy' }),
+      makePR({ repo: 'owner/repo', number: 1, status: 'waiting_on_maintainer' }),
       makePR({ repo: 'owner/repo', number: 2, status: 'waiting_on_maintainer' }),
     ];
     const result = collectActionableIssues(prs);
@@ -196,7 +196,7 @@ describe('collectActionableIssues', () => {
   });
 
   it('should collect needs_response issues', () => {
-    const prs = [makePR({ repo: 'owner/repo', status: 'needs_response' })];
+    const prs = [makePR({ repo: 'owner/repo', status: 'needs_addressing', actionReason: 'needs_response' })];
     const result = collectActionableIssues(prs);
 
     expect(result).toHaveLength(1);
@@ -205,7 +205,7 @@ describe('collectActionableIssues', () => {
   });
 
   it('should collect needs_changes issues', () => {
-    const prs = [makePR({ repo: 'owner/repo', status: 'needs_changes' })];
+    const prs = [makePR({ repo: 'owner/repo', status: 'needs_addressing', actionReason: 'needs_changes' })];
     const result = collectActionableIssues(prs);
 
     expect(result).toHaveLength(1);
@@ -213,7 +213,14 @@ describe('collectActionableIssues', () => {
   });
 
   it('should collect ci_failing issues', () => {
-    const prs = [makePR({ repo: 'owner/repo', status: 'failing_ci', failingCheckNames: ['lint', 'build'] })];
+    const prs = [
+      makePR({
+        repo: 'owner/repo',
+        status: 'needs_addressing',
+        actionReason: 'failing_ci',
+        failingCheckNames: ['lint', 'build'],
+      }),
+    ];
     const result = collectActionableIssues(prs);
 
     expect(result).toHaveLength(1);
@@ -223,7 +230,7 @@ describe('collectActionableIssues', () => {
   });
 
   it('should collect merge_conflict issues', () => {
-    const prs = [makePR({ repo: 'owner/repo', status: 'merge_conflict' })];
+    const prs = [makePR({ repo: 'owner/repo', status: 'needs_addressing', actionReason: 'merge_conflict' })];
     const result = collectActionableIssues(prs);
 
     expect(result).toHaveLength(1);
@@ -232,7 +239,12 @@ describe('collectActionableIssues', () => {
 
   it('should collect incomplete_checklist issues with stats', () => {
     const prs = [
-      makePR({ repo: 'owner/repo', status: 'incomplete_checklist', checklistStats: { checked: 2, total: 5 } }),
+      makePR({
+        repo: 'owner/repo',
+        status: 'needs_addressing',
+        actionReason: 'incomplete_checklist',
+        checklistStats: { checked: 2, total: 5 },
+      }),
     ];
     const result = collectActionableIssues(prs);
 
@@ -243,11 +255,11 @@ describe('collectActionableIssues', () => {
 
   it('should order issues by priority: response > changes > ci > conflict > checklist', () => {
     const prs = [
-      makePR({ repo: 'owner/repo', number: 1, status: 'incomplete_checklist' }),
-      makePR({ repo: 'owner/repo', number: 2, status: 'needs_response' }),
-      makePR({ repo: 'owner/repo', number: 3, status: 'merge_conflict' }),
-      makePR({ repo: 'owner/repo', number: 4, status: 'failing_ci' }),
-      makePR({ repo: 'owner/repo', number: 5, status: 'needs_changes' }),
+      makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'incomplete_checklist' }),
+      makePR({ repo: 'owner/repo', number: 2, status: 'needs_addressing', actionReason: 'needs_response' }),
+      makePR({ repo: 'owner/repo', number: 3, status: 'needs_addressing', actionReason: 'merge_conflict' }),
+      makePR({ repo: 'owner/repo', number: 4, status: 'needs_addressing', actionReason: 'failing_ci' }),
+      makePR({ repo: 'owner/repo', number: 5, status: 'needs_addressing', actionReason: 'needs_changes' }),
     ];
     const result = collectActionableIssues(prs);
 
@@ -263,8 +275,8 @@ describe('collectActionableIssues', () => {
   it('should skip snoozed PRs for ci_failing only', () => {
     const snoozedUrl = 'https://github.com/owner/repo/pull/1';
     const prs = [
-      makePR({ repo: 'owner/repo', number: 1, status: 'failing_ci' }),
-      makePR({ repo: 'owner/repo', number: 2, status: 'failing_ci' }),
+      makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'failing_ci' }),
+      makePR({ repo: 'owner/repo', number: 2, status: 'needs_addressing', actionReason: 'failing_ci' }),
     ];
     const snoozedUrls = new Set([snoozedUrl]);
     const result = collectActionableIssues(prs, snoozedUrls);
@@ -275,7 +287,7 @@ describe('collectActionableIssues', () => {
 
   it('should not skip snoozed PRs for non-CI issue types', () => {
     const snoozedUrl = 'https://github.com/owner/repo/pull/1';
-    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_response' })];
+    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'needs_response' })];
     const snoozedUrls = new Set([snoozedUrl]);
     const result = collectActionableIssues(prs, snoozedUrls);
 
@@ -376,12 +388,16 @@ describe('formatSummary', () => {
     expect(result).toContain('90% Merge Rate');
   });
 
-  it('should include CI Failing section when present', () => {
-    const pr = makePR({ repo: 'owner/repo', status: 'failing_ci', failingCheckNames: ['test'] });
-    const digest = makeDigest({ ciFailingPRs: [pr] });
+  it('should include Needs Addressing section when present', () => {
+    const pr = makePR({
+      repo: 'owner/repo',
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+      failingCheckNames: ['test'],
+    });
+    const digest = makeDigest({ needsAddressingPRs: [pr] });
     const result = formatSummary(digest, makeCapacity());
-    expect(result).toContain('CI Failing');
-    expect(result).toContain('Failing: test');
+    expect(result).toContain('Needs Addressing');
   });
 
   it('should include capacity status', () => {
@@ -407,7 +423,14 @@ describe('formatSummary', () => {
 
 describe('toShelvedPRRef (core)', () => {
   it('should project only display fields', () => {
-    const pr = makePR({ repo: 'owner/repo', number: 42, title: 'Fix bug', daysSinceActivity: 14, status: 'dormant' });
+    const pr = makePR({
+      repo: 'owner/repo',
+      number: 42,
+      title: 'Fix bug',
+      daysSinceActivity: 14,
+      status: 'waiting_on_maintainer',
+      stalenessTier: 'dormant',
+    });
     const ref = toShelvedPRRef(pr);
 
     expect(ref).toEqual({
@@ -416,7 +439,7 @@ describe('toShelvedPRRef (core)', () => {
       title: 'Fix bug',
       repo: 'owner/repo',
       daysSinceActivity: 14,
-      status: 'dormant',
+      status: 'waiting_on_maintainer',
     });
   });
 
@@ -443,7 +466,7 @@ describe('computeRepoSignals (core)', () => {
     const prs = [
       makePR({
         repo: 'owner/repo',
-        status: 'healthy',
+        status: 'waiting_on_maintainer',
         lastMaintainerComment: { author: 'maint', body: 'LGTM', createdAt: '2026-01-15T00:00:00Z' },
       }),
     ];
@@ -455,7 +478,8 @@ describe('computeRepoSignals (core)', () => {
     const prs = [
       makePR({
         repo: 'owner/repo',
-        status: 'dormant',
+        status: 'waiting_on_maintainer',
+        stalenessTier: 'dormant',
         lastMaintainerComment: { author: 'maint', body: 'old', createdAt: '2025-06-01T00:00:00Z' },
       }),
     ];

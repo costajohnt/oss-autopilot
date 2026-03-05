@@ -234,7 +234,11 @@ describe('PRMonitor changes_addressed detection', () => {
       lastMaintainerCommentDate: '2026-02-07T10:00:00Z', // older
     });
 
-    expect(result).toBe('changes_addressed');
+    expect(result).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'changes_addressed',
+      stalenessTier: 'active',
+    });
   });
 
   it('should return needs_response when commit is older than maintainer comment', () => {
@@ -252,7 +256,7 @@ describe('PRMonitor changes_addressed detection', () => {
       lastMaintainerCommentDate: '2026-02-07T10:00:00Z', // newer
     });
 
-    expect(result).toBe('needs_response');
+    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 
   it('should fall back to needs_response when commit date is unavailable', () => {
@@ -270,7 +274,7 @@ describe('PRMonitor changes_addressed detection', () => {
       lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
     });
 
-    expect(result).toBe('needs_response');
+    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 
   it('should not check commit date when hasUnrespondedComment is false and review is approved', () => {
@@ -289,7 +293,7 @@ describe('PRMonitor changes_addressed detection', () => {
       latestChangesRequestedDate: undefined,
     });
 
-    expect(result).toBe('waiting_on_maintainer');
+    expect(result).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier: 'active' });
   });
 });
 
@@ -315,7 +319,7 @@ describe('PRMonitor commit author filtering (#547)', () => {
       lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
     });
 
-    expect(result).toBe('needs_response');
+    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 
   it('should return changes_addressed when HEAD commit is by the contributor', () => {
@@ -335,7 +339,11 @@ describe('PRMonitor commit author filtering (#547)', () => {
       lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
     });
 
-    expect(result).toBe('changes_addressed');
+    expect(result).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'changes_addressed',
+      stalenessTier: 'active',
+    });
   });
 
   it('should return needs_response when commit is within 2 minutes of comment (race condition)', () => {
@@ -356,7 +364,7 @@ describe('PRMonitor commit author filtering (#547)', () => {
       lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
     });
 
-    expect(result).toBe('needs_response');
+    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 
   it('should degrade gracefully when commit author is unknown', () => {
@@ -377,7 +385,11 @@ describe('PRMonitor commit author filtering (#547)', () => {
       lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
     });
 
-    expect(result).toBe('changes_addressed');
+    expect(result).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'changes_addressed',
+      stalenessTier: 'active',
+    });
   });
 
   it('should handle case-insensitive author comparison', () => {
@@ -397,7 +409,11 @@ describe('PRMonitor commit author filtering (#547)', () => {
       lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
     });
 
-    expect(result).toBe('changes_addressed');
+    expect(result).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'changes_addressed',
+      stalenessTier: 'active',
+    });
   });
 
   it('should return needs_changes when non-contributor commit after changes_requested review', () => {
@@ -419,7 +435,7 @@ describe('PRMonitor commit author filtering (#547)', () => {
     });
 
     // Non-contributor commit should not count — still needs_changes
-    expect(result).toBe('needs_changes');
+    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
   });
 });
 
@@ -444,7 +460,7 @@ describe('PRMonitor needs_changes detection', () => {
       latestChangesRequestedDate: '2026-02-08T11:52:22Z', // after commit
     });
 
-    expect(result).toBe('needs_changes');
+    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
   });
 
   it('should return changes_addressed when commits pushed after changes_requested review', () => {
@@ -463,7 +479,11 @@ describe('PRMonitor needs_changes detection', () => {
       latestChangesRequestedDate: '2026-02-08T11:52:22Z', // before commit
     });
 
-    expect(result).toBe('changes_addressed');
+    expect(result).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'changes_addressed',
+      stalenessTier: 'active',
+    });
   });
 
   it('should return needs_changes when no commit date available', () => {
@@ -482,10 +502,10 @@ describe('PRMonitor needs_changes detection', () => {
       latestChangesRequestedDate: '2026-02-08T11:52:22Z',
     });
 
-    expect(result).toBe('needs_changes');
+    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
   });
 
-  it('should return healthy when changes_requested but no review date available', () => {
+  it('should return pending_review when changes_requested but no review date available', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).determineStatus({
       ciStatus: 'passing',
@@ -501,8 +521,8 @@ describe('PRMonitor needs_changes detection', () => {
       latestChangesRequestedDate: undefined, // missing
     });
 
-    // No review date to compare against — fall through to healthy
-    expect(result).toBe('healthy');
+    // No review date to compare against — fall through to pending_review
+    expect(result).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_review', stalenessTier: 'active' });
   });
 });
 
@@ -545,39 +565,75 @@ describe('PRMonitor determineStatus — remaining paths', () => {
   }
 
   it('should return failing_ci when CI is failing', () => {
-    expect(callDetermineStatus({ ciStatus: 'failing' })).toBe('failing_ci');
+    expect(callDetermineStatus({ ciStatus: 'failing' })).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+      stalenessTier: 'active',
+    });
   });
 
   it('should return merge_conflict when has merge conflict', () => {
-    expect(callDetermineStatus({ hasMergeConflict: true })).toBe('merge_conflict');
+    expect(callDetermineStatus({ hasMergeConflict: true })).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'merge_conflict',
+      stalenessTier: 'active',
+    });
   });
 
   it('should return incomplete_checklist when checklist is incomplete', () => {
-    expect(callDetermineStatus({ hasIncompleteChecklist: true })).toBe('incomplete_checklist');
+    expect(callDetermineStatus({ hasIncompleteChecklist: true })).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'incomplete_checklist',
+      stalenessTier: 'active',
+    });
   });
 
-  it('should return dormant when days exceed dormant threshold', () => {
-    expect(callDetermineStatus({ daysSinceActivity: 35 })).toBe('dormant');
+  it('should return dormant stalenessTier when days exceed dormant threshold', () => {
+    expect(callDetermineStatus({ daysSinceActivity: 35 })).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'pending_review',
+      stalenessTier: 'dormant',
+    });
   });
 
-  it('should return approaching_dormant when days exceed approaching threshold', () => {
-    expect(callDetermineStatus({ daysSinceActivity: 27 })).toBe('approaching_dormant');
+  it('should return approaching_dormant stalenessTier when days exceed approaching threshold', () => {
+    expect(callDetermineStatus({ daysSinceActivity: 27 })).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'pending_review',
+      stalenessTier: 'approaching_dormant',
+    });
   });
 
   it('should return waiting_on_maintainer when approved and CI passing', () => {
-    expect(callDetermineStatus({ reviewDecision: 'approved' })).toBe('waiting_on_maintainer');
+    expect(callDetermineStatus({ reviewDecision: 'approved' })).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'pending_merge',
+      stalenessTier: 'active',
+    });
   });
 
   it('should return waiting_on_maintainer when approved and CI unknown', () => {
-    expect(callDetermineStatus({ reviewDecision: 'approved', ciStatus: 'unknown' })).toBe('waiting_on_maintainer');
+    expect(callDetermineStatus({ reviewDecision: 'approved', ciStatus: 'unknown' })).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'pending_merge',
+      stalenessTier: 'active',
+    });
   });
 
-  it('should return waiting when CI is pending', () => {
-    expect(callDetermineStatus({ ciStatus: 'pending' })).toBe('waiting');
+  it('should return waiting_on_maintainer when CI is pending', () => {
+    expect(callDetermineStatus({ ciStatus: 'pending' })).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'pending_review',
+      stalenessTier: 'active',
+    });
   });
 
-  it('should return healthy as default for no issues', () => {
-    expect(callDetermineStatus({})).toBe('healthy');
+  it('should return waiting_on_maintainer with pending_review as default for no issues', () => {
+    expect(callDetermineStatus({})).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'pending_review',
+      stalenessTier: 'active',
+    });
   });
 
   it('should prioritize needs_response over failing_ci', () => {
@@ -586,7 +642,7 @@ describe('PRMonitor determineStatus — remaining paths', () => {
         ciStatus: 'failing',
         hasUnrespondedComment: true,
       }),
-    ).toBe('needs_response');
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 
   it('should prioritize failing_ci over merge_conflict', () => {
@@ -595,7 +651,7 @@ describe('PRMonitor determineStatus — remaining paths', () => {
         ciStatus: 'failing',
         hasMergeConflict: true,
       }),
-    ).toBe('failing_ci');
+    ).toEqual({ status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier: 'active' });
   });
 
   it('should prioritize merge_conflict over incomplete_checklist', () => {
@@ -604,7 +660,7 @@ describe('PRMonitor determineStatus — remaining paths', () => {
         hasMergeConflict: true,
         hasIncompleteChecklist: true,
       }),
-    ).toBe('merge_conflict');
+    ).toEqual({ status: 'needs_addressing', actionReason: 'merge_conflict', stalenessTier: 'active' });
   });
 
   it('should return needs_response when CHANGES_REQUESTED review is after commit (#431)', () => {
@@ -617,7 +673,7 @@ describe('PRMonitor determineStatus — remaining paths', () => {
         lastMaintainerCommentDate: '2026-02-28T12:00:00Z', // stale — older comment
         latestChangesRequestedDate: '2026-03-01T14:02:00Z', // after commit
       }),
-    ).toBe('needs_response');
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 
   it('should return changes_addressed when commit is after both comment and review (#431)', () => {
@@ -628,7 +684,7 @@ describe('PRMonitor determineStatus — remaining paths', () => {
         lastMaintainerCommentDate: '2026-03-01T12:00:00Z',
         latestChangesRequestedDate: '2026-03-01T14:02:00Z', // before commit
       }),
-    ).toBe('changes_addressed');
+    ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'changes_addressed', stalenessTier: 'active' });
   });
 });
 
@@ -1174,55 +1230,36 @@ describe('PRMonitor generateDigest', () => {
 
   it('should categorize PRs by status', () => {
     const prs = [
-      makeDigestPR({ status: 'needs_response', number: 1 }),
-      makeDigestPR({ status: 'failing_ci', number: 2 }),
-      makeDigestPR({ status: 'merge_conflict', number: 3 }),
-      makeDigestPR({ status: 'healthy', number: 4 }),
-      makeDigestPR({ status: 'dormant', number: 5 }),
-      makeDigestPR({ status: 'approaching_dormant', number: 6 }),
-      makeDigestPR({ status: 'needs_changes', number: 7 }),
-      makeDigestPR({ status: 'changes_addressed', number: 8 }),
-      makeDigestPR({ status: 'waiting_on_maintainer', number: 9 }),
-      makeDigestPR({ status: 'incomplete_checklist', number: 10 }),
-      makeDigestPR({ status: 'waiting', number: 11 }),
+      makeDigestPR({ status: 'needs_addressing', actionReason: 'needs_response', number: 1 }),
+      makeDigestPR({ status: 'needs_addressing', actionReason: 'failing_ci', number: 2 }),
+      makeDigestPR({ status: 'waiting_on_maintainer', waitReason: 'pending_review', number: 3 }),
+      makeDigestPR({ status: 'waiting_on_maintainer', waitReason: 'pending_merge', number: 4 }),
+      makeDigestPR({ status: 'needs_addressing', actionReason: 'merge_conflict', number: 5 }),
     ];
 
     const monitor = new PRMonitor('fake-token');
     const digest = monitor.generateDigest(prs);
 
-    expect(digest.prsNeedingResponse.map((p) => p.number)).toEqual([1]);
-    expect(digest.ciFailingPRs.map((p) => p.number)).toEqual([2]);
-    expect(digest.mergeConflictPRs.map((p) => p.number)).toEqual([3]);
-    expect(digest.healthyPRs.map((p) => p.number)).toEqual([4, 11]); // healthy + waiting
-    expect(digest.dormantPRs.map((p) => p.number)).toEqual([5]);
-    expect(digest.approachingDormant.map((p) => p.number)).toEqual([6]);
-    expect(digest.needsChangesPRs.map((p) => p.number)).toEqual([7]);
-    expect(digest.changesAddressedPRs.map((p) => p.number)).toEqual([8]);
-    expect(digest.waitingOnMaintainerPRs.map((p) => p.number)).toEqual([9]);
-    expect(digest.incompleteChecklistPRs.map((p) => p.number)).toEqual([10]);
+    expect(digest.needsAddressingPRs.map((p) => p.number)).toEqual([1, 2, 5]);
+    expect(digest.waitingOnMaintainerPRs.map((p) => p.number)).toEqual([3, 4]);
   });
 
   it('should calculate totalNeedingAttention correctly', () => {
     const prs = [
-      makeDigestPR({ status: 'needs_response', number: 1 }),
-      makeDigestPR({ status: 'needs_changes', number: 2 }),
-      makeDigestPR({ status: 'failing_ci', number: 3 }),
-      makeDigestPR({ status: 'merge_conflict', number: 4 }),
-      makeDigestPR({ status: 'needs_rebase', number: 5 }),
-      makeDigestPR({ status: 'missing_required_files', number: 6 }),
-      makeDigestPR({ status: 'incomplete_checklist', number: 7 }),
+      makeDigestPR({ status: 'needs_addressing', actionReason: 'needs_response', number: 1 }),
+      makeDigestPR({ status: 'needs_addressing', actionReason: 'needs_changes', number: 2 }),
+      makeDigestPR({ status: 'needs_addressing', actionReason: 'failing_ci', number: 3 }),
+      makeDigestPR({ status: 'needs_addressing', actionReason: 'merge_conflict', number: 4 }),
       // These should NOT count toward totalNeedingAttention
-      makeDigestPR({ status: 'healthy', number: 8 }),
-      makeDigestPR({ status: 'waiting', number: 9 }),
-      makeDigestPR({ status: 'dormant', number: 10 }),
-      makeDigestPR({ status: 'waiting_on_maintainer', number: 11 }),
+      makeDigestPR({ status: 'waiting_on_maintainer', waitReason: 'pending_review', number: 5 }),
+      makeDigestPR({ status: 'waiting_on_maintainer', waitReason: 'pending_merge', number: 6 }),
     ];
 
     const monitor = new PRMonitor('fake-token');
     const digest = monitor.generateDigest(prs);
 
-    expect(digest.summary.totalNeedingAttention).toBe(7);
-    expect(digest.summary.totalActivePRs).toBe(11);
+    expect(digest.summary.totalNeedingAttention).toBe(4);
+    expect(digest.summary.totalActivePRs).toBe(6);
   });
 
   it('should handle empty PR list', () => {
@@ -1230,11 +1267,8 @@ describe('PRMonitor generateDigest', () => {
     const digest = monitor.generateDigest([]);
 
     expect(digest.openPRs).toEqual([]);
-    expect(digest.prsNeedingResponse).toEqual([]);
-    expect(digest.ciFailingPRs).toEqual([]);
-    expect(digest.mergeConflictPRs).toEqual([]);
-    expect(digest.healthyPRs).toEqual([]);
-    expect(digest.dormantPRs).toEqual([]);
+    expect(digest.needsAddressingPRs).toEqual([]);
+    expect(digest.waitingOnMaintainerPRs).toEqual([]);
     expect(digest.summary.totalActivePRs).toBe(0);
     expect(digest.summary.totalNeedingAttention).toBe(0);
     expect(digest.summary.totalMergedAllTime).toBe(5);
@@ -1524,7 +1558,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
         latestCommitDate: '2026-02-08T12:00:00Z',
         lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
       }),
-    ).toBe('failing_ci');
+    ).toEqual({ status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier: 'active' });
   });
 
   it('should return failing_ci when changes_addressed (review path) and CI is failing', () => {
@@ -1535,7 +1569,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
         latestCommitDate: '2026-02-09T10:00:00Z',
         latestChangesRequestedDate: '2026-02-08T11:52:22Z',
       }),
-    ).toBe('failing_ci');
+    ).toEqual({ status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier: 'active' });
   });
 
   it('should still return changes_addressed when CI is passing (comment path regression)', () => {
@@ -1546,7 +1580,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
         latestCommitDate: '2026-02-08T12:00:00Z',
         lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
       }),
-    ).toBe('changes_addressed');
+    ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'changes_addressed', stalenessTier: 'active' });
   });
 
   it('should still return changes_addressed when CI is passing (review path regression)', () => {
@@ -1557,7 +1591,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
         latestCommitDate: '2026-02-09T10:00:00Z',
         latestChangesRequestedDate: '2026-02-08T11:52:22Z',
       }),
-    ).toBe('changes_addressed');
+    ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'changes_addressed', stalenessTier: 'active' });
   });
 
   it('should still prioritize needs_response over failing_ci', () => {
@@ -1567,7 +1601,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
         hasUnrespondedComment: true,
         // No commit after maintainer comment → needs_response, not changes_addressed
       }),
-    ).toBe('needs_response');
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 
   it('should still prioritize needs_changes over failing_ci', () => {
@@ -1578,7 +1612,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
         latestCommitDate: '2026-02-07T06:50:38Z',
         latestChangesRequestedDate: '2026-02-08T11:52:22Z',
       }),
-    ).toBe('needs_changes');
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
   });
 });
 
@@ -1621,11 +1655,19 @@ describe('PRMonitor non-actionable CI failures return ci_blocked (Issue #502)', 
   }
 
   it('should return ci_blocked when CI is failing but no checks are actionable', () => {
-    expect(callDetermineStatus({ ciStatus: 'failing', hasActionableCIFailure: false })).toBe('ci_blocked');
+    expect(callDetermineStatus({ ciStatus: 'failing', hasActionableCIFailure: false })).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'ci_blocked',
+      stalenessTier: 'active',
+    });
   });
 
   it('should return failing_ci when CI is failing and checks are actionable', () => {
-    expect(callDetermineStatus({ ciStatus: 'failing', hasActionableCIFailure: true })).toBe('failing_ci');
+    expect(callDetermineStatus({ ciStatus: 'failing', hasActionableCIFailure: true })).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+      stalenessTier: 'active',
+    });
   });
 
   it('should return changes_addressed (comment path) when CI failing but not actionable', () => {
@@ -1637,7 +1679,7 @@ describe('PRMonitor non-actionable CI failures return ci_blocked (Issue #502)', 
         latestCommitDate: '2026-02-08T12:00:00Z',
         lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
       }),
-    ).toBe('changes_addressed');
+    ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'changes_addressed', stalenessTier: 'active' });
   });
 
   it('should return changes_addressed (review path) when CI failing but not actionable', () => {
@@ -1649,12 +1691,16 @@ describe('PRMonitor non-actionable CI failures return ci_blocked (Issue #502)', 
         latestCommitDate: '2026-02-09T10:00:00Z',
         latestChangesRequestedDate: '2026-02-08T11:52:22Z',
       }),
-    ).toBe('changes_addressed');
+    ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'changes_addressed', stalenessTier: 'active' });
   });
 
   it('should default hasActionableCIFailure to true for backward compatibility', () => {
     // hasActionableCIFailure intentionally omitted — determineStatus defaults it to true
-    expect(callDetermineStatus({ ciStatus: 'failing' })).toBe('failing_ci');
+    expect(callDetermineStatus({ ciStatus: 'failing' })).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+      stalenessTier: 'active',
+    });
   });
 });
 
@@ -1878,16 +1924,19 @@ describe('computeDisplayLabel (#79)', () => {
     return makeFetchedPR({ displayLabel: '', displayDescription: '', reviewDecision: 'review_required', ...overrides });
   }
 
-  it('should return [Healthy] for healthy status', () => {
-    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({ status: 'healthy' }));
-    expect(displayLabel).toBe('[Healthy]');
-    expect(displayDescription).toBe('Everything looks good — normal review cycle');
+  it('should return [Waiting on Maintainer] for pending_review', () => {
+    const { displayLabel, displayDescription } = computeDisplayLabel(
+      makePR({ status: 'waiting_on_maintainer', waitReason: 'pending_review' }),
+    );
+    expect(displayLabel).toBe('[Waiting on Maintainer]');
+    expect(displayDescription).toBe('Awaiting review');
   });
 
   it('should return [Needs Response] with author for needs_response', () => {
     const { displayLabel, displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'needs_response',
+        status: 'needs_addressing',
+        actionReason: 'needs_response',
         lastMaintainerComment: { author: 'johndoe', body: 'Please fix', createdAt: '2026-02-07T10:00:00Z' },
       }),
     );
@@ -1896,14 +1945,17 @@ describe('computeDisplayLabel (#79)', () => {
   });
 
   it('should return fallback description for needs_response without comment', () => {
-    const { displayDescription } = computeDisplayLabel(makePR({ status: 'needs_response' }));
+    const { displayDescription } = computeDisplayLabel(
+      makePR({ status: 'needs_addressing', actionReason: 'needs_response' }),
+    );
     expect(displayDescription).toBe('Maintainer awaiting response');
   });
 
   it('should return [CI Failing] with actionable check count', () => {
     const { displayLabel, displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'failing_ci',
+        status: 'needs_addressing',
+        actionReason: 'failing_ci',
         failingCheckNames: ['Build', 'Lint', 'Vercel Deploy'],
         classifiedChecks: [
           { name: 'Build', category: 'actionable' },
@@ -1919,7 +1971,8 @@ describe('computeDisplayLabel (#79)', () => {
   it('should return singular form for exactly 1 actionable check', () => {
     const { displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'failing_ci',
+        status: 'needs_addressing',
+        actionReason: 'failing_ci',
         failingCheckNames: ['Build'],
         classifiedChecks: [{ name: 'Build', category: 'actionable' }],
       }),
@@ -1930,7 +1983,8 @@ describe('computeDisplayLabel (#79)', () => {
   it('should fall back to failingCheckNames count when all checks are non-actionable', () => {
     const { displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'failing_ci',
+        status: 'needs_addressing',
+        actionReason: 'failing_ci',
         failingCheckNames: ['Vercel Deploy', 'Netlify Build'],
         classifiedChecks: [
           { name: 'Vercel Deploy', category: 'fork_limitation' },
@@ -1944,7 +1998,8 @@ describe('computeDisplayLabel (#79)', () => {
   it('should indicate infrastructure failures when all checks are infrastructure (#145)', () => {
     const { displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'failing_ci',
+        status: 'needs_addressing',
+        actionReason: 'failing_ci',
         failingCheckNames: ['Build', 'Lint'],
         classifiedChecks: [
           { name: 'Build', category: 'infrastructure', conclusion: 'cancelled' },
@@ -1958,7 +2013,8 @@ describe('computeDisplayLabel (#79)', () => {
   it('should indicate single infrastructure failure (#145)', () => {
     const { displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'failing_ci',
+        status: 'needs_addressing',
+        actionReason: 'failing_ci',
         failingCheckNames: ['Build'],
         classifiedChecks: [{ name: 'Build', category: 'infrastructure', conclusion: 'cancelled' }],
       }),
@@ -1969,7 +2025,8 @@ describe('computeDisplayLabel (#79)', () => {
   it('should return generic description when no classified checks', () => {
     const { displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'failing_ci',
+        status: 'needs_addressing',
+        actionReason: 'failing_ci',
         failingCheckNames: [],
         classifiedChecks: [],
       }),
@@ -1978,14 +2035,17 @@ describe('computeDisplayLabel (#79)', () => {
   });
 
   it('should return [Merge Conflict] for merge_conflict', () => {
-    const { displayLabel } = computeDisplayLabel(makePR({ status: 'merge_conflict' }));
+    const { displayLabel } = computeDisplayLabel(
+      makePR({ status: 'needs_addressing', actionReason: 'merge_conflict' }),
+    );
     expect(displayLabel).toBe('[Merge Conflict]');
   });
 
   it('should return [Incomplete Checklist] with stats', () => {
     const { displayLabel, displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'incomplete_checklist',
+        status: 'needs_addressing',
+        actionReason: 'incomplete_checklist',
         checklistStats: { checked: 2, total: 5 },
       }),
     );
@@ -1996,7 +2056,8 @@ describe('computeDisplayLabel (#79)', () => {
   it('should return fallback for incomplete_checklist without stats', () => {
     const { displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'incomplete_checklist',
+        status: 'needs_addressing',
+        actionReason: 'incomplete_checklist',
       }),
     );
     expect(displayDescription).toBe('PR body has unchecked required checkboxes');
@@ -2005,7 +2066,8 @@ describe('computeDisplayLabel (#79)', () => {
   it('should return [Missing Files] with file list', () => {
     const { displayLabel, displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'missing_required_files',
+        status: 'needs_addressing',
+        actionReason: 'missing_required_files',
         missingRequiredFiles: ['CHANGELOG.md', 'LICENSE'],
       }),
     );
@@ -2016,83 +2078,52 @@ describe('computeDisplayLabel (#79)', () => {
   it('should return fallback for missing_required_files without file list', () => {
     const { displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'missing_required_files',
+        status: 'needs_addressing',
+        actionReason: 'missing_required_files',
       }),
     );
     expect(displayDescription).toBe('Required files are missing');
   });
 
-  it('should return [Changes Addressed] with author', () => {
+  it('should return [Waiting on Maintainer] with changes_addressed and author', () => {
     const { displayLabel, displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'changes_addressed',
+        status: 'waiting_on_maintainer',
+        waitReason: 'changes_addressed',
+        hasUnrespondedComment: true,
         lastMaintainerComment: { author: 'reviewer', body: 'Changes needed', createdAt: '2026-02-07T10:00:00Z' },
       }),
     );
-    expect(displayLabel).toBe('[Changes Addressed]');
-    expect(displayDescription).toBe('Waiting for @reviewer to re-review');
+    expect(displayLabel).toBe('[Waiting on Maintainer]');
+    expect(displayDescription).toContain('@reviewer');
   });
 
   it('should return fallback for changes_addressed without comment', () => {
     const { displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'changes_addressed',
+        status: 'waiting_on_maintainer',
+        waitReason: 'changes_addressed',
       }),
     );
-    expect(displayDescription).toBe('Waiting for maintainer re-review');
+    expect(displayDescription).toBe('Changes addressed — awaiting re-review');
   });
 
-  it('should return [Dormant] with days count', () => {
+  it('should return [Waiting on Maintainer] for pending_merge', () => {
     const { displayLabel, displayDescription } = computeDisplayLabel(
-      makePR({
-        status: 'dormant',
-        daysSinceActivity: 45,
-      }),
+      makePR({ status: 'waiting_on_maintainer', waitReason: 'pending_merge' }),
     );
-    expect(displayLabel).toBe('[Dormant]');
-    expect(displayDescription).toBe('No activity for 45 days');
-  });
-
-  it('should return [Approaching Dormant] with days count', () => {
-    const { displayDescription } = computeDisplayLabel(
-      makePR({
-        status: 'approaching_dormant',
-        daysSinceActivity: 27,
-      }),
-    );
-    expect(displayDescription).toBe('No activity for 27 days');
-  });
-
-  it('should return [Waiting on Maintainer] for approved PRs', () => {
-    const { displayLabel, displayDescription } = computeDisplayLabel(makePR({ status: 'waiting_on_maintainer' }));
     expect(displayLabel).toBe('[Waiting on Maintainer]');
     expect(displayDescription).toBe('Approved and CI passes — waiting for merge');
   });
 
-  it('should return [Needs Changes] for needs_changes status', () => {
-    const { displayLabel } = computeDisplayLabel(makePR({ status: 'needs_changes' }));
+  it('should return [Needs Changes] for needs_changes actionReason', () => {
+    const { displayLabel } = computeDisplayLabel(makePR({ status: 'needs_addressing', actionReason: 'needs_changes' }));
     expect(displayLabel).toBe('[Needs Changes]');
   });
 
   it('should have an entry for every FetchedPRStatus', () => {
     // Ensure no status is missed — if a new status is added, this test will catch it
-    const allStatuses: import('./types.js').FetchedPRStatus[] = [
-      'needs_response',
-      'failing_ci',
-      'ci_blocked',
-      'ci_not_running',
-      'merge_conflict',
-      'needs_rebase',
-      'missing_required_files',
-      'incomplete_checklist',
-      'needs_changes',
-      'changes_addressed',
-      'waiting',
-      'waiting_on_maintainer',
-      'healthy',
-      'approaching_dormant',
-      'dormant',
-    ];
+    const allStatuses: import('./types.js').FetchedPRStatus[] = ['needs_addressing', 'waiting_on_maintainer'];
     for (const status of allStatuses) {
       const result = computeDisplayLabel(makePR({ status }));
       expect(result.displayLabel).toBeTruthy();
@@ -2100,11 +2131,11 @@ describe('computeDisplayLabel (#79)', () => {
     }
   });
 
-  it('should return fallback for unknown status', () => {
-    const pr = makePR({ status: 'unknown_future_status' as any });
+  it('should return fallback for needs_addressing without reason', () => {
+    const pr = makePR({ status: 'needs_addressing', actionReason: undefined });
     const result = computeDisplayLabel(pr);
-    expect(result.displayLabel).toBe('[unknown_future_status]');
-    expect(result.displayDescription).toBe('Unknown status');
+    expect(result.displayLabel).toBe('[Needs Addressing]');
+    expect(result.displayDescription).toBe('Action required');
   });
 });
 
@@ -2518,7 +2549,7 @@ describe('PRMonitor status with inline review after commit (#151)', () => {
       lastMaintainerCommentDate: '2026-02-14T05:14:49Z', // inline review
     });
 
-    expect(status).toBe('needs_response');
+    expect(status).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 });
 

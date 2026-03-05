@@ -40,9 +40,13 @@ describe('PRList', () => {
 
   it('groups PRs into sections by status', () => {
     const prs = [
-      makePR({ url: 'https://github.com/o/r/pull/1', status: 'needs_response', number: 1 }),
+      makePR({
+        url: 'https://github.com/o/r/pull/1',
+        status: 'needs_addressing',
+        actionReason: 'needs_response',
+        number: 1,
+      }),
       makePR({ url: 'https://github.com/o/r/pull/2', status: 'waiting_on_maintainer', number: 2 }),
-      makePR({ url: 'https://github.com/o/r/pull/3', status: 'healthy', number: 3 }),
     ];
 
     const { container } = renderPRList({ prs });
@@ -51,13 +55,12 @@ describe('PRList', () => {
     const sectionTitles = [...sections].map((el) => el.textContent?.replace(/\d+$/, '').trim());
     expect(sectionTitles).toContain('Action Required');
     expect(sectionTitles).toContain('Waiting on Others');
-    expect(sectionTitles).toContain('Healthy / Stale');
   });
 
   it('excludes shelved PRs from active sections', () => {
     const prs = [
-      makePR({ url: 'https://github.com/o/r/pull/1', status: 'healthy', number: 1 }),
-      makePR({ url: 'https://github.com/o/r/pull/2', status: 'healthy', number: 2 }),
+      makePR({ url: 'https://github.com/o/r/pull/1', status: 'waiting_on_maintainer', number: 1 }),
+      makePR({ url: 'https://github.com/o/r/pull/2', status: 'waiting_on_maintainer', number: 2 }),
     ];
 
     const { container } = renderPRList({
@@ -71,7 +74,7 @@ describe('PRList', () => {
 
   it('calls onSelect when a PR row is clicked', () => {
     const onSelect = vi.fn();
-    const prs = [makePR({ url: 'https://github.com/o/r/pull/1', status: 'healthy' })];
+    const prs = [makePR({ url: 'https://github.com/o/r/pull/1', status: 'waiting_on_maintainer' })];
 
     const { container } = renderPRList({ prs, onSelect });
 
@@ -82,7 +85,7 @@ describe('PRList', () => {
   });
 
   it('highlights the selected PR row', () => {
-    const prs = [makePR({ url: 'https://github.com/o/r/pull/1', status: 'healthy' })];
+    const prs = [makePR({ url: 'https://github.com/o/r/pull/1', status: 'waiting_on_maintainer' })];
 
     const { container } = renderPRList({
       prs,
@@ -95,8 +98,8 @@ describe('PRList', () => {
 
   it('shows shelved section with correct count', () => {
     const prs = [
-      makePR({ url: 'https://github.com/o/r/pull/1', status: 'healthy', number: 1 }),
-      makePR({ url: 'https://github.com/o/r/pull/2', status: 'dormant', number: 2 }),
+      makePR({ url: 'https://github.com/o/r/pull/1', status: 'waiting_on_maintainer', number: 1 }),
+      makePR({ url: 'https://github.com/o/r/pull/2', status: 'waiting_on_maintainer', number: 2 }),
     ];
 
     const { container } = renderPRList({
@@ -119,7 +122,7 @@ describe('PRList', () => {
         number: 42,
         title: 'Fix critical bug',
         daysSinceActivity: 3,
-        status: 'healthy',
+        status: 'waiting_on_maintainer',
       }),
     ];
 

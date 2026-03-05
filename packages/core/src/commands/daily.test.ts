@@ -207,7 +207,8 @@ describe('computeRepoSignals', () => {
     const prs = [
       makePR({
         repo: 'owner/responsive',
-        status: 'healthy',
+        status: 'waiting_on_maintainer',
+        stalenessTier: 'active',
         lastMaintainerComment: { author: 'maintainer', body: 'LGTM', createdAt: '2026-01-15T00:00:00Z' },
       }),
     ];
@@ -219,7 +220,8 @@ describe('computeRepoSignals', () => {
     const prs = [
       makePR({
         repo: 'owner/dormant-repo',
-        status: 'dormant',
+        status: 'waiting_on_maintainer',
+        stalenessTier: 'dormant',
         lastMaintainerComment: { author: 'maintainer', body: 'Will review', createdAt: '2025-06-01T00:00:00Z' },
       }),
     ];
@@ -231,7 +233,8 @@ describe('computeRepoSignals', () => {
     const prs = [
       makePR({
         repo: 'owner/stale-repo',
-        status: 'approaching_dormant',
+        status: 'waiting_on_maintainer',
+        stalenessTier: 'approaching_dormant',
         lastMaintainerComment: { author: 'maintainer', body: 'Old comment', createdAt: '2025-11-01T00:00:00Z' },
       }),
     ];
@@ -243,7 +246,7 @@ describe('computeRepoSignals', () => {
     const prs = [
       makePR({
         repo: 'owner/no-comment',
-        status: 'healthy',
+        status: 'waiting_on_maintainer',
         lastMaintainerComment: undefined,
       }),
     ];
@@ -251,14 +254,8 @@ describe('computeRepoSignals', () => {
     expect(result.get('owner/no-comment')!.isResponsive).toBe(false);
   });
 
-  it('should mark repo as having active maintainers for healthy status', () => {
-    const prs = [makePR({ repo: 'owner/active', status: 'healthy' })];
-    const result = computeRepoSignals(prs);
-    expect(result.get('owner/active')!.hasActiveMaintainers).toBe(true);
-  });
-
-  it('should mark repo as having active maintainers for review-related statuses', () => {
-    const statuses = ['waiting_on_maintainer', 'changes_addressed', 'needs_response', 'needs_changes'] as const;
+  it('should mark repo as having active maintainers for both statuses', () => {
+    const statuses = ['waiting_on_maintainer', 'needs_addressing'] as const;
     for (const status of statuses) {
       const prs = [makePR({ repo: `owner/${status}`, status })];
       const result = computeRepoSignals(prs);
@@ -266,37 +263,24 @@ describe('computeRepoSignals', () => {
     }
   });
 
-  it('should NOT mark repo as having active maintainers for non-review statuses', () => {
-    const inactiveStatuses = [
-      'failing_ci',
-      'merge_conflict',
-      'dormant',
-      'approaching_dormant',
-      'incomplete_checklist',
-    ] as const;
-    for (const status of inactiveStatuses) {
-      const prs = [makePR({ repo: `owner/${status}`, status })];
-      const result = computeRepoSignals(prs);
-      expect(result.get(`owner/${status}`)!.hasActiveMaintainers).toBe(false);
-    }
-  });
-
   it('should aggregate signals across multiple PRs in the same repo', () => {
     const prs = [
       makePR({
         repo: 'owner/multi',
-        status: 'dormant',
+        status: 'waiting_on_maintainer',
+        stalenessTier: 'dormant',
         lastMaintainerComment: undefined,
       }),
       makePR({
         repo: 'owner/multi',
         number: 2,
-        status: 'healthy',
+        status: 'waiting_on_maintainer',
+        stalenessTier: 'active',
         lastMaintainerComment: { author: 'maintainer', body: 'Looks good', createdAt: '2026-01-15T00:00:00Z' },
       }),
     ];
     const result = computeRepoSignals(prs);
-    // Second PR is healthy with comment → responsive. Second PR is healthy → active maintainers.
+    // Second PR is active with comment → responsive. Both have valid statuses → active maintainers.
     expect(result.get('owner/multi')!.isResponsive).toBe(true);
     expect(result.get('owner/multi')!.hasActiveMaintainers).toBe(true);
   });
@@ -305,11 +289,11 @@ describe('computeRepoSignals', () => {
     const prs = [
       makePR({
         repo: '' as any,
-        status: 'healthy',
+        status: 'waiting_on_maintainer',
       }),
       makePR({
         repo: 'owner/valid',
-        status: 'healthy',
+        status: 'waiting_on_maintainer',
       }),
     ];
     const result = computeRepoSignals(prs);
@@ -321,20 +305,23 @@ describe('computeRepoSignals', () => {
     const prs = [
       makePR({
         repo: 'owner/active-repo',
-        status: 'healthy',
+        status: 'waiting_on_maintainer',
+        stalenessTier: 'active',
         lastMaintainerComment: { author: 'maintainer', body: 'LGTM', createdAt: '2026-01-15T00:00:00Z' },
       }),
       makePR({
         repo: 'owner/dead-repo',
-        status: 'dormant',
+        status: 'waiting_on_maintainer',
+        stalenessTier: 'dormant',
         lastMaintainerComment: undefined,
       }),
     ];
     const result = computeRepoSignals(prs);
     expect(result.get('owner/active-repo')!.isResponsive).toBe(true);
     expect(result.get('owner/active-repo')!.hasActiveMaintainers).toBe(true);
+    // dead-repo: dormant stalenessTier + no comment → not responsive, but status IS in ACTIVE_MAINTAINER_STATUSES
     expect(result.get('owner/dead-repo')!.isResponsive).toBe(false);
-    expect(result.get('owner/dead-repo')!.hasActiveMaintainers).toBe(false);
+    expect(result.get('owner/dead-repo')!.hasActiveMaintainers).toBe(true);
   });
 });
 
@@ -372,10 +359,15 @@ describe('groupPRsByRepo (#80)', () => {
 
   it('should correctly group mixed PRs from multiple repos', () => {
     const prs = [
-      makePR({ repo: 'vadimdemedes/ink', number: 855, status: 'needs_response' }),
-      makePR({ repo: 'shadcn-ui/ui', number: 9263, status: 'healthy' }),
-      makePR({ repo: 'vadimdemedes/ink', number: 856, status: 'failing_ci' }),
-      makePR({ repo: 'refined-github/refined-github', number: 8965, status: 'needs_response' }),
+      makePR({ repo: 'vadimdemedes/ink', number: 855, status: 'needs_addressing', actionReason: 'needs_response' }),
+      makePR({ repo: 'shadcn-ui/ui', number: 9263, status: 'waiting_on_maintainer' }),
+      makePR({ repo: 'vadimdemedes/ink', number: 856, status: 'needs_addressing', actionReason: 'failing_ci' }),
+      makePR({
+        repo: 'refined-github/refined-github',
+        number: 8965,
+        status: 'needs_addressing',
+        actionReason: 'needs_response',
+      }),
     ];
     const groups = groupPRsByRepo(prs);
     expect(groups).toHaveLength(3);
@@ -406,7 +398,8 @@ describe('toShelvedPRRef', () => {
       title: 'Fix bug',
       url: 'https://github.com/owner/repo/pull/42',
       daysSinceActivity: 14,
-      status: 'dormant',
+      status: 'waiting_on_maintainer',
+      stalenessTier: 'dormant',
     });
     const ref = toShelvedPRRef(pr);
     expect(ref).toEqual({
@@ -415,7 +408,7 @@ describe('toShelvedPRRef', () => {
       title: 'Fix bug',
       repo: 'owner/repo',
       daysSinceActivity: 14,
-      status: 'dormant',
+      status: 'waiting_on_maintainer',
     });
   });
 
@@ -438,20 +431,8 @@ function makeDigest(prs: FetchedPR[]): DailyDigest {
   return {
     generatedAt: '2026-01-25T10:00:00Z',
     openPRs: prs,
-    prsNeedingResponse: prs.filter((p) => p.status === 'needs_response'),
-    ciFailingPRs: prs.filter((p) => p.status === 'failing_ci'),
-    ciBlockedPRs: [],
-    ciNotRunningPRs: [],
-    mergeConflictPRs: prs.filter((p) => p.status === 'merge_conflict'),
-    needsRebasePRs: [],
-    missingRequiredFilesPRs: [],
-    incompleteChecklistPRs: [],
-    needsChangesPRs: prs.filter((p) => p.status === 'needs_changes'),
-    changesAddressedPRs: prs.filter((p) => p.status === 'changes_addressed'),
-    waitingOnMaintainerPRs: [],
-    approachingDormant: [],
-    dormantPRs: [],
-    healthyPRs: prs.filter((p) => p.status === 'healthy'),
+    needsAddressingPRs: prs.filter((p) => p.status === 'needs_addressing'),
+    waitingOnMaintainerPRs: prs.filter((p) => p.status === 'waiting_on_maintainer'),
     recentlyClosedPRs: [],
     recentlyMergedPRs: [],
     shelvedPRs: [],
@@ -467,9 +448,9 @@ function makeDigest(prs: FetchedPR[]): DailyDigest {
 
 describe('deduplicateDigest (#287)', () => {
   it('should convert category arrays from FetchedPR[] to URL string[]', () => {
-    const pr1 = makePR({ repo: 'owner/repo', number: 1, status: 'healthy' });
-    const pr2 = makePR({ repo: 'owner/repo', number: 2, status: 'failing_ci' });
-    const pr3 = makePR({ repo: 'owner/repo', number: 3, status: 'needs_response' });
+    const pr1 = makePR({ repo: 'owner/repo', number: 1, status: 'waiting_on_maintainer' });
+    const pr2 = makePR({ repo: 'owner/repo', number: 2, status: 'needs_addressing', actionReason: 'failing_ci' });
+    const pr3 = makePR({ repo: 'owner/repo', number: 3, status: 'needs_addressing', actionReason: 'needs_response' });
     const digest = makeDigest([pr1, pr2, pr3]);
 
     const compact = deduplicateDigest(digest);
@@ -480,9 +461,8 @@ describe('deduplicateDigest (#287)', () => {
     expect(compact.openPRs[0]).toHaveProperty('ciStatus');
 
     // Category arrays contain PR URLs, not objects
-    expect(compact.healthyPRs).toEqual([pr1.url]);
-    expect(compact.ciFailingPRs).toEqual([pr2.url]);
-    expect(compact.prsNeedingResponse).toEqual([pr3.url]);
+    expect(compact.waitingOnMaintainerPRs).toEqual([pr1.url]);
+    expect(compact.needsAddressingPRs).toEqual([pr2.url, pr3.url]);
   });
 
   it('should preserve non-PR fields unchanged', () => {
@@ -504,7 +484,8 @@ describe('deduplicateDigest (#287)', () => {
       makePR({
         repo: `owner/repo-${i}`,
         number: i + 1,
-        status: i % 2 === 0 ? 'healthy' : 'failing_ci',
+        status: i % 2 === 0 ? 'waiting_on_maintainer' : 'needs_addressing',
+        ...(i % 2 !== 0 ? { actionReason: 'failing_ci' as const } : {}),
       }),
     );
     const digest = makeDigest(prs);
@@ -519,10 +500,8 @@ describe('deduplicateDigest (#287)', () => {
     const digest = makeDigest([]);
     const compact = deduplicateDigest(digest);
 
-    expect(compact.healthyPRs).toEqual([]);
-    expect(compact.ciFailingPRs).toEqual([]);
-    expect(compact.prsNeedingResponse).toEqual([]);
-    expect(compact.mergeConflictPRs).toEqual([]);
+    expect(compact.needsAddressingPRs).toEqual([]);
+    expect(compact.waitingOnMaintainerPRs).toEqual([]);
   });
 });
 

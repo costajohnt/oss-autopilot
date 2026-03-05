@@ -25,7 +25,7 @@ describe('FilterBar', () => {
   it('renders status select with options', () => {
     const { container } = renderFilterBar({
       repos: ['owner/repo'],
-      statuses: ['healthy', 'failing_ci'],
+      statuses: ['needs_addressing', 'waiting_on_maintainer'],
     });
 
     const selects = container.querySelectorAll('.filter-select');
@@ -33,8 +33,8 @@ describe('FilterBar', () => {
 
     const statusSelect = selects[0] as HTMLSelectElement;
     expect(statusSelect.options).toHaveLength(3);
-    expect(statusSelect.options[1].textContent).toBe('Healthy');
-    expect(statusSelect.options[2].textContent).toBe('Failing CI');
+    expect(statusSelect.options[1].textContent).toBe('Needs Addressing');
+    expect(statusSelect.options[2].textContent).toBe('Waiting on Maintainer');
   });
 
   it('renders repo select with options', () => {
@@ -49,13 +49,13 @@ describe('FilterBar', () => {
 
   it('calls onFilterChange when status changes', () => {
     const { container, onFilterChange } = renderFilterBar({
-      statuses: ['healthy', 'failing_ci'],
+      statuses: ['needs_addressing', 'waiting_on_maintainer'],
     });
 
     const statusSelect = container.querySelector('.filter-select') as HTMLSelectElement;
-    fireEvent.change(statusSelect, { target: { value: 'failing_ci' } });
+    fireEvent.change(statusSelect, { target: { value: 'needs_addressing' } });
 
-    expect(onFilterChange).toHaveBeenCalledWith({ ...defaultFilters, status: 'failing_ci' });
+    expect(onFilterChange).toHaveBeenCalledWith({ ...defaultFilters, status: 'needs_addressing' });
   });
 
   it('calls onFilterChange when search input changes', () => {

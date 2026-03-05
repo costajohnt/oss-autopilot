@@ -47,19 +47,11 @@ try {
     if (total === 0) process.exit(0);
     // Build status segments for a compact one-liner
     const segments = [];
-    const needResponse = (d.prsNeedingResponse || []).length;
-    const ciFailing = (d.ciFailingPRs || []).length;
-    const conflicts = (d.mergeConflictPRs || []).length;
-    const needsChanges = (d.needsChangesPRs || []).length;
-    const addressed = (d.changesAddressedPRs || []).length;
+    const needsAddressing = (d.needsAddressingPRs || []).length;
     const waitMaintainer = (d.waitingOnMaintainerPRs || []).length;
     // Actionable items first (you need to do something)
-    if (needResponse > 0) segments.push(needResponse + ' need response');
-    if (needsChanges > 0) segments.push(needsChanges + ' need changes');
-    if (ciFailing > 0) segments.push(ciFailing + ' CI failing');
-    if (conflicts > 0) segments.push(conflicts + ' conflicts');
+    if (needsAddressing > 0) segments.push(needsAddressing + ' need addressing');
     // Informational items (waiting on others)
-    if (addressed > 0) segments.push(addressed + ' awaiting re-review');
     if (waitMaintainer > 0) segments.push(waitMaintainer + ' waiting on maintainer');
     if (segments.length > 0) {
       console.log('OSS: ' + total + ' active PRs — ' + segments.join(', ') + ' (' + ageLabel + ')');

@@ -20,25 +20,10 @@ export function formatDate(iso: string): string {
 
 export function statusColor(status: FetchedPRStatus | string): string {
   switch (status) {
-    case 'needs_response':
-    case 'needs_changes':
-    case 'failing_ci':
-    case 'merge_conflict':
-    case 'missing_required_files':
-    case 'needs_rebase':
-    case 'incomplete_checklist':
+    case 'needs_addressing':
       return 'var(--accent-error)';
-    case 'changes_addressed':
     case 'waiting_on_maintainer':
-    case 'ci_blocked':
-    case 'ci_not_running':
-    case 'waiting':
       return 'var(--accent-info)';
-    case 'healthy':
-      return 'var(--accent-open)';
-    case 'approaching_dormant':
-    case 'dormant':
-      return 'var(--accent-warning)';
     default:
       return 'var(--text-muted)';
   }

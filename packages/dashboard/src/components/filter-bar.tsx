@@ -15,21 +15,8 @@ interface FilterBarProps {
 
 /** Map raw FetchedPRStatus values to human-readable labels. */
 const STATUS_LABELS: Record<FetchedPRStatus, string> = {
-  needs_response: 'Needs Response',
-  failing_ci: 'Failing CI',
-  ci_blocked: 'CI Blocked',
-  ci_not_running: 'CI Not Running',
-  merge_conflict: 'Merge Conflict',
-  needs_rebase: 'Needs Rebase',
-  missing_required_files: 'Missing Required Files',
-  incomplete_checklist: 'Incomplete Checklist',
-  needs_changes: 'Needs Changes',
-  changes_addressed: 'Changes Addressed',
-  waiting: 'Waiting',
+  needs_addressing: 'Needs Addressing',
   waiting_on_maintainer: 'Waiting on Maintainer',
-  healthy: 'Healthy',
-  approaching_dormant: 'Approaching Dormant',
-  dormant: 'Dormant',
 };
 
 function statusLabel(status: string): string {

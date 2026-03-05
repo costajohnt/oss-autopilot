@@ -7,9 +7,11 @@ export function makePR(overrides: Partial<FetchedPR> = {}): FetchedPR {
     repo: 'owner/repo',
     number: 1,
     title: 'Test PR',
-    status: 'healthy',
-    displayLabel: '[Healthy]',
-    displayDescription: 'Everything looks good',
+    status: 'waiting_on_maintainer',
+    waitReason: 'pending_review',
+    stalenessTier: 'active',
+    displayLabel: '[Waiting on Maintainer]',
+    displayDescription: 'Awaiting review',
     createdAt: '2025-06-01T00:00:00Z',
     updatedAt: '2025-06-10T00:00:00Z',
     daysSinceActivity: 5,
@@ -54,7 +56,7 @@ export function makeShelvedRef(overrides: Partial<ShelvedPRRef> = {}): ShelvedPR
     title: 'Shelved PR',
     repo: 'owner/repo',
     daysSinceActivity: 30,
-    status: 'dormant',
+    status: 'waiting_on_maintainer',
     ...overrides,
   };
 }
