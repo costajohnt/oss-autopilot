@@ -203,8 +203,8 @@ The CLI returns structured data with new fields for the action-first flow:
       "capacity": { "hasCapacity": true, ... },
       "digest": {
         "openPRs": [ { "url": "https://github.com/owner/repo/pull/123", "repo": "owner/repo", "number": 123, "title": "...", ... } ],
-        "healthyPRs": ["https://github.com/owner/repo/pull/123"],
-        "ciFailingPRs": ["https://github.com/owner/repo/pull/456"],
+        "needsAddressingPRs": ["https://github.com/owner/repo/pull/456"],
+        "waitingOnMaintainerPRs": ["https://github.com/owner/repo/pull/123"],
         ...
       }
     },
@@ -218,7 +218,7 @@ The CLI returns structured data with new fields for the action-first flow:
 
 The JSON output uses a deduplicated format to reduce payload size:
 - Full PR objects live **only** in `digest.openPRs`.
-- Category arrays (`healthyPRs`, `ciFailingPRs`, etc.) contain **PR URL strings**, not full objects. Look up full PR details via: `data.daily.digest.openPRs.find(pr => pr.url === url)`.
+- Category arrays (`needsAddressingPRs`, `waitingOnMaintainerPRs`) contain **PR URL strings**, not full objects. Look up full PR details via: `data.daily.digest.openPRs.find(pr => pr.url === url)`.
 - `actionableIssues[].prUrl` is a URL string. Look up the full PR via: `data.daily.digest.openPRs.find(pr => pr.url === issue.prUrl)`.
 - `repoGroups[].prUrls` are URL string arrays. Look up each PR from `digest.openPRs`.
 
@@ -277,7 +277,7 @@ The CLI pre-computes the action menu in `data.daily.actionMenu`. Use these items
 
 When `data.daily.actionMenu` is present and `data.daily.actionMenu.context.hasActionableIssues` is `false` (or when `data.daily.actionMenu` is absent and `data.daily.actionableIssues` is empty), display:
 ```
-All PRs are healthy — nothing needs your attention right now.
+All PRs are on track — nothing needs your attention right now.
 ```
 
 If `hasIssueList && availableCount === 0`:
@@ -289,7 +289,7 @@ Your curated issue list is depleted ({completedCount} done). Time to find new is
 
 When there are actionable issues, display them **before asking the user anything**.
 
-Issues are listed in priority order: `needs_response` → `needs_changes` → `ci_failing` → `merge_conflict` → `incomplete_checklist`. This matches the ordering from `collectActionableIssues()` in the CLI. Recently closed PRs are NOT included here — they appear in a separate informational section below (see "Recently Closed PRs").
+Issues are listed in priority order based on `actionReason`: `needs_response` → `needs_changes` → `ci_failing` → `merge_conflict` → `incomplete_checklist`. This matches the ordering from `collectActionableIssues()` in the CLI. All PRs shown here have `status: "needs_addressing"` — the `actionReason` field provides the specific reason. Recently closed PRs are NOT included here — they appear in a separate informational section below (see "Recently Closed PRs").
 
 For each issue, look up the full PR from `digest.openPRs` using the issue's `prUrl`:
 
@@ -334,7 +334,7 @@ Use `pr.daysSinceActivity` from the resolved PR (already computed).
 
 ### Recently Closed PRs (Informational)
 
-If `data.daily.digest.recentlyClosedPRs` has entries, display them **after** the actionable issues list (or after "All PRs are healthy" if none) as a separate informational section. These are NOT counted in the "Need Attention" total and do NOT receive priority numbers:
+If `data.daily.digest.recentlyClosedPRs` has entries, display them **after** the actionable issues list (or after "All PRs are on track" if none) as a separate informational section. These are NOT counted in the "Need Attention" total and do NOT receive priority numbers:
 
 ```
 Recently closed (informational):
@@ -399,7 +399,7 @@ When the user types a simple question via "Other" input (or at any point during 
 
 | Type | Examples | Behavior |
 |------|----------|----------|
-| **Informational** | "show me a link to issue #1", "what's the URL for PR #123", "how many PRs do I have open?", "list my healthy PRs", "what did the maintainer say on ink#855?" | Respond with the requested information as **text only**. Do NOT follow up with AskUserQuestion. Let the user read the answer and send their next message. |
+| **Informational** | "show me a link to issue #1", "what's the URL for PR #123", "how many PRs do I have open?", "list my waiting PRs", "what did the maintainer say on ink#855?" | Respond with the requested information as **text only**. Do NOT follow up with AskUserQuestion. Let the user read the answer and send their next message. |
 | **Actionable** | "fix #1", "address all issues", "search for new issues", "rebase ink#855" | Execute the action, then prompt with AskUserQuestion as usual. |
 
 **Why:** In Claude Code, AskUserQuestion renders as an interactive picker that replaces preceding text output. If informational text is immediately followed by a prompt, the user sees the answer for a brief moment before it's hidden behind the picker.
@@ -466,20 +466,20 @@ For each issue, use AskUserQuestion to offer actions:
 
 After processing all issue replies (or user chooses to stop), return to **Action Menu** to present action choices again.
 
-### Handle "View Healthy PRs"
+### Handle "View Waiting PRs"
 
 Show when `capacity.hasCapacity === false` (user has critical issues to address first).
 
-Look up healthy PRs by resolving each URL in `data.daily.digest.healthyPRs` against `data.daily.digest.openPRs`:
+Look up waiting PRs by resolving each URL in `data.daily.digest.waitingOnMaintainerPRs` against `data.daily.digest.openPRs`:
 
 ```javascript
-const healthyPRs = data.daily.digest.healthyPRs.map(url =>
+const waitingPRs = data.daily.digest.waitingOnMaintainerPRs.map(url =>
   data.daily.digest.openPRs.find(pr => pr.url === url)
 );
 ```
 
 ```
-Healthy PRs (no action needed):
+Waiting on Others (no action needed):
 
 - owner/repo#123 - Title here (approved, CI passing)
 - owner/repo#456 - Title here (waiting for review)

@@ -142,6 +142,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
         return emptyPRCountsResult<number>();
       }),
       issueMonitor.fetchCommentedIssues().catch((error) => {
+        if (isRateLimitOrAuthError(error)) throw error;
         const msg = errorMessage(error);
         if (msg.includes('No GitHub username configured')) {
           warn(MODULE, `Issue conversation tracking requires setup: ${msg}`);
@@ -172,9 +173,11 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   const digest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);
 
   // Apply shelve partitioning for display (auto-unshelve only runs in daily check)
-  // Dormant PRs are treated as shelved for display purposes
+  // Dormant PRs are treated as shelved unless they need addressing
   const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
-  const freshShelved = prs.filter((pr) => shelvedUrls.has(pr.url) || pr.status === 'dormant');
+  const freshShelved = prs.filter(
+    (pr) => shelvedUrls.has(pr.url) || (pr.stalenessTier === 'dormant' && pr.status !== 'needs_addressing'),
+  );
   digest.shelvedPRs = freshShelved.map(toShelvedPRRef);
   digest.autoUnshelvedPRs = [];
   digest.summary.totalActivePRs = prs.length - freshShelved.length;

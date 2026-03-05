@@ -365,8 +365,9 @@ function partitionPRs(
       } else {
         shelvedPRs.push(toShelvedPRRef(pr));
       }
-    } else if (pr.status === 'dormant') {
-      // Dormant PRs are auto-shelved (not persisted — they return when activity resumes)
+    } else if (pr.stalenessTier === 'dormant' && !CRITICAL_STATUSES.has(pr.status)) {
+      // Dormant PRs are auto-shelved unless they need addressing
+      // (e.g. maintainer commented on a stale PR — it should resurface)
       shelvedPRs.push(toShelvedPRRef(pr));
     } else {
       activePRs.push(pr);

@@ -72,21 +72,22 @@ describe('App', () => {
         repo: 'a/b',
         number: 1,
         title: 'Fix auth bug',
-        status: 'failing_ci',
+        status: 'needs_addressing',
+        actionReason: 'failing_ci',
       }),
       makePR({
         url: 'https://github.com/a/b/pull/2',
         repo: 'a/b',
         number: 2,
         title: 'Add feature',
-        status: 'healthy',
+        status: 'waiting_on_maintainer',
       }),
       makePR({
         url: 'https://github.com/c/d/pull/3',
         repo: 'c/d',
         number: 3,
         title: 'Update docs',
-        status: 'healthy',
+        status: 'waiting_on_maintainer',
       }),
     ];
 
@@ -114,9 +115,9 @@ describe('App', () => {
         expect(container.querySelector('.dashboard')).toBeTruthy();
       });
 
-      // Change status filter to 'healthy'
+      // Change status filter to 'waiting_on_maintainer'
       const statusSelect = container.querySelector('.filter-select') as HTMLSelectElement;
-      fireEvent.change(statusSelect, { target: { value: 'healthy' } });
+      fireEvent.change(statusSelect, { target: { value: 'waiting_on_maintainer' } });
 
       const rows = container.querySelectorAll('.pr-row');
       expect(rows).toHaveLength(2); // "Add feature" and "Update docs"
@@ -161,9 +162,9 @@ describe('App', () => {
         expect(container.querySelector('.dashboard')).toBeTruthy();
       });
 
-      // Filter by status 'healthy' AND repo 'a/b'
+      // Filter by status 'waiting_on_maintainer' AND repo 'a/b'
       const statusSelect = container.querySelector('.filter-select') as HTMLSelectElement;
-      fireEvent.change(statusSelect, { target: { value: 'healthy' } });
+      fireEvent.change(statusSelect, { target: { value: 'waiting_on_maintainer' } });
 
       const selects = container.querySelectorAll('.filter-select');
       const repoSelect = selects[1] as HTMLSelectElement;
@@ -177,8 +178,13 @@ describe('App', () => {
 
   it('populates filter dropdowns from PR data', async () => {
     const prs = [
-      makePR({ repo: 'x/y', status: 'healthy' }),
-      makePR({ repo: 'a/b', status: 'failing_ci', url: 'https://github.com/a/b/pull/2' }),
+      makePR({ repo: 'x/y', status: 'waiting_on_maintainer' }),
+      makePR({
+        repo: 'a/b',
+        status: 'needs_addressing',
+        actionReason: 'failing_ci',
+        url: 'https://github.com/a/b/pull/2',
+      }),
     ];
     mockFetchOk(makeDashboardData({ activePRs: prs }));
 
@@ -197,7 +203,7 @@ describe('App', () => {
     // Status select should have 'All Statuses' + 2 unique statuses (sorted)
     const statusSelect = selects[0] as HTMLSelectElement;
     const statusOptions = [...statusSelect.options].map((o) => o.value);
-    expect(statusOptions).toEqual(['all', 'failing_ci', 'healthy']);
+    expect(statusOptions).toEqual(['all', 'needs_addressing', 'waiting_on_maintainer']);
   });
 
   it('shows error banner with dismiss button when error coexists with data', async () => {

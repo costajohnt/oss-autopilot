@@ -71,46 +71,36 @@ export interface DetermineStatusInput {
 }
 
 /**
- * Computed status for a {@link FetchedPR}, determined by `PRMonitor.determineStatus()`.
- * Statuses are checked in priority order — the first match wins.
- *
- * **Action required (contributor must act):**
- * - `needs_response` — Maintainer commented after the contributor's last activity
- * - `needs_changes` — Reviewer requested changes (via review, not just a comment)
- * - `failing_ci` — One or more CI checks are failing (at least one is actionable)
- * - `ci_not_running` — No CI checks have been triggered *(reserved)*
- * - `merge_conflict` — PR has merge conflicts with the base branch
- * - `needs_rebase` — PR branch is significantly behind upstream *(reserved)*
- * - `missing_required_files` — Required files like changesets or CLA are missing *(reserved)*
- * - `incomplete_checklist` — PR body has unchecked required checkboxes
- *
- * **Waiting (no action needed right now):**
- * - `ci_blocked` — All failing CI checks are non-actionable (infrastructure, fork limitation, auth gate)
- * - `changes_addressed` — Contributor pushed commits after reviewer feedback; awaiting re-review
- * - `waiting` — CI is pending or no specific action needed
- * - `waiting_on_maintainer` — PR is approved and CI passes; waiting for maintainer to merge
- * - `healthy` — Everything looks good; normal review cycle
- *
- * **Staleness warnings:**
- * - `approaching_dormant` — No activity for `approachingDormantDays` (default 25)
- * - `dormant` — No activity for `dormantThresholdDays` (default 30)
+ * Granular reason why a PR needs addressing (contributor's turn).
+ * Active values (produced by determineStatus): needs_response, needs_changes,
+ * failing_ci, merge_conflict, incomplete_checklist.
+ * Reserved (display mappings exist but detection not yet wired): ci_not_running,
+ * needs_rebase, missing_required_files.
  */
-export type FetchedPRStatus =
+export type ActionReason =
   | 'needs_response'
-  | 'failing_ci'
-  | 'ci_blocked'
-  | 'ci_not_running'
-  | 'merge_conflict'
-  | 'needs_rebase'
-  | 'missing_required_files'
-  | 'incomplete_checklist'
   | 'needs_changes'
-  | 'changes_addressed'
-  | 'waiting'
-  | 'waiting_on_maintainer'
-  | 'healthy'
-  | 'approaching_dormant'
-  | 'dormant';
+  | 'failing_ci'
+  | 'merge_conflict'
+  | 'incomplete_checklist'
+  | 'ci_not_running'
+  | 'needs_rebase'
+  | 'missing_required_files';
+
+/** Granular reason why a PR is waiting on the maintainer. */
+export type WaitReason = 'pending_review' | 'pending_merge' | 'changes_addressed' | 'ci_blocked';
+
+/** How stale is the PR based on days since activity. Orthogonal to status. */
+export type StalenessTier = 'active' | 'approaching_dormant' | 'dormant';
+
+/**
+ * Top-level classification of a PR's state. Only two values:
+ * - `needs_addressing` — Contributor's turn. See `actionReason` for what to do.
+ * - `waiting_on_maintainer` — Maintainer's turn. See `waitReason` for why.
+ *
+ * Staleness (active/approaching_dormant/dormant) is tracked separately in `stalenessTier`.
+ */
+export type FetchedPRStatus = 'needs_addressing' | 'waiting_on_maintainer';
 
 /**
  * Hints about what a maintainer is asking for in their review comments.
@@ -138,6 +128,12 @@ export interface FetchedPR {
 
   /** Computed by `PRMonitor.determineStatus()` based on the fields below. */
   status: FetchedPRStatus;
+  /** Granular reason for needs_addressing status. Undefined when waiting_on_maintainer. */
+  actionReason?: ActionReason;
+  /** Granular reason for waiting_on_maintainer status. Undefined when needs_addressing. */
+  waitReason?: WaitReason;
+  /** How stale the PR is based on activity age. Independent of status — a PR can be both needs_addressing and dormant. */
+  stalenessTier: StalenessTier;
 
   /** Human-readable status label for consistent display (#79). E.g., "[CI Failing]", "[Needs Response]". */
   displayLabel: string;
@@ -399,22 +395,10 @@ export interface DailyDigest {
   /** All open PRs authored by the user, fetched from GitHub Search API. */
   openPRs: FetchedPR[];
 
-  // Categorized PRs (each array is a subset of openPRs filtered by status)
-  prsNeedingResponse: FetchedPR[];
-  ciFailingPRs: FetchedPR[];
-  ciBlockedPRs: FetchedPR[];
-  ciNotRunningPRs: FetchedPR[];
-  mergeConflictPRs: FetchedPR[];
-  needsRebasePRs: FetchedPR[];
-  missingRequiredFilesPRs: FetchedPR[];
-  incompleteChecklistPRs: FetchedPR[];
-  needsChangesPRs: FetchedPR[];
-  changesAddressedPRs: FetchedPR[];
+  /** PRs where the contributor needs to take action. Subset of openPRs where status === 'needs_addressing'. */
+  needsAddressingPRs: FetchedPR[];
+  /** PRs waiting on the maintainer. Subset of openPRs where status === 'waiting_on_maintainer'. */
   waitingOnMaintainerPRs: FetchedPR[];
-  /** PRs with no activity for 25+ days (configurable via `approachingDormantDays`). */
-  approachingDormant: FetchedPR[];
-  dormantPRs: FetchedPR[];
-  healthyPRs: FetchedPR[];
 
   /** PRs closed without merge in the last 7 days. Surfaced to alert the contributor. */
   recentlyClosedPRs: ClosedPR[];
@@ -437,7 +421,7 @@ export interface DailyDigest {
     totalActivePRs: number;
     /** Count of PRs requiring contributor action (response, CI fix, conflict resolution, etc.). */
     totalNeedingAttention: number;
-    /** Lifetime merged PR count across all repos, derived from {@link RepoScore} data. */
+    /** Lifetime merged PR count across all repos, derived from RepoScore data. */
     totalMergedAllTime: number;
     /** Percentage of all-time PRs that were merged (merged / (merged + closed)). */
     mergeRate: number;

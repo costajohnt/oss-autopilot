@@ -216,8 +216,8 @@ Claude automatically dispatches these based on context:
 
 | Agent | Purpose | When it runs |
 |-------|---------|-------------|
-| **pr-responder** | Drafts responses to maintainer feedback | PR has `needs_response` status (unread maintainer comment) |
-| **pr-health-checker** | Diagnoses CI failures, merge conflicts, stale reviews | PR has `failing_ci`, `merge_conflict`, or needs rebase |
+| **pr-responder** | Drafts responses to maintainer feedback | PR has `needs_addressing` status with `actionReason` of `needs_response` or `needs_changes` |
+| **pr-health-checker** | Diagnoses CI failures, merge conflicts, stale reviews | PR has `needs_addressing` status with `actionReason` of `failing_ci` or `merge_conflict` |
 | **pr-compliance-checker** | Validates PRs against [opensource.guide](https://opensource.guide) best practices | Before marking a new PR as ready for review |
 | **pre-commit-reviewer** | Reviews code changes before committing | After Tier 2 code changes, before commit/push |
 | **issue-scout** | Finds and vets new issues to work on | User selects "Search for new issues" from action menu |

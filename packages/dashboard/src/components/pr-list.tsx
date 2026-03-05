@@ -11,26 +11,10 @@ interface PRListProps {
 }
 
 /** Statuses that belong in the "Action Required" section. */
-const ACTION_REQUIRED: Set<FetchedPRStatus> = new Set([
-  'needs_response',
-  'needs_changes',
-  'failing_ci',
-  'merge_conflict',
-  'incomplete_checklist',
-  'missing_required_files',
-  'needs_rebase',
-]);
+const ACTION_REQUIRED: Set<FetchedPRStatus> = new Set(['needs_addressing']);
 
 /** Statuses that belong in the "Waiting on Others" section. */
-const WAITING: Set<FetchedPRStatus> = new Set([
-  'changes_addressed',
-  'waiting_on_maintainer',
-  'ci_blocked',
-  'ci_not_running',
-]);
-
-/** Statuses that belong in the "Healthy / Stale" section. */
-const HEALTHY: Set<FetchedPRStatus> = new Set(['healthy', 'approaching_dormant', 'dormant', 'waiting']);
+const WAITING: Set<FetchedPRStatus> = new Set(['waiting_on_maintainer']);
 
 interface SectionDef {
   id: string;
@@ -95,12 +79,6 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls, dismissedUrls 
       title: 'Waiting on Others',
       accent: 'var(--accent-info)',
       prs: activePRs.filter((pr) => WAITING.has(pr.status)),
-    },
-    {
-      id: 'healthy',
-      title: 'Healthy / Stale',
-      accent: 'var(--accent-open)',
-      prs: activePRs.filter((pr) => HEALTHY.has(pr.status)),
     },
   ].filter((s) => s.prs.length > 0);
 

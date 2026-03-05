@@ -155,8 +155,8 @@ Only show this section if there are Tier 2 items remaining after Phase A:
 ```
 ### Tier 2 Items — Code Changes Needed
 
-| # | PR | Status | Maintainer Ask | Effort | Recommended Action |
-|---|-----|--------|---------------|--------|-------------------|
+| # | PR | Issue Type | Maintainer Ask | Effort | Recommended Action |
+|---|-----|-----------|---------------|--------|-------------------|
 | 1 | repo#123 | needs_response | Requested shortcut change + tooltip | Small | Code change + respond |
 | 2 | repo#456 | needs_changes | Fix trailing newline, sync docs | Medium | Code changes + push |
 | 3 | repo#789 | incomplete_checklist | Missing changelog entry | Small | Add changeset file |
@@ -169,7 +169,7 @@ Only show this section if there are Tier 2 items remaining after Phase A:
 
 Populate the table using data from the Phase A agent results:
 - **PR**: `{repo}#{number}` — short form
-- **Status**: From `issue.type` (needs_response, needs_changes, ci_failing, etc.)
+- **Issue Type**: From `issue.type` (needs_response, needs_changes, ci_failing, merge_conflict, incomplete_checklist)
 - **Maintainer Ask**: 1-line summary of what the maintainer requested (from agent investigation findings)
 - **Effort**: Use the same heuristic as the Action Menu display (Small/Medium/Large)
 - **Recommended Action**: Brief action description from agent findings

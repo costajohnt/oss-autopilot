@@ -27,7 +27,6 @@ export function generateDashboardHtml(
   state: Readonly<AgentState>,
   issueResponses: CommentedIssueWithResponse[] = [],
 ): string {
-  const approachingDormantDays = state.config?.approachingDormantDays ?? 25;
   const shelvedPRs = digest.shelvedPRs || [];
   const autoUnshelvedPRs = digest.autoUnshelvedPRs || [];
   const recentlyMerged = digest.recentlyMergedPRs || [];
@@ -35,23 +34,10 @@ export function generateDashboardHtml(
   const activePRList = (digest.openPRs || []).filter((pr) => !shelvedUrls.has(pr.url));
 
   // Action Required: contributor must do something
-  const actionRequired = [
-    ...(digest.prsNeedingResponse || []),
-    ...(digest.needsChangesPRs || []),
-    ...(digest.ciFailingPRs || []),
-    ...(digest.mergeConflictPRs || []),
-    ...(digest.incompleteChecklistPRs || []),
-    ...(digest.missingRequiredFilesPRs || []),
-    ...(digest.needsRebasePRs || []),
-  ];
+  const actionRequired = digest.needsAddressingPRs || [];
 
   // Waiting on Others: informational, no contributor action needed
-  const waitingOnOthers = [
-    ...(digest.changesAddressedPRs || []),
-    ...(digest.waitingOnMaintainerPRs || []),
-    ...(digest.ciBlockedPRs || []),
-    ...(digest.ciNotRunningPRs || []),
-  ];
+  const waitingOnOthers = digest.waitingOnMaintainerPRs || [];
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -146,22 +132,12 @@ export function generateDashboardHtml(
       <input type="text" class="filter-search" id="searchInput" placeholder="Search by PR title..." />
       <select class="filter-select" id="statusFilter">
         <option value="all">All Statuses</option>
-        <option value="needs-response">Needs Response</option>
-        <option value="needs-changes">Needs Changes</option>
-        <option value="ci-failing">CI Failing</option>
-        <option value="conflict">Merge Conflict</option>
-        <option value="changes-addressed">Changes Addressed</option>
-        <option value="waiting-maintainer">Waiting on Maintainer</option>
-        <option value="ci-blocked">CI Blocked</option>
-        <option value="ci-not-running">CI Not Running</option>
-        <option value="incomplete-checklist">Incomplete Checklist</option>
-        <option value="missing-files">Missing Files</option>
-        <option value="needs-rebase">Needs Rebase</option>
+        <option value="needs-addressing">Needs Addressing</option>
+        <option value="waiting-on-maintainer">Waiting on Maintainer</option>
         <option value="shelved">Shelved</option>
         <option value="merged">Recently Merged</option>
         <option value="closed">Recently Closed</option>
         <option value="auto-unshelved">Auto-Unshelved</option>
-        <option value="active">Active (No Issues)</option>
       </select>
       <select class="filter-select" id="repoFilter">
         <option value="all">All Repositories</option>
@@ -198,39 +174,11 @@ export function generateDashboardHtml(
       </div>
       <div class="health-items">
         ${renderHealthItems(
-          digest.prsNeedingResponse || [],
-          'needs-response',
-          SVG_ICONS.comment,
-          'Needs Response',
-          (pr) =>
-            pr.lastMaintainerComment
-              ? `@${escapeHtml(pr.lastMaintainerComment.author)}: ${truncateTitle(pr.lastMaintainerComment.body, 40)}`
-              : truncateTitle(pr.title),
-        )}
-        ${renderHealthItems(digest.needsChangesPRs || [], 'needs-changes', SVG_ICONS.edit, 'Needs Changes', titleMeta)}
-        ${renderHealthItems(digest.ciFailingPRs || [], 'ci-failing', SVG_ICONS.xCircle, 'CI Failing', titleMeta)}
-        ${renderHealthItems(digest.mergeConflictPRs || [], 'conflict', SVG_ICONS.conflict, 'Merge Conflict', titleMeta)}
-        ${renderHealthItems(
-          digest.incompleteChecklistPRs || [],
-          'incomplete-checklist',
-          SVG_ICONS.checklist,
-          (pr) =>
-            `Incomplete Checklist${pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : ''}`,
-          titleMeta,
-        )}
-        ${renderHealthItems(
-          digest.missingRequiredFilesPRs || [],
-          'missing-files',
-          SVG_ICONS.file,
-          'Missing Required Files',
-          (pr) => (pr.missingRequiredFiles ? escapeHtml(pr.missingRequiredFiles.join(', ')) : truncateTitle(pr.title)),
-        )}
-        ${renderHealthItems(
-          digest.needsRebasePRs || [],
-          'needs-rebase',
-          SVG_ICONS.refresh,
-          (pr) => `Needs Rebase${pr.commitsBehindUpstream ? ` (${pr.commitsBehindUpstream} behind)` : ''}`,
-          titleMeta,
+          actionRequired,
+          'needs-addressing',
+          SVG_ICONS.xCircle,
+          (pr) => pr.displayLabel,
+          (pr) => escapeHtml(pr.displayDescription),
         )}
       </div>
     </section>
@@ -252,16 +200,12 @@ export function generateDashboardHtml(
       </div>
       <div class="health-items">
         ${renderHealthItems(
-          digest.changesAddressedPRs || [],
-          'changes-addressed',
-          SVG_ICONS.checkCircle,
-          'Changes Addressed',
-          (pr) =>
-            `Awaiting re-review${pr.lastMaintainerComment ? ` from @${escapeHtml(pr.lastMaintainerComment.author)}` : ''}`,
+          waitingOnOthers,
+          'waiting-on-maintainer',
+          SVG_ICONS.clock,
+          (pr) => pr.displayLabel,
+          (pr) => escapeHtml(pr.displayDescription),
         )}
-        ${renderHealthItems(digest.waitingOnMaintainerPRs || [], 'waiting-maintainer', SVG_ICONS.clock, 'Waiting on Maintainer', titleMeta)}
-        ${renderHealthItems(digest.ciBlockedPRs || [], 'ci-blocked', SVG_ICONS.lock, 'CI Blocked', titleMeta)}
-        ${renderHealthItems(digest.ciNotRunningPRs || [], 'ci-not-running', SVG_ICONS.infoCircle, 'CI Not Running', titleMeta)}
       </div>
     </section>
     `
@@ -280,7 +224,7 @@ export function generateDashboardHtml(
         <h2>Health Status</h2>
       </div>
       <div class="health-empty">
-        All PRs are healthy - no CI failures, conflicts, or pending responses
+        All PRs are on track - no CI failures, conflicts, or pending responses
       </div>
     </section>
     `
@@ -377,7 +321,7 @@ export function generateDashboardHtml(
           autoUnshelvedPRs,
           'auto-unshelved',
           SVG_ICONS.bell,
-          (pr) => 'Auto-Unshelved (' + pr.status.replace(/_/g, ' ') + ')',
+          (pr) => `Auto-Unshelved (${pr.status.replace(/_/g, ' ')})`,
           titleMeta,
         )}
       </div>
@@ -468,32 +412,17 @@ export function generateDashboardHtml(
       <div class="pr-list">
         ${activePRList
           .map((pr) => {
-            const hasIssues =
-              pr.ciStatus === 'failing' ||
-              pr.hasMergeConflict ||
-              (pr.hasUnrespondedComment && pr.status !== 'changes_addressed') ||
-              pr.status === 'needs_changes';
-            const isStale = pr.daysSinceActivity >= approachingDormantDays;
-            const itemClass = hasIssues ? 'has-issues' : isStale ? 'stale' : '';
+            const isNeedsAddressing = pr.status === 'needs_addressing';
+            const isStale = pr.stalenessTier !== 'active';
+            const itemClass = isNeedsAddressing ? 'has-issues' : isStale ? 'stale' : '';
 
-            const prStatus =
-              pr.ciStatus === 'failing'
-                ? 'ci-failing'
-                : pr.hasMergeConflict
-                  ? 'conflict'
-                  : pr.hasUnrespondedComment && pr.status !== 'changes_addressed' && pr.status !== 'failing_ci'
-                    ? 'needs-response'
-                    : pr.status === 'needs_changes'
-                      ? 'needs-changes'
-                      : pr.status === 'changes_addressed'
-                        ? 'changes-addressed'
-                        : 'active';
+            const prStatus = pr.status === 'needs_addressing' ? 'needs-addressing' : 'waiting-on-maintainer';
 
             return `
         <div class="pr-item ${itemClass}" data-status="${prStatus}" data-repo="${escapeHtml(pr.repo)}" data-title="${escapeHtml(pr.title.toLowerCase())}">
           <div class="pr-status-indicator">
             ${
-              hasIssues
+              isNeedsAddressing
                 ? `
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
@@ -516,13 +445,7 @@ export function generateDashboardHtml(
               <span class="pr-repo">${escapeHtml(pr.repo)}#${pr.number}</span>
             </div>
             <div class="pr-badges">
-              ${pr.ciStatus === 'failing' ? '<span class="badge badge-ci-failing">CI Failing</span>' : ''}
-              ${pr.ciStatus === 'passing' ? '<span class="badge badge-passing">CI Passing</span>' : ''}
-              ${pr.ciStatus === 'pending' ? '<span class="badge badge-pending">CI Pending</span>' : ''}
-              ${pr.hasMergeConflict ? '<span class="badge badge-conflict">Merge Conflict</span>' : ''}
-              ${pr.hasUnrespondedComment && pr.status === 'changes_addressed' ? '<span class="badge badge-changes-addressed">Changes Addressed</span>' : ''}
-              ${pr.hasUnrespondedComment && pr.status !== 'changes_addressed' && pr.status !== 'failing_ci' ? '<span class="badge badge-needs-response">Needs Response</span>' : ''}
-              ${pr.reviewDecision === 'changes_requested' ? '<span class="badge badge-changes-requested">Changes Requested</span>' : ''}
+              <span class="badge ${isNeedsAddressing ? 'badge-ci-failing' : 'badge-passing'}">${escapeHtml(pr.displayLabel)}</span>
               ${isStale ? `<span class="badge badge-stale">${pr.daysSinceActivity}d inactive</span>` : ''}
             </div>
           </div>

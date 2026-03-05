@@ -109,20 +109,8 @@ function makeDigest(prs: FetchedPR[] = []): DailyDigest {
   return {
     generatedAt: '2026-01-25T10:00:00Z',
     openPRs: prs,
-    prsNeedingResponse: prs.filter((p) => p.status === 'needs_response'),
-    ciFailingPRs: prs.filter((p) => p.status === 'failing_ci'),
-    ciBlockedPRs: [],
-    ciNotRunningPRs: [],
-    mergeConflictPRs: prs.filter((p) => p.status === 'merge_conflict'),
-    needsRebasePRs: [],
-    missingRequiredFilesPRs: [],
-    incompleteChecklistPRs: [],
-    needsChangesPRs: prs.filter((p) => p.status === 'needs_changes'),
-    changesAddressedPRs: [],
-    waitingOnMaintainerPRs: [],
-    approachingDormant: [],
-    dormantPRs: prs.filter((p) => p.status === 'dormant'),
-    healthyPRs: prs.filter((p) => p.status === 'healthy'),
+    needsAddressingPRs: prs.filter((p) => p.status === 'needs_addressing'),
+    waitingOnMaintainerPRs: prs.filter((p) => p.status === 'waiting_on_maintainer'),
     recentlyClosedPRs: [],
     recentlyMergedPRs: [],
     shelvedPRs: [],
@@ -299,7 +287,7 @@ describe('executeDailyCheck()', () => {
 
 describe('executeDailyCheck() — PR partitioning', () => {
   it('puts non-shelved, non-dormant PRs into active list', async () => {
-    const activePR = makePR({ repo: 'owner/repo', number: 1, status: 'healthy' });
+    const activePR = makePR({ repo: 'owner/repo', number: 1, status: 'waiting_on_maintainer' });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [activePR], failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest([activePR]));
     mockIsPRShelved.mockReturnValue(false);
@@ -314,7 +302,12 @@ describe('executeDailyCheck() — PR partitioning', () => {
   });
 
   it('puts dormant PRs into shelvedPRs (auto-shelved, not persisted)', async () => {
-    const dormantPR = makePR({ repo: 'owner/repo', number: 2, status: 'dormant' });
+    const dormantPR = makePR({
+      repo: 'owner/repo',
+      number: 2,
+      status: 'waiting_on_maintainer',
+      stalenessTier: 'dormant',
+    });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [dormantPR], failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest([dormantPR]));
     mockIsPRShelved.mockReturnValue(false);
@@ -328,8 +321,32 @@ describe('executeDailyCheck() — PR partitioning', () => {
     expect(allGroupedPRUrls).toHaveLength(0);
   });
 
+  it('keeps dormant PR active when it needs addressing (motivating use case)', async () => {
+    // This is THE key scenario: a long-dormant PR gets new maintainer activity.
+    // It should surface as active, not be hidden in the shelved section.
+    const dormantButNeedy = makePR({
+      repo: 'owner/repo',
+      number: 6,
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      stalenessTier: 'dormant',
+    });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [dormantButNeedy], failures: [] });
+    mockGenerateDigest.mockReturnValue(makeDigest([dormantButNeedy]));
+    mockIsPRShelved.mockReturnValue(false);
+
+    const result = await executeDailyCheck('test-token');
+
+    // Should be active, NOT shelved
+    expect(result.digest.shelvedPRs).toHaveLength(0);
+    const allGroupedPRUrls = result.repoGroups.flatMap((g) => g.prUrls);
+    expect(allGroupedPRUrls).toContain(dormantButNeedy.url);
+    // Should appear in actionable issues (compact format uses prUrl)
+    expect(result.actionableIssues.some((i) => i.prUrl === dormantButNeedy.url)).toBe(true);
+  });
+
   it('puts explicitly shelved PRs into shelvedPRs section', async () => {
-    const shelvedPR = makePR({ repo: 'owner/repo', number: 3, status: 'healthy' });
+    const shelvedPR = makePR({ repo: 'owner/repo', number: 3, status: 'waiting_on_maintainer' });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [shelvedPR], failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest([shelvedPR]));
     // This PR is explicitly shelved in state
@@ -342,7 +359,12 @@ describe('executeDailyCheck() — PR partitioning', () => {
   });
 
   it('auto-unshelves a shelved PR when it has a critical status', async () => {
-    const criticalPR = makePR({ repo: 'owner/repo', number: 4, status: 'needs_response' });
+    const criticalPR = makePR({
+      repo: 'owner/repo',
+      number: 4,
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+    });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [criticalPR], failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest([criticalPR]));
     // Shelved, but has needs_response (critical) status
@@ -360,9 +382,9 @@ describe('executeDailyCheck() — PR partitioning', () => {
   });
 
   it('keeps shelved PR with non-critical status in shelvedPRs (no auto-unshelf)', async () => {
-    const shelvedHealthy = makePR({ repo: 'owner/repo', number: 5, status: 'healthy' });
-    mockFetchUserOpenPRs.mockResolvedValue({ prs: [shelvedHealthy], failures: [] });
-    mockGenerateDigest.mockReturnValue(makeDigest([shelvedHealthy]));
+    const shelvedWaiting = makePR({ repo: 'owner/repo', number: 5, status: 'waiting_on_maintainer' });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [shelvedWaiting], failures: [] });
+    mockGenerateDigest.mockReturnValue(makeDigest([shelvedWaiting]));
     mockIsPRShelved.mockReturnValue(true);
 
     const result = await executeDailyCheck('test-token');
@@ -381,9 +403,9 @@ describe('executeDailyCheck() — capacity assessment', () => {
   it('reports has capacity when under limit with no critical issues', async () => {
     // 3 healthy PRs, limit is 10
     const prs = [
-      makePR({ repo: 'owner/repo', number: 1, status: 'healthy' }),
-      makePR({ repo: 'owner/repo', number: 2, status: 'healthy' }),
-      makePR({ repo: 'owner/repo', number: 3, status: 'healthy' }),
+      makePR({ repo: 'owner/repo', number: 1, status: 'waiting_on_maintainer' }),
+      makePR({ repo: 'owner/repo', number: 2, status: 'waiting_on_maintainer' }),
+      makePR({ repo: 'owner/repo', number: 3, status: 'waiting_on_maintainer' }),
     ];
     mockFetchUserOpenPRs.mockResolvedValue({ prs, failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest(prs));
@@ -399,7 +421,9 @@ describe('executeDailyCheck() — capacity assessment', () => {
 
   it('reports no capacity when at or over the PR limit', async () => {
     // 10 PRs at the limit of 10
-    const prs = Array.from({ length: 10 }, (_, i) => makePR({ repo: 'owner/repo', number: i + 1, status: 'healthy' }));
+    const prs = Array.from({ length: 10 }, (_, i) =>
+      makePR({ repo: 'owner/repo', number: i + 1, status: 'waiting_on_maintainer' }),
+    );
     mockFetchUserOpenPRs.mockResolvedValue({ prs, failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest(prs));
     mockIsPRShelved.mockReturnValue(false);
@@ -411,7 +435,7 @@ describe('executeDailyCheck() — capacity assessment', () => {
   });
 
   it('reports no capacity when critical issues exist (even under limit)', async () => {
-    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_response' })];
+    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'needs_response' })];
     mockFetchUserOpenPRs.mockResolvedValue({ prs, failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest(prs));
     mockIsPRShelved.mockReturnValue(false);
@@ -423,8 +447,8 @@ describe('executeDailyCheck() — capacity assessment', () => {
   });
 
   it('excludes shelved PRs from capacity count', async () => {
-    const activePR = makePR({ repo: 'owner/repo', number: 1, status: 'healthy' });
-    const shelvedPR = makePR({ repo: 'owner/repo', number: 2, status: 'healthy' });
+    const activePR = makePR({ repo: 'owner/repo', number: 1, status: 'waiting_on_maintainer' });
+    const shelvedPR = makePR({ repo: 'owner/repo', number: 2, status: 'waiting_on_maintainer' });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [activePR, shelvedPR], failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest([activePR, shelvedPR]));
     mockIsPRShelved.mockImplementation((url: string) => url === shelvedPR.url);
@@ -437,9 +461,9 @@ describe('executeDailyCheck() — capacity assessment', () => {
     expect(result.capacity.hasCapacity).toBe(true);
   });
 
-  it('all four critical statuses count against capacity', async () => {
-    const statuses = ['needs_response', 'needs_changes', 'failing_ci', 'merge_conflict'] as const;
-    for (const status of statuses) {
+  it('needs_addressing status counts against capacity regardless of actionReason', async () => {
+    const actionReasons = ['needs_response', 'needs_changes', 'failing_ci', 'merge_conflict'] as const;
+    for (const actionReason of actionReasons) {
       // Reset mocks between iterations (beforeEach only runs once per it())
       vi.clearAllMocks();
       mockGetState.mockReturnValue(makeDefaultState());
@@ -456,7 +480,7 @@ describe('executeDailyCheck() — capacity assessment', () => {
       mockGetIssueDismissedAt.mockReturnValue(undefined);
       mockSave.mockImplementation(() => {});
 
-      const pr = makePR({ repo: 'owner/repo', number: 1, status });
+      const pr = makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason });
       mockFetchUserOpenPRs.mockResolvedValue({ prs: [pr], failures: [] });
       mockGenerateDigest.mockReturnValue(makeDigest([pr]));
 
@@ -473,8 +497,8 @@ describe('executeDailyCheck() — capacity assessment', () => {
 
 describe('executeDailyCheck() — snoozed PR filtering', () => {
   it('excludes snoozed PRs from actionableIssues for ci_failing type', async () => {
-    const snoozedPR = makePR({ repo: 'owner/repo', number: 1, status: 'failing_ci' });
-    const activePR = makePR({ repo: 'owner/repo', number: 2, status: 'failing_ci' });
+    const snoozedPR = makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'failing_ci' });
+    const activePR = makePR({ repo: 'owner/repo', number: 2, status: 'needs_addressing', actionReason: 'failing_ci' });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [snoozedPR, activePR], failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest([snoozedPR, activePR]));
     mockIsPRShelved.mockReturnValue(false);
@@ -508,7 +532,7 @@ describe('executeDailyCheck() — snoozed PR filtering', () => {
   });
 
   it('includes snoozed PR in active PRs (still shows in digest)', async () => {
-    const snoozedPR = makePR({ repo: 'owner/repo', number: 1, status: 'failing_ci' });
+    const snoozedPR = makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'failing_ci' });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [snoozedPR], failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest([snoozedPR]));
     mockIsPRShelved.mockReturnValue(false);
@@ -548,10 +572,16 @@ describe('executeDailyCheck() — dismissed PR URL filtering (#416, #468)', () =
     const dismissedPR = makePR({
       repo: 'owner/repo',
       number: 1,
-      status: 'needs_response',
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
       updatedAt: '2026-01-10T00:00:00Z',
     });
-    const activePR = makePR({ repo: 'owner/repo', number: 2, status: 'needs_response' });
+    const activePR = makePR({
+      repo: 'owner/repo',
+      number: 2,
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+    });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [dismissedPR, activePR], failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest([dismissedPR, activePR]));
     mockIsPRShelved.mockReturnValue(false);
@@ -574,7 +604,8 @@ describe('executeDailyCheck() — dismissed PR URL filtering (#416, #468)', () =
     const dismissedPR = makePR({
       repo: 'owner/repo',
       number: 1,
-      status: 'needs_response',
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
       updatedAt: '2026-02-01T00:00:00Z',
     });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [dismissedPR], failures: [] });
@@ -609,7 +640,7 @@ describe('executeDailyCheck() — output shape', () => {
   });
 
   it('briefSummary contains active PR count', async () => {
-    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'healthy' })];
+    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'waiting_on_maintainer' })];
     mockFetchUserOpenPRs.mockResolvedValue({ prs, failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest(prs));
     mockIsPRShelved.mockReturnValue(false);
@@ -629,7 +660,7 @@ describe('executeDailyCheck() — output shape', () => {
   });
 
   it('actionMenu includes address_all when actionable issues exist', async () => {
-    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_response' })];
+    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'needs_response' })];
     mockFetchUserOpenPRs.mockResolvedValue({ prs, failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest(prs));
     mockIsPRShelved.mockReturnValue(false);
@@ -641,8 +672,8 @@ describe('executeDailyCheck() — output shape', () => {
   });
 
   it('digest.summary.totalActivePRs reflects active (non-shelved) PRs', async () => {
-    const activePR = makePR({ repo: 'owner/repo', number: 1, status: 'healthy' });
-    const shelvedPR = makePR({ repo: 'owner/repo', number: 2, status: 'healthy' });
+    const activePR = makePR({ repo: 'owner/repo', number: 1, status: 'waiting_on_maintainer' });
+    const shelvedPR = makePR({ repo: 'owner/repo', number: 2, status: 'waiting_on_maintainer' });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [activePR, shelvedPR], failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest([activePR, shelvedPR]));
     mockIsPRShelved.mockImplementation((url: string) => url === shelvedPR.url);
@@ -654,9 +685,9 @@ describe('executeDailyCheck() — output shape', () => {
   });
 
   it('repoGroups groups PRs by repository', async () => {
-    const pr1 = makePR({ repo: 'owner/repo-a', number: 1, status: 'healthy' });
-    const pr2 = makePR({ repo: 'owner/repo-a', number: 2, status: 'healthy' });
-    const pr3 = makePR({ repo: 'owner/repo-b', number: 3, status: 'healthy' });
+    const pr1 = makePR({ repo: 'owner/repo-a', number: 1, status: 'waiting_on_maintainer' });
+    const pr2 = makePR({ repo: 'owner/repo-a', number: 2, status: 'waiting_on_maintainer' });
+    const pr3 = makePR({ repo: 'owner/repo-b', number: 3, status: 'waiting_on_maintainer' });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [pr1, pr2, pr3], failures: [] });
     mockGenerateDigest.mockReturnValue(makeDigest([pr1, pr2, pr3]));
     mockIsPRShelved.mockReturnValue(false);

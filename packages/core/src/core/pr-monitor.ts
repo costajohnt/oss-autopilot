@@ -19,6 +19,9 @@ import { daysBetween, parseGitHubUrl, extractOwnerRepo, DEFAULT_CONCURRENCY } fr
 import {
   FetchedPR,
   FetchedPRStatus,
+  ActionReason,
+  WaitReason,
+  StalenessTier,
   CIStatusResult,
   DailyDigest,
   ClosedPR,
@@ -171,27 +174,10 @@ export class PRMonitor {
       );
     });
 
-    // Sort by days since activity (most urgent first)
+    // Sort by status (needs_addressing first, then waiting_on_maintainer)
     prs.sort((a, b) => {
-      // Priority: needs_response > failing_ci > merge_conflict > approaching_dormant > dormant > waiting > healthy
-      const statusPriority: Record<FetchedPRStatus, number> = {
-        needs_response: 0,
-        needs_changes: 1,
-        failing_ci: 2,
-        ci_blocked: 3,
-        ci_not_running: 4,
-        merge_conflict: 5,
-        needs_rebase: 6,
-        missing_required_files: 7,
-        incomplete_checklist: 8,
-        changes_addressed: 9,
-        approaching_dormant: 10,
-        dormant: 11,
-        waiting: 12,
-        waiting_on_maintainer: 13,
-        healthy: 14,
-      };
-      return statusPriority[a.status] - statusPriority[b.status];
+      if (a.status === b.status) return 0;
+      return a.status === 'needs_addressing' ? -1 : 1;
     });
 
     return { prs, failures };
@@ -326,7 +312,7 @@ export class PRMonitor {
 
     // Determine status
     const hasActionableCIFailure = ciStatus === 'failing' && classifiedChecks.some((c) => c.category === 'actionable');
-    const status = this.determineStatus({
+    const { status, actionReason, waitReason, stalenessTier } = this.determineStatus({
       ciStatus,
       hasMergeConflict,
       hasUnrespondedComment,
@@ -350,6 +336,9 @@ export class PRMonitor {
       number,
       title: ghPR.title,
       status,
+      actionReason,
+      waitReason,
+      stalenessTier,
       createdAt: ghPR.created_at,
       updatedAt: ghPR.updated_at,
       daysSinceActivity,
@@ -389,7 +378,12 @@ export class PRMonitor {
   /**
    * Determine the overall status of a PR
    */
-  private determineStatus(input: DetermineStatusInput): FetchedPRStatus {
+  private determineStatus(input: DetermineStatusInput): {
+    status: FetchedPRStatus;
+    actionReason?: ActionReason;
+    waitReason?: WaitReason;
+    stalenessTier: StalenessTier;
+  } {
     const {
       ciStatus,
       hasMergeConflict,
@@ -407,13 +401,18 @@ export class PRMonitor {
       hasActionableCIFailure = true,
     } = input;
 
+    // Compute staleness tier (independent of status)
+    let stalenessTier: StalenessTier = 'active';
+    if (daysSinceActivity >= dormantThreshold) stalenessTier = 'dormant';
+    else if (daysSinceActivity >= approachingThreshold) stalenessTier = 'approaching_dormant';
+
     // Only count the latest commit if it was authored by the contributor (#547).
     // Non-contributor commits (maintainer merge commits, GitHub suggestion commits)
     // should not mask unaddressed feedback.
     const latestCommitDate =
       rawCommitDate && this.isContributorCommit(latestCommitAuthor, contributorUsername) ? rawCommitDate : undefined;
 
-    // Priority order: needs_response/needs_changes/changes_addressed > failing_ci > merge_conflict > incomplete_checklist > dormant > approaching_dormant > waiting_on_maintainer > waiting/healthy
+    // Priority order: needs_addressing (response/changes/ci/conflict/checklist) > waiting_on_maintainer (review/merge/addressed/ci_blocked)
 
     if (hasUnrespondedComment) {
       // If the contributor pushed a commit after the maintainer's comment,
@@ -428,59 +427,51 @@ export class PRMonitor {
         // Safety net (#431): if a CHANGES_REQUESTED review was submitted after
         // the commit, the maintainer still expects changes — don't mask it
         if (latestChangesRequestedDate && latestCommitDate < latestChangesRequestedDate) {
-          return 'needs_response';
+          return { status: 'needs_addressing', actionReason: 'needs_response', stalenessTier };
         }
-        if (ciStatus === 'failing' && hasActionableCIFailure) return 'failing_ci';
+        if (ciStatus === 'failing' && hasActionableCIFailure)
+          return { status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier };
         // Non-actionable CI failures (infrastructure, fork, auth) don't block changes_addressed —
         // the contributor can't fix them, so the relevant status is "waiting for re-review" (#502)
-        return 'changes_addressed';
+        return { status: 'waiting_on_maintainer', waitReason: 'changes_addressed', stalenessTier };
       }
-      return 'needs_response';
+      return { status: 'needs_addressing', actionReason: 'needs_response', stalenessTier };
     }
 
     // Review requested changes but no unresponded comment.
     // If the latest commit is before the review, the contributor hasn't addressed it yet.
     if (reviewDecision === 'changes_requested' && latestChangesRequestedDate) {
       if (!latestCommitDate || latestCommitDate < latestChangesRequestedDate) {
-        return 'needs_changes';
+        return { status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier };
       }
       // Commit is after review — changes have been addressed
-      if (ciStatus === 'failing' && hasActionableCIFailure) return 'failing_ci';
+      if (ciStatus === 'failing' && hasActionableCIFailure)
+        return { status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier };
       // Non-actionable CI failures don't block changes_addressed (#502)
-      return 'changes_addressed';
+      return { status: 'waiting_on_maintainer', waitReason: 'changes_addressed', stalenessTier };
     }
 
     if (ciStatus === 'failing') {
-      return hasActionableCIFailure ? 'failing_ci' : 'ci_blocked';
+      return hasActionableCIFailure
+        ? { status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier }
+        : { status: 'waiting_on_maintainer', waitReason: 'ci_blocked', stalenessTier };
     }
 
     if (hasMergeConflict) {
-      return 'merge_conflict';
+      return { status: 'needs_addressing', actionReason: 'merge_conflict', stalenessTier };
     }
 
     if (hasIncompleteChecklist) {
-      return 'incomplete_checklist';
-    }
-
-    if (daysSinceActivity >= dormantThreshold) {
-      return 'dormant';
-    }
-
-    if (daysSinceActivity >= approachingThreshold) {
-      return 'approaching_dormant';
+      return { status: 'needs_addressing', actionReason: 'incomplete_checklist', stalenessTier };
     }
 
     // Approved and CI passing/unknown = waiting on maintainer to merge
     if (reviewDecision === 'approved' && (ciStatus === 'passing' || ciStatus === 'unknown')) {
-      return 'waiting_on_maintainer';
+      return { status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier };
     }
 
-    // CI pending means we're waiting
-    if (ciStatus === 'pending') {
-      return 'waiting';
-    }
-
-    return 'healthy';
+    // Default: no actionable issues found. Covers pending CI, no reviews yet, etc.
+    return { status: 'waiting_on_maintainer', waitReason: 'pending_review', stalenessTier };
   }
 
   /**
@@ -698,56 +689,24 @@ export class PRMonitor {
     const now = new Date().toISOString();
 
     // Categorize PRs
-    const prsNeedingResponse = prs.filter((pr) => pr.status === 'needs_response');
-    const ciFailingPRs = prs.filter((pr) => pr.status === 'failing_ci');
-    const mergeConflictPRs = prs.filter((pr) => pr.status === 'merge_conflict');
-    const approachingDormant = prs.filter((pr) => pr.status === 'approaching_dormant');
-    const dormantPRs = prs.filter((pr) => pr.status === 'dormant');
-    const healthyPRs = prs.filter((pr) => pr.status === 'healthy' || pr.status === 'waiting');
+    const needsAddressingPRs = prs.filter((pr) => pr.status === 'needs_addressing');
+    const waitingOnMaintainerPRs = prs.filter((pr) => pr.status === 'waiting_on_maintainer');
 
     // Get stats from state manager (historical data from repo scores)
     const stats = this.stateManager.getStats();
 
-    const ciBlockedPRs = prs.filter((pr) => pr.status === 'ci_blocked');
-    const ciNotRunningPRs = prs.filter((pr) => pr.status === 'ci_not_running');
-    const needsRebasePRs = prs.filter((pr) => pr.status === 'needs_rebase');
-    const missingRequiredFilesPRs = prs.filter((pr) => pr.status === 'missing_required_files');
-    const incompleteChecklistPRs = prs.filter((pr) => pr.status === 'incomplete_checklist');
-    const needsChangesPRs = prs.filter((pr) => pr.status === 'needs_changes');
-    const changesAddressedPRs = prs.filter((pr) => pr.status === 'changes_addressed');
-    const waitingOnMaintainerPRs = prs.filter((pr) => pr.status === 'waiting_on_maintainer');
-
     return {
       generatedAt: now,
       openPRs: prs,
-      prsNeedingResponse,
-      ciFailingPRs,
-      ciBlockedPRs,
-      ciNotRunningPRs,
-      mergeConflictPRs,
-      needsRebasePRs,
-      missingRequiredFilesPRs,
-      incompleteChecklistPRs,
-      needsChangesPRs,
-      changesAddressedPRs,
+      needsAddressingPRs,
       waitingOnMaintainerPRs,
-      approachingDormant,
-      dormantPRs,
-      healthyPRs,
       recentlyClosedPRs,
       recentlyMergedPRs,
       shelvedPRs: [],
       autoUnshelvedPRs: [],
       summary: {
         totalActivePRs: prs.length,
-        totalNeedingAttention:
-          prsNeedingResponse.length +
-          needsChangesPRs.length +
-          ciFailingPRs.length +
-          mergeConflictPRs.length +
-          needsRebasePRs.length +
-          missingRequiredFilesPRs.length +
-          incompleteChecklistPRs.length,
+        totalNeedingAttention: needsAddressingPRs.length,
         totalMergedAllTime: stats.mergedPRs,
         mergeRate: parseFloat(stats.mergeRate),
       },

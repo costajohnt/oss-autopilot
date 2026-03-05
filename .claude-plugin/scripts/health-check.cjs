@@ -9,7 +9,7 @@
  * - If showHealthCheck is false in config, exits silently
  * - If no state exists, shows a first-run hint to run /oss
  * - If last digest is >7 days old, nudges the user to catch up
- * - Otherwise, outputs a compact one-liner: "OSS: 15 active PRs — 1 need response, 5 awaiting re-review (2h ago)"
+ * - Otherwise, outputs a compact one-liner: "OSS: 15 active PRs — 3 need addressing, 12 waiting on maintainer (2h ago)"
  *
  * Configuration: Set showHealthCheck to false to disable:
  *   node packages/core/dist/cli.bundle.cjs setup --set showHealthCheck=false
@@ -47,24 +47,16 @@ try {
     if (total === 0) process.exit(0);
     // Build status segments for a compact one-liner
     const segments = [];
-    const needResponse = (d.prsNeedingResponse || []).length;
-    const ciFailing = (d.ciFailingPRs || []).length;
-    const conflicts = (d.mergeConflictPRs || []).length;
-    const needsChanges = (d.needsChangesPRs || []).length;
-    const addressed = (d.changesAddressedPRs || []).length;
+    const needsAddressing = (d.needsAddressingPRs || []).length;
     const waitMaintainer = (d.waitingOnMaintainerPRs || []).length;
     // Actionable items first (you need to do something)
-    if (needResponse > 0) segments.push(needResponse + ' need response');
-    if (needsChanges > 0) segments.push(needsChanges + ' need changes');
-    if (ciFailing > 0) segments.push(ciFailing + ' CI failing');
-    if (conflicts > 0) segments.push(conflicts + ' conflicts');
+    if (needsAddressing > 0) segments.push(needsAddressing + ' need addressing');
     // Informational items (waiting on others)
-    if (addressed > 0) segments.push(addressed + ' awaiting re-review');
     if (waitMaintainer > 0) segments.push(waitMaintainer + ' waiting on maintainer');
     if (segments.length > 0) {
       console.log('OSS: ' + total + ' active PRs — ' + segments.join(', ') + ' (' + ageLabel + ')');
     } else {
-      console.log('OSS: ' + total + ' active PRs, all healthy (' + ageLabel + ')');
+      console.log('OSS: ' + total + ' active PRs, all on track (' + ageLabel + ')');
     }
   }
 } catch (e) {

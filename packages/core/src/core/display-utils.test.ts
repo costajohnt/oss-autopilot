@@ -19,16 +19,17 @@ function makePR(overrides: Parameters<typeof makeFetchedPR>[0] = {}) {
 }
 
 describe('computeDisplayLabel', () => {
-  it('should return [Healthy] for healthy status', () => {
-    const result = computeDisplayLabel(makePR({ status: 'healthy' }));
-    expect(result.displayLabel).toBe('[Healthy]');
-    expect(result.displayDescription).toBe('Everything looks good — normal review cycle');
+  it('should return [Waiting on Maintainer] for pending_review', () => {
+    const result = computeDisplayLabel(makePR({ status: 'waiting_on_maintainer', waitReason: 'pending_review' }));
+    expect(result.displayLabel).toBe('[Waiting on Maintainer]');
+    expect(result.displayDescription).toBe('Awaiting review');
   });
 
-  it('should return [Needs Response] for needs_response status', () => {
+  it('should return [Needs Response] for needs_response actionReason', () => {
     const result = computeDisplayLabel(
       makePR({
-        status: 'needs_response',
+        status: 'needs_addressing',
+        actionReason: 'needs_response',
         lastMaintainerComment: { author: 'maintainer', body: 'Fix this', createdAt: '2026-02-07T10:00:00Z' },
       }),
     );
@@ -36,10 +37,11 @@ describe('computeDisplayLabel', () => {
     expect(result.displayDescription).toBe('@maintainer commented');
   });
 
-  it('should return [CI Failing] for failing_ci status', () => {
+  it('should return [CI Failing] for failing_ci actionReason', () => {
     const result = computeDisplayLabel(
       makePR({
-        status: 'failing_ci',
+        status: 'needs_addressing',
+        actionReason: 'failing_ci',
         classifiedChecks: [{ name: 'unit-tests', category: 'actionable' }],
       }),
     );
@@ -47,43 +49,35 @@ describe('computeDisplayLabel', () => {
     expect(result.displayDescription).toContain('unit-tests');
   });
 
-  it('should return [Merge Conflict] for merge_conflict status', () => {
-    const result = computeDisplayLabel(makePR({ status: 'merge_conflict' }));
+  it('should return [Merge Conflict] for merge_conflict actionReason', () => {
+    const result = computeDisplayLabel(makePR({ status: 'needs_addressing', actionReason: 'merge_conflict' }));
     expect(result.displayLabel).toBe('[Merge Conflict]');
   });
 
-  it('should return [Dormant] for dormant status', () => {
-    const result = computeDisplayLabel(makePR({ status: 'dormant', daysSinceActivity: 45 }));
-    expect(result.displayLabel).toBe('[Dormant]');
-    expect(result.displayDescription).toBe('No activity for 45 days');
-  });
-
-  it('should return [Approaching Dormant] for approaching_dormant status', () => {
-    const result = computeDisplayLabel(makePR({ status: 'approaching_dormant', daysSinceActivity: 27 }));
-    expect(result.displayLabel).toBe('[Approaching Dormant]');
-    expect(result.displayDescription).toBe('No activity for 27 days');
-  });
-
-  it('should return [Waiting on Maintainer] for waiting_on_maintainer status', () => {
-    const result = computeDisplayLabel(makePR({ status: 'waiting_on_maintainer' }));
+  it('should return [Waiting on Maintainer] for pending_merge waitReason', () => {
+    const result = computeDisplayLabel(makePR({ status: 'waiting_on_maintainer', waitReason: 'pending_merge' }));
     expect(result.displayLabel).toBe('[Waiting on Maintainer]');
+    expect(result.displayDescription).toBe('Approved and CI passes — waiting for merge');
   });
 
-  it('should return [Changes Addressed] for changes_addressed status', () => {
+  it('should return [Waiting on Maintainer] for changes_addressed waitReason', () => {
     const result = computeDisplayLabel(
       makePR({
-        status: 'changes_addressed',
+        status: 'waiting_on_maintainer',
+        waitReason: 'changes_addressed',
+        hasUnrespondedComment: true,
         lastMaintainerComment: { author: 'reviewer', body: 'LGTM with changes', createdAt: '2026-02-07T10:00:00Z' },
       }),
     );
-    expect(result.displayLabel).toBe('[Changes Addressed]');
+    expect(result.displayLabel).toBe('[Waiting on Maintainer]');
     expect(result.displayDescription).toContain('@reviewer');
   });
 
-  it('should return [Incomplete Checklist] for incomplete_checklist status', () => {
+  it('should return [Incomplete Checklist] for incomplete_checklist actionReason', () => {
     const result = computeDisplayLabel(
       makePR({
-        status: 'incomplete_checklist',
+        status: 'needs_addressing',
+        actionReason: 'incomplete_checklist',
         checklistStats: { checked: 2, total: 5 },
       }),
     );
@@ -91,15 +85,16 @@ describe('computeDisplayLabel', () => {
     expect(result.displayDescription).toBe('2/5 items checked');
   });
 
-  it('should return [Needs Changes] for needs_changes status', () => {
-    const result = computeDisplayLabel(makePR({ status: 'needs_changes' }));
+  it('should return [Needs Changes] for needs_changes actionReason', () => {
+    const result = computeDisplayLabel(makePR({ status: 'needs_addressing', actionReason: 'needs_changes' }));
     expect(result.displayLabel).toBe('[Needs Changes]');
   });
 
-  it('should return non-actionable description for ci_blocked with classified checks', () => {
+  it('should return [CI Blocked] for ci_blocked waitReason with classified checks', () => {
     const result = computeDisplayLabel(
       makePR({
-        status: 'ci_blocked',
+        status: 'waiting_on_maintainer',
+        waitReason: 'ci_blocked',
         classifiedChecks: [
           { name: 'Facebook Internal - Linter', category: 'infrastructure' },
           { name: 'Vercel Deploy', category: 'fork_limitation' },
@@ -111,7 +106,7 @@ describe('computeDisplayLabel', () => {
   });
 
   it('should return default ci_blocked description when no classified checks', () => {
-    const result = computeDisplayLabel(makePR({ status: 'ci_blocked' }));
+    const result = computeDisplayLabel(makePR({ status: 'waiting_on_maintainer', waitReason: 'ci_blocked' }));
     expect(result.displayLabel).toBe('[CI Blocked]');
     expect(result.displayDescription).toBe('CI checks are failing but no action is needed from you');
   });

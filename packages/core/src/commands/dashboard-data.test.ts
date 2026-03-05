@@ -16,20 +16,8 @@ function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
   return {
     generatedAt: new Date().toISOString(),
     openPRs: [],
-    prsNeedingResponse: [],
-    ciFailingPRs: [],
-    ciBlockedPRs: [],
-    ciNotRunningPRs: [],
-    mergeConflictPRs: [],
-    needsRebasePRs: [],
-    missingRequiredFilesPRs: [],
-    incompleteChecklistPRs: [],
-    needsChangesPRs: [],
-    changesAddressedPRs: [],
+    needsAddressingPRs: [],
     waitingOnMaintainerPRs: [],
-    approachingDormant: [],
-    dormantPRs: [],
-    healthyPRs: [],
     recentlyClosedPRs: [],
     recentlyMergedPRs: [],
     shelvedPRs: [],
@@ -85,8 +73,8 @@ describe('buildDashboardStats', () => {
 
   it('counts shelvedPRs from digest.shelvedPRs array length', () => {
     const shelvedPRs: ShelvedPRRef[] = [
-      { number: 1, url: 'u1', title: 't1', repo: 'r/1', daysSinceActivity: 5, status: 'healthy' },
-      { number: 2, url: 'u2', title: 't2', repo: 'r/2', daysSinceActivity: 10, status: 'dormant' },
+      { number: 1, url: 'u1', title: 't1', repo: 'r/1', daysSinceActivity: 5, status: 'waiting_on_maintainer' },
+      { number: 2, url: 'u2', title: 't2', repo: 'r/2', daysSinceActivity: 10, status: 'needs_addressing' },
     ];
     const digest = makeDigest({ shelvedPRs });
     const stats = buildDashboardStats(digest, makeState());

@@ -16,6 +16,8 @@ import { warn } from './logger.js';
 import type {
   FetchedPR,
   FetchedPRStatus,
+  StalenessTier,
+  ActionReason,
   DailyDigest,
   ShelvedPRRef,
   MaintainerActionHint,
@@ -24,34 +26,38 @@ import type {
   CommentedIssue,
   CommentedIssueWithResponse,
 } from './types.js';
-import type { CapacityAssessment, ActionableIssue, ActionMenu, ActionMenuItem } from '../formatters/json.js';
+import type {
+  CapacityAssessment,
+  ActionableIssue,
+  ActionableIssueType,
+  ActionMenu,
+  ActionMenuItem,
+} from '../formatters/json.js';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 /**
- * Statuses indicating maintainer engagement or action needed from the contributor.
- * Used both for auto-unshelving shelved PRs and for counting critical issues in capacity assessment.
+ * Statuses indicating action needed from the contributor.
+ * Used for auto-unshelving shelved PRs.
  */
-export const CRITICAL_STATUSES: ReadonlySet<FetchedPRStatus> = new Set([
+export const CRITICAL_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_addressing']);
+
+/**
+ * ActionReason values that indicate high-priority issues blocking capacity.
+ * `incomplete_checklist` is excluded — it's actionable but not blocking.
+ * Used in capacity assessment to determine if user can take on new work.
+ */
+export const CRITICAL_ACTION_REASONS: ReadonlySet<ActionReason> = new Set([
   'needs_response',
   'needs_changes',
   'failing_ci',
   'merge_conflict',
 ]);
 
-/** Statuses indicating active maintainer engagement (reviews, feedback, merges). */
-export const ACTIVE_MAINTAINER_STATUSES: ReadonlySet<FetchedPRStatus> = new Set([
-  'healthy',
-  'waiting_on_maintainer',
-  'changes_addressed',
-  'needs_response',
-  'needs_changes',
-]);
-
-/** Statuses indicating staleness — maintainer comments during these statuses don't count as responsive. */
-export const STALE_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['dormant', 'approaching_dormant']);
+/** Staleness tiers indicating staleness — maintainer comments during these tiers don't count as responsive. */
+export const STALE_STATUSES: ReadonlySet<StalenessTier> = new Set(['dormant', 'approaching_dormant']);
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -109,16 +115,15 @@ export function groupPRsByRepo(prs: FetchedPR[]): RepoGroup[] {
 
 /**
  * Compute per-repo maintainer signals from observed open PR data.
- * - isResponsive: true if any PR in the repo has a maintainer comment and status
- *   is not in STALE_STATUSES
- * - hasActiveMaintainers: true if any PR in the repo has a status in ACTIVE_MAINTAINER_STATUSES
+ * - isResponsive: true if any PR in the repo has a maintainer comment and stalenessTier is active
+ * - hasActiveMaintainers: true if any non-dormant PR exists in the repo
  */
 export function computeRepoSignals(prs: FetchedPR[]): Map<string, ComputedRepoSignals> {
   const repoMap = buildRepoMap(prs, 'COMPUTE_SIGNALS');
   const result = new Map<string, ComputedRepoSignals>();
   for (const [repo, repoPRs] of repoMap) {
-    const isResponsive = repoPRs.some((pr) => pr.lastMaintainerComment && !STALE_STATUSES.has(pr.status));
-    const hasActiveMaintainers = repoPRs.some((pr) => ACTIVE_MAINTAINER_STATUSES.has(pr.status));
+    const isResponsive = repoPRs.some((pr) => pr.lastMaintainerComment && !STALE_STATUSES.has(pr.stalenessTier));
+    const hasActiveMaintainers = repoPRs.some((pr) => !STALE_STATUSES.has(pr.stalenessTier));
     result.set(repo, { isResponsive, hasActiveMaintainers });
   }
   return result;
@@ -134,7 +139,9 @@ export function assessCapacity(
   shelvedPRCount: number,
 ): CapacityAssessment {
   const activePRCount = activePRs.length;
-  const criticalIssueCount = activePRs.filter((pr) => CRITICAL_STATUSES.has(pr.status)).length;
+  const criticalIssueCount = activePRs.filter(
+    (pr) => pr.status === 'needs_addressing' && pr.actionReason && CRITICAL_ACTION_REASONS.has(pr.actionReason),
+  ).length;
 
   // Has capacity if: under PR limit AND no critical issues
   const underPRLimit = activePRCount < maxActivePRs;
@@ -176,42 +183,58 @@ export function assessCapacity(
  */
 export function collectActionableIssues(prs: FetchedPR[], snoozedUrls: Set<string> = new Set()): ActionableIssue[] {
   const issues: ActionableIssue[] = [];
+  const actionPRs = prs.filter((pr) => pr.status === 'needs_addressing');
 
-  // 1. Needs Response (highest priority - someone is waiting for you)
-  for (const pr of prs) {
-    if (pr.status === 'needs_response') {
-      issues.push({ type: 'needs_response', pr, label: '[Needs Response]' });
-    }
-  }
+  const reasonOrder: ActionReason[] = [
+    'needs_response',
+    'needs_changes',
+    'failing_ci',
+    'merge_conflict',
+    'incomplete_checklist',
+  ];
 
-  // 2. Needs Changes (review requested changes, contributor hasn't pushed new code)
-  for (const pr of prs) {
-    if (pr.status === 'needs_changes') {
-      issues.push({ type: 'needs_changes', pr, label: '[Needs Changes]' });
-    }
-  }
+  for (const reason of reasonOrder) {
+    for (const pr of actionPRs) {
+      if (pr.actionReason !== reason) continue;
+      if (reason === 'failing_ci' && snoozedUrls.has(pr.url)) continue;
 
-  // 3. CI Failing (include check names so user can distinguish real CI from validation bots)
-  // Skip snoozed PRs — their CI failures are known and temporarily dismissed
-  for (const pr of prs) {
-    if (pr.status === 'failing_ci' && !snoozedUrls.has(pr.url)) {
-      const checkInfo = pr.failingCheckNames.length > 0 ? ` (${pr.failingCheckNames.join(', ')})` : '';
-      issues.push({ type: 'ci_failing', pr, label: `[CI Failing${checkInfo}]` });
-    }
-  }
+      let label: string;
+      let type: ActionableIssueType;
+      switch (reason) {
+        case 'needs_response':
+          label = '[Needs Response]';
+          type = 'needs_response';
+          break;
+        case 'needs_changes':
+          label = '[Needs Changes]';
+          type = 'needs_changes';
+          break;
+        case 'failing_ci': {
+          const checkInfo = pr.failingCheckNames.length > 0 ? ` (${pr.failingCheckNames.join(', ')})` : '';
+          label = `[CI Failing${checkInfo}]`;
+          type = 'ci_failing';
+          break;
+        }
+        case 'merge_conflict':
+          label = '[Merge Conflict]';
+          type = 'merge_conflict';
+          break;
+        case 'incomplete_checklist': {
+          const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : '';
+          label = `[Incomplete Checklist${stats}]`;
+          type = 'incomplete_checklist';
+          break;
+        }
+        default:
+          // Defensive fallback for ActionReason values not explicitly handled
+          // above (e.g. ci_not_running, needs_rebase, missing_required_files).
+          // These aren't in reasonOrder today but this guards future additions.
+          warn('daily-logic', `Unhandled ActionReason "${reason}" for PR ${pr.url} — falling back to needs_response`);
+          label = `[${reason}]`;
+          type = 'needs_response';
+      }
 
-  // 4. Merge Conflicts
-  for (const pr of prs) {
-    if (pr.status === 'merge_conflict') {
-      issues.push({ type: 'merge_conflict', pr, label: '[Merge Conflict]' });
-    }
-  }
-
-  // 5. Incomplete Checklist
-  for (const pr of prs) {
-    if (pr.status === 'incomplete_checklist') {
-      const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : '';
-      issues.push({ type: 'incomplete_checklist', pr, label: `[Incomplete Checklist${stats}]` });
+      issues.push({ type, pr, label });
     }
   }
 
@@ -303,7 +326,7 @@ export function computeActionMenu(
  * Format a brief one-liner summary for the action-first flow
  */
 export function formatBriefSummary(digest: DailyDigest, issueCount: number, issueResponseCount: number = 0): string {
-  const attentionText = issueCount > 0 ? `${issueCount} need${issueCount === 1 ? 's' : ''} attention` : 'all healthy';
+  const attentionText = issueCount > 0 ? `${issueCount} need${issueCount === 1 ? 's' : ''} attention` : 'all on track';
   const issueReplyText =
     issueResponseCount > 0 ? ` | ${issueResponseCount} issue repl${issueResponseCount === 1 ? 'y' : 'ies'}` : '';
   return `\u{1F4CA} ${digest.summary.totalActivePRs} Active PRs | ${attentionText}${issueReplyText}`;
@@ -328,87 +351,22 @@ export function formatSummary(
   lines.push('\u2713 Dashboard generated \u2014 say "open dashboard" to view in browser');
   lines.push('');
 
-  // CI Failing
-  if (digest.ciFailingPRs.length > 0) {
-    lines.push('### \u274C CI Failing');
-    for (const pr of digest.ciFailingPRs) {
+  // Needs Addressing
+  if (digest.needsAddressingPRs.length > 0) {
+    lines.push('### \u274C Needs Addressing');
+    for (const pr of digest.needsAddressingPRs) {
       lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-      if (pr.failingCheckNames.length > 0) {
-        lines.push(`  \u2514\u2500 Failing: ${pr.failingCheckNames.join(', ')}`);
-      }
+      lines.push(`  \u2514\u2500 ${pr.displayLabel} ${pr.displayDescription}`);
     }
     lines.push('');
   }
 
-  // Merge Conflicts
-  if (digest.mergeConflictPRs.length > 0) {
-    lines.push('### \u26A0\uFE0F Merge Conflicts');
-    for (const pr of digest.mergeConflictPRs) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-    }
-    lines.push('');
-  }
-
-  // Needs Response
-  if (digest.prsNeedingResponse.length > 0) {
-    lines.push('### \u{1F4AC} Needs Response');
-    for (const pr of digest.prsNeedingResponse) {
-      const maintainer = pr.lastMaintainerComment?.author || 'maintainer';
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-      lines.push(`  \u2514\u2500 @${maintainer} commented`);
-      if (pr.maintainerActionHints.length > 0) {
-        const hintLabels = pr.maintainerActionHints.map(formatActionHint).join(', ');
-        lines.push(`  \u2514\u2500 Action: ${hintLabels}`);
-      }
-    }
-    lines.push('');
-  }
-
-  // Needs Changes (review requested changes, no new commits yet)
-  if (digest.needsChangesPRs.length > 0) {
-    lines.push('### \u{1F527} Needs Changes');
-    for (const pr of digest.needsChangesPRs) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-      lines.push(`  \u2514\u2500 Review requested changes \u2014 push commits to address`);
-    }
-    lines.push('');
-  }
-
-  // Incomplete Checklist
-  if (digest.incompleteChecklistPRs.length > 0) {
-    lines.push('### \u{1F4CB} Incomplete Checklist');
-    for (const pr of digest.incompleteChecklistPRs) {
-      const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total} checked)` : '';
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}${stats}`);
-    }
-    lines.push('');
-  }
-
-  // Changes Addressed (waiting for maintainer re-review)
-  if (digest.changesAddressedPRs.length > 0) {
-    lines.push('### \u{1F4E4} Changes Addressed');
-    for (const pr of digest.changesAddressedPRs) {
-      const maintainer = pr.lastMaintainerComment?.author || 'maintainer';
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-      lines.push(`  \u2514\u2500 Waiting for @${maintainer} to re-review`);
-    }
-    lines.push('');
-  }
-
-  // Waiting on Maintainer (approved, no action needed from user)
+  // Waiting on Maintainer
   if (digest.waitingOnMaintainerPRs.length > 0) {
     lines.push('### \u23F3 Waiting on Maintainer');
     for (const pr of digest.waitingOnMaintainerPRs) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title} (approved)`);
-    }
-    lines.push('');
-  }
-
-  // Healthy PRs
-  if (digest.healthyPRs.length > 0) {
-    lines.push('### \u2705 Healthy');
-    for (const pr of digest.healthyPRs) {
       lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
+      lines.push(`  \u2514\u2500 ${pr.displayDescription}`);
     }
     lines.push('');
   }
@@ -496,61 +454,11 @@ export function printDigest(
   );
   console.log(`  ${capacity.reason}\n`);
 
-  if (digest.ciFailingPRs.length > 0) {
-    console.log('\u274C CI Failing:');
-    for (const pr of digest.ciFailingPRs) {
+  if (digest.needsAddressingPRs.length > 0) {
+    console.log('\u274C Needs Addressing:');
+    for (const pr of digest.needsAddressingPRs) {
       console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
-      if (pr.failingCheckNames.length > 0) {
-        console.log(`    Failing: ${pr.failingCheckNames.join(', ')}`);
-      }
-    }
-    console.log('');
-  }
-
-  if (digest.mergeConflictPRs.length > 0) {
-    console.log('\u26A0\uFE0F Merge Conflicts:');
-    for (const pr of digest.mergeConflictPRs) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
-    }
-    console.log('');
-  }
-
-  if (digest.prsNeedingResponse.length > 0) {
-    console.log('\u{1F4AC} Needs Response:');
-    for (const pr of digest.prsNeedingResponse) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
-      if (pr.maintainerActionHints.length > 0) {
-        const hintLabels = pr.maintainerActionHints.map(formatActionHint).join(', ');
-        console.log(`    Action: ${hintLabels}`);
-      }
-    }
-    console.log('');
-  }
-
-  if (digest.needsChangesPRs.length > 0) {
-    console.log('\u{1F527} Needs Changes:');
-    for (const pr of digest.needsChangesPRs) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
-      console.log(`    Review requested changes \u2014 push commits to address`);
-    }
-    console.log('');
-  }
-
-  if (digest.incompleteChecklistPRs.length > 0) {
-    console.log('\u{1F4CB} Incomplete Checklist:');
-    for (const pr of digest.incompleteChecklistPRs) {
-      const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total} checked)` : '';
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}${stats}`);
-    }
-    console.log('');
-  }
-
-  if (digest.changesAddressedPRs.length > 0) {
-    console.log('\u{1F4E4} Changes Addressed:');
-    for (const pr of digest.changesAddressedPRs) {
-      const maintainer = pr.lastMaintainerComment?.author || 'maintainer';
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
-      console.log(`    Waiting for @${maintainer} to re-review`);
+      console.log(`    ${pr.displayLabel} ${pr.displayDescription}`);
     }
     console.log('');
   }
@@ -558,7 +466,8 @@ export function printDigest(
   if (digest.waitingOnMaintainerPRs.length > 0) {
     console.log('\u23F3 Waiting on Maintainer:');
     for (const pr of digest.waitingOnMaintainerPRs) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (approved)`);
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+      console.log(`    ${pr.displayDescription}`);
     }
     console.log('');
   }
