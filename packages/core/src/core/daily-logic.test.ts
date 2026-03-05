@@ -186,7 +186,7 @@ describe('collectActionableIssues', () => {
     expect(result).toEqual([]);
   });
 
-  it('should return empty array when all PRs are healthy', () => {
+  it('should return empty array when no PRs need addressing', () => {
     const prs = [
       makePR({ repo: 'owner/repo', number: 1, status: 'waiting_on_maintainer' }),
       makePR({ repo: 'owner/repo', number: 2, status: 'waiting_on_maintainer' }),

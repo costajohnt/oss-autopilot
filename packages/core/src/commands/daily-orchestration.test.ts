@@ -321,6 +321,30 @@ describe('executeDailyCheck() — PR partitioning', () => {
     expect(allGroupedPRUrls).toHaveLength(0);
   });
 
+  it('keeps dormant PR active when it needs addressing (motivating use case)', async () => {
+    // This is THE key scenario: a long-dormant PR gets new maintainer activity.
+    // It should surface as active, not be hidden in the shelved section.
+    const dormantButNeedy = makePR({
+      repo: 'owner/repo',
+      number: 6,
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      stalenessTier: 'dormant',
+    });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [dormantButNeedy], failures: [] });
+    mockGenerateDigest.mockReturnValue(makeDigest([dormantButNeedy]));
+    mockIsPRShelved.mockReturnValue(false);
+
+    const result = await executeDailyCheck('test-token');
+
+    // Should be active, NOT shelved
+    expect(result.digest.shelvedPRs).toHaveLength(0);
+    const allGroupedPRUrls = result.repoGroups.flatMap((g) => g.prUrls);
+    expect(allGroupedPRUrls).toContain(dormantButNeedy.url);
+    // Should appear in actionable issues (compact format uses prUrl)
+    expect(result.actionableIssues.some((i) => i.prUrl === dormantButNeedy.url)).toBe(true);
+  });
+
   it('puts explicitly shelved PRs into shelvedPRs section', async () => {
     const shelvedPR = makePR({ repo: 'owner/repo', number: 3, status: 'waiting_on_maintainer' });
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [shelvedPR], failures: [] });
@@ -358,9 +382,9 @@ describe('executeDailyCheck() — PR partitioning', () => {
   });
 
   it('keeps shelved PR with non-critical status in shelvedPRs (no auto-unshelf)', async () => {
-    const shelvedHealthy = makePR({ repo: 'owner/repo', number: 5, status: 'waiting_on_maintainer' });
-    mockFetchUserOpenPRs.mockResolvedValue({ prs: [shelvedHealthy], failures: [] });
-    mockGenerateDigest.mockReturnValue(makeDigest([shelvedHealthy]));
+    const shelvedWaiting = makePR({ repo: 'owner/repo', number: 5, status: 'waiting_on_maintainer' });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [shelvedWaiting], failures: [] });
+    mockGenerateDigest.mockReturnValue(makeDigest([shelvedWaiting]));
     mockIsPRShelved.mockReturnValue(true);
 
     const result = await executeDailyCheck('test-token');

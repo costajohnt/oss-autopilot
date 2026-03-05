@@ -70,7 +70,13 @@ export interface DetermineStatusInput {
   hasActionableCIFailure?: boolean;
 }
 
-/** Granular reason why a PR needs addressing (contributor's turn). */
+/**
+ * Granular reason why a PR needs addressing (contributor's turn).
+ * Active values (produced by determineStatus): needs_response, needs_changes,
+ * failing_ci, merge_conflict, incomplete_checklist.
+ * Reserved (display mappings exist but detection not yet wired): ci_not_running,
+ * needs_rebase, missing_required_files.
+ */
 export type ActionReason =
   | 'needs_response'
   | 'needs_changes'

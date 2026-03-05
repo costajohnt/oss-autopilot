@@ -9,7 +9,7 @@
  * - If showHealthCheck is false in config, exits silently
  * - If no state exists, shows a first-run hint to run /oss
  * - If last digest is >7 days old, nudges the user to catch up
- * - Otherwise, outputs a compact one-liner: "OSS: 15 active PRs — 1 need response, 5 awaiting re-review (2h ago)"
+ * - Otherwise, outputs a compact one-liner: "OSS: 15 active PRs — 3 need addressing, 12 waiting on maintainer (2h ago)"
  *
  * Configuration: Set showHealthCheck to false to disable:
  *   node packages/core/dist/cli.bundle.cjs setup --set showHealthCheck=false

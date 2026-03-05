@@ -176,11 +176,8 @@ export class PRMonitor {
 
     // Sort by status (needs_addressing first, then waiting_on_maintainer)
     prs.sort((a, b) => {
-      const statusPriority: Record<FetchedPRStatus, number> = {
-        needs_addressing: 0,
-        waiting_on_maintainer: 1,
-      };
-      return statusPriority[a.status] - statusPriority[b.status];
+      if (a.status === b.status) return 0;
+      return a.status === 'needs_addressing' ? -1 : 1;
     });
 
     return { prs, failures };
