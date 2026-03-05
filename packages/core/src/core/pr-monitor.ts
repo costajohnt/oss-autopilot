@@ -184,12 +184,11 @@ export class PRMonitor {
         needs_rebase: 6,
         missing_required_files: 7,
         incomplete_checklist: 8,
-        changes_addressed: 9,
-        approaching_dormant: 10,
-        dormant: 11,
-        waiting: 12,
-        waiting_on_maintainer: 13,
-        healthy: 14,
+        approaching_dormant: 9,
+        dormant: 10,
+        waiting: 11,
+        waiting_on_maintainer: 12,
+        healthy: 13,
       };
       return statusPriority[a.status] - statusPriority[b.status];
     });
@@ -267,7 +266,7 @@ export class PRMonitor {
 
     // Fetch CI status and (conditionally) latest commit date in parallel
     // We need the commit date when hasUnrespondedComment is true (to distinguish
-    // "needs_response" from "changes_addressed") OR when reviewDecision is "changes_requested"
+    // "needs_response" from "waiting_on_maintainer") OR when reviewDecision is "changes_requested"
     // (to detect needs_changes: review requested changes but no new commits pushed)
     const ciPromise = this.getCIStatus(owner, repo, ghPR.head.sha);
     const needCommitDate = hasUnrespondedComment || reviewDecision === 'changes_requested';
@@ -413,7 +412,7 @@ export class PRMonitor {
     const latestCommitDate =
       rawCommitDate && this.isContributorCommit(latestCommitAuthor, contributorUsername) ? rawCommitDate : undefined;
 
-    // Priority order: needs_response/needs_changes/changes_addressed > failing_ci > merge_conflict > incomplete_checklist > dormant > approaching_dormant > waiting_on_maintainer > waiting/healthy
+    // Priority order: needs_response/needs_changes > failing_ci > merge_conflict > incomplete_checklist > dormant > approaching_dormant > waiting_on_maintainer > waiting/healthy
 
     if (hasUnrespondedComment) {
       // If the contributor pushed a commit after the maintainer's comment,
@@ -431,9 +430,9 @@ export class PRMonitor {
           return 'needs_response';
         }
         if (ciStatus === 'failing' && hasActionableCIFailure) return 'failing_ci';
-        // Non-actionable CI failures (infrastructure, fork, auth) don't block changes_addressed —
+        // Non-actionable CI failures (infrastructure, fork, auth) don't block waiting_on_maintainer —
         // the contributor can't fix them, so the relevant status is "waiting for re-review" (#502)
-        return 'changes_addressed';
+        return 'waiting_on_maintainer';
       }
       return 'needs_response';
     }
@@ -444,10 +443,10 @@ export class PRMonitor {
       if (!latestCommitDate || latestCommitDate < latestChangesRequestedDate) {
         return 'needs_changes';
       }
-      // Commit is after review — changes have been addressed
+      // Commit is after review — changes have been addressed, waiting for re-review
       if (ciStatus === 'failing' && hasActionableCIFailure) return 'failing_ci';
-      // Non-actionable CI failures don't block changes_addressed (#502)
-      return 'changes_addressed';
+      // Non-actionable CI failures don't block waiting_on_maintainer (#502)
+      return 'waiting_on_maintainer';
     }
 
     if (ciStatus === 'failing') {
@@ -714,7 +713,6 @@ export class PRMonitor {
     const missingRequiredFilesPRs = prs.filter((pr) => pr.status === 'missing_required_files');
     const incompleteChecklistPRs = prs.filter((pr) => pr.status === 'incomplete_checklist');
     const needsChangesPRs = prs.filter((pr) => pr.status === 'needs_changes');
-    const changesAddressedPRs = prs.filter((pr) => pr.status === 'changes_addressed');
     const waitingOnMaintainerPRs = prs.filter((pr) => pr.status === 'waiting_on_maintainer');
 
     return {
@@ -729,7 +727,6 @@ export class PRMonitor {
       missingRequiredFilesPRs,
       incompleteChecklistPRs,
       needsChangesPRs,
-      changesAddressedPRs,
       waitingOnMaintainerPRs,
       approachingDormant,
       dormantPRs,

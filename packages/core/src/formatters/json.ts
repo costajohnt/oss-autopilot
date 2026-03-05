@@ -103,7 +103,6 @@ export interface DailyDigestCompact {
   missingRequiredFilesPRs: string[];
   incompleteChecklistPRs: string[];
   needsChangesPRs: string[];
-  changesAddressedPRs: string[];
   waitingOnMaintainerPRs: string[];
   approachingDormant: string[];
   dormantPRs: string[];
@@ -159,7 +158,6 @@ export function deduplicateDigest(digest: DailyDigest): DailyDigestCompact {
     missingRequiredFilesPRs: toUrls(digest.missingRequiredFilesPRs),
     incompleteChecklistPRs: toUrls(digest.incompleteChecklistPRs),
     needsChangesPRs: toUrls(digest.needsChangesPRs),
-    changesAddressedPRs: toUrls(digest.changesAddressedPRs),
     waitingOnMaintainerPRs: toUrls(digest.waitingOnMaintainerPRs),
     approachingDormant: toUrls(digest.approachingDormant),
     dormantPRs: toUrls(digest.dormantPRs),

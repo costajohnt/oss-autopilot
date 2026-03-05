@@ -69,15 +69,17 @@ describe('computeDisplayLabel', () => {
     expect(result.displayLabel).toBe('[Waiting on Maintainer]');
   });
 
-  it('should return [Changes Addressed] for changes_addressed status', () => {
+  it('should return [Waiting on Maintainer] with re-review context when changes addressed', () => {
     const result = computeDisplayLabel(
       makePR({
-        status: 'changes_addressed',
+        status: 'waiting_on_maintainer',
+        hasUnrespondedComment: true,
         lastMaintainerComment: { author: 'reviewer', body: 'LGTM with changes', createdAt: '2026-02-07T10:00:00Z' },
       }),
     );
-    expect(result.displayLabel).toBe('[Changes Addressed]');
+    expect(result.displayLabel).toBe('[Waiting on Maintainer]');
     expect(result.displayDescription).toContain('@reviewer');
+    expect(result.displayDescription).toContain('Changes addressed');
   });
 
   it('should return [Incomplete Checklist] for incomplete_checklist status', () => {

@@ -57,7 +57,6 @@ export function makeDailyDigest(overrides: Partial<DailyDigest> = {}): DailyDige
     missingRequiredFilesPRs: [],
     incompleteChecklistPRs: [],
     needsChangesPRs: [],
-    changesAddressedPRs: [],
     waitingOnMaintainerPRs: [],
     approachingDormant: [],
     dormantPRs: [],

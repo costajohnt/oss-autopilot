@@ -214,12 +214,12 @@ describe('PRMonitor CI status deduplication', () => {
   });
 });
 
-describe('PRMonitor changes_addressed detection', () => {
+describe('PRMonitor waiting_on_maintainer detection (changes addressed path)', () => {
   beforeEach(() => {
     mockOctokitInstance = {};
   });
 
-  it('should return changes_addressed when commit is newer than maintainer comment', () => {
+  it('should return waiting_on_maintainer when commit is newer than maintainer comment', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).determineStatus({
       ciStatus: 'passing',
@@ -234,7 +234,7 @@ describe('PRMonitor changes_addressed detection', () => {
       lastMaintainerCommentDate: '2026-02-07T10:00:00Z', // older
     });
 
-    expect(result).toBe('changes_addressed');
+    expect(result).toBe('waiting_on_maintainer');
   });
 
   it('should return needs_response when commit is older than maintainer comment', () => {
@@ -318,7 +318,7 @@ describe('PRMonitor commit author filtering (#547)', () => {
     expect(result).toBe('needs_response');
   });
 
-  it('should return changes_addressed when HEAD commit is by the contributor', () => {
+  it('should return waiting_on_maintainer when HEAD commit is by the contributor', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).determineStatus({
       ciStatus: 'passing',
@@ -335,7 +335,7 @@ describe('PRMonitor commit author filtering (#547)', () => {
       lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
     });
 
-    expect(result).toBe('changes_addressed');
+    expect(result).toBe('waiting_on_maintainer');
   });
 
   it('should return needs_response when commit is within 2 minutes of comment (race condition)', () => {
@@ -377,7 +377,7 @@ describe('PRMonitor commit author filtering (#547)', () => {
       lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
     });
 
-    expect(result).toBe('changes_addressed');
+    expect(result).toBe('waiting_on_maintainer');
   });
 
   it('should handle case-insensitive author comparison', () => {
@@ -397,7 +397,7 @@ describe('PRMonitor commit author filtering (#547)', () => {
       lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
     });
 
-    expect(result).toBe('changes_addressed');
+    expect(result).toBe('waiting_on_maintainer');
   });
 
   it('should return needs_changes when non-contributor commit after changes_requested review', () => {
@@ -447,7 +447,7 @@ describe('PRMonitor needs_changes detection', () => {
     expect(result).toBe('needs_changes');
   });
 
-  it('should return changes_addressed when commits pushed after changes_requested review', () => {
+  it('should return waiting_on_maintainer when commits pushed after changes_requested review', () => {
     const monitor = new PRMonitor('fake-token');
     const result = (monitor as any).determineStatus({
       ciStatus: 'passing',
@@ -463,7 +463,7 @@ describe('PRMonitor needs_changes detection', () => {
       latestChangesRequestedDate: '2026-02-08T11:52:22Z', // before commit
     });
 
-    expect(result).toBe('changes_addressed');
+    expect(result).toBe('waiting_on_maintainer');
   });
 
   it('should return needs_changes when no commit date available', () => {
@@ -620,7 +620,7 @@ describe('PRMonitor determineStatus — remaining paths', () => {
     ).toBe('needs_response');
   });
 
-  it('should return changes_addressed when commit is after both comment and review (#431)', () => {
+  it('should return waiting_on_maintainer when commit is after both comment and review (#431)', () => {
     expect(
       callDetermineStatus({
         hasUnrespondedComment: true,
@@ -628,7 +628,7 @@ describe('PRMonitor determineStatus — remaining paths', () => {
         lastMaintainerCommentDate: '2026-03-01T12:00:00Z',
         latestChangesRequestedDate: '2026-03-01T14:02:00Z', // before commit
       }),
-    ).toBe('changes_addressed');
+    ).toBe('waiting_on_maintainer');
   });
 });
 
@@ -1181,10 +1181,9 @@ describe('PRMonitor generateDigest', () => {
       makeDigestPR({ status: 'dormant', number: 5 }),
       makeDigestPR({ status: 'approaching_dormant', number: 6 }),
       makeDigestPR({ status: 'needs_changes', number: 7 }),
-      makeDigestPR({ status: 'changes_addressed', number: 8 }),
-      makeDigestPR({ status: 'waiting_on_maintainer', number: 9 }),
-      makeDigestPR({ status: 'incomplete_checklist', number: 10 }),
-      makeDigestPR({ status: 'waiting', number: 11 }),
+      makeDigestPR({ status: 'waiting_on_maintainer', number: 8 }),
+      makeDigestPR({ status: 'incomplete_checklist', number: 9 }),
+      makeDigestPR({ status: 'waiting', number: 10 }),
     ];
 
     const monitor = new PRMonitor('fake-token');
@@ -1193,13 +1192,12 @@ describe('PRMonitor generateDigest', () => {
     expect(digest.prsNeedingResponse.map((p) => p.number)).toEqual([1]);
     expect(digest.ciFailingPRs.map((p) => p.number)).toEqual([2]);
     expect(digest.mergeConflictPRs.map((p) => p.number)).toEqual([3]);
-    expect(digest.healthyPRs.map((p) => p.number)).toEqual([4, 11]); // healthy + waiting
+    expect(digest.healthyPRs.map((p) => p.number)).toEqual([4, 10]); // healthy + waiting
     expect(digest.dormantPRs.map((p) => p.number)).toEqual([5]);
     expect(digest.approachingDormant.map((p) => p.number)).toEqual([6]);
     expect(digest.needsChangesPRs.map((p) => p.number)).toEqual([7]);
-    expect(digest.changesAddressedPRs.map((p) => p.number)).toEqual([8]);
-    expect(digest.waitingOnMaintainerPRs.map((p) => p.number)).toEqual([9]);
-    expect(digest.incompleteChecklistPRs.map((p) => p.number)).toEqual([10]);
+    expect(digest.waitingOnMaintainerPRs.map((p) => p.number)).toEqual([8]);
+    expect(digest.incompleteChecklistPRs.map((p) => p.number)).toEqual([9]);
   });
 
   it('should calculate totalNeedingAttention correctly', () => {
@@ -1478,7 +1476,7 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
   });
 });
 
-describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
+describe('PRMonitor CI failure overrides waiting_on_maintainer (Issue #68)', () => {
   beforeEach(() => {
     mockOctokitInstance = {};
   });
@@ -1516,7 +1514,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
     return (monitor as any).determineStatus({ ...defaults, ...overrides });
   }
 
-  it('should return failing_ci when changes_addressed (comment path) and CI is failing', () => {
+  it('should return failing_ci when waiting_on_maintainer (comment path) and CI is failing', () => {
     expect(
       callDetermineStatus({
         ciStatus: 'failing',
@@ -1527,7 +1525,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
     ).toBe('failing_ci');
   });
 
-  it('should return failing_ci when changes_addressed (review path) and CI is failing', () => {
+  it('should return failing_ci when waiting_on_maintainer (review path) and CI is failing', () => {
     expect(
       callDetermineStatus({
         ciStatus: 'failing',
@@ -1538,7 +1536,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
     ).toBe('failing_ci');
   });
 
-  it('should still return changes_addressed when CI is passing (comment path regression)', () => {
+  it('should still return waiting_on_maintainer when CI is passing (comment path regression)', () => {
     expect(
       callDetermineStatus({
         ciStatus: 'passing',
@@ -1546,10 +1544,10 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
         latestCommitDate: '2026-02-08T12:00:00Z',
         lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
       }),
-    ).toBe('changes_addressed');
+    ).toBe('waiting_on_maintainer');
   });
 
-  it('should still return changes_addressed when CI is passing (review path regression)', () => {
+  it('should still return waiting_on_maintainer when CI is passing (review path regression)', () => {
     expect(
       callDetermineStatus({
         ciStatus: 'passing',
@@ -1557,7 +1555,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
         latestCommitDate: '2026-02-09T10:00:00Z',
         latestChangesRequestedDate: '2026-02-08T11:52:22Z',
       }),
-    ).toBe('changes_addressed');
+    ).toBe('waiting_on_maintainer');
   });
 
   it('should still prioritize needs_response over failing_ci', () => {
@@ -1565,7 +1563,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
       callDetermineStatus({
         ciStatus: 'failing',
         hasUnrespondedComment: true,
-        // No commit after maintainer comment → needs_response, not changes_addressed
+        // No commit after maintainer comment → needs_response, not waiting_on_maintainer
       }),
     ).toBe('needs_response');
   });
@@ -1628,7 +1626,7 @@ describe('PRMonitor non-actionable CI failures return ci_blocked (Issue #502)', 
     expect(callDetermineStatus({ ciStatus: 'failing', hasActionableCIFailure: true })).toBe('failing_ci');
   });
 
-  it('should return changes_addressed (comment path) when CI failing but not actionable', () => {
+  it('should return waiting_on_maintainer (comment path) when CI failing but not actionable', () => {
     expect(
       callDetermineStatus({
         ciStatus: 'failing',
@@ -1637,10 +1635,10 @@ describe('PRMonitor non-actionable CI failures return ci_blocked (Issue #502)', 
         latestCommitDate: '2026-02-08T12:00:00Z',
         lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
       }),
-    ).toBe('changes_addressed');
+    ).toBe('waiting_on_maintainer');
   });
 
-  it('should return changes_addressed (review path) when CI failing but not actionable', () => {
+  it('should return waiting_on_maintainer (review path) when CI failing but not actionable', () => {
     expect(
       callDetermineStatus({
         ciStatus: 'failing',
@@ -1649,7 +1647,7 @@ describe('PRMonitor non-actionable CI failures return ci_blocked (Issue #502)', 
         latestCommitDate: '2026-02-09T10:00:00Z',
         latestChangesRequestedDate: '2026-02-08T11:52:22Z',
       }),
-    ).toBe('changes_addressed');
+    ).toBe('waiting_on_maintainer');
   });
 
   it('should default hasActionableCIFailure to true for backward compatibility', () => {
@@ -2022,24 +2020,35 @@ describe('computeDisplayLabel (#79)', () => {
     expect(displayDescription).toBe('Required files are missing');
   });
 
-  it('should return [Changes Addressed] with author', () => {
+  it('should return [Waiting on Maintainer] with re-review description when changes addressed', () => {
     const { displayLabel, displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'changes_addressed',
+        status: 'waiting_on_maintainer',
+        hasUnrespondedComment: true,
         lastMaintainerComment: { author: 'reviewer', body: 'Changes needed', createdAt: '2026-02-07T10:00:00Z' },
       }),
     );
-    expect(displayLabel).toBe('[Changes Addressed]');
-    expect(displayDescription).toBe('Waiting for @reviewer to re-review');
+    expect(displayLabel).toBe('[Waiting on Maintainer]');
+    expect(displayDescription).toBe('Changes addressed — waiting for @reviewer to re-review');
   });
 
-  it('should return fallback for changes_addressed without comment', () => {
+  it('should return re-review description for waiting_on_maintainer with changes_requested review', () => {
     const { displayDescription } = computeDisplayLabel(
       makePR({
-        status: 'changes_addressed',
+        status: 'waiting_on_maintainer',
+        reviewDecision: 'changes_requested',
       }),
     );
-    expect(displayDescription).toBe('Waiting for maintainer re-review');
+    expect(displayDescription).toBe('Changes addressed — awaiting re-review');
+  });
+
+  it('should return approved description for waiting_on_maintainer without changes context', () => {
+    const { displayDescription } = computeDisplayLabel(
+      makePR({
+        status: 'waiting_on_maintainer',
+      }),
+    );
+    expect(displayDescription).toBe('Approved and CI passes — waiting for merge');
   });
 
   it('should return [Dormant] with days count', () => {
@@ -2086,7 +2095,6 @@ describe('computeDisplayLabel (#79)', () => {
       'missing_required_files',
       'incomplete_checklist',
       'needs_changes',
-      'changes_addressed',
       'waiting',
       'waiting_on_maintainer',
       'healthy',

@@ -72,20 +72,21 @@ const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr:
         ? `${pr.checklistStats.checked}/${pr.checklistStats.total} items checked`
         : 'PR body has unchecked required checkboxes',
   },
-  changes_addressed: {
-    label: '[Changes Addressed]',
-    description: (pr) =>
-      pr.lastMaintainerComment
-        ? `Waiting for @${pr.lastMaintainerComment.author} to re-review`
-        : 'Waiting for maintainer re-review',
-  },
   waiting: {
     label: '[Waiting]',
     description: () => 'CI pending or awaiting review',
   },
   waiting_on_maintainer: {
     label: '[Waiting on Maintainer]',
-    description: () => 'Approved and CI passes — waiting for merge',
+    description: (pr) => {
+      if (pr.hasUnrespondedComment && pr.lastMaintainerComment) {
+        return `Changes addressed — waiting for @${pr.lastMaintainerComment.author} to re-review`;
+      }
+      if (pr.reviewDecision === 'changes_requested') {
+        return 'Changes addressed — awaiting re-review';
+      }
+      return 'Approved and CI passes — waiting for merge';
+    },
   },
   healthy: {
     label: '[Healthy]',

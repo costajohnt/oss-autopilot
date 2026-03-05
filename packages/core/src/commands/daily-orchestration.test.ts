@@ -118,7 +118,6 @@ function makeDigest(prs: FetchedPR[] = []): DailyDigest {
     missingRequiredFilesPRs: [],
     incompleteChecklistPRs: [],
     needsChangesPRs: prs.filter((p) => p.status === 'needs_changes'),
-    changesAddressedPRs: [],
     waitingOnMaintainerPRs: [],
     approachingDormant: [],
     dormantPRs: prs.filter((p) => p.status === 'dormant'),

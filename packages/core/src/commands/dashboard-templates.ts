@@ -47,7 +47,6 @@ export function generateDashboardHtml(
 
   // Waiting on Others: informational, no contributor action needed
   const waitingOnOthers = [
-    ...(digest.changesAddressedPRs || []),
     ...(digest.waitingOnMaintainerPRs || []),
     ...(digest.ciBlockedPRs || []),
     ...(digest.ciNotRunningPRs || []),
@@ -150,7 +149,6 @@ export function generateDashboardHtml(
         <option value="needs-changes">Needs Changes</option>
         <option value="ci-failing">CI Failing</option>
         <option value="conflict">Merge Conflict</option>
-        <option value="changes-addressed">Changes Addressed</option>
         <option value="waiting-maintainer">Waiting on Maintainer</option>
         <option value="ci-blocked">CI Blocked</option>
         <option value="ci-not-running">CI Not Running</option>
@@ -252,14 +250,20 @@ export function generateDashboardHtml(
       </div>
       <div class="health-items">
         ${renderHealthItems(
-          digest.changesAddressedPRs || [],
-          'changes-addressed',
-          SVG_ICONS.checkCircle,
-          'Changes Addressed',
-          (pr) =>
-            `Awaiting re-review${pr.lastMaintainerComment ? ` from @${escapeHtml(pr.lastMaintainerComment.author)}` : ''}`,
+          digest.waitingOnMaintainerPRs || [],
+          'waiting-maintainer',
+          SVG_ICONS.clock,
+          'Waiting on Maintainer',
+          (pr) => {
+            if (pr.hasUnrespondedComment && pr.lastMaintainerComment) {
+              return `Changes addressed — waiting for @${escapeHtml(pr.lastMaintainerComment.author)} to re-review`;
+            }
+            if (pr.reviewDecision === 'changes_requested') {
+              return 'Changes addressed — awaiting re-review';
+            }
+            return titleMeta(pr);
+          },
         )}
-        ${renderHealthItems(digest.waitingOnMaintainerPRs || [], 'waiting-maintainer', SVG_ICONS.clock, 'Waiting on Maintainer', titleMeta)}
         ${renderHealthItems(digest.ciBlockedPRs || [], 'ci-blocked', SVG_ICONS.lock, 'CI Blocked', titleMeta)}
         ${renderHealthItems(digest.ciNotRunningPRs || [], 'ci-not-running', SVG_ICONS.infoCircle, 'CI Not Running', titleMeta)}
       </div>
@@ -471,7 +475,7 @@ export function generateDashboardHtml(
             const hasIssues =
               pr.ciStatus === 'failing' ||
               pr.hasMergeConflict ||
-              (pr.hasUnrespondedComment && pr.status !== 'changes_addressed') ||
+              (pr.hasUnrespondedComment && pr.status !== 'waiting_on_maintainer') ||
               pr.status === 'needs_changes';
             const isStale = pr.daysSinceActivity >= approachingDormantDays;
             const itemClass = hasIssues ? 'has-issues' : isStale ? 'stale' : '';
@@ -481,13 +485,11 @@ export function generateDashboardHtml(
                 ? 'ci-failing'
                 : pr.hasMergeConflict
                   ? 'conflict'
-                  : pr.hasUnrespondedComment && pr.status !== 'changes_addressed' && pr.status !== 'failing_ci'
+                  : pr.hasUnrespondedComment && pr.status !== 'waiting_on_maintainer' && pr.status !== 'failing_ci'
                     ? 'needs-response'
                     : pr.status === 'needs_changes'
                       ? 'needs-changes'
-                      : pr.status === 'changes_addressed'
-                        ? 'changes-addressed'
-                        : 'active';
+                      : 'active';
 
             return `
         <div class="pr-item ${itemClass}" data-status="${prStatus}" data-repo="${escapeHtml(pr.repo)}" data-title="${escapeHtml(pr.title.toLowerCase())}">
@@ -520,9 +522,9 @@ export function generateDashboardHtml(
               ${pr.ciStatus === 'passing' ? '<span class="badge badge-passing">CI Passing</span>' : ''}
               ${pr.ciStatus === 'pending' ? '<span class="badge badge-pending">CI Pending</span>' : ''}
               ${pr.hasMergeConflict ? '<span class="badge badge-conflict">Merge Conflict</span>' : ''}
-              ${pr.hasUnrespondedComment && pr.status === 'changes_addressed' ? '<span class="badge badge-changes-addressed">Changes Addressed</span>' : ''}
-              ${pr.hasUnrespondedComment && pr.status !== 'changes_addressed' && pr.status !== 'failing_ci' ? '<span class="badge badge-needs-response">Needs Response</span>' : ''}
-              ${pr.reviewDecision === 'changes_requested' ? '<span class="badge badge-changes-requested">Changes Requested</span>' : ''}
+              ${pr.status === 'waiting_on_maintainer' && (pr.hasUnrespondedComment || pr.reviewDecision === 'changes_requested') ? '<span class="badge badge-changes-addressed">Changes Addressed</span>' : ''}
+              ${pr.hasUnrespondedComment && pr.status !== 'waiting_on_maintainer' && pr.status !== 'failing_ci' ? '<span class="badge badge-needs-response">Needs Response</span>' : ''}
+              ${pr.reviewDecision === 'changes_requested' && pr.status !== 'waiting_on_maintainer' ? '<span class="badge badge-changes-requested">Changes Requested</span>' : ''}
               ${isStale ? `<span class="badge badge-stale">${pr.daysSinceActivity}d inactive</span>` : ''}
             </div>
           </div>

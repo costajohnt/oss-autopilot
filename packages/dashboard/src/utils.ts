@@ -28,7 +28,6 @@ export function statusColor(status: FetchedPRStatus | string): string {
     case 'needs_rebase':
     case 'incomplete_checklist':
       return 'var(--accent-error)';
-    case 'changes_addressed':
     case 'waiting_on_maintainer':
     case 'ci_blocked':
     case 'ci_not_running':

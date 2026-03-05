@@ -24,7 +24,6 @@ const STATUS_LABELS: Record<FetchedPRStatus, string> = {
   missing_required_files: 'Missing Required Files',
   incomplete_checklist: 'Incomplete Checklist',
   needs_changes: 'Needs Changes',
-  changes_addressed: 'Changes Addressed',
   waiting: 'Waiting',
   waiting_on_maintainer: 'Waiting on Maintainer',
   healthy: 'Healthy',

@@ -63,10 +63,9 @@ describe('ACTIVE_MAINTAINER_STATUSES', () => {
   it('should contain expected active maintainer statuses', () => {
     expect(ACTIVE_MAINTAINER_STATUSES.has('healthy')).toBe(true);
     expect(ACTIVE_MAINTAINER_STATUSES.has('waiting_on_maintainer')).toBe(true);
-    expect(ACTIVE_MAINTAINER_STATUSES.has('changes_addressed')).toBe(true);
     expect(ACTIVE_MAINTAINER_STATUSES.has('needs_response')).toBe(true);
     expect(ACTIVE_MAINTAINER_STATUSES.has('needs_changes')).toBe(true);
-    expect(ACTIVE_MAINTAINER_STATUSES.size).toBe(5);
+    expect(ACTIVE_MAINTAINER_STATUSES.size).toBe(4);
   });
 });
 

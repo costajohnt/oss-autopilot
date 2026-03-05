@@ -120,7 +120,6 @@ function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
     missingRequiredFilesPRs: [],
     incompleteChecklistPRs: [],
     needsChangesPRs: [],
-    changesAddressedPRs: [],
     waitingOnMaintainerPRs: [],
     approachingDormant: [],
     dormantPRs: [],

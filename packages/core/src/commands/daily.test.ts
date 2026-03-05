@@ -258,7 +258,7 @@ describe('computeRepoSignals', () => {
   });
 
   it('should mark repo as having active maintainers for review-related statuses', () => {
-    const statuses = ['waiting_on_maintainer', 'changes_addressed', 'needs_response', 'needs_changes'] as const;
+    const statuses = ['waiting_on_maintainer', 'needs_response', 'needs_changes'] as const;
     for (const status of statuses) {
       const prs = [makePR({ repo: `owner/${status}`, status })];
       const result = computeRepoSignals(prs);
@@ -447,7 +447,6 @@ function makeDigest(prs: FetchedPR[]): DailyDigest {
     missingRequiredFilesPRs: [],
     incompleteChecklistPRs: [],
     needsChangesPRs: prs.filter((p) => p.status === 'needs_changes'),
-    changesAddressedPRs: prs.filter((p) => p.status === 'changes_addressed'),
     waitingOnMaintainerPRs: [],
     approachingDormant: [],
     dormantPRs: [],

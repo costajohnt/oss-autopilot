@@ -45,7 +45,6 @@ export const CRITICAL_STATUSES: ReadonlySet<FetchedPRStatus> = new Set([
 export const ACTIVE_MAINTAINER_STATUSES: ReadonlySet<FetchedPRStatus> = new Set([
   'healthy',
   'waiting_on_maintainer',
-  'changes_addressed',
   'needs_response',
   'needs_changes',
 ]);
@@ -384,22 +383,20 @@ export function formatSummary(
     lines.push('');
   }
 
-  // Changes Addressed (waiting for maintainer re-review)
-  if (digest.changesAddressedPRs.length > 0) {
-    lines.push('### \u{1F4E4} Changes Addressed');
-    for (const pr of digest.changesAddressedPRs) {
-      const maintainer = pr.lastMaintainerComment?.author || 'maintainer';
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-      lines.push(`  \u2514\u2500 Waiting for @${maintainer} to re-review`);
-    }
-    lines.push('');
-  }
-
-  // Waiting on Maintainer (approved, no action needed from user)
+  // Waiting on Maintainer (approved or changes addressed, no action needed from user)
   if (digest.waitingOnMaintainerPRs.length > 0) {
     lines.push('### \u23F3 Waiting on Maintainer');
     for (const pr of digest.waitingOnMaintainerPRs) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title} (approved)`);
+      if (pr.hasUnrespondedComment && pr.lastMaintainerComment) {
+        const maintainer = pr.lastMaintainerComment.author;
+        lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
+        lines.push(`  \u2514\u2500 Changes addressed — waiting for @${maintainer} to re-review`);
+      } else if (pr.reviewDecision === 'changes_requested') {
+        lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
+        lines.push(`  \u2514\u2500 Changes addressed — awaiting re-review`);
+      } else {
+        lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title} (approved)`);
+      }
     }
     lines.push('');
   }
@@ -545,20 +542,18 @@ export function printDigest(
     console.log('');
   }
 
-  if (digest.changesAddressedPRs.length > 0) {
-    console.log('\u{1F4E4} Changes Addressed:');
-    for (const pr of digest.changesAddressedPRs) {
-      const maintainer = pr.lastMaintainerComment?.author || 'maintainer';
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
-      console.log(`    Waiting for @${maintainer} to re-review`);
-    }
-    console.log('');
-  }
-
   if (digest.waitingOnMaintainerPRs.length > 0) {
     console.log('\u23F3 Waiting on Maintainer:');
     for (const pr of digest.waitingOnMaintainerPRs) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (approved)`);
+      if (pr.hasUnrespondedComment && pr.lastMaintainerComment) {
+        console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+        console.log(`    Changes addressed \u2014 waiting for @${pr.lastMaintainerComment.author} to re-review`);
+      } else if (pr.reviewDecision === 'changes_requested') {
+        console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
+        console.log(`    Changes addressed \u2014 awaiting re-review`);
+      } else {
+        console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (approved)`);
+      }
     }
     console.log('');
   }

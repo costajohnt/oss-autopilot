@@ -86,9 +86,9 @@ export interface DetermineStatusInput {
  *
  * **Waiting (no action needed right now):**
  * - `ci_blocked` — All failing CI checks are non-actionable (infrastructure, fork limitation, auth gate)
- * - `changes_addressed` — Contributor pushed commits after reviewer feedback; awaiting re-review
  * - `waiting` — CI is pending or no specific action needed
- * - `waiting_on_maintainer` — PR is approved and CI passes; waiting for maintainer to merge
+ * - `waiting_on_maintainer` — Ball is in the maintainer's court (approved and waiting for merge,
+ *   OR contributor pushed commits after reviewer feedback and awaiting re-review)
  * - `healthy` — Everything looks good; normal review cycle
  *
  * **Staleness warnings:**
@@ -105,7 +105,6 @@ export type FetchedPRStatus =
   | 'missing_required_files'
   | 'incomplete_checklist'
   | 'needs_changes'
-  | 'changes_addressed'
   | 'waiting'
   | 'waiting_on_maintainer'
   | 'healthy'
@@ -409,7 +408,6 @@ export interface DailyDigest {
   missingRequiredFilesPRs: FetchedPR[];
   incompleteChecklistPRs: FetchedPR[];
   needsChangesPRs: FetchedPR[];
-  changesAddressedPRs: FetchedPR[];
   waitingOnMaintainerPRs: FetchedPR[];
   /** PRs with no activity for 25+ days (configurable via `approachingDormantDays`). */
   approachingDormant: FetchedPR[];

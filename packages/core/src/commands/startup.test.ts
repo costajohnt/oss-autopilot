@@ -294,7 +294,6 @@ describe('runStartup behavior', () => {
         missingRequiredFilesPRs: [],
         incompleteChecklistPRs: [],
         needsChangesPRs: [],
-        changesAddressedPRs: [],
         waitingOnMaintainerPRs: [],
         approachingDormant: [],
         dormantPRs: [],

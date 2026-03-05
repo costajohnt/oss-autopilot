@@ -49,7 +49,7 @@ describe('statusColor', () => {
     expect(statusColor(status)).toBe('var(--accent-error)');
   });
 
-  it.each(['changes_addressed', 'waiting_on_maintainer', 'ci_blocked', 'ci_not_running', 'waiting'] as const)(
+  it.each(['waiting_on_maintainer', 'ci_blocked', 'ci_not_running', 'waiting'] as const)(
     'returns info color for waiting status "%s"',
     (status) => {
       expect(statusColor(status)).toBe('var(--accent-info)');
