@@ -94,20 +94,8 @@ export interface DailyDigestCompact {
   openPRs: FetchedPR[];
 
   // Category arrays: PR URLs referencing openPRs (each is a subset filtered by status)
-  prsNeedingResponse: string[];
-  ciFailingPRs: string[];
-  ciBlockedPRs: string[];
-  ciNotRunningPRs: string[];
-  mergeConflictPRs: string[];
-  needsRebasePRs: string[];
-  missingRequiredFilesPRs: string[];
-  incompleteChecklistPRs: string[];
-  needsChangesPRs: string[];
-  changesAddressedPRs: string[];
+  needsAddressingPRs: string[];
   waitingOnMaintainerPRs: string[];
-  approachingDormant: string[];
-  dormantPRs: string[];
-  healthyPRs: string[];
 
   recentlyClosedPRs: DailyDigest['recentlyClosedPRs'];
   recentlyMergedPRs: DailyDigest['recentlyMergedPRs'];
@@ -150,20 +138,8 @@ export function deduplicateDigest(digest: DailyDigest): DailyDigestCompact {
   return {
     generatedAt: digest.generatedAt,
     openPRs: digest.openPRs,
-    prsNeedingResponse: toUrls(digest.prsNeedingResponse),
-    ciFailingPRs: toUrls(digest.ciFailingPRs),
-    ciBlockedPRs: toUrls(digest.ciBlockedPRs),
-    ciNotRunningPRs: toUrls(digest.ciNotRunningPRs),
-    mergeConflictPRs: toUrls(digest.mergeConflictPRs),
-    needsRebasePRs: toUrls(digest.needsRebasePRs),
-    missingRequiredFilesPRs: toUrls(digest.missingRequiredFilesPRs),
-    incompleteChecklistPRs: toUrls(digest.incompleteChecklistPRs),
-    needsChangesPRs: toUrls(digest.needsChangesPRs),
-    changesAddressedPRs: toUrls(digest.changesAddressedPRs),
+    needsAddressingPRs: toUrls(digest.needsAddressingPRs),
     waitingOnMaintainerPRs: toUrls(digest.waitingOnMaintainerPRs),
-    approachingDormant: toUrls(digest.approachingDormant),
-    dormantPRs: toUrls(digest.dormantPRs),
-    healthyPRs: toUrls(digest.healthyPRs),
     recentlyClosedPRs: digest.recentlyClosedPRs,
     recentlyMergedPRs: digest.recentlyMergedPRs,
     shelvedPRs: digest.shelvedPRs,

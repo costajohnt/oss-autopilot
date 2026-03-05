@@ -1,18 +1,15 @@
 /**
  * Display Utils - Human-readable display label computation for PR statuses.
  * Extracted from PRMonitor to isolate presentation logic (#263).
+ *
+ * Uses two reason-keyed maps (ACTION_DISPLAY / WAIT_DISPLAY) instead of a
+ * single status-keyed map, reflecting the 2-status taxonomy where the
+ * granular reason lives in `actionReason` / `waitReason`.
  */
 
-import { FetchedPR, FetchedPRStatus } from './types.js';
-import { warn } from './logger.js';
+import { FetchedPR, ActionReason, WaitReason } from './types.js';
 
-const MODULE = 'display-utils';
-
-/**
- * Deterministic mapping from FetchedPRStatus -> human-readable display label (#79).
- * Ensures consistent label text across sessions — agents no longer derive these.
- */
-const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr: FetchedPR) => string }> = {
+const ACTION_DISPLAY: Record<ActionReason, { label: string; description: (pr: FetchedPR) => string }> = {
   needs_response: {
     label: '[Needs Response]',
     description: (pr) =>
@@ -37,6 +34,50 @@ const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr:
       return 'One or more CI checks are failing';
     },
   },
+  merge_conflict: {
+    label: '[Merge Conflict]',
+    description: () => 'PR has merge conflicts with the base branch',
+  },
+  incomplete_checklist: {
+    label: '[Incomplete Checklist]',
+    description: (pr) =>
+      pr.checklistStats
+        ? `${pr.checklistStats.checked}/${pr.checklistStats.total} items checked`
+        : 'PR body has unchecked required checkboxes',
+  },
+  ci_not_running: {
+    label: '[CI Not Running]',
+    description: () => 'No CI checks have been triggered',
+  },
+  needs_rebase: {
+    label: '[Needs Rebase]',
+    description: () => 'PR branch is significantly behind upstream',
+  },
+  missing_required_files: {
+    label: '[Missing Files]',
+    description: (pr) =>
+      pr.missingRequiredFiles ? `Missing: ${pr.missingRequiredFiles.join(', ')}` : 'Required files are missing',
+  },
+};
+
+const WAIT_DISPLAY: Record<WaitReason, { label: string; description: (pr: FetchedPR) => string }> = {
+  pending_review: {
+    label: '[Waiting on Maintainer]',
+    description: () => 'Awaiting review',
+  },
+  pending_merge: {
+    label: '[Waiting on Maintainer]',
+    description: () => 'Approved and CI passes — waiting for merge',
+  },
+  changes_addressed: {
+    label: '[Waiting on Maintainer]',
+    description: (pr) => {
+      if (pr.hasUnrespondedComment && pr.lastMaintainerComment) {
+        return `Changes addressed — waiting for @${pr.lastMaintainerComment.author} to re-review`;
+      }
+      return 'Changes addressed — awaiting re-review';
+    },
+  },
   ci_blocked: {
     label: '[CI Blocked]',
     description: (pr) => {
@@ -48,68 +89,21 @@ const STATUS_DISPLAY: Record<FetchedPRStatus, { label: string; description: (pr:
       return 'CI checks are failing but no action is needed from you';
     },
   },
-  ci_not_running: {
-    label: '[CI Not Running]',
-    description: () => 'No CI checks have been triggered',
-  },
-  merge_conflict: {
-    label: '[Merge Conflict]',
-    description: () => 'PR has merge conflicts with the base branch',
-  },
-  needs_rebase: {
-    label: '[Needs Rebase]',
-    description: () => 'PR branch is significantly behind upstream',
-  },
-  missing_required_files: {
-    label: '[Missing Files]',
-    description: (pr) =>
-      pr.missingRequiredFiles ? `Missing: ${pr.missingRequiredFiles.join(', ')}` : 'Required files are missing',
-  },
-  incomplete_checklist: {
-    label: '[Incomplete Checklist]',
-    description: (pr) =>
-      pr.checklistStats
-        ? `${pr.checklistStats.checked}/${pr.checklistStats.total} items checked`
-        : 'PR body has unchecked required checkboxes',
-  },
-  changes_addressed: {
-    label: '[Changes Addressed]',
-    description: (pr) =>
-      pr.lastMaintainerComment
-        ? `Waiting for @${pr.lastMaintainerComment.author} to re-review`
-        : 'Waiting for maintainer re-review',
-  },
-  waiting: {
-    label: '[Waiting]',
-    description: () => 'CI pending or awaiting review',
-  },
-  waiting_on_maintainer: {
-    label: '[Waiting on Maintainer]',
-    description: () => 'Approved and CI passes — waiting for merge',
-  },
-  healthy: {
-    label: '[Healthy]',
-    description: () => 'Everything looks good — normal review cycle',
-  },
-  approaching_dormant: {
-    label: '[Approaching Dormant]',
-    description: (pr) => `No activity for ${pr.daysSinceActivity} days`,
-  },
-  dormant: {
-    label: '[Dormant]',
-    description: (pr) => `No activity for ${pr.daysSinceActivity} days`,
-  },
 };
 
 /** Compute display label and description for a FetchedPR (#79). */
 export function computeDisplayLabel(pr: FetchedPR): { displayLabel: string; displayDescription: string } {
-  const entry = STATUS_DISPLAY[pr.status];
-  if (!entry) {
-    warn(MODULE, `Unknown status "${pr.status}" for PR #${pr.number} (${pr.url})`);
-    return { displayLabel: `[${pr.status}]`, displayDescription: 'Unknown status' };
+  if (pr.status === 'needs_addressing' && pr.actionReason) {
+    const entry = ACTION_DISPLAY[pr.actionReason];
+    if (entry) return { displayLabel: entry.label, displayDescription: entry.description(pr) };
   }
-  return {
-    displayLabel: entry.label,
-    displayDescription: entry.description(pr),
-  };
+  if (pr.status === 'waiting_on_maintainer' && pr.waitReason) {
+    const entry = WAIT_DISPLAY[pr.waitReason];
+    if (entry) return { displayLabel: entry.label, displayDescription: entry.description(pr) };
+  }
+  // Fallback for missing reason
+  if (pr.status === 'needs_addressing') {
+    return { displayLabel: '[Needs Addressing]', displayDescription: 'Action required' };
+  }
+  return { displayLabel: '[Waiting on Maintainer]', displayDescription: 'Awaiting maintainer action' };
 }
