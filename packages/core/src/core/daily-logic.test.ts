@@ -18,7 +18,6 @@ import {
   groupPRsByRepo,
   computeActionMenu,
   CRITICAL_STATUSES,
-  ACTIVE_MAINTAINER_STATUSES,
   STALE_STATUSES,
 } from './daily-logic.js';
 import type { FetchedPR, MaintainerActionHint } from './types.js';
@@ -51,14 +50,6 @@ describe('CRITICAL_STATUSES', () => {
 
   it('should not contain non-critical statuses', () => {
     expect(CRITICAL_STATUSES.has('waiting_on_maintainer')).toBe(false);
-  });
-});
-
-describe('ACTIVE_MAINTAINER_STATUSES', () => {
-  it('should contain expected active maintainer statuses', () => {
-    expect(ACTIVE_MAINTAINER_STATUSES.has('waiting_on_maintainer')).toBe(true);
-    expect(ACTIVE_MAINTAINER_STATUSES.has('needs_addressing')).toBe(true);
-    expect(ACTIVE_MAINTAINER_STATUSES.size).toBe(2);
   });
 });
 

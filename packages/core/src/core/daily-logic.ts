@@ -39,19 +39,21 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
- * Statuses indicating maintainer engagement or action needed from the contributor.
- * Used both for auto-unshelving shelved PRs and for counting critical issues in capacity assessment.
+ * Statuses indicating action needed from the contributor.
+ * Used for auto-unshelving shelved PRs.
  */
 export const CRITICAL_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_addressing']);
 
 /**
- * Statuses indicating active maintainer engagement (reviews, feedback, merges).
- * With only 2 statuses both are included — the discriminating power comes from
- * checking `stalenessTier` separately (see `computeRepoSignals`).
+ * ActionReason values that indicate high-priority issues blocking capacity.
+ * `incomplete_checklist` is excluded — it's actionable but not blocking.
+ * Used in capacity assessment to determine if user can take on new work.
  */
-export const ACTIVE_MAINTAINER_STATUSES: ReadonlySet<FetchedPRStatus> = new Set([
-  'waiting_on_maintainer',
-  'needs_addressing',
+export const CRITICAL_ACTION_REASONS: ReadonlySet<ActionReason> = new Set([
+  'needs_response',
+  'needs_changes',
+  'failing_ci',
+  'merge_conflict',
 ]);
 
 /** Staleness tiers indicating staleness — maintainer comments during these tiers don't count as responsive. */
@@ -113,16 +115,15 @@ export function groupPRsByRepo(prs: FetchedPR[]): RepoGroup[] {
 
 /**
  * Compute per-repo maintainer signals from observed open PR data.
- * - isResponsive: true if any PR in the repo has a maintainer comment and status
- *   is not in STALE_STATUSES
- * - hasActiveMaintainers: true if any PR in the repo has a status in ACTIVE_MAINTAINER_STATUSES
+ * - isResponsive: true if any PR in the repo has a maintainer comment and stalenessTier is active
+ * - hasActiveMaintainers: true if any non-dormant PR exists in the repo
  */
 export function computeRepoSignals(prs: FetchedPR[]): Map<string, ComputedRepoSignals> {
   const repoMap = buildRepoMap(prs, 'COMPUTE_SIGNALS');
   const result = new Map<string, ComputedRepoSignals>();
   for (const [repo, repoPRs] of repoMap) {
     const isResponsive = repoPRs.some((pr) => pr.lastMaintainerComment && !STALE_STATUSES.has(pr.stalenessTier));
-    const hasActiveMaintainers = repoPRs.some((pr) => ACTIVE_MAINTAINER_STATUSES.has(pr.status));
+    const hasActiveMaintainers = repoPRs.some((pr) => !STALE_STATUSES.has(pr.stalenessTier));
     result.set(repo, { isResponsive, hasActiveMaintainers });
   }
   return result;
@@ -138,7 +139,9 @@ export function assessCapacity(
   shelvedPRCount: number,
 ): CapacityAssessment {
   const activePRCount = activePRs.length;
-  const criticalIssueCount = activePRs.filter((pr) => CRITICAL_STATUSES.has(pr.status)).length;
+  const criticalIssueCount = activePRs.filter(
+    (pr) => pr.status === 'needs_addressing' && pr.actionReason && CRITICAL_ACTION_REASONS.has(pr.actionReason),
+  ).length;
 
   // Has capacity if: under PR limit AND no critical issues
   const underPRLimit = activePRCount < maxActivePRs;

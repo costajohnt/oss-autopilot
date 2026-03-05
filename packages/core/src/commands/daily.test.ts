@@ -319,9 +319,9 @@ describe('computeRepoSignals', () => {
     const result = computeRepoSignals(prs);
     expect(result.get('owner/active-repo')!.isResponsive).toBe(true);
     expect(result.get('owner/active-repo')!.hasActiveMaintainers).toBe(true);
-    // dead-repo: dormant stalenessTier + no comment → not responsive, but status IS in ACTIVE_MAINTAINER_STATUSES
+    // dead-repo: dormant stalenessTier → not responsive and no active maintainers
     expect(result.get('owner/dead-repo')!.isResponsive).toBe(false);
-    expect(result.get('owner/dead-repo')!.hasActiveMaintainers).toBe(true);
+    expect(result.get('owner/dead-repo')!.hasActiveMaintainers).toBe(false);
   });
 });
 
