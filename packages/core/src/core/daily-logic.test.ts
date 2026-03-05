@@ -328,10 +328,10 @@ describe('formatBriefSummary', () => {
     expect(result).toContain('5 Active PRs');
   });
 
-  it('should say "all healthy" when no issues', () => {
+  it('should say "all on track" when no issues', () => {
     const digest = makeDigest();
     const result = formatBriefSummary(digest, 0);
-    expect(result).toContain('all healthy');
+    expect(result).toContain('all on track');
   });
 
   it('should show issue count with singular "needs"', () => {

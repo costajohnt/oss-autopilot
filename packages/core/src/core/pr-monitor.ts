@@ -415,7 +415,7 @@ export class PRMonitor {
     const latestCommitDate =
       rawCommitDate && this.isContributorCommit(latestCommitAuthor, contributorUsername) ? rawCommitDate : undefined;
 
-    // Priority order: needs_response/needs_changes/changes_addressed > failing_ci > merge_conflict > incomplete_checklist > waiting_on_maintainer > waiting/healthy
+    // Priority order: needs_addressing (response/changes/ci/conflict/checklist) > waiting_on_maintainer (review/merge/addressed/ci_blocked)
 
     if (hasUnrespondedComment) {
       // If the contributor pushed a commit after the maintainer's comment,
@@ -471,11 +471,6 @@ export class PRMonitor {
     // Approved and CI passing/unknown = waiting on maintainer to merge
     if (reviewDecision === 'approved' && (ciStatus === 'passing' || ciStatus === 'unknown')) {
       return { status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier };
-    }
-
-    // CI pending means we're waiting
-    if (ciStatus === 'pending') {
-      return { status: 'waiting_on_maintainer', waitReason: 'pending_review', stalenessTier };
     }
 
     return { status: 'waiting_on_maintainer', waitReason: 'pending_review', stalenessTier };

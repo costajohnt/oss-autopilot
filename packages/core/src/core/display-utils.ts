@@ -8,6 +8,7 @@
  */
 
 import { FetchedPR, ActionReason, WaitReason } from './types.js';
+import { warn } from './logger.js';
 
 const ACTION_DISPLAY: Record<ActionReason, { label: string; description: (pr: FetchedPR) => string }> = {
   needs_response: {
@@ -101,7 +102,11 @@ export function computeDisplayLabel(pr: FetchedPR): { displayLabel: string; disp
     const entry = WAIT_DISPLAY[pr.waitReason];
     if (entry) return { displayLabel: entry.label, displayDescription: entry.description(pr) };
   }
-  // Fallback for missing reason
+  // Fallback for missing reason — log so we can identify data issues
+  warn(
+    'display-utils',
+    `PR ${pr.url} has status "${pr.status}" but no matching reason (actionReason=${pr.actionReason}, waitReason=${pr.waitReason})`,
+  );
   if (pr.status === 'needs_addressing') {
     return { displayLabel: '[Needs Addressing]', displayDescription: 'Action required' };
   }

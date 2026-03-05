@@ -370,7 +370,7 @@ Options:
 
 ### 7. Post Response Comment (for existing PR updates)
 
-**Skip this step if** the PR's status (from Phase A or Execute section context) was NOT `needs_response` or `needs_changes` — i.e., no maintainer feedback was being addressed. Maintenance-only actions (rebase, CI fix where status was `ci_failing`) do not need a response comment.
+**Skip this step if** the PR's issue type (from Phase A or Execute section context) was NOT `needs_response` or `needs_changes` — i.e., no maintainer feedback was being addressed. Maintenance-only actions (rebase, CI fix where `actionReason` was `failing_ci`) do not need a response comment.
 
 **SAFETY: Posting a public PR comment is an irreversible action visible to maintainers.** The following safeguards MUST be applied:
 

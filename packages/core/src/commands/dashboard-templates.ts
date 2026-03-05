@@ -224,7 +224,7 @@ export function generateDashboardHtml(
         <h2>Health Status</h2>
       </div>
       <div class="health-empty">
-        All PRs are healthy - no CI failures, conflicts, or pending responses
+        All PRs are on track - no CI failures, conflicts, or pending responses
       </div>
     </section>
     `

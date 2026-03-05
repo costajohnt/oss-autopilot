@@ -44,7 +44,11 @@ import type {
  */
 export const CRITICAL_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_addressing']);
 
-/** Statuses indicating active maintainer engagement (reviews, feedback, merges). */
+/**
+ * Statuses indicating active maintainer engagement (reviews, feedback, merges).
+ * With only 2 statuses both are included — the discriminating power comes from
+ * checking `stalenessTier` separately (see `computeRepoSignals`).
+ */
 export const ACTIVE_MAINTAINER_STATUSES: ReadonlySet<FetchedPRStatus> = new Set([
   'waiting_on_maintainer',
   'needs_addressing',
@@ -219,8 +223,12 @@ export function collectActionableIssues(prs: FetchedPR[], snoozedUrls: Set<strin
           break;
         }
         default:
+          // Defensive fallback for ActionReason values not explicitly handled
+          // above (e.g. ci_not_running, needs_rebase, missing_required_files).
+          // These aren't in reasonOrder today but this guards future additions.
+          warn('daily-logic', `Unhandled ActionReason "${reason}" for PR ${pr.url} — falling back to needs_response`);
           label = `[${reason}]`;
-          type = reason as ActionableIssueType;
+          type = 'needs_response';
       }
 
       issues.push({ type, pr, label });
@@ -315,7 +323,7 @@ export function computeActionMenu(
  * Format a brief one-liner summary for the action-first flow
  */
 export function formatBriefSummary(digest: DailyDigest, issueCount: number, issueResponseCount: number = 0): string {
-  const attentionText = issueCount > 0 ? `${issueCount} need${issueCount === 1 ? 's' : ''} attention` : 'all healthy';
+  const attentionText = issueCount > 0 ? `${issueCount} need${issueCount === 1 ? 's' : ''} attention` : 'all on track';
   const issueReplyText =
     issueResponseCount > 0 ? ` | ${issueResponseCount} issue repl${issueResponseCount === 1 ? 'y' : 'ies'}` : '';
   return `\u{1F4CA} ${digest.summary.totalActivePRs} Active PRs | ${attentionText}${issueReplyText}`;

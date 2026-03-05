@@ -604,6 +604,34 @@ describe('PRMonitor determineStatus — remaining paths', () => {
     });
   });
 
+  it('should return needs_addressing with dormant stalenessTier when dormant PR has maintainer comment', () => {
+    // This is the motivating use case: a dormant PR gets new maintainer activity
+    // and should show as needs_addressing (not hidden behind dormant status)
+    expect(
+      callDetermineStatus({
+        daysSinceActivity: 35,
+        hasUnrespondedComment: true,
+      }),
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      stalenessTier: 'dormant',
+    });
+  });
+
+  it('should return needs_addressing with dormant stalenessTier when dormant PR has failing CI', () => {
+    expect(
+      callDetermineStatus({
+        daysSinceActivity: 35,
+        ciStatus: 'failing',
+      }),
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+      stalenessTier: 'dormant',
+    });
+  });
+
   it('should return waiting_on_maintainer when approved and CI passing', () => {
     expect(callDetermineStatus({ reviewDecision: 'approved' })).toEqual({
       status: 'waiting_on_maintainer',

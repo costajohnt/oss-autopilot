@@ -50,9 +50,11 @@ vi.mock('@oss-autopilot/core', () => ({
             repo: 'octocat/hello-world',
             number: 42,
             title: 'Fix typo in README',
-            status: 'healthy',
-            displayLabel: '[Healthy]',
-            displayDescription: 'All checks passing',
+            status: 'waiting_on_maintainer',
+            waitReason: 'pending_review',
+            stalenessTier: 'active',
+            displayLabel: '[Waiting for Review]',
+            displayDescription: 'Waiting for maintainer review',
             createdAt: '2026-02-20T10:00:00Z',
             updatedAt: '2026-02-27T15:00:00Z',
             daysSinceActivity: 1,
@@ -63,7 +65,9 @@ vi.mock('@oss-autopilot/core', () => ({
             repo: 'octocat/spoon-knife',
             number: 7,
             title: 'Add contributing guide',
-            status: 'needs_response',
+            status: 'needs_addressing',
+            actionReason: 'needs_response',
+            stalenessTier: 'active',
             displayLabel: '[Needs Response]',
             displayDescription: '@maintainer commented',
             createdAt: '2026-02-18T08:00:00Z',
@@ -78,7 +82,7 @@ vi.mock('@oss-autopilot/core', () => ({
             title: 'Shelved PR',
             repo: 'octocat/hello-world',
             daysSinceActivity: 14,
-            status: 'dormant',
+            status: 'waiting_on_maintainer',
           },
         ],
       },
@@ -180,7 +184,7 @@ describe('MCP resource registrations', () => {
       expect(Array.isArray(data)).toBe(true);
       expect(data).toHaveLength(1);
       expect(data[0].number).toBe(99);
-      expect(data[0].status).toBe('dormant');
+      expect(data[0].status).toBe('waiting_on_maintainer');
     });
   });
 
