@@ -602,7 +602,7 @@ export class IssueVetter {
     if (!body || body.length < 50) return false;
 
     // Check for clear structure
-    const hasSteps = /\d+\.|[-*]\s/.test(body);
+    const hasSteps = /\d\.|[-*]\s/.test(body);
     const hasCodeBlock = /```/.test(body);
     const hasExpectedBehavior = /expect|should|must|want/i.test(body);
 
