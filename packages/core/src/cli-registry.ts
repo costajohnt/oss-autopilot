@@ -126,6 +126,11 @@ export const commands: CLICommandDef[] = [
               }
               maxResults = parsed;
             }
+            const MAX_SEARCH_RESULTS = 100;
+            if (maxResults > MAX_SEARCH_RESULTS) {
+              console.warn(`Capping search to ${MAX_SEARCH_RESULTS} results (requested: ${maxResults})`);
+              maxResults = MAX_SEARCH_RESULTS;
+            }
             if (!options.json) {
               console.log(`\nSearching for issues (max ${maxResults})...\n`);
             }

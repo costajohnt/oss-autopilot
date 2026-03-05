@@ -60,6 +60,10 @@ export interface DetermineStatusInput {
   dormantThreshold: number;
   approachingThreshold: number;
   latestCommitDate?: string;
+  /** GitHub login of the HEAD commit's author (from `repos.getCommit`). */
+  latestCommitAuthor?: string;
+  /** GitHub login of the PR contributor (configured username). */
+  contributorUsername?: string;
   lastMaintainerCommentDate?: string;
   latestChangesRequestedDate?: string;
   /** True if at least one failing CI check is classified as 'actionable'. */

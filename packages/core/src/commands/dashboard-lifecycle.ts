@@ -5,8 +5,14 @@
  */
 
 import { spawn } from 'child_process';
-import { findRunningDashboardServer, isDashboardServerRunning, readDashboardServerInfo } from './dashboard-server.js';
+import {
+  findRunningDashboardServer,
+  isDashboardServerRunning,
+  readDashboardServerInfo,
+  removeDashboardServerInfo,
+} from './dashboard-server.js';
 import { resolveAssetsDir } from './dashboard.js';
+import { getCLIVersion } from '../core/index.js';
 
 const DEFAULT_PORT = 3000;
 const POLL_INTERVAL_MS = 200;
@@ -41,7 +47,40 @@ export async function launchDashboardServer(options?: { port?: number }): Promis
   // 2. Check if a server is already running
   const existing = await findRunningDashboardServer();
   if (existing) {
-    return { url: existing.url, port: existing.port, alreadyRunning: true };
+    // If the running server is from a different CLI version, kill it and relaunch
+    // so the dashboard uses the current version's code (#548)
+    const info = readDashboardServerInfo();
+    const currentVersion = getCLIVersion();
+    if (!info) {
+      // PID file disappeared between health check and now (race condition).
+      // Fall through to launch a new server.
+    } else if (info.version && currentVersion !== '0.0.0' && info.version !== currentVersion) {
+      console.error(
+        `[STARTUP] Dashboard server version mismatch (running: ${info.version}, current: ${currentVersion}). Restarting...`,
+      );
+      let killed = false;
+      try {
+        process.kill(info.pid, 'SIGTERM');
+        killed = true;
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code === 'ESRCH') {
+          killed = true; // Already exited
+        } else {
+          console.error(`[STARTUP] Could not kill outdated dashboard (PID ${info.pid}): ${(err as Error).message}`);
+        }
+      }
+      if (killed) {
+        removeDashboardServerInfo();
+      } else {
+        // Could not kill old server (e.g. EPERM); return it rather than
+        // attempting a doomed spawn on the same port.
+        return { url: existing.url, port: existing.port, alreadyRunning: true };
+      }
+      // Fall through to launch a new server
+    } else {
+      return { url: existing.url, port: existing.port, alreadyRunning: true };
+    }
   }
 
   // 3. Launch as detached child process

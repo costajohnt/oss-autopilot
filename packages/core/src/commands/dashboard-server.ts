@@ -9,7 +9,7 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getStateManager, getGitHubToken, getDataDir } from '../core/index.js';
+import { getStateManager, getGitHubToken, getDataDir, getCLIVersion } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import {
@@ -52,6 +52,7 @@ export interface DashboardServerInfo {
   pid: number;
   port: number;
   startedAt: string;
+  version?: string;
 }
 
 interface DashboardJsonData {
@@ -125,6 +126,8 @@ export function readDashboardServerInfo(): DashboardServerInfo | null {
       typeof parsed !== 'object' ||
       parsed === null ||
       typeof parsed.pid !== 'number' ||
+      !Number.isInteger(parsed.pid) ||
+      parsed.pid <= 0 ||
       typeof parsed.port !== 'number' ||
       typeof parsed.startedAt !== 'string'
     ) {
@@ -594,7 +597,12 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   }
 
   // Write PID file so other processes can detect this running server
-  writeDashboardServerInfo({ pid: process.pid, port: actualPort, startedAt: new Date().toISOString() });
+  writeDashboardServerInfo({
+    pid: process.pid,
+    port: actualPort,
+    startedAt: new Date().toISOString(),
+    version: getCLIVersion(),
+  });
 
   const serverUrl = `http://localhost:${actualPort}`;
   warn(MODULE, `Dashboard server running at ${serverUrl}`);

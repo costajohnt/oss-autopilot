@@ -293,6 +293,136 @@ describe('PRMonitor changes_addressed detection', () => {
   });
 });
 
+describe('PRMonitor commit author filtering (#547)', () => {
+  beforeEach(() => {
+    mockOctokitInstance = {};
+  });
+
+  it('should return needs_response when HEAD commit is by a non-contributor', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: true,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-08T12:00:00Z',
+      latestCommitAuthor: 'maintainer-user',
+      contributorUsername: 'contributor-user',
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+    });
+
+    expect(result).toBe('needs_response');
+  });
+
+  it('should return changes_addressed when HEAD commit is by the contributor', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: true,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-08T12:00:00Z',
+      latestCommitAuthor: 'contributor-user',
+      contributorUsername: 'contributor-user',
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+    });
+
+    expect(result).toBe('changes_addressed');
+  });
+
+  it('should return needs_response when commit is within 2 minutes of comment (race condition)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: true,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      // 44 seconds after comment — not enough time to address feedback
+      latestCommitDate: '2026-02-07T10:00:44Z',
+      latestCommitAuthor: 'contributor-user',
+      contributorUsername: 'contributor-user',
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+    });
+
+    expect(result).toBe('needs_response');
+  });
+
+  it('should degrade gracefully when commit author is unknown', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: true,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-08T12:00:00Z',
+      // No author info — degrade gracefully (treat as contributor)
+      latestCommitAuthor: undefined,
+      contributorUsername: 'contributor-user',
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+    });
+
+    expect(result).toBe('changes_addressed');
+  });
+
+  it('should handle case-insensitive author comparison', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: true,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-08T12:00:00Z',
+      latestCommitAuthor: 'ContributorUser',
+      contributorUsername: 'contributoruser',
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+    });
+
+    expect(result).toBe('changes_addressed');
+  });
+
+  it('should return needs_changes when non-contributor commit after changes_requested review', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-09T10:00:00Z',
+      latestCommitAuthor: 'maintainer-user',
+      contributorUsername: 'contributor-user',
+      lastMaintainerCommentDate: undefined,
+      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+    });
+
+    // Non-contributor commit should not count — still needs_changes
+    expect(result).toBe('needs_changes');
+  });
+});
+
 describe('PRMonitor needs_changes detection', () => {
   beforeEach(() => {
     mockOctokitInstance = {};

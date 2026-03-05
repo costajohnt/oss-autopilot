@@ -271,10 +271,14 @@ export class PRMonitor {
     // (to detect needs_changes: review requested changes but no new commits pushed)
     const ciPromise = this.getCIStatus(owner, repo, ghPR.head.sha);
     const needCommitDate = hasUnrespondedComment || reviewDecision === 'changes_requested';
-    const commitDatePromise = needCommitDate
+    const commitInfoPromise = needCommitDate
       ? this.octokit.repos
           .getCommit({ owner, repo, ref: ghPR.head.sha })
-          .then((res) => res.data.commit.author?.date)
+          .then((res) => ({
+            date: res.data.commit.author?.date,
+            // GitHub user login of the commit author (may differ from git author)
+            author: res.data.author?.login,
+          }))
           .catch((err: unknown) => {
             // Rate limit errors must propagate — silently swallowing them produces
             // misleading status (e.g. needs_changes when changes were addressed) (#469).
@@ -298,10 +302,12 @@ export class PRMonitor {
           })
       : Promise.resolve(undefined);
 
-    const [{ status: ciStatus, failingCheckNames, failingCheckConclusions }, latestCommitDate] = await Promise.all([
+    const [{ status: ciStatus, failingCheckNames, failingCheckConclusions }, commitInfo] = await Promise.all([
       ciPromise,
-      commitDatePromise,
+      commitInfoPromise,
     ]);
+    const latestCommitDate = commitInfo?.date;
+    const latestCommitAuthor = commitInfo?.author;
 
     // Analyze PR body for incomplete checklists (delegated to checklist-analysis module)
     const { hasIncompleteChecklist, checklistStats } = analyzeChecklist(ghPR.body || '');
@@ -330,6 +336,8 @@ export class PRMonitor {
       dormantThreshold: config.dormantThresholdDays,
       approachingThreshold: config.approachingDormantDays,
       latestCommitDate,
+      latestCommitAuthor,
+      contributorUsername: config.githubUsername,
       lastMaintainerCommentDate: lastMaintainerComment?.createdAt,
       latestChangesRequestedDate,
       hasActionableCIFailure,
@@ -391,18 +399,32 @@ export class PRMonitor {
       daysSinceActivity,
       dormantThreshold,
       approachingThreshold,
-      latestCommitDate,
+      latestCommitDate: rawCommitDate,
+      latestCommitAuthor,
+      contributorUsername,
       lastMaintainerCommentDate,
       latestChangesRequestedDate,
       hasActionableCIFailure = true,
     } = input;
 
+    // Only count the latest commit if it was authored by the contributor (#547).
+    // Non-contributor commits (maintainer merge commits, GitHub suggestion commits)
+    // should not mask unaddressed feedback.
+    const latestCommitDate =
+      rawCommitDate && this.isContributorCommit(latestCommitAuthor, contributorUsername) ? rawCommitDate : undefined;
+
     // Priority order: needs_response/needs_changes/changes_addressed > failing_ci > merge_conflict > incomplete_checklist > dormant > approaching_dormant > waiting_on_maintainer > waiting/healthy
 
     if (hasUnrespondedComment) {
       // If the contributor pushed a commit after the maintainer's comment,
-      // the changes have been addressed — waiting for maintainer re-review
-      if (latestCommitDate && lastMaintainerCommentDate && latestCommitDate > lastMaintainerCommentDate) {
+      // the changes have been addressed — waiting for maintainer re-review.
+      // Require a minimum 2-minute gap to avoid false positives from race
+      // conditions (pushing while review is being submitted) (#547).
+      if (
+        latestCommitDate &&
+        lastMaintainerCommentDate &&
+        this.isCommitAfterComment(latestCommitDate, lastMaintainerCommentDate)
+      ) {
         // Safety net (#431): if a CHANGES_REQUESTED review was submitted after
         // the commit, the maintainer still expects changes — don't mask it
         if (latestChangesRequestedDate && latestCommitDate < latestChangesRequestedDate) {
@@ -459,6 +481,35 @@ export class PRMonitor {
     }
 
     return 'healthy';
+  }
+
+  /**
+   * Check whether the HEAD commit was authored by the contributor (#547).
+   * Returns true when the author matches or when author info is unavailable
+   * (graceful degradation — don't break existing behavior if the API omits it).
+   */
+  private isContributorCommit(commitAuthor?: string, contributorUsername?: string): boolean {
+    if (!commitAuthor || !contributorUsername) return true; // degrade gracefully
+    return commitAuthor.toLowerCase() === contributorUsername.toLowerCase();
+  }
+
+  /** Minimum gap (ms) between maintainer comment and contributor commit for
+   *  the commit to count as "addressing" the feedback (#547). Prevents false
+   *  positives from race conditions, clock skew, and in-flight pushes. */
+  private static readonly MIN_RESPONSE_GAP_MS = 2 * 60 * 1000; // 2 minutes
+
+  /**
+   * Check whether the contributor's commit is meaningfully after the maintainer's
+   * comment — i.e. the commit timestamp is at least MIN_RESPONSE_GAP_MS later (#547).
+   */
+  private isCommitAfterComment(commitDate: string, commentDate: string): boolean {
+    const commitMs = new Date(commitDate).getTime();
+    const commentMs = new Date(commentDate).getTime();
+    if (Number.isNaN(commitMs) || Number.isNaN(commentMs)) {
+      // Fall back to simple string comparison (pre-#547 behavior)
+      return commitDate > commentDate;
+    }
+    return commitMs - commentMs >= PRMonitor.MIN_RESPONSE_GAP_MS;
   }
 
   /**

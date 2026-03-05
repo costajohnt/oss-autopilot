@@ -104,7 +104,17 @@ export function registerTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: true },
     },
-    wrapTool((args: { maxResults?: number }) => runSearch({ maxResults: args.maxResults ?? 5 })),
+    wrapTool((args: { maxResults?: number }) => {
+      const MAX_SEARCH_RESULTS = 100;
+      let maxResults = args.maxResults ?? 5;
+      if (!Number.isInteger(maxResults) || maxResults < 1) {
+        throw new Error(`Invalid maxResults: ${maxResults}. Must be a positive integer.`);
+      }
+      if (maxResults > MAX_SEARCH_RESULTS) {
+        maxResults = MAX_SEARCH_RESULTS;
+      }
+      return runSearch({ maxResults });
+    }),
   );
 
   // 4. vet — Vet an issue for contribution suitability

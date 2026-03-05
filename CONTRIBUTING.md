@@ -7,6 +7,7 @@ Thanks for your interest in contributing! This project helps developers manage t
 ### Prerequisites
 
 - Node.js 20+
+- [pnpm](https://pnpm.io/) (install: `corepack enable && corepack prepare pnpm@latest --activate`)
 - GitHub CLI (`gh`) authenticated: `gh auth login`
 
 ### Setup
@@ -31,13 +32,14 @@ pnpm test
 ```
 oss-autopilot/
 ├── packages/
-│   ├── core/               # @oss-autopilot/core (TypeScript CLI)
+│   ├── core/               # @oss-autopilot/core (TypeScript CLI + core library)
 │   │   ├── src/
 │   │   │   ├── core/       # Core logic (state, PR monitoring, types)
 │   │   │   ├── commands/   # CLI commands (daily, search, track, etc.)
 │   │   │   └── formatters/ # Output formatters (JSON)
 │   │   └── dist/           # Built CLI bundle (generated)
-│   └── dashboard/          # @oss-autopilot/dashboard (placeholder)
+│   ├── dashboard/          # @oss-autopilot/dashboard (Preact SPA dashboard)
+│   └── mcp-server/         # @oss-autopilot/mcp (MCP server for IDE integrations)
 ├── commands/               # Plugin slash commands (.md files)
 ├── agents/                 # Plugin agent definitions (.md files)
 ├── .claude-plugin/         # Plugin manifest
@@ -65,6 +67,7 @@ git checkout -b fix/your-bug-fix
 - Add tests if applicable
 - Run `pnpm test` to ensure tests pass
 - Run `pnpm run build` to ensure it compiles
+- Run `pnpm lint` and `pnpm format:check` to catch style issues (also enforced by pre-commit hook)
 - **Do NOT manually bump versions or edit CHANGELOG.md** — versioning is automated via [release-please](https://github.com/googleapis/release-please)
 
 ### 4. Commit

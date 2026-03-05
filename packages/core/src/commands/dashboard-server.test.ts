@@ -70,6 +70,7 @@ vi.mock('../core/index.js', () => ({
   getStateManager: vi.fn(() => mockStateManager),
   getGitHubToken: vi.fn(() => null),
   getDataDir: vi.fn(() => pidTestDir),
+  getCLIVersion: vi.fn(() => '0.44.6'),
 }));
 
 // Mock fetchDashboardData so we never call GitHub
