@@ -253,7 +253,7 @@ export class PRMonitor {
 
     // Fetch CI status and (conditionally) latest commit date in parallel
     // We need the commit date when hasUnrespondedComment is true (to distinguish
-    // "needs_response" from "changes_addressed") OR when reviewDecision is "changes_requested"
+    // "needs_response" from "waiting_on_maintainer") OR when reviewDecision is "changes_requested"
     // (to detect needs_changes: review requested changes but no new commits pushed)
     const ciPromise = this.getCIStatus(owner, repo, ghPR.head.sha);
     const needCommitDate = hasUnrespondedComment || reviewDecision === 'changes_requested';
