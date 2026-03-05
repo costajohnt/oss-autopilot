@@ -83,7 +83,11 @@ export function registerPrompts(server: McpServer): void {
     },
     async ({ maxResults }) => {
       try {
-        const data = await runSearch({ maxResults: maxResults ?? 5 });
+        const MAX_SEARCH_RESULTS = 100;
+        let capped = maxResults ?? 5;
+        if (!Number.isInteger(capped) || capped < 1) capped = 5;
+        if (capped > MAX_SEARCH_RESULTS) capped = MAX_SEARCH_RESULTS;
+        const data = await runSearch({ maxResults: capped });
         const candidateList = data.candidates
           .map(
             (c, i) =>

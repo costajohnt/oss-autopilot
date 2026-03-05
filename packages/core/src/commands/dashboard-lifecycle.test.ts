@@ -23,10 +23,17 @@ vi.mock('./dashboard.js', () => ({
 const mockFindRunningDashboardServer = vi.fn();
 const mockIsDashboardServerRunning = vi.fn();
 const mockReadDashboardServerInfo = vi.fn();
+const mockRemoveDashboardServerInfo = vi.fn();
 vi.mock('./dashboard-server.js', () => ({
   findRunningDashboardServer: () => mockFindRunningDashboardServer(),
   isDashboardServerRunning: (port: number) => mockIsDashboardServerRunning(port),
   readDashboardServerInfo: () => mockReadDashboardServerInfo(),
+  removeDashboardServerInfo: () => mockRemoveDashboardServerInfo(),
+}));
+
+const mockGetCLIVersion = vi.fn().mockReturnValue('0.44.6');
+vi.mock('../core/index.js', () => ({
+  getCLIVersion: () => mockGetCLIVersion(),
 }));
 
 // ── Import after mocks ──────────────────────────────────────────────
@@ -61,13 +68,110 @@ describe('launchDashboardServer', () => {
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 
-  it('should return existing server when already running', async () => {
+  it('should return existing server when already running with same version', async () => {
     mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://localhost:3000' });
+    mockReadDashboardServerInfo.mockReturnValue({
+      pid: 12345,
+      port: 3000,
+      startedAt: '2026-01-01T00:00:00Z',
+      version: '0.44.6',
+    });
+    mockGetCLIVersion.mockReturnValue('0.44.6');
 
     const result = await launchDashboardServer();
 
     expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: true });
     expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it('should return existing server when PID file has no version (backward compat)', async () => {
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://localhost:3000' });
+    mockReadDashboardServerInfo.mockReturnValue({ pid: 12345, port: 3000, startedAt: '2026-01-01T00:00:00Z' });
+
+    const result = await launchDashboardServer();
+
+    expect(mockReadDashboardServerInfo).toHaveBeenCalled();
+    expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: true });
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it('should kill and relaunch server when version mismatches (#548)', async () => {
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://localhost:3000' });
+    // First call: version check reads old server info; second call: polling reads new server info
+    mockReadDashboardServerInfo
+      .mockReturnValueOnce({ pid: 12345, port: 3000, startedAt: '2026-01-01T00:00:00Z', version: '0.44.4' })
+      .mockReturnValueOnce({ pid: 99999, port: 3000, startedAt: '2026-01-01T00:00:01Z', version: '0.44.6' });
+    mockGetCLIVersion.mockReturnValue('0.44.6');
+    mockIsDashboardServerRunning.mockResolvedValueOnce(true);
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const result = await launchDashboardServer();
+    consoleSpy.mockRestore();
+
+    expect(processKillSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
+    expect(mockRemoveDashboardServerInfo).toHaveBeenCalled();
+    expect(mockSpawn).toHaveBeenCalled();
+    expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: false });
+  });
+
+  it('should return existing server when kill fails with EPERM (#548)', async () => {
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://localhost:3000' });
+    mockReadDashboardServerInfo.mockReturnValueOnce({
+      pid: 12345,
+      port: 3000,
+      startedAt: '2026-01-01T00:00:00Z',
+      version: '0.44.4',
+    });
+    mockGetCLIVersion.mockReturnValue('0.44.6');
+    // Simulate EPERM — PID recycled to another user's process
+    const epermErr = Object.assign(new Error('Operation not permitted'), { code: 'EPERM' });
+    processKillSpy.mockImplementation(() => {
+      throw epermErr;
+    });
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const result = await launchDashboardServer();
+    consoleSpy.mockRestore();
+
+    // Should NOT remove PID file when kill failed with EPERM
+    expect(mockRemoveDashboardServerInfo).not.toHaveBeenCalled();
+    // Should NOT spawn — return existing server rather than a doomed attempt
+    expect(mockSpawn).not.toHaveBeenCalled();
+    expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: true });
+  });
+
+  it('should not kill server when getCLIVersion returns fallback 0.0.0', async () => {
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://localhost:3000' });
+    mockReadDashboardServerInfo.mockReturnValueOnce({
+      pid: 12345,
+      port: 3000,
+      startedAt: '2026-01-01T00:00:00Z',
+      version: '0.44.4',
+    });
+    // getCLIVersion could not read package.json — returns fallback
+    mockGetCLIVersion.mockReturnValue('0.0.0');
+
+    const result = await launchDashboardServer();
+
+    // Should NOT kill — unreliable version read
+    expect(processKillSpy).not.toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
+    expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: true });
+  });
+
+  it('should relaunch when PID file disappears between health check and version read', async () => {
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://localhost:3000' });
+    // PID file disappeared (race condition)
+    mockReadDashboardServerInfo
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce({ pid: 99999, port: 3000, startedAt: '2026-01-01T00:00:01Z', version: '0.44.6' });
+    mockIsDashboardServerRunning.mockResolvedValueOnce(true);
+
+    const result = await launchDashboardServer();
+
+    // Should fall through and spawn a new server
+    expect(mockSpawn).toHaveBeenCalled();
+    expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: false });
   });
 
   it('should spawn detached child process when no server running', async () => {

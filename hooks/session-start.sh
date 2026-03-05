@@ -9,14 +9,6 @@ PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 messages=""
 
-# --- Step 0: Auto-pull marketplace clone for self-updates ---
-# Workaround for https://github.com/anthropics/claude-code/issues/26744
-# Marketplace plugins don't auto-update, so we pull on session start.
-MARKETPLACE_DIR="${HOME}/.claude/plugins/marketplaces/oss-autopilot"
-if [ -d "${MARKETPLACE_DIR}/.git" ]; then
-  (cd "${MARKETPLACE_DIR}" && git pull --ff-only) >/dev/null 2>&1 || true
-fi
-
 # --- Step 1: Rebuild stale CLI bundle (if needed) ---
 if [ -f "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ] && [ "${PLUGIN_ROOT}/packages/core/package.json" -nt "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ]; then
   if (cd "${PLUGIN_ROOT}/packages/core" && npm install --silent 2>/dev/null && npm run bundle --silent 2>/dev/null); then
@@ -76,8 +68,12 @@ fi
 
 # --- Output JSON ---
 if [ -n "$messages" ]; then
-  # Escape for JSON
-  escaped=$(printf '%s' "$messages" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  # Escape for JSON: use jq if available, fall back to sed
+  if command -v jq &>/dev/null; then
+    escaped=$(printf '%s' "$messages" | jq -Rrs '@json | .[1:-1]')
+  else
+    escaped=$(printf '%s' "$messages" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' ')
+  fi
   cat <<EOF
 {
   "systemMessage": "${escaped}",

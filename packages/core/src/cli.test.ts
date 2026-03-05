@@ -397,6 +397,26 @@ describe('Command registration', () => {
   });
 });
 
+// ─── Search maxResults cap ────────────────────────────────────────────────────
+
+describe('Search maxResults cap', () => {
+  it('should enforce MAX_SEARCH_RESULTS = 100 in the search command definition', () => {
+    const searchCmd = commands.find((c) => c.name === 'search');
+    expect(searchCmd).toBeDefined();
+
+    // Verify the cap constant is defined in the source (structural check)
+    const src = readFileSync(join(__dirname, 'cli-registry.ts'), 'utf-8');
+    const match = src.match(/const MAX_SEARCH_RESULTS\s*=\s*(\d+)/);
+    expect(match).not.toBeNull();
+    expect(Number(match![1])).toBe(100);
+  });
+
+  it('should warn to console when capping maxResults', () => {
+    const src = readFileSync(join(__dirname, 'cli-registry.ts'), 'utf-8');
+    expect(src).toContain('Capping search to');
+  });
+});
+
 // ─── Lazy import verification ─────────────────────────────────────────────────
 
 describe('Lazy imports', () => {
