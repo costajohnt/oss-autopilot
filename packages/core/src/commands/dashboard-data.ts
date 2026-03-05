@@ -174,7 +174,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   // Apply shelve partitioning for display (auto-unshelve only runs in daily check)
   // Dormant PRs are treated as shelved for display purposes
   const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
-  const freshShelved = prs.filter((pr) => shelvedUrls.has(pr.url) || pr.status === 'dormant');
+  const freshShelved = prs.filter((pr) => shelvedUrls.has(pr.url) || pr.stalenessTier === 'dormant');
   digest.shelvedPRs = freshShelved.map(toShelvedPRRef);
   digest.autoUnshelvedPRs = [];
   digest.summary.totalActivePRs = prs.length - freshShelved.length;
