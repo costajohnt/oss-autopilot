@@ -116,7 +116,7 @@ export function groupPRsByRepo(prs: FetchedPR[]): RepoGroup[] {
 /**
  * Compute per-repo maintainer signals from observed open PR data.
  * - isResponsive: true if any PR in the repo has a maintainer comment and stalenessTier is active
- * - hasActiveMaintainers: true if any non-dormant PR exists in the repo
+ * - hasActiveMaintainers: true if any non-stale PR exists in the repo (stalenessTier is 'active')
  */
 export function computeRepoSignals(prs: FetchedPR[]): Map<string, ComputedRepoSignals> {
   const repoMap = buildRepoMap(prs, 'COMPUTE_SIGNALS');
