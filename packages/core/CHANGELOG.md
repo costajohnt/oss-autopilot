@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.16](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.15...core-v0.44.16) (2026-03-06)
+
+
+### Bug Fixes
+
+* apply minStars filter to dashboard closed PR count and treat unknown stars as excluded ([#583](https://github.com/costajohnt/oss-autopilot/issues/583)) ([965a253](https://github.com/costajohnt/oss-autopilot/commit/965a253b331eb5e2cdc54e1a7de775417bcbd624)), closes [#576](https://github.com/costajohnt/oss-autopilot/issues/576)
+
 ## [0.44.15](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.14...core-v0.44.15) (2026-03-06)
 
 
