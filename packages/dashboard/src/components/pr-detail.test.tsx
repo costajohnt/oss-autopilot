@@ -7,19 +7,16 @@ import type { FetchedPR, ActionRequest } from '../types';
 interface PRDetailOptions {
   pr?: FetchedPR;
   isShelved?: boolean;
-  isDismissed?: boolean;
   onAction?: (action: ActionRequest) => Promise<void>;
   onClose?: () => void;
 }
 
 function renderPRDetail(options: PRDetailOptions = {}) {
-  const { pr = makePR(), isShelved = false, isDismissed = false, onAction = vi.fn(), onClose = vi.fn() } = options;
+  const { pr = makePR(), isShelved = false, onAction = vi.fn(), onClose = vi.fn() } = options;
 
   return {
     onClose,
-    ...render(
-      <PRDetail pr={pr} isShelved={isShelved} isDismissed={isDismissed} onAction={onAction} onClose={onClose} />,
-    ),
+    ...render(<PRDetail pr={pr} isShelved={isShelved} onAction={onAction} onClose={onClose} />),
   };
 }
 

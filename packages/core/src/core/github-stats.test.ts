@@ -74,7 +74,7 @@ describe('fetchUserPRCounts caching', () => {
     expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(1);
 
     // Verify the result was cached
-    const cached = testCache.getIfFresh('pr-counts:v2:merged:testuser', PR_COUNTS_CACHE_TTL_MS);
+    const cached = testCache.getIfFresh('pr-counts:v3:merged:testuser', PR_COUNTS_CACHE_TTL_MS);
     expect(cached).not.toBeNull();
   });
 
@@ -109,7 +109,7 @@ describe('fetchUserPRCounts caching', () => {
     const octokit = makeOctokit(items);
 
     // Seed the cache with an old entry
-    testCache.set('pr-counts:v2:merged:testuser', '', {
+    testCache.set('pr-counts:v3:merged:testuser', '', {
       reposEntries: [['org/old-repo', { count: 5, lastMergedAt: '2025-01-01T00:00:00Z' }]],
       monthlyCounts: { '2025-01': 5 },
       monthlyOpenedCounts: {},
@@ -121,7 +121,7 @@ describe('fetchUserPRCounts caching', () => {
     for (const file of cacheFiles) {
       const filePath = path.join(testCacheDir, file);
       const entry = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      if (entry.url === 'pr-counts:v2:merged:testuser') {
+      if (entry.url === 'pr-counts:v3:merged:testuser') {
         entry.cachedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
         fs.writeFileSync(filePath, JSON.stringify(entry), 'utf-8');
       }
@@ -147,8 +147,8 @@ describe('fetchUserPRCounts caching', () => {
     expect(closedOctokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(1);
 
     // Verify separate cache keys
-    expect(testCache.getIfFresh('pr-counts:v2:merged:testuser', PR_COUNTS_CACHE_TTL_MS)).not.toBeNull();
-    expect(testCache.getIfFresh('pr-counts:v2:closed:testuser', PR_COUNTS_CACHE_TTL_MS)).not.toBeNull();
+    expect(testCache.getIfFresh('pr-counts:v3:merged:testuser', PR_COUNTS_CACHE_TTL_MS)).not.toBeNull();
+    expect(testCache.getIfFresh('pr-counts:v3:closed:testuser', PR_COUNTS_CACHE_TTL_MS)).not.toBeNull();
   });
 
   it('should reconstruct Map correctly from cached entries', async () => {
@@ -203,5 +203,107 @@ describe('fetchUserPRCounts caching', () => {
     expect(result.dailyActivityCounts['2025-06-15']).toBe(2); // merged + opened
     expect(result.monthlyOpenedCounts['2025-06']).toBe(2);
     expect(result.monthlyOpenedCounts['2025-07']).toBe(1);
+  });
+});
+
+describe('fetchUserPRCounts star filtering', () => {
+  beforeEach(() => {
+    testCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-cache-stars-test-'));
+    testCache = new HttpCache(testCacheDir);
+  });
+
+  afterEach(() => {
+    fs.rmSync(testCacheDir, { recursive: true, force: true });
+  });
+
+  it('should exclude repos below minStars when star counts are known', async () => {
+    const items = [
+      makeMergedItem('popular-org', 'big-repo', '2025-06-01T00:00:00Z'),
+      makeMergedItem('small-org', 'tiny-repo', '2025-06-02T00:00:00Z'),
+    ];
+    items[0].html_url = 'https://github.com/popular-org/big-repo/pull/1';
+    items[1].html_url = 'https://github.com/small-org/tiny-repo/pull/2';
+    const octokit = makeOctokit(items);
+
+    const starFilter = {
+      minStars: 50,
+      knownStarCounts: new Map([
+        ['popular-org/big-repo', 500],
+        ['small-org/tiny-repo', 10],
+      ]),
+    };
+
+    const result = await fetchUserMergedPRCounts(octokit, 'testuser', starFilter);
+
+    expect(result.repos.size).toBe(1);
+    expect(result.repos.has('popular-org/big-repo')).toBe(true);
+    expect(result.repos.has('small-org/tiny-repo')).toBe(false);
+    expect(result.monthlyCounts['2025-06']).toBe(1);
+  });
+
+  it('should include repos with unknown star counts (not yet fetched)', async () => {
+    const items = [
+      makeMergedItem('known-org', 'known-repo', '2025-06-01T00:00:00Z'),
+      makeMergedItem('unknown-org', 'new-repo', '2025-06-02T00:00:00Z'),
+    ];
+    items[0].html_url = 'https://github.com/known-org/known-repo/pull/1';
+    items[1].html_url = 'https://github.com/unknown-org/new-repo/pull/2';
+    const octokit = makeOctokit(items);
+
+    const starFilter = {
+      minStars: 50,
+      knownStarCounts: new Map([['known-org/known-repo', 100]]),
+    };
+
+    const result = await fetchUserMergedPRCounts(octokit, 'testuser', starFilter);
+
+    // Both should be included — unknown-org/new-repo has no star data, so it passes
+    expect(result.repos.size).toBe(2);
+  });
+
+  it('should not filter when no starFilter is provided', async () => {
+    const items = [makeMergedItem('org', 'repo', '2025-06-01T00:00:00Z')];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchUserMergedPRCounts(octokit, 'testuser');
+
+    expect(result.repos.size).toBe(1);
+  });
+
+  it('should use separate cache keys for different minStars values', async () => {
+    const items = [makeMergedItem('org', 'repo', '2025-06-01T00:00:00Z')];
+    const octokit = makeOctokit(items);
+
+    const filter50 = { minStars: 50, knownStarCounts: new Map([['org/repo', 100]]) };
+    const filter100 = { minStars: 100, knownStarCounts: new Map([['org/repo', 100]]) };
+
+    await fetchUserMergedPRCounts(octokit, 'testuser', filter50);
+    await fetchUserMergedPRCounts(octokit, 'testuser', filter100);
+
+    // Should have made 2 API calls (different cache keys)
+    expect(octokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(2);
+  });
+
+  it('should also filter closed PR counts by stars', async () => {
+    const items = [
+      makeClosedItem('big-org', 'popular', '2025-06-01T00:00:00Z'),
+      makeClosedItem('tiny-org', 'unpopular', '2025-06-02T00:00:00Z'),
+    ];
+    items[0].html_url = 'https://github.com/big-org/popular/pull/1';
+    items[1].html_url = 'https://github.com/tiny-org/unpopular/pull/2';
+    const octokit = makeOctokit(items);
+
+    const starFilter = {
+      minStars: 50,
+      knownStarCounts: new Map([
+        ['big-org/popular', 200],
+        ['tiny-org/unpopular', 5],
+      ]),
+    };
+
+    const result = await fetchUserClosedPRCounts(octokit, 'testuser', starFilter);
+
+    expect(result.repos.size).toBe(1);
+    expect(result.repos.has('big-org/popular')).toBe(true);
   });
 });

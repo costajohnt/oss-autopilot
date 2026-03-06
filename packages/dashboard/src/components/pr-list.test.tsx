@@ -9,27 +9,12 @@ interface PRListOptions {
   selectedUrl?: string | null;
   onSelect?: (url: string) => void;
   shelvedUrls?: Set<string>;
-  dismissedUrls?: Set<string>;
 }
 
 function renderPRList(options: PRListOptions = {}) {
-  const {
-    prs = [],
-    selectedUrl = null,
-    onSelect = vi.fn(),
-    shelvedUrls = new Set<string>(),
-    dismissedUrls = new Set<string>(),
-  } = options;
+  const { prs = [], selectedUrl = null, onSelect = vi.fn(), shelvedUrls = new Set<string>() } = options;
 
-  return render(
-    <PRList
-      prs={prs}
-      selectedUrl={selectedUrl}
-      onSelect={onSelect}
-      shelvedUrls={shelvedUrls}
-      dismissedUrls={dismissedUrls}
-    />,
-  );
+  return render(<PRList prs={prs} selectedUrl={selectedUrl} onSelect={onSelect} shelvedUrls={shelvedUrls} />);
 }
 
 describe('PRList', () => {

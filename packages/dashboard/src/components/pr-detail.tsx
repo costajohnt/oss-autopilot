@@ -5,7 +5,6 @@ import { ActionBar } from './action-bar';
 interface PRDetailProps {
   pr: FetchedPR;
   isShelved: boolean;
-  isDismissed: boolean;
   onAction: (action: ActionRequest) => Promise<void>;
   onClose: () => void;
 }
@@ -51,7 +50,7 @@ function categoryBadge(category: string): string {
   }
 }
 
-export function PRDetail({ pr, isShelved, isDismissed, onAction, onClose }: PRDetailProps) {
+export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
   return (
     <div class="pr-detail">
       <div class="pr-detail-header">
@@ -157,7 +156,7 @@ export function PRDetail({ pr, isShelved, isDismissed, onAction, onClose }: PRDe
         </div>
       </div>
 
-      <ActionBar pr={pr} isShelved={isShelved} isDismissed={isDismissed} onAction={onAction} />
+      <ActionBar pr={pr} isShelved={isShelved} onAction={onAction} />
     </div>
   );
 }

@@ -167,8 +167,8 @@ describe('computePRsByRepo', () => {
     const digest = makeDigest();
     const state = makeState({
       repoScores: {
-        'owner/alpha': { mergedPRCount: 5, closedWithoutMergeCount: 2 } as any,
-        'owner/beta': { mergedPRCount: 10, closedWithoutMergeCount: 0 } as any,
+        'owner/alpha': { mergedPRCount: 5, closedWithoutMergeCount: 2, stargazersCount: 100 } as any,
+        'owner/beta': { mergedPRCount: 10, closedWithoutMergeCount: 0, stargazersCount: 200 } as any,
       },
     });
 
@@ -184,7 +184,7 @@ describe('computePRsByRepo', () => {
     });
     const state = makeState({
       repoScores: {
-        'owner/alpha': { mergedPRCount: 3, closedWithoutMergeCount: 1 } as any,
+        'owner/alpha': { mergedPRCount: 3, closedWithoutMergeCount: 1, stargazersCount: 100 } as any,
       },
     });
 

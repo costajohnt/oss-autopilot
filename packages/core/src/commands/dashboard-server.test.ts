@@ -57,10 +57,8 @@ const mockStateManager = {
   save: vi.fn(),
   shelvePR: vi.fn().mockReturnValue(true),
   unshelvePR: vi.fn().mockReturnValue(true),
-  snoozePR: vi.fn().mockReturnValue(true),
-  unsnoozePR: vi.fn().mockReturnValue(true),
-  dismissIssue: vi.fn().mockReturnValue(true),
-  undismissIssue: vi.fn().mockReturnValue(false),
+  setStatusOverride: vi.fn(),
+  getStatusOverride: vi.fn().mockReturnValue(undefined),
 };
 
 // Create a temp dir for PID file tests (needs to exist before mock is evaluated)
@@ -279,8 +277,7 @@ describe('dashboard-server', () => {
     // Clear mock call counts but keep the mock implementations
     mockStateManager.shelvePR.mockClear();
     mockStateManager.unshelvePR.mockClear();
-    mockStateManager.snoozePR.mockClear();
-    mockStateManager.unsnoozePR.mockClear();
+    mockStateManager.setStatusOverride.mockClear();
     mockStateManager.save.mockClear();
 
     // Re-setup the state mock
@@ -289,8 +286,7 @@ describe('dashboard-server', () => {
     mockStateManager.getState.mockReturnValue(state);
     mockStateManager.shelvePR.mockReturnValue(true);
     mockStateManager.unshelvePR.mockReturnValue(true);
-    mockStateManager.snoozePR.mockReturnValue(true);
-    mockStateManager.unsnoozePR.mockReturnValue(true);
+    mockStateManager.getStatusOverride.mockReturnValue(undefined);
   });
 
   // Helper to send a request through the captured handler
@@ -434,49 +430,36 @@ describe('dashboard-server', () => {
       expect(mockStateManager.unshelvePR).toHaveBeenCalledWith('https://github.com/owner/repo/pull/2');
     });
 
-    it('should accept a valid snooze action with reason and days', async () => {
+    it('should accept a valid override_status action', async () => {
       const result = await sendRequest(
         'POST',
         '/api/action',
         JSON.stringify({
-          action: 'snooze',
+          action: 'override_status',
           url: 'https://github.com/owner/repo/pull/3',
-          reason: 'CI flaky',
-          days: 14,
+          status: 'waiting_on_maintainer',
         }),
       );
       expect(result.statusCode).toBe(200);
-      expect(mockStateManager.snoozePR).toHaveBeenCalledWith('https://github.com/owner/repo/pull/3', 'CI flaky', 14);
+      expect(mockStateManager.setStatusOverride).toHaveBeenCalledWith(
+        'https://github.com/owner/repo/pull/3',
+        'waiting_on_maintainer',
+        expect.any(String),
+      );
     });
 
-    it('should use default reason and days for snooze when not provided', async () => {
+    it('should return 400 for override_status without valid status field', async () => {
       const result = await sendRequest(
         'POST',
         '/api/action',
         JSON.stringify({
-          action: 'snooze',
+          action: 'override_status',
           url: 'https://github.com/owner/repo/pull/4',
         }),
       );
-      expect(result.statusCode).toBe(200);
-      expect(mockStateManager.snoozePR).toHaveBeenCalledWith(
-        'https://github.com/owner/repo/pull/4',
-        'Snoozed via dashboard',
-        7,
-      );
-    });
-
-    it('should accept a valid unsnooze action', async () => {
-      const result = await sendRequest(
-        'POST',
-        '/api/action',
-        JSON.stringify({
-          action: 'unsnooze',
-          url: 'https://github.com/owner/repo/pull/5',
-        }),
-      );
-      expect(result.statusCode).toBe(200);
-      expect(mockStateManager.unsnoozePR).toHaveBeenCalledWith('https://github.com/owner/repo/pull/5');
+      expect(result.statusCode).toBe(400);
+      const data = JSON.parse(result.body);
+      expect(data.error).toContain('override_status requires a valid "status" field');
     });
 
     it('should return 400 for invalid action', async () => {

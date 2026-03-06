@@ -8,10 +8,17 @@ import { getStateManager, PRMonitor, IssueConversationMonitor } from '../core/in
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
-import { toShelvedPRRef } from './daily.js';
+import { toShelvedPRRef, buildStarFilter } from './daily.js';
 
 const MODULE = 'dashboard-data';
-import type { DailyDigest, AgentState, ClosedPR, MergedPR, CommentedIssue } from '../core/types.js';
+import {
+  isBelowMinStars,
+  type DailyDigest,
+  type AgentState,
+  type ClosedPR,
+  type MergedPR,
+  type CommentedIssue,
+} from '../core/types.js';
 
 export interface DashboardStats {
   activePRs: number;
@@ -118,6 +125,9 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   const prMonitor = new PRMonitor(token);
   const issueMonitor = new IssueConversationMonitor(token);
 
+  // Build star filter from cached repoScores (#576)
+  const starFilter = buildStarFilter(stateManager.getState());
+
   const [{ prs, failures }, recentlyClosedPRs, recentlyMergedPRs, mergedResult, closedResult, fetchedIssues] =
     await Promise.all([
       prMonitor.fetchUserOpenPRs(),
@@ -131,12 +141,12 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
         warn(MODULE, `Failed to fetch recently merged PRs: ${errorMessage(err)}`);
         return [];
       }),
-      prMonitor.fetchUserMergedPRCounts().catch((err) => {
+      prMonitor.fetchUserMergedPRCounts(starFilter).catch((err) => {
         if (isRateLimitOrAuthError(err)) throw err;
         warn(MODULE, `Failed to fetch merged PR counts: ${errorMessage(err)}`);
         return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
       }),
-      prMonitor.fetchUserClosedPRCounts().catch((err) => {
+      prMonitor.fetchUserClosedPRCounts(starFilter).catch((err) => {
         if (isRateLimitOrAuthError(err)) throw err;
         warn(MODULE, `Failed to fetch closed PR counts: ${errorMessage(err)}`);
         return emptyPRCountsResult<number>();
@@ -209,8 +219,10 @@ export function computePRsByRepo(
     prsByRepo[pr.repo].active++;
   }
 
-  // Add merged/closed counts from repo scores (historical data)
+  // Add merged/closed counts from repo scores (historical data), filtering by minStars (#576)
+  const minStars = state.config.minStars ?? 50;
   for (const [repo, score] of Object.entries(state.repoScores || {})) {
+    if (isBelowMinStars(score.stargazersCount, minStars)) continue;
     if (!prsByRepo[repo]) prsByRepo[repo] = { active: 0, merged: 0, closed: 0 };
     prsByRepo[repo].merged = score.mergedPRCount;
     prsByRepo[repo].closed = score.closedWithoutMergeCount;

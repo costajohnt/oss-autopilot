@@ -27,6 +27,7 @@ import {
   ClosedPR,
   MergedPR,
   DetermineStatusInput,
+  StarFilter,
 } from './types.js';
 import { runWorkerPool } from './concurrency.js';
 import { ConfigurationError, ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
@@ -598,18 +599,20 @@ export class PRMonitor {
    * Fetch merged PR counts and latest merge dates per repository for the configured user.
    * Delegates to github-stats module.
    */
-  async fetchUserMergedPRCounts(): Promise<PRCountsResult<{ count: number; lastMergedAt: string }>> {
+  async fetchUserMergedPRCounts(
+    starFilter?: StarFilter,
+  ): Promise<PRCountsResult<{ count: number; lastMergedAt: string }>> {
     const config = this.stateManager.getState().config;
-    return fetchUserMergedPRCountsImpl(this.octokit, config.githubUsername);
+    return fetchUserMergedPRCountsImpl(this.octokit, config.githubUsername, starFilter);
   }
 
   /**
    * Fetch closed-without-merge PR counts per repository for the configured user.
    * Delegates to github-stats module.
    */
-  async fetchUserClosedPRCounts(): Promise<PRCountsResult<number>> {
+  async fetchUserClosedPRCounts(starFilter?: StarFilter): Promise<PRCountsResult<number>> {
     const config = this.stateManager.getState().config;
-    return fetchUserClosedPRCountsImpl(this.octokit, config.githubUsername);
+    return fetchUserClosedPRCountsImpl(this.octokit, config.githubUsername, starFilter);
   }
 
   /**
