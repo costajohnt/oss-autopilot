@@ -54,6 +54,13 @@ if [ -n "$CURRENT" ]; then
     LATEST=$(gh api repos/costajohnt/oss-autopilot/releases/latest --jq '.tag_name' 2>/dev/null | sed 's/^[^0-9]*//' || echo "")
     # Validate LATEST looks like a version (digits and dots), not an error response
     if [ -n "$LATEST" ] && echo "$LATEST" | grep -qE '^[0-9]+\.' && [ "$LATEST" != "$CURRENT" ]; then
+      # Pull the marketplace clone so /plugin update sees the new version
+      MARKETPLACE_DIR="${HOME}/.claude/plugins/marketplaces/oss-autopilot"
+      if [ -d "${MARKETPLACE_DIR}/.git" ]; then
+        git -C "${MARKETPLACE_DIR}" fetch origin main --quiet 2>/dev/null \
+          && git -C "${MARKETPLACE_DIR}" reset --hard origin/main --quiet 2>/dev/null \
+          || true
+      fi
       update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). Run: /plugin update oss-autopilot"
       messages="${messages:+${messages}\n}${update_msg}"
     fi
