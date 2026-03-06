@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.18](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.17...core-v0.44.18) (2026-03-06)
+
+
+### Bug Fixes
+
+* remove git hooks before badges branch checkout ([#587](https://github.com/costajohnt/oss-autopilot/issues/587)) ([c605fc1](https://github.com/costajohnt/oss-autopilot/commit/c605fc1e8c7d0d3e320d2fd31905af5d1a3215e8))
+
 ## [0.44.17](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.16...core-v0.44.17) (2026-03-06)
 
 
