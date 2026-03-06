@@ -93,6 +93,16 @@ if [ ! -f "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ] || [ "${CL
     echo "BUILD_FAILED"; echo "$BUILD_LOG" | tail -5; exit 1
   fi
 fi
+# Build dashboard SPA if missing or stale (#567)
+DASHBOARD_INDEX="${CLAUDE_PLUGIN_ROOT}/packages/dashboard/dist/index.html"
+DASHBOARD_PKG="${CLAUDE_PLUGIN_ROOT}/packages/dashboard/package.json"
+if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ "${DASHBOARD_PKG}" -nt "${DASHBOARD_INDEX}" ]; }; then
+  if command -v pnpm &>/dev/null; then
+    (cd "${CLAUDE_PLUGIN_ROOT}" && pnpm install --silent 2>/dev/null && pnpm --silent --filter @oss-autopilot/core run build 2>/dev/null && pnpm --silent --filter @oss-autopilot/dashboard run build 2>/dev/null) || true
+  else
+    (cd "${CLAUDE_PLUGIN_ROOT}/packages/dashboard" && npm install --silent 2>/dev/null && npm run build 2>/dev/null) || true
+  fi
+fi
 GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN")
 export GITHUB_TOKEN
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json 2>/tmp/oss-startup-stderr.log

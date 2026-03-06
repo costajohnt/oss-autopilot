@@ -406,9 +406,9 @@ export class PRMonitor {
     if (daysSinceActivity >= dormantThreshold) stalenessTier = 'dormant';
     else if (daysSinceActivity >= approachingThreshold) stalenessTier = 'approaching_dormant';
 
-    // Only count the latest commit if it was authored by the contributor (#547).
-    // Non-contributor commits (maintainer merge commits, GitHub suggestion commits)
-    // should not mask unaddressed feedback.
+    // Only count the latest commit if it was authored by the contributor or a
+    // CI bot (#547, #568). Non-contributor commits (maintainer merge commits,
+    // GitHub suggestion commits) should not mask unaddressed feedback.
     const latestCommitDate =
       rawCommitDate && this.isContributorCommit(latestCommitAuthor, contributorUsername) ? rawCommitDate : undefined;
 
@@ -475,12 +475,21 @@ export class PRMonitor {
   }
 
   /**
+   * CI-fix bots that push commits as a direct result of the contributor's push (#568).
+   * Their commits represent contributor work and should not mask addressed feedback.
+   * This is intentionally an allowlist — not all `[bot]` accounts are CI-fix bots
+   * (e.g. dependabot[bot] and renovate[bot] open their own PRs).
+   */
+  private static readonly CI_FIX_BOTS = new Set(['autofix-ci[bot]', 'prettier-ci[bot]', 'pre-commit-ci[bot]']);
+
+  /**
    * Check whether the HEAD commit was authored by the contributor (#547).
-   * Returns true when the author matches or when author info is unavailable
-   * (graceful degradation — don't break existing behavior if the API omits it).
+   * Returns true when the author matches, when the author is a known CI-fix
+   * bot (#568), or when author info is unavailable (graceful degradation).
    */
   private isContributorCommit(commitAuthor?: string, contributorUsername?: string): boolean {
     if (!commitAuthor || !contributorUsername) return true; // degrade gracefully
+    if (PRMonitor.CI_FIX_BOTS.has(commitAuthor.toLowerCase())) return true; // (#568)
     return commitAuthor.toLowerCase() === contributorUsername.toLowerCase();
   }
 

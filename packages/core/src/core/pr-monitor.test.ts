@@ -437,6 +437,79 @@ describe('PRMonitor commit author filtering (#547)', () => {
     // Non-contributor commit should not count — still needs_changes
     expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
   });
+
+  it('should return changes_addressed when HEAD commit is by a CI bot (#568)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: true,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-08T12:00:00Z',
+      latestCommitAuthor: 'autofix-ci[bot]',
+      contributorUsername: 'contributor-user',
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+    });
+
+    // Bot commits represent contributor work — should count as changes_addressed
+    expect(result).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'changes_addressed',
+      stalenessTier: 'active',
+    });
+  });
+
+  it('should return changes_addressed when CI bot commit after changes_requested review (#568)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-09T10:00:00Z',
+      latestCommitAuthor: 'prettier-ci[bot]',
+      contributorUsername: 'contributor-user',
+      lastMaintainerCommentDate: undefined,
+      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+    });
+
+    // Bot commit after changes_requested review = contributor addressed changes
+    expect(result).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'changes_addressed',
+      stalenessTier: 'active',
+    });
+  });
+
+  it('should NOT treat non-CI bot commits as contributor work (#568)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-09T10:00:00Z',
+      latestCommitAuthor: 'github-actions[bot]',
+      contributorUsername: 'contributor-user',
+      lastMaintainerCommentDate: undefined,
+      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+    });
+
+    // Non-CI bot commits should NOT count as addressing feedback
+    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
+  });
 });
 
 describe('PRMonitor needs_changes detection', () => {
