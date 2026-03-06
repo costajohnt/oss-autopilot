@@ -36,7 +36,7 @@ if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ "${DASHBOAR
   fi
 fi
 
-# --- Step 2: Check for updates (once per day) ---
+# --- Step 2: Check for updates (every 6 hours) ---
 LAST_CHECK="${HOME}/.oss-autopilot/.last-update-check"
 CURRENT=$(node -e "console.log(require('${PLUGIN_ROOT}/packages/core/package.json').version)" 2>/dev/null || echo "")
 
@@ -44,25 +44,44 @@ if [ -n "$CURRENT" ]; then
   should_check=false
   if [ ! -f "$LAST_CHECK" ]; then
     should_check=true
-  elif [ -n "$(find "$LAST_CHECK" -mmin +1440 2>/dev/null)" ]; then
+  elif [ -n "$(find "$LAST_CHECK" -mmin +360 2>/dev/null)" ]; then
     should_check=true
   fi
 
   if [ "$should_check" = true ]; then
     mkdir -p "${HOME}/.oss-autopilot"
-    touch "$LAST_CHECK"
     LATEST=$(gh api repos/costajohnt/oss-autopilot/releases/latest --jq '.tag_name' 2>/dev/null | sed 's/^[^0-9]*//' || echo "")
     # Validate LATEST looks like a version (digits and dots), not an error response
-    if [ -n "$LATEST" ] && echo "$LATEST" | grep -qE '^[0-9]+\.' && [ "$LATEST" != "$CURRENT" ]; then
-      # Pull the marketplace clone so /plugin update sees the new version
-      MARKETPLACE_DIR="${HOME}/.claude/plugins/marketplaces/oss-autopilot"
-      if [ -d "${MARKETPLACE_DIR}/.git" ]; then
-        git -C "${MARKETPLACE_DIR}" fetch origin main --quiet 2>/dev/null \
-          && git -C "${MARKETPLACE_DIR}" reset --hard origin/main --quiet 2>/dev/null \
-          || true
+    if [ -n "$LATEST" ] && echo "$LATEST" | grep -qE '^[0-9]+\.'; then
+      # Mark check as done only after a successful API response
+      touch "$LAST_CHECK"
+      if [ "$LATEST" != "$CURRENT" ]; then
+        # Pull the marketplace clone so /plugin update sees the new version
+        MARKETPLACE_DIR="${HOME}/.claude/plugins/marketplaces/oss-autopilot"
+        marketplace_pulled=false
+        if [ -d "${MARKETPLACE_DIR}/.git" ]; then
+          if git -C "${MARKETPLACE_DIR}" fetch origin main --quiet 2>/dev/null \
+            && git -C "${MARKETPLACE_DIR}" reset --hard origin/main --quiet 2>/dev/null; then
+            marketplace_pulled=true
+          fi
+        fi
+        # Update known_marketplaces.json so Claude Code recognises the marketplace change.
+        # Uses atomic write (tmp + mv) to prevent corruption on interruption.
+        KNOWN_MP="${HOME}/.claude/plugins/known_marketplaces.json"
+        if [ -f "$KNOWN_MP" ] && command -v jq &>/dev/null; then
+          jq --arg ts "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
+            'if has("oss-autopilot") then .["oss-autopilot"].lastUpdated = $ts else . end' \
+            "$KNOWN_MP" > "${KNOWN_MP}.tmp" \
+            && mv "${KNOWN_MP}.tmp" "$KNOWN_MP" \
+            || rm -f "${KNOWN_MP}.tmp"
+        fi
+        if [ "$marketplace_pulled" = true ]; then
+          update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). Run: /plugin update oss-autopilot"
+        else
+          update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). Auto-pull failed. Run: cd ${MARKETPLACE_DIR} && git pull origin main, then /plugin update oss-autopilot"
+        fi
+        messages="${messages:+${messages}\n}${update_msg}"
       fi
-      update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). Run: /plugin update oss-autopilot"
-      messages="${messages:+${messages}\n}${update_msg}"
     fi
   fi
 fi
