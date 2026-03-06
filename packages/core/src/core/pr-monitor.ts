@@ -476,11 +476,16 @@ export class PRMonitor {
 
   /**
    * CI-fix bots that push commits as a direct result of the contributor's push (#568).
-   * Their commits represent contributor work and should not mask addressed feedback.
+   * Their commits represent contributor work and should count as addressing feedback.
    * This is intentionally an allowlist — not all `[bot]` accounts are CI-fix bots
    * (e.g. dependabot[bot] and renovate[bot] open their own PRs).
+   * Values must be lowercase — lookup uses .toLowerCase() for case-insensitive matching.
    */
-  private static readonly CI_FIX_BOTS = new Set(['autofix-ci[bot]', 'prettier-ci[bot]', 'pre-commit-ci[bot]']);
+  private static readonly CI_FIX_BOTS: ReadonlySet<string> = new Set([
+    'autofix-ci[bot]',
+    'prettier-ci[bot]',
+    'pre-commit-ci[bot]',
+  ]);
 
   /**
    * Check whether the HEAD commit was authored by the contributor (#547).
@@ -489,8 +494,9 @@ export class PRMonitor {
    */
   private isContributorCommit(commitAuthor?: string, contributorUsername?: string): boolean {
     if (!commitAuthor || !contributorUsername) return true; // degrade gracefully
-    if (PRMonitor.CI_FIX_BOTS.has(commitAuthor.toLowerCase())) return true; // (#568)
-    return commitAuthor.toLowerCase() === contributorUsername.toLowerCase();
+    const author = commitAuthor.toLowerCase();
+    if (PRMonitor.CI_FIX_BOTS.has(author)) return true; // CI-fix bots act on behalf of the contributor (#568)
+    return author === contributorUsername.toLowerCase();
   }
 
   /** Minimum gap (ms) between maintainer comment and contributor commit for

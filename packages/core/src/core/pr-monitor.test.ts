@@ -297,7 +297,7 @@ describe('PRMonitor changes_addressed detection', () => {
   });
 });
 
-describe('PRMonitor commit author filtering (#547)', () => {
+describe('PRMonitor commit author filtering (#547, #568)', () => {
   beforeEach(() => {
     mockOctokitInstance = {};
   });
@@ -482,6 +482,31 @@ describe('PRMonitor commit author filtering (#547)', () => {
     });
 
     // Bot commit after changes_requested review = contributor addressed changes
+    expect(result).toEqual({
+      status: 'waiting_on_maintainer',
+      waitReason: 'changes_addressed',
+      stalenessTier: 'active',
+    });
+  });
+
+  it('should return changes_addressed when pre-commit-ci[bot] commits after review (#568)', () => {
+    const monitor = new PRMonitor('fake-token');
+    const result = (monitor as any).determineStatus({
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'changes_requested',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: '2026-02-09T10:00:00Z',
+      latestCommitAuthor: 'pre-commit-ci[bot]',
+      contributorUsername: 'contributor-user',
+      lastMaintainerCommentDate: undefined,
+      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+    });
+
     expect(result).toEqual({
       status: 'waiting_on_maintainer',
       waitReason: 'changes_addressed',
