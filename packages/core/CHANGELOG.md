@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.17](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.16...core-v0.44.17) (2026-03-06)
+
+
+### Bug Fixes
+
+* improve plugin update detection in session-start hook ([#585](https://github.com/costajohnt/oss-autopilot/issues/585)) ([1ea8ec6](https://github.com/costajohnt/oss-autopilot/commit/1ea8ec6e5c44be8d4a5142bea0f85939eaec84ad))
+
 ## [0.44.16](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.15...core-v0.44.16) (2026-03-06)
 
 
