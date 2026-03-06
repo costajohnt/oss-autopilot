@@ -241,7 +241,7 @@ describe('fetchUserPRCounts star filtering', () => {
     expect(result.monthlyCounts['2025-06']).toBe(1);
   });
 
-  it('should include repos with unknown star counts (not yet fetched)', async () => {
+  it('should exclude repos with unknown star counts (not yet fetched)', async () => {
     const items = [
       makeMergedItem('known-org', 'known-repo', '2025-06-01T00:00:00Z'),
       makeMergedItem('unknown-org', 'new-repo', '2025-06-02T00:00:00Z'),
@@ -257,8 +257,9 @@ describe('fetchUserPRCounts star filtering', () => {
 
     const result = await fetchUserMergedPRCounts(octokit, 'testuser', starFilter);
 
-    // Both should be included — unknown-org/new-repo has no star data, so it passes
-    expect(result.repos.size).toBe(2);
+    // Only known-org/known-repo included — unknown-org/new-repo has no star data, so it's excluded
+    expect(result.repos.size).toBe(1);
+    expect(result.repos.has('known-org/known-repo')).toBe(true);
   });
 
   it('should not filter when no starFilter is provided', async () => {

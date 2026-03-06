@@ -89,7 +89,7 @@ describe('buildDashboardStats', () => {
     expect(stats.mergedPRs).toBe(42);
   });
 
-  it('sums closedWithoutMergeCount across all repoScores', () => {
+  it('sums closedWithoutMergeCount across repoScores that meet minStars', () => {
     const state = makeState({
       repoScores: {
         'a/b': {
@@ -97,6 +97,7 @@ describe('buildDashboardStats', () => {
           score: 5,
           mergedPRCount: 1,
           closedWithoutMergeCount: 3,
+          stargazersCount: 100,
           avgResponseDays: null,
           lastEvaluatedAt: '2025-06-01T00:00:00Z',
           signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
@@ -106,6 +107,7 @@ describe('buildDashboardStats', () => {
           score: 7,
           mergedPRCount: 2,
           closedWithoutMergeCount: 1,
+          stargazersCount: 200,
           avgResponseDays: null,
           lastEvaluatedAt: '2025-06-01T00:00:00Z',
           signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
@@ -114,6 +116,36 @@ describe('buildDashboardStats', () => {
     });
     const stats = buildDashboardStats(makeDigest(), state);
     expect(stats.closedPRs).toBe(4); // 3 + 1
+  });
+
+  it('excludes repos below minStars from closedPRs count (#576)', () => {
+    const state = makeState({
+      config: { githubUsername: 'testuser', shelvedPRUrls: [], minStars: 50 },
+      repoScores: {
+        'big/repo': {
+          repo: 'big/repo',
+          score: 8,
+          mergedPRCount: 5,
+          closedWithoutMergeCount: 3,
+          stargazersCount: 500,
+          avgResponseDays: null,
+          lastEvaluatedAt: '2025-06-01T00:00:00Z',
+          signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
+        },
+        'tiny/repo': {
+          repo: 'tiny/repo',
+          score: 2,
+          mergedPRCount: 1,
+          closedWithoutMergeCount: 10,
+          stargazersCount: 5,
+          avgResponseDays: null,
+          lastEvaluatedAt: '2025-06-01T00:00:00Z',
+          signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
+        },
+      },
+    });
+    const stats = buildDashboardStats(makeDigest(), state);
+    expect(stats.closedPRs).toBe(3); // only big/repo; tiny/repo (5 stars) excluded
   });
 
   it('formats mergeRate as a percentage string', () => {
@@ -129,6 +161,34 @@ describe('buildDashboardStats', () => {
     (digest.summary as any).mergeRate = null;
     const stats = buildDashboardStats(digest, makeState());
     expect(stats.mergeRate).toBe('0.0%');
+  });
+
+  it('excludes repos with undefined stargazersCount from closedPRs count', () => {
+    const state = makeState({
+      repoScores: {
+        'known/repo': {
+          repo: 'known/repo',
+          score: 8,
+          mergedPRCount: 2,
+          closedWithoutMergeCount: 4,
+          stargazersCount: 500,
+          avgResponseDays: null,
+          lastEvaluatedAt: '2025-06-01T00:00:00Z',
+          signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
+        },
+        'unknown/repo': {
+          repo: 'unknown/repo',
+          score: 3,
+          mergedPRCount: 1,
+          closedWithoutMergeCount: 7,
+          avgResponseDays: null,
+          lastEvaluatedAt: '2025-06-01T00:00:00Z',
+          signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
+        },
+      },
+    });
+    const stats = buildDashboardStats(makeDigest(), state);
+    expect(stats.closedPRs).toBe(4); // only known/repo; unknown/repo has no stargazersCount
   });
 
   it('handles missing repoScores gracefully', () => {
@@ -191,6 +251,23 @@ describe('computePRsByRepo', () => {
     const result = computePRsByRepo(digest, state);
 
     expect(result['owner/alpha']).toEqual({ active: 1, merged: 3, closed: 1 });
+  });
+
+  it('should exclude repoScores below minStars', () => {
+    const digest = makeDigest();
+    const state = makeState({
+      repoScores: {
+        'owner/popular': { mergedPRCount: 5, closedWithoutMergeCount: 2, stargazersCount: 100 } as any,
+        'owner/tiny': { mergedPRCount: 3, closedWithoutMergeCount: 1, stargazersCount: 10 } as any,
+        'owner/unknown': { mergedPRCount: 2, closedWithoutMergeCount: 1 } as any,
+      },
+    });
+
+    const result = computePRsByRepo(digest, state);
+
+    expect(result['owner/popular']).toEqual({ active: 0, merged: 5, closed: 2 });
+    expect(result['owner/tiny']).toBeUndefined(); // below default minStars (50)
+    expect(result['owner/unknown']).toBeUndefined(); // undefined stars excluded
   });
 
   it('should return empty object when no PRs and no scores', () => {

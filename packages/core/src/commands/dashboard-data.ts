@@ -8,9 +8,6 @@ import { getStateManager, PRMonitor, IssueConversationMonitor } from '../core/in
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
-import { toShelvedPRRef, buildStarFilter } from './daily.js';
-
-const MODULE = 'dashboard-data';
 import {
   isBelowMinStars,
   type DailyDigest,
@@ -19,6 +16,9 @@ import {
   type MergedPR,
   type CommentedIssue,
 } from '../core/types.js';
+import { toShelvedPRRef, buildStarFilter } from './daily.js';
+
+const MODULE = 'dashboard-data';
 
 export interface DashboardStats {
   activePRs: number;
@@ -35,11 +35,15 @@ export function buildDashboardStats(digest: DailyDigest, state: Readonly<AgentSt
     mergeRate: 0,
     totalNeedingAttention: 0,
   };
+  const minStars = state.config.minStars ?? 50;
   return {
     activePRs: summary.totalActivePRs,
     shelvedPRs: (digest.shelvedPRs || []).length,
     mergedPRs: summary.totalMergedAllTime,
-    closedPRs: Object.values(state.repoScores || {}).reduce((sum, s) => sum + (s.closedWithoutMergeCount || 0), 0),
+    closedPRs: Object.values(state.repoScores || {}).reduce(
+      (sum, s) => sum + (isBelowMinStars(s.stargazersCount, minStars) ? 0 : s.closedWithoutMergeCount || 0),
+      0,
+    ),
     mergeRate: `${(summary.mergeRate ?? 0).toFixed(1)}%`,
   };
 }
