@@ -138,8 +138,7 @@ async function fetchUserPRCounts<R>(
       // Those filters control issue discovery/search, not historical statistics.
 
       // Skip repos below the minimum star threshold (#576).
-      // Repos with unknown star counts (not yet fetched) are included — they'll be
-      // filtered on the next run once star data is cached in repoScores.
+      // Repos with unknown star counts (not yet fetched) are also excluded (fail-closed).
       if (starFilter && isBelowMinStars(starFilter.knownStarCounts.get(repo), starFilter.minStars)) {
         continue;
       }

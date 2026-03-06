@@ -314,7 +314,7 @@ async function updateRepoScores(
     warn(MODULE, `Failed to fetch repo star counts: ${errorMessage(error)}`);
     warn(
       MODULE,
-      'Dashboard minStars filter will use cached star counts (or be skipped for repos without cached data).',
+      'Repos without cached star data will be excluded from stats until star counts are fetched on the next successful run.',
     );
     starCounts = new Map();
   }

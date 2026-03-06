@@ -497,11 +497,10 @@ export interface StarFilter {
 
 /**
  * Check if a repo should be excluded based on its star count.
- * Returns true if the repo is known to be below the threshold.
- * Repos with unknown star counts pass through (fail-open).
+ * Returns true if the repo is below the threshold or has unknown star count.
  */
 export function isBelowMinStars(stargazersCount: number | undefined, minStars: number): boolean {
-  return stargazersCount !== undefined && stargazersCount < minStars;
+  return stargazersCount === undefined || stargazersCount < minStars;
 }
 
 /** Manual status override for a PR, set via dashboard or CLI. Auto-clears when new activity is detected. */
