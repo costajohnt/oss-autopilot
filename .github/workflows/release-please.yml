@@ -14,8 +14,8 @@ jobs:
     name: Release Please
     runs-on: ubuntu-latest
     outputs:
-      core-released: ${{ steps.release.outputs['.--release_created'] }}
-      core-tag: ${{ steps.release.outputs['.--tag_name'] }}
+      core-released: ${{ steps.release.outputs.release_created }}
+      core-tag: ${{ steps.release.outputs.tag_name }}
       mcp-released: ${{ steps.release.outputs['packages/mcp-server--release_created'] }}
       mcp-tag: ${{ steps.release.outputs['packages/mcp-server--tag_name'] }}
     steps:
