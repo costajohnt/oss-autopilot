@@ -132,6 +132,9 @@ jobs:
           cp .github/badges/tests.json /tmp/badge.json
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Disable git hooks before checkout — the badges branch has no package.json,
+          # so pnpm post-checkout hooks fail with ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND.
+          rm -rf .git/hooks
           # Fetch existing badges branch, or create orphan on first run
           if git fetch origin badges:badges 2>/dev/null; then
             git checkout -f badges
@@ -139,8 +142,6 @@ jobs:
             git checkout --orphan badges
             git rm -rf . 2>/dev/null || true
           fi
-          # Remove commit-msg hook — badges branch lacks scripts/commit-msg.sh
-          rm -f .git/hooks/commit-msg
           mkdir -p .github/badges
           cp /tmp/badge.json .github/badges/tests.json
           git add .github/badges/tests.json
