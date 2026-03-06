@@ -915,4 +915,57 @@ export const commands: CLICommandDef[] = [
         });
     },
   },
+
+  // ── Override Status ────────────────────────────────────────────────────
+  {
+    name: 'override',
+    localOnly: true,
+    register(program) {
+      program
+        .command('override <pr-url> <status>')
+        .description('Manually override PR status (needs_addressing or waiting_on_maintainer)')
+        .option('--json', 'Output as JSON')
+        .action(async (prUrl, status, options) => {
+          try {
+            const { runOverride } = await import('./commands/override.js');
+            const data = await runOverride({ prUrl, status });
+            if (options.json) {
+              outputJson(data);
+            } else {
+              console.log(`Override set: ${prUrl} → ${data.status}`);
+              console.log('This override will auto-clear when the PR has new activity.');
+            }
+          } catch (err) {
+            handleCommandError(err, options.json);
+          }
+        });
+    },
+  },
+
+  // ── Clear Override ────────────────────────────────────────────────────
+  {
+    name: 'clear-override',
+    localOnly: true,
+    register(program) {
+      program
+        .command('clear-override <pr-url>')
+        .description('Clear a manual status override for a PR')
+        .option('--json', 'Output as JSON')
+        .action(async (prUrl, options) => {
+          try {
+            const { runClearOverride } = await import('./commands/override.js');
+            const data = await runClearOverride({ prUrl });
+            if (options.json) {
+              outputJson(data);
+            } else if (data.cleared) {
+              console.log(`Override cleared: ${prUrl}`);
+            } else {
+              console.log('No override was set for this PR.');
+            }
+          } catch (err) {
+            handleCommandError(err, options.json);
+          }
+        });
+    },
+  },
 ];

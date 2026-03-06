@@ -4,30 +4,27 @@ import type { FetchedPR, ActionRequest } from '../types';
 interface ActionBarProps {
   pr: FetchedPR;
   isShelved: boolean;
-  isDismissed: boolean;
   onAction: (action: ActionRequest) => Promise<void>;
 }
 
-export function ActionBar({ pr, isShelved, isDismissed, onAction }: ActionBarProps) {
-  const [snoozeOpen, setSnoozeOpen] = useState(false);
-  const [snoozeReason, setSnoozeReason] = useState('');
-  const [snoozeDays, setSnoozeDays] = useState(1);
+export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  async function handleAction(action: ActionRequest): Promise<boolean> {
+  async function handleAction(action: ActionRequest): Promise<void> {
     setBusy(true);
     setActionError(null);
     try {
       await onAction(action);
-      return true;
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Action failed');
-      return false;
     } finally {
       setBusy(false);
     }
   }
+
+  const oppositeStatus = pr.status === 'needs_addressing' ? 'waiting_on_maintainer' : 'needs_addressing';
+  const overrideLabel = pr.status === 'needs_addressing' ? 'Move to Waiting' : 'Move to Action Required';
 
   return (
     <div class="action-bar">
@@ -47,79 +44,18 @@ export function ActionBar({ pr, isShelved, isDismissed, onAction }: ActionBarPro
       </button>
 
       <button
-        class={`action-btn ${isDismissed ? 'action-btn--unshelve' : 'action-btn--shelve'}`}
+        class="action-btn action-btn--override"
         disabled={busy}
         onClick={() =>
           handleAction({
-            action: isDismissed ? 'undismiss' : 'dismiss',
+            action: 'override_status',
             url: pr.url,
+            status: oppositeStatus,
           })
         }
       >
-        {isDismissed ? 'Undismiss' : 'Dismiss'}
+        {overrideLabel}
       </button>
-
-      {pr.ciStatus === 'failing' && (
-        <>
-          <button class="action-btn action-btn--snooze" disabled={busy} onClick={() => setSnoozeOpen(!snoozeOpen)}>
-            Snooze CI
-          </button>
-          <button
-            class="action-btn action-btn--unsnooze"
-            disabled={busy}
-            onClick={() =>
-              handleAction({
-                action: 'unsnooze',
-                url: pr.url,
-              })
-            }
-          >
-            Unsnooze
-          </button>
-        </>
-      )}
-
-      {snoozeOpen && (
-        <div class="snooze-form">
-          <input
-            class="snooze-input"
-            type="text"
-            placeholder="Reason (optional)"
-            value={snoozeReason}
-            onInput={(e) => setSnoozeReason((e.target as HTMLInputElement).value)}
-          />
-          <label class="snooze-label">
-            Days:
-            <input
-              class="snooze-input snooze-input--days"
-              type="number"
-              min={1}
-              max={30}
-              value={snoozeDays}
-              onInput={(e) => setSnoozeDays(Math.max(1, parseInt((e.target as HTMLInputElement).value, 10) || 1))}
-            />
-          </label>
-          <button
-            class="action-btn action-btn--confirm"
-            disabled={busy}
-            onClick={async () => {
-              const ok = await handleAction({
-                action: 'snooze',
-                url: pr.url,
-                reason: snoozeReason || undefined,
-                days: snoozeDays,
-              });
-              if (ok) {
-                setSnoozeOpen(false);
-                setSnoozeReason('');
-                setSnoozeDays(1);
-              }
-            }}
-          >
-            Confirm Snooze
-          </button>
-        </div>
-      )}
     </div>
   );
 }

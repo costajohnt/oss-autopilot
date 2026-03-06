@@ -16,6 +16,8 @@ import {
   DailyDigest,
   LocalRepoCache,
   SnoozeInfo,
+  StatusOverride,
+  FetchedPRStatus,
 } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
 import { ValidationError, errorMessage } from './errors.js';
@@ -959,6 +961,57 @@ export class StateManager {
     return expired;
   }
 
+  // === Status Overrides ===
+
+  /**
+   * Set a manual status override for a PR.
+   * @param url - The full GitHub PR URL.
+   * @param status - The target status to override to.
+   * @param lastActivityAt - The PR's current updatedAt timestamp (for auto-clear detection).
+   */
+  setStatusOverride(url: string, status: FetchedPRStatus, lastActivityAt: string): void {
+    if (!this.state.config.statusOverrides) {
+      this.state.config.statusOverrides = {};
+    }
+    this.state.config.statusOverrides[url] = {
+      status,
+      setAt: new Date().toISOString(),
+      lastActivityAt,
+    };
+  }
+
+  /**
+   * Clear a status override for a PR.
+   * @param url - The full GitHub PR URL.
+   * @returns true if found and removed, false if no override existed.
+   */
+  clearStatusOverride(url: string): boolean {
+    if (!this.state.config.statusOverrides || !(url in this.state.config.statusOverrides)) {
+      return false;
+    }
+    delete this.state.config.statusOverrides[url];
+    return true;
+  }
+
+  /**
+   * Get the status override for a PR, if one exists and hasn't been auto-cleared.
+   * @param url - The full GitHub PR URL.
+   * @param currentUpdatedAt - The PR's current updatedAt from GitHub. If newer than
+   *   the stored lastActivityAt, the override is stale and auto-cleared.
+   * @returns The override metadata, or undefined if none exists or it was auto-cleared.
+   */
+  getStatusOverride(url: string, currentUpdatedAt?: string): StatusOverride | undefined {
+    const override = this.state.config.statusOverrides?.[url];
+    if (!override) return undefined;
+
+    // Auto-clear if the PR has new activity since the override was set
+    if (currentUpdatedAt && currentUpdatedAt > override.lastActivityAt) {
+      this.clearStatusOverride(url);
+      return undefined;
+    }
+    return override;
+  }
+
   // === Repository Scoring ===
 
   /**
@@ -1200,7 +1253,7 @@ export class StateManager {
 
     for (const [repoKey, score] of Object.entries(this.state.repoScores)) {
       if (this.isExcluded(repoKey)) continue;
-      if ((score.stargazersCount ?? 0) < 50) continue;
+      if (score.stargazersCount !== undefined && score.stargazersCount < (this.state.config.minStars ?? 50)) continue;
       totalTracked++;
       totalMerged += score.mergedPRCount;
       totalClosed += score.closedWithoutMergeCount;

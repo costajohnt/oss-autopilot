@@ -5,7 +5,7 @@
 
 import { Octokit } from '@octokit/rest';
 import { extractOwnerRepo, parseGitHubUrl, isOwnRepo } from './utils.js';
-import { ClosedPR, MergedPR } from './types.js';
+import { ClosedPR, MergedPR, type StarFilter } from './types.js';
 import { debug, warn } from './logger.js';
 import { getHttpCache } from './http-cache.js';
 
@@ -79,6 +79,7 @@ async function fetchUserPRCounts<R>(
   query: string,
   label: string,
   accumulateRepo: (repos: Map<string, R>, repo: string, item: SearchItem) => string,
+  starFilter?: StarFilter,
 ): Promise<PRCountsResult<R>> {
   if (!githubUsername) {
     return emptyPRCountsResult<R>();
@@ -86,7 +87,8 @@ async function fetchUserPRCounts<R>(
 
   // Check for a fresh cached result (avoids 10-20 paginated API calls)
   const cache = getHttpCache();
-  const cacheKey = `pr-counts:v2:${label}:${githubUsername}`;
+  const minStarsSuffix = starFilter ? `:stars${starFilter.minStars}` : '';
+  const cacheKey = `pr-counts:v3:${label}:${githubUsername}${minStarsSuffix}`;
   const cached = cache.getIfFresh(cacheKey, PR_COUNTS_CACHE_TTL_MS);
   if (cached && isCachedPRCounts(cached)) {
     debug(MODULE, `Using cached ${label} PR counts for @${githubUsername}`);
@@ -134,6 +136,14 @@ async function fetchUserPRCounts<R>(
 
       // Note: excludeRepos/excludeOrgs are intentionally NOT filtered here.
       // Those filters control issue discovery/search, not historical statistics.
+
+      // Skip repos below the minimum star threshold (#576).
+      // Repos with unknown star counts (not yet fetched) are included — they'll be
+      // filtered on the next run once star data is cached in repoScores.
+      if (starFilter) {
+        const stars = starFilter.knownStarCounts.get(repo);
+        if (stars !== undefined && stars < starFilter.minStars) continue;
+      }
 
       // Per-repo accumulation + get primary date for histograms
       const primaryDate = accumulateRepo(repos, repo, item);
@@ -198,39 +208,58 @@ async function fetchUserPRCounts<R>(
 export function fetchUserMergedPRCounts(
   octokit: Octokit,
   githubUsername: string,
+  starFilter?: StarFilter,
 ): Promise<PRCountsResult<{ count: number; lastMergedAt: string }>> {
-  return fetchUserPRCounts(octokit, githubUsername, 'is:merged', 'merged', (repos, repo, item) => {
-    if (!item.pull_request?.merged_at) {
-      warn(
-        MODULE,
-        `merged_at missing for merged PR ${item.html_url}${item.closed_at ? ', falling back to closed_at' : ', no date available'}`,
-      );
-    }
-    const mergedAt = item.pull_request?.merged_at || item.closed_at || '';
-
-    const existing = repos.get(repo);
-    if (existing) {
-      existing.count += 1;
-      if (mergedAt && mergedAt > existing.lastMergedAt) {
-        existing.lastMergedAt = mergedAt;
+  return fetchUserPRCounts(
+    octokit,
+    githubUsername,
+    'is:merged',
+    'merged',
+    (repos, repo, item) => {
+      if (!item.pull_request?.merged_at) {
+        warn(
+          MODULE,
+          `merged_at missing for merged PR ${item.html_url}${item.closed_at ? ', falling back to closed_at' : ', no date available'}`,
+        );
       }
-    } else {
-      repos.set(repo, { count: 1, lastMergedAt: mergedAt });
-    }
+      const mergedAt = item.pull_request?.merged_at || item.closed_at || '';
 
-    return mergedAt;
-  });
+      const existing = repos.get(repo);
+      if (existing) {
+        existing.count += 1;
+        if (mergedAt && mergedAt > existing.lastMergedAt) {
+          existing.lastMergedAt = mergedAt;
+        }
+      } else {
+        repos.set(repo, { count: 1, lastMergedAt: mergedAt });
+      }
+
+      return mergedAt;
+    },
+    starFilter,
+  );
 }
 
 /**
  * Fetch closed-without-merge PR counts per repository for the configured user.
  * Used to populate closedWithoutMergeCount in repo scores for accurate merge rate.
  */
-export function fetchUserClosedPRCounts(octokit: Octokit, githubUsername: string): Promise<PRCountsResult<number>> {
-  return fetchUserPRCounts(octokit, githubUsername, 'is:closed is:unmerged', 'closed', (repos, repo, item) => {
-    repos.set(repo, (repos.get(repo) || 0) + 1);
-    return item.closed_at || '';
-  });
+export function fetchUserClosedPRCounts(
+  octokit: Octokit,
+  githubUsername: string,
+  starFilter?: StarFilter,
+): Promise<PRCountsResult<number>> {
+  return fetchUserPRCounts(
+    octokit,
+    githubUsername,
+    'is:closed is:unmerged',
+    'closed',
+    (repos, repo, item) => {
+      repos.set(repo, (repos.get(repo) || 0) + 1);
+      return item.closed_at || '';
+    },
+    starFilter,
+  );
 }
 
 /**

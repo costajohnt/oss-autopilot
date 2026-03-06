@@ -489,6 +489,20 @@ export interface SnoozeInfo {
   expiresAt: string;
 }
 
+/** Filter for excluding repos below a minimum star count from PR count queries. */
+export interface StarFilter {
+  minStars: number;
+  knownStarCounts: ReadonlyMap<string, number>;
+}
+
+/** Manual status override for a PR, set via dashboard or CLI. Auto-clears when new activity is detected. */
+export interface StatusOverride {
+  status: FetchedPRStatus;
+  setAt: string;
+  /** PR's updatedAt at the time the override was set. Used to detect new activity for auto-clear. */
+  lastActivityAt: string;
+}
+
 /** User-configurable settings, populated via `/setup-oss` and stored in {@link AgentState}. */
 export interface AgentConfig {
   /** False until the user completes initial setup via `/setup-oss`. */
@@ -551,6 +565,9 @@ export interface AgentConfig {
 
   /** PR URLs with snoozed CI failures, mapped to snooze metadata. Snoozed PRs are excluded from actionable CI failure list until expiry. */
   snoozedPRs?: Record<string, SnoozeInfo>;
+
+  /** Manual status overrides for PRs. Maps PR URL to override metadata. Auto-clears when the PR has new activity. */
+  statusOverrides?: Record<string, StatusOverride>;
 }
 
 /** Status of a user's comment thread on a GitHub issue. */

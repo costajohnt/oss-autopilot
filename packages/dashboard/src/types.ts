@@ -46,7 +46,6 @@ export interface DashboardData {
   monthlyClosed: Record<string, number>;
   activePRs: FetchedPR[];
   shelvedPRUrls: string[];
-  dismissedUrls: string[];
   recentlyMergedPRs: MergedPR[];
   recentlyClosedPRs: ClosedPR[];
   autoUnshelvedPRs: ShelvedPRRef[];
@@ -55,12 +54,12 @@ export interface DashboardData {
 }
 
 /** Actions a user can take from the dashboard. */
-export type ActionType = 'shelve' | 'unshelve' | 'snooze' | 'unsnooze' | 'dismiss' | 'undismiss';
+export type ActionType = 'shelve' | 'unshelve' | 'override_status';
 
 /** Request body for POST /api/action. */
 export interface ActionRequest {
   action: ActionType;
   url: string;
-  reason?: string;
-  days?: number;
+  /** Target status for override_status action. */
+  status?: 'needs_addressing' | 'waiting_on_maintainer';
 }

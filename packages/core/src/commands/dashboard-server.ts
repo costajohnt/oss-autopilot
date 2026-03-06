@@ -1,7 +1,7 @@
 /**
  * Dashboard HTTP server.
  * Serves the Preact SPA from packages/dashboard/dist/ and provides API endpoints
- * for live data fetching and state mutations (shelve, snooze, etc.).
+ * for live data fetching and state mutations (shelve, unshelve, override, etc.).
  *
  * Uses Node's built-in http module — no Express/Fastify.
  */
@@ -12,13 +12,7 @@ import * as path from 'path';
 import { getStateManager, getGitHubToken, getDataDir, getCLIVersion } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
-import {
-  validateUrl,
-  validateGitHubUrl,
-  validateMessage,
-  PR_URL_PATTERN,
-  ISSUE_OR_PR_URL_PATTERN,
-} from './validation.js';
+import { validateUrl, validateGitHubUrl, PR_URL_PATTERN } from './validation.js';
 import {
   fetchDashboardData,
   computePRsByRepo,
@@ -64,7 +58,6 @@ interface DashboardJsonData {
   monthlyClosed: Record<string, number>;
   activePRs: FetchedPR[];
   shelvedPRUrls: string[];
-  dismissedUrls: string[];
   recentlyMergedPRs: MergedPR[];
   recentlyClosedPRs: ClosedPR[];
   autoUnshelvedPRs: ShelvedPRRef[];
@@ -75,22 +68,15 @@ interface DashboardJsonData {
 }
 
 interface ActionRequest {
-  action: 'shelve' | 'unshelve' | 'snooze' | 'unsnooze' | 'dismiss' | 'undismiss';
+  action: 'shelve' | 'unshelve' | 'override_status';
   url: string;
-  reason?: string;
-  days?: number;
+  /** Target status for override_status action. */
+  status?: 'needs_addressing' | 'waiting_on_maintainer';
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const VALID_ACTIONS: Set<ActionRequest['action']> = new Set([
-  'shelve',
-  'unshelve',
-  'snooze',
-  'unsnooze',
-  'dismiss',
-  'undismiss',
-]);
+const VALID_ACTIONS: Set<ActionRequest['action']> = new Set(['shelve', 'unshelve', 'override_status']);
 
 const MODULE = 'dashboard-server';
 
@@ -107,6 +93,40 @@ const MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
 };
+
+/**
+ * Apply status overrides from state to the PR list.
+ * Overrides are auto-cleared if the PR has new activity since the override was set.
+ */
+function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentState>): FetchedPR[] {
+  const overrides = state.config.statusOverrides;
+  if (!overrides || Object.keys(overrides).length === 0) return prs;
+
+  const stateManager = getStateManager();
+  // Snapshot keys before iteration — clearStatusOverride mutates the same object
+  const overrideUrls = new Set(Object.keys(overrides));
+  let didAutoClear = false;
+  const result = prs.map((pr) => {
+    const override = stateManager.getStatusOverride(pr.url, pr.updatedAt);
+    if (!override) {
+      if (overrideUrls.has(pr.url)) didAutoClear = true;
+      return pr;
+    }
+    if (override.status === pr.status) return pr;
+    return { ...pr, status: override.status };
+  });
+
+  // Persist any auto-cleared overrides so they don't resurrect on restart
+  if (didAutoClear) {
+    try {
+      stateManager.save();
+    } catch (err) {
+      warn(MODULE, `Failed to persist auto-cleared overrides: ${errorMessage(err)}`);
+    }
+  }
+
+  return result;
+}
 
 // ── PID File Management ──────────────────────────────────────────────────────
 
@@ -223,9 +243,8 @@ function buildDashboardJson(
     monthlyMerged,
     monthlyOpened,
     monthlyClosed,
-    activePRs: digest.openPRs || [],
+    activePRs: applyStatusOverrides(digest.openPRs || [], state),
     shelvedPRUrls: state.config.shelvedPRUrls || [],
-    dismissedUrls: Object.keys(state.config.dismissedIssues || {}),
     recentlyMergedPRs: digest.recentlyMergedPRs || [],
     recentlyClosedPRs: digest.recentlyClosedPRs || [],
     autoUnshelvedPRs: digest.autoUnshelvedPRs || [],
@@ -408,14 +427,10 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       return;
     }
 
-    // Validate URL format — same checks as CLI commands.
-    // Dismiss/undismiss accepts both PR and issue URLs; other actions are PR-only.
-    const isDismissAction = body.action === 'dismiss' || body.action === 'undismiss';
-    const urlPattern = isDismissAction ? ISSUE_OR_PR_URL_PATTERN : PR_URL_PATTERN;
-    const urlType = isDismissAction ? 'issue or PR' : 'PR';
+    // Validate URL format — all actions are PR-only now.
     try {
       validateUrl(body.url);
-      validateGitHubUrl(body.url, urlPattern, urlType);
+      validateGitHubUrl(body.url, PR_URL_PATTERN, 'PR');
     } catch (err) {
       if (err instanceof ValidationError) {
         sendError(res, 400, err.message);
@@ -426,25 +441,15 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       return;
     }
 
-    // Validate snooze-specific fields
-    if (body.action === 'snooze') {
-      const days = body.days ?? 7;
-      if (typeof days !== 'number' || !Number.isFinite(days) || days <= 0) {
-        sendError(res, 400, 'Snooze days must be a positive finite number');
+    // Validate override_status-specific fields
+    if (body.action === 'override_status') {
+      if (!body.status || (body.status !== 'needs_addressing' && body.status !== 'waiting_on_maintainer')) {
+        sendError(
+          res,
+          400,
+          'override_status requires a valid "status" field (needs_addressing or waiting_on_maintainer)',
+        );
         return;
-      }
-      if (body.reason !== undefined) {
-        try {
-          validateMessage(String(body.reason));
-        } catch (err) {
-          if (err instanceof ValidationError) {
-            sendError(res, 400, err.message);
-          } else {
-            warn(MODULE, `Unexpected error during message validation: ${errorMessage(err)}`);
-            sendError(res, 400, 'Invalid reason');
-          }
-          return;
-        }
       }
     }
 
@@ -452,24 +457,19 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       switch (body.action) {
         case 'shelve':
           stateManager.shelvePR(body.url);
-          stateManager.undismissIssue(body.url); // prevent dual state
           break;
         case 'unshelve':
           stateManager.unshelvePR(body.url);
           break;
-        case 'snooze':
-          stateManager.snoozePR(body.url, body.reason || 'Snoozed via dashboard', body.days ?? 7);
+        case 'override_status': {
+          // body.status is validated above — the early return ensures it's defined here
+          const overrideStatus = body.status as 'needs_addressing' | 'waiting_on_maintainer';
+          // Find the PR to get its current updatedAt for auto-clear tracking
+          const targetPR = (cachedDigest?.openPRs || []).find((pr) => pr.url === body.url);
+          const lastActivityAt = targetPR?.updatedAt || new Date().toISOString();
+          stateManager.setStatusOverride(body.url, overrideStatus, lastActivityAt);
           break;
-        case 'unsnooze':
-          stateManager.unsnoozePR(body.url);
-          break;
-        case 'dismiss':
-          stateManager.dismissIssue(body.url, new Date().toISOString());
-          stateManager.unshelvePR(body.url); // prevent dual state
-          break;
-        case 'undismiss':
-          stateManager.undismissIssue(body.url);
-          break;
+        }
       }
       stateManager.save();
     } catch (error) {

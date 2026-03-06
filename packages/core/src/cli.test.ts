@@ -107,6 +107,8 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'undismiss',
     'snooze',
     'unsnooze',
+    'override',
+    'clear-override',
   ];
 
   const expectedTokenRequired = ['daily', 'search', 'vet', 'track', 'comments', 'post', 'init', 'claim'];
@@ -351,6 +353,8 @@ describe('Command registration', () => {
       'undismiss',
       'snooze',
       'unsnooze',
+      'override',
+      'clear-override',
     ];
 
     for (const name of expectedCommands) {

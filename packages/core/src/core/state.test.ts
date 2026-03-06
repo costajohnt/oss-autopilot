@@ -970,11 +970,11 @@ describe('StateManager getStats exclusion filtering', () => {
   it('should exclude repos with fewer than 50 stars', () => {
     stateManager.updateRepoScore('owner/big-repo', { mergedPRCount: 5, stargazersCount: 100 });
     stateManager.updateRepoScore('owner/small-repo', { mergedPRCount: 3, stargazersCount: 10 });
-    stateManager.updateRepoScore('owner/no-stars', { mergedPRCount: 2 }); // stargazersCount undefined
+    stateManager.updateRepoScore('owner/no-stars', { mergedPRCount: 2 }); // stargazersCount undefined — included (unknown ≠ low)
 
     const stats = stateManager.getStats();
-    expect(stats.mergedPRs).toBe(5);
-    expect(stats.totalTracked).toBe(1);
+    expect(stats.mergedPRs).toBe(7); // big-repo (5) + no-stars (2); small-repo excluded
+    expect(stats.totalTracked).toBe(2);
   });
 
   it('should include repos with exactly 50 stars', () => {

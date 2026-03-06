@@ -30,6 +30,8 @@ import {
   type CommentedIssueWithResponse,
   type PRCheckFailure,
   type RepoGroup,
+  type AgentState,
+  type StarFilter,
 } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
@@ -61,6 +63,23 @@ export {
   printDigest,
   CRITICAL_STATUSES,
 } from '../core/index.js';
+
+/**
+ * Build a star filter from state for use in fetchUserPRCounts.
+ * Returns undefined if no star data is available (first run).
+ */
+export function buildStarFilter(state: Readonly<AgentState>): StarFilter | undefined {
+  const minStars = state.config.minStars ?? 50;
+  const knownStarCounts = new Map<string, number>();
+  for (const [repo, score] of Object.entries(state.repoScores)) {
+    if (score.stargazersCount !== undefined) {
+      knownStarCounts.set(repo, score.stargazersCount);
+    }
+  }
+  // Only filter if we have some star data to work with
+  if (knownStarCounts.size === 0) return undefined;
+  return { minStars, knownStarCounts };
+}
 
 /**
  * Internal result of the daily check, using full (non-deduplicated) types.
@@ -122,17 +141,22 @@ async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<Fetched
     warn(MODULE, `${failures.length} PR fetch(es) failed`);
   }
 
+  // Build star filter from cached repoScores so low-star repos are excluded
+  // from merged/closed histograms (#576). Repos with no cached star data pass through.
+  const state = getStateManager().getState();
+  const starFilter = buildStarFilter(state);
+
   // Fetch merged PR counts, closed PR counts, recently closed PRs, recently merged PRs, and commented issues in parallel
   // All stats fetches are non-critical (cosmetic/scoring), so isolate their failure
   const issueMonitor = new IssueConversationMonitor(token);
   const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs, issueConversationResult] = await Promise.all(
     [
-      prMonitor.fetchUserMergedPRCounts().catch((err) => {
+      prMonitor.fetchUserMergedPRCounts(starFilter).catch((err) => {
         if (isRateLimitOrAuthError(err)) throw err;
         warn(MODULE, `Failed to fetch merged PR counts: ${errorMessage(err)}`);
         return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
       }),
-      prMonitor.fetchUserClosedPRCounts().catch((err) => {
+      prMonitor.fetchUserClosedPRCounts(starFilter).catch((err) => {
         if (isRateLimitOrAuthError(err)) throw err;
         warn(MODULE, `Failed to fetch closed PR counts: ${errorMessage(err)}`);
         return emptyPRCountsResult<number>();

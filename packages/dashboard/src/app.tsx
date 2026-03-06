@@ -14,7 +14,6 @@ export function App() {
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
 
   const shelvedUrls = useMemo(() => new Set(data?.shelvedPRUrls ?? []), [data?.shelvedPRUrls]);
-  const dismissedUrls = useMemo(() => new Set(data?.dismissedUrls ?? []), [data?.dismissedUrls]);
 
   if (loading && !data) {
     return (
@@ -80,18 +79,11 @@ export function App() {
         <FilterBar filters={filters} onFilterChange={setFilters} repos={repos} statuses={statuses} />
 
         <div class="dashboard-content">
-          <PRList
-            prs={filteredPRs}
-            selectedUrl={selectedUrl}
-            onSelect={setSelectedUrl}
-            shelvedUrls={shelvedUrls}
-            dismissedUrls={dismissedUrls}
-          />
+          <PRList prs={filteredPRs} selectedUrl={selectedUrl} onSelect={setSelectedUrl} shelvedUrls={shelvedUrls} />
           {selectedPR && (
             <PRDetail
               pr={selectedPR}
               isShelved={shelvedUrls.has(selectedPR.url)}
-              isDismissed={dismissedUrls.has(selectedPR.url)}
               onAction={performAction}
               onClose={() => setSelectedUrl(null)}
             />

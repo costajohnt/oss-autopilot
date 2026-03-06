@@ -89,7 +89,6 @@ export function makeDashboardData(overrides: Partial<DashboardData> = {}): Dashb
     monthlyClosed: {},
     activePRs: [],
     shelvedPRUrls: [],
-    dismissedUrls: [],
     recentlyMergedPRs: [],
     recentlyClosedPRs: [],
     autoUnshelvedPRs: [],
