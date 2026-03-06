@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.10](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.9...core-v0.44.10) (2026-03-06)
+
+
+### Bug Fixes
+
+* recognize CI bot commits and build dashboard SPA before startup ([#569](https://github.com/costajohnt/oss-autopilot/issues/569)) ([516f8cc](https://github.com/costajohnt/oss-autopilot/commit/516f8cc33699e4a2142d6662be0035677523d8f6))
+
 ## [0.44.9](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.8...core-v0.44.9) (2026-03-05)
 
 
