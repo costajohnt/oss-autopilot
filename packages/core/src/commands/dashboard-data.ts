@@ -11,7 +11,14 @@ import { emptyPRCountsResult } from '../core/github-stats.js';
 import { toShelvedPRRef, buildStarFilter } from './daily.js';
 
 const MODULE = 'dashboard-data';
-import type { DailyDigest, AgentState, ClosedPR, MergedPR, CommentedIssue } from '../core/types.js';
+import {
+  isBelowMinStars,
+  type DailyDigest,
+  type AgentState,
+  type ClosedPR,
+  type MergedPR,
+  type CommentedIssue,
+} from '../core/types.js';
 
 export interface DashboardStats {
   activePRs: number;
@@ -215,7 +222,7 @@ export function computePRsByRepo(
   // Add merged/closed counts from repo scores (historical data), filtering by minStars (#576)
   const minStars = state.config.minStars ?? 50;
   for (const [repo, score] of Object.entries(state.repoScores || {})) {
-    if (score.stargazersCount !== undefined && score.stargazersCount < minStars) continue;
+    if (isBelowMinStars(score.stargazersCount, minStars)) continue;
     if (!prsByRepo[repo]) prsByRepo[repo] = { active: 0, merged: 0, closed: 0 };
     prsByRepo[repo].merged = score.mergedPRCount;
     prsByRepo[repo].closed = score.closedWithoutMergeCount;

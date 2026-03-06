@@ -856,6 +856,70 @@ describe('snoozePR / unsnoozePR / isSnoozed / expireSnoozes', () => {
   });
 });
 
+// ── Status overrides (#575) ─────────────────────────────────────────────────
+describe('setStatusOverride / clearStatusOverride / getStatusOverride', () => {
+  let stateManager: StateManager;
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  it('should set and retrieve a status override', () => {
+    stateManager.setStatusOverride('https://github.com/o/r/pull/1', 'needs_addressing', '2026-01-10T00:00:00Z');
+    const override = stateManager.getStatusOverride('https://github.com/o/r/pull/1');
+    expect(override).toBeDefined();
+    expect(override!.status).toBe('needs_addressing');
+    expect(override!.lastActivityAt).toBe('2026-01-10T00:00:00Z');
+  });
+
+  it('should return undefined for non-existent override', () => {
+    expect(stateManager.getStatusOverride('https://github.com/o/r/pull/99')).toBeUndefined();
+  });
+
+  it('should clear an existing override', () => {
+    stateManager.setStatusOverride('https://github.com/o/r/pull/1', 'needs_addressing', '2026-01-10T00:00:00Z');
+    const cleared = stateManager.clearStatusOverride('https://github.com/o/r/pull/1');
+    expect(cleared).toBe(true);
+    expect(stateManager.getStatusOverride('https://github.com/o/r/pull/1')).toBeUndefined();
+  });
+
+  it('should return false when clearing non-existent override', () => {
+    expect(stateManager.clearStatusOverride('https://github.com/o/r/pull/99')).toBe(false);
+  });
+
+  it('should auto-clear override when PR has new activity', () => {
+    stateManager.setStatusOverride('https://github.com/o/r/pull/1', 'needs_addressing', '2026-01-10T00:00:00Z');
+    // PR was updated after the override was set
+    const override = stateManager.getStatusOverride('https://github.com/o/r/pull/1', '2026-01-11T00:00:00Z');
+    expect(override).toBeUndefined();
+    // Override should be removed from state
+    expect(stateManager.getStatusOverride('https://github.com/o/r/pull/1')).toBeUndefined();
+  });
+
+  it('should keep override when PR has no new activity', () => {
+    stateManager.setStatusOverride('https://github.com/o/r/pull/1', 'needs_addressing', '2026-01-10T00:00:00Z');
+    // PR updatedAt is same as when override was set
+    const override = stateManager.getStatusOverride('https://github.com/o/r/pull/1', '2026-01-10T00:00:00Z');
+    expect(override).toBeDefined();
+    expect(override!.status).toBe('needs_addressing');
+  });
+
+  it('should keep override when no currentUpdatedAt is provided', () => {
+    stateManager.setStatusOverride('https://github.com/o/r/pull/1', 'waiting_on_maintainer', '2026-01-10T00:00:00Z');
+    const override = stateManager.getStatusOverride('https://github.com/o/r/pull/1');
+    expect(override).toBeDefined();
+    expect(override!.status).toBe('waiting_on_maintainer');
+  });
+
+  it('should overwrite an existing override', () => {
+    stateManager.setStatusOverride('https://github.com/o/r/pull/1', 'needs_addressing', '2026-01-10T00:00:00Z');
+    stateManager.setStatusOverride('https://github.com/o/r/pull/1', 'waiting_on_maintainer', '2026-01-12T00:00:00Z');
+    const override = stateManager.getStatusOverride('https://github.com/o/r/pull/1');
+    expect(override!.status).toBe('waiting_on_maintainer');
+    expect(override!.lastActivityAt).toBe('2026-01-12T00:00:00Z');
+  });
+});
+
 // ── getStats() exclusion filtering (#211) ──────────────────────────────────
 describe('StateManager getStats exclusion filtering', () => {
   let stateManager: StateManager;

@@ -2,7 +2,7 @@
  * Client-side JavaScript for the dashboard: theme toggle, filtering, Chart.js charts.
  */
 
-import type { DailyDigest, AgentState } from '../core/types.js';
+import { isBelowMinStars, type DailyDigest, type AgentState } from '../core/types.js';
 import type { DashboardStats } from './dashboard-data.js';
 
 /** Static client-side JS: theme toggle + filter/search logic. */
@@ -155,7 +155,7 @@ export function generateDashboardScripts(
       // Fail-open: repos without cached star data are shown (not excluded).
       // Unlike issue-discovery (fail-closed), the dashboard shows the user's own
       // contribution history — hiding repos just because a star fetch failed would be confusing.
-      if (score?.stargazersCount !== undefined && score.stargazersCount < starThreshold) return true;
+      if (isBelowMinStars(score?.stargazersCount, starThreshold)) return true;
       return false;
     };
 

@@ -18,6 +18,7 @@ import {
   SnoozeInfo,
   StatusOverride,
   FetchedPRStatus,
+  isBelowMinStars,
 } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
 import { ValidationError, errorMessage } from './errors.js';
@@ -1253,7 +1254,7 @@ export class StateManager {
 
     for (const [repoKey, score] of Object.entries(this.state.repoScores)) {
       if (this.isExcluded(repoKey)) continue;
-      if (score.stargazersCount !== undefined && score.stargazersCount < (this.state.config.minStars ?? 50)) continue;
+      if (isBelowMinStars(score.stargazersCount, this.state.config.minStars ?? 50)) continue;
       totalTracked++;
       totalMerged += score.mergedPRCount;
       totalClosed += score.closedWithoutMergeCount;

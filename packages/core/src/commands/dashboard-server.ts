@@ -121,7 +121,7 @@ function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentState>): Fe
     try {
       stateManager.save();
     } catch (err) {
-      warn(MODULE, `Failed to persist auto-cleared overrides: ${errorMessage(err)}`);
+      warn(MODULE, `Failed to persist auto-cleared overrides — they may reappear on restart: ${errorMessage(err)}`);
     }
   }
 

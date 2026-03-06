@@ -5,7 +5,7 @@
 
 import { Octokit } from '@octokit/rest';
 import { extractOwnerRepo, parseGitHubUrl, isOwnRepo } from './utils.js';
-import { ClosedPR, MergedPR, type StarFilter } from './types.js';
+import { ClosedPR, MergedPR, isBelowMinStars, type StarFilter } from './types.js';
 import { debug, warn } from './logger.js';
 import { getHttpCache } from './http-cache.js';
 
@@ -140,9 +140,8 @@ async function fetchUserPRCounts<R>(
       // Skip repos below the minimum star threshold (#576).
       // Repos with unknown star counts (not yet fetched) are included — they'll be
       // filtered on the next run once star data is cached in repoScores.
-      if (starFilter) {
-        const stars = starFilter.knownStarCounts.get(repo);
-        if (stars !== undefined && stars < starFilter.minStars) continue;
+      if (starFilter && isBelowMinStars(starFilter.knownStarCounts.get(repo), starFilter.minStars)) {
+        continue;
       }
 
       // Per-repo accumulation + get primary date for histograms
