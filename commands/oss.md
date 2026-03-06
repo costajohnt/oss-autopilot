@@ -94,14 +94,14 @@ if [ ! -f "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ] || [ "${CL
   fi
 fi
 # Build dashboard SPA if missing or stale (package.json newer than built output) (#567)
-# Core types are already built by the CLI rebuild above; dashboard only needs its own build.
+# Dashboard's tsc needs core's .d.ts types (the CLI bundle step above runs esbuild, not tsc).
 DASHBOARD_INDEX="${CLAUDE_PLUGIN_ROOT}/packages/dashboard/dist/index.html"
 DASHBOARD_PKG="${CLAUDE_PLUGIN_ROOT}/packages/dashboard/package.json"
 if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ "${DASHBOARD_PKG}" -nt "${DASHBOARD_INDEX}" ]; }; then
   if command -v pnpm &>/dev/null; then
-    (cd "${CLAUDE_PLUGIN_ROOT}" && pnpm install --silent 2>/tmp/oss-dashboard-build.log && pnpm --silent --filter @oss-autopilot/dashboard run build 2>>/tmp/oss-dashboard-build.log) || true
+    (cd "${CLAUDE_PLUGIN_ROOT}" && pnpm install --silent && pnpm --silent --filter @oss-autopilot/core run build && pnpm --silent --filter @oss-autopilot/dashboard run build) >/tmp/oss-dashboard-build.log 2>&1 || true
   else
-    (cd "${CLAUDE_PLUGIN_ROOT}/packages/dashboard" && npm install --silent 2>/tmp/oss-dashboard-build.log && npm run build 2>>/tmp/oss-dashboard-build.log) || true
+    (cd "${CLAUDE_PLUGIN_ROOT}/packages/dashboard" && npm install --silent && npm run build) >/tmp/oss-dashboard-build.log 2>&1 || true
   fi
 fi
 GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN")
