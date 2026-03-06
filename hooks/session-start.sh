@@ -51,7 +51,7 @@ if [ -n "$CURRENT" ]; then
   if [ "$should_check" = true ]; then
     mkdir -p "${HOME}/.oss-autopilot"
     touch "$LAST_CHECK"
-    LATEST=$(gh api repos/costajohnt/oss-autopilot/releases/latest --jq '.tag_name' 2>/dev/null | sed 's/^v//' || echo "")
+    LATEST=$(gh api repos/costajohnt/oss-autopilot/releases/latest --jq '.tag_name' 2>/dev/null | sed 's/^[^0-9]*//' || echo "")
     # Validate LATEST looks like a version (digits and dots), not an error response
     if [ -n "$LATEST" ] && echo "$LATEST" | grep -qE '^[0-9]+\.' && [ "$LATEST" != "$CURRENT" ]; then
       update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). Run: /plugin update oss-autopilot"
