@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.11](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.10...core-v0.44.11) (2026-03-06)
+
+
+### Bug Fixes
+
+* update check fails to parse release tag with component prefix ([#571](https://github.com/costajohnt/oss-autopilot/issues/571)) ([5319a27](https://github.com/costajohnt/oss-autopilot/commit/5319a278b35af4a2fb7f8a2e4146f271b31ee266))
+
 ## [0.44.10](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.9...core-v0.44.10) (2026-03-06)
 
 
