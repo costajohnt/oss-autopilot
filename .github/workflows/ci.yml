@@ -70,13 +70,15 @@ jobs:
       - name: Build bundle
         run: pnpm run bundle
 
-      - name: Verify bundle exists
+      - name: Verify bundles exist
         run: |
-          if [ ! -f packages/core/dist/cli.bundle.cjs ]; then
-            echo "ERROR: packages/core/dist/cli.bundle.cjs was not produced by the bundle step"
-            exit 1
-          fi
-          echo "Bundle created successfully: $(wc -c < packages/core/dist/cli.bundle.cjs) bytes"
+          for bundle in packages/core/dist/cli.bundle.cjs packages/mcp-server/dist/mcp-server.bundle.cjs; do
+            if [ ! -f "$bundle" ]; then
+              echo "ERROR: $bundle was not produced by the bundle step"
+              exit 1
+            fi
+            echo "Bundle created: $bundle ($(wc -c < "$bundle") bytes)"
+          done
 
   # Maintains a shields.io endpoint badge with the current passing test count.
   # Re-runs tests after CI passes on main, writes the count to .github/badges/tests.json

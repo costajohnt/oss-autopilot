@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/mcp-server.bundle.cjs --banner:js='#!/usr/bin/env node'",
+    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/mcp-server.bundle.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "@oss-autopilot/core": "workspace:*",
+    "@oss-autopilot/core": "workspace:^",
     "zod": "^4.3.6"
   },
   "devDependencies": {

@@ -62,8 +62,12 @@ jobs:
 
   publish-mcp-npm:
     name: Publish MCP server to npm
-    needs: release-please
-    if: needs.release-please.outputs.mcp-released == 'true'
+    needs: [release-please, publish-npm]
+    if: >-
+      always()
+      && !failure()
+      && !cancelled()
+      && needs.release-please.outputs.mcp-released == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
