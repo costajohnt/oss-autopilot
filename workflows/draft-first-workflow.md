@@ -143,7 +143,7 @@ branch=$(git branch --show-current)
 oss-autopilot pr-template {upstream-owner}/{upstream-repo} --json
 ```
 
-If a template is returned (`data.template` is non-null), use it as the structure for the PR body — fill in its sections (e.g., `## Summary`, `## Test Plan`, `## Docs`) with content relevant to your changes. Preserve the template's section headers and formatting. If no template exists, use the default format below.
+If a template is returned (`data.template` is non-null), use it as the structure for the PR body — fill in its sections (e.g., `## Summary`, `## Test Plan`, `## Docs`) with content relevant to your changes. Preserve the template's section headers and formatting. If no template exists or the command fails (network error, API error), use the default format below — template detection is best-effort and must not block PR creation.
 
 Generate the PR title and body following the target repo's conventions (check `CONTRIBUTING.md`, existing PR formats, and the PR template above). Include:
 - Reference to the issue being fixed (e.g., "Fixes #123")

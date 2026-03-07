@@ -13,15 +13,8 @@ function makeOctokit(responses: Record<string, { status: number; data?: unknown;
           throw err;
         }
         if (response.status !== 200) {
-          const err = new Error(response.message ?? 'Server Error') as Error & {
-            status: number;
-            response?: { headers: Record<string, string> };
-          };
+          const err = new Error(response.message ?? 'Server Error') as Error & { status: number };
           err.status = response.status;
-          // Simulate rate limit response headers for 403 rate limit errors
-          if (response.message?.includes('rate limit')) {
-            err.response = { headers: { 'x-ratelimit-remaining': '0' } };
-          }
           throw err;
         }
         return { data: response.data };
@@ -110,7 +103,7 @@ describe('fetchPRTemplate', () => {
     expect(octokit.repos.getContent).toHaveBeenCalledTimes(4);
   });
 
-  it('should skip directories returned by getContent', async () => {
+  it('should skip directories returned by getContent and try all remaining paths', async () => {
     const octokit = makeOctokit({
       'owner/repo/.github/PULL_REQUEST_TEMPLATE.md': {
         status: 200,
@@ -121,6 +114,8 @@ describe('fetchPRTemplate', () => {
     const result = await fetchPRTemplate(octokit, 'owner', 'repo');
 
     expect(result.template).toBeNull();
+    // 1 directory hit + 3 remaining 404s = all 4 paths tried
+    expect(octokit.repos.getContent).toHaveBeenCalledTimes(4);
   });
 
   it('should stop on 500 errors and return null', async () => {
@@ -149,5 +144,16 @@ describe('fetchPRTemplate', () => {
     });
 
     await expect(fetchPRTemplate(octokit, 'owner', 'repo')).rejects.toThrow('Bad credentials');
+  });
+
+  it('should propagate 403 abuse-detection / secondary rate limit errors', async () => {
+    const octokit = makeOctokit({
+      'owner/repo/.github/PULL_REQUEST_TEMPLATE.md': {
+        status: 403,
+        message: 'You have exceeded a secondary rate limit',
+      },
+    });
+
+    await expect(fetchPRTemplate(octokit, 'owner', 'repo')).rejects.toThrow('secondary rate limit');
   });
 });
