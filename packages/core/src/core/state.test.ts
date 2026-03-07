@@ -1047,7 +1047,7 @@ describe('StateManager getStats exclusion filtering', () => {
   });
 });
 
-// ── cleanupExcludedData (#213) ──────────────────────────────────────────────
+// ── cleanupExcludedData (#591) ──────────────────────────────────────────────
 describe('StateManager cleanupExcludedData', () => {
   let stateManager: StateManager;
 
@@ -1063,16 +1063,16 @@ describe('StateManager cleanupExcludedData', () => {
     expect(stateManager.getState().config.trustedProjects).toEqual(['owner/repo-b']);
   });
 
-  it('should remove matching repo from repoScores', () => {
+  it('should preserve repoScores for excluded repos (#591)', () => {
     stateManager.updateRepoScore('owner/repo-a', { mergedPRCount: 1 });
     stateManager.updateRepoScore('owner/repo-b', { mergedPRCount: 2 });
     stateManager.cleanupExcludedData(['owner/repo-a'], []);
 
-    expect(stateManager.getState().repoScores['owner/repo-a']).toBeUndefined();
+    expect(stateManager.getState().repoScores['owner/repo-a']).toBeDefined();
     expect(stateManager.getState().repoScores['owner/repo-b']).toBeDefined();
   });
 
-  it('should remove all org repos from trustedProjects and repoScores', () => {
+  it('should remove org repos from trustedProjects but preserve repoScores (#591)', () => {
     stateManager.addTrustedProject('bad-org/repo-a');
     stateManager.addTrustedProject('bad-org/repo-b');
     stateManager.addTrustedProject('good-org/repo-c');
@@ -1083,8 +1083,8 @@ describe('StateManager cleanupExcludedData', () => {
     stateManager.cleanupExcludedData([], ['bad-org']);
 
     expect(stateManager.getState().config.trustedProjects).toEqual(['good-org/repo-c']);
-    expect(stateManager.getState().repoScores['bad-org/repo-a']).toBeUndefined();
-    expect(stateManager.getState().repoScores['bad-org/repo-b']).toBeUndefined();
+    expect(stateManager.getState().repoScores['bad-org/repo-a']).toBeDefined();
+    expect(stateManager.getState().repoScores['bad-org/repo-b']).toBeDefined();
     expect(stateManager.getState().repoScores['good-org/repo-c']).toBeDefined();
   });
 
@@ -1095,7 +1095,7 @@ describe('StateManager cleanupExcludedData', () => {
     stateManager.cleanupExcludedData(['Facebook/React'], []);
 
     expect(stateManager.getState().config.trustedProjects).toEqual([]);
-    expect(stateManager.getState().repoScores['facebook/react']).toBeUndefined();
+    expect(stateManager.getState().repoScores['facebook/react']).toBeDefined();
   });
 
   it('should match org name case-insensitively', () => {
@@ -1105,7 +1105,7 @@ describe('StateManager cleanupExcludedData', () => {
     stateManager.cleanupExcludedData([], ['myorg']);
 
     expect(stateManager.getState().config.trustedProjects).toEqual([]);
-    expect(stateManager.getState().repoScores['MyOrg/repo']).toBeUndefined();
+    expect(stateManager.getState().repoScores['MyOrg/repo']).toBeDefined();
   });
 
   it('should be a no-op when no repos match', () => {
@@ -1135,7 +1135,12 @@ describe('StateManager cleanupExcludedData', () => {
     stateManager.cleanupExcludedData(['org-b/repo-2'], ['org-a']);
 
     expect(stateManager.getState().config.trustedProjects).toEqual(['org-c/repo-3']);
-    expect(Object.keys(stateManager.getState().repoScores)).toEqual(['org-c/repo-3']);
+    // repoScores preserved for all repos (#591)
+    expect(Object.keys(stateManager.getState().repoScores).sort()).toEqual([
+      'org-a/repo-1',
+      'org-b/repo-2',
+      'org-c/repo-3',
+    ]);
   });
 });
 

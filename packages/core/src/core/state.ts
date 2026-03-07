@@ -728,9 +728,11 @@ export class StateManager {
   }
 
   /**
-   * Remove repositories matching the given exclusion lists from `trustedProjects`
-   * and `repoScores`. Called when a repo or org is newly excluded to keep stored
-   * data consistent with current filters.
+   * Remove repositories matching the given exclusion lists from `trustedProjects`.
+   * Called when a repo or org is newly excluded.
+   *
+   * Note: `repoScores` are intentionally preserved so historical stats (merge rate,
+   * total merged) remain accurate. Exclusion only affects issue discovery (#591).
    * @param repos - Full "owner/repo" strings to exclude (case-insensitive match).
    * @param orgs  - Org names to exclude (case-insensitive match against owner segment).
    */
@@ -741,19 +743,8 @@ export class StateManager {
     this.state.config.trustedProjects = this.state.config.trustedProjects.filter((p) => !matches(p));
     const removedTrusted = beforeTrusted - this.state.config.trustedProjects.length;
 
-    let removedScoreCount = 0;
-    for (const key of Object.keys(this.state.repoScores)) {
-      if (matches(key)) {
-        delete this.state.repoScores[key];
-        removedScoreCount++;
-      }
-    }
-
-    if (removedTrusted > 0 || removedScoreCount > 0) {
-      debug(
-        MODULE,
-        `Removed ${removedTrusted} trusted project(s) and ${removedScoreCount} repo score(s) for excluded repos/orgs`,
-      );
+    if (removedTrusted > 0) {
+      debug(MODULE, `Removed ${removedTrusted} trusted project(s) for excluded repos/orgs`);
     }
   }
 
