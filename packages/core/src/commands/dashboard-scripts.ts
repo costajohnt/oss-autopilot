@@ -145,7 +145,6 @@ export function generateDashboardScripts(
   // === Repository Breakdown ===
   const repoChart = (() => {
     // Filter helper: exclude repos below minStars (#216)
-    // Note: excludeRepos/excludeOrgs only affect issue discovery, not dashboard (#591)
     const { minStars } = state.config;
     const starThreshold = minStars ?? 50;
     const shouldExcludeRepo = (repo: string): boolean => {

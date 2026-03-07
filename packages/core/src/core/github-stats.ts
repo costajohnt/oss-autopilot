@@ -134,9 +134,6 @@ async function fetchUserPRCounts<R>(
       // Skip own repos (PRs to your own repos aren't OSS contributions)
       if (isOwnRepo(owner, githubUsername)) continue;
 
-      // Note: excludeRepos/excludeOrgs are intentionally NOT filtered here.
-      // Those filters control issue discovery/search, not historical statistics.
-
       // Skip repos below the minimum star threshold (#576).
       // Repos with unknown star counts (not yet fetched) are also excluded (fail-closed).
       if (starFilter && isBelowMinStars(starFilter.knownStarCounts.get(repo), starFilter.minStars)) {
@@ -262,7 +259,6 @@ export function fetchUserClosedPRCounts(
 
 /**
  * Shared helper: search for recent PRs and filter out own repos.
- * Note: excludeRepos/excludeOrgs only affect issue discovery, not recent PR lists (#591).
  */
 async function fetchRecentPRs<T>(
   octokit: Octokit,
