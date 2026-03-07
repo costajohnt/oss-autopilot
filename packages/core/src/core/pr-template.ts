@@ -50,8 +50,12 @@ export async function fetchPRTemplate(octokit: Octokit, owner: string, repo: str
         debug(MODULE, `${path} is a directory (multiple templates?), skipping`);
         continue;
       }
-      if (data.type !== 'file' || !data.content) {
-        debug(MODULE, `${path} is type "${data.type}" with ${data.content ? 'content' : 'no content'}, skipping`);
+      if (data.type !== 'file') {
+        debug(MODULE, `${path} is type "${data.type}", skipping`);
+        continue;
+      }
+      if (!data.content) {
+        debug(MODULE, `${path} has no content, skipping`);
         continue;
       }
 
