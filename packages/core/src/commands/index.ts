@@ -1,28 +1,87 @@
 /**
  * Barrel export for all command functions and their output types.
  * Used by @oss-autopilot/mcp to import command functions directly.
+ *
+ * @example
+ * ```typescript
+ * import { runDaily, runSearch, runStatus } from '@oss-autopilot/core/commands';
+ *
+ * const digest = await runDaily();
+ * const issues = await runSearch({ maxResults: 10 });
+ * const stats = await runStatus({});
+ * ```
  */
 
-// Command functions
-export { runDaily, runDailyForDisplay, executeDailyCheck } from './daily.js';
-export { runStatus } from './status.js';
-export { runSearch } from './search.js';
-export { runVet } from './vet.js';
-export { runTrack, runUntrack } from './track.js';
-export { runRead } from './read.js';
-export { runComments, runPost, runClaim } from './comments.js';
-export { runConfig } from './config.js';
-export { runInit } from './init.js';
-export { runSetup, runCheckSetup } from './setup.js';
-export { runShelve, runUnshelve } from './shelve.js';
-export { runDismiss, runUndismiss } from './dismiss.js';
-export { runSnooze, runUnsnooze } from './snooze.js';
+// ── Primary Commands ────────────────────────────────────────────────────────
+
+/** Fetch all open PRs, compute digest, and return structured daily output. Requires GITHUB_TOKEN. */
+export { runDaily } from './daily.js';
+/** Like runDaily but returns the full (non-deduplicated) result for text-mode display. */
+export { runDailyForDisplay } from './daily.js';
+/** Lower-level daily check that accepts a token directly. Used by startup orchestration. */
+export { executeDailyCheck } from './daily.js';
+/** Combined startup: auth check, setup check, daily fetch, dashboard launch, version detection. */
 export { runStartup } from './startup.js';
+/** Return contribution statistics (merge rate, PR counts, repo breakdown) from local state. */
+export { runStatus } from './status.js';
+/** Search GitHub for contributable issues using multi-strategy discovery. */
+export { runSearch } from './search.js';
+/** Vet a single GitHub issue for claimability (open, unassigned, no linked PRs, repo health). */
+export { runVet } from './vet.js';
+
+// ── PR Management ───────────────────────────────────────────────────────────
+
+/** Add a PR to tracking state. */
+export { runTrack } from './track.js';
+/** Remove a PR from tracking state. */
+export { runUntrack } from './track.js';
+/** Mark PR comments as read. */
+export { runRead } from './read.js';
+/** Temporarily hide a PR from the daily digest. */
+export { runShelve } from './shelve.js';
+/** Restore a shelved PR to the daily digest. */
+export { runUnshelve } from './shelve.js';
+/** Dismiss issue reply notifications (auto-resurfaces on new activity). */
+export { runDismiss } from './dismiss.js';
+/** Restore a dismissed issue to notifications. */
+export { runUndismiss } from './dismiss.js';
+/** Temporarily suppress CI failure notifications for a PR. */
+export { runSnooze } from './snooze.js';
+/** Restore CI failure notifications for a snoozed PR. */
+export { runUnsnooze } from './snooze.js';
+
+// ── Issue & Comment Management ──────────────────────────────────────────────
+
+/** Fetch comments for tracked issues/PRs. */
+export { runComments } from './comments.js';
+/** Post a comment to a GitHub issue or PR. */
+export { runPost } from './comments.js';
+/** Post a claim comment on a GitHub issue. */
+export { runClaim } from './comments.js';
+
+// ── Configuration & Setup ───────────────────────────────────────────────────
+
+/** Read or write user configuration (githubUsername, languages, labels, etc). */
+export { runConfig } from './config.js';
+/** Initialize with a GitHub username and import open PRs. */
+export { runInit } from './init.js';
+/** Interactive first-run setup wizard. */
+export { runSetup } from './setup.js';
+/** Check whether setup has been completed. */
+export { runCheckSetup } from './setup.js';
+
+// ── Utilities ───────────────────────────────────────────────────────────────
+
+/** Parse a curated markdown issue list file into structured issue items. */
 export { runParseList } from './parse-list.js';
+/** Check if new files are properly referenced/integrated. */
 export { runCheckIntegration } from './check-integration.js';
+/** Scan for locally cloned repos. */
 export { runLocalRepos } from './local-repos.js';
 
-// Output types (re-exported from formatters/json.ts and command files)
+// ── Output Types ────────────────────────────────────────────────────────────
+// All commands return JsonOutput<T> where T is the command-specific type below.
+
 export type { DailyOutput, SearchOutput, StartupOutput, StatusOutput, TrackOutput } from '../formatters/json.js';
 export type { VetOutput, CommentsOutput, PostOutput, ClaimOutput } from '../formatters/json.js';
 export type {
