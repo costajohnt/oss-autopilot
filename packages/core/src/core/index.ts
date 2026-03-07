@@ -40,6 +40,7 @@ export {
   getGitHubTokenAsync,
   requireGitHubToken,
   resetGitHubTokenCache,
+  detectGitHubUsername,
   DEFAULT_CONCURRENCY,
 } from './utils.js';
 export {
