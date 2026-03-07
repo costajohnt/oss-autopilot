@@ -113,7 +113,7 @@ importers:
         specifier: ^1.27.1
         version: 1.27.1(zod@4.3.6)
       '@oss-autopilot/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       zod:
         specifier: ^4.3.6
