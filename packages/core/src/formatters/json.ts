@@ -255,8 +255,6 @@ export interface StartupOutput {
   daily?: DailyOutput;
   /** URL of the interactive SPA dashboard server, when running (e.g., "http://localhost:3000") */
   dashboardUrl?: string;
-  /** Path to the static HTML dashboard file (fallback when SPA cannot launch) */
-  dashboardPath?: string;
   issueList?: IssueListInfo;
 }
 
