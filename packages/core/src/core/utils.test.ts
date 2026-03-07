@@ -17,6 +17,7 @@ import {
   getDataDir,
   getStatePath,
   getBackupDir,
+  detectGitHubUsername,
 } from './utils.js';
 import { execFileSync, execFile } from 'child_process';
 import * as path from 'path';
@@ -472,5 +473,107 @@ describe('getGitHubTokenAsync', () => {
     process.env.GITHUB_TOKEN = 'ghp_second_async';
     const token2 = await getGitHubTokenAsync();
     expect(token2).toBe('ghp_second_async');
+  });
+});
+
+describe('detectGitHubUsername', () => {
+  const mockedExecFile = vi.mocked(execFile);
+
+  beforeEach(() => {
+    mockedExecFile.mockReset();
+  });
+
+  it('should return username when gh api succeeds', async () => {
+    mockedExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      cb(null, 'octocat\n');
+      return {} as ReturnType<typeof execFile>;
+    });
+    const username = await detectGitHubUsername();
+    expect(username).toBe('octocat');
+    expect(mockedExecFile).toHaveBeenCalledWith(
+      'gh',
+      ['api', 'user', '--jq', '.login'],
+      { encoding: 'utf-8', timeout: 5000 },
+      expect.any(Function),
+    );
+  });
+
+  it('should return null when gh command fails', async () => {
+    mockedExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      cb(new Error('gh not found'), '');
+      return {} as ReturnType<typeof execFile>;
+    });
+    const username = await detectGitHubUsername();
+    expect(username).toBeNull();
+  });
+
+  it('should return null for empty output', async () => {
+    mockedExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      cb(null, '   \n');
+      return {} as ReturnType<typeof execFile>;
+    });
+    const username = await detectGitHubUsername();
+    expect(username).toBeNull();
+  });
+
+  it('should return null for invalid username pattern', async () => {
+    mockedExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      cb(null, '-invalid-start\n');
+      return {} as ReturnType<typeof execFile>;
+    });
+    const username = await detectGitHubUsername();
+    expect(username).toBeNull();
+  });
+
+  it('should return null for username with consecutive hyphens', async () => {
+    mockedExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      cb(null, 'bad--name\n');
+      return {} as ReturnType<typeof execFile>;
+    });
+    const username = await detectGitHubUsername();
+    expect(username).toBeNull();
+  });
+
+  it('should accept valid usernames with hyphens', async () => {
+    mockedExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      cb(null, 'my-username-42\n');
+      return {} as ReturnType<typeof execFile>;
+    });
+    const username = await detectGitHubUsername();
+    expect(username).toBe('my-username-42');
+  });
+
+  it('should accept single character usernames', async () => {
+    mockedExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      cb(null, 'x\n');
+      return {} as ReturnType<typeof execFile>;
+    });
+    const username = await detectGitHubUsername();
+    expect(username).toBe('x');
+  });
+
+  it('should reject usernames longer than 39 characters', async () => {
+    mockedExecFile.mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1] as (error: Error | null, stdout: string) => void;
+      cb(null, 'a'.repeat(40) + '\n');
+      return {} as ReturnType<typeof execFile>;
+    });
+    const username = await detectGitHubUsername();
+    expect(username).toBeNull();
+  });
+
+  it('should never throw, even on unexpected errors', async () => {
+    mockedExecFile.mockImplementation(() => {
+      throw new Error('Unexpected synchronous error');
+    });
+    const username = await detectGitHubUsername();
+    expect(username).toBeNull();
   });
 });

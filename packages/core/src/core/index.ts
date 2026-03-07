@@ -40,6 +40,7 @@ export {
   getGitHubTokenAsync,
   requireGitHubToken,
   resetGitHubTokenCache,
+  detectGitHubUsername,
   DEFAULT_CONCURRENCY,
 } from './utils.js';
 export {
@@ -66,4 +67,5 @@ export {
   formatSummary,
   printDigest,
 } from './daily-logic.js';
+export { computeContributionStats, type ContributionStats, type ComputeStatsInput } from './stats.js';
 export * from './types.js';

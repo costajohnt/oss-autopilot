@@ -4,6 +4,7 @@
  */
 
 import type { FetchedPR, DailyDigest, AgentState, RepoGroup, CommentedIssue, ShelvedPRRef } from '../core/types.js';
+import type { ContributionStats } from '../core/stats.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { SearchPriority } from '../core/issue-discovery.js';
 
@@ -248,6 +249,8 @@ export interface IssueListInfo {
 export interface StartupOutput {
   version: string;
   setupComplete: boolean;
+  /** True when username was auto-detected on first run (zero-config). */
+  autoDetected?: boolean;
   authError?: string;
   daily?: DailyOutput;
   /** URL of the interactive SPA dashboard server, when running (e.g., "http://localhost:3000") */
@@ -363,6 +366,12 @@ export interface LocalReposOutput {
   scanPaths: string[];
   cachedAt: string;
   fromCache: boolean;
+}
+
+/** Output of the stats command */
+export interface StatsOutput extends ContributionStats {
+  mergeRateFormatted: string;
+  username: string;
 }
 
 /**

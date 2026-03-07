@@ -125,6 +125,7 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 |-------|---------|-----------------|
 | `data.version` | CLI version (e.g., "0.26.0") | `version` |
 | `data.setupComplete` | Whether setup is done | If `false`, prompt setup |
+| `data.autoDetected` | Username was auto-detected (zero-config) | If `true`, show welcome message |
 | `data.authError` | Set when no GitHub token | If present, show auth instructions |
 | `data.daily` | DailyOutput (same shape as before) | Extract `briefSummary`, `actionableIssues`, `actionMenu`, etc. |
 | `data.dashboardUrl` | URL of interactive dashboard SPA (e.g., `http://localhost:3000`) | Show `Dashboard: <url>` so user can re-open it |
@@ -132,7 +133,7 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 
 **Routing based on parsed data:**
 - `data.authError` is present → Tell the user: show `data.authError` message.
-- `data.setupComplete === false` → Tell the user: "It looks like setup isn't complete yet." Use AskUserQuestion to let them choose "Run setup first (Recommended)" (launch `/setup-oss`) or "Continue with defaults". If they choose "Continue with defaults", re-run the daily check directly (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-startup-stderr.log`), use `data.version` from the startup output already received, and continue to **Summary** with the daily result as `data.daily`.
+- `data.setupComplete === false` → Auto-detection failed (gh CLI not available or not authenticated). Tell the user: "I couldn't auto-detect your GitHub username. You'll need to set up first." Use AskUserQuestion to let them choose "Run setup (Recommended)" (launch `/setup-oss`) or "Continue with defaults". If they choose "Continue with defaults", re-run the daily check directly (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-startup-stderr.log`), use `data.version` from the startup output already received, and continue to **Summary** with the daily result as `data.daily`.
 - `data.daily` is present → Continue to **Summary** (display brief summary and action menu).
 
 **If output is empty or not valid JSON**: Tell the user "Something went wrong running the startup check." Suggest running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json`. Then show error recovery steps (see **Error Recovery** below).
@@ -247,7 +248,21 @@ If `data.dashboardUrl` is present, show it on a separate line so the user can re
 Dashboard: data.dashboardUrl
 ```
 
-Then check for first-run (below) or proceed to **Action Menu**.
+Then check for auto-detected welcome (below), first-run, or proceed to **Action Menu**.
+
+---
+
+### Auto-Detected Welcome
+
+If `data.autoDetected === true`, this is a zero-config first run. Show a welcome message before proceeding:
+
+```
+Welcome to OSS Autopilot! I detected your GitHub account and fetched your PRs automatically.
+
+Run /setup-oss anytime to customize your preferences (languages, labels, PR limits, etc.).
+```
+
+Then continue to either **First-Run Welcome** (if 0 PRs) or **Action Menu** (if PRs exist).
 
 ---
 

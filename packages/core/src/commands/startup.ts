@@ -9,7 +9,7 @@
 
 import * as fs from 'fs';
 import { execFile } from 'child_process';
-import { getStateManager, getGitHubToken, getCLIVersion } from '../core/index.js';
+import { getStateManager, getGitHubToken, getCLIVersion, detectGitHubUsername } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
 import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
@@ -135,9 +135,24 @@ export async function runStartup(): Promise<StartupOutput> {
   const version = getCLIVersion();
   const stateManager = getStateManager();
 
-  // 1. Check setup
+  // 1. Check setup — auto-detect if incomplete
+  let autoDetected = false;
   if (!stateManager.isSetupComplete()) {
-    return { version, setupComplete: false };
+    const detectedUsername = await detectGitHubUsername();
+    if (detectedUsername) {
+      try {
+        stateManager.initializeWithDefaults(detectedUsername);
+        autoDetected = true;
+      } catch (err) {
+        console.error(
+          `[STARTUP] Auto-detected username "${detectedUsername}" but failed to save config:`,
+          errorMessage(err),
+        );
+        return { version, setupComplete: false };
+      }
+    } else {
+      return { version, setupComplete: false };
+    }
   }
 
   // 2. Check auth
@@ -199,6 +214,7 @@ export async function runStartup(): Promise<StartupOutput> {
   return {
     version,
     setupComplete: true,
+    autoDetected,
     daily,
     dashboardUrl,
     dashboardPath,

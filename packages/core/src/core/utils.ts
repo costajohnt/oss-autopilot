@@ -493,3 +493,50 @@ export async function getGitHubTokenAsync(): Promise<string | null> {
 
   return null;
 }
+
+/**
+ * GitHub username validation pattern.
+ * Usernames must start with an alphanumeric character, can contain hyphens
+ * (but not consecutive ones and not at the end), and be 1-39 characters.
+ */
+const GITHUB_USERNAME_RE = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/;
+
+/**
+ * Detect the authenticated GitHub username via the `gh` CLI.
+ *
+ * Runs `gh api user --jq '.login'` asynchronously and validates the result
+ * against GitHub's username rules. Never throws — returns `null` on any failure
+ * (gh not installed, not authenticated, invalid output, etc.).
+ *
+ * @returns The GitHub username string, or `null` if detection fails
+ *
+ * @example
+ * const username = await detectGitHubUsername();
+ * if (username) {
+ *   console.log(`Logged in as ${username}`);
+ * }
+ */
+export async function detectGitHubUsername(): Promise<string | null> {
+  try {
+    const login = await new Promise<string>((resolve, reject) => {
+      execFile('gh', ['api', 'user', '--jq', '.login'], { encoding: 'utf-8', timeout: 5000 }, (error, stdout) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(stdout.trim());
+        }
+      });
+    });
+
+    if (login && GITHUB_USERNAME_RE.test(login)) {
+      debug(MODULE, `Detected GitHub username: ${login}`);
+      return login;
+    }
+
+    debug(MODULE, `gh api user returned invalid username: "${login}"`);
+    return null;
+  } catch (err) {
+    debug(MODULE, 'detectGitHubUsername failed', err);
+    return null;
+  }
+}
