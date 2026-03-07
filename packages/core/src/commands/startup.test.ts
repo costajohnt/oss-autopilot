@@ -29,10 +29,6 @@ vi.mock('./dashboard-lifecycle.js', () => ({
   launchDashboardServer: vi.fn(),
 }));
 
-vi.mock('./dashboard.js', () => ({
-  writeDashboardFromState: vi.fn(() => '/fake/home/.oss-autopilot/dashboard.html'),
-}));
-
 // Mock fs so detectIssueList doesn't hit the real filesystem
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
@@ -279,7 +275,6 @@ describe('runStartup behavior', () => {
   let executeDailyCheck: ReturnType<typeof vi.fn>;
   let execFile: ReturnType<typeof vi.fn>;
   let launchDashboardServer: ReturnType<typeof vi.fn>;
-  let writeDashboardFromState: ReturnType<typeof vi.fn>;
 
   function makeDailyOutput(totalActivePRs: number) {
     return {
@@ -342,9 +337,6 @@ describe('runStartup behavior', () => {
     launchDashboardServer = lifecycleMod.launchDashboardServer as unknown as ReturnType<typeof vi.fn>;
     // Default: SPA not available (assets not built)
     launchDashboardServer.mockResolvedValue(null);
-
-    const dashboardMod = await import('./dashboard.js');
-    writeDashboardFromState = dashboardMod.writeDashboardFromState as ReturnType<typeof vi.fn>;
   });
 
   it('should NOT open browser when totalActivePRs is 0', async () => {
@@ -357,7 +349,7 @@ describe('runStartup behavior', () => {
     expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
   });
 
-  it('should fall back to static HTML when SPA unavailable and totalActivePRs > 0', async () => {
+  it('should log error when SPA unavailable and totalActivePRs > 0', async () => {
     const daily = makeDailyOutput(3);
     executeDailyCheck.mockResolvedValue(daily);
     launchDashboardServer.mockResolvedValue(null);
@@ -366,17 +358,10 @@ describe('runStartup behavior', () => {
     const result = await runStartup();
 
     expect(launchDashboardServer).toHaveBeenCalled();
-    // Falls back to static HTML dashboard
-    expect(writeDashboardFromState).toHaveBeenCalled();
-    expect(execFile).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.arrayContaining(['/fake/home/.oss-autopilot/dashboard.html']),
-      expect.any(Function),
-    );
+    expect(execFile).not.toHaveBeenCalled();
     expect(result.dashboardUrl).toBeUndefined();
-    expect(result.dashboardPath).toBe('/fake/home/.oss-autopilot/dashboard.html');
-    expect(result.daily?.briefSummary).toContain('Dashboard opened in browser');
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('falling back to static HTML'));
+    expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('SPA assets not found'));
     consoleSpy.mockRestore();
   });
 
@@ -472,7 +457,7 @@ describe('runStartup behavior', () => {
     expect(result.dashboardUrl).toBeUndefined();
   });
 
-  it('should fall back to static HTML when SPA launch throws', async () => {
+  it('should log error when SPA launch throws', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const daily = makeDailyOutput(5);
     executeDailyCheck.mockResolvedValue(daily);
@@ -480,62 +465,25 @@ describe('runStartup behavior', () => {
 
     const result = await runStartup();
 
-    // Should not crash — falls back to static HTML
+    // Should not crash — dashboard is unavailable but startup continues
     expect(result.dashboardUrl).toBeUndefined();
-    expect(writeDashboardFromState).toHaveBeenCalled();
-    expect(result.dashboardPath).toBe('/fake/home/.oss-autopilot/dashboard.html');
-    expect(execFile).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.arrayContaining(['/fake/home/.oss-autopilot/dashboard.html']),
-      expect.any(Function),
-    );
-    expect(result.daily?.briefSummary).toContain('Dashboard opened in browser');
+    expect(execFile).not.toHaveBeenCalled();
+    expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('SPA dashboard launch failed'), 'spawn ENOENT');
     consoleSpy.mockRestore();
   });
 
-  it('should handle SPA unavailable + static HTML failing without crashing', async () => {
+  it('should continue gracefully when SPA is unavailable', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const daily = makeDailyOutput(3);
     executeDailyCheck.mockResolvedValue(daily);
     launchDashboardServer.mockResolvedValue(null);
-    writeDashboardFromState.mockImplementation(() => {
-      throw new Error('No digest data');
-    });
 
     const result = await runStartup();
 
     expect(result.dashboardUrl).toBeUndefined();
-    expect(result.dashboardPath).toBeUndefined();
     expect(execFile).not.toHaveBeenCalled();
     expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Static HTML dashboard fallback also failed'),
-      'No digest data',
-    );
-    consoleSpy.mockRestore();
-  });
-
-  it('should handle both SPA throwing and static HTML failing gracefully', async () => {
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const daily = makeDailyOutput(5);
-    executeDailyCheck.mockResolvedValue(daily);
-    launchDashboardServer.mockRejectedValue(new Error('spawn ENOENT'));
-    writeDashboardFromState.mockImplementation(() => {
-      throw new Error('No digest data');
-    });
-
-    const result = await runStartup();
-
-    // Should not crash — both dashboards failed but startup continues
-    expect(result.dashboardUrl).toBeUndefined();
-    expect(result.dashboardPath).toBeUndefined();
-    expect(execFile).not.toHaveBeenCalled();
-    expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Static HTML dashboard fallback also failed'),
-      'No digest data',
-    );
     consoleSpy.mockRestore();
   });
 
