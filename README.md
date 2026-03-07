@@ -1,4 +1,8 @@
-# OSS Autopilot
+<p align="center">
+  <img src="assets/icon.svg" alt="OSS Autopilot" width="120" height="120">
+</p>
+
+<h1 align="center">OSS Autopilot</h1>
 
 You have 12 open PRs across GitHub. A maintainer asked a question 5 days ago. Two PRs have failing CI you haven't noticed. And you're about to open another one.
 
