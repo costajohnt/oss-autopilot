@@ -1,5 +1,14 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { IncomingMessage, ServerResponse } from 'http';
 import { Octokit } from '@octokit/rest';
+
+/** Minimal Vercel request/response types (avoids heavy @vercel/node devDependency). */
+interface VercelRequest extends IncomingMessage {
+  query: Record<string, string | string[]>;
+}
+interface VercelResponse extends ServerResponse {
+  status(code: number): VercelResponse;
+  json(body: unknown): VercelResponse;
+}
 
 /** GitHub username: alphanumeric or hyphens (not leading/trailing/consecutive), 1-39 chars. */
 const GITHUB_USERNAME_RE = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/;
