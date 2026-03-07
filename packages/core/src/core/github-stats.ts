@@ -261,12 +261,12 @@ export function fetchUserClosedPRCounts(
 }
 
 /**
- * Shared helper: search for recent PRs and filter out own repos, excluded repos/orgs.
- * Returns parsed search results that pass all filters.
+ * Shared helper: search for recent PRs and filter out own repos.
+ * Note: excludeRepos/excludeOrgs only affect issue discovery, not recent PR lists (#591).
  */
 async function fetchRecentPRs<T>(
   octokit: Octokit,
-  config: { githubUsername: string; excludeRepos: string[]; excludeOrgs?: string[] },
+  config: { githubUsername: string },
   query: string,
   label: string,
   days: number,
@@ -307,10 +307,6 @@ async function fetchRecentPRs<T>(
     // Skip own repos
     if (isOwnRepo(parsed.owner, config.githubUsername)) continue;
 
-    // Skip excluded repos and orgs
-    if (config.excludeRepos.includes(repo)) continue;
-    if (config.excludeOrgs?.some((org) => parsed.owner.toLowerCase() === org.toLowerCase())) continue;
-
     results.push(mapItem(item, { owner: parsed.owner, repo, number: parsed.number }));
   }
 
@@ -324,7 +320,7 @@ async function fetchRecentPRs<T>(
  */
 export async function fetchRecentlyClosedPRs(
   octokit: Octokit,
-  config: { githubUsername: string; excludeRepos: string[]; excludeOrgs?: string[] },
+  config: { githubUsername: string },
   days: number = 7,
 ): Promise<ClosedPR[]> {
   return fetchRecentPRs<ClosedPR>(
@@ -349,7 +345,7 @@ export async function fetchRecentlyClosedPRs(
  */
 export async function fetchRecentlyMergedPRs(
   octokit: Octokit,
-  config: { githubUsername: string; excludeRepos: string[]; excludeOrgs?: string[] },
+  config: { githubUsername: string },
   days: number = 7,
 ): Promise<MergedPR[]> {
   return fetchRecentPRs<MergedPR>(
