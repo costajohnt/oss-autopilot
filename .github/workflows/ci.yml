@@ -77,7 +77,16 @@ jobs:
               echo "ERROR: $bundle was not produced by the bundle step"
               exit 1
             fi
-            echo "Bundle created: $bundle ($(wc -c < "$bundle") bytes)"
+            size=$(wc -c < "$bundle")
+            if [ "$size" -lt 1000 ]; then
+              echo "ERROR: $bundle is suspiciously small ($size bytes)"
+              exit 1
+            fi
+            if ! head -1 "$bundle" | grep -q '^#!/usr/bin/env node'; then
+              echo "ERROR: $bundle is missing required shebang"
+              exit 1
+            fi
+            echo "Bundle verified: $bundle ($size bytes)"
           done
 
   # Maintains a shields.io endpoint badge with the current passing test count.
