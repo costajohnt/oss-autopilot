@@ -23,6 +23,7 @@ import {
 } from './dashboard-data.js';
 import { openInBrowser } from './startup.js';
 import { writeDashboardServerInfo, removeDashboardServerInfo } from './dashboard-process.js';
+import { RateLimiter } from './rate-limiter.js';
 import type {
   DailyDigest,
   AgentState,
@@ -271,6 +272,11 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     );
   }
 
+  // ── Rate limiters ───────────────────────────────────────────────────────
+  const dataLimiter = new RateLimiter({ maxRequests: 30, windowMs: 60_000 }); // 30/min
+  const actionLimiter = new RateLimiter({ maxRequests: 10, windowMs: 60_000 }); // 10/min
+  const refreshLimiter = new RateLimiter({ maxRequests: 2, windowMs: 60_000 }); // 2/min
+
   // ── Request handler ──────────────────────────────────────────────────────
   const server = http.createServer(async (req, res) => {
     const method = req.method || 'GET';
@@ -279,6 +285,12 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     try {
       // ── API routes ─────────────────────────────────────────────────────
       if (url === '/api/data' && method === 'GET') {
+        const check = dataLimiter.check();
+        if (!check.allowed) {
+          res.setHeader('Retry-After', String(check.retryAfterSeconds));
+          sendError(res, 429, 'Too many requests');
+          return;
+        }
         sendJson(res, 200, cachedJsonData);
         return;
       }
@@ -288,6 +300,12 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
           sendError(res, 403, 'Invalid origin');
           return;
         }
+        const check = actionLimiter.check();
+        if (!check.allowed) {
+          res.setHeader('Retry-After', String(check.retryAfterSeconds));
+          sendError(res, 429, 'Too many requests');
+          return;
+        }
         await handleAction(req, res);
         return;
       }
@@ -295,6 +313,12 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       if (url === '/api/refresh' && method === 'POST') {
         if (!isValidOrigin(req, actualPort)) {
           sendError(res, 403, 'Invalid origin');
+          return;
+        }
+        const check = refreshLimiter.check();
+        if (!check.allowed) {
+          res.setHeader('Retry-After', String(check.retryAfterSeconds));
+          sendError(res, 429, 'Too many requests');
           return;
         }
         await handleRefresh(req, res);
