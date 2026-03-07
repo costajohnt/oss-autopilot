@@ -6,7 +6,7 @@ allowed-tools: Bash, Write, Read, Glob, mcp__*
 
 # OSS Autopilot Setup
 
-Guide the user through configuring their OSS autopilot preferences.
+Customize your OSS Autopilot preferences. This is **optional** — the tool works out of the box with auto-detected settings. Use this command to fine-tune languages, labels, PR limits, and other preferences.
 
 > **Input validation:** The "AskUserQuestion Validation Protocol" from `commands/oss.md` applies to ALL `AskUserQuestion` calls in this file. After every call, check for empty/missing answers and fall back to text-based input if the picker auto-completed.
 
