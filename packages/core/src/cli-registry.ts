@@ -969,6 +969,33 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── PR Template ──────────────────────────────────────────────────────
+  {
+    name: 'pr-template',
+    register(program) {
+      program
+        .command('pr-template <repo>')
+        .description("Fetch a repository's PR description template")
+        .option('--json', 'Output as JSON')
+        .action(async (repo, options) => {
+          try {
+            const { runPRTemplate } = await import('./commands/pr-template.js');
+            const data = await runPRTemplate({ repo });
+            if (options.json) {
+              outputJson(data);
+            } else if (data.template) {
+              console.log(`\nPR template found at: ${data.source}\n`);
+              console.log(data.template);
+            } else {
+              console.log('\nNo PR template found for this repository.');
+            }
+          } catch (err) {
+            handleCommandError(err, options.json);
+          }
+        });
+    },
+  },
+
   // ── Stats ─────────────────────────────────────────────────────────────
   {
     name: 'stats',

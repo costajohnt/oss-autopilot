@@ -137,13 +137,21 @@ branch=$(git branch --show-current)
 
 **If `$forkOwner` is empty** (e.g., `gh` not authenticated, network error): fall back to parsing the remote URL: `forkOwner=$(git remote get-url origin | sed -n 's|.*github.com[:/]\([^/]*\)/.*|\1|p')`. If still empty, ask the user to provide their fork owner name manually. **If `$branch` is empty** (detached HEAD state, e.g., during a rebase or in CI): report "Cannot create a PR from a detached HEAD. Please check out a named branch first." Do NOT run `gh pr create` with an empty `$forkOwner` or `$branch`.
 
+**Before generating the PR body**, fetch the target repo's PR template:
+
+```bash
+oss-autopilot pr-template {upstream-owner}/{upstream-repo} --json
+```
+
+If a template is returned (`data.template` is non-null), use it as the structure for the PR body — fill in its sections (e.g., `## Summary`, `## Test Plan`, `## Docs`) with content relevant to your changes. Preserve the template's section headers and formatting. If no template exists, use the default format below.
+
+Generate the PR title and body following the target repo's conventions (check `CONTRIBUTING.md`, existing PR formats, and the PR template above). Include:
+- Reference to the issue being fixed (e.g., "Fixes #123")
+- Brief description of the approach
+
 ```bash
 gh pr create --draft --title "{conventional title}" --body "{PR body}" --repo {upstream-repo} --head "$forkOwner:$branch"
 ```
-
-Generate the PR title and body following the target repo's conventions (check `CONTRIBUTING.md`, existing PR formats). Include:
-- Reference to the issue being fixed (e.g., "Fixes #123")
-- Brief description of the approach
 
 **If `gh pr create --draft` succeeds**, store in session context:
 - `draftPRNumber` — the PR number returned

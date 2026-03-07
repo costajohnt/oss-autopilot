@@ -354,6 +354,7 @@ describe('Command registration', () => {
       'undismiss',
       'snooze',
       'unsnooze',
+      'pr-template',
       'override',
       'clear-override',
       'stats',

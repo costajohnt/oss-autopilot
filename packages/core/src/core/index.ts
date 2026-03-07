@@ -68,4 +68,5 @@ export {
   printDigest,
 } from './daily-logic.js';
 export { computeContributionStats, type ContributionStats, type ComputeStatsInput } from './stats.js';
+export { fetchPRTemplate, type PRTemplateResult } from './pr-template.js';
 export * from './types.js';
