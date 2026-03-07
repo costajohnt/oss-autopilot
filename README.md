@@ -148,8 +148,7 @@ Each issue gets a **viability score (0-100)** based on your relationship with th
 
 ### Interactive Dashboard
 
-<!-- TODO: Replace with new dashboard screenshot or GIF -->
-![OSS Autopilot Dashboard](docs/images/dashboard.png)
+![dashboard-demo](https://github.com/user-attachments/assets/680ce6d6-8192-499a-b85e-f2686319b961)
 
 The dashboard auto-opens at `http://localhost:3000` when you run `/oss`. It's a Preact SPA you can also launch standalone with `npx @oss-autopilot/core dashboard serve`.
 
