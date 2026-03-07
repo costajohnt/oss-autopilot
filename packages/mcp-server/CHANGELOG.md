@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/costajohnt/oss-autopilot/compare/mcp-v1.0.3...mcp-v1.0.4) (2026-03-07)
+
+
+### Bug Fixes
+
+* resolve MCP server npm dependency resolution failures ([#630](https://github.com/costajohnt/oss-autopilot/issues/630)) ([72567d0](https://github.com/costajohnt/oss-autopilot/commit/72567d0b233ff2ca268c39a709186a4ab5b435d2))
+
 ## [1.0.3](https://github.com/costajohnt/oss-autopilot/compare/mcp-v1.0.2...mcp-v1.0.3) (2026-03-05)
 
 
