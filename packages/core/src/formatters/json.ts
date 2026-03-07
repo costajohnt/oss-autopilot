@@ -248,6 +248,8 @@ export interface IssueListInfo {
 export interface StartupOutput {
   version: string;
   setupComplete: boolean;
+  /** True when username was auto-detected on first run (zero-config). */
+  autoDetected?: boolean;
   authError?: string;
   daily?: DailyOutput;
   /** URL of the interactive SPA dashboard server, when running (e.g., "http://localhost:3000") */
@@ -363,6 +365,18 @@ export interface LocalReposOutput {
   scanPaths: string[];
   cachedAt: string;
   fromCache: boolean;
+}
+
+/** Output of the stats command */
+export interface StatsOutput {
+  totalMerged: number;
+  totalClosed: number;
+  mergeRate: number;
+  mergeRateFormatted: string;
+  activePRs: number;
+  reposContributed: number;
+  topRepos: Array<{ repo: string; mergedCount: number }>;
+  username: string;
 }
 
 /**

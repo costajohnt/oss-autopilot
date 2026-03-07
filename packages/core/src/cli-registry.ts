@@ -968,4 +968,47 @@ export const commands: CLICommandDef[] = [
         });
     },
   },
+
+  // ── Stats ─────────────────────────────────────────────────────────────
+  {
+    name: 'stats',
+    localOnly: true,
+    register(program) {
+      program
+        .command('stats')
+        .description('Show contribution statistics')
+        .option('--json', 'Output as JSON')
+        .option('--markdown', 'Output as shareable markdown report')
+        .option('--badge', 'Output as shields.io endpoint JSON')
+        .action(async (options) => {
+          try {
+            const { runStats, formatStatsMarkdown, formatStatsBadge } = await import('./commands/stats.js');
+            const data = await runStats();
+            if (options.badge) {
+              console.log(JSON.stringify(formatStatsBadge(data), null, 2));
+            } else if (options.markdown) {
+              console.log(formatStatsMarkdown(data));
+            } else if (options.json) {
+              outputJson(data);
+            } else {
+              console.log(`\nOSS Contribution Stats (@${data.username})\n`);
+              console.log(`  Merged PRs:        ${data.totalMerged}`);
+              console.log(`  Closed PRs:        ${data.totalClosed}`);
+              console.log(`  Merge Rate:        ${data.mergeRateFormatted}`);
+              console.log(`  Active PRs:        ${data.activePRs}`);
+              console.log(`  Repos Contributed: ${data.reposContributed}`);
+              if (data.topRepos.length > 0) {
+                console.log('\n  Top Repos:');
+                for (const repo of data.topRepos.slice(0, 5)) {
+                  console.log(`    ${repo.repo}: ${repo.mergedCount} merged`);
+                }
+              }
+              console.log('\n  Use --markdown for a shareable report or --badge for shields.io');
+            }
+          } catch (err) {
+            handleCommandError(err, options.json);
+          }
+        });
+    },
+  },
 ];
