@@ -30,6 +30,8 @@ export interface PRTemplateResult {
   template: string | null;
   /** The path where the template was found (e.g., ".github/PULL_REQUEST_TEMPLATE.md"). */
   source: string | null;
+  /** If non-null, an error prevented a complete check of all template paths. */
+  error?: string;
 }
 
 /**
@@ -49,6 +51,7 @@ export async function fetchPRTemplate(octokit: Octokit, owner: string, repo: str
         continue;
       }
       if (data.type !== 'file' || !data.content) {
+        debug(MODULE, `${path} is type "${data.type}" with ${data.content ? 'content' : 'no content'}, skipping`);
         continue;
       }
 
@@ -60,9 +63,10 @@ export async function fetchPRTemplate(octokit: Octokit, owner: string, repo: str
       if (getHttpStatusCode(err) === 404) continue;
       // Rate limit and auth errors must propagate (project error strategy)
       if (isRateLimitOrAuthError(err)) throw err;
-      // Other errors (500, network) — warn and stop trying remaining paths
-      warn(MODULE, `Error checking ${owner}/${repo}/${path}: ${errorMessage(err)}`);
-      break;
+      // Other errors (500, network) — warn and return with error context
+      const msg = errorMessage(err);
+      warn(MODULE, `Error checking ${owner}/${repo}/${path}: ${msg}`);
+      return { template: null, source: null, error: msg };
     }
   }
 

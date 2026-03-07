@@ -5,16 +5,11 @@
  */
 
 import { getOctokit } from '../core/github.js';
-import { requireGitHubToken } from '../core/utils.js';
+import { requireGitHubToken, splitRepo } from '../core/utils.js';
 import { fetchPRTemplate, type PRTemplateResult } from '../core/pr-template.js';
 
 export async function runPRTemplate(opts: { repo: string }): Promise<PRTemplateResult> {
-  const parts = opts.repo.split('/');
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new Error(`Invalid repo format "${opts.repo}". Expected "owner/repo".`);
-  }
-  const [owner, repo] = parts;
-
+  const { owner, repo } = splitRepo(opts.repo);
   const token = requireGitHubToken();
   const octokit = getOctokit(token);
   return fetchPRTemplate(octokit, owner, repo);

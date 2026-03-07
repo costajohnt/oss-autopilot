@@ -99,6 +99,7 @@ describe('fetchPRTemplate', () => {
 
     expect(result.template).toBeNull();
     expect(result.source).toBeNull();
+    expect(result.error).toBeUndefined();
     // Should have tried all 4 paths
     expect(octokit.repos.getContent).toHaveBeenCalledTimes(4);
   });
@@ -118,7 +119,7 @@ describe('fetchPRTemplate', () => {
     expect(octokit.repos.getContent).toHaveBeenCalledTimes(4);
   });
 
-  it('should stop on 500 errors and return null', async () => {
+  it('should return error field on 500 errors instead of silent null', async () => {
     const octokit = makeOctokit({
       'owner/repo/.github/PULL_REQUEST_TEMPLATE.md': { status: 500 },
     });
@@ -126,8 +127,39 @@ describe('fetchPRTemplate', () => {
     const result = await fetchPRTemplate(octokit, 'owner', 'repo');
 
     expect(result.template).toBeNull();
+    expect(result.error).toBe('Server Error');
     // Should stop after the 500 error, not try remaining paths
     expect(octokit.repos.getContent).toHaveBeenCalledTimes(1);
+  });
+
+  it('should skip symlinks and try remaining paths', async () => {
+    const octokit = makeOctokit({
+      'owner/repo/.github/PULL_REQUEST_TEMPLATE.md': {
+        status: 200,
+        data: { type: 'symlink', content: null },
+      },
+    });
+
+    const result = await fetchPRTemplate(octokit, 'owner', 'repo');
+
+    expect(result.template).toBeNull();
+    expect(result.error).toBeUndefined();
+    expect(octokit.repos.getContent).toHaveBeenCalledTimes(4);
+  });
+
+  it('should skip files with no content and try remaining paths', async () => {
+    const octokit = makeOctokit({
+      'owner/repo/.github/PULL_REQUEST_TEMPLATE.md': {
+        status: 200,
+        data: { type: 'file', content: '' },
+      },
+    });
+
+    const result = await fetchPRTemplate(octokit, 'owner', 'repo');
+
+    expect(result.template).toBeNull();
+    expect(result.error).toBeUndefined();
+    expect(octokit.repos.getContent).toHaveBeenCalledTimes(4);
   });
 
   it('should propagate 429 rate limit errors', async () => {

@@ -986,6 +986,8 @@ export const commands: CLICommandDef[] = [
             } else if (data.template) {
               console.log(`\nPR template found at: ${data.source}\n`);
               console.log(data.template);
+            } else if (data.error) {
+              console.error(`\nWarning: Could not check for PR template: ${data.error}`);
             } else {
               console.log('\nNo PR template found for this repository.');
             }
