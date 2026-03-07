@@ -3,6 +3,7 @@
   "owner": {
     "name": "John Costa"
   },
+  "icon": "assets/icon.svg",
   "metadata": {
     "description": "AI-powered autopilot for managing open source contributions with Claude Code",
     "categories": ["productivity", "open-source", "github", "developer-tools"],
