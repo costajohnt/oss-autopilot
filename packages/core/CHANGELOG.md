@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.45.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.18...core-v0.45.0) (2026-03-07)
+
+
+### Features
+
+* detect and use repository PR templates when creating PRs ([#595](https://github.com/costajohnt/oss-autopilot/issues/595)) ([fa0a5da](https://github.com/costajohnt/oss-autopilot/commit/fa0a5da102b40f54a8db2b40e251d46802727995))
+* zero-config first run and shareable contribution stats ([#592](https://github.com/costajohnt/oss-autopilot/issues/592)) ([779f4b2](https://github.com/costajohnt/oss-autopilot/commit/779f4b255c803bbf31119548ec382b6901a52301))
+
+
+### Bug Fixes
+
+* resolve TypeScript discriminated union error in pr-template ([#596](https://github.com/costajohnt/oss-autopilot/issues/596)) ([01c4095](https://github.com/costajohnt/oss-autopilot/commit/01c4095fe9427a8099e401f934ad50e78bf018fe))
+* scope excludeRepos to issue discovery only ([#594](https://github.com/costajohnt/oss-autopilot/issues/594)) ([9fc2fda](https://github.com/costajohnt/oss-autopilot/commit/9fc2fda303706b46529fa3a81d23d8b64ad277fc))
+
 ## [0.44.18](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.17...core-v0.44.18) (2026-03-06)
 
 
