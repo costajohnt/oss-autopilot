@@ -13,7 +13,7 @@ export async function runStats(): Promise<StatsOutput> {
   const activePRCount = state.lastDigest?.summary?.totalActivePRs ?? 0;
 
   const stats = computeContributionStats({
-    repoScores: state.repoScores,
+    repoScores: state.repoScores ?? {},
     activePRCount,
   });
 
@@ -49,20 +49,24 @@ export function formatStatsMarkdown(stats: StatsOutput): string {
   return lines.join('\n');
 }
 
-export function formatStatsBadge(stats: StatsOutput): object {
+interface BadgeData {
+  schemaVersion: number;
+  label: string;
+  message: string;
+  color: string;
+}
+
+function pickBadgeColor(stats: StatsOutput): string {
+  if (stats.totalMerged === 0) return 'blue';
+  if (stats.mergeRate >= 0.8) return 'brightgreen';
+  if (stats.mergeRate >= 0.6) return 'green';
+  if (stats.mergeRate >= 0.4) return 'yellow';
+  return 'orange';
+}
+
+export function formatStatsBadge(stats: StatsOutput): BadgeData {
   const message =
     stats.totalMerged > 0 ? `${stats.mergeRateFormatted} merge rate | ${stats.totalMerged} merged` : 'Getting Started';
 
-  const color =
-    stats.mergeRate >= 0.8
-      ? 'brightgreen'
-      : stats.mergeRate >= 0.6
-        ? 'green'
-        : stats.mergeRate >= 0.4
-          ? 'yellow'
-          : stats.totalMerged === 0
-            ? 'blue'
-            : 'orange';
-
-  return { schemaVersion: 1, label: 'OSS Contributions', message, color };
+  return { schemaVersion: 1, label: 'OSS Contributions', message, color: pickBadgeColor(stats) };
 }

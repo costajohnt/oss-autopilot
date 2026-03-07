@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Octokit } from '@octokit/rest';
 
+/** GitHub username: alphanumeric or hyphens (not leading/trailing/consecutive), 1-39 chars. */
+const GITHUB_USERNAME_RE = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/;
+
 interface BadgeResponse {
   schemaVersion: number;
   label: string;
@@ -12,15 +15,27 @@ function errorBadge(message: string): BadgeResponse {
   return { schemaVersion: 1, label: 'OSS Contributions', message, color: 'lightgrey' };
 }
 
+function pickColor(mergeRate: number): string {
+  if (mergeRate >= 0.8) return 'brightgreen';
+  if (mergeRate >= 0.6) return 'green';
+  if (mergeRate >= 0.4) return 'yellow';
+  return 'orange';
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { username } = req.query;
 
-  if (typeof username !== 'string' || !/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/.test(username)) {
+  if (typeof username !== 'string' || !GITHUB_USERNAME_RE.test(username)) {
     return res.status(200).json(errorBadge('invalid username'));
   }
 
   try {
-    const octokit = new Octokit();
+    if (!process.env.GITHUB_TOKEN) {
+      console.warn('[badge] GITHUB_TOKEN not set — using unauthenticated GitHub API (10 req/min limit)');
+    }
+    const octokit = new Octokit({
+      auth: process.env.GITHUB_TOKEN || undefined,
+    });
 
     const [mergedResult, closedResult, openResult] = await Promise.all([
       octokit.search.issuesAndPullRequests({ q: `is:pr is:merged author:${username}`, per_page: 1 }),
@@ -44,7 +59,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       color = 'blue';
     } else {
       message = `${mergeRatePct} merge rate | ${mergedCount} merged | ${openCount} open`;
-      color = mergeRate >= 0.8 ? 'brightgreen' : mergeRate >= 0.6 ? 'green' : mergeRate >= 0.4 ? 'yellow' : 'orange';
+      color = pickColor(mergeRate);
     }
 
     return res.status(200).json({
@@ -53,10 +68,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       message,
       color,
     } satisfies BadgeResponse);
-  } catch (error: any) {
-    if (error.status === 422) {
+  } catch (error: unknown) {
+    const status = error instanceof Object && 'status' in error ? (error as { status: number }).status : undefined;
+    if (status === 422) {
       return res.status(200).json(errorBadge('user not found'));
     }
+    if (status === 403 || status === 429) {
+      console.warn('[badge] GitHub API rate limited for', username);
+      return res.status(200).json(errorBadge('rate limited'));
+    }
+    console.error('[badge]', error instanceof Error ? error.message : String(error));
     return res.status(200).json(errorBadge('error'));
   }
 }

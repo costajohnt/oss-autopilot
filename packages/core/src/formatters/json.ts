@@ -4,6 +4,7 @@
  */
 
 import type { FetchedPR, DailyDigest, AgentState, RepoGroup, CommentedIssue, ShelvedPRRef } from '../core/types.js';
+import type { ContributionStats } from '../core/stats.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { SearchPriority } from '../core/issue-discovery.js';
 
@@ -368,14 +369,8 @@ export interface LocalReposOutput {
 }
 
 /** Output of the stats command */
-export interface StatsOutput {
-  totalMerged: number;
-  totalClosed: number;
-  mergeRate: number;
+export interface StatsOutput extends ContributionStats {
   mergeRateFormatted: string;
-  activePRs: number;
-  reposContributed: number;
-  topRepos: Array<{ repo: string; mergedCount: number }>;
   username: string;
 }
 

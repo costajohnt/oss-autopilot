@@ -140,8 +140,16 @@ export async function runStartup(): Promise<StartupOutput> {
   if (!stateManager.isSetupComplete()) {
     const detectedUsername = await detectGitHubUsername();
     if (detectedUsername) {
-      stateManager.initializeWithDefaults(detectedUsername);
-      autoDetected = true;
+      try {
+        stateManager.initializeWithDefaults(detectedUsername);
+        autoDetected = true;
+      } catch (err) {
+        console.error(
+          `[STARTUP] Auto-detected username "${detectedUsername}" but failed to save config:`,
+          errorMessage(err),
+        );
+        return { version, setupComplete: false };
+      }
     } else {
       return { version, setupComplete: false };
     }

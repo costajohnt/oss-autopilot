@@ -57,6 +57,21 @@ describe('runStats', () => {
     // 8 / (8 + 1) = 88.9%
     expect(result.mergeRateFormatted).toBe('88.9%');
   });
+
+  it('should handle missing lastDigest gracefully', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({
+        repoScores: {},
+        lastDigest: undefined,
+        config: { githubUsername: 'testuser' },
+      }),
+    } as any);
+
+    const result = await runStats();
+
+    expect(result.activePRs).toBe(0);
+    expect(result.totalMerged).toBe(0);
+  });
 });
 
 describe('formatStatsMarkdown', () => {
@@ -163,5 +178,35 @@ describe('formatStatsBadge', () => {
         color: 'orange',
       }),
     );
+  });
+
+  it('should return green for merge rate between 60-79%', () => {
+    const badge = formatStatsBadge({
+      totalMerged: 7,
+      totalClosed: 3,
+      mergeRate: 0.7,
+      mergeRateFormatted: '70.0%',
+      activePRs: 1,
+      reposContributed: 2,
+      topRepos: [],
+      username: 'testuser',
+    });
+
+    expect(badge).toEqual(expect.objectContaining({ color: 'green' }));
+  });
+
+  it('should return yellow for merge rate between 40-59%', () => {
+    const badge = formatStatsBadge({
+      totalMerged: 5,
+      totalClosed: 5,
+      mergeRate: 0.5,
+      mergeRateFormatted: '50.0%',
+      activePRs: 0,
+      reposContributed: 1,
+      topRepos: [],
+      username: 'testuser',
+    });
+
+    expect(badge).toEqual(expect.objectContaining({ color: 'yellow' }));
   });
 });

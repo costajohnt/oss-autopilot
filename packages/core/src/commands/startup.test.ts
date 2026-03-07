@@ -559,6 +559,30 @@ describe('runStartup behavior', () => {
       expect(result.setupComplete).toBe(true);
       expect(result.autoDetected).toBe(true);
       expect(dgu).toHaveBeenCalled();
+      const mockSM = (gsm as ReturnType<typeof vi.fn>).mock.results[0].value;
+      expect(mockSM.initializeWithDefaults).toHaveBeenCalledWith('autouser');
+    });
+
+    it('should return setupComplete:false when initializeWithDefaults throws', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { getStateManager: gsm, detectGitHubUsername: dgu, getGitHubToken: ght } = await import('../core/index.js');
+      (gsm as ReturnType<typeof vi.fn>).mockReturnValue({
+        isSetupComplete: vi.fn(() => false),
+        initializeWithDefaults: vi.fn(() => {
+          throw new Error('EACCES: permission denied');
+        }),
+      });
+      (dgu as ReturnType<typeof vi.fn>).mockResolvedValue('autouser');
+      (ght as ReturnType<typeof vi.fn>).mockReturnValue('fake-token');
+
+      const result = await runStartup();
+
+      expect(result.setupComplete).toBe(false);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('failed to save config'),
+        expect.stringContaining('EACCES'),
+      );
+      consoleSpy.mockRestore();
     });
 
     it('should return setupComplete:false when auto-detect fails', async () => {

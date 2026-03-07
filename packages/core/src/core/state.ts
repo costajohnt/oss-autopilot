@@ -263,8 +263,7 @@ export class StateManager {
       return;
     }
     this.state.config.githubUsername = username;
-    this.state.config.setupComplete = true;
-    this.state.config.setupCompletedAt = new Date().toISOString();
+    this.markSetupComplete();
     debug(MODULE, `Initialized with defaults for user "${username}"`);
     this.save();
   }
