@@ -220,6 +220,29 @@ Claude automatically dispatches these based on context:
 
 ---
 
+## Contribution Stats & Badges
+
+### View Your Stats
+
+```bash
+oss-autopilot stats              # Terminal output
+oss-autopilot stats --json       # Structured JSON
+oss-autopilot stats --markdown   # Shareable markdown report
+oss-autopilot stats --badge      # Shields.io endpoint JSON
+```
+
+### Add a Badge to Your GitHub Profile
+
+Show off your open source contributions with a live badge on your GitHub profile README:
+
+```markdown
+![OSS Contributions](https://img.shields.io/endpoint?url=https://oss-autopilot-stats.vercel.app/api/badge/YOUR_USERNAME)
+```
+
+The badge updates hourly and shows your merge rate, total merged PRs, and active PR count.
+
+---
+
 ## Configuration
 
 Settings live in `.claude/oss-autopilot/config.md` (YAML frontmatter). Run `/setup-oss` to configure interactively, or edit directly:
