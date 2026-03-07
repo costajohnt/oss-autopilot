@@ -1920,3 +1920,48 @@ describe('getStateManager / resetStateManager singleton', () => {
     expect(sm1).not.toBe(sm2);
   });
 });
+
+describe('StateManager initializeWithDefaults', () => {
+  let stateManager: StateManager;
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  it('should set username and mark setup complete', () => {
+    stateManager.initializeWithDefaults('testuser');
+    const state = stateManager.getState();
+    expect(state.config.githubUsername).toBe('testuser');
+    expect(state.config.setupComplete).toBe(true);
+    expect(state.config.setupCompletedAt).toBeDefined();
+    // Verify it's a valid ISO timestamp
+    expect(new Date(state.config.setupCompletedAt!).toISOString()).toBe(state.config.setupCompletedAt);
+  });
+
+  it('should NOT overwrite existing config if setup already complete', () => {
+    // First initialization
+    stateManager.initializeWithDefaults('firstuser');
+    const firstTimestamp = stateManager.getState().config.setupCompletedAt;
+
+    // Second initialization attempt — should be a no-op
+    stateManager.initializeWithDefaults('seconduser');
+    const state = stateManager.getState();
+    expect(state.config.githubUsername).toBe('firstuser');
+    expect(state.config.setupCompletedAt).toBe(firstTimestamp);
+  });
+
+  it('should use sensible defaults', () => {
+    stateManager.initializeWithDefaults('testuser');
+    const state = stateManager.getState();
+    expect(state.config.maxActivePRs).toBe(10);
+    expect(state.config.languages).toEqual(['typescript', 'javascript']);
+    expect(state.config.labels).toEqual(['good first issue', 'help wanted']);
+  });
+
+  it('should call save()', () => {
+    const saveSpy = vi.spyOn(stateManager, 'save');
+    stateManager.initializeWithDefaults('testuser');
+    expect(saveSpy).toHaveBeenCalledOnce();
+    saveSpy.mockRestore();
+  });
+});

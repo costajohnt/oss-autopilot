@@ -252,6 +252,24 @@ export class StateManager {
   }
 
   /**
+   * Initialize state with sensible defaults for zero-config onboarding.
+   * Sets the GitHub username, marks setup as complete, and persists.
+   * No-op if setup is already complete (prevents overwriting existing config).
+   * @param username - The GitHub username to configure.
+   */
+  initializeWithDefaults(username: string): void {
+    if (this.state.config.setupComplete) {
+      debug(MODULE, `Setup already complete, skipping initializeWithDefaults for "${username}"`);
+      return;
+    }
+    this.state.config.githubUsername = username;
+    this.state.config.setupComplete = true;
+    this.state.config.setupCompletedAt = new Date().toISOString();
+    debug(MODULE, `Initialized with defaults for user "${username}"`);
+    this.save();
+  }
+
+  /**
    * Migrate state from legacy ./data/ location to ~/.oss-autopilot/
    * Returns true if migration was performed
    */
