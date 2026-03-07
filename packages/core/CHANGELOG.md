@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.46.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.45.0...core-v0.46.0) (2026-03-07)
+
+
+### Features
+
+* add rate limiting to dashboard server API endpoints ([#609](https://github.com/costajohnt/oss-autopilot/issues/609)) ([4a8ae98](https://github.com/costajohnt/oss-autopilot/commit/4a8ae98f74fb0ea01f4b5bbef72e3ffb630a59f9)), closes [#603](https://github.com/costajohnt/oss-autopilot/issues/603)
+
+
+### Bug Fixes
+
+* remove legacy HTML dashboard from core package ([#605](https://github.com/costajohnt/oss-autopilot/issues/605)) ([d2dc67f](https://github.com/costajohnt/oss-autopilot/commit/d2dc67f9e6fddfba10171aaeb0b876643b383c17)), closes [#599](https://github.com/costajohnt/oss-autopilot/issues/599)
+
 ## [0.45.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.44.18...core-v0.45.0) (2026-03-07)
 
 
