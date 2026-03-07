@@ -144,18 +144,14 @@ export function generateDashboardScripts(
 
   // === Repository Breakdown ===
   const repoChart = (() => {
-    // Filter helper: exclude repos matching excludeRepos/excludeOrgs or below minStars (#216)
-    const { excludeRepos: exRepos = [], excludeOrgs: exOrgs, minStars } = state.config;
+    // Filter helper: exclude repos below minStars (#216)
+    const { minStars } = state.config;
     const starThreshold = minStars ?? 50;
     const shouldExcludeRepo = (repo: string): boolean => {
-      const repoLower = repo.toLowerCase();
-      if (exRepos.some((r) => r.toLowerCase() === repoLower)) return true;
-      if (exOrgs?.some((o) => o.toLowerCase() === repoLower.split('/')[0])) return true;
       const score = (state.repoScores || {})[repo];
       // Fail-closed: repos without cached star data are excluded from charts.
       // Star data is populated by the daily check; repos appear once stars are fetched.
-      if (isBelowMinStars(score?.stargazersCount, starThreshold)) return true;
-      return false;
+      return isBelowMinStars(score?.stargazersCount, starThreshold);
     };
 
     // Sort repos by total PRs (merged + active + closed) and build "Other" bucket

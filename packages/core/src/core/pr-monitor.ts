@@ -15,7 +15,7 @@
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
-import { daysBetween, parseGitHubUrl, extractOwnerRepo, DEFAULT_CONCURRENCY } from './utils.js';
+import { daysBetween, parseGitHubUrl, extractOwnerRepo, isOwnRepo, DEFAULT_CONCURRENCY } from './utils.js';
 import {
   FetchedPR,
   FetchedPRStatus,
@@ -130,8 +130,6 @@ export class PRMonitor {
     const prs: FetchedPR[] = [];
     const failures: PRCheckFailure[] = [];
 
-    const shelvedUrls = new Set(config.shelvedPRUrls || []);
-
     const filteredItems = allItems.filter((item) => {
       if (!item.pull_request) return false;
       // Skip PRs to repos owned by the user (not OSS contributions)
@@ -140,21 +138,11 @@ export class PRMonitor {
         warn('pr-monitor', `Skipping PR with unparseable URL: ${item.html_url}`);
         return false;
       }
-      const ownerLower = parsed.owner.toLowerCase();
-      if (ownerLower === config.githubUsername.toLowerCase()) return false;
-      const repoFullName = `${parsed.owner}/${parsed.repo}`;
-      // Keep shelved PRs even from excluded repos/orgs — excludeRepos is meant
-      // to stop finding *new* issues there, not hide open PRs already being tracked (#175)
-      const isShelved = shelvedUrls.has(item.html_url);
-      if (config.excludeRepos.includes(repoFullName) && !isShelved) return false;
-      if (config.excludeOrgs?.some((org) => ownerLower === org.toLowerCase()) && !isShelved) return false;
+      if (isOwnRepo(parsed.owner, config.githubUsername)) return false;
       return true;
     });
 
-    debug(
-      'pr-monitor',
-      `Filtered to ${filteredItems.length} PRs after excluding own repos, shelved, and excluded orgs/repos`,
-    );
+    debug('pr-monitor', `Filtered to ${filteredItems.length} PRs after excluding own repos`);
 
     // Fetch detailed info using a worker pool for bounded concurrency.
     await timed('pr-monitor', `Fetch details for ${filteredItems.length} PRs`, async () => {

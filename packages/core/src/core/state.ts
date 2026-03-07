@@ -728,20 +728,11 @@ export class StateManager {
   }
 
   /**
-   * Check whether a repository matches any exclusion rule from the current config.
-   * A repo is excluded if it matches an entry in `excludeRepos` (case-insensitive)
-   * or if its owner segment matches an entry in `excludeOrgs` (case-insensitive).
-   * @param repo - Repository in "owner/repo" format.
-   */
-  private isExcluded(repo: string): boolean {
-    const { excludeRepos, excludeOrgs } = this.state.config;
-    return StateManager.matchesExclusion(repo, excludeRepos, excludeOrgs);
-  }
-
-  /**
-   * Remove repositories matching the given exclusion lists from `trustedProjects`
-   * and `repoScores`. Called when a repo or org is newly excluded to keep stored
-   * data consistent with current filters.
+   * Remove repositories matching the given exclusion lists from `trustedProjects`.
+   * Called when a repo or org is newly excluded.
+   *
+   * Note: `repoScores` are intentionally preserved so historical stats (merge rate,
+   * total merged) remain accurate. Exclusion only affects issue discovery (#591).
    * @param repos - Full "owner/repo" strings to exclude (case-insensitive match).
    * @param orgs  - Org names to exclude (case-insensitive match against owner segment).
    */
@@ -752,19 +743,8 @@ export class StateManager {
     this.state.config.trustedProjects = this.state.config.trustedProjects.filter((p) => !matches(p));
     const removedTrusted = beforeTrusted - this.state.config.trustedProjects.length;
 
-    let removedScoreCount = 0;
-    for (const key of Object.keys(this.state.repoScores)) {
-      if (matches(key)) {
-        delete this.state.repoScores[key];
-        removedScoreCount++;
-      }
-    }
-
-    if (removedTrusted > 0 || removedScoreCount > 0) {
-      debug(
-        MODULE,
-        `Removed ${removedTrusted} trusted project(s) and ${removedScoreCount} repo score(s) for excluded repos/orgs`,
-      );
+    if (removedTrusted > 0) {
+      debug(MODULE, `Removed ${removedTrusted} trusted project(s) for excluded repos/orgs`);
     }
   }
 
@@ -1258,19 +1238,18 @@ export class StateManager {
 
   /**
    * Compute aggregate statistics from the current state. `mergedPRs` and `closedPRs` counts
-   * are summed from repo score records, excluding repos that match `excludeRepos` or `excludeOrgs`
-   * in the config (#211). `totalTracked` reflects the number of non-excluded repositories with
-   * score records.
+   * are summed from repo score records. `totalTracked` reflects the number of repositories with
+   * score records above the minStars threshold.
+   *
+   * Note: `excludeRepos`/`excludeOrgs` only affect issue discovery, not stats (#591).
    * @returns A Stats snapshot computed from the current state.
    */
   getStats(): Stats {
-    // v2: Calculate from repoScores, filtering out excluded repos/orgs (#211)
     let totalMerged = 0;
     let totalClosed = 0;
     let totalTracked = 0;
 
-    for (const [repoKey, score] of Object.entries(this.state.repoScores)) {
-      if (this.isExcluded(repoKey)) continue;
+    for (const score of Object.values(this.state.repoScores)) {
       if (isBelowMinStars(score.stargazersCount, this.state.config.minStars ?? 50)) continue;
       totalTracked++;
       totalMerged += score.mergedPRCount;
@@ -1284,7 +1263,7 @@ export class StateManager {
       mergedPRs: totalMerged,
       closedPRs: totalClosed,
       activeIssues: 0,
-      trustedProjects: this.state.config.trustedProjects.filter((p) => !this.isExcluded(p)).length,
+      trustedProjects: this.state.config.trustedProjects.length,
       mergeRate: mergeRate.toFixed(1) + '%',
       totalTracked,
       needsResponse: 0,
@@ -1296,17 +1275,17 @@ export class StateManager {
  * Aggregate statistics returned by {@link StateManager.getStats}.
  */
 export interface Stats {
-  /** Total merged PRs across scored repositories (excludes repos/orgs in exclusion config). */
+  /** Total merged PRs across scored repositories (above minStars threshold). */
   mergedPRs: number;
-  /** Total PRs closed without merge across scored repositories (excludes repos/orgs in exclusion config). */
+  /** Total PRs closed without merge across scored repositories (above minStars threshold). */
   closedPRs: number;
   /** Number of active issues. Always 0 in v2 (sourced from fresh fetch instead). */
   activeIssues: number;
-  /** Number of trusted projects (excludes repos/orgs in exclusion config). */
+  /** Number of trusted projects. */
   trustedProjects: number;
   /** Merge success rate as a percentage string (e.g. "75.0%"). */
   mergeRate: string;
-  /** Number of scored repositories (excludes repos/orgs in exclusion config). */
+  /** Number of scored repositories (above minStars threshold). */
   totalTracked: number;
   /** Number of PRs needing a response. Always 0 in v2 (sourced from fresh fetch instead). */
   needsResponse: number;

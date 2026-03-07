@@ -134,9 +134,6 @@ async function fetchUserPRCounts<R>(
       // Skip own repos (PRs to your own repos aren't OSS contributions)
       if (isOwnRepo(owner, githubUsername)) continue;
 
-      // Note: excludeRepos/excludeOrgs are intentionally NOT filtered here.
-      // Those filters control issue discovery/search, not historical statistics.
-
       // Skip repos below the minimum star threshold (#576).
       // Repos with unknown star counts (not yet fetched) are also excluded (fail-closed).
       if (starFilter && isBelowMinStars(starFilter.knownStarCounts.get(repo), starFilter.minStars)) {
@@ -261,12 +258,11 @@ export function fetchUserClosedPRCounts(
 }
 
 /**
- * Shared helper: search for recent PRs and filter out own repos, excluded repos/orgs.
- * Returns parsed search results that pass all filters.
+ * Shared helper: search for recent PRs and filter out own repos.
  */
 async function fetchRecentPRs<T>(
   octokit: Octokit,
-  config: { githubUsername: string; excludeRepos: string[]; excludeOrgs?: string[] },
+  config: { githubUsername: string },
   query: string,
   label: string,
   days: number,
@@ -307,10 +303,6 @@ async function fetchRecentPRs<T>(
     // Skip own repos
     if (isOwnRepo(parsed.owner, config.githubUsername)) continue;
 
-    // Skip excluded repos and orgs
-    if (config.excludeRepos.includes(repo)) continue;
-    if (config.excludeOrgs?.some((org) => parsed.owner.toLowerCase() === org.toLowerCase())) continue;
-
     results.push(mapItem(item, { owner: parsed.owner, repo, number: parsed.number }));
   }
 
@@ -324,7 +316,7 @@ async function fetchRecentPRs<T>(
  */
 export async function fetchRecentlyClosedPRs(
   octokit: Octokit,
-  config: { githubUsername: string; excludeRepos: string[]; excludeOrgs?: string[] },
+  config: { githubUsername: string },
   days: number = 7,
 ): Promise<ClosedPR[]> {
   return fetchRecentPRs<ClosedPR>(
@@ -349,7 +341,7 @@ export async function fetchRecentlyClosedPRs(
  */
 export async function fetchRecentlyMergedPRs(
   octokit: Octokit,
-  config: { githubUsername: string; excludeRepos: string[]; excludeOrgs?: string[] },
+  config: { githubUsername: string },
   days: number = 7,
 ): Promise<MergedPR[]> {
   return fetchRecentPRs<MergedPR>(

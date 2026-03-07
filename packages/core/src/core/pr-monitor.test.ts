@@ -1530,7 +1530,7 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
     expect(result).toHaveLength(0);
   });
 
-  it('should skip excluded repos', async () => {
+  it('should include PRs from excluded repos (#591)', async () => {
     mockOctokitInstance = {
       search: {
         issuesAndPullRequests: vi.fn().mockResolvedValue({
@@ -1551,10 +1551,11 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
     const monitor = new PRMonitor('fake-token');
     const result = await monitor.fetchRecentlyMergedPRs();
 
-    expect(result).toHaveLength(0);
+    expect(result).toHaveLength(1);
+    expect(result[0].repo).toBe('excluded/repo');
   });
 
-  it('should skip excluded orgs', async () => {
+  it('should include PRs from excluded orgs (#591)', async () => {
     mockOctokitInstance = {
       search: {
         issuesAndPullRequests: vi.fn().mockResolvedValue({
@@ -1575,7 +1576,8 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
     const monitor = new PRMonitor('fake-token');
     const result = await monitor.fetchRecentlyMergedPRs();
 
-    expect(result).toHaveLength(0);
+    expect(result).toHaveLength(1);
+    expect(result[0].repo).toBe('excludedorg/repo');
   });
 
   it('should return empty array when no username configured', async () => {
@@ -2464,7 +2466,7 @@ describe('isConditionalChecklistItem (#152)', () => {
   });
 });
 
-describe('fetchUserOpenPRs excludeRepos/excludeOrgs exempts shelved PRs (#175)', () => {
+describe('fetchUserOpenPRs does not filter by excludeRepos/excludeOrgs (#591)', () => {
   const makeSearchItem = (url: string) => ({
     html_url: url,
     title: 'Test PR',
@@ -2516,80 +2518,8 @@ describe('fetchUserOpenPRs excludeRepos/excludeOrgs exempts shelved PRs (#175)',
     mockOctokitInstance = {};
   });
 
-  it('should include shelved PR from excluded repo', async () => {
-    const shelvedUrl = 'https://github.com/excluded/repo/pull/42';
-
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: ['excluded/repo'],
-          excludeOrgs: [],
-          shelvedPRUrls: [shelvedUrl],
-          dormantThresholdDays: 30,
-          approachingDormantDays: 25,
-        },
-      }),
-    } as any);
-
-    const detailMocks = makePRDetailMocks(shelvedUrl);
-    mockOctokitInstance = {
-      search: {
-        issuesAndPullRequests: vi.fn().mockResolvedValue({
-          data: {
-            total_count: 1,
-            items: [makeSearchItem(shelvedUrl)],
-          },
-        }),
-      },
-      ...detailMocks,
-    };
-
-    const monitor = new PRMonitor('fake-token');
-    const { prs } = await monitor.fetchUserOpenPRs();
-
-    expect(prs).toHaveLength(1);
-    expect(prs[0].url).toBe(shelvedUrl);
-  });
-
-  it('should include shelved PR from excluded org', async () => {
-    const shelvedUrl = 'https://github.com/excludedorg/somerepo/pull/10';
-
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: [],
-          excludeOrgs: ['excludedorg'],
-          shelvedPRUrls: [shelvedUrl],
-          dormantThresholdDays: 30,
-          approachingDormantDays: 25,
-        },
-      }),
-    } as any);
-
-    const detailMocks = makePRDetailMocks(shelvedUrl);
-    mockOctokitInstance = {
-      search: {
-        issuesAndPullRequests: vi.fn().mockResolvedValue({
-          data: {
-            total_count: 1,
-            items: [makeSearchItem(shelvedUrl)],
-          },
-        }),
-      },
-      ...detailMocks,
-    };
-
-    const monitor = new PRMonitor('fake-token');
-    const { prs } = await monitor.fetchUserOpenPRs();
-
-    expect(prs).toHaveLength(1);
-    expect(prs[0].url).toBe(shelvedUrl);
-  });
-
-  it('should still exclude non-shelved PR from excluded repo', async () => {
-    const excludedUrl = 'https://github.com/excluded/repo/pull/99';
+  it('should include PR from excluded repo', async () => {
+    const prUrl = 'https://github.com/excluded/repo/pull/99';
 
     vi.mocked(getStateManager).mockReturnValue({
       getState: () => ({
@@ -2604,25 +2534,28 @@ describe('fetchUserOpenPRs excludeRepos/excludeOrgs exempts shelved PRs (#175)',
       }),
     } as any);
 
+    const detailMocks = makePRDetailMocks(prUrl);
     mockOctokitInstance = {
       search: {
         issuesAndPullRequests: vi.fn().mockResolvedValue({
           data: {
             total_count: 1,
-            items: [makeSearchItem(excludedUrl)],
+            items: [makeSearchItem(prUrl)],
           },
         }),
       },
+      ...detailMocks,
     };
 
     const monitor = new PRMonitor('fake-token');
     const { prs } = await monitor.fetchUserOpenPRs();
 
-    expect(prs).toHaveLength(0);
+    expect(prs).toHaveLength(1);
+    expect(prs[0].url).toBe(prUrl);
   });
 
-  it('should still exclude non-shelved PR from excluded org', async () => {
-    const excludedUrl = 'https://github.com/excludedorg/somerepo/pull/77';
+  it('should include PR from excluded org', async () => {
+    const prUrl = 'https://github.com/excludedorg/somerepo/pull/77';
 
     vi.mocked(getStateManager).mockReturnValue({
       getState: () => ({
@@ -2637,21 +2570,24 @@ describe('fetchUserOpenPRs excludeRepos/excludeOrgs exempts shelved PRs (#175)',
       }),
     } as any);
 
+    const detailMocks = makePRDetailMocks(prUrl);
     mockOctokitInstance = {
       search: {
         issuesAndPullRequests: vi.fn().mockResolvedValue({
           data: {
             total_count: 1,
-            items: [makeSearchItem(excludedUrl)],
+            items: [makeSearchItem(prUrl)],
           },
         }),
       },
+      ...detailMocks,
     };
 
     const monitor = new PRMonitor('fake-token');
     const { prs } = await monitor.fetchUserOpenPRs();
 
-    expect(prs).toHaveLength(0);
+    expect(prs).toHaveLength(1);
+    expect(prs[0].url).toBe(prUrl);
   });
 });
 
