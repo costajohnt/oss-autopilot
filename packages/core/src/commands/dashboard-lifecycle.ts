@@ -10,7 +10,7 @@ import {
   isDashboardServerRunning,
   readDashboardServerInfo,
   removeDashboardServerInfo,
-} from './dashboard-server.js';
+} from './dashboard-process.js';
 import { resolveAssetsDir } from './dashboard.js';
 import { getCLIVersion } from '../core/index.js';
 
