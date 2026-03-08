@@ -1,13 +1,11 @@
 /**
- * State management for the OSS Contribution Agent
- * Persists state to a JSON file in ~/.oss-autopilot/
+ * State management for the OSS Contribution Agent.
+ * Thin coordinator that delegates persistence to state-persistence.ts
+ * and scoring logic to repo-score-manager.ts.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
 import {
   AgentState,
-  INITIAL_STATE,
   TrackedIssue,
   RepoScore,
   RepoScoreUpdate,
@@ -19,183 +17,25 @@ import {
   FetchedPRStatus,
   StoredMergedPR,
   StoredClosedPR,
-  isBelowMinStars,
 } from './types.js';
-import { getStatePath, getBackupDir, getDataDir } from './utils.js';
-import { errorMessage } from './errors.js';
-import { debug, warn } from './logger.js';
+import { loadState, saveState, reloadStateIfChanged, createFreshState } from './state-persistence.js';
+import * as repoScoring from './repo-score-manager.js';
+import { debug } from './logger.js';
+
+export { acquireLock, releaseLock, atomicWriteFileSync } from './state-persistence.js';
+export type { Stats } from './repo-score-manager.js';
 
 const MODULE = 'state';
-
-// Current state version
-const CURRENT_STATE_VERSION = 2;
 
 // Maximum number of events to retain in the event log
 const MAX_EVENTS = 1000;
 
-/** Repo scores older than this are considered stale and excluded from low-scoring lists. */
-const SCORE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-
-// Lock file timeout: if a lock is older than this, it is considered stale
-const LOCK_TIMEOUT_MS = 30_000; // 30 seconds
-
-// Legacy path for migration
-const LEGACY_STATE_FILE = path.join(process.cwd(), 'data', 'state.json');
-const LEGACY_BACKUP_DIR = path.join(process.cwd(), 'data', 'backups');
-
-/**
- * Check whether an existing lock file is stale (expired or corrupt).
- * Returns true if the lock should be considered stale and can be removed.
- */
-function isLockStale(lockPath: string): boolean {
-  try {
-    const existing = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
-    return Date.now() - existing.timestamp > LOCK_TIMEOUT_MS;
-  } catch (err) {
-    // Lock file is unreadable or contains invalid JSON — treat as stale
-    debug(MODULE, 'Lock file unreadable or invalid JSON, treating as stale', err);
-    return true;
-  }
-}
-
-/**
- * Acquire an advisory file lock using exclusive-create (`wx` flag).
- * If the lock file already exists but is stale (older than LOCK_TIMEOUT_MS or corrupt),
- * it is removed and re-acquired.
- * @throws Error if the lock is held by another active process.
- */
-export function acquireLock(lockPath: string): void {
-  const lockData = JSON.stringify({ pid: process.pid, timestamp: Date.now() });
-  try {
-    fs.writeFileSync(lockPath, lockData, { flag: 'wx' }); // Fails if file exists
-    return;
-  } catch (err) {
-    // Lock file exists (EEXIST from 'wx' flag) — check if it is stale
-    debug(MODULE, 'Lock file already exists, checking staleness', err);
-  }
-
-  if (!isLockStale(lockPath)) {
-    throw new Error('State file is locked by another process');
-  }
-
-  // Stale lock detected — remove it and try to re-acquire
-  try {
-    fs.unlinkSync(lockPath);
-  } catch (err) {
-    // Another process may have removed the stale lock first — proceed to re-acquire regardless
-    debug(MODULE, 'Stale lock already removed by another process', err);
-  }
-  try {
-    fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
-  } catch (err) {
-    // Another process grabbed the lock between unlink and write
-    debug(MODULE, 'Lock re-acquire failed (race condition)', err);
-    throw new Error('State file is locked by another process', { cause: err });
-  }
-}
-
-/**
- * Release an advisory file lock, but only if this process owns it.
- * Silently ignores missing lock files or locks owned by other processes.
- */
-export function releaseLock(lockPath: string): void {
-  try {
-    const data = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
-    if (data.pid === process.pid) {
-      fs.unlinkSync(lockPath);
-    }
-  } catch (err) {
-    // Lock already removed or unreadable — nothing to do
-    debug(MODULE, 'Lock file already removed or unreadable during release', err);
-  }
-}
-
-/**
- * Write data to `filePath` atomically by first writing to a temporary file
- * in the same directory and then renaming. Rename is atomic on POSIX filesystems,
- * preventing partial/corrupt state files if the process crashes mid-write.
- */
-export function atomicWriteFileSync(filePath: string, data: string, mode?: number): void {
-  const tmpPath = filePath + '.tmp';
-  fs.writeFileSync(tmpPath, data, { mode: mode ?? 0o600 });
-  fs.renameSync(tmpPath, filePath);
-  // Ensure permissions are correct (rename preserves the tmp file's mode,
-  // but on some systems the mode from writeFileSync is masked by umask)
-  if (mode !== undefined) {
-    fs.chmodSync(filePath, mode);
-  }
-}
-
-/**
- * Migrate state from v1 (local PR tracking) to v2 (fresh GitHub fetching).
- * Preserves repoScores and config; drops the legacy PR arrays.
- */
-function migrateV1ToV2(rawState: Record<string, unknown>): AgentState {
-  debug(MODULE, 'Migrating state from v1 to v2 (fresh GitHub fetching)...');
-
-  // Extract merged/closed PR arrays from v1 state to seed repo scores
-  const mergedPRs = (rawState.mergedPRs as Array<{ repo: string }> | undefined) || [];
-  const closedPRs = (rawState.closedPRs as Array<{ repo: string }> | undefined) || [];
-
-  // Update repo scores from historical PR data if not already present
-  const repoScores = { ...((rawState.repoScores as AgentState['repoScores']) || {}) };
-
-  for (const pr of mergedPRs) {
-    if (!repoScores[pr.repo]) {
-      repoScores[pr.repo] = {
-        repo: pr.repo,
-        score: 5,
-        mergedPRCount: 0,
-        closedWithoutMergeCount: 0,
-        avgResponseDays: null,
-        lastEvaluatedAt: new Date().toISOString(),
-        signals: {
-          hasActiveMaintainers: true,
-          isResponsive: false,
-          hasHostileComments: false,
-        },
-      };
-    }
-    // Note: Don't increment here as the score may already reflect these PRs
-  }
-
-  for (const pr of closedPRs) {
-    if (!repoScores[pr.repo]) {
-      repoScores[pr.repo] = {
-        repo: pr.repo,
-        score: 5,
-        mergedPRCount: 0,
-        closedWithoutMergeCount: 0,
-        avgResponseDays: null,
-        lastEvaluatedAt: new Date().toISOString(),
-        signals: {
-          hasActiveMaintainers: true,
-          isResponsive: false,
-          hasHostileComments: false,
-        },
-      };
-    }
-  }
-
-  const migratedState: AgentState = {
-    version: 2,
-    activeIssues: (rawState.activeIssues as AgentState['activeIssues']) || [],
-    repoScores,
-    config: rawState.config as AgentState['config'],
-    events: (rawState.events as AgentState['events']) || [],
-    lastRunAt: new Date().toISOString(),
-  };
-
-  debug(MODULE, `Migration complete. Preserved ${Object.keys(repoScores).length} repo scores.`);
-  return migratedState;
-}
-
 /**
  * Singleton manager for persistent agent state stored in ~/.oss-autopilot/state.json.
  *
- * Handles loading, saving, backup/restore, and v1-to-v2 migration of state. Supports
- * an in-memory mode (no disk I/O) for use in tests. In v2 architecture, PR arrays are
- * legacy -- open PRs are fetched fresh from GitHub on each run rather than stored locally.
+ * Delegates file I/O to state-persistence.ts and scoring logic to repo-score-manager.ts.
+ * Retains lightweight CRUD operations for config, events, issues, shelving, dismissal,
+ * and status overrides.
  */
 export class StateManager {
   private state: AgentState;
@@ -210,35 +50,17 @@ export class StateManager {
    */
   constructor(inMemoryOnly = false) {
     this.inMemoryOnly = inMemoryOnly;
-    this.state = inMemoryOnly ? this.createFreshState() : this.load();
-  }
-
-  /**
-   * Create a fresh state (v2: fresh GitHub fetching)
-   */
-  private createFreshState(): AgentState {
-    return {
-      version: CURRENT_STATE_VERSION,
-      activeIssues: [],
-      repoScores: {},
-      config: {
-        ...INITIAL_STATE.config,
-        setupComplete: false,
-        languages: [...INITIAL_STATE.config.languages],
-        labels: [...INITIAL_STATE.config.labels],
-        excludeRepos: [],
-        trustedProjects: [],
-        shelvedPRUrls: [],
-        dismissedIssues: {},
-      },
-      events: [],
-      lastRunAt: new Date().toISOString(),
-    };
+    if (inMemoryOnly) {
+      this.state = createFreshState();
+    } else {
+      const result = loadState();
+      this.state = result.state;
+      this.lastLoadedMtimeMs = result.mtimeMs;
+    }
   }
 
   /**
    * Check if initial setup has been completed.
-   * @returns true if the user has run `/setup-oss` and completed configuration.
    */
   isSetupComplete(): boolean {
     return this.state.config.setupComplete === true;
@@ -254,9 +76,7 @@ export class StateManager {
 
   /**
    * Initialize state with sensible defaults for zero-config onboarding.
-   * Sets the GitHub username, marks setup as complete, and persists.
-   * No-op if setup is already complete (prevents overwriting existing config).
-   * @param username - The GitHub username to configure.
+   * No-op if setup is already complete.
    */
   initializeWithDefaults(username: string): void {
     if (this.state.config.setupComplete) {
@@ -270,360 +90,21 @@ export class StateManager {
   }
 
   /**
-   * Migrate state from legacy ./data/ location to ~/.oss-autopilot/
-   * Returns true if migration was performed
-   */
-  private migrateFromLegacyLocation(): boolean {
-    const newStatePath = getStatePath();
-
-    // If new state already exists, no migration needed
-    if (fs.existsSync(newStatePath)) {
-      return false;
-    }
-
-    // Check for legacy state file
-    if (!fs.existsSync(LEGACY_STATE_FILE)) {
-      return false;
-    }
-
-    debug(MODULE, 'Migrating state from ./data/ to ~/.oss-autopilot/...');
-
-    try {
-      // Ensure the new data directory exists
-      getDataDir();
-
-      // Copy state file
-      fs.copyFileSync(LEGACY_STATE_FILE, newStatePath);
-      debug(MODULE, `Migrated state file to ${newStatePath}`);
-
-      // Copy backups if they exist
-      if (fs.existsSync(LEGACY_BACKUP_DIR)) {
-        const newBackupDir = getBackupDir();
-        const backupFiles = fs
-          .readdirSync(LEGACY_BACKUP_DIR)
-          .filter((f) => f.startsWith('state-') && f.endsWith('.json'));
-
-        for (const backupFile of backupFiles) {
-          const srcPath = path.join(LEGACY_BACKUP_DIR, backupFile);
-          const destPath = path.join(newBackupDir, backupFile);
-          fs.copyFileSync(srcPath, destPath);
-        }
-        debug(MODULE, `Migrated ${backupFiles.length} backup files`);
-      }
-
-      // Remove legacy files
-      fs.unlinkSync(LEGACY_STATE_FILE);
-      debug(MODULE, 'Removed legacy state file');
-
-      // Remove legacy backup files
-      if (fs.existsSync(LEGACY_BACKUP_DIR)) {
-        const backupFiles = fs.readdirSync(LEGACY_BACKUP_DIR);
-        for (const file of backupFiles) {
-          fs.unlinkSync(path.join(LEGACY_BACKUP_DIR, file));
-        }
-        fs.rmdirSync(LEGACY_BACKUP_DIR);
-      }
-
-      // Try to remove legacy data directory if empty
-      const legacyDataDir = path.dirname(LEGACY_STATE_FILE);
-      if (fs.existsSync(legacyDataDir)) {
-        const remaining = fs.readdirSync(legacyDataDir);
-        if (remaining.length === 0) {
-          fs.rmdirSync(legacyDataDir);
-          debug(MODULE, 'Removed empty legacy data directory');
-        }
-      }
-
-      debug(MODULE, 'Migration complete!');
-      return true;
-    } catch (error) {
-      warn(MODULE, `Failed to migrate state: ${errorMessage(error)}`);
-
-      // Clean up partial migration to avoid inconsistent state
-      const newStatePath = getStatePath();
-      if (fs.existsSync(newStatePath) && fs.existsSync(LEGACY_STATE_FILE)) {
-        // If both files exist, the migration was partial - remove the new file
-        try {
-          fs.unlinkSync(newStatePath);
-          debug(MODULE, 'Cleaned up partial migration - removed incomplete new state file');
-        } catch (cleanupErr) {
-          warn(MODULE, 'Could not clean up partial migration file');
-          debug(MODULE, 'Partial migration cleanup failed', cleanupErr);
-        }
-      }
-
-      warn(MODULE, 'To resolve this issue:');
-      warn(MODULE, '  1. Ensure you have write permissions to ~/.oss-autopilot/');
-      warn(MODULE, '  2. Check available disk space');
-      warn(MODULE, '  3. Manually copy ./data/state.json to ~/.oss-autopilot/state.json');
-      warn(MODULE, '  4. Or delete ./data/state.json to start fresh');
-
-      return false;
-    }
-  }
-
-  /**
-   * Load state from file, or create initial state if none exists.
-   * If the main state file is corrupted, attempts to restore from the most recent backup.
-   * Performs migration from legacy ./data/ location if needed.
-   */
-  private load(): AgentState {
-    // Try to migrate from legacy location first
-    this.migrateFromLegacyLocation();
-
-    const statePath = getStatePath();
-
-    try {
-      if (fs.existsSync(statePath)) {
-        const data = fs.readFileSync(statePath, 'utf-8');
-        let state = JSON.parse(data) as AgentState;
-
-        // Validate required fields exist
-        if (!this.isValidState(state)) {
-          warn(MODULE, 'Invalid state file structure, attempting to restore from backup...');
-          const restoredState = this.tryRestoreFromBackup();
-          if (restoredState) {
-            return restoredState;
-          }
-          warn(MODULE, 'No valid backup found, starting fresh');
-          return this.createFreshState();
-        }
-
-        // Migrate from v1 to v2 if needed
-        if (state.version === 1) {
-          state = migrateV1ToV2(state as unknown as Record<string, unknown>);
-          // Save the migrated state immediately (atomic write)
-          atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
-          debug(MODULE, 'Migrated state saved');
-        }
-
-        // Strip legacy fields from persisted state (snoozedPRs and PR dismiss
-        // entries were removed in the three-state PR model simplification)
-        try {
-          let needsCleanupSave = false;
-          const rawConfig = state.config as unknown as Record<string, unknown>;
-          if (rawConfig.snoozedPRs) {
-            delete rawConfig.snoozedPRs;
-            needsCleanupSave = true;
-          }
-          // Strip PR URLs from dismissedIssues (PR dismiss removed)
-          if (state.config.dismissedIssues) {
-            const PR_URL_RE = /\/pull\/\d+$/;
-            for (const url of Object.keys(state.config.dismissedIssues)) {
-              if (PR_URL_RE.test(url)) {
-                delete state.config.dismissedIssues[url];
-                needsCleanupSave = true;
-              }
-            }
-          }
-          if (needsCleanupSave) {
-            atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
-            warn(MODULE, 'Cleaned up removed features (snoozedPRs, dismissed PR URLs) from persisted state');
-          }
-        } catch (cleanupError) {
-          warn(MODULE, `Failed to clean up removed features from state: ${errorMessage(cleanupError)}`);
-          // Continue with loaded state — cleanup will be retried on next load
-        }
-
-        // Record file mtime so reloadIfChanged() can detect external writes
-        try {
-          this.lastLoadedMtimeMs = fs.statSync(getStatePath()).mtimeMs;
-        } catch (error) {
-          debug(
-            MODULE,
-            `Could not read state file mtime (reload detection will always trigger): ${errorMessage(error)}`,
-          );
-        }
-
-        // Log appropriate message based on version
-        const repoCount = Object.keys(state.repoScores).length;
-        debug(MODULE, `Loaded state v${state.version}: ${repoCount} repo scores tracked`);
-        return state;
-      }
-    } catch (error) {
-      warn(MODULE, 'Error loading state:', error);
-      warn(MODULE, 'Attempting to restore from backup...');
-      const restoredState = this.tryRestoreFromBackup();
-      if (restoredState) {
-        return restoredState;
-      }
-      warn(MODULE, 'No valid backup found, starting fresh');
-    }
-
-    debug(MODULE, 'No existing state found, initializing...');
-    return this.createFreshState();
-  }
-
-  /**
-   * Attempt to restore state from the most recent valid backup.
-   * Returns the restored state if successful, or null if no valid backup is found.
-   */
-  private tryRestoreFromBackup(): AgentState | null {
-    const backupDir = getBackupDir();
-
-    if (!fs.existsSync(backupDir)) {
-      return null;
-    }
-
-    // Get backup files sorted by name (most recent first, since names include timestamps)
-    const backupFiles = fs
-      .readdirSync(backupDir)
-      .filter((f) => f.startsWith('state-') && f.endsWith('.json'))
-      .sort()
-      .reverse();
-
-    for (const backupFile of backupFiles) {
-      const backupPath = path.join(backupDir, backupFile);
-      try {
-        const data = fs.readFileSync(backupPath, 'utf-8');
-        let state = JSON.parse(data) as AgentState;
-
-        if (this.isValidState(state)) {
-          debug(MODULE, `Successfully restored state from backup: ${backupFile}`);
-
-          // Migrate from v1 to v2 if needed
-          if (state.version === 1) {
-            state = migrateV1ToV2(state as unknown as Record<string, unknown>);
-          }
-
-          const repoCount = Object.keys(state.repoScores).length;
-          debug(MODULE, `Restored state v${state.version}: ${repoCount} repo scores`);
-
-          // Overwrite the corrupted main state file with the restored backup (atomic write)
-          const statePath = getStatePath();
-          atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
-          debug(MODULE, 'Restored backup written to main state file');
-
-          return state;
-        }
-      } catch (backupErr) {
-        // This backup is also corrupted, try the next one
-        warn(MODULE, `Backup ${backupFile} is corrupted, trying next...`);
-        debug(MODULE, `Backup ${backupFile} parse failed`, backupErr);
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Validate that a loaded state has the required structure
-   * Handles both v1 (with PR arrays) and v2 (without)
-   */
-  private isValidState(state: unknown): state is AgentState {
-    if (!state || typeof state !== 'object') return false;
-    const s = state as Record<string, unknown>;
-
-    // Migrate older states that don't have repoScores
-    if (s.repoScores === undefined) {
-      s.repoScores = {};
-    }
-
-    // Migrate older states that don't have events
-    if (s.events === undefined) {
-      s.events = [];
-    }
-
-    // Migrate older states that don't have mergedPRs
-    if (s.mergedPRs === undefined) {
-      s.mergedPRs = [];
-    }
-
-    // Base requirements for all versions
-    const hasBaseFields =
-      typeof s.version === 'number' &&
-      typeof s.repoScores === 'object' &&
-      s.repoScores !== null &&
-      Array.isArray(s.events) &&
-      typeof s.config === 'object' &&
-      s.config !== null;
-
-    if (!hasBaseFields) return false;
-
-    // v1 requires base PR arrays to be present (they will be dropped during migration)
-    if (s.version === 1) {
-      return (
-        Array.isArray(s.activePRs) &&
-        Array.isArray(s.dormantPRs) &&
-        Array.isArray(s.mergedPRs) &&
-        Array.isArray(s.closedPRs)
-      );
-    }
-
-    // v2+ doesn't require PR arrays
-    return true;
-  }
-
-  /**
    * Persist the current state to disk, creating a timestamped backup of the previous
-   * state file first. Updates `lastRunAt` to the current time. In in-memory mode,
-   * only updates `lastRunAt` without any file I/O. Retains at most 10 backup files.
+   * state file first. In in-memory mode, only updates `lastRunAt` without any file I/O.
    */
   save(): void {
-    // Update lastRunAt
     this.state.lastRunAt = new Date().toISOString();
 
-    // Skip file operations in in-memory mode
     if (this.inMemoryOnly) {
       return;
     }
 
-    const statePath = getStatePath();
-    const lockPath = statePath + '.lock';
-    const backupDir = getBackupDir();
-
-    // Acquire advisory lock to prevent concurrent writes
-    acquireLock(lockPath);
-
-    try {
-      // Create backup of existing state
-      if (fs.existsSync(statePath)) {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const randomSuffix = Math.random().toString(36).slice(2, 8).padEnd(6, '0');
-        const backupFile = path.join(backupDir, `state-${timestamp}-${randomSuffix}.json`);
-        fs.copyFileSync(statePath, backupFile);
-        fs.chmodSync(backupFile, 0o600);
-
-        // Keep only last 10 backups
-        this.cleanupBackups();
-      }
-
-      // Atomic write: write to temp file then rename to prevent corruption on crash
-      atomicWriteFileSync(statePath, JSON.stringify(this.state, null, 2), 0o600);
-      // Update mtime so own writes don't trigger reloadIfChanged()
-      this.lastLoadedMtimeMs = fs.statSync(statePath).mtimeMs;
-      debug(MODULE, 'State saved successfully');
-    } finally {
-      releaseLock(lockPath);
-    }
-  }
-
-  private cleanupBackups(): void {
-    const backupDir = getBackupDir();
-    try {
-      const files = fs
-        .readdirSync(backupDir)
-        .filter((f) => f.startsWith('state-'))
-        .sort()
-        .reverse();
-
-      // Keep only the 10 most recent backups
-      for (const file of files.slice(10)) {
-        try {
-          fs.unlinkSync(path.join(backupDir, file));
-        } catch (error) {
-          warn(MODULE, `Could not delete old backup ${file}:`, errorMessage(error));
-        }
-      }
-    } catch (error) {
-      warn(MODULE, 'Could not clean up backups:', errorMessage(error));
-    }
+    this.lastLoadedMtimeMs = saveState(this.state);
   }
 
   /**
    * Get the current state as a read-only snapshot.
-   * @returns The full agent state. Callers should not mutate the returned object;
-   *   use the StateManager methods to make changes.
    */
   getState(): Readonly<AgentState> {
     return this.state;
@@ -631,64 +112,32 @@ export class StateManager {
 
   /**
    * Re-read state from disk if the file has been modified since the last load/save.
-   * Uses mtime comparison (single statSync call) to avoid unnecessary JSON parsing.
    * Returns true if state was reloaded, false if unchanged or in-memory mode.
    */
   reloadIfChanged(): boolean {
     if (this.inMemoryOnly) return false;
-    try {
-      const statePath = getStatePath();
-      const currentMtimeMs = fs.statSync(statePath).mtimeMs;
-      if (currentMtimeMs === this.lastLoadedMtimeMs) return false;
-      this.state = this.load();
-      // load() only records lastLoadedMtimeMs on the happy path. Ensure it is
-      // always current after reload (covers backup-restore and fresh-state paths)
-      // to prevent repeated unnecessary reloads on every request.
-      try {
-        this.lastLoadedMtimeMs = fs.statSync(statePath).mtimeMs;
-      } catch {
-        // If file was just loaded, stat should not fail. If it does,
-        // next reloadIfChanged() will simply trigger another reload.
-      }
-      return true;
-    } catch (error) {
-      // statSync failure (file deleted) is benign — keep current in-memory state.
-      // load() failure should not happen (load() handles its own recovery),
-      // but if it does, keeping current state is the safest option.
-      warn(MODULE, `Failed to reload state from disk: ${errorMessage(error)}`);
-      return false;
-    }
+    const result = reloadStateIfChanged(this.lastLoadedMtimeMs);
+    if (!result) return false;
+    this.state = result.state;
+    this.lastLoadedMtimeMs = result.mtimeMs;
+    return true;
   }
 
-  /**
-   * Store the latest daily digest for dashboard rendering.
-   * @param digest - The freshly generated digest from the current daily run.
-   */
+  // === Dashboard Data Setters ===
+
   setLastDigest(digest: DailyDigest): void {
     this.state.lastDigest = digest;
     this.state.lastDigestAt = digest.generatedAt;
   }
 
-  /**
-   * Store monthly merged PR counts for the contribution timeline chart.
-   * @param counts - Map of "YYYY-MM" strings to merged PR counts for that month.
-   */
   setMonthlyMergedCounts(counts: Record<string, number>): void {
     this.state.monthlyMergedCounts = counts;
   }
 
-  /**
-   * Store monthly closed (without merge) PR counts for the contribution timeline and success rate charts.
-   * @param counts - Map of "YYYY-MM" strings to closed PR counts for that month.
-   */
   setMonthlyClosedCounts(counts: Record<string, number>): void {
     this.state.monthlyClosedCounts = counts;
   }
 
-  /**
-   * Store monthly opened PR counts for the contribution timeline chart.
-   * @param counts - Map of "YYYY-MM" strings to opened PR counts for that month.
-   */
   setMonthlyOpenedCounts(counts: Record<string, number>): void {
     this.state.monthlyOpenedCounts = counts;
   }
@@ -697,25 +146,19 @@ export class StateManager {
     this.state.dailyActivityCounts = counts;
   }
 
+  setLocalRepoCache(cache: LocalRepoCache): void {
+    this.state.localRepoCache = cache;
+  }
+
   // === Merged PR Storage ===
 
-  /**
-   * Get all stored merged PRs.
-   * @returns Array of stored merged PRs, sorted by mergedAt desc.
-   */
   getMergedPRs(): StoredMergedPR[] {
     return this.state.mergedPRs ?? [];
   }
 
-  /**
-   * Add new merged PRs to the stored list. Deduplicates by URL and sorts by mergedAt desc.
-   * @param prs - New merged PRs to add.
-   */
   addMergedPRs(prs: StoredMergedPR[]): void {
     if (prs.length === 0) return;
-    if (!this.state.mergedPRs) {
-      this.state.mergedPRs = [];
-    }
+    if (!this.state.mergedPRs) this.state.mergedPRs = [];
     const existingUrls = new Set(this.state.mergedPRs.map((pr) => pr.url));
     const newPRs = prs.filter((pr) => !existingUrls.has(pr.url));
     if (newPRs.length === 0) return;
@@ -724,35 +167,19 @@ export class StateManager {
     debug(MODULE, `Added ${newPRs.length} merged PRs (total: ${this.state.mergedPRs.length})`);
   }
 
-  /**
-   * Get the most recent mergedAt timestamp from stored merged PRs.
-   * Used as the watermark for incremental fetching.
-   * @returns ISO date string of the most recent merge, or undefined if no stored PRs.
-   */
   getMergedPRWatermark(): string | undefined {
-    const prs = this.state.mergedPRs;
-    if (!prs || prs.length === 0) return undefined;
-    // List is sorted desc by mergedAt, so first element is most recent
-    return prs[0].mergedAt || undefined;
+    return this.state.mergedPRs?.[0]?.mergedAt || undefined;
   }
 
-  /**
-   * Get all stored closed PRs.
-   * @returns Array of stored closed PRs, sorted by closedAt desc.
-   */
+  // === Closed PR Storage ===
+
   getClosedPRs(): StoredClosedPR[] {
     return this.state.closedPRs ?? [];
   }
 
-  /**
-   * Add new closed PRs to the stored list. Deduplicates by URL and sorts by closedAt desc.
-   * @param prs - New closed PRs to add.
-   */
   addClosedPRs(prs: StoredClosedPR[]): void {
     if (prs.length === 0) return;
-    if (!this.state.closedPRs) {
-      this.state.closedPRs = [];
-    }
+    if (!this.state.closedPRs) this.state.closedPRs = [];
     const existingUrls = new Set(this.state.closedPRs.map((pr) => pr.url));
     const newPRs = prs.filter((pr) => !existingUrls.has(pr.url));
     if (newPRs.length === 0) return;
@@ -761,42 +188,18 @@ export class StateManager {
     debug(MODULE, `Added ${newPRs.length} closed PRs (total: ${this.state.closedPRs.length})`);
   }
 
-  /**
-   * Get the most recent closedAt timestamp from stored closed PRs.
-   * Used as the watermark for incremental fetching.
-   * @returns ISO date string of the most recent close, or undefined if no stored PRs.
-   */
   getClosedPRWatermark(): string | undefined {
-    const prs = this.state.closedPRs;
-    if (!prs || prs.length === 0) return undefined;
-    // List is sorted desc by closedAt, so first element is most recent
-    return prs[0].closedAt || undefined;
+    return this.state.closedPRs?.[0]?.closedAt || undefined;
   }
 
-  /**
-   * Store cached local repo scan results (#84).
-   * @param cache - The scan results, paths scanned, and timestamp.
-   */
-  setLocalRepoCache(cache: LocalRepoCache): void {
-    this.state.localRepoCache = cache;
-  }
+  // === Configuration ===
 
-  /**
-   * Shallow-merge partial configuration updates into the current config.
-   * @param config - Partial config object whose properties override existing values.
-   */
   updateConfig(config: Partial<AgentState['config']>): void {
     this.state.config = { ...this.state.config, ...config };
   }
 
   // === Event Logging ===
 
-  /**
-   * Append an event to the event log. Events are capped at {@link MAX_EVENTS} (1000);
-   * when the cap is exceeded, the oldest events are trimmed to stay within the limit.
-   * @param type - The event type (e.g. 'pr_tracked').
-   * @param data - Arbitrary key-value payload for the event.
-   */
   appendEvent(type: StateEventType, data: Record<string, unknown>): void {
     const event: StateEvent = {
       id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -812,21 +215,10 @@ export class StateManager {
     }
   }
 
-  /**
-   * Filter the event log to events of a specific type.
-   * @param type - The event type to filter by.
-   * @returns All events matching the given type, in chronological order.
-   */
   getEventsByType(type: StateEventType): StateEvent[] {
     return this.state.events.filter((e) => e.type === type);
   }
 
-  /**
-   * Filter the event log to events within an inclusive time range.
-   * @param since - Start of the range (inclusive).
-   * @param until - End of the range (inclusive). Defaults to now.
-   * @returns Events whose timestamps fall within [since, until].
-   */
   getEventsInRange(since: Date, until: Date = new Date()): StateEvent[] {
     return this.state.events.filter((e) => {
       const eventTime = new Date(e.at);
@@ -836,11 +228,6 @@ export class StateManager {
 
   // === Issue Management ===
 
-  /**
-   * Add an issue to the active tracking list. If an issue with the same URL is
-   * already tracked, the call is a no-op.
-   * @param issue - The issue to begin tracking.
-   */
   addIssue(issue: TrackedIssue): void {
     const existing = this.state.activeIssues.find((i) => i.url === issue.url);
     if (existing) {
@@ -854,11 +241,6 @@ export class StateManager {
 
   // === Trusted Projects ===
 
-  /**
-   * Add a repository to the trusted projects list. Trusted projects are prioritized
-   * in issue search results. No-op if the repo is already trusted.
-   * @param repo - Repository in "owner/repo" format.
-   */
   addTrustedProject(repo: string): void {
     if (!this.state.config.trustedProjects.includes(repo)) {
       this.state.config.trustedProjects.push(repo);
@@ -866,13 +248,6 @@ export class StateManager {
     }
   }
 
-  /**
-   * Test whether a repo matches any of the given exclusion lists.
-   * Both repo and org comparisons are case-insensitive (GitHub names are case-insensitive).
-   * @param repo  - Repository in "owner/repo" format.
-   * @param repos - Full "owner/repo" strings (case-insensitive match).
-   * @param orgs  - Org names (case-insensitive match against the owner segment of the repo).
-   */
   private static matchesExclusion(repo: string, repos: string[], orgs?: string[]): boolean {
     const repoLower = repo.toLowerCase();
     if (repos.some((r) => r.toLowerCase() === repoLower)) return true;
@@ -880,15 +255,6 @@ export class StateManager {
     return false;
   }
 
-  /**
-   * Remove repositories matching the given exclusion lists from `trustedProjects`.
-   * Called when a repo or org is newly excluded.
-   *
-   * Note: `repoScores` are intentionally preserved so historical stats (merge rate,
-   * total merged) remain accurate. Exclusion only affects issue discovery (#591).
-   * @param repos - Full "owner/repo" strings to exclude (case-insensitive match).
-   * @param orgs  - Org names to exclude (case-insensitive match against owner segment).
-   */
   cleanupExcludedData(repos: string[], orgs: string[]): void {
     const matches = (repo: string): boolean => StateManager.matchesExclusion(repo, repos, orgs);
 
@@ -903,28 +269,16 @@ export class StateManager {
 
   // === Starred Repos Management ===
 
-  /**
-   * Get the cached list of the user's GitHub starred repositories.
-   * @returns Array of "owner/repo" strings, or an empty array if never fetched.
-   */
   getStarredRepos(): string[] {
     return this.state.config.starredRepos || [];
   }
 
-  /**
-   * Replace the cached starred repositories list and update the fetch timestamp.
-   * @param repos - Array of "owner/repo" strings from the user's GitHub stars.
-   */
   setStarredRepos(repos: string[]): void {
     this.state.config.starredRepos = repos;
     this.state.config.starredReposLastFetched = new Date().toISOString();
     debug(MODULE, `Updated starred repos: ${repos.length} repositories`);
   }
 
-  /**
-   * Check if the starred repos cache is stale (older than 24 hours) or has never been fetched.
-   * @returns true if the cache should be refreshed.
-   */
   isStarredReposStale(): boolean {
     const lastFetched = this.state.config.starredReposLastFetched;
     if (!lastFetched) {
@@ -939,12 +293,6 @@ export class StateManager {
 
   // === Shelve/Unshelve ===
 
-  /**
-   * Shelve a PR by URL. Shelved PRs are excluded from capacity and actionable issues.
-   * They are auto-unshelved when a maintainer engages (needs_response, needs_changes, etc.).
-   * @param url - The full GitHub PR URL.
-   * @returns true if newly added, false if already shelved.
-   */
   shelvePR(url: string): boolean {
     if (!this.state.config.shelvedPRUrls) {
       this.state.config.shelvedPRUrls = [];
@@ -956,11 +304,6 @@ export class StateManager {
     return true;
   }
 
-  /**
-   * Unshelve a PR by URL.
-   * @param url - The full GitHub PR URL.
-   * @returns true if found and removed, false if not shelved.
-   */
   unshelvePR(url: string): boolean {
     if (!this.state.config.shelvedPRUrls) {
       return false;
@@ -973,24 +316,12 @@ export class StateManager {
     return true;
   }
 
-  /**
-   * Check if a PR is shelved.
-   * @param url - The full GitHub PR URL.
-   * @returns true if the URL is in the shelved list.
-   */
   isPRShelved(url: string): boolean {
     return this.state.config.shelvedPRUrls?.includes(url) ?? false;
   }
 
   // === Dismiss / Undismiss Issues ===
 
-  /**
-   * Dismiss an issue by URL. Dismissed issues are excluded from `new_response` notifications
-   * until new activity occurs after the dismiss timestamp.
-   * @param url - The full GitHub issue URL.
-   * @param timestamp - ISO timestamp of when the issue was dismissed.
-   * @returns true if newly dismissed, false if already dismissed.
-   */
   dismissIssue(url: string, timestamp: string): boolean {
     if (!this.state.config.dismissedIssues) {
       this.state.config.dismissedIssues = {};
@@ -1002,11 +333,6 @@ export class StateManager {
     return true;
   }
 
-  /**
-   * Undismiss an issue by URL.
-   * @param url - The full GitHub issue URL.
-   * @returns true if found and removed, false if not dismissed.
-   */
   undismissIssue(url: string): boolean {
     if (!this.state.config.dismissedIssues || !(url in this.state.config.dismissedIssues)) {
       return false;
@@ -1015,23 +341,12 @@ export class StateManager {
     return true;
   }
 
-  /**
-   * Get the timestamp when an issue was dismissed.
-   * @param url - The full GitHub issue URL.
-   * @returns The ISO dismiss timestamp, or undefined if not dismissed.
-   */
   getIssueDismissedAt(url: string): string | undefined {
     return this.state.config.dismissedIssues?.[url];
   }
 
   // === Status Overrides ===
 
-  /**
-   * Set a manual status override for a PR.
-   * @param url - The full GitHub PR URL.
-   * @param status - The target status to override to.
-   * @param lastActivityAt - The PR's current updatedAt timestamp (for auto-clear detection).
-   */
   setStatusOverride(url: string, status: FetchedPRStatus, lastActivityAt: string): void {
     if (!this.state.config.statusOverrides) {
       this.state.config.statusOverrides = {};
@@ -1043,11 +358,6 @@ export class StateManager {
     };
   }
 
-  /**
-   * Clear a status override for a PR.
-   * @param url - The full GitHub PR URL.
-   * @returns true if found and removed, false if no override existed.
-   */
   clearStatusOverride(url: string): boolean {
     if (!this.state.config.statusOverrides || !(url in this.state.config.statusOverrides)) {
       return false;
@@ -1056,13 +366,6 @@ export class StateManager {
     return true;
   }
 
-  /**
-   * Get the status override for a PR, if one exists and hasn't been auto-cleared.
-   * @param url - The full GitHub PR URL.
-   * @param currentUpdatedAt - The PR's current updatedAt from GitHub. If newer than
-   *   the stored lastActivityAt, the override is stale and auto-cleared.
-   * @returns The override metadata, or undefined if none exists or it was auto-cleared.
-   */
   getStatusOverride(url: string, currentUpdatedAt?: string): StatusOverride | undefined {
     const override = this.state.config.statusOverrides?.[url];
     if (!override) return undefined;
@@ -1075,285 +378,47 @@ export class StateManager {
     return override;
   }
 
-  // === Repository Scoring ===
+  // === Repository Scoring (delegated to repo-score-manager) ===
 
-  /**
-   * Get the score record for a repository.
-   * @param repo - Repository in "owner/repo" format.
-   * @returns The RepoScore if the repo has been scored, or undefined if never evaluated.
-   */
   getRepoScore(repo: string): RepoScore | undefined {
-    return this.state.repoScores[repo];
+    return repoScoring.getRepoScore(this.state, repo);
   }
 
-  /**
-   * Create a default repo score for a new repository
-   */
-  private createDefaultRepoScore(repo: string): RepoScore {
-    return {
-      repo,
-      score: 5, // Base score
-      mergedPRCount: 0,
-      closedWithoutMergeCount: 0,
-      avgResponseDays: null,
-      lastEvaluatedAt: new Date().toISOString(),
-      signals: {
-        hasActiveMaintainers: true, // Assume positive by default
-        isResponsive: false,
-        hasHostileComments: false,
-      },
-    };
-  }
-
-  /**
-   * Calculate the score based on the repo's metrics.
-   * Base 5, logarithmic merge bonus (max +5), -1 per closed without merge (max -3),
-   * +1 if recently merged (within 90 days), +1 if responsive, -2 if hostile. Clamp 1-10.
-   */
-  private calculateScore(repoScore: RepoScore): number {
-    let score = 5; // Base score
-
-    // Logarithmic merge bonus (max +5): 1→+2, 2→+3, 3→+4, 5+→+5
-    if (repoScore.mergedPRCount > 0) {
-      const mergedBonus = Math.min(Math.round(Math.log2(repoScore.mergedPRCount + 1) * 2), 5);
-      score += mergedBonus;
-    }
-
-    // -1 per closed without merge (max -3)
-    const closedPenalty = Math.min(repoScore.closedWithoutMergeCount, 3);
-    score -= closedPenalty;
-
-    // +1 if lastMergedAt is set and within 90 days (recency)
-    if (repoScore.lastMergedAt) {
-      const lastMergedDate = new Date(repoScore.lastMergedAt);
-      if (isNaN(lastMergedDate.getTime())) {
-        warn(
-          MODULE,
-          `Invalid lastMergedAt date for ${repoScore.repo}: "${repoScore.lastMergedAt}". Skipping recency bonus.`,
-        );
-      } else {
-        const msPerDay = 1000 * 60 * 60 * 24;
-        const daysSince = Math.floor((Date.now() - lastMergedDate.getTime()) / msPerDay);
-        if (daysSince <= 90) {
-          score += 1;
-        }
-      }
-    }
-
-    // +1 if responsive
-    if (repoScore.signals.isResponsive) {
-      score += 1;
-    }
-
-    // -2 if hostile
-    if (repoScore.signals.hasHostileComments) {
-      score -= 2;
-    }
-
-    // Clamp to 1-10
-    return Math.max(1, Math.min(10, score));
-  }
-
-  /**
-   * Update a repository's score with partial updates. If the repo has no existing score,
-   * a default score record is created first (base score 5). After applying updates, the
-   * numeric score is recalculated using the formula: base 5, logarithmic merge bonus (max +5),
-   * -1 per closed-without-merge (max -3), +1 if recently merged, +1 if responsive, -2 if hostile, clamped to [1, 10].
-   * @param repo - Repository in "owner/repo" format.
-   * @param updates - Updatable RepoScore fields to merge. The `score`, `repo`, and
-   *   `lastEvaluatedAt` fields are not accepted — score is always derived via
-   *   calculateScore(), and repo/lastEvaluatedAt are managed internally.
-   */
   updateRepoScore(repo: string, updates: RepoScoreUpdate): void {
-    if (!this.state.repoScores[repo]) {
-      this.state.repoScores[repo] = this.createDefaultRepoScore(repo);
-    }
-
-    const repoScore = this.state.repoScores[repo];
-
-    // Apply updates
-    if (updates.mergedPRCount !== undefined) {
-      repoScore.mergedPRCount = updates.mergedPRCount;
-    }
-    if (updates.closedWithoutMergeCount !== undefined) {
-      repoScore.closedWithoutMergeCount = updates.closedWithoutMergeCount;
-    }
-    if (updates.avgResponseDays !== undefined) {
-      repoScore.avgResponseDays = updates.avgResponseDays;
-    }
-    if (updates.lastMergedAt !== undefined) {
-      repoScore.lastMergedAt = updates.lastMergedAt;
-    }
-    if (updates.stargazersCount !== undefined) {
-      repoScore.stargazersCount = updates.stargazersCount;
-    }
-    if (updates.signals) {
-      repoScore.signals = { ...repoScore.signals, ...updates.signals };
-    }
-
-    // Recalculate score
-    repoScore.score = this.calculateScore(repoScore);
-    repoScore.lastEvaluatedAt = new Date().toISOString();
-
-    debug(MODULE, `Updated repo score for ${repo}: ${repoScore.score}/10`);
+    repoScoring.updateRepoScore(this.state, repo, updates);
   }
 
-  /**
-   * Increment the merged PR count for a repository and recalculate its score.
-   * Routes through {@link updateRepoScore} for a single mutation path.
-   * @param repo - Repository in "owner/repo" format.
-   */
   incrementMergedCount(repo: string): void {
-    const current = this.state.repoScores[repo];
-    const newCount = (current?.mergedPRCount ?? 0) + 1;
-    this.updateRepoScore(repo, {
-      mergedPRCount: newCount,
-      lastMergedAt: new Date().toISOString(),
-    });
-    debug(MODULE, `Incremented merged count for ${repo}: ${newCount}`);
+    repoScoring.incrementMergedCount(this.state, repo);
   }
 
-  /**
-   * Increment the closed-without-merge count for a repository and recalculate its score.
-   * Routes through {@link updateRepoScore} for a single mutation path.
-   * @param repo - Repository in "owner/repo" format.
-   */
   incrementClosedCount(repo: string): void {
-    const current = this.state.repoScores[repo];
-    const newCount = (current?.closedWithoutMergeCount ?? 0) + 1;
-    this.updateRepoScore(repo, {
-      closedWithoutMergeCount: newCount,
-    });
-    debug(MODULE, `Incremented closed count for ${repo}: ${newCount}`);
+    repoScoring.incrementClosedCount(this.state, repo);
   }
 
-  /**
-   * Mark a repository as having hostile maintainer comments and recalculate its score.
-   * This applies a -2 penalty to the score. Creates a default score record if needed.
-   * @param repo - Repository in "owner/repo" format.
-   */
   markRepoHostile(repo: string): void {
-    this.updateRepoScore(repo, { signals: { hasHostileComments: true } });
-    debug(MODULE, `Marked ${repo} as hostile, score: ${this.state.repoScores[repo].score}/10`);
+    repoScoring.markRepoHostile(this.state, repo);
   }
 
-  /**
-   * Get repositories where the user has at least one merged PR, sorted by merged count descending.
-   * These repos represent proven relationships with high merge probability.
-   * @returns Array of "owner/repo" strings for repos with mergedPRCount > 0.
-   */
   getReposWithMergedPRs(): string[] {
-    return Object.values(this.state.repoScores)
-      .filter((rs) => rs.mergedPRCount > 0)
-      .sort((a, b) => b.mergedPRCount - a.mergedPRCount)
-      .map((rs) => rs.repo);
+    return repoScoring.getReposWithMergedPRs(this.state);
   }
 
-  /**
-   * Get repositories where the user has interacted (has a score record) but has NOT
-   * yet had a PR merged, excluding repos where the only interaction was rejection.
-   * These represent repos with open or in-progress PRs — relationships that benefit
-   * from continued search attention.
-   * @returns Array of "owner/repo" strings, sorted by score descending.
-   */
   getReposWithOpenPRs(): string[] {
-    return Object.values(this.state.repoScores)
-      .filter((rs) => rs.mergedPRCount === 0 && rs.closedWithoutMergeCount === 0)
-      .sort((a, b) => b.score - a.score)
-      .map((rs) => rs.repo);
+    return repoScoring.getReposWithOpenPRs(this.state);
   }
 
-  /**
-   * Get repositories with a score at or above the given threshold, sorted highest first.
-   * @param minScore - Minimum score (inclusive). Defaults to `config.minRepoScoreThreshold`.
-   * @returns Array of "owner/repo" strings for repos meeting the threshold.
-   */
   getHighScoringRepos(minScore?: number): string[] {
-    const threshold = minScore ?? this.state.config.minRepoScoreThreshold;
-    return Object.values(this.state.repoScores)
-      .filter((rs) => rs.score >= threshold)
-      .sort((a, b) => b.score - a.score)
-      .map((rs) => rs.repo);
+    return repoScoring.getHighScoringRepos(this.state, minScore);
   }
 
-  /**
-   * Get repositories with a score at or below the given threshold, sorted lowest first.
-   * @param maxScore - Maximum score (inclusive). Defaults to `config.minRepoScoreThreshold`.
-   * @returns Array of "owner/repo" strings for repos at or below the threshold.
-   */
   getLowScoringRepos(maxScore?: number): string[] {
-    const threshold = maxScore ?? this.state.config.minRepoScoreThreshold;
-    const now = Date.now();
-    return Object.values(this.state.repoScores)
-      .filter((rs) => {
-        if (rs.score > threshold) return false;
-        // Stale scores (>30 days) should not permanently block repos (#487)
-        const age = now - new Date(rs.lastEvaluatedAt).getTime();
-        if (!Number.isFinite(age)) {
-          warn(MODULE, `Invalid lastEvaluatedAt for repo ${rs.repo}: "${rs.lastEvaluatedAt}", treating as stale`);
-          return false;
-        }
-        return age <= SCORE_TTL_MS;
-      })
-      .sort((a, b) => a.score - b.score)
-      .map((rs) => rs.repo);
+    return repoScoring.getLowScoringRepos(this.state, maxScore);
   }
 
-  // === Statistics ===
-
-  /**
-   * Compute aggregate statistics from the current state. `mergedPRs` and `closedPRs` counts
-   * are summed from repo score records. `totalTracked` reflects the number of repositories with
-   * score records above the minStars threshold.
-   *
-   * Note: `excludeRepos`/`excludeOrgs` only affect issue discovery, not stats (#591).
-   * @returns A Stats snapshot computed from the current state.
-   */
-  getStats(): Stats {
-    let totalMerged = 0;
-    let totalClosed = 0;
-    let totalTracked = 0;
-
-    for (const score of Object.values(this.state.repoScores)) {
-      if (isBelowMinStars(score.stargazersCount, this.state.config.minStars ?? 50)) continue;
-      totalTracked++;
-      totalMerged += score.mergedPRCount;
-      totalClosed += score.closedWithoutMergeCount;
-    }
-
-    const completed = totalMerged + totalClosed;
-    const mergeRate = completed > 0 ? (totalMerged / completed) * 100 : 0;
-
-    return {
-      mergedPRs: totalMerged,
-      closedPRs: totalClosed,
-      activeIssues: 0,
-      trustedProjects: this.state.config.trustedProjects.length,
-      mergeRate: mergeRate.toFixed(1) + '%',
-      totalTracked,
-      needsResponse: 0,
-    };
+  getStats(): repoScoring.Stats {
+    return repoScoring.getStats(this.state);
   }
-}
-
-/**
- * Aggregate statistics returned by {@link StateManager.getStats}.
- */
-export interface Stats {
-  /** Total merged PRs across scored repositories (above minStars threshold). */
-  mergedPRs: number;
-  /** Total PRs closed without merge across scored repositories (above minStars threshold). */
-  closedPRs: number;
-  /** Number of active issues. Always 0 in v2 (sourced from fresh fetch instead). */
-  activeIssues: number;
-  /** Number of trusted projects. */
-  trustedProjects: number;
-  /** Merge success rate as a percentage string (e.g. "75.0%"). */
-  mergeRate: string;
-  /** Number of scored repositories (above minStars threshold). */
-  totalTracked: number;
-  /** Number of PRs needing a response. Always 0 in v2 (sourced from fresh fetch instead). */
-  needsResponse: number;
 }
 
 // Singleton instance
@@ -1361,9 +426,6 @@ let stateManager: StateManager | null = null;
 
 /**
  * Get the singleton StateManager instance, creating it on first call.
- * Subsequent calls return the same instance. Use {@link resetStateManager} to
- * clear the singleton (primarily for testing).
- * @returns The shared StateManager instance.
  */
 export function getStateManager(): StateManager {
   if (!stateManager) {
@@ -1373,9 +435,7 @@ export function getStateManager(): StateManager {
 }
 
 /**
- * Reset the singleton StateManager instance to null. The next call to
- * {@link getStateManager} will create a fresh instance. Intended for test
- * isolation -- should not be called in production code.
+ * Reset the singleton StateManager instance to null. Intended for test isolation.
  */
 export function resetStateManager(): void {
   stateManager = null;

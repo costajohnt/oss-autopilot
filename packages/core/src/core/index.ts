@@ -3,7 +3,7 @@
  * Re-exports all core functionality for convenient imports
  */
 
-export { StateManager, getStateManager, resetStateManager } from './state.js';
+export { StateManager, getStateManager, resetStateManager, type Stats } from './state.js';
 export {
   PRMonitor,
   type PRCheckFailure,
