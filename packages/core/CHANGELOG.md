@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.50.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.49.0...core-v0.50.0) (2026-03-08)
+
+
+### Features
+
+* add project category preferences to setup & search ([#655](https://github.com/costajohnt/oss-autopilot/issues/655)) ([84d850e](https://github.com/costajohnt/oss-autopilot/commit/84d850ef4ae5967ce5a8cf8f95f6b1a04a526bef))
+* **dashboard:** dismissable issue response items ([#654](https://github.com/costajohnt/oss-autopilot/issues/654)) ([63463b4](https://github.com/costajohnt/oss-autopilot/commit/63463b467c5c51c8b66dba1e7414e68af46d5c86))
+
+
+### Bug Fixes
+
+* use singular phrasing in action menu for single issue ([#652](https://github.com/costajohnt/oss-autopilot/issues/652)) ([ca94b02](https://github.com/costajohnt/oss-autopilot/commit/ca94b02907c5eff2f24852f459bf05248834040c))
+
 ## [0.49.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.48.0...core-v0.49.0) (2026-03-08)
 
 
