@@ -462,30 +462,8 @@ function generateDigestOutput(
     (i): i is CommentedIssueWithResponse => i.status === 'new_response',
   );
   const summary = formatSummary(digest, capacity, issueResponses);
-  // Filter dismissed PRs: suppress if dismissed after last activity, auto-undismiss if new activity (#416, #468)
-  const nonDismissedPRs = activePRs.filter((pr) => {
-    const dismissedAt = stateManager.getIssueDismissedAt(pr.url);
-    if (!dismissedAt) return true; // Not dismissed — include
-    const activityTime = new Date(pr.updatedAt).getTime();
-    const dismissTime = new Date(dismissedAt).getTime();
-    if (isNaN(activityTime) || isNaN(dismissTime)) {
-      // Invalid timestamp — fail open (include PR to be safe) without
-      // permanently removing dismiss record (may be a transient data issue)
-      warn(MODULE, `Invalid timestamp in PR dismiss check for ${pr.url}, including PR`);
-      return true;
-    }
-    if (activityTime > dismissTime) {
-      // New activity after dismiss — auto-undismiss and resurface
-      warn(MODULE, `Auto-undismissing PR ${pr.url}: new activity at ${pr.updatedAt} after dismiss at ${dismissedAt}`);
-      stateManager.undismissIssue(pr.url);
-      hasAutoUndismissed = true;
-      return true;
-    }
-    // Still dismissed (last activity is at or before dismiss timestamp)
-    return false;
-  });
 
-  // Persist auto-undismiss state changes (issue + PR combined into one save)
+  // Persist auto-undismiss state changes for issues
   if (hasAutoUndismissed) {
     try {
       stateManager.save();
@@ -493,7 +471,7 @@ function generateDigestOutput(
       warn(MODULE, `Failed to persist auto-undismissed state: ${errorMessage(error)}`);
     }
   }
-  const actionableIssues = collectActionableIssues(nonDismissedPRs, previousLastDigestAt);
+  const actionableIssues = collectActionableIssues(activePRs, previousLastDigestAt);
   digest.summary.totalNeedingAttention = actionableIssues.length;
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length);
   const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues);
