@@ -210,7 +210,11 @@ describe('App', () => {
     const data = makeDashboardData();
     const fetchMock = vi
       .fn()
+      // 1. Initial GET /api/data — success
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(data) })
+      // 2. Auto-refresh POST /api/refresh — success (silent background refresh)
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(data) })
+      // 3. Manual refresh POST /api/refresh — failure (triggered by button click)
       .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({ error: 'Refresh failed' }) });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -218,6 +222,13 @@ describe('App', () => {
 
     await waitFor(() => {
       expect(container.querySelector('.dashboard')).toBeTruthy();
+    });
+
+    // Wait for auto-refresh to complete before clicking manual refresh
+    await waitFor(() => {
+      const btn = container.querySelector('.refresh-btn') as HTMLButtonElement;
+      expect(btn.disabled).toBe(false);
+      expect(btn.textContent).toBe('Refresh');
     });
 
     // Trigger refresh which will fail
