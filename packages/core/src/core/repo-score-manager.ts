@@ -1,7 +1,8 @@
 /**
  * Repository scoring logic for the OSS Contribution Agent.
- * Stateless functions that operate on AgentState for scoring,
- * querying, and computing aggregate statistics.
+ * Functions that operate on AgentState for scoring, querying,
+ * and computing aggregate statistics. Mutation functions modify
+ * the passed state object in place; query functions are pure.
  */
 
 import { AgentState, RepoScore, RepoScoreUpdate, isBelowMinStars } from './types.js';
@@ -39,7 +40,7 @@ function createDefaultRepoScore(repo: string): RepoScore {
 export function calculateScore(repoScore: RepoScore): number {
   let score = 5; // Base score
 
-  // Logarithmic merge bonus (max +5): 1→+2, 2→+3, 3→+4, 5+→+5
+  // Logarithmic merge bonus (max +5): 1→+2, 2→+3, 3→+4, 4+→+5
   if (repoScore.mergedPRCount > 0) {
     const mergedBonus = Math.min(Math.round(Math.log2(repoScore.mergedPRCount + 1) * 2), 5);
     score += mergedBonus;
@@ -83,7 +84,7 @@ export function calculateScore(repoScore: RepoScore): number {
 /**
  * Get the score record for a repository.
  */
-export function getRepoScore(state: Readonly<AgentState>, repo: string): RepoScore | undefined {
+export function getRepoScore(state: Readonly<AgentState>, repo: string): Readonly<RepoScore> | undefined {
   return state.repoScores[repo];
 }
 
@@ -155,8 +156,8 @@ export function getReposWithMergedPRs(state: Readonly<AgentState>): string[] {
 }
 
 /**
- * Get repositories where the user has interacted but has NOT yet had a PR merged,
- * excluding repos where the only interaction was rejection.
+ * Get repositories with a score record but no merge or closure outcomes yet
+ * (typically repos with only open PRs), sorted by score descending.
  */
 export function getReposWithOpenPRs(state: Readonly<AgentState>): string[] {
   return Object.values(state.repoScores)

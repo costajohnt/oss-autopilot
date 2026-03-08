@@ -1,7 +1,7 @@
 /**
  * State persistence layer for the OSS Contribution Agent.
  * Handles file I/O, locking, backup/restore, and v1-to-v2 migration.
- * All functions are stateless — they accept/return AgentState objects.
+ * No module-level mutable state — functions accept/return AgentState objects.
  */
 
 import * as fs from 'fs';

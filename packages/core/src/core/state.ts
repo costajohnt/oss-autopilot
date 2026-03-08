@@ -20,6 +20,7 @@ import {
 } from './types.js';
 import { loadState, saveState, reloadStateIfChanged, createFreshState } from './state-persistence.js';
 import * as repoScoring from './repo-score-manager.js';
+import type { Stats } from './repo-score-manager.js';
 import { debug } from './logger.js';
 
 export { acquireLock, releaseLock, atomicWriteFileSync } from './state-persistence.js';
@@ -380,7 +381,7 @@ export class StateManager {
 
   // === Repository Scoring (delegated to repo-score-manager) ===
 
-  getRepoScore(repo: string): RepoScore | undefined {
+  getRepoScore(repo: string): Readonly<RepoScore> | undefined {
     return repoScoring.getRepoScore(this.state, repo);
   }
 
@@ -416,7 +417,7 @@ export class StateManager {
     return repoScoring.getLowScoringRepos(this.state, maxScore);
   }
 
-  getStats(): repoScoring.Stats {
+  getStats(): Stats {
     return repoScoring.getStats(this.state);
   }
 }
