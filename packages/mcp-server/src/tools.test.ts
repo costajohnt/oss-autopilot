@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from './server.js';
 
-/** All 21 tool names that must be registered. */
+/** All 20 tool names that must be registered. */
 const EXPECTED_TOOLS = [
   'daily',
   'status',
@@ -24,8 +24,7 @@ const EXPECTED_TOOLS = [
   'unshelve',
   'dismiss',
   'undismiss',
-  'snooze',
-  'unsnooze',
+  'move',
 ] as const;
 
 describe('MCP tool registrations', () => {
@@ -54,8 +53,8 @@ describe('MCP tool registrations', () => {
     await client.close();
   });
 
-  it('registers exactly 21 tools', () => {
-    expect(tools).toHaveLength(21);
+  it('registers exactly 20 tools', () => {
+    expect(tools).toHaveLength(20);
   });
 
   it('registers all expected tool names', () => {
@@ -105,12 +104,11 @@ describe('MCP tool registrations', () => {
       expect(schema.required).toContain('prUrl');
     });
 
-    it('snooze requires prUrl and reason, days is optional', () => {
-      const tool = tools.find((t) => t.name === 'snooze')!;
+    it('move requires prUrl and target', () => {
+      const tool = tools.find((t) => t.name === 'move')!;
       const schema = tool.inputSchema as { required?: string[]; properties?: Record<string, unknown> };
       expect(schema.required).toContain('prUrl');
-      expect(schema.required).toContain('reason');
-      expect(schema.required).not.toContain('days');
+      expect(schema.required).toContain('target');
     });
 
     it('post requires url and message', () => {
@@ -163,8 +161,7 @@ describe('MCP tool registrations', () => {
       'unshelve',
       'dismiss',
       'undismiss',
-      'snooze',
-      'unsnooze',
+      'move',
     ];
 
     it.each(readOnlyTools)('read-only tool "%s" has readOnlyHint: true', (name) => {

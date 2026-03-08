@@ -10,7 +10,7 @@ MCP server for [OSS Autopilot](https://github.com/costajohnt/oss-autopilot) — 
 
 | Feature | Count | Description |
 |---------|-------|-------------|
-| **Tools** | 21 | `daily`, `status`, `search`, `vet`, `track`, `untrack`, `read`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `snooze`, `unsnooze` |
+| **Tools** | 20 | `daily`, `status`, `search`, `vet`, `track`, `untrack`, `read`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move` |
 | **Resources** | 5 | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}` |
 | **Prompts** | 3 | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues) |
 
@@ -116,10 +116,9 @@ The server listens at `http://127.0.0.1:3001/mcp` and accepts POST requests.
 | `startup` | Run startup checks (auth, state, config) | No |
 | `shelve` | Temporarily hide a PR from daily checks | No |
 | `unshelve` | Return a shelved PR to active monitoring | No |
-| `dismiss` | Dismiss an issue or PR from notifications | No |
-| `undismiss` | Re-enable notifications for a dismissed item | No |
-| `snooze` | Snooze a PR for a number of days | No |
-| `unsnooze` | Unsnooze a PR immediately | No |
+| `dismiss` | Dismiss an issue from notifications | No |
+| `undismiss` | Re-enable notifications for a dismissed issue | No |
+| `move` | Move a PR between states (attention, waiting, shelved, auto) | No |
 
 ## Resources Reference
 

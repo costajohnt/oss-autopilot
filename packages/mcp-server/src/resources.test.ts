@@ -6,7 +6,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 vi.mock('@oss-autopilot/core/commands', () => ({
   runStatus: vi.fn().mockResolvedValue({
     success: true,
-    data: { openPRs: 2, snoozedPRs: 0, shelvedPRs: 1 },
+    data: { openPRs: 2, shelvedPRs: 1 },
   }),
   runConfig: vi.fn().mockResolvedValue({
     success: true,
@@ -30,8 +30,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runUnshelve: vi.fn(),
   runDismiss: vi.fn(),
   runUndismiss: vi.fn(),
-  runSnooze: vi.fn(),
-  runUnsnooze: vi.fn(),
+  runMove: vi.fn(),
 }));
 
 vi.mock('@oss-autopilot/core', () => ({

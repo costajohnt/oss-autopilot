@@ -7,7 +7,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runDaily: vi.fn().mockResolvedValue({
     summary: 'You have 2 open PRs. 1 needs response.',
     actionableIssues: [{ repo: 'octocat/hello-world', number: 42, action: 'respond to review' }],
-    digest: { openPRs: 2, snoozedPRs: 0 },
+    digest: { openPRs: 2 },
     capacity: { current: 2, max: 5 },
     briefSummary: '2 open PRs',
   }),
@@ -56,8 +56,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runUnshelve: vi.fn(),
   runDismiss: vi.fn(),
   runUndismiss: vi.fn(),
-  runSnooze: vi.fn(),
-  runUnsnooze: vi.fn(),
+  runMove: vi.fn(),
 }));
 
 vi.mock('@oss-autopilot/core', () => ({
