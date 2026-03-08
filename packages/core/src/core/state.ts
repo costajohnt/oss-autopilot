@@ -200,6 +200,7 @@ function migrateV1ToV2(rawState: Record<string, unknown>): AgentState {
 export class StateManager {
   private state: AgentState;
   private readonly inMemoryOnly: boolean;
+  private lastLoadedMtimeMs: number = 0;
 
   /**
    * Create a new StateManager instance.
@@ -424,6 +425,16 @@ export class StateManager {
           // Continue with loaded state — cleanup will be retried on next load
         }
 
+        // Record file mtime so reloadIfChanged() can detect external writes
+        try {
+          this.lastLoadedMtimeMs = fs.statSync(getStatePath()).mtimeMs;
+        } catch (error) {
+          debug(
+            MODULE,
+            `Could not read state file mtime (reload detection will always trigger): ${errorMessage(error)}`,
+          );
+        }
+
         // Log appropriate message based on version
         const repoCount = Object.keys(state.repoScores).length;
         debug(MODULE, `Loaded state v${state.version}: ${repoCount} repo scores tracked`);
@@ -579,6 +590,8 @@ export class StateManager {
 
       // Atomic write: write to temp file then rename to prevent corruption on crash
       atomicWriteFileSync(statePath, JSON.stringify(this.state, null, 2), 0o600);
+      // Update mtime so own writes don't trigger reloadIfChanged()
+      this.lastLoadedMtimeMs = fs.statSync(statePath).mtimeMs;
       debug(MODULE, 'State saved successfully');
     } finally {
       releaseLock(lockPath);
@@ -614,6 +627,37 @@ export class StateManager {
    */
   getState(): Readonly<AgentState> {
     return this.state;
+  }
+
+  /**
+   * Re-read state from disk if the file has been modified since the last load/save.
+   * Uses mtime comparison (single statSync call) to avoid unnecessary JSON parsing.
+   * Returns true if state was reloaded, false if unchanged or in-memory mode.
+   */
+  reloadIfChanged(): boolean {
+    if (this.inMemoryOnly) return false;
+    try {
+      const statePath = getStatePath();
+      const currentMtimeMs = fs.statSync(statePath).mtimeMs;
+      if (currentMtimeMs === this.lastLoadedMtimeMs) return false;
+      this.state = this.load();
+      // load() only records lastLoadedMtimeMs on the happy path. Ensure it is
+      // always current after reload (covers backup-restore and fresh-state paths)
+      // to prevent repeated unnecessary reloads on every request.
+      try {
+        this.lastLoadedMtimeMs = fs.statSync(statePath).mtimeMs;
+      } catch {
+        // If file was just loaded, stat should not fail. If it does,
+        // next reloadIfChanged() will simply trigger another reload.
+      }
+      return true;
+    } catch (error) {
+      // statSync failure (file deleted) is benign — keep current in-memory state.
+      // load() failure should not happen (load() handles its own recovery),
+      // but if it does, keeping current state is the safest option.
+      warn(MODULE, `Failed to reload state from disk: ${errorMessage(error)}`);
+      return false;
+    }
   }
 
   /**

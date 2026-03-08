@@ -264,7 +264,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   // ── Rate limiters ───────────────────────────────────────────────────────
   const dataLimiter = new RateLimiter({ maxRequests: 30, windowMs: 60_000 }); // 30/min
   const actionLimiter = new RateLimiter({ maxRequests: 10, windowMs: 60_000 }); // 10/min
-  const refreshLimiter = new RateLimiter({ maxRequests: 2, windowMs: 60_000 }); // 2/min
+  const refreshLimiter = new RateLimiter({ maxRequests: 6, windowMs: 60_000 }); // 6/min
 
   // ── Request handler ──────────────────────────────────────────────────────
   const server = http.createServer(async (req, res) => {
@@ -279,6 +279,15 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
           res.setHeader('Retry-After', String(check.retryAfterSeconds));
           sendError(res, 429, 'Too many requests');
           return;
+        }
+        // Re-read state.json if CLI commands modified it externally
+        if (stateManager.reloadIfChanged()) {
+          try {
+            cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+          } catch (error) {
+            warn(MODULE, `Failed to rebuild dashboard data after state reload: ${errorMessage(error)}`);
+            // Intentional: serve previous cachedJsonData rather than returning 500
+          }
         }
         sendJson(res, 200, cachedJsonData);
         return;
@@ -333,6 +342,9 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
   // ── POST /api/action handler ─────────────────────────────────────────────
   async function handleAction(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    // Reload state before mutating to avoid overwriting external CLI changes
+    stateManager.reloadIfChanged();
+
     let body: ActionRequest;
     try {
       const raw = await readBody(req);
@@ -402,6 +414,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     }
 
     try {
+      stateManager.reloadIfChanged();
       warn(MODULE, 'Refreshing dashboard data from GitHub...');
       const result = await fetchDashboardData(currentToken);
       cachedDigest = result.digest;
@@ -528,6 +541,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   if (token) {
     fetchDashboardData(token)
       .then((result) => {
+        stateManager.reloadIfChanged();
         cachedDigest = result.digest;
         cachedCommentedIssues = result.commentedIssues;
         cachedJsonData = buildDashboardJson(
