@@ -596,6 +596,12 @@ export interface AgentConfig {
 
   /** Manual status overrides for PRs. Maps PR URL to override metadata. Auto-clears when the PR has new activity. */
   statusOverrides?: Record<string, StatusOverride>;
+
+  /** Project categories the user is interested in (e.g., devtools, nonprofit). Used to prioritize search results. */
+  projectCategories?: ProjectCategory[];
+
+  /** GitHub organizations the user wants to prioritize in issue search. Org names only (not owner/repo). */
+  preferredOrgs?: string[];
 }
 
 /** Status of a user's comment thread on a GitHub issue. */
@@ -660,6 +666,8 @@ export const DEFAULT_CONFIG: AgentConfig = {
   shelvedPRUrls: [],
   dismissedIssues: {},
   snoozedPRs: {},
+  projectCategories: [],
+  preferredOrgs: [],
 };
 
 /** Initial state written to `~/.oss-autopilot/state.json` on first run. Uses v2 architecture. */
@@ -672,9 +680,22 @@ export const INITIAL_STATE: AgentState = {
   lastRunAt: new Date().toISOString(),
 };
 
+// -- Project category types --
+
+export const PROJECT_CATEGORIES = [
+  'nonprofit',
+  'devtools',
+  'infrastructure',
+  'web-frameworks',
+  'data-ml',
+  'education',
+] as const;
+
+export type ProjectCategory = (typeof PROJECT_CATEGORIES)[number];
+
 // -- Issue discovery types (shared across issue-discovery, issue-vetting, issue-scoring) --
 
-export type SearchPriority = 'merged_pr' | 'starred' | 'normal';
+export type SearchPriority = 'merged_pr' | 'preferred_org' | 'starred' | 'normal';
 
 export interface IssueCandidate {
   issue: TrackedIssue;

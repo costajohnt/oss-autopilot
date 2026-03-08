@@ -6,6 +6,7 @@
 import { getStateManager, DEFAULT_CONFIG } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { validateGitHubUsername } from './validation.js';
+import { PROJECT_CATEGORIES, type ProjectCategory } from '../core/types.js';
 
 /** Parse and validate a positive integer setting value. */
 function parsePositiveInt(value: string, settingName: string): number {
@@ -36,6 +37,8 @@ export interface SetupCompleteOutput {
     approachingDormantDays: number;
     languages: string[];
     labels: string[];
+    projectCategories: string[];
+    preferredOrgs: string[];
   };
 }
 
@@ -159,6 +162,48 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
           results[key] = valid.length > 0 ? valid.join(', ') : '(empty)';
           break;
         }
+        case 'projectCategories': {
+          const categories = value
+            .split(',')
+            .map((c) => c.trim())
+            .filter(Boolean);
+          const validCategories: ProjectCategory[] = [];
+          const invalidCategories: string[] = [];
+          for (const cat of categories) {
+            if ((PROJECT_CATEGORIES as readonly string[]).includes(cat)) {
+              validCategories.push(cat as ProjectCategory);
+            } else {
+              invalidCategories.push(cat);
+            }
+          }
+          if (invalidCategories.length > 0) {
+            warnings.push(
+              `Unknown project categories: ${invalidCategories.join(', ')}. Valid: ${PROJECT_CATEGORIES.join(', ')}`,
+            );
+          }
+          stateManager.updateConfig({ projectCategories: validCategories });
+          results[key] = validCategories.length > 0 ? validCategories.join(', ') : '(empty)';
+          break;
+        }
+        case 'preferredOrgs': {
+          const orgs = value
+            .split(',')
+            .map((o) => o.trim())
+            .filter(Boolean);
+          const validOrgs: string[] = [];
+          for (const org of orgs) {
+            if (org.includes('/')) {
+              warnings.push(
+                `"${org}" looks like a repo path. Use org name only (e.g., "vercel" not "vercel/next.js").`,
+              );
+            } else {
+              validOrgs.push(org);
+            }
+          }
+          stateManager.updateConfig({ preferredOrgs: validOrgs });
+          results[key] = validOrgs.length > 0 ? validOrgs.join(', ') : '(empty)';
+          break;
+        }
         case 'complete':
           if (value === 'true') {
             stateManager.markSetupComplete();
@@ -186,6 +231,8 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         approachingDormantDays: config.approachingDormantDays,
         languages: config.languages,
         labels: config.labels,
+        projectCategories: config.projectCategories ?? [],
+        preferredOrgs: config.preferredOrgs ?? [],
       },
     };
   }
@@ -241,6 +288,21 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         prompt: 'Repos with anti-AI contribution policies to block (owner/repo, comma-separated)?',
         current: config.aiPolicyBlocklist ?? DEFAULT_CONFIG.aiPolicyBlocklist ?? null,
         default: ['matplotlib/matplotlib'],
+        type: 'list',
+      },
+      {
+        setting: 'projectCategories',
+        prompt:
+          'What types of projects interest you? (nonprofit, devtools, infrastructure, web-frameworks, data-ml, education)',
+        current: config.projectCategories ?? [],
+        default: [],
+        type: 'list',
+      },
+      {
+        setting: 'preferredOrgs',
+        prompt: 'Any GitHub organizations to prioritize? (org names, comma-separated)',
+        current: config.preferredOrgs ?? [],
+        default: [],
         type: 'list',
       },
     ],

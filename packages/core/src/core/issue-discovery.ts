@@ -13,13 +13,14 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, getDataDir } from './utils.js';
-import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate } from './types.js';
+import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate, type ProjectCategory } from './types.js';
 import { ValidationError, errorMessage, getHttpStatusCode, isRateLimitError } from './errors.js';
 import { debug, info, warn } from './logger.js';
 import { getHttpCache, cachedTimeBased } from './http-cache.js';
 import { type GitHubSearchItem, isDocOnlyIssue, detectLabelFarmingRepos, applyPerRepoCap } from './issue-filtering.js';
 import { IssueVetter } from './issue-vetting.js';
 import { calculateViabilityScore as calcViabilityScore, type ViabilityScoreParams } from './issue-scoring.js';
+import { getTopicsForCategories } from './category-mapping.js';
 
 // Re-export everything from sub-modules for backward compatibility.
 // Existing consumers (tests, CLI commands) import from './issue-discovery.js'.
@@ -367,6 +368,53 @@ export class IssueDiscovery {
       }
     }
 
+    // Phase 0.5: Search preferred organizations (explicit user preference)
+    const preferredOrgs = config.preferredOrgs ?? [];
+    if (allCandidates.length < maxResults && preferredOrgs.length > 0) {
+      // Filter out orgs already covered by Phase 0 repos
+      const phase0Orgs = new Set(phase0Repos.map((r) => r.split('/')[0]?.toLowerCase()));
+      const orgsToSearch = preferredOrgs.filter((org) => !phase0Orgs.has(org.toLowerCase())).slice(0, 5);
+
+      if (orgsToSearch.length > 0) {
+        info(MODULE, `Phase 0.5: Searching issues in ${orgsToSearch.length} preferred org(s)...`);
+        const remainingNeeded = maxResults - allCandidates.length;
+        const orgRepoFilter = orgsToSearch.map((org) => `org:${org}`).join(' OR ');
+        const orgQuery = `${baseQuery} (${orgRepoFilter})`;
+
+        try {
+          const data = await this.cachedSearch({
+            q: orgQuery,
+            sort: 'created',
+            order: 'desc',
+            per_page: remainingNeeded * 3,
+          });
+
+          if (data.items.length > 0) {
+            const filtered = filterIssues(data.items).filter((item) => {
+              const repoFullName = item.repository_url.split('/').slice(-2).join('/');
+              return !phase0RepoSet.has(repoFullName);
+            });
+            const { candidates: orgCandidates, rateLimitHit } = await this.vetter.vetIssuesParallel(
+              filtered.slice(0, remainingNeeded * 2).map((i) => i.html_url),
+              remainingNeeded,
+              'preferred_org',
+            );
+            allCandidates.push(...orgCandidates);
+            if (rateLimitHit) {
+              rateLimitHitDuringSearch = true;
+            }
+            info(MODULE, `Found ${orgCandidates.length} candidates from preferred orgs`);
+          }
+        } catch (error) {
+          const errMsg = errorMessage(error);
+          if (isRateLimitError(error)) {
+            rateLimitHitDuringSearch = true;
+          }
+          warn(MODULE, `Error searching preferred orgs: ${errMsg}`);
+        }
+      }
+    }
+
     // Phase 1: Search starred repos (filter out already-searched Phase 0 repos)
     if (allCandidates.length < maxResults && starredRepos.length > 0) {
       const reposToSearch = starredRepos.filter((r) => !phase0RepoSet.has(r));
@@ -449,8 +497,17 @@ export class IssueDiscovery {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const pushedSince = thirtyDaysAgo.toISOString().split('T')[0];
+      // When user has category preferences, add topic filters to focus on relevant repos
+      const categoryTopics = getTopicsForCategories(config.projectCategories ?? []);
+      const topicQuery =
+        categoryTopics.length > 0
+          ? categoryTopics
+              .slice(0, 3)
+              .map((t) => `topic:${t}`)
+              .join(' ')
+          : '';
       const phase3Query =
-        `is:issue is:open no:assignee ${langQuery} stars:>=${minStars} pushed:>=${pushedSince} archived:false`
+        `is:issue is:open no:assignee ${langQuery} ${topicQuery} stars:>=${minStars} pushed:>=${pushedSince} archived:false`
           .replace(/  +/g, ' ')
           .trim();
 
@@ -535,8 +592,8 @@ export class IssueDiscovery {
 
     // Sort by priority first, then by recommendation, then by viability score
     allCandidates.sort((a, b) => {
-      // Priority order: merged_pr > starred > normal
-      const priorityOrder: Record<SearchPriority, number> = { merged_pr: 0, starred: 1, normal: 2 };
+      // Priority order: merged_pr > preferred_org > starred > normal
+      const priorityOrder: Record<SearchPriority, number> = { merged_pr: 0, preferred_org: 1, starred: 2, normal: 3 };
       const priorityDiff = priorityOrder[a.searchPriority] - priorityOrder[b.searchPriority];
       if (priorityDiff !== 0) return priorityDiff;
 

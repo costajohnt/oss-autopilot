@@ -38,6 +38,8 @@ export interface ViabilityScoreParams {
   mergedPRCount: number;
   orgHasMergedPRs: boolean;
   repoQualityBonus?: number;
+  /** True when the repo matches one of the user's preferred project categories. */
+  matchesPreferredCategory?: boolean;
 }
 
 /**
@@ -93,6 +95,11 @@ export function calculateViabilityScore(params: ViabilityScoreParams): number {
 
   // Org affinity bonus (+5) — user has merged PRs in another repo under same org
   if (params.orgHasMergedPRs) {
+    score += 5;
+  }
+
+  // Category preference bonus (+5) — repo matches user's preferred project categories
+  if (params.matchesPreferredCategory) {
     score += 5;
   }
 

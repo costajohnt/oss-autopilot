@@ -228,6 +228,74 @@ describe('runSetup', () => {
     // No --set values means show status
     expect(result).toEqual(expect.objectContaining({ setupComplete: true }));
   });
+
+  it('should handle valid projectCategories', async () => {
+    const result = (await runSetup({ set: ['projectCategories=devtools,nonprofit'] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ projectCategories: ['devtools', 'nonprofit'] });
+    expect(result.settings.projectCategories).toBe('devtools, nonprofit');
+  });
+
+  it('should warn for invalid projectCategories', async () => {
+    const result = (await runSetup({ set: ['projectCategories=devtools,invalid-cat'] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ projectCategories: ['devtools'] });
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('Unknown project categories')]));
+  });
+
+  it('should handle all-invalid projectCategories', async () => {
+    const result = (await runSetup({ set: ['projectCategories=bad1,bad2'] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ projectCategories: [] });
+    expect(result.settings.projectCategories).toBe('(empty)');
+  });
+
+  it('should handle valid preferredOrgs', async () => {
+    const result = (await runSetup({ set: ['preferredOrgs=vercel,remix-run'] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ preferredOrgs: ['vercel', 'remix-run'] });
+    expect(result.settings.preferredOrgs).toBe('vercel, remix-run');
+  });
+
+  it('should warn when preferredOrgs contains slash (repo path)', async () => {
+    const result = (await runSetup({ set: ['preferredOrgs=vercel/next.js,remix-run'] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ preferredOrgs: ['remix-run'] });
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('looks like a repo path')]));
+  });
+
+  it('should include projectCategories and preferredOrgs in setup prompts', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, setupComplete: false } }),
+      updateConfig: mockUpdateConfig,
+      save: mockSave,
+    } as any);
+
+    const result = (await runSetup({})) as SetupRequiredOutput;
+    const settings = result.prompts.map((p) => p.setting);
+    expect(settings).toContain('projectCategories');
+    expect(settings).toContain('preferredOrgs');
+  });
+
+  it('should include new fields in setupComplete config output', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({
+        config: {
+          ...DEFAULT_CONFIG,
+          projectCategories: ['devtools'],
+          preferredOrgs: ['vercel'],
+        },
+      }),
+      updateConfig: mockUpdateConfig,
+      save: mockSave,
+    } as any);
+
+    const result = await runSetup({});
+    expect(result).toEqual(
+      expect.objectContaining({
+        setupComplete: true,
+        config: expect.objectContaining({
+          projectCategories: ['devtools'],
+          preferredOrgs: ['vercel'],
+        }),
+      }),
+    );
+  });
 });
 
 describe('runCheckSetup', () => {
