@@ -745,16 +745,12 @@ export const commands: CLICommandDef[] = [
         .option('--json', 'Output as JSON')
         .action(async (prUrl, options) => {
           try {
-            const { runShelve } = await import('./commands/shelve.js');
-            const data = await runShelve({ prUrl });
+            const { runMove } = await import('./commands/move.js');
+            const data = await runMove({ prUrl, target: 'shelved' });
             if (options.json) {
               outputJson(data);
-            } else if (data.shelved) {
-              console.log(`Shelved: ${prUrl}`);
-              console.log('This PR is now excluded from capacity and actionable issues.');
-              console.log('It will auto-unshelve if a maintainer engages.');
             } else {
-              console.log('PR is already shelved.');
+              console.log(data.description);
             }
           } catch (err) {
             handleCommandError(err, options.json);
@@ -774,15 +770,37 @@ export const commands: CLICommandDef[] = [
         .option('--json', 'Output as JSON')
         .action(async (prUrl, options) => {
           try {
-            const { runUnshelve } = await import('./commands/shelve.js');
-            const data = await runUnshelve({ prUrl });
+            const { runMove } = await import('./commands/move.js');
+            const data = await runMove({ prUrl, target: 'auto' });
             if (options.json) {
               outputJson(data);
-            } else if (data.unshelved) {
-              console.log(`Unshelved: ${prUrl}`);
-              console.log('This PR is now active again.');
             } else {
-              console.log('PR was not shelved.');
+              console.log(data.description);
+            }
+          } catch (err) {
+            handleCommandError(err, options.json);
+          }
+        });
+    },
+  },
+
+  // ── Move ───────────────────────────────────────────────────────────
+  {
+    name: 'move',
+    localOnly: true,
+    register(program) {
+      program
+        .command('move <pr-url> <target>')
+        .description('Move a PR between states: attention, waiting, shelved, or auto (reset to computed)')
+        .option('--json', 'Output as JSON')
+        .action(async (prUrl, target, options) => {
+          try {
+            const { runMove } = await import('./commands/move.js');
+            const data = await runMove({ prUrl, target });
+            if (options.json) {
+              outputJson(data);
+            } else {
+              console.log(data.description);
             }
           } catch (err) {
             handleCommandError(err, options.json);
@@ -859,13 +877,13 @@ export const commands: CLICommandDef[] = [
         .option('--json', 'Output as JSON')
         .action(async (prUrl, status, options) => {
           try {
-            const { runOverride } = await import('./commands/override.js');
-            const data = await runOverride({ prUrl, status });
+            const { runMove } = await import('./commands/move.js');
+            const target = status === 'needs_addressing' ? 'attention' : 'waiting';
+            const data = await runMove({ prUrl, target });
             if (options.json) {
               outputJson(data);
             } else {
-              console.log(`Override set: ${prUrl} → ${data.status}`);
-              console.log('This override will auto-clear when the PR has new activity.');
+              console.log(data.description);
             }
           } catch (err) {
             handleCommandError(err, options.json);
@@ -885,14 +903,12 @@ export const commands: CLICommandDef[] = [
         .option('--json', 'Output as JSON')
         .action(async (prUrl, options) => {
           try {
-            const { runClearOverride } = await import('./commands/override.js');
-            const data = await runClearOverride({ prUrl });
+            const { runMove } = await import('./commands/move.js');
+            const data = await runMove({ prUrl, target: 'auto' });
             if (options.json) {
               outputJson(data);
-            } else if (data.cleared) {
-              console.log(`Override cleared: ${prUrl}`);
             } else {
-              console.log('No override was set for this PR.');
+              console.log(data.description);
             }
           } catch (err) {
             handleCommandError(err, options.json);
