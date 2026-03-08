@@ -35,6 +35,8 @@ export interface ActionableIssue {
   type: ActionableIssueType;
   pr: FetchedPR;
   label: string; // e.g., "[CI Failing]"
+  /** True if the PR was created after the last daily digest (first time seen). */
+  isNewContribution: boolean;
 }
 
 /**
@@ -47,6 +49,8 @@ export interface CompactActionableIssue {
   type: ActionableIssueType;
   prUrl: string;
   label: string;
+  /** True if the PR was created after the last daily digest (first time seen). */
+  isNewContribution: boolean;
 }
 
 /**
@@ -158,6 +162,7 @@ export function compactActionableIssues(issues: ActionableIssue[]): CompactActio
     type: issue.type,
     prUrl: issue.pr.url,
     label: issue.label,
+    isNewContribution: issue.isNewContribution,
   }));
 }
 

@@ -246,9 +246,14 @@ export function assessCapacity(
  * Note: Recently closed PRs are informational only and excluded from this list.
  * They are available separately in digest.recentlyClosedPRs (#156).
  */
-export function collectActionableIssues(prs: FetchedPR[], snoozedUrls: Set<string> = new Set()): ActionableIssue[] {
+export function collectActionableIssues(
+  prs: FetchedPR[],
+  snoozedUrls: Set<string> = new Set(),
+  lastDigestAt?: string,
+): ActionableIssue[] {
   const issues: ActionableIssue[] = [];
   const actionPRs = prs.filter((pr) => pr.status === 'needs_addressing');
+  const lastDigestTime = lastDigestAt ? new Date(lastDigestAt).getTime() : NaN;
 
   const reasonOrder: ActionReason[] = [
     'needs_response',
@@ -299,7 +304,18 @@ export function collectActionableIssues(prs: FetchedPR[], snoozedUrls: Set<strin
           type = 'needs_response';
       }
 
-      issues.push({ type, pr, label });
+      // A PR is "new" if it was created after the last daily digest (first time seen).
+      // If there's no previous digest (first run) or createdAt is invalid, assume new.
+      const createdTime = new Date(pr.createdAt).getTime();
+      let isNewContribution: boolean;
+      if (isNaN(createdTime)) {
+        warn('daily-logic', `Invalid createdAt "${pr.createdAt}" for PR ${pr.url}, assuming new contribution`);
+        isNewContribution = true;
+      } else {
+        isNewContribution = isNaN(lastDigestTime) || createdTime > lastDigestTime;
+      }
+
+      issues.push({ type, pr, label, isNewContribution });
     }
   }
 

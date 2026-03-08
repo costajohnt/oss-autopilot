@@ -435,6 +435,7 @@ function generateDigestOutput(
   shelvedPRs: ShelvedPRRef[],
   commentedIssues: CommentedIssue[],
   failures: PRCheckFailure[],
+  previousLastDigestAt?: string,
 ): DailyCheckResult {
   const stateManager = getStateManager();
 
@@ -508,7 +509,7 @@ function generateDigestOutput(
       warn(MODULE, `Failed to persist auto-undismissed state: ${errorMessage(error)}`);
     }
   }
-  const actionableIssues = collectActionableIssues(nonDismissedPRs, snoozedUrls);
+  const actionableIssues = collectActionableIssues(nonDismissedPRs, snoozedUrls, previousLastDigestAt);
   digest.summary.totalNeedingAttention = actionableIssues.length;
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length);
   const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues);
@@ -597,11 +598,15 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // Phase 3: Persist monthly analytics
   updateMonthlyAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
 
+  // Capture lastDigestAt BEFORE Phase 4 overwrites it with the current run's timestamp.
+  // Used by collectActionableIssues to determine which PRs are "new" (created since last digest).
+  const previousLastDigestAt = getStateManager().getState().lastDigestAt;
+
   // Phase 4: Expire snoozes, partition PRs, generate and save digest
   const { activePRs, shelvedPRs, digest } = partitionPRs(prMonitor, prs, recentlyClosedPRs, recentlyMergedPRs);
 
   // Phase 5: Build structured output (capacity, dismiss filter, action menu)
-  return generateDigestOutput(digest, activePRs, shelvedPRs, commentedIssues, failures);
+  return generateDigestOutput(digest, activePRs, shelvedPRs, commentedIssues, failures, previousLastDigestAt);
 }
 
 /**

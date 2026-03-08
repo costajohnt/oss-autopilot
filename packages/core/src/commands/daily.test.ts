@@ -33,6 +33,7 @@ function makeActionableIssue(type: ActionableIssue['type'] = 'ci_failing'): Acti
     type,
     pr: makePR({ repo: 'owner/repo' }),
     label: '[CI Failing]',
+    isNewContribution: false,
   };
 }
 
@@ -510,15 +511,25 @@ describe('compactActionableIssues (#287)', () => {
     const pr42 = makePR({ repo: 'owner/repo', number: 42 });
     const pr99 = makePR({ repo: 'owner/repo', number: 99 });
     const issues: ActionableIssue[] = [
-      { type: 'ci_failing', pr: pr42, label: '[CI Failing]' },
-      { type: 'needs_response', pr: pr99, label: '[Needs Response]' },
+      { type: 'ci_failing', pr: pr42, label: '[CI Failing]', isNewContribution: false },
+      { type: 'needs_response', pr: pr99, label: '[Needs Response]', isNewContribution: true },
     ];
 
     const compact = compactActionableIssues(issues);
 
     expect(compact).toHaveLength(2);
-    expect(compact[0]).toEqual({ type: 'ci_failing', prUrl: pr42.url, label: '[CI Failing]' });
-    expect(compact[1]).toEqual({ type: 'needs_response', prUrl: pr99.url, label: '[Needs Response]' });
+    expect(compact[0]).toEqual({
+      type: 'ci_failing',
+      prUrl: pr42.url,
+      label: '[CI Failing]',
+      isNewContribution: false,
+    });
+    expect(compact[1]).toEqual({
+      type: 'needs_response',
+      prUrl: pr99.url,
+      label: '[Needs Response]',
+      isNewContribution: true,
+    });
     // Should NOT have a pr field
     expect(compact[0]).not.toHaveProperty('pr');
   });
