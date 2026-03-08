@@ -397,9 +397,11 @@ export class StateManager {
         }
 
         // Strip removed features from persisted state (three-state simplification)
+        let needsCleanupSave = false;
         const rawConfig = state.config as unknown as Record<string, unknown>;
         if (rawConfig.snoozedPRs) {
           delete rawConfig.snoozedPRs;
+          needsCleanupSave = true;
         }
         // Strip PR URLs from dismissedIssues (PR dismiss removed)
         if (state.config.dismissedIssues) {
@@ -407,8 +409,13 @@ export class StateManager {
           for (const url of Object.keys(state.config.dismissedIssues)) {
             if (PR_URL_RE.test(url)) {
               delete state.config.dismissedIssues[url];
+              needsCleanupSave = true;
             }
           }
+        }
+        if (needsCleanupSave) {
+          atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
+          debug(MODULE, 'Cleaned up removed features from persisted state');
         }
 
         // Log appropriate message based on version
