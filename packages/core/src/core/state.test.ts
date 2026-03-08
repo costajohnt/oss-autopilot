@@ -2020,3 +2020,111 @@ describe('StateManager merged PRs', () => {
     });
   });
 });
+
+// ── Legacy state cleanup on load ────────────────────────────────────────────
+describe('legacy state cleanup on load', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-cleanup-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('strips snoozedPRs from config on load', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const stateData = makeV2State();
+    // Inject legacy snoozedPRs field into config
+    (stateData.config as Record<string, unknown>).snoozedPRs = {
+      'https://github.com/owner/repo/pull/1': '2025-02-01T00:00:00Z',
+    };
+    fs.writeFileSync(statePath, JSON.stringify(stateData), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    // snoozedPRs should be stripped from loaded state
+    expect((state.config as unknown as Record<string, unknown>).snoozedPRs).toBeUndefined();
+
+    // Verify file on disk no longer has snoozedPRs
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(onDisk.config.snoozedPRs).toBeUndefined();
+  });
+
+  it('strips PR URLs from dismissedIssues on load', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const stateData = makeV2State();
+    (stateData.config as Record<string, unknown>).dismissedIssues = {
+      'https://github.com/owner/repo/issues/1': '2025-01-10T00:00:00Z',
+      'https://github.com/owner/repo/pull/42': '2025-01-11T00:00:00Z',
+      'https://github.com/other/project/issues/5': '2025-01-12T00:00:00Z',
+      'https://github.com/other/project/pull/99': '2025-01-13T00:00:00Z',
+    };
+    fs.writeFileSync(statePath, JSON.stringify(stateData), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    // PR URLs should be removed
+    expect(state.config.dismissedIssues['https://github.com/owner/repo/pull/42']).toBeUndefined();
+    expect(state.config.dismissedIssues['https://github.com/other/project/pull/99']).toBeUndefined();
+
+    // Issue URLs should remain
+    expect(state.config.dismissedIssues['https://github.com/owner/repo/issues/1']).toBe('2025-01-10T00:00:00Z');
+    expect(state.config.dismissedIssues['https://github.com/other/project/issues/5']).toBe('2025-01-12T00:00:00Z');
+  });
+
+  it('preserves issue URLs in dismissedIssues', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const stateData = makeV2State();
+    (stateData.config as Record<string, unknown>).dismissedIssues = {
+      'https://github.com/owner/repo/issues/10': '2025-02-01T00:00:00Z',
+      'https://github.com/owner/repo/issues/20': '2025-02-02T00:00:00Z',
+      'https://github.com/owner/repo/pull/30': '2025-02-03T00:00:00Z',
+    };
+    fs.writeFileSync(statePath, JSON.stringify(stateData), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    // Both issue URLs survive intact
+    expect(Object.keys(state.config.dismissedIssues)).toHaveLength(2);
+    expect(state.config.dismissedIssues['https://github.com/owner/repo/issues/10']).toBe('2025-02-01T00:00:00Z');
+    expect(state.config.dismissedIssues['https://github.com/owner/repo/issues/20']).toBe('2025-02-02T00:00:00Z');
+
+    // Verify on disk as well
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(Object.keys(onDisk.config.dismissedIssues)).toHaveLength(2);
+    expect(onDisk.config.dismissedIssues['https://github.com/owner/repo/pull/30']).toBeUndefined();
+  });
+
+  it('does not write to disk if no cleanup needed', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    // Write a clean v2 state — no snoozedPRs, no PR URLs in dismissedIssues
+    const stateData = makeV2State();
+    (stateData.config as Record<string, unknown>).dismissedIssues = {
+      'https://github.com/owner/repo/issues/1': '2025-01-10T00:00:00Z',
+    };
+    fs.writeFileSync(statePath, JSON.stringify(stateData), { mode: 0o600 });
+
+    // Record file modification time before load
+    const mtimeBefore = fs.statSync(statePath).mtimeMs;
+
+    // Small delay so any write would be distinguishable by mtime
+    const start = Date.now();
+    while (Date.now() - start < 50) {
+      // busy-wait to ensure mtime would differ if file were rewritten
+    }
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    // State should load normally
+    expect(state.config.dismissedIssues['https://github.com/owner/repo/issues/1']).toBe('2025-01-10T00:00:00Z');
+
+    // File should NOT have been rewritten (mtime unchanged)
+    const mtimeAfter = fs.statSync(statePath).mtimeMs;
+    expect(mtimeAfter).toBe(mtimeBefore);
+  });
+});
