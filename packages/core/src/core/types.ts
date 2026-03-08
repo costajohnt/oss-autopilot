@@ -364,7 +364,7 @@ export interface StateEvent {
   data: Record<string, unknown>;
 }
 
-/** Minimal record of a PR that was closed without being merged, used in the daily digest. */
+/** Minimal record of a PR that was closed without being merged, used in the daily digest and dashboard detail view. */
 export interface ClosedPR {
   url: string;
   repo: string; // "owner/repo"
@@ -388,7 +388,7 @@ export interface StoredClosedPR {
   closedAt: string; // ISO date — used for sorting + watermark
 }
 
-/** Minimal record of a PR that was merged, used in the daily digest. */
+/** Minimal record of a PR that was merged, used in the daily digest and dashboard detail view. */
 export interface MergedPR {
   url: string;
   repo: string; // "owner/repo"

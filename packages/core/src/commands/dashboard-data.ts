@@ -44,8 +44,8 @@ export function buildDashboardStats(
     totalNeedingAttention: 0,
   };
   const minStars = state.config.minStars ?? 50;
-  // Use the higher of stored PR count and repoScores-derived count to avoid regressions
-  // when stored list hasn't caught up yet (first fetch caps at 300)
+  // Merged: use the higher of stored count vs repoScores aggregate to avoid regressions
+  // when the stored list hasn't caught up yet (initial fetch caps at 300 PRs)
   const mergedPRs =
     storedMergedCount !== undefined
       ? Math.max(storedMergedCount, summary.totalMergedAllTime)
