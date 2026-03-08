@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.47.2](https://github.com/costajohnt/oss-autopilot/compare/core-v0.47.1...core-v0.47.2) (2026-03-08)
+
+
+### Bug Fixes
+
+* filter merged PRs by minStars + auto-refresh dashboard on mount ([#640](https://github.com/costajohnt/oss-autopilot/issues/640)) ([c8d7314](https://github.com/costajohnt/oss-autopilot/commit/c8d7314a9d1265e2d788c2b66986a1fd6eec35df))
+
 ## [0.47.1](https://github.com/costajohnt/oss-autopilot/compare/core-v0.47.0...core-v0.47.1) (2026-03-08)
 
 
