@@ -22,20 +22,23 @@ export function IssueList({ issues, onAction }: IssueListProps) {
   );
 }
 
-function IssueItem({
-  issue,
-  onAction,
-}: {
+interface IssueItemProps {
   issue: CommentedIssueWithResponse;
   onAction?: (action: ActionRequest) => Promise<void>;
-}) {
+}
+
+function IssueItem({ issue, onAction }: IssueItemProps) {
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function handleDismiss(): Promise<void> {
     if (!onAction) return;
     setBusy(true);
+    setActionError(null);
     try {
       await onAction({ action: 'dismiss_issue_response', url: issue.url });
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Dismiss failed');
     } finally {
       setBusy(false);
     }
@@ -43,6 +46,7 @@ function IssueItem({
 
   return (
     <div class="issue-item">
+      {actionError && <p class="action-error">{actionError}</p>}
       {onAction && (
         <button class="issue-item-dismiss" aria-label="Dismiss" disabled={busy} onClick={handleDismiss}>
           ×

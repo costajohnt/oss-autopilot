@@ -358,11 +358,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     }
 
     // Validate URL format — dismiss_issue_response accepts issue or PR URLs, others are PR-only.
-    const urlPattern = body.action === 'dismiss_issue_response' ? ISSUE_OR_PR_URL_PATTERN : PR_URL_PATTERN;
-    const urlType = body.action === 'dismiss_issue_response' ? 'issue or PR' : 'PR';
+    const isDismiss = body.action === 'dismiss_issue_response';
     try {
       validateUrl(body.url);
-      validateGitHubUrl(body.url, urlPattern, urlType);
+      validateGitHubUrl(
+        body.url,
+        isDismiss ? ISSUE_OR_PR_URL_PATTERN : PR_URL_PATTERN,
+        isDismiss ? 'issue or PR' : 'PR',
+      );
     } catch (err) {
       if (err instanceof ValidationError) {
         sendError(res, 400, err.message);

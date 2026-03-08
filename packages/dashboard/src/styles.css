@@ -722,8 +722,8 @@ a:hover {
 }
 
 .issue-item-dismiss:hover {
-  color: var(--accent-closed);
-  border-color: var(--accent-closed);
+  color: var(--accent-error);
+  border-color: var(--accent-error);
 }
 
 .issue-item-dismiss:disabled {

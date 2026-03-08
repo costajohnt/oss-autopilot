@@ -91,4 +91,17 @@ describe('IssueList', () => {
     const btn = container.querySelector('.issue-item-dismiss');
     expect(btn).toBeNull();
   });
+
+  it('displays error message when dismiss action fails', async () => {
+    const onAction = vi.fn().mockRejectedValue(new Error('Rate limited'));
+    const issue = makeIssueResponse();
+    const { container } = render(<IssueList issues={[issue]} onAction={onAction} />);
+
+    const btn = container.querySelector('.issue-item-dismiss') as HTMLButtonElement;
+    btn.click();
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.action-error')?.textContent).toBe('Rate limited');
+    });
+  });
 });
