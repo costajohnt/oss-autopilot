@@ -85,7 +85,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json(errorBadge('invalid username'));
   }
 
-  const minStars = typeof minStarsParam === 'string' ? Math.max(0, parseInt(minStarsParam, 10) || DEFAULT_MIN_STARS) : DEFAULT_MIN_STARS;
+  const minStars =
+    typeof minStarsParam === 'string'
+      ? Math.max(0, parseInt(minStarsParam, 10) || DEFAULT_MIN_STARS)
+      : DEFAULT_MIN_STARS;
 
   const cacheKey = `${username}:${minStars}`;
   const cached = badgeCache.get(cacheKey);
