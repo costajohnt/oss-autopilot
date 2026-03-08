@@ -4,16 +4,18 @@
  * Consumed by the dashboard HTTP server (dashboard-server.ts) for the SPA API.
  */
 
-import { getStateManager, PRMonitor, IssueConversationMonitor } from '../core/index.js';
+import { getStateManager, PRMonitor, IssueConversationMonitor, getOctokit } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
-import { emptyPRCountsResult } from '../core/github-stats.js';
+import { emptyPRCountsResult, fetchMergedPRsSince } from '../core/github-stats.js';
+import { parseGitHubUrl } from '../core/utils.js';
 import {
   isBelowMinStars,
   type DailyDigest,
   type AgentState,
   type ClosedPR,
   type MergedPR,
+  type StoredMergedPR,
   type CommentedIssue,
 } from '../core/types.js';
 import { toShelvedPRRef, buildStarFilter } from './daily.js';
@@ -28,7 +30,11 @@ export interface DashboardStats {
   mergeRate: string;
 }
 
-export function buildDashboardStats(digest: DailyDigest, state: Readonly<AgentState>): DashboardStats {
+export function buildDashboardStats(
+  digest: DailyDigest,
+  state: Readonly<AgentState>,
+  storedMergedCount?: number,
+): DashboardStats {
   const summary = digest.summary || {
     totalActivePRs: 0,
     totalMergedAllTime: 0,
@@ -36,10 +42,16 @@ export function buildDashboardStats(digest: DailyDigest, state: Readonly<AgentSt
     totalNeedingAttention: 0,
   };
   const minStars = state.config.minStars ?? 50;
+  // Use the higher of stored merged PR count and repoScores-derived count to avoid regressions
+  // when stored list hasn't caught up yet (first fetch caps at 300)
+  const mergedPRs =
+    storedMergedCount !== undefined
+      ? Math.max(storedMergedCount, summary.totalMergedAllTime)
+      : summary.totalMergedAllTime;
   return {
     activePRs: summary.totalActivePRs,
     shelvedPRs: (digest.shelvedPRs || []).length,
-    mergedPRs: summary.totalMergedAllTime,
+    mergedPRs,
     closedPRs: Object.values(state.repoScores || {}).reduce(
       (sum, s) => sum + (isBelowMinStars(s.stargazersCount, minStars) ? 0 : s.closedWithoutMergeCount || 0),
       0,
@@ -117,6 +129,7 @@ export function updateMonthlyAnalytics(
 export interface DashboardFetchResult {
   digest: DailyDigest;
   commentedIssues: CommentedIssue[];
+  allMergedPRs: MergedPR[];
 }
 
 /**
@@ -128,47 +141,64 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   const stateManager = getStateManager();
   const prMonitor = new PRMonitor(token);
   const issueMonitor = new IssueConversationMonitor(token);
+  const octokit = getOctokit(token);
+  const config = stateManager.getState().config;
 
   // Build star filter from cached repoScores (#576)
   const starFilter = buildStarFilter(stateManager.getState());
 
-  const [{ prs, failures }, recentlyClosedPRs, recentlyMergedPRs, mergedResult, closedResult, fetchedIssues] =
-    await Promise.all([
-      prMonitor.fetchUserOpenPRs(),
-      prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
-        if (isRateLimitOrAuthError(err)) throw err;
-        warn(MODULE, `Failed to fetch recently closed PRs: ${errorMessage(err)}`);
-        return [];
-      }),
-      prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
-        if (isRateLimitOrAuthError(err)) throw err;
-        warn(MODULE, `Failed to fetch recently merged PRs: ${errorMessage(err)}`);
-        return [];
-      }),
-      prMonitor.fetchUserMergedPRCounts(starFilter).catch((err) => {
-        if (isRateLimitOrAuthError(err)) throw err;
-        warn(MODULE, `Failed to fetch merged PR counts: ${errorMessage(err)}`);
-        return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
-      }),
-      prMonitor.fetchUserClosedPRCounts(starFilter).catch((err) => {
-        if (isRateLimitOrAuthError(err)) throw err;
-        warn(MODULE, `Failed to fetch closed PR counts: ${errorMessage(err)}`);
-        return emptyPRCountsResult<number>();
-      }),
-      issueMonitor.fetchCommentedIssues().catch((error) => {
-        if (isRateLimitOrAuthError(error)) throw error;
-        const msg = errorMessage(error);
-        if (msg.includes('No GitHub username configured')) {
-          warn(MODULE, `Issue conversation tracking requires setup: ${msg}`);
-        } else {
-          warn(MODULE, `Issue conversation fetch failed: ${msg}`);
-        }
-        return {
-          issues: [] as CommentedIssue[],
-          failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
-        };
-      }),
-    ]);
+  // Get watermark for incremental merged PR fetch
+  const watermark = stateManager.getMergedPRWatermark();
+
+  const [
+    { prs, failures },
+    recentlyClosedPRs,
+    recentlyMergedPRs,
+    mergedResult,
+    closedResult,
+    fetchedIssues,
+    newMergedPRs,
+  ] = await Promise.all([
+    prMonitor.fetchUserOpenPRs(),
+    prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
+      if (isRateLimitOrAuthError(err)) throw err;
+      warn(MODULE, `Failed to fetch recently closed PRs: ${errorMessage(err)}`);
+      return [];
+    }),
+    prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
+      if (isRateLimitOrAuthError(err)) throw err;
+      warn(MODULE, `Failed to fetch recently merged PRs: ${errorMessage(err)}`);
+      return [];
+    }),
+    prMonitor.fetchUserMergedPRCounts(starFilter).catch((err) => {
+      if (isRateLimitOrAuthError(err)) throw err;
+      warn(MODULE, `Failed to fetch merged PR counts: ${errorMessage(err)}`);
+      return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
+    }),
+    prMonitor.fetchUserClosedPRCounts(starFilter).catch((err) => {
+      if (isRateLimitOrAuthError(err)) throw err;
+      warn(MODULE, `Failed to fetch closed PR counts: ${errorMessage(err)}`);
+      return emptyPRCountsResult<number>();
+    }),
+    issueMonitor.fetchCommentedIssues().catch((error) => {
+      if (isRateLimitOrAuthError(error)) throw error;
+      const msg = errorMessage(error);
+      if (msg.includes('No GitHub username configured')) {
+        warn(MODULE, `Issue conversation tracking requires setup: ${msg}`);
+      } else {
+        warn(MODULE, `Issue conversation fetch failed: ${msg}`);
+      }
+      return {
+        issues: [] as CommentedIssue[],
+        failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
+      };
+    }),
+    fetchMergedPRsSince(octokit, config, watermark).catch((err): StoredMergedPR[] => {
+      if (isRateLimitOrAuthError(err)) throw err;
+      warn(MODULE, `Failed to fetch merged PRs for storage: ${errorMessage(err)}`);
+      return [];
+    }),
+  ]);
 
   const commentedIssues = fetchedIssues.issues;
   if (fetchedIssues.failures.length > 0) {
@@ -178,6 +208,16 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   if (failures.length > 0) {
     warn(MODULE, `${failures.length} PR fetch(es) failed`);
   }
+
+  // Store new merged PRs incrementally (dedupes by URL)
+  try {
+    stateManager.addMergedPRs(newMergedPRs);
+  } catch (error) {
+    warn(MODULE, `Failed to store merged PRs: ${errorMessage(error)}`);
+  }
+
+  // Convert stored merged PRs to full MergedPR type (derive repo/number from URL)
+  const allMergedPRs = storedToMergedPRs(stateManager.getMergedPRs());
 
   // Store monthly chart data (opened/merged/closed) so charts have data
   const { monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
@@ -204,7 +244,34 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   }
   warn(MODULE, `Refreshed: ${prs.length} PRs fetched`);
 
-  return { digest, commentedIssues };
+  return { digest, commentedIssues, allMergedPRs };
+}
+
+/**
+ * Convert StoredMergedPR[] to MergedPR[] by deriving repo and number from URL.
+ * Skips entries with unparseable URLs.
+ */
+export function storedToMergedPRs(stored: StoredMergedPR[]): MergedPR[] {
+  const results: MergedPR[] = [];
+  let skipped = 0;
+  for (const pr of stored) {
+    const parsed = parseGitHubUrl(pr.url);
+    if (!parsed) {
+      skipped++;
+      continue;
+    }
+    results.push({
+      url: pr.url,
+      repo: `${parsed.owner}/${parsed.repo}`,
+      number: parsed.number,
+      title: pr.title,
+      mergedAt: pr.mergedAt,
+    });
+  }
+  if (skipped > 0) {
+    warn(MODULE, `Skipped ${skipped} stored merged PR(s) with unparseable URLs`);
+  }
+  return results;
 }
 
 /**

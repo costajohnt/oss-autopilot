@@ -19,6 +19,7 @@ import {
   computeTopRepos,
   getMonthlyData,
   buildDashboardStats,
+  storedToMergedPRs,
   type DashboardStats,
 } from './dashboard-data.js';
 import { openInBrowser } from './startup.js';
@@ -69,6 +70,7 @@ interface DashboardJsonData {
   autoUnshelvedPRs: ShelvedPRRef[];
   commentedIssues: CommentedIssue[];
   issueResponses: CommentedIssueWithResponse[];
+  allMergedPRs: MergedPR[];
   offline?: boolean;
   lastUpdated?: string;
 }
@@ -143,11 +145,14 @@ function buildDashboardJson(
   digest: DailyDigest,
   state: Readonly<AgentState>,
   commentedIssues: CommentedIssue[],
+  allMergedPRs?: MergedPR[],
 ): DashboardJsonData {
   const prsByRepo = computePRsByRepo(digest, state);
   const topRepos = computeTopRepos(prsByRepo);
   const { monthlyMerged, monthlyOpened, monthlyClosed } = getMonthlyData(state);
-  const stats = buildDashboardStats(digest, state);
+  // Derive allMergedPRs from state if not provided (e.g. initial load from cached state)
+  const mergedPRs = allMergedPRs ?? storedToMergedPRs(getStateManager().getMergedPRs());
+  const stats = buildDashboardStats(digest, state, mergedPRs.length);
   const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
 
   return {
@@ -164,6 +169,7 @@ function buildDashboardJson(
     autoUnshelvedPRs: digest.autoUnshelvedPRs || [],
     commentedIssues,
     issueResponses,
+    allMergedPRs: mergedPRs,
   };
 }
 
@@ -215,7 +221,7 @@ function setSecurityHeaders(res: http.ServerResponse): void {
 function isValidOrigin(req: http.IncomingMessage, port: number): boolean {
   const origin = req.headers['origin'];
   if (!origin) return true; // No Origin header = same-origin request (non-browser or same-page)
-  const allowed = [`http://localhost:${port}`, `http://127.0.0.1:${port}`];
+  const allowed = [`http://localhost:${port}`, `http://127.0.0.1:${port}`, `http://oss.localhost:${port}`];
   return allowed.includes(origin);
 }
 
@@ -434,7 +440,12 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       const result = await fetchDashboardData(currentToken);
       cachedDigest = result.digest;
       cachedCommentedIssues = result.commentedIssues;
-      cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+      cachedJsonData = buildDashboardJson(
+        cachedDigest,
+        stateManager.getState(),
+        cachedCommentedIssues,
+        result.allMergedPRs,
+      );
       sendJson(res, 200, cachedJsonData);
     } catch (error) {
       warn(MODULE, `Dashboard refresh failed: ${errorMessage(error)}`);
@@ -542,7 +553,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   });
 
   const serverUrl = `http://localhost:${actualPort}`;
-  warn(MODULE, `Dashboard server running at ${serverUrl}`);
+  warn(MODULE, `Dashboard server running at ${serverUrl} (also: http://oss.localhost:${actualPort})`);
 
   // ── Background refresh ─────────────────────────────────────────────────
   // Port is bound and PID file written — now fetch fresh data from GitHub
@@ -552,7 +563,12 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       .then((result) => {
         cachedDigest = result.digest;
         cachedCommentedIssues = result.commentedIssues;
-        cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+        cachedJsonData = buildDashboardJson(
+          cachedDigest,
+          stateManager.getState(),
+          cachedCommentedIssues,
+          result.allMergedPRs,
+        );
         warn(MODULE, 'Background data refresh complete');
       })
       .catch((error) => {

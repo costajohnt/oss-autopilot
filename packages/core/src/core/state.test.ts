@@ -1944,3 +1944,109 @@ describe('StateManager initializeWithDefaults', () => {
     saveSpy.mockRestore();
   });
 });
+
+describe('StateManager merged PRs', () => {
+  let stateManager: StateManager;
+
+  beforeEach(() => {
+    stateManager = new StateManager(true);
+  });
+
+  describe('getMergedPRs', () => {
+    it('returns empty array when no merged PRs stored', () => {
+      expect(stateManager.getMergedPRs()).toEqual([]);
+    });
+
+    it('returns stored merged PRs', () => {
+      const prs = [{ url: 'https://github.com/a/b/pull/1', title: 'PR 1', mergedAt: '2025-06-10T00:00:00Z' }];
+      stateManager.addMergedPRs(prs);
+      expect(stateManager.getMergedPRs()).toEqual(prs);
+    });
+  });
+
+  describe('addMergedPRs', () => {
+    it('deduplicates by URL', () => {
+      const pr1 = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', mergedAt: '2025-06-10T00:00:00Z' };
+      const pr1Dup = { url: 'https://github.com/a/b/pull/1', title: 'PR 1 updated', mergedAt: '2025-06-11T00:00:00Z' };
+      const pr2 = { url: 'https://github.com/a/b/pull/2', title: 'PR 2', mergedAt: '2025-06-09T00:00:00Z' };
+
+      stateManager.addMergedPRs([pr1]);
+      stateManager.addMergedPRs([pr1Dup, pr2]);
+
+      const result = stateManager.getMergedPRs();
+      expect(result).toHaveLength(2);
+      expect(result.map((p) => p.url)).toEqual(['https://github.com/a/b/pull/1', 'https://github.com/a/b/pull/2']);
+      // Original title preserved (not overwritten by duplicate)
+      expect(result.find((p) => p.url === pr1.url)?.title).toBe('PR 1');
+    });
+
+    it('sorts by mergedAt descending (newest first)', () => {
+      const prs = [
+        { url: 'https://github.com/a/b/pull/1', title: 'Old', mergedAt: '2025-01-01T00:00:00Z' },
+        { url: 'https://github.com/a/b/pull/2', title: 'New', mergedAt: '2025-06-15T00:00:00Z' },
+        { url: 'https://github.com/a/b/pull/3', title: 'Mid', mergedAt: '2025-03-10T00:00:00Z' },
+      ];
+
+      stateManager.addMergedPRs(prs);
+
+      const result = stateManager.getMergedPRs();
+      expect(result.map((p) => p.title)).toEqual(['New', 'Mid', 'Old']);
+    });
+
+    it('does nothing when passed empty array', () => {
+      const pr = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', mergedAt: '2025-06-10T00:00:00Z' };
+      stateManager.addMergedPRs([pr]);
+      const before = stateManager.getMergedPRs();
+
+      stateManager.addMergedPRs([]);
+
+      expect(stateManager.getMergedPRs()).toEqual(before);
+    });
+
+    it('does nothing when all PRs are duplicates', () => {
+      const pr = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', mergedAt: '2025-06-10T00:00:00Z' };
+      stateManager.addMergedPRs([pr]);
+
+      const saveSpy = vi.spyOn(stateManager, 'save');
+      stateManager.addMergedPRs([pr]);
+      // save is not called because no new PRs were added (early return)
+      expect(saveSpy).not.toHaveBeenCalled();
+      saveSpy.mockRestore();
+    });
+
+    it('initializes mergedPRs array when undefined', () => {
+      // Force undefined state
+      (stateManager as any).state.mergedPRs = undefined;
+      const pr = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', mergedAt: '2025-06-10T00:00:00Z' };
+
+      stateManager.addMergedPRs([pr]);
+
+      expect(stateManager.getMergedPRs()).toHaveLength(1);
+    });
+  });
+
+  describe('getMergedPRWatermark', () => {
+    it('returns undefined when no merged PRs stored', () => {
+      expect(stateManager.getMergedPRWatermark()).toBeUndefined();
+    });
+
+    it('returns most recent mergedAt (first element after sort)', () => {
+      stateManager.addMergedPRs([
+        { url: 'https://github.com/a/b/pull/1', title: 'Old', mergedAt: '2025-01-01T00:00:00Z' },
+        { url: 'https://github.com/a/b/pull/2', title: 'New', mergedAt: '2025-06-15T00:00:00Z' },
+      ]);
+
+      expect(stateManager.getMergedPRWatermark()).toBe('2025-06-15T00:00:00Z');
+    });
+
+    it('returns undefined when mergedPRs is undefined', () => {
+      (stateManager as any).state.mergedPRs = undefined;
+      expect(stateManager.getMergedPRWatermark()).toBeUndefined();
+    });
+
+    it('returns undefined when most recent mergedAt is empty string', () => {
+      (stateManager as any).state.mergedPRs = [{ url: 'https://github.com/a/b/pull/1', title: 'Bad', mergedAt: '' }];
+      expect(stateManager.getMergedPRWatermark()).toBeUndefined();
+    });
+  });
+});

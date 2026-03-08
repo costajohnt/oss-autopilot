@@ -18,6 +18,7 @@ import {
   SnoozeInfo,
   StatusOverride,
   FetchedPRStatus,
+  StoredMergedPR,
   isBelowMinStars,
 } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
@@ -485,6 +486,11 @@ export class StateManager {
       s.events = [];
     }
 
+    // Migrate older states that don't have mergedPRs
+    if (s.mergedPRs === undefined) {
+      s.mergedPRs = [];
+    }
+
     // Base requirements for all versions
     const hasBaseFields =
       typeof s.version === 'number' &&
@@ -618,6 +624,47 @@ export class StateManager {
 
   setDailyActivityCounts(counts: Record<string, number>): void {
     this.state.dailyActivityCounts = counts;
+  }
+
+  // === Merged PR Storage ===
+
+  /**
+   * Get all stored merged PRs.
+   * @returns Array of stored merged PRs, sorted by mergedAt desc.
+   */
+  getMergedPRs(): StoredMergedPR[] {
+    return this.state.mergedPRs ?? [];
+  }
+
+  /**
+   * Add new merged PRs to the stored list. Deduplicates by URL and sorts by mergedAt desc.
+   * @param prs - New merged PRs to add.
+   */
+  addMergedPRs(prs: StoredMergedPR[]): void {
+    if (prs.length === 0) return;
+    if (!this.state.mergedPRs) {
+      this.state.mergedPRs = [];
+    }
+    const existingUrls = new Set(this.state.mergedPRs.map((pr) => pr.url));
+    const newPRs = prs.filter((pr) => !existingUrls.has(pr.url));
+    if (newPRs.length === 0) return;
+    this.state.mergedPRs.push(...newPRs);
+    this.state.mergedPRs.sort((a, b) => b.mergedAt.localeCompare(a.mergedAt));
+    debug(MODULE, `Added ${newPRs.length} merged PRs (total: ${this.state.mergedPRs.length})`);
+  }
+
+  /**
+   * Get the most recent mergedAt timestamp from stored merged PRs.
+   * Used as the watermark for incremental fetching.
+   * @returns ISO date string of the most recent merge, or undefined if no stored PRs.
+   */
+  getMergedPRWatermark(): string | undefined {
+    const prs = this.state.mergedPRs;
+    if (!prs || prs.length === 0) return undefined;
+    // List is sorted desc by mergedAt, so first element is most recent
+    const watermark = prs[0].mergedAt;
+    if (!watermark) return undefined;
+    return watermark;
   }
 
   /**

@@ -5,7 +5,7 @@
 
 import { Octokit } from '@octokit/rest';
 import { extractOwnerRepo, parseGitHubUrl, isOwnRepo } from './utils.js';
-import { ClosedPR, MergedPR, isBelowMinStars, type StarFilter } from './types.js';
+import { ClosedPR, MergedPR, StoredMergedPR, isBelowMinStars, type StarFilter } from './types.js';
 import { debug, warn } from './logger.js';
 import { getHttpCache } from './http-cache.js';
 
@@ -367,4 +367,70 @@ export async function fetchRecentlyMergedPRs(
       };
     },
   );
+}
+
+/**
+ * Fetch merged PRs since a watermark date for incremental storage.
+ * If no watermark is provided (first-ever fetch), fetches all merged PRs (up to pagination cap).
+ * Returns StoredMergedPR[] (minimal: url, title, mergedAt) for state persistence.
+ */
+export async function fetchMergedPRsSince(
+  octokit: Octokit,
+  config: { githubUsername: string },
+  since?: string,
+): Promise<StoredMergedPR[]> {
+  if (!config.githubUsername) {
+    warn(MODULE, 'Skipping merged PRs fetch: no githubUsername configured.');
+    return [];
+  }
+
+  const dateFilter = since ? ` merged:>${since}` : '';
+  const q = `is:pr is:merged author:${config.githubUsername} -user:${config.githubUsername}${dateFilter}`;
+
+  debug(MODULE, `Fetching merged PRs${since ? ` since ${since}` : ' (all time)'}...`);
+
+  const results: StoredMergedPR[] = [];
+  let page = 1;
+  let fetched = 0;
+
+  while (true) {
+    const { data } = await octokit.search.issuesAndPullRequests({
+      q,
+      sort: 'updated',
+      order: 'desc',
+      per_page: 100,
+      page,
+    });
+
+    for (const item of data.items) {
+      const parsed = parseGitHubUrl(item.html_url);
+      if (!parsed) {
+        warn(MODULE, `Skipping merged PR with unparseable URL: ${item.html_url}`);
+        continue;
+      }
+      if (isOwnRepo(parsed.owner, config.githubUsername)) continue;
+
+      const mergedAt = item.pull_request?.merged_at || item.closed_at || '';
+      if (!mergedAt) {
+        warn(MODULE, `Skipping merged PR with no merge date: ${item.html_url}`);
+        continue;
+      }
+      results.push({
+        url: item.html_url,
+        title: item.title,
+        mergedAt,
+      });
+    }
+
+    fetched += data.items.length;
+
+    if (fetched >= data.total_count || fetched >= 1000 || data.items.length === 0 || page >= MAX_PAGINATION_PAGES) {
+      break;
+    }
+
+    page++;
+  }
+
+  debug(MODULE, `Fetched ${results.length} merged PRs${since ? ' (incremental)' : ' (initial)'}`);
+  return results;
 }

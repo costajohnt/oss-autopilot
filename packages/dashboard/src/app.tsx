@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'preact/hooks';
+import { LocationProvider, useLocation } from 'preact-iso';
 import { useDashboard } from './hooks/use-dashboard';
 import { StatsBar } from './components/stats-bar';
 import { FilterBar, type Filters } from './components/filter-bar';
@@ -7,11 +8,34 @@ import { PRDetail } from './components/pr-detail';
 import { ChartPanel } from './components/chart-panel';
 import { IssueList } from './components/issue-list';
 import { RecentActivity } from './components/recent-activity';
+import { MergedPRList } from './components/merged-pr-list';
+import type { DashboardStats } from './types';
 
-export function App() {
+interface DashboardHeaderProps {
+  stats: DashboardStats;
+  loading: boolean;
+  onRefresh: () => void;
+}
+
+function DashboardHeader({ stats, loading, onRefresh }: DashboardHeaderProps) {
+  return (
+    <header class="dashboard-header">
+      <h1>OSS Autopilot</h1>
+      <span class="dashboard-subtitle">
+        {stats.activePRs} active PRs &middot; {stats.mergedPRs} merged &middot; {stats.mergeRate} merge rate
+      </span>
+      <button class="refresh-btn" onClick={onRefresh} disabled={loading}>
+        {loading ? 'Refreshing...' : 'Refresh'}
+      </button>
+    </header>
+  );
+}
+
+function AppContent() {
   const { data, loading, error, clearError, refresh, performAction } = useDashboard();
   const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
+  const { path, route } = useLocation();
 
   const shelvedUrls = useMemo(() => new Set(data?.shelvedPRUrls ?? []), [data?.shelvedPRUrls]);
 
@@ -37,6 +61,18 @@ export function App() {
 
   if (!data) return null;
 
+  // Route: /merged — show all merged PRs
+  if (path === '/merged') {
+    const mergedPRs = data.allMergedPRs ?? [];
+    return (
+      <div class="dashboard">
+        <DashboardHeader stats={data.stats} loading={loading} onRefresh={refresh} />
+        <MergedPRList mergedPRs={mergedPRs} onBack={() => route('/')} />
+      </div>
+    );
+  }
+
+  // Default route: dashboard home
   const repos = [...new Set(data.activePRs.map((pr) => pr.repo))].sort();
   const statuses = [...new Set(data.activePRs.map((pr) => pr.status))].sort();
 
@@ -54,16 +90,7 @@ export function App() {
 
   return (
     <div class="dashboard">
-      <header class="dashboard-header">
-        <h1>OSS Autopilot</h1>
-        <span class="dashboard-subtitle">
-          {data.stats.activePRs} active PRs &middot; {data.stats.mergedPRs} merged &middot; {data.stats.mergeRate} merge
-          rate
-        </span>
-        <button class="refresh-btn" onClick={refresh} disabled={loading}>
-          {loading ? 'Refreshing...' : 'Refresh'}
-        </button>
-      </header>
+      <DashboardHeader stats={data.stats} loading={loading} onRefresh={refresh} />
 
       {error && (
         <div class="error-banner">
@@ -75,7 +102,7 @@ export function App() {
       )}
 
       <main class="dashboard-main">
-        <StatsBar stats={data.stats} />
+        <StatsBar stats={data.stats} onMergedClick={() => route('/merged')} />
         <FilterBar filters={filters} onFilterChange={setFilters} repos={repos} statuses={statuses} />
 
         <div class="dashboard-content">
@@ -106,5 +133,13 @@ export function App() {
         <IssueList issues={data.issueResponses} />
       </main>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <LocationProvider>
+      <AppContent />
+    </LocationProvider>
   );
 }

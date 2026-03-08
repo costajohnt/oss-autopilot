@@ -51,6 +51,7 @@ export interface DashboardData {
   autoUnshelvedPRs: ShelvedPRRef[];
   commentedIssues: CommentedIssue[];
   issueResponses: CommentedIssueWithResponse[];
+  allMergedPRs: MergedPR[];
 }
 
 /** Actions a user can take from the dashboard. */
