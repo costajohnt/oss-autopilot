@@ -397,8 +397,9 @@ export class StateManager {
         }
 
         // Strip removed features from persisted state (three-state simplification)
-        if ((state.config as Record<string, unknown>).snoozedPRs) {
-          delete (state.config as Record<string, unknown>).snoozedPRs;
+        const rawConfig = state.config as unknown as Record<string, unknown>;
+        if (rawConfig.snoozedPRs) {
+          delete rawConfig.snoozedPRs;
         }
         // Strip PR URLs from dismissedIssues (PR dismiss removed)
         if (state.config.dismissedIssues) {
