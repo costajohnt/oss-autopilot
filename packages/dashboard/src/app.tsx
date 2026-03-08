@@ -14,25 +14,26 @@ import type { DashboardStats } from './types';
 interface DashboardHeaderProps {
   stats: DashboardStats;
   loading: boolean;
+  refreshing: boolean;
   onRefresh: () => void;
 }
 
-function DashboardHeader({ stats, loading, onRefresh }: DashboardHeaderProps) {
+function DashboardHeader({ stats, loading, refreshing, onRefresh }: DashboardHeaderProps) {
   return (
     <header class="dashboard-header">
       <h1>OSS Autopilot</h1>
       <span class="dashboard-subtitle">
         {stats.activePRs} active PRs &middot; {stats.mergedPRs} merged &middot; {stats.mergeRate} merge rate
       </span>
-      <button class="refresh-btn" onClick={onRefresh} disabled={loading}>
-        {loading ? 'Refreshing...' : 'Refresh'}
+      <button class="refresh-btn" onClick={onRefresh} disabled={loading || refreshing}>
+        {loading ? 'Refreshing...' : refreshing ? 'Updating...' : 'Refresh'}
       </button>
     </header>
   );
 }
 
 function AppContent() {
-  const { data, loading, error, clearError, refresh, performAction } = useDashboard();
+  const { data, loading, refreshing, error, clearError, refresh, performAction } = useDashboard();
   const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const { path, route } = useLocation();
@@ -66,7 +67,7 @@ function AppContent() {
     const mergedPRs = data.allMergedPRs ?? [];
     return (
       <div class="dashboard">
-        <DashboardHeader stats={data.stats} loading={loading} onRefresh={refresh} />
+        <DashboardHeader stats={data.stats} loading={loading} refreshing={refreshing} onRefresh={refresh} />
         <MergedPRList mergedPRs={mergedPRs} onBack={() => route('/')} />
       </div>
     );
@@ -90,7 +91,7 @@ function AppContent() {
 
   return (
     <div class="dashboard">
-      <DashboardHeader stats={data.stats} loading={loading} onRefresh={refresh} />
+      <DashboardHeader stats={data.stats} loading={loading} refreshing={refreshing} onRefresh={refresh} />
 
       {error && (
         <div class="error-banner">

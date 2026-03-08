@@ -25,15 +25,16 @@ import {
 import { openInBrowser } from './startup.js';
 import { writeDashboardServerInfo, removeDashboardServerInfo } from './dashboard-process.js';
 import { RateLimiter } from './rate-limiter.js';
-import type {
-  DailyDigest,
-  AgentState,
-  CommentedIssue,
-  CommentedIssueWithResponse,
-  FetchedPR,
-  MergedPR,
-  ClosedPR,
-  ShelvedPRRef,
+import {
+  isBelowMinStars,
+  type DailyDigest,
+  type AgentState,
+  type CommentedIssue,
+  type CommentedIssueWithResponse,
+  type FetchedPR,
+  type MergedPR,
+  type ClosedPR,
+  type ShelvedPRRef,
 } from '../core/types.js';
 
 // Re-export process management functions for backward compatibility
@@ -152,7 +153,13 @@ function buildDashboardJson(
   const { monthlyMerged, monthlyOpened, monthlyClosed } = getMonthlyData(state);
   // Derive allMergedPRs from state if not provided (e.g. initial load from cached state)
   const mergedPRs = allMergedPRs ?? storedToMergedPRs(getStateManager().getMergedPRs());
-  const stats = buildDashboardStats(digest, state, mergedPRs.length);
+  // Filter out merged PRs from repos below the minStars threshold
+  const minStars = state.config.minStars ?? 50;
+  const filteredMergedPRs = mergedPRs.filter((pr) => {
+    const repoScore = (state.repoScores || {})[pr.repo];
+    return !isBelowMinStars(repoScore?.stargazersCount, minStars);
+  });
+  const stats = buildDashboardStats(digest, state, filteredMergedPRs.length);
   const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
 
   return {
@@ -169,7 +176,7 @@ function buildDashboardJson(
     autoUnshelvedPRs: digest.autoUnshelvedPRs || [],
     commentedIssues,
     issueResponses,
-    allMergedPRs: mergedPRs,
+    allMergedPRs: filteredMergedPRs,
   };
 }
 

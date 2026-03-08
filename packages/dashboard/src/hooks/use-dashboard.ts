@@ -13,6 +13,7 @@ async function fetchJson(url: string, init?: RequestInit): Promise<DashboardData
 export function useDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (url: string, init?: RequestInit) => {
@@ -29,6 +30,19 @@ export function useDashboard() {
 
   const fetchData = useCallback(() => load('/api/data'), [load]);
   const refresh = useCallback(() => load('/api/refresh', { method: 'POST' }), [load]);
+
+  const silentRefresh = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      const freshData = await fetchJson('/api/refresh', { method: 'POST' });
+      setData(freshData);
+      setError(null);
+    } catch (e) {
+      console.warn('Auto-refresh failed:', e instanceof Error ? e.message : String(e));
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
   const performAction = useCallback(async (action: ActionRequest) => {
     try {
@@ -51,10 +65,12 @@ export function useDashboard() {
   }, []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchData().then(() => {
+      silentRefresh();
+    });
+  }, [fetchData, silentRefresh]);
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { data, loading, error, clearError, refresh, performAction };
+  return { data, loading, refreshing, error, clearError, refresh, performAction };
 }
