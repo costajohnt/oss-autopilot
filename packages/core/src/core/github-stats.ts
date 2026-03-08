@@ -459,7 +459,7 @@ export async function fetchClosedPRsSince(
   const results: StoredClosedPR[] = [];
   let page = 1;
   let fetched = 0;
-  let totalCount = 0;
+  let totalCount: number;
 
   while (true) {
     const { data } = await octokit.search.issuesAndPullRequests({
