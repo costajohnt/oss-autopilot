@@ -98,6 +98,13 @@ vi.mock('./dashboard-data.js', () => ({
   storedToClosedPRs: vi.fn(() => []),
 }));
 
+// Mock move command so dashboard-server's dynamic import resolves without side effects
+const mockRunMove = vi.fn().mockResolvedValue({ url: '', target: 'shelved', description: 'done' });
+vi.mock('./move.js', () => ({
+  VALID_TARGETS: ['attention', 'waiting', 'shelved', 'auto'],
+  runMove: (...args: unknown[]) => mockRunMove(...args),
+}));
+
 // Mock rate limiter to always allow requests (avoids test ordering fragility)
 vi.mock('./rate-limiter.js', () => ({
   RateLimiter: class {
@@ -463,7 +470,7 @@ describe('dashboard-server', () => {
       const result = await sendRequest(
         'POST',
         '/api/action',
-        JSON.stringify({ action: 'shelve', url: 'https://github.com/owner/repo/pull/99' }),
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/99', target: 'shelved' }),
       );
       expect(result.statusCode).toBe(200);
       const data = JSON.parse(result.body);
@@ -492,66 +499,72 @@ describe('dashboard-server', () => {
   // ── API action endpoint ──────────────────────────────────────────
 
   describe('POST /api/action', () => {
-    it('should accept a valid shelve action and return updated data', async () => {
+    it('should accept a valid move shelved action and return updated data', async () => {
       const result = await sendRequest(
         'POST',
         '/api/action',
         JSON.stringify({
-          action: 'shelve',
+          action: 'move',
           url: 'https://github.com/owner/repo/pull/1',
+          target: 'shelved',
         }),
       );
       expect(result.statusCode).toBe(200);
 
       const data = JSON.parse(result.body);
       expect(data).toHaveProperty('stats');
-      expect(mockStateManager.shelvePR).toHaveBeenCalledWith('https://github.com/owner/repo/pull/1');
-      expect(mockStateManager.save).toHaveBeenCalled();
+      expect(mockRunMove).toHaveBeenCalledWith({
+        prUrl: 'https://github.com/owner/repo/pull/1',
+        target: 'shelved',
+      });
     });
 
-    it('should accept a valid unshelve action', async () => {
+    it('should accept a valid move auto action (unshelve)', async () => {
       const result = await sendRequest(
         'POST',
         '/api/action',
         JSON.stringify({
-          action: 'unshelve',
+          action: 'move',
           url: 'https://github.com/owner/repo/pull/2',
+          target: 'auto',
         }),
       );
       expect(result.statusCode).toBe(200);
-      expect(mockStateManager.unshelvePR).toHaveBeenCalledWith('https://github.com/owner/repo/pull/2');
+      expect(mockRunMove).toHaveBeenCalledWith({
+        prUrl: 'https://github.com/owner/repo/pull/2',
+        target: 'auto',
+      });
     });
 
-    it('should accept a valid override_status action', async () => {
+    it('should accept a valid move waiting action (override status)', async () => {
       const result = await sendRequest(
         'POST',
         '/api/action',
         JSON.stringify({
-          action: 'override_status',
+          action: 'move',
           url: 'https://github.com/owner/repo/pull/3',
-          status: 'waiting_on_maintainer',
+          target: 'waiting',
         }),
       );
       expect(result.statusCode).toBe(200);
-      expect(mockStateManager.setStatusOverride).toHaveBeenCalledWith(
-        'https://github.com/owner/repo/pull/3',
-        'waiting_on_maintainer',
-        expect.any(String),
-      );
+      expect(mockRunMove).toHaveBeenCalledWith({
+        prUrl: 'https://github.com/owner/repo/pull/3',
+        target: 'waiting',
+      });
     });
 
-    it('should return 400 for override_status without valid status field', async () => {
+    it('should return 400 for move without valid target field', async () => {
       const result = await sendRequest(
         'POST',
         '/api/action',
         JSON.stringify({
-          action: 'override_status',
+          action: 'move',
           url: 'https://github.com/owner/repo/pull/4',
         }),
       );
       expect(result.statusCode).toBe(400);
       const data = JSON.parse(result.body);
-      expect(data.error).toContain('override_status requires a valid "status" field');
+      expect(data.error).toContain('move requires a valid "target" field');
     });
 
     it('should return 400 for invalid action', async () => {
@@ -588,7 +601,8 @@ describe('dashboard-server', () => {
         'POST',
         '/api/action',
         JSON.stringify({
-          action: 'shelve',
+          action: 'move',
+          target: 'shelved',
         }),
       );
       expect(result.statusCode).toBe(400);
@@ -610,8 +624,9 @@ describe('dashboard-server', () => {
         'POST',
         '/api/action',
         JSON.stringify({
-          action: 'shelve',
+          action: 'move',
           url: 'https://github.com/owner/repo/pull/1',
+          target: 'shelved',
         }),
       );
       expect(result.statusCode).toBe(200);

@@ -352,7 +352,7 @@ async function updateRepoScores(
 }
 
 /**
- * Phase 4: Expire snoozes and partition PRs into active vs shelved buckets.
+ * Phase 4: Partition PRs into active vs shelved buckets.
  * Auto-unshelves PRs where maintainers have engaged, generates the digest,
  * and persists state.
  */
@@ -363,19 +363,6 @@ function partitionPRs(
   recentlyMergedPRs: MergedPR[],
 ): PartitionedPRs {
   const stateManager = getStateManager();
-
-  // Expire any snoozes that have passed their expiresAt timestamp.
-  // Non-critical: corrupted snooze entries should not abort the daily check.
-  try {
-    const expiredSnoozes = stateManager.expireSnoozes();
-    if (expiredSnoozes.length > 0) {
-      const urls = expiredSnoozes.map((url) => `  - ${url}`).join('\n');
-      warn(MODULE, `${expiredSnoozes.length} snoozed PR(s) expired and will resurface:\n${urls}`);
-      stateManager.save();
-    }
-  } catch (error) {
-    warn(MODULE, `Failed to expire/persist snoozes: ${errorMessage(error)}`);
-  }
 
   // Apply dashboard/CLI status overrides before partitioning.
   // This ensures PRs reclassified in the dashboard (e.g., "Need Attention" → "Waiting")
@@ -475,33 +462,8 @@ function generateDigestOutput(
     (i): i is CommentedIssueWithResponse => i.status === 'new_response',
   );
   const summary = formatSummary(digest, capacity, issueResponses);
-  const snoozedUrls = new Set(
-    Object.keys(stateManager.getState().config.snoozedPRs ?? {}).filter((url) => stateManager.isSnoozed(url)),
-  );
-  // Filter dismissed PRs: suppress if dismissed after last activity, auto-undismiss if new activity (#416, #468)
-  const nonDismissedPRs = activePRs.filter((pr) => {
-    const dismissedAt = stateManager.getIssueDismissedAt(pr.url);
-    if (!dismissedAt) return true; // Not dismissed — include
-    const activityTime = new Date(pr.updatedAt).getTime();
-    const dismissTime = new Date(dismissedAt).getTime();
-    if (isNaN(activityTime) || isNaN(dismissTime)) {
-      // Invalid timestamp — fail open (include PR to be safe) without
-      // permanently removing dismiss record (may be a transient data issue)
-      warn(MODULE, `Invalid timestamp in PR dismiss check for ${pr.url}, including PR`);
-      return true;
-    }
-    if (activityTime > dismissTime) {
-      // New activity after dismiss — auto-undismiss and resurface
-      warn(MODULE, `Auto-undismissing PR ${pr.url}: new activity at ${pr.updatedAt} after dismiss at ${dismissedAt}`);
-      stateManager.undismissIssue(pr.url);
-      hasAutoUndismissed = true;
-      return true;
-    }
-    // Still dismissed (last activity is at or before dismiss timestamp)
-    return false;
-  });
 
-  // Persist auto-undismiss state changes (issue + PR combined into one save)
+  // Persist auto-undismiss state changes for issues
   if (hasAutoUndismissed) {
     try {
       stateManager.save();
@@ -509,7 +471,7 @@ function generateDigestOutput(
       warn(MODULE, `Failed to persist auto-undismissed state: ${errorMessage(error)}`);
     }
   }
-  const actionableIssues = collectActionableIssues(nonDismissedPRs, snoozedUrls, previousLastDigestAt);
+  const actionableIssues = collectActionableIssues(activePRs, previousLastDigestAt);
   digest.summary.totalNeedingAttention = actionableIssues.length;
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length);
   const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues);
@@ -562,7 +524,7 @@ function toDailyOutput(result: DailyCheckResult): DailyOutput {
  *   1. fetchPRData        — fetch open PRs, merged/closed counts, issues
  *   2. updateRepoScores   — update signals, star counts, trust in state
  *   3. updateAnalytics    — store monthly chart data
- *   4. partitionPRs       — expire snoozes, shelve/unshelve, generate digest
+ *   4. partitionPRs       — shelve/unshelve, generate digest
  *   5. generateDigestOutput — capacity, dismiss filter, action menu assembly
  */
 export async function executeDailyCheck(token: string): Promise<DailyOutput> {
@@ -602,7 +564,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // Used by collectActionableIssues to determine which PRs are "new" (created since last digest).
   const previousLastDigestAt = getStateManager().getState().lastDigestAt;
 
-  // Phase 4: Expire snoozes, partition PRs, generate and save digest
+  // Phase 4: Partition PRs, generate and save digest
   const { activePRs, shelvedPRs, digest } = partitionPRs(prMonitor, prs, recentlyClosedPRs, recentlyMergedPRs);
 
   // Phase 5: Build structured output (capacity, dismiss filter, action menu)

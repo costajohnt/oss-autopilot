@@ -56,12 +56,12 @@ export interface DashboardData {
 }
 
 /** Actions a user can take from the dashboard. */
-export type ActionType = 'shelve' | 'unshelve' | 'override_status' | 'dismiss_issue_response';
+export type ActionType = 'move' | 'dismiss_issue_response';
 
 /** Request body for POST /api/action. */
 export interface ActionRequest {
   action: ActionType;
   url: string;
-  /** Target status for override_status action. */
-  status?: 'needs_addressing' | 'waiting_on_maintainer';
+  /** Target state for move action. */
+  target?: 'attention' | 'waiting' | 'shelved' | 'auto';
 }

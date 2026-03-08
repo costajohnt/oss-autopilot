@@ -24,12 +24,9 @@ import {
   runSetup,
   runCheckSetup,
   runStartup,
-  runShelve,
-  runUnshelve,
   runDismiss,
   runUndismiss,
-  runSnooze,
-  runUnsnooze,
+  runMove,
 } from '@oss-autopilot/core/commands';
 import { errorMessage } from '@oss-autopilot/core';
 
@@ -61,7 +58,7 @@ function wrapTool<A>(fn: (args: A) => Promise<unknown>): (args: A) => Promise<Re
 }
 
 /**
- * Registers all 21 OSS Autopilot CLI commands as MCP tools on the given server.
+ * Registers all 20 OSS Autopilot CLI commands as MCP tools on the given server.
  */
 export function registerTools(server: McpServer): void {
   // 1. daily — Run daily PR check
@@ -80,8 +77,7 @@ export function registerTools(server: McpServer): void {
   server.registerTool(
     'status',
     {
-      description:
-        'Show current PR tracking status including open PRs, snoozed PRs, shelved PRs, and dismissed issues.',
+      description: 'Show current PR tracking status including open PRs, shelved PRs, and dismissed issues.',
       inputSchema: {
         offline: z
           .boolean()
@@ -295,7 +291,7 @@ export function registerTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    wrapTool(runShelve),
+    wrapTool((args: { prUrl: string }) => runMove({ prUrl: args.prUrl, target: 'shelved' })),
   );
 
   // 17. unshelve — Unshelve a PR
@@ -308,60 +304,47 @@ export function registerTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    wrapTool(runUnshelve),
+    wrapTool((args: { prUrl: string }) => runMove({ prUrl: args.prUrl, target: 'auto' })),
   );
 
-  // 18. dismiss — Dismiss an issue or PR
+  // 18. dismiss — Dismiss an issue
   server.registerTool(
     'dismiss',
     {
-      description: 'Dismiss a GitHub issue or PR so it no longer appears in notifications.',
+      description: 'Dismiss a GitHub issue so it no longer appears in notifications.',
       inputSchema: {
-        url: z.string().describe('Full GitHub issue or PR URL to dismiss'),
+        url: z.string().describe('Full GitHub issue URL to dismiss'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
     wrapTool(runDismiss),
   );
 
-  // 19. undismiss — Undismiss an issue or PR
+  // 19. undismiss — Undismiss an issue
   server.registerTool(
     'undismiss',
     {
-      description: 'Undismiss a previously dismissed issue or PR, re-enabling notifications.',
+      description: 'Undismiss a previously dismissed issue, re-enabling notifications.',
       inputSchema: {
-        url: z.string().describe('Full GitHub issue or PR URL to undismiss'),
+        url: z.string().describe('Full GitHub issue URL to undismiss'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
     wrapTool(runUndismiss),
   );
 
-  // 20. snooze — Snooze a PR
+  // 20. move — Move a PR between states
   server.registerTool(
-    'snooze',
+    'move',
     {
-      description: 'Snooze a PR to temporarily hide it from daily checks for a specified number of days.',
+      description:
+        'Move a PR between states: attention (need attention), waiting (waiting on maintainer), shelved (hidden), or auto (reset to computed status).',
       inputSchema: {
-        prUrl: z.string().describe('Full GitHub PR URL to snooze'),
-        reason: z.string().describe('Reason for snoozing (e.g. "waiting for CI fix", "reviewer on vacation")'),
-        days: z.number().optional().describe('Number of days to snooze. Defaults to 7 if omitted.'),
+        prUrl: z.string().describe('Full GitHub PR URL'),
+        target: z.enum(['attention', 'waiting', 'shelved', 'auto']).describe('Target state for the PR'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    wrapTool(runSnooze),
-  );
-
-  // 21. unsnooze — Unsnooze a PR
-  server.registerTool(
-    'unsnooze',
-    {
-      description: 'Unsnooze a previously snoozed PR, returning it to active monitoring immediately.',
-      inputSchema: {
-        prUrl: z.string().describe('Full GitHub PR URL to unsnooze'),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false },
-    },
-    wrapTool(runUnsnooze),
+    wrapTool(runMove),
   );
 }

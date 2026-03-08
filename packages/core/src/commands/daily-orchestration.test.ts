@@ -34,13 +34,11 @@ const mockAddTrustedProject = vi.fn();
 const mockSetMonthlyMergedCounts = vi.fn();
 const mockSetMonthlyClosedCounts = vi.fn();
 const mockSetMonthlyOpenedCounts = vi.fn();
-const mockExpireSnoozes = vi.fn();
 const mockSetLastDigest = vi.fn();
 const mockSave = vi.fn();
 const mockIsPRShelved = vi.fn();
 const mockUnshelvePR = vi.fn();
 const mockGetStats = vi.fn();
-const mockIsSnoozed = vi.fn();
 const mockGetIssueDismissedAt = vi.fn();
 const mockUndismissIssue = vi.fn();
 const mockGetStatusOverride = vi.fn();
@@ -75,13 +73,11 @@ vi.mock('../core/index.js', async (importOriginal) => {
       setMonthlyMergedCounts: mockSetMonthlyMergedCounts,
       setMonthlyClosedCounts: mockSetMonthlyClosedCounts,
       setMonthlyOpenedCounts: mockSetMonthlyOpenedCounts,
-      expireSnoozes: mockExpireSnoozes,
       setLastDigest: mockSetLastDigest,
       save: mockSave,
       isPRShelved: mockIsPRShelved,
       unshelvePR: mockUnshelvePR,
       getStats: mockGetStats,
-      isSnoozed: mockIsSnoozed,
       getIssueDismissedAt: mockGetIssueDismissedAt,
       undismissIssue: mockUndismissIssue,
       getStatusOverride: mockGetStatusOverride,
@@ -156,7 +152,6 @@ function makeDefaultState(overrides: Record<string, unknown> = {}) {
       trustedProjects: [],
       shelvedPRUrls: [],
       dismissedIssues: {},
-      snoozedPRs: {},
     },
     events: [],
     lastRunAt: '2026-01-24T10:00:00Z',
@@ -207,10 +202,8 @@ beforeEach(() => {
   mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [] });
 
   // Default state manager side-effect mocks
-  mockExpireSnoozes.mockReturnValue([]);
   mockIsPRShelved.mockReturnValue(false);
   mockUnshelvePR.mockReturnValue(true);
-  mockIsSnoozed.mockReturnValue(false);
   mockGetIssueDismissedAt.mockReturnValue(undefined);
   mockGetStatusOverride.mockReturnValue(undefined);
   mockUpdateRepoScore.mockImplementation(() => {});
@@ -286,11 +279,6 @@ describe('executeDailyCheck()', () => {
   it('calls setLastDigest to persist digest in state', async () => {
     await executeDailyCheck('test-token');
     expect(mockSetLastDigest).toHaveBeenCalledOnce();
-  });
-
-  it('calls expireSnoozes to expire stale snoozes', async () => {
-    await executeDailyCheck('test-token');
-    expect(mockExpireSnoozes).toHaveBeenCalledOnce();
   });
 });
 
@@ -487,9 +475,7 @@ describe('executeDailyCheck() — capacity assessment', () => {
       mockFetchRecentlyClosedPRs.mockResolvedValue([]);
       mockFetchRecentlyMergedPRs.mockResolvedValue([]);
       mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [] });
-      mockExpireSnoozes.mockReturnValue([]);
       mockIsPRShelved.mockReturnValue(false);
-      mockIsSnoozed.mockReturnValue(false);
       mockGetIssueDismissedAt.mockReturnValue(undefined);
       mockSave.mockImplementation(() => {});
 
@@ -501,143 +487,6 @@ describe('executeDailyCheck() — capacity assessment', () => {
       expect(result.capacity.criticalIssueCount).toBeGreaterThan(0);
       expect(result.capacity.hasCapacity).toBe(false);
     }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// executeDailyCheck() — snoozed PR filtering
-// ---------------------------------------------------------------------------
-
-describe('executeDailyCheck() — snoozed PR filtering', () => {
-  it('excludes snoozed PRs from actionableIssues for ci_failing type', async () => {
-    const snoozedPR = makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'failing_ci' });
-    const activePR = makePR({ repo: 'owner/repo', number: 2, status: 'needs_addressing', actionReason: 'failing_ci' });
-    mockFetchUserOpenPRs.mockResolvedValue({ prs: [snoozedPR, activePR], failures: [] });
-    mockGenerateDigest.mockReturnValue(makeDigest([snoozedPR, activePR]));
-    mockIsPRShelved.mockReturnValue(false);
-
-    // The snoozedPRs config key is used to filter
-    mockGetState.mockReturnValue(
-      makeDefaultState({
-        config: {
-          setupComplete: true,
-          githubUsername: 'testuser',
-          maxActivePRs: 10,
-          languages: ['TypeScript'],
-          labels: [],
-          excludeRepos: [],
-          trustedProjects: [],
-          shelvedPRUrls: [],
-          dismissedIssues: {},
-          snoozedPRs: { [snoozedPR.url]: { expiresAt: '2099-01-01T00:00:00Z' } },
-        },
-      }),
-    );
-    // isSnoozed returns true only for the snoozed PR
-    mockIsSnoozed.mockImplementation((url: string) => url === snoozedPR.url);
-
-    const result = await executeDailyCheck('test-token');
-
-    // Only activePR should be in actionableIssues (compact format: prUrl instead of pr)
-    const ciFailingIssues = result.actionableIssues.filter((i) => i.type === 'ci_failing');
-    expect(ciFailingIssues).toHaveLength(1);
-    expect(ciFailingIssues[0].prUrl).toBe(activePR.url);
-  });
-
-  it('includes snoozed PR in active PRs (still shows in digest)', async () => {
-    const snoozedPR = makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'failing_ci' });
-    mockFetchUserOpenPRs.mockResolvedValue({ prs: [snoozedPR], failures: [] });
-    mockGenerateDigest.mockReturnValue(makeDigest([snoozedPR]));
-    mockIsPRShelved.mockReturnValue(false);
-    mockGetState.mockReturnValue(
-      makeDefaultState({
-        config: {
-          setupComplete: true,
-          githubUsername: 'testuser',
-          maxActivePRs: 10,
-          languages: [],
-          labels: [],
-          excludeRepos: [],
-          trustedProjects: [],
-          shelvedPRUrls: [],
-          dismissedIssues: {},
-          snoozedPRs: { [snoozedPR.url]: { expiresAt: '2099-01-01T00:00:00Z' } },
-        },
-      }),
-    );
-    mockIsSnoozed.mockReturnValue(true);
-
-    const result = await executeDailyCheck('test-token');
-
-    // PR is still active (appears in repoGroups) even when snoozed
-    const allGroupedPRUrls = result.repoGroups.flatMap((g) => g.prUrls);
-    expect(allGroupedPRUrls).toContain(snoozedPR.url);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// executeDailyCheck() — dismissed PR URL filtering (#416)
-// ---------------------------------------------------------------------------
-
-describe('executeDailyCheck() — dismissed PR URL filtering (#416, #468)', () => {
-  it('excludes dismissed PR URLs from actionableIssues when no new activity', async () => {
-    // Dismissed AFTER the PR's last activity — should stay dismissed
-    const dismissedPR = makePR({
-      repo: 'owner/repo',
-      number: 1,
-      status: 'needs_addressing',
-      actionReason: 'needs_response',
-      updatedAt: '2026-01-10T00:00:00Z',
-    });
-    const activePR = makePR({
-      repo: 'owner/repo',
-      number: 2,
-      status: 'needs_addressing',
-      actionReason: 'needs_response',
-    });
-    mockFetchUserOpenPRs.mockResolvedValue({ prs: [dismissedPR, activePR], failures: [] });
-    mockGenerateDigest.mockReturnValue(makeDigest([dismissedPR, activePR]));
-    mockIsPRShelved.mockReturnValue(false);
-
-    // Return dismiss timestamp only for the dismissed PR
-    mockGetIssueDismissedAt.mockImplementation((url: string) =>
-      url === dismissedPR.url ? '2026-01-15T00:00:00Z' : undefined,
-    );
-
-    const result = await executeDailyCheck('test-token');
-
-    const needsResponseIssues = result.actionableIssues.filter((i) => i.type === 'needs_response');
-    expect(needsResponseIssues).toHaveLength(1);
-    expect(needsResponseIssues[0].prUrl).toBe(activePR.url);
-    expect(mockUndismissIssue).not.toHaveBeenCalledWith(dismissedPR.url);
-  });
-
-  it('auto-undismisses PR when new activity arrives after dismiss timestamp (#468)', async () => {
-    // PR updated AFTER dismiss — should auto-undismiss and resurface
-    const dismissedPR = makePR({
-      repo: 'owner/repo',
-      number: 1,
-      status: 'needs_addressing',
-      actionReason: 'needs_response',
-      updatedAt: '2026-02-01T00:00:00Z',
-    });
-    mockFetchUserOpenPRs.mockResolvedValue({ prs: [dismissedPR], failures: [] });
-    mockGenerateDigest.mockReturnValue(makeDigest([dismissedPR]));
-    mockIsPRShelved.mockReturnValue(false);
-
-    // Return dismiss timestamp for the dismissed PR
-    mockGetIssueDismissedAt.mockImplementation((url: string) =>
-      url === dismissedPR.url ? '2026-01-15T00:00:00Z' : undefined,
-    );
-
-    const result = await executeDailyCheck('test-token');
-
-    // PR should be included (auto-undismissed)
-    const needsResponseIssues = result.actionableIssues.filter((i) => i.type === 'needs_response');
-    expect(needsResponseIssues).toHaveLength(1);
-    expect(needsResponseIssues[0].prUrl).toBe(dismissedPR.url);
-    expect(mockUndismissIssue).toHaveBeenCalledWith(dismissedPR.url);
-    expect(mockSave).toHaveBeenCalled();
   });
 });
 

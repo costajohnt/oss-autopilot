@@ -41,15 +41,12 @@ export { runRead } from './read.js';
 export { runShelve } from './shelve.js';
 /** Restore a shelved PR to the daily digest. */
 export { runUnshelve } from './shelve.js';
+/** Move a PR between states: attention, waiting, shelved, auto. */
+export { runMove } from './move.js';
 /** Dismiss issue reply notifications (auto-resurfaces on new activity). */
 export { runDismiss } from './dismiss.js';
 /** Restore a dismissed issue to notifications. */
 export { runUndismiss } from './dismiss.js';
-/** Temporarily suppress CI failure notifications for a PR. */
-export { runSnooze } from './snooze.js';
-/** Restore CI failure notifications for a snoozed PR. */
-export { runUnsnooze } from './snooze.js';
-
 // ── Issue & Comment Management ──────────────────────────────────────────────
 
 /** Fetch comments for tracked issues/PRs. */
@@ -92,8 +89,8 @@ export type {
 } from '../formatters/json.js';
 export type { ReadOutput } from './read.js';
 export type { ShelveOutput, UnshelveOutput } from './shelve.js';
+export type { MoveOutput, MoveTarget } from './move.js';
 export type { DismissOutput, UndismissOutput } from './dismiss.js';
-export type { SnoozeOutput, UnsnoozeOutput } from './snooze.js';
 export type { UntrackOutput } from './track.js';
 export type { InitOutput } from './init.js';
 export type { ConfigSetOutput, ConfigCommandOutput } from './config.js';

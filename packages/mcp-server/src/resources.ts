@@ -49,7 +49,7 @@ export function registerResources(server: McpServer): void {
     {
       title: 'PR Tracking Status',
       description:
-        'Current PR tracking status including open PRs, snoozed PRs, shelved PRs, and dismissed issues. Uses cached local state only (no GitHub fetch).',
+        'Current PR tracking status including open PRs, shelved PRs, and dismissed issues. Uses cached local state only (no GitHub fetch).',
       mimeType: 'application/json',
     },
     wrapResource(() => runStatus({ offline: true })),

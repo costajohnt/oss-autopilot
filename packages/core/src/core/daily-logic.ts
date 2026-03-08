@@ -246,11 +246,7 @@ export function assessCapacity(
  * Note: Recently closed PRs are informational only and excluded from this list.
  * They are available separately in digest.recentlyClosedPRs (#156).
  */
-export function collectActionableIssues(
-  prs: FetchedPR[],
-  snoozedUrls: Set<string> = new Set(),
-  lastDigestAt?: string,
-): ActionableIssue[] {
+export function collectActionableIssues(prs: FetchedPR[], lastDigestAt?: string): ActionableIssue[] {
   const issues: ActionableIssue[] = [];
   const actionPRs = prs.filter((pr) => pr.status === 'needs_addressing');
   const lastDigestTime = lastDigestAt ? new Date(lastDigestAt).getTime() : NaN;
@@ -266,7 +262,6 @@ export function collectActionableIssues(
   for (const reason of reasonOrder) {
     for (const pr of actionPRs) {
       if (pr.actionReason !== reason) continue;
-      if (reason === 'failing_ci' && snoozedUrls.has(pr.url)) continue;
 
       let label: string;
       let type: ActionableIssueType;

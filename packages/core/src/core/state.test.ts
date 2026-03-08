@@ -729,133 +729,6 @@ describe('dismissIssue / undismissIssue / getIssueDismissedAt', () => {
   });
 });
 
-// ── Snooze / Unsnooze PR CI Failures ──────────────────────────────────────
-describe('snoozePR / unsnoozePR / isSnoozed / expireSnoozes', () => {
-  let stateManager: StateManager;
-
-  beforeEach(() => {
-    stateManager = new StateManager(true);
-  });
-
-  it('should snooze a PR and mark it as snoozed', () => {
-    const url = 'https://github.com/owner/repo/pull/1';
-    expect(stateManager.snoozePR(url, 'upstream issue', 7)).toBe(true);
-    expect(stateManager.isSnoozed(url)).toBe(true);
-  });
-
-  it('should return false when snoozing an already-snoozed PR (idempotent)', () => {
-    const url = 'https://github.com/owner/repo/pull/1';
-    stateManager.snoozePR(url, 'upstream issue', 7);
-    expect(stateManager.snoozePR(url, 'different reason', 14)).toBe(false);
-  });
-
-  it('should store snooze metadata correctly', () => {
-    const url = 'https://github.com/owner/repo/pull/1';
-    const before = Date.now();
-    stateManager.snoozePR(url, 'flaky infra', 14);
-    const after = Date.now();
-
-    const info = stateManager.getSnoozeInfo(url);
-    expect(info).toBeDefined();
-    expect(info!.reason).toBe('flaky infra');
-
-    const snoozedAt = new Date(info!.snoozedAt).getTime();
-    expect(snoozedAt).toBeGreaterThanOrEqual(before);
-    expect(snoozedAt).toBeLessThanOrEqual(after);
-
-    const expiresAt = new Date(info!.expiresAt).getTime();
-    const expectedExpiry = snoozedAt + 14 * 24 * 60 * 60 * 1000;
-    expect(expiresAt).toBe(expectedExpiry);
-  });
-
-  it('should unsnooze a snoozed PR', () => {
-    const url = 'https://github.com/owner/repo/pull/1';
-    stateManager.snoozePR(url, 'upstream issue', 7);
-    expect(stateManager.unsnoozePR(url)).toBe(true);
-    expect(stateManager.isSnoozed(url)).toBe(false);
-    expect(stateManager.getSnoozeInfo(url)).toBeUndefined();
-  });
-
-  it('should return false when unsnoozing a PR that is not snoozed', () => {
-    const url = 'https://github.com/owner/repo/pull/1';
-    expect(stateManager.unsnoozePR(url)).toBe(false);
-  });
-
-  it('should report expired snoozes as not snoozed via isSnoozed', () => {
-    const url = 'https://github.com/owner/repo/pull/1';
-    stateManager.snoozePR(url, 'test', 7);
-
-    // Manually set expiresAt to the past
-    const config = stateManager.getState().config as any;
-    config.snoozedPRs[url].expiresAt = '2020-01-01T00:00:00.000Z';
-
-    expect(stateManager.isSnoozed(url)).toBe(false);
-  });
-
-  it('should expire snoozes that are past their expiresAt', () => {
-    const url1 = 'https://github.com/owner/repo/pull/1';
-    const url2 = 'https://github.com/owner/repo/pull/2';
-    stateManager.snoozePR(url1, 'expired one', 7);
-    stateManager.snoozePR(url2, 'still active', 7);
-
-    // Set url1 to expired
-    const config = stateManager.getState().config as any;
-    config.snoozedPRs[url1].expiresAt = '2020-01-01T00:00:00.000Z';
-
-    const expired = stateManager.expireSnoozes();
-    expect(expired).toEqual([url1]);
-    expect(stateManager.getSnoozeInfo(url1)).toBeUndefined();
-    expect(stateManager.getSnoozeInfo(url2)).toBeDefined();
-  });
-
-  it('should return empty array when no snoozes have expired', () => {
-    const url = 'https://github.com/owner/repo/pull/1';
-    stateManager.snoozePR(url, 'test', 7);
-    const expired = stateManager.expireSnoozes();
-    expect(expired).toEqual([]);
-  });
-
-  it('should return empty array when there are no snoozes', () => {
-    expect(stateManager.expireSnoozes()).toEqual([]);
-  });
-
-  it('should handle multiple snoozed PRs independently', () => {
-    const url1 = 'https://github.com/owner/repo/pull/1';
-    const url2 = 'https://github.com/owner/repo/pull/2';
-    stateManager.snoozePR(url1, 'reason 1', 7);
-    stateManager.snoozePR(url2, 'reason 2', 14);
-    expect(stateManager.isSnoozed(url1)).toBe(true);
-    expect(stateManager.isSnoozed(url2)).toBe(true);
-
-    stateManager.unsnoozePR(url1);
-    expect(stateManager.isSnoozed(url1)).toBe(false);
-    expect(stateManager.isSnoozed(url2)).toBe(true);
-  });
-
-  it('should handle isSnoozed when snoozedPRs is undefined', () => {
-    (stateManager.getState().config as any).snoozedPRs = undefined;
-    expect(stateManager.isSnoozed('https://github.com/owner/repo/pull/1')).toBe(false);
-  });
-
-  it('should handle getSnoozeInfo when snoozedPRs is undefined', () => {
-    (stateManager.getState().config as any).snoozedPRs = undefined;
-    expect(stateManager.getSnoozeInfo('https://github.com/owner/repo/pull/1')).toBeUndefined();
-  });
-
-  it('should initialize snoozedPRs object when first snoozing', () => {
-    (stateManager.getState().config as any).snoozedPRs = undefined;
-    const url = 'https://github.com/owner/repo/pull/1';
-    expect(stateManager.snoozePR(url, 'test', 7)).toBe(true);
-    expect(stateManager.getState().config.snoozedPRs).toBeDefined();
-    expect(Object.keys(stateManager.getState().config.snoozedPRs!)).toHaveLength(1);
-  });
-
-  it('should handle expireSnoozes when snoozedPRs is undefined', () => {
-    (stateManager.getState().config as any).snoozedPRs = undefined;
-    expect(stateManager.expireSnoozes()).toEqual([]);
-  });
-});
-
 // ── Status overrides (#575) ─────────────────────────────────────────────────
 describe('setStatusOverride / clearStatusOverride / getStatusOverride', () => {
   let stateManager: StateManager;
@@ -1308,7 +1181,6 @@ function makeBaseConfig(): Record<string, unknown> {
     aiPolicyBlocklist: [],
     shelvedPRUrls: [],
     dismissedIssues: {},
-    snoozedPRs: {},
   };
 }
 
@@ -2146,5 +2018,113 @@ describe('StateManager merged PRs', () => {
       (stateManager as any).state.closedPRs = [{ url: 'https://github.com/a/b/pull/1', title: 'Bad', closedAt: '' }];
       expect(stateManager.getClosedPRWatermark()).toBeUndefined();
     });
+  });
+});
+
+// ── Legacy state cleanup on load ────────────────────────────────────────────
+describe('legacy state cleanup on load', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-cleanup-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('strips snoozedPRs from config on load', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const stateData = makeV2State();
+    // Inject legacy snoozedPRs field into config
+    (stateData.config as Record<string, unknown>).snoozedPRs = {
+      'https://github.com/owner/repo/pull/1': '2025-02-01T00:00:00Z',
+    };
+    fs.writeFileSync(statePath, JSON.stringify(stateData), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    // snoozedPRs should be stripped from loaded state
+    expect((state.config as unknown as Record<string, unknown>).snoozedPRs).toBeUndefined();
+
+    // Verify file on disk no longer has snoozedPRs
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(onDisk.config.snoozedPRs).toBeUndefined();
+  });
+
+  it('strips PR URLs from dismissedIssues on load', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const stateData = makeV2State();
+    (stateData.config as Record<string, unknown>).dismissedIssues = {
+      'https://github.com/owner/repo/issues/1': '2025-01-10T00:00:00Z',
+      'https://github.com/owner/repo/pull/42': '2025-01-11T00:00:00Z',
+      'https://github.com/other/project/issues/5': '2025-01-12T00:00:00Z',
+      'https://github.com/other/project/pull/99': '2025-01-13T00:00:00Z',
+    };
+    fs.writeFileSync(statePath, JSON.stringify(stateData), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    // PR URLs should be removed
+    expect(state.config.dismissedIssues['https://github.com/owner/repo/pull/42']).toBeUndefined();
+    expect(state.config.dismissedIssues['https://github.com/other/project/pull/99']).toBeUndefined();
+
+    // Issue URLs should remain
+    expect(state.config.dismissedIssues['https://github.com/owner/repo/issues/1']).toBe('2025-01-10T00:00:00Z');
+    expect(state.config.dismissedIssues['https://github.com/other/project/issues/5']).toBe('2025-01-12T00:00:00Z');
+  });
+
+  it('preserves issue URLs in dismissedIssues', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const stateData = makeV2State();
+    (stateData.config as Record<string, unknown>).dismissedIssues = {
+      'https://github.com/owner/repo/issues/10': '2025-02-01T00:00:00Z',
+      'https://github.com/owner/repo/issues/20': '2025-02-02T00:00:00Z',
+      'https://github.com/owner/repo/pull/30': '2025-02-03T00:00:00Z',
+    };
+    fs.writeFileSync(statePath, JSON.stringify(stateData), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    // Both issue URLs survive intact
+    expect(Object.keys(state.config.dismissedIssues)).toHaveLength(2);
+    expect(state.config.dismissedIssues['https://github.com/owner/repo/issues/10']).toBe('2025-02-01T00:00:00Z');
+    expect(state.config.dismissedIssues['https://github.com/owner/repo/issues/20']).toBe('2025-02-02T00:00:00Z');
+
+    // Verify on disk as well
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(Object.keys(onDisk.config.dismissedIssues)).toHaveLength(2);
+    expect(onDisk.config.dismissedIssues['https://github.com/owner/repo/pull/30']).toBeUndefined();
+  });
+
+  it('does not write to disk if no cleanup needed', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    // Write a clean v2 state — no snoozedPRs, no PR URLs in dismissedIssues
+    const stateData = makeV2State();
+    (stateData.config as Record<string, unknown>).dismissedIssues = {
+      'https://github.com/owner/repo/issues/1': '2025-01-10T00:00:00Z',
+    };
+    fs.writeFileSync(statePath, JSON.stringify(stateData), { mode: 0o600 });
+
+    // Record file modification time before load
+    const mtimeBefore = fs.statSync(statePath).mtimeMs;
+
+    // Small delay so any write would be distinguishable by mtime
+    const start = Date.now();
+    while (Date.now() - start < 50) {
+      // busy-wait to ensure mtime would differ if file were rewritten
+    }
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    // State should load normally
+    expect(state.config.dismissedIssues['https://github.com/owner/repo/issues/1']).toBe('2025-01-10T00:00:00Z');
+
+    // File should NOT have been rewritten (mtime unchanged)
+    const mtimeAfter = fs.statSync(statePath).mtimeMs;
+    expect(mtimeAfter).toBe(mtimeBefore);
   });
 });

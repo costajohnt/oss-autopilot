@@ -47,11 +47,13 @@ const TEST_PR_URL = 'https://github.com/owner/repo/pull/1';
 describe('runShelve', () => {
   const mockSave = vi.fn();
   const mockShelvePR = vi.fn();
+  const mockClearStatusOverride = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetStateManager.mockReturnValue({
       shelvePR: mockShelvePR,
+      clearStatusOverride: mockClearStatusOverride,
       save: mockSave,
     } as any);
   });
@@ -65,11 +67,21 @@ describe('runShelve', () => {
     expect(result).toEqual({ shelved: true, url: TEST_PR_URL });
   });
 
-  it('should not save state when PR is already shelved', async () => {
+  it('should not save state when PR is already shelved and no override', async () => {
     mockShelvePR.mockReturnValue(false);
+    mockClearStatusOverride.mockReturnValue(false);
     const result = await runShelve({ prUrl: TEST_PR_URL });
 
     expect(mockSave).not.toHaveBeenCalled();
+    expect(result).toEqual({ shelved: false, url: TEST_PR_URL });
+  });
+
+  it('should save state when already shelved but override was cleared', async () => {
+    mockShelvePR.mockReturnValue(false);
+    mockClearStatusOverride.mockReturnValue(true);
+    const result = await runShelve({ prUrl: TEST_PR_URL });
+
+    expect(mockSave).toHaveBeenCalled();
     expect(result).toEqual({ shelved: false, url: TEST_PR_URL });
   });
 });
@@ -77,11 +89,13 @@ describe('runShelve', () => {
 describe('runUnshelve', () => {
   const mockSave = vi.fn();
   const mockUnshelvePR = vi.fn();
+  const mockClearStatusOverride = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetStateManager.mockReturnValue({
       unshelvePR: mockUnshelvePR,
+      clearStatusOverride: mockClearStatusOverride,
       save: mockSave,
     } as any);
   });
@@ -95,11 +109,21 @@ describe('runUnshelve', () => {
     expect(result).toEqual({ unshelved: true, url: TEST_PR_URL });
   });
 
-  it('should not save state when PR was not shelved', async () => {
+  it('should not save state when PR was not shelved and no override', async () => {
     mockUnshelvePR.mockReturnValue(false);
+    mockClearStatusOverride.mockReturnValue(false);
     const result = await runUnshelve({ prUrl: TEST_PR_URL });
 
     expect(mockSave).not.toHaveBeenCalled();
+    expect(result).toEqual({ unshelved: false, url: TEST_PR_URL });
+  });
+
+  it('should save state when not shelved but override was cleared', async () => {
+    mockUnshelvePR.mockReturnValue(false);
+    mockClearStatusOverride.mockReturnValue(true);
+    const result = await runUnshelve({ prUrl: TEST_PR_URL });
+
+    expect(mockSave).toHaveBeenCalled();
     expect(result).toEqual({ unshelved: false, url: TEST_PR_URL });
   });
 });

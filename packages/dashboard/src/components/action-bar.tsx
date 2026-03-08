@@ -23,8 +23,8 @@ export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
     }
   }
 
-  const oppositeStatus = pr.status === 'needs_addressing' ? 'waiting_on_maintainer' : 'needs_addressing';
   const overrideLabel = pr.status === 'needs_addressing' ? 'Move to Waiting' : 'Move to Need Attention';
+  const overrideTarget = pr.status === 'needs_addressing' ? 'waiting' : 'attention';
 
   return (
     <div class="action-bar">
@@ -35,8 +35,9 @@ export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
         disabled={busy}
         onClick={() =>
           handleAction({
-            action: isShelved ? 'unshelve' : 'shelve',
+            action: 'move',
             url: pr.url,
+            target: isShelved ? 'auto' : 'shelved',
           })
         }
       >
@@ -48,9 +49,9 @@ export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
         disabled={busy}
         onClick={() =>
           handleAction({
-            action: 'override_status',
+            action: 'move',
             url: pr.url,
-            status: oppositeStatus,
+            target: overrideTarget,
           })
         }
       >

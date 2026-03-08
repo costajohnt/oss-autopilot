@@ -57,17 +57,16 @@ Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `
 # Post a comment to an issue or PR
 <prefix> post <url> "message" --json
 
-# Shelve/unshelve a PR (deprioritize/restore)
+# Move a PR between states
+<prefix> move <pr-url> <attention|waiting|shelved|auto> --json
+
+# Shelve/unshelve a PR (aliases for move)
 <prefix> shelve <pr-url> --json
 <prefix> unshelve <pr-url> --json
 
-# Snooze/unsnooze a PR (hide temporarily)
-<prefix> snooze <pr-url> --json [--days N] [--reason "text"]
-<prefix> unsnooze <pr-url> --json
-
-# Dismiss/undismiss a URL
-<prefix> dismiss <url> --json
-<prefix> undismiss <url> --json
+# Dismiss/undismiss an issue
+<prefix> dismiss <issue-url> --json
+<prefix> undismiss <issue-url> --json
 ```
 
 ### Dashboard

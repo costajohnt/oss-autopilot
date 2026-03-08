@@ -39,13 +39,9 @@ describe('runDismiss', () => {
     expect(result).toEqual({ dismissed: true, url: TEST_ISSUE_URL });
   });
 
-  it('should dismiss a PR URL and save state (#416)', async () => {
-    mockDismissIssue.mockReturnValue(true);
-    const result = await runDismiss({ url: TEST_PR_URL });
-
-    expect(mockDismissIssue).toHaveBeenCalledWith(TEST_PR_URL, expect.any(String));
-    expect(mockSave).toHaveBeenCalled();
-    expect(result).toEqual({ dismissed: true, url: TEST_PR_URL });
+  it('should reject PR URLs with a ValidationError', async () => {
+    const { ValidationError } = await import('../core/errors.js');
+    await expect(runDismiss({ url: TEST_PR_URL })).rejects.toThrow(ValidationError);
   });
 
   it('should not save state when issue is already dismissed', async () => {
@@ -78,13 +74,9 @@ describe('runUndismiss', () => {
     expect(result).toEqual({ undismissed: true, url: TEST_ISSUE_URL });
   });
 
-  it('should undismiss a PR URL and save state (#416)', async () => {
-    mockUndismissIssue.mockReturnValue(true);
-    const result = await runUndismiss({ url: TEST_PR_URL });
-
-    expect(mockUndismissIssue).toHaveBeenCalledWith(TEST_PR_URL);
-    expect(mockSave).toHaveBeenCalled();
-    expect(result).toEqual({ undismissed: true, url: TEST_PR_URL });
+  it('should reject PR URLs with a ValidationError', async () => {
+    const { ValidationError } = await import('../core/errors.js');
+    await expect(runUndismiss({ url: TEST_PR_URL })).rejects.toThrow(ValidationError);
   });
 
   it('should not save state when issue was not dismissed', async () => {

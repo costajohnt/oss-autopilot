@@ -105,8 +105,9 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `setup` / `checkSetup` | `setup.ts` | First-run setup and setup verification |
 | `vet` | `vet.ts` | Vet a single issue for claimability |
 | `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-templates.ts`, `dashboard-server.ts`) |
-| `shelve` / `unshelve` | `shelve.ts` | Temporarily hide PRs from daily digest |
-| `snooze` / `unsnooze` | `snooze.ts` | Temporarily suppress PR notifications |
+| `move` | `move.ts` | Transition a PR between states: attention, waiting, shelved, auto |
+| `shelve` / `unshelve` | `move.ts` (aliases) | Exclude PRs from capacity and actionable items |
+| `override` / `clear-override` | `move.ts` (aliases) | Backward-compatible status override commands |
 | `dismiss` / `undismiss` | `dismiss.ts` | Dismiss issue reply notifications (auto-resurfaces on new activity) |
 | `comments` / `post` / `claim` | `comments.ts` | Track issue conversations, post comments, claim issues |
 | `local-repos` | `local-repos.ts` | Scan for locally cloned repos |
@@ -242,7 +243,7 @@ The root `AgentState` interface (see `packages/core/src/core/types.ts` for the c
 interface AgentState {
   version: number;                   // Currently 2 (v2 fresh-fetch architecture)
   repoScores: Record<string, RepoScore>;
-  config: AgentConfig;              // User preferences + shelved/snoozed/dismissed state
+  config: AgentConfig;              // User preferences + shelved/dismissed state
   events: StateEvent[];             // Audit log (max 1000 entries)
   lastRunAt: string;
   lastDigestAt?: string;
@@ -256,9 +257,9 @@ interface AgentState {
 }
 ```
 
-Shelving, snoozing, and dismissing state lives inside `config: AgentConfig`:
-- `config.shelvedPRUrls: string[]` — PR URLs temporarily hidden from daily digest
-- `config.snoozedPRs: Record<string, SnoozeInfo>` — PR URLs with snoozed CI failures
+Shelving, overrides, and dismissing state lives inside `config: AgentConfig`:
+- `config.shelvedPRUrls: string[]` — PR URLs manually shelved (excluded from capacity and actionable items, auto-unshelved when maintainers engage)
+- `config.statusOverrides: Record<string, StatusOverride>` — Manual PR status overrides set via `move` command. Auto-clears when the PR has new activity
 - `config.dismissedIssues: Record<string, string>` — Issue URLs mapped to dismiss timestamps
 
 ### What's NOT Stored (v2 Design)

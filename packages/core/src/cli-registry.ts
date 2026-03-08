@@ -745,16 +745,12 @@ export const commands: CLICommandDef[] = [
         .option('--json', 'Output as JSON')
         .action(async (prUrl, options) => {
           try {
-            const { runShelve } = await import('./commands/shelve.js');
-            const data = await runShelve({ prUrl });
+            const { runMove } = await import('./commands/move.js');
+            const data = await runMove({ prUrl, target: 'shelved' });
             if (options.json) {
               outputJson(data);
-            } else if (data.shelved) {
-              console.log(`Shelved: ${prUrl}`);
-              console.log('This PR is now excluded from capacity and actionable issues.');
-              console.log('It will auto-unshelve if a maintainer engages.');
             } else {
-              console.log('PR is already shelved.');
+              console.log(data.description);
             }
           } catch (err) {
             handleCommandError(err, options.json);
@@ -774,15 +770,37 @@ export const commands: CLICommandDef[] = [
         .option('--json', 'Output as JSON')
         .action(async (prUrl, options) => {
           try {
-            const { runUnshelve } = await import('./commands/shelve.js');
-            const data = await runUnshelve({ prUrl });
+            const { runMove } = await import('./commands/move.js');
+            const data = await runMove({ prUrl, target: 'auto' });
             if (options.json) {
               outputJson(data);
-            } else if (data.unshelved) {
-              console.log(`Unshelved: ${prUrl}`);
-              console.log('This PR is now active again.');
             } else {
-              console.log('PR was not shelved.');
+              console.log(data.description);
+            }
+          } catch (err) {
+            handleCommandError(err, options.json);
+          }
+        });
+    },
+  },
+
+  // ── Move ───────────────────────────────────────────────────────────
+  {
+    name: 'move',
+    localOnly: true,
+    register(program) {
+      program
+        .command('move <pr-url> <target>')
+        .description('Move a PR between states: attention, waiting, shelved, or auto (reset to computed)')
+        .option('--json', 'Output as JSON')
+        .action(async (prUrl, target, options) => {
+          try {
+            const { runMove } = await import('./commands/move.js');
+            const data = await runMove({ prUrl, target });
+            if (options.json) {
+              outputJson(data);
+            } else {
+              console.log(data.description);
             }
           } catch (err) {
             handleCommandError(err, options.json);
@@ -798,7 +816,7 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('dismiss <url>')
-        .description('Dismiss notifications for an issue or PR (resurfaces on new activity)')
+        .description('Dismiss notifications for an issue (resurfaces on new activity)')
         .option('--json', 'Output as JSON')
         .action(async (url, options) => {
           try {
@@ -827,7 +845,7 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('undismiss <url>')
-        .description('Undismiss an issue or PR (re-enable notifications)')
+        .description('Undismiss an issue (re-enable notifications)')
         .option('--json', 'Output as JSON')
         .action(async (url, options) => {
           try {
@@ -848,74 +866,6 @@ export const commands: CLICommandDef[] = [
     },
   },
 
-  // ── Snooze ─────────────────────────────────────────────────────────────
-  {
-    name: 'snooze',
-    localOnly: true,
-    register(program) {
-      program
-        .command('snooze <pr-url>')
-        .description('Snooze CI failure notifications for a PR')
-        .requiredOption('--reason <reason>', 'Reason for snoozing (e.g., "upstream infrastructure issue")')
-        .option('--days <days>', 'Number of days to snooze (default: 7)', '7')
-        .option('--json', 'Output as JSON')
-        .action(async (prUrl, options) => {
-          try {
-            const days = parseInt(options.days, 10);
-            if (!Number.isFinite(days) || days < 1 || !Number.isInteger(days)) {
-              throw new Error(`Invalid days value "${options.days}". Must be a positive integer.`);
-            }
-            const { runSnooze } = await import('./commands/snooze.js');
-            const data = await runSnooze({ prUrl, reason: options.reason, days });
-            if (options.json) {
-              outputJson(data);
-            } else if (data.snoozed) {
-              console.log(`Snoozed: ${prUrl}`);
-              console.log(`Reason: ${data.reason}`);
-              console.log(`Duration: ${data.days} day${data.days === 1 ? '' : 's'}`);
-              console.log(`Expires: ${data.expiresAt ? new Date(data.expiresAt).toLocaleString() : 'unknown'}`);
-              console.log('CI failure notifications are now muted for this PR.');
-            } else {
-              console.log('PR is already snoozed.');
-              if (data.expiresAt) {
-                console.log(`Expires: ${new Date(data.expiresAt).toLocaleString()}`);
-              }
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
-    },
-  },
-
-  // ── Unsnooze ───────────────────────────────────────────────────────────
-  {
-    name: 'unsnooze',
-    localOnly: true,
-    register(program) {
-      program
-        .command('unsnooze <pr-url>')
-        .description('Unsnooze a PR (re-enable CI failure notifications)')
-        .option('--json', 'Output as JSON')
-        .action(async (prUrl, options) => {
-          try {
-            const { runUnsnooze } = await import('./commands/snooze.js');
-            const data = await runUnsnooze({ prUrl });
-            if (options.json) {
-              outputJson(data);
-            } else if (data.unsnoozed) {
-              console.log(`Unsnoozed: ${prUrl}`);
-              console.log('CI failure notifications are active again for this PR.');
-            } else {
-              console.log('PR was not snoozed.');
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
-    },
-  },
-
   // ── Override Status ────────────────────────────────────────────────────
   {
     name: 'override',
@@ -927,13 +877,17 @@ export const commands: CLICommandDef[] = [
         .option('--json', 'Output as JSON')
         .action(async (prUrl, status, options) => {
           try {
-            const { runOverride } = await import('./commands/override.js');
-            const data = await runOverride({ prUrl, status });
+            const { runMove } = await import('./commands/move.js');
+            const validStatuses = ['needs_addressing', 'waiting_on_maintainer'];
+            if (!validStatuses.includes(status)) {
+              throw new Error(`Invalid status "${status}". Must be one of: ${validStatuses.join(', ')}`);
+            }
+            const target = status === 'needs_addressing' ? 'attention' : 'waiting';
+            const data = await runMove({ prUrl, target });
             if (options.json) {
               outputJson(data);
             } else {
-              console.log(`Override set: ${prUrl} → ${data.status}`);
-              console.log('This override will auto-clear when the PR has new activity.');
+              console.log(data.description);
             }
           } catch (err) {
             handleCommandError(err, options.json);
@@ -953,14 +907,12 @@ export const commands: CLICommandDef[] = [
         .option('--json', 'Output as JSON')
         .action(async (prUrl, options) => {
           try {
-            const { runClearOverride } = await import('./commands/override.js');
-            const data = await runClearOverride({ prUrl });
+            const { runMove } = await import('./commands/move.js');
+            const data = await runMove({ prUrl, target: 'auto' });
             if (options.json) {
               outputJson(data);
-            } else if (data.cleared) {
-              console.log(`Override cleared: ${prUrl}`);
             } else {
-              console.log('No override was set for this PR.');
+              console.log(data.description);
             }
           } catch (err) {
             handleCommandError(err, options.json);

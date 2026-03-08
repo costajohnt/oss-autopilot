@@ -26,7 +26,7 @@ describe('MCP server stdio transport', { timeout: 30_000 }, () => {
   it('lists tools via stdio', async () => {
     client = await createStdioClient();
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(21);
+    expect(tools.length).toBe(20);
     expect(tools.some((t) => t.name === 'daily')).toBe(true);
   });
 

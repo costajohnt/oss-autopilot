@@ -52,7 +52,7 @@ Then add to your MCP client config:
 }
 ```
 
-The MCP server exposes 21 tools, 5 resources, and 3 prompts — the full OSS Autopilot feature set.
+The MCP server exposes 20 tools, 5 resources, and 3 prompts — the full OSS Autopilot feature set.
 
 </details>
 
@@ -306,7 +306,7 @@ OSS Autopilot is a **pnpm monorepo** with three packages, plus a plugin layer:
 │  │ @oss-auto-   │  │ @oss-autopilot/dashboard │  │
 │  │ pilot/mcp    │  │ Preact + Vite             │  │
 │  │              │  │ PR management, charts,    │  │
-│  │ 21 tools     │  │ actions                   │  │
+│  │ 20 tools     │  │ actions                   │  │
 │  │ 5 resources  │  │                           │  │
 │  │ 3 prompts    │  │                           │  │
 │  └──────┬───────┘  └────────────┬─────────────┘  │
@@ -332,7 +332,7 @@ The MCP server wraps every CLI command as an MCP tool, making OSS Autopilot avai
 
 | Feature | What's exposed |
 |---------|---------------|
-| **21 tools** | `daily`, `status`, `search`, `vet`, `track`, `untrack`, `read`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `snooze`, `unsnooze` |
+| **20 tools** | `daily`, `status`, `search`, `vet`, `track`, `untrack`, `read`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move` |
 | **5 resources** | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}` |
 | **3 prompts** | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues) |
 

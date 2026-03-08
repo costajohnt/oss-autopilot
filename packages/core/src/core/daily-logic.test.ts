@@ -264,28 +264,6 @@ describe('collectActionableIssues', () => {
     ]);
   });
 
-  it('should skip snoozed PRs for ci_failing only', () => {
-    const snoozedUrl = 'https://github.com/owner/repo/pull/1';
-    const prs = [
-      makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'failing_ci' }),
-      makePR({ repo: 'owner/repo', number: 2, status: 'needs_addressing', actionReason: 'failing_ci' }),
-    ];
-    const snoozedUrls = new Set([snoozedUrl]);
-    const result = collectActionableIssues(prs, snoozedUrls);
-
-    expect(result).toHaveLength(1);
-    expect(result[0].pr.number).toBe(2);
-  });
-
-  it('should not skip snoozed PRs for non-CI issue types', () => {
-    const snoozedUrl = 'https://github.com/owner/repo/pull/1';
-    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', actionReason: 'needs_response' })];
-    const snoozedUrls = new Set([snoozedUrl]);
-    const result = collectActionableIssues(prs, snoozedUrls);
-
-    expect(result).toHaveLength(1);
-  });
-
   it('should mark PR as new contribution when created after last digest', () => {
     const prs = [
       makePR({
@@ -295,7 +273,7 @@ describe('collectActionableIssues', () => {
         createdAt: '2026-03-05T00:00:00Z',
       }),
     ];
-    const result = collectActionableIssues(prs, new Set(), '2026-03-01T00:00:00Z');
+    const result = collectActionableIssues(prs, '2026-03-01T00:00:00Z');
 
     expect(result[0].isNewContribution).toBe(true);
   });
@@ -309,7 +287,7 @@ describe('collectActionableIssues', () => {
         createdAt: '2026-02-15T00:00:00Z',
       }),
     ];
-    const result = collectActionableIssues(prs, new Set(), '2026-03-01T00:00:00Z');
+    const result = collectActionableIssues(prs, '2026-03-01T00:00:00Z');
 
     expect(result[0].isNewContribution).toBe(false);
   });
@@ -323,7 +301,7 @@ describe('collectActionableIssues', () => {
         createdAt: '2026-03-01T00:00:00Z',
       }),
     ];
-    const result = collectActionableIssues(prs, new Set(), '2026-03-01T00:00:00Z');
+    const result = collectActionableIssues(prs, '2026-03-01T00:00:00Z');
 
     expect(result[0].isNewContribution).toBe(false);
   });
@@ -337,7 +315,7 @@ describe('collectActionableIssues', () => {
         createdAt: '2026-02-15T00:00:00Z',
       }),
     ];
-    const result = collectActionableIssues(prs, new Set(), undefined);
+    const result = collectActionableIssues(prs, undefined);
 
     expect(result[0].isNewContribution).toBe(true);
   });
@@ -351,7 +329,7 @@ describe('collectActionableIssues', () => {
         createdAt: 'invalid-date',
       }),
     ];
-    const result = collectActionableIssues(prs, new Set(), '2026-03-01T00:00:00Z');
+    const result = collectActionableIssues(prs, '2026-03-01T00:00:00Z');
 
     expect(result[0].isNewContribution).toBe(true);
   });
