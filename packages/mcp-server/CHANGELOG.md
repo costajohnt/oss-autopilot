@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v1.0.4...mcp-v2.0.0) (2026-03-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* Removed `snooze` and `unsnooze` tools. Use `move` with target `attention`, `waiting`, `shelved`, or `auto` instead. Dismiss now only accepts issue URLs.
+
+### Features
+
+* simplify PR management to three-state model ([#657](https://github.com/costajohnt/oss-autopilot/issues/657)) ([abe7705](https://github.com/costajohnt/oss-autopilot/commit/abe770556eb190fc6769abfecea46f0c744f6793))
+
 ## [1.0.4](https://github.com/costajohnt/oss-autopilot/compare/mcp-v1.0.3...mcp-v1.0.4) (2026-03-07)
 
 
