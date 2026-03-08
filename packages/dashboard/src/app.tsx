@@ -143,7 +143,7 @@ function AppContent() {
           autoUnshelvedPRs={data.autoUnshelvedPRs ?? []}
         />
 
-        <IssueList issues={data.issueResponses} />
+        <IssueList issues={data.issueResponses} onAction={performAction} />
       </main>
     </div>
   );
