@@ -1,0 +1,26 @@
+name: Check NPM Token
+
+on:
+  schedule:
+    # Every Monday at 09:00 UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-npm-token:
+    name: Verify NPM token
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check token validity
+        run: |
+          RESULT=$(npm whoami --registry https://registry.npmjs.org/ 2>&1) || {
+            echo "::error::NPM_TOKEN is expired or invalid. Rotate it at https://www.npmjs.com/settings/tokens and update the GitHub secret."
+            echo "npm whoami output: $RESULT"
+            exit 1
+          }
+          echo "NPM token is valid (authenticated as: $RESULT)"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
