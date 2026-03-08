@@ -207,12 +207,14 @@ describe('App', () => {
   });
 
   it('shows error banner with dismiss button when error coexists with data', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
     const data = makeDashboardData();
     const fetchMock = vi
       .fn()
       // 1. Initial GET /api/data — success
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(data) })
-      // 2. Auto-refresh POST /api/refresh — success (silent background refresh)
+      // 2. Auto-refresh POST /api/refresh — success (silent background refresh after 5s)
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(data) })
       // 3. Manual refresh POST /api/refresh — failure (triggered by button click)
       .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({ error: 'Refresh failed' }) });
@@ -224,6 +226,9 @@ describe('App', () => {
       expect(container.querySelector('.dashboard')).toBeTruthy();
     });
 
+    // Advance past the 5s auto-refresh timer so mock #2 is consumed
+    vi.advanceTimersByTime(5_000);
+
     // Wait for auto-refresh to complete before clicking manual refresh
     await waitFor(() => {
       const btn = container.querySelector('.refresh-btn') as HTMLButtonElement;
@@ -231,7 +236,7 @@ describe('App', () => {
       expect(btn.textContent).toBe('Refresh');
     });
 
-    // Trigger refresh which will fail
+    // Trigger refresh which will fail (consumes mock #3)
     const refreshBtn = container.querySelector('.refresh-btn') as HTMLButtonElement;
     fireEvent.click(refreshBtn);
 
@@ -240,5 +245,7 @@ describe('App', () => {
     });
     expect(container.querySelector('.error-banner')?.textContent).toContain('Refresh failed');
     expect(container.querySelector('.error-banner-dismiss')).toBeTruthy();
+
+    vi.useRealTimers();
   });
 });

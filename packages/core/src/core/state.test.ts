@@ -2179,14 +2179,12 @@ describe('StateManager reloadIfChanged', () => {
     const sm = new StateManager(false);
     expect(sm.getState().config.trustedProjects).toEqual([]);
 
-    // Simulate external CLI write with a brief delay to ensure mtime differs
-    const start = Date.now();
-    while (Date.now() - start < 50) {
-      // busy-wait
-    }
+    // Simulate external CLI write — bump mtime forward to ensure it differs
     const modified = makeMinimalState();
     (modified.config as Record<string, unknown>).trustedProjects = ['ext-org/ext-repo'];
     fs.writeFileSync(statePath, JSON.stringify(modified), { mode: 0o600 });
+    const futureTime = new Date(Date.now() + 10_000);
+    fs.utimesSync(statePath, futureTime, futureTime);
 
     expect(sm.reloadIfChanged()).toBe(true);
     expect(sm.getState().config.trustedProjects).toEqual(['ext-org/ext-repo']);
@@ -2206,5 +2204,28 @@ describe('StateManager reloadIfChanged', () => {
     sm.save();
 
     expect(sm.reloadIfChanged()).toBe(false);
+  });
+
+  it('should return false and not throw when state file is deleted', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(makeMinimalState()), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    fs.unlinkSync(statePath);
+
+    expect(sm.reloadIfChanged()).toBe(false);
+  });
+
+  it('should handle corrupted state file during reload without throwing', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(makeMinimalState()), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    fs.writeFileSync(statePath, '{corrupted json!!!', { mode: 0o600 });
+    const futureTime = new Date(Date.now() + 10_000);
+    fs.utimesSync(statePath, futureTime, futureTime);
+
+    // Should not throw — load() handles corruption internally (backup restore / fresh state)
+    expect(() => sm.reloadIfChanged()).not.toThrow();
   });
 });

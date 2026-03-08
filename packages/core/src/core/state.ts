@@ -428,8 +428,11 @@ export class StateManager {
         // Record file mtime so reloadIfChanged() can detect external writes
         try {
           this.lastLoadedMtimeMs = fs.statSync(getStatePath()).mtimeMs;
-        } catch {
-          // Non-critical: reload detection will just always trigger
+        } catch (error) {
+          debug(
+            MODULE,
+            `Could not read state file mtime (reload detection will always trigger): ${errorMessage(error)}`,
+          );
         }
 
         // Log appropriate message based on version
@@ -638,7 +641,8 @@ export class StateManager {
       if (currentMtimeMs === this.lastLoadedMtimeMs) return false;
       this.state = this.load();
       return true;
-    } catch {
+    } catch (error) {
+      warn(MODULE, `Failed to reload state from disk: ${errorMessage(error)}`);
       return false;
     }
   }

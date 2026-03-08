@@ -8,10 +8,12 @@ describe('useDashboard', () => {
   const mockFetch = vi.fn();
 
   beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.stubGlobal('fetch', mockFetch);
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -30,15 +32,16 @@ describe('useDashboard', () => {
     });
   }
 
-  /** Mock both initial fetch and silent auto-refresh with the same data. */
-  function mockInitialAndRefresh(data: DashboardData, refreshData?: DashboardData) {
-    mockFetchOk(data);
-    mockFetchOk(refreshData ?? data);
+  /** Advance past the 5-second auto-refresh delay and flush resulting microtasks. */
+  async function triggerAutoRefresh(): Promise<void> {
+    await act(async () => {
+      vi.advanceTimersByTime(5_000);
+    });
   }
 
   it('fetches data on mount and transitions from loading to loaded', async () => {
     const data = makeDashboardData();
-    mockInitialAndRefresh(data);
+    mockFetchOk(data);
 
     const { result } = renderHook(() => useDashboard());
 
@@ -87,17 +90,12 @@ describe('useDashboard', () => {
 
   it('refresh calls POST /api/refresh', async () => {
     const data = makeDashboardData();
-    mockInitialAndRefresh(data);
+    mockFetchOk(data);
 
     const { result } = renderHook(() => useDashboard());
 
     await vi.waitFor(() => {
       expect(result.current.loading).toBe(false);
-    });
-
-    // Wait for auto-refresh to settle
-    await vi.waitFor(() => {
-      expect(result.current.refreshing).toBe(false);
     });
 
     const refreshedData = makeDashboardData({ stats: { ...data.stats, activePRs: 3 } });
@@ -113,17 +111,12 @@ describe('useDashboard', () => {
 
   it('performAction sends action and updates data', async () => {
     const data = makeDashboardData();
-    mockInitialAndRefresh(data);
+    mockFetchOk(data);
 
     const { result } = renderHook(() => useDashboard());
 
     await vi.waitFor(() => {
       expect(result.current.loading).toBe(false);
-    });
-
-    // Wait for auto-refresh to settle
-    await vi.waitFor(() => {
-      expect(result.current.refreshing).toBe(false);
     });
 
     const updatedData = makeDashboardData({ shelvedPRUrls: ['https://github.com/org/repo/pull/1'] });
@@ -147,17 +140,12 @@ describe('useDashboard', () => {
 
   it('performAction re-fetches on failure and re-throws', async () => {
     const data = makeDashboardData();
-    mockInitialAndRefresh(data);
+    mockFetchOk(data);
 
     const { result } = renderHook(() => useDashboard());
 
     await vi.waitFor(() => {
       expect(result.current.loading).toBe(false);
-    });
-
-    // Wait for auto-refresh to settle
-    await vi.waitFor(() => {
-      expect(result.current.refreshing).toBe(false);
     });
 
     // Action fails
@@ -199,15 +187,19 @@ describe('useDashboard', () => {
   it('auto-refreshes after initial load (GET /api/data then POST /api/refresh)', async () => {
     const cached = makeDashboardData();
     const refreshed = makeDashboardData({ stats: { ...cached.stats, mergedPRs: 7 } });
-    mockInitialAndRefresh(cached, refreshed);
+    mockFetchOk(cached);
+    mockFetchOk(refreshed);
 
     const { result } = renderHook(() => useDashboard());
 
+    // Wait for initial fetch
     await vi.waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
 
-    // Wait for auto-refresh to complete
+    // Advance past the 5s auto-refresh delay
+    await triggerAutoRefresh();
+
     await vi.waitFor(() => {
       expect(result.current.refreshing).toBe(false);
     });
@@ -229,9 +221,13 @@ describe('useDashboard', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { result } = renderHook(() => useDashboard());
 
+    // Wait for initial fetch
     await vi.waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
+
+    // Advance past the 5s auto-refresh delay
+    await triggerAutoRefresh();
 
     await vi.waitFor(() => {
       expect(result.current.refreshing).toBe(false);
@@ -265,6 +261,11 @@ describe('useDashboard', () => {
     // Wait for initial load
     await vi.waitFor(() => {
       expect(result.current.loading).toBe(false);
+    });
+
+    // Advance past the 5s delay to trigger the auto-refresh
+    await act(async () => {
+      vi.advanceTimersByTime(5_000);
     });
 
     // During auto-refresh: loading=false, refreshing=true

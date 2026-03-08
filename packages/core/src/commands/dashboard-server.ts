@@ -282,7 +282,11 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         }
         // Re-read state.json if CLI commands modified it externally
         if (stateManager.reloadIfChanged()) {
-          cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+          try {
+            cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+          } catch (error) {
+            warn(MODULE, `Failed to rebuild dashboard data after state reload: ${errorMessage(error)}`);
+          }
         }
         sendJson(res, 200, cachedJsonData);
         return;

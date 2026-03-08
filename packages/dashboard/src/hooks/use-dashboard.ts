@@ -66,9 +66,7 @@ export function useDashboard() {
 
   useEffect(() => {
     fetchData();
-    const timer = setTimeout(() => {
-      silentRefresh();
-    }, 5_000);
+    const timer = setTimeout(silentRefresh, 5_000);
     return () => clearTimeout(timer);
   }, [fetchData, silentRefresh]);
 
