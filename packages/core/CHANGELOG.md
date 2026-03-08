@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.47.1](https://github.com/costajohnt/oss-autopilot/compare/core-v0.47.0...core-v0.47.1) (2026-03-08)
+
+
+### Bug Fixes
+
+* auto-refresh marketplace cache on session start ([#638](https://github.com/costajohnt/oss-autopilot/issues/638)) ([f4d8469](https://github.com/costajohnt/oss-autopilot/commit/f4d846926f90bbd89ef11ed9af81173923bfeb49))
+
 ## [0.47.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.46.2...core-v0.47.0) (2026-03-08)
 
 
