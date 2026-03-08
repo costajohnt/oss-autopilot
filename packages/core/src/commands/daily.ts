@@ -508,7 +508,7 @@ function generateDigestOutput(
       warn(MODULE, `Failed to persist auto-undismissed state: ${errorMessage(error)}`);
     }
   }
-  const actionableIssues = collectActionableIssues(nonDismissedPRs, snoozedUrls);
+  const actionableIssues = collectActionableIssues(nonDismissedPRs, snoozedUrls, stateManager.getState().lastDigestAt);
   digest.summary.totalNeedingAttention = actionableIssues.length;
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length);
   const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues);
