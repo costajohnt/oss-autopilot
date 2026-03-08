@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.47.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.46.2...core-v0.47.0) (2026-03-08)
+
+
+### Features
+
+* add clickable merged PR count with detail view ([#633](https://github.com/costajohnt/oss-autopilot/issues/633)) ([#636](https://github.com/costajohnt/oss-autopilot/issues/636)) ([586aaed](https://github.com/costajohnt/oss-autopilot/commit/586aaed245527ba1d2386ad226029db86d347e89))
+
 ## [0.46.2](https://github.com/costajohnt/oss-autopilot/compare/core-v0.46.1...core-v0.46.2) (2026-03-07)
 
 
