@@ -35,10 +35,10 @@ describe('ActionBar', () => {
     expect(btn?.textContent).toBe('Move to Waiting');
   });
 
-  it('renders override button with "Move to Action Required" for waiting_on_maintainer PR', () => {
+  it('renders override button with "Move to Need Attention" for waiting_on_maintainer PR', () => {
     const { container } = renderActionBar({ pr: makePR({ status: 'waiting_on_maintainer' }) });
     const btn = container.querySelector('.action-btn--override');
-    expect(btn?.textContent).toBe('Move to Action Required');
+    expect(btn?.textContent).toBe('Move to Need Attention');
   });
 
   it('calls onAction with shelve action on button click', async () => {

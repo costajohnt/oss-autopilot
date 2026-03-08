@@ -158,10 +158,10 @@ The dashboard auto-opens at `http://localhost:3000` when you run `/oss`. It's a 
 - Filter and search across all PRs
 
 **Manage your PRs:**
-- PRs are grouped into **Action Required**, **Waiting on Others**, and **Shelved** sections
+- PRs are grouped into **Need Attention**, **Waiting on Others**, and **Shelved** sections
 - Click any PR for a detail panel showing CI status, failing check classification, review decision, maintainer comments, and checklist progress
 - **Shelve/Unshelve** — temporarily hide PRs you're not actively working on
-- **Move to Waiting / Move to Action Required** — override the auto-detected status when you know better
+- **Move to Waiting / Move to Need Attention** — override the auto-detected status when you know better
 
 All actions persist to `~/.oss-autopilot/state.json`.
 

@@ -9,8 +9,8 @@ interface PRListProps {
   shelvedUrls: Set<string>;
 }
 
-/** Statuses that belong in the "Action Required" section. */
-const ACTION_REQUIRED: Set<FetchedPRStatus> = new Set(['needs_addressing']);
+/** Statuses that belong in the "Need Attention" section. */
+const NEED_ATTENTION: Set<FetchedPRStatus> = new Set(['needs_addressing']);
 
 /** Statuses that belong in the "Waiting on Others" section. */
 const WAITING: Set<FetchedPRStatus> = new Set(['waiting_on_maintainer']);
@@ -67,9 +67,9 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps)
   const sections: SectionDef[] = [
     {
       id: 'action',
-      title: 'Action Required',
+      title: 'Need Attention',
       accent: 'var(--accent-error)',
-      prs: activePRs.filter((pr) => ACTION_REQUIRED.has(pr.status)),
+      prs: activePRs.filter((pr) => NEED_ATTENTION.has(pr.status)),
     },
     {
       id: 'waiting',

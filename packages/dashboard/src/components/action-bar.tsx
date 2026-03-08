@@ -24,7 +24,7 @@ export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
   }
 
   const oppositeStatus = pr.status === 'needs_addressing' ? 'waiting_on_maintainer' : 'needs_addressing';
-  const overrideLabel = pr.status === 'needs_addressing' ? 'Move to Waiting' : 'Move to Action Required';
+  const overrideLabel = pr.status === 'needs_addressing' ? 'Move to Waiting' : 'Move to Need Attention';
 
   return (
     <div class="action-bar">
