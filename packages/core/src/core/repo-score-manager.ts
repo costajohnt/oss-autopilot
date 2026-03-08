@@ -99,15 +99,15 @@ export function updateRepoScore(state: AgentState, repo: string, updates: RepoSc
 
   const repoScore = state.repoScores[repo];
 
-  // Apply scalar field updates (skip undefined values to preserve existing data)
-  const { signals, ...scalarUpdates } = updates;
-  for (const [key, value] of Object.entries(scalarUpdates)) {
-    if (value !== undefined) {
-      (repoScore as Record<string, unknown>)[key] = value;
-    }
-  }
-  if (signals) {
-    repoScore.signals = { ...repoScore.signals, ...signals };
+  // Apply explicit field updates (skip undefined values to preserve existing data)
+  if (updates.mergedPRCount !== undefined) repoScore.mergedPRCount = updates.mergedPRCount;
+  if (updates.closedWithoutMergeCount !== undefined)
+    repoScore.closedWithoutMergeCount = updates.closedWithoutMergeCount;
+  if (updates.avgResponseDays !== undefined) repoScore.avgResponseDays = updates.avgResponseDays;
+  if (updates.lastMergedAt !== undefined) repoScore.lastMergedAt = updates.lastMergedAt;
+  if (updates.stargazersCount !== undefined) repoScore.stargazersCount = updates.stargazersCount;
+  if (updates.signals) {
+    repoScore.signals = { ...repoScore.signals, ...updates.signals };
   }
 
   // Recalculate score
