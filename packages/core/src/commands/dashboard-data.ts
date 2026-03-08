@@ -50,6 +50,7 @@ export function buildDashboardStats(
     storedMergedCount !== undefined
       ? Math.max(storedMergedCount, summary.totalMergedAllTime)
       : summary.totalMergedAllTime;
+  // Closed: same anti-regression strategy — use the higher of stored count vs repoScores aggregate
   const aggregateClosedCount = Object.values(state.repoScores || {}).reduce(
     (sum, s) => sum + (isBelowMinStars(s.stargazersCount, minStars) ? 0 : s.closedWithoutMergeCount || 0),
     0,

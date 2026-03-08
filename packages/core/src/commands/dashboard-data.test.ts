@@ -537,3 +537,57 @@ describe('buildDashboardStats with storedMergedCount', () => {
     expect(stats.mergedPRs).toBe(10);
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildDashboardStats with storedClosedCount
+// ---------------------------------------------------------------------------
+
+describe('buildDashboardStats with storedClosedCount', () => {
+  const stateWithClosedScores = makeState({
+    repoScores: {
+      'owner/repo-a': { stargazersCount: 100, mergedPRCount: 5, closedWithoutMergeCount: 8 } as never,
+      'owner/repo-b': { stargazersCount: 200, mergedPRCount: 3, closedWithoutMergeCount: 12 } as never,
+    },
+  });
+
+  it('uses storedClosedCount when higher than aggregate', () => {
+    const digest = makeDigest();
+    // aggregate = 8 + 12 = 20
+    const stats = buildDashboardStats(digest, stateWithClosedScores, undefined, 50);
+    expect(stats.closedPRs).toBe(50);
+  });
+
+  it('uses aggregate when higher than storedClosedCount', () => {
+    const digest = makeDigest();
+    // aggregate = 20, storedClosedCount = 5
+    const stats = buildDashboardStats(digest, stateWithClosedScores, undefined, 5);
+    expect(stats.closedPRs).toBe(20);
+  });
+
+  it('falls back to aggregate when storedClosedCount is undefined', () => {
+    const digest = makeDigest();
+    const stats = buildDashboardStats(digest, stateWithClosedScores);
+    expect(stats.closedPRs).toBe(20);
+  });
+
+  it('uses storedClosedCount of 0 correctly (Math.max with aggregate)', () => {
+    const digest = makeDigest();
+    // storedClosedCount=0, aggregate=20 → Math.max(0, 20) = 20
+    const stats = buildDashboardStats(digest, stateWithClosedScores, undefined, 0);
+    expect(stats.closedPRs).toBe(20);
+  });
+
+  it('excludes repos below minStars from aggregate', () => {
+    const stateWithLowStars = makeState({
+      config: { githubUsername: 'testuser', shelvedPRUrls: [], minStars: 150 },
+      repoScores: {
+        'owner/repo-a': { stargazersCount: 100, mergedPRCount: 5, closedWithoutMergeCount: 8 } as never,
+        'owner/repo-b': { stargazersCount: 200, mergedPRCount: 3, closedWithoutMergeCount: 12 } as never,
+      },
+    });
+    const digest = makeDigest();
+    // repo-a (100 stars) is below minStars=150, so aggregate = 12 only
+    const stats = buildDashboardStats(digest, stateWithLowStars);
+    expect(stats.closedPRs).toBe(12);
+  });
+});
