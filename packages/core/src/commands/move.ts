@@ -1,10 +1,9 @@
 /**
- * Move command — transition a PR between the three states:
+ * Move command — transition a PR between states:
  * attention, waiting, shelved, or auto (reset to computed status).
  */
 
 import { getStateManager } from '../core/index.js';
-import type { FetchedPRStatus } from '../core/types.js';
 import { PR_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
 export type MoveTarget = 'attention' | 'waiting' | 'shelved' | 'auto';
@@ -18,11 +17,6 @@ export interface MoveOutput {
   description: string;
 }
 
-const TARGET_TO_STATUS: Partial<Record<MoveTarget, FetchedPRStatus>> = {
-  attention: 'needs_addressing',
-  waiting: 'waiting_on_maintainer',
-};
-
 export async function runMove(options: { prUrl: string; target: string }): Promise<MoveOutput> {
   validateUrl(options.prUrl);
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');
@@ -35,18 +29,19 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
   const stateManager = getStateManager();
 
   switch (target) {
-    case 'attention':
-    case 'waiting': {
-      const status = TARGET_TO_STATUS[target]!;
+    case 'attention': {
       const lastActivityAt = new Date().toISOString();
-      stateManager.setStatusOverride(options.prUrl, status, lastActivityAt);
+      stateManager.setStatusOverride(options.prUrl, 'needs_addressing', lastActivityAt);
       stateManager.unshelvePR(options.prUrl);
       stateManager.save();
-      return {
-        url: options.prUrl,
-        target,
-        description: `Moved to ${target === 'attention' ? 'Need Attention' : 'Waiting on Maintainer'}`,
-      };
+      return { url: options.prUrl, target, description: 'Moved to Need Attention' };
+    }
+    case 'waiting': {
+      const lastActivityAt = new Date().toISOString();
+      stateManager.setStatusOverride(options.prUrl, 'waiting_on_maintainer', lastActivityAt);
+      stateManager.unshelvePR(options.prUrl);
+      stateManager.save();
+      return { url: options.prUrl, target, description: 'Moved to Waiting on Maintainer' };
     }
     case 'shelved': {
       stateManager.shelvePR(options.prUrl);

@@ -41,7 +41,7 @@ describe('ActionBar', () => {
     expect(btn?.textContent).toBe('Move to Need Attention');
   });
 
-  it('calls onAction with shelve action on button click', async () => {
+  it('calls onAction with move shelved on shelve button click', async () => {
     const onAction = vi.fn().mockResolvedValue(undefined);
     const pr = makePR();
 
@@ -51,11 +51,11 @@ describe('ActionBar', () => {
     fireEvent.click(shelveBtn);
 
     await waitFor(() => {
-      expect(onAction).toHaveBeenCalledWith({ action: 'shelve', url: pr.url });
+      expect(onAction).toHaveBeenCalledWith({ action: 'move', url: pr.url, target: 'shelved' });
     });
   });
 
-  it('calls onAction with override_status on override button click', async () => {
+  it('calls onAction with move waiting on override button click', async () => {
     const onAction = vi.fn().mockResolvedValue(undefined);
     const pr = makePR({ status: 'needs_addressing' });
 
@@ -66,9 +66,9 @@ describe('ActionBar', () => {
 
     await waitFor(() => {
       expect(onAction).toHaveBeenCalledWith({
-        action: 'override_status',
+        action: 'move',
         url: pr.url,
-        status: 'waiting_on_maintainer',
+        target: 'waiting',
       });
     });
   });

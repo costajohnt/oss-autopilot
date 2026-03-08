@@ -12,7 +12,7 @@ import * as path from 'path';
 import { getStateManager, getGitHubToken, getCLIVersion, applyStatusOverrides } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
-import { validateUrl, validateGitHubUrl, PR_URL_PATTERN, ISSUE_OR_PR_URL_PATTERN } from './validation.js';
+import { validateUrl, validateGitHubUrl, PR_URL_PATTERN, ISSUE_URL_PATTERN } from './validation.js';
 import {
   fetchDashboardData,
   computePRsByRepo,
@@ -79,20 +79,15 @@ interface DashboardJsonData {
 }
 
 interface ActionRequest {
-  action: 'shelve' | 'unshelve' | 'override_status' | 'dismiss_issue_response';
+  action: 'move' | 'dismiss_issue_response';
   url: string;
-  /** Target status for override_status action. */
-  status?: 'needs_addressing' | 'waiting_on_maintainer';
+  /** Target state for move action. */
+  target?: 'attention' | 'waiting' | 'shelved' | 'auto';
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const VALID_ACTIONS: Set<ActionRequest['action']> = new Set([
-  'shelve',
-  'unshelve',
-  'override_status',
-  'dismiss_issue_response',
-]);
+const VALID_ACTIONS: Set<ActionRequest['action']> = new Set(['move', 'dismiss_issue_response']);
 
 const MODULE = 'dashboard-server';
 
@@ -357,15 +352,11 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       return;
     }
 
-    // Validate URL format — dismiss_issue_response accepts issue or PR URLs, others are PR-only.
+    // Validate URL format — move is PR-only, dismiss_issue_response is issue-only.
     const isDismiss = body.action === 'dismiss_issue_response';
     try {
       validateUrl(body.url);
-      validateGitHubUrl(
-        body.url,
-        isDismiss ? ISSUE_OR_PR_URL_PATTERN : PR_URL_PATTERN,
-        isDismiss ? 'issue or PR' : 'PR',
-      );
+      validateGitHubUrl(body.url, isDismiss ? ISSUE_URL_PATTERN : PR_URL_PATTERN, isDismiss ? 'issue' : 'PR');
     } catch (err) {
       if (err instanceof ValidationError) {
         sendError(res, 400, err.message);
@@ -376,40 +367,19 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       return;
     }
 
-    // Validate override_status-specific fields
-    if (body.action === 'override_status') {
-      if (!body.status || (body.status !== 'needs_addressing' && body.status !== 'waiting_on_maintainer')) {
-        sendError(
-          res,
-          400,
-          'override_status requires a valid "status" field (needs_addressing or waiting_on_maintainer)',
-        );
-        return;
-      }
-    }
-
     try {
-      switch (body.action) {
-        case 'shelve':
-          stateManager.shelvePR(body.url);
-          break;
-        case 'unshelve':
-          stateManager.unshelvePR(body.url);
-          break;
-        case 'override_status': {
-          // body.status is validated above — the early return ensures it's defined here
-          const overrideStatus = body.status as 'needs_addressing' | 'waiting_on_maintainer';
-          // Find the PR to get its current updatedAt for auto-clear tracking
-          const targetPR = (cachedDigest?.openPRs || []).find((pr) => pr.url === body.url);
-          const lastActivityAt = targetPR?.updatedAt || new Date().toISOString();
-          stateManager.setStatusOverride(body.url, overrideStatus, lastActivityAt);
-          break;
+      if (body.action === 'move') {
+        const { VALID_TARGETS, runMove } = await import('./move.js');
+        if (!body.target || !VALID_TARGETS.includes(body.target as (typeof VALID_TARGETS)[number])) {
+          sendError(res, 400, `move requires a valid "target" field (${VALID_TARGETS.join(', ')})`);
+          return;
         }
-        case 'dismiss_issue_response':
-          stateManager.dismissIssue(body.url, new Date().toISOString());
-          break;
+        await runMove({ prUrl: body.url, target: body.target });
+      } else {
+        // dismiss_issue_response
+        stateManager.dismissIssue(body.url, new Date().toISOString());
+        stateManager.save();
       }
-      stateManager.save();
     } catch (error) {
       warn(MODULE, `Action failed: ${body.action} ${body.url} ${errorMessage(error)}`);
       sendError(res, 500, 'Action failed');

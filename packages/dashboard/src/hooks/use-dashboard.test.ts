@@ -130,13 +130,17 @@ describe('useDashboard', () => {
     mockFetchOk(updatedData);
 
     await act(async () => {
-      await result.current.performAction({ action: 'shelve', url: 'https://github.com/org/repo/pull/1' });
+      await result.current.performAction({
+        action: 'move',
+        url: 'https://github.com/org/repo/pull/1',
+        target: 'shelved',
+      });
     });
 
     expect(mockFetch).toHaveBeenLastCalledWith('/api/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'shelve', url: 'https://github.com/org/repo/pull/1' }),
+      body: JSON.stringify({ action: 'move', url: 'https://github.com/org/repo/pull/1', target: 'shelved' }),
     });
     expect(result.current.data?.shelvedPRUrls).toEqual(['https://github.com/org/repo/pull/1']);
   });
@@ -164,7 +168,7 @@ describe('useDashboard', () => {
 
     await expect(
       act(async () => {
-        await result.current.performAction({ action: 'shelve', url: 'https://github.com/x/y/pull/1' });
+        await result.current.performAction({ action: 'move', url: 'https://github.com/x/y/pull/1', target: 'shelved' });
       }),
     ).rejects.toThrow('Server error');
 
