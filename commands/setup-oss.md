@@ -114,7 +114,26 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set langu
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set labels="good first issue,help wanted" --json
 ```
 
-**Question 6: Curated Issue List**
+**Question 6: Project Categories** (multi-select)
+- "What types of projects interest you?"
+- Options: "Nonprofit/Social Impact", "Developer Tools", "Infrastructure/Cloud", "Web Frameworks", "Data/ML", "Education", "No preference (skip)"
+
+Map selections: "Nonprofit/Social Impact" → `nonprofit`, "Developer Tools" → `devtools`, "Infrastructure/Cloud" → `infrastructure`, "Web Frameworks" → `web-frameworks`, "Data/ML" → `data-ml`, "Education" → `education`.
+
+If "No preference" is selected, skip. Otherwise:
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set projectCategories=devtools,infrastructure --json
+```
+
+**Question 7: Preferred Organizations** (free text)
+- "Any GitHub organizations you'd like to prioritize? (comma-separated, or skip)"
+
+If user provides orgs:
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set preferredOrgs=vercel,remix-run --json
+```
+
+**Question 8: Curated Issue List**
 - "Do you maintain a curated list of potential issues to work on?"
 - Options: "Yes", "No"
 
@@ -129,7 +148,7 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set issue
 
 If the file doesn't exist at the given path, warn the user but still save the path (they may create it later).
 
-**Question 7: Squash Commits Before Review**
+**Question 9: Squash Commits Before Review**
 - "Should PRs be squashed into a single commit before marking ready for review?"
 - Options: "Yes, always squash (Recommended)", "No, keep individual commits", "Ask me each time"
 
@@ -184,6 +203,8 @@ Show summary:
 - **Dormant**: NUMBER days
 - **Languages**: list
 - **Labels**: list
+- **Project Categories**: list or "No preference"
+- **Preferred Orgs**: list or "None"
 - **Issue List**: PATH or "Not configured"
 - **Squash PRs**: Yes (default) / No / Ask each time
 
@@ -295,7 +316,16 @@ Use AskUserQuestion to collect preferences. Ask these in sequence:
 - Options: "good first issue", "help wanted", "bug", "enhancement", "documentation"
 - Allow multiple selections
 
-**Question 6: Curated Issue List**
+**Question 6: Project Categories** (multi-select)
+- "What types of projects interest you?"
+- Options: "Nonprofit/Social Impact", "Developer Tools", "Infrastructure/Cloud", "Web Frameworks", "Data/ML", "Education", "No preference (skip)"
+
+Map selections to values: nonprofit, devtools, infrastructure, web-frameworks, data-ml, education.
+
+**Question 7: Preferred Organizations** (free text)
+- "Any GitHub organizations you'd like to prioritize? (comma-separated, or skip)"
+
+**Question 8: Curated Issue List**
 - "Do you maintain a curated list of potential issues to work on?"
 - Options: "Yes", "No"
 
@@ -305,7 +335,7 @@ If yes, ask for the file path:
 
 If a path is provided, try to read it to verify it exists. If it doesn't exist, warn but continue — the user may create it later.
 
-**Question 7: Squash Commits Before Review**
+**Question 9: Squash Commits Before Review**
 - "Should PRs be squashed into a single commit before marking ready for review?"
 - Options: "Yes, always squash (Recommended)", "No, keep individual commits", "Ask me each time"
 
@@ -463,6 +493,8 @@ Show summary:
 - **Dormant**: NUMBER days
 - **Languages**: list
 - **Labels**: list
+- **Project Categories**: list or "No preference"
+- **Preferred Orgs**: list or "None"
 - **GitHub Access**: via [gh CLI / MCP server]
 - **Issue List**: PATH or "Not configured"
 - **Squash PRs**: Yes (default) / No / Ask each time

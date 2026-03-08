@@ -6,6 +6,7 @@
 import { getStateManager, DEFAULT_CONFIG } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { validateGitHubUsername } from './validation.js';
+import { PROJECT_CATEGORIES, type ProjectCategory } from '../core/types.js';
 
 /** Parse and validate a positive integer setting value. */
 function parsePositiveInt(value: string, settingName: string): number {
@@ -36,6 +37,8 @@ export interface SetupCompleteOutput {
     approachingDormantDays: number;
     languages: string[];
     labels: string[];
+    projectCategories: ProjectCategory[];
+    preferredOrgs: string[];
   };
 }
 
@@ -159,6 +162,52 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
           results[key] = valid.length > 0 ? valid.join(', ') : '(empty)';
           break;
         }
+        case 'projectCategories': {
+          const categories = value
+            .split(',')
+            .map((c) => c.trim())
+            .filter(Boolean);
+          const validCategories: ProjectCategory[] = [];
+          const invalidCategories: string[] = [];
+          for (const cat of categories) {
+            if ((PROJECT_CATEGORIES as readonly string[]).includes(cat)) {
+              validCategories.push(cat as ProjectCategory);
+            } else {
+              invalidCategories.push(cat);
+            }
+          }
+          if (invalidCategories.length > 0) {
+            warnings.push(
+              `Unknown project categories: ${invalidCategories.join(', ')}. Valid: ${PROJECT_CATEGORIES.join(', ')}`,
+            );
+          }
+          const dedupedCategories = [...new Set(validCategories)];
+          stateManager.updateConfig({ projectCategories: dedupedCategories });
+          results[key] = dedupedCategories.length > 0 ? dedupedCategories.join(', ') : '(empty)';
+          break;
+        }
+        case 'preferredOrgs': {
+          const orgs = value
+            .split(',')
+            .map((o) => o.trim())
+            .filter(Boolean);
+          const validOrgs: string[] = [];
+          for (const org of orgs) {
+            if (org.includes('/')) {
+              warnings.push(
+                `"${org}" looks like a repo path. Use org name only (e.g., "vercel" not "vercel/next.js").`,
+              );
+            } else if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(org)) {
+              warnings.push(`"${org}" is not a valid GitHub organization name. Skipping.`);
+            } else {
+              validOrgs.push(org.toLowerCase());
+            }
+          }
+          const dedupedOrgs = [...new Set(validOrgs)];
+          stateManager.updateConfig({ preferredOrgs: dedupedOrgs });
+          results[key] = dedupedOrgs.length > 0 ? dedupedOrgs.join(', ') : '(empty)';
+          break;
+        }
         case 'complete':
           if (value === 'true') {
             stateManager.markSetupComplete();
@@ -186,6 +235,8 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         approachingDormantDays: config.approachingDormantDays,
         languages: config.languages,
         labels: config.labels,
+        projectCategories: config.projectCategories ?? [],
+        preferredOrgs: config.preferredOrgs ?? [],
       },
     };
   }
@@ -241,6 +292,21 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         prompt: 'Repos with anti-AI contribution policies to block (owner/repo, comma-separated)?',
         current: config.aiPolicyBlocklist ?? DEFAULT_CONFIG.aiPolicyBlocklist ?? null,
         default: ['matplotlib/matplotlib'],
+        type: 'list',
+      },
+      {
+        setting: 'projectCategories',
+        prompt:
+          'What types of projects interest you? (nonprofit, devtools, infrastructure, web-frameworks, data-ml, education)',
+        current: config.projectCategories ?? [],
+        default: [],
+        type: 'list',
+      },
+      {
+        setting: 'preferredOrgs',
+        prompt: 'Any GitHub organizations to prioritize? (org names, comma-separated)',
+        current: config.preferredOrgs ?? [],
+        default: [],
         type: 'list',
       },
     ],

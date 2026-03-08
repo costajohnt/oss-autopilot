@@ -845,6 +845,41 @@ describe('vetIssue', () => {
     expect(candidate.searchPriority).toBe('starred');
   });
 
+  it('assigns preferred_org priority when org matches preferredOrgs', async () => {
+    stateManager.getState.mockReturnValue(
+      makeDefaultState({
+        config: { ...makeDefaultConfig(), preferredOrgs: [owner.toLowerCase()] },
+      }),
+    );
+
+    const candidate = await vetter.vetIssue(`https://github.com/${owner}/repo/issues/42`);
+    expect(candidate.searchPriority).toBe('preferred_org');
+  });
+
+  it('preferred_org does not override merged_pr priority', async () => {
+    stateManager.getState.mockReturnValue(
+      makeDefaultState({
+        config: { ...makeDefaultConfig(), preferredOrgs: [owner.toLowerCase()] },
+      }),
+    );
+    stateManager.getRepoScore.mockReturnValue(makeRepoScore({ repo: `${owner}/repo`, score: 8, mergedPRCount: 2 }));
+
+    const candidate = await vetter.vetIssue(`https://github.com/${owner}/repo/issues/42`);
+    expect(candidate.searchPriority).toBe('merged_pr');
+  });
+
+  it('adds category match to reasonsToApprove when repo matches projectCategories', async () => {
+    // Use an org from the devtools category (eslint)
+    stateManager.getState.mockReturnValue(
+      makeDefaultState({
+        config: { ...makeDefaultConfig(), projectCategories: ['devtools'] },
+      }),
+    );
+
+    const candidate = await vetter.vetIssue(`https://github.com/eslint/repo/issues/42`);
+    expect(candidate.reasonsToApprove).toContainEqual('Matches preferred project category');
+  });
+
   it('detects org affinity from other repos', async () => {
     stateManager.getState.mockReturnValue(
       makeDefaultState({

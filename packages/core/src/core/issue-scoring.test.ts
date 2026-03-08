@@ -106,6 +106,21 @@ describe('calculateViabilityScore', () => {
     expect(score).toBe(70); // 50 + 5 (org) + 15 (fresh)
   });
 
+  it('adds +5 for preferred category match', () => {
+    const score = calculateViabilityScore(makeParams({ matchesPreferredCategory: true }));
+    expect(score).toBe(70); // 50 + 5 (category) + 15 (fresh)
+  });
+
+  it('does not add category bonus when false', () => {
+    const score = calculateViabilityScore(makeParams({ matchesPreferredCategory: false }));
+    expect(score).toBe(65); // 50 + 15 (fresh) — no category bonus
+  });
+
+  it('does not add category bonus when undefined', () => {
+    const score = calculateViabilityScore(makeParams({}));
+    expect(score).toBe(65); // 50 + 15 (fresh) — no category bonus
+  });
+
   it('subtracts -30 for existing PR', () => {
     const score = calculateViabilityScore(makeParams({ hasExistingPR: true }));
     expect(score).toBe(35); // 50 - 30 (existing PR) + 15 (fresh)
@@ -165,10 +180,11 @@ describe('calculateViabilityScore', () => {
         clearRequirements: true, // +15
         hasContributionGuidelines: true, // +10
         orgHasMergedPRs: true, // +5
+        matchesPreferredCategory: true, // +5
         // +15 freshness from makeParams default
       }),
     );
-    // 50 + 20 + 12 + 15 + 15 + 10 + 5 + 15 = 142 → clamped to 100
+    // 50 + 20 + 12 + 15 + 15 + 10 + 5 + 5 + 15 = 147 → clamped to 100
     expect(score).toBe(100);
   });
 });

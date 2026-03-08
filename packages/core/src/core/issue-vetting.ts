@@ -21,6 +21,7 @@ import { warn } from './logger.js';
 import { getHttpCache, cachedRequest, cachedTimeBased } from './http-cache.js';
 import { getStateManager } from './state.js';
 import { calculateRepoQualityBonus, calculateViabilityScore } from './issue-scoring.js';
+import { repoBelongsToCategory } from './category-mapping.js';
 
 const MODULE = 'issue-vetting';
 
@@ -208,6 +209,13 @@ export class IssueVetter {
       reasonsToApprove.push(`Org affinity (merged PRs in other ${orgName} repos)`);
     }
 
+    // Check for category preference match
+    const projectCategories = config.projectCategories ?? [];
+    const matchesCategory = repoBelongsToCategory(repoFullName, projectCategories);
+    if (matchesCategory) {
+      reasonsToApprove.push('Matches preferred project category');
+    }
+
     let recommendation: 'approve' | 'skip' | 'needs_review';
     if (vettingResult.passedAllChecks) {
       recommendation = 'approve';
@@ -246,12 +254,16 @@ export class IssueVetter {
       mergedPRCount: effectiveMergedCount,
       orgHasMergedPRs,
       repoQualityBonus,
+      matchesPreferredCategory: matchesCategory,
     });
 
     const starredRepos = this.stateManager.getStarredRepos();
+    const preferredOrgs = config.preferredOrgs ?? [];
     let searchPriority: SearchPriority = 'normal';
     if (effectiveMergedCount > 0) {
       searchPriority = 'merged_pr';
+    } else if (preferredOrgs.some((o) => o.toLowerCase() === orgName?.toLowerCase())) {
+      searchPriority = 'preferred_org';
     } else if (starredRepos.includes(repoFullName)) {
       searchPriority = 'starred';
     }
