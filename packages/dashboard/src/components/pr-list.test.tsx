@@ -38,7 +38,7 @@ describe('PRList', () => {
 
     const sections = container.querySelectorAll('.pr-section-header');
     const sectionTitles = [...sections].map((el) => el.textContent?.replace(/\d+$/, '').trim());
-    expect(sectionTitles).toContain('Action Required');
+    expect(sectionTitles).toContain('Need Attention');
     expect(sectionTitles).toContain('Waiting on Others');
   });
 

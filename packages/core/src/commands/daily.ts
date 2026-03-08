@@ -378,7 +378,7 @@ function partitionPRs(
   }
 
   // Apply dashboard/CLI status overrides before partitioning.
-  // This ensures PRs reclassified in the dashboard (e.g., "Action Required" → "Waiting")
+  // This ensures PRs reclassified in the dashboard (e.g., "Need Attention" → "Waiting")
   // are respected by the CLI pipeline.
   const overriddenPRs = applyStatusOverrides(prs, stateManager.getState());
 
