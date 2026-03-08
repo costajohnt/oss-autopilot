@@ -56,7 +56,7 @@ export interface DashboardData {
 }
 
 /** Actions a user can take from the dashboard. */
-export type ActionType = 'shelve' | 'unshelve' | 'override_status';
+export type ActionType = 'shelve' | 'unshelve' | 'override_status' | 'dismiss_issue_response';
 
 /** Request body for POST /api/action. */
 export interface ActionRequest {
