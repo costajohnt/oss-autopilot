@@ -6,9 +6,9 @@
 import { getStateManager } from '../core/index.js';
 import { PR_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
-export type MoveTarget = 'attention' | 'waiting' | 'shelved' | 'auto';
+export const VALID_TARGETS = ['attention', 'waiting', 'shelved', 'auto'] as const;
 
-export const VALID_TARGETS: readonly MoveTarget[] = ['attention', 'waiting', 'shelved', 'auto'] as const;
+export type MoveTarget = (typeof VALID_TARGETS)[number];
 
 export interface MoveOutput {
   url: string;
@@ -29,19 +29,15 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
   const stateManager = getStateManager();
 
   switch (target) {
-    case 'attention': {
-      const lastActivityAt = new Date().toISOString();
-      stateManager.setStatusOverride(options.prUrl, 'needs_addressing', lastActivityAt);
-      stateManager.unshelvePR(options.prUrl);
-      stateManager.save();
-      return { url: options.prUrl, target, description: 'Moved to Need Attention' };
-    }
+    case 'attention':
     case 'waiting': {
+      const status = target === 'attention' ? 'needs_addressing' : 'waiting_on_maintainer';
+      const label = target === 'attention' ? 'Need Attention' : 'Waiting on Maintainer';
       const lastActivityAt = new Date().toISOString();
-      stateManager.setStatusOverride(options.prUrl, 'waiting_on_maintainer', lastActivityAt);
+      stateManager.setStatusOverride(options.prUrl, status, lastActivityAt);
       stateManager.unshelvePR(options.prUrl);
       stateManager.save();
-      return { url: options.prUrl, target, description: 'Moved to Waiting on Maintainer' };
+      return { url: options.prUrl, target, description: `Moved to ${label}` };
     }
     case 'shelved': {
       stateManager.shelvePR(options.prUrl);
@@ -64,6 +60,10 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
         target,
         description: 'Reset to computed status',
       };
+    }
+    default: {
+      const _exhaustive: never = target;
+      throw new Error(`Unhandled move target: ${_exhaustive}`);
     }
   }
 }

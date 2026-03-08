@@ -24,8 +24,6 @@ import {
   runSetup,
   runCheckSetup,
   runStartup,
-  runShelve,
-  runUnshelve,
   runDismiss,
   runUndismiss,
   runMove,
@@ -293,7 +291,7 @@ export function registerTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    wrapTool(runShelve),
+    wrapTool((args: { prUrl: string }) => runMove({ prUrl: args.prUrl, target: 'shelved' })),
   );
 
   // 17. unshelve — Unshelve a PR
@@ -306,7 +304,7 @@ export function registerTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    wrapTool(runUnshelve),
+    wrapTool((args: { prUrl: string }) => runMove({ prUrl: args.prUrl, target: 'auto' })),
   );
 
   // 18. dismiss — Dismiss an issue
