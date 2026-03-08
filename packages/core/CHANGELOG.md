@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.49.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.48.0...core-v0.49.0) (2026-03-08)
+
+
+### Features
+
+* expose isNewContribution flag in CLI JSON output ([#650](https://github.com/costajohnt/oss-autopilot/issues/650)) ([61e2309](https://github.com/costajohnt/oss-autopilot/commit/61e230902bbd81e2c48de0a9219730351c4ba2de))
+
+
+### Bug Fixes
+
+* align dashboard terminology from "Action Required" to "Need Attention" ([#645](https://github.com/costajohnt/oss-autopilot/issues/645)) ([#648](https://github.com/costajohnt/oss-autopilot/issues/648)) ([e4e917a](https://github.com/costajohnt/oss-autopilot/commit/e4e917af1cbcce6f918d358292e95c5d2b6c261c))
+* CLI respects dashboard PR status overrides ([#644](https://github.com/costajohnt/oss-autopilot/issues/644)) ([#646](https://github.com/costajohnt/oss-autopilot/issues/646)) ([41aa546](https://github.com/costajohnt/oss-autopilot/commit/41aa5467c00999c87ae3fc86995f5cb4d187f4ca))
+
 ## [0.48.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.47.2...core-v0.48.0) (2026-03-08)
 
 
