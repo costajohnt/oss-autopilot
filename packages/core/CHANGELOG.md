@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.52.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.51.1...core-v0.52.0) (2026-03-08)
+
+
+### Features
+
+* **badge:** filter to external repos with configurable star threshold ([#662](https://github.com/costajohnt/oss-autopilot/issues/662)) ([574d9fa](https://github.com/costajohnt/oss-autopilot/commit/574d9facd3eacedfcb2c9a31491d61e2e7274ff9))
+
 ## [0.51.1](https://github.com/costajohnt/oss-autopilot/compare/core-v0.51.0...core-v0.51.1) (2026-03-08)
 
 
