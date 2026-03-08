@@ -242,7 +242,13 @@ Show off your open source contributions with a live badge on your GitHub profile
 ![OSS Contributions](https://img.shields.io/endpoint?url=https://oss-autopilot-stats.vercel.app/api/badge/YOUR_USERNAME)
 ```
 
-The badge updates hourly and shows your merge rate, total merged PRs, and active PR count.
+The badge updates hourly and shows your merge rate, total merged PRs, and active PR count. Only counts PRs to external repos (excludes your own) with 50+ stars by default.
+
+Customize the minimum star threshold with `?minStars=100`:
+
+```markdown
+![OSS Contributions](https://img.shields.io/endpoint?url=https://oss-autopilot-stats.vercel.app/api/badge/YOUR_USERNAME?minStars=100)
+```
 
 ---
 
