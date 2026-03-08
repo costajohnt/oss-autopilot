@@ -695,6 +695,7 @@ export type ProjectCategory = (typeof PROJECT_CATEGORIES)[number];
 
 // -- Issue discovery types (shared across issue-discovery, issue-vetting, issue-scoring) --
 
+/** Priority tier for issue search results. Ordered: merged_pr > preferred_org > starred > normal. */
 export type SearchPriority = 'merged_pr' | 'preferred_org' | 'starred' | 'normal';
 
 export interface IssueCandidate {

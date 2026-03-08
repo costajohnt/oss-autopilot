@@ -247,7 +247,7 @@ describe('runSetup', () => {
     expect(result.settings.projectCategories).toBe('(empty)');
   });
 
-  it('should handle valid preferredOrgs', async () => {
+  it('should handle valid preferredOrgs (lowercased)', async () => {
     const result = (await runSetup({ set: ['preferredOrgs=vercel,remix-run'] })) as SetupSetOutput;
     expect(mockUpdateConfig).toHaveBeenCalledWith({ preferredOrgs: ['vercel', 'remix-run'] });
     expect(result.settings.preferredOrgs).toBe('vercel, remix-run');
@@ -257,6 +257,25 @@ describe('runSetup', () => {
     const result = (await runSetup({ set: ['preferredOrgs=vercel/next.js,remix-run'] })) as SetupSetOutput;
     expect(mockUpdateConfig).toHaveBeenCalledWith({ preferredOrgs: ['remix-run'] });
     expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('looks like a repo path')]));
+  });
+
+  it('should warn for invalid org names in preferredOrgs', async () => {
+    const result = (await runSetup({ set: ['preferredOrgs=valid-org,bad org!'] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ preferredOrgs: ['valid-org'] });
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([expect.stringContaining('not a valid GitHub organization name')]),
+    );
+  });
+
+  it('should normalize preferredOrgs to lowercase and deduplicate', async () => {
+    const result = (await runSetup({ set: ['preferredOrgs=Vercel,vercel,Remix-Run'] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ preferredOrgs: ['vercel', 'remix-run'] });
+  });
+
+  it('should handle empty preferredOrgs value', async () => {
+    const result = (await runSetup({ set: ['preferredOrgs='] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ preferredOrgs: [] });
+    expect(result.settings.preferredOrgs).toBe('(empty)');
   });
 
   it('should include projectCategories and preferredOrgs in setup prompts', async () => {

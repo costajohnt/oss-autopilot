@@ -37,7 +37,7 @@ export interface SetupCompleteOutput {
     approachingDormantDays: number;
     languages: string[];
     labels: string[];
-    projectCategories: string[];
+    projectCategories: ProjectCategory[];
     preferredOrgs: string[];
   };
 }
@@ -181,8 +181,9 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
               `Unknown project categories: ${invalidCategories.join(', ')}. Valid: ${PROJECT_CATEGORIES.join(', ')}`,
             );
           }
-          stateManager.updateConfig({ projectCategories: validCategories });
-          results[key] = validCategories.length > 0 ? validCategories.join(', ') : '(empty)';
+          const dedupedCategories = [...new Set(validCategories)];
+          stateManager.updateConfig({ projectCategories: dedupedCategories });
+          results[key] = dedupedCategories.length > 0 ? dedupedCategories.join(', ') : '(empty)';
           break;
         }
         case 'preferredOrgs': {
@@ -196,12 +197,15 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
               warnings.push(
                 `"${org}" looks like a repo path. Use org name only (e.g., "vercel" not "vercel/next.js").`,
               );
+            } else if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(org)) {
+              warnings.push(`"${org}" is not a valid GitHub organization name. Skipping.`);
             } else {
-              validOrgs.push(org);
+              validOrgs.push(org.toLowerCase());
             }
           }
-          stateManager.updateConfig({ preferredOrgs: validOrgs });
-          results[key] = validOrgs.length > 0 ? validOrgs.join(', ') : '(empty)';
+          const dedupedOrgs = [...new Set(validOrgs)];
+          stateManager.updateConfig({ preferredOrgs: dedupedOrgs });
+          results[key] = dedupedOrgs.length > 0 ? dedupedOrgs.join(', ') : '(empty)';
           break;
         }
         case 'complete':

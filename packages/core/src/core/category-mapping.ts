@@ -37,6 +37,7 @@ export function repoBelongsToCategory(repoFullName: string, categories: ProjectC
 
   for (const category of categories) {
     const orgs = CATEGORY_ORGS[category];
+    if (!orgs) continue; // Guard against invalid categories from hand-edited state.json
     if (orgs.some((org) => org.toLowerCase() === owner)) {
       return true;
     }
@@ -50,7 +51,9 @@ export function repoBelongsToCategory(repoFullName: string, categories: ProjectC
 export function getTopicsForCategories(categories: ProjectCategory[]): string[] {
   const topics = new Set<string>();
   for (const category of categories) {
-    for (const topic of CATEGORY_TOPICS[category]) {
+    const categoryTopics = CATEGORY_TOPICS[category];
+    if (!categoryTopics) continue; // Guard against invalid categories from hand-edited state.json
+    for (const topic of categoryTopics) {
       topics.add(topic);
     }
   }

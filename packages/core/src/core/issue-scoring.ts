@@ -53,6 +53,7 @@ export interface ViabilityScoreParams {
  * - +15 for freshness (recently updated)
  * - +10 for contribution guidelines
  * - +5 for org affinity (merged PRs in same org)
+ * - +5 for category preference (matches user's project categories)
  * - -30 if existing PR
  * - -20 if claimed
  * - -15 if closed-without-merge history with no merges

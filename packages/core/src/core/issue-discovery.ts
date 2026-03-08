@@ -13,7 +13,7 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, getDataDir } from './utils.js';
-import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate, type ProjectCategory } from './types.js';
+import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate } from './types.js';
 import { ValidationError, errorMessage, getHttpStatusCode, isRateLimitError } from './errors.js';
 import { debug, info, warn } from './logger.js';
 import { getHttpCache, cachedTimeBased } from './http-cache.js';
@@ -369,6 +369,7 @@ export class IssueDiscovery {
     }
 
     // Phase 0.5: Search preferred organizations (explicit user preference)
+    let phase0_5Error: string | null = null;
     const preferredOrgs = config.preferredOrgs ?? [];
     if (allCandidates.length < maxResults && preferredOrgs.length > 0) {
       // Filter out orgs already covered by Phase 0 repos
@@ -394,12 +395,19 @@ export class IssueDiscovery {
               const repoFullName = item.repository_url.split('/').slice(-2).join('/');
               return !phase0RepoSet.has(repoFullName);
             });
-            const { candidates: orgCandidates, rateLimitHit } = await this.vetter.vetIssuesParallel(
+            const {
+              candidates: orgCandidates,
+              allFailed: allVetFailed,
+              rateLimitHit,
+            } = await this.vetter.vetIssuesParallel(
               filtered.slice(0, remainingNeeded * 2).map((i) => i.html_url),
               remainingNeeded,
               'preferred_org',
             );
             allCandidates.push(...orgCandidates);
+            if (allVetFailed) {
+              phase0_5Error = 'All preferred org issue vetting failed';
+            }
             if (rateLimitHit) {
               rateLimitHitDuringSearch = true;
             }
@@ -407,6 +415,7 @@ export class IssueDiscovery {
           }
         } catch (error) {
           const errMsg = errorMessage(error);
+          phase0_5Error = errMsg;
           if (isRateLimitError(error)) {
             rateLimitHitDuringSearch = true;
           }
@@ -497,15 +506,11 @@ export class IssueDiscovery {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const pushedSince = thirtyDaysAgo.toISOString().split('T')[0];
-      // When user has category preferences, add topic filters to focus on relevant repos
+      // When user has category preferences, add a single topic filter to focus on relevant repos.
+      // GitHub Search API AND-joins multiple topic: qualifiers, which is overly restrictive,
+      // so we pick just the first topic to nudge results without eliminating valid matches.
       const categoryTopics = getTopicsForCategories(config.projectCategories ?? []);
-      const topicQuery =
-        categoryTopics.length > 0
-          ? categoryTopics
-              .slice(0, 3)
-              .map((t) => `topic:${t}`)
-              .join(' ')
-          : '';
+      const topicQuery = categoryTopics.length > 0 ? `topic:${categoryTopics[0]}` : '';
       const phase3Query =
         `is:issue is:open no:assignee ${langQuery} ${topicQuery} stars:>=${minStars} pushed:>=${pushedSince} archived:false`
           .replace(/  +/g, ' ')
@@ -559,6 +564,7 @@ export class IssueDiscovery {
     if (allCandidates.length === 0) {
       const phaseErrors = [
         phase0Error ? `Phase 0 (merged-PR repos): ${phase0Error}` : null,
+        phase0_5Error ? `Phase 0.5 (preferred orgs): ${phase0_5Error}` : null,
         phase1Error ? `Phase 1 (starred repos): ${phase1Error}` : null,
         phase2Error ? `Phase 2 (general): ${phase2Error}` : null,
         phase3Error ? `Phase 3 (maintained repos): ${phase3Error}` : null,
