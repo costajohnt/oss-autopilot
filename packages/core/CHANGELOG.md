@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.51.1](https://github.com/costajohnt/oss-autopilot/compare/core-v0.51.0...core-v0.51.1) (2026-03-08)
+
+
+### Bug Fixes
+
+* dashboard stale state and aggressive rate limit ([#660](https://github.com/costajohnt/oss-autopilot/issues/660)) ([c5ac66a](https://github.com/costajohnt/oss-autopilot/commit/c5ac66a08e57503c1ea9cb5a71cba7b7b4b4d2bd))
+
 ## [0.51.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.50.0...core-v0.51.0) (2026-03-08)
 
 
