@@ -1,7 +1,7 @@
 /**
  * Dashboard HTTP server.
  * Serves the Preact SPA from packages/dashboard/dist/ and provides API endpoints
- * for live data fetching and state mutations (shelve, unshelve, override, etc.).
+ * for live data fetching and state mutations (PR state transitions, issue dismiss).
  *
  * Uses Node's built-in http module — no Express/Fastify.
  */

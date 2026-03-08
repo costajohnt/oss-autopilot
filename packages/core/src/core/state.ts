@@ -396,26 +396,32 @@ export class StateManager {
           debug(MODULE, 'Migrated state saved');
         }
 
-        // Strip removed features from persisted state (three-state simplification)
-        let needsCleanupSave = false;
-        const rawConfig = state.config as unknown as Record<string, unknown>;
-        if (rawConfig.snoozedPRs) {
-          delete rawConfig.snoozedPRs;
-          needsCleanupSave = true;
-        }
-        // Strip PR URLs from dismissedIssues (PR dismiss removed)
-        if (state.config.dismissedIssues) {
-          const PR_URL_RE = /\/pull\/\d+$/;
-          for (const url of Object.keys(state.config.dismissedIssues)) {
-            if (PR_URL_RE.test(url)) {
-              delete state.config.dismissedIssues[url];
-              needsCleanupSave = true;
+        // Strip legacy fields from persisted state (snoozedPRs and PR dismiss
+        // entries were removed in the three-state PR model simplification)
+        try {
+          let needsCleanupSave = false;
+          const rawConfig = state.config as unknown as Record<string, unknown>;
+          if (rawConfig.snoozedPRs) {
+            delete rawConfig.snoozedPRs;
+            needsCleanupSave = true;
+          }
+          // Strip PR URLs from dismissedIssues (PR dismiss removed)
+          if (state.config.dismissedIssues) {
+            const PR_URL_RE = /\/pull\/\d+$/;
+            for (const url of Object.keys(state.config.dismissedIssues)) {
+              if (PR_URL_RE.test(url)) {
+                delete state.config.dismissedIssues[url];
+                needsCleanupSave = true;
+              }
             }
           }
-        }
-        if (needsCleanupSave) {
-          atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
-          debug(MODULE, 'Cleaned up removed features from persisted state');
+          if (needsCleanupSave) {
+            atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
+            warn(MODULE, 'Cleaned up removed features (snoozedPRs, dismissed PR URLs) from persisted state');
+          }
+        } catch (cleanupError) {
+          warn(MODULE, `Failed to clean up removed features from state: ${errorMessage(cleanupError)}`);
+          // Continue with loaded state — cleanup will be retried on next load
         }
 
         // Log appropriate message based on version
@@ -966,8 +972,8 @@ export class StateManager {
   }
 
   /**
-   * Get the timestamp when an issue or PR was dismissed.
-   * @param url - The full GitHub issue or PR URL.
+   * Get the timestamp when an issue was dismissed.
+   * @param url - The full GitHub issue URL.
    * @returns The ISO dismiss timestamp, or undefined if not dismissed.
    */
   getIssueDismissedAt(url: string): string | undefined {

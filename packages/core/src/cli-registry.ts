@@ -878,6 +878,10 @@ export const commands: CLICommandDef[] = [
         .action(async (prUrl, status, options) => {
           try {
             const { runMove } = await import('./commands/move.js');
+            const validStatuses = ['needs_addressing', 'waiting_on_maintainer'];
+            if (!validStatuses.includes(status)) {
+              throw new Error(`Invalid status "${status}". Must be one of: ${validStatuses.join(', ')}`);
+            }
             const target = status === 'needs_addressing' ? 'attention' : 'waiting';
             const data = await runMove({ prUrl, target });
             if (options.json) {
