@@ -70,6 +70,14 @@ export interface DetermineStatusInput {
   hasActionableCIFailure?: boolean;
 }
 
+/** Result of `determineStatus()` — the PR's computed status classification. */
+export interface DetermineStatusResult {
+  status: FetchedPRStatus;
+  actionReason?: ActionReason;
+  waitReason?: WaitReason;
+  stalenessTier: StalenessTier;
+}
+
 /**
  * Granular reason why a PR needs addressing (contributor's turn).
  * Active values (produced by determineStatus): needs_response, needs_changes,
