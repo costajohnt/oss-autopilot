@@ -879,6 +879,87 @@ a:hover {
   flex-shrink: 0;
 }
 
+/* === Clickable Stat Card === */
+
+.stat-card--clickable {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    filter 0.15s;
+}
+
+.stat-card--clickable:hover {
+  filter: brightness(1.3);
+  border-color: var(--accent-merged);
+}
+
+.stat-card--clickable:focus-visible {
+  outline: 2px solid var(--accent-merged);
+  outline-offset: 2px;
+}
+
+/* === Merged PR Detail View === */
+
+.merged-view {
+  max-width: 900px;
+  padding: 0;
+}
+
+.merged-view-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.merged-view-back {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.merged-view-back:hover {
+  background: var(--bg-surface);
+  border-color: var(--accent-info);
+}
+
+.merged-view-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.merged-view-subtitle {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.merged-view-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.merged-view-empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  border: 1px dashed var(--border-muted);
+  border-radius: 8px;
+}
+
 /* === Scrollbar === */
 
 ::-webkit-scrollbar {

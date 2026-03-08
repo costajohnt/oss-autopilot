@@ -94,6 +94,7 @@ export function makeDashboardData(overrides: Partial<DashboardData> = {}): Dashb
     autoUnshelvedPRs: [],
     commentedIssues: [],
     issueResponses: [],
+    allMergedPRs: [],
     ...overrides,
   };
 }

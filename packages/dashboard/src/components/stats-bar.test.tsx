@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render } from '@testing-library/preact';
+import { describe, it, expect, vi } from 'vitest';
+import { render, fireEvent } from '@testing-library/preact';
 import { StatsBar } from './stats-bar';
 
 describe('StatsBar', () => {
@@ -21,5 +21,30 @@ describe('StatsBar', () => {
     const { container } = render(<StatsBar stats={stats} />);
     const labels = [...container.querySelectorAll('.stat-label')].map((el) => el.textContent);
     expect(labels).toEqual(['Active PRs', 'Shelved PRs', 'Merged PRs', 'Closed PRs', 'Merge Rate']);
+  });
+
+  it('renders merged card as clickable button when onMergedClick provided', () => {
+    const onClick = vi.fn();
+    const { container } = render(<StatsBar stats={stats} onMergedClick={onClick} />);
+    const clickable = container.querySelectorAll('.stat-card--clickable');
+    expect(clickable).toHaveLength(1);
+    expect(clickable[0].tagName).toBe('BUTTON');
+    expect(clickable[0].querySelector('.stat-label')?.textContent).toBe('Merged PRs');
+  });
+
+  it('calls onMergedClick when merged card is clicked', () => {
+    const onClick = vi.fn();
+    const { container } = render(<StatsBar stats={stats} onMergedClick={onClick} />);
+    const clickable = container.querySelector('.stat-card--clickable') as HTMLButtonElement;
+    fireEvent.click(clickable);
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it('renders all cards as divs when onMergedClick not provided', () => {
+    const { container } = render(<StatsBar stats={stats} />);
+    const clickable = container.querySelectorAll('.stat-card--clickable');
+    expect(clickable).toHaveLength(0);
+    const buttons = container.querySelectorAll('button');
+    expect(buttons).toHaveLength(0);
   });
 });

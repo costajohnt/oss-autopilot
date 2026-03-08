@@ -59,6 +59,7 @@ const mockStateManager = {
   unshelvePR: vi.fn().mockReturnValue(true),
   setStatusOverride: vi.fn(),
   getStatusOverride: vi.fn().mockReturnValue(undefined),
+  getMergedPRs: vi.fn().mockReturnValue([]),
 };
 
 // Create a temp dir for PID file tests (needs to exist before mock is evaluated)
@@ -90,6 +91,7 @@ vi.mock('./dashboard-data.js', () => ({
     closedPRs: 1,
     mergeRate: '83.3%',
   })),
+  storedToMergedPRs: vi.fn(() => []),
 }));
 
 import {
@@ -354,9 +356,11 @@ describe('dashboard-server', () => {
       expect(data).toHaveProperty('recentlyMergedPRs');
       expect(data).toHaveProperty('recentlyClosedPRs');
       expect(data).toHaveProperty('autoUnshelvedPRs');
+      expect(data).toHaveProperty('allMergedPRs');
       expect(Array.isArray(data.recentlyMergedPRs)).toBe(true);
       expect(Array.isArray(data.recentlyClosedPRs)).toBe(true);
       expect(Array.isArray(data.autoUnshelvedPRs)).toBe(true);
+      expect(Array.isArray(data.allMergedPRs)).toBe(true);
     });
 
     it('should return stats with correct values', async () => {

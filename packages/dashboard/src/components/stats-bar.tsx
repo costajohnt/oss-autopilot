@@ -2,6 +2,7 @@ import type { DashboardStats } from '../types';
 
 interface StatsBarProps {
   stats: DashboardStats;
+  onMergedClick?: () => void;
 }
 
 interface StatCardDef {
@@ -9,9 +10,10 @@ interface StatCardDef {
   value: string | number;
   accentVar: string;
   accentDimVar: string;
+  onClick?: () => void;
 }
 
-export function StatsBar({ stats }: StatsBarProps) {
+export function StatsBar({ stats, onMergedClick }: StatsBarProps) {
   const cards: StatCardDef[] = [
     {
       label: 'Active PRs',
@@ -30,6 +32,7 @@ export function StatsBar({ stats }: StatsBarProps) {
       value: stats.mergedPRs,
       accentVar: 'var(--accent-merged)',
       accentDimVar: 'var(--accent-merged-dim)',
+      onClick: onMergedClick,
     },
     {
       label: 'Closed PRs',
@@ -47,16 +50,21 @@ export function StatsBar({ stats }: StatsBarProps) {
 
   return (
     <div class="stats-bar">
-      {cards.map((card) => (
-        <div
-          key={card.label}
-          class="stat-card"
-          style={{ borderLeftColor: card.accentVar, background: card.accentDimVar }}
-        >
-          <span class="stat-value">{card.value}</span>
-          <span class="stat-label">{card.label}</span>
-        </div>
-      ))}
+      {cards.map((card) => {
+        const Tag = card.onClick ? 'button' : 'div';
+        return (
+          <Tag
+            key={card.label}
+            class={`stat-card${card.onClick ? ' stat-card--clickable' : ''}`}
+            style={{ borderLeftColor: card.accentVar, background: card.accentDimVar }}
+            onClick={card.onClick}
+            {...(card.onClick ? { type: 'button' as const } : {})}
+          >
+            <span class="stat-value">{card.value}</span>
+            <span class="stat-label">{card.label}</span>
+          </Tag>
+        );
+      })}
     </div>
   );
 }

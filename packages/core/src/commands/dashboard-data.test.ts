@@ -9,8 +9,9 @@ import {
   computeTopRepos,
   getMonthlyData,
   mergeMonthlyCounts,
+  storedToMergedPRs,
 } from './dashboard-data.js';
-import type { DailyDigest, AgentState, ShelvedPRRef } from '../core/types.js';
+import type { DailyDigest, AgentState, ShelvedPRRef, StoredMergedPR } from '../core/types.js';
 
 function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
   return {
@@ -388,5 +389,99 @@ describe('mergeMonthlyCounts', () => {
     mergeMonthlyCounts(existing, fresh);
     expect(existing).toEqual({ '2026-01': 5 });
     expect(fresh).toEqual({ '2026-02': 10 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// storedToMergedPRs
+// ---------------------------------------------------------------------------
+
+describe('storedToMergedPRs', () => {
+  it('converts stored PRs to MergedPR format with parsed repo and number', () => {
+    const stored: StoredMergedPR[] = [
+      { url: 'https://github.com/owner/repo/pull/42', title: 'Fix bug', mergedAt: '2025-06-10T00:00:00Z' },
+    ];
+
+    const result = storedToMergedPRs(stored);
+
+    expect(result).toEqual([
+      {
+        url: 'https://github.com/owner/repo/pull/42',
+        repo: 'owner/repo',
+        number: 42,
+        title: 'Fix bug',
+        mergedAt: '2025-06-10T00:00:00Z',
+      },
+    ]);
+  });
+
+  it('skips entries with unparseable URLs', () => {
+    const stored: StoredMergedPR[] = [
+      { url: 'https://example.com/not-a-pr', title: 'Bad URL', mergedAt: '2025-06-10T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/1', title: 'Good', mergedAt: '2025-06-10T00:00:00Z' },
+    ];
+
+    const result = storedToMergedPRs(stored);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].repo).toBe('owner/repo');
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(storedToMergedPRs([])).toEqual([]);
+  });
+
+  it('handles multiple PRs from different repos', () => {
+    const stored: StoredMergedPR[] = [
+      { url: 'https://github.com/a/b/pull/1', title: 'PR1', mergedAt: '2025-06-10T00:00:00Z' },
+      { url: 'https://github.com/c/d/pull/99', title: 'PR2', mergedAt: '2025-06-09T00:00:00Z' },
+    ];
+
+    const result = storedToMergedPRs(stored);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].repo).toBe('a/b');
+    expect(result[0].number).toBe(1);
+    expect(result[1].repo).toBe('c/d');
+    expect(result[1].number).toBe(99);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildDashboardStats with storedMergedCount
+// ---------------------------------------------------------------------------
+
+describe('buildDashboardStats with storedMergedCount', () => {
+  it('uses storedMergedCount when higher than totalMergedAllTime', () => {
+    const digest = makeDigest({
+      summary: { totalActivePRs: 0, totalNeedingAttention: 0, totalMergedAllTime: 50, mergeRate: 80 },
+    });
+    const stats = buildDashboardStats(digest, makeState(), 120);
+    expect(stats.mergedPRs).toBe(120);
+  });
+
+  it('uses totalMergedAllTime when higher than storedMergedCount', () => {
+    const digest = makeDigest({
+      summary: { totalActivePRs: 0, totalNeedingAttention: 0, totalMergedAllTime: 500, mergeRate: 80 },
+    });
+    const stats = buildDashboardStats(digest, makeState(), 200);
+    expect(stats.mergedPRs).toBe(500);
+  });
+
+  it('falls back to totalMergedAllTime when storedMergedCount is undefined', () => {
+    const digest = makeDigest({
+      summary: { totalActivePRs: 0, totalNeedingAttention: 0, totalMergedAllTime: 42, mergeRate: 80 },
+    });
+    const stats = buildDashboardStats(digest, makeState());
+    expect(stats.mergedPRs).toBe(42);
+  });
+
+  it('uses storedMergedCount of 0 correctly (does not fall back)', () => {
+    const digest = makeDigest({
+      summary: { totalActivePRs: 0, totalNeedingAttention: 0, totalMergedAllTime: 10, mergeRate: 80 },
+    });
+    // storedMergedCount=0 is explicitly provided, so Math.max(0, 10) = 10
+    const stats = buildDashboardStats(digest, makeState(), 0);
+    expect(stats.mergedPRs).toBe(10);
   });
 });
