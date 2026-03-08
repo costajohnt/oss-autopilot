@@ -693,6 +693,7 @@ a:hover {
 }
 
 .issue-item {
+  position: relative;
   padding: 12px 16px;
   border: 1px solid var(--border-muted);
   border-radius: 6px;
@@ -701,6 +702,33 @@ a:hover {
 
 .issue-item:hover {
   background: var(--bg-elevated);
+}
+
+.issue-item-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: transparent;
+  border: 1px solid var(--border-muted);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.issue-item-dismiss:hover {
+  color: var(--accent-error);
+  border-color: var(--accent-error);
+}
+
+.issue-item-dismiss:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .issue-item-header {

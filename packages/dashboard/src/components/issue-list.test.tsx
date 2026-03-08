@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/preact';
 import { IssueList } from './issue-list';
 import { makeIssueResponse } from '../test-helpers';
@@ -61,5 +61,47 @@ describe('IssueList', () => {
     const { container } = render(<IssueList issues={issues} />);
 
     expect(container.textContent).toContain('7d since your comment');
+  });
+
+  it('renders dismiss button for each issue', () => {
+    const issues = [makeIssueResponse()];
+    const { container } = render(<IssueList issues={issues} onAction={async () => {}} />);
+    const btn = container.querySelector('.issue-item-dismiss');
+    expect(btn).not.toBeNull();
+    expect(btn?.getAttribute('aria-label')).toBe('Dismiss');
+  });
+
+  it('calls onAction with dismiss_issue_response when dismiss is clicked', async () => {
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    const issue = makeIssueResponse({ url: 'https://github.com/org/repo/issues/42' });
+    const { container } = render(<IssueList issues={[issue]} onAction={onAction} />);
+
+    const btn = container.querySelector('.issue-item-dismiss') as HTMLButtonElement;
+    btn.click();
+
+    expect(onAction).toHaveBeenCalledWith({
+      action: 'dismiss_issue_response',
+      url: 'https://github.com/org/repo/issues/42',
+    });
+  });
+
+  it('does not render dismiss button when onAction is not provided', () => {
+    const issues = [makeIssueResponse()];
+    const { container } = render(<IssueList issues={issues} />);
+    const btn = container.querySelector('.issue-item-dismiss');
+    expect(btn).toBeNull();
+  });
+
+  it('displays error message when dismiss action fails', async () => {
+    const onAction = vi.fn().mockRejectedValue(new Error('Rate limited'));
+    const issue = makeIssueResponse();
+    const { container } = render(<IssueList issues={[issue]} onAction={onAction} />);
+
+    const btn = container.querySelector('.issue-item-dismiss') as HTMLButtonElement;
+    btn.click();
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.action-error')?.textContent).toBe('Rate limited');
+    });
   });
 });

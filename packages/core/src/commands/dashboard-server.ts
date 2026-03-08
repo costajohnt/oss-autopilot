@@ -12,7 +12,7 @@ import * as path from 'path';
 import { getStateManager, getGitHubToken, getCLIVersion, applyStatusOverrides } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
-import { validateUrl, validateGitHubUrl, PR_URL_PATTERN } from './validation.js';
+import { validateUrl, validateGitHubUrl, PR_URL_PATTERN, ISSUE_OR_PR_URL_PATTERN } from './validation.js';
 import {
   fetchDashboardData,
   computePRsByRepo,
@@ -79,7 +79,7 @@ interface DashboardJsonData {
 }
 
 interface ActionRequest {
-  action: 'shelve' | 'unshelve' | 'override_status';
+  action: 'shelve' | 'unshelve' | 'override_status' | 'dismiss_issue_response';
   url: string;
   /** Target status for override_status action. */
   status?: 'needs_addressing' | 'waiting_on_maintainer';
@@ -87,7 +87,12 @@ interface ActionRequest {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const VALID_ACTIONS: Set<ActionRequest['action']> = new Set(['shelve', 'unshelve', 'override_status']);
+const VALID_ACTIONS: Set<ActionRequest['action']> = new Set([
+  'shelve',
+  'unshelve',
+  'override_status',
+  'dismiss_issue_response',
+]);
 
 const MODULE = 'dashboard-server';
 
@@ -131,7 +136,10 @@ function buildDashboardJson(
   const filteredMergedPRs = mergedPRs.filter(isAboveMinStars);
   const filteredClosedPRs = closedPRs.filter(isAboveMinStars);
   const stats = buildDashboardStats(digest, state, filteredMergedPRs.length, filteredClosedPRs.length);
-  const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
+  const dismissedIssues = state.config.dismissedIssues || {};
+  const issueResponses = commentedIssues.filter(
+    (i): i is CommentedIssueWithResponse => i.status === 'new_response' && !(i.url in dismissedIssues),
+  );
 
   return {
     stats,
@@ -349,10 +357,15 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       return;
     }
 
-    // Validate URL format — all actions are PR-only now.
+    // Validate URL format — dismiss_issue_response accepts issue or PR URLs, others are PR-only.
+    const isDismiss = body.action === 'dismiss_issue_response';
     try {
       validateUrl(body.url);
-      validateGitHubUrl(body.url, PR_URL_PATTERN, 'PR');
+      validateGitHubUrl(
+        body.url,
+        isDismiss ? ISSUE_OR_PR_URL_PATTERN : PR_URL_PATTERN,
+        isDismiss ? 'issue or PR' : 'PR',
+      );
     } catch (err) {
       if (err instanceof ValidationError) {
         sendError(res, 400, err.message);
@@ -392,6 +405,9 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
           stateManager.setStatusOverride(body.url, overrideStatus, lastActivityAt);
           break;
         }
+        case 'dismiss_issue_response':
+          stateManager.dismissIssue(body.url, new Date().toISOString());
+          break;
       }
       stateManager.save();
     } catch (error) {

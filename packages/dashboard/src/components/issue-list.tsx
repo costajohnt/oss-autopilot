@@ -1,11 +1,13 @@
-import type { CommentedIssueWithResponse } from '../types';
+import { useState } from 'preact/hooks';
+import type { CommentedIssueWithResponse, ActionRequest } from '../types';
 import { truncate, formatDate } from '../utils';
 
 interface IssueListProps {
   issues: CommentedIssueWithResponse[];
+  onAction?: (action: ActionRequest) => Promise<void>;
 }
 
-export function IssueList({ issues }: IssueListProps) {
+export function IssueList({ issues, onAction }: IssueListProps) {
   if (issues.length === 0) return null;
 
   return (
@@ -13,29 +15,62 @@ export function IssueList({ issues }: IssueListProps) {
       <h3 class="issue-list-title">Issue Responses</h3>
       <div class="issue-list-items">
         {issues.map((issue) => (
-          <div key={issue.url} class="issue-item">
-            <div class="issue-item-header">
-              <a class="issue-item-id" href={issue.url} target="_blank" rel="noopener noreferrer">
-                {issue.repo}#{issue.number}
-              </a>
-              <span
-                class={`issue-item-badge ${
-                  issue.isFromMaintainer ? 'issue-item-badge--maintainer' : 'issue-item-badge--community'
-                }`}
-              >
-                {issue.isFromMaintainer ? 'Maintainer' : 'Community'}
-              </span>
-            </div>
-            <div class="issue-item-title">{truncate(issue.title, 60)}</div>
-            <div class="issue-item-response">
-              <span class="issue-item-response-author">Response from @{issue.lastResponseAuthor}</span>
-              <span class="issue-item-response-date">{formatDate(issue.lastResponseAt)}</span>
-            </div>
-            <p class="issue-item-response-body">{truncate(issue.lastResponseBody, 150)}</p>
-            <span class="issue-item-age">{issue.daysSinceUserComment}d since your comment</span>
-          </div>
+          <IssueItem key={issue.url} issue={issue} onAction={onAction} />
         ))}
       </div>
+    </div>
+  );
+}
+
+interface IssueItemProps {
+  issue: CommentedIssueWithResponse;
+  onAction?: (action: ActionRequest) => Promise<void>;
+}
+
+function IssueItem({ issue, onAction }: IssueItemProps) {
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  async function handleDismiss(): Promise<void> {
+    if (!onAction) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await onAction({ action: 'dismiss_issue_response', url: issue.url });
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Dismiss failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div class="issue-item">
+      {actionError && <p class="action-error">{actionError}</p>}
+      {onAction && (
+        <button class="issue-item-dismiss" aria-label="Dismiss" disabled={busy} onClick={handleDismiss}>
+          ×
+        </button>
+      )}
+      <div class="issue-item-header">
+        <a class="issue-item-id" href={issue.url} target="_blank" rel="noopener noreferrer">
+          {issue.repo}#{issue.number}
+        </a>
+        <span
+          class={`issue-item-badge ${
+            issue.isFromMaintainer ? 'issue-item-badge--maintainer' : 'issue-item-badge--community'
+          }`}
+        >
+          {issue.isFromMaintainer ? 'Maintainer' : 'Community'}
+        </span>
+      </div>
+      <div class="issue-item-title">{truncate(issue.title, 60)}</div>
+      <div class="issue-item-response">
+        <span class="issue-item-response-author">Response from @{issue.lastResponseAuthor}</span>
+        <span class="issue-item-response-date">{formatDate(issue.lastResponseAt)}</span>
+      </div>
+      <p class="issue-item-response-body">{truncate(issue.lastResponseBody, 150)}</p>
+      <span class="issue-item-age">{issue.daysSinceUserComment}d since your comment</span>
     </div>
   );
 }
