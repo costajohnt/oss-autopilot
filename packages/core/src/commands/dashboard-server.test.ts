@@ -59,6 +59,7 @@ const mockStateManager = {
   unshelvePR: vi.fn().mockReturnValue(true),
   setStatusOverride: vi.fn(),
   getStatusOverride: vi.fn().mockReturnValue(undefined),
+  dismissIssue: vi.fn().mockReturnValue(true),
   getMergedPRs: vi.fn().mockReturnValue([]),
   getClosedPRs: vi.fn().mockReturnValue([]),
 };
@@ -95,6 +96,15 @@ vi.mock('./dashboard-data.js', () => ({
   })),
   storedToMergedPRs: vi.fn(() => []),
   storedToClosedPRs: vi.fn(() => []),
+}));
+
+// Mock rate limiter to always allow requests (avoids test ordering fragility)
+vi.mock('./rate-limiter.js', () => ({
+  RateLimiter: class {
+    check() {
+      return { allowed: true };
+    }
+  },
 }));
 
 import {
@@ -284,6 +294,7 @@ describe('dashboard-server', () => {
     mockStateManager.shelvePR.mockClear();
     mockStateManager.unshelvePR.mockClear();
     mockStateManager.setStatusOverride.mockClear();
+    mockStateManager.dismissIssue.mockClear();
     mockStateManager.save.mockClear();
 
     // Re-setup the state mock
@@ -612,6 +623,23 @@ describe('dashboard-server', () => {
       expect(data).toHaveProperty('prsByRepo');
       expect(data).toHaveProperty('topRepos');
       expect(data).toHaveProperty('monthlyMerged');
+    });
+
+    it('should accept a valid dismiss_issue_response action', async () => {
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({
+          action: 'dismiss_issue_response',
+          url: 'https://github.com/owner/repo/issues/42',
+        }),
+      );
+      expect(result.statusCode).toBe(200);
+      expect(mockStateManager.dismissIssue).toHaveBeenCalledWith(
+        'https://github.com/owner/repo/issues/42',
+        expect.any(String),
+      );
+      expect(mockStateManager.save).toHaveBeenCalled();
     });
   });
 
