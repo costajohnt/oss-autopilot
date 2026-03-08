@@ -200,6 +200,7 @@ function migrateV1ToV2(rawState: Record<string, unknown>): AgentState {
 export class StateManager {
   private state: AgentState;
   private readonly inMemoryOnly: boolean;
+  private lastLoadedMtimeMs: number = 0;
 
   /**
    * Create a new StateManager instance.
@@ -424,6 +425,13 @@ export class StateManager {
           // Continue with loaded state — cleanup will be retried on next load
         }
 
+        // Record file mtime so reloadIfChanged() can detect external writes
+        try {
+          this.lastLoadedMtimeMs = fs.statSync(getStatePath()).mtimeMs;
+        } catch {
+          // Non-critical: reload detection will just always trigger
+        }
+
         // Log appropriate message based on version
         const repoCount = Object.keys(state.repoScores).length;
         debug(MODULE, `Loaded state v${state.version}: ${repoCount} repo scores tracked`);
@@ -579,6 +587,8 @@ export class StateManager {
 
       // Atomic write: write to temp file then rename to prevent corruption on crash
       atomicWriteFileSync(statePath, JSON.stringify(this.state, null, 2), 0o600);
+      // Update mtime so own writes don't trigger reloadIfChanged()
+      this.lastLoadedMtimeMs = fs.statSync(statePath).mtimeMs;
       debug(MODULE, 'State saved successfully');
     } finally {
       releaseLock(lockPath);
@@ -614,6 +624,23 @@ export class StateManager {
    */
   getState(): Readonly<AgentState> {
     return this.state;
+  }
+
+  /**
+   * Re-read state from disk if the file has been modified since the last load/save.
+   * Uses mtime comparison (single statSync call) to avoid unnecessary JSON parsing.
+   * Returns true if state was reloaded, false if unchanged or in-memory mode.
+   */
+  reloadIfChanged(): boolean {
+    if (this.inMemoryOnly) return false;
+    try {
+      const currentMtimeMs = fs.statSync(getStatePath()).mtimeMs;
+      if (currentMtimeMs === this.lastLoadedMtimeMs) return false;
+      this.state = this.load();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /**

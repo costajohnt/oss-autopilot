@@ -2128,3 +2128,83 @@ describe('legacy state cleanup on load', () => {
     expect(mtimeAfter).toBe(mtimeBefore);
   });
 });
+
+// ── reloadIfChanged (#659) ──────────────────────────────────────────────────
+describe('StateManager reloadIfChanged', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'state-reload-'));
+  });
+
+  afterEach(() => {
+    resetStateManager();
+    if (mockTmpDir) {
+      fs.rmSync(mockTmpDir, { recursive: true, force: true });
+      mockTmpDir = '';
+    }
+  });
+
+  function makeMinimalState(): Record<string, unknown> {
+    return {
+      version: 2,
+      activeIssues: [],
+      repoScores: {},
+      config: {
+        trustedProjects: [],
+        excludeOrgs: [],
+        excludeRepos: [],
+        shelvedPRUrls: [],
+        statusOverrides: {},
+        dismissedIssues: {},
+        minStars: 50,
+      },
+      events: [],
+      mergedPRs: [],
+      closedPRs: [],
+    };
+  }
+
+  it('should return false when file has not changed', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(makeMinimalState()), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    expect(sm.reloadIfChanged()).toBe(false);
+  });
+
+  it('should return true and reload when file was modified externally', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const initial = makeMinimalState();
+    fs.writeFileSync(statePath, JSON.stringify(initial), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    expect(sm.getState().config.trustedProjects).toEqual([]);
+
+    // Simulate external CLI write with a brief delay to ensure mtime differs
+    const start = Date.now();
+    while (Date.now() - start < 50) {
+      // busy-wait
+    }
+    const modified = makeMinimalState();
+    (modified.config as Record<string, unknown>).trustedProjects = ['ext-org/ext-repo'];
+    fs.writeFileSync(statePath, JSON.stringify(modified), { mode: 0o600 });
+
+    expect(sm.reloadIfChanged()).toBe(true);
+    expect(sm.getState().config.trustedProjects).toEqual(['ext-org/ext-repo']);
+  });
+
+  it('should return false in in-memory mode', () => {
+    const sm = new StateManager(true);
+    expect(sm.reloadIfChanged()).toBe(false);
+  });
+
+  it('should return false after own save() (self-writes do not trigger reload)', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(makeMinimalState()), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    sm.addTrustedProject('my-org/my-repo');
+    sm.save();
+
+    expect(sm.reloadIfChanged()).toBe(false);
+  });
+});

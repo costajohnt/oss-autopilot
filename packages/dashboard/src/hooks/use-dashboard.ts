@@ -65,9 +65,11 @@ export function useDashboard() {
   }, []);
 
   useEffect(() => {
-    fetchData().then(() => {
+    fetchData();
+    const timer = setTimeout(() => {
       silentRefresh();
-    });
+    }, 5_000);
+    return () => clearTimeout(timer);
   }, [fetchData, silentRefresh]);
 
   const clearError = useCallback(() => setError(null), []);
