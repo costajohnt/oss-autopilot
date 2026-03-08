@@ -268,7 +268,7 @@ describe('runSetup', () => {
   });
 
   it('should normalize preferredOrgs to lowercase and deduplicate', async () => {
-    const result = (await runSetup({ set: ['preferredOrgs=Vercel,vercel,Remix-Run'] })) as SetupSetOutput;
+    await runSetup({ set: ['preferredOrgs=Vercel,vercel,Remix-Run'] });
     expect(mockUpdateConfig).toHaveBeenCalledWith({ preferredOrgs: ['vercel', 'remix-run'] });
   });
 
