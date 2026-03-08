@@ -30,9 +30,15 @@ describe('useDashboard', () => {
     });
   }
 
+  /** Mock both initial fetch and silent auto-refresh with the same data. */
+  function mockInitialAndRefresh(data: DashboardData, refreshData?: DashboardData) {
+    mockFetchOk(data);
+    mockFetchOk(refreshData ?? data);
+  }
+
   it('fetches data on mount and transitions from loading to loaded', async () => {
     const data = makeDashboardData();
-    mockFetchOk(data);
+    mockInitialAndRefresh(data);
 
     const { result } = renderHook(() => useDashboard());
 
@@ -53,6 +59,7 @@ describe('useDashboard', () => {
   it('sets error state on fetch failure', async () => {
     mockFetchError(500, { error: 'Internal Server Error' });
 
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { result } = renderHook(() => useDashboard());
 
     await vi.waitFor(() => {
@@ -61,11 +68,13 @@ describe('useDashboard', () => {
 
     expect(result.current.data).toBe(null);
     expect(result.current.error).toBe('Internal Server Error');
+    warnSpy.mockRestore();
   });
 
   it('sets HTTP status as error when no error body', async () => {
     mockFetchError(502);
 
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { result } = renderHook(() => useDashboard());
 
     await vi.waitFor(() => {
@@ -73,16 +82,22 @@ describe('useDashboard', () => {
     });
 
     expect(result.current.error).toBe('HTTP 502');
+    warnSpy.mockRestore();
   });
 
   it('refresh calls POST /api/refresh', async () => {
     const data = makeDashboardData();
-    mockFetchOk(data);
+    mockInitialAndRefresh(data);
 
     const { result } = renderHook(() => useDashboard());
 
     await vi.waitFor(() => {
       expect(result.current.loading).toBe(false);
+    });
+
+    // Wait for auto-refresh to settle
+    await vi.waitFor(() => {
+      expect(result.current.refreshing).toBe(false);
     });
 
     const refreshedData = makeDashboardData({ stats: { ...data.stats, activePRs: 3 } });
@@ -98,12 +113,17 @@ describe('useDashboard', () => {
 
   it('performAction sends action and updates data', async () => {
     const data = makeDashboardData();
-    mockFetchOk(data);
+    mockInitialAndRefresh(data);
 
     const { result } = renderHook(() => useDashboard());
 
     await vi.waitFor(() => {
       expect(result.current.loading).toBe(false);
+    });
+
+    // Wait for auto-refresh to settle
+    await vi.waitFor(() => {
+      expect(result.current.refreshing).toBe(false);
     });
 
     const updatedData = makeDashboardData({ shelvedPRUrls: ['https://github.com/org/repo/pull/1'] });
@@ -123,12 +143,17 @@ describe('useDashboard', () => {
 
   it('performAction re-fetches on failure and re-throws', async () => {
     const data = makeDashboardData();
-    mockFetchOk(data);
+    mockInitialAndRefresh(data);
 
     const { result } = renderHook(() => useDashboard());
 
     await vi.waitFor(() => {
       expect(result.current.loading).toBe(false);
+    });
+
+    // Wait for auto-refresh to settle
+    await vi.waitFor(() => {
+      expect(result.current.refreshing).toBe(false);
     });
 
     // Action fails
@@ -150,6 +175,7 @@ describe('useDashboard', () => {
   it('clearError resets error to null', async () => {
     mockFetchError(500, { error: 'Something went wrong' });
 
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { result } = renderHook(() => useDashboard());
 
     await vi.waitFor(() => {
@@ -161,5 +187,97 @@ describe('useDashboard', () => {
     });
 
     expect(result.current.error).toBe(null);
+    warnSpy.mockRestore();
+  });
+
+  // ── Auto-refresh tests ──────────────────────────────────────────
+
+  it('auto-refreshes after initial load (GET /api/data then POST /api/refresh)', async () => {
+    const cached = makeDashboardData();
+    const refreshed = makeDashboardData({ stats: { ...cached.stats, mergedPRs: 7 } });
+    mockInitialAndRefresh(cached, refreshed);
+
+    const { result } = renderHook(() => useDashboard());
+
+    await vi.waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // Wait for auto-refresh to complete
+    await vi.waitFor(() => {
+      expect(result.current.refreshing).toBe(false);
+    });
+
+    // Verify both calls were made (initial GET + auto POST)
+    const calls = mockFetch.mock.calls;
+    expect(calls.some((c: string[]) => c[0] === '/api/data')).toBe(true);
+    expect(calls.some((c: string[]) => c[0] === '/api/refresh' && c[1]?.method === 'POST')).toBe(true);
+
+    // Data updated with refreshed data
+    expect(result.current.data?.stats.mergedPRs).toBe(7);
+  });
+
+  it('auto-refresh failure preserves cached data and does not set error', async () => {
+    const cached = makeDashboardData();
+    mockFetchOk(cached);
+    mockFetchError(500, { error: 'Refresh failed' });
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { result } = renderHook(() => useDashboard());
+
+    await vi.waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await vi.waitFor(() => {
+      expect(result.current.refreshing).toBe(false);
+    });
+
+    // Error should NOT be set — cached data preserved
+    expect(result.current.error).toBeNull();
+    expect(result.current.data?.stats.mergedPRs).toBe(5);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Auto-refresh failed'), expect.any(String));
+
+    warnSpy.mockRestore();
+  });
+
+  it('loading stays false during auto-refresh, refreshing is true', async () => {
+    const cached = makeDashboardData();
+    let resolveRefresh!: (value: unknown) => void;
+    const refreshPromise = new Promise((resolve) => {
+      resolveRefresh = resolve;
+    });
+
+    mockFetchOk(cached);
+    mockFetch.mockReturnValueOnce(
+      refreshPromise.then(() => ({
+        ok: true,
+        json: () => Promise.resolve(makeDashboardData({ stats: { ...cached.stats, mergedPRs: 10 } })),
+      })),
+    );
+
+    const { result } = renderHook(() => useDashboard());
+
+    // Wait for initial load
+    await vi.waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // During auto-refresh: loading=false, refreshing=true
+    await vi.waitFor(() => {
+      expect(result.current.refreshing).toBe(true);
+    });
+    expect(result.current.loading).toBe(false);
+
+    // Complete the refresh
+    await act(async () => {
+      resolveRefresh(undefined);
+      // Allow microtasks to flush
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    await vi.waitFor(() => {
+      expect(result.current.refreshing).toBe(false);
+    });
   });
 });
