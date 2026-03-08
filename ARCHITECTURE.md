@@ -106,7 +106,8 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `vet` | `vet.ts` | Vet a single issue for claimability |
 | `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-templates.ts`, `dashboard-server.ts`) |
 | `move` | `move.ts` | Transition a PR between states: attention, waiting, shelved, auto |
-| `shelve` / `unshelve` | `shelve.ts` | Temporarily hide PRs from daily digest |
+| `shelve` / `unshelve` | `move.ts` (aliases) | Exclude PRs from capacity and actionable items |
+| `override` / `clear-override` | `move.ts` (aliases) | Backward-compatible status override commands |
 | `dismiss` / `undismiss` | `dismiss.ts` | Dismiss issue reply notifications (auto-resurfaces on new activity) |
 | `comments` / `post` / `claim` | `comments.ts` | Track issue conversations, post comments, claim issues |
 | `local-repos` | `local-repos.ts` | Scan for locally cloned repos |
@@ -256,8 +257,9 @@ interface AgentState {
 }
 ```
 
-Shelving and dismissing state lives inside `config: AgentConfig`:
+Shelving, overrides, and dismissing state lives inside `config: AgentConfig`:
 - `config.shelvedPRUrls: string[]` — PR URLs manually shelved (excluded from capacity and actionable items, auto-unshelved when maintainers engage)
+- `config.statusOverrides: Record<string, StatusOverride>` — Manual PR status overrides set via `move` command. Auto-clears when the PR has new activity
 - `config.dismissedIssues: Record<string, string>` — Issue URLs mapped to dismiss timestamps
 
 ### What's NOT Stored (v2 Design)

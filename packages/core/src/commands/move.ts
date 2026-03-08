@@ -33,6 +33,8 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
     case 'waiting': {
       const status = target === 'attention' ? 'needs_addressing' : 'waiting_on_maintainer';
       const label = target === 'attention' ? 'Need Attention' : 'Waiting on Maintainer';
+      // Use current time — the CLI doesn't have cached PR data. The override
+      // will auto-clear on the next daily run if the PR has new activity after this.
       const lastActivityAt = new Date().toISOString();
       stateManager.setStatusOverride(options.prUrl, status, lastActivityAt);
       stateManager.unshelvePR(options.prUrl);
