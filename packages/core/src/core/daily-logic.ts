@@ -356,10 +356,15 @@ export function computeActionMenu(
   const hasIssueResponses = issueResponses.length > 0;
 
   if (hasActionableIssues) {
+    const isSingle = actionableIssues.length === 1;
     items.push({
       key: 'address_all',
-      label: `Work through all ${actionableIssues.length} issue${actionableIssues.length === 1 ? '' : 's'} (Recommended)`,
-      description: 'Run maintenance in parallel, then address code changes one at a time',
+      label: isSingle
+        ? 'Address this issue (Recommended)'
+        : `Work through all ${actionableIssues.length} issues (Recommended)`,
+      description: isSingle
+        ? 'Fix the issue blocking your PR'
+        : 'Run maintenance in parallel, then address code changes one at a time',
     });
   }
 

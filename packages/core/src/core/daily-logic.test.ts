@@ -578,7 +578,28 @@ describe('groupPRsByRepo (core)', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeActionMenu (core)', () => {
-  it('should include address_all when there are actionable issues', () => {
+  it('should use plural phrasing for multiple actionable issues', () => {
+    const issues = [
+      {
+        type: 'ci_failing' as const,
+        pr: makePR({ repo: 'owner/repo' }),
+        label: '[CI Failing]',
+        isNewContribution: false,
+      },
+      {
+        type: 'changes_requested' as const,
+        pr: makePR({ repo: 'owner/repo-b' }),
+        label: '[Changes Requested]',
+        isNewContribution: false,
+      },
+    ];
+    const menu = computeActionMenu(issues, makeCapacity());
+    expect(menu.items[0].key).toBe('address_all');
+    expect(menu.items[0].label).toBe('Work through all 2 issues (Recommended)');
+    expect(menu.items[0].description).toBe('Run maintenance in parallel, then address code changes one at a time');
+  });
+
+  it('should use singular phrasing for a single actionable issue', () => {
     const issues = [
       {
         type: 'ci_failing' as const,
@@ -589,6 +610,8 @@ describe('computeActionMenu (core)', () => {
     ];
     const menu = computeActionMenu(issues, makeCapacity());
     expect(menu.items[0].key).toBe('address_all');
+    expect(menu.items[0].label).toBe('Address this issue (Recommended)');
+    expect(menu.items[0].description).toBe('Fix the issue blocking your PR');
   });
 
   it('should always end with done', () => {
