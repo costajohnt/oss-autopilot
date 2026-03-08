@@ -1,12 +1,12 @@
 /**
- * Tests for status determination logic — determineStatus, isContributorCommit,
- * isCommitAfterComment. Migrated from pr-monitor.test.ts (#263).
+ * Tests for status determination logic — determineStatus().
+ * Migrated from pr-monitor.test.ts (#263).
  *
  * These are pure functions — no mocks needed.
  */
 
 import { describe, it, expect } from 'vitest';
-import { determineStatus, isContributorCommit, isCommitAfterComment } from './status-determination.js';
+import { determineStatus } from './status-determination.js';
 import type { DetermineStatusInput } from './types.js';
 
 /** Shared helper — call determineStatus with sensible defaults, overriding only the fields under test. */
@@ -27,22 +27,16 @@ function callDetermineStatus(overrides: Partial<DetermineStatusInput> = {}) {
   return determineStatus({ ...defaults, ...overrides });
 }
 
-describe('PRMonitor changes_addressed detection', () => {
+describe('determineStatus changes_addressed detection', () => {
   it('should return changes_addressed when commit is newer than maintainer comment', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: true,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-08T12:00:00Z', // newer
-      lastMaintainerCommentDate: '2026-02-07T10:00:00Z', // older
-    });
-
-    expect(result).toEqual({
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-08T12:00:00Z', // newer
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z', // older
+      }),
+    ).toEqual({
       status: 'waiting_on_maintainer',
       waitReason: 'changes_addressed',
       stalenessTier: 'active',
@@ -50,95 +44,63 @@ describe('PRMonitor changes_addressed detection', () => {
   });
 
   it('should return needs_response when commit is older than maintainer comment', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: true,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-06T10:00:00Z', // older
-      lastMaintainerCommentDate: '2026-02-07T10:00:00Z', // newer
-    });
-
-    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-06T10:00:00Z', // older
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z', // newer
+      }),
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 
   it('should fall back to needs_response when commit date is unavailable', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: true,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: undefined, // missing
-      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
-    });
-
-    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'changes_requested',
+        latestCommitDate: undefined, // missing
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 
   it('should not check commit date when hasUnrespondedComment is false and review is approved', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: false,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'approved',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-08T12:00:00Z',
-      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
-      latestChangesRequestedDate: undefined,
-    });
-
-    expect(result).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier: 'active' });
+    expect(
+      callDetermineStatus({
+        reviewDecision: 'approved',
+        latestCommitDate: '2026-02-08T12:00:00Z',
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier: 'active' });
   });
 });
 
-describe('PRMonitor commit author filtering (#547, #568)', () => {
+describe('determineStatus commit author filtering (#547, #568)', () => {
   it('should return needs_response when HEAD commit is by a non-contributor', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: true,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-08T12:00:00Z',
-      latestCommitAuthor: 'maintainer-user',
-      contributorUsername: 'contributor-user',
-      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
-    });
-
-    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-08T12:00:00Z',
+        latestCommitAuthor: 'maintainer-user',
+        contributorUsername: 'contributor-user',
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 
   it('should return changes_addressed when HEAD commit is by the contributor', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: true,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-08T12:00:00Z',
-      latestCommitAuthor: 'contributor-user',
-      contributorUsername: 'contributor-user',
-      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
-    });
-
-    expect(result).toEqual({
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-08T12:00:00Z',
+        latestCommitAuthor: 'contributor-user',
+        contributorUsername: 'contributor-user',
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toEqual({
       status: 'waiting_on_maintainer',
       waitReason: 'changes_addressed',
       stalenessTier: 'active',
@@ -146,43 +108,31 @@ describe('PRMonitor commit author filtering (#547, #568)', () => {
   });
 
   it('should return needs_response when commit is within 2 minutes of comment (race condition)', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: true,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      // 44 seconds after comment — not enough time to address feedback
-      latestCommitDate: '2026-02-07T10:00:44Z',
-      latestCommitAuthor: 'contributor-user',
-      contributorUsername: 'contributor-user',
-      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
-    });
-
-    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'changes_requested',
+        // 44 seconds after comment — not enough time to address feedback
+        latestCommitDate: '2026-02-07T10:00:44Z',
+        latestCommitAuthor: 'contributor-user',
+        contributorUsername: 'contributor-user',
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 
   it('should degrade gracefully when commit author is unknown', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: true,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-08T12:00:00Z',
-      // No author info — degrade gracefully (treat as contributor)
-      latestCommitAuthor: undefined,
-      contributorUsername: 'contributor-user',
-      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
-    });
-
-    expect(result).toEqual({
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-08T12:00:00Z',
+        // No author info — degrade gracefully (treat as contributor)
+        latestCommitAuthor: undefined,
+        contributorUsername: 'contributor-user',
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toEqual({
       status: 'waiting_on_maintainer',
       waitReason: 'changes_addressed',
       stalenessTier: 'active',
@@ -190,22 +140,16 @@ describe('PRMonitor commit author filtering (#547, #568)', () => {
   });
 
   it('should handle case-insensitive author comparison', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: true,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-08T12:00:00Z',
-      latestCommitAuthor: 'ContributorUser',
-      contributorUsername: 'contributoruser',
-      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
-    });
-
-    expect(result).toEqual({
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-08T12:00:00Z',
+        latestCommitAuthor: 'ContributorUser',
+        contributorUsername: 'contributoruser',
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toEqual({
       status: 'waiting_on_maintainer',
       waitReason: 'changes_addressed',
       stalenessTier: 'active',
@@ -213,44 +157,30 @@ describe('PRMonitor commit author filtering (#547, #568)', () => {
   });
 
   it('should return needs_changes when non-contributor commit after changes_requested review', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: false,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-09T10:00:00Z',
-      latestCommitAuthor: 'maintainer-user',
-      contributorUsername: 'contributor-user',
-      lastMaintainerCommentDate: undefined,
-      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
-    });
-
     // Non-contributor commit should not count — still needs_changes
-    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
+    expect(
+      callDetermineStatus({
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-09T10:00:00Z',
+        latestCommitAuthor: 'maintainer-user',
+        contributorUsername: 'contributor-user',
+        latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+      }),
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
   });
 
   it('should return changes_addressed when HEAD commit is by a CI bot (#568)', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: true,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-08T12:00:00Z',
-      latestCommitAuthor: 'autofix-ci[bot]',
-      contributorUsername: 'contributor-user',
-      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
-    });
-
     // Bot commits represent contributor work — should count as changes_addressed
-    expect(result).toEqual({
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-08T12:00:00Z',
+        latestCommitAuthor: 'autofix-ci[bot]',
+        contributorUsername: 'contributor-user',
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toEqual({
       status: 'waiting_on_maintainer',
       waitReason: 'changes_addressed',
       stalenessTier: 'active',
@@ -258,24 +188,16 @@ describe('PRMonitor commit author filtering (#547, #568)', () => {
   });
 
   it('should return changes_addressed when CI bot commit after changes_requested review (#568)', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: false,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-09T10:00:00Z',
-      latestCommitAuthor: 'prettier-ci[bot]',
-      contributorUsername: 'contributor-user',
-      lastMaintainerCommentDate: undefined,
-      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
-    });
-
     // Bot commit after changes_requested review = contributor addressed changes
-    expect(result).toEqual({
+    expect(
+      callDetermineStatus({
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-09T10:00:00Z',
+        latestCommitAuthor: 'prettier-ci[bot]',
+        contributorUsername: 'contributor-user',
+        latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+      }),
+    ).toEqual({
       status: 'waiting_on_maintainer',
       waitReason: 'changes_addressed',
       stalenessTier: 'active',
@@ -283,23 +205,15 @@ describe('PRMonitor commit author filtering (#547, #568)', () => {
   });
 
   it('should return changes_addressed when pre-commit-ci[bot] commits after review (#568)', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: false,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-09T10:00:00Z',
-      latestCommitAuthor: 'pre-commit-ci[bot]',
-      contributorUsername: 'contributor-user',
-      lastMaintainerCommentDate: undefined,
-      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
-    });
-
-    expect(result).toEqual({
+    expect(
+      callDetermineStatus({
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-09T10:00:00Z',
+        latestCommitAuthor: 'pre-commit-ci[bot]',
+        contributorUsername: 'contributor-user',
+        latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+      }),
+    ).toEqual({
       status: 'waiting_on_maintainer',
       waitReason: 'changes_addressed',
       stalenessTier: 'active',
@@ -307,62 +221,38 @@ describe('PRMonitor commit author filtering (#547, #568)', () => {
   });
 
   it('should NOT treat non-CI bot commits as contributor work (#568)', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: false,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-09T10:00:00Z',
-      latestCommitAuthor: 'github-actions[bot]',
-      contributorUsername: 'contributor-user',
-      lastMaintainerCommentDate: undefined,
-      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
-    });
-
     // Non-CI bot commits should NOT count as addressing feedback
-    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
+    expect(
+      callDetermineStatus({
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-09T10:00:00Z',
+        latestCommitAuthor: 'github-actions[bot]',
+        contributorUsername: 'contributor-user',
+        latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+      }),
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
   });
 });
 
-describe('PRMonitor needs_changes detection', () => {
+describe('determineStatus needs_changes detection', () => {
   it('should return needs_changes when changes_requested and no new commits', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: false,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-08T06:50:38Z', // before review
-      lastMaintainerCommentDate: undefined,
-      latestChangesRequestedDate: '2026-02-08T11:52:22Z', // after commit
-    });
-
-    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
+    expect(
+      callDetermineStatus({
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-08T06:50:38Z', // before review
+        latestChangesRequestedDate: '2026-02-08T11:52:22Z', // after commit
+      }),
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
   });
 
   it('should return changes_addressed when commits pushed after changes_requested review', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: false,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-09T10:00:00Z', // after review
-      lastMaintainerCommentDate: undefined,
-      latestChangesRequestedDate: '2026-02-08T11:52:22Z', // before commit
-    });
-
-    expect(result).toEqual({
+    expect(
+      callDetermineStatus({
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-09T10:00:00Z', // after review
+        latestChangesRequestedDate: '2026-02-08T11:52:22Z', // before commit
+      }),
+    ).toEqual({
       status: 'waiting_on_maintainer',
       waitReason: 'changes_addressed',
       stalenessTier: 'active',
@@ -370,44 +260,27 @@ describe('PRMonitor needs_changes detection', () => {
   });
 
   it('should return needs_changes when no commit date available', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: false,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: undefined, // missing
-      lastMaintainerCommentDate: undefined,
-      latestChangesRequestedDate: '2026-02-08T11:52:22Z',
-    });
-
-    expect(result).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
+    expect(
+      callDetermineStatus({
+        reviewDecision: 'changes_requested',
+        latestCommitDate: undefined, // missing
+        latestChangesRequestedDate: '2026-02-08T11:52:22Z',
+      }),
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
   });
 
   it('should return pending_review when changes_requested but no review date available', () => {
-    const result = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: false,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'changes_requested',
-      daysSinceActivity: 2,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-08T06:50:38Z',
-      lastMaintainerCommentDate: undefined,
-      latestChangesRequestedDate: undefined, // missing
-    });
-
     // No review date to compare against — fall through to pending_review
-    expect(result).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_review', stalenessTier: 'active' });
+    expect(
+      callDetermineStatus({
+        reviewDecision: 'changes_requested',
+        latestCommitDate: '2026-02-08T06:50:38Z',
+      }),
+    ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_review', stalenessTier: 'active' });
   });
 });
 
-describe('PRMonitor determineStatus — remaining paths', () => {
+describe('determineStatus — remaining paths', () => {
   it('should return failing_ci when CI is failing', () => {
     expect(callDetermineStatus({ ciStatus: 'failing' })).toEqual({
       status: 'needs_addressing',
@@ -560,7 +433,7 @@ describe('PRMonitor determineStatus — remaining paths', () => {
   });
 });
 
-describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
+describe('determineStatus CI failure overrides changes_addressed (Issue #68)', () => {
   it('should return failing_ci when changes_addressed (comment path) and CI is failing', () => {
     expect(
       callDetermineStatus({
@@ -627,7 +500,7 @@ describe('PRMonitor CI failure overrides changes_addressed (Issue #68)', () => {
   });
 });
 
-describe('PRMonitor non-actionable CI failures return ci_blocked (Issue #502)', () => {
+describe('determineStatus non-actionable CI failures return ci_blocked (Issue #502)', () => {
   it('should return ci_blocked when CI is failing but no checks are actionable', () => {
     expect(callDetermineStatus({ ciStatus: 'failing', hasActionableCIFailure: false })).toEqual({
       status: 'waiting_on_maintainer',
@@ -678,21 +551,15 @@ describe('PRMonitor non-actionable CI failures return ci_blocked (Issue #502)', 
   });
 });
 
-describe('PRMonitor status with inline review after commit (#151)', () => {
+describe('determineStatus with inline review after commit (#151)', () => {
   it('should return needs_response when inline review arrives after commit that addressed old comment', () => {
-    const status = determineStatus({
-      ciStatus: 'passing',
-      hasMergeConflict: false,
-      hasUnrespondedComment: true,
-      hasIncompleteChecklist: false,
-      reviewDecision: 'review_required',
-      daysSinceActivity: 1,
-      dormantThreshold: 30,
-      approachingThreshold: 25,
-      latestCommitDate: '2026-02-13T06:35:00Z', // before inline review
-      lastMaintainerCommentDate: '2026-02-14T05:14:49Z', // inline review
-    });
-
-    expect(status).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        daysSinceActivity: 1,
+        latestCommitDate: '2026-02-13T06:35:00Z', // before inline review
+        lastMaintainerCommentDate: '2026-02-14T05:14:49Z', // inline review
+      }),
+    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
   });
 });
