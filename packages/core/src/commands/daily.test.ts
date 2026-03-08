@@ -48,12 +48,12 @@ describe('computeActionMenu', () => {
     expect(menu.context.actionableCount).toBe(2);
   });
 
-  it('should use singular "issue" for count of 1', () => {
+  it('should use singular phrasing for count of 1', () => {
     const issues = [makeActionableIssue()];
     const menu = computeActionMenu(issues, makeCapacity());
 
-    expect(menu.items[0].label).toContain('1 issue ');
-    expect(menu.items[0].label).not.toContain('1 issues');
+    expect(menu.items[0].label).toBe('Address this issue (Recommended)');
+    expect(menu.items[0].description).toBe('Fix the issue blocking your PR');
   });
 
   it('should not include address_all when there are no actionable issues', () => {
