@@ -314,6 +314,20 @@ describe('collectActionableIssues', () => {
     expect(result[0].isNewContribution).toBe(false);
   });
 
+  it('should not mark PR as new when created at exactly last digest time', () => {
+    const prs = [
+      makePR({
+        repo: 'owner/repo',
+        status: 'needs_addressing',
+        actionReason: 'needs_response',
+        createdAt: '2026-03-01T00:00:00Z',
+      }),
+    ];
+    const result = collectActionableIssues(prs, new Set(), '2026-03-01T00:00:00Z');
+
+    expect(result[0].isNewContribution).toBe(false);
+  });
+
   it('should mark all PRs as new contribution on first run (no last digest)', () => {
     const prs = [
       makePR({
@@ -324,6 +338,20 @@ describe('collectActionableIssues', () => {
       }),
     ];
     const result = collectActionableIssues(prs, new Set(), undefined);
+
+    expect(result[0].isNewContribution).toBe(true);
+  });
+
+  it('should assume new contribution when createdAt is invalid', () => {
+    const prs = [
+      makePR({
+        repo: 'owner/repo',
+        status: 'needs_addressing',
+        actionReason: 'needs_response',
+        createdAt: 'invalid-date',
+      }),
+    ];
+    const result = collectActionableIssues(prs, new Set(), '2026-03-01T00:00:00Z');
 
     expect(result[0].isNewContribution).toBe(true);
   });

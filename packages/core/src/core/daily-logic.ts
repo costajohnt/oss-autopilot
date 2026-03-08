@@ -305,9 +305,15 @@ export function collectActionableIssues(
       }
 
       // A PR is "new" if it was created after the last daily digest (first time seen).
-      // If there's no previous digest (first run), all PRs are considered new.
+      // If there's no previous digest (first run) or createdAt is invalid, assume new.
       const createdTime = new Date(pr.createdAt).getTime();
-      const isNewContribution = isNaN(lastDigestTime) || createdTime > lastDigestTime;
+      let isNewContribution: boolean;
+      if (isNaN(createdTime)) {
+        warn('daily-logic', `Invalid createdAt "${pr.createdAt}" for PR ${pr.url}, assuming new contribution`);
+        isNewContribution = true;
+      } else {
+        isNewContribution = isNaN(lastDigestTime) || createdTime > lastDigestTime;
+      }
 
       issues.push({ type, pr, label, isNewContribution });
     }
