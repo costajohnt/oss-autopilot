@@ -1,11 +1,11 @@
 /**
  * Dismiss/Undismiss commands
- * Manages dismissing issue and PR notifications without posting a comment.
+ * Manages dismissing issue notifications without posting a comment.
  * Dismissed URLs resurface automatically when new responses arrive after the dismiss timestamp.
  */
 
 import { getStateManager } from '../core/index.js';
-import { ISSUE_OR_PR_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
+import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
 export interface DismissOutput {
   dismissed: boolean;
@@ -19,7 +19,7 @@ export interface UndismissOutput {
 
 export async function runDismiss(options: { url: string }): Promise<DismissOutput> {
   validateUrl(options.url);
-  validateGitHubUrl(options.url, ISSUE_OR_PR_URL_PATTERN, 'issue or PR');
+  validateGitHubUrl(options.url, ISSUE_URL_PATTERN, 'issue');
 
   const stateManager = getStateManager();
   const added = stateManager.dismissIssue(options.url, new Date().toISOString());
@@ -33,7 +33,7 @@ export async function runDismiss(options: { url: string }): Promise<DismissOutpu
 
 export async function runUndismiss(options: { url: string }): Promise<UndismissOutput> {
   validateUrl(options.url);
-  validateGitHubUrl(options.url, ISSUE_OR_PR_URL_PATTERN, 'issue or PR');
+  validateGitHubUrl(options.url, ISSUE_URL_PATTERN, 'issue');
 
   const stateManager = getStateManager();
   const removed = stateManager.undismissIssue(options.url);
