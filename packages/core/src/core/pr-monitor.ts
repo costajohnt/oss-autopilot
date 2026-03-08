@@ -10,6 +10,7 @@
  * - maintainer-analysis.ts: Maintainer action hint extraction
  * - display-utils.ts: Display label computation
  * - github-stats.ts: Merged/closed PR counts and star fetching
+ * - status-determination.ts: PR status classification logic
  */
 
 import { Octokit } from '@octokit/rest';

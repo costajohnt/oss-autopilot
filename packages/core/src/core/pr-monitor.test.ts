@@ -1,5 +1,5 @@
 /**
- * Tests for PRMonitor — CI deduplication, status determination, checklist analysis,
+ * Tests for PRMonitor — CI deduplication, checklist analysis,
  * maintainer hint extraction, review decision, and comment detection
  */
 
