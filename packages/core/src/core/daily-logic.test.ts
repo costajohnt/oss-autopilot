@@ -6,7 +6,7 @@
  * import via the re-exports in daily.ts).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   assessCapacity,
   collectActionableIssues,
@@ -17,10 +17,11 @@ import {
   computeRepoSignals,
   groupPRsByRepo,
   computeActionMenu,
+  applyStatusOverrides,
   CRITICAL_STATUSES,
   STALE_STATUSES,
 } from './daily-logic.js';
-import type { FetchedPR, MaintainerActionHint } from './types.js';
+import type { FetchedPR, MaintainerActionHint, AgentState } from './types.js';
 import { makeFetchedPR, makeDailyDigest, makeCapacityAssessment as makeCapacity } from './test-utils.js';
 
 // ---------------------------------------------------------------------------
@@ -521,5 +522,170 @@ describe('computeActionMenu (core)', () => {
   it('should always include search', () => {
     const menu = computeActionMenu([], makeCapacity());
     expect(menu.items.find((i) => i.key === 'search')).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyStatusOverrides
+// ---------------------------------------------------------------------------
+
+// Mock getStateManager for applyStatusOverrides tests
+const mockGetStatusOverride = vi.fn();
+const mockSave = vi.fn();
+vi.mock('./state.js', () => ({
+  getStateManager: vi.fn(() => ({
+    getStatusOverride: mockGetStatusOverride,
+    save: mockSave,
+  })),
+}));
+
+describe('applyStatusOverrides', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetStatusOverride.mockReturnValue(undefined);
+  });
+
+  function makeState(
+    statusOverrides: Record<string, { status: string; setAt: string; lastActivityAt: string }> = {},
+  ): Readonly<AgentState> {
+    return { config: { statusOverrides } } as unknown as AgentState;
+  }
+
+  it('should return PRs unchanged when no overrides exist', () => {
+    const prs = [makePR({ repo: 'owner/repo', status: 'needs_addressing' })];
+    const state = makeState();
+    const result = applyStatusOverrides(prs, state);
+    expect(result).toBe(prs); // Same reference — early return
+  });
+
+  it('should return PRs unchanged when statusOverrides is empty', () => {
+    const prs = [makePR({ repo: 'owner/repo' })];
+    const state = makeState({});
+    const result = applyStatusOverrides(prs, state);
+    expect(result).toBe(prs);
+  });
+
+  it('should override needs_addressing → waiting_on_maintainer with correct reason fields', () => {
+    const prUrl = 'https://github.com/owner/repo/pull/1';
+    const prs = [
+      makePR({
+        repo: 'owner/repo',
+        number: 1,
+        status: 'needs_addressing',
+        actionReason: 'needs_response',
+        waitReason: undefined,
+      }),
+    ];
+    const state = makeState({
+      [prUrl]: {
+        status: 'waiting_on_maintainer',
+        setAt: '2026-01-01T00:00:00Z',
+        lastActivityAt: '2025-06-15T00:00:00Z',
+      },
+    });
+    mockGetStatusOverride.mockReturnValue({
+      status: 'waiting_on_maintainer',
+      setAt: '2026-01-01T00:00:00Z',
+      lastActivityAt: '2025-06-15T00:00:00Z',
+    });
+
+    const result = applyStatusOverrides(prs, state);
+
+    expect(result[0].status).toBe('waiting_on_maintainer');
+    expect(result[0].actionReason).toBeUndefined();
+    expect(result[0].waitReason).toBe('pending_review');
+  });
+
+  it('should override waiting_on_maintainer → needs_addressing with correct reason fields', () => {
+    const prUrl = 'https://github.com/owner/repo/pull/1';
+    const prs = [
+      makePR({
+        repo: 'owner/repo',
+        number: 1,
+        status: 'waiting_on_maintainer',
+        waitReason: 'pending_review',
+        actionReason: undefined,
+      }),
+    ];
+    const state = makeState({
+      [prUrl]: { status: 'needs_addressing', setAt: '2026-01-01T00:00:00Z', lastActivityAt: '2025-06-15T00:00:00Z' },
+    });
+    mockGetStatusOverride.mockReturnValue({
+      status: 'needs_addressing',
+      setAt: '2026-01-01T00:00:00Z',
+      lastActivityAt: '2025-06-15T00:00:00Z',
+    });
+
+    const result = applyStatusOverrides(prs, state);
+
+    expect(result[0].status).toBe('needs_addressing');
+    expect(result[0].waitReason).toBeUndefined();
+    expect(result[0].actionReason).toBe('needs_response');
+  });
+
+  it('should auto-clear override when PR has new activity and persist', () => {
+    const prUrl = 'https://github.com/owner/repo/pull/1';
+    const prs = [
+      makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing', updatedAt: '2026-02-01T00:00:00Z' }),
+    ];
+    const state = makeState({
+      [prUrl]: {
+        status: 'waiting_on_maintainer',
+        setAt: '2026-01-01T00:00:00Z',
+        lastActivityAt: '2026-01-01T00:00:00Z',
+      },
+    });
+    // getStatusOverride returns undefined when auto-cleared (updatedAt > lastActivityAt)
+    mockGetStatusOverride.mockReturnValue(undefined);
+
+    const result = applyStatusOverrides(prs, state);
+
+    // PR should keep its original status since override was auto-cleared
+    expect(result[0].status).toBe('needs_addressing');
+    // Should persist the auto-clear
+    expect(mockSave).toHaveBeenCalledOnce();
+  });
+
+  it('should not change PR when override matches current status', () => {
+    const prUrl = 'https://github.com/owner/repo/pull/1';
+    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'waiting_on_maintainer' })];
+    const state = makeState({
+      [prUrl]: {
+        status: 'waiting_on_maintainer',
+        setAt: '2026-01-01T00:00:00Z',
+        lastActivityAt: '2025-06-15T00:00:00Z',
+      },
+    });
+    mockGetStatusOverride.mockReturnValue({
+      status: 'waiting_on_maintainer',
+      setAt: '2026-01-01T00:00:00Z',
+      lastActivityAt: '2025-06-15T00:00:00Z',
+    });
+
+    const result = applyStatusOverrides(prs, state);
+
+    expect(result[0].status).toBe('waiting_on_maintainer');
+    expect(result[0]).toBe(prs[0]); // Same reference — no mutation
+  });
+
+  it('should not persist when no auto-clears happened', () => {
+    const prUrl = 'https://github.com/owner/repo/pull/1';
+    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing' })];
+    const state = makeState({
+      [prUrl]: {
+        status: 'waiting_on_maintainer',
+        setAt: '2026-01-01T00:00:00Z',
+        lastActivityAt: '2025-06-15T00:00:00Z',
+      },
+    });
+    mockGetStatusOverride.mockReturnValue({
+      status: 'waiting_on_maintainer',
+      setAt: '2026-01-01T00:00:00Z',
+      lastActivityAt: '2025-06-15T00:00:00Z',
+    });
+
+    applyStatusOverrides(prs, state);
+
+    expect(mockSave).not.toHaveBeenCalled();
   });
 });

@@ -13,6 +13,7 @@ import {
   IssueConversationMonitor,
   requireGitHubToken,
   CRITICAL_STATUSES,
+  applyStatusOverrides,
   computeRepoSignals,
   groupPRsByRepo,
   assessCapacity,
@@ -52,6 +53,7 @@ const MODULE = 'daily';
 // Re-export domain functions so existing consumers (tests, dashboard, startup)
 // can continue importing from './daily.js' without changes.
 export {
+  applyStatusOverrides,
   computeRepoSignals,
   groupPRsByRepo,
   assessCapacity,
@@ -375,12 +377,17 @@ function partitionPRs(
     warn(MODULE, `Failed to expire/persist snoozes: ${errorMessage(error)}`);
   }
 
+  // Apply dashboard/CLI status overrides before partitioning.
+  // This ensures PRs reclassified in the dashboard (e.g., "Action Required" → "Waiting")
+  // are respected by the CLI pipeline.
+  const overriddenPRs = applyStatusOverrides(prs, stateManager.getState());
+
   // Partition PRs into active vs shelved, auto-unshelving when maintainers engage
   const shelvedPRs: ShelvedPRRef[] = [];
   const autoUnshelvedPRs: ShelvedPRRef[] = [];
   const activePRs: FetchedPR[] = [];
 
-  for (const pr of prs) {
+  for (const pr of overriddenPRs) {
     if (stateManager.isPRShelved(pr.url)) {
       if (CRITICAL_STATUSES.has(pr.status)) {
         stateManager.unshelvePR(pr.url);
@@ -398,10 +405,10 @@ function partitionPRs(
     }
   }
 
-  // Generate digest from fresh data.
+  // Generate digest from override-applied PRs so status categories are correct.
   // Note: digest.openPRs contains ALL fetched PRs (including shelved).
   // We override summary fields below to reflect active-only counts.
-  const digest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);
+  const digest = prMonitor.generateDigest(overriddenPRs, recentlyClosedPRs, recentlyMergedPRs);
 
   // Attach shelve info to digest
   digest.shelvedPRs = shelvedPRs;

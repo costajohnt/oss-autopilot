@@ -43,6 +43,7 @@ const mockGetStats = vi.fn();
 const mockIsSnoozed = vi.fn();
 const mockGetIssueDismissedAt = vi.fn();
 const mockUndismissIssue = vi.fn();
+const mockGetStatusOverride = vi.fn();
 
 // daily.ts imports everything from '../core/index.js', so we mock the whole barrel export.
 // PRMonitor and IssueConversationMonitor are used as classes (new PRMonitor(...)),
@@ -83,6 +84,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       isSnoozed: mockIsSnoozed,
       getIssueDismissedAt: mockGetIssueDismissedAt,
       undismissIssue: mockUndismissIssue,
+      getStatusOverride: mockGetStatusOverride,
     })),
     requireGitHubToken: vi.fn(() => 'test-token'),
     formatRelativeTime: vi.fn(() => '2 days ago'),
@@ -90,6 +92,16 @@ vi.mock('../core/index.js', async (importOriginal) => {
     IssueConversationMonitor: MockIssueConversationMonitor,
   };
 });
+
+// applyStatusOverrides (in daily-logic.ts) imports getStateManager from './state.js' directly,
+// not via the barrel. Mock it so the real function resolves to the same mock state manager.
+vi.mock('../core/state.js', () => ({
+  getStateManager: vi.fn(() => ({
+    getState: mockGetState,
+    getStatusOverride: mockGetStatusOverride,
+    save: mockSave,
+  })),
+}));
 
 // Import AFTER all mocks are declared
 import { executeDailyCheck, runDaily, runDailyForDisplay } from './daily.js';
@@ -200,6 +212,7 @@ beforeEach(() => {
   mockUnshelvePR.mockReturnValue(true);
   mockIsSnoozed.mockReturnValue(false);
   mockGetIssueDismissedAt.mockReturnValue(undefined);
+  mockGetStatusOverride.mockReturnValue(undefined);
   mockUpdateRepoScore.mockImplementation(() => {});
   mockAddTrustedProject.mockImplementation(() => {});
   mockSave.mockImplementation(() => {});
@@ -972,5 +985,81 @@ describe('runDailyForDisplay()', () => {
     if (result.repoGroups.length > 0) {
       expect(result.repoGroups[0]).toHaveProperty('prs');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// executeDailyCheck() — status override integration (#644)
+// ---------------------------------------------------------------------------
+
+describe('executeDailyCheck() — status overrides (#644)', () => {
+  /** Build state with a statusOverrides entry, merging into the default config. */
+  function stateWithOverrides(overrides: Record<string, { status: string; setAt: string; lastActivityAt: string }>) {
+    const base = makeDefaultState();
+    return { ...base, config: { ...base.config, statusOverrides: overrides } };
+  }
+
+  /** Wire up mocks so getStatusOverride returns the given override for a specific URL. */
+  function setupOverrideMock(prUrl: string, override: { status: string; setAt: string; lastActivityAt: string }) {
+    mockGetStatusOverride.mockImplementation((url: string) => (url === prUrl ? override : undefined));
+  }
+
+  it('PR overridden to waiting_on_maintainer does not appear in actionable issues', async () => {
+    const overriddenPR = makePR({
+      repo: 'owner/repo',
+      number: 1,
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+    });
+    const normalPR = makePR({
+      repo: 'owner/repo',
+      number: 2,
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+    });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [overriddenPR, normalPR], failures: [] });
+    mockIsPRShelved.mockReturnValue(false);
+
+    const override = {
+      status: 'waiting_on_maintainer',
+      setAt: '2026-01-20T00:00:00Z',
+      lastActivityAt: overriddenPR.updatedAt,
+    };
+    mockGetState.mockReturnValue(stateWithOverrides({ [overriddenPR.url]: override }));
+    setupOverrideMock(overriddenPR.url, override);
+    mockGenerateDigest.mockImplementation((prs: FetchedPR[]) => makeDigest(prs));
+
+    const result = await executeDailyCheck('test-token');
+
+    const actionableUrls = result.actionableIssues.map((i) => i.prUrl);
+    expect(actionableUrls).not.toContain(overriddenPR.url);
+    expect(actionableUrls).toContain(normalPR.url);
+    expect(result.capacity.criticalIssueCount).toBe(1); // only normalPR
+  });
+
+  it('PR overridden to needs_addressing appears in actionable issues', async () => {
+    const overriddenPR = makePR({
+      repo: 'owner/repo',
+      number: 1,
+      status: 'waiting_on_maintainer',
+      waitReason: 'pending_review',
+    });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [overriddenPR], failures: [] });
+    mockIsPRShelved.mockReturnValue(false);
+
+    const override = {
+      status: 'needs_addressing',
+      setAt: '2026-01-20T00:00:00Z',
+      lastActivityAt: overriddenPR.updatedAt,
+    };
+    mockGetState.mockReturnValue(stateWithOverrides({ [overriddenPR.url]: override }));
+    setupOverrideMock(overriddenPR.url, override);
+    mockGenerateDigest.mockImplementation((prs: FetchedPR[]) => makeDigest(prs));
+
+    const result = await executeDailyCheck('test-token');
+
+    const actionableUrls = result.actionableIssues.map((i) => i.prUrl);
+    expect(actionableUrls).toContain(overriddenPR.url);
+    expect(result.capacity.criticalIssueCount).toBe(1);
   });
 });

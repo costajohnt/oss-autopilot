@@ -9,7 +9,7 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getStateManager, getGitHubToken, getCLIVersion } from '../core/index.js';
+import { getStateManager, getGitHubToken, getCLIVersion, applyStatusOverrides } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { validateUrl, validateGitHubUrl, PR_URL_PATTERN } from './validation.js';
@@ -104,40 +104,6 @@ const MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
 };
-
-/**
- * Apply status overrides from state to the PR list.
- * Overrides are auto-cleared if the PR has new activity since the override was set.
- */
-function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentState>): FetchedPR[] {
-  const overrides = state.config.statusOverrides;
-  if (!overrides || Object.keys(overrides).length === 0) return prs;
-
-  const stateManager = getStateManager();
-  // Snapshot keys before iteration — clearStatusOverride mutates the same object
-  const overrideUrls = new Set(Object.keys(overrides));
-  let didAutoClear = false;
-  const result = prs.map((pr) => {
-    const override = stateManager.getStatusOverride(pr.url, pr.updatedAt);
-    if (!override) {
-      if (overrideUrls.has(pr.url)) didAutoClear = true;
-      return pr;
-    }
-    if (override.status === pr.status) return pr;
-    return { ...pr, status: override.status };
-  });
-
-  // Persist any auto-cleared overrides so they don't resurrect on restart
-  if (didAutoClear) {
-    try {
-      stateManager.save();
-    } catch (err) {
-      warn(MODULE, `Failed to persist auto-cleared overrides — they may reappear on restart: ${errorMessage(err)}`);
-    }
-  }
-
-  return result;
-}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 

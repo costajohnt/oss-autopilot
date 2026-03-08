@@ -71,6 +71,7 @@ vi.mock('../core/index.js', () => ({
   getGitHubToken: vi.fn(() => null),
   getDataDir: vi.fn(() => pidTestDir),
   getCLIVersion: vi.fn(() => '0.44.6'),
+  applyStatusOverrides: vi.fn((prs: unknown[]) => prs),
 }));
 
 // Mock fetchDashboardData so we never call GitHub
