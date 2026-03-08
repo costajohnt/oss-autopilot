@@ -104,7 +104,7 @@ export async function findRunningDashboardServer(): Promise<{ port: number; url:
 
   // Process exists — verify it's actually our server via HTTP probe
   if (await isDashboardServerRunning(info.port)) {
-    return { port: info.port, url: `http://localhost:${info.port}` };
+    return { port: info.port, url: `http://oss.localhost:${info.port}` };
   }
 
   // Process exists but not responding on expected port — stale
