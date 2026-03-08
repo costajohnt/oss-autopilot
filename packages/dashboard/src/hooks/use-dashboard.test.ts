@@ -209,9 +209,9 @@ describe('useDashboard', () => {
     });
 
     // Verify both calls were made (initial GET + auto POST)
-    const calls = mockFetch.mock.calls;
-    expect(calls.some((c: string[]) => c[0] === '/api/data')).toBe(true);
-    expect(calls.some((c: string[]) => c[0] === '/api/refresh' && c[1]?.method === 'POST')).toBe(true);
+    const calls = mockFetch.mock.calls as Array<[string, RequestInit?]>;
+    expect(calls.some((c) => c[0] === '/api/data')).toBe(true);
+    expect(calls.some((c) => c[0] === '/api/refresh' && c[1]?.method === 'POST')).toBe(true);
 
     // Data updated with refreshed data
     expect(result.current.data?.stats.mergedPRs).toBe(7);
