@@ -47,6 +47,7 @@ import {
 export { computeDisplayLabel } from './display-utils.js';
 export { classifyCICheck, classifyFailingChecks } from './ci-analysis.js';
 export { isConditionalChecklistItem } from './checklist-analysis.js';
+export { determineStatus } from './status-determination.js';
 
 const MODULE = 'pr-monitor';
 
