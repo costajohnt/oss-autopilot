@@ -286,6 +286,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
             cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
           } catch (error) {
             warn(MODULE, `Failed to rebuild dashboard data after state reload: ${errorMessage(error)}`);
+            // Intentional: serve previous cachedJsonData rather than returning 500
           }
         }
         sendJson(res, 200, cachedJsonData);
