@@ -30,9 +30,9 @@ export async function runShelve(options: { prUrl: string }): Promise<ShelveOutpu
 
   const stateManager = getStateManager();
   const added = stateManager.shelvePR(options.prUrl);
-  stateManager.clearStatusOverride(options.prUrl);
+  const clearedOverride = stateManager.clearStatusOverride(options.prUrl);
 
-  if (added) {
+  if (added || clearedOverride) {
     stateManager.save();
   }
 
@@ -45,9 +45,9 @@ export async function runUnshelve(options: { prUrl: string }): Promise<UnshelveO
 
   const stateManager = getStateManager();
   const removed = stateManager.unshelvePR(options.prUrl);
-  stateManager.clearStatusOverride(options.prUrl);
+  const clearedOverride = stateManager.clearStatusOverride(options.prUrl);
 
-  if (removed) {
+  if (removed || clearedOverride) {
     stateManager.save();
   }
 
