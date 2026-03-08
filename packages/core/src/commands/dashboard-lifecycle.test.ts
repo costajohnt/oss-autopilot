@@ -69,7 +69,7 @@ describe('launchDashboardServer', () => {
   });
 
   it('should return existing server when already running with same version', async () => {
-    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://localhost:3000' });
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
     mockReadDashboardServerInfo.mockReturnValue({
       pid: 12345,
       port: 3000,
@@ -80,23 +80,23 @@ describe('launchDashboardServer', () => {
 
     const result = await launchDashboardServer();
 
-    expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: true });
+    expect(result).toEqual({ url: 'http://oss.localhost:3000', port: 3000, alreadyRunning: true });
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 
   it('should return existing server when PID file has no version (backward compat)', async () => {
-    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://localhost:3000' });
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
     mockReadDashboardServerInfo.mockReturnValue({ pid: 12345, port: 3000, startedAt: '2026-01-01T00:00:00Z' });
 
     const result = await launchDashboardServer();
 
     expect(mockReadDashboardServerInfo).toHaveBeenCalled();
-    expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: true });
+    expect(result).toEqual({ url: 'http://oss.localhost:3000', port: 3000, alreadyRunning: true });
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 
   it('should kill and relaunch server when version mismatches (#548)', async () => {
-    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://localhost:3000' });
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
     // First call: version check reads old server info; second call: polling reads new server info
     mockReadDashboardServerInfo
       .mockReturnValueOnce({ pid: 12345, port: 3000, startedAt: '2026-01-01T00:00:00Z', version: '0.44.4' })
@@ -111,11 +111,11 @@ describe('launchDashboardServer', () => {
     expect(processKillSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
     expect(mockRemoveDashboardServerInfo).toHaveBeenCalled();
     expect(mockSpawn).toHaveBeenCalled();
-    expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: false });
+    expect(result).toEqual({ url: 'http://oss.localhost:3000', port: 3000, alreadyRunning: false });
   });
 
   it('should return existing server when kill fails with EPERM (#548)', async () => {
-    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://localhost:3000' });
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
     mockReadDashboardServerInfo.mockReturnValueOnce({
       pid: 12345,
       port: 3000,
@@ -137,11 +137,11 @@ describe('launchDashboardServer', () => {
     expect(mockRemoveDashboardServerInfo).not.toHaveBeenCalled();
     // Should NOT spawn — return existing server rather than a doomed attempt
     expect(mockSpawn).not.toHaveBeenCalled();
-    expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: true });
+    expect(result).toEqual({ url: 'http://oss.localhost:3000', port: 3000, alreadyRunning: true });
   });
 
   it('should not kill server when getCLIVersion returns fallback 0.0.0', async () => {
-    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://localhost:3000' });
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
     mockReadDashboardServerInfo.mockReturnValueOnce({
       pid: 12345,
       port: 3000,
@@ -156,11 +156,11 @@ describe('launchDashboardServer', () => {
     // Should NOT kill — unreliable version read
     expect(processKillSpy).not.toHaveBeenCalled();
     expect(mockSpawn).not.toHaveBeenCalled();
-    expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: true });
+    expect(result).toEqual({ url: 'http://oss.localhost:3000', port: 3000, alreadyRunning: true });
   });
 
   it('should relaunch when PID file disappears between health check and version read', async () => {
-    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://localhost:3000' });
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
     // PID file disappeared (race condition)
     mockReadDashboardServerInfo
       .mockReturnValueOnce(null)
@@ -171,7 +171,7 @@ describe('launchDashboardServer', () => {
 
     // Should fall through and spawn a new server
     expect(mockSpawn).toHaveBeenCalled();
-    expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: false });
+    expect(result).toEqual({ url: 'http://oss.localhost:3000', port: 3000, alreadyRunning: false });
   });
 
   it('should spawn detached child process when no server running', async () => {
@@ -186,7 +186,7 @@ describe('launchDashboardServer', () => {
       expect.arrayContaining(['dashboard', 'serve', '--port', '3000', '--no-open']),
       expect.objectContaining({ detached: true, stdio: 'ignore' }),
     );
-    expect(result).toEqual({ url: 'http://localhost:3000', port: 3000, alreadyRunning: false });
+    expect(result).toEqual({ url: 'http://oss.localhost:3000', port: 3000, alreadyRunning: false });
   });
 
   it('should use custom port when specified', async () => {
@@ -206,7 +206,7 @@ describe('launchDashboardServer', () => {
 
     const result = await launchDashboardServer({ port: 3000 });
 
-    expect(result).toEqual({ url: 'http://localhost:3001', port: 3001, alreadyRunning: false });
+    expect(result).toEqual({ url: 'http://oss.localhost:3001', port: 3001, alreadyRunning: false });
   });
 
   it('should return null on timeout and kill orphan process', async () => {

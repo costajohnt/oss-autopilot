@@ -5,7 +5,7 @@
 
 import { Octokit } from '@octokit/rest';
 import { extractOwnerRepo, parseGitHubUrl, isOwnRepo } from './utils.js';
-import { ClosedPR, MergedPR, StoredMergedPR, isBelowMinStars, type StarFilter } from './types.js';
+import { ClosedPR, MergedPR, StoredMergedPR, StoredClosedPR, isBelowMinStars, type StarFilter } from './types.js';
 import { debug, warn } from './logger.js';
 import { getHttpCache } from './http-cache.js';
 
@@ -432,5 +432,82 @@ export async function fetchMergedPRsSince(
   }
 
   debug(MODULE, `Fetched ${results.length} merged PRs${since ? ' (incremental)' : ' (initial)'}`);
+  return results;
+}
+
+/**
+ * Fetch closed-without-merge PRs since a watermark date for incremental storage.
+ * If no watermark is provided (first-ever fetch), fetches all closed PRs (up to pagination cap).
+ * Returns StoredClosedPR[] (minimal: url, title, closedAt) for state persistence.
+ * Uses `is:unmerged` to exclude merged PRs (which are also "closed" in GitHub's model).
+ */
+export async function fetchClosedPRsSince(
+  octokit: Octokit,
+  config: { githubUsername: string },
+  since?: string,
+): Promise<StoredClosedPR[]> {
+  if (!config.githubUsername) {
+    warn(MODULE, 'Skipping closed PRs fetch: no githubUsername configured.');
+    return [];
+  }
+
+  const dateFilter = since ? ` closed:>${since}` : '';
+  const q = `is:pr is:closed is:unmerged author:${config.githubUsername} -user:${config.githubUsername}${dateFilter}`;
+
+  debug(MODULE, `Fetching closed PRs${since ? ` since ${since}` : ' (all time)'}...`);
+
+  const results: StoredClosedPR[] = [];
+  let page = 1;
+  let fetched = 0;
+  let totalCount: number;
+
+  while (true) {
+    const { data } = await octokit.search.issuesAndPullRequests({
+      q,
+      sort: 'updated',
+      order: 'desc',
+      per_page: 100,
+      page,
+    });
+
+    totalCount = data.total_count;
+
+    for (const item of data.items) {
+      const parsed = parseGitHubUrl(item.html_url);
+      if (!parsed) {
+        warn(MODULE, `Skipping closed PR with unparseable URL: ${item.html_url}`);
+        continue;
+      }
+      if (isOwnRepo(parsed.owner, config.githubUsername)) continue;
+
+      const closedAt = item.closed_at || '';
+      if (!closedAt) {
+        warn(MODULE, `Skipping closed PR with no close date: ${item.html_url}`);
+        continue;
+      }
+      results.push({
+        url: item.html_url,
+        title: item.title,
+        closedAt,
+      });
+    }
+
+    fetched += data.items.length;
+
+    if (fetched >= totalCount || fetched >= 1000 || data.items.length === 0 || page >= MAX_PAGINATION_PAGES) {
+      break;
+    }
+
+    page++;
+  }
+
+  if (fetched < totalCount && page >= MAX_PAGINATION_PAGES) {
+    warn(
+      MODULE,
+      `Pagination capped at ${MAX_PAGINATION_PAGES} pages: fetched ${fetched} of ${totalCount} closed PRs. Oldest PRs may be missing.`,
+    );
+  }
+
+  debug(MODULE, `Fetched ${results.length} closed PRs${since ? ' (incremental)' : ' (initial)'}`);
   return results;
 }

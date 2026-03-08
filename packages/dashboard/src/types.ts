@@ -52,6 +52,7 @@ export interface DashboardData {
   commentedIssues: CommentedIssue[];
   issueResponses: CommentedIssueWithResponse[];
   allMergedPRs: MergedPR[];
+  allClosedPRs: ClosedPR[];
 }
 
 /** Actions a user can take from the dashboard. */

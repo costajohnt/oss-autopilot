@@ -10,8 +10,9 @@ import {
   getMonthlyData,
   mergeMonthlyCounts,
   storedToMergedPRs,
+  storedToClosedPRs,
 } from './dashboard-data.js';
-import type { DailyDigest, AgentState, ShelvedPRRef, StoredMergedPR } from '../core/types.js';
+import type { DailyDigest, AgentState, ShelvedPRRef, StoredMergedPR, StoredClosedPR } from '../core/types.js';
 
 function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
   return {
@@ -447,6 +448,57 @@ describe('storedToMergedPRs', () => {
   });
 });
 
+describe('storedToClosedPRs', () => {
+  it('converts stored PRs to ClosedPR format with parsed repo and number', () => {
+    const stored: StoredClosedPR[] = [
+      { url: 'https://github.com/owner/repo/pull/42', title: 'Close bug', closedAt: '2025-06-10T00:00:00Z' },
+    ];
+
+    const result = storedToClosedPRs(stored);
+
+    expect(result).toEqual([
+      {
+        url: 'https://github.com/owner/repo/pull/42',
+        repo: 'owner/repo',
+        number: 42,
+        title: 'Close bug',
+        closedAt: '2025-06-10T00:00:00Z',
+      },
+    ]);
+  });
+
+  it('skips entries with unparseable URLs', () => {
+    const stored: StoredClosedPR[] = [
+      { url: 'https://example.com/not-a-pr', title: 'Bad URL', closedAt: '2025-06-10T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/1', title: 'Good', closedAt: '2025-06-10T00:00:00Z' },
+    ];
+
+    const result = storedToClosedPRs(stored);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].repo).toBe('owner/repo');
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(storedToClosedPRs([])).toEqual([]);
+  });
+
+  it('handles multiple PRs from different repos', () => {
+    const stored: StoredClosedPR[] = [
+      { url: 'https://github.com/a/b/pull/1', title: 'PR1', closedAt: '2025-06-10T00:00:00Z' },
+      { url: 'https://github.com/c/d/pull/99', title: 'PR2', closedAt: '2025-06-09T00:00:00Z' },
+    ];
+
+    const result = storedToClosedPRs(stored);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].repo).toBe('a/b');
+    expect(result[0].number).toBe(1);
+    expect(result[1].repo).toBe('c/d');
+    expect(result[1].number).toBe(99);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // buildDashboardStats with storedMergedCount
 // ---------------------------------------------------------------------------
@@ -483,5 +535,59 @@ describe('buildDashboardStats with storedMergedCount', () => {
     // storedMergedCount=0 is explicitly provided, so Math.max(0, 10) = 10
     const stats = buildDashboardStats(digest, makeState(), 0);
     expect(stats.mergedPRs).toBe(10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildDashboardStats with storedClosedCount
+// ---------------------------------------------------------------------------
+
+describe('buildDashboardStats with storedClosedCount', () => {
+  const stateWithClosedScores = makeState({
+    repoScores: {
+      'owner/repo-a': { stargazersCount: 100, mergedPRCount: 5, closedWithoutMergeCount: 8 } as never,
+      'owner/repo-b': { stargazersCount: 200, mergedPRCount: 3, closedWithoutMergeCount: 12 } as never,
+    },
+  });
+
+  it('uses storedClosedCount when higher than aggregate', () => {
+    const digest = makeDigest();
+    // aggregate = 8 + 12 = 20
+    const stats = buildDashboardStats(digest, stateWithClosedScores, undefined, 50);
+    expect(stats.closedPRs).toBe(50);
+  });
+
+  it('uses aggregate when higher than storedClosedCount', () => {
+    const digest = makeDigest();
+    // aggregate = 20, storedClosedCount = 5
+    const stats = buildDashboardStats(digest, stateWithClosedScores, undefined, 5);
+    expect(stats.closedPRs).toBe(20);
+  });
+
+  it('falls back to aggregate when storedClosedCount is undefined', () => {
+    const digest = makeDigest();
+    const stats = buildDashboardStats(digest, stateWithClosedScores);
+    expect(stats.closedPRs).toBe(20);
+  });
+
+  it('uses storedClosedCount of 0 correctly (Math.max with aggregate)', () => {
+    const digest = makeDigest();
+    // storedClosedCount=0, aggregate=20 → Math.max(0, 20) = 20
+    const stats = buildDashboardStats(digest, stateWithClosedScores, undefined, 0);
+    expect(stats.closedPRs).toBe(20);
+  });
+
+  it('excludes repos below minStars from aggregate', () => {
+    const stateWithLowStars = makeState({
+      config: { githubUsername: 'testuser', shelvedPRUrls: [], minStars: 150 },
+      repoScores: {
+        'owner/repo-a': { stargazersCount: 100, mergedPRCount: 5, closedWithoutMergeCount: 8 } as never,
+        'owner/repo-b': { stargazersCount: 200, mergedPRCount: 3, closedWithoutMergeCount: 12 } as never,
+      },
+    });
+    const digest = makeDigest();
+    // repo-a (100 stars) is below minStars=150, so aggregate = 12 only
+    const stats = buildDashboardStats(digest, stateWithLowStars);
+    expect(stats.closedPRs).toBe(12);
   });
 });

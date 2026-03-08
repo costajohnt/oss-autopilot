@@ -2049,4 +2049,102 @@ describe('StateManager merged PRs', () => {
       expect(stateManager.getMergedPRWatermark()).toBeUndefined();
     });
   });
+
+  describe('getClosedPRs', () => {
+    it('returns empty array when no closed PRs stored', () => {
+      expect(stateManager.getClosedPRs()).toEqual([]);
+    });
+
+    it('returns stored closed PRs', () => {
+      const prs = [{ url: 'https://github.com/a/b/pull/1', title: 'PR 1', closedAt: '2025-06-10T00:00:00Z' }];
+      stateManager.addClosedPRs(prs);
+      expect(stateManager.getClosedPRs()).toEqual(prs);
+    });
+  });
+
+  describe('addClosedPRs', () => {
+    it('deduplicates by URL', () => {
+      const pr1 = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', closedAt: '2025-06-10T00:00:00Z' };
+      const pr1Dup = { url: 'https://github.com/a/b/pull/1', title: 'PR 1 updated', closedAt: '2025-06-11T00:00:00Z' };
+      const pr2 = { url: 'https://github.com/a/b/pull/2', title: 'PR 2', closedAt: '2025-06-09T00:00:00Z' };
+
+      stateManager.addClosedPRs([pr1]);
+      stateManager.addClosedPRs([pr1Dup, pr2]);
+
+      const result = stateManager.getClosedPRs();
+      expect(result).toHaveLength(2);
+      expect(result.map((p) => p.url)).toEqual(['https://github.com/a/b/pull/1', 'https://github.com/a/b/pull/2']);
+      // Original title preserved (not overwritten by duplicate)
+      expect(result.find((p) => p.url === pr1.url)?.title).toBe('PR 1');
+    });
+
+    it('sorts by closedAt descending (newest first)', () => {
+      const prs = [
+        { url: 'https://github.com/a/b/pull/1', title: 'Old', closedAt: '2025-01-01T00:00:00Z' },
+        { url: 'https://github.com/a/b/pull/2', title: 'New', closedAt: '2025-06-15T00:00:00Z' },
+        { url: 'https://github.com/a/b/pull/3', title: 'Mid', closedAt: '2025-03-10T00:00:00Z' },
+      ];
+
+      stateManager.addClosedPRs(prs);
+
+      const result = stateManager.getClosedPRs();
+      expect(result.map((p) => p.title)).toEqual(['New', 'Mid', 'Old']);
+    });
+
+    it('does nothing when passed empty array', () => {
+      const pr = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', closedAt: '2025-06-10T00:00:00Z' };
+      stateManager.addClosedPRs([pr]);
+      const before = stateManager.getClosedPRs();
+
+      stateManager.addClosedPRs([]);
+
+      expect(stateManager.getClosedPRs()).toEqual(before);
+    });
+
+    it('does nothing when all PRs are duplicates', () => {
+      const pr = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', closedAt: '2025-06-10T00:00:00Z' };
+      stateManager.addClosedPRs([pr]);
+
+      const saveSpy = vi.spyOn(stateManager, 'save');
+      stateManager.addClosedPRs([pr]);
+      // save is not called because no new PRs were added (early return)
+      expect(saveSpy).not.toHaveBeenCalled();
+      saveSpy.mockRestore();
+    });
+
+    it('initializes closedPRs array when undefined', () => {
+      // Force undefined state
+      (stateManager as any).state.closedPRs = undefined;
+      const pr = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', closedAt: '2025-06-10T00:00:00Z' };
+
+      stateManager.addClosedPRs([pr]);
+
+      expect(stateManager.getClosedPRs()).toHaveLength(1);
+    });
+  });
+
+  describe('getClosedPRWatermark', () => {
+    it('returns undefined when no closed PRs stored', () => {
+      expect(stateManager.getClosedPRWatermark()).toBeUndefined();
+    });
+
+    it('returns most recent closedAt (first element after sort)', () => {
+      stateManager.addClosedPRs([
+        { url: 'https://github.com/a/b/pull/1', title: 'Old', closedAt: '2025-01-01T00:00:00Z' },
+        { url: 'https://github.com/a/b/pull/2', title: 'New', closedAt: '2025-06-15T00:00:00Z' },
+      ]);
+
+      expect(stateManager.getClosedPRWatermark()).toBe('2025-06-15T00:00:00Z');
+    });
+
+    it('returns undefined when closedPRs is undefined', () => {
+      (stateManager as any).state.closedPRs = undefined;
+      expect(stateManager.getClosedPRWatermark()).toBeUndefined();
+    });
+
+    it('returns undefined when most recent closedAt is empty string', () => {
+      (stateManager as any).state.closedPRs = [{ url: 'https://github.com/a/b/pull/1', title: 'Bad', closedAt: '' }];
+      expect(stateManager.getClosedPRWatermark()).toBeUndefined();
+    });
+  });
 });

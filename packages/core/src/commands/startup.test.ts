@@ -417,31 +417,31 @@ describe('runStartup behavior', () => {
   it('should open SPA dashboard URL when SPA launches successfully', async () => {
     const daily = makeDailyOutput(5);
     executeDailyCheck.mockResolvedValue(daily);
-    launchDashboardServer.mockResolvedValue({ url: 'http://localhost:3000', port: 3000, alreadyRunning: false });
+    launchDashboardServer.mockResolvedValue({ url: 'http://oss.localhost:3000', port: 3000, alreadyRunning: false });
 
     const result = await runStartup();
 
     // Opens SPA URL
     expect(execFile).toHaveBeenCalledWith(
       expect.any(String),
-      expect.arrayContaining(['http://localhost:3000']),
+      expect.arrayContaining(['http://oss.localhost:3000']),
       expect.any(Function),
     );
-    expect(result.dashboardUrl).toBe('http://localhost:3000');
+    expect(result.dashboardUrl).toBe('http://oss.localhost:3000');
     expect(result.daily?.briefSummary).toContain('Dashboard opened in browser');
   });
 
   it('should reuse existing SPA server without launching new one', async () => {
     const daily = makeDailyOutput(3);
     executeDailyCheck.mockResolvedValue(daily);
-    launchDashboardServer.mockResolvedValue({ url: 'http://localhost:3001', port: 3001, alreadyRunning: true });
+    launchDashboardServer.mockResolvedValue({ url: 'http://oss.localhost:3001', port: 3001, alreadyRunning: true });
 
     const result = await runStartup();
 
-    expect(result.dashboardUrl).toBe('http://localhost:3001');
+    expect(result.dashboardUrl).toBe('http://oss.localhost:3001');
     expect(execFile).toHaveBeenCalledWith(
       expect.any(String),
-      expect.arrayContaining(['http://localhost:3001']),
+      expect.arrayContaining(['http://oss.localhost:3001']),
       expect.any(Function),
     );
   });

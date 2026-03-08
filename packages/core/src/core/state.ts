@@ -19,6 +19,7 @@ import {
   StatusOverride,
   FetchedPRStatus,
   StoredMergedPR,
+  StoredClosedPR,
   isBelowMinStars,
 } from './types.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
@@ -662,9 +663,44 @@ export class StateManager {
     const prs = this.state.mergedPRs;
     if (!prs || prs.length === 0) return undefined;
     // List is sorted desc by mergedAt, so first element is most recent
-    const watermark = prs[0].mergedAt;
-    if (!watermark) return undefined;
-    return watermark;
+    return prs[0].mergedAt || undefined;
+  }
+
+  /**
+   * Get all stored closed PRs.
+   * @returns Array of stored closed PRs, sorted by closedAt desc.
+   */
+  getClosedPRs(): StoredClosedPR[] {
+    return this.state.closedPRs ?? [];
+  }
+
+  /**
+   * Add new closed PRs to the stored list. Deduplicates by URL and sorts by closedAt desc.
+   * @param prs - New closed PRs to add.
+   */
+  addClosedPRs(prs: StoredClosedPR[]): void {
+    if (prs.length === 0) return;
+    if (!this.state.closedPRs) {
+      this.state.closedPRs = [];
+    }
+    const existingUrls = new Set(this.state.closedPRs.map((pr) => pr.url));
+    const newPRs = prs.filter((pr) => !existingUrls.has(pr.url));
+    if (newPRs.length === 0) return;
+    this.state.closedPRs.push(...newPRs);
+    this.state.closedPRs.sort((a, b) => b.closedAt.localeCompare(a.closedAt));
+    debug(MODULE, `Added ${newPRs.length} closed PRs (total: ${this.state.closedPRs.length})`);
+  }
+
+  /**
+   * Get the most recent closedAt timestamp from stored closed PRs.
+   * Used as the watermark for incremental fetching.
+   * @returns ISO date string of the most recent close, or undefined if no stored PRs.
+   */
+  getClosedPRWatermark(): string | undefined {
+    const prs = this.state.closedPRs;
+    if (!prs || prs.length === 0) return undefined;
+    // List is sorted desc by closedAt, so first element is most recent
+    return prs[0].closedAt || undefined;
   }
 
   /**

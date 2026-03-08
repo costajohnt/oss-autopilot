@@ -121,7 +121,7 @@ export async function launchDashboardServer(options?: { port?: number }): Promis
     if (info) {
       // PID file appeared — verify the server is responding
       if (await isDashboardServerRunning(info.port)) {
-        return { url: `http://localhost:${info.port}`, port: info.port, alreadyRunning: false };
+        return { url: `http://oss.localhost:${info.port}`, port: info.port, alreadyRunning: false };
       }
     }
   }
