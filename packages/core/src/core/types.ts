@@ -510,13 +510,6 @@ export interface LocalRepoCache {
   cachedAt: string;
 }
 
-/** Metadata for a snoozed PR's CI failure. */
-export interface SnoozeInfo {
-  reason: string;
-  snoozedAt: string;
-  expiresAt: string;
-}
-
 /** Filter for excluding repos below a minimum star count from PR count queries. */
 export interface StarFilter {
   minStars: number;
@@ -599,9 +592,6 @@ export interface AgentConfig {
   /** Issue/PR URLs dismissed by the user, mapped to ISO timestamp of when dismissed. Issues with new responses after the dismiss timestamp resurface automatically. Named dismissedIssues for state backward compatibility (#416). */
   dismissedIssues?: Record<string, string>;
 
-  /** PR URLs with snoozed CI failures, mapped to snooze metadata. Snoozed PRs are excluded from actionable CI failure list until expiry. */
-  snoozedPRs?: Record<string, SnoozeInfo>;
-
   /** Manual status overrides for PRs. Maps PR URL to override metadata. Auto-clears when the PR has new activity. */
   statusOverrides?: Record<string, StatusOverride>;
 
@@ -673,7 +663,6 @@ export const DEFAULT_CONFIG: AgentConfig = {
   aiPolicyBlocklist: ['matplotlib/matplotlib'],
   shelvedPRUrls: [],
   dismissedIssues: {},
-  snoozedPRs: {},
   projectCategories: [],
   preferredOrgs: [],
 };
