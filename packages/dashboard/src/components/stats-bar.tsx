@@ -3,6 +3,7 @@ import type { DashboardStats } from '../types';
 interface StatsBarProps {
   stats: DashboardStats;
   onMergedClick?: () => void;
+  onClosedClick?: () => void;
 }
 
 interface StatCardDef {
@@ -13,7 +14,7 @@ interface StatCardDef {
   onClick?: () => void;
 }
 
-export function StatsBar({ stats, onMergedClick }: StatsBarProps) {
+export function StatsBar({ stats, onMergedClick, onClosedClick }: StatsBarProps) {
   const cards: StatCardDef[] = [
     {
       label: 'Active PRs',
@@ -39,6 +40,7 @@ export function StatsBar({ stats, onMergedClick }: StatsBarProps) {
       value: stats.closedPRs,
       accentVar: 'var(--accent-error)',
       accentDimVar: 'var(--accent-error-dim)',
+      onClick: onClosedClick,
     },
     {
       label: 'Merge Rate',

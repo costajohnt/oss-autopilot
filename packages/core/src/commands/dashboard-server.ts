@@ -20,6 +20,7 @@ import {
   getMonthlyData,
   buildDashboardStats,
   storedToMergedPRs,
+  storedToClosedPRs,
   type DashboardStats,
 } from './dashboard-data.js';
 import { openInBrowser } from './startup.js';
@@ -72,6 +73,7 @@ interface DashboardJsonData {
   commentedIssues: CommentedIssue[];
   issueResponses: CommentedIssueWithResponse[];
   allMergedPRs: MergedPR[];
+  allClosedPRs: ClosedPR[];
   offline?: boolean;
   lastUpdated?: string;
 }
@@ -147,19 +149,22 @@ function buildDashboardJson(
   state: Readonly<AgentState>,
   commentedIssues: CommentedIssue[],
   allMergedPRs?: MergedPR[],
+  allClosedPRs?: ClosedPR[],
 ): DashboardJsonData {
   const prsByRepo = computePRsByRepo(digest, state);
   const topRepos = computeTopRepos(prsByRepo);
   const { monthlyMerged, monthlyOpened, monthlyClosed } = getMonthlyData(state);
-  // Derive allMergedPRs from state if not provided (e.g. initial load from cached state)
+  // Derive from state if not provided (e.g. initial load from cached state)
   const mergedPRs = allMergedPRs ?? storedToMergedPRs(getStateManager().getMergedPRs());
-  // Filter out merged PRs from repos below the minStars threshold
+  const closedPRs = allClosedPRs ?? storedToClosedPRs(getStateManager().getClosedPRs());
+  // Filter out PRs from repos below the minStars threshold
   const minStars = state.config.minStars ?? 50;
-  const filteredMergedPRs = mergedPRs.filter((pr) => {
-    const repoScore = (state.repoScores || {})[pr.repo];
-    return !isBelowMinStars(repoScore?.stargazersCount, minStars);
-  });
-  const stats = buildDashboardStats(digest, state, filteredMergedPRs.length);
+  const repoScores = state.repoScores || {};
+  const isAboveMinStars = (pr: { repo: string }): boolean =>
+    !isBelowMinStars(repoScores[pr.repo]?.stargazersCount, minStars);
+  const filteredMergedPRs = mergedPRs.filter(isAboveMinStars);
+  const filteredClosedPRs = closedPRs.filter(isAboveMinStars);
+  const stats = buildDashboardStats(digest, state, filteredMergedPRs.length, filteredClosedPRs.length);
   const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
 
   return {
@@ -177,6 +182,7 @@ function buildDashboardJson(
     commentedIssues,
     issueResponses,
     allMergedPRs: filteredMergedPRs,
+    allClosedPRs: filteredClosedPRs,
   };
 }
 
@@ -452,6 +458,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         stateManager.getState(),
         cachedCommentedIssues,
         result.allMergedPRs,
+        result.allClosedPRs,
       );
       sendJson(res, 200, cachedJsonData);
     } catch (error) {
@@ -559,8 +566,8 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     version: getCLIVersion(),
   });
 
-  const serverUrl = `http://localhost:${actualPort}`;
-  warn(MODULE, `Dashboard server running at ${serverUrl} (also: http://oss.localhost:${actualPort})`);
+  const serverUrl = `http://oss.localhost:${actualPort}`;
+  warn(MODULE, `Dashboard server running at ${serverUrl} (also: http://localhost:${actualPort})`);
 
   // ── Background refresh ─────────────────────────────────────────────────
   // Port is bound and PID file written — now fetch fresh data from GitHub
@@ -575,6 +582,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
           stateManager.getState(),
           cachedCommentedIssues,
           result.allMergedPRs,
+          result.allClosedPRs,
         );
         warn(MODULE, 'Background data refresh complete');
       })

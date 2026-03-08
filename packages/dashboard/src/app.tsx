@@ -9,6 +9,7 @@ import { ChartPanel } from './components/chart-panel';
 import { IssueList } from './components/issue-list';
 import { RecentActivity } from './components/recent-activity';
 import { MergedPRList } from './components/merged-pr-list';
+import { ClosedPRList } from './components/closed-pr-list';
 import type { DashboardStats } from './types';
 
 interface DashboardHeaderProps {
@@ -73,6 +74,17 @@ function AppContent() {
     );
   }
 
+  // Route: /closed — show all closed PRs
+  if (path === '/closed') {
+    const closedPRs = data.allClosedPRs ?? [];
+    return (
+      <div class="dashboard">
+        <DashboardHeader stats={data.stats} loading={loading} refreshing={refreshing} onRefresh={refresh} />
+        <ClosedPRList closedPRs={closedPRs} onBack={() => route('/')} />
+      </div>
+    );
+  }
+
   // Default route: dashboard home
   const repos = [...new Set(data.activePRs.map((pr) => pr.repo))].sort();
   const statuses = [...new Set(data.activePRs.map((pr) => pr.status))].sort();
@@ -103,7 +115,7 @@ function AppContent() {
       )}
 
       <main class="dashboard-main">
-        <StatsBar stats={data.stats} onMergedClick={() => route('/merged')} />
+        <StatsBar stats={data.stats} onMergedClick={() => route('/merged')} onClosedClick={() => route('/closed')} />
         <FilterBar filters={filters} onFilterChange={setFilters} repos={repos} statuses={statuses} />
 
         <div class="dashboard-content">

@@ -10,8 +10,9 @@ import {
   getMonthlyData,
   mergeMonthlyCounts,
   storedToMergedPRs,
+  storedToClosedPRs,
 } from './dashboard-data.js';
-import type { DailyDigest, AgentState, ShelvedPRRef, StoredMergedPR } from '../core/types.js';
+import type { DailyDigest, AgentState, ShelvedPRRef, StoredMergedPR, StoredClosedPR } from '../core/types.js';
 
 function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
   return {
@@ -438,6 +439,57 @@ describe('storedToMergedPRs', () => {
     ];
 
     const result = storedToMergedPRs(stored);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].repo).toBe('a/b');
+    expect(result[0].number).toBe(1);
+    expect(result[1].repo).toBe('c/d');
+    expect(result[1].number).toBe(99);
+  });
+});
+
+describe('storedToClosedPRs', () => {
+  it('converts stored PRs to ClosedPR format with parsed repo and number', () => {
+    const stored: StoredClosedPR[] = [
+      { url: 'https://github.com/owner/repo/pull/42', title: 'Close bug', closedAt: '2025-06-10T00:00:00Z' },
+    ];
+
+    const result = storedToClosedPRs(stored);
+
+    expect(result).toEqual([
+      {
+        url: 'https://github.com/owner/repo/pull/42',
+        repo: 'owner/repo',
+        number: 42,
+        title: 'Close bug',
+        closedAt: '2025-06-10T00:00:00Z',
+      },
+    ]);
+  });
+
+  it('skips entries with unparseable URLs', () => {
+    const stored: StoredClosedPR[] = [
+      { url: 'https://example.com/not-a-pr', title: 'Bad URL', closedAt: '2025-06-10T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/1', title: 'Good', closedAt: '2025-06-10T00:00:00Z' },
+    ];
+
+    const result = storedToClosedPRs(stored);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].repo).toBe('owner/repo');
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(storedToClosedPRs([])).toEqual([]);
+  });
+
+  it('handles multiple PRs from different repos', () => {
+    const stored: StoredClosedPR[] = [
+      { url: 'https://github.com/a/b/pull/1', title: 'PR1', closedAt: '2025-06-10T00:00:00Z' },
+      { url: 'https://github.com/c/d/pull/99', title: 'PR2', closedAt: '2025-06-09T00:00:00Z' },
+    ];
+
+    const result = storedToClosedPRs(stored);
 
     expect(result).toHaveLength(2);
     expect(result[0].repo).toBe('a/b');

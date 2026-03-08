@@ -381,6 +381,13 @@ export interface StoredMergedPR {
   mergedAt: string; // ISO date — used for sorting + watermark
 }
 
+/** Minimal closed PR data persisted in state.json. Repo/number derived from URL at display time. */
+export interface StoredClosedPR {
+  url: string;
+  title: string;
+  closedAt: string; // ISO date — used for sorting + watermark
+}
+
 /** Minimal record of a PR that was merged, used in the daily digest. */
 export interface MergedPR {
   url: string;
@@ -478,6 +485,9 @@ export interface AgentState {
 
   /** All merged PRs stored incrementally. Source of truth for the merged PR detail view. */
   mergedPRs?: StoredMergedPR[];
+
+  /** All closed PRs stored incrementally. Source of truth for the closed PR detail view. */
+  closedPRs?: StoredClosedPR[];
 
   activeIssues: TrackedIssue[];
 }

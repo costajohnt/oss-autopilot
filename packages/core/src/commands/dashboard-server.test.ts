@@ -60,6 +60,7 @@ const mockStateManager = {
   setStatusOverride: vi.fn(),
   getStatusOverride: vi.fn().mockReturnValue(undefined),
   getMergedPRs: vi.fn().mockReturnValue([]),
+  getClosedPRs: vi.fn().mockReturnValue([]),
 };
 
 // Create a temp dir for PID file tests (needs to exist before mock is evaluated)
@@ -92,6 +93,7 @@ vi.mock('./dashboard-data.js', () => ({
     mergeRate: '83.3%',
   })),
   storedToMergedPRs: vi.fn(() => []),
+  storedToClosedPRs: vi.fn(() => []),
 }));
 
 import {

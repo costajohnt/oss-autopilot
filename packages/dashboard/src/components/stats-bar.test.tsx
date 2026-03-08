@@ -47,4 +47,32 @@ describe('StatsBar', () => {
     const buttons = container.querySelectorAll('button');
     expect(buttons).toHaveLength(0);
   });
+
+  it('renders closed card as clickable button when onClosedClick provided', () => {
+    const onClick = vi.fn();
+    const { container } = render(<StatsBar stats={stats} onClosedClick={onClick} />);
+    const clickable = container.querySelectorAll('.stat-card--clickable');
+    expect(clickable).toHaveLength(1);
+    expect(clickable[0].tagName).toBe('BUTTON');
+    expect(clickable[0].querySelector('.stat-label')?.textContent).toBe('Closed PRs');
+  });
+
+  it('calls onClosedClick when closed card is clicked', () => {
+    const onClick = vi.fn();
+    const { container } = render(<StatsBar stats={stats} onClosedClick={onClick} />);
+    const clickable = container.querySelector('.stat-card--clickable') as HTMLButtonElement;
+    fireEvent.click(clickable);
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it('renders both merged and closed as clickable when both handlers provided', () => {
+    const onMerged = vi.fn();
+    const onClosed = vi.fn();
+    const { container } = render(<StatsBar stats={stats} onMergedClick={onMerged} onClosedClick={onClosed} />);
+    const clickable = container.querySelectorAll('.stat-card--clickable');
+    expect(clickable).toHaveLength(2);
+    const labels = [...clickable].map((el) => el.querySelector('.stat-label')?.textContent);
+    expect(labels).toContain('Merged PRs');
+    expect(labels).toContain('Closed PRs');
+  });
 });
