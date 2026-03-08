@@ -49,7 +49,7 @@ export interface RepoGroup {
 /** GitHub's pull request review decision (from the reviewDecision GraphQL field). */
 export type ReviewDecision = 'approved' | 'changes_requested' | 'review_required' | 'unknown';
 
-/** Input options for `PRMonitor.determineStatus()`. */
+/** Input options for `determineStatus()` (see status-determination.ts). */
 export interface DetermineStatusInput {
   ciStatus: CIStatus;
   hasMergeConflict: boolean;
@@ -68,6 +68,14 @@ export interface DetermineStatusInput {
   latestChangesRequestedDate?: string;
   /** True if at least one failing CI check is classified as 'actionable'. */
   hasActionableCIFailure?: boolean;
+}
+
+/** Result of `determineStatus()` — the PR's computed status classification. */
+export interface DetermineStatusResult {
+  status: FetchedPRStatus;
+  actionReason?: ActionReason;
+  waitReason?: WaitReason;
+  stalenessTier: StalenessTier;
 }
 
 /**
@@ -126,7 +134,7 @@ export interface FetchedPR {
   number: number;
   title: string;
 
-  /** Computed by `PRMonitor.determineStatus()` based on the fields below. */
+  /** Computed by `determineStatus()` based on the fields below. */
   status: FetchedPRStatus;
   /** Granular reason for needs_addressing status. Undefined when waiting_on_maintainer. */
   actionReason?: ActionReason;
