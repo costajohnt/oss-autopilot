@@ -47,11 +47,13 @@ const TEST_PR_URL = 'https://github.com/owner/repo/pull/1';
 describe('runShelve', () => {
   const mockSave = vi.fn();
   const mockShelvePR = vi.fn();
+  const mockClearStatusOverride = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetStateManager.mockReturnValue({
       shelvePR: mockShelvePR,
+      clearStatusOverride: mockClearStatusOverride,
       save: mockSave,
     } as any);
   });
@@ -77,11 +79,13 @@ describe('runShelve', () => {
 describe('runUnshelve', () => {
   const mockSave = vi.fn();
   const mockUnshelvePR = vi.fn();
+  const mockClearStatusOverride = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetStateManager.mockReturnValue({
       unshelvePR: mockUnshelvePR,
+      clearStatusOverride: mockClearStatusOverride,
       save: mockSave,
     } as any);
   });

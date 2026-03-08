@@ -2,6 +2,10 @@
  * Shelve/Unshelve commands
  * Manages shelving PRs to exclude them from capacity and actionable issues.
  * Shelved PRs are auto-unshelved when a maintainer engages.
+ *
+ * Note: The CLI and MCP shelve/unshelve commands delegate to runMove(),
+ * which also clears status overrides. These functions match that behavior
+ * to keep the library API consistent.
  */
 
 import { getStateManager } from '../core/index.js';
@@ -26,6 +30,7 @@ export async function runShelve(options: { prUrl: string }): Promise<ShelveOutpu
 
   const stateManager = getStateManager();
   const added = stateManager.shelvePR(options.prUrl);
+  stateManager.clearStatusOverride(options.prUrl);
 
   if (added) {
     stateManager.save();
@@ -40,6 +45,7 @@ export async function runUnshelve(options: { prUrl: string }): Promise<UnshelveO
 
   const stateManager = getStateManager();
   const removed = stateManager.unshelvePR(options.prUrl);
+  stateManager.clearStatusOverride(options.prUrl);
 
   if (removed) {
     stateManager.save();
