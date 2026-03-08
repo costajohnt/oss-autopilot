@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.51.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.50.0...core-v0.51.0) (2026-03-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* Removed `snooze` and `unsnooze` tools. Use `move` with target `attention`, `waiting`, `shelved`, or `auto` instead. Dismiss now only accepts issue URLs.
+
+### Features
+
+* simplify PR management to three-state model ([#657](https://github.com/costajohnt/oss-autopilot/issues/657)) ([abe7705](https://github.com/costajohnt/oss-autopilot/commit/abe770556eb190fc6769abfecea46f0c744f6793))
+
 ## [0.50.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.49.0...core-v0.50.0) (2026-03-08)
 
 
