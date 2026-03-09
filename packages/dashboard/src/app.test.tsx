@@ -155,6 +155,36 @@ describe('App', () => {
       expect(rows[0].textContent).toContain('Fix auth bug');
     });
 
+    it('filters by search text matching repo name', async () => {
+      const { container } = render(<App />);
+
+      await waitFor(() => {
+        expect(container.querySelector('.dashboard')).toBeTruthy();
+      });
+
+      const searchInput = container.querySelector('.filter-input') as HTMLInputElement;
+      fireEvent.input(searchInput, { target: { value: 'c/d' } });
+
+      const rows = container.querySelectorAll('.pr-row');
+      expect(rows).toHaveLength(1);
+      expect(rows[0].textContent).toContain('Update docs');
+    });
+
+    it('filters by search text matching PR number', async () => {
+      const { container } = render(<App />);
+
+      await waitFor(() => {
+        expect(container.querySelector('.dashboard')).toBeTruthy();
+      });
+
+      const searchInput = container.querySelector('.filter-input') as HTMLInputElement;
+      fireEvent.input(searchInput, { target: { value: '2' } });
+
+      const rows = container.querySelectorAll('.pr-row');
+      expect(rows).toHaveLength(1);
+      expect(rows[0].textContent).toContain('Add feature');
+    });
+
     it('combines multiple filters', async () => {
       const { container } = render(<App />);
 
