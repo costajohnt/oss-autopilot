@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.53.1](https://github.com/costajohnt/oss-autopilot/compare/core-v0.53.0...core-v0.53.1) (2026-03-09)
+
+
+### Bug Fixes
+
+* **ci:** build core types before recording bundle sizes in update-badge job ([#672](https://github.com/costajohnt/oss-autopilot/issues/672)) ([f2ebb01](https://github.com/costajohnt/oss-autopilot/commit/f2ebb01be2baf09e99c145c2ba6671530e18cb1e))
+
 ## [0.53.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.52.0...core-v0.53.0) (2026-03-09)
 
 
