@@ -69,7 +69,7 @@ function AppContent() {
     return (
       <div class="dashboard">
         <DashboardHeader stats={data.stats} loading={loading} refreshing={refreshing} onRefresh={refresh} />
-        <MergedPRList mergedPRs={mergedPRs} onBack={() => route('/')} />
+        <MergedPRList mergedPRs={mergedPRs} repoMetadata={data.repoMetadata} onBack={() => route('/')} />
       </div>
     );
   }

@@ -380,10 +380,12 @@ describe('dashboard-server', () => {
       expect(data).toHaveProperty('recentlyClosedPRs');
       expect(data).toHaveProperty('autoUnshelvedPRs');
       expect(data).toHaveProperty('allMergedPRs');
+      expect(data).toHaveProperty('repoMetadata');
       expect(Array.isArray(data.recentlyMergedPRs)).toBe(true);
       expect(Array.isArray(data.recentlyClosedPRs)).toBe(true);
       expect(Array.isArray(data.autoUnshelvedPRs)).toBe(true);
       expect(Array.isArray(data.allMergedPRs)).toBe(true);
+      expect(typeof data.repoMetadata).toBe('object');
     });
 
     it('should return stats with correct values', async () => {
@@ -421,6 +423,55 @@ describe('dashboard-server', () => {
       const result = await sendRequest('GET', '/api/data');
       const data = JSON.parse(result.body);
       expect(Array.isArray(data.shelvedPRUrls)).toBe(true);
+    });
+
+    it('should include repos with metadata and exclude repos without in repoMetadata (#677)', async () => {
+      const state = makeState({
+        lastDigest: makeDigest(),
+        repoScores: {
+          'has/both': {
+            score: 5,
+            mergedPRCount: 1,
+            closedWithoutMergeCount: 0,
+            signals: {},
+            stargazersCount: 500,
+            language: 'TypeScript',
+          },
+          'has/stars-only': {
+            score: 5,
+            mergedPRCount: 1,
+            closedWithoutMergeCount: 0,
+            signals: {},
+            stargazersCount: 100,
+          },
+          'has/null-language': {
+            score: 5,
+            mergedPRCount: 1,
+            closedWithoutMergeCount: 0,
+            signals: {},
+            stargazersCount: 200,
+            language: null,
+          },
+          'no/metadata': { score: 5, mergedPRCount: 2, closedWithoutMergeCount: 0, signals: {} },
+        },
+      });
+      mockStateManager.getState.mockReturnValue(state);
+
+      // Trigger a rebuild via action so the new state is picked up
+      await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/99', target: 'shelved' }),
+      );
+      const result = await sendRequest('GET', '/api/data');
+      const data = JSON.parse(result.body);
+
+      // Repos with stars or language should be included
+      expect(data.repoMetadata['has/both']).toEqual({ stars: 500, language: 'TypeScript' });
+      expect(data.repoMetadata['has/stars-only']).toEqual({ stars: 100 });
+      expect(data.repoMetadata['has/null-language']).toEqual({ stars: 200, language: null });
+      // Repos without any metadata should be excluded
+      expect(data.repoMetadata['no/metadata']).toBeUndefined();
     });
   });
 

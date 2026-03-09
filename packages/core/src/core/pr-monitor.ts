@@ -9,7 +9,7 @@
  * - checklist-analysis.ts: PR body checklist analysis
  * - maintainer-analysis.ts: Maintainer action hint extraction
  * - display-utils.ts: Display label computation
- * - github-stats.ts: Merged/closed PR counts and star fetching
+ * - github-stats.ts: Merged/closed PR counts and star-based filtering
  * - status-determination.ts: PR status classification logic
  */
 
@@ -452,14 +452,14 @@ export class PRMonitor {
   }
 
   /**
-   * Fetch GitHub star counts for a list of repositories.
-   * Delegates to github-stats module.
+   * Fetch metadata (star count and primary language) for a list of repositories.
+   * Both fields come from the same `repos.get()` call — zero additional API cost.
    */
-  async fetchRepoStarCounts(repos: string[]): Promise<Map<string, number>> {
+  async fetchRepoMetadata(repos: string[]): Promise<Map<string, { stars: number; language: string | null }>> {
     if (repos.length === 0) return new Map();
 
-    debug(MODULE, `Fetching star counts for ${repos.length} repos...`);
-    const results = new Map<string, number>();
+    debug(MODULE, `Fetching repo metadata for ${repos.length} repos...`);
+    const results = new Map<string, { stars: number; language: string | null }>();
     const cache = getHttpCache();
 
     // Deduplicate repos to avoid fetching the same repo twice
@@ -485,19 +485,23 @@ export class PRMonitor {
                 owner,
                 repo: name,
                 headers,
-              }) as Promise<{ data: { stargazers_count: number }; headers: Record<string, string> }>,
+              }) as Promise<{
+                data: { stargazers_count: number; language: string | null };
+                headers: Record<string, string>;
+              }>,
           );
-          return { repo, stars: data.stargazers_count };
+          const metadata = { stars: data.stargazers_count, language: data.language ?? null };
+          return { repo, metadata };
         }),
       );
       let chunkFailures = 0;
       for (let j = 0; j < settled.length; j++) {
         const result = settled[j];
         if (result.status === 'fulfilled') {
-          results.set(result.value.repo, result.value.stars);
+          results.set(result.value.repo, result.value.metadata);
         } else {
           chunkFailures++;
-          warn(MODULE, `Failed to fetch stars for ${chunk[j]}: ${errorMessage(result.reason)}`);
+          warn(MODULE, `Failed to fetch metadata for ${chunk[j]}: ${errorMessage(result.reason)}`);
         }
       }
       // If entire chunk failed, likely a systemic issue (rate limit, auth, outage) — abort remaining
@@ -510,7 +514,7 @@ export class PRMonitor {
       }
     }
 
-    debug(MODULE, `Fetched star counts for ${results.size}/${repos.length} repos`);
+    debug(MODULE, `Fetched repo metadata for ${results.size}/${repos.length} repos`);
     return results;
   }
 

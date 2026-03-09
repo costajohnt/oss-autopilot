@@ -325,6 +325,8 @@ export interface RepoScore {
   signals: RepoSignals;
   /** GitHub star count, fetched during daily check for dashboard filtering. */
   stargazersCount?: number;
+  /** Primary programming language of the repo, fetched during daily check. */
+  language?: string | null;
 }
 
 /** Full set of qualitative signals about a repo's maintainer culture. */
@@ -349,6 +351,15 @@ export interface RepoScoreUpdate {
   lastMergedAt?: string;
   signals?: Partial<RepoSignals>;
   stargazersCount?: number;
+  /** Primary programming language of the repo. */
+  language?: string | null;
+}
+
+/** Repo metadata entry used in dashboard API responses. Shared between server and SPA. */
+export interface RepoMetadataEntry {
+  /** Star count, derived from RepoScore.stargazersCount. */
+  stars?: number;
+  language?: string | null;
 }
 
 /**

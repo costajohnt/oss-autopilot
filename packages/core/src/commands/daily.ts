@@ -307,30 +307,31 @@ async function updateRepoScores(
     );
   }
 
-  // Fetch star counts for all scored repos (used by dashboard minStars filter, #216)
+  // Fetch metadata (stars + language) for all scored repos (used by dashboard minStars filter and merged PR view, #216, #677)
   const allRepos = Object.keys(stateManager.getState().repoScores);
-  let starCounts: Map<string, number>;
+  let repoMetadata: Map<string, { stars: number; language: string | null }>;
   try {
-    starCounts = await prMonitor.fetchRepoStarCounts(allRepos);
+    repoMetadata = await prMonitor.fetchRepoMetadata(allRepos);
   } catch (error) {
-    warn(MODULE, `Failed to fetch repo star counts: ${errorMessage(error)}`);
+    if (isRateLimitOrAuthError(error)) throw error;
+    warn(MODULE, `Failed to fetch repo metadata: ${errorMessage(error)}`);
     warn(
       MODULE,
-      'Repos without cached star data will be excluded from stats until star counts are fetched on the next successful run.',
+      'Repos without cached metadata will be excluded from dashboard stats and metadata badges until fetched on the next successful run.',
     );
-    starCounts = new Map();
+    repoMetadata = new Map();
   }
-  let starUpdateFailures = 0;
-  for (const [repo, stars] of starCounts) {
+  let metadataUpdateFailures = 0;
+  for (const [repo, { stars, language }] of repoMetadata) {
     try {
-      stateManager.updateRepoScore(repo, { stargazersCount: stars });
+      stateManager.updateRepoScore(repo, { stargazersCount: stars, language });
     } catch (error) {
-      starUpdateFailures++;
-      warn(MODULE, `Failed to update star count for ${repo}: ${errorMessage(error)}`);
+      metadataUpdateFailures++;
+      warn(MODULE, `Failed to update metadata for ${repo}: ${errorMessage(error)}`);
     }
   }
-  if (starUpdateFailures === starCounts.size && starCounts.size > 0) {
-    warn(MODULE, `[ALL_STAR_COUNT_UPDATES_FAILED] All ${starCounts.size} star count update(s) failed.`);
+  if (metadataUpdateFailures === repoMetadata.size && repoMetadata.size > 0) {
+    warn(MODULE, `[ALL_METADATA_UPDATES_FAILED] All ${repoMetadata.size} metadata update(s) failed.`);
   }
 
   // Auto-sync trustedProjects from repos with merged PRs

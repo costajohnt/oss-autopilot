@@ -37,6 +37,7 @@ import {
   type MergedPR,
   type ClosedPR,
   type ShelvedPRRef,
+  type RepoMetadataEntry,
 } from '../core/types.js';
 
 // Re-export process management functions for backward compatibility
@@ -75,6 +76,7 @@ interface DashboardJsonData {
   issueResponses: CommentedIssueWithResponse[];
   allMergedPRs: MergedPR[];
   allClosedPRs: ClosedPR[];
+  repoMetadata: Record<string, RepoMetadataEntry>;
   offline?: boolean;
   lastUpdated?: string;
 }
@@ -137,6 +139,14 @@ function buildDashboardJson(
     (i): i is CommentedIssueWithResponse => i.status === 'new_response' && !(i.url in dismissedIssues),
   );
 
+  // Build repo metadata map from repoScores — omit repos without stars or language to avoid empty entries
+  const repoMetadata: Record<string, RepoMetadataEntry> = {};
+  for (const [repo, score] of Object.entries(repoScores)) {
+    if (score.stargazersCount !== undefined || score.language !== undefined) {
+      repoMetadata[repo] = { stars: score.stargazersCount, language: score.language };
+    }
+  }
+
   return {
     stats,
     prsByRepo,
@@ -153,6 +163,7 @@ function buildDashboardJson(
     issueResponses,
     allMergedPRs: filteredMergedPRs,
     allClosedPRs: filteredClosedPRs,
+    repoMetadata,
   };
 }
 

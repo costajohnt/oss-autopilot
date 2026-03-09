@@ -918,6 +918,27 @@ describe('StateManager getStats exclusion filtering', () => {
     expect(score?.mergedPRCount).toBe(3);
     expect(score?.closedWithoutMergeCount).toBe(1);
   });
+
+  it('should store language via updateRepoScore (#677)', () => {
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 1, language: 'TypeScript' });
+    const score = stateManager.getRepoScore('owner/repo');
+    expect(score?.language).toBe('TypeScript');
+  });
+
+  it('should store null language (repo with no detected language) (#677)', () => {
+    stateManager.updateRepoScore('owner/repo', { language: null });
+    const score = stateManager.getRepoScore('owner/repo');
+    expect(score?.language).toBeNull();
+  });
+
+  it('should not clobber language when updating other fields (#677)', () => {
+    stateManager.updateRepoScore('owner/repo', { mergedPRCount: 2, language: 'Rust' });
+    stateManager.updateRepoScore('owner/repo', { stargazersCount: 500 });
+    const score = stateManager.getRepoScore('owner/repo');
+    expect(score?.language).toBe('Rust');
+    expect(score?.stargazersCount).toBe(500);
+    expect(score?.mergedPRCount).toBe(2);
+  });
 });
 
 // ── cleanupExcludedData (#591) ──────────────────────────────────────────────
