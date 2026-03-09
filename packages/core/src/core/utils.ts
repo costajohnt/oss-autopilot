@@ -504,6 +504,15 @@ const GITHUB_USERNAME_RE = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/
  *   console.log(`Logged in as ${username}`);
  * }
  */
+/**
+ * Check whether the state file exists (without creating the data directory).
+ * Used for first-run detection in the CLI.
+ */
+export function stateFileExists(): boolean {
+  const stateFile = path.join(os.homedir(), '.oss-autopilot', 'state.json');
+  return fs.existsSync(stateFile);
+}
+
 export async function detectGitHubUsername(): Promise<string | null> {
   try {
     const login = await new Promise<string>((resolve, reject) => {

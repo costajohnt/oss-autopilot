@@ -18,6 +18,7 @@ import {
   getStatePath,
   getBackupDir,
   detectGitHubUsername,
+  stateFileExists,
 } from './utils.js';
 import { execFileSync, execFile } from 'child_process';
 import * as path from 'path';
@@ -473,6 +474,13 @@ describe('getGitHubTokenAsync', () => {
     process.env.GITHUB_TOKEN = 'ghp_second_async';
     const token2 = await getGitHubTokenAsync();
     expect(token2).toBe('ghp_second_async');
+  });
+});
+
+describe('stateFileExists', () => {
+  it('should return a boolean', () => {
+    const result = stateFileExists();
+    expect(typeof result).toBe('boolean');
   });
 });
 
