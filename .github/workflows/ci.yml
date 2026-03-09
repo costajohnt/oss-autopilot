@@ -245,6 +245,9 @@ jobs:
           fi
           rm -f packages/core/test-results.json
 
+      - name: Build core types
+        run: pnpm --filter @oss-autopilot/core run build
+
       - name: Record bundle sizes
         run: |
           pnpm run bundle
