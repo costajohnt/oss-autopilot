@@ -110,4 +110,48 @@ describe('computeDisplayLabel', () => {
     expect(result.displayLabel).toBe('[CI Blocked]');
     expect(result.displayDescription).toBe('CI checks are failing but no action is needed from you');
   });
+
+  it('should return [Stale CI Failure] for stale_ci_failure waitReason (#675)', () => {
+    const result = computeDisplayLabel(
+      makePR({ status: 'waiting_on_maintainer', waitReason: 'stale_ci_failure', daysSinceActivity: 8 }),
+    );
+    expect(result.displayLabel).toBe('[Stale CI Failure]');
+    expect(result.displayDescription).toContain('8+ days');
+  });
+
+  it('should append secondary action reasons to description (#675)', () => {
+    const result = computeDisplayLabel(
+      makePR({
+        status: 'needs_addressing',
+        actionReason: 'failing_ci',
+        actionReasons: ['failing_ci', 'merge_conflict'],
+        classifiedChecks: [{ name: 'unit-tests', category: 'actionable' }],
+      }),
+    );
+    expect(result.displayDescription).toContain('(also: merge conflict)');
+  });
+
+  it('should not append secondary reasons when single actionReason (#675)', () => {
+    const result = computeDisplayLabel(
+      makePR({
+        status: 'needs_addressing',
+        actionReason: 'failing_ci',
+        actionReasons: ['failing_ci'],
+        classifiedChecks: [{ name: 'unit-tests', category: 'actionable' }],
+      }),
+    );
+    expect(result.displayDescription).not.toContain('(also:');
+  });
+
+  it('should show multiple secondary reasons separated by comma (#675)', () => {
+    const result = computeDisplayLabel(
+      makePR({
+        status: 'needs_addressing',
+        actionReason: 'needs_response',
+        actionReasons: ['needs_response', 'failing_ci', 'merge_conflict'],
+        lastMaintainerComment: { author: 'maintainer', body: 'Fix this', createdAt: '2026-02-07T10:00:00Z' },
+      }),
+    );
+    expect(result.displayDescription).toContain('(also: ci failing, merge conflict)');
+  });
 });

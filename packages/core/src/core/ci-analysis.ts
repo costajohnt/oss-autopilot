@@ -36,7 +36,6 @@ const INFRASTRUCTURE_PATTERNS: RegExp[] = [
   /\bsetup\s+fail(ed|ure)?\b/i,
   /\bservice\s*unavailable/i,
   /\binfrastructure/i,
-  /\bbeta\b/i,
   /\bblacksmith\b/i,
 ];
 

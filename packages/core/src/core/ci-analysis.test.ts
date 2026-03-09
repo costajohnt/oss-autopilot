@@ -46,7 +46,7 @@ describe('classifyCICheck', () => {
     expect(classifyCICheck('Meta Internal')).toBe('fork_limitation');
   });
 
-  it('should classify beta/blacksmith runners as infrastructure (#675)', () => {
+  it('should classify Blacksmith CI runners as infrastructure (#675)', () => {
     expect(classifyCICheck('Playwright Tests (blacksmith-8vcpu-ubuntu, beta)')).toBe('infrastructure');
     expect(classifyCICheck('Blacksmith / build')).toBe('infrastructure');
   });
