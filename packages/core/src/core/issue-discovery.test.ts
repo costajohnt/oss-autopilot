@@ -2,7 +2,12 @@
  * Tests for IssueDiscovery pure functions
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
+let testDataDir: string;
 
 let mockOctokitInstance: any;
 
@@ -53,6 +58,17 @@ vi.mock('./state.js', () => ({
     getRepoScore: () => undefined,
   })),
 }));
+
+// Create a temp directory for tests that write files (saveSearchResults)
+testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-test-'));
+
+vi.mock('./utils.js', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    getDataDir: () => testDataDir,
+  };
+});
 
 const {
   IssueDiscovery,
@@ -1518,5 +1534,214 @@ describe('DOC_ONLY_LABELS', () => {
     expect(DOC_ONLY_LABELS.has('bug')).toBe(false);
     expect(DOC_ONLY_LABELS.has('good first issue')).toBe(false);
     expect(DOC_ONLY_LABELS.has('enhancement')).toBe(false);
+  });
+});
+
+// ---------- helpers for saveSearchResults / formatCandidate ----------
+
+function makeCandidate(repo: string, number: number, score: number): any {
+  return {
+    issue: {
+      id: number,
+      url: `https://github.com/${repo}/issues/${number}`,
+      repo,
+      number,
+      title: `Test issue ${number}`,
+      status: 'candidate',
+      labels: ['bug'],
+      createdAt: '2025-06-01T00:00:00Z',
+      updatedAt: '2025-06-15T00:00:00Z',
+      vetted: true,
+    },
+    vettingResult: {
+      passedAllChecks: true,
+      checks: {
+        noExistingPR: true,
+        notClaimed: true,
+        projectActive: true,
+        clearRequirements: true,
+        contributionGuidelinesFound: false,
+      },
+      notes: [],
+    },
+    projectHealth: {
+      repo,
+      lastCommitAt: '2025-06-10T00:00:00Z',
+      daysSinceLastCommit: 5,
+      openIssuesCount: 10,
+      avgIssueResponseDays: 2,
+      ciStatus: 'passing' as const,
+      isActive: true,
+      stargazersCount: 500,
+      checkFailed: false,
+    },
+    viabilityScore: score,
+    recommendation: 'approve' as const,
+    reasonsToApprove: [],
+    reasonsToSkip: [],
+    searchPriority: 'normal' as const,
+  };
+}
+
+// Clean up temp directory after all tests
+afterAll(() => {
+  if (testDataDir && fs.existsSync(testDataDir)) {
+    fs.rmSync(testDataDir, { recursive: true, force: true });
+  }
+});
+
+describe('saveSearchResults', () => {
+  it('should write a markdown file and return the path', () => {
+    const discovery = new IssueDiscovery('test-token');
+    const candidates = [makeCandidate('org/repo', 1, 75)];
+
+    const outputFile = discovery.saveSearchResults(candidates);
+
+    expect(outputFile).toContain('found-issues.md');
+    expect(fs.existsSync(outputFile)).toBe(true);
+  });
+
+  it('should contain a markdown header and legend', () => {
+    const discovery = new IssueDiscovery('test-token');
+    const candidates = [makeCandidate('org/repo', 1, 80)];
+
+    const outputFile = discovery.saveSearchResults(candidates);
+    const content = fs.readFileSync(outputFile, 'utf-8');
+
+    expect(content).toContain('# Found Issues');
+    expect(content).toContain('## Legend');
+    expect(content).toContain('Viability score');
+  });
+
+  it('should sort candidates by viability score descending', () => {
+    const discovery = new IssueDiscovery('test-token');
+    const candidates = [
+      makeCandidate('org/repo', 1, 60),
+      makeCandidate('org/repo', 2, 95),
+      makeCandidate('org/repo', 3, 75),
+    ];
+
+    const outputFile = discovery.saveSearchResults(candidates);
+    const content = fs.readFileSync(outputFile, 'utf-8');
+
+    // Issue #2 (score 95) should appear before #3 (75) which should appear before #1 (60)
+    const pos95 = content.indexOf('#2');
+    const pos75 = content.indexOf('#3');
+    const pos60 = content.indexOf('#1');
+    expect(pos95).toBeLessThan(pos75);
+    expect(pos75).toBeLessThan(pos60);
+  });
+
+  it('should include repo, issue number, and recommendation icon', () => {
+    const discovery = new IssueDiscovery('test-token');
+    const approved = makeCandidate('owner/project', 42, 80);
+    approved.recommendation = 'approve';
+    const skipped = makeCandidate('owner/project', 43, 30);
+    skipped.recommendation = 'skip';
+
+    const outputFile = discovery.saveSearchResults([approved, skipped]);
+    const content = fs.readFileSync(outputFile, 'utf-8');
+
+    expect(content).toContain('owner/project');
+    expect(content).toContain('[#42]');
+    expect(content).toContain('[#43]');
+    // Y for approve, N for skip
+    expect(content).toContain('| Y |');
+    expect(content).toContain('| N |');
+  });
+});
+
+describe('formatCandidate', () => {
+  it('should return formatted markdown with repo and issue number', () => {
+    const discovery = new IssueDiscovery('test-token');
+    const candidate = makeCandidate('org/repo', 42, 85);
+
+    const output = discovery.formatCandidate(candidate);
+
+    expect(output).toContain('org/repo#42');
+    expect(output).toContain('Test issue 42');
+    expect(output).toContain('bug');
+  });
+
+  it('should show approve icon and reasons for approved candidates', () => {
+    const discovery = new IssueDiscovery('test-token');
+    const candidate = makeCandidate('org/repo', 42, 85);
+    candidate.recommendation = 'approve';
+    candidate.reasonsToApprove = ['Good first issue', 'Active maintainers'];
+
+    const output = discovery.formatCandidate(candidate);
+
+    expect(output).toContain('\u2705'); // checkmark emoji
+    expect(output).toContain('APPROVE');
+    expect(output).toContain('Good first issue');
+    expect(output).toContain('Active maintainers');
+  });
+
+  it('should show skip icon and reasons for rejected candidates', () => {
+    const discovery = new IssueDiscovery('test-token');
+    const candidate = makeCandidate('org/repo', 10, 30);
+    candidate.recommendation = 'skip';
+    candidate.reasonsToSkip = ['Too complex', 'Stale project'];
+
+    const output = discovery.formatCandidate(candidate);
+
+    expect(output).toContain('\u274C'); // cross emoji
+    expect(output).toContain('SKIP');
+    expect(output).toContain('Too complex');
+    expect(output).toContain('Stale project');
+  });
+
+  it('should show warning icon for needs_review candidates', () => {
+    const discovery = new IssueDiscovery('test-token');
+    const candidate = makeCandidate('org/repo', 5, 50);
+    candidate.recommendation = 'needs_review';
+
+    const output = discovery.formatCandidate(candidate);
+
+    expect(output).toContain('\u26A0\uFE0F'); // warning emoji
+    expect(output).toContain('NEEDS_REVIEW');
+  });
+
+  it('should include vetting check results', () => {
+    const discovery = new IssueDiscovery('test-token');
+    const candidate = makeCandidate('org/repo', 7, 60);
+
+    const output = discovery.formatCandidate(candidate);
+
+    expect(output).toContain('Vetting Results');
+    // Checks should be rendered with pass/fail markers
+    expect(output).toContain('\u2713'); // checkmark for passing checks
+  });
+
+  it('should include project health information', () => {
+    const discovery = new IssueDiscovery('test-token');
+    const candidate = makeCandidate('org/repo', 7, 60);
+
+    const output = discovery.formatCandidate(candidate);
+
+    expect(output).toContain('Project Health');
+    expect(output).toContain('5 days ago');
+    expect(output).toContain('passing');
+  });
+
+  it('should show unknown for project health when check failed', () => {
+    const discovery = new IssueDiscovery('test-token');
+    const candidate = makeCandidate('org/repo', 7, 60);
+    candidate.projectHealth.checkFailed = true;
+
+    const output = discovery.formatCandidate(candidate);
+
+    expect(output).toContain('unknown (API error)');
+  });
+
+  it('should include notes when present', () => {
+    const discovery = new IssueDiscovery('test-token');
+    const candidate = makeCandidate('org/repo', 7, 60);
+    candidate.vettingResult.notes = ['Has 3 linked PRs', 'Recently discussed'];
+
+    const output = discovery.formatCandidate(candidate);
+
+    expect(output).toContain('Has 3 linked PRs');
+    expect(output).toContain('Recently discussed');
   });
 });
