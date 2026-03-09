@@ -2474,30 +2474,43 @@ describe('fetchUserClosedPRCounts — historical stats filtering', () => {
   });
 });
 
-// ── fetchRepoStarCounts (#216) ──────────────────────────────────────────────
+// ── fetchRepoMetadata (#216, #677) ──────────────────────────────────────────
 
-describe('fetchRepoStarCounts (#216)', () => {
-  it('should fetch star counts for repos', async () => {
+describe('fetchRepoMetadata (#216, #677)', () => {
+  it('should fetch star counts and language for repos', async () => {
     mockOctokitInstance = {
       repos: {
         get: vi
           .fn()
-          .mockResolvedValueOnce({ data: { stargazers_count: 5000 } })
-          .mockResolvedValueOnce({ data: { stargazers_count: 200 } }),
+          .mockResolvedValueOnce({ data: { stargazers_count: 5000, language: 'TypeScript' } })
+          .mockResolvedValueOnce({ data: { stargazers_count: 200, language: 'Python' } }),
       },
     };
 
     const monitor = new PRMonitor('fake-token');
-    const result = await monitor.fetchRepoStarCounts(['org/big-repo', 'org/small-repo']);
+    const result = await monitor.fetchRepoMetadata(['org/big-repo', 'org/small-repo']);
 
     expect(result.size).toBe(2);
-    expect(result.get('org/big-repo')).toBe(5000);
-    expect(result.get('org/small-repo')).toBe(200);
+    expect(result.get('org/big-repo')).toEqual({ stars: 5000, language: 'TypeScript' });
+    expect(result.get('org/small-repo')).toEqual({ stars: 200, language: 'Python' });
+  });
+
+  it('should return null language when repo has no language', async () => {
+    mockOctokitInstance = {
+      repos: {
+        get: vi.fn().mockResolvedValueOnce({ data: { stargazers_count: 100, language: null } }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchRepoMetadata(['org/docs-only']);
+
+    expect(result.get('org/docs-only')).toEqual({ stars: 100, language: null });
   });
 
   it('should return empty map for empty repo list', async () => {
     const monitor = new PRMonitor('fake-token');
-    const result = await monitor.fetchRepoStarCounts([]);
+    const result = await monitor.fetchRepoMetadata([]);
     expect(result.size).toBe(0);
   });
 
@@ -2506,16 +2519,16 @@ describe('fetchRepoStarCounts (#216)', () => {
       repos: {
         get: vi
           .fn()
-          .mockResolvedValueOnce({ data: { stargazers_count: 1000 } })
+          .mockResolvedValueOnce({ data: { stargazers_count: 1000, language: 'Rust' } })
           .mockRejectedValueOnce(new Error('Not Found')),
       },
     };
 
     const monitor = new PRMonitor('fake-token');
-    const result = await monitor.fetchRepoStarCounts(['org/exists', 'org/deleted']);
+    const result = await monitor.fetchRepoMetadata(['org/exists', 'org/deleted']);
 
     expect(result.size).toBe(1);
-    expect(result.get('org/exists')).toBe(1000);
+    expect(result.get('org/exists')).toEqual({ stars: 1000, language: 'Rust' });
     expect(result.has('org/deleted')).toBe(false);
   });
 });

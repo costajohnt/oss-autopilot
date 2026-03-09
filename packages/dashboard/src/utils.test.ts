@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { truncate, formatDate, statusColor, ciStatusColor } from './utils';
+import { truncate, formatDate, statusColor, ciStatusColor, formatStarCount, getLanguageColor } from './utils';
 
 describe('truncate', () => {
   it('returns the string unchanged if within limit', () => {
@@ -65,5 +65,42 @@ describe('ciStatusColor', () => {
 
   it('returns muted for unknown', () => {
     expect(ciStatusColor('unknown')).toBe('var(--text-muted)');
+  });
+});
+
+describe('formatStarCount', () => {
+  it('returns raw number for counts below 1000', () => {
+    expect(formatStarCount(0)).toBe('0');
+    expect(formatStarCount(42)).toBe('42');
+    expect(formatStarCount(999)).toBe('999');
+  });
+
+  it('formats thousands with k suffix', () => {
+    expect(formatStarCount(1000)).toBe('1.0k');
+    expect(formatStarCount(1200)).toBe('1.2k');
+    expect(formatStarCount(42100)).toBe('42.1k');
+    expect(formatStarCount(999999)).toBe('1000.0k');
+  });
+
+  it('formats millions with M suffix', () => {
+    expect(formatStarCount(1_000_000)).toBe('1.0M');
+    expect(formatStarCount(1_500_000)).toBe('1.5M');
+  });
+});
+
+describe('getLanguageColor', () => {
+  it('returns the correct color for known languages', () => {
+    expect(getLanguageColor('TypeScript')).toBe('#3178c6');
+    expect(getLanguageColor('Python')).toBe('#3572A5');
+    expect(getLanguageColor('Rust')).toBe('#dea584');
+  });
+
+  it('returns muted color for unknown languages', () => {
+    expect(getLanguageColor('Brainfuck')).toBe('var(--text-muted)');
+  });
+
+  it('returns muted color for null/undefined language', () => {
+    expect(getLanguageColor(null)).toBe('var(--text-muted)');
+    expect(getLanguageColor(undefined)).toBe('var(--text-muted)');
   });
 });

@@ -75,6 +75,7 @@ interface DashboardJsonData {
   issueResponses: CommentedIssueWithResponse[];
   allMergedPRs: MergedPR[];
   allClosedPRs: ClosedPR[];
+  repoMetadata: Record<string, { stars?: number; language?: string | null }>;
   offline?: boolean;
   lastUpdated?: string;
 }
@@ -137,6 +138,12 @@ function buildDashboardJson(
     (i): i is CommentedIssueWithResponse => i.status === 'new_response' && !(i.url in dismissedIssues),
   );
 
+  // Build repo metadata map from repoScores (stars + language per repo)
+  const repoMetadata: Record<string, { stars?: number; language?: string | null }> = {};
+  for (const [repo, score] of Object.entries(repoScores)) {
+    repoMetadata[repo] = { stars: score.stargazersCount, language: score.language };
+  }
+
   return {
     stats,
     prsByRepo,
@@ -153,6 +160,7 @@ function buildDashboardJson(
     issueResponses,
     allMergedPRs: filteredMergedPRs,
     allClosedPRs: filteredClosedPRs,
+    repoMetadata,
   };
 }
 

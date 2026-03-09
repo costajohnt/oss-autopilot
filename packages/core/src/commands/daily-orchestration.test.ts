@@ -19,7 +19,7 @@ import type { FetchPRsResult } from '../core/pr-monitor.js';
 const mockFetchUserOpenPRs = vi.fn<() => Promise<FetchPRsResult>>();
 const mockFetchUserMergedPRCounts = vi.fn();
 const mockFetchUserClosedPRCounts = vi.fn();
-const mockFetchRepoStarCounts = vi.fn();
+const mockFetchRepoMetadata = vi.fn();
 const mockFetchRecentlyClosedPRs = vi.fn();
 const mockFetchRecentlyMergedPRs = vi.fn();
 const mockGenerateDigest = vi.fn();
@@ -54,7 +54,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
     fetchUserOpenPRs = mockFetchUserOpenPRs;
     fetchUserMergedPRCounts = mockFetchUserMergedPRCounts;
     fetchUserClosedPRCounts = mockFetchUserClosedPRCounts;
-    fetchRepoStarCounts = mockFetchRepoStarCounts;
+    fetchRepoMetadata = mockFetchRepoMetadata;
     fetchRecentlyClosedPRs = mockFetchRecentlyClosedPRs;
     fetchRecentlyMergedPRs = mockFetchRecentlyMergedPRs;
     generateDigest = mockGenerateDigest;
@@ -193,7 +193,7 @@ beforeEach(() => {
   mockFetchUserOpenPRs.mockResolvedValue({ prs: [], failures: [] });
   mockFetchUserMergedPRCounts.mockResolvedValue(makeMergedResult());
   mockFetchUserClosedPRCounts.mockResolvedValue(makeClosedResult());
-  mockFetchRepoStarCounts.mockResolvedValue(new Map<string, number>());
+  mockFetchRepoMetadata.mockResolvedValue(new Map<string, { stars: number; language: string | null }>());
   mockFetchRecentlyClosedPRs.mockResolvedValue([]);
   mockFetchRecentlyMergedPRs.mockResolvedValue([]);
   mockGenerateDigest.mockReturnValue(makeDigest());
@@ -256,7 +256,7 @@ describe('executeDailyCheck()', () => {
     expect(mockFetchUserClosedPRCounts).toHaveBeenCalledOnce();
   });
 
-  it('calls fetchRepoStarCounts with all repo keys from state', async () => {
+  it('calls fetchRepoMetadata with all repo keys from state', async () => {
     mockGetState.mockReturnValue(
       makeDefaultState({
         repoScores: {
@@ -266,7 +266,7 @@ describe('executeDailyCheck()', () => {
       }),
     );
     await executeDailyCheck('test-token');
-    const [calledRepos] = mockFetchRepoStarCounts.mock.calls[0];
+    const [calledRepos] = mockFetchRepoMetadata.mock.calls[0];
     expect(calledRepos).toContain('owner/repo-a');
     expect(calledRepos).toContain('owner/repo-b');
   });
@@ -471,7 +471,7 @@ describe('executeDailyCheck() — capacity assessment', () => {
       mockFetchUserOpenPRs.mockResolvedValue({ prs: [], failures: [] });
       mockFetchUserMergedPRCounts.mockResolvedValue(makeMergedResult());
       mockFetchUserClosedPRCounts.mockResolvedValue(makeClosedResult());
-      mockFetchRepoStarCounts.mockResolvedValue(new Map<string, number>());
+      mockFetchRepoMetadata.mockResolvedValue(new Map<string, { stars: number; language: string | null }>());
       mockFetchRecentlyClosedPRs.mockResolvedValue([]);
       mockFetchRecentlyMergedPRs.mockResolvedValue([]);
       mockFetchCommentedIssues.mockResolvedValue({ issues: [], failures: [] });
@@ -597,7 +597,7 @@ describe('executeDailyCheck() — repo score updates', () => {
     expect(mockAddTrustedProject).toHaveBeenCalledWith('owner/repo-trusted');
   });
 
-  it('updates star counts from fetchRepoStarCounts', async () => {
+  it('updates star counts and language from fetchRepoMetadata', async () => {
     mockGetState.mockReturnValue(
       makeDefaultState({
         repoScores: {
@@ -605,12 +605,17 @@ describe('executeDailyCheck() — repo score updates', () => {
         },
       }),
     );
-    const starCounts = new Map([['owner/starred-repo', 1500]]);
-    mockFetchRepoStarCounts.mockResolvedValue(starCounts);
+    const metadata = new Map<string, { stars: number; language: string | null }>([
+      ['owner/starred-repo', { stars: 1500, language: 'TypeScript' }],
+    ]);
+    mockFetchRepoMetadata.mockResolvedValue(metadata);
 
     await executeDailyCheck('test-token');
 
-    expect(mockUpdateRepoScore).toHaveBeenCalledWith('owner/starred-repo', { stargazersCount: 1500 });
+    expect(mockUpdateRepoScore).toHaveBeenCalledWith('owner/starred-repo', {
+      stargazersCount: 1500,
+      language: 'TypeScript',
+    });
   });
 
   it('stores monthly merged counts', async () => {
@@ -681,18 +686,18 @@ describe('executeDailyCheck() — error resilience', () => {
     consoleSpy.mockRestore();
   });
 
-  it('continues if fetchRepoStarCounts fails, using empty map', async () => {
-    mockFetchRepoStarCounts.mockRejectedValue(new Error('Rate limited'));
+  it('continues if fetchRepoMetadata fails, using empty map', async () => {
+    mockFetchRepoMetadata.mockRejectedValue(new Error('Rate limited'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const result = await executeDailyCheck('test-token');
 
     expect(result).toHaveProperty('digest');
-    // No star updates should have been attempted
-    const starCalls = (mockUpdateRepoScore.mock.calls as Array<[string, { stargazersCount?: number }]>).filter(
+    // No metadata updates should have been attempted
+    const metadataCalls = (mockUpdateRepoScore.mock.calls as Array<[string, { stargazersCount?: number }]>).filter(
       ([, update]) => 'stargazersCount' in update,
     );
-    expect(starCalls).toHaveLength(0);
+    expect(metadataCalls).toHaveLength(0);
     consoleSpy.mockRestore();
   });
 

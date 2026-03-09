@@ -107,6 +107,7 @@ export function updateRepoScore(state: AgentState, repo: string, updates: RepoSc
   if (updates.avgResponseDays !== undefined) repoScore.avgResponseDays = updates.avgResponseDays;
   if (updates.lastMergedAt !== undefined) repoScore.lastMergedAt = updates.lastMergedAt;
   if (updates.stargazersCount !== undefined) repoScore.stargazersCount = updates.stargazersCount;
+  if (updates.language !== undefined) repoScore.language = updates.language;
   if (updates.signals) {
     repoScore.signals = { ...repoScore.signals, ...updates.signals };
   }

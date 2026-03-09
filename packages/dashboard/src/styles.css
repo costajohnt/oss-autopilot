@@ -988,6 +988,30 @@ a:hover {
   border-radius: 8px;
 }
 
+.merged-view-stars {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.merged-view-language {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.merged-view-language-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 /* === Scrollbar === */
 
 ::-webkit-scrollbar {
@@ -1051,5 +1075,10 @@ a:hover {
   .filter-select,
   .filter-input {
     flex: 1 1 100%;
+  }
+
+  .merged-view-stars,
+  .merged-view-language {
+    display: none;
   }
 }

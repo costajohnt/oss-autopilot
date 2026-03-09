@@ -53,6 +53,7 @@ export interface DashboardData {
   issueResponses: CommentedIssueWithResponse[];
   allMergedPRs: MergedPR[];
   allClosedPRs: ClosedPR[];
+  repoMetadata?: Record<string, { stars?: number; language?: string | null }>;
 }
 
 /** Actions a user can take from the dashboard. */

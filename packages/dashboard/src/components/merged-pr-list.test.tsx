@@ -21,6 +21,11 @@ describe('MergedPRList', () => {
     }),
   ];
 
+  const repoMetadata = {
+    'a/b': { stars: 5000, language: 'TypeScript' },
+    'c/d': { stars: 200, language: 'Python' },
+  };
+
   it('renders back button that calls onBack', () => {
     const onBack = vi.fn();
     const { container } = render(<MergedPRList mergedPRs={prs} onBack={onBack} />);
@@ -60,5 +65,50 @@ describe('MergedPRList', () => {
     const empty = container.querySelector('.merged-view-empty');
     expect(empty).toBeTruthy();
     expect(empty?.textContent).toContain('No merged PRs found');
+  });
+
+  it('renders star counts and language when repoMetadata is provided', () => {
+    const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
+    const stars = container.querySelectorAll('.merged-view-stars');
+    expect(stars).toHaveLength(2);
+    expect(stars[0].textContent).toContain('5.0k');
+    expect(stars[1].textContent).toContain('200');
+
+    const languages = container.querySelectorAll('.merged-view-language');
+    expect(languages).toHaveLength(2);
+    expect(languages[0].textContent).toContain('TypeScript');
+    expect(languages[1].textContent).toContain('Python');
+  });
+
+  it('renders gracefully without repoMetadata', () => {
+    const { container } = render(<MergedPRList mergedPRs={prs} onBack={() => {}} />);
+    const stars = container.querySelectorAll('.merged-view-stars');
+    expect(stars).toHaveLength(0);
+    const languages = container.querySelectorAll('.merged-view-language');
+    expect(languages).toHaveLength(0);
+  });
+
+  it('handles missing repo in metadata map', () => {
+    const partialMetadata = { 'a/b': { stars: 1000, language: 'Go' } };
+    const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={partialMetadata} onBack={() => {}} />);
+    const stars = container.querySelectorAll('.merged-view-stars');
+    expect(stars).toHaveLength(1);
+    expect(stars[0].textContent).toContain('1.0k');
+
+    const languages = container.querySelectorAll('.merged-view-language');
+    expect(languages).toHaveLength(1);
+    expect(languages[0].textContent).toContain('Go');
+  });
+
+  it('handles repo with stars but no language', () => {
+    const metaNoLang = { 'a/b': { stars: 500, language: null } };
+    const { container } = render(<MergedPRList mergedPRs={[prs[0]]} repoMetadata={metaNoLang} onBack={() => {}} />);
+    const stars = container.querySelectorAll('.merged-view-stars');
+    expect(stars).toHaveLength(1);
+    expect(stars[0].textContent).toContain('500');
+
+    // No language dot should appear
+    const languages = container.querySelectorAll('.merged-view-language');
+    expect(languages).toHaveLength(0);
   });
 });
