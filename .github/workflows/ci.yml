@@ -24,6 +24,9 @@ jobs:
   ci:
     name: Node ${{ matrix.node-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    # pull-requests: write is needed for the "Check bundle sizes" step to post PR
+    # comments. GitHub Actions does not support per-matrix-entry permissions, so all
+    # matrix jobs receive this grant even though only Node 22/ubuntu uses it.
     permissions:
       contents: read
       pull-requests: write
@@ -132,6 +135,11 @@ jobs:
             if [ -n "$BASELINE_JSON" ]; then
               BASELINE_CORE=$(echo "$BASELINE_JSON" | node -p "try{JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).core}catch{''}" 2>/dev/null || echo "")
               BASELINE_MCP=$(echo "$BASELINE_JSON" | node -p "try{JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).mcp}catch{''}" 2>/dev/null || echo "")
+              if [ -z "$BASELINE_CORE" ] || [ -z "$BASELINE_MCP" ]; then
+                echo "::warning::bundle-sizes.json on badges branch could not be parsed. Delta reporting disabled."
+              fi
+            else
+              echo "::notice::No bundle-sizes.json on badges branch yet. Delta reporting will be available after the next main merge."
             fi
           fi
 
@@ -166,7 +174,7 @@ jobs:
             echo -e "$TABLE"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # Check thresholds first (must run before any fallible optional steps)
+          # Determine threshold pass/fail before optional steps (PR comment posting may fail)
           FAILED=0
           if [ "$CORE_SIZE" -gt "$BUNDLE_MAX_CORE" ]; then
             echo "::error::Core CLI bundle (${core_kb} KB) exceeds threshold (${core_max_kb} KB)"
