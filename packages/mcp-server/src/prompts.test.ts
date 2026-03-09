@@ -60,6 +60,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
 }));
 
 vi.mock('@oss-autopilot/core', () => ({
+  errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   getStateManager: vi.fn().mockReturnValue({
     getState: vi.fn().mockReturnValue({
       lastDigest: { openPRs: [], shelvedPRs: [] },
@@ -68,6 +69,7 @@ vi.mock('@oss-autopilot/core', () => ({
 }));
 
 import { createServer } from './server.js';
+import { runDaily, runComments, runSearch } from '@oss-autopilot/core/commands';
 
 describe('MCP prompt registrations', () => {
   let client: Client;
@@ -172,6 +174,50 @@ describe('MCP prompt registrations', () => {
       expect(text).toContain('Add dark mode');
       expect(text).toContain('APPROVE');
       expect(text).toContain('85/100');
+    });
+  });
+
+  describe('prompt error handling', () => {
+    it('triage returns error message when runDaily rejects', async () => {
+      vi.mocked(runDaily).mockRejectedValueOnce(new Error('GitHub API rate limit'));
+
+      const result = await client.getPrompt({ name: 'triage' });
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].role).toBe('user');
+      const text = (result.messages[0].content as { type: 'text'; text: string }).text;
+      expect(text).toContain('Failed to fetch triage data');
+      expect(text).toContain('GitHub API rate limit');
+    });
+
+    it('respond-to-pr returns error message when runComments rejects', async () => {
+      vi.mocked(runComments).mockRejectedValueOnce(new Error('PR not found'));
+
+      const result = await client.getPrompt({
+        name: 'respond-to-pr',
+        arguments: { prUrl: 'https://github.com/octocat/hello-world/pull/999' },
+      });
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].role).toBe('user');
+      const text = (result.messages[0].content as { type: 'text'; text: string }).text;
+      expect(text).toContain('Failed to fetch PR comments');
+      expect(text).toContain('PR not found');
+    });
+
+    it('find-issues returns error message when runSearch rejects', async () => {
+      vi.mocked(runSearch).mockRejectedValueOnce(new Error('Search quota exceeded'));
+
+      const result = await client.getPrompt({
+        name: 'find-issues',
+        arguments: { maxResults: '5' },
+      });
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].role).toBe('user');
+      const text = (result.messages[0].content as { type: 'text'; text: string }).text;
+      expect(text).toContain('Failed to search for issues');
+      expect(text).toContain('Search quota exceeded');
     });
   });
 });

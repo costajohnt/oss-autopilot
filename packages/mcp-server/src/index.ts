@@ -10,7 +10,7 @@ export { registerTools } from './tools.js';
 export { registerResources } from './resources.js';
 export { registerPrompts } from './prompts.js';
 
-async function main() {
+export async function main() {
   const args = process.argv.slice(2);
   const httpMode = args.includes('--http');
 
@@ -84,7 +84,7 @@ async function main() {
 }
 
 // Only run main() when this is the entry point, not when imported as a module
-const ENTRY_SUFFIXES = [
+export const ENTRY_SUFFIXES = [
   '/mcp-server/src/index.ts',
   '/mcp-server/dist/index.js',
   '/mcp-server.bundle.cjs',
