@@ -33,6 +33,23 @@ OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you 
 Restart Claude Code, then run `/setup-oss`. Done.
 
 <details>
+<summary><strong>Optional:</strong> Enhanced code review with pr-review-toolkit</summary>
+
+The plugin includes a built-in **pre-commit-reviewer** agent that reviews all code changes before pushing. For enhanced parallel review, install the **pr-review-toolkit** plugin (search for it in the Claude Code plugin marketplace) — it adds 5 specialized reviewers that run simultaneously:
+
+| Agent | Focus |
+|-------|-------|
+| `code-reviewer` | Bugs, logic errors, security, conventions |
+| `silent-failure-hunter` | Error handling gaps, swallowed errors |
+| `code-simplifier` | Dead code, unnecessary complexity |
+| `pr-test-analyzer` | Test coverage and assertion quality |
+| `comment-analyzer` | Comment accuracy and maintainability |
+
+**Without pr-review-toolkit:** The built-in pre-commit-reviewer handles all review phases as a single agent with the same fix-and-re-review loop. Everything works — you get one generalist reviewer instead of five specialists.
+
+</details>
+
+<details>
 <summary><strong>MCP Server</strong> (Cursor, Claude Desktop, Codex, Windsurf)</summary>
 
 ```bash

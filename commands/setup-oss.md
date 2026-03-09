@@ -214,6 +214,9 @@ Show summary:
 ### Next Steps
 - Run `/oss` to check your PRs and find new contribution opportunities
 - Run `/oss-help` for a full reference card of commands and agents
+
+### Optional Enhancement
+- **Enhanced code review**: Install the `pr-review-toolkit` plugin for parallel specialized code review (5 agents instead of 1). Search for it in the plugin marketplace. The built-in pre-commit reviewer works without it.
 ```
 
 **Note:** The `squashByDefault` and `repoOverrides` settings are stored in the config frontmatter. Per-repo squash overrides can be added manually:
@@ -505,6 +508,9 @@ Show summary:
 ### Next Steps
 - Run `/oss` to check your PRs and find new contribution opportunities
 - Run `/oss-help` for a full reference card of commands and agents
+
+### Optional Enhancement
+- **Enhanced code review**: Install the `pr-review-toolkit` plugin for parallel specialized code review (5 agents instead of 1). Search for it in the plugin marketplace. The built-in pre-commit reviewer works without it.
 ```
 
 ---

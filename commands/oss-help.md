@@ -51,6 +51,12 @@ The **oss-contribution** skill provides best practices for:
 - Following repository contribution guidelines
 - Open source etiquette (claiming issues, draft PRs, etc.)
 
+## Optional: Enhanced Code Review
+
+The pre-commit review workflow supports the **pr-review-toolkit** plugin for parallel specialized review (5 agents). Without it, the built-in `pre-commit-reviewer` handles all reviews. Both paths include iterative fix-and-re-review loops.
+
+To install: search for `pr-review-toolkit` in the Claude Code plugin marketplace.
+
 ## Configuration
 
 Settings are stored in `~/.oss-autopilot/state.json`. Run `/setup-oss` to reconfigure.
