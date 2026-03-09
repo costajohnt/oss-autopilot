@@ -35,7 +35,7 @@ Maintainer feedback is a gift - they're investing time to help you improve. Even
 
 Before pushing commits that address review feedback:
 
-1. Run the project's code review tooling (e.g., pr-review-toolkit agents) on your diff
+1. Run the project's code review tooling on your diff (the pr-review-toolkit agents if installed, otherwise the built-in pre-commit-reviewer)
 2. Fix any issues found (bugs, style violations, missing error handling)
 3. Re-run until clean — no actionable findings
 4. Only then push your changes
