@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.54.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.53.1...core-v0.54.0) (2026-03-09)
+
+
+### Features
+
+* **dashboard:** show repo stars and language on merged PRs page ([#678](https://github.com/costajohnt/oss-autopilot/issues/678)) ([79146ce](https://github.com/costajohnt/oss-autopilot/commit/79146ce44535a32a2d7a9c553fda1de2cce4165a))
+
+
+### Bug Fixes
+
+* reduce over-classification of PRs as needs_addressing ([#680](https://github.com/costajohnt/oss-autopilot/issues/680)) ([55458df](https://github.com/costajohnt/oss-autopilot/commit/55458df8c9d2bee19b36463874e58c6d8a79f04b))
+
 ## [0.53.1](https://github.com/costajohnt/oss-autopilot/compare/core-v0.53.0...core-v0.53.1) (2026-03-09)
 
 
