@@ -6,7 +6,10 @@
  * its CI, review, merge-conflict, and timeline signals.
  */
 
-import type { DetermineStatusInput, DetermineStatusResult, StalenessTier } from './types.js';
+import type { ActionReason, DetermineStatusInput, DetermineStatusResult, StalenessTier } from './types.js';
+
+/** Days of inactivity after which an actionable CI failure is demoted to stale_ci_failure (#675). */
+export const STALE_CI_DEMOTION_DAYS = 5;
 
 /**
  * CI-fix bots that push commits as a direct result of the contributor's push (#568).
@@ -49,9 +52,97 @@ export function isCommitAfterComment(commitDate: string, commentDate: string): b
 }
 
 /**
+ * Resolve the latest commit date, filtering out non-contributor commits (#547, #568).
+ * Returns undefined when the commit was by a non-contributor or when no date is available.
+ */
+function resolveContributorCommitDate(input: DetermineStatusInput): string | undefined {
+  const { latestCommitDate, latestCommitAuthor, contributorUsername } = input;
+  if (!latestCommitDate) return undefined;
+  return isContributorCommit(latestCommitAuthor, contributorUsername) ? latestCommitDate : undefined;
+}
+
+/** Check whether an unresponded comment has been addressed by a subsequent contributor commit. */
+function isCommentAddressedByCommit(
+  commitDate: string | undefined,
+  commentDate: string | undefined,
+  changesRequestedDate: string | undefined,
+): boolean {
+  if (!commitDate || !commentDate) return false;
+  if (!isCommitAfterComment(commitDate, commentDate)) return false;
+  // Safety net (#431): if a CHANGES_REQUESTED review came after the commit, it's not addressed
+  if (changesRequestedDate && commitDate < changesRequestedDate) return false;
+  return true;
+}
+
+/** Check whether a changes_requested review has been addressed by a subsequent contributor commit. */
+function isChangesAddressedByCommit(commitDate: string | undefined, changesRequestedDate: string | undefined): boolean {
+  if (!commitDate || !changesRequestedDate) return false;
+  return commitDate >= changesRequestedDate;
+}
+
+/**
+ * Collect all applicable action reasons independently, without short-circuiting (#675).
+ * Used alongside the priority-based decision tree to surface secondary issues.
+ */
+function collectAllActionReasons(input: DetermineStatusInput): ActionReason[] | undefined {
+  const {
+    ciStatus,
+    hasMergeConflict,
+    hasUnrespondedComment,
+    hasIncompleteChecklist,
+    reviewDecision,
+    lastMaintainerCommentDate,
+    latestChangesRequestedDate,
+    hasActionableCIFailure = true,
+  } = input;
+
+  const commitDate = resolveContributorCommitDate(input);
+  const reasons: ActionReason[] = [];
+
+  if (
+    hasUnrespondedComment &&
+    !isCommentAddressedByCommit(commitDate, lastMaintainerCommentDate, latestChangesRequestedDate)
+  ) {
+    reasons.push('needs_response');
+  }
+  if (
+    reviewDecision === 'changes_requested' &&
+    latestChangesRequestedDate &&
+    !isChangesAddressedByCommit(commitDate, latestChangesRequestedDate)
+  ) {
+    reasons.push('needs_changes');
+  }
+  if (ciStatus === 'failing' && hasActionableCIFailure) {
+    reasons.push('failing_ci');
+  }
+  if (hasMergeConflict) {
+    reasons.push('merge_conflict');
+  }
+  if (hasIncompleteChecklist) {
+    reasons.push('incomplete_checklist');
+  }
+
+  return reasons.length > 0 ? reasons : undefined;
+}
+
+/**
  * Determine the overall status of a PR based on its signals.
  */
 export function determineStatus(input: DetermineStatusInput): DetermineStatusResult {
+  const primary = determinePrimaryStatus(input);
+  const actionReasons = collectAllActionReasons(input);
+  if (actionReasons) {
+    return { ...primary, actionReasons };
+  }
+  return primary;
+}
+
+/**
+ * Priority-based decision tree for the primary status classification.
+ * Returns the single highest-priority status; `determineStatus` augments
+ * this with the full `actionReasons` array.
+ */
+function determinePrimaryStatus(input: DetermineStatusInput): DetermineStatusResult {
   const {
     ciStatus,
     hasMergeConflict,
@@ -61,9 +152,6 @@ export function determineStatus(input: DetermineStatusInput): DetermineStatusRes
     daysSinceActivity,
     dormantThreshold,
     approachingThreshold,
-    latestCommitDate: rawCommitDate,
-    latestCommitAuthor,
-    contributorUsername,
     lastMaintainerCommentDate,
     latestChangesRequestedDate,
     hasActionableCIFailure = true,
@@ -74,29 +162,12 @@ export function determineStatus(input: DetermineStatusInput): DetermineStatusRes
   if (daysSinceActivity >= dormantThreshold) stalenessTier = 'dormant';
   else if (daysSinceActivity >= approachingThreshold) stalenessTier = 'approaching_dormant';
 
-  // Only count the latest commit if it was authored by the contributor or a
-  // CI bot (#547, #568). Non-contributor commits (maintainer merge commits,
-  // GitHub suggestion commits) should not mask unaddressed feedback.
-  const latestCommitDate =
-    rawCommitDate && isContributorCommit(latestCommitAuthor, contributorUsername) ? rawCommitDate : undefined;
+  const commitDate = resolveContributorCommitDate(input);
 
   // Priority order: needs_addressing (response/changes/ci/conflict/checklist) > waiting_on_maintainer (review/merge/addressed/ci_blocked)
 
   if (hasUnrespondedComment) {
-    // If the contributor pushed a commit after the maintainer's comment,
-    // the changes have been addressed — waiting for maintainer re-review.
-    // Require a minimum 2-minute gap to avoid false positives from race
-    // conditions (pushing while review is being submitted) (#547).
-    if (
-      latestCommitDate &&
-      lastMaintainerCommentDate &&
-      isCommitAfterComment(latestCommitDate, lastMaintainerCommentDate)
-    ) {
-      // Safety net (#431): if a CHANGES_REQUESTED review was submitted after
-      // the commit, the maintainer still expects changes — don't mask it
-      if (latestChangesRequestedDate && latestCommitDate < latestChangesRequestedDate) {
-        return { status: 'needs_addressing', actionReason: 'needs_response', stalenessTier };
-      }
+    if (isCommentAddressedByCommit(commitDate, lastMaintainerCommentDate, latestChangesRequestedDate)) {
       if (ciStatus === 'failing' && hasActionableCIFailure)
         return { status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier };
       // Non-actionable CI failures (infrastructure, fork, auth) don't block changes_addressed —
@@ -107,9 +178,8 @@ export function determineStatus(input: DetermineStatusInput): DetermineStatusRes
   }
 
   // Review requested changes but no unresponded comment.
-  // If the latest commit is before the review, the contributor hasn't addressed it yet.
   if (reviewDecision === 'changes_requested' && latestChangesRequestedDate) {
-    if (!latestCommitDate || latestCommitDate < latestChangesRequestedDate) {
+    if (!isChangesAddressedByCommit(commitDate, latestChangesRequestedDate)) {
       return { status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier };
     }
     // Commit is after review — changes have been addressed
@@ -120,9 +190,14 @@ export function determineStatus(input: DetermineStatusInput): DetermineStatusRes
   }
 
   if (ciStatus === 'failing') {
-    return hasActionableCIFailure
-      ? { status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier }
-      : { status: 'waiting_on_maintainer', waitReason: 'ci_blocked', stalenessTier };
+    if (hasActionableCIFailure) {
+      // Demote stale CI failures: if failing for 5+ days with no activity, likely pre-existing (#675)
+      if (daysSinceActivity >= STALE_CI_DEMOTION_DAYS) {
+        return { status: 'waiting_on_maintainer', waitReason: 'stale_ci_failure', stalenessTier };
+      }
+      return { status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier };
+    }
+    return { status: 'waiting_on_maintainer', waitReason: 'ci_blocked', stalenessTier };
   }
 
   if (hasMergeConflict) {

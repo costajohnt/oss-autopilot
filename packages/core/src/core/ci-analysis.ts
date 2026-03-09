@@ -18,6 +18,7 @@ const FORK_LIMITATION_PATTERNS: RegExp[] = [
   /chromatic/i,
   /percy/i,
   /cloudflare pages/i,
+  /\binternal\b/i,
 ];
 
 /**
@@ -35,6 +36,7 @@ const INFRASTRUCTURE_PATTERNS: RegExp[] = [
   /\bsetup\s+fail(ed|ure)?\b/i,
   /\bservice\s*unavailable/i,
   /\binfrastructure/i,
+  /\bblacksmith\b/i,
 ];
 
 /**

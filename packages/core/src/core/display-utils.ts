@@ -90,13 +90,34 @@ const WAIT_DISPLAY: Record<WaitReason, { label: string; description: (pr: Fetche
       return 'CI checks are failing but no action is needed from you';
     },
   },
+  stale_ci_failure: {
+    label: '[Stale CI Failure]',
+    description: (pr) => `CI failing for ${pr.daysSinceActivity}+ days — likely pre-existing or non-actionable`,
+  },
 };
+
+/** Convert a bracketed display label like "[CI Failing]" to a plain lowercase string like "ci failing". */
+function labelToPlainText(reason: ActionReason): string {
+  const label = ACTION_DISPLAY[reason]?.label;
+  if (!label) return reason;
+  return label.replace(/[[\]]/g, '').toLowerCase();
+}
 
 /** Compute display label and description for a FetchedPR (#79). */
 export function computeDisplayLabel(pr: FetchedPR): { displayLabel: string; displayDescription: string } {
   if (pr.status === 'needs_addressing' && pr.actionReason) {
     const entry = ACTION_DISPLAY[pr.actionReason];
-    if (entry) return { displayLabel: entry.label, displayDescription: entry.description(pr) };
+    if (entry) {
+      let displayDescription = entry.description(pr);
+      // Append secondary action reasons when multiple issues exist (#675)
+      if (pr.actionReasons && pr.actionReasons.length > 1) {
+        const secondary = pr.actionReasons.filter((r) => r !== pr.actionReason).map(labelToPlainText);
+        if (secondary.length > 0) {
+          displayDescription += ` (also: ${secondary.join(', ')})`;
+        }
+      }
+      return { displayLabel: entry.label, displayDescription };
+    }
   }
   if (pr.status === 'waiting_on_maintainer' && pr.waitReason) {
     const entry = WAIT_DISPLAY[pr.waitReason];

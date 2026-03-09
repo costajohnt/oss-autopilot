@@ -41,6 +41,16 @@ describe('classifyCICheck', () => {
     expect(classifyCICheck('Setup Failure')).toBe('infrastructure');
   });
 
+  it('should classify "internal" CI checks as fork_limitation (#675)', () => {
+    expect(classifyCICheck('Facebook Internal - Linter')).toBe('fork_limitation');
+    expect(classifyCICheck('Meta Internal')).toBe('fork_limitation');
+  });
+
+  it('should classify Blacksmith CI runners as infrastructure (#675)', () => {
+    expect(classifyCICheck('Playwright Tests (blacksmith-8vcpu-ubuntu, beta)')).toBe('infrastructure');
+    expect(classifyCICheck('Blacksmith / build')).toBe('infrastructure');
+  });
+
   it('should fall back to description when name is not classified', () => {
     expect(classifyCICheck('some-check', 'Authorization required')).toBe('auth_gate');
     expect(classifyCICheck('some-check', 'Vercel deployment')).toBe('fork_limitation');
