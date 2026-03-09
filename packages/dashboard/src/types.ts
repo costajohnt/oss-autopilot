@@ -13,6 +13,7 @@ import type {
   CommentedIssueWithResponse,
   MergedPR,
   ClosedPR,
+  RepoMetadataEntry,
 } from '@oss-autopilot/core/types';
 
 // Re-export shared types so consumers keep using `import { X } from '../types'`
@@ -24,6 +25,7 @@ export type {
   CommentedIssueWithResponse,
   MergedPR,
   ClosedPR,
+  RepoMetadataEntry,
 };
 
 // -- Dashboard-specific types --
@@ -53,7 +55,7 @@ export interface DashboardData {
   issueResponses: CommentedIssueWithResponse[];
   allMergedPRs: MergedPR[];
   allClosedPRs: ClosedPR[];
-  repoMetadata?: Record<string, { stars?: number; language?: string | null }>;
+  repoMetadata?: Record<string, RepoMetadataEntry>;
 }
 
 /** Actions a user can take from the dashboard. */

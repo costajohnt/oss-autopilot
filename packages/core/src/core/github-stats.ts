@@ -1,5 +1,5 @@
 /**
- * GitHub Stats - Fetching merged/closed PR counts and repository star counts.
+ * GitHub Stats - Fetching merged/closed PR counts with star-based filtering.
  * Extracted from PRMonitor to isolate statistics-gathering API calls (#263).
  */
 

@@ -9,7 +9,7 @@
  * - checklist-analysis.ts: PR body checklist analysis
  * - maintainer-analysis.ts: Maintainer action hint extraction
  * - display-utils.ts: Display label computation
- * - github-stats.ts: Merged/closed PR counts and star fetching
+ * - github-stats.ts: Merged/closed PR counts and star-based filtering
  * - status-determination.ts: PR status classification logic
  */
 

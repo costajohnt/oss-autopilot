@@ -313,10 +313,11 @@ async function updateRepoScores(
   try {
     repoMetadata = await prMonitor.fetchRepoMetadata(allRepos);
   } catch (error) {
+    if (isRateLimitOrAuthError(error)) throw error;
     warn(MODULE, `Failed to fetch repo metadata: ${errorMessage(error)}`);
     warn(
       MODULE,
-      'Repos without cached star data will be excluded from stats until metadata is fetched on the next successful run.',
+      'Repos without cached metadata will be excluded from dashboard stats and metadata badges until fetched on the next successful run.',
     );
     repoMetadata = new Map();
   }

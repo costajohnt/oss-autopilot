@@ -1,9 +1,9 @@
-import type { MergedPR } from '../types';
+import type { MergedPR, RepoMetadataEntry } from '../types';
 import { truncate, formatDate, formatStarCount, getLanguageColor } from '../utils';
 
 interface MergedPRListProps {
   mergedPRs: MergedPR[];
-  repoMetadata?: Record<string, { stars?: number; language?: string | null }>;
+  repoMetadata?: Record<string, RepoMetadataEntry>;
   onBack: () => void;
 }
 

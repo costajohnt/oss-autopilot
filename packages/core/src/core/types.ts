@@ -355,6 +355,13 @@ export interface RepoScoreUpdate {
   language?: string | null;
 }
 
+/** Repo metadata entry used in dashboard API responses. Shared between server and SPA. */
+export interface RepoMetadataEntry {
+  /** Star count, derived from RepoScore.stargazersCount. */
+  stars?: number;
+  language?: string | null;
+}
+
 /**
  * Event types recorded in the {@link AgentState} audit log.
  * - `pr_tracked` — A new PR was added to tracking

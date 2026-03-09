@@ -686,8 +686,8 @@ describe('executeDailyCheck() — error resilience', () => {
     consoleSpy.mockRestore();
   });
 
-  it('continues if fetchRepoMetadata fails, using empty map', async () => {
-    mockFetchRepoMetadata.mockRejectedValue(new Error('Rate limited'));
+  it('continues if fetchRepoMetadata fails with non-rate-limit error, using empty map', async () => {
+    mockFetchRepoMetadata.mockRejectedValue(new Error('Network timeout'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const result = await executeDailyCheck('test-token');
@@ -698,6 +698,15 @@ describe('executeDailyCheck() — error resilience', () => {
       ([, update]) => 'stargazersCount' in update,
     );
     expect(metadataCalls).toHaveLength(0);
+    consoleSpy.mockRestore();
+  });
+
+  it('propagates rate limit errors from fetchRepoMetadata (#677)', async () => {
+    const rateLimitError = Object.assign(new Error('API rate limit exceeded'), { status: 429 });
+    mockFetchRepoMetadata.mockRejectedValue(rateLimitError);
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(executeDailyCheck('test-token')).rejects.toThrow('API rate limit exceeded');
     consoleSpy.mockRestore();
   });
 
