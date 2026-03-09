@@ -4,6 +4,9 @@ node_modules/
 # Build output
 packages/*/dist/
 
+# Test coverage
+coverage/
+
 # Plugin state (user-specific, created at runtime)
 .claude/oss-autopilot/
 data/

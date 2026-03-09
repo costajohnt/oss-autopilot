@@ -34,6 +34,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
 }));
 
 vi.mock('@oss-autopilot/core', () => ({
+  errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   splitRepo: (fullName: string) => {
     const [owner, repo] = fullName.split('/');
     return { owner, repo };
@@ -90,6 +91,8 @@ vi.mock('@oss-autopilot/core', () => ({
 }));
 
 import { createServer } from './server.js';
+import { runStatus } from '@oss-autopilot/core/commands';
+import { getStateManager } from '@oss-autopilot/core';
 
 describe('MCP resource registrations', () => {
   let client: Client;
@@ -218,6 +221,54 @@ describe('MCP resource registrations', () => {
       const uris = prResources.map((r) => r.uri);
       expect(uris).toContain('oss://pr/octocat/hello-world/42');
       expect(uris).toContain('oss://pr/octocat/spoon-knife/7');
+    });
+
+    it('returns error for invalid PR number (NaN)', async () => {
+      const result = await client.readResource({
+        uri: 'oss://pr/octocat/hello-world/abc',
+      });
+      expect(result.contents).toHaveLength(1);
+      const data = JSON.parse(result.contents[0].text as string);
+      expect(data.error).toContain('Invalid PR number');
+    });
+  });
+
+  describe('resource error handling', () => {
+    it('wrapResource returns error JSON when runStatus rejects', async () => {
+      vi.mocked(runStatus).mockRejectedValueOnce(new Error('State file not found'));
+
+      const result = await client.readResource({ uri: 'oss://status' });
+
+      expect(result.contents).toHaveLength(1);
+      const data = JSON.parse(result.contents[0].text as string);
+      expect(data.error).toContain('State file not found');
+    });
+
+    it('template list returns empty resources on error', async () => {
+      vi.mocked(getStateManager).mockImplementationOnce(() => {
+        throw new Error('State corrupted');
+      });
+
+      const result = await client.listResources();
+
+      // Should not throw — the template list catch returns { resources: [] }
+      // Static resources should still be listed
+      const staticUris = result.resources.filter((r) => !r.uri.startsWith('oss://pr/')).map((r) => r.uri);
+      expect(staticUris).toContain('oss://status');
+    });
+
+    it('pr-detail read handler catches thrown errors', async () => {
+      vi.mocked(getStateManager).mockImplementationOnce(() => {
+        throw new Error('Unexpected state error');
+      });
+
+      const result = await client.readResource({
+        uri: 'oss://pr/octocat/hello-world/42',
+      });
+
+      expect(result.contents).toHaveLength(1);
+      const data = JSON.parse(result.contents[0].text as string);
+      expect(data.error).toContain('Unexpected state error');
     });
   });
 });
