@@ -1,5 +1,5 @@
 /**
- * Tests for github.ts — checkRateLimit utility
+ * Tests for github.ts — Octokit client, rate limit checking, and throttle callbacks
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -22,7 +22,7 @@ vi.mock('@octokit/plugin-throttling', () => ({
 }));
 
 // Must import after mocks are set up
-const { checkRateLimit, getOctokit } = await import('./github.js');
+const { checkRateLimit, getOctokit, getRateLimitCallbacks } = await import('./github.js');
 
 describe('checkRateLimit', () => {
   beforeEach(() => {
@@ -108,5 +108,37 @@ describe('getOctokit', () => {
     expect(first).toBeDefined();
     const second = getOctokit('token-y');
     expect(second).toBeDefined();
+  });
+});
+
+describe('rate limit callbacks', () => {
+  it('onRateLimit should retry on first attempt', () => {
+    const { onRateLimit } = getRateLimitCallbacks();
+    const result = onRateLimit(60, { method: 'GET', url: '/search/issues' }, {} as any, 0);
+    expect(result).toBe(true);
+  });
+
+  it('onRateLimit should retry on second attempt', () => {
+    const { onRateLimit } = getRateLimitCallbacks();
+    const result = onRateLimit(60, { method: 'GET', url: '/search/issues' }, {} as any, 1);
+    expect(result).toBe(true);
+  });
+
+  it('onRateLimit should not retry after 2 attempts', () => {
+    const { onRateLimit } = getRateLimitCallbacks();
+    const result = onRateLimit(60, { method: 'GET', url: '/search/issues' }, {} as any, 2);
+    expect(result).toBe(false);
+  });
+
+  it('onSecondaryRateLimit should retry on first attempt', () => {
+    const { onSecondaryRateLimit } = getRateLimitCallbacks();
+    const result = onSecondaryRateLimit(60, { method: 'GET', url: '/search/issues' }, {} as any, 0);
+    expect(result).toBe(true);
+  });
+
+  it('onSecondaryRateLimit should not retry after 1 attempt', () => {
+    const { onSecondaryRateLimit } = getRateLimitCallbacks();
+    const result = onSecondaryRateLimit(60, { method: 'GET', url: '/search/issues' }, {} as any, 1);
+    expect(result).toBe(false);
   });
 });

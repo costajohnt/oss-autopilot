@@ -490,6 +490,16 @@ export async function getGitHubTokenAsync(): Promise<string | null> {
 const GITHUB_USERNAME_RE = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/;
 
 /**
+ * Check whether the state file exists without creating the data directory.
+ * Used for first-run detection in the CLI — we don't want to create
+ * `~/.oss-autopilot/` just to check if the user has ever run the tool.
+ */
+export function stateFileExists(): boolean {
+  const stateFile = path.join(os.homedir(), '.oss-autopilot', 'state.json');
+  return fs.existsSync(stateFile);
+}
+
+/**
  * Detect the authenticated GitHub username via the `gh` CLI.
  *
  * Runs `gh api user --jq '.login'` asynchronously and validates the result

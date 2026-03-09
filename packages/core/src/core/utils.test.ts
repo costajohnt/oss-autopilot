@@ -18,8 +18,10 @@ import {
   getStatePath,
   getBackupDir,
   detectGitHubUsername,
+  stateFileExists,
 } from './utils.js';
 import { execFileSync, execFile } from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
@@ -473,6 +475,15 @@ describe('getGitHubTokenAsync', () => {
     process.env.GITHUB_TOKEN = 'ghp_second_async';
     const token2 = await getGitHubTokenAsync();
     expect(token2).toBe('ghp_second_async');
+  });
+});
+
+describe('stateFileExists', () => {
+  it('should agree with direct filesystem check on the state file path', () => {
+    // Validates the function returns the correct boolean by comparing against
+    // a manual check of the same path. Covers both true (dev) and false (CI) cases.
+    const stateFile = path.join(os.homedir(), '.oss-autopilot', 'state.json');
+    expect(stateFileExists()).toBe(fs.existsSync(stateFile));
   });
 });
 

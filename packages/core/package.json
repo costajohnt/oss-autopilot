@@ -21,7 +21,9 @@
     }
   },
   "files": [
-    "dist/"
+    "dist/",
+    "!dist/**/*.map",
+    "!dist/core/test-utils.*"
   ],
   "scripts": {
     "build": "tsc",

@@ -10,7 +10,7 @@
  */
 
 import { Command } from 'commander';
-import { getGitHubTokenAsync, enableDebug, debug, getCLIVersion } from './core/index.js';
+import { getGitHubTokenAsync, enableDebug, debug, getCLIVersion, stateFileExists } from './core/index.js';
 import { commands } from './cli-registry.js';
 
 const VERSION = getCLIVersion();
@@ -60,6 +60,26 @@ program.hook('preAction', async (thisCommand, actionCommand) => {
     }
   }
 });
+
+// First-run detection: if no subcommand was provided and no state file exists,
+// show a quick-start guide and exit before Commander displays generic help.
+const userArgs = process.argv.slice(2);
+const hasSubcommand = userArgs.some((a) => !a.startsWith('-'));
+const hasHelpOrVersion = userArgs.some((a) => a === '--help' || a === '-h' || a === '--version' || a === '-V');
+
+if (!hasSubcommand && !hasHelpOrVersion && !stateFileExists()) {
+  console.log(`
+OSS Autopilot — AI copilot for open source contributions
+
+Looks like this is your first run! Quick start:
+  1. Initialize:   oss-autopilot init <github-username>
+  2. Find issues:  oss-autopilot search 10
+  3. Daily check:  oss-autopilot daily
+
+Run oss-autopilot --help for all commands.
+`);
+  process.exit(0);
+}
 
 // Parse and execute
 program.parse();

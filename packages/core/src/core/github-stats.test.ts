@@ -1,7 +1,6 @@
 /**
- * Tests for github-stats caching behavior.
- * Tests that fetchUserMergedPRCounts and fetchUserClosedPRCounts
- * use time-based caching to avoid redundant paginated API calls.
+ * Tests for github-stats.ts — PR count caching, merged/closed PR fetching,
+ * and recent PR queries.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -9,7 +8,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { HttpCache } from './http-cache.js';
-import { fetchUserMergedPRCounts, fetchUserClosedPRCounts, PR_COUNTS_CACHE_TTL_MS } from './github-stats.js';
+import {
+  fetchUserMergedPRCounts,
+  fetchUserClosedPRCounts,
+  fetchMergedPRsSince,
+  fetchClosedPRsSince,
+  fetchRecentlyMergedPRs,
+  fetchRecentlyClosedPRs,
+  PR_COUNTS_CACHE_TTL_MS,
+} from './github-stats.js';
 
 // Mock getHttpCache to return a cache backed by a temp directory
 let testCacheDir: string;
@@ -306,5 +313,236 @@ describe('fetchUserPRCounts star filtering', () => {
 
     expect(result.repos.size).toBe(1);
     expect(result.repos.has('big-org/popular')).toBe(true);
+  });
+});
+
+describe('fetchMergedPRsSince', () => {
+  beforeEach(() => {
+    testCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-cache-merged-since-test-'));
+    testCache = new HttpCache(testCacheDir);
+  });
+
+  afterEach(() => {
+    fs.rmSync(testCacheDir, { recursive: true, force: true });
+  });
+
+  it('should return merged PRs for the user, excluding own repos', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/external-org/repo/pull/42',
+        title: 'Fix bug',
+        pull_request: { merged_at: '2025-06-15T12:00:00Z' },
+        closed_at: '2025-06-15T12:00:00Z',
+      },
+      {
+        html_url: 'https://github.com/testuser/my-repo/pull/10',
+        title: 'My own PR',
+        pull_request: { merged_at: '2025-06-14T12:00:00Z' },
+        closed_at: '2025-06-14T12:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' }, '2025-06-01');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].url).toBe('https://github.com/external-org/repo/pull/42');
+    expect(result[0].title).toBe('Fix bug');
+    expect(result[0].mergedAt).toBe('2025-06-15T12:00:00Z');
+  });
+
+  it('should return empty array when no username is configured', async () => {
+    const octokit = makeOctokit([]);
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: '' });
+    expect(result).toEqual([]);
+  });
+
+  it('should fetch all merged PRs when no watermark is provided', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/1',
+        title: 'Old PR',
+        pull_request: { merged_at: '2024-01-01T00:00:00Z' },
+        closed_at: '2024-01-01T00:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
+
+    expect(result).toHaveLength(1);
+    const query = octokit.search.issuesAndPullRequests.mock.calls[0][0].q;
+    expect(query).not.toContain('merged:>');
+  });
+
+  it('should include date filter when watermark is provided', async () => {
+    const octokit = makeOctokit([]);
+
+    await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' }, '2025-06-01T00:00:00Z');
+
+    const query = octokit.search.issuesAndPullRequests.mock.calls[0][0].q;
+    expect(query).toContain('merged:>2025-06-01T00:00:00Z');
+  });
+
+  it('should skip PRs with no merge date', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/1',
+        title: 'No date PR',
+        pull_request: { merged_at: null },
+        closed_at: null,
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('should fall back to closed_at when merged_at is missing', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/1',
+        title: 'Fallback PR',
+        pull_request: { merged_at: null },
+        closed_at: '2025-06-15T12:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].mergedAt).toBe('2025-06-15T12:00:00Z');
+  });
+});
+
+describe('fetchClosedPRsSince', () => {
+  beforeEach(() => {
+    testCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-cache-closed-since-test-'));
+    testCache = new HttpCache(testCacheDir);
+  });
+
+  afterEach(() => {
+    fs.rmSync(testCacheDir, { recursive: true, force: true });
+  });
+
+  it('should return closed-without-merge PRs, excluding own repos', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/external-org/repo/pull/99',
+        title: 'Rejected PR',
+        closed_at: '2025-07-01T10:00:00Z',
+      },
+      {
+        html_url: 'https://github.com/testuser/my-repo/pull/5',
+        title: 'Own repo PR',
+        closed_at: '2025-07-01T10:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchClosedPRsSince(octokit, { githubUsername: 'testuser' }, '2025-06-01');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].url).toBe('https://github.com/external-org/repo/pull/99');
+    expect(result[0].title).toBe('Rejected PR');
+    expect(result[0].closedAt).toBe('2025-07-01T10:00:00Z');
+  });
+
+  it('should return empty array when no username is configured', async () => {
+    const octokit = makeOctokit([]);
+    const result = await fetchClosedPRsSince(octokit, { githubUsername: '' });
+    expect(result).toEqual([]);
+  });
+
+  it('should skip PRs with no close date', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/1',
+        title: 'No date PR',
+        closed_at: null,
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchClosedPRsSince(octokit, { githubUsername: 'testuser' });
+
+    expect(result).toHaveLength(0);
+  });
+
+  it('should include date filter when watermark is provided', async () => {
+    const octokit = makeOctokit([]);
+
+    await fetchClosedPRsSince(octokit, { githubUsername: 'testuser' }, '2025-07-01T00:00:00Z');
+
+    const query = octokit.search.issuesAndPullRequests.mock.calls[0][0].q;
+    expect(query).toContain('closed:>2025-07-01T00:00:00Z');
+  });
+});
+
+describe('fetchRecentlyMergedPRs', () => {
+  beforeEach(() => {
+    testCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-cache-recent-merged-test-'));
+    testCache = new HttpCache(testCacheDir);
+  });
+
+  afterEach(() => {
+    fs.rmSync(testCacheDir, { recursive: true, force: true });
+  });
+
+  it('should return recently merged PRs excluding own repos', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/7',
+        title: 'Recent merge',
+        pull_request: { merged_at: '2025-06-15T12:00:00Z' },
+        closed_at: '2025-06-15T12:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchRecentlyMergedPRs(octokit, { githubUsername: 'testuser' }, 7);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].repo).toBe('org/repo');
+    expect(result[0].number).toBe(7);
+    expect(result[0].mergedAt).toBe('2025-06-15T12:00:00Z');
+  });
+
+  it('should return empty when no username configured', async () => {
+    const octokit = makeOctokit([]);
+    const result = await fetchRecentlyMergedPRs(octokit, { githubUsername: '' });
+    expect(result).toEqual([]);
+  });
+});
+
+describe('fetchRecentlyClosedPRs', () => {
+  beforeEach(() => {
+    testCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-cache-recent-closed-test-'));
+    testCache = new HttpCache(testCacheDir);
+  });
+
+  afterEach(() => {
+    fs.rmSync(testCacheDir, { recursive: true, force: true });
+  });
+
+  it('should return recently closed PRs excluding own repos', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/3',
+        title: 'Closed without merge',
+        closed_at: '2025-07-01T10:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchRecentlyClosedPRs(octokit, { githubUsername: 'testuser' }, 7);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].repo).toBe('org/repo');
+    expect(result[0].number).toBe(3);
+    expect(result[0].closedAt).toBe('2025-07-01T10:00:00Z');
   });
 });
