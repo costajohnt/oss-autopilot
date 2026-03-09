@@ -7,7 +7,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-let testDataDir: string;
+// Create a temp directory for tests that write files (saveSearchResults)
+const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-test-'));
 
 let mockOctokitInstance: any;
 
@@ -58,9 +59,6 @@ vi.mock('./state.js', () => ({
     getRepoScore: () => undefined,
   })),
 }));
-
-// Create a temp directory for tests that write files (saveSearchResults)
-testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-autopilot-test-'));
 
 vi.mock('./utils.js', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
