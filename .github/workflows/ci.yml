@@ -15,10 +15,18 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Bundle size thresholds (bytes). Update via PR when increases are justified.
+  BUNDLE_MAX_CORE: 400000 # ~391 KB
+  BUNDLE_MAX_MCP: 2000000 # ~1953 KB
+
 jobs:
   ci:
     name: Node ${{ matrix.node-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      pull-requests: write
 
     strategy:
       fail-fast: false
@@ -89,12 +97,107 @@ jobs:
             echo "Bundle verified: $bundle ($size bytes)"
           done
 
-  # Maintains a shields.io endpoint badge with the current passing test count.
-  # Re-runs tests after CI passes on main, writes the count to .github/badges/tests.json
-  # on a separate 'badges' branch (main is protected and blocks direct pushes).
-  # The README references this file via a shields.io /endpoint badge URL.
+      - name: Check bundle sizes
+        if: matrix.node-version == 22 && matrix.os == 'ubuntu-latest'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          CORE_SIZE=$(wc -c < packages/core/dist/cli.bundle.cjs | tr -d ' ')
+          MCP_SIZE=$(wc -c < packages/mcp-server/dist/mcp-server.bundle.cjs | tr -d ' ')
+
+          # Pre-compute KB values (used in summary, comment, and error messages)
+          core_kb=$(echo "scale=1; $CORE_SIZE / 1024" | bc)
+          mcp_kb=$(echo "scale=1; $MCP_SIZE / 1024" | bc)
+          core_max_kb=$(echo "scale=1; $BUNDLE_MAX_CORE / 1024" | bc)
+          mcp_max_kb=$(echo "scale=1; $BUNDLE_MAX_MCP / 1024" | bc)
+
+          # Helper: format a byte delta as " +X.Y KB |", " -X.Y KB |", or " no change |"
+          format_delta() {
+            local delta=$1
+            if [ "$delta" -gt 0 ]; then
+              echo " +$(echo "scale=1; $delta / 1024" | bc) KB |"
+            elif [ "$delta" -lt 0 ]; then
+              echo " $(echo "scale=1; $delta / 1024" | bc) KB |"
+            else
+              echo " no change |"
+            fi
+          }
+
+          # Fetch baseline from badges branch for delta reporting
+          BASELINE_CORE=""
+          BASELINE_MCP=""
+          if git fetch origin badges 2>/dev/null; then
+            BASELINE_JSON=$(git show origin/badges:.github/badges/bundle-sizes.json 2>/dev/null || echo "")
+            if [ -n "$BASELINE_JSON" ]; then
+              BASELINE_CORE=$(echo "$BASELINE_JSON" | node -p "try{JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).core}catch{''}" 2>/dev/null || echo "")
+              BASELINE_MCP=$(echo "$BASELINE_JSON" | node -p "try{JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).mcp}catch{''}" 2>/dev/null || echo "")
+            fi
+          fi
+
+          # Require both baselines to be numeric; treat as atomic pair
+          HAS_BASELINE=""
+          if [ -n "$BASELINE_CORE" ] && [ -n "$BASELINE_MCP" ] \
+             && [[ "$BASELINE_CORE" =~ ^[0-9]+$ ]] && [[ "$BASELINE_MCP" =~ ^[0-9]+$ ]]; then
+            HAS_BASELINE=1
+          fi
+
+          # Build report table (reused for step summary and PR comment)
+          HEADER="| Bundle | Size | Threshold |"
+          SEPARATOR="|--------|------|-----------|"
+          if [ -n "$HAS_BASELINE" ]; then
+            HEADER+=" Delta vs main |"
+            SEPARATOR+="----------------|"
+          fi
+
+          CORE_ROW="| Core CLI | ${core_kb} KB | ${core_max_kb} KB |"
+          MCP_ROW="| MCP Server | ${mcp_kb} KB | ${mcp_max_kb} KB |"
+          if [ -n "$HAS_BASELINE" ]; then
+            CORE_ROW+="$(format_delta $((CORE_SIZE - BASELINE_CORE)))"
+            MCP_ROW+="$(format_delta $((MCP_SIZE - BASELINE_MCP)))"
+          fi
+
+          TABLE="${HEADER}\n${SEPARATOR}\n${CORE_ROW}\n${MCP_ROW}"
+
+          # Step summary
+          {
+            echo "### Bundle Sizes"
+            echo ""
+            echo -e "$TABLE"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Check thresholds first (must run before any fallible optional steps)
+          FAILED=0
+          if [ "$CORE_SIZE" -gt "$BUNDLE_MAX_CORE" ]; then
+            echo "::error::Core CLI bundle (${core_kb} KB) exceeds threshold (${core_max_kb} KB)"
+            FAILED=1
+          fi
+          if [ "$MCP_SIZE" -gt "$BUNDLE_MAX_MCP" ]; then
+            echo "::error::MCP Server bundle (${mcp_kb} KB) exceeds threshold (${mcp_max_kb} KB)"
+            FAILED=1
+          fi
+
+          # Post PR comment (non-fatal — must not prevent threshold enforcement)
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            COMMENT="## Bundle Size Report\n\n${TABLE}"
+            echo -e "$COMMENT" | gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file - --edit-last 2>/dev/null \
+              || echo -e "$COMMENT" | gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file - \
+              || echo "::warning::Failed to post bundle size comment to PR"
+          fi
+
+          # Exit after comment attempt so the PR still gets its size report
+          if [ "$FAILED" -eq 1 ]; then
+            echo "::error::Bundle size threshold exceeded. If this increase is justified, update BUNDLE_MAX_* env vars in ci.yml via PR."
+            exit 1
+          fi
+          echo "All bundles within thresholds"
+
+  # Maintains badges and baselines on the 'badges' branch after CI passes on main.
+  # Uses a separate branch because main has branch protection rules.
+  # - Test count badge (tests.json) for shields.io endpoint
+  # - Bundle size baseline (bundle-sizes.json) for PR delta reporting
   update-badge:
-    name: Update test badge
+    name: Update badges
     needs: [ci]
     if: github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
@@ -134,13 +237,28 @@ jobs:
           fi
           rm -f packages/core/test-results.json
 
-      - name: Push badge to badges branch
+      - name: Record bundle sizes
         run: |
-          if [ ! -f .github/badges/tests.json ]; then
-            echo "No badge file to push"
+          pnpm run bundle
+          for bundle in packages/core/dist/cli.bundle.cjs packages/mcp-server/dist/mcp-server.bundle.cjs; do
+            if [ ! -f "$bundle" ]; then
+              echo "::error::$bundle was not produced by the bundle step"
+              exit 1
+            fi
+          done
+          CORE_SIZE=$(wc -c < packages/core/dist/cli.bundle.cjs | tr -d ' ')
+          MCP_SIZE=$(wc -c < packages/mcp-server/dist/mcp-server.bundle.cjs | tr -d ' ')
+          mkdir -p .github/badges
+          node -e "console.log(JSON.stringify({core:$CORE_SIZE,mcp:$MCP_SIZE,timestamp:new Date().toISOString()}))" > .github/badges/bundle-sizes.json
+          echo "Recorded bundle sizes: core=${CORE_SIZE}, mcp=${MCP_SIZE}"
+
+      - name: Push badges to badges branch
+        run: |
+          if [ ! -d .github/badges ] || [ -z "$(ls .github/badges/ 2>/dev/null)" ]; then
+            echo "No badge files to push"
             exit 0
           fi
-          cp .github/badges/tests.json /tmp/badge.json
+          cp -r .github/badges /tmp/badges
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # Disable git hooks before checkout — the badges branch has no package.json,
@@ -154,12 +272,12 @@ jobs:
             git rm -rf . 2>/dev/null || true
           fi
           mkdir -p .github/badges
-          cp /tmp/badge.json .github/badges/tests.json
-          git add .github/badges/tests.json
-          # Only commit and push if badge content changed
+          cp -r /tmp/badges/* .github/badges/
+          git add .github/badges/
+          # Only commit and push if content changed
           if git diff --staged --quiet; then
-            echo "Badge unchanged, skipping push"
+            echo "Badges unchanged, skipping push"
           else
-            git commit -m "chore: update test badge [skip ci]"
+            git commit -m "chore: update badges [skip ci]"
             git push origin badges --force
           fi
