@@ -94,7 +94,8 @@ function AppContent() {
     if (filters.repo !== 'all' && pr.repo !== filters.repo) return false;
     if (filters.search) {
       const term = filters.search.toLowerCase();
-      if (!pr.title.toLowerCase().includes(term)) return false;
+      const searchable = `${pr.title} ${pr.repo} ${pr.number}`.toLowerCase();
+      if (!searchable.includes(term)) return false;
     }
     return true;
   });

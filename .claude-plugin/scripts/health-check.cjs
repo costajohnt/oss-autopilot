@@ -46,9 +46,11 @@ try {
     const total = d.summary.totalActivePRs || 0;
     if (total === 0) process.exit(0);
     // Build status segments for a compact one-liner
+    // Filter out shelved PRs so breakdown counts match totalActivePRs (#674)
+    const shelvedUrls = new Set((d.shelvedPRs || []).map(function(p) { return p.url; }));
     const segments = [];
-    const needsAddressing = (d.needsAddressingPRs || []).length;
-    const waitMaintainer = (d.waitingOnMaintainerPRs || []).length;
+    const needsAddressing = (d.needsAddressingPRs || []).filter(function(p) { return !shelvedUrls.has(p.url); }).length;
+    const waitMaintainer = (d.waitingOnMaintainerPRs || []).filter(function(p) { return !shelvedUrls.has(p.url); }).length;
     // Actionable items first (you need to do something)
     if (needsAddressing > 0) segments.push(needsAddressing + ' need addressing');
     // Informational items (waiting on others)
