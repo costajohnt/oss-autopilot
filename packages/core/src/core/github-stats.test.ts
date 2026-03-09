@@ -1,7 +1,6 @@
 /**
- * Tests for github-stats caching behavior.
- * Tests that fetchUserMergedPRCounts and fetchUserClosedPRCounts
- * use time-based caching to avoid redundant paginated API calls.
+ * Tests for github-stats.ts — PR count caching, merged/closed PR fetching,
+ * and recent PR queries.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -448,6 +447,7 @@ describe('fetchClosedPRsSince', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].url).toBe('https://github.com/external-org/repo/pull/99');
+    expect(result[0].title).toBe('Rejected PR');
     expect(result[0].closedAt).toBe('2025-07-01T10:00:00Z');
   });
 

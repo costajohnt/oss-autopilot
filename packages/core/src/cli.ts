@@ -61,13 +61,13 @@ program.hook('preAction', async (thisCommand, actionCommand) => {
   }
 });
 
-// Parse and execute
-program.parse();
+// First-run detection: if no subcommand was provided and no state file exists,
+// show a quick-start guide and exit before Commander displays generic help.
+const userArgs = process.argv.slice(2);
+const hasSubcommand = userArgs.some((a) => !a.startsWith('-'));
+const hasHelpOrVersion = userArgs.some((a) => a === '--help' || a === '-h' || a === '--version' || a === '-V');
 
-// First-run detection: if no subcommand was invoked and no state file exists,
-// show a quick-start guide instead of generic help.
-const subcommands = process.argv.slice(2).filter((a) => !a.startsWith('-'));
-if (subcommands.length === 0 && !stateFileExists()) {
+if (!hasSubcommand && !hasHelpOrVersion && !stateFileExists()) {
   console.log(`
 OSS Autopilot — AI copilot for open source contributions
 
@@ -78,4 +78,8 @@ Looks like this is your first run! Quick start:
 
 Run oss-autopilot --help for all commands.
 `);
+  process.exit(0);
 }
+
+// Parse and execute
+program.parse();

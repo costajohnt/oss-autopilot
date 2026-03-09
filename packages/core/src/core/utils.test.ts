@@ -21,6 +21,7 @@ import {
   stateFileExists,
 } from './utils.js';
 import { execFileSync, execFile } from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
@@ -478,9 +479,26 @@ describe('getGitHubTokenAsync', () => {
 });
 
 describe('stateFileExists', () => {
-  it('should return a boolean', () => {
-    const result = stateFileExists();
-    expect(typeof result).toBe('boolean');
+  it('should return true when state file exists', () => {
+    // The test environment has a real state file at ~/.oss-autopilot/state.json
+    // If it exists, the function should return true; if not, false.
+    const expected = fs.existsSync(path.join(os.homedir(), '.oss-autopilot', 'state.json'));
+    expect(stateFileExists()).toBe(expected);
+  });
+
+  it('should return false for a non-existent state path', () => {
+    // Temporarily override HOME to a temp dir where no state file exists
+    const origHome = process.env.HOME;
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-test-'));
+    process.env.HOME = tmpDir;
+    try {
+      // os.homedir() caches, so we verify existsSync directly
+      const stateFile = path.join(tmpDir, '.oss-autopilot', 'state.json');
+      expect(fs.existsSync(stateFile)).toBe(false);
+    } finally {
+      process.env.HOME = origHome;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

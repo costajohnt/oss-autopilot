@@ -1,5 +1,5 @@
 /**
- * Tests for github.ts — checkRateLimit utility
+ * Tests for github.ts — Octokit client, rate limit checking, and throttle callbacks
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';

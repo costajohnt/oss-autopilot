@@ -1,6 +1,0 @@
-# Sourcemaps (large, not needed by consumers)
-*.map
-
-# Test utilities (internal, not part of public API)
-dist/core/test-utils.js
-dist/core/test-utils.d.ts
