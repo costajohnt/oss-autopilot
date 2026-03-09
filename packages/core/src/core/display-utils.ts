@@ -111,8 +111,10 @@ export function computeDisplayLabel(pr: FetchedPR): { displayLabel: string; disp
       let displayDescription = entry.description(pr);
       // Append secondary action reasons when multiple issues exist (#675)
       if (pr.actionReasons && pr.actionReasons.length > 1) {
-        const secondary = pr.actionReasons.slice(1).map(labelToPlainText);
-        displayDescription += ` (also: ${secondary.join(', ')})`;
+        const secondary = pr.actionReasons.filter((r) => r !== pr.actionReason).map(labelToPlainText);
+        if (secondary.length > 0) {
+          displayDescription += ` (also: ${secondary.join(', ')})`;
+        }
       }
       return { displayLabel: entry.label, displayDescription };
     }
