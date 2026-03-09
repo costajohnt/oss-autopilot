@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { determineStatus } from './status-determination.js';
+import { determineStatus, STALE_CI_DEMOTION_DAYS } from './status-determination.js';
 import type { DetermineStatusInput } from './types.js';
 
 /** Shared helper — call determineStatus with sensible defaults, overriding only the fields under test. */
@@ -51,7 +51,12 @@ describe('determineStatus changes_addressed detection', () => {
         latestCommitDate: '2026-02-06T10:00:00Z', // older
         lastMaintainerCommentDate: '2026-02-07T10:00:00Z', // newer
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      stalenessTier: 'active',
+      actionReasons: ['needs_response'],
+    });
   });
 
   it('should fall back to needs_response when commit date is unavailable', () => {
@@ -62,7 +67,12 @@ describe('determineStatus changes_addressed detection', () => {
         latestCommitDate: undefined, // missing
         lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      stalenessTier: 'active',
+      actionReasons: ['needs_response'],
+    });
   });
 
   it('should not check commit date when hasUnrespondedComment is false and review is approved', () => {
@@ -87,7 +97,12 @@ describe('determineStatus commit author filtering (#547, #568)', () => {
         contributorUsername: 'contributor-user',
         lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      stalenessTier: 'active',
+      actionReasons: ['needs_response'],
+    });
   });
 
   it('should return changes_addressed when HEAD commit is by the contributor', () => {
@@ -118,7 +133,12 @@ describe('determineStatus commit author filtering (#547, #568)', () => {
         contributorUsername: 'contributor-user',
         lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      stalenessTier: 'active',
+      actionReasons: ['needs_response'],
+    });
   });
 
   it('should degrade gracefully when commit author is unknown', () => {
@@ -166,7 +186,12 @@ describe('determineStatus commit author filtering (#547, #568)', () => {
         contributorUsername: 'contributor-user',
         latestChangesRequestedDate: '2026-02-08T11:52:22Z',
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_changes',
+      stalenessTier: 'active',
+      actionReasons: ['needs_changes'],
+    });
   });
 
   it('should return changes_addressed when HEAD commit is by a CI bot (#568)', () => {
@@ -230,7 +255,12 @@ describe('determineStatus commit author filtering (#547, #568)', () => {
         contributorUsername: 'contributor-user',
         latestChangesRequestedDate: '2026-02-08T11:52:22Z',
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_changes',
+      stalenessTier: 'active',
+      actionReasons: ['needs_changes'],
+    });
   });
 });
 
@@ -242,7 +272,12 @@ describe('determineStatus needs_changes detection', () => {
         latestCommitDate: '2026-02-08T06:50:38Z', // before review
         latestChangesRequestedDate: '2026-02-08T11:52:22Z', // after commit
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_changes',
+      stalenessTier: 'active',
+      actionReasons: ['needs_changes'],
+    });
   });
 
   it('should return changes_addressed when commits pushed after changes_requested review', () => {
@@ -266,7 +301,12 @@ describe('determineStatus needs_changes detection', () => {
         latestCommitDate: undefined, // missing
         latestChangesRequestedDate: '2026-02-08T11:52:22Z',
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_changes',
+      stalenessTier: 'active',
+      actionReasons: ['needs_changes'],
+    });
   });
 
   it('should return pending_review when changes_requested but no review date available', () => {
@@ -286,6 +326,7 @@ describe('determineStatus — remaining paths', () => {
       status: 'needs_addressing',
       actionReason: 'failing_ci',
       stalenessTier: 'active',
+      actionReasons: ['failing_ci'],
     });
   });
 
@@ -294,6 +335,7 @@ describe('determineStatus — remaining paths', () => {
       status: 'needs_addressing',
       actionReason: 'merge_conflict',
       stalenessTier: 'active',
+      actionReasons: ['merge_conflict'],
     });
   });
 
@@ -302,6 +344,7 @@ describe('determineStatus — remaining paths', () => {
       status: 'needs_addressing',
       actionReason: 'incomplete_checklist',
       stalenessTier: 'active',
+      actionReasons: ['incomplete_checklist'],
     });
   });
 
@@ -333,19 +376,22 @@ describe('determineStatus — remaining paths', () => {
       status: 'needs_addressing',
       actionReason: 'needs_response',
       stalenessTier: 'dormant',
+      actionReasons: ['needs_response'],
     });
   });
 
-  it('should return needs_addressing with dormant stalenessTier when dormant PR has failing CI', () => {
+  it('should demote dormant PR with failing CI to stale_ci_failure (#675)', () => {
+    // Dormant PRs with stale CI failures are demoted — the CI failure is likely pre-existing
     expect(
       callDetermineStatus({
         daysSinceActivity: 35,
         ciStatus: 'failing',
       }),
     ).toEqual({
-      status: 'needs_addressing',
-      actionReason: 'failing_ci',
+      status: 'waiting_on_maintainer',
+      waitReason: 'stale_ci_failure',
       stalenessTier: 'dormant',
+      actionReasons: ['failing_ci'],
     });
   });
 
@@ -387,7 +433,12 @@ describe('determineStatus — remaining paths', () => {
         ciStatus: 'failing',
         hasUnrespondedComment: true,
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      stalenessTier: 'active',
+      actionReasons: ['needs_response', 'failing_ci'],
+    });
   });
 
   it('should prioritize failing_ci over merge_conflict', () => {
@@ -396,7 +447,12 @@ describe('determineStatus — remaining paths', () => {
         ciStatus: 'failing',
         hasMergeConflict: true,
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+      stalenessTier: 'active',
+      actionReasons: ['failing_ci', 'merge_conflict'],
+    });
   });
 
   it('should prioritize merge_conflict over incomplete_checklist', () => {
@@ -405,7 +461,12 @@ describe('determineStatus — remaining paths', () => {
         hasMergeConflict: true,
         hasIncompleteChecklist: true,
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'merge_conflict', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'merge_conflict',
+      stalenessTier: 'active',
+      actionReasons: ['merge_conflict', 'incomplete_checklist'],
+    });
   });
 
   it('should return needs_response when CHANGES_REQUESTED review is after commit (#431)', () => {
@@ -418,7 +479,12 @@ describe('determineStatus — remaining paths', () => {
         lastMaintainerCommentDate: '2026-02-28T12:00:00Z', // stale — older comment
         latestChangesRequestedDate: '2026-03-01T14:02:00Z', // after commit
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      stalenessTier: 'active',
+      actionReasons: ['needs_response'],
+    });
   });
 
   it('should return changes_addressed when commit is after both comment and review (#431)', () => {
@@ -442,7 +508,12 @@ describe('determineStatus CI failure overrides changes_addressed (Issue #68)', (
         latestCommitDate: '2026-02-08T12:00:00Z',
         lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+      stalenessTier: 'active',
+      actionReasons: ['failing_ci'],
+    });
   });
 
   it('should return failing_ci when changes_addressed (review path) and CI is failing', () => {
@@ -453,7 +524,12 @@ describe('determineStatus CI failure overrides changes_addressed (Issue #68)', (
         latestCommitDate: '2026-02-09T10:00:00Z',
         latestChangesRequestedDate: '2026-02-08T11:52:22Z',
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'failing_ci', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+      stalenessTier: 'active',
+      actionReasons: ['failing_ci'],
+    });
   });
 
   it('should still return changes_addressed when CI is passing (comment path regression)', () => {
@@ -485,7 +561,12 @@ describe('determineStatus CI failure overrides changes_addressed (Issue #68)', (
         hasUnrespondedComment: true,
         // No commit after maintainer comment → needs_response, not changes_addressed
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      stalenessTier: 'active',
+      actionReasons: ['needs_response', 'failing_ci'],
+    });
   });
 
   it('should still prioritize needs_changes over failing_ci', () => {
@@ -496,7 +577,12 @@ describe('determineStatus CI failure overrides changes_addressed (Issue #68)', (
         latestCommitDate: '2026-02-07T06:50:38Z',
         latestChangesRequestedDate: '2026-02-08T11:52:22Z',
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_changes', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_changes',
+      stalenessTier: 'active',
+      actionReasons: ['needs_changes', 'failing_ci'],
+    });
   });
 });
 
@@ -514,6 +600,7 @@ describe('determineStatus non-actionable CI failures return ci_blocked (Issue #5
       status: 'needs_addressing',
       actionReason: 'failing_ci',
       stalenessTier: 'active',
+      actionReasons: ['failing_ci'],
     });
   });
 
@@ -547,6 +634,7 @@ describe('determineStatus non-actionable CI failures return ci_blocked (Issue #5
       status: 'needs_addressing',
       actionReason: 'failing_ci',
       stalenessTier: 'active',
+      actionReasons: ['failing_ci'],
     });
   });
 });
@@ -560,6 +648,126 @@ describe('determineStatus with inline review after commit (#151)', () => {
         latestCommitDate: '2026-02-13T06:35:00Z', // before inline review
         lastMaintainerCommentDate: '2026-02-14T05:14:49Z', // inline review
       }),
-    ).toEqual({ status: 'needs_addressing', actionReason: 'needs_response', stalenessTier: 'active' });
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      stalenessTier: 'active',
+      actionReasons: ['needs_response'],
+    });
+  });
+});
+
+describe('determineStatus staleness-based CI demotion (#675)', () => {
+  it('should demote to stale_ci_failure when CI failing for 5+ days', () => {
+    expect(
+      callDetermineStatus({
+        ciStatus: 'failing',
+        hasActionableCIFailure: true,
+        daysSinceActivity: 6,
+      }),
+    ).toMatchObject({
+      status: 'waiting_on_maintainer',
+      waitReason: 'stale_ci_failure',
+    });
+  });
+
+  it('should return failing_ci when CI failing for less than 5 days', () => {
+    expect(
+      callDetermineStatus({
+        ciStatus: 'failing',
+        hasActionableCIFailure: true,
+        daysSinceActivity: 4,
+      }),
+    ).toMatchObject({
+      status: 'needs_addressing',
+      actionReason: 'failing_ci',
+    });
+  });
+
+  it('should demote at exactly STALE_CI_DEMOTION_DAYS boundary', () => {
+    expect(
+      callDetermineStatus({
+        ciStatus: 'failing',
+        hasActionableCIFailure: true,
+        daysSinceActivity: STALE_CI_DEMOTION_DAYS,
+      }),
+    ).toMatchObject({
+      status: 'waiting_on_maintainer',
+      waitReason: 'stale_ci_failure',
+    });
+  });
+
+  it('should still return ci_blocked for non-actionable CI regardless of staleness', () => {
+    expect(
+      callDetermineStatus({
+        ciStatus: 'failing',
+        hasActionableCIFailure: false,
+        daysSinceActivity: 10,
+      }),
+    ).toMatchObject({
+      status: 'waiting_on_maintainer',
+      waitReason: 'ci_blocked',
+    });
+  });
+
+  it('should still capture failing_ci in actionReasons when demoted to stale', () => {
+    const result = callDetermineStatus({
+      ciStatus: 'failing',
+      hasActionableCIFailure: true,
+      daysSinceActivity: 6,
+    });
+    expect(result.actionReasons).toContain('failing_ci');
+  });
+});
+
+describe('determineStatus multiple action reasons (#675)', () => {
+  it('should collect CI + merge conflict in actionReasons', () => {
+    const result = callDetermineStatus({
+      ciStatus: 'failing',
+      hasActionableCIFailure: true,
+      hasMergeConflict: true,
+      daysSinceActivity: 2,
+    });
+    expect(result.actionReasons).toEqual(['failing_ci', 'merge_conflict']);
+    // Primary reason is still failing_ci (higher priority)
+    expect(result.actionReason).toBe('failing_ci');
+  });
+
+  it('should collect CI + merge conflict + incomplete checklist', () => {
+    const result = callDetermineStatus({
+      ciStatus: 'failing',
+      hasActionableCIFailure: true,
+      hasMergeConflict: true,
+      hasIncompleteChecklist: true,
+      daysSinceActivity: 2,
+    });
+    expect(result.actionReasons).toEqual(['failing_ci', 'merge_conflict', 'incomplete_checklist']);
+  });
+
+  it('should return single-element actionReasons for single issue', () => {
+    const result = callDetermineStatus({
+      ciStatus: 'failing',
+      hasActionableCIFailure: true,
+      daysSinceActivity: 2,
+    });
+    expect(result.actionReasons).toEqual(['failing_ci']);
+  });
+
+  it('should return undefined actionReasons when waiting on maintainer with no issues', () => {
+    const result = callDetermineStatus({});
+    expect(result.actionReasons).toBeUndefined();
+  });
+
+  it('should collect needs_response + failing_ci + merge_conflict', () => {
+    const result = callDetermineStatus({
+      ciStatus: 'failing',
+      hasActionableCIFailure: true,
+      hasUnrespondedComment: true,
+      hasMergeConflict: true,
+      daysSinceActivity: 1,
+    });
+    // Primary is needs_response (highest priority)
+    expect(result.actionReason).toBe('needs_response');
+    expect(result.actionReasons).toEqual(['needs_response', 'failing_ci', 'merge_conflict']);
   });
 });

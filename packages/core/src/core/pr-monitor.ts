@@ -292,7 +292,7 @@ export class PRMonitor {
 
     // Determine status
     const hasActionableCIFailure = ciStatus === 'failing' && classifiedChecks.some((c) => c.category === 'actionable');
-    const { status, actionReason, waitReason, stalenessTier } = determineStatus({
+    const { status, actionReason, waitReason, stalenessTier, actionReasons } = determineStatus({
       ciStatus,
       hasMergeConflict,
       hasUnrespondedComment,
@@ -319,6 +319,7 @@ export class PRMonitor {
       actionReason,
       waitReason,
       stalenessTier,
+      actionReasons,
       createdAt: ghPR.created_at,
       updatedAt: ghPR.updated_at,
       daysSinceActivity,

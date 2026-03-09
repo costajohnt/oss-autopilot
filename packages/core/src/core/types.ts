@@ -76,6 +76,8 @@ export interface DetermineStatusResult {
   actionReason?: ActionReason;
   waitReason?: WaitReason;
   stalenessTier: StalenessTier;
+  /** All applicable action reasons, ordered by priority. */
+  actionReasons?: ActionReason[];
 }
 
 /**
@@ -96,7 +98,7 @@ export type ActionReason =
   | 'missing_required_files';
 
 /** Granular reason why a PR is waiting on the maintainer. */
-export type WaitReason = 'pending_review' | 'pending_merge' | 'changes_addressed' | 'ci_blocked';
+export type WaitReason = 'pending_review' | 'pending_merge' | 'changes_addressed' | 'ci_blocked' | 'stale_ci_failure';
 
 /** How stale is the PR based on days since activity. Orthogonal to status. */
 export type StalenessTier = 'active' | 'approaching_dormant' | 'dormant';
@@ -140,6 +142,8 @@ export interface FetchedPR {
   actionReason?: ActionReason;
   /** Granular reason for waiting_on_maintainer status. Undefined when needs_addressing. */
   waitReason?: WaitReason;
+  /** All applicable action reasons, ordered by priority. Primary reason is first. */
+  actionReasons?: ActionReason[];
   /** How stale the PR is based on activity age. Independent of status — a PR can be both needs_addressing and dormant. */
   stalenessTier: StalenessTier;
 
