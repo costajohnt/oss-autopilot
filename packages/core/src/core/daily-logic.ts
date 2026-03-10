@@ -81,45 +81,34 @@ export function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentStat
   if (!overrides || Object.keys(overrides).length === 0) return prs;
 
   const stateManager = getStateManager();
-  // Snapshot keys before iteration — clearStatusOverride mutates the same object
-  const overrideUrls = new Set(Object.keys(overrides));
-  let didAutoClear = false;
 
-  const result = prs.map((pr) => {
-    try {
-      const override = stateManager.getStatusOverride(pr.url, pr.updatedAt);
-      if (!override) {
-        if (overrideUrls.has(pr.url)) didAutoClear = true;
+  // Wrap in batch: getStatusOverride may auto-clear stale overrides via clearStatusOverride,
+  // which now auto-saves. Batching produces a single disk write for all auto-clears.
+  let result: FetchedPR[] = [];
+  stateManager.batch(() => {
+    result = prs.map((pr) => {
+      try {
+        const override = stateManager.getStatusOverride(pr.url, pr.updatedAt);
+        if (!override) {
+          return pr;
+        }
+        if (!VALID_OVERRIDE_STATUSES.has(override.status)) {
+          warn('daily-logic', `Invalid override status "${override.status}" for ${pr.url} — ignoring`);
+          return pr;
+        }
+        if (override.status === pr.status) return pr;
+
+        // Clear the contradictory reason field and set an appropriate default
+        if (override.status === 'waiting_on_maintainer') {
+          return { ...pr, status: override.status, actionReason: undefined, waitReason: 'pending_review' as const };
+        }
+        return { ...pr, status: override.status, waitReason: undefined, actionReason: 'needs_response' as const };
+      } catch (err) {
+        warn('daily-logic', `Failed to apply status override for ${pr.url}: ${errorMessage(err)}`);
         return pr;
       }
-      if (!VALID_OVERRIDE_STATUSES.has(override.status)) {
-        warn('daily-logic', `Invalid override status "${override.status}" for ${pr.url} — ignoring`);
-        return pr;
-      }
-      if (override.status === pr.status) return pr;
-
-      // Clear the contradictory reason field and set an appropriate default
-      if (override.status === 'waiting_on_maintainer') {
-        return { ...pr, status: override.status, actionReason: undefined, waitReason: 'pending_review' as const };
-      }
-      return { ...pr, status: override.status, waitReason: undefined, actionReason: 'needs_response' as const };
-    } catch (err) {
-      warn('daily-logic', `Failed to apply status override for ${pr.url}: ${errorMessage(err)}`);
-      return pr;
-    }
+    });
   });
-
-  // Persist any auto-cleared overrides so they don't resurrect on restart
-  if (didAutoClear) {
-    try {
-      stateManager.save();
-    } catch (err) {
-      warn(
-        'daily-logic',
-        `Failed to persist auto-cleared overrides — they may reappear on restart: ${errorMessage(err)}`,
-      );
-    }
-  }
 
   return result;
 }

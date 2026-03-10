@@ -42,6 +42,8 @@ export class StateManager {
   private state: AgentState;
   private readonly inMemoryOnly: boolean;
   private lastLoadedMtimeMs: number = 0;
+  private _batching = false;
+  private _batchDirty = false;
 
   /**
    * Create a new StateManager instance.
@@ -61,6 +63,37 @@ export class StateManager {
   }
 
   /**
+   * Execute multiple mutations as a single batch, deferring disk I/O until the
+   * batch completes. Nested `batch()` calls are flattened — only the outermost saves.
+   */
+  batch(fn: () => void): void {
+    if (this._batching) {
+      fn();
+      return;
+    }
+    this._batching = true;
+    this._batchDirty = false;
+    try {
+      fn();
+      if (this._batchDirty) this.save();
+    } finally {
+      this._batching = false;
+      this._batchDirty = false;
+    }
+  }
+
+  /**
+   * Auto-persist after a mutation. Inside a `batch()`, defers to the batch boundary.
+   */
+  private autoSave(): void {
+    if (this._batching) {
+      this._batchDirty = true;
+      return;
+    }
+    this.save();
+  }
+
+  /**
    * Check if initial setup has been completed.
    */
   isSetupComplete(): boolean {
@@ -73,6 +106,7 @@ export class StateManager {
   markSetupComplete(): void {
     this.state.config.setupComplete = true;
     this.state.config.setupCompletedAt = new Date().toISOString();
+    this.autoSave();
   }
 
   /**
@@ -84,10 +118,11 @@ export class StateManager {
       debug(MODULE, `Setup already complete, skipping initializeWithDefaults for "${username}"`);
       return;
     }
-    this.state.config.githubUsername = username;
-    this.markSetupComplete();
-    debug(MODULE, `Initialized with defaults for user "${username}"`);
-    this.save();
+    this.batch(() => {
+      this.updateConfig({ githubUsername: username });
+      this.markSetupComplete();
+      debug(MODULE, `Initialized with defaults for user "${username}"`);
+    });
   }
 
   /**
@@ -129,26 +164,32 @@ export class StateManager {
   setLastDigest(digest: DailyDigest): void {
     this.state.lastDigest = digest;
     this.state.lastDigestAt = digest.generatedAt;
+    this.autoSave();
   }
 
   setMonthlyMergedCounts(counts: Record<string, number>): void {
     this.state.monthlyMergedCounts = counts;
+    this.autoSave();
   }
 
   setMonthlyClosedCounts(counts: Record<string, number>): void {
     this.state.monthlyClosedCounts = counts;
+    this.autoSave();
   }
 
   setMonthlyOpenedCounts(counts: Record<string, number>): void {
     this.state.monthlyOpenedCounts = counts;
+    this.autoSave();
   }
 
   setDailyActivityCounts(counts: Record<string, number>): void {
     this.state.dailyActivityCounts = counts;
+    this.autoSave();
   }
 
   setLocalRepoCache(cache: LocalRepoCache): void {
     this.state.localRepoCache = cache;
+    this.autoSave();
   }
 
   // === Merged PR Storage ===
@@ -166,6 +207,7 @@ export class StateManager {
     this.state.mergedPRs.push(...newPRs);
     this.state.mergedPRs.sort((a, b) => b.mergedAt.localeCompare(a.mergedAt));
     debug(MODULE, `Added ${newPRs.length} merged PRs (total: ${this.state.mergedPRs.length})`);
+    this.autoSave();
   }
 
   getMergedPRWatermark(): string | undefined {
@@ -187,6 +229,7 @@ export class StateManager {
     this.state.closedPRs.push(...newPRs);
     this.state.closedPRs.sort((a, b) => b.closedAt.localeCompare(a.closedAt));
     debug(MODULE, `Added ${newPRs.length} closed PRs (total: ${this.state.closedPRs.length})`);
+    this.autoSave();
   }
 
   getClosedPRWatermark(): string | undefined {
@@ -197,6 +240,7 @@ export class StateManager {
 
   updateConfig(config: Partial<AgentState['config']>): void {
     this.state.config = { ...this.state.config, ...config };
+    this.autoSave();
   }
 
   // === Event Logging ===
@@ -214,6 +258,7 @@ export class StateManager {
     if (this.state.events.length > MAX_EVENTS) {
       this.state.events = this.state.events.slice(-MAX_EVENTS);
     }
+    this.autoSave();
   }
 
   getEventsByType(type: StateEventType): StateEvent[] {
@@ -238,6 +283,7 @@ export class StateManager {
 
     this.state.activeIssues.push(issue);
     debug(MODULE, `Added issue: ${issue.repo}#${issue.number}`);
+    this.autoSave();
   }
 
   // === Trusted Projects ===
@@ -246,6 +292,7 @@ export class StateManager {
     if (!this.state.config.trustedProjects.includes(repo)) {
       this.state.config.trustedProjects.push(repo);
       debug(MODULE, `Added trusted project: ${repo}`);
+      this.autoSave();
     }
   }
 
@@ -265,6 +312,7 @@ export class StateManager {
 
     if (removedTrusted > 0) {
       debug(MODULE, `Removed ${removedTrusted} trusted project(s) for excluded repos/orgs`);
+      this.autoSave();
     }
   }
 
@@ -278,6 +326,7 @@ export class StateManager {
     this.state.config.starredRepos = repos;
     this.state.config.starredReposLastFetched = new Date().toISOString();
     debug(MODULE, `Updated starred repos: ${repos.length} repositories`);
+    this.autoSave();
   }
 
   isStarredReposStale(): boolean {
@@ -302,6 +351,7 @@ export class StateManager {
       return false;
     }
     this.state.config.shelvedPRUrls.push(url);
+    this.autoSave();
     return true;
   }
 
@@ -314,6 +364,7 @@ export class StateManager {
       return false;
     }
     this.state.config.shelvedPRUrls.splice(index, 1);
+    this.autoSave();
     return true;
   }
 
@@ -331,6 +382,7 @@ export class StateManager {
       return false;
     }
     this.state.config.dismissedIssues[url] = timestamp;
+    this.autoSave();
     return true;
   }
 
@@ -339,6 +391,7 @@ export class StateManager {
       return false;
     }
     delete this.state.config.dismissedIssues[url];
+    this.autoSave();
     return true;
   }
 
@@ -357,6 +410,7 @@ export class StateManager {
       setAt: new Date().toISOString(),
       lastActivityAt,
     };
+    this.autoSave();
   }
 
   clearStatusOverride(url: string): boolean {
@@ -364,6 +418,7 @@ export class StateManager {
       return false;
     }
     delete this.state.config.statusOverrides[url];
+    this.autoSave();
     return true;
   }
 
@@ -387,18 +442,22 @@ export class StateManager {
 
   updateRepoScore(repo: string, updates: RepoScoreUpdate): void {
     repoScoring.updateRepoScore(this.state, repo, updates);
+    this.autoSave();
   }
 
   incrementMergedCount(repo: string): void {
     repoScoring.incrementMergedCount(this.state, repo);
+    this.autoSave();
   }
 
   incrementClosedCount(repo: string): void {
     repoScoring.incrementClosedCount(this.state, repo);
+    this.autoSave();
   }
 
   markRepoHostile(repo: string): void {
     repoScoring.markRepoHostile(this.state, repo);
+    this.autoSave();
   }
 
   getReposWithMergedPRs(): string[] {

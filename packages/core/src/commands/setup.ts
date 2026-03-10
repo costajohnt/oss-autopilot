@@ -73,176 +73,180 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
     const results: Record<string, string> = {};
     const warnings: string[] = [];
 
-    for (const setting of options.set) {
-      const [key, ...valueParts] = setting.split('=');
-      const value = valueParts.join('=');
+    stateManager.batch(() => {
+      for (const setting of options.set!) {
+        const [key, ...valueParts] = setting.split('=');
+        const value = valueParts.join('=');
 
-      switch (key) {
-        case 'username':
-          validateGitHubUsername(value);
-          stateManager.updateConfig({ githubUsername: value });
-          results[key] = value;
-          break;
-        case 'maxActivePRs': {
-          const maxPRs = parsePositiveInt(value, 'maxActivePRs');
-          stateManager.updateConfig({ maxActivePRs: maxPRs });
-          results[key] = String(maxPRs);
-          break;
-        }
-        case 'dormantDays': {
-          const dormant = parsePositiveInt(value, 'dormantDays');
-          stateManager.updateConfig({ dormantThresholdDays: dormant });
-          results[key] = String(dormant);
-          break;
-        }
-        case 'approachingDays': {
-          const approaching = parsePositiveInt(value, 'approachingDays');
-          stateManager.updateConfig({ approachingDormantDays: approaching });
-          results[key] = String(approaching);
-          break;
-        }
-        case 'languages':
-          stateManager.updateConfig({ languages: value.split(',').map((l) => l.trim()) });
-          results[key] = value;
-          break;
-        case 'labels':
-          stateManager.updateConfig({ labels: value.split(',').map((l) => l.trim()) });
-          results[key] = value;
-          break;
-        case 'showHealthCheck':
-          stateManager.updateConfig({ showHealthCheck: value !== 'false' });
-          results[key] = value !== 'false' ? 'true' : 'false';
-          break;
-        case 'squashByDefault':
-          if (value === 'ask') {
-            stateManager.updateConfig({ squashByDefault: 'ask' });
-            results[key] = 'ask';
-          } else {
-            stateManager.updateConfig({ squashByDefault: value !== 'false' });
-            results[key] = value !== 'false' ? 'true' : 'false';
-          }
-          break;
-        case 'minStars': {
-          const stars = Number(value);
-          if (!Number.isFinite(stars) || !Number.isInteger(stars) || stars < 0) {
-            throw new ValidationError(`Invalid value for minStars: "${value}". Must be a non-negative integer.`);
-          }
-          stateManager.updateConfig({ minStars: stars });
-          results[key] = String(stars);
-          break;
-        }
-        case 'includeDocIssues':
-          stateManager.updateConfig({ includeDocIssues: value === 'true' });
-          results[key] = value === 'true' ? 'true' : 'false';
-          break;
-        case 'aiPolicyBlocklist': {
-          const entries = value
-            .split(',')
-            .map((r) => r.trim())
-            .filter(Boolean);
-          const valid: string[] = [];
-          const invalid: string[] = [];
-          for (const entry of entries) {
-            const normalized = entry.replace(/\s+/g, '');
-            if (/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(normalized)) {
-              valid.push(normalized);
-            } else {
-              invalid.push(entry);
-            }
-          }
-          if (invalid.length > 0) {
-            warnings.push(`Warning: Skipping invalid entries (expected "owner/repo" format): ${invalid.join(', ')}`);
-            results['aiPolicyBlocklist_invalidEntries'] = invalid.join(', ');
-          }
-          if (valid.length === 0 && entries.length > 0) {
-            warnings.push('Warning: All entries were invalid. Blocklist not updated.');
-            results[key] = '(all entries invalid)';
+        switch (key) {
+          case 'username':
+            validateGitHubUsername(value);
+            stateManager.updateConfig({ githubUsername: value });
+            results[key] = value;
+            break;
+          case 'maxActivePRs': {
+            const maxPRs = parsePositiveInt(value, 'maxActivePRs');
+            stateManager.updateConfig({ maxActivePRs: maxPRs });
+            results[key] = String(maxPRs);
             break;
           }
-          stateManager.updateConfig({ aiPolicyBlocklist: valid });
-          results[key] = valid.length > 0 ? valid.join(', ') : '(empty)';
-          break;
-        }
-        case 'projectCategories': {
-          const categories = value
-            .split(',')
-            .map((c) => c.trim())
-            .filter(Boolean);
-          const validCategories: ProjectCategory[] = [];
-          const invalidCategories: string[] = [];
-          for (const cat of categories) {
-            if ((PROJECT_CATEGORIES as readonly string[]).includes(cat)) {
-              validCategories.push(cat as ProjectCategory);
+          case 'dormantDays': {
+            const dormant = parsePositiveInt(value, 'dormantDays');
+            stateManager.updateConfig({ dormantThresholdDays: dormant });
+            results[key] = String(dormant);
+            break;
+          }
+          case 'approachingDays': {
+            const approaching = parsePositiveInt(value, 'approachingDays');
+            stateManager.updateConfig({ approachingDormantDays: approaching });
+            results[key] = String(approaching);
+            break;
+          }
+          case 'languages':
+            stateManager.updateConfig({ languages: value.split(',').map((l) => l.trim()) });
+            results[key] = value;
+            break;
+          case 'labels':
+            stateManager.updateConfig({ labels: value.split(',').map((l) => l.trim()) });
+            results[key] = value;
+            break;
+          case 'showHealthCheck':
+            stateManager.updateConfig({ showHealthCheck: value !== 'false' });
+            results[key] = value !== 'false' ? 'true' : 'false';
+            break;
+          case 'squashByDefault':
+            if (value === 'ask') {
+              stateManager.updateConfig({ squashByDefault: 'ask' });
+              results[key] = 'ask';
             } else {
-              invalidCategories.push(cat);
+              stateManager.updateConfig({ squashByDefault: value !== 'false' });
+              results[key] = value !== 'false' ? 'true' : 'false';
             }
+            break;
+          case 'minStars': {
+            const stars = Number(value);
+            if (!Number.isFinite(stars) || !Number.isInteger(stars) || stars < 0) {
+              throw new ValidationError(`Invalid value for minStars: "${value}". Must be a non-negative integer.`);
+            }
+            stateManager.updateConfig({ minStars: stars });
+            results[key] = String(stars);
+            break;
           }
-          if (invalidCategories.length > 0) {
-            warnings.push(
-              `Unknown project categories: ${invalidCategories.join(', ')}. Valid: ${PROJECT_CATEGORIES.join(', ')}`,
-            );
+          case 'includeDocIssues':
+            stateManager.updateConfig({ includeDocIssues: value === 'true' });
+            results[key] = value === 'true' ? 'true' : 'false';
+            break;
+          case 'aiPolicyBlocklist': {
+            const entries = value
+              .split(',')
+              .map((r) => r.trim())
+              .filter(Boolean);
+            const valid: string[] = [];
+            const invalid: string[] = [];
+            for (const entry of entries) {
+              const normalized = entry.replace(/\s+/g, '');
+              if (/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(normalized)) {
+                valid.push(normalized);
+              } else {
+                invalid.push(entry);
+              }
+            }
+            if (invalid.length > 0) {
+              warnings.push(`Warning: Skipping invalid entries (expected "owner/repo" format): ${invalid.join(', ')}`);
+              results['aiPolicyBlocklist_invalidEntries'] = invalid.join(', ');
+            }
+            if (valid.length === 0 && entries.length > 0) {
+              warnings.push('Warning: All entries were invalid. Blocklist not updated.');
+              results[key] = '(all entries invalid)';
+              break;
+            }
+            stateManager.updateConfig({ aiPolicyBlocklist: valid });
+            results[key] = valid.length > 0 ? valid.join(', ') : '(empty)';
+            break;
           }
-          const dedupedCategories = [...new Set(validCategories)];
-          stateManager.updateConfig({ projectCategories: dedupedCategories });
-          results[key] = dedupedCategories.length > 0 ? dedupedCategories.join(', ') : '(empty)';
-          break;
-        }
-        case 'preferredOrgs': {
-          const orgs = value
-            .split(',')
-            .map((o) => o.trim())
-            .filter(Boolean);
-          const validOrgs: string[] = [];
-          for (const org of orgs) {
-            if (org.includes('/')) {
+          case 'projectCategories': {
+            const categories = value
+              .split(',')
+              .map((c) => c.trim())
+              .filter(Boolean);
+            const validCategories: ProjectCategory[] = [];
+            const invalidCategories: string[] = [];
+            for (const cat of categories) {
+              if ((PROJECT_CATEGORIES as readonly string[]).includes(cat)) {
+                validCategories.push(cat as ProjectCategory);
+              } else {
+                invalidCategories.push(cat);
+              }
+            }
+            if (invalidCategories.length > 0) {
               warnings.push(
-                `"${org}" looks like a repo path. Use org name only (e.g., "vercel" not "vercel/next.js").`,
+                `Unknown project categories: ${invalidCategories.join(', ')}. Valid: ${PROJECT_CATEGORIES.join(', ')}`,
               );
-            } else if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(org)) {
-              warnings.push(`"${org}" is not a valid GitHub organization name. Skipping.`);
-            } else {
-              validOrgs.push(org.toLowerCase());
             }
+            const dedupedCategories = [...new Set(validCategories)];
+            stateManager.updateConfig({ projectCategories: dedupedCategories });
+            results[key] = dedupedCategories.length > 0 ? dedupedCategories.join(', ') : '(empty)';
+            break;
           }
-          const dedupedOrgs = [...new Set(validOrgs)];
-          stateManager.updateConfig({ preferredOrgs: dedupedOrgs });
-          results[key] = dedupedOrgs.length > 0 ? dedupedOrgs.join(', ') : '(empty)';
-          break;
-        }
-        case 'scope': {
-          const scopeValues = value
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean);
-          const validScopes: IssueScope[] = [];
-          const invalidScopes: string[] = [];
-          for (const s of scopeValues) {
-            if ((ISSUE_SCOPES as readonly string[]).includes(s)) {
-              validScopes.push(s as IssueScope);
-            } else {
-              invalidScopes.push(s);
+          case 'preferredOrgs': {
+            const orgs = value
+              .split(',')
+              .map((o) => o.trim())
+              .filter(Boolean);
+            const validOrgs: string[] = [];
+            for (const org of orgs) {
+              if (org.includes('/')) {
+                warnings.push(
+                  `"${org}" looks like a repo path. Use org name only (e.g., "vercel" not "vercel/next.js").`,
+                );
+              } else if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(org)) {
+                warnings.push(`"${org}" is not a valid GitHub organization name. Skipping.`);
+              } else {
+                validOrgs.push(org.toLowerCase());
+              }
             }
+            const dedupedOrgs = [...new Set(validOrgs)];
+            stateManager.updateConfig({ preferredOrgs: dedupedOrgs });
+            results[key] = dedupedOrgs.length > 0 ? dedupedOrgs.join(', ') : '(empty)';
+            break;
           }
-          if (invalidScopes.length > 0) {
-            warnings.push(`Unknown issue scopes: ${invalidScopes.join(', ')}. Valid: ${ISSUE_SCOPES.join(', ')}`);
+          case 'scope': {
+            const scopeValues = value
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const validScopes: IssueScope[] = [];
+            const invalidScopes: string[] = [];
+            for (const s of scopeValues) {
+              if ((ISSUE_SCOPES as readonly string[]).includes(s)) {
+                validScopes.push(s as IssueScope);
+              } else {
+                invalidScopes.push(s);
+              }
+            }
+            if (invalidScopes.length > 0) {
+              warnings.push(`Unknown issue scopes: ${invalidScopes.join(', ')}. Valid: ${ISSUE_SCOPES.join(', ')}`);
+            }
+            const dedupedScopes = [...new Set(validScopes)];
+            stateManager.updateConfig({ scope: dedupedScopes.length > 0 ? dedupedScopes : undefined });
+            results[key] = dedupedScopes.length > 0 ? dedupedScopes.join(', ') : '(empty — using labels only)';
+            break;
           }
-          const dedupedScopes = [...new Set(validScopes)];
-          stateManager.updateConfig({ scope: dedupedScopes.length > 0 ? dedupedScopes : undefined });
-          results[key] = dedupedScopes.length > 0 ? dedupedScopes.join(', ') : '(empty — using labels only)';
-          break;
+          case 'issueListPath':
+            stateManager.updateConfig({ issueListPath: value || undefined });
+            results[key] = value || '(cleared)';
+            break;
+          case 'complete':
+            if (value === 'true') {
+              stateManager.markSetupComplete();
+              results[key] = 'true';
+            }
+            break;
+          default:
+            warnings.push(`Unknown setting: ${key}`);
         }
-        case 'complete':
-          if (value === 'true') {
-            stateManager.markSetupComplete();
-            results[key] = 'true';
-          }
-          break;
-        default:
-          warnings.push(`Unknown setting: ${key}`);
       }
-    }
-
-    stateManager.save();
+    });
 
     return { success: true, settings: results, warnings: warnings.length > 0 ? warnings : undefined };
   }

@@ -67,7 +67,7 @@ When Strategy B returns, check the JSON `success` field. If `success: false`, tr
 Task(issue-scout, "Search for good-first-issue candidates in trending/popular repos the user has NOT contributed to.
   [If searchedRepos is non-empty, insert: "Exclude results from these repos (already searched in prior rounds): {searchedRepos as comma-separated list}."]
   Exclude issues authored by the user (get username from `gh api user -q .login`).
-  Read the user's language preferences from .claude/oss-autopilot/config.md.
+  Read the user's language preferences from CLI: `config --json`.
   Read minStars from ~/.oss-autopilot/state.json at path config.minStars (default 50 if missing or null).
   Then: gh search issues --label 'good first issue' --language {lang} --state open --sort reactions-+1 --limit 20
   For each candidate, check the repo's star count via `gh api repos/{owner}/{repo} -q .stargazers_count`.

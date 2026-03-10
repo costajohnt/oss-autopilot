@@ -229,85 +229,90 @@ async function updateRepoScores(
 ): Promise<void> {
   const stateManager = getStateManager();
 
-  // Reset stale repos first (so excluded/removed repos get zeroed).
-  // Guard: if the API returned zero results but we have existing repos with merged PRs,
-  // skip the reset to avoid wiping scores due to transient API failures.
-  const existingReposWithMerges = Object.values(stateManager.getState().repoScores).filter((s) => s.mergedPRCount > 0);
-  if (mergedCounts.size === 0 && existingReposWithMerges.length > 0) {
-    warn(
-      MODULE,
-      `Skipping stale repo reset: API returned 0 merged PR results but state has ${existingReposWithMerges.length} repo(s) with merges. Possible API issue.`,
-    );
-  } else {
-    for (const score of Object.values(stateManager.getState().repoScores)) {
-      if (!mergedCounts.has(score.repo)) {
-        stateManager.updateRepoScore(score.repo, { mergedPRCount: 0 });
+  // Batch all synchronous score mutations for a single disk write.
+  // Per-repo try-catch: a single corrupted repo should not prevent updates to others.
+  // Outer try-catch: save failure should not crash the daily check (in-memory mutations still apply).
+  try {
+    stateManager.batch(() => {
+      // Reset stale repos first (so excluded/removed repos get zeroed).
+      // Guard: if the API returned zero results but we have existing repos with merged PRs,
+      // skip the reset to avoid wiping scores due to transient API failures.
+      const existingReposWithMerges = Object.values(stateManager.getState().repoScores).filter(
+        (s) => s.mergedPRCount > 0,
+      );
+      if (mergedCounts.size === 0 && existingReposWithMerges.length > 0) {
+        warn(
+          MODULE,
+          `Skipping stale repo reset: API returned 0 merged PR results but state has ${existingReposWithMerges.length} repo(s) with merges. Possible API issue.`,
+        );
+      } else {
+        for (const score of Object.values(stateManager.getState().repoScores)) {
+          if (!mergedCounts.has(score.repo)) {
+            stateManager.updateRepoScore(score.repo, { mergedPRCount: 0 });
+          }
+        }
       }
-    }
+
+      // Update merged/closed counts
+      let mergedCountFailures = 0;
+      for (const [repo, { count, lastMergedAt }] of mergedCounts) {
+        try {
+          stateManager.updateRepoScore(repo, { mergedPRCount: count, lastMergedAt: lastMergedAt || undefined });
+        } catch (error) {
+          mergedCountFailures++;
+          warn(MODULE, `Failed to update merged count for ${repo}: ${errorMessage(error)}`);
+        }
+      }
+      if (mergedCountFailures === mergedCounts.size && mergedCounts.size > 0) {
+        warn(MODULE, `[ALL_MERGED_COUNT_UPDATES_FAILED] All ${mergedCounts.size} merged count update(s) failed.`);
+      }
+
+      // Populate closedWithoutMergeCount in repo scores.
+      const existingReposWithClosed = Object.values(stateManager.getState().repoScores).filter(
+        (s) => (s.closedWithoutMergeCount || 0) > 0,
+      );
+      if (closedCounts.size === 0 && existingReposWithClosed.length > 0) {
+        warn(
+          MODULE,
+          `API returned 0 closed PR results but state has ${existingReposWithClosed.length} repo(s) with closed PRs. Possible transient API issue.`,
+        );
+      }
+      let closedCountFailures = 0;
+      for (const [repo, count] of closedCounts) {
+        try {
+          stateManager.updateRepoScore(repo, { closedWithoutMergeCount: count });
+        } catch (error) {
+          closedCountFailures++;
+          warn(MODULE, `Failed to update closed count for ${repo}: ${errorMessage(error)}`);
+        }
+      }
+      if (closedCountFailures === closedCounts.size && closedCounts.size > 0) {
+        warn(MODULE, `[ALL_CLOSED_COUNT_UPDATES_FAILED] All ${closedCounts.size} closed count update(s) failed.`);
+      }
+
+      // Update repo signals from observed open PR data
+      const repoSignals = computeRepoSignals(prs);
+      let signalUpdateFailures = 0;
+      for (const [repo, signals] of repoSignals) {
+        try {
+          stateManager.updateRepoScore(repo, { signals });
+        } catch (error) {
+          signalUpdateFailures++;
+          warn(MODULE, `Failed to update signals for ${repo}: ${errorMessage(error)}`);
+        }
+      }
+      if (signalUpdateFailures === repoSignals.size && repoSignals.size > 0) {
+        warn(
+          MODULE,
+          `[ALL_SIGNAL_UPDATES_FAILED] All ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`,
+        );
+      }
+    });
+  } catch (error) {
+    warn(MODULE, `Failed to persist repo score updates: ${errorMessage(error)}`);
   }
 
-  // Update merged/closed counts with per-repo error isolation (matches signal/trust loops below)
-  let mergedCountFailures = 0;
-  for (const [repo, { count, lastMergedAt }] of mergedCounts) {
-    try {
-      stateManager.updateRepoScore(repo, { mergedPRCount: count, lastMergedAt: lastMergedAt || undefined });
-    } catch (error) {
-      mergedCountFailures++;
-      warn(MODULE, `Failed to update merged count for ${repo}: ${errorMessage(error)}`);
-    }
-  }
-  if (mergedCountFailures === mergedCounts.size && mergedCounts.size > 0) {
-    warn(MODULE, `[ALL_MERGED_COUNT_UPDATES_FAILED] All ${mergedCounts.size} merged count update(s) failed.`);
-  }
-
-  // Populate closedWithoutMergeCount in repo scores.
-  // Diagnostic: warn if API returned empty but we have known closed PRs (possible transient API failure).
-  // Unlike merged counts above, there is no stale-reset loop for closed counts, so no skip is needed.
-  const existingReposWithClosed = Object.values(stateManager.getState().repoScores).filter(
-    (s) => (s.closedWithoutMergeCount || 0) > 0,
-  );
-  if (closedCounts.size === 0 && existingReposWithClosed.length > 0) {
-    warn(
-      MODULE,
-      `API returned 0 closed PR results but state has ${existingReposWithClosed.length} repo(s) with closed PRs. Possible transient API issue.`,
-    );
-  }
-  let closedCountFailures = 0;
-  for (const [repo, count] of closedCounts) {
-    try {
-      stateManager.updateRepoScore(repo, { closedWithoutMergeCount: count });
-    } catch (error) {
-      closedCountFailures++;
-      warn(MODULE, `Failed to update closed count for ${repo}: ${errorMessage(error)}`);
-    }
-  }
-  if (closedCountFailures === closedCounts.size && closedCounts.size > 0) {
-    warn(MODULE, `[ALL_CLOSED_COUNT_UPDATES_FAILED] All ${closedCounts.size} closed count update(s) failed.`);
-  }
-
-  // Update repo signals from observed open PR data (responsiveness, active maintainers).
-  // Only repos with current open PRs get signal updates — repos with no open PRs
-  // preserve their existing signals to avoid degrading scores when PRs are merged.
-  // Per-repo try-catch: signal/trust syncing is secondary to the daily digest —
-  // a single corrupted repo score should not prevent updates to other repos.
-  const repoSignals = computeRepoSignals(prs);
-  let signalUpdateFailures = 0;
-  for (const [repo, signals] of repoSignals) {
-    try {
-      stateManager.updateRepoScore(repo, { signals });
-    } catch (error) {
-      signalUpdateFailures++;
-      warn(MODULE, `Failed to update signals for ${repo}: ${errorMessage(error)}`);
-    }
-  }
-  if (signalUpdateFailures === repoSignals.size && repoSignals.size > 0) {
-    warn(
-      MODULE,
-      `[ALL_SIGNAL_UPDATES_FAILED] All ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`,
-    );
-  }
-
-  // Fetch metadata (stars + language) for all scored repos (used by dashboard minStars filter and merged PR view, #216, #677)
+  // Fetch metadata (stars + language) for all scored repos — async, so outside the batch above
   const allRepos = Object.keys(stateManager.getState().repoScores);
   let repoMetadata: Map<string, { stars: number; language: string | null }>;
   try {
@@ -321,34 +326,41 @@ async function updateRepoScores(
     );
     repoMetadata = new Map();
   }
-  let metadataUpdateFailures = 0;
-  for (const [repo, { stars, language }] of repoMetadata) {
-    try {
-      stateManager.updateRepoScore(repo, { stargazersCount: stars, language });
-    } catch (error) {
-      metadataUpdateFailures++;
-      warn(MODULE, `Failed to update metadata for ${repo}: ${errorMessage(error)}`);
-    }
-  }
-  if (metadataUpdateFailures === repoMetadata.size && repoMetadata.size > 0) {
-    warn(MODULE, `[ALL_METADATA_UPDATES_FAILED] All ${repoMetadata.size} metadata update(s) failed.`);
-  }
+  // Batch metadata + trust sync mutations for a single disk write
+  try {
+    stateManager.batch(() => {
+      let metadataUpdateFailures = 0;
+      for (const [repo, { stars, language }] of repoMetadata) {
+        try {
+          stateManager.updateRepoScore(repo, { stargazersCount: stars, language });
+        } catch (error) {
+          metadataUpdateFailures++;
+          warn(MODULE, `Failed to update metadata for ${repo}: ${errorMessage(error)}`);
+        }
+      }
+      if (metadataUpdateFailures === repoMetadata.size && repoMetadata.size > 0) {
+        warn(MODULE, `[ALL_METADATA_UPDATES_FAILED] All ${repoMetadata.size} metadata update(s) failed.`);
+      }
 
-  // Auto-sync trustedProjects from repos with merged PRs
-  let trustSyncFailures = 0;
-  for (const [repo] of mergedCounts) {
-    try {
-      stateManager.addTrustedProject(repo);
-    } catch (error) {
-      trustSyncFailures++;
-      warn(MODULE, `Failed to sync trusted project ${repo}: ${errorMessage(error)}`);
-    }
-  }
-  if (trustSyncFailures === mergedCounts.size && mergedCounts.size > 0) {
-    warn(
-      MODULE,
-      `[ALL_TRUST_SYNCS_FAILED] All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`,
-    );
+      // Auto-sync trustedProjects from repos with merged PRs
+      let trustSyncFailures = 0;
+      for (const [repo] of mergedCounts) {
+        try {
+          stateManager.addTrustedProject(repo);
+        } catch (error) {
+          trustSyncFailures++;
+          warn(MODULE, `Failed to sync trusted project ${repo}: ${errorMessage(error)}`);
+        }
+      }
+      if (trustSyncFailures === mergedCounts.size && mergedCounts.size > 0) {
+        warn(
+          MODULE,
+          `[ALL_TRUST_SYNCS_FAILED] All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`,
+        );
+      }
+    });
+  } catch (error) {
+    warn(MODULE, `Failed to persist metadata/trust updates: ${errorMessage(error)}`);
   }
 }
 
@@ -375,39 +387,47 @@ function partitionPRs(
   const autoUnshelvedPRs: ShelvedPRRef[] = [];
   const activePRs: FetchedPR[] = [];
 
-  for (const pr of overriddenPRs) {
-    if (stateManager.isPRShelved(pr.url)) {
-      if (CRITICAL_STATUSES.has(pr.status)) {
-        stateManager.unshelvePR(pr.url);
-        autoUnshelvedPRs.push(toShelvedPRRef(pr));
-        activePRs.push(pr);
-      } else {
-        shelvedPRs.push(toShelvedPRRef(pr));
+  // Wrap mutations in batch: unshelvePR calls + setLastDigest produce a single save.
+  // Outer try-catch: save failure should not crash the daily check (in-memory mutations still apply).
+  try {
+    stateManager.batch(() => {
+      for (const pr of overriddenPRs) {
+        if (stateManager.isPRShelved(pr.url)) {
+          if (CRITICAL_STATUSES.has(pr.status)) {
+            stateManager.unshelvePR(pr.url);
+            autoUnshelvedPRs.push(toShelvedPRRef(pr));
+            activePRs.push(pr);
+          } else {
+            shelvedPRs.push(toShelvedPRRef(pr));
+          }
+        } else if (pr.stalenessTier === 'dormant' && !CRITICAL_STATUSES.has(pr.status)) {
+          // Dormant PRs are auto-shelved unless they need addressing
+          // (e.g. maintainer commented on a stale PR — it should resurface)
+          shelvedPRs.push(toShelvedPRRef(pr));
+        } else {
+          activePRs.push(pr);
+        }
       }
-    } else if (pr.stalenessTier === 'dormant' && !CRITICAL_STATUSES.has(pr.status)) {
-      // Dormant PRs are auto-shelved unless they need addressing
-      // (e.g. maintainer commented on a stale PR — it should resurface)
-      shelvedPRs.push(toShelvedPRRef(pr));
-    } else {
-      activePRs.push(pr);
-    }
+
+      // Generate digest from override-applied PRs so status categories are correct.
+      // Note: digest.openPRs contains ALL fetched PRs (including shelved).
+      // We override summary fields below to reflect active-only counts.
+      const digest = prMonitor.generateDigest(overriddenPRs, recentlyClosedPRs, recentlyMergedPRs);
+
+      // Attach shelve info to digest
+      digest.shelvedPRs = shelvedPRs;
+      digest.autoUnshelvedPRs = autoUnshelvedPRs;
+      digest.summary.totalActivePRs = activePRs.length;
+
+      // Store digest in state so dashboard can render it
+      stateManager.setLastDigest(digest);
+    });
+  } catch (error) {
+    warn(MODULE, `Failed to persist partition state: ${errorMessage(error)}`);
   }
 
-  // Generate digest from override-applied PRs so status categories are correct.
-  // Note: digest.openPRs contains ALL fetched PRs (including shelved).
-  // We override summary fields below to reflect active-only counts.
-  const digest = prMonitor.generateDigest(overriddenPRs, recentlyClosedPRs, recentlyMergedPRs);
-
-  // Attach shelve info to digest
-  digest.shelvedPRs = shelvedPRs;
-  digest.autoUnshelvedPRs = autoUnshelvedPRs;
-  digest.summary.totalActivePRs = activePRs.length;
-
-  // Store digest in state so dashboard can render it
-  stateManager.setLastDigest(digest);
-
-  // Save state (updates lastRunAt, lastDigest, and any auto-unshelve changes)
-  stateManager.save();
+  // Digest was created inside batch — reconstruct from state
+  const digest = stateManager.getState().lastDigest!;
 
   return { activePRs, shelvedPRs, autoUnshelvedPRs, digest };
 }
@@ -430,48 +450,51 @@ function generateDigestOutput(
   // Assess capacity from active PRs only (shelved PRs excluded)
   const capacity = assessCapacity(activePRs, stateManager.getState().config.maxActivePRs, shelvedPRs.length);
 
-  // Filter dismissed issues: suppress if dismissed after last response, resurface + auto-undismiss if new activity
-  let hasAutoUndismissed = false;
-  const filteredCommentedIssues = commentedIssues.filter((issue) => {
-    const dismissedAt = stateManager.getIssueDismissedAt(issue.url);
-    if (!dismissedAt) return true; // Not dismissed — include
-    if (issue.status === 'new_response') {
-      const responseTime = new Date(issue.lastResponseAt).getTime();
-      const dismissTime = new Date(dismissedAt).getTime();
-      if (isNaN(responseTime) || isNaN(dismissTime)) {
-        // Invalid timestamp — fail open (include issue to be safe) without
-        // permanently removing dismiss record (may be a transient data issue)
-        warn(MODULE, `Invalid timestamp in dismiss check for ${issue.url}, including issue`);
-        return true;
-      }
-      if (responseTime > dismissTime) {
-        // New activity after dismiss — auto-undismiss and resurface
-        warn(
-          MODULE,
-          `Auto-undismissing issue ${issue.url}: new response at ${issue.lastResponseAt} after dismiss at ${dismissedAt}`,
-        );
-        stateManager.undismissIssue(issue.url);
-        hasAutoUndismissed = true;
-        return true;
-      }
-    }
-    // Still dismissed (last response is at or before dismiss timestamp)
-    return false;
-  });
+  // Filter dismissed issues: suppress if dismissed after last response, resurface + auto-undismiss if new activity.
+  // Batch: undismissIssue calls trigger autoSave — batch produces a single disk write for all auto-undismisses.
+  let filteredCommentedIssues: typeof commentedIssues = [];
+  try {
+    stateManager.batch(() => {
+      filteredCommentedIssues = commentedIssues.filter((issue) => {
+        const dismissedAt = stateManager.getIssueDismissedAt(issue.url);
+        if (!dismissedAt) return true; // Not dismissed — include
+        if (issue.status === 'new_response') {
+          const responseTime = new Date(issue.lastResponseAt).getTime();
+          const dismissTime = new Date(dismissedAt).getTime();
+          if (isNaN(responseTime) || isNaN(dismissTime)) {
+            // Invalid timestamp — fail open (include issue to be safe) without
+            // permanently removing dismiss record (may be a transient data issue)
+            warn(MODULE, `Invalid timestamp in dismiss check for ${issue.url}, including issue`);
+            return true;
+          }
+          if (responseTime > dismissTime) {
+            // New activity after dismiss — auto-undismiss and resurface
+            warn(
+              MODULE,
+              `Auto-undismissing issue ${issue.url}: new response at ${issue.lastResponseAt} after dismiss at ${dismissedAt}`,
+            );
+            try {
+              stateManager.undismissIssue(issue.url);
+            } catch (error) {
+              warn(MODULE, `Failed to persist auto-undismiss for ${issue.url}: ${errorMessage(error)}`);
+            }
+            return true;
+          }
+        }
+        // Still dismissed (last response is at or before dismiss timestamp)
+        return false;
+      });
+    });
+  } catch (error) {
+    warn(MODULE, `Failed to persist auto-undismiss state: ${errorMessage(error)}`);
+  }
 
   const issueResponses = filteredCommentedIssues.filter(
     (i): i is CommentedIssueWithResponse => i.status === 'new_response',
   );
   const summary = formatSummary(digest, capacity, issueResponses);
 
-  // Persist auto-undismiss state changes for issues
-  if (hasAutoUndismissed) {
-    try {
-      stateManager.save();
-    } catch (error) {
-      warn(MODULE, `Failed to persist auto-undismissed state: ${errorMessage(error)}`);
-    }
-  }
+  // Auto-undismiss mutations are auto-saved by undismissIssue()
   const actionableIssues = collectActionableIssues(activePRs, previousLastDigestAt);
   digest.summary.totalNeedingAttention = actionableIssues.length;
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length);
@@ -558,8 +581,15 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // Phase 2: Update repo scores (signals, star counts, trust sync)
   await updateRepoScores(prMonitor, prs, mergedCounts, closedCounts);
 
-  // Phase 3: Persist monthly analytics
-  updateMonthlyAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
+  // Phase 3: Persist monthly analytics (batch the 3 monthly setter calls).
+  // try-catch: analytics are supplementary — save failure should not crash the daily check.
+  try {
+    getStateManager().batch(() => {
+      updateMonthlyAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
+    });
+  } catch (error) {
+    warn(MODULE, `Failed to persist monthly analytics: ${errorMessage(error)}`);
+  }
 
   // Capture lastDigestAt BEFORE Phase 4 overwrites it with the current run's timestamp.
   // Used by collectActionableIssues to determine which PRs are "new" (created since last digest).

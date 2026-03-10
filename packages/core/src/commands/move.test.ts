@@ -17,7 +17,6 @@ const mockGetStateManager = vi.mocked(getStateManager);
 const TEST_PR_URL = 'https://github.com/owner/repo/pull/1';
 
 describe('runMove', () => {
-  const mockSave = vi.fn();
   const mockShelvePR = vi.fn();
   const mockUnshelvePR = vi.fn();
   const mockSetStatusOverride = vi.fn();
@@ -30,18 +29,18 @@ describe('runMove', () => {
       unshelvePR: mockUnshelvePR,
       setStatusOverride: mockSetStatusOverride,
       clearStatusOverride: mockClearStatusOverride,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
   });
 
   describe('move to attention', () => {
-    it('should set status override to needs_addressing, unshelve, and save', async () => {
+    it('should set status override to needs_addressing and unshelve', async () => {
       mockUnshelvePR.mockReturnValue(false);
       const result = await runMove({ prUrl: TEST_PR_URL, target: 'attention' });
 
       expect(mockSetStatusOverride).toHaveBeenCalledWith(TEST_PR_URL, 'needs_addressing', expect.any(String));
       expect(mockUnshelvePR).toHaveBeenCalledWith(TEST_PR_URL);
-      expect(mockSave).toHaveBeenCalled();
+
       expect(result).toEqual({
         url: TEST_PR_URL,
         target: 'attention',
@@ -51,13 +50,13 @@ describe('runMove', () => {
   });
 
   describe('move to waiting', () => {
-    it('should set status override to waiting_on_maintainer, unshelve, and save', async () => {
+    it('should set status override to waiting_on_maintainer and unshelve', async () => {
       mockUnshelvePR.mockReturnValue(false);
       const result = await runMove({ prUrl: TEST_PR_URL, target: 'waiting' });
 
       expect(mockSetStatusOverride).toHaveBeenCalledWith(TEST_PR_URL, 'waiting_on_maintainer', expect.any(String));
       expect(mockUnshelvePR).toHaveBeenCalledWith(TEST_PR_URL);
-      expect(mockSave).toHaveBeenCalled();
+
       expect(result).toEqual({
         url: TEST_PR_URL,
         target: 'waiting',
@@ -67,14 +66,14 @@ describe('runMove', () => {
   });
 
   describe('move to shelved', () => {
-    it('should shelve PR, clear status override, and save', async () => {
+    it('should shelve PR and clear status override', async () => {
       mockShelvePR.mockReturnValue(true);
       mockClearStatusOverride.mockReturnValue(false);
       const result = await runMove({ prUrl: TEST_PR_URL, target: 'shelved' });
 
       expect(mockShelvePR).toHaveBeenCalledWith(TEST_PR_URL);
       expect(mockClearStatusOverride).toHaveBeenCalledWith(TEST_PR_URL);
-      expect(mockSave).toHaveBeenCalled();
+
       expect(result).toEqual({
         url: TEST_PR_URL,
         target: 'shelved',
@@ -84,14 +83,14 @@ describe('runMove', () => {
   });
 
   describe('move to auto', () => {
-    it('should clear override and unshelve, saving if something changed', async () => {
+    it('should clear override and unshelve', async () => {
       mockClearStatusOverride.mockReturnValue(true);
       mockUnshelvePR.mockReturnValue(false);
       const result = await runMove({ prUrl: TEST_PR_URL, target: 'auto' });
 
       expect(mockClearStatusOverride).toHaveBeenCalledWith(TEST_PR_URL);
       expect(mockUnshelvePR).toHaveBeenCalledWith(TEST_PR_URL);
-      expect(mockSave).toHaveBeenCalled();
+
       expect(result).toEqual({
         url: TEST_PR_URL,
         target: 'auto',
@@ -99,21 +98,19 @@ describe('runMove', () => {
       });
     });
 
-    it('should save if only unshelve returned true', async () => {
+    it('should handle auto when only unshelve changes state', async () => {
       mockClearStatusOverride.mockReturnValue(false);
       mockUnshelvePR.mockReturnValue(true);
       const result = await runMove({ prUrl: TEST_PR_URL, target: 'auto' });
 
-      expect(mockSave).toHaveBeenCalled();
       expect(result.target).toBe('auto');
     });
 
-    it('should NOT save when nothing changed', async () => {
+    it('should succeed even when nothing changed', async () => {
       mockClearStatusOverride.mockReturnValue(false);
       mockUnshelvePR.mockReturnValue(false);
       const result = await runMove({ prUrl: TEST_PR_URL, target: 'auto' });
 
-      expect(mockSave).not.toHaveBeenCalled();
       expect(result).toEqual({
         url: TEST_PR_URL,
         target: 'auto',

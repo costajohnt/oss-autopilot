@@ -265,6 +265,52 @@ describe('detectIssueList', () => {
     expect(result?.availableCount).toBe(1);
     expect(result?.completedCount).toBe(1);
   });
+
+  it('should detect issue list from state.json config (primary)', async () => {
+    const { getStateManager } = await import('../core/index.js');
+    vi.mocked(getStateManager).mockReturnValue({
+      isSetupComplete: vi.fn(() => true),
+      getState: vi.fn(() => ({ config: { issueListPath: 'state/issues.md' } })),
+    } as any);
+
+    existsSyncMock.mockImplementation((p: string) => {
+      return typeof p === 'string' && p === 'state/issues.md';
+    });
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](url) — Issue\n');
+
+    const result = detectIssueList();
+
+    expect(result).toBeDefined();
+    expect(result?.path).toBe('state/issues.md');
+    expect(result?.source).toBe('configured');
+  });
+
+  it('should prefer state.json over config.md when both set', async () => {
+    const { getStateManager } = await import('../core/index.js');
+    vi.mocked(getStateManager).mockReturnValue({
+      isSetupComplete: vi.fn(() => true),
+      getState: vi.fn(() => ({ config: { issueListPath: 'state/issues.md' } })),
+    } as any);
+
+    existsSyncMock.mockImplementation((p: string) => {
+      if (typeof p === 'string' && p === 'state/issues.md') return true;
+      if (typeof p === 'string' && p === '.claude/oss-autopilot/config.md') return true;
+      if (typeof p === 'string' && p === 'config/issues.md') return true;
+      return false;
+    });
+    (fsImport as any).readFileSync = vi.fn().mockImplementation((path: string) => {
+      if (path === '.claude/oss-autopilot/config.md') {
+        return '---\nissueListPath: config/issues.md\n---\n';
+      }
+      return '- [#1](url) — Issue\n';
+    });
+
+    const result = detectIssueList();
+
+    // state.json path should win
+    expect(result?.path).toBe('state/issues.md');
+    expect(result?.source).toBe('configured');
+  });
 });
 
 // --- runStartup behavior tests ---

@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import { execFile } from 'child_process';
 import { getStateManager, getGitHubToken, getCLIVersion, detectGitHubUsername } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
+import { warn } from '../core/logger.js';
 import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
 import { launchDashboardServer } from './dashboard-lifecycle.js';
@@ -57,22 +58,37 @@ export function detectIssueList(): IssueListInfo | undefined {
   let issueListPath = '';
   let source: IssueListInfo['source'] = 'auto-detected';
 
-  // 1. Check config file for configured path
-  const configPath = '.claude/oss-autopilot/config.md';
-  if (fs.existsSync(configPath)) {
-    try {
-      const configContent = fs.readFileSync(configPath, 'utf-8');
-      const configuredPath = parseIssueListPathFromConfig(configContent);
-      if (configuredPath && fs.existsSync(configuredPath)) {
-        issueListPath = configuredPath;
-        source = 'configured';
+  // 1. Check state.json config (primary)
+  try {
+    const stateManager = getStateManager();
+    const configuredPath = stateManager.getState().config.issueListPath;
+    if (configuredPath && fs.existsSync(configuredPath)) {
+      issueListPath = configuredPath;
+      source = 'configured';
+    }
+  } catch (error) {
+    // State manager may not be initialized yet — fall through to legacy config.md
+    warn('startup', `Could not read issueListPath from state: ${errorMessage(error)}`);
+  }
+
+  // 2. Fallback: config.md (legacy — will be removed in future)
+  if (!issueListPath) {
+    const configPath = '.claude/oss-autopilot/config.md';
+    if (fs.existsSync(configPath)) {
+      try {
+        const configContent = fs.readFileSync(configPath, 'utf-8');
+        const configuredPath = parseIssueListPathFromConfig(configContent);
+        if (configuredPath && fs.existsSync(configuredPath)) {
+          issueListPath = configuredPath;
+          source = 'configured';
+        }
+      } catch (error) {
+        console.error('[STARTUP] Failed to read config:', errorMessage(error));
       }
-    } catch (error) {
-      console.error('[STARTUP] Failed to read config:', errorMessage(error));
     }
   }
 
-  // 2. Probe known paths
+  // 3. Probe known paths
   if (!issueListPath) {
     const probes = ['open-source/potential-issue-list.md', 'oss/issue-list.md', 'issues.md'];
     for (const probe of probes) {
@@ -86,7 +102,7 @@ export function detectIssueList(): IssueListInfo | undefined {
 
   if (!issueListPath) return undefined;
 
-  // 3. Count available/completed items
+  // 4. Count available/completed items
   try {
     const content = fs.readFileSync(issueListPath, 'utf-8');
     const { availableCount, completedCount } = countIssueListItems(content);

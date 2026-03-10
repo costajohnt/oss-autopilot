@@ -223,48 +223,55 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     warn(MODULE, `${failures.length} PR fetch(es) failed`);
   }
 
-  // Store new merged PRs incrementally (dedupes by URL)
+  // Wrap all state mutations in a batch for a single disk write.
+  // try-catch: save errors should not crash the dashboard data fetch.
   try {
-    stateManager.addMergedPRs(newMergedPRs);
+    stateManager.batch(() => {
+      // Store new merged PRs incrementally (dedupes by URL)
+      try {
+        stateManager.addMergedPRs(newMergedPRs);
+      } catch (error) {
+        warn(MODULE, `Failed to store merged PRs: ${errorMessage(error)}`);
+      }
+
+      // Store new closed PRs incrementally (dedupes by URL)
+      try {
+        stateManager.addClosedPRs(newClosedPRs);
+      } catch (error) {
+        warn(MODULE, `Failed to store closed PRs: ${errorMessage(error)}`);
+      }
+
+      // Store monthly chart data (opened/merged/closed) so charts have data
+      const { monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
+      const { monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
+      updateMonthlyAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
+
+      const digest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);
+
+      // Apply shelve partitioning for display (auto-unshelve only runs in daily check)
+      // Dormant PRs are treated as shelved unless they need addressing
+      const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
+      const freshShelved = prs.filter(
+        (pr) => shelvedUrls.has(pr.url) || (pr.stalenessTier === 'dormant' && pr.status !== 'needs_addressing'),
+      );
+      digest.shelvedPRs = freshShelved.map(toShelvedPRRef);
+      digest.autoUnshelvedPRs = [];
+      digest.summary.totalActivePRs = prs.length - freshShelved.length;
+
+      stateManager.setLastDigest(digest);
+    });
   } catch (error) {
-    warn(MODULE, `Failed to store merged PRs: ${errorMessage(error)}`);
-  }
-
-  // Store new closed PRs incrementally (dedupes by URL)
-  try {
-    stateManager.addClosedPRs(newClosedPRs);
-  } catch (error) {
-    warn(MODULE, `Failed to store closed PRs: ${errorMessage(error)}`);
-  }
-
-  // Convert stored PRs to full types (derive repo/number from URL)
-  const allMergedPRs = storedToMergedPRs(stateManager.getMergedPRs());
-  const allClosedPRs = storedToClosedPRs(stateManager.getClosedPRs());
-
-  // Store monthly chart data (opened/merged/closed) so charts have data
-  const { monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
-  const { monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
-  updateMonthlyAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
-
-  const digest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);
-
-  // Apply shelve partitioning for display (auto-unshelve only runs in daily check)
-  // Dormant PRs are treated as shelved unless they need addressing
-  const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
-  const freshShelved = prs.filter(
-    (pr) => shelvedUrls.has(pr.url) || (pr.stalenessTier === 'dormant' && pr.status !== 'needs_addressing'),
-  );
-  digest.shelvedPRs = freshShelved.map(toShelvedPRRef);
-  digest.autoUnshelvedPRs = [];
-  digest.summary.totalActivePRs = prs.length - freshShelved.length;
-
-  stateManager.setLastDigest(digest);
-  try {
-    stateManager.save();
-  } catch (error) {
-    warn(MODULE, `Failed to save dashboard digest to state: ${errorMessage(error)}`);
+    warn(MODULE, `Failed to persist dashboard state: ${errorMessage(error)}`);
   }
   warn(MODULE, `Refreshed: ${prs.length} PRs fetched`);
+
+  // Convert stored PRs to full types (derive repo/number from URL) — read-only, outside batch
+  const allMergedPRs = storedToMergedPRs(stateManager.getMergedPRs());
+  const allClosedPRs = storedToClosedPRs(stateManager.getClosedPRs());
+  const digest = stateManager.getState().lastDigest;
+  if (!digest) {
+    throw new Error('Dashboard data fetch failed: digest was not generated');
+  }
 
   return { digest, commentedIssues, allMergedPRs, allClosedPRs };
 }

@@ -24,10 +24,6 @@ export async function runDismiss(options: { url: string }): Promise<DismissOutpu
   const stateManager = getStateManager();
   const added = stateManager.dismissIssue(options.url, new Date().toISOString());
 
-  if (added) {
-    stateManager.save();
-  }
-
   return { dismissed: added, url: options.url };
 }
 
@@ -37,10 +33,6 @@ export async function runUndismiss(options: { url: string }): Promise<UndismissO
 
   const stateManager = getStateManager();
   const removed = stateManager.undismissIssue(options.url);
-
-  if (removed) {
-    stateManager.save();
-  }
 
   return { undismissed: removed, url: options.url };
 }
