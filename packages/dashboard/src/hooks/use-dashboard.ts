@@ -15,11 +15,13 @@ export function useDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
   const load = useCallback(async (url: string, init?: RequestInit) => {
     try {
       setLoading(true);
       setData(await fetchJson(url, init));
+      setLastUpdated(Date.now());
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -36,6 +38,7 @@ export function useDashboard() {
       setRefreshing(true);
       const freshData = await fetchJson('/api/refresh', { method: 'POST' });
       setData(freshData);
+      setLastUpdated(Date.now());
       setError(null);
     } catch (e) {
       console.warn('Auto-refresh failed:', e instanceof Error ? e.message : String(e));
@@ -72,5 +75,5 @@ export function useDashboard() {
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { data, loading, refreshing, error, clearError, refresh, performAction };
+  return { data, loading, refreshing, error, clearError, refresh, performAction, lastUpdated };
 }

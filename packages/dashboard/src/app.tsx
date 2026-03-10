@@ -17,6 +17,7 @@ interface DashboardHeaderProps {
   stats: DashboardStats;
   loading: boolean;
   refreshing: boolean;
+  lastUpdated: number | null;
   onRefresh: () => void;
 }
 
@@ -29,12 +30,23 @@ function RefreshIcon() {
   );
 }
 
-function DashboardHeader({ stats, loading, refreshing, onRefresh }: DashboardHeaderProps) {
+function formatRelativeTime(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return 'Updated just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `Updated ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `Updated ${hours}h ago`;
+}
+
+function DashboardHeader({ stats, loading, refreshing, lastUpdated, onRefresh }: DashboardHeaderProps) {
   return (
     <header class="dashboard-header">
-      <div class="header-left">
-        <img class="header-icon" src="/favicon.svg" alt="" width="24" height="24" />
+      <div class="header-brand">
+        <img class="header-icon" src="/favicon.svg" alt="" width="72" height="72" />
         <h1>OSS Autopilot</h1>
+      </div>
+      <div class="header-bar">
         <div class="header-stats">
           <span>
             <span class="val" style={{ color: 'var(--green)' }}>
@@ -57,19 +69,20 @@ function DashboardHeader({ stats, loading, refreshing, onRefresh }: DashboardHea
             merge rate
           </span>
         </div>
-      </div>
-      <div class="header-right">
-        <button class="refresh-btn" onClick={onRefresh} disabled={loading || refreshing}>
-          {loading || refreshing ? <span class="spinner" /> : <RefreshIcon />}
-          {loading ? 'Refreshing...' : refreshing ? 'Updating...' : 'Refresh'}
-        </button>
+        <div class="header-right">
+          {lastUpdated && <span class="last-updated">{formatRelativeTime(lastUpdated)}</span>}
+          <button class="refresh-btn" onClick={onRefresh} disabled={loading || refreshing}>
+            {loading || refreshing ? <span class="spinner" /> : <RefreshIcon />}
+            {loading ? 'Refreshing...' : refreshing ? 'Updating...' : 'Refresh'}
+          </button>
+        </div>
       </div>
     </header>
   );
 }
 
 function AppContent() {
-  const { data, loading, refreshing, error, clearError, refresh, performAction } = useDashboard();
+  const { data, loading, refreshing, error, clearError, refresh, performAction, lastUpdated } = useDashboard();
   const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const { path, route } = useLocation();
@@ -106,7 +119,13 @@ function AppContent() {
     const mergedPRs = data.allMergedPRs ?? [];
     return (
       <div class="dashboard">
-        <DashboardHeader stats={data.stats} loading={loading} refreshing={refreshing} onRefresh={refresh} />
+        <DashboardHeader
+          stats={data.stats}
+          loading={loading}
+          refreshing={refreshing}
+          lastUpdated={lastUpdated}
+          onRefresh={refresh}
+        />
         <MergedPRList mergedPRs={mergedPRs} repoMetadata={data.repoMetadata} onBack={() => route('/')} />
       </div>
     );
@@ -117,7 +136,13 @@ function AppContent() {
     const closedPRs = data.allClosedPRs ?? [];
     return (
       <div class="dashboard">
-        <DashboardHeader stats={data.stats} loading={loading} refreshing={refreshing} onRefresh={refresh} />
+        <DashboardHeader
+          stats={data.stats}
+          loading={loading}
+          refreshing={refreshing}
+          lastUpdated={lastUpdated}
+          onRefresh={refresh}
+        />
         <ClosedPRList closedPRs={closedPRs} onBack={() => route('/')} />
       </div>
     );
@@ -142,7 +167,13 @@ function AppContent() {
 
   return (
     <div class="dashboard">
-      <DashboardHeader stats={data.stats} loading={loading} refreshing={refreshing} onRefresh={refresh} />
+      <DashboardHeader
+        stats={data.stats}
+        loading={loading}
+        refreshing={refreshing}
+        lastUpdated={lastUpdated}
+        onRefresh={refresh}
+      />
 
       {error && (
         <div class="error-banner">

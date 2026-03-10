@@ -228,11 +228,12 @@ a:hover {
 
 .dashboard-header {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding-bottom: var(--sp-6);
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-2);
   border-bottom: 1px solid var(--border);
-  margin-bottom: var(--sp-8);
+  margin-bottom: var(--sp-2);
 }
 
 .dashboard-header h1 {
@@ -246,15 +247,23 @@ a:hover {
 }
 
 .header-icon {
-  width: 24px;
-  height: 24px;
+  width: 72px;
+  height: 72px;
   flex-shrink: 0;
 }
 
-.header-left {
+.header-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.header-bar {
   display: flex;
   align-items: center;
-  gap: var(--sp-4);
+  justify-content: space-between;
+  width: 100%;
 }
 
 .header-stats {
