@@ -1,5 +1,5 @@
 /* === CSS Custom Properties === */
-/* Ported from packages/core/src/commands/dashboard-templates.ts */
+/* Design tokens originally extracted during the SPA dashboard migration. */
 
 :root {
   --bg-base: #080b10;
@@ -81,6 +81,15 @@
 }
 
 /* === Skeleton Loader === */
+
+.skeleton-wrapper {
+  padding-top: 32px;
+}
+
+.shell-center--skeleton {
+  min-height: auto;
+  padding-top: 48px;
+}
 
 .skeleton-row {
   display: flex;
@@ -442,7 +451,9 @@ a:hover {
   border-radius: 6px;
   cursor: pointer;
   margin-bottom: 2px;
-  transition: all 0.15s var(--ease);
+  transition:
+    background 0.15s var(--ease),
+    border-color 0.15s var(--ease);
 }
 
 .pr-row::before {
@@ -453,7 +464,10 @@ a:hover {
   width: 3px;
   height: 0;
   border-radius: 2px;
-  transition: all 0.2s var(--ease);
+  transition:
+    height 0.2s var(--ease),
+    top 0.2s var(--ease),
+    background 0.2s var(--ease);
 }
 
 .pr-row:hover {
@@ -471,10 +485,6 @@ a:hover {
 
 .pr-row--waiting:hover::before {
   background: var(--accent-info);
-}
-
-.pr-row--shelved:hover::before {
-  background: var(--text-muted);
 }
 
 .pr-row--selected {
@@ -1067,7 +1077,8 @@ a:hover {
   cursor: pointer;
   transition:
     background 0.15s,
-    border-color 0.15s,
+    border-color 0.25s var(--ease),
+    transform 0.25s var(--ease),
     filter 0.15s;
 }
 

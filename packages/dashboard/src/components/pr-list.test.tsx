@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/preact';
-import { PRList } from './pr-list';
+import { PRList, statusClass } from './pr-list';
 import { makePR } from '../test-helpers';
 import type { FetchedPR } from '../types';
 
@@ -116,5 +116,33 @@ describe('PRList', () => {
     expect(container.textContent).toContain('o/r#42');
     expect(container.textContent).toContain('Fix critical bug');
     expect(container.textContent).toContain('3d');
+  });
+
+  it('applies status-aware CSS class to PR rows', () => {
+    const prs = [
+      makePR({
+        url: 'https://github.com/o/r/pull/1',
+        status: 'needs_addressing',
+        actionReason: 'needs_response',
+        number: 1,
+      }),
+      makePR({ url: 'https://github.com/o/r/pull/2', status: 'waiting_on_maintainer', number: 2 }),
+    ];
+
+    const { container } = renderPRList({ prs });
+
+    const rows = container.querySelectorAll('.pr-row');
+    expect(rows[0]?.classList.contains('pr-row--need-attention')).toBe(true);
+    expect(rows[1]?.classList.contains('pr-row--waiting')).toBe(true);
+  });
+});
+
+describe('statusClass', () => {
+  it('returns pr-row--need-attention for needs_addressing', () => {
+    expect(statusClass('needs_addressing')).toBe('pr-row--need-attention');
+  });
+
+  it('returns pr-row--waiting for waiting_on_maintainer', () => {
+    expect(statusClass('waiting_on_maintainer')).toBe('pr-row--waiting');
   });
 });

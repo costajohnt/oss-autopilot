@@ -22,10 +22,18 @@ interface SectionDef {
   prs: FetchedPR[];
 }
 
-function statusClass(status: FetchedPRStatus): string {
-  if (NEED_ATTENTION.has(status)) return 'pr-row--need-attention';
-  if (WAITING.has(status)) return 'pr-row--waiting';
-  return 'pr-row--shelved';
+/** Maps PR status to a CSS class for status-aware hover borders. */
+export function statusClass(status: FetchedPRStatus): string {
+  switch (status) {
+    case 'needs_addressing':
+      return 'pr-row--need-attention';
+    case 'waiting_on_maintainer':
+      return 'pr-row--waiting';
+    default: {
+      const _exhaustive: never = status;
+      return _exhaustive;
+    }
+  }
 }
 
 function PRRow({ pr, selected, onSelect }: { pr: FetchedPR; selected: boolean; onSelect: (url: string) => void }) {
