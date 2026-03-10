@@ -35,8 +35,15 @@ vi.mock('./http-cache.js', async () => {
 });
 
 // Import after mocks are set up
-const { PRMonitor, computeDisplayLabel, classifyCICheck, classifyFailingChecks, isConditionalChecklistItem } =
-  await import('./pr-monitor.js');
+const {
+  PRMonitor,
+  computeDisplayLabel,
+  classifyCICheck,
+  classifyFailingChecks,
+  isConditionalChecklistItem,
+  hasMergeConflict,
+} = await import('./pr-monitor.js');
+const { getCIStatus } = await import('./ci-analysis.js');
 const { isBotAuthor, isAcknowledgmentComment } = await import('./comment-utils.js');
 const { getStateManager } = await import('./state.js');
 
@@ -45,7 +52,7 @@ const { analyzeChecklist } = await import('./checklist-analysis.js');
 const { extractMaintainerActionHints } = await import('./maintainer-analysis.js');
 const { determineReviewDecision, getLatestChangesRequestedDate, checkUnrespondedComments, isAllSelfReplies } =
   await import('./review-analysis.js');
-const { makeFetchedPR } = await import('./test-utils.js');
+const { makeFetchedPR, makeStateManagerMock } = await import('./test-utils.js');
 
 describe('PRMonitor CI status deduplication', () => {
   const emptyCombinedStatus = {
@@ -96,8 +103,7 @@ describe('PRMonitor CI status deduplication', () => {
       },
     };
 
-    const monitor = new PRMonitor('fake-token');
-    const result = await (monitor as any).getCIStatus('owncast', 'owncast', 'abc123');
+    const result = await getCIStatus(mockOctokitInstance, 'owncast', 'owncast', 'abc123');
 
     expect(result.status).toBe('passing');
     expect(result.failingCheckNames).toEqual([]);
@@ -130,8 +136,7 @@ describe('PRMonitor CI status deduplication', () => {
       },
     };
 
-    const monitor = new PRMonitor('fake-token');
-    const result = await (monitor as any).getCIStatus('owner', 'repo', 'abc123');
+    const result = await getCIStatus(mockOctokitInstance, 'owner', 'repo', 'abc123');
 
     expect(result.status).toBe('failing');
     expect(result.failingCheckNames).toEqual(['Build']);
@@ -172,8 +177,7 @@ describe('PRMonitor CI status deduplication', () => {
       },
     };
 
-    const monitor = new PRMonitor('fake-token');
-    const result = await (monitor as any).getCIStatus('owner', 'repo', 'abc123');
+    const result = await getCIStatus(mockOctokitInstance, 'owner', 'repo', 'abc123');
 
     expect(result.status).toBe('passing');
     expect(result.failingCheckNames).toEqual([]);
@@ -206,8 +210,7 @@ describe('PRMonitor CI status deduplication', () => {
       },
     };
 
-    const monitor = new PRMonitor('fake-token');
-    const result = await (monitor as any).getCIStatus('owner', 'repo', 'abc123');
+    const result = await getCIStatus(mockOctokitInstance, 'owner', 'repo', 'abc123');
 
     expect(result.status).toBe('failing');
     expect(result.failingCheckNames).toEqual(['Test']);
@@ -426,29 +429,21 @@ describe('PRMonitor getLatestChangesRequestedDate', () => {
   });
 });
 
-describe('PRMonitor hasMergeConflict', () => {
-  beforeEach(() => {
-    mockOctokitInstance = {};
-  });
-
+describe('hasMergeConflict', () => {
   it('should return true when mergeable is false', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).hasMergeConflict(false, 'clean')).toBe(true);
+    expect(hasMergeConflict(false, 'clean')).toBe(true);
   });
 
   it('should return true when mergeable_state is dirty', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).hasMergeConflict(null, 'dirty')).toBe(true);
+    expect(hasMergeConflict(null, 'dirty')).toBe(true);
   });
 
   it('should return false when mergeable is true and state is clean', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).hasMergeConflict(true, 'clean')).toBe(false);
+    expect(hasMergeConflict(true, 'clean')).toBe(false);
   });
 
   it('should return false when mergeable is null and state is unknown', () => {
-    const monitor = new PRMonitor('fake-token');
-    expect((monitor as any).hasMergeConflict(null, 'unknown')).toBe(false);
+    expect(hasMergeConflict(null, 'unknown')).toBe(false);
   });
 });
 
@@ -627,8 +622,7 @@ describe('PRMonitor getCIStatus auth-gate filtering', () => {
       },
     };
 
-    const monitor = new PRMonitor('fake-token');
-    const result = await (monitor as any).getCIStatus('owner', 'repo', 'abc123');
+    const result = await getCIStatus(mockOctokitInstance, 'owner', 'repo', 'abc123');
 
     expect(result.status).toBe('passing');
     expect(result.failingCheckNames).toEqual([]);
@@ -662,8 +656,7 @@ describe('PRMonitor getCIStatus auth-gate filtering', () => {
       },
     };
 
-    const monitor = new PRMonitor('fake-token');
-    const result = await (monitor as any).getCIStatus('owner', 'repo', 'abc123');
+    const result = await getCIStatus(mockOctokitInstance, 'owner', 'repo', 'abc123');
 
     expect(result.status).toBe('failing');
     expect(result.failingCheckNames).toEqual(['travis-ci']);
@@ -697,8 +690,7 @@ describe('PRMonitor getCIStatus auth-gate filtering', () => {
       },
     };
 
-    const monitor = new PRMonitor('fake-token');
-    const result = await (monitor as any).getCIStatus('owner', 'repo', 'abc123');
+    const result = await getCIStatus(mockOctokitInstance, 'owner', 'repo', 'abc123');
 
     expect(result.status).toBe('passing');
     expect(result.failingCheckNames).toEqual([]);
@@ -714,8 +706,7 @@ describe('PRMonitor getCIStatus auth-gate filtering', () => {
       },
     };
 
-    const monitor = new PRMonitor('fake-token');
-    const result = await (monitor as any).getCIStatus('owner', 'repo', 'abc123');
+    const result = await getCIStatus(mockOctokitInstance, 'owner', 'repo', 'abc123');
 
     expect(result.status).toBe('unknown');
     expect(result.failingCheckNames).toEqual([]);
@@ -724,8 +715,7 @@ describe('PRMonitor getCIStatus auth-gate filtering', () => {
   it('should return unknown when sha is empty', async () => {
     mockOctokitInstance = {};
 
-    const monitor = new PRMonitor('fake-token');
-    const result = await (monitor as any).getCIStatus('owner', 'repo', '');
+    const result = await getCIStatus(mockOctokitInstance, 'owner', 'repo', '');
 
     expect(result.status).toBe('unknown');
     expect(result.failingCheckNames).toEqual([]);
@@ -740,18 +730,11 @@ describe('PRMonitor generateDigest', () => {
   beforeEach(() => {
     mockOctokitInstance = {};
     // Override the mock to include getStats
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({ config: { githubUsername: 'testuser' } }),
-      getStats: () => ({
-        mergedPRs: 5,
-        closedPRs: 2,
-        activeIssues: 0,
-        trustedProjects: 0,
-        mergeRate: '71.4',
-        totalTracked: 7,
-        needsResponse: 0,
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        stats: { mergedPRs: 5, closedPRs: 2, mergeRate: '71.4', totalTracked: 7 },
       }),
-    } as any);
+    );
   });
 
   it('should categorize PRs by status', () => {
@@ -864,15 +847,11 @@ describe('PRMonitor generateDigest', () => {
 describe('PRMonitor fetchRecentlyMergedPRs', () => {
   beforeEach(() => {
     mockOctokitInstance = {};
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: ['excluded/repo'],
-          excludeOrgs: ['excludedorg'],
-        },
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { excludeRepos: ['excluded/repo'], excludeOrgs: ['excludedorg'] },
       }),
-    } as any);
+    );
   });
 
   it('should fetch and return recently merged PRs', async () => {
@@ -981,9 +960,11 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
   });
 
   it('should return empty array when no username configured', async () => {
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({ config: { githubUsername: '' } }),
-    } as any);
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: '' },
+      }),
+    );
 
     const monitor = new PRMonitor('fake-token');
     const result = await monitor.fetchRecentlyMergedPRs();
@@ -1729,18 +1710,11 @@ describe('fetchUserOpenPRs does not filter by excludeRepos/excludeOrgs (#591)', 
   it('should include PR from excluded repo', async () => {
     const prUrl = 'https://github.com/excluded/repo/pull/99';
 
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: ['excluded/repo'],
-          excludeOrgs: [],
-          shelvedPRUrls: [],
-          dormantThresholdDays: 30,
-          approachingDormantDays: 25,
-        },
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { excludeRepos: ['excluded/repo'], excludeOrgs: [] },
       }),
-    } as any);
+    );
 
     const detailMocks = makePRDetailMocks(prUrl);
     mockOctokitInstance = {
@@ -1765,18 +1739,11 @@ describe('fetchUserOpenPRs does not filter by excludeRepos/excludeOrgs (#591)', 
   it('should include PR from excluded org', async () => {
     const prUrl = 'https://github.com/excludedorg/somerepo/pull/77';
 
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: [],
-          excludeOrgs: ['excludedorg'],
-          shelvedPRUrls: [],
-          dormantThresholdDays: 30,
-          approachingDormantDays: 25,
-        },
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { excludeRepos: [], excludeOrgs: ['excludedorg'] },
       }),
-    } as any);
+    );
 
     const detailMocks = makePRDetailMocks(prUrl);
     mockOctokitInstance = {
@@ -1846,10 +1813,9 @@ describe('getCIStatus error handling (#182)', () => {
     };
   }
 
-  /** Call getCIStatus on a fresh PRMonitor with a standard test SHA */
+  /** Call getCIStatus directly with the mock Octokit instance */
   async function callGetCIStatus(sha = 'abc123def'): Promise<any> {
-    const monitor = new PRMonitor('fake-token');
-    return (monitor as any).getCIStatus('owner', 'repo', sha);
+    return getCIStatus(mockOctokitInstance, 'owner', 'repo', sha);
   }
 
   const emptyCombinedStatus = {
@@ -2250,15 +2216,11 @@ describe('fetchUserMergedPRCounts — historical stats filtering', () => {
   }
 
   it('should count merged PRs from excluded repos', async () => {
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: ['someorg/excluded-repo'],
-          excludeOrgs: [],
-        },
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { excludeRepos: ['someorg/excluded-repo'], excludeOrgs: [] },
       }),
-    } as any);
+    );
 
     mockOctokitInstance = {
       search: {
@@ -2284,15 +2246,11 @@ describe('fetchUserMergedPRCounts — historical stats filtering', () => {
   });
 
   it('should count merged PRs from excluded orgs', async () => {
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: [],
-          excludeOrgs: ['excludedorg'],
-        },
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { excludeRepos: [], excludeOrgs: ['excludedorg'] },
       }),
-    } as any);
+    );
 
     mockOctokitInstance = {
       search: {
@@ -2318,15 +2276,11 @@ describe('fetchUserMergedPRCounts — historical stats filtering', () => {
   });
 
   it('should still filter out self-repo PRs', async () => {
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: [],
-          excludeOrgs: [],
-        },
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { excludeRepos: [], excludeOrgs: [] },
       }),
-    } as any);
+    );
 
     mockOctokitInstance = {
       search: {
@@ -2372,15 +2326,11 @@ describe('fetchUserClosedPRCounts — historical stats filtering', () => {
   }
 
   it('should count closed PRs from excluded repos', async () => {
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: ['someorg/excluded-repo'],
-          excludeOrgs: [],
-        },
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { excludeRepos: ['someorg/excluded-repo'], excludeOrgs: [] },
       }),
-    } as any);
+    );
 
     mockOctokitInstance = {
       search: {
@@ -2406,15 +2356,11 @@ describe('fetchUserClosedPRCounts — historical stats filtering', () => {
   });
 
   it('should count closed PRs from excluded orgs', async () => {
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: [],
-          excludeOrgs: ['excludedorg'],
-        },
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { excludeRepos: [], excludeOrgs: ['excludedorg'] },
       }),
-    } as any);
+    );
 
     mockOctokitInstance = {
       search: {
@@ -2440,15 +2386,11 @@ describe('fetchUserClosedPRCounts — historical stats filtering', () => {
   });
 
   it('should still filter out self-repo PRs', async () => {
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: [],
-          excludeOrgs: [],
-        },
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { excludeRepos: [], excludeOrgs: [] },
       }),
-    } as any);
+    );
 
     mockOctokitInstance = {
       search: {
@@ -2586,18 +2528,11 @@ describe('review comment fetch error handling (#229)', () => {
   };
 
   beforeEach(() => {
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: [],
-          excludeOrgs: [],
-          shelvedPRUrls: [],
-          dormantThresholdDays: 30,
-          approachingDormantDays: 25,
-        },
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { excludeRepos: [], excludeOrgs: [] },
       }),
-    } as any);
+    );
   });
 
   it('should return empty data on 404 error (expected for some repos)', async () => {
@@ -2727,18 +2662,11 @@ describe('commitDatePromise error handling (#469)', () => {
   };
 
   beforeEach(() => {
-    vi.mocked(getStateManager).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          excludeRepos: [],
-          excludeOrgs: [],
-          shelvedPRUrls: [],
-          dormantThresholdDays: 30,
-          approachingDormantDays: 25,
-        },
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { excludeRepos: [], excludeOrgs: [] },
       }),
-    } as any);
+    );
   });
 
   it('should re-throw 429 rate limit error from getCommit (surfaces in failures)', async () => {

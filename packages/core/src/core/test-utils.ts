@@ -6,8 +6,19 @@
  * override bag — callers only specify the fields relevant to their test.
  */
 
-import type { FetchedPR, DailyDigest } from './types.js';
+import type {
+  FetchedPR,
+  DailyDigest,
+  AgentState,
+  AgentConfig,
+  IssueCandidate,
+  TrackedIssue,
+  IssueVettingResult,
+  ProjectHealth,
+} from './types.js';
+import { DEFAULT_CONFIG, INITIAL_STATE } from './types.js';
 import type { CapacityAssessment } from '../formatters/json.js';
+import type { Stats } from './state.js';
 
 // ---------------------------------------------------------------------------
 // FetchedPR
@@ -78,6 +89,171 @@ export function makeCapacityAssessment(overrides: Partial<CapacityAssessment> = 
     shelvedPRCount: 0,
     criticalIssueCount: 0,
     reason: 'You have capacity',
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// AgentState
+// ---------------------------------------------------------------------------
+
+export function makeAgentState(
+  overrides: Omit<Partial<AgentState>, 'config'> & { config?: Partial<AgentConfig> } = {},
+): AgentState {
+  const { config: configOverrides, ...rest } = overrides;
+  const config: AgentConfig = { ...DEFAULT_CONFIG, githubUsername: 'testuser', ...configOverrides };
+  return {
+    ...INITIAL_STATE,
+    lastRunAt: new Date().toISOString(),
+    ...rest,
+    config,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Stats
+// ---------------------------------------------------------------------------
+
+export function makeStats(overrides: Partial<Stats> = {}): Stats {
+  return {
+    mergedPRs: 0,
+    closedPRs: 0,
+    activeIssues: 0,
+    trustedProjects: 0,
+    mergeRate: '0.0',
+    totalTracked: 0,
+    needsResponse: 0,
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// StateManager mock
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a type-safe StateManager mock for use with vi.mocked(getStateManager).
+ * Eliminates the `} as any` pattern. Only override the methods your test needs;
+ * defaults provide sensible no-op behaviour.
+ *
+ * `config` is a shorthand for `state.config` -- most callers only need to
+ * override a few config fields without touching other AgentState fields.
+ */
+export function makeStateManagerMock(
+  overrides: {
+    state?: Omit<Partial<AgentState>, 'config'>;
+    stats?: Partial<Stats>;
+    config?: Partial<AgentConfig>;
+  } = {},
+) {
+  const state = makeAgentState({ ...overrides.state, config: overrides.config });
+  const stats = makeStats(overrides.stats);
+
+  // Return an object matching the StateManager public interface.
+  // No-op stubs for write methods; real values for read methods.
+  return {
+    getState: () => state as Readonly<AgentState>,
+    getStats: () => stats,
+    isSetupComplete: () => state.config.setupComplete,
+    save: () => {},
+    markSetupComplete: () => {},
+    initializeWithDefaults: () => {},
+    reloadIfChanged: () => false,
+    setLastDigest: () => {},
+    setMonthlyMergedCounts: () => {},
+    setMonthlyClosedCounts: () => {},
+    setMonthlyOpenedCounts: () => {},
+    setDailyActivityCounts: () => {},
+    setLocalRepoCache: () => {},
+    getMergedPRs: () => [],
+    addMergedPRs: () => {},
+    getMergedPRWatermark: () => undefined,
+    getClosedPRs: () => [],
+    addClosedPRs: () => {},
+    getClosedPRWatermark: () => undefined,
+    updateConfig: () => {},
+    appendEvent: () => {},
+    getEventsByType: () => [],
+    getEventsInRange: () => [],
+    addIssue: () => {},
+    addTrustedProject: () => {},
+    cleanupExcludedData: () => {},
+    getStarredRepos: () => [],
+    setStarredRepos: () => {},
+    isStarredReposStale: () => false,
+    shelvePR: () => false,
+    unshelvePR: () => false,
+    isPRShelved: () => false,
+    dismissIssue: () => false,
+    undismissIssue: () => false,
+    getIssueDismissedAt: () => undefined,
+    setStatusOverride: () => {},
+    clearStatusOverride: () => false,
+    getStatusOverride: () => undefined,
+    getRepoScore: () => undefined,
+    updateRepoScore: () => {},
+    incrementMergedCount: () => {},
+    incrementClosedCount: () => {},
+    markRepoHostile: () => {},
+    getReposWithMergedPRs: () => [],
+    getReposWithOpenPRs: () => [],
+    getHighScoringRepos: () => [],
+    getLowScoringRepos: () => [],
+  } as unknown as ReturnType<typeof import('./state.js').getStateManager>;
+}
+
+// ---------------------------------------------------------------------------
+// IssueCandidate
+// ---------------------------------------------------------------------------
+
+export function makeIssueCandidate(overrides: Partial<IssueCandidate> = {}): IssueCandidate {
+  const issue: TrackedIssue = {
+    id: 1,
+    url: 'https://github.com/owner/repo/issues/1',
+    repo: 'owner/repo',
+    number: 1,
+    title: 'Test Issue',
+    status: 'candidate',
+    labels: ['good first issue'],
+    createdAt: '2025-06-01T00:00:00Z',
+    updatedAt: '2025-06-15T00:00:00Z',
+    vetted: true,
+    ...overrides.issue,
+  };
+
+  const vettingResult: IssueVettingResult = {
+    passedAllChecks: true,
+    checks: {
+      noExistingPR: true,
+      notClaimed: true,
+      projectActive: true,
+      clearRequirements: true,
+      contributionGuidelinesFound: true,
+    },
+    notes: [],
+    ...overrides.vettingResult,
+  };
+
+  const projectHealth: ProjectHealth = {
+    repo: 'owner/repo',
+    lastCommitAt: '2025-06-14T00:00:00Z',
+    daysSinceLastCommit: 1,
+    openIssuesCount: 50,
+    avgIssueResponseDays: 2,
+    ciStatus: 'passing',
+    isActive: true,
+    ...overrides.projectHealth,
+  };
+
+  return {
+    issue,
+    vettingResult,
+    projectHealth,
+    recommendation: 'approve',
+    reasonsToSkip: [],
+    reasonsToApprove: ['Active project', 'Good first issue'],
+    viabilityScore: 80,
+    searchPriority: 'normal',
     ...overrides,
   };
 }

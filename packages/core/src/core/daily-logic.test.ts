@@ -22,7 +22,12 @@ import {
   STALE_STATUSES,
 } from './daily-logic.js';
 import type { FetchedPR, MaintainerActionHint, AgentState } from './types.js';
-import { makeFetchedPR, makeDailyDigest, makeCapacityAssessment as makeCapacity } from './test-utils.js';
+import {
+  makeFetchedPR,
+  makeDailyDigest,
+  makeCapacityAssessment as makeCapacity,
+  makeAgentState,
+} from './test-utils.js';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -626,7 +631,7 @@ describe('applyStatusOverrides', () => {
   function makeState(
     statusOverrides: Record<string, { status: string; setAt: string; lastActivityAt: string }> = {},
   ): Readonly<AgentState> {
-    return { config: { statusOverrides } } as unknown as AgentState;
+    return makeAgentState({ config: { statusOverrides } });
   }
 
   it('should return PRs unchanged when no overrides exist', () => {

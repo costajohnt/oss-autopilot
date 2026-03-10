@@ -17,7 +17,7 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, parseGitHubUrl, extractOwnerRepo, isOwnRepo, DEFAULT_CONCURRENCY } from './utils.js';
-import { FetchedPR, CIStatusResult, DailyDigest, ClosedPR, MergedPR, StarFilter } from './types.js';
+import { FetchedPR, DailyDigest, ClosedPR, MergedPR, StarFilter } from './types.js';
 import { determineStatus } from './status-determination.js';
 import { runWorkerPool } from './concurrency.js';
 import { ConfigurationError, ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
@@ -26,7 +26,7 @@ import { debug, warn, timed } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 
 // Extracted modules
-import { classifyFailingChecks, analyzeCheckRuns, analyzeCombinedStatus, mergeStatuses } from './ci-analysis.js';
+import { classifyFailingChecks, getCIStatus } from './ci-analysis.js';
 import {
   type ReviewComment,
   determineReviewDecision,
@@ -46,9 +46,17 @@ import {
 
 // Re-export so existing consumers can still import from pr-monitor
 export { computeDisplayLabel } from './display-utils.js';
-export { classifyCICheck, classifyFailingChecks } from './ci-analysis.js';
+export { classifyCICheck, classifyFailingChecks, getCIStatus } from './ci-analysis.js';
 export { isConditionalChecklistItem } from './checklist-analysis.js';
 export { determineStatus } from './status-determination.js';
+
+/**
+ * Check if PR has merge conflict.
+ * Exported as a free function so tests can call it directly without PRMonitor instantiation.
+ */
+export function hasMergeConflict(mergeable: boolean | null, mergeableState: string | null): boolean {
+  return mergeable === false || mergeableState === 'dirty';
+}
 
 const MODULE = 'pr-monitor';
 
@@ -221,7 +229,7 @@ export class PRMonitor {
     const reviewDecision = determineReviewDecision(reviews);
 
     // Check for merge conflict
-    const hasMergeConflict = this.hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state);
+    const mergeConflict = hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state);
 
     // Check if there's an unresponded maintainer comment (delegated to review-analysis module)
     const { hasUnrespondedComment, lastMaintainerComment } = checkUnrespondedComments(
@@ -235,7 +243,7 @@ export class PRMonitor {
     // We need the commit date when hasUnrespondedComment is true (to distinguish
     // "needs_response" from "waiting_on_maintainer") OR when reviewDecision is "changes_requested"
     // (to detect needs_changes: review requested changes but no new commits pushed)
-    const ciPromise = this.getCIStatus(owner, repo, ghPR.head.sha);
+    const ciPromise = getCIStatus(this.octokit, owner, repo, ghPR.head.sha);
     const needCommitDate = hasUnrespondedComment || reviewDecision === 'changes_requested';
     const commitInfoPromise = needCommitDate
       ? this.octokit.repos
@@ -294,7 +302,7 @@ export class PRMonitor {
     const hasActionableCIFailure = ciStatus === 'failing' && classifiedChecks.some((c) => c.category === 'actionable');
     const { status, actionReason, waitReason, stalenessTier, actionReasons } = determineStatus({
       ciStatus,
-      hasMergeConflict,
+      hasMergeConflict: mergeConflict,
       hasUnrespondedComment,
       hasIncompleteChecklist,
       reviewDecision,
@@ -326,7 +334,7 @@ export class PRMonitor {
       ciStatus,
       failingCheckNames,
       classifiedChecks,
-      hasMergeConflict,
+      hasMergeConflict: mergeConflict,
       reviewDecision,
       hasUnrespondedComment,
       lastMaintainerComment,
@@ -354,82 +362,6 @@ export class PRMonitor {
     pr.displayDescription = displayDescription;
 
     return pr;
-  }
-
-  /**
-   * Check if PR has merge conflict
-   */
-  private hasMergeConflict(mergeable: boolean | null, mergeableState: string | null): boolean {
-    return mergeable === false || mergeableState === 'dirty';
-  }
-
-  /**
-   * Get CI status from combined status API and check runs.
-   * Returns status and names of failing checks for diagnostics.
-   * Delegates analysis to ci-analysis module.
-   */
-  private async getCIStatus(owner: string, repo: string, sha: string): Promise<CIStatusResult> {
-    if (!sha) return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
-
-    try {
-      // Fetch both combined status and check runs in parallel
-      const [statusResponse, checksResponse] = await Promise.all([
-        this.octokit.repos.getCombinedStatusForRef({ owner, repo, ref: sha }),
-        // 404 is expected for repos without check runs configured; log other errors for debugging
-        this.octokit.checks.listForRef({ owner, repo, ref: sha }).catch((err: unknown) => {
-          const status = getHttpStatusCode(err);
-          // Rate limit errors must propagate — matches listReviewComments pattern (#481)
-          if (status === 429) throw err;
-          if (status === 403) {
-            const msg = errorMessage(err).toLowerCase();
-            if (msg.includes('rate limit') || msg.includes('abuse detection')) throw err;
-          }
-          if (status === 404) {
-            debug('pr-monitor', `Check runs 404 for ${owner}/${repo}@${sha.slice(0, 7)} (no checks configured)`);
-          } else {
-            warn(
-              'pr-monitor',
-              `Non-404 error fetching check runs for ${owner}/${repo}@${sha.slice(0, 7)}: ${status ?? err}`,
-            );
-          }
-          return null;
-        }),
-      ]);
-
-      const combinedStatus = statusResponse.data;
-      const allCheckRuns = checksResponse?.data?.check_runs || [];
-
-      // Deduplicate check runs by name, keeping only the most recent run per unique name.
-      // GitHub returns all historical runs (including re-runs), so without deduplication
-      // a superseded failure will incorrectly flag the PR as failing even after a re-run passes.
-      const latestCheckRunsByName = new Map<string, (typeof allCheckRuns)[0]>();
-      for (const check of allCheckRuns) {
-        const existing = latestCheckRunsByName.get(check.name);
-        if (!existing || new Date(check.started_at ?? 0) > new Date(existing.started_at ?? 0)) {
-          latestCheckRunsByName.set(check.name, check);
-        }
-      }
-      const checkRuns = [...latestCheckRunsByName.values()];
-
-      // Delegate analysis to ci-analysis module
-      const checkRunAnalysis = analyzeCheckRuns(checkRuns);
-      const combinedAnalysis = analyzeCombinedStatus(combinedStatus);
-
-      return mergeStatuses(checkRunAnalysis, combinedAnalysis, checkRuns.length);
-    } catch (error) {
-      const statusCode = getHttpStatusCode(error);
-
-      if (statusCode === 401 || statusCode === 403 || statusCode === 429) {
-        throw error;
-      } else if (statusCode === 404) {
-        // Repo might not have CI configured, this is normal
-        debug('pr-monitor', `CI check 404 for ${owner}/${repo} (no CI configured)`);
-        return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
-      } else {
-        warn('pr-monitor', `Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage(error)}`);
-      }
-      return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
-    }
   }
 
   /**

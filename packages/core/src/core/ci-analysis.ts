@@ -3,7 +3,17 @@
  * Extracted from PRMonitor to isolate CI-related logic (#263).
  */
 
+import type { Octokit } from '@octokit/rest';
 import { CIFailureCategory, ClassifiedCheck, CIStatusResult } from './types.js';
+import { getHttpStatusCode, errorMessage } from './errors.js';
+import { debug, warn } from './logger.js';
+
+/** Sentinel value for CI status when no check data is available. */
+const UNKNOWN_CI_STATUS: CIStatusResult = {
+  status: 'unknown',
+  failingCheckNames: [],
+  failingCheckConclusions: new Map(),
+};
 
 /**
  * Known CI check name patterns that indicate fork limitations rather than real failures (#81).
@@ -153,15 +163,20 @@ export function analyzeCombinedStatus(combinedStatus: {
   const hasRealFailure = realStatuses.some((s) => s.state === 'failure' || s.state === 'error');
   const hasRealPending = realStatuses.some((s) => s.state === 'pending');
   const hasRealSuccess = realStatuses.some((s) => s.state === 'success');
-  const effectiveCombinedState = hasRealFailure
-    ? 'failure'
-    : hasRealPending
-      ? 'pending'
-      : hasRealSuccess
-        ? 'success'
-        : realStatuses.length === 0
-          ? 'success' // All statuses were auth gates; don't inherit original failure
-          : combinedStatus.state;
+
+  let effectiveCombinedState: string;
+  if (hasRealFailure) {
+    effectiveCombinedState = 'failure';
+  } else if (hasRealPending) {
+    effectiveCombinedState = 'pending';
+  } else if (hasRealSuccess) {
+    effectiveCombinedState = 'success';
+  } else if (realStatuses.length === 0) {
+    // All statuses were auth gates; don't inherit original failure
+    effectiveCombinedState = 'success';
+  } else {
+    effectiveCombinedState = combinedStatus.state;
+  }
   const hasStatuses = combinedStatus.statuses.length > 0;
 
   // Collect failing status names from combined status API
@@ -206,8 +221,76 @@ export function mergeStatuses(
 
   // No checks found at all - this is common for repos without CI
   if (!hasStatuses && checkRunCount === 0) {
-    return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
+    return UNKNOWN_CI_STATUS;
   }
 
-  return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
+  return UNKNOWN_CI_STATUS;
+}
+
+/**
+ * Get CI status from combined status API and check runs.
+ * Returns status and names of failing checks for diagnostics.
+ * Extracted from PRMonitor so tests can call it directly without class instantiation.
+ */
+export async function getCIStatus(octokit: Octokit, owner: string, repo: string, sha: string): Promise<CIStatusResult> {
+  if (!sha) return UNKNOWN_CI_STATUS;
+
+  try {
+    // Fetch both combined status and check runs in parallel
+    const [statusResponse, checksResponse] = await Promise.all([
+      octokit.repos.getCombinedStatusForRef({ owner, repo, ref: sha }),
+      // 404 is expected for repos without check runs configured; log other errors for debugging
+      octokit.checks.listForRef({ owner, repo, ref: sha }).catch((err: unknown) => {
+        const status = getHttpStatusCode(err);
+        // Rate limit errors must propagate — matches listReviewComments pattern (#481)
+        if (status === 429) throw err;
+        if (status === 403) {
+          const msg = errorMessage(err).toLowerCase();
+          if (msg.includes('rate limit') || msg.includes('abuse detection')) throw err;
+        }
+        if (status === 404) {
+          debug('pr-monitor', `Check runs 404 for ${owner}/${repo}@${sha.slice(0, 7)} (no checks configured)`);
+        } else {
+          warn(
+            'pr-monitor',
+            `Non-404 error fetching check runs for ${owner}/${repo}@${sha.slice(0, 7)}: ${status ?? err}`,
+          );
+        }
+        return null;
+      }),
+    ]);
+
+    const combinedStatus = statusResponse.data;
+    const allCheckRuns = checksResponse?.data?.check_runs || [];
+
+    // Deduplicate check runs by name, keeping only the most recent run per unique name.
+    // GitHub returns all historical runs (including re-runs), so without deduplication
+    // a superseded failure will incorrectly flag the PR as failing even after a re-run passes.
+    const latestCheckRunsByName = new Map<string, (typeof allCheckRuns)[0]>();
+    for (const check of allCheckRuns) {
+      const existing = latestCheckRunsByName.get(check.name);
+      if (!existing || new Date(check.started_at ?? 0) > new Date(existing.started_at ?? 0)) {
+        latestCheckRunsByName.set(check.name, check);
+      }
+    }
+    const checkRuns = [...latestCheckRunsByName.values()];
+
+    // Delegate analysis to existing pure functions
+    const checkRunAnalysis = analyzeCheckRuns(checkRuns);
+    const combinedAnalysis = analyzeCombinedStatus(combinedStatus);
+
+    return mergeStatuses(checkRunAnalysis, combinedAnalysis, checkRuns.length);
+  } catch (error) {
+    const statusCode = getHttpStatusCode(error);
+
+    if (statusCode === 401 || statusCode === 403 || statusCode === 429) {
+      throw error;
+    } else if (statusCode === 404) {
+      // Repo might not have CI configured, this is normal
+      debug('pr-monitor', `CI check 404 for ${owner}/${repo} (no CI configured)`);
+    } else {
+      warn('pr-monitor', `Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage(error)}`);
+    }
+    return UNKNOWN_CI_STATUS;
+  }
 }
