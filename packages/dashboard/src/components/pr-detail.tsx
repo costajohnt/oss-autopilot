@@ -35,7 +35,6 @@ function reviewColor(decision: string): string {
   }
 }
 
-/** Returns a CSS class for the colored dot indicator. */
 function ciDotClass(status: string): string {
   switch (status) {
     case 'passing':
@@ -60,6 +59,12 @@ function reviewDotClass(decision: string): string {
     default:
       return '';
   }
+}
+
+function activityDotClass(days: number): string {
+  if (days >= 7) return 'red';
+  if (days >= 3) return 'amber';
+  return 'green';
 }
 
 function categoryBadge(category: string): string {
@@ -168,7 +173,7 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         <div class="pr-detail-field">
           <span class="pr-detail-field-label">Days Since Activity</span>
           <span class="pr-detail-field-value">
-            <span class={`dot ${pr.daysSinceActivity >= 7 ? 'red' : pr.daysSinceActivity >= 3 ? 'amber' : 'green'}`} />
+            <span class={`dot ${activityDotClass(pr.daysSinceActivity)}`} />
             <span>
               {pr.daysSinceActivity} {pr.daysSinceActivity === 1 ? 'day' : 'days'}
             </span>

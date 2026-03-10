@@ -1,5 +1,5 @@
 /* === CSS Custom Properties === */
-/* Design tokens ported from mockup-reference.html. */
+/* Design tokens based on mockup-reference.html, with adjustments. */
 
 :root {
   --base: #0c0e14;
@@ -676,10 +676,6 @@ a:hover {
 
 .pr-row--waiting:hover::before {
   background: var(--blue);
-}
-
-.pr-row--shelved:hover::before {
-  background: var(--text-muted);
 }
 
 .pr-row--selected {

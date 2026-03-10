@@ -176,6 +176,38 @@ describe('PRDetail', () => {
     expect(activityField?.querySelector('.pr-detail-field-value')?.textContent).toBe('12 days');
   });
 
+  it('renders singular "day" for daysSinceActivity of 1', () => {
+    const { container } = renderPRDetail({
+      pr: makePR({ daysSinceActivity: 1 }),
+    });
+
+    const fields = container.querySelectorAll('.pr-detail-field');
+    const activityField = [...fields].find(
+      (f) => f.querySelector('.pr-detail-field-label')?.textContent === 'Days Since Activity',
+    );
+    expect(activityField?.querySelector('.pr-detail-field-value')?.textContent).toBe('1 day');
+  });
+
+  it.each([
+    [0, 'green'],
+    [2, 'green'],
+    [3, 'amber'],
+    [6, 'amber'],
+    [7, 'red'],
+    [30, 'red'],
+  ])('renders activity dot with "%s" class for %i days', (days, expectedClass) => {
+    const { container } = renderPRDetail({
+      pr: makePR({ daysSinceActivity: days }),
+    });
+
+    const fields = container.querySelectorAll('.pr-detail-field');
+    const activityField = [...fields].find(
+      (f) => f.querySelector('.pr-detail-field-label')?.textContent === 'Days Since Activity',
+    );
+    const dot = activityField?.querySelector('.dot');
+    expect(dot?.classList.contains(expectedClass)).toBe(true);
+  });
+
   it('renders embedded ActionBar', () => {
     const { container } = renderPRDetail();
     expect(container.querySelector('.action-bar')).toBeTruthy();

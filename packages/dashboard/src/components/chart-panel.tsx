@@ -32,7 +32,7 @@ interface ChartPanelProps {
   topRepos: Array<{ repo: string; active: number; merged: number; closed: number }>;
 }
 
-// Chart.js can't read CSS vars, so use hex values matching the new palette
+// Chart.js can't read CSS vars; these must stay in sync with :root in styles.css
 const COLORS = {
   green: '#4ade80',
   purple: '#c084fc',
