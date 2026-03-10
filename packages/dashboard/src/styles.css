@@ -1583,6 +1583,7 @@ a:hover {
   border-radius: 50%;
   background: var(--elevated);
   border: 1px solid var(--border);
+  color: var(--text-primary);
   cursor: pointer;
   transition: border-color 0.2s var(--ease);
   flex-shrink: 0;
