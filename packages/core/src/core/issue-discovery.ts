@@ -4,7 +4,9 @@
  * Delegates filtering, scoring, vetting, and search infrastructure to focused modules (#356, #621):
  * - issue-filtering.ts  — spam detection, doc-only filtering, per-repo caps
  * - issue-scoring.ts   — viability scores, repo quality bonuses
- * - issue-vetting.ts   — individual issue checks (PRs, claims, health, guidelines)
+ * - issue-vetting.ts   — vetting orchestration, recommendation + viability scoring
+ * - issue-eligibility.ts — PR existence, claim detection, requirements analysis
+ * - repo-health.ts     — project health checks, contribution guidelines
  * - search-phases.ts   — search helpers, caching, batched repo search
  */
 

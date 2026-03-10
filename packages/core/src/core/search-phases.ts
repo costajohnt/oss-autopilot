@@ -58,7 +58,7 @@ export function batchRepos(repos: string[], batchSize: number): string[][] {
 // ── Search caching ──
 
 /** TTL for cached search API results (15 minutes). */
-export const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
+const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
 
 /**
  * Wrap octokit.search.issuesAndPullRequests with time-based caching.

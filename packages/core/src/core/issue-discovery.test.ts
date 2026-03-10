@@ -1,5 +1,5 @@
 /**
- * Tests for IssueDiscovery pure functions
+ * Tests for issue discovery, scoring, filtering, and eligibility functions.
  */
 
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';

@@ -19,16 +19,16 @@ const MODULE = 'repo-health';
 const guidelinesCache = new Map<string, { guidelines: ContributionGuidelines | undefined; fetchedAt: number }>();
 
 /** TTL for cached contribution guidelines (1 hour). */
-export const CACHE_TTL_MS = 60 * 60 * 1000;
+const CACHE_TTL_MS = 60 * 60 * 1000;
 
 /** TTL for cached project health results (4 hours). Health data (stars, commits, CI) changes slowly. */
-export const HEALTH_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
+const HEALTH_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 
 /** Max entries in the guidelines cache before pruning. */
-export const CACHE_MAX_SIZE = 100;
+const CACHE_MAX_SIZE = 100;
 
 /** Remove expired and excess entries from the guidelines cache. */
-export function pruneCache(): void {
+function pruneCache(): void {
   const now = Date.now();
 
   // First, remove expired entries (older than CACHE_TTL_MS)

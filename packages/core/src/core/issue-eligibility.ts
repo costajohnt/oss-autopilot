@@ -21,7 +21,7 @@ export interface CheckResult {
 }
 
 /** Phrases that indicate someone has already claimed an issue. */
-export const CLAIM_PHRASES = [
+const CLAIM_PHRASES = [
   "i'm working on this",
   'i am working on this',
   "i'll take this",
@@ -116,7 +116,7 @@ export async function checkNotClaimed(
   if (commentCount === 0) return { passed: true };
 
   try {
-    // Paginate through all comments (up to 100)
+    // Paginate through all comments
     const comments = await octokit.paginate(
       octokit.issues.listComments,
       {
