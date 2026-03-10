@@ -1,5 +1,5 @@
 /**
- * Tests for IssueDiscovery pure functions
+ * Tests for issue discovery, scoring, filtering, and eligibility functions.
  */
 
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
@@ -68,31 +68,15 @@ vi.mock('./utils.js', async (importOriginal) => {
   };
 });
 
-const {
-  IssueDiscovery,
-  isLabelFarming,
-  hasTemplatedTitle,
-  detectLabelFarmingRepos,
-  calculateRepoQualityBonus,
-  isDocOnlyIssue,
-  applyPerRepoCap,
-  DOC_ONLY_LABELS,
-  BEGINNER_LABELS: _BEGINNER_LABELS,
-  buildEffectiveLabels,
-  interleaveArrays,
-  SCOPE_LABELS,
-} = await import('./issue-discovery.js');
+const { IssueDiscovery } = await import('./issue-discovery.js');
+const { isLabelFarming, hasTemplatedTitle, detectLabelFarmingRepos, isDocOnlyIssue, applyPerRepoCap, DOC_ONLY_LABELS } =
+  await import('./issue-filtering.js');
+const { calculateRepoQualityBonus, calculateViabilityScore } = await import('./issue-scoring.js');
+const { analyzeRequirements } = await import('./issue-eligibility.js');
 
 const { getStateManager } = await import('./state.js');
 
-describe('IssueDiscovery.calculateViabilityScore', () => {
-  let discovery: InstanceType<typeof IssueDiscovery>;
-
-  beforeEach(() => {
-    mockOctokitInstance = {};
-    discovery = new IssueDiscovery('fake-token');
-  });
-
+describe('calculateViabilityScore', () => {
   const baseParams = {
     repoScore: null as number | null,
     hasExistingPR: false,
@@ -106,29 +90,29 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   };
 
   it('should return base score of 50 with no bonuses or penalties', () => {
-    const score = discovery.calculateViabilityScore(baseParams);
+    const score = calculateViabilityScore(baseParams);
     expect(score).toBe(50);
   });
 
   it('should add repo score contribution (score * 2)', () => {
-    const score = discovery.calculateViabilityScore({ ...baseParams, repoScore: 8 });
+    const score = calculateViabilityScore({ ...baseParams, repoScore: 8 });
     expect(score).toBe(50 + 16); // 8 * 2 = 16
   });
 
   it('should add +20 for max repo score of 10', () => {
-    const score = discovery.calculateViabilityScore({ ...baseParams, repoScore: 10 });
+    const score = calculateViabilityScore({ ...baseParams, repoScore: 10 });
     expect(score).toBe(50 + 20);
   });
 
   it('should add +15 for clear requirements', () => {
-    const score = discovery.calculateViabilityScore({ ...baseParams, clearRequirements: true });
+    const score = calculateViabilityScore({ ...baseParams, clearRequirements: true });
     expect(score).toBe(50 + 15);
   });
 
   it('should add +15 for freshness (updated within 14 days)', () => {
     const recent = new Date();
     recent.setDate(recent.getDate() - 5);
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       issueUpdatedAt: recent.toISOString(),
     });
@@ -138,7 +122,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   it('should add partial freshness bonus for 15-30 day old issues', () => {
     const recent = new Date();
     recent.setDate(recent.getDate() - 22); // 22 days old
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       issueUpdatedAt: recent.toISOString(),
     });
@@ -149,7 +133,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   it('should add no freshness bonus for 31+ day old issues', () => {
     const old = new Date();
     old.setDate(old.getDate() - 45);
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       issueUpdatedAt: old.toISOString(),
     });
@@ -157,7 +141,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 
   it('should add +10 for contribution guidelines', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       hasContributionGuidelines: true,
     });
@@ -165,17 +149,17 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 
   it('should subtract -30 for existing PR', () => {
-    const score = discovery.calculateViabilityScore({ ...baseParams, hasExistingPR: true });
+    const score = calculateViabilityScore({ ...baseParams, hasExistingPR: true });
     expect(score).toBe(50 - 30);
   });
 
   it('should subtract -20 for claimed issue', () => {
-    const score = discovery.calculateViabilityScore({ ...baseParams, isClaimed: true });
+    const score = calculateViabilityScore({ ...baseParams, isClaimed: true });
     expect(score).toBe(50 - 20);
   });
 
   it('should clamp to 0 when penalties exceed score', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       hasExistingPR: true,
       isClaimed: true,
@@ -186,7 +170,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   it('should clamp to 100 when bonuses are maxed', () => {
     const recent = new Date();
     recent.setDate(recent.getDate() - 1);
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       repoScore: 10,
       hasExistingPR: false,
       isClaimed: false,
@@ -204,7 +188,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   it('should combine multiple bonuses and penalties correctly', () => {
     const recent = new Date();
     recent.setDate(recent.getDate() - 3);
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       repoScore: 5,
       hasExistingPR: false,
       isClaimed: true, // -20
@@ -220,7 +204,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 
   it('should add +15 for merged PR in this repo (#99)', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       mergedPRCount: 1,
     });
@@ -228,7 +212,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 
   it('should add +15 for merged PR even with multiple merges (#99)', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       mergedPRCount: 5,
     });
@@ -236,7 +220,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 
   it('should NOT add merged PR bonus when mergedPRCount is 0', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       mergedPRCount: 0,
     });
@@ -244,7 +228,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 
   it('should stack merged PR bonus (+15) with org affinity (+5) for +20 total relationship bonus', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       mergedPRCount: 2,
       orgHasMergedPRs: true,
@@ -254,7 +238,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 
   it('should subtract -15 for closed-without-merge history with no merges', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       closedWithoutMergeCount: 2,
       mergedPRCount: 0,
@@ -263,7 +247,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 
   it('should NOT subtract penalty when closed PRs exist but merges also exist', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       closedWithoutMergeCount: 1,
       mergedPRCount: 2,
@@ -273,7 +257,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 
   it('should NOT subtract penalty when closedWithoutMergeCount is 0', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       closedWithoutMergeCount: 0,
       mergedPRCount: 0,
@@ -282,7 +266,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 
   it('should apply closed-PR penalty alongside other penalties', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       hasExistingPR: true, // -30
       closedWithoutMergeCount: 1, // -15
@@ -293,7 +277,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 
   it('should add +5 for org affinity', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       orgHasMergedPRs: true,
     });
@@ -301,7 +285,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 
   it('should NOT add org affinity bonus when false', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       orgHasMergedPRs: false,
     });
@@ -311,7 +295,7 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   it('should combine org affinity with other bonuses', () => {
     const recent = new Date();
     recent.setDate(recent.getDate() - 3);
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       repoScore: 8, // +16
       clearRequirements: true, // +15
@@ -323,25 +307,13 @@ describe('IssueDiscovery.calculateViabilityScore', () => {
   });
 });
 
-describe('IssueDiscovery.analyzeRequirements (via vetIssue internals)', () => {
-  // analyzeRequirements is private, but we can test the concept through calculateViabilityScore
-  // or by accessing it via the class. For now, let's test its behavior indirectly
-  // by observing that it's called in vetIssue. But since vetIssue needs API mocking,
-  // let's test the logic directly via type assertion.
-
-  let discovery: any; // Use any to access private method
-
-  beforeEach(() => {
-    mockOctokitInstance = {};
-    discovery = new IssueDiscovery('fake-token');
-  });
-
+describe('analyzeRequirements', () => {
   it('should return false for empty body', () => {
-    expect(discovery.analyzeRequirements('')).toBe(false);
+    expect(analyzeRequirements('')).toBe(false);
   });
 
   it('should return false for very short body (< 50 chars)', () => {
-    expect(discovery.analyzeRequirements('Fix the bug')).toBe(false);
+    expect(analyzeRequirements('Fix the bug')).toBe(false);
   });
 
   it('should return true for body with numbered steps and expected behavior', () => {
@@ -352,7 +324,7 @@ describe('IssueDiscovery.analyzeRequirements (via vetIssue internals)', () => {
       3. Include next/prev links in response
       The API should return a 400 error for invalid page numbers.
     `;
-    expect(discovery.analyzeRequirements(body)).toBe(true);
+    expect(analyzeRequirements(body)).toBe(true);
   });
 
   it('should return true for body with code block and expected behavior', () => {
@@ -363,7 +335,7 @@ describe('IssueDiscovery.analyzeRequirements (via vetIssue internals)', () => {
       \`\`\`
       It should handle null gracefully and return an empty string instead.
     `;
-    expect(discovery.analyzeRequirements(body)).toBe(true);
+    expect(analyzeRequirements(body)).toBe(true);
   });
 
   it('should return true for long body with bullet points', () => {
@@ -374,12 +346,12 @@ describe('IssueDiscovery.analyzeRequirements (via vetIssue internals)', () => {
       - The chart should update automatically when new data arrives
       This will help users track their contribution velocity.
     `;
-    expect(discovery.analyzeRequirements(body)).toBe(true);
+    expect(analyzeRequirements(body)).toBe(true);
   });
 
   it('should return false for body with only length but no structure', () => {
     const body = 'a'.repeat(201); // Long but no steps, code blocks, or expected behavior
-    expect(discovery.analyzeRequirements(body)).toBe(false);
+    expect(analyzeRequirements(body)).toBe(false);
   });
 
   it('should return true for body > 200 chars with expected behavior keywords', () => {
@@ -389,7 +361,7 @@ describe('IssueDiscovery.analyzeRequirements (via vetIssue internals)', () => {
       and display an appropriate error message. Currently it silently drops the data.
       We want to improve user experience by providing clear feedback.
     `;
-    expect(discovery.analyzeRequirements(body)).toBe(true);
+    expect(analyzeRequirements(body)).toBe(true);
   });
 });
 
@@ -812,13 +784,6 @@ describe('calculateRepoQualityBonus', () => {
 });
 
 describe('calculateViabilityScore with repoQualityBonus', () => {
-  let discovery: InstanceType<typeof IssueDiscovery>;
-
-  beforeEach(() => {
-    mockOctokitInstance = {};
-    discovery = new IssueDiscovery('fake-token');
-  });
-
   const baseParams = {
     repoScore: null as number | null,
     hasExistingPR: false,
@@ -832,19 +797,19 @@ describe('calculateViabilityScore with repoQualityBonus', () => {
   };
 
   it('should add repoQualityBonus to base score', () => {
-    const score = discovery.calculateViabilityScore({ ...baseParams, repoQualityBonus: 8 });
+    const score = calculateViabilityScore({ ...baseParams, repoQualityBonus: 8 });
     expect(score).toBe(58); // 50 + 8
   });
 
   it('should default to 0 when repoQualityBonus is undefined', () => {
-    const score = discovery.calculateViabilityScore(baseParams);
+    const score = calculateViabilityScore(baseParams);
     expect(score).toBe(50);
   });
 
   it('should still clamp to 100 with quality bonus', () => {
     const recent = new Date();
     recent.setDate(recent.getDate() - 1);
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       repoScore: 10, // +20
       hasExistingPR: false,
       isClaimed: false,
@@ -861,7 +826,7 @@ describe('calculateViabilityScore with repoQualityBonus', () => {
   });
 
   it('should combine quality bonus with other bonuses and penalties', () => {
-    const score = discovery.calculateViabilityScore({
+    const score = calculateViabilityScore({
       ...baseParams,
       repoQualityBonus: 7, // +7
       clearRequirements: true, // +15
@@ -1744,72 +1709,5 @@ describe('formatCandidate', () => {
 
     expect(output).toContain('Has 3 linked PRs');
     expect(output).toContain('Recently discussed');
-  });
-});
-
-describe('buildEffectiveLabels', () => {
-  it('should return scope labels for a single scope', () => {
-    const result = buildEffectiveLabels(['beginner'], []);
-    expect(result).toEqual(SCOPE_LABELS.beginner);
-  });
-
-  it('should merge labels from multiple scopes', () => {
-    const result = buildEffectiveLabels(['beginner', 'intermediate'], []);
-    for (const label of SCOPE_LABELS.beginner) {
-      expect(result).toContain(label);
-    }
-    for (const label of SCOPE_LABELS.intermediate) {
-      expect(result).toContain(label);
-    }
-  });
-
-  it('should merge custom labels with scope labels', () => {
-    const result = buildEffectiveLabels(['beginner'], ['custom-label']);
-    expect(result).toContain('good first issue');
-    expect(result).toContain('custom-label');
-  });
-
-  it('should deduplicate when custom labels overlap with scope labels', () => {
-    const result = buildEffectiveLabels(['beginner'], ['good first issue', 'custom']);
-    const gfiCount = result.filter((l) => l === 'good first issue').length;
-    expect(gfiCount).toBe(1);
-    expect(result).toContain('custom');
-  });
-
-  it('should return only custom labels when scopes is empty', () => {
-    const result = buildEffectiveLabels([], ['my-label']);
-    expect(result).toEqual(['my-label']);
-  });
-});
-
-describe('interleaveArrays', () => {
-  it('should interleave two equal-length arrays', () => {
-    const result = interleaveArrays([
-      ['a1', 'a2', 'a3'],
-      ['b1', 'b2', 'b3'],
-    ]);
-    expect(result).toEqual(['a1', 'b1', 'a2', 'b2', 'a3', 'b3']);
-  });
-
-  it('should handle arrays of different lengths', () => {
-    const result = interleaveArrays([
-      ['a1', 'a2'],
-      ['b1', 'b2', 'b3'],
-    ]);
-    expect(result).toEqual(['a1', 'b1', 'a2', 'b2', 'b3']);
-  });
-
-  it('should handle three arrays', () => {
-    const result = interleaveArrays([['a1'], ['b1'], ['c1']]);
-    expect(result).toEqual(['a1', 'b1', 'c1']);
-  });
-
-  it('should handle empty arrays', () => {
-    expect(interleaveArrays([])).toEqual([]);
-    expect(interleaveArrays([[], []])).toEqual([]);
-  });
-
-  it('should handle single array', () => {
-    expect(interleaveArrays([['a', 'b']])).toEqual(['a', 'b']);
   });
 });
