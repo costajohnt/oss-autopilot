@@ -1,21 +1,21 @@
 <p align="center">
-  <img src="assets/icon.svg" alt="OSS Autopilot" width="120" height="120">
+  <img src="assets/hero-light.svg" alt="OSS Autopilot" width="600">
 </p>
 
-<h1 align="center">OSS Autopilot</h1>
+<p align="center">
+  <img src="https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/costajohnt/oss-autopilot/badges/.github/badges/tests.json" alt="Tests">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <a href="https://www.npmjs.com/package/@oss-autopilot/core"><img src="https://img.shields.io/npm/v/@oss-autopilot/core" alt="npm @oss-autopilot/core"></a>
+  <a href="https://www.npmjs.com/package/@oss-autopilot/mcp"><img src="https://img.shields.io/npm/v/@oss-autopilot/mcp" alt="npm @oss-autopilot/mcp"></a>
+  <img src="https://img.shields.io/badge/Claude_Code-Plugin-blueviolet" alt="Claude Code Plugin">
+</p>
 
 You have 12 open PRs across GitHub. A maintainer asked a question 5 days ago. Two PRs have failing CI you haven't noticed. And you're about to open another one.
 
 **Sound familiar?**
 
 OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you when something needs attention, and helps you respond to maintainer feedback so your contributions actually get merged.
-
-![CI](https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg)
-![Tests](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/costajohnt/oss-autopilot/badges/.github/badges/tests.json)
-![License](https://img.shields.io/badge/license-MIT-green)
-[![npm @oss-autopilot/core](https://img.shields.io/npm/v/@oss-autopilot/core)](https://www.npmjs.com/package/@oss-autopilot/core)
-[![npm @oss-autopilot/mcp](https://img.shields.io/npm/v/@oss-autopilot/mcp)](https://www.npmjs.com/package/@oss-autopilot/mcp)
-![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 
 ## Quick Start
 
