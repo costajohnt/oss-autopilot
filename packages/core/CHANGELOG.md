@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.57.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.56.0...core-v0.57.0) (2026-03-10)
+
+
+### Features
+
+* **dashboard:** add light mode theme with toggle ([#699](https://github.com/costajohnt/oss-autopilot/issues/699)) ([65f7815](https://github.com/costajohnt/oss-autopilot/commit/65f7815e7e8329813062e6a7026c29dcd2a50a7c))
+
+
+### Bug Fixes
+
+* **badge:** prevent intermittent "inaccessible" on shields.io badge ([#693](https://github.com/costajohnt/oss-autopilot/issues/693)) ([98f2fc3](https://github.com/costajohnt/oss-autopilot/commit/98f2fc32a261d24373f8cc76ab0d3f968932daf6))
+
 ## [0.56.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.55.0...core-v0.56.0) (2026-03-10)
 
 
