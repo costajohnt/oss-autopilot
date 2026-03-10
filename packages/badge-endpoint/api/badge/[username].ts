@@ -15,6 +15,9 @@ const GITHUB_USERNAME_RE = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/
 
 const DEFAULT_MIN_STARS = 50;
 
+/** 2s buffer before Vercel Hobby's 10s function timeout. */
+const FUNCTION_TIMEOUT_MS = 8000;
+
 interface BadgeResponse {
   schemaVersion: number;
   label: string;
@@ -40,6 +43,7 @@ const STAR_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 /** In-memory cache for full badge results. */
 const badgeCache = new Map<string, { badge: BadgeResponse; ts: number }>();
 const BADGE_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const STALE_BADGE_TTL = 24 * 60 * 60 * 1000; // 24 hours — fallback during timeouts/errors
 
 async function getRepoStars(octokit: Octokit, owner: string, repo: string): Promise<number> {
   const key = `${owner}/${repo}`;
@@ -78,6 +82,84 @@ function repoFromUrl(url: string): string {
   return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
 }
 
+/** Compute badge data by fetching PR stats from GitHub API. */
+async function computeBadge(username: string, minStars: number): Promise<BadgeResponse> {
+  if (!process.env.GITHUB_TOKEN) {
+    console.warn('[badge] GITHUB_TOKEN not set — using unauthenticated GitHub API (60 req/hr limit)');
+  }
+  const octokit = new Octokit({
+    auth: process.env.GITHUB_TOKEN || undefined,
+  });
+
+  // Fetch all three categories excluding user's own repos
+  const baseQuery = `is:pr author:${username} -user:${username}`;
+
+  const [mergedItems, closedItems, openItems] = await Promise.all([
+    fetchAllPRs(octokit, `${baseQuery} is:merged`),
+    fetchAllPRs(octokit, `${baseQuery} is:closed is:unmerged`),
+    fetchAllPRs(octokit, `${baseQuery} is:open`),
+  ]);
+
+  // Collect unique repos across all PRs
+  const allItems = [...mergedItems, ...closedItems, ...openItems];
+  const uniqueRepos = new Set(allItems.map((item) => repoFromUrl(item.repository_url)));
+
+  // Fetch star counts for all unique repos (parallelized, with caching)
+  const repoStarsMap = new Map<string, number>();
+  const repoEntries = [...uniqueRepos];
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < repoEntries.length; i += BATCH_SIZE) {
+    const batch = repoEntries.slice(i, i + BATCH_SIZE);
+    const results = await Promise.all(
+      batch.map(async (repo) => {
+        const [owner, name] = repo.split('/');
+        try {
+          return { repo, stars: await getRepoStars(octokit, owner, name) };
+        } catch {
+          // Repo may be private/deleted — exclude it
+          return { repo, stars: 0 };
+        }
+      }),
+    );
+    for (const { repo, stars } of results) {
+      repoStarsMap.set(repo, stars);
+    }
+  }
+
+  // Filter qualifying repos
+  const qualifyingRepos = new Set(repoEntries.filter((repo) => (repoStarsMap.get(repo) ?? 0) >= minStars));
+
+  // Count PRs only from qualifying repos
+  const mergedCount = mergedItems.filter((item) => qualifyingRepos.has(repoFromUrl(item.repository_url))).length;
+  const closedCount = closedItems.filter((item) => qualifyingRepos.has(repoFromUrl(item.repository_url))).length;
+  const openCount = openItems.filter((item) => qualifyingRepos.has(repoFromUrl(item.repository_url))).length;
+
+  const total = mergedCount + closedCount;
+  const mergeRate = total > 0 ? mergedCount / total : 0;
+  const mergeRatePct = `${(mergeRate * 100).toFixed(0)}%`;
+
+  if (mergedCount === 0 && openCount === 0) {
+    return { schemaVersion: 1, label: 'OSS Contributions', message: 'Getting Started', color: 'blue' };
+  }
+
+  return {
+    schemaVersion: 1,
+    label: 'OSS Contributions',
+    message: `${mergeRatePct} merge rate | ${mergedCount} merged | ${openCount} open`,
+    color: pickColor(mergeRate),
+  };
+}
+
+/** Return stale cached badge if available (within STALE_BADGE_TTL), or an error badge. */
+function staleFallback(cacheKey: string, reason: string): BadgeResponse {
+  const stale = badgeCache.get(cacheKey);
+  if (stale && Date.now() - stale.ts < STALE_BADGE_TTL) {
+    console.warn(`[badge] Serving stale cache for ${cacheKey}: ${reason}`);
+    return stale.badge;
+  }
+  return errorBadge('temporarily unavailable');
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { username, minStars: minStarsParam } = req.query;
 
@@ -96,86 +178,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json(cached.badge);
   }
 
+  // Race the computation against a timeout to avoid Vercel's forced 10s kill.
+  // Attach .catch() to prevent unhandled rejections if computeBadge throws after timeout.
+  const computation = computeBadge(username, minStars);
+  computation.catch((err) => {
+    console.warn('[badge] Post-timeout error for', username, err instanceof Error ? err.message : String(err));
+  });
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    if (!process.env.GITHUB_TOKEN) {
-      console.warn('[badge] GITHUB_TOKEN not set — using unauthenticated GitHub API (60 req/hr limit)');
-    }
-    const octokit = new Octokit({
-      auth: process.env.GITHUB_TOKEN || undefined,
-    });
-
-    // Fetch all three categories excluding user's own repos
-    const baseQuery = `is:pr author:${username} -user:${username}`;
-
-    const [mergedItems, closedItems, openItems] = await Promise.all([
-      fetchAllPRs(octokit, `${baseQuery} is:merged`),
-      fetchAllPRs(octokit, `${baseQuery} is:closed is:unmerged`),
-      fetchAllPRs(octokit, `${baseQuery} is:open`),
+    const result = await Promise.race([
+      computation,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), FUNCTION_TIMEOUT_MS);
+      }),
     ]);
 
-    // Collect unique repos across all PRs
-    const allItems = [...mergedItems, ...closedItems, ...openItems];
-    const uniqueRepos = new Set(allItems.map((item) => repoFromUrl(item.repository_url)));
+    if (timer) clearTimeout(timer);
 
-    // Fetch star counts for all unique repos (parallelized, with caching)
-    const repoStarsMap = new Map<string, number>();
-    const repoEntries = [...uniqueRepos];
-    const BATCH_SIZE = 10;
-    for (let i = 0; i < repoEntries.length; i += BATCH_SIZE) {
-      const batch = repoEntries.slice(i, i + BATCH_SIZE);
-      const results = await Promise.all(
-        batch.map(async (repo) => {
-          const [owner, name] = repo.split('/');
-          try {
-            return { repo, stars: await getRepoStars(octokit, owner, name) };
-          } catch {
-            // Repo may be private/deleted — exclude it
-            return { repo, stars: 0 };
-          }
-        }),
-      );
-      for (const { repo, stars } of results) {
-        repoStarsMap.set(repo, stars);
-      }
+    if (result === null) {
+      console.warn('[badge] Computation timed out for', username);
+      return res.status(200).json(staleFallback(cacheKey, 'timeout'));
     }
 
-    // Filter qualifying repos
-    const qualifyingRepos = new Set(repoEntries.filter((repo) => (repoStarsMap.get(repo) ?? 0) >= minStars));
-
-    // Count PRs only from qualifying repos
-    const mergedCount = mergedItems.filter((item) => qualifyingRepos.has(repoFromUrl(item.repository_url))).length;
-    const closedCount = closedItems.filter((item) => qualifyingRepos.has(repoFromUrl(item.repository_url))).length;
-    const openCount = openItems.filter((item) => qualifyingRepos.has(repoFromUrl(item.repository_url))).length;
-
-    const total = mergedCount + closedCount;
-    const mergeRate = total > 0 ? mergedCount / total : 0;
-    const mergeRatePct = `${(mergeRate * 100).toFixed(0)}%`;
-
-    let badge: BadgeResponse;
-
-    if (mergedCount === 0 && openCount === 0) {
-      badge = { schemaVersion: 1, label: 'OSS Contributions', message: 'Getting Started', color: 'blue' };
-    } else {
-      badge = {
-        schemaVersion: 1,
-        label: 'OSS Contributions',
-        message: `${mergeRatePct} merge rate | ${mergedCount} merged | ${openCount} open`,
-        color: pickColor(mergeRate),
-      };
-    }
-
-    badgeCache.set(cacheKey, { badge, ts: Date.now() });
-    return res.status(200).json(badge);
+    badgeCache.set(cacheKey, { badge: result, ts: Date.now() });
+    return res.status(200).json(result);
   } catch (error: unknown) {
+    if (timer) clearTimeout(timer);
     const status = error instanceof Object && 'status' in error ? (error as { status: number }).status : undefined;
     if (status === 422) {
       return res.status(200).json(errorBadge('user not found'));
     }
     if (status === 403 || status === 429) {
       console.warn('[badge] GitHub API rate limited for', username);
-      return res.status(200).json(errorBadge('rate limited'));
+      return res.status(200).json(staleFallback(cacheKey, 'rate limited'));
     }
     console.error('[badge]', error instanceof Error ? error.message : String(error));
-    return res.status(200).json(errorBadge('error'));
+    return res.status(200).json(staleFallback(cacheKey, 'error'));
   }
 }
