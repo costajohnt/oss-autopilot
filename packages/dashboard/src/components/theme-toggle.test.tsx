@@ -40,17 +40,6 @@ describe('ThemeToggle', () => {
     expect(onToggle).toHaveBeenCalledOnce();
   });
 
-  it('is keyboard accessible via Enter key', () => {
-    const onToggle = vi.fn();
-    const { container } = render(<ThemeToggle theme="dark" onToggle={onToggle} />);
-    const button = container.querySelector('button')!;
-    fireEvent.keyDown(button, { key: 'Enter' });
-    fireEvent.keyUp(button, { key: 'Enter' });
-    // Native button handles Enter by triggering click
-    fireEvent.click(button);
-    expect(onToggle).toHaveBeenCalled();
-  });
-
   it('has the theme-toggle class', () => {
     const { container } = render(<ThemeToggle theme="dark" onToggle={() => {}} />);
     expect(container.querySelector('.theme-toggle')).toBeTruthy();

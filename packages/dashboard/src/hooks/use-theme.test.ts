@@ -98,6 +98,29 @@ describe('useTheme', () => {
     expect(listeners.length).toBe(1);
   });
 
+  it('follows OS preference changes when no localStorage override exists', () => {
+    const { listeners } = mockMatchMedia(false);
+    const { result } = renderHook(() => useTheme());
+    expect(result.current.theme).toBe('dark');
+
+    // Simulate OS switching to light
+    act(() => {
+      for (const handler of listeners) {
+        handler({ matches: true } as MediaQueryListEvent);
+      }
+    });
+
+    expect(result.current.theme).toBe('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+  });
+
+  it('ignores invalid localStorage values and falls back to OS preference', () => {
+    localStorage.setItem(STORAGE_KEY, 'blue');
+    mockMatchMedia(true);
+    const { result } = renderHook(() => useTheme());
+    expect(result.current.theme).toBe('light');
+  });
+
   it('ignores matchMedia changes when localStorage is set', () => {
     localStorage.setItem(STORAGE_KEY, 'dark');
     const { listeners } = mockMatchMedia(false);
@@ -111,6 +134,26 @@ describe('useTheme', () => {
     });
 
     // Should stay dark because localStorage override
+    expect(result.current.theme).toBe('dark');
+  });
+
+  it('does not override theme on OS change when localStorage read throws', () => {
+    const { listeners } = mockMatchMedia(false);
+    const { result } = renderHook(() => useTheme());
+    expect(result.current.theme).toBe('dark');
+
+    // Make localStorage.getItem throw (simulates restricted environment)
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('storage restricted');
+    });
+
+    // Simulate OS switching to light — should NOT change theme
+    act(() => {
+      for (const handler of listeners) {
+        handler({ matches: true } as MediaQueryListEvent);
+      }
+    });
+
     expect(result.current.theme).toBe('dark');
   });
 

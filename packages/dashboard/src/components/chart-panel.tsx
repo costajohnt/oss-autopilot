@@ -11,6 +11,7 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
+import type { Theme } from '../hooks/use-theme';
 
 // Register only what we need
 Chart.register(
@@ -30,11 +31,11 @@ interface ChartPanelProps {
   monthlyOpened?: Record<string, number>;
   monthlyClosed?: Record<string, number>;
   topRepos: Array<{ repo: string; active: number; merged: number; closed: number }>;
-  theme: 'light' | 'dark';
+  theme: Theme;
 }
 
 // Chart.js can't read CSS vars; map theme to explicit hex values
-function getChartColors(theme: 'light' | 'dark') {
+function getChartColors(theme: Theme) {
   if (theme === 'light') {
     return {
       green: '#16a34a',
@@ -67,8 +68,6 @@ function getLast12Months(records: Record<string, number>[]): string[] {
 }
 
 export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRepos, theme }: ChartPanelProps) {
-  const colors = getChartColors(theme);
-
   const lineCanvasRef = useRef<HTMLCanvasElement>(null);
   const barCanvasRef = useRef<HTMLCanvasElement>(null);
   const lineChartRef = useRef<Chart | null>(null);
@@ -79,7 +78,9 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
     const canvas = lineCanvasRef.current;
     if (!canvas) return;
 
+    const colors = getChartColors(theme);
     const scaleOpts = { ticks: { color: colors.textColor }, grid: { color: colors.gridColor } };
+    const legendOpts = { labels: { color: colors.textColor, boxWidth: 12 } };
     const months = getLast12Months([monthlyMerged, monthlyOpened ?? {}, monthlyClosed ?? {}]);
 
     const datasets = [];
@@ -121,7 +122,7 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { labels: { color: colors.textColor, boxWidth: 12 } } },
+        plugins: { legend: legendOpts },
         scales: {
           x: scaleOpts,
           y: { beginAtZero: true, ...scaleOpts },
@@ -133,14 +134,16 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       lineChartRef.current?.destroy();
       lineChartRef.current = null;
     };
-  }, [monthlyMerged, monthlyOpened, monthlyClosed, colors]);
+  }, [monthlyMerged, monthlyOpened, monthlyClosed, theme]);
 
   // Top repos bar chart
   useEffect(() => {
     const canvas = barCanvasRef.current;
     if (!canvas) return;
 
+    const colors = getChartColors(theme);
     const scaleOpts = { ticks: { color: colors.textColor }, grid: { color: colors.gridColor } };
+    const legendOpts = { labels: { color: colors.textColor, boxWidth: 12 } };
     const repos = topRepos.slice(0, 10);
     const labels = repos.map((r) => r.repo);
 
@@ -170,7 +173,7 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
         responsive: true,
         maintainAspectRatio: false,
         indexAxis: 'y',
-        plugins: { legend: { labels: { color: colors.textColor, boxWidth: 12 } } },
+        plugins: { legend: legendOpts },
         scales: {
           x: { stacked: true, beginAtZero: true, ...scaleOpts },
           y: { stacked: true, ...scaleOpts },
@@ -182,7 +185,7 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       barChartRef.current?.destroy();
       barChartRef.current = null;
     };
-  }, [topRepos, colors]);
+  }, [topRepos, theme]);
 
   return (
     <div class="chart-panel">

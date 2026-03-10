@@ -37,6 +37,7 @@ export function useTheme() {
         if (localStorage.getItem(STORAGE_KEY)) return;
       } catch (err) {
         console.warn('[useTheme] Could not read localStorage to check for user override:', err);
+        return; // Preserve potentially-existing user preference
       }
       setTheme(e.matches ? 'light' : 'dark');
     };

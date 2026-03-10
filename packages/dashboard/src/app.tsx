@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'preact/hooks';
 import { LocationProvider, useLocation } from 'preact-iso';
 import { useDashboard } from './hooks/use-dashboard';
-import { useTheme } from './hooks/use-theme';
+import { useTheme, type Theme } from './hooks/use-theme';
 import { StatsBar } from './components/stats-bar';
 import { FilterBar, type Filters } from './components/filter-bar';
 import { PRList } from './components/pr-list';
@@ -22,7 +22,7 @@ interface DashboardHeaderProps {
   refreshing: boolean;
   lastUpdated: number | null;
   onRefresh: () => void;
-  theme: 'light' | 'dark';
+  theme: Theme;
   onToggleTheme: () => void;
 }
 
