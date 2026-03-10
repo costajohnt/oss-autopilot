@@ -37,12 +37,12 @@ describe('formatDate', () => {
 });
 
 describe('statusColor', () => {
-  it('returns error color for needs_addressing status', () => {
-    expect(statusColor('needs_addressing')).toBe('var(--accent-error)');
+  it('returns red for needs_addressing status', () => {
+    expect(statusColor('needs_addressing')).toBe('var(--red)');
   });
 
-  it('returns info color for waiting_on_maintainer status', () => {
-    expect(statusColor('waiting_on_maintainer')).toBe('var(--accent-info)');
+  it('returns blue for waiting_on_maintainer status', () => {
+    expect(statusColor('waiting_on_maintainer')).toBe('var(--blue)');
   });
 
   it('returns muted color for unknown status', () => {
@@ -52,15 +52,15 @@ describe('statusColor', () => {
 
 describe('ciStatusColor', () => {
   it('returns green for passing', () => {
-    expect(ciStatusColor('passing')).toBe('var(--accent-open)');
+    expect(ciStatusColor('passing')).toBe('var(--green)');
   });
 
   it('returns red for failing', () => {
-    expect(ciStatusColor('failing')).toBe('var(--accent-error)');
+    expect(ciStatusColor('failing')).toBe('var(--red)');
   });
 
-  it('returns yellow for pending', () => {
-    expect(ciStatusColor('pending')).toBe('var(--accent-warning)');
+  it('returns amber for pending', () => {
+    expect(ciStatusColor('pending')).toBe('var(--amber)');
   });
 
   it('returns muted for unknown', () => {

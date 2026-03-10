@@ -25,13 +25,40 @@ function reviewLabel(decision: string): string {
 function reviewColor(decision: string): string {
   switch (decision) {
     case 'approved':
-      return 'var(--accent-open)';
+      return 'var(--green)';
     case 'changes_requested':
-      return 'var(--accent-error)';
+      return 'var(--red)';
     case 'review_required':
-      return 'var(--accent-warning)';
+      return 'var(--amber)';
     default:
       return 'var(--text-muted)';
+  }
+}
+
+/** Returns a CSS class for the colored dot indicator. */
+function ciDotClass(status: string): string {
+  switch (status) {
+    case 'passing':
+      return 'green';
+    case 'failing':
+      return 'red';
+    case 'pending':
+      return 'amber';
+    default:
+      return '';
+  }
+}
+
+function reviewDotClass(decision: string): string {
+  switch (decision) {
+    case 'approved':
+      return 'green';
+    case 'changes_requested':
+      return 'red';
+    case 'review_required':
+      return 'amber';
+    default:
+      return '';
   }
 }
 
@@ -77,8 +104,11 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         {/* CI Status */}
         <div class="pr-detail-field">
           <span class="pr-detail-field-label">CI Status</span>
-          <span class="pr-detail-field-value" style={{ color: ciStatusColor(pr.ciStatus) }}>
-            {pr.ciStatus.charAt(0).toUpperCase() + pr.ciStatus.slice(1)}
+          <span class="pr-detail-field-value">
+            {ciDotClass(pr.ciStatus) && <span class={`dot ${ciDotClass(pr.ciStatus)}`} />}
+            <span style={{ color: ciStatusColor(pr.ciStatus) }}>
+              {pr.ciStatus.charAt(0).toUpperCase() + pr.ciStatus.slice(1)}
+            </span>
           </span>
         </div>
 
@@ -102,8 +132,9 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         {/* Review Decision */}
         <div class="pr-detail-field">
           <span class="pr-detail-field-label">Review</span>
-          <span class="pr-detail-field-value" style={{ color: reviewColor(pr.reviewDecision) }}>
-            {reviewLabel(pr.reviewDecision)}
+          <span class="pr-detail-field-value">
+            {reviewDotClass(pr.reviewDecision) && <span class={`dot ${reviewDotClass(pr.reviewDecision)}`} />}
+            <span style={{ color: reviewColor(pr.reviewDecision) }}>{reviewLabel(pr.reviewDecision)}</span>
           </span>
         </div>
 
@@ -112,8 +143,11 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
           <div class="pr-detail-field">
             <span class="pr-detail-field-label">Maintainer Comment</span>
             <div class="pr-detail-comment">
-              <span class="pr-detail-comment-author">@{pr.lastMaintainerComment.author}</span>
-              <span class="pr-detail-comment-date">{formatDate(pr.lastMaintainerComment.createdAt)}</span>
+              <div class="pr-detail-comment-header">
+                <div class="pr-detail-comment-avatar" />
+                <span class="pr-detail-comment-author">@{pr.lastMaintainerComment.author}</span>
+                <span class="pr-detail-comment-date">&middot; {formatDate(pr.lastMaintainerComment.createdAt)}</span>
+              </div>
               <p class="pr-detail-comment-body">{truncate(pr.lastMaintainerComment.body, 200)}</p>
             </div>
           </div>
@@ -123,7 +157,7 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         {pr.hasIncompleteChecklist && pr.checklistStats && (
           <div class="pr-detail-field">
             <span class="pr-detail-field-label">Checklist</span>
-            <span class="pr-detail-field-value" style={{ color: 'var(--accent-warning)' }}>
+            <span class="pr-detail-field-value" style={{ color: 'var(--amber)' }}>
               {pr.checklistStats.checked}/{pr.checklistStats.total} checked
             </span>
           </div>
@@ -132,14 +166,19 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         {/* Days since activity */}
         <div class="pr-detail-field">
           <span class="pr-detail-field-label">Days Since Activity</span>
-          <span class="pr-detail-field-value">{pr.daysSinceActivity}</span>
+          <span class="pr-detail-field-value">
+            <span class="dot red" />
+            <span>
+              {pr.daysSinceActivity} {pr.daysSinceActivity === 1 ? 'day' : 'days'}
+            </span>
+          </span>
         </div>
 
         {/* Merge conflict */}
         {pr.hasMergeConflict && (
           <div class="pr-detail-field">
             <span class="pr-detail-field-label">Merge Conflict</span>
-            <span class="pr-detail-field-value" style={{ color: 'var(--accent-conflict)' }}>
+            <span class="pr-detail-field-value" style={{ color: 'var(--red)' }}>
               Yes
             </span>
           </div>

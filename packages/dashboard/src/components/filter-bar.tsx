@@ -11,6 +11,8 @@ interface FilterBarProps {
   onFilterChange: (filters: Filters) => void;
   repos: string[];
   statuses: string[];
+  totalCount?: number;
+  filteredCount?: number;
 }
 
 /** Map raw FetchedPRStatus values to human-readable labels. */
@@ -23,7 +25,7 @@ function statusLabel(status: string): string {
   return STATUS_LABELS[status as FetchedPRStatus] ?? status;
 }
 
-export function FilterBar({ filters, onFilterChange, repos, statuses }: FilterBarProps) {
+export function FilterBar({ filters, onFilterChange, repos, statuses, totalCount, filteredCount }: FilterBarProps) {
   return (
     <div class="filter-bar">
       <select
@@ -59,6 +61,12 @@ export function FilterBar({ filters, onFilterChange, repos, statuses }: FilterBa
         value={filters.search}
         onInput={(e) => onFilterChange({ ...filters, search: (e.target as HTMLInputElement).value })}
       />
+
+      {totalCount != null && filteredCount != null && (
+        <span class="filter-count">
+          Showing {filteredCount} of {totalCount} PRs
+        </span>
+      )}
     </div>
   );
 }

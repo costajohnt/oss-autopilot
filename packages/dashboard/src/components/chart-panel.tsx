@@ -32,14 +32,14 @@ interface ChartPanelProps {
   topRepos: Array<{ repo: string; active: number; merged: number; closed: number }>;
 }
 
-// Chart.js can't read CSS vars, so use hex values directly
+// Chart.js can't read CSS vars, so use hex values matching the new palette
 const COLORS = {
-  green: '#3fb950',
-  purple: '#a855f7',
-  red: '#f85149',
-  blue: '#58a6ff',
-  gridColor: 'rgba(48, 54, 61, 0.3)',
-  textColor: '#8b949e',
+  green: '#4ade80',
+  purple: '#c084fc',
+  red: '#fb7185',
+  blue: '#60a5fa',
+  gridColor: 'rgba(255, 255, 255, 0.06)',
+  textColor: '#94a3b8',
 };
 
 const SHARED_SCALE_OPTS = {

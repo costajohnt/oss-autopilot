@@ -173,7 +173,7 @@ describe('PRDetail', () => {
     const activityField = [...fields].find(
       (f) => f.querySelector('.pr-detail-field-label')?.textContent === 'Days Since Activity',
     );
-    expect(activityField?.querySelector('.pr-detail-field-value')?.textContent).toBe('12');
+    expect(activityField?.querySelector('.pr-detail-field-value')?.textContent).toBe('12 days');
   });
 
   it('renders embedded ActionBar', () => {

@@ -9,45 +9,17 @@ interface StatsBarProps {
 interface StatCardDef {
   label: string;
   value: string | number;
-  accentVar: string;
-  accentDimVar: string;
+  colorClass: string;
   onClick?: () => void;
 }
 
 export function StatsBar({ stats, onMergedClick, onClosedClick }: StatsBarProps) {
   const cards: StatCardDef[] = [
-    {
-      label: 'Active PRs',
-      value: stats.activePRs,
-      accentVar: 'var(--accent-open)',
-      accentDimVar: 'var(--accent-open-dim)',
-    },
-    {
-      label: 'Shelved PRs',
-      value: stats.shelvedPRs,
-      accentVar: 'var(--accent-info)',
-      accentDimVar: 'var(--accent-info-dim)',
-    },
-    {
-      label: 'Merged PRs',
-      value: stats.mergedPRs,
-      accentVar: 'var(--accent-merged)',
-      accentDimVar: 'var(--accent-merged-dim)',
-      onClick: onMergedClick,
-    },
-    {
-      label: 'Closed PRs',
-      value: stats.closedPRs,
-      accentVar: 'var(--accent-error)',
-      accentDimVar: 'var(--accent-error-dim)',
-      onClick: onClosedClick,
-    },
-    {
-      label: 'Merge Rate',
-      value: stats.mergeRate,
-      accentVar: 'var(--accent-warning)',
-      accentDimVar: 'var(--accent-warning-dim)',
-    },
+    { label: 'Active PRs', value: stats.activePRs, colorClass: 'green' },
+    { label: 'Shelved PRs', value: stats.shelvedPRs, colorClass: 'blue' },
+    { label: 'Merged PRs', value: stats.mergedPRs, colorClass: 'purple', onClick: onMergedClick },
+    { label: 'Closed PRs', value: stats.closedPRs, colorClass: 'red', onClick: onClosedClick },
+    { label: 'Merge Rate', value: stats.mergeRate, colorClass: 'amber' },
   ];
 
   return (
@@ -57,14 +29,11 @@ export function StatsBar({ stats, onMergedClick, onClosedClick }: StatsBarProps)
         return (
           <Tag
             key={card.label}
-            class={`stat-card${card.onClick ? ' stat-card--clickable' : ''}`}
-            style={{ borderLeftColor: card.accentVar, background: card.accentDimVar }}
+            class={`stat-card ${card.colorClass}${card.onClick ? ' stat-card--clickable' : ''}`}
             onClick={card.onClick}
             {...(card.onClick ? { type: 'button' as const } : {})}
           >
-            <span class="stat-value" style={{ color: card.accentVar }}>
-              {card.value}
-            </span>
+            <span class="stat-value">{card.value}</span>
             <span class="stat-label">{card.label}</span>
           </Tag>
         );

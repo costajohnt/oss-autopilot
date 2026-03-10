@@ -21,9 +21,9 @@ export function formatDate(iso: string): string {
 export function statusColor(status: FetchedPRStatus | string): string {
   switch (status) {
     case 'needs_addressing':
-      return 'var(--accent-error)';
+      return 'var(--red)';
     case 'waiting_on_maintainer':
-      return 'var(--accent-info)';
+      return 'var(--blue)';
     default:
       return 'var(--text-muted)';
   }
@@ -32,11 +32,11 @@ export function statusColor(status: FetchedPRStatus | string): string {
 export function ciStatusColor(status: string): string {
   switch (status) {
     case 'passing':
-      return 'var(--accent-open)';
+      return 'var(--green)';
     case 'failing':
-      return 'var(--accent-error)';
+      return 'var(--red)';
     case 'pending':
-      return 'var(--accent-warning)';
+      return 'var(--amber)';
     default:
       return 'var(--text-muted)';
   }

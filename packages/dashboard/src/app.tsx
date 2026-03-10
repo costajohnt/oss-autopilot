@@ -23,13 +23,28 @@ interface DashboardHeaderProps {
 function DashboardHeader({ stats, loading, refreshing, onRefresh }: DashboardHeaderProps) {
   return (
     <header class="dashboard-header">
-      <h1>OSS Autopilot</h1>
-      <span class="dashboard-subtitle">
-        {stats.activePRs} active PRs &middot; {stats.mergedPRs} merged &middot; {stats.mergeRate} merge rate
-      </span>
-      <button class="refresh-btn" onClick={onRefresh} disabled={loading || refreshing}>
-        {loading ? 'Refreshing...' : refreshing ? 'Updating...' : 'Refresh'}
-      </button>
+      <div class="header-left">
+        <h1>OSS Autopilot</h1>
+        <div class="header-stats">
+          <span>
+            <span class="val">{stats.activePRs}</span> active
+          </span>
+          <span class="header-pipe">|</span>
+          <span>
+            <span class="val">{stats.mergedPRs}</span> merged
+          </span>
+          <span class="header-pipe">|</span>
+          <span>
+            <span class="val">{stats.mergeRate}</span> merge rate
+          </span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="refresh-btn" onClick={onRefresh} disabled={loading || refreshing}>
+          {(loading || refreshing) && <span class="spinner" />}
+          {loading ? 'Refreshing...' : refreshing ? 'Updating...' : 'Refresh'}
+        </button>
+      </div>
     </header>
   );
 }
@@ -124,7 +139,14 @@ function AppContent() {
           <StatsBar stats={data.stats} onMergedClick={() => route('/merged')} onClosedClick={() => route('/closed')} />
         </div>
         <div class="animate-in delay-2">
-          <FilterBar filters={filters} onFilterChange={setFilters} repos={repos} statuses={statuses} />
+          <FilterBar
+            filters={filters}
+            onFilterChange={setFilters}
+            repos={repos}
+            statuses={statuses}
+            totalCount={data.activePRs.length}
+            filteredCount={filteredPRs.length}
+          />
         </div>
 
         <div class="dashboard-content animate-in delay-3">
