@@ -31,7 +31,8 @@ export function statusClass(status: FetchedPRStatus): string {
       return 'pr-row--waiting';
     default: {
       const _exhaustive: never = status;
-      return _exhaustive;
+      void _exhaustive;
+      return '';
     }
   }
 }
