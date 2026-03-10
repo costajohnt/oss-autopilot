@@ -1,10 +1,11 @@
 /**
  * Issue Discovery — orchestrates multi-phase issue search across GitHub.
  *
- * Delegates filtering, scoring, and vetting to focused modules (#356):
- * - issue-filtering.ts — spam detection, doc-only filtering, per-repo caps
- * - issue-scoring.ts  — viability scores, repo quality bonuses
- * - issue-vetting.ts  — individual issue checks (PRs, claims, health, guidelines)
+ * Delegates filtering, scoring, vetting, and search infrastructure to focused modules (#356, #621):
+ * - issue-filtering.ts  — spam detection, doc-only filtering, per-repo caps
+ * - issue-scoring.ts   — viability scores, repo quality bonuses
+ * - issue-vetting.ts   — individual issue checks (PRs, claims, health, guidelines)
+ * - search-phases.ts   — search helpers, caching, batched repo search
  */
 
 import * as fs from 'fs';
@@ -13,14 +14,22 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, getDataDir } from './utils.js';
-import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate, type IssueScope, SCOPE_LABELS } from './types.js';
+import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate, SCOPE_LABELS } from './types.js';
 import { ValidationError, errorMessage, getHttpStatusCode, isRateLimitError } from './errors.js';
 import { debug, info, warn } from './logger.js';
-import { getHttpCache, cachedTimeBased } from './http-cache.js';
-import { type GitHubSearchItem, isDocOnlyIssue, detectLabelFarmingRepos, applyPerRepoCap } from './issue-filtering.js';
+import { type GitHubSearchItem, isDocOnlyIssue, applyPerRepoCap } from './issue-filtering.js';
 import { IssueVetter } from './issue-vetting.js';
+import { analyzeRequirements as analyzeReqs } from './issue-eligibility.js';
 import { calculateViabilityScore as calcViabilityScore, type ViabilityScoreParams } from './issue-scoring.js';
 import { getTopicsForCategories } from './category-mapping.js';
+import {
+  buildLabelQuery,
+  buildEffectiveLabels,
+  interleaveArrays,
+  cachedSearchIssues,
+  filterVetAndScore,
+  searchInRepos,
+} from './search-phases.js';
 
 // Re-export everything from sub-modules for backward compatibility.
 // Existing consumers (tests, CLI commands) import from './issue-discovery.js'.
@@ -35,44 +44,12 @@ export {
   type GitHubSearchItem,
 } from './issue-filtering.js';
 export { calculateRepoQualityBonus, calculateViabilityScore, type ViabilityScoreParams } from './issue-scoring.js';
-export { type CheckResult } from './issue-vetting.js';
+export { buildEffectiveLabels, interleaveArrays } from './search-phases.js';
 // Re-export types that were previously defined here
 export type { SearchPriority, IssueCandidate, IssueScope } from './types.js';
 export { SCOPE_LABELS, ISSUE_SCOPES } from './types.js';
 
 const MODULE = 'issue-discovery';
-
-/** Build a GitHub Search API label filter from a list of labels. */
-function buildLabelQuery(labels: string[]): string {
-  if (labels.length === 0) return '';
-  if (labels.length === 1) return `label:"${labels[0]}"`;
-  return `(${labels.map((l) => `label:"${l}"`).join(' OR ')})`;
-}
-
-/** Resolve scope tiers into a flat label list, merged with custom labels. */
-export function buildEffectiveLabels(scopes: IssueScope[], customLabels: string[]): string[] {
-  const labels = new Set<string>();
-  for (const scope of scopes) {
-    for (const label of SCOPE_LABELS[scope] ?? []) labels.add(label);
-  }
-  for (const label of customLabels) labels.add(label);
-  return [...labels];
-}
-
-/** Round-robin interleave multiple arrays. */
-export function interleaveArrays<T>(arrays: T[][]): T[] {
-  const result: T[] = [];
-  const maxLen = Math.max(...arrays.map((a) => a.length), 0);
-  for (let i = 0; i < maxLen; i++) {
-    for (const arr of arrays) {
-      if (i < arr.length) result.push(arr[i]);
-    }
-  }
-  return result;
-}
-
-/** TTL for cached search API results (15 minutes). */
-const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
 
 export class IssueDiscovery {
   private octokit: Octokit;
@@ -88,24 +65,6 @@ export class IssueDiscovery {
     this.octokit = getOctokit(githubToken);
     this.stateManager = getStateManager();
     this.vetter = new IssueVetter(this.octokit, this.stateManager);
-  }
-
-  /**
-   * Wrap octokit.search.issuesAndPullRequests with time-based caching.
-   * Repeated identical queries within SEARCH_CACHE_TTL_MS return cached results
-   * without consuming GitHub API rate limit points.
-   */
-  private async cachedSearch(params: {
-    q: string;
-    sort: 'created' | 'updated' | 'comments' | 'reactions' | 'interactions';
-    order: 'asc' | 'desc';
-    per_page: number;
-  }): Promise<{ total_count: number; items: GitHubSearchItem[] }> {
-    const cacheKey = `search:${params.q}:${params.sort}:${params.order}:${params.per_page}`;
-    return cachedTimeBased(getHttpCache(), cacheKey, SEARCH_CACHE_TTL_MS, async () => {
-      const { data } = await this.octokit.search.issuesAndPullRequests(params);
-      return data;
-    });
   }
 
   /**
@@ -181,63 +140,6 @@ export class IssueDiscovery {
       return this.fetchStarredRepos();
     }
     return this.stateManager.getStarredRepos();
-  }
-
-  /**
-   * Shared pipeline for Phases 2 and 3: spam-filter, repo-exclusion, vetting, and star-count filter.
-   * Extracts the common logic so each phase only needs to supply search results and context.
-   */
-  private async filterVetAndScore(
-    items: GitHubSearchItem[],
-    filterIssues: (items: GitHubSearchItem[]) => GitHubSearchItem[],
-    excludedRepoSets: Set<string>[],
-    remainingNeeded: number,
-    minStars: number,
-    phaseLabel: string,
-  ): Promise<{ candidates: IssueCandidate[]; allVetFailed: boolean; rateLimitHit: boolean }> {
-    const spamRepos = detectLabelFarmingRepos(items);
-    if (spamRepos.size > 0) {
-      const spamCount = items.filter((i) => spamRepos.has(i.repository_url.split('/').slice(-2).join('/'))).length;
-      debug(
-        MODULE,
-        `[SPAM_FILTER] Filtered ${spamCount} issues from ${spamRepos.size} label-farming repos: ${[...spamRepos].join(', ')}`,
-      );
-    }
-
-    const itemsToVet = filterIssues(items)
-      .filter((item) => {
-        const repoFullName = item.repository_url.split('/').slice(-2).join('/');
-        if (spamRepos.has(repoFullName)) return false;
-        return excludedRepoSets.every((s) => !s.has(repoFullName));
-      })
-      .slice(0, remainingNeeded * 2);
-
-    if (itemsToVet.length === 0) {
-      debug(MODULE, `[${phaseLabel}] All ${items.length} items filtered before vetting`);
-      return { candidates: [], allVetFailed: false, rateLimitHit: false };
-    }
-
-    const {
-      candidates: results,
-      allFailed: allVetFailed,
-      rateLimitHit,
-    } = await this.vetter.vetIssuesParallel(
-      itemsToVet.map((i) => i.html_url),
-      remainingNeeded,
-      'normal',
-    );
-
-    const starFiltered = results.filter((c) => {
-      if (c.projectHealth.checkFailed) return true;
-      const stars = c.projectHealth.stargazersCount ?? 0;
-      return stars >= minStars;
-    });
-    const starFilteredCount = results.length - starFiltered.length;
-    if (starFilteredCount > 0) {
-      debug(MODULE, `[STAR_FILTER] Filtered ${starFilteredCount} ${phaseLabel} candidates below ${minStars} stars`);
-    }
-
-    return { candidates: starFiltered, allVetFailed, rateLimitHit };
   }
 
   /**
@@ -342,8 +244,6 @@ export class IssueDiscovery {
     };
 
     // Phase 0: Search repos where user has merged PRs + open-PR repos (highest merge probability)
-    // Uses broader query — established contributors don't need "good first issue" labels
-    // Merged-PR repos come first, then open-PR repos fill remaining slots (capped at 10 total)
     const phase0Repos = [...mergedPRRepos, ...openPRRepos.filter((r) => !mergedPRRepoSet.has(r))].slice(0, 10);
     const phase0RepoSet = new Set(phase0Repos);
 
@@ -364,7 +264,15 @@ export class IssueDiscovery {
             candidates: mergedCandidates,
             allBatchesFailed,
             rateLimitHit,
-          } = await this.searchInRepos(mergedPhase0Repos, establishedQuery, remainingNeeded, 'merged_pr', filterIssues);
+          } = await searchInRepos(
+            this.octokit,
+            this.vetter,
+            mergedPhase0Repos,
+            establishedQuery,
+            remainingNeeded,
+            'merged_pr',
+            filterIssues,
+          );
           allCandidates.push(...mergedCandidates);
           if (allBatchesFailed) {
             phase0Error = 'All merged-PR repo batches failed';
@@ -385,7 +293,15 @@ export class IssueDiscovery {
             candidates: openCandidates,
             allBatchesFailed,
             rateLimitHit,
-          } = await this.searchInRepos(openPhase0Repos, establishedQuery, remainingNeeded, 'starred', filterIssues);
+          } = await searchInRepos(
+            this.octokit,
+            this.vetter,
+            openPhase0Repos,
+            establishedQuery,
+            remainingNeeded,
+            'starred',
+            filterIssues,
+          );
           allCandidates.push(...openCandidates);
           if (allBatchesFailed) {
             const msg = 'All open-PR repo batches failed';
@@ -414,7 +330,7 @@ export class IssueDiscovery {
         const orgQuery = `${baseQuery} (${orgRepoFilter})`;
 
         try {
-          const data = await this.cachedSearch({
+          const data = await cachedSearchIssues(this.octokit, {
             q: orgQuery,
             sort: 'created',
             order: 'desc',
@@ -466,7 +382,15 @@ export class IssueDiscovery {
             candidates: starredCandidates,
             allBatchesFailed,
             rateLimitHit,
-          } = await this.searchInRepos(reposToSearch.slice(0, 10), baseQuery, remainingNeeded, 'starred', filterIssues);
+          } = await searchInRepos(
+            this.octokit,
+            this.vetter,
+            reposToSearch.slice(0, 10),
+            baseQuery,
+            remainingNeeded,
+            'starred',
+            filterIssues,
+          );
           allCandidates.push(...starredCandidates);
           if (allBatchesFailed) {
             phase1Error = 'All starred repo batches failed';
@@ -490,7 +414,6 @@ export class IssueDiscovery {
       const seenRepos = new Set(allCandidates.map((c) => c.issue.repo));
 
       // Build per-tier label groups. Multi-tier when 2+ scopes; single-tier otherwise.
-      // Both paths use the same loop — interleaving a single-element array is a no-op.
       const tierLabelGroups: { tier: string; tierLabels: string[] }[] = [];
       if (scopes && scopes.length > 1) {
         for (const scope of scopes) {
@@ -520,7 +443,7 @@ export class IssueDiscovery {
           .trim();
 
         try {
-          const data = await this.cachedSearch({
+          const data = await cachedSearchIssues(this.octokit, {
             q: tierQuery,
             sort: 'created',
             order: 'desc',
@@ -533,7 +456,8 @@ export class IssueDiscovery {
             candidates: tierCandidates,
             allVetFailed,
             rateLimitHit: vetRateLimitHit,
-          } = await this.filterVetAndScore(
+          } = await filterVetAndScore(
+            this.vetter,
             data.items,
             filterIssues,
             [phase0RepoSet, starredRepoSet, seenRepos],
@@ -572,9 +496,6 @@ export class IssueDiscovery {
     }
 
     // Phase 3: Actively maintained repos (#349)
-    // Searches the "long tail" of well-maintained repos (50+ stars, recently pushed,
-    // not archived) that Phase 2 may miss because they aren't trending or pre-filtered.
-    // Uses label-free query to cast a wider net focused on repo health.
     let phase3Error: string | null = null;
     if (allCandidates.length < maxResults) {
       info(MODULE, 'Phase 3: Searching actively maintained repos...');
@@ -582,9 +503,6 @@ export class IssueDiscovery {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const pushedSince = thirtyDaysAgo.toISOString().split('T')[0];
-      // When user has category preferences, add a single topic filter to focus on relevant repos.
-      // GitHub Search API AND-joins multiple topic: qualifiers, which is overly restrictive,
-      // so we pick just the first topic to nudge results without eliminating valid matches.
       const categoryTopics = getTopicsForCategories(config.projectCategories ?? []);
       const topicQuery = categoryTopics.length > 0 ? `topic:${categoryTopics[0]}` : '';
       const phase3Query =
@@ -593,7 +511,7 @@ export class IssueDiscovery {
           .trim();
 
       try {
-        const data = await this.cachedSearch({
+        const data = await cachedSearchIssues(this.octokit, {
           q: phase3Query,
           sort: 'updated',
           order: 'desc',
@@ -610,7 +528,8 @@ export class IssueDiscovery {
           candidates: starFiltered,
           allVetFailed,
           rateLimitHit: vetRateLimitHit,
-        } = await this.filterVetAndScore(
+        } = await filterVetAndScore(
+          this.vetter,
           data.items,
           filterIssues,
           [phase0RepoSet, starredRepoSet, seenRepos],
@@ -647,8 +566,6 @@ export class IssueDiscovery {
       ].filter(Boolean);
       const details = phaseErrors.length > 0 ? ` ${phaseErrors.join('. ')}.` : '';
 
-      // When rate limits caused zero results, return empty array with warning
-      // instead of throwing, so callers can handle it gracefully
       if (rateLimitHitDuringSearch) {
         this.rateLimitWarning =
           `Search returned no results due to GitHub API rate limits.${details} ` +
@@ -663,8 +580,6 @@ export class IssueDiscovery {
     }
 
     // Surface rate limit warning even with partial results (#100)
-    // This overwrites the pre-flight "quota low" warning (speculative) with a more
-    // informative "results incomplete" warning (factual) when rate limits actually hit.
     if (rateLimitHitDuringSearch) {
       this.rateLimitWarning =
         `Search results may be incomplete: GitHub API rate limits were hit during search. ` +
@@ -674,17 +589,14 @@ export class IssueDiscovery {
 
     // Sort by priority first, then by recommendation, then by viability score
     allCandidates.sort((a, b) => {
-      // Priority order: merged_pr > preferred_org > starred > normal
       const priorityOrder: Record<SearchPriority, number> = { merged_pr: 0, preferred_org: 1, starred: 2, normal: 3 };
       const priorityDiff = priorityOrder[a.searchPriority] - priorityOrder[b.searchPriority];
       if (priorityDiff !== 0) return priorityDiff;
 
-      // Then by recommendation
       const recommendationOrder = { approve: 0, needs_review: 1, skip: 2 };
       const recDiff = recommendationOrder[a.recommendation] - recommendationOrder[b.recommendation];
       if (recDiff !== 0) return recDiff;
 
-      // Then by viability score (highest first)
       return b.viabilityScore - a.viabilityScore;
     });
 
@@ -695,92 +607,6 @@ export class IssueDiscovery {
   }
 
   /**
-   * Search for issues within specific repos using batched queries.
-   *
-   * To avoid GitHub's secondary rate limit (30 requests/minute), we batch
-   * multiple repos into a single search query using OR syntax:
-   *   repo:owner1/repo1 OR repo:owner2/repo2 OR repo:owner3/repo3
-   *
-   * This reduces API calls from N (one per repo) to ceil(N/BATCH_SIZE).
-   */
-  private async searchInRepos(
-    repos: string[],
-    baseQuery: string,
-    maxResults: number,
-    priority: SearchPriority,
-    filterFn: (items: GitHubSearchItem[]) => GitHubSearchItem[],
-  ): Promise<{ candidates: IssueCandidate[]; allBatchesFailed: boolean; rateLimitHit: boolean }> {
-    const candidates: IssueCandidate[] = [];
-
-    // Batch repos to reduce API calls.
-    // GitHub search query has a max length (~256 chars for query part).
-    // Each "repo:owner/repo" is ~20-40 chars, plus " OR " (4 chars).
-    // Using 5 repos per batch stays well under the limit.
-    const BATCH_SIZE = 5;
-    const batches = this.batchRepos(repos, BATCH_SIZE);
-    let failedBatches = 0;
-    let rateLimitFailures = 0;
-
-    for (const batch of batches) {
-      if (candidates.length >= maxResults) break;
-
-      try {
-        // Build repo filter: (repo:a OR repo:b OR repo:c)
-        const repoFilter = batch.map((r) => `repo:${r}`).join(' OR ');
-        const batchQuery = `${baseQuery} (${repoFilter})`;
-
-        const data = await this.cachedSearch({
-          q: batchQuery,
-          sort: 'created',
-          order: 'desc',
-          per_page: Math.min(30, (maxResults - candidates.length) * 3),
-        });
-
-        if (data.items.length > 0) {
-          const filtered = filterFn(data.items);
-          const remainingNeeded = maxResults - candidates.length;
-          const { candidates: vetted } = await this.vetter.vetIssuesParallel(
-            filtered.slice(0, remainingNeeded * 2).map((i) => i.html_url),
-            remainingNeeded,
-            priority,
-          );
-          candidates.push(...vetted);
-        }
-      } catch (error) {
-        failedBatches++;
-        if (isRateLimitError(error)) {
-          rateLimitFailures++;
-        }
-        const batchRepos = batch.join(', ');
-        warn(MODULE, `Error searching issues in batch [${batchRepos}]:`, errorMessage(error));
-      }
-    }
-
-    const allBatchesFailed = failedBatches === batches.length && batches.length > 0;
-    const rateLimitHit = rateLimitFailures > 0;
-    if (allBatchesFailed) {
-      warn(
-        MODULE,
-        `All ${batches.length} batch(es) failed for ${priority} phase. ` +
-          `This may indicate a systemic issue (rate limit, auth, network).`,
-      );
-    }
-
-    return { candidates, allBatchesFailed, rateLimitHit };
-  }
-
-  /**
-   * Split repos into batches of the specified size.
-   */
-  private batchRepos(repos: string[], batchSize: number): string[][] {
-    const batches: string[][] = [];
-    for (let i = 0; i < repos.length; i += batchSize) {
-      batches.push(repos.slice(i, i + batchSize));
-    }
-    return batches;
-  }
-
-  /**
    * Vet a specific issue (delegates to IssueVetter).
    */
   async vetIssue(issueUrl: string): Promise<IssueCandidate> {
@@ -788,11 +614,11 @@ export class IssueDiscovery {
   }
 
   /**
-   * Analyze issue requirements for clarity (delegates to IssueVetter).
+   * Analyze issue requirements for clarity (delegates to issue-eligibility).
    * Kept on class for backward compatibility.
    */
   analyzeRequirements(body: string): boolean {
-    return this.vetter.analyzeRequirements(body);
+    return analyzeReqs(body);
   }
 
   /**
@@ -814,9 +640,6 @@ export class IssueDiscovery {
     const outputDir = getDataDir();
     const outputFile = path.join(outputDir, 'found-issues.md');
 
-    // Directory is created by getDataDir() if needed
-
-    // Generate markdown content
     const timestamp = new Date().toISOString();
     let content = `# Found Issues\n\n`;
     content += `> Generated at: ${timestamp}\n\n`;
