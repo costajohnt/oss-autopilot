@@ -243,10 +243,8 @@ describe('runClaim', () => {
       issues: { createComment: mockCreateComment },
     } as any);
     const mockAddIssue = vi.fn();
-    const mockSave = vi.fn();
     mockGetStateManager.mockReturnValue({
       addIssue: mockAddIssue,
-      save: mockSave,
     } as any);
 
     const result = await runClaim({ issueUrl: TEST_ISSUE_URL });
@@ -260,7 +258,6 @@ describe('runClaim', () => {
         status: 'claimed',
       }),
     );
-    expect(mockSave).toHaveBeenCalled();
     expect(result).toEqual({
       commentUrl: 'https://github.com/owner/repo/issues/10#issuecomment-1',
       issueUrl: TEST_ISSUE_URL,

@@ -159,6 +159,7 @@ export function makeStateManagerMock(
     getStats: () => stats,
     isSetupComplete: () => state.config.setupComplete,
     save: () => {},
+    batch: (fn: () => void) => fn(),
     markSetupComplete: () => {},
     initializeWithDefaults: () => {},
     reloadIfChanged: () => false,

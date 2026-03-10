@@ -29,12 +29,11 @@ export async function runShelve(options: { prUrl: string }): Promise<ShelveOutpu
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');
 
   const stateManager = getStateManager();
-  const added = stateManager.shelvePR(options.prUrl);
-  const clearedOverride = stateManager.clearStatusOverride(options.prUrl);
-
-  if (added || clearedOverride) {
-    stateManager.save();
-  }
+  let added = false;
+  stateManager.batch(() => {
+    added = stateManager.shelvePR(options.prUrl);
+    stateManager.clearStatusOverride(options.prUrl);
+  });
 
   return { shelved: added, url: options.prUrl };
 }
@@ -44,12 +43,11 @@ export async function runUnshelve(options: { prUrl: string }): Promise<UnshelveO
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');
 
   const stateManager = getStateManager();
-  const removed = stateManager.unshelvePR(options.prUrl);
-  const clearedOverride = stateManager.clearStatusOverride(options.prUrl);
-
-  if (removed || clearedOverride) {
-    stateManager.save();
-  }
+  let removed = false;
+  stateManager.batch(() => {
+    removed = stateManager.unshelvePR(options.prUrl);
+    stateManager.clearStatusOverride(options.prUrl);
+  });
 
   return { unshelved: removed, url: options.prUrl };
 }

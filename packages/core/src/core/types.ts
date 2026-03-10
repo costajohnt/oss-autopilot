@@ -612,6 +612,9 @@ export interface AgentConfig {
   /** Manual status overrides for PRs. Maps PR URL to override metadata. Auto-clears when the PR has new activity. */
   statusOverrides?: Record<string, StatusOverride>;
 
+  /** Path to the user's curated issue list file. Replaces config.md as the primary source for detectIssueList(). */
+  issueListPath?: string;
+
   /** Project categories the user is interested in (e.g., devtools, nonprofit). Used to prioritize search results. */
   projectCategories?: ProjectCategory[];
 

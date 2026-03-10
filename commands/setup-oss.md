@@ -158,7 +158,7 @@ Map the answer to a config value: "Yes" → `true`, "No" → `false`, "Ask me ea
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set squashByDefault=VALUE --json
 ```
 
-This sets the global `squashByDefault` setting. Per-repo overrides can be added later in `config.md` frontmatter under `repoOverrides`.
+This sets the global `squashByDefault` setting.
 
 ## Step 4-CLI: Verify GitHub Access
 
@@ -219,12 +219,7 @@ Show summary:
 - **Enhanced code review**: Install the `pr-review-toolkit` plugin for parallel specialized code review (5 agents instead of 1). Search for it in the plugin marketplace. The built-in pre-commit reviewer works without it.
 ```
 
-**Note:** The `squashByDefault` and `repoOverrides` settings are stored in the config frontmatter. Per-repo squash overrides can be added manually:
-```yaml
-repoOverrides:
-  some-org/some-repo:
-    squash: false
-```
+**Note:** The `squashByDefault` setting is stored in `~/.oss-autopilot/state.json` config and can be changed via `config squashByDefault VALUE` or `setup --set squashByDefault=VALUE`.
 
 ---
 
@@ -342,7 +337,7 @@ If a path is provided, try to read it to verify it exists. If it doesn't exist, 
 - "Should PRs be squashed into a single commit before marking ready for review?"
 - Options: "Yes, always squash (Recommended)", "No, keep individual commits", "Ask me each time"
 
-This sets the global `squashByDefault` setting. Per-repo overrides can be added later in `config.md` frontmatter under `repoOverrides`.
+This sets the global `squashByDefault` setting.
 
 ## Step 5: Verify GitHub Access
 
@@ -391,7 +386,6 @@ labels:
   - help wanted
 issueListPath: PATH_OR_EMPTY
 squashByDefault: true
-repoOverrides: {}
 githubAccess: gh|mcp
 setupComplete: true
 lastUpdated: YYYY-MM-DD

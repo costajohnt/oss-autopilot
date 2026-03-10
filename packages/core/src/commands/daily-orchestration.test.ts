@@ -81,6 +81,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       getIssueDismissedAt: mockGetIssueDismissedAt,
       undismissIssue: mockUndismissIssue,
       getStatusOverride: mockGetStatusOverride,
+      batch: (fn: () => void) => fn(),
     })),
     requireGitHubToken: vi.fn(() => 'test-token'),
     formatRelativeTime: vi.fn(() => '2 days ago'),
@@ -96,6 +97,7 @@ vi.mock('../core/state.js', () => ({
     getState: mockGetState,
     getStatusOverride: mockGetStatusOverride,
     save: mockSave,
+    batch: (fn: () => void) => fn(),
   })),
 }));
 
@@ -209,6 +211,12 @@ beforeEach(() => {
   mockUpdateRepoScore.mockImplementation(() => {});
   mockAddTrustedProject.mockImplementation(() => {});
   mockSave.mockImplementation(() => {});
+  // setLastDigest must update the mock state so partitionPRs can read it back
+  mockSetLastDigest.mockImplementation((digest: DailyDigest) => {
+    const state = mockGetState();
+    state.lastDigest = digest;
+    state.lastDigestAt = digest.generatedAt;
+  });
 });
 
 afterEach(() => {
@@ -271,9 +279,11 @@ describe('executeDailyCheck()', () => {
     expect(calledRepos).toContain('owner/repo-b');
   });
 
-  it('saves state after the check', async () => {
+  it('calls batch to persist state after partitioning', async () => {
     await executeDailyCheck('test-token');
-    expect(mockSave).toHaveBeenCalled();
+    // State persistence is handled by batch() + autoSave() inside mutations
+    // Verify the key mutation was called (setLastDigest)
+    expect(mockSetLastDigest).toHaveBeenCalled();
   });
 
   it('calls setLastDigest to persist digest in state', async () => {

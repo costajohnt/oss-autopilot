@@ -681,7 +681,6 @@ describe('dashboard-server', () => {
         'https://github.com/owner/repo/issues/42',
         expect.any(String),
       );
-      expect(mockStateManager.save).toHaveBeenCalled();
     });
   });
 

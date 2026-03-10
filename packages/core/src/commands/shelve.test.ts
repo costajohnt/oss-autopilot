@@ -45,7 +45,6 @@ const mockGetStateManager = vi.mocked(getStateManager);
 const TEST_PR_URL = 'https://github.com/owner/repo/pull/1';
 
 describe('runShelve', () => {
-  const mockSave = vi.fn();
   const mockShelvePR = vi.fn();
   const mockClearStatusOverride = vi.fn();
 
@@ -54,40 +53,62 @@ describe('runShelve', () => {
     mockGetStateManager.mockReturnValue({
       shelvePR: mockShelvePR,
       clearStatusOverride: mockClearStatusOverride,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
   });
 
-  it('should shelve a PR and save state', async () => {
+  it('should shelve a PR and clear status override', async () => {
     mockShelvePR.mockReturnValue(true);
     const result = await runShelve({ prUrl: TEST_PR_URL });
 
     expect(mockShelvePR).toHaveBeenCalledWith(TEST_PR_URL);
-    expect(mockSave).toHaveBeenCalled();
+    expect(mockClearStatusOverride).toHaveBeenCalledWith(TEST_PR_URL);
     expect(result).toEqual({ shelved: true, url: TEST_PR_URL });
   });
 
-  it('should not save state when PR is already shelved and no override', async () => {
+  it('should report not shelved when PR is already shelved', async () => {
     mockShelvePR.mockReturnValue(false);
     mockClearStatusOverride.mockReturnValue(false);
     const result = await runShelve({ prUrl: TEST_PR_URL });
 
-    expect(mockSave).not.toHaveBeenCalled();
     expect(result).toEqual({ shelved: false, url: TEST_PR_URL });
   });
 
-  it('should save state when already shelved but override was cleared', async () => {
+  it('should still clear override when already shelved', async () => {
     mockShelvePR.mockReturnValue(false);
     mockClearStatusOverride.mockReturnValue(true);
     const result = await runShelve({ prUrl: TEST_PR_URL });
 
-    expect(mockSave).toHaveBeenCalled();
+    expect(mockClearStatusOverride).toHaveBeenCalledWith(TEST_PR_URL);
     expect(result).toEqual({ shelved: false, url: TEST_PR_URL });
+  });
+
+  it('should reject invalid URLs', async () => {
+    await expect(runShelve({ prUrl: 'not-a-url' })).rejects.toThrow();
+  });
+
+  it('should reject non-PR GitHub URLs', async () => {
+    await expect(runShelve({ prUrl: 'https://github.com/owner/repo/issues/1' })).rejects.toThrow();
+  });
+
+  it('should reject empty URLs', async () => {
+    await expect(runShelve({ prUrl: '' })).rejects.toThrow();
+  });
+
+  it('should reject GitHub URLs with trailing slash', async () => {
+    await expect(runShelve({ prUrl: 'https://github.com/owner/repo/pull/123/' })).rejects.toThrow();
+  });
+
+  it('should reject GitHub URLs with query parameters', async () => {
+    await expect(runShelve({ prUrl: 'https://github.com/owner/repo/pull/123?diff=split' })).rejects.toThrow();
+  });
+
+  it('should reject GitHub URLs with extra path segments', async () => {
+    await expect(runShelve({ prUrl: 'https://github.com/owner/repo/pull/123/files' })).rejects.toThrow();
   });
 });
 
 describe('runUnshelve', () => {
-  const mockSave = vi.fn();
   const mockUnshelvePR = vi.fn();
   const mockClearStatusOverride = vi.fn();
 
@@ -96,34 +117,45 @@ describe('runUnshelve', () => {
     mockGetStateManager.mockReturnValue({
       unshelvePR: mockUnshelvePR,
       clearStatusOverride: mockClearStatusOverride,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
   });
 
-  it('should unshelve a PR and save state', async () => {
+  it('should unshelve a PR and clear status override', async () => {
     mockUnshelvePR.mockReturnValue(true);
     const result = await runUnshelve({ prUrl: TEST_PR_URL });
 
     expect(mockUnshelvePR).toHaveBeenCalledWith(TEST_PR_URL);
-    expect(mockSave).toHaveBeenCalled();
+    expect(mockClearStatusOverride).toHaveBeenCalledWith(TEST_PR_URL);
     expect(result).toEqual({ unshelved: true, url: TEST_PR_URL });
   });
 
-  it('should not save state when PR was not shelved and no override', async () => {
+  it('should report not unshelved when PR was not shelved', async () => {
     mockUnshelvePR.mockReturnValue(false);
     mockClearStatusOverride.mockReturnValue(false);
     const result = await runUnshelve({ prUrl: TEST_PR_URL });
 
-    expect(mockSave).not.toHaveBeenCalled();
     expect(result).toEqual({ unshelved: false, url: TEST_PR_URL });
   });
 
-  it('should save state when not shelved but override was cleared', async () => {
+  it('should still clear override when not shelved', async () => {
     mockUnshelvePR.mockReturnValue(false);
     mockClearStatusOverride.mockReturnValue(true);
     const result = await runUnshelve({ prUrl: TEST_PR_URL });
 
-    expect(mockSave).toHaveBeenCalled();
+    expect(mockClearStatusOverride).toHaveBeenCalledWith(TEST_PR_URL);
     expect(result).toEqual({ unshelved: false, url: TEST_PR_URL });
+  });
+
+  it('should reject invalid URLs', async () => {
+    await expect(runUnshelve({ prUrl: 'not-a-url' })).rejects.toThrow();
+  });
+
+  it('should reject non-PR GitHub URLs', async () => {
+    await expect(runUnshelve({ prUrl: 'https://github.com/owner/repo/issues/1' })).rejects.toThrow();
+  });
+
+  it('should reject empty URLs', async () => {
+    await expect(runUnshelve({ prUrl: '' })).rejects.toThrow();
   });
 });

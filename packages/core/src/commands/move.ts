@@ -36,15 +36,17 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
       // Use current time — the CLI doesn't have cached PR data. The override
       // will auto-clear on the next daily run if the PR has new activity after this.
       const lastActivityAt = new Date().toISOString();
-      stateManager.setStatusOverride(options.prUrl, status, lastActivityAt);
-      stateManager.unshelvePR(options.prUrl);
-      stateManager.save();
+      stateManager.batch(() => {
+        stateManager.setStatusOverride(options.prUrl, status, lastActivityAt);
+        stateManager.unshelvePR(options.prUrl);
+      });
       return { url: options.prUrl, target, description: `Moved to ${label}` };
     }
     case 'shelved': {
-      stateManager.shelvePR(options.prUrl);
-      stateManager.clearStatusOverride(options.prUrl);
-      stateManager.save();
+      stateManager.batch(() => {
+        stateManager.shelvePR(options.prUrl);
+        stateManager.clearStatusOverride(options.prUrl);
+      });
       return {
         url: options.prUrl,
         target,
@@ -52,11 +54,10 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
       };
     }
     case 'auto': {
-      const clearedOverride = stateManager.clearStatusOverride(options.prUrl);
-      const unshelved = stateManager.unshelvePR(options.prUrl);
-      if (clearedOverride || unshelved) {
-        stateManager.save();
-      }
+      stateManager.batch(() => {
+        stateManager.clearStatusOverride(options.prUrl);
+        stateManager.unshelvePR(options.prUrl);
+      });
       return {
         url: options.prUrl,
         target,

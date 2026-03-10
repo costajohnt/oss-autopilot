@@ -2250,3 +2250,133 @@ describe('StateManager reloadIfChanged', () => {
     expect(() => sm.reloadIfChanged()).not.toThrow();
   });
 });
+
+describe('batch and auto-save', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-batch-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('should auto-save to disk on a single mutation', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const sm = new StateManager(false);
+    sm.updateConfig({ githubUsername: 'alice' });
+
+    // auto-save should have persisted the change
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(written.config.githubUsername).toBe('alice');
+  });
+
+  it('should defer save until batch completes (single save)', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const sm = new StateManager(false);
+
+    sm.batch(() => {
+      sm.updateConfig({ githubUsername: 'bob' });
+      sm.updateConfig({ maxActivePRs: 3 });
+      sm.updateConfig({ languages: ['rust'] });
+
+      // Mid-batch: file should not yet reflect all changes (or may not exist at all)
+      // We test the final result after batch
+    });
+
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(written.config.githubUsername).toBe('bob');
+    expect(written.config.maxActivePRs).toBe(3);
+    expect(written.config.languages).toEqual(['rust']);
+  });
+
+  it('should flatten nested batch() calls — only outermost saves', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const sm = new StateManager(false);
+
+    const saveSpy = vi.spyOn(sm, 'save');
+
+    sm.batch(() => {
+      sm.updateConfig({ githubUsername: 'carol' });
+      sm.batch(() => {
+        sm.updateConfig({ maxActivePRs: 7 });
+      });
+      sm.updateConfig({ languages: ['go'] });
+    });
+
+    // save() should be called exactly once (by the outermost batch)
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(written.config.githubUsername).toBe('carol');
+    expect(written.config.maxActivePRs).toBe(7);
+    saveSpy.mockRestore();
+  });
+
+  it('should not persist partial state when inner function throws', () => {
+    const sm = new StateManager(false);
+    const saveSpy = vi.spyOn(sm, 'save');
+
+    expect(() =>
+      sm.batch(() => {
+        sm.updateConfig({ githubUsername: 'dave' });
+        throw new Error('boom');
+      }),
+    ).toThrow('boom');
+
+    // save() is in the try block, so it's skipped on throw — partial state not persisted
+    expect(saveSpy).not.toHaveBeenCalled();
+    // In-memory state IS mutated (mutations happened before throw)
+    expect(sm.getState().config.githubUsername).toBe('dave');
+    saveSpy.mockRestore();
+  });
+
+  it('should not save when batch has no mutations', () => {
+    const sm = new StateManager(false);
+    const saveSpy = vi.spyOn(sm, 'save');
+
+    sm.batch(() => {
+      // no mutations
+    });
+
+    expect(saveSpy).not.toHaveBeenCalled();
+    saveSpy.mockRestore();
+  });
+
+  it('should not auto-save boolean methods when no actual change (e.g. shelvePR twice)', () => {
+    const sm = new StateManager(false);
+    const saveSpy = vi.spyOn(sm, 'save');
+
+    const url = 'https://github.com/owner/repo/pull/1';
+    sm.shelvePR(url); // first time: actual change → save
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+
+    saveSpy.mockClear();
+    sm.shelvePR(url); // second time: no change → no save
+    expect(saveSpy).not.toHaveBeenCalled();
+
+    saveSpy.mockRestore();
+  });
+
+  it('should auto-save on in-memory mode as a no-op (no crash)', () => {
+    const sm = new StateManager(true);
+    // In-memory save() is a no-op — just ensure no error
+    expect(() => sm.updateConfig({ githubUsername: 'test' })).not.toThrow();
+    expect(sm.getState().config.githubUsername).toBe('test');
+  });
+});
+
+describe('issueListPath in config', () => {
+  it('should store and retrieve issueListPath via updateConfig', () => {
+    const sm = new StateManager(true);
+    sm.updateConfig({ issueListPath: '/path/to/issues.md' });
+    expect(sm.getState().config.issueListPath).toBe('/path/to/issues.md');
+  });
+
+  it('should clear issueListPath by setting to undefined', () => {
+    const sm = new StateManager(true);
+    sm.updateConfig({ issueListPath: '/path/to/issues.md' });
+    sm.updateConfig({ issueListPath: undefined });
+    expect(sm.getState().config.issueListPath).toBeUndefined();
+  });
+});

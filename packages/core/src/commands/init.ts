@@ -17,7 +17,6 @@ export async function runInit(options: { username: string }): Promise<InitOutput
 
   // Set username in config
   stateManager.updateConfig({ githubUsername: options.username });
-  stateManager.save();
 
   return {
     username: options.username,

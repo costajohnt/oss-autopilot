@@ -33,7 +33,6 @@ const DEFAULT_CONFIG = {
 };
 
 describe('runSetup', () => {
-  const mockSave = vi.fn();
   const mockUpdateConfig = vi.fn();
   const mockMarkSetupComplete = vi.fn();
 
@@ -43,7 +42,7 @@ describe('runSetup', () => {
       getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG } }),
       updateConfig: mockUpdateConfig,
       markSetupComplete: mockMarkSetupComplete,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
   });
 
@@ -65,7 +64,7 @@ describe('runSetup', () => {
     mockGetStateManager.mockReturnValue({
       getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, setupComplete: false } }),
       updateConfig: mockUpdateConfig,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
 
     const result = (await runSetup({})) as SetupRequiredOutput;
@@ -90,7 +89,6 @@ describe('runSetup', () => {
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({ githubUsername: 'newuser' });
     expect(mockUpdateConfig).toHaveBeenCalledWith({ maxActivePRs: 5 });
-    expect(mockSave).toHaveBeenCalled();
     expect(result).toEqual(
       expect.objectContaining({
         success: true,
@@ -106,14 +104,12 @@ describe('runSetup', () => {
     await runSetup({ set: ['languages=python,rust,go'] });
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({ languages: ['python', 'rust', 'go'] });
-    expect(mockSave).toHaveBeenCalled();
   });
 
   it('should handle complete=true setting', async () => {
     await runSetup({ set: ['complete=true'] });
 
     expect(mockMarkSetupComplete).toHaveBeenCalled();
-    expect(mockSave).toHaveBeenCalled();
   });
 
   it('should handle showHealthCheck=false', async () => {
@@ -282,7 +278,7 @@ describe('runSetup', () => {
     mockGetStateManager.mockReturnValue({
       getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, setupComplete: false } }),
       updateConfig: mockUpdateConfig,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
 
     const result = (await runSetup({})) as SetupRequiredOutput;
@@ -301,7 +297,7 @@ describe('runSetup', () => {
         },
       }),
       updateConfig: mockUpdateConfig,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
 
     const result = await runSetup({});
@@ -344,7 +340,7 @@ describe('runSetup', () => {
     mockGetStateManager.mockReturnValue({
       getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, setupComplete: false } }),
       updateConfig: mockUpdateConfig,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
 
     const result = (await runSetup({})) as SetupRequiredOutput;

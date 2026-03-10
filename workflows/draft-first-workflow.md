@@ -459,7 +459,7 @@ Options:
 
 1. **Count commits:** Validate `$mergeBase` (recompute if invalid), then `git rev-list --count "$mergeBase"..HEAD`. If only 1 commit → skip to Step 6.
 
-2. **Check config:** Read squash setting from `.claude/oss-autopilot/config.md` (check `repoOverrides.{repo}.squash`, then `squashByDefault`, default `true`). If `false` → Step 6. If `"ask"` → prompt user.
+2. **Check config:** Read squash setting from CLI: `config --json` (check `squashByDefault`, default `true`). If `false` → Step 6. If `"ask"` → prompt user.
 
 3. **Generate message:** Create a commit message covering all work (implementation + tests + fixes). Follow repo's commit format, include issue reference. **Present to user for approval BEFORE squashing:**
    - "Approve and squash (Recommended)" / "Edit message" / "Skip squash" / "Done for now"

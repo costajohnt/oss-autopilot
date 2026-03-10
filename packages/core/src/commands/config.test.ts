@@ -26,7 +26,6 @@ const DEFAULT_CONFIG = {
 };
 
 describe('runConfig', () => {
-  const mockSave = vi.fn();
   const mockUpdateConfig = vi.fn();
   const mockCleanupExcludedData = vi.fn();
 
@@ -36,7 +35,7 @@ describe('runConfig', () => {
       getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG } }),
       updateConfig: mockUpdateConfig,
       cleanupExcludedData: mockCleanupExcludedData,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
   });
 
@@ -50,7 +49,6 @@ describe('runConfig', () => {
     const result = await runConfig({ key: 'username', value: 'newuser' });
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({ githubUsername: 'newuser' });
-    expect(mockSave).toHaveBeenCalled();
     expect(result).toEqual({ success: true, key: 'username', value: 'newuser' });
   });
 
@@ -60,7 +58,6 @@ describe('runConfig', () => {
     expect(mockUpdateConfig).toHaveBeenCalledWith({
       languages: ['typescript', 'javascript', 'python'],
     });
-    expect(mockSave).toHaveBeenCalled();
     expect(result).toEqual({ success: true, key: 'add-language', value: 'python' });
   });
 
@@ -68,7 +65,6 @@ describe('runConfig', () => {
     await runConfig({ key: 'add-language', value: 'typescript' });
 
     expect(mockUpdateConfig).not.toHaveBeenCalled();
-    expect(mockSave).toHaveBeenCalled();
   });
 
   it('should add a label', async () => {
@@ -77,7 +73,6 @@ describe('runConfig', () => {
     expect(mockUpdateConfig).toHaveBeenCalledWith({
       labels: ['good first issue', 'help wanted', 'bug'],
     });
-    expect(mockSave).toHaveBeenCalled();
   });
 
   it('should exclude a repo with valid format', async () => {
@@ -87,7 +82,6 @@ describe('runConfig', () => {
       excludeRepos: ['owner/repo'],
     });
     expect(mockCleanupExcludedData).toHaveBeenCalledWith(['owner/repo'], []);
-    expect(mockSave).toHaveBeenCalled();
   });
 
   it('should throw error for invalid repo format in exclude-repo', async () => {
@@ -101,7 +95,6 @@ describe('runConfig', () => {
       excludeOrgs: ['facebook'],
     });
     expect(mockCleanupExcludedData).toHaveBeenCalledWith([], ['facebook']);
-    expect(mockSave).toHaveBeenCalled();
   });
 
   it('should throw error for invalid org name with slash', async () => {
@@ -115,7 +108,6 @@ describe('runConfig', () => {
   it('should reject an invalid GitHub username', async () => {
     await expect(runConfig({ key: 'username', value: '-invalid' })).rejects.toThrow('cannot start with a hyphen');
     expect(mockUpdateConfig).not.toHaveBeenCalled();
-    expect(mockSave).not.toHaveBeenCalled();
   });
 
   it('should throw error when value is missing', async () => {
@@ -126,7 +118,6 @@ describe('runConfig', () => {
     await runConfig({ key: 'add-label', value: 'good first issue' });
 
     expect(mockUpdateConfig).not.toHaveBeenCalled();
-    expect(mockSave).toHaveBeenCalled();
   });
 
   it('should not add duplicate exclude-repo (case-insensitive)', async () => {
@@ -134,7 +125,7 @@ describe('runConfig', () => {
       getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, excludeRepos: ['Owner/Repo'] } }),
       updateConfig: mockUpdateConfig,
       cleanupExcludedData: mockCleanupExcludedData,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
 
     await runConfig({ key: 'exclude-repo', value: 'owner/repo' });
@@ -147,7 +138,7 @@ describe('runConfig', () => {
       getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, excludeOrgs: ['Facebook'] } }),
       updateConfig: mockUpdateConfig,
       cleanupExcludedData: mockCleanupExcludedData,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
 
     await runConfig({ key: 'exclude-org', value: 'facebook' });
@@ -161,7 +152,6 @@ describe('runConfig', () => {
     expect(mockUpdateConfig).toHaveBeenCalledWith({
       labels: ['help wanted'],
     });
-    expect(mockSave).toHaveBeenCalled();
   });
 
   it('should throw when removing a label that does not exist', async () => {
@@ -172,7 +162,6 @@ describe('runConfig', () => {
     await runConfig({ key: 'add-scope', value: 'beginner' });
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({ scope: ['beginner'] });
-    expect(mockSave).toHaveBeenCalled();
   });
 
   it('should append a scope to existing scopes', async () => {
@@ -180,7 +169,7 @@ describe('runConfig', () => {
       getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, scope: ['beginner'] } }),
       updateConfig: mockUpdateConfig,
       cleanupExcludedData: mockCleanupExcludedData,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
 
     await runConfig({ key: 'add-scope', value: 'intermediate' });
@@ -193,7 +182,7 @@ describe('runConfig', () => {
       getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, scope: ['beginner'] } }),
       updateConfig: mockUpdateConfig,
       cleanupExcludedData: mockCleanupExcludedData,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
 
     await runConfig({ key: 'add-scope', value: 'beginner' });
@@ -210,7 +199,7 @@ describe('runConfig', () => {
       getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, scope: ['beginner', 'intermediate'] } }),
       updateConfig: mockUpdateConfig,
       cleanupExcludedData: mockCleanupExcludedData,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
 
     await runConfig({ key: 'remove-scope', value: 'beginner' });
@@ -223,7 +212,7 @@ describe('runConfig', () => {
       getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, scope: ['beginner'] } }),
       updateConfig: mockUpdateConfig,
       cleanupExcludedData: mockCleanupExcludedData,
-      save: mockSave,
+      batch: (fn: () => void) => fn(),
     } as any);
 
     await expect(runConfig({ key: 'remove-scope', value: 'beginner' })).rejects.toThrow('Cannot remove the last scope');

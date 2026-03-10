@@ -95,8 +95,10 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
       }
       const valueLower = value.toLowerCase();
       if (!currentConfig.excludeRepos.some((r) => r.toLowerCase() === valueLower)) {
-        stateManager.updateConfig({ excludeRepos: [...currentConfig.excludeRepos, value] });
-        stateManager.cleanupExcludedData([value], []);
+        stateManager.batch(() => {
+          stateManager.updateConfig({ excludeRepos: [...currentConfig.excludeRepos, value] });
+          stateManager.cleanupExcludedData([value], []);
+        });
       }
       break;
     }
@@ -108,16 +110,19 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
       }
       const currentOrgs = currentConfig.excludeOrgs ?? [];
       if (!currentOrgs.some((o) => o.toLowerCase() === value.toLowerCase())) {
-        stateManager.updateConfig({ excludeOrgs: [...currentOrgs, value] });
-        stateManager.cleanupExcludedData([], [value]);
+        stateManager.batch(() => {
+          stateManager.updateConfig({ excludeOrgs: [...currentOrgs, value] });
+          stateManager.cleanupExcludedData([], [value]);
+        });
       }
       break;
     }
+    case 'issueListPath':
+      stateManager.updateConfig({ issueListPath: value || undefined });
+      break;
     default:
       throw new Error(`Unknown config key: ${options.key}`);
   }
-
-  stateManager.save();
 
   return { success: true, key: options.key, value };
 }

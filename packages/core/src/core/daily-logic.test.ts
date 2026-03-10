@@ -619,6 +619,7 @@ vi.mock('./state.js', () => ({
   getStateManager: vi.fn(() => ({
     getStatusOverride: mockGetStatusOverride,
     save: mockSave,
+    batch: (fn: () => void) => fn(),
   })),
 }));
 
@@ -725,8 +726,8 @@ describe('applyStatusOverrides', () => {
 
     // PR should keep its original status since override was auto-cleared
     expect(result[0].status).toBe('needs_addressing');
-    // Should persist the auto-clear
-    expect(mockSave).toHaveBeenCalledOnce();
+    // Auto-clear persistence is handled by clearStatusOverride's autoSave()
+    // inside the batch — the mock's getStatusOverride doesn't trigger it
   });
 
   it('should not change PR when override matches current status', () => {
@@ -751,7 +752,7 @@ describe('applyStatusOverrides', () => {
     expect(result[0]).toBe(prs[0]); // Same reference — no mutation
   });
 
-  it('should not persist when no auto-clears happened', () => {
+  it('should not save when overrides are applied without auto-clears', () => {
     const prUrl = 'https://github.com/owner/repo/pull/1';
     const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing' })];
     const state = makeState({
@@ -767,8 +768,11 @@ describe('applyStatusOverrides', () => {
       lastActivityAt: '2025-06-15T00:00:00Z',
     });
 
-    applyStatusOverrides(prs, state);
+    const result = applyStatusOverrides(prs, state);
 
+    // Override is applied (status changed)
+    expect(result[0].status).toBe('waiting_on_maintainer');
+    // No direct save() call — persistence is handled by autoSave() inside mutations
     expect(mockSave).not.toHaveBeenCalled();
   });
 });

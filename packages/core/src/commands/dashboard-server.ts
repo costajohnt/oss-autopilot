@@ -402,7 +402,6 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       } else {
         // dismiss_issue_response
         stateManager.dismissIssue(body.url, new Date().toISOString());
-        stateManager.save();
       }
     } catch (error) {
       warn(MODULE, `Action failed: ${body.action} ${body.url} ${errorMessage(error)}`);
