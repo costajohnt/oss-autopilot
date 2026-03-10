@@ -22,9 +22,27 @@ interface SectionDef {
   prs: FetchedPR[];
 }
 
+/** Maps PR status to a CSS class for status-aware hover borders. */
+export function statusClass(status: FetchedPRStatus): string {
+  switch (status) {
+    case 'needs_addressing':
+      return 'pr-row--need-attention';
+    case 'waiting_on_maintainer':
+      return 'pr-row--waiting';
+    default: {
+      const _exhaustive: never = status;
+      void _exhaustive;
+      return '';
+    }
+  }
+}
+
 function PRRow({ pr, selected, onSelect }: { pr: FetchedPR; selected: boolean; onSelect: (url: string) => void }) {
   return (
-    <div class={`pr-row ${selected ? 'pr-row--selected' : ''}`} onClick={() => onSelect(pr.url)}>
+    <div
+      class={`pr-row ${statusClass(pr.status)} ${selected ? 'pr-row--selected' : ''}`}
+      onClick={() => onSelect(pr.url)}
+    >
       <span class="pr-row-dot" style={{ background: statusColor(pr.status) }} />
       <a class="pr-row-id" href={pr.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
         {pr.repo}#{pr.number}
