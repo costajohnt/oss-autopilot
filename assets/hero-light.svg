@@ -91,5 +91,5 @@
   </g>
 
   <!-- Title (centered below crystal) -->
-  <text x="400" y="232" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="52" font-weight="800" fill="url(#titleGrad)" letter-spacing="-0.03em">OSS Autopilot</text>
+  <text x="400" y="232" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="52" font-weight="800" fill="#2563eb" letter-spacing="-0.03em">OSS Autopilot</text>
 </svg>
