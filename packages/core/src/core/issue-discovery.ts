@@ -31,24 +31,6 @@ import {
   searchInRepos,
 } from './search-phases.js';
 
-// Re-export everything from sub-modules for backward compatibility.
-// Existing consumers (tests, CLI commands) import from './issue-discovery.js'.
-export {
-  isDocOnlyIssue,
-  applyPerRepoCap,
-  isLabelFarming,
-  hasTemplatedTitle,
-  detectLabelFarmingRepos,
-  DOC_ONLY_LABELS,
-  BEGINNER_LABELS,
-  type GitHubSearchItem,
-} from './issue-filtering.js';
-export { calculateRepoQualityBonus, calculateViabilityScore, type ViabilityScoreParams } from './issue-scoring.js';
-export { buildEffectiveLabels, interleaveArrays } from './search-phases.js';
-// Re-export types that were previously defined here
-export type { SearchPriority, IssueCandidate, IssueScope } from './types.js';
-export { SCOPE_LABELS, ISSUE_SCOPES } from './types.js';
-
 const MODULE = 'issue-discovery';
 
 export class IssueDiscovery {

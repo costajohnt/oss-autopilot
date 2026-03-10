@@ -12,14 +12,8 @@ export {
   classifyCICheck,
   classifyFailingChecks,
 } from './pr-monitor.js';
-export {
-  IssueDiscovery,
-  type IssueCandidate,
-  type SearchPriority,
-  isDocOnlyIssue,
-  applyPerRepoCap,
-  DOC_ONLY_LABELS,
-} from './issue-discovery.js';
+export { IssueDiscovery } from './issue-discovery.js';
+export { isDocOnlyIssue, applyPerRepoCap, DOC_ONLY_LABELS } from './issue-filtering.js';
 export { IssueConversationMonitor } from './issue-conversation.js';
 export { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 export { getOctokit, checkRateLimit, type RateLimitInfo } from './github.js';

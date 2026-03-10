@@ -6,7 +6,7 @@
 import type { FetchedPR, DailyDigest, AgentState, RepoGroup, CommentedIssue, ShelvedPRRef } from '../core/types.js';
 import type { ContributionStats } from '../core/stats.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
-import type { SearchPriority } from '../core/issue-discovery.js';
+import type { SearchPriority } from '../core/types.js';
 
 export interface JsonOutput<T = unknown> {
   success: boolean;
