@@ -1,5 +1,61 @@
 import { describe, it, expect } from 'vitest';
-import { truncate, formatDate, statusColor, ciStatusColor, formatStarCount, getLanguageColor } from './utils';
+import {
+  stripBrackets,
+  pillColorClass,
+  truncate,
+  formatDate,
+  statusColor,
+  ciStatusColor,
+  formatStarCount,
+  getLanguageColor,
+  formatRelativeTime,
+  refreshLabel,
+} from './utils';
+
+describe('stripBrackets', () => {
+  it('removes surrounding brackets from a label', () => {
+    expect(stripBrackets('[CI Failing]')).toBe('CI Failing');
+  });
+
+  it('returns the string unchanged when no brackets are present', () => {
+    expect(stripBrackets('No Brackets')).toBe('No Brackets');
+  });
+
+  it('handles empty string', () => {
+    expect(stripBrackets('')).toBe('');
+  });
+});
+
+describe('pillColorClass', () => {
+  it('returns pill--red for attention labels', () => {
+    expect(pillColorClass('[CI Failing]')).toBe('pill--red');
+    expect(pillColorClass('[Needs Response]')).toBe('pill--red');
+    expect(pillColorClass('[Merge Conflict]')).toBe('pill--red');
+    expect(pillColorClass('[Needs Changes]')).toBe('pill--red');
+    expect(pillColorClass('[Missing Files]')).toBe('pill--red');
+    expect(pillColorClass('[Needs Addressing]')).toBe('pill--red');
+  });
+
+  it('returns pill--amber for warning labels', () => {
+    expect(pillColorClass('[Incomplete Checklist]')).toBe('pill--amber');
+    expect(pillColorClass('[CI Not Running]')).toBe('pill--amber');
+    expect(pillColorClass('[Needs Rebase]')).toBe('pill--amber');
+    expect(pillColorClass('[CI Blocked]')).toBe('pill--amber');
+    expect(pillColorClass('[Stale CI Failure]')).toBe('pill--amber');
+  });
+
+  it('returns pill--blue for waiting labels', () => {
+    expect(pillColorClass('[Waiting on Maintainer]')).toBe('pill--blue');
+  });
+
+  it('returns pill--muted for unknown labels', () => {
+    expect(pillColorClass('[Something Else]')).toBe('pill--muted');
+  });
+
+  it('works with labels that have no brackets', () => {
+    expect(pillColorClass('CI Failing')).toBe('pill--red');
+  });
+});
 
 describe('truncate', () => {
   it('returns the string unchanged if within limit', () => {
@@ -37,12 +93,12 @@ describe('formatDate', () => {
 });
 
 describe('statusColor', () => {
-  it('returns error color for needs_addressing status', () => {
-    expect(statusColor('needs_addressing')).toBe('var(--accent-error)');
+  it('returns red for needs_addressing status', () => {
+    expect(statusColor('needs_addressing')).toBe('var(--red)');
   });
 
-  it('returns info color for waiting_on_maintainer status', () => {
-    expect(statusColor('waiting_on_maintainer')).toBe('var(--accent-info)');
+  it('returns blue for waiting_on_maintainer status', () => {
+    expect(statusColor('waiting_on_maintainer')).toBe('var(--blue)');
   });
 
   it('returns muted color for unknown status', () => {
@@ -52,15 +108,15 @@ describe('statusColor', () => {
 
 describe('ciStatusColor', () => {
   it('returns green for passing', () => {
-    expect(ciStatusColor('passing')).toBe('var(--accent-open)');
+    expect(ciStatusColor('passing')).toBe('var(--green)');
   });
 
   it('returns red for failing', () => {
-    expect(ciStatusColor('failing')).toBe('var(--accent-error)');
+    expect(ciStatusColor('failing')).toBe('var(--red)');
   });
 
-  it('returns yellow for pending', () => {
-    expect(ciStatusColor('pending')).toBe('var(--accent-warning)');
+  it('returns amber for pending', () => {
+    expect(ciStatusColor('pending')).toBe('var(--amber)');
   });
 
   it('returns muted for unknown', () => {
@@ -102,5 +158,44 @@ describe('getLanguageColor', () => {
   it('returns muted color for null/undefined language', () => {
     expect(getLanguageColor(null)).toBe('var(--text-muted)');
     expect(getLanguageColor(undefined)).toBe('var(--text-muted)');
+  });
+});
+
+describe('formatRelativeTime', () => {
+  it('returns "Updated just now" for timestamps less than 60 seconds ago', () => {
+    expect(formatRelativeTime(Date.now() - 30_000)).toBe('Updated just now');
+    expect(formatRelativeTime(Date.now())).toBe('Updated just now');
+  });
+
+  it('returns minutes for timestamps less than 60 minutes ago', () => {
+    expect(formatRelativeTime(Date.now() - 5 * 60_000)).toBe('Updated 5m ago');
+    expect(formatRelativeTime(Date.now() - 59 * 60_000)).toBe('Updated 59m ago');
+  });
+
+  it('returns hours for timestamps 60+ minutes ago', () => {
+    expect(formatRelativeTime(Date.now() - 60 * 60_000)).toBe('Updated 1h ago');
+    expect(formatRelativeTime(Date.now() - 3 * 60 * 60_000)).toBe('Updated 3h ago');
+  });
+
+  it('handles the boundary at exactly 60 seconds', () => {
+    expect(formatRelativeTime(Date.now() - 60_000)).toBe('Updated 1m ago');
+  });
+});
+
+describe('refreshLabel', () => {
+  it('returns "Refreshing..." when loading is true', () => {
+    expect(refreshLabel(true, false)).toBe('Refreshing...');
+  });
+
+  it('returns "Updating..." when refreshing is true', () => {
+    expect(refreshLabel(false, true)).toBe('Updating...');
+  });
+
+  it('returns "Refresh" when neither loading nor refreshing', () => {
+    expect(refreshLabel(false, false)).toBe('Refresh');
+  });
+
+  it('prioritizes loading over refreshing', () => {
+    expect(refreshLabel(true, true)).toBe('Refreshing...');
   });
 });

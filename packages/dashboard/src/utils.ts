@@ -1,5 +1,34 @@
 import type { FetchedPRStatus } from './types';
 
+/** Strip brackets from core display labels, e.g. "[CI Failing]" → "CI Failing". */
+export function stripBrackets(label: string): string {
+  return label.replace(/^\[|\]$/g, '');
+}
+
+/** Map a display label to a pill color CSS class. */
+export function pillColorClass(label: string): string {
+  const text = stripBrackets(label).toLowerCase();
+  switch (text) {
+    case 'needs response':
+    case 'needs changes':
+    case 'ci failing':
+    case 'merge conflict':
+    case 'missing files':
+    case 'needs addressing':
+      return 'pill--red';
+    case 'incomplete checklist':
+    case 'ci not running':
+    case 'needs rebase':
+    case 'ci blocked':
+    case 'stale ci failure':
+      return 'pill--amber';
+    case 'waiting on maintainer':
+      return 'pill--blue';
+    default:
+      return 'pill--muted';
+  }
+}
+
 export function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max) + '...' : text;
 }
@@ -21,9 +50,9 @@ export function formatDate(iso: string): string {
 export function statusColor(status: FetchedPRStatus | string): string {
   switch (status) {
     case 'needs_addressing':
-      return 'var(--accent-error)';
+      return 'var(--red)';
     case 'waiting_on_maintainer':
-      return 'var(--accent-info)';
+      return 'var(--blue)';
     default:
       return 'var(--text-muted)';
   }
@@ -32,11 +61,11 @@ export function statusColor(status: FetchedPRStatus | string): string {
 export function ciStatusColor(status: string): string {
   switch (status) {
     case 'passing':
-      return 'var(--accent-open)';
+      return 'var(--green)';
     case 'failing':
-      return 'var(--accent-error)';
+      return 'var(--red)';
     case 'pending':
-      return 'var(--accent-warning)';
+      return 'var(--amber)';
     default:
       return 'var(--text-muted)';
   }
@@ -75,4 +104,19 @@ const LANGUAGE_COLORS: Record<string, string> = {
 export function getLanguageColor(language: string | null | undefined): string {
   if (!language) return 'var(--text-muted)';
   return LANGUAGE_COLORS[language] ?? 'var(--text-muted)';
+}
+
+export function formatRelativeTime(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return 'Updated just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `Updated ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `Updated ${hours}h ago`;
+}
+
+export function refreshLabel(loading: boolean, refreshing: boolean): string {
+  if (loading) return 'Refreshing...';
+  if (refreshing) return 'Updating...';
+  return 'Refresh';
 }

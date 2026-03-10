@@ -25,10 +25,10 @@ export function RecentActivity({ mergedPRs, closedPRs, autoUnshelvedPRs }: Recen
             {mergedPRs.map((pr) => (
               <div key={pr.url} class="recent-activity-item">
                 <span class="recent-activity-badge recent-activity-badge--merged">Merged</span>
+                <span class="recent-activity-item-title">{truncate(pr.title, 60)}</span>
                 <a class="recent-activity-link" href={pr.url} target="_blank" rel="noopener noreferrer">
                   {pr.repo}#{pr.number}
                 </a>
-                <span class="recent-activity-item-title">{truncate(pr.title, 60)}</span>
                 <span class="recent-activity-date">{formatDate(pr.mergedAt)}</span>
               </div>
             ))}
@@ -45,10 +45,10 @@ export function RecentActivity({ mergedPRs, closedPRs, autoUnshelvedPRs }: Recen
             {closedPRs.map((pr) => (
               <div key={pr.url} class="recent-activity-item">
                 <span class="recent-activity-badge recent-activity-badge--closed">Closed</span>
+                <span class="recent-activity-item-title">{truncate(pr.title, 60)}</span>
                 <a class="recent-activity-link" href={pr.url} target="_blank" rel="noopener noreferrer">
                   {pr.repo}#{pr.number}
                 </a>
-                <span class="recent-activity-item-title">{truncate(pr.title, 60)}</span>
                 <span class="recent-activity-date">{formatDate(pr.closedAt)}</span>
               </div>
             ))}
@@ -65,10 +65,10 @@ export function RecentActivity({ mergedPRs, closedPRs, autoUnshelvedPRs }: Recen
             {autoUnshelvedPRs.map((pr) => (
               <div key={pr.url} class="recent-activity-item">
                 <span class="recent-activity-badge recent-activity-badge--unshelved">Unshelved</span>
+                <span class="recent-activity-item-title">{truncate(pr.title, 60)}</span>
                 <a class="recent-activity-link" href={pr.url} target="_blank" rel="noopener noreferrer">
                   {pr.repo}#{pr.number}
                 </a>
-                <span class="recent-activity-item-title">{truncate(pr.title, 60)}</span>
               </div>
             ))}
           </div>

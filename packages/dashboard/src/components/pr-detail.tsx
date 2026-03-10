@@ -1,5 +1,5 @@
 import type { FetchedPR, ActionRequest } from '../types';
-import { formatDate, statusColor, ciStatusColor, truncate } from '../utils';
+import { formatDate, ciStatusColor, truncate, stripBrackets, pillColorClass } from '../utils';
 import { ActionBar } from './action-bar';
 
 interface PRDetailProps {
@@ -25,14 +25,46 @@ function reviewLabel(decision: string): string {
 function reviewColor(decision: string): string {
   switch (decision) {
     case 'approved':
-      return 'var(--accent-open)';
+      return 'var(--green)';
     case 'changes_requested':
-      return 'var(--accent-error)';
+      return 'var(--red)';
     case 'review_required':
-      return 'var(--accent-warning)';
+      return 'var(--amber)';
     default:
       return 'var(--text-muted)';
   }
+}
+
+function ciDotClass(status: string): string {
+  switch (status) {
+    case 'passing':
+      return 'green';
+    case 'failing':
+      return 'red';
+    case 'pending':
+      return 'amber';
+    default:
+      return '';
+  }
+}
+
+function reviewDotClass(decision: string): string {
+  switch (decision) {
+    case 'approved':
+      return 'green';
+    case 'changes_requested':
+      return 'red';
+    case 'review_required':
+      return 'amber';
+    default:
+      return '';
+  }
+}
+
+function activityDotClass(days: number): string {
+  if (days >= 7) return 'red';
+  if (days >= 3) return 'amber';
+  return 'green';
 }
 
 function categoryBadge(category: string): string {
@@ -51,6 +83,9 @@ function categoryBadge(category: string): string {
 }
 
 export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
+  const ciDot = ciDotClass(pr.ciStatus);
+  const reviewDot = reviewDotClass(pr.reviewDecision);
+
   return (
     <div class="pr-detail">
       <div class="pr-detail-header">
@@ -61,9 +96,7 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
       </div>
 
       <div class="pr-detail-meta">
-        <span class="pr-detail-status" style={{ color: statusColor(pr.status) }}>
-          {pr.displayLabel}
-        </span>
+        <span class={`pill ${pillColorClass(pr.displayLabel)}`}>{stripBrackets(pr.displayLabel)}</span>
         <span class="pr-detail-description">{pr.displayDescription}</span>
       </div>
 
@@ -77,8 +110,11 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         {/* CI Status */}
         <div class="pr-detail-field">
           <span class="pr-detail-field-label">CI Status</span>
-          <span class="pr-detail-field-value" style={{ color: ciStatusColor(pr.ciStatus) }}>
-            {pr.ciStatus.charAt(0).toUpperCase() + pr.ciStatus.slice(1)}
+          <span class="pr-detail-field-value">
+            {ciDot && <span class={`dot ${ciDot}`} />}
+            <span style={{ color: ciStatusColor(pr.ciStatus) }}>
+              {pr.ciStatus.charAt(0).toUpperCase() + pr.ciStatus.slice(1)}
+            </span>
           </span>
         </div>
 
@@ -102,8 +138,9 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         {/* Review Decision */}
         <div class="pr-detail-field">
           <span class="pr-detail-field-label">Review</span>
-          <span class="pr-detail-field-value" style={{ color: reviewColor(pr.reviewDecision) }}>
-            {reviewLabel(pr.reviewDecision)}
+          <span class="pr-detail-field-value">
+            {reviewDot && <span class={`dot ${reviewDot}`} />}
+            <span style={{ color: reviewColor(pr.reviewDecision) }}>{reviewLabel(pr.reviewDecision)}</span>
           </span>
         </div>
 
@@ -112,8 +149,11 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
           <div class="pr-detail-field">
             <span class="pr-detail-field-label">Maintainer Comment</span>
             <div class="pr-detail-comment">
-              <span class="pr-detail-comment-author">@{pr.lastMaintainerComment.author}</span>
-              <span class="pr-detail-comment-date">{formatDate(pr.lastMaintainerComment.createdAt)}</span>
+              <div class="pr-detail-comment-header">
+                <div class="pr-detail-comment-avatar" />
+                <span class="pr-detail-comment-author">@{pr.lastMaintainerComment.author}</span>
+                <span class="pr-detail-comment-date">&middot; {formatDate(pr.lastMaintainerComment.createdAt)}</span>
+              </div>
               <p class="pr-detail-comment-body">{truncate(pr.lastMaintainerComment.body, 200)}</p>
             </div>
           </div>
@@ -123,7 +163,7 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         {pr.hasIncompleteChecklist && pr.checklistStats && (
           <div class="pr-detail-field">
             <span class="pr-detail-field-label">Checklist</span>
-            <span class="pr-detail-field-value" style={{ color: 'var(--accent-warning)' }}>
+            <span class="pr-detail-field-value" style={{ color: 'var(--amber)' }}>
               {pr.checklistStats.checked}/{pr.checklistStats.total} checked
             </span>
           </div>
@@ -132,14 +172,19 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         {/* Days since activity */}
         <div class="pr-detail-field">
           <span class="pr-detail-field-label">Days Since Activity</span>
-          <span class="pr-detail-field-value">{pr.daysSinceActivity}</span>
+          <span class="pr-detail-field-value">
+            <span class={`dot ${activityDotClass(pr.daysSinceActivity)}`} />
+            <span>
+              {pr.daysSinceActivity} {pr.daysSinceActivity === 1 ? 'day' : 'days'}
+            </span>
+          </span>
         </div>
 
         {/* Merge conflict */}
         {pr.hasMergeConflict && (
           <div class="pr-detail-field">
             <span class="pr-detail-field-label">Merge Conflict</span>
-            <span class="pr-detail-field-value" style={{ color: 'var(--accent-conflict)' }}>
+            <span class="pr-detail-field-value" style={{ color: 'var(--red)' }}>
               Yes
             </span>
           </div>

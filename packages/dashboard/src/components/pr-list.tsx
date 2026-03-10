@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { FetchedPR, FetchedPRStatus } from '../types';
-import { truncate, statusColor } from '../utils';
+import { truncate, statusColor, stripBrackets, pillColorClass } from '../utils';
 
 interface PRListProps {
   prs: FetchedPR[];
@@ -18,7 +18,7 @@ const WAITING: Set<FetchedPRStatus> = new Set(['waiting_on_maintainer']);
 interface SectionDef {
   id: string;
   title: string;
-  accent: string;
+  dotClass: string;
   prs: FetchedPR[];
 }
 
@@ -48,8 +48,10 @@ function PRRow({ pr, selected, onSelect }: { pr: FetchedPR; selected: boolean; o
         {pr.repo}#{pr.number}
       </a>
       <span class="pr-row-title">{truncate(pr.title, 50)}</span>
-      {pr.displayLabel && <span class="pr-row-label">{pr.displayLabel}</span>}
-      <span class="pr-row-age">{pr.daysSinceActivity}d</span>
+      {pr.displayLabel && (
+        <span class={`pill ${pillColorClass(pr.displayLabel)}`}>{stripBrackets(pr.displayLabel)}</span>
+      )}
+      <span class="pr-row-age">{pr.daysSinceActivity}d ago</span>
     </div>
   );
 }
@@ -65,10 +67,11 @@ function Section({
 }) {
   return (
     <div class="pr-section">
-      <h3 class="pr-section-header" style={{ borderLeftColor: section.accent }}>
-        {section.title}
+      <div class="pr-section-header">
+        <span class={`pr-section-dot ${section.dotClass}`} />
+        <span class="pr-section-title">{section.title}</span>
         <span class="pr-section-count">{section.prs.length}</span>
-      </h3>
+      </div>
       {section.prs.map((pr) => (
         <PRRow key={pr.url} pr={pr} selected={pr.url === selectedUrl} onSelect={onSelect} />
       ))}
@@ -86,13 +89,13 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps)
     {
       id: 'action',
       title: 'Need Attention',
-      accent: 'var(--accent-error)',
+      dotClass: 'red',
       prs: activePRs.filter((pr) => NEED_ATTENTION.has(pr.status)),
     },
     {
       id: 'waiting',
       title: 'Waiting on Others',
-      accent: 'var(--accent-info)',
+      dotClass: 'blue',
       prs: activePRs.filter((pr) => WAITING.has(pr.status)),
     },
   ].filter((s) => s.prs.length > 0);
@@ -105,15 +108,12 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps)
       ))}
       {shelvedPRs.length > 0 && (
         <div class="pr-section pr-section--shelved">
-          <h3
-            class="pr-section-header pr-section-header--collapsible"
-            style={{ borderLeftColor: 'var(--text-muted)' }}
-            onClick={() => setShelvedOpen(!shelvedOpen)}
-          >
-            <span class={`pr-section-chevron ${shelvedOpen ? 'pr-section-chevron--open' : ''}`}>&#9656;</span>
-            Shelved
+          <div class="pr-section-header pr-section-header--collapsible" onClick={() => setShelvedOpen(!shelvedOpen)}>
+            <span class="pr-section-dot muted" />
+            <span class="pr-section-title">Shelved</span>
             <span class="pr-section-count">{shelvedPRs.length}</span>
-          </h3>
+            <span class={`pr-section-chevron ${shelvedOpen ? 'pr-section-chevron--open' : ''}`}>&#9656;</span>
+          </div>
           {shelvedOpen &&
             shelvedPRs.map((pr) => (
               <PRRow key={pr.url} pr={pr} selected={pr.url === selectedUrl} onSelect={onSelect} />

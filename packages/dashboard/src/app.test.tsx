@@ -61,7 +61,7 @@ describe('App', () => {
     await waitFor(() => {
       expect(container.querySelector('.dashboard')).toBeTruthy();
     });
-    expect(container.textContent).toContain('3 active PRs');
+    expect(container.textContent).toContain('3 active');
     expect(container.textContent).toContain('83.3% merge rate');
   });
 
