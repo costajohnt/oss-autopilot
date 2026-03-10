@@ -6,25 +6,12 @@ import { describe, it, expect } from 'vitest';
 import { computeRepoSignals, computeActionMenu, groupPRsByRepo, toShelvedPRRef } from './daily.js';
 import { deduplicateDigest, compactActionableIssues, compactRepoGroups } from '../formatters/json.js';
 import type { DailyDigest, CommentedIssue } from '../core/types.js';
-import type { ActionableIssue, CapacityAssessment } from '../formatters/json.js';
-import { makeFetchedPR } from '../core/test-utils.js';
+import type { ActionableIssue } from '../formatters/json.js';
+import { makeFetchedPR, makeCapacityAssessment as makeCapacity } from '../core/test-utils.js';
 
 /** Create a FetchedPR with repo as required (mirrors daily command's per-repo grouping). */
 function makePR(overrides: Parameters<typeof makeFetchedPR>[0] & { repo: string }) {
   return makeFetchedPR({ daysSinceActivity: 5, ...overrides });
-}
-
-/** Create a minimal CapacityAssessment for testing */
-function makeCapacity(overrides: Partial<CapacityAssessment> = {}): CapacityAssessment {
-  return {
-    hasCapacity: true,
-    activePRCount: 3,
-    maxActivePRs: 10,
-    shelvedPRCount: 0,
-    criticalIssueCount: 0,
-    reason: 'You have capacity: 3/10 active PRs, no critical issues',
-    ...overrides,
-  };
 }
 
 /** Create a minimal ActionableIssue for testing */

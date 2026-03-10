@@ -14,7 +14,8 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import type { DailyDigest, AgentState } from '../core/types.js';
+import type { DailyDigest } from '../core/types.js';
+import { makeAgentState as makeState } from '../core/test-utils.js';
 import type { IncomingMessage, ServerResponse } from 'http';
 
 // ── Captured request handler ──────────────────────────────────────────
@@ -145,32 +146,6 @@ function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
       totalMergedAllTime: 5,
       mergeRate: 83.3,
     },
-    ...overrides,
-  };
-}
-
-function makeState(overrides: Partial<AgentState> = {}): AgentState {
-  return {
-    version: 2,
-    repoScores: {},
-    config: {
-      setupComplete: true,
-      maxActivePRs: 10,
-      dormantThresholdDays: 30,
-      approachingDormantDays: 25,
-      maxIssueAgeDays: 90,
-      languages: ['typescript'],
-      labels: ['good first issue'],
-      excludeRepos: [],
-      trustedProjects: [],
-      githubUsername: 'testuser',
-      minRepoScoreThreshold: 4,
-      starredRepos: [],
-      shelvedPRUrls: [],
-    },
-    events: [],
-    lastRunAt: '2026-01-15T12:00:00Z',
-    activeIssues: [],
     ...overrides,
   };
 }

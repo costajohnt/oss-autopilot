@@ -12,38 +12,11 @@ import {
   storedToMergedPRs,
   storedToClosedPRs,
 } from './dashboard-data.js';
-import type { DailyDigest, AgentState, ShelvedPRRef, StoredMergedPR, StoredClosedPR } from '../core/types.js';
+import type { DailyDigest, ShelvedPRRef, StoredMergedPR, StoredClosedPR } from '../core/types.js';
+import { makeDailyDigest, makeAgentState as makeState } from '../core/test-utils.js';
 
 function makeDigest(overrides: Partial<DailyDigest> = {}): DailyDigest {
-  return {
-    generatedAt: new Date().toISOString(),
-    openPRs: [],
-    needsAddressingPRs: [],
-    waitingOnMaintainerPRs: [],
-    recentlyClosedPRs: [],
-    recentlyMergedPRs: [],
-    shelvedPRs: [],
-    autoUnshelvedPRs: [],
-    summary: {
-      totalActivePRs: 0,
-      totalNeedingAttention: 0,
-      totalMergedAllTime: 0,
-      mergeRate: 0,
-    },
-    ...overrides,
-  } as DailyDigest;
-}
-
-function makeState(overrides: Partial<AgentState> = {}): AgentState {
-  return {
-    version: 2,
-    repoScores: {},
-    config: { githubUsername: 'testuser', shelvedPRUrls: [] },
-    events: [],
-    lastRunAt: new Date().toISOString(),
-    activeIssues: [],
-    ...overrides,
-  } as AgentState;
+  return makeDailyDigest({ generatedAt: new Date().toISOString(), ...overrides });
 }
 
 // ---------------------------------------------------------------------------
