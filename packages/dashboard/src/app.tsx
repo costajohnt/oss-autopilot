@@ -54,14 +54,14 @@ function DashboardHeader({ stats, loading, refreshing, lastUpdated, onRefresh }:
             </span>{' '}
             active
           </span>
-          <span class="header-pipe">|</span>
+          <span class="header-sep" />
           <span>
             <span class="val" style={{ color: 'var(--purple)' }}>
               {stats.mergedPRs}
             </span>{' '}
             merged
           </span>
-          <span class="header-pipe">|</span>
+          <span class="header-sep" />
           <span>
             <span class="val" style={{ color: 'var(--amber)' }}>
               {stats.mergeRate}

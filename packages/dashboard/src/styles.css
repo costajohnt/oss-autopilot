@@ -5,8 +5,8 @@
   --base: #0c0e14;
   --surface: rgba(18, 22, 32, 0.7);
   --elevated: rgba(24, 28, 40, 0.85);
-  --border: rgba(255, 255, 255, 0.06);
-  --border-hover: rgba(255, 255, 255, 0.1);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.14);
   --green: #4ade80;
   --purple: #c084fc;
   --red: #fb7185;
@@ -161,6 +161,22 @@ body {
   overflow-x: hidden;
 }
 
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(96, 165, 250, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(192, 132, 252, 0.06) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#app {
+  position: relative;
+  z-index: 1;
+}
+
 code,
 pre {
   font-family: var(--font-mono);
@@ -230,14 +246,14 @@ a:hover {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-2);
-  padding-bottom: var(--sp-2);
+  gap: var(--sp-4);
+  padding-bottom: var(--sp-4);
   border-bottom: 1px solid var(--border);
-  margin-bottom: var(--sp-2);
+  margin-bottom: var(--sp-4);
 }
 
 .dashboard-header h1 {
-  font-size: 1.375rem;
+  font-size: 1.75rem;
   font-weight: 800;
   letter-spacing: -0.03em;
   background: linear-gradient(135deg, var(--text-primary) 0%, var(--blue) 100%);
@@ -250,13 +266,14 @@ a:hover {
   width: 72px;
   height: 72px;
   flex-shrink: 0;
+  filter: drop-shadow(0 0 20px rgba(96, 165, 250, 0.25)) drop-shadow(0 0 40px rgba(192, 132, 252, 0.15));
 }
 
 .header-brand {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
 }
 
 .header-bar {
@@ -268,12 +285,13 @@ a:hover {
 
 .header-stats {
   display: flex;
-  gap: var(--sp-5);
-  font-size: 0.8125rem;
+  align-items: center;
+  gap: var(--sp-4);
+  font-size: 0.875rem;
   color: var(--text-secondary);
 }
 
-.header-stats span {
+.header-stats > span {
   display: flex;
   align-items: center;
   gap: var(--sp-1);
@@ -281,11 +299,14 @@ a:hover {
 
 .header-stats .val {
   font-weight: 700;
-  color: var(--text-primary);
 }
 
-.header-pipe {
-  color: var(--border);
+.header-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .header-right {

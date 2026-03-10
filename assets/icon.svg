@@ -1,28 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <linearGradient id="a1" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ff6b6b"/>
-      <stop offset="100%" stop-color="#ee5a24"/>
+      <stop offset="0%" stop-color="#fb7185"/>
+      <stop offset="100%" stop-color="#e11d48"/>
     </linearGradient>
     <linearGradient id="a2" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#feca57"/>
-      <stop offset="100%" stop-color="#ff9f43"/>
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#d97706"/>
     </linearGradient>
     <linearGradient id="a3" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#48dbfb"/>
-      <stop offset="100%" stop-color="#0abde3"/>
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
     </linearGradient>
     <linearGradient id="a4" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ff9ff3"/>
-      <stop offset="100%" stop-color="#f368e0"/>
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="100%" stop-color="#a855f7"/>
     </linearGradient>
     <linearGradient id="a5" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#55efc4"/>
-      <stop offset="100%" stop-color="#00b894"/>
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="100%" stop-color="#22c55e"/>
     </linearGradient>
     <linearGradient id="a6" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#a29bfe"/>
-      <stop offset="100%" stop-color="#6c5ce7"/>
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
     </linearGradient>
   </defs>
 
