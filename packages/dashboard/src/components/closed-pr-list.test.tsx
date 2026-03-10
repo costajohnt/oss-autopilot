@@ -32,7 +32,7 @@ describe('ClosedPRList', () => {
 
   it('renders all PRs with titles and GitHub links', () => {
     const { container } = render(<ClosedPRList closedPRs={prs} onBack={() => {}} />);
-    const links = container.querySelectorAll('.recent-activity-link');
+    const links = container.querySelectorAll('.merged-table-pr-link');
     expect(links).toHaveLength(2);
     expect((links[0] as HTMLAnchorElement).href).toBe('https://github.com/a/b/pull/1');
     expect((links[0] as HTMLAnchorElement).target).toBe('_blank');
@@ -43,7 +43,7 @@ describe('ClosedPRList', () => {
 
   it('shows formatted close dates', () => {
     const { container } = render(<ClosedPRList closedPRs={prs} onBack={() => {}} />);
-    const dates = container.querySelectorAll('.recent-activity-date');
+    const dates = container.querySelectorAll('.merged-table-date');
     expect(dates).toHaveLength(2);
     // Just check they render (formatting depends on locale)
     expect(dates[0].textContent).toBeTruthy();
@@ -62,10 +62,17 @@ describe('ClosedPRList', () => {
     expect(empty?.textContent).toContain('No closed PRs found');
   });
 
-  it('shows Closed badge for each PR', () => {
+  it('renders table with correct column headers', () => {
     const { container } = render(<ClosedPRList closedPRs={prs} onBack={() => {}} />);
-    const badges = container.querySelectorAll('.recent-activity-badge--closed');
-    expect(badges).toHaveLength(2);
-    expect(badges[0].textContent).toBe('Closed');
+    const headers = container.querySelectorAll('.merged-table th');
+    expect(headers).toHaveLength(2);
+    expect(headers[0].textContent).toBe('PR');
+    expect(headers[1].textContent).toBe('Date Closed');
+  });
+
+  it('renders correct number of table rows', () => {
+    const { container } = render(<ClosedPRList closedPRs={prs} onBack={() => {}} />);
+    const rows = container.querySelectorAll('.merged-table tbody tr');
+    expect(rows).toHaveLength(2);
   });
 });

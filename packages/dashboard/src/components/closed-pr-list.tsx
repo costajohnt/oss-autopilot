@@ -8,7 +8,7 @@ interface ClosedPRListProps {
 
 export function ClosedPRList({ closedPRs, onBack }: ClosedPRListProps) {
   return (
-    <div class="merged-view">
+    <div class="merged-view merged-view--full-width">
       <div class="merged-view-header">
         <button class="merged-view-back" onClick={onBack} type="button">
           &larr; Back
@@ -22,18 +22,29 @@ export function ClosedPRList({ closedPRs, onBack }: ClosedPRListProps) {
       {closedPRs.length === 0 ? (
         <div class="merged-view-empty">No closed PRs found. Run a dashboard refresh to populate.</div>
       ) : (
-        <div class="merged-view-list">
-          {closedPRs.map((pr) => (
-            <div key={pr.url} class="recent-activity-item">
-              <span class="recent-activity-badge recent-activity-badge--closed">Closed</span>
-              <a class="recent-activity-link" href={pr.url} target="_blank" rel="noopener noreferrer">
-                {pr.repo}#{pr.number}
-              </a>
-              <span class="recent-activity-item-title">{truncate(pr.title, 60)}</span>
-              <span class="recent-activity-date">{formatDate(pr.closedAt)}</span>
-            </div>
-          ))}
-        </div>
+        <table class="merged-table">
+          <thead>
+            <tr>
+              <th>PR</th>
+              <th>Date Closed</th>
+            </tr>
+          </thead>
+          <tbody>
+            {closedPRs.map((pr) => (
+              <tr key={pr.url}>
+                <td>
+                  <a class="merged-table-pr-link" href={pr.url} target="_blank" rel="noopener noreferrer">
+                    {pr.repo}#{pr.number}
+                  </a>
+                  <div class="merged-table-pr-title">{truncate(pr.title, 80)}</div>
+                </td>
+                <td>
+                  <span class="merged-table-date">{formatDate(pr.closedAt)}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   );

@@ -1533,12 +1533,6 @@ a:hover {
   color: var(--text-secondary);
 }
 
-.merged-view-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
 .merged-view-empty {
   text-align: center;
   padding: var(--sp-12) var(--sp-6);
