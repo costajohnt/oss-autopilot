@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.58.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.57.0...core-v0.58.0) (2026-03-10)
+
+
+### Features
+
+* add light-mode hero banner SVG for README ([#701](https://github.com/costajohnt/oss-autopilot/issues/701)) ([77777ca](https://github.com/costajohnt/oss-autopilot/commit/77777ca9c1fbb5c32c7f1e72c05f1b3d6a06e707))
+
 ## [0.57.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.56.0...core-v0.57.0) (2026-03-10)
 
 
