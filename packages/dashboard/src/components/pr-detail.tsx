@@ -1,5 +1,5 @@
 import type { FetchedPR, ActionRequest } from '../types';
-import { formatDate, statusColor, ciStatusColor, truncate, stripBrackets, pillColorClass } from '../utils';
+import { formatDate, ciStatusColor, truncate, stripBrackets, pillColorClass } from '../utils';
 import { ActionBar } from './action-bar';
 
 interface PRDetailProps {
@@ -78,6 +78,9 @@ function categoryBadge(category: string): string {
 }
 
 export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
+  const ciDot = ciDotClass(pr.ciStatus);
+  const reviewDot = reviewDotClass(pr.reviewDecision);
+
   return (
     <div class="pr-detail">
       <div class="pr-detail-header">
@@ -103,7 +106,7 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         <div class="pr-detail-field">
           <span class="pr-detail-field-label">CI Status</span>
           <span class="pr-detail-field-value">
-            {ciDotClass(pr.ciStatus) && <span class={`dot ${ciDotClass(pr.ciStatus)}`} />}
+            {ciDot && <span class={`dot ${ciDot}`} />}
             <span style={{ color: ciStatusColor(pr.ciStatus) }}>
               {pr.ciStatus.charAt(0).toUpperCase() + pr.ciStatus.slice(1)}
             </span>
@@ -131,7 +134,7 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         <div class="pr-detail-field">
           <span class="pr-detail-field-label">Review</span>
           <span class="pr-detail-field-value">
-            {reviewDotClass(pr.reviewDecision) && <span class={`dot ${reviewDotClass(pr.reviewDecision)}`} />}
+            {reviewDot && <span class={`dot ${reviewDot}`} />}
             <span style={{ color: reviewColor(pr.reviewDecision) }}>{reviewLabel(pr.reviewDecision)}</span>
           </span>
         </div>
@@ -165,7 +168,7 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
         <div class="pr-detail-field">
           <span class="pr-detail-field-label">Days Since Activity</span>
           <span class="pr-detail-field-value">
-            <span class="dot red" />
+            <span class={`dot ${pr.daysSinceActivity >= 7 ? 'red' : pr.daysSinceActivity >= 3 ? 'amber' : 'green'}`} />
             <span>
               {pr.daysSinceActivity} {pr.daysSinceActivity === 1 ? 'day' : 'days'}
             </span>

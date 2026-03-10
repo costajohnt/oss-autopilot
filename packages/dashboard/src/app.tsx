@@ -39,6 +39,12 @@ function formatRelativeTime(timestamp: number): string {
   return `Updated ${hours}h ago`;
 }
 
+function refreshLabel(loading: boolean, refreshing: boolean): string {
+  if (loading) return 'Refreshing...';
+  if (refreshing) return 'Updating...';
+  return 'Refresh';
+}
+
 function DashboardHeader({ stats, loading, refreshing, lastUpdated, onRefresh }: DashboardHeaderProps) {
   return (
     <header class="dashboard-header">
@@ -73,7 +79,7 @@ function DashboardHeader({ stats, loading, refreshing, lastUpdated, onRefresh }:
           {lastUpdated && <span class="last-updated">{formatRelativeTime(lastUpdated)}</span>}
           <button class="refresh-btn" onClick={onRefresh} disabled={loading || refreshing}>
             {loading || refreshing ? <span class="spinner" /> : <RefreshIcon />}
-            {loading ? 'Refreshing...' : refreshing ? 'Updating...' : 'Refresh'}
+            {refreshLabel(loading, refreshing)}
           </button>
         </div>
       </div>

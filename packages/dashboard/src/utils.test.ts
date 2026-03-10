@@ -1,5 +1,54 @@
 import { describe, it, expect } from 'vitest';
-import { truncate, formatDate, statusColor, ciStatusColor, formatStarCount, getLanguageColor } from './utils';
+import {
+  stripBrackets,
+  pillColorClass,
+  truncate,
+  formatDate,
+  statusColor,
+  ciStatusColor,
+  formatStarCount,
+  getLanguageColor,
+} from './utils';
+
+describe('stripBrackets', () => {
+  it('removes surrounding brackets from a label', () => {
+    expect(stripBrackets('[CI Failing]')).toBe('CI Failing');
+  });
+
+  it('returns the string unchanged when no brackets are present', () => {
+    expect(stripBrackets('No Brackets')).toBe('No Brackets');
+  });
+
+  it('handles empty string', () => {
+    expect(stripBrackets('')).toBe('');
+  });
+});
+
+describe('pillColorClass', () => {
+  it('returns pill--red for attention labels', () => {
+    expect(pillColorClass('[CI Failing]')).toBe('pill--red');
+    expect(pillColorClass('[Needs Response]')).toBe('pill--red');
+    expect(pillColorClass('[Merge Conflict]')).toBe('pill--red');
+  });
+
+  it('returns pill--amber for warning labels', () => {
+    expect(pillColorClass('[Incomplete Checklist]')).toBe('pill--amber');
+    expect(pillColorClass('[CI Not Running]')).toBe('pill--amber');
+    expect(pillColorClass('[Needs Rebase]')).toBe('pill--amber');
+  });
+
+  it('returns pill--blue for waiting labels', () => {
+    expect(pillColorClass('[Waiting on Maintainer]')).toBe('pill--blue');
+  });
+
+  it('returns pill--muted for unknown labels', () => {
+    expect(pillColorClass('[Something Else]')).toBe('pill--muted');
+  });
+
+  it('works with labels that have no brackets', () => {
+    expect(pillColorClass('CI Failing')).toBe('pill--red');
+  });
+});
 
 describe('truncate', () => {
   it('returns the string unchanged if within limit', () => {
