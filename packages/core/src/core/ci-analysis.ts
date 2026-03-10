@@ -8,12 +8,10 @@ import { CIFailureCategory, ClassifiedCheck, CIStatusResult } from './types.js';
 import { getHttpStatusCode, errorMessage } from './errors.js';
 import { debug, warn } from './logger.js';
 
-/** Default CI status returned when no check data is available or an error occurs. */
-const UNKNOWN_CI_STATUS: CIStatusResult = {
-  status: 'unknown',
-  failingCheckNames: [],
-  failingCheckConclusions: new Map(),
-};
+/** Return a fresh unknown CI status (avoids shared mutable state between callers). */
+function unknownCIStatus(): CIStatusResult {
+  return { status: 'unknown', failingCheckNames: [], failingCheckConclusions: new Map() };
+}
 
 /**
  * Known CI check name patterns that indicate fork limitations rather than real failures (#81).
@@ -221,10 +219,10 @@ export function mergeStatuses(
 
   // No checks found at all — common for repos without CI
   if (!hasStatuses && checkRunCount === 0) {
-    return UNKNOWN_CI_STATUS;
+    return unknownCIStatus();
   }
 
-  return UNKNOWN_CI_STATUS;
+  return unknownCIStatus();
 }
 
 /**
@@ -232,7 +230,7 @@ export function mergeStatuses(
  * Returns the merged status and names of any failing checks for diagnostics.
  */
 export async function getCIStatus(octokit: Octokit, owner: string, repo: string, sha: string): Promise<CIStatusResult> {
-  if (!sha) return UNKNOWN_CI_STATUS;
+  if (!sha) return unknownCIStatus();
 
   try {
     // Fetch both combined status and check runs in parallel
@@ -289,6 +287,6 @@ export async function getCIStatus(octokit: Octokit, owner: string, repo: string,
     } else {
       warn('pr-monitor', `Failed to check CI for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage(error)}`);
     }
-    return UNKNOWN_CI_STATUS;
+    return unknownCIStatus();
   }
 }

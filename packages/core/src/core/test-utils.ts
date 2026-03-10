@@ -104,7 +104,7 @@ export function makeAgentState(
   const config: AgentConfig = { ...DEFAULT_CONFIG, githubUsername: 'testuser', ...configOverrides };
   return {
     ...INITIAL_STATE,
-    lastRunAt: new Date().toISOString(),
+    lastRunAt: '2025-01-01T00:00:00Z',
     ...rest,
     config,
   };
