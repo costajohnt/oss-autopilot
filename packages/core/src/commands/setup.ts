@@ -6,7 +6,7 @@
 import { getStateManager, DEFAULT_CONFIG } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { validateGitHubUsername } from './validation.js';
-import { PROJECT_CATEGORIES, type ProjectCategory } from '../core/types.js';
+import { PROJECT_CATEGORIES, type ProjectCategory, ISSUE_SCOPES, type IssueScope } from '../core/types.js';
 
 /** Parse and validate a positive integer setting value. */
 function parsePositiveInt(value: string, settingName: string): number {
@@ -39,6 +39,7 @@ export interface SetupCompleteOutput {
     labels: string[];
     projectCategories: ProjectCategory[];
     preferredOrgs: string[];
+    scope: IssueScope[];
   };
 }
 
@@ -208,6 +209,28 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
           results[key] = dedupedOrgs.length > 0 ? dedupedOrgs.join(', ') : '(empty)';
           break;
         }
+        case 'scope': {
+          const scopeValues = value
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const validScopes: IssueScope[] = [];
+          const invalidScopes: string[] = [];
+          for (const s of scopeValues) {
+            if ((ISSUE_SCOPES as readonly string[]).includes(s)) {
+              validScopes.push(s as IssueScope);
+            } else {
+              invalidScopes.push(s);
+            }
+          }
+          if (invalidScopes.length > 0) {
+            warnings.push(`Unknown issue scopes: ${invalidScopes.join(', ')}. Valid: ${ISSUE_SCOPES.join(', ')}`);
+          }
+          const dedupedScopes = [...new Set(validScopes)];
+          stateManager.updateConfig({ scope: dedupedScopes.length > 0 ? dedupedScopes : undefined });
+          results[key] = dedupedScopes.length > 0 ? dedupedScopes.join(', ') : '(empty — using labels only)';
+          break;
+        }
         case 'complete':
           if (value === 'true') {
             stateManager.markSetupComplete();
@@ -237,6 +260,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         labels: config.labels,
         projectCategories: config.projectCategories ?? [],
         preferredOrgs: config.preferredOrgs ?? [],
+        scope: config.scope ?? [],
       },
     };
   }
@@ -285,6 +309,14 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         prompt: 'What issue labels should we search for?',
         current: config.labels,
         default: ['good first issue', 'help wanted'],
+        type: 'list',
+      },
+      {
+        setting: 'scope',
+        prompt:
+          'What scope of issues do you want to discover? (beginner, intermediate, advanced — leave empty for default labels only)',
+        current: config.scope ?? [],
+        default: [],
         type: 'list',
       },
       {

@@ -13,7 +13,7 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
 import { daysBetween, getDataDir } from './utils.js';
-import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate } from './types.js';
+import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate, type IssueScope, SCOPE_LABELS } from './types.js';
 import { ValidationError, errorMessage, getHttpStatusCode, isRateLimitError } from './errors.js';
 import { debug, info, warn } from './logger.js';
 import { getHttpCache, cachedTimeBased } from './http-cache.js';
@@ -37,9 +37,39 @@ export {
 export { calculateRepoQualityBonus, calculateViabilityScore, type ViabilityScoreParams } from './issue-scoring.js';
 export { type CheckResult } from './issue-vetting.js';
 // Re-export types that were previously defined here
-export type { SearchPriority, IssueCandidate } from './types.js';
+export type { SearchPriority, IssueCandidate, IssueScope } from './types.js';
+export { SCOPE_LABELS, ISSUE_SCOPES } from './types.js';
 
 const MODULE = 'issue-discovery';
+
+/** Build a GitHub Search API label filter from a list of labels. */
+function buildLabelQuery(labels: string[]): string {
+  if (labels.length === 0) return '';
+  if (labels.length === 1) return `label:"${labels[0]}"`;
+  return `(${labels.map((l) => `label:"${l}"`).join(' OR ')})`;
+}
+
+/** Resolve scope tiers into a flat label list, merged with custom labels. */
+export function buildEffectiveLabels(scopes: IssueScope[], customLabels: string[]): string[] {
+  const labels = new Set<string>();
+  for (const scope of scopes) {
+    for (const label of SCOPE_LABELS[scope] ?? []) labels.add(label);
+  }
+  for (const label of customLabels) labels.add(label);
+  return [...labels];
+}
+
+/** Round-robin interleave multiple arrays. */
+export function interleaveArrays<T>(arrays: T[][]): T[] {
+  const result: T[] = [];
+  const maxLen = Math.max(...arrays.map((a) => a.length), 0);
+  for (let i = 0; i < maxLen; i++) {
+    for (const arr of arrays) {
+      if (i < arr.length) result.push(arr[i]);
+    }
+  }
+  return result;
+}
 
 /** TTL for cached search API results (15 minutes). */
 const SEARCH_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -225,7 +255,8 @@ export class IssueDiscovery {
   ): Promise<IssueCandidate[]> {
     const config = this.stateManager.getState().config;
     const languages = options.languages || config.languages;
-    const labels = options.labels || config.labels;
+    const scopes = config.scope; // undefined = legacy mode
+    const labels = options.labels || (scopes ? buildEffectiveLabels(scopes, config.labels) : config.labels);
     const maxResults = options.maxResults || 10;
     const minStars = config.minStars ?? 50;
 
@@ -273,7 +304,7 @@ export class IssueDiscovery {
     const now = new Date();
 
     // Build query parts
-    const labelQuery = labels.map((l) => `label:"${l}"`).join(' ');
+    const labelQuery = buildLabelQuery(labels);
     // When languages includes 'any', omit the language filter entirely
     const isAnyLanguage = languages.some((l) => l.toLowerCase() === 'any');
     const langQuery = isAnyLanguage ? '' : languages.map((l) => `language:${l}`).join(' ');
@@ -449,50 +480,95 @@ export class IssueDiscovery {
     }
 
     // Phase 2: General search (if still need more)
+    // When multiple scope tiers are active, fire one query per tier and interleave
+    // results to prevent high-volume tiers (e.g., "enhancement") from drowning out
+    // beginner results.
     let phase2Error: string | null = null;
     if (allCandidates.length < maxResults) {
       info(MODULE, 'Phase 2: General issue search...');
       const remainingNeeded = maxResults - allCandidates.length;
-      try {
-        const data = await this.cachedSearch({
-          q: baseQuery,
-          sort: 'created',
-          order: 'desc',
-          per_page: remainingNeeded * 3, // Fetch extra since some will be filtered
-        });
+      const seenRepos = new Set(allCandidates.map((c) => c.issue.repo));
 
-        info(MODULE, `Found ${data.total_count} issues in general search, processing top ${data.items.length}...`);
-
-        const seenRepos = new Set(allCandidates.map((c) => c.issue.repo));
-        const {
-          candidates: starFiltered,
-          allVetFailed,
-          rateLimitHit: vetRateLimitHit,
-        } = await this.filterVetAndScore(
-          data.items,
-          filterIssues,
-          [phase0RepoSet, starredRepoSet, seenRepos],
-          remainingNeeded,
-          minStars,
-          'Phase 2',
-        );
-
-        allCandidates.push(...starFiltered);
-        if (allVetFailed) {
-          phase2Error = (phase2Error ? phase2Error + '; ' : '') + 'all vetting failed';
+      // Build per-tier label groups. Multi-tier when 2+ scopes; single-tier otherwise.
+      // Both paths use the same loop — interleaving a single-element array is a no-op.
+      const tierLabelGroups: { tier: string; tierLabels: string[] }[] = [];
+      if (scopes && scopes.length > 1) {
+        for (const scope of scopes) {
+          const scopeLabels = SCOPE_LABELS[scope] ?? [];
+          if (scopeLabels.length === 0) {
+            warn(MODULE, `Scope "${scope}" has no labels, skipping tier`);
+            continue;
+          }
+          tierLabelGroups.push({ tier: scope, tierLabels: scopeLabels });
         }
-        if (vetRateLimitHit) {
-          rateLimitHitDuringSearch = true;
+        // Custom labels not in any tier get their own pseudo-tier
+        const allScopeLabels = new Set(scopes.flatMap((s) => SCOPE_LABELS[s] ?? []));
+        const customOnly = config.labels.filter((l) => !allScopeLabels.has(l));
+        if (customOnly.length > 0) {
+          tierLabelGroups.push({ tier: 'custom', tierLabels: customOnly });
         }
-        info(MODULE, `Found ${starFiltered.length} candidates from general search`);
-      } catch (error) {
-        const errMsg = errorMessage(error);
-        phase2Error = errMsg;
-        if (isRateLimitError(error)) {
-          rateLimitHitDuringSearch = true;
-        }
-        warn(MODULE, `Error in general issue search: ${errMsg}`);
+      } else {
+        tierLabelGroups.push({ tier: 'general', tierLabels: labels });
       }
+
+      const budgetPerTier = Math.ceil(remainingNeeded / tierLabelGroups.length);
+      const tierResults: IssueCandidate[][] = [];
+
+      for (const { tier, tierLabels } of tierLabelGroups) {
+        const tierQuery = `is:issue is:open ${buildLabelQuery(tierLabels)} ${langQuery} no:assignee`
+          .replace(/  +/g, ' ')
+          .trim();
+
+        try {
+          const data = await this.cachedSearch({
+            q: tierQuery,
+            sort: 'created',
+            order: 'desc',
+            per_page: budgetPerTier * 3,
+          });
+
+          info(MODULE, `Phase 2 [${tier}]: ${data.total_count} total, processing top ${data.items.length}...`);
+
+          const {
+            candidates: tierCandidates,
+            allVetFailed,
+            rateLimitHit: vetRateLimitHit,
+          } = await this.filterVetAndScore(
+            data.items,
+            filterIssues,
+            [phase0RepoSet, starredRepoSet, seenRepos],
+            budgetPerTier,
+            minStars,
+            `Phase 2 [${tier}]`,
+          );
+
+          tierResults.push(tierCandidates);
+          // Update seenRepos so later tiers don't return duplicate repos
+          for (const c of tierCandidates) seenRepos.add(c.issue.repo);
+          if (allVetFailed) {
+            phase2Error = (phase2Error ? phase2Error + '; ' : '') + `${tier}: all vetting failed`;
+          }
+          if (vetRateLimitHit) {
+            rateLimitHitDuringSearch = true;
+          }
+          info(MODULE, `Found ${tierCandidates.length} candidates from ${tier} tier`);
+        } catch (error) {
+          if (getHttpStatusCode(error) === 401) throw error;
+          const errMsg = errorMessage(error);
+          phase2Error = (phase2Error ? phase2Error + '; ' : '') + `${tier}: ${errMsg}`;
+          if (isRateLimitError(error)) {
+            rateLimitHitDuringSearch = true;
+          }
+          warn(MODULE, `Error in ${tier} tier search: ${errMsg}`);
+          tierResults.push([]);
+        }
+      }
+
+      const interleaved = interleaveArrays(tierResults);
+      if (interleaved.length === 0 && phase2Error) {
+        warn(MODULE, `All ${tierLabelGroups.length} scope tiers failed in Phase 2: ${phase2Error}`);
+      }
+      allCandidates.push(...interleaved.slice(0, remainingNeeded));
     }
 
     // Phase 3: Actively maintained repos (#349)
