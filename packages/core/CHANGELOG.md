@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.55.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.54.0...core-v0.55.0) (2026-03-10)
+
+
+### Features
+
+* **dashboard:** UI polish with animations and colored stats ([#688](https://github.com/costajohnt/oss-autopilot/issues/688)) ([119b093](https://github.com/costajohnt/oss-autopilot/commit/119b093e965c1eaaf7e7965df062463481908b3d))
+* expand issue discovery with scope tiers and fix OR-join bug ([#684](https://github.com/costajohnt/oss-autopilot/issues/684)) ([4ef831a](https://github.com/costajohnt/oss-autopilot/commit/4ef831a0b38aa2d6b866b2bad124091ad1713ea3)), closes [#683](https://github.com/costajohnt/oss-autopilot/issues/683)
+
+
+### Bug Fixes
+
+* correct health-check counts and expand dashboard search scope ([#681](https://github.com/costajohnt/oss-autopilot/issues/681)) ([b5c6b8d](https://github.com/costajohnt/oss-autopilot/commit/b5c6b8d9e17c03adc3fbbb8df2a88e6664eda568))
+
 ## [0.54.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.53.1...core-v0.54.0) (2026-03-09)
 
 
