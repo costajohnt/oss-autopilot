@@ -465,3 +465,139 @@ describe('Lazy imports', () => {
     expect(syncTokenCalls).toBeNull();
   });
 });
+
+// ─── CLI argument parsing ─────────────────────────────────────────────────────
+
+describe('CLI argument parsing', () => {
+  // Build once — all tests are read-only inspections of Commander's option metadata.
+  const program = new Command();
+  program.name('oss-autopilot');
+  for (const cmd of commands) {
+    cmd.register(program);
+  }
+
+  /** Find a command by name, checking both top-level and one level of nesting (e.g. dashboard > serve). */
+  function findCmd(name: string): Command | undefined {
+    const topLevel = program.commands.find((c) => c.name() === name);
+    if (topLevel) return topLevel;
+    for (const parent of program.commands) {
+      const nested = parent.commands.find((c) => c.name() === name);
+      if (nested) return nested;
+    }
+    return undefined;
+  }
+
+  it('every command should have --json option (except serve)', () => {
+    const commandNames = commands.map((c) => c.name);
+
+    for (const name of commandNames) {
+      const cmd = findCmd(name);
+      expect(cmd, `command "${name}" should be registered`).toBeDefined();
+
+      if (name === 'serve') {
+        // serve intentionally lacks --json
+        const jsonOpt = cmd!.options.find((o) => o.long === '--json');
+        expect(jsonOpt, 'serve should NOT have --json').toBeUndefined();
+      } else {
+        const jsonOpt = cmd!.options.find((o) => o.long === '--json');
+        expect(jsonOpt, `command "${name}" should have --json`).toBeDefined();
+      }
+    }
+  });
+
+  it('search accepts optional [count] argument', () => {
+    const cmd = findCmd('search')!;
+    expect(cmd).toBeDefined();
+    const countArg = cmd.registeredArguments.find((a) => a.name() === 'count');
+    expect(countArg, 'search should have a [count] argument').toBeDefined();
+    expect(countArg!.required).toBe(false);
+  });
+
+  it('vet requires <issue-url> argument', () => {
+    const cmd = findCmd('vet')!;
+    expect(cmd).toBeDefined();
+    const issueUrlArg = cmd.registeredArguments.find((a) => a.name() === 'issue-url');
+    expect(issueUrlArg, 'vet should have an <issue-url> argument').toBeDefined();
+    expect(issueUrlArg!.required).toBe(true);
+  });
+
+  it('status has --offline option', () => {
+    const cmd = findCmd('status');
+    expect(cmd).toBeDefined();
+    const opt = cmd!.options.find((o) => o.long === '--offline');
+    expect(opt, 'status should have --offline').toBeDefined();
+  });
+
+  it('comments has --bots option', () => {
+    const cmd = findCmd('comments');
+    expect(cmd).toBeDefined();
+    const opt = cmd!.options.find((o) => o.long === '--bots');
+    expect(opt, 'comments should have --bots').toBeDefined();
+  });
+
+  it('setup has --reset and --set options', () => {
+    const cmd = findCmd('setup');
+    expect(cmd).toBeDefined();
+    const resetOpt = cmd!.options.find((o) => o.long === '--reset');
+    expect(resetOpt, 'setup should have --reset').toBeDefined();
+    const setOpt = cmd!.options.find((o) => o.long === '--set');
+    expect(setOpt, 'setup should have --set').toBeDefined();
+  });
+
+  it('dashboard serve has --port and --no-open options', () => {
+    const cmd = findCmd('serve');
+    expect(cmd, 'serve should be nested under dashboard').toBeDefined();
+    const portOpt = cmd!.options.find((o) => o.long === '--port');
+    expect(portOpt, 'serve should have --port').toBeDefined();
+    const noOpenOpt = cmd!.options.find((o) => o.long === '--no-open');
+    expect(noOpenOpt, 'serve should have --no-open').toBeDefined();
+  });
+
+  it('stats has --markdown and --badge options', () => {
+    const cmd = findCmd('stats');
+    expect(cmd).toBeDefined();
+    const markdownOpt = cmd!.options.find((o) => o.long === '--markdown');
+    expect(markdownOpt, 'stats should have --markdown').toBeDefined();
+    const badgeOpt = cmd!.options.find((o) => o.long === '--badge');
+    expect(badgeOpt, 'stats should have --badge').toBeDefined();
+  });
+
+  it('local-repos has --scan and --paths options', () => {
+    const cmd = findCmd('local-repos');
+    expect(cmd).toBeDefined();
+    const scanOpt = cmd!.options.find((o) => o.long === '--scan');
+    expect(scanOpt, 'local-repos should have --scan').toBeDefined();
+    const pathsOpt = cmd!.options.find((o) => o.long === '--paths');
+    expect(pathsOpt, 'local-repos should have --paths').toBeDefined();
+  });
+
+  it('read has --all option', () => {
+    const cmd = findCmd('read');
+    expect(cmd).toBeDefined();
+    const opt = cmd!.options.find((o) => o.long === '--all');
+    expect(opt, 'read should have --all').toBeDefined();
+  });
+
+  it('post has --stdin option', () => {
+    const cmd = findCmd('post');
+    expect(cmd).toBeDefined();
+    const opt = cmd!.options.find((o) => o.long === '--stdin');
+    expect(opt, 'post should have --stdin').toBeDefined();
+  });
+
+  it('serve --port defaults to "3000"', () => {
+    const cmd = findCmd('serve');
+    expect(cmd).toBeDefined();
+    const portOpt = cmd!.options.find((o) => o.long === '--port');
+    expect(portOpt).toBeDefined();
+    expect(portOpt!.defaultValue).toBe('3000');
+  });
+
+  it('check-integration has --base option defaulting to "main"', () => {
+    const cmd = findCmd('check-integration');
+    expect(cmd).toBeDefined();
+    const baseOpt = cmd!.options.find((o) => o.long === '--base');
+    expect(baseOpt).toBeDefined();
+    expect(baseOpt!.defaultValue).toBe('main');
+  });
+});

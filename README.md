@@ -17,6 +17,15 @@ OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you 
 [![npm @oss-autopilot/mcp](https://img.shields.io/npm/v/@oss-autopilot/mcp)](https://www.npmjs.com/package/@oss-autopilot/mcp)
 ![Claude Code Plugin](https://img.shields.io/badge/Claude_Code-Plugin-blueviolet)
 
+## Quick Start
+
+```
+/plugin marketplace add costajohnt/oss-autopilot
+/plugin install oss-autopilot@oss-autopilot
+```
+
+Restart Claude Code, run `/oss`. [Full install guide →](#install)
+
 ![OSS Autopilot Demo](docs/images/demo.gif)
 
 ## Install
