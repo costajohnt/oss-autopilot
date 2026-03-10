@@ -27,7 +27,7 @@
     </linearGradient>
     <!-- Title gradient (light-mode: dark slate to blue, 135deg) -->
     <linearGradient id="titleGrad" x1="0%" y1="0%" x2="70.7%" y2="70.7%">
-      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="0%" stop-color="#3b82f6"/>
       <stop offset="100%" stop-color="#2563eb"/>
     </linearGradient>
     <!-- Subtle glow behind crystal -->
