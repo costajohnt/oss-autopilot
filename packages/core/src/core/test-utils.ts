@@ -2,8 +2,8 @@
  * Shared test factories for oss-autopilot.
  *
  * Centralises mock object construction so that when types gain new required
- * fields we only update one place. Every factory accepts a `Partial<T>`
- * override bag — callers only specify the fields relevant to their test.
+ * fields we only update one place. Every factory accepts an override bag —
+ * callers only specify the fields relevant to their test.
  */
 
 import type {
@@ -18,7 +18,7 @@ import type {
 } from './types.js';
 import { DEFAULT_CONFIG, INITIAL_STATE } from './types.js';
 import type { CapacityAssessment } from '../formatters/json.js';
-import type { Stats } from './state.js';
+import type { StateManager, Stats } from './state.js';
 
 // ---------------------------------------------------------------------------
 // FetchedPR
@@ -133,11 +133,14 @@ export function makeStats(overrides: Partial<Stats> = {}): Stats {
 
 /**
  * Build a type-safe StateManager mock for use with vi.mocked(getStateManager).
- * Eliminates the `} as any` pattern. Only override the methods your test needs;
- * defaults provide sensible no-op behaviour.
+ * Only override the methods your test needs; defaults provide sensible no-op behaviour.
  *
  * `config` is a shorthand for `state.config` -- most callers only need to
  * override a few config fields without touching other AgentState fields.
+ *
+ * Note: the `as unknown` cast means new StateManager methods won't cause a
+ * compile error here. If tests fail with "X is not a function", add the
+ * missing method stub to this mock.
  */
 export function makeStateManagerMock(
   overrides: {
@@ -199,7 +202,7 @@ export function makeStateManagerMock(
     getReposWithOpenPRs: () => [],
     getHighScoringRepos: () => [],
     getLowScoringRepos: () => [],
-  } as unknown as ReturnType<typeof import('./state.js').getStateManager>;
+  } as unknown as StateManager;
 }
 
 // ---------------------------------------------------------------------------

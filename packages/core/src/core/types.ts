@@ -30,7 +30,7 @@ export interface ClassifiedCheck {
   conclusion?: string;
 }
 
-/** Return type for PRMonitor.getCIStatus(). */
+/** CI status result returned by getCIStatus(). */
 export interface CIStatusResult {
   status: CIStatus;
   failingCheckNames: string[];

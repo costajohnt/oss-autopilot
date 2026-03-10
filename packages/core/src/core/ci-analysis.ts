@@ -8,7 +8,7 @@ import { CIFailureCategory, ClassifiedCheck, CIStatusResult } from './types.js';
 import { getHttpStatusCode, errorMessage } from './errors.js';
 import { debug, warn } from './logger.js';
 
-/** Sentinel value for CI status when no check data is available. */
+/** Default CI status returned when no check data is available or an error occurs. */
 const UNKNOWN_CI_STATUS: CIStatusResult = {
   status: 'unknown',
   failingCheckNames: [],
@@ -219,7 +219,7 @@ export function mergeStatuses(
     return { status: 'passing', failingCheckNames: [], failingCheckConclusions: new Map() };
   }
 
-  // No checks found at all - this is common for repos without CI
+  // No checks found at all — common for repos without CI
   if (!hasStatuses && checkRunCount === 0) {
     return UNKNOWN_CI_STATUS;
   }
@@ -228,9 +228,8 @@ export function mergeStatuses(
 }
 
 /**
- * Get CI status from combined status API and check runs.
- * Returns status and names of failing checks for diagnostics.
- * Extracted from PRMonitor so tests can call it directly without class instantiation.
+ * Get CI status for a commit SHA by querying both the combined status API and check runs API.
+ * Returns the merged status and names of any failing checks for diagnostics.
  */
 export async function getCIStatus(octokit: Octokit, owner: string, repo: string, sha: string): Promise<CIStatusResult> {
   if (!sha) return UNKNOWN_CI_STATUS;
@@ -275,7 +274,6 @@ export async function getCIStatus(octokit: Octokit, owner: string, repo: string,
     }
     const checkRuns = [...latestCheckRunsByName.values()];
 
-    // Delegate analysis to existing pure functions
     const checkRunAnalysis = analyzeCheckRuns(checkRuns);
     const combinedAnalysis = analyzeCombinedStatus(combinedStatus);
 

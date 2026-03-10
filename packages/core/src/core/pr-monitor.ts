@@ -4,7 +4,7 @@
  * Score methods still write to state.
  *
  * Decomposed into focused modules (#263):
- * - ci-analysis.ts: CI check classification and analysis
+ * - ci-analysis.ts: CI status fetching, check classification and analysis
  * - review-analysis.ts: Review decision and comment detection
  * - checklist-analysis.ts: PR body checklist analysis
  * - maintainer-analysis.ts: Maintainer action hint extraction
@@ -25,7 +25,6 @@ import { paginateAll } from './pagination.js';
 import { debug, warn, timed } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 
-// Extracted modules
 import { classifyFailingChecks, getCIStatus } from './ci-analysis.js';
 import {
   type ReviewComment,
@@ -51,8 +50,8 @@ export { isConditionalChecklistItem } from './checklist-analysis.js';
 export { determineStatus } from './status-determination.js';
 
 /**
- * Check if PR has merge conflict.
- * Exported as a free function so tests can call it directly without PRMonitor instantiation.
+ * Check if a PR has a merge conflict based on GitHub's mergeable flag and mergeable_state.
+ * Returns true when mergeable is explicitly false or the mergeable_state is 'dirty'.
  */
 export function hasMergeConflict(mergeable: boolean | null, mergeableState: string | null): boolean {
   return mergeable === false || mergeableState === 'dirty';
