@@ -44,9 +44,9 @@ function AppContent() {
 
   if (loading && !data) {
     return (
-      <div style={{ paddingTop: '32px' }}>
+      <div class="skeleton-wrapper">
         <SkeletonLoader />
-        <div class="shell-center" style={{ minHeight: 'auto', paddingTop: '48px' }}>
+        <div class="shell-center shell-center--skeleton">
           <p class="shell-status">Loading dashboard data...</p>
         </div>
       </div>

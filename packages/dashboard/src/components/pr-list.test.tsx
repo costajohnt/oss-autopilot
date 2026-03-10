@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/preact';
 import { PRList, statusClass } from './pr-list';
 import { makePR } from '../test-helpers';
-import type { FetchedPR } from '../types';
+import type { FetchedPR, FetchedPRStatus } from '../types';
 
 interface PRListOptions {
   prs?: FetchedPR[];
@@ -144,5 +144,10 @@ describe('statusClass', () => {
 
   it('returns pr-row--waiting for waiting_on_maintainer', () => {
     expect(statusClass('waiting_on_maintainer')).toBe('pr-row--waiting');
+  });
+
+  it('returns empty string for unknown status', () => {
+    // Cast to bypass compile-time exhaustive check
+    expect(statusClass('unknown_status' as FetchedPRStatus)).toBe('');
   });
 });
