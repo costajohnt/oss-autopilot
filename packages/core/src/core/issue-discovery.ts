@@ -19,8 +19,6 @@ import { ValidationError, errorMessage, getHttpStatusCode, isRateLimitError } fr
 import { debug, info, warn } from './logger.js';
 import { type GitHubSearchItem, isDocOnlyIssue, applyPerRepoCap } from './issue-filtering.js';
 import { IssueVetter } from './issue-vetting.js';
-import { analyzeRequirements as analyzeReqs } from './issue-eligibility.js';
-import { calculateViabilityScore as calcViabilityScore, type ViabilityScoreParams } from './issue-scoring.js';
 import { getTopicsForCategories } from './category-mapping.js';
 import {
   buildLabelQuery,
@@ -593,22 +591,6 @@ export class IssueDiscovery {
    */
   async vetIssue(issueUrl: string): Promise<IssueCandidate> {
     return this.vetter.vetIssue(issueUrl);
-  }
-
-  /**
-   * Analyze issue requirements for clarity (delegates to issue-eligibility).
-   * Kept on class for backward compatibility.
-   */
-  analyzeRequirements(body: string): boolean {
-    return analyzeReqs(body);
-  }
-
-  /**
-   * Calculate viability score for an issue (delegates to issue-scoring module).
-   * Kept on class for backward compatibility with tests that call instance.calculateViabilityScore().
-   */
-  calculateViabilityScore(params: ViabilityScoreParams): number {
-    return calcViabilityScore(params);
   }
 
   /**
