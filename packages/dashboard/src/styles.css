@@ -223,7 +223,7 @@ a:hover {
 .dashboard {
   max-width: 1280px;
   margin: 0 auto;
-  padding: var(--sp-6) var(--sp-8);
+  padding: var(--sp-8);
 }
 
 .dashboard-header {
@@ -377,8 +377,8 @@ a:hover {
   content: '';
   position: absolute;
   inset: 0;
-  opacity: 0.08;
-  border-radius: var(--radius);
+  opacity: 0.06;
+  border-radius: inherit;
   pointer-events: none;
 }
 
@@ -729,9 +729,9 @@ a:hover {
   background: var(--surface);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  padding: var(--sp-5);
+  overflow: hidden;
   position: sticky;
-  top: var(--sp-6);
+  top: var(--sp-8);
   max-height: calc(100vh - var(--sp-12));
   overflow-y: auto;
 }
@@ -740,7 +740,8 @@ a:hover {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-3);
-  margin-bottom: var(--sp-4);
+  padding: var(--sp-6);
+  padding-bottom: var(--sp-4);
 }
 
 .pr-detail-title {
@@ -771,6 +772,7 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
+  padding: 0 var(--sp-6);
   margin-bottom: var(--sp-3);
 }
 
@@ -785,6 +787,7 @@ a:hover {
 }
 
 .pr-detail-links {
+  padding: 0 var(--sp-6);
   margin-bottom: var(--sp-4);
 }
 
@@ -797,8 +800,8 @@ a:hover {
 .pr-detail-fields {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
-  margin-bottom: var(--sp-5);
+  gap: var(--sp-5);
+  padding: var(--sp-6);
   padding-top: var(--sp-4);
   border-top: 1px solid var(--border);
 }
@@ -894,7 +897,8 @@ a:hover {
   background: var(--elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: var(--sp-3) var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  margin-top: var(--sp-2);
 }
 
 .pr-detail-comment-header {
@@ -936,9 +940,8 @@ a:hover {
 .action-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-2);
-  padding-top: var(--sp-4);
-  border-top: 1px solid var(--border);
+  gap: var(--sp-3);
+  padding: 0 var(--sp-6) var(--sp-6);
 }
 
 .error-banner {
@@ -1048,7 +1051,7 @@ a:hover {
   background: var(--surface);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  padding: var(--sp-5);
+  padding: var(--sp-6);
 }
 
 .chart-card-title {
@@ -1071,7 +1074,7 @@ a:hover {
   background: var(--surface);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  padding: var(--sp-5);
+  padding: var(--sp-6);
 }
 
 .issue-list-title {
@@ -1213,7 +1216,7 @@ a:hover {
   background: var(--surface);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  padding: var(--sp-5);
+  padding: var(--sp-6);
 }
 
 .recent-activity-title {
