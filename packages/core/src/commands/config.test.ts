@@ -154,4 +154,86 @@ describe('runConfig', () => {
 
     expect(mockUpdateConfig).not.toHaveBeenCalled();
   });
+
+  it('should remove a label', async () => {
+    await runConfig({ key: 'remove-label', value: 'good first issue' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({
+      labels: ['help wanted'],
+    });
+    expect(mockSave).toHaveBeenCalled();
+  });
+
+  it('should throw when removing a label that does not exist', async () => {
+    await expect(runConfig({ key: 'remove-label', value: 'nonexistent' })).rejects.toThrow('not currently configured');
+  });
+
+  it('should add a scope', async () => {
+    await runConfig({ key: 'add-scope', value: 'beginner' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ scope: ['beginner'] });
+    expect(mockSave).toHaveBeenCalled();
+  });
+
+  it('should append a scope to existing scopes', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, scope: ['beginner'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      save: mockSave,
+    } as any);
+
+    await runConfig({ key: 'add-scope', value: 'intermediate' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ scope: ['beginner', 'intermediate'] });
+  });
+
+  it('should not add duplicate scope', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, scope: ['beginner'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      save: mockSave,
+    } as any);
+
+    await runConfig({ key: 'add-scope', value: 'beginner' });
+
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+  });
+
+  it('should throw for invalid scope value', async () => {
+    await expect(runConfig({ key: 'add-scope', value: 'expert' })).rejects.toThrow('Invalid scope');
+  });
+
+  it('should remove a scope', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, scope: ['beginner', 'intermediate'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      save: mockSave,
+    } as any);
+
+    await runConfig({ key: 'remove-scope', value: 'beginner' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ scope: ['intermediate'] });
+  });
+
+  it('should throw when removing the last scope', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, scope: ['beginner'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      save: mockSave,
+    } as any);
+
+    await expect(runConfig({ key: 'remove-scope', value: 'beginner' })).rejects.toThrow('Cannot remove the last scope');
+  });
+
+  it('should throw when removing a scope that is not set', async () => {
+    await expect(runConfig({ key: 'remove-scope', value: 'advanced' })).rejects.toThrow('not currently set');
+  });
+
+  it('should throw for invalid scope value in remove-scope', async () => {
+    await expect(runConfig({ key: 'remove-scope', value: 'expert' })).rejects.toThrow('Invalid scope');
+  });
 });

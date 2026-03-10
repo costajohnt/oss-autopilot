@@ -311,9 +311,45 @@ describe('runSetup', () => {
         config: expect.objectContaining({
           projectCategories: ['devtools'],
           preferredOrgs: ['vercel'],
+          scope: [],
         }),
       }),
     );
+  });
+
+  it('should handle valid scope setting', async () => {
+    const result = (await runSetup({ set: ['scope=beginner,intermediate'] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ scope: ['beginner', 'intermediate'] });
+    expect(result.settings.scope).toBe('beginner, intermediate');
+  });
+
+  it('should warn for invalid scope values', async () => {
+    const result = (await runSetup({ set: ['scope=beginner,expert'] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ scope: ['beginner'] });
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('Unknown issue scopes')]));
+  });
+
+  it('should clear scope when empty value provided', async () => {
+    const result = (await runSetup({ set: ['scope='] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ scope: undefined });
+    expect(result.settings.scope).toBe('(empty — using labels only)');
+  });
+
+  it('should deduplicate scope values', async () => {
+    await runSetup({ set: ['scope=beginner,beginner,intermediate'] });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ scope: ['beginner', 'intermediate'] });
+  });
+
+  it('should include scope in setup prompts', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, setupComplete: false } }),
+      updateConfig: mockUpdateConfig,
+      save: mockSave,
+    } as any);
+
+    const result = (await runSetup({})) as SetupRequiredOutput;
+    const settings = result.prompts.map((p) => p.setting);
+    expect(settings).toContain('scope');
   });
 });
 

@@ -78,6 +78,9 @@ const {
   applyPerRepoCap,
   DOC_ONLY_LABELS,
   BEGINNER_LABELS: _BEGINNER_LABELS,
+  buildEffectiveLabels,
+  interleaveArrays,
+  SCOPE_LABELS,
 } = await import('./issue-discovery.js');
 
 const { getStateManager } = await import('./state.js');
@@ -1741,5 +1744,72 @@ describe('formatCandidate', () => {
 
     expect(output).toContain('Has 3 linked PRs');
     expect(output).toContain('Recently discussed');
+  });
+});
+
+describe('buildEffectiveLabels', () => {
+  it('should return scope labels for a single scope', () => {
+    const result = buildEffectiveLabels(['beginner'], []);
+    expect(result).toEqual(SCOPE_LABELS.beginner);
+  });
+
+  it('should merge labels from multiple scopes', () => {
+    const result = buildEffectiveLabels(['beginner', 'intermediate'], []);
+    for (const label of SCOPE_LABELS.beginner) {
+      expect(result).toContain(label);
+    }
+    for (const label of SCOPE_LABELS.intermediate) {
+      expect(result).toContain(label);
+    }
+  });
+
+  it('should merge custom labels with scope labels', () => {
+    const result = buildEffectiveLabels(['beginner'], ['custom-label']);
+    expect(result).toContain('good first issue');
+    expect(result).toContain('custom-label');
+  });
+
+  it('should deduplicate when custom labels overlap with scope labels', () => {
+    const result = buildEffectiveLabels(['beginner'], ['good first issue', 'custom']);
+    const gfiCount = result.filter((l) => l === 'good first issue').length;
+    expect(gfiCount).toBe(1);
+    expect(result).toContain('custom');
+  });
+
+  it('should return only custom labels when scopes is empty', () => {
+    const result = buildEffectiveLabels([], ['my-label']);
+    expect(result).toEqual(['my-label']);
+  });
+});
+
+describe('interleaveArrays', () => {
+  it('should interleave two equal-length arrays', () => {
+    const result = interleaveArrays([
+      ['a1', 'a2', 'a3'],
+      ['b1', 'b2', 'b3'],
+    ]);
+    expect(result).toEqual(['a1', 'b1', 'a2', 'b2', 'a3', 'b3']);
+  });
+
+  it('should handle arrays of different lengths', () => {
+    const result = interleaveArrays([
+      ['a1', 'a2'],
+      ['b1', 'b2', 'b3'],
+    ]);
+    expect(result).toEqual(['a1', 'b1', 'a2', 'b2', 'b3']);
+  });
+
+  it('should handle three arrays', () => {
+    const result = interleaveArrays([['a1'], ['b1'], ['c1']]);
+    expect(result).toEqual(['a1', 'b1', 'c1']);
+  });
+
+  it('should handle empty arrays', () => {
+    expect(interleaveArrays([])).toEqual([]);
+    expect(interleaveArrays([[], []])).toEqual([]);
+  });
+
+  it('should handle single array', () => {
+    expect(interleaveArrays([['a', 'b']])).toEqual(['a', 'b']);
   });
 });

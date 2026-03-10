@@ -566,6 +566,8 @@ export interface AgentConfig {
   languages: string[];
   /** GitHub labels to filter issues by (e.g., `["good first issue", "help wanted"]`). */
   labels: string[];
+  /** Issue scope tiers to search (e.g., `["beginner", "intermediate"]`). When set, scope tier labels are merged with custom `labels`. When absent, only `labels` is used (legacy behavior). */
+  scope?: IssueScope[];
   /** Repos to exclude from issue discovery/search, in `"owner/repo"` format. */
   excludeRepos: string[];
   /** Organizations to exclude from issue discovery/search (case-insensitive match on owner segment). */
@@ -704,6 +706,17 @@ export const PROJECT_CATEGORIES = [
 ] as const;
 
 export type ProjectCategory = (typeof PROJECT_CATEGORIES)[number];
+
+// -- Issue scope types --
+
+export const ISSUE_SCOPES = ['beginner', 'intermediate', 'advanced'] as const;
+export type IssueScope = (typeof ISSUE_SCOPES)[number];
+
+export const SCOPE_LABELS: Record<IssueScope, string[]> = {
+  beginner: ['good first issue', 'help wanted', 'easy', 'up-for-grabs', 'first-timers-only', 'beginner'],
+  intermediate: ['enhancement', 'feature', 'feature-request', 'contributions welcome'],
+  advanced: ['proposal', 'RFC', 'accepted', 'design'],
+};
 
 // -- Issue discovery types (shared across issue-discovery, issue-vetting, issue-scoring) --
 

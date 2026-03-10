@@ -4,6 +4,7 @@
  */
 
 import { getStateManager } from '../core/index.js';
+import { ISSUE_SCOPES, type IssueScope } from '../core/types.js';
 import type { ConfigOutput } from '../formatters/json.js';
 import { validateGitHubUsername } from './validation.js';
 
@@ -19,6 +20,13 @@ export interface ConfigSetOutput {
 }
 
 export type ConfigCommandOutput = ConfigOutput | ConfigSetOutput;
+
+function validateScope(value: string): IssueScope {
+  if (!(ISSUE_SCOPES as readonly string[]).includes(value)) {
+    throw new Error(`Invalid scope "${value}". Valid scopes: ${ISSUE_SCOPES.join(', ')}`);
+  }
+  return value as IssueScope;
+}
 
 export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOutput> {
   const stateManager = getStateManager();
@@ -49,6 +57,35 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
         stateManager.updateConfig({ labels: [...currentConfig.labels, value] });
       }
       break;
+    case 'remove-label':
+      if (!currentConfig.labels.includes(value)) {
+        throw new Error(
+          `Label "${value}" is not currently configured. Current labels: ${currentConfig.labels.join(', ')}`,
+        );
+      }
+      stateManager.updateConfig({ labels: currentConfig.labels.filter((l) => l !== value) });
+      break;
+    case 'add-scope': {
+      const scope = validateScope(value);
+      const currentScopes = currentConfig.scope ?? [];
+      if (!currentScopes.includes(scope)) {
+        stateManager.updateConfig({ scope: [...currentScopes, scope] });
+      }
+      break;
+    }
+    case 'remove-scope': {
+      const scope = validateScope(value);
+      const existingScopes = currentConfig.scope ?? [];
+      if (!existingScopes.includes(scope)) {
+        throw new Error(`Scope "${value}" is not currently set`);
+      }
+      const filtered = existingScopes.filter((s) => s !== scope);
+      if (filtered.length === 0) {
+        throw new Error('Cannot remove the last scope. Use setup to clear scopes entirely.');
+      }
+      stateManager.updateConfig({ scope: filtered });
+      break;
+    }
     case 'exclude-repo': {
       const parts = value.split('/');
       if (parts.length !== 2 || !parts[0] || !parts[1]) {
