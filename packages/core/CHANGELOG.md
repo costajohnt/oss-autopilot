@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.56.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.55.0...core-v0.56.0) (2026-03-10)
+
+
+### Features
+
+* **dashboard:** complete UI redesign with new design system ([#694](https://github.com/costajohnt/oss-autopilot/issues/694)) ([bc56efc](https://github.com/costajohnt/oss-autopilot/commit/bc56efc61dbf1e63ef9e2f975a2079da76f8d989))
+
 ## [0.55.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.54.0...core-v0.55.0) (2026-03-10)
 
 
