@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'preact/hooks';
 import { LocationProvider, useLocation } from 'preact-iso';
 import { useDashboard } from './hooks/use-dashboard';
+import { useTheme, type Theme } from './hooks/use-theme';
 import { StatsBar } from './components/stats-bar';
 import { FilterBar, type Filters } from './components/filter-bar';
 import { PRList } from './components/pr-list';
@@ -11,6 +12,7 @@ import { RecentActivity } from './components/recent-activity';
 import { MergedPRList } from './components/merged-pr-list';
 import { ClosedPRList } from './components/closed-pr-list';
 import { SkeletonLoader } from './components/skeleton-loader';
+import { ThemeToggle } from './components/theme-toggle';
 import { formatRelativeTime, refreshLabel } from './utils';
 import type { DashboardStats } from './types';
 
@@ -20,6 +22,8 @@ interface DashboardHeaderProps {
   refreshing: boolean;
   lastUpdated: number | null;
   onRefresh: () => void;
+  theme: Theme;
+  onToggleTheme: () => void;
 }
 
 function RefreshIcon() {
@@ -31,7 +35,15 @@ function RefreshIcon() {
   );
 }
 
-function DashboardHeader({ stats, loading, refreshing, lastUpdated, onRefresh }: DashboardHeaderProps) {
+function DashboardHeader({
+  stats,
+  loading,
+  refreshing,
+  lastUpdated,
+  onRefresh,
+  theme,
+  onToggleTheme,
+}: DashboardHeaderProps) {
   return (
     <header class="dashboard-header">
       <div class="header-brand">
@@ -63,6 +75,7 @@ function DashboardHeader({ stats, loading, refreshing, lastUpdated, onRefresh }:
         </div>
         <div class="header-right">
           {lastUpdated && <span class="last-updated">{formatRelativeTime(lastUpdated)}</span>}
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           <button class="refresh-btn" onClick={onRefresh} disabled={loading || refreshing}>
             {loading || refreshing ? <span class="spinner" /> : <RefreshIcon />}
             {refreshLabel(loading, refreshing)}
@@ -75,6 +88,7 @@ function DashboardHeader({ stats, loading, refreshing, lastUpdated, onRefresh }:
 
 function AppContent() {
   const { data, loading, refreshing, error, clearError, refresh, performAction, lastUpdated } = useDashboard();
+  const { theme, toggleTheme } = useTheme();
   const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const { path, route } = useLocation();
@@ -117,6 +131,8 @@ function AppContent() {
           refreshing={refreshing}
           lastUpdated={lastUpdated}
           onRefresh={refresh}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
         <MergedPRList mergedPRs={mergedPRs} repoMetadata={data.repoMetadata} onBack={() => route('/')} />
       </div>
@@ -134,6 +150,8 @@ function AppContent() {
           refreshing={refreshing}
           lastUpdated={lastUpdated}
           onRefresh={refresh}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
         <ClosedPRList closedPRs={closedPRs} onBack={() => route('/')} />
       </div>
@@ -165,6 +183,8 @@ function AppContent() {
         refreshing={refreshing}
         lastUpdated={lastUpdated}
         onRefresh={refresh}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       {error && (
@@ -209,6 +229,7 @@ function AppContent() {
             monthlyOpened={data.monthlyOpened}
             monthlyClosed={data.monthlyClosed}
             topRepos={data.topRepos}
+            theme={theme}
           />
         </div>
 
