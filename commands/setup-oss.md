@@ -114,7 +114,18 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set langu
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set labels="good first issue,help wanted" --json
 ```
 
-**Question 6: Project Categories** (multi-select)
+**Question 6: Issue Scope Tiers** (multi-select)
+- "What scope of issues do you want to discover? Scope tiers add extra labels to your search beyond your custom labels above."
+- Options: "Beginner (good first issue, help wanted, easy, up-for-grabs)", "Intermediate (enhancement, feature, contributions welcome)", "Advanced (proposal, RFC, accepted, design)", "Skip (use only my custom labels)"
+
+Map selections: "Beginner" → `beginner`, "Intermediate" → `intermediate`, "Advanced" → `advanced`.
+
+If "Skip" is selected, skip. Otherwise:
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set scope=beginner,intermediate --json
+```
+
+**Question 7: Project Categories** (multi-select)
 - "What types of projects interest you?"
 - Options: "Nonprofit/Social Impact", "Developer Tools", "Infrastructure/Cloud", "Web Frameworks", "Data/ML", "Education", "No preference (skip)"
 
@@ -125,7 +136,7 @@ If "No preference" is selected, skip. Otherwise:
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set projectCategories=devtools,infrastructure --json
 ```
 
-**Question 7: Preferred Organizations** (free text)
+**Question 8: Preferred Organizations** (free text)
 - "Any GitHub organizations you'd like to prioritize? (comma-separated, or skip)"
 
 If user provides orgs:
@@ -133,7 +144,7 @@ If user provides orgs:
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set preferredOrgs=vercel,remix-run --json
 ```
 
-**Question 8: Curated Issue List**
+**Question 9: Curated Issue List**
 - "Do you maintain a curated list of potential issues to work on?"
 - Options: "Yes", "No"
 
@@ -148,7 +159,7 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set issue
 
 If the file doesn't exist at the given path, warn the user but still save the path (they may create it later).
 
-**Question 9: Squash Commits Before Review**
+**Question 10: Squash Commits Before Review**
 - "Should PRs be squashed into a single commit before marking ready for review?"
 - Options: "Yes, always squash (Recommended)", "No, keep individual commits", "Ask me each time"
 
@@ -203,6 +214,7 @@ Show summary:
 - **Dormant**: NUMBER days
 - **Languages**: list
 - **Labels**: list
+- **Scope Tiers**: list or "None (custom labels only)"
 - **Project Categories**: list or "No preference"
 - **Preferred Orgs**: list or "None"
 - **Issue List**: PATH or "Not configured"
@@ -314,16 +326,24 @@ Use AskUserQuestion to collect preferences. Ask these in sequence:
 - Options: "good first issue", "help wanted", "bug", "enhancement", "documentation"
 - Allow multiple selections
 
-**Question 6: Project Categories** (multi-select)
+**Question 6: Issue Scope Tiers** (multi-select)
+- "What scope of issues do you want to discover? Scope tiers add extra labels to your search beyond your custom labels above."
+- Options: "Beginner (good first issue, help wanted, easy, up-for-grabs)", "Intermediate (enhancement, feature, contributions welcome)", "Advanced (proposal, RFC, accepted, design)", "Skip (use only my custom labels)"
+
+Map selections: "Beginner" → `beginner`, "Intermediate" → `intermediate`, "Advanced" → `advanced`.
+
+If "Skip" is selected, omit the `scope` field from the config (or set it to an empty list).
+
+**Question 7: Project Categories** (multi-select)
 - "What types of projects interest you?"
 - Options: "Nonprofit/Social Impact", "Developer Tools", "Infrastructure/Cloud", "Web Frameworks", "Data/ML", "Education", "No preference (skip)"
 
 Map selections to values: nonprofit, devtools, infrastructure, web-frameworks, data-ml, education.
 
-**Question 7: Preferred Organizations** (free text)
+**Question 8: Preferred Organizations** (free text)
 - "Any GitHub organizations you'd like to prioritize? (comma-separated, or skip)"
 
-**Question 8: Curated Issue List**
+**Question 9: Curated Issue List**
 - "Do you maintain a curated list of potential issues to work on?"
 - Options: "Yes", "No"
 
@@ -333,7 +353,7 @@ If yes, ask for the file path:
 
 If a path is provided, try to read it to verify it exists. If it doesn't exist, warn but continue — the user may create it later.
 
-**Question 9: Squash Commits Before Review**
+**Question 10: Squash Commits Before Review**
 - "Should PRs be squashed into a single commit before marking ready for review?"
 - Options: "Yes, always squash (Recommended)", "No, keep individual commits", "Ask me each time"
 
@@ -384,6 +404,7 @@ languages:
 labels:
   - good first issue
   - help wanted
+scope: SCOPE_LIST_OR_EMPTY
 issueListPath: PATH_OR_EMPTY
 squashByDefault: true
 githubAccess: gh|mcp
@@ -403,6 +424,7 @@ This file stores your OSS Autopilot preferences. Edit the YAML frontmatter above
 - **Warning Threshold**: NUMBER days before dormant
 - **Languages**: list
 - **Issue Labels**: list
+- **Scope Tiers**: list or "None (custom labels only)"
 - **Issue List**: PATH or "Not configured"
 - **Squash PRs**: Yes (default) / No / Ask each time
 - **GitHub Access**: gh CLI / MCP server
@@ -490,6 +512,7 @@ Show summary:
 - **Dormant**: NUMBER days
 - **Languages**: list
 - **Labels**: list
+- **Scope Tiers**: list or "None (custom labels only)"
 - **Project Categories**: list or "No preference"
 - **Preferred Orgs**: list or "None"
 - **GitHub Access**: via [gh CLI / MCP server]
