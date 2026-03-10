@@ -28,6 +28,8 @@ function mockFetchError(status: number, body?: { error: string }) {
 describe('App', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-theme');
   });
 
   it('shows loading state initially', () => {
@@ -234,6 +236,38 @@ describe('App', () => {
     const statusSelect = selects[0] as HTMLSelectElement;
     const statusOptions = [...statusSelect.options].map((o) => o.value);
     expect(statusOptions).toEqual(['all', 'needs_addressing', 'waiting_on_maintainer']);
+  });
+
+  it('renders theme toggle in header and clicking it toggles data-theme', async () => {
+    mockFetchOk(makeDashboardData());
+
+    const { container } = render(<App />);
+
+    await waitFor(() => {
+      expect(container.querySelector('.dashboard')).toBeTruthy();
+    });
+
+    // Theme toggle button should be present
+    const toggle = container.querySelector('.theme-toggle') as HTMLButtonElement;
+    expect(toggle).toBeTruthy();
+
+    // Capture initial theme (may vary by environment)
+    const initialTheme = document.documentElement.getAttribute('data-theme');
+    expect(initialTheme).toMatch(/^(light|dark)$/);
+
+    // Click to toggle — wait for Preact's async state update + effect
+    fireEvent.click(toggle);
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('data-theme')).not.toBe(initialTheme);
+    });
+    const toggledTheme = document.documentElement.getAttribute('data-theme');
+    expect(toggledTheme).toMatch(/^(light|dark)$/);
+
+    // Click again to toggle back
+    fireEvent.click(toggle);
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('data-theme')).toBe(initialTheme);
+    });
   });
 
   it('shows error banner with dismiss button when error coexists with data', async () => {

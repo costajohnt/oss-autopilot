@@ -30,26 +30,30 @@ interface ChartPanelProps {
   monthlyOpened?: Record<string, number>;
   monthlyClosed?: Record<string, number>;
   topRepos: Array<{ repo: string; active: number; merged: number; closed: number }>;
+  theme: 'light' | 'dark';
 }
 
-// Chart.js can't read CSS vars; these must stay in sync with :root in styles.css
-const COLORS = {
-  green: '#4ade80',
-  purple: '#c084fc',
-  red: '#fb7185',
-  blue: '#60a5fa',
-  gridColor: 'rgba(255, 255, 255, 0.06)',
-  textColor: '#94a3b8',
-};
-
-const SHARED_SCALE_OPTS = {
-  ticks: { color: COLORS.textColor },
-  grid: { color: COLORS.gridColor },
-};
-
-const SHARED_LEGEND = {
-  labels: { color: COLORS.textColor, boxWidth: 12 },
-};
+// Chart.js can't read CSS vars; map theme to explicit hex values
+function getChartColors(theme: 'light' | 'dark') {
+  if (theme === 'light') {
+    return {
+      green: '#16a34a',
+      purple: '#9333ea',
+      red: '#dc2626',
+      blue: '#2563eb',
+      gridColor: 'rgba(15, 23, 42, 0.06)',
+      textColor: '#475569',
+    };
+  }
+  return {
+    green: '#4ade80',
+    purple: '#c084fc',
+    red: '#fb7185',
+    blue: '#60a5fa',
+    gridColor: 'rgba(255, 255, 255, 0.06)',
+    textColor: '#94a3b8',
+  };
+}
 
 /** Get the last 12 months of YYYY-MM keys, sorted ascending. */
 function getLast12Months(records: Record<string, number>[]): string[] {
@@ -62,7 +66,9 @@ function getLast12Months(records: Record<string, number>[]): string[] {
   return [...allKeys].sort().slice(-12);
 }
 
-export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRepos }: ChartPanelProps) {
+export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRepos, theme }: ChartPanelProps) {
+  const colors = getChartColors(theme);
+
   const lineCanvasRef = useRef<HTMLCanvasElement>(null);
   const barCanvasRef = useRef<HTMLCanvasElement>(null);
   const lineChartRef = useRef<Chart | null>(null);
@@ -73,6 +79,7 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
     const canvas = lineCanvasRef.current;
     if (!canvas) return;
 
+    const scaleOpts = { ticks: { color: colors.textColor }, grid: { color: colors.gridColor } };
     const months = getLast12Months([monthlyMerged, monthlyOpened ?? {}, monthlyClosed ?? {}]);
 
     const datasets = [];
@@ -81,8 +88,8 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       datasets.push({
         label: 'Opened',
         data: months.map((m) => monthlyOpened[m] ?? 0),
-        borderColor: COLORS.blue,
-        backgroundColor: COLORS.blue,
+        borderColor: colors.blue,
+        backgroundColor: colors.blue,
         tension: 0.3,
         pointRadius: 3,
       });
@@ -91,8 +98,8 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
     datasets.push({
       label: 'Merged',
       data: months.map((m) => monthlyMerged[m] ?? 0),
-      borderColor: COLORS.purple,
-      backgroundColor: COLORS.purple,
+      borderColor: colors.purple,
+      backgroundColor: colors.purple,
       tension: 0.3,
       pointRadius: 3,
     });
@@ -101,8 +108,8 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       datasets.push({
         label: 'Closed',
         data: months.map((m) => monthlyClosed[m] ?? 0),
-        borderColor: COLORS.red,
-        backgroundColor: COLORS.red,
+        borderColor: colors.red,
+        backgroundColor: colors.red,
         tension: 0.3,
         pointRadius: 3,
       });
@@ -114,10 +121,10 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: SHARED_LEGEND },
+        plugins: { legend: { labels: { color: colors.textColor, boxWidth: 12 } } },
         scales: {
-          x: SHARED_SCALE_OPTS,
-          y: { beginAtZero: true, ...SHARED_SCALE_OPTS },
+          x: scaleOpts,
+          y: { beginAtZero: true, ...scaleOpts },
         },
       },
     });
@@ -126,13 +133,14 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       lineChartRef.current?.destroy();
       lineChartRef.current = null;
     };
-  }, [monthlyMerged, monthlyOpened, monthlyClosed]);
+  }, [monthlyMerged, monthlyOpened, monthlyClosed, colors]);
 
   // Top repos bar chart
   useEffect(() => {
     const canvas = barCanvasRef.current;
     if (!canvas) return;
 
+    const scaleOpts = { ticks: { color: colors.textColor }, grid: { color: colors.gridColor } };
     const repos = topRepos.slice(0, 10);
     const labels = repos.map((r) => r.repo);
 
@@ -144,17 +152,17 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
           {
             label: 'Active',
             data: repos.map((r) => r.active),
-            backgroundColor: COLORS.green,
+            backgroundColor: colors.green,
           },
           {
             label: 'Merged',
             data: repos.map((r) => r.merged),
-            backgroundColor: COLORS.purple,
+            backgroundColor: colors.purple,
           },
           {
             label: 'Closed',
             data: repos.map((r) => r.closed),
-            backgroundColor: COLORS.red,
+            backgroundColor: colors.red,
           },
         ],
       },
@@ -162,10 +170,10 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
         responsive: true,
         maintainAspectRatio: false,
         indexAxis: 'y',
-        plugins: { legend: SHARED_LEGEND },
+        plugins: { legend: { labels: { color: colors.textColor, boxWidth: 12 } } },
         scales: {
-          x: { stacked: true, beginAtZero: true, ...SHARED_SCALE_OPTS },
-          y: { stacked: true, ...SHARED_SCALE_OPTS },
+          x: { stacked: true, beginAtZero: true, ...scaleOpts },
+          y: { stacked: true, ...scaleOpts },
         },
       },
     });
@@ -174,7 +182,7 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       barChartRef.current?.destroy();
       barChartRef.current = null;
     };
-  }, [topRepos]);
+  }, [topRepos, colors]);
 
   return (
     <div class="chart-panel">
