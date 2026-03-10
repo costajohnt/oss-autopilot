@@ -9,7 +9,7 @@ interface MergedPRListProps {
 
 export function MergedPRList({ mergedPRs, repoMetadata, onBack }: MergedPRListProps) {
   return (
-    <div class="merged-view">
+    <div class="merged-view merged-view--full-width">
       <div class="merged-view-header">
         <button class="merged-view-back" onClick={onBack} type="button">
           &larr; Back
@@ -23,31 +23,52 @@ export function MergedPRList({ mergedPRs, repoMetadata, onBack }: MergedPRListPr
       {mergedPRs.length === 0 ? (
         <div class="merged-view-empty">No merged PRs found. Run a dashboard refresh to populate.</div>
       ) : (
-        <div class="merged-view-list">
-          {mergedPRs.map((pr) => {
-            const meta = repoMetadata?.[pr.repo];
-            return (
-              <div key={pr.url} class="recent-activity-item">
-                <span class="recent-activity-badge recent-activity-badge--merged">Merged</span>
-                <a class="recent-activity-link" href={pr.url} target="_blank" rel="noopener noreferrer">
-                  {pr.repo}#{pr.number}
-                </a>
-                {meta?.stars != null && <span class="merged-view-stars">★ {formatStarCount(meta.stars)}</span>}
-                {meta?.language && (
-                  <span class="merged-view-language">
-                    <span
-                      class="merged-view-language-dot"
-                      style={{ backgroundColor: getLanguageColor(meta.language) }}
-                    />
-                    {meta.language}
-                  </span>
-                )}
-                <span class="recent-activity-item-title">{truncate(pr.title, 60)}</span>
-                <span class="recent-activity-date">{formatDate(pr.mergedAt)}</span>
-              </div>
-            );
-          })}
-        </div>
+        <table class="merged-table">
+          <thead>
+            <tr>
+              <th>PR</th>
+              <th class="merged-table-col-stars">Stars</th>
+              <th class="merged-table-col-language">Language</th>
+              <th>Date Merged</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mergedPRs.map((pr) => {
+              const meta = repoMetadata?.[pr.repo];
+              return (
+                <tr key={pr.url}>
+                  <td>
+                    <a class="merged-table-pr-link" href={pr.url} target="_blank" rel="noopener noreferrer">
+                      {pr.repo}#{pr.number}
+                    </a>
+                    <div class="merged-table-pr-title">{truncate(pr.title, 80)}</div>
+                  </td>
+                  <td class="merged-table-col-stars">
+                    <span class="merged-table-stars">
+                      {meta?.stars != null ? `★ ${formatStarCount(meta.stars)}` : '—'}
+                    </span>
+                  </td>
+                  <td class="merged-table-col-language">
+                    {meta?.language ? (
+                      <span class="merged-table-language">
+                        <span
+                          class="merged-table-language-dot"
+                          style={{ backgroundColor: getLanguageColor(meta.language) }}
+                        />
+                        {meta.language}
+                      </span>
+                    ) : (
+                      <span class="merged-table-language">—</span>
+                    )}
+                  </td>
+                  <td>
+                    <span class="merged-table-date">{formatDate(pr.mergedAt)}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       )}
     </div>
   );
