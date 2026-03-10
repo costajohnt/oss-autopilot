@@ -20,28 +20,47 @@ interface DashboardHeaderProps {
   onRefresh: () => void;
 }
 
+function RefreshIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M14 8A6 6 0 1 1 8 2" />
+      <path d="M8 2L11 2L11 5" />
+    </svg>
+  );
+}
+
 function DashboardHeader({ stats, loading, refreshing, onRefresh }: DashboardHeaderProps) {
   return (
     <header class="dashboard-header">
       <div class="header-left">
+        <img class="header-icon" src="/favicon.svg" alt="" width="24" height="24" />
         <h1>OSS Autopilot</h1>
         <div class="header-stats">
           <span>
-            <span class="val">{stats.activePRs}</span> active
+            <span class="val" style={{ color: 'var(--green)' }}>
+              {stats.activePRs}
+            </span>{' '}
+            active
           </span>
           <span class="header-pipe">|</span>
           <span>
-            <span class="val">{stats.mergedPRs}</span> merged
+            <span class="val" style={{ color: 'var(--purple)' }}>
+              {stats.mergedPRs}
+            </span>{' '}
+            merged
           </span>
           <span class="header-pipe">|</span>
           <span>
-            <span class="val">{stats.mergeRate}</span> merge rate
+            <span class="val" style={{ color: 'var(--amber)' }}>
+              {stats.mergeRate}
+            </span>{' '}
+            merge rate
           </span>
         </div>
       </div>
       <div class="header-right">
         <button class="refresh-btn" onClick={onRefresh} disabled={loading || refreshing}>
-          {(loading || refreshing) && <span class="spinner" />}
+          {loading || refreshing ? <span class="spinner" /> : <RefreshIcon />}
           {loading ? 'Refreshing...' : refreshing ? 'Updating...' : 'Refresh'}
         </button>
       </div>

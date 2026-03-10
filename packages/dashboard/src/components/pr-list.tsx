@@ -37,6 +37,18 @@ export function statusClass(status: FetchedPRStatus): string {
   }
 }
 
+/** Maps PR status to a label color CSS class. */
+function labelClass(status: FetchedPRStatus): string {
+  switch (status) {
+    case 'needs_addressing':
+      return 'pr-row-label--attention';
+    case 'waiting_on_maintainer':
+      return 'pr-row-label--waiting';
+    default:
+      return 'pr-row-label--default';
+  }
+}
+
 function PRRow({ pr, selected, onSelect }: { pr: FetchedPR; selected: boolean; onSelect: (url: string) => void }) {
   return (
     <div
@@ -48,7 +60,7 @@ function PRRow({ pr, selected, onSelect }: { pr: FetchedPR; selected: boolean; o
         {pr.repo}#{pr.number}
       </a>
       <span class="pr-row-title">{truncate(pr.title, 50)}</span>
-      {pr.displayLabel && <span class="pr-row-label">{pr.displayLabel}</span>}
+      {pr.displayLabel && <span class={`pr-row-label ${labelClass(pr.status)}`}>{pr.displayLabel}</span>}
       <span class="pr-row-age">{pr.daysSinceActivity}d ago</span>
     </div>
   );

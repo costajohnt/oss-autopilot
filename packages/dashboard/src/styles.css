@@ -245,6 +245,12 @@ a:hover {
   background-clip: text;
 }
 
+.header-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
 .header-left {
   display: flex;
   align-items: center;
@@ -287,7 +293,7 @@ a:hover {
 .dashboard-main {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-6);
+  gap: var(--sp-8);
 }
 
 .dashboard-content {
@@ -433,8 +439,9 @@ a:hover {
 .stat-value {
   font-size: 1.75rem;
   font-weight: 800;
-  line-height: 1.2;
+  line-height: 1;
   letter-spacing: -0.03em;
+  margin-bottom: var(--sp-1);
   animation: scalePulse 0.6s var(--ease) forwards;
 }
 
@@ -683,13 +690,26 @@ a:hover {
 
 .pr-row-label {
   font-size: 0.6875rem;
-  color: var(--amber);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
   white-space: nowrap;
   flex-shrink: 0;
-  background: var(--amber-dim);
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-weight: 500;
+}
+
+.pr-row-label--attention {
+  background: rgba(251, 113, 133, 0.15);
+  color: var(--red);
+}
+
+.pr-row-label--waiting {
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--blue);
+}
+
+.pr-row-label--default {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-secondary);
 }
 
 .pr-row-age {
@@ -697,7 +717,6 @@ a:hover {
   color: var(--text-muted);
   white-space: nowrap;
   flex-shrink: 0;
-  font-family: var(--font-mono);
 }
 
 /* === PR Detail Panel === */
