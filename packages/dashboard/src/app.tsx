@@ -10,6 +10,7 @@ import { IssueList } from './components/issue-list';
 import { RecentActivity } from './components/recent-activity';
 import { MergedPRList } from './components/merged-pr-list';
 import { ClosedPRList } from './components/closed-pr-list';
+import { SkeletonLoader } from './components/skeleton-loader';
 import type { DashboardStats } from './types';
 
 interface DashboardHeaderProps {
@@ -43,8 +44,11 @@ function AppContent() {
 
   if (loading && !data) {
     return (
-      <div class="shell-center">
-        <p class="shell-status">Loading dashboard data...</p>
+      <div style={{ paddingTop: '32px' }}>
+        <SkeletonLoader />
+        <div class="shell-center" style={{ minHeight: 'auto', paddingTop: '48px' }}>
+          <p class="shell-status">Loading dashboard data...</p>
+        </div>
       </div>
     );
   }
@@ -116,10 +120,14 @@ function AppContent() {
       )}
 
       <main class="dashboard-main">
-        <StatsBar stats={data.stats} onMergedClick={() => route('/merged')} onClosedClick={() => route('/closed')} />
-        <FilterBar filters={filters} onFilterChange={setFilters} repos={repos} statuses={statuses} />
+        <div class="animate-in delay-1">
+          <StatsBar stats={data.stats} onMergedClick={() => route('/merged')} onClosedClick={() => route('/closed')} />
+        </div>
+        <div class="animate-in delay-2">
+          <FilterBar filters={filters} onFilterChange={setFilters} repos={repos} statuses={statuses} />
+        </div>
 
-        <div class="dashboard-content">
+        <div class="dashboard-content animate-in delay-3">
           <PRList prs={filteredPRs} selectedUrl={selectedUrl} onSelect={setSelectedUrl} shelvedUrls={shelvedUrls} />
           {selectedPR && (
             <PRDetail
@@ -131,20 +139,26 @@ function AppContent() {
           )}
         </div>
 
-        <ChartPanel
-          monthlyMerged={data.monthlyMerged}
-          monthlyOpened={data.monthlyOpened}
-          monthlyClosed={data.monthlyClosed}
-          topRepos={data.topRepos}
-        />
+        <div class="animate-in delay-4">
+          <ChartPanel
+            monthlyMerged={data.monthlyMerged}
+            monthlyOpened={data.monthlyOpened}
+            monthlyClosed={data.monthlyClosed}
+            topRepos={data.topRepos}
+          />
+        </div>
 
-        <RecentActivity
-          mergedPRs={data.recentlyMergedPRs ?? []}
-          closedPRs={data.recentlyClosedPRs ?? []}
-          autoUnshelvedPRs={data.autoUnshelvedPRs ?? []}
-        />
+        <div class="animate-in delay-5">
+          <RecentActivity
+            mergedPRs={data.recentlyMergedPRs ?? []}
+            closedPRs={data.recentlyClosedPRs ?? []}
+            autoUnshelvedPRs={data.autoUnshelvedPRs ?? []}
+          />
+        </div>
 
-        <IssueList issues={data.issueResponses} onAction={performAction} />
+        <div class="animate-in delay-6">
+          <IssueList issues={data.issueResponses} onAction={performAction} />
+        </div>
       </main>
     </div>
   );

@@ -7,6 +7,7 @@
   --bg-elevated: rgba(28, 33, 40, 0.8);
   --border: rgba(48, 54, 61, 0.6);
   --border-muted: rgba(33, 38, 45, 0.5);
+  --border-hover: rgba(255, 255, 255, 0.1);
   --text-primary: #e6edf3;
   --text-secondary: #8b949e;
   --text-muted: #6e7681;
@@ -25,6 +26,105 @@
   --chart-grid: rgba(48, 54, 61, 0.3);
   --scrollbar-track: rgba(28, 33, 40, 0.8);
   --scrollbar-thumb: rgba(48, 54, 61, 0.6);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* === Animations === */
+
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scalePulse {
+  0% {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.03);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes skeletonExit {
+  0%,
+  70% {
+    opacity: 1;
+    max-height: 120px;
+    margin-bottom: 32px;
+  }
+  100% {
+    opacity: 0;
+    max-height: 0;
+    margin-bottom: 0;
+    overflow: hidden;
+  }
+}
+
+/* === Skeleton Loader === */
+
+.skeleton-row {
+  display: flex;
+  gap: 24px;
+  max-width: 1280px;
+  margin: 0 auto 32px;
+  padding: 0 32px;
+  animation: skeletonExit 2s var(--ease) forwards;
+}
+
+.skeleton-card {
+  flex: 1;
+  height: 96px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(24, 28, 40, 0.6) 0%, rgba(40, 44, 60, 0.4) 50%, rgba(24, 28, 40, 0.6) 100%);
+  background-size: 800px 100%;
+  animation: shimmer 1.6s infinite linear;
+  border: 1px solid var(--border);
+}
+
+/* === Stagger Animation === */
+
+.animate-in {
+  opacity: 0;
+  animation: fadeInUp 0.5s var(--ease) forwards;
+}
+
+.delay-1 {
+  animation-delay: 0.06s;
+}
+.delay-2 {
+  animation-delay: 0.12s;
+}
+.delay-3 {
+  animation-delay: 0.18s;
+}
+.delay-4 {
+  animation-delay: 0.24s;
+}
+.delay-5 {
+  animation-delay: 0.3s;
+}
+.delay-6 {
+  animation-delay: 0.36s;
 }
 
 /* === Base Reset & Layout === */
@@ -189,6 +289,7 @@ a:hover {
 }
 
 .stat-card {
+  position: relative;
   border: 1px solid var(--border);
   border-left: 3px solid;
   border-radius: 8px;
@@ -196,13 +297,22 @@ a:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  overflow: hidden;
+  transition:
+    border-color 0.25s var(--ease),
+    transform 0.25s var(--ease);
+}
+
+.stat-card:hover {
+  border-color: var(--border-hover);
+  transform: scale(1.005);
 }
 
 .stat-value {
   font-size: 1.5rem;
   font-weight: 700;
   line-height: 1.2;
-  color: var(--text-primary);
+  animation: scalePulse 0.6s var(--ease) forwards;
 }
 
 .stat-label {
@@ -322,25 +432,59 @@ a:hover {
 }
 
 .pr-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
   border: 1px solid transparent;
+  border-left: 3px solid transparent;
   border-radius: 6px;
   cursor: pointer;
-  transition:
-    background 0.1s,
-    border-color 0.1s;
+  margin-bottom: 2px;
+  transition: all 0.15s var(--ease);
+}
+
+.pr-row::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: 50%;
+  width: 3px;
+  height: 0;
+  border-radius: 2px;
+  transition: all 0.2s var(--ease);
 }
 
 .pr-row:hover {
-  background: var(--bg-surface);
+  background: rgba(30, 34, 48, 0.6);
+}
+
+.pr-row:hover::before {
+  height: 100%;
+  top: 0;
+}
+
+.pr-row--need-attention:hover::before {
+  background: var(--accent-error);
+}
+
+.pr-row--waiting:hover::before {
+  background: var(--accent-info);
+}
+
+.pr-row--shelved:hover::before {
+  background: var(--text-muted);
 }
 
 .pr-row--selected {
   border-color: var(--accent-info);
+  border-left-color: var(--accent-info);
   background: var(--accent-info-dim);
+}
+
+.pr-row--selected::before {
+  display: none;
 }
 
 .pr-row-dot {
@@ -854,6 +998,14 @@ a:hover {
   background: var(--bg-elevated);
   border-radius: 6px;
   font-size: 0.8125rem;
+  transition:
+    background 0.15s var(--ease),
+    transform 0.15s var(--ease);
+}
+
+.recent-activity-item:hover {
+  background: rgba(40, 46, 62, 0.9);
+  transform: translateX(2px);
 }
 
 .recent-activity-badge {

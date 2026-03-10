@@ -22,9 +22,18 @@ interface SectionDef {
   prs: FetchedPR[];
 }
 
+function statusClass(status: FetchedPRStatus): string {
+  if (NEED_ATTENTION.has(status)) return 'pr-row--need-attention';
+  if (WAITING.has(status)) return 'pr-row--waiting';
+  return 'pr-row--shelved';
+}
+
 function PRRow({ pr, selected, onSelect }: { pr: FetchedPR; selected: boolean; onSelect: (url: string) => void }) {
   return (
-    <div class={`pr-row ${selected ? 'pr-row--selected' : ''}`} onClick={() => onSelect(pr.url)}>
+    <div
+      class={`pr-row ${statusClass(pr.status)} ${selected ? 'pr-row--selected' : ''}`}
+      onClick={() => onSelect(pr.url)}
+    >
       <span class="pr-row-dot" style={{ background: statusColor(pr.status) }} />
       <a class="pr-row-id" href={pr.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
         {pr.repo}#{pr.number}

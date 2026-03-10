@@ -62,7 +62,9 @@ export function StatsBar({ stats, onMergedClick, onClosedClick }: StatsBarProps)
             onClick={card.onClick}
             {...(card.onClick ? { type: 'button' as const } : {})}
           >
-            <span class="stat-value">{card.value}</span>
+            <span class="stat-value" style={{ color: card.accentVar }}>
+              {card.value}
+            </span>
             <span class="stat-label">{card.label}</span>
           </Tag>
         );
