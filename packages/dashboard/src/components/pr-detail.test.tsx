@@ -35,7 +35,7 @@ describe('PRDetail', () => {
       pr: makePR({ displayLabel: '[CI Failing]', displayDescription: '3 checks failed' }),
     });
 
-    expect(container.querySelector('.pr-detail-status')?.textContent).toBe('[CI Failing]');
+    expect(container.querySelector('.pill')?.textContent).toBe('CI Failing');
     expect(container.querySelector('.pr-detail-description')?.textContent).toBe('3 checks failed');
   });
 

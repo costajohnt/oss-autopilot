@@ -718,26 +718,34 @@ a:hover {
   min-width: 0;
 }
 
-.pr-row-label {
+/* === Pill Component === */
+
+.pill {
   font-size: 0.6875rem;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 10px;
   white-space: nowrap;
   flex-shrink: 0;
+  letter-spacing: 0.01em;
 }
 
-.pr-row-label--attention {
+.pill--red {
   background: rgba(251, 113, 133, 0.15);
   color: var(--red);
 }
 
-.pr-row-label--waiting {
+.pill--amber {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--amber);
+}
+
+.pill--blue {
   background: rgba(96, 165, 250, 0.15);
   color: var(--blue);
 }
 
-.pr-row-label--default {
+.pill--muted {
   background: rgba(148, 163, 184, 0.15);
   color: var(--text-secondary);
 }
@@ -801,14 +809,10 @@ a:hover {
 .pr-detail-meta {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  align-items: flex-start;
+  gap: var(--sp-2);
   padding: 0 var(--sp-6);
   margin-bottom: var(--sp-3);
-}
-
-.pr-detail-status {
-  font-size: 0.8125rem;
-  font-weight: 600;
 }
 
 .pr-detail-description {

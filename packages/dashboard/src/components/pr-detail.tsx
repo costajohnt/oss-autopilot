@@ -1,5 +1,5 @@
 import type { FetchedPR, ActionRequest } from '../types';
-import { formatDate, statusColor, ciStatusColor, truncate } from '../utils';
+import { formatDate, statusColor, ciStatusColor, truncate, stripBrackets, pillColorClass } from '../utils';
 import { ActionBar } from './action-bar';
 
 interface PRDetailProps {
@@ -88,9 +88,7 @@ export function PRDetail({ pr, isShelved, onAction, onClose }: PRDetailProps) {
       </div>
 
       <div class="pr-detail-meta">
-        <span class="pr-detail-status" style={{ color: statusColor(pr.status) }}>
-          {pr.displayLabel}
-        </span>
+        <span class={`pill ${pillColorClass(pr.displayLabel)}`}>{stripBrackets(pr.displayLabel)}</span>
         <span class="pr-detail-description">{pr.displayDescription}</span>
       </div>
 

@@ -1,5 +1,34 @@
 import type { FetchedPRStatus } from './types';
 
+/** Strip brackets from core display labels, e.g. "[CI Failing]" → "CI Failing". */
+export function stripBrackets(label: string): string {
+  return label.replace(/^\[|\]$/g, '');
+}
+
+/** Map a display label to a pill color CSS class. */
+export function pillColorClass(label: string): string {
+  const text = stripBrackets(label).toLowerCase();
+  switch (text) {
+    case 'needs response':
+    case 'needs changes':
+    case 'ci failing':
+    case 'merge conflict':
+    case 'missing files':
+    case 'needs addressing':
+      return 'pill--red';
+    case 'incomplete checklist':
+    case 'ci not running':
+    case 'needs rebase':
+    case 'ci blocked':
+    case 'stale ci failure':
+      return 'pill--amber';
+    case 'waiting on maintainer':
+      return 'pill--blue';
+    default:
+      return 'pill--muted';
+  }
+}
+
 export function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max) + '...' : text;
 }
