@@ -3,7 +3,7 @@
 > **Session state:** Expects `isNewContribution === true`, `issueContext = { title, url, description }`.
 > **Produces:** `draftPRNumber`, `draftPRUrl`, `baseBranch`, `roundNumber`.
 > **Returns to:** Core router (`commands/oss.md`) for "After Each Action" and "Session End".
-> **Input validation:** The "AskUserQuestion Validation Protocol" from `commands/oss.md` applies to ALL `AskUserQuestion` calls in this file. After every call, check for empty/missing answers and fall back to text-based input if the picker auto-completed.
+> **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
 
 ---
 

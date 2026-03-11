@@ -2,7 +2,7 @@
 
 > **Session state:** Expects `actionableIssues`, `hasIssueList`, `issueListPath`, `availableCount`, `completedCount` from core router.
 > **Routing:** Routes to `${CLAUDE_PLUGIN_ROOT}/workflows/pre-commit-review.md` for Tier 2 code changes on existing PRs. Routes to `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` when an issue is claimed and implementation begins. Returns to the core router (`commands/oss.md`) for "After Each Action" and "Session End".
-> **Input validation:** The "AskUserQuestion Validation Protocol" from `commands/oss.md` applies to ALL `AskUserQuestion` calls in this file. After every call, check for empty/missing answers and fall back to text-based input if the picker auto-completed.
+> **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
 
 ---
 
