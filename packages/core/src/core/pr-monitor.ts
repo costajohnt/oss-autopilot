@@ -52,6 +52,9 @@ export { determineStatus } from './status-determination.js';
 /**
  * Check if a PR has a merge conflict based on GitHub's mergeable flag and mergeable_state.
  * Returns true when mergeable is explicitly false or the mergeable_state is 'dirty'.
+ *
+ * @param mergeable - GitHub's mergeable flag (null when not yet computed)
+ * @param mergeableState - GitHub's mergeable_state string
  */
 export function hasMergeConflict(mergeable: boolean | null, mergeableState: string | null): boolean {
   return mergeable === false || mergeableState === 'dirty';
@@ -71,18 +74,40 @@ export interface FetchPRsResult {
   failures: PRCheckFailure[];
 }
 
+/**
+ * Fetches and enriches open PRs from GitHub for the configured user.
+ *
+ * In v2, all PR data is fetched fresh on each run — no local PR tracking.
+ * CI status, reviews, merge conflicts, and maintainer comments are enriched
+ * for each PR to compute a {@link FetchedPRStatus}.
+ */
 export class PRMonitor {
   private octokit: Octokit;
   private stateManager: ReturnType<typeof getStateManager>;
 
+  /**
+   * @param githubToken - GitHub personal access token or token from `gh auth token`
+   */
   constructor(githubToken: string) {
     this.octokit = getOctokit(githubToken);
     this.stateManager = getStateManager();
   }
 
   /**
-   * Fetch all open PRs for the configured user fresh from GitHub
-   * This is the main entry point for the v2 architecture
+   * Fetch all open PRs for the configured user fresh from GitHub.
+   * This is the main entry point for the v2 architecture.
+   *
+   * @returns All open PRs enriched with status, plus any failures
+   * @throws {ConfigurationError} If no GitHub username is configured
+   *
+   * @example
+   * ```typescript
+   * import { PRMonitor, requireGitHubToken } from '@oss-autopilot/core';
+   *
+   * const monitor = new PRMonitor(requireGitHubToken());
+   * const { prs, failures } = await monitor.fetchUserOpenPRs();
+   * console.log(`Found ${prs.length} open PRs, ${failures.length} failures`);
+   * ```
    */
   async fetchUserOpenPRs(): Promise<FetchPRsResult> {
     const config = this.stateManager.getState().config;
@@ -365,7 +390,8 @@ export class PRMonitor {
 
   /**
    * Fetch merged PR counts and latest merge dates per repository for the configured user.
-   * Delegates to github-stats module.
+   * @param starFilter - Optional filter to exclude low-star repos
+   * @returns Per-repo merged counts with monthly breakdowns
    */
   async fetchUserMergedPRCounts(
     starFilter?: StarFilter,
@@ -376,7 +402,8 @@ export class PRMonitor {
 
   /**
    * Fetch closed-without-merge PR counts per repository for the configured user.
-   * Delegates to github-stats module.
+   * @param starFilter - Optional filter to exclude low-star repos
+   * @returns Per-repo closed counts with monthly breakdowns
    */
   async fetchUserClosedPRCounts(starFilter?: StarFilter): Promise<PRCountsResult<number>> {
     const config = this.stateManager.getState().config;
@@ -452,7 +479,8 @@ export class PRMonitor {
 
   /**
    * Fetch PRs closed without merge in the last N days.
-   * Delegates to github-stats module.
+   * @param days - Lookback window in days (default: 7)
+   * @returns Recently closed PRs
    */
   async fetchRecentlyClosedPRs(days: number = 7): Promise<ClosedPR[]> {
     const config = this.stateManager.getState().config;
@@ -461,7 +489,8 @@ export class PRMonitor {
 
   /**
    * Fetch PRs merged in the last N days.
-   * Delegates to github-stats module.
+   * @param days - Lookback window in days (default: 7)
+   * @returns Recently merged PRs
    */
   async fetchRecentlyMergedPRs(days: number = 7): Promise<MergedPR[]> {
     const config = this.stateManager.getState().config;
@@ -469,7 +498,11 @@ export class PRMonitor {
   }
 
   /**
-   * Generate a daily digest from fetched PRs
+   * Generate a daily digest from fetched PRs.
+   * @param prs - All open PRs (active + shelved)
+   * @param recentlyClosedPRs - PRs closed without merge in the last 7 days
+   * @param recentlyMergedPRs - PRs merged in the last 7 days
+   * @returns Daily digest with categorized PRs and summary stats
    */
   generateDigest(
     prs: FetchedPR[],
@@ -504,7 +537,9 @@ export class PRMonitor {
   }
 
   /**
-   * Update repository scores based on observed PR (called when we detect merged/closed PRs)
+   * Update repository scores based on observed PR (called when we detect merged/closed PRs).
+   * @param repo - Repository in "owner/repo" format
+   * @param wasMerged - true if the PR was merged, false if closed without merge
    */
   async updateRepoScoreFromObservedPR(repo: string, wasMerged: boolean): Promise<void> {
     if (wasMerged) {

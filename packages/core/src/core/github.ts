@@ -28,7 +28,10 @@ function formatResetTime(date: Date): string {
   return date.toLocaleTimeString('en-US', { hour12: false });
 }
 
-/** Throttle callbacks used by the Octokit client. Exported for testability. */
+/**
+ * Throttle callbacks used by the Octokit client. Exported for testability.
+ * @returns Rate limit and secondary rate limit handler callbacks
+ */
 export function getRateLimitCallbacks() {
   return {
     onRateLimit: (retryAfter: number, options: unknown, _octokit: unknown, retryCount: number): boolean => {
@@ -66,6 +69,24 @@ export function getRateLimitCallbacks() {
   };
 }
 
+/**
+ * Get a shared, throttled Octokit instance for the given token.
+ * Returns a cached instance if the token matches, otherwise creates a new one.
+ *
+ * The client retries on primary rate limits (up to 2 retries) and
+ * secondary rate limits (1 retry).
+ *
+ * @param token - GitHub personal access token
+ * @returns Authenticated Octokit instance with rate limit throttling
+ *
+ * @example
+ * ```typescript
+ * import { getOctokit, requireGitHubToken } from '@oss-autopilot/core';
+ *
+ * const octokit = getOctokit(requireGitHubToken());
+ * const { data } = await octokit.repos.get({ owner: 'facebook', repo: 'react' });
+ * ```
+ */
 export function getOctokit(token: string): Octokit {
   // Return cached instance only if token matches
   if (_octokit && _currentToken === token) return _octokit;
@@ -82,7 +103,9 @@ export function getOctokit(token: string): Octokit {
 
 /**
  * Check the GitHub Search API rate limit quota.
- * Returns the remaining requests, total limit, and reset time for the search endpoint.
+ *
+ * @param token - GitHub personal access token
+ * @returns Remaining requests, total limit, and reset time for the search endpoint
  */
 export async function checkRateLimit(token: string): Promise<RateLimitInfo> {
   const octokit = getOctokit(token);

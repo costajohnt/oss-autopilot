@@ -507,6 +507,12 @@ The interactive dashboard runs at `http://localhost:3000`. If it doesn't open au
 
 ---
 
+## API Documentation
+
+Full API documentation for `@oss-autopilot/core` is available at [costajohnt.github.io/oss-autopilot](https://costajohnt.github.io/oss-autopilot/).
+
+---
+
 ## Contributing
 
 Bug fixes, new agents, CLI improvements, and documentation are all welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions.

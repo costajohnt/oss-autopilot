@@ -17,6 +17,15 @@ export interface UndismissOutput {
   url: string;
 }
 
+/**
+ * Dismiss an issue's reply notifications without posting a comment.
+ * The dismissal auto-resurfaces when new responses arrive after the dismiss timestamp.
+ *
+ * @param options - Dismiss options
+ * @param options.url - Full GitHub issue URL
+ * @returns Whether the issue was newly dismissed (false if already dismissed)
+ * @throws {ValidationError} If the URL is not a valid GitHub issue URL
+ */
 export async function runDismiss(options: { url: string }): Promise<DismissOutput> {
   validateUrl(options.url);
   validateGitHubUrl(options.url, ISSUE_URL_PATTERN, 'issue');
@@ -27,6 +36,14 @@ export async function runDismiss(options: { url: string }): Promise<DismissOutpu
   return { dismissed: added, url: options.url };
 }
 
+/**
+ * Restore a dismissed issue to notifications.
+ *
+ * @param options - Undismiss options
+ * @param options.url - Full GitHub issue URL
+ * @returns Whether the issue was undismissed (false if not currently dismissed)
+ * @throws {ValidationError} If the URL is not a valid GitHub issue URL
+ */
 export async function runUndismiss(options: { url: string }): Promise<UndismissOutput> {
   validateUrl(options.url);
   validateGitHubUrl(options.url, ISSUE_URL_PATTERN, 'issue');

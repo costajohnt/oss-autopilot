@@ -12,6 +12,24 @@ interface SearchOptions {
   maxResults: number;
 }
 
+/**
+ * Search GitHub for contributable issues using multi-phase discovery.
+ *
+ * @param options - Search configuration
+ * @param options.maxResults - Maximum number of candidates to return
+ * @returns Search results with scored candidates and exclusion lists
+ * @throws {ConfigurationError} If no GitHub token is available
+ *
+ * @example
+ * ```typescript
+ * import { runSearch } from '@oss-autopilot/core/commands';
+ *
+ * const results = await runSearch({ maxResults: 10 });
+ * for (const c of results.candidates) {
+ *   console.log(`${c.issue.repo}#${c.issue.number} — ${c.viabilityScore}/100`);
+ * }
+ * ```
+ */
 export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
   const token = requireGitHubToken();
 

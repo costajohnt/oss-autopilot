@@ -66,6 +66,8 @@ export const STALE_STATUSES: ReadonlySet<StalenessTier> = new Set(['dormant', 'a
 // Status overrides
 // ---------------------------------------------------------------------------
 
+const VALID_OVERRIDE_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_addressing', 'waiting_on_maintainer']);
+
 /**
  * Apply status overrides from state to the PR list.
  * Overrides are auto-cleared if the PR has new activity since the override was set.
@@ -73,9 +75,11 @@ export const STALE_STATUSES: ReadonlySet<StalenessTier> = new Set(['dormant', 'a
  * When an override changes the status, the contradictory reason field is cleared
  * and an appropriate default is set so downstream logic (assessCapacity, collectActionableIssues)
  * works correctly.
+ *
+ * @param prs - The fetched PR list to apply overrides to
+ * @param state - Current agent state containing status overrides
+ * @returns New PR array with overrides applied (original array is not mutated)
  */
-const VALID_OVERRIDE_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_addressing', 'waiting_on_maintainer']);
-
 export function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentState>): FetchedPR[] {
   const overrides = state.config.statusOverrides;
   if (!overrides || Object.keys(overrides).length === 0) return prs;
@@ -142,6 +146,9 @@ function buildRepoMap(prs: FetchedPR[], label: string): Map<string, FetchedPR[]>
 /**
  * Map a full FetchedPR to a lightweight ShelvedPRRef for digest output.
  * Only the fields needed for display are retained, reducing JSON payload size.
+ *
+ * @param pr - The full PR object to project
+ * @returns Lightweight reference for display
  */
 export function toShelvedPRRef(pr: FetchedPR): ShelvedPRRef {
   return {
@@ -157,6 +164,9 @@ export function toShelvedPRRef(pr: FetchedPR): ShelvedPRRef {
 /**
  * Group PRs by repository (#80).
  * Ensures one agent per repo during parallel dispatch, preventing branch checkout conflicts.
+ *
+ * @param prs - PRs to group
+ * @returns Array of repo groups, each with the repo name and its PRs
  */
 export function groupPRsByRepo(prs: FetchedPR[]): RepoGroup[] {
   const repoMap = buildRepoMap(prs, 'GROUP_BY_REPO');
@@ -171,6 +181,9 @@ export function groupPRsByRepo(prs: FetchedPR[]): RepoGroup[] {
  * Compute per-repo maintainer signals from observed open PR data.
  * - isResponsive: true if any PR in the repo has a maintainer comment and stalenessTier is active
  * - hasActiveMaintainers: true if any non-stale PR exists in the repo (stalenessTier is 'active')
+ *
+ * @param prs - Open PRs to compute signals from
+ * @returns Map of repo names to maintainer responsiveness signals
  */
 export function computeRepoSignals(prs: FetchedPR[]): Map<string, ComputedRepoSignals> {
   const repoMap = buildRepoMap(prs, 'COMPUTE_SIGNALS');
@@ -186,6 +199,11 @@ export function computeRepoSignals(prs: FetchedPR[]): Map<string, ComputedRepoSi
 /**
  * Assess whether user has capacity for new issues.
  * Only active (non-shelved) PRs count against the limit.
+ *
+ * @param activePRs - Non-shelved open PRs
+ * @param maxActivePRs - User's configured PR limit
+ * @param shelvedPRCount - Number of shelved PRs (for display)
+ * @returns Capacity assessment with reason string
  */
 export function assessCapacity(
   activePRs: FetchedPR[],
@@ -234,6 +252,10 @@ export function assessCapacity(
  *
  * Note: Recently closed PRs are informational only and excluded from this list.
  * They are available separately in digest.recentlyClosedPRs (#156).
+ *
+ * @param prs - Active (non-shelved) PRs to check
+ * @param lastDigestAt - ISO timestamp of previous digest (for "new contribution" detection)
+ * @returns Ordered actionable issues grouped by priority
  */
 export function collectActionableIssues(prs: FetchedPR[], lastDigestAt?: string): ActionableIssue[] {
   const issues: ActionableIssue[] = [];
@@ -307,7 +329,9 @@ export function collectActionableIssues(prs: FetchedPR[], lastDigestAt?: string)
 }
 
 /**
- * Format a maintainer action hint as a human-readable label
+ * Format a maintainer action hint as a human-readable label.
+ * @param hint - The maintainer action hint enum value
+ * @returns Human-readable label (e.g., "tests requested")
  */
 export function formatActionHint(hint: MaintainerActionHint): string {
   switch (hint) {
@@ -328,6 +352,11 @@ export function formatActionHint(hint: MaintainerActionHint): string {
  * Compute the action menu from PR data and capacity.
  * The orchestration layer can insert issue-list options (e.g., "Pick from list")
  * using the context flags.
+ *
+ * @param actionableIssues - Issues requiring attention
+ * @param capacity - Current capacity assessment
+ * @param commentedIssues - Issues with comment activity
+ * @returns Action menu with context flags for orchestration
  */
 export function computeActionMenu(
   actionableIssues: ActionableIssue[],
@@ -393,7 +422,12 @@ export function computeActionMenu(
 // ---------------------------------------------------------------------------
 
 /**
- * Format a brief one-liner summary for the action-first flow
+ * Format a brief one-liner summary for the action-first flow.
+ *
+ * @param digest - The daily digest containing PR summary stats
+ * @param issueCount - Number of actionable issues needing attention
+ * @param issueResponseCount - Number of issue replies from maintainers
+ * @returns One-line status string (e.g., "3 Active PRs | 1 needs attention | 2 issue replies")
  */
 export function formatBriefSummary(digest: DailyDigest, issueCount: number, issueResponseCount: number = 0): string {
   const attentionText = issueCount > 0 ? `${issueCount} need${issueCount === 1 ? 's' : ''} attention` : 'all on track';
@@ -403,7 +437,14 @@ export function formatBriefSummary(digest: DailyDigest, issueCount: number, issu
 }
 
 /**
- * Format summary as markdown (used in JSON output for Claude to display verbatim)
+ * Format the full dashboard summary as markdown.
+ * Used in JSON output for Claude to display verbatim — includes all PR sections,
+ * issue replies, and capacity status.
+ *
+ * @param digest - The daily digest with all PR categories
+ * @param capacity - Current capacity assessment for display
+ * @param issueResponses - Issue replies from maintainers to display
+ * @returns Multi-line markdown string suitable for terminal or chat display
  */
 export function formatSummary(
   digest: DailyDigest,
@@ -505,9 +546,13 @@ export function formatSummary(
 }
 
 /**
- * Print digest to console (simple text output).
- * Unified renderer: uses the same section ordering as formatSummary
+ * Print digest to console as plain text.
+ * Unified renderer: uses the same section ordering as {@link formatSummary}
  * but outputs plain text with console.log instead of markdown links.
+ *
+ * @param digest - The daily digest with all PR categories
+ * @param capacity - Current capacity assessment for display
+ * @param commentedIssues - All commented issues (filtered to responses internally)
  */
 export function printDigest(
   digest: DailyDigest,

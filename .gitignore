@@ -29,5 +29,8 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Generated API docs
+packages/core/docs/
+
 # Worktrees
 .worktrees/

@@ -17,6 +17,16 @@ export interface MoveOutput {
   description: string;
 }
 
+/**
+ * Move a PR between states: attention, waiting, shelved, or auto (computed).
+ *
+ * @param options - Move options
+ * @param options.prUrl - Full GitHub PR URL
+ * @param options.target - Target state: 'attention' | 'waiting' | 'shelved' | 'auto'
+ * @returns The move result with a human-readable description
+ * @throws {ValidationError} If the URL is not a valid GitHub PR URL
+ * @throws {Error} If the target is invalid
+ */
 export async function runMove(options: { prUrl: string; target: string }): Promise<MoveOutput> {
   validateUrl(options.prUrl);
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');

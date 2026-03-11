@@ -18,7 +18,8 @@ import { launchDashboardServer } from './dashboard-lifecycle.js';
 
 /**
  * Parse issueListPath from a config file's YAML frontmatter.
- * Returns the path string or undefined if not found.
+ * @param configContent - Raw content of the config.md file
+ * @returns The path string or undefined if not found
  */
 export function parseIssueListPathFromConfig(configContent: string): string | undefined {
   const match = configContent.match(/^---\n([\s\S]*?)\n---/);
@@ -30,8 +31,11 @@ export function parseIssueListPathFromConfig(configContent: string): string | un
 
 /**
  * Count available and completed items in an issue list file.
- * Available: list items (- [) NOT struck through or marked Done.
+ * Available: list items (`- [`) NOT struck through or marked Done.
  * Completed: list items that ARE struck through or marked Done.
+ *
+ * @param content - Raw markdown content of the issue list
+ * @returns Counts of available and completed items
  */
 export function countIssueListItems(content: string): { availableCount: number; completedCount: number } {
   let availableCount = 0;
@@ -52,7 +56,7 @@ export function countIssueListItems(content: string): { availableCount: number; 
 
 /**
  * Detect an issue list file from config or known paths.
- * Returns IssueListInfo or undefined if no list found.
+ * @returns Issue list info with path and item counts, or undefined if not found
  */
 export function detectIssueList(): IssueListInfo | undefined {
   let issueListPath = '';
@@ -113,6 +117,10 @@ export function detectIssueList(): IssueListInfo | undefined {
   }
 }
 
+/**
+ * Open a URL in the default system browser.
+ * @param url - URL to open
+ */
 export function openInBrowser(url: string): void {
   let openCmd: string;
   let args: string[];
@@ -140,11 +148,12 @@ export function openInBrowser(url: string): void {
 /**
  * Run startup checks and return structured output.
  * Returns StartupOutput with one of three shapes:
- * 1. Setup incomplete: { version, setupComplete: false }
- * 2. Auth failure: { version, setupComplete: true, authError: "..." }
- * 3. Success: { version, setupComplete: true, daily, dashboardUrl?, issueList? }
+ * 1. Setup incomplete: `{ version, setupComplete: false }`
+ * 2. Auth failure: `{ version, setupComplete: true, authError: "..." }`
+ * 3. Success: `{ version, setupComplete: true, daily, dashboardUrl?, issueList? }`
  *
- * Errors from the daily check propagate to the caller.
+ * @returns Startup output with auth/setup status and daily digest
+ * @throws {Error} If the daily check fails (auth or network errors propagate)
  */
 export async function runStartup(): Promise<StartupOutput> {
   const version = getCLIVersion();

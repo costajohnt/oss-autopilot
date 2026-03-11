@@ -15,6 +15,14 @@ export interface UntrackOutput {
   message: string;
 }
 
+/**
+ * Validate and fetch metadata for a PR URL.
+ *
+ * @param options - Track options
+ * @param options.prUrl - Full GitHub PR URL
+ * @returns PR metadata (repo, number, title, url)
+ * @throws {ValidationError} If the URL is not a valid GitHub PR URL
+ */
 export async function runTrack(options: { prUrl: string }): Promise<TrackOutput> {
   validateUrl(options.prUrl);
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');
@@ -41,6 +49,14 @@ export async function runTrack(options: { prUrl: string }): Promise<TrackOutput>
   };
 }
 
+/**
+ * No-op in v2 — PRs are fetched fresh on each daily run.
+ *
+ * @param options - Untrack options
+ * @param options.prUrl - Full GitHub PR URL
+ * @returns Message explaining v2 behavior
+ * @throws {ValidationError} If the URL is not a valid GitHub PR URL
+ */
 export async function runUntrack(options: { prUrl: string }): Promise<UntrackOutput> {
   validateUrl(options.prUrl);
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');
