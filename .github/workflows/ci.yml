@@ -19,12 +19,13 @@ env:
   # Bundle size thresholds (bytes). Update via PR when increases are justified.
   BUNDLE_MAX_CORE: 400000 # ~391 KB
   BUNDLE_MAX_MCP: 2000000 # ~1953 KB
+  STARTUP_WARN_MS: 500 # Warn if CLI startup exceeds 500ms
 
 jobs:
   ci:
     name: Node ${{ matrix.node-version }} / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    # pull-requests: write is needed for the "Check bundle sizes" step to post PR
+    # pull-requests: write is needed for the "Check build metrics" step to post PR
     # comments. GitHub Actions does not support per-matrix-entry permissions, so all
     # matrix jobs receive this grant even though only Node 22/ubuntu uses it.
     permissions:
@@ -104,12 +105,36 @@ jobs:
             echo "Bundle verified: $bundle ($size bytes)"
           done
 
-      - name: Check bundle sizes
+      # Runs on all matrix entries (no `if` guard) — startup time across Node
+      # versions and OS is visible in each job's step output for comparison.
+      - name: Benchmark CLI startup
+        id: benchmark
+        run: |
+          BENCH_STDERR=$(mktemp)
+          STARTUP_MS=$(node .github/scripts/benchmark-startup.cjs 2>"$BENCH_STDERR") || true
+          if ! [[ "$STARTUP_MS" =~ ^[0-9]+$ ]]; then
+            echo "::error::Benchmark produced non-numeric startup time: '$STARTUP_MS'"
+            cat "$BENCH_STDERR"
+            rm -f "$BENCH_STDERR"
+            exit 1
+          fi
+          rm -f "$BENCH_STDERR"
+          echo "startup_ms=$STARTUP_MS" >> "$GITHUB_OUTPUT"
+          echo "CLI startup (--help): ${STARTUP_MS}ms (median of 5 runs)"
+
+      - name: Check build metrics
         if: matrix.node-version == 22 && matrix.os == 'ubuntu-latest'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          STARTUP_MS: ${{ steps.benchmark.outputs.startup_ms }}
         run: |
+          # Validate startup benchmark output is numeric (defense-in-depth)
+          if [ -n "$STARTUP_MS" ] && ! [[ "$STARTUP_MS" =~ ^[0-9]+$ ]]; then
+            echo "::warning::Startup benchmark output is non-numeric: '$STARTUP_MS'"
+            STARTUP_MS=""
+          fi
+
           CORE_SIZE=$(wc -c < packages/core/dist/cli.bundle.cjs | tr -d ' ')
           MCP_SIZE=$(wc -c < packages/mcp-server/dist/mcp-server.bundle.cjs | tr -d ' ')
 
@@ -131,9 +156,22 @@ jobs:
             fi
           }
 
-          # Fetch baseline from badges branch for delta reporting
+          # Helper: format a millisecond delta as " +Xms |", " -Xms |", or " no change |"
+          format_ms_delta() {
+            local delta=$1
+            if [ "$delta" -gt 0 ]; then
+              echo " +${delta}ms |"
+            elif [ "$delta" -lt 0 ]; then
+              echo " ${delta}ms |"
+            else
+              echo " no change |"
+            fi
+          }
+
+          # Fetch baselines from badges branch for delta reporting
           BASELINE_CORE=""
           BASELINE_MCP=""
+          BASELINE_STARTUP=""
           if git fetch origin badges 2>/dev/null; then
             BASELINE_JSON=$(git show origin/badges:.github/badges/bundle-sizes.json 2>/dev/null || echo "")
             if [ -n "$BASELINE_JSON" ]; then
@@ -145,35 +183,77 @@ jobs:
             else
               echo "::notice::No bundle-sizes.json on badges branch yet. Delta reporting will be available after the next main merge."
             fi
+            STARTUP_JSON=$(git show origin/badges:.github/badges/startup-time.json 2>/dev/null || echo "")
+            if [ -n "$STARTUP_JSON" ]; then
+              BASELINE_STARTUP=$(echo "$STARTUP_JSON" | node -p "try{JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).startupMs}catch{''}" 2>/dev/null || echo "")
+              if [ -z "$BASELINE_STARTUP" ]; then
+                echo "::warning::startup-time.json on badges branch could not be parsed. Startup delta reporting disabled."
+              fi
+            else
+              echo "::notice::No startup-time.json on badges branch yet. Startup delta reporting will be available after the next main merge."
+            fi
           fi
 
-          # Require both baselines to be numeric; treat as atomic pair
+          # Require both bundle baselines to be numeric; treat as atomic pair
           HAS_BASELINE=""
           if [ -n "$BASELINE_CORE" ] && [ -n "$BASELINE_MCP" ] \
              && [[ "$BASELINE_CORE" =~ ^[0-9]+$ ]] && [[ "$BASELINE_MCP" =~ ^[0-9]+$ ]]; then
             HAS_BASELINE=1
           fi
 
+          HAS_STARTUP_BASELINE=""
+          if [ -n "$BASELINE_STARTUP" ] && [[ "$BASELINE_STARTUP" =~ ^[0-9]+$ ]]; then
+            HAS_STARTUP_BASELINE=1
+          fi
+
+          # Show delta column if either baseline type is available
+          SHOW_DELTA=""
+          if [ -n "$HAS_BASELINE" ] || [ -n "$HAS_STARTUP_BASELINE" ]; then
+            SHOW_DELTA=1
+          fi
+
           # Build report table (reused for step summary and PR comment)
-          HEADER="| Bundle | Size | Threshold |"
-          SEPARATOR="|--------|------|-----------|"
-          if [ -n "$HAS_BASELINE" ]; then
+          HEADER="| Metric | Value | Threshold |"
+          SEPARATOR="|--------|-------|-----------|"
+          if [ -n "$SHOW_DELTA" ]; then
             HEADER+=" Delta vs main |"
             SEPARATOR+="----------------|"
           fi
 
           CORE_ROW="| Core CLI | ${core_kb} KB | ${core_max_kb} KB |"
           MCP_ROW="| MCP Server | ${mcp_kb} KB | ${mcp_max_kb} KB |"
-          if [ -n "$HAS_BASELINE" ]; then
-            CORE_ROW+="$(format_delta $((CORE_SIZE - BASELINE_CORE)))"
-            MCP_ROW+="$(format_delta $((MCP_SIZE - BASELINE_MCP)))"
+          if [ -n "$SHOW_DELTA" ]; then
+            if [ -n "$HAS_BASELINE" ]; then
+              CORE_ROW+="$(format_delta $((CORE_SIZE - BASELINE_CORE)))"
+              MCP_ROW+="$(format_delta $((MCP_SIZE - BASELINE_MCP)))"
+            else
+              CORE_ROW+=" — |"
+              MCP_ROW+=" — |"
+            fi
+          fi
+
+          STARTUP_ROW=""
+          if [ -n "$STARTUP_MS" ]; then
+            STARTUP_ROW="| Startup (--help) | ${STARTUP_MS}ms | ${STARTUP_WARN_MS}ms |"
+            if [ -n "$SHOW_DELTA" ]; then
+              if [ -n "$HAS_STARTUP_BASELINE" ]; then
+                STARTUP_ROW+="$(format_ms_delta $((STARTUP_MS - BASELINE_STARTUP)))"
+              else
+                STARTUP_ROW+=" — |"
+              fi
+            fi
+          else
+            echo "::warning::Startup benchmark did not produce a result. Startup metric omitted from report."
           fi
 
           TABLE="${HEADER}\n${SEPARATOR}\n${CORE_ROW}\n${MCP_ROW}"
+          if [ -n "$STARTUP_ROW" ]; then
+            TABLE+="\n${STARTUP_ROW}"
+          fi
 
           # Step summary
           {
-            echo "### Bundle Sizes"
+            echo "### Build Metrics"
             echo ""
             echo -e "$TABLE"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -189,25 +269,31 @@ jobs:
             FAILED=1
           fi
 
-          # Post PR comment (non-fatal — must not prevent threshold enforcement)
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            COMMENT="## Bundle Size Report\n\n${TABLE}"
-            echo -e "$COMMENT" | gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file - --edit-last 2>/dev/null \
-              || echo -e "$COMMENT" | gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file - \
-              || echo "::warning::Failed to post bundle size comment to PR"
+          # Startup time warning (not a hard fail — CI runner performance varies)
+          if [ -n "$STARTUP_MS" ] && [ "$STARTUP_MS" -gt "$STARTUP_WARN_MS" ]; then
+            echo "::warning::CLI startup time (${STARTUP_MS}ms) exceeds warning threshold (${STARTUP_WARN_MS}ms)"
           fi
 
-          # Exit after comment attempt so the PR still gets its size report
+          # Post PR comment (non-fatal — must not prevent threshold enforcement)
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            COMMENT="## Build Metrics Report\n\n${TABLE}"
+            echo -e "$COMMENT" | gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file - --edit-last 2>/dev/null \
+              || echo -e "$COMMENT" | gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file - \
+              || echo "::warning::Failed to post build metrics comment to PR"
+          fi
+
+          # Exit after comment attempt so the PR still gets its report
           if [ "$FAILED" -eq 1 ]; then
             echo "::error::Bundle size threshold exceeded. If this increase is justified, update BUNDLE_MAX_* env vars in ci.yml via PR."
             exit 1
           fi
-          echo "All bundles within thresholds"
+          echo "All build metrics within thresholds"
 
   # Maintains badges and baselines on the 'badges' branch after CI passes on main.
   # Uses a separate branch because main has branch protection rules.
   # - Test count badge (tests.json) for shields.io endpoint
   # - Bundle size baseline (bundle-sizes.json) for PR delta reporting
+  # - Startup time baseline (startup-time.json) for PR startup delta reporting
   update-badge:
     name: Update badges
     needs: [ci]
@@ -266,6 +352,21 @@ jobs:
           mkdir -p .github/badges
           node -e "console.log(JSON.stringify({core:$CORE_SIZE,mcp:$MCP_SIZE,timestamp:new Date().toISOString()}))" > .github/badges/bundle-sizes.json
           echo "Recorded bundle sizes: core=${CORE_SIZE}, mcp=${MCP_SIZE}"
+
+      - name: Record startup time
+        run: |
+          BENCH_STDERR=$(mktemp)
+          STARTUP_MS=$(node .github/scripts/benchmark-startup.cjs 2>"$BENCH_STDERR") || true
+          if ! [[ "$STARTUP_MS" =~ ^[0-9]+$ ]]; then
+            echo "::warning::Benchmark produced non-numeric startup time: '$STARTUP_MS'. Startup baseline not updated."
+            cat "$BENCH_STDERR"
+            rm -f "$BENCH_STDERR"
+            exit 0
+          fi
+          rm -f "$BENCH_STDERR"
+          mkdir -p .github/badges
+          STARTUP_MS="$STARTUP_MS" node -e "console.log(JSON.stringify({startupMs:Number(process.env.STARTUP_MS),timestamp:new Date().toISOString()}))" > .github/badges/startup-time.json
+          echo "Recorded startup time: ${STARTUP_MS}ms"
 
       - name: Push badges to badges branch
         run: |
