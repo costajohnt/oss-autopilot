@@ -1533,12 +1533,6 @@ a:hover {
   color: var(--text-secondary);
 }
 
-.merged-view-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
 .merged-view-empty {
   text-align: center;
   padding: var(--sp-12) var(--sp-6);
@@ -1548,28 +1542,94 @@ a:hover {
   border-radius: var(--radius);
 }
 
-.merged-view-stars {
+.merged-view--full-width {
+  max-width: none;
+}
+
+/* --- Merged PRs Table --- */
+
+.merged-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.8125rem;
+}
+
+.merged-table th {
+  text-align: left;
+  text-transform: uppercase;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: var(--sp-2) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--base);
+}
+
+.merged-table td {
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.merged-table tbody tr:hover {
+  background: var(--activity-hover-bg);
+}
+
+.merged-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.merged-table-pr-link {
+  color: var(--blue);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  text-decoration: none;
+  font-size: 0.8125rem;
+}
+
+.merged-table-pr-link:hover {
+  text-decoration: underline;
+}
+
+.merged-table-pr-title {
   color: var(--text-secondary);
   font-size: 0.75rem;
-  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 500px;
+  margin-top: var(--sp-1);
+}
+
+.merged-table-stars {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
   white-space: nowrap;
 }
 
-.merged-view-language {
+.merged-table-language {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
   color: var(--text-secondary);
   font-size: 0.75rem;
-  flex-shrink: 0;
   white-space: nowrap;
 }
 
-.merged-view-language-dot {
+.merged-table-language-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+.merged-table-date {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
 
 /* === Theme Toggle === */
@@ -1675,8 +1735,8 @@ a:hover {
     flex: 1 1 100%;
   }
 
-  .merged-view-stars,
-  .merged-view-language {
+  .merged-table-col-stars,
+  .merged-table-col-language {
     display: none;
   }
 }
