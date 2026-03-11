@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.59.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.58.0...core-v0.59.0) (2026-03-11)
+
+
+### Features
+
+* add CI performance benchmarks for CLI startup ([#628](https://github.com/costajohnt/oss-autopilot/issues/628)) ([#718](https://github.com/costajohnt/oss-autopilot/issues/718)) ([1dc4cec](https://github.com/costajohnt/oss-autopilot/commit/1dc4cec65e2ed8e10d1df7de868faf90177e045a))
+* add formatter detection CLI module ([#703](https://github.com/costajohnt/oss-autopilot/issues/703)) ([#708](https://github.com/costajohnt/oss-autopilot/issues/708)) ([ddfb36a](https://github.com/costajohnt/oss-autopilot/commit/ddfb36ad49f8a6fcec297b92a80a3eae12c053f2))
+* add TypeDoc API documentation with JSDoc coverage ([#717](https://github.com/costajohnt/oss-autopilot/issues/717)) ([89516aa](https://github.com/costajohnt/oss-autopilot/commit/89516aa7ea920bc65e93be7f766ce2df12a1ef48))
+* **dashboard:** redesign merged & closed PR pages as full-width tables ([#706](https://github.com/costajohnt/oss-autopilot/issues/706)) ([f62d5a2](https://github.com/costajohnt/oss-autopilot/commit/f62d5a28582744fa29fb676dd4a0dbbb5d91e4ee))
+
+
+### Bug Fixes
+
+* detect source file changes in startup builds and add scope tier to setup wizard ([#704](https://github.com/costajohnt/oss-autopilot/issues/704)) ([a34293d](https://github.com/costajohnt/oss-autopilot/commit/a34293deac996b4b55e69554f01f15f64fcec685))
+* pass excludeRepos and excludeOrgs to issue-scout agent strategies ([#709](https://github.com/costajohnt/oss-autopilot/issues/709)) ([#711](https://github.com/costajohnt/oss-autopilot/issues/711)) ([9622051](https://github.com/costajohnt/oss-autopilot/commit/9622051d2df830d36dfe64194662dd1222a93a7b))
+
 ## [0.58.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.57.0...core-v0.58.0) (2026-03-10)
 
 
