@@ -203,19 +203,23 @@ export interface FetchedPR {
   maintainerActionHints: MaintainerActionHint[];
 }
 
+// -- FetchedPR projection types -----------------------------------------------
+// Convenience subsets for consumers that only need specific fields.
+// FetchedPR remains the canonical type; these are derived via Pick<>.
+
+/** Fields needed for PR list/card display (e.g., dashboard, CLI summary). */
+export type PRDisplayInfo = Pick<
+  FetchedPR,
+  'url' | 'repo' | 'number' | 'title' | 'status' | 'displayLabel' | 'displayDescription' | 'daysSinceActivity'
+>;
+
 /**
  * Lightweight reference used in {@link DailyDigest} for shelved and auto-unshelved PRs.
  * Contains only the fields needed for display, avoiding duplication of the full
  * {@link FetchedPR} objects already present in `openPRs` and the status-specific arrays.
  */
-export interface ShelvedPRRef {
-  number: number;
-  url: string;
-  title: string;
-  repo: string;
-  daysSinceActivity: number;
-  status: FetchedPRStatus;
-}
+export type ShelvedPRRef = Pick<FetchedPR, 'number' | 'url' | 'title' | 'repo' | 'daysSinceActivity' | 'status'>;
+
 /** An issue tracked through the contribution pipeline from discovery to PR submission. */
 export interface TrackedIssue {
   // Identity
