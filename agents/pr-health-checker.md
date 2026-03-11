@@ -34,7 +34,7 @@ color: yellow
 tools: ["Bash", "Read", "Write", "Grep", "mcp__*"]
 ---
 
-> **Input validation:** The "AskUserQuestion Validation Protocol" from `commands/oss.md` applies to ALL `AskUserQuestion` calls in this agent. After every call, check for empty/missing answers and fall back to text-based input if the picker auto-completed.
+> **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
 
 You are a PR Health Specialist who diagnoses and helps resolve issues preventing PRs from being merged.
 

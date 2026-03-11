@@ -15,13 +15,15 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
 ```
 /oss (this file)
  │
- ├─ Startup ─── Combined Bash Script ─── Error Recovery
+ ├─ Startup ──► workflows/startup-and-build.md
+ │   Build CLI, run startup command, parse output, error recovery
  │
  ├─ Summary ─── First-Run Welcome (if no PRs)
  │
- ├─ Action Menu ─── user selects action ───┐
- │                                          │
- │   ┌─────────────────────────────────────┘
+ ├─ Action Menu ──► workflows/action-menu.md
+ │   Display PRs, present menu, parse input ───┐
+ │                                              │
+ │   ┌─────────────────────────────────────────┘
  │   │
  │   ├─ "Work through all issues" ──► workflows/work-through-issues.md
  │   │   Parallel investigation → consolidated results → sequential execution
@@ -35,7 +37,8 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
  │   ├─ "Search for new issues" ──► /oss-search command
  │   │   Parallel multi-strategy search with vetting
  │   │
- │   ├─ "Review issue replies" ──► handled here (Execute section)
+ │   ├─ "Review issue replies" ──► workflows/review-issue-replies.md
+ │   │   Issue reply triage handler
  │   │
  │   └─ "Done for now" ──► Session End
  │
@@ -53,136 +56,17 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
 
 | Workflow File | Purpose | When Invoked |
 |---------------|---------|-------------|
+| `workflows/startup-and-build.md` | CLI build, startup command, output parsing, error recovery | On entry (Startup phase) |
+| `workflows/action-menu.md` | PR display, menu rendering, input parsing, informational questions | After Summary, after each action |
+| `workflows/review-issue-replies.md` | Issue reply triage and claim/dismiss handler | User selects "Review issue replies" |
 | `workflows/work-through-issues.md` | Orchestrate actionable PR resolution and issue list browsing | User selects "Work through all issues", "Pick from list", or specific PRs |
 | `workflows/draft-first-workflow.md` | Full new contribution pipeline (8 steps) | After claiming an issue and implementing changes |
 | `workflows/pre-commit-review.md` | Code review gate for existing PR updates | After Tier 2 code changes to an existing PR |
-| `workflows/reference.md` | CLI command syntax and agent name reference | On demand when command syntax is needed |
+| `workflows/reference.md` | CLI command syntax, agent name reference, AskUserQuestion Validation Protocol | On demand when command syntax or validation rules are needed |
 
-## Output Style — Loading Screen Pattern
+## Startup
 
-**CRITICAL: Follow this pattern exactly.**
-
-### 1. Display Loading Message FIRST
-
-Before running ANY tool calls, output this text immediately (the user sees it while commands run):
-
-```
-Checking your PRs across GitHub...
-```
-
-That's it. One line. No narration, no "Let me...", no step-by-step commentary. Just the loading message, then proceed to run commands.
-
-### 2. Run EVERYTHING in a Single Bash Call
-
-After the loading message, execute the **one combined bash command** below. This single call handles build, auth, setup check, daily fetch, dashboard, version, and issue list detection. Do NOT run ANY other tool calls (no Read, no additional Bash) between the loading message and displaying results.
-
-### 3. Only Show Results
-
-After the bash call completes, jump straight to displaying the brief summary and action menu. Do NOT echo the raw JSON. Do NOT narrate what happened. No "Now let me...", no "Let me check...", no intermediate commentary.
-
-**If something fails**, then and only then explain the error.
-
-## Combined Bash Script
-
-Run **everything** in a single bash call. The CLI's `startup` command handles auth, setup, daily fetch, interactive dashboard launch, version detection, and issue list detection internally. The output is a single JSON envelope.
-
-```bash
-# Rebuild CLI if needed (check source files, not just package.json)
-CLI_BUNDLE="${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs"
-if [ ! -f "${CLI_BUNDLE}" ] || [ -n "$(find "${CLAUDE_PLUGIN_ROOT}/packages/core/src" "${CLAUDE_PLUGIN_ROOT}/packages/core/package.json" "${CLAUDE_PLUGIN_ROOT}/packages/core/tsconfig.json" -newer "${CLI_BUNDLE}" -print -quit 2>/dev/null)" ]; then
-  if ! BUILD_LOG=$(cd "${CLAUDE_PLUGIN_ROOT}/packages/core" && npm install --silent 2>&1 && npm run bundle --silent 2>&1); then
-    echo "BUILD_FAILED"; echo "$BUILD_LOG" | tail -5; exit 1
-  fi
-fi
-# Build dashboard SPA if missing or stale (source files newer than built output) (#567)
-# Dashboard's tsc needs core's .d.ts types (the CLI bundle step above runs esbuild, not tsc).
-DASHBOARD_INDEX="${CLAUDE_PLUGIN_ROOT}/packages/dashboard/dist/index.html"
-DASHBOARD_PKG="${CLAUDE_PLUGIN_ROOT}/packages/dashboard/package.json"
-if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ -n "$(find "${CLAUDE_PLUGIN_ROOT}/packages/dashboard/src" "${DASHBOARD_PKG}" "${CLAUDE_PLUGIN_ROOT}/packages/dashboard/vite.config.ts" "${CLAUDE_PLUGIN_ROOT}/packages/dashboard/tsconfig.json" -newer "${DASHBOARD_INDEX}" -print -quit 2>/dev/null)" ]; }; then
-  if command -v pnpm &>/dev/null; then
-    (cd "${CLAUDE_PLUGIN_ROOT}" && pnpm install --silent && pnpm --silent --filter @oss-autopilot/core run build && pnpm --silent --filter @oss-autopilot/dashboard run build) >/tmp/oss-dashboard-build.log 2>&1 || true
-  else
-    (cd "${CLAUDE_PLUGIN_ROOT}/packages/dashboard" && npm install --silent && npm run build) >/tmp/oss-dashboard-build.log 2>&1 || true
-  fi
-fi
-GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN")
-export GITHUB_TOKEN
-node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json 2>/tmp/oss-startup-stderr.log
-```
-
-**Parse the output:**
-
-The output is a single JSON object with the standard envelope: `{ success: boolean, data?: StartupOutput, error?: string, timestamp: string }`.
-
-**Error sentinel check** (before JSON appears — only possible if the build step fails):
-- If output starts with `BUILD_FAILED`: Tell the user the CLI build failed and show the error lines. Then show error recovery steps (see **Error Recovery** below).
-
-**JSON parsing** — parse the entire output as JSON:
-
-- If `success` is `false`: Show `error` field to the user. This means the daily check failed. Show error recovery steps (see **Error Recovery** below).
-- If `success` is `true`, extract `data` as `StartupOutput`:
-
-| Field | Meaning | Session Variable |
-|-------|---------|-----------------|
-| `data.version` | CLI version (e.g., "0.26.0") | `version` |
-| `data.setupComplete` | Whether setup is done | If `false`, prompt setup |
-| `data.autoDetected` | Username was auto-detected (zero-config) | If `true`, show welcome message |
-| `data.authError` | Set when no GitHub token | If present, show auth instructions |
-| `data.daily` | DailyOutput (same shape as before) | Extract `briefSummary`, `actionableIssues`, `actionMenu`, etc. |
-| `data.dashboardUrl` | URL of interactive dashboard SPA (e.g., `http://localhost:3000`) | Show `Dashboard: <url>` so user can re-open it |
-| `data.issueList` | Issue list info (if detected) | `hasIssueList` = present; extract `path`, `source`, `availableCount`, `completedCount` |
-
-**Routing based on parsed data:**
-- `data.authError` is present → Tell the user: show `data.authError` message.
-- `data.setupComplete === false` → Auto-detection failed (gh CLI not available or not authenticated). Tell the user: "I couldn't auto-detect your GitHub username. You'll need to set up first." Use AskUserQuestion to let them choose "Run setup (Recommended)" (launch `/setup-oss`) or "Continue with defaults". If they choose "Continue with defaults", re-run the daily check directly (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-startup-stderr.log`), use `data.version` from the startup output already received, and continue to **Summary** with the daily result as `data.daily`.
-- `data.daily` is present → Continue to **Summary** (display brief summary and action menu).
-
-**If output is empty or not valid JSON**: Tell the user "Something went wrong running the startup check." Suggest running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json`. Then show error recovery steps (see **Error Recovery** below).
-
-## Error Recovery
-
-Show any captured error output (from `$BUILD_LOG`, stderr, or the `error` field). Then troubleshoot based on the error type:
-
-- **Build failure** (BUILD_FAILED sentinel): `cd ${CLAUDE_PLUGIN_ROOT}/packages/core && npm install && npm run bundle`. Common causes: missing Node.js 20+, stale `node_modules` (delete and reinstall), npm permission issues.
-- **Auth/network error** (`success: false` with valid JSON): Check `gh auth status` and network connectivity. The CLI built fine — the daily check itself failed.
-- **Invalid output** (empty or non-JSON): Try running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json`. Check `node --version` (need 20+).
-
----
-
-## AskUserQuestion Validation Protocol
-
-**CRITICAL: Apply this protocol after EVERY AskUserQuestion call in this workflow and all sub-workflows.**
-
-Some Claude Code auto-accept permission configurations can cause `AskUserQuestion` to auto-complete without presenting the interactive picker to the user. When this happens, the tool returns an empty response with no actual selection.
-
-### Detection
-
-After every `AskUserQuestion` call, check the response for a valid answer. An answer is **invalid** if:
-- The response contains no identifiable selection (empty string, only whitespace, or just a period)
-- The response text matches the pattern `"User has answered your questions:"` followed by nothing meaningful (only whitespace, periods, or empty)
-- The user selected "Other" but provided no follow-up text
-
-### Fallback
-
-If an invalid answer is detected:
-
-1. **Do NOT proceed** with any default or assumed selection. Never guess what the user intended.
-2. **Inform the user:**
-   > "The interactive picker didn't register a selection. Showing options as text instead."
-3. **Re-present the options** as a numbered text list:
-   ```
-   Please type the number of your choice:
-   1. [first option label] — [description]
-   2. [second option label] — [description]
-   3. [third option label] — [description]
-   ...
-   ```
-4. **Wait for the user's text response** before proceeding. Parse their response as a number (mapping to the list above) or as free-text matching one of the options.
-5. **If the text-based fallback also returns an invalid response**, inform the user that input cannot be collected in this session and default to "Done for now" (or the safest available option). Do not retry more than once.
-
-### Scope
-
-This protocol applies to ALL `AskUserQuestion` calls in this plugin, including commands, workflows, and agent files.
+Read `${CLAUDE_PLUGIN_ROOT}/workflows/startup-and-build.md` and follow the instructions. After startup completes, continue to **Summary** below.
 
 ---
 
@@ -296,144 +180,7 @@ Use AskUserQuestion with these options:
 
 ## Action Menu
 
-The CLI pre-computes the action menu in `data.daily.actionMenu`. Use these items directly in AskUserQuestion instead of manually deriving options.
-
-**Fallback:** If `data.daily.actionMenu` is missing (e.g., older CLI version), tell the user: "Action menu not found in CLI output — you may need to rebuild the CLI: `cd ${CLAUDE_PLUGIN_ROOT}/packages/core && npm run bundle`". Then derive options manually: always include "Done for now"; add "Work through all N issues (Recommended)" if `data.daily.actionableIssues.length > 0`; always add "Search for new issues".
-
-### If No Actionable Issues
-
-When `data.daily.actionMenu` is present and `data.daily.actionMenu.context.hasActionableIssues` is `false` (or when `data.daily.actionMenu` is absent and `data.daily.actionableIssues` is empty), display:
-```
-All PRs are on track — nothing needs your attention right now.
-```
-
-If `hasIssueList && availableCount === 0`:
-```
-Your curated issue list is depleted ({completedCount} done). Time to find new issues!
-```
-
-### Display All PRs First (Information Before Prompt)
-
-When there are actionable issues, display them **before asking the user anything**.
-
-Issues are listed in priority order based on `actionReason`: `needs_response` → `needs_changes` → `ci_failing` → `merge_conflict` → `incomplete_checklist`. This matches the ordering from `collectActionableIssues()` in the CLI. All PRs shown here have `status: "needs_addressing"` — the `actionReason` field provides the specific reason. Recently closed PRs are NOT included here — they appear in a separate informational section below (see "Recently Closed PRs").
-
-For each issue, look up the full PR from `digest.openPRs` using the issue's `prUrl`:
-
-```javascript
-// For each actionable issue, resolve the full PR object:
-const pr = data.daily.digest.openPRs.find(p => p.url === issue.prUrl);
-```
-
-Then show the enriched format using the resolved PR's fields:
-
-```
-{count} PRs Need Attention (in priority order):
-
-1. {issue.label} {pr.repo}#{pr.number} — {pr.title} ({pr.daysSinceActivity}d)
-   └─ @{pr.lastMaintainerComment.author}: {formatted maintainerActionHints}
-   └─ Effort: {effort} — {action summary}
-
-2. {issue.label} {pr.repo}#{pr.number} — {pr.title} ({pr.daysSinceActivity}d)
-   └─ @{pr.lastMaintainerComment.author}: {formatted maintainerActionHints}
-   └─ Effort: {effort} — {action summary}
-
-... (list ALL actionable issues, no limit)
-
----
-```
-
-**Maintainer hints line**: Only show if `pr.lastMaintainerComment` exists. Format each hint from `pr.maintainerActionHints` using these labels: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
-
-**Effort estimate**: Compute at display time from issue type + hint count:
-
-| Effort | Condition |
-|--------|-----------|
-| **Small** | `needs_response` with 0-1 hints (just a reply), `incomplete_checklist` |
-| **Medium** | `needs_response` with 2+ hints (reply + code changes), `needs_changes` with 0-2 hints, `ci_failing` |
-| **Large** | `merge_conflict`, `needs_changes` with 3+ hints |
-
-If an issue type doesn't match any row above, default to **Medium**.
-
-**Action summary**: Brief description based on type (e.g., "respond + code changes", "rebase + push", "investigate CI logs").
-
-Use `pr.daysSinceActivity` from the resolved PR (already computed).
-
-### Recently Closed PRs (Informational)
-
-If `data.daily.digest.recentlyClosedPRs` has entries, display them **after** the actionable issues list (or after "All PRs are on track" if none) as a separate informational section. These are NOT counted in the "Need Attention" total and do NOT receive priority numbers:
-
-```
-Recently closed (informational):
-- {repo}#{number} — {title} (closed without merge on {closedAt date})
-```
-
-These do not require any action. They exist so the user knows what was closed. The Auto-Exclude prompt (in the work-through-issues workflow) may offer to exclude these repos from future searches.
-
-### Ask for Action (Using Pre-Computed Menu)
-
-Use `data.daily.actionMenu.items` directly as AskUserQuestion options. Each item has `key`, `label`, and `description` fields ready for display.
-
-**Issue list integration:** If the user has a curated issue list (detected from `data.issueList` in the startup output), insert an issue-list option **after `address_all`** (index 1) or **at the start** (index 0) when no actionable issues exist — i.e., always before the `search` item:
-
-| Condition | Insert Item |
-|-----------|-------------|
-| `hasIssueList && availableCount >= 5` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} ready)"`, Description: `"You have {availableCount} vetted issues ready to work on — starting one would be higher ROI than searching for more"` |
-| `hasIssueList && availableCount > 0 && availableCount < 5` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} available)"`, Description: `"Choose from your curated list of vetted issues"` |
-| `hasIssueList && availableCount === 0` | Key: `replenish_list`, Label: `"Replenish your issue list"`, Description: `"All {completedCount} issues done — search for fresh ones"`. Also **remove** the `search` item (replenish replaces it). |
-
-When inserting issue-list items, keep within the 4-option limit (the 5th is the auto "Other").
-
-**"Replenish your issue list"** routes to **Handle "Find New Issues"** (same as search), but agents should be told to suggest issues suitable for adding to the curated list.
-
-### Example AskUserQuestion
-
-```
-Question: "What would you like to do?"
-Header: "Action"
-
-Options (from data.daily.actionMenu.items):
-1. Label: "Work through all 7 issues (Recommended)"
-   Description: "Run maintenance in parallel, then address code changes one at a time"
-
-2. Label: "Search for new issues"
-   Description: "Look for new contribution opportunities"
-
-3. Label: "Done for now"
-   Description: "End session with summary"
-
-(Other is auto-added - user can type "#1", "fix ink#861", "just 3 and 5", etc.)
-```
-
-### Parsing "Other" Input
-
-When user provides custom input via "Other", parse for:
-
-| Input Format | Examples | Action |
-|--------------|----------|--------|
-| PR numbers | "1", "#1", "fix 1", "address #1" | Address that specific PR from the list |
-| Multiple PRs | "1 and 3", "1,3,5", "#1 #3 #5", "1-3" | Address those PRs in parallel |
-| Repo references | "ink#861", "shadcn-ui/ui#9263" | Find and address that PR |
-| URLs | "https://github.com/..." | Address that PR directly |
-| Keywords | "all", "none", "skip" | Map to corresponding action |
-
-**If input is unclear**, ask for clarification:
-> "I didn't understand '{input}'. Please enter PR numbers (e.g., '1 and 3'), a repo reference (e.g., 'ink#861'), or select an option above."
-
-### Handling Informational Questions
-
-When the user types a simple question via "Other" input (or at any point during the session), determine whether it's **informational** or **actionable**:
-
-| Type | Examples | Behavior |
-|------|----------|----------|
-| **Informational** | "show me a link to issue #1", "what's the URL for PR #123", "how many PRs do I have open?", "list my waiting PRs", "what did the maintainer say on ink#855?" | Respond with the requested information as **text only**. Do NOT follow up with AskUserQuestion. Let the user read the answer and send their next message. |
-| **Actionable** | "fix #1", "address all issues", "search for new issues", "rebase ink#855" | Execute the action, then prompt with AskUserQuestion as usual. |
-
-**Why:** In Claude Code, AskUserQuestion renders as an interactive picker that replaces preceding text output. If informational text is immediately followed by a prompt, the user sees the answer for a brief moment before it's hidden behind the picker.
-
-**Rule of thumb:** If the user's input is purely asking for information (starts with "what", "how many", "which", "where") or uses display verbs ("show", "list") without an accompanying action verb ("fix", "address", "rebase", "search"), treat it as informational. If the input contains both an informational request and an action (e.g., "show me the CI logs and fix #3"), treat it as actionable. This heuristic applies equally when the user sends a free-form message outside of an AskUserQuestion picker.
-
-**After an informational response:** When the user sends their next message, route it through the same informational-vs-actionable classification. If their follow-up is actionable or selects a menu item, return to normal Action Menu flow.
+Read `${CLAUDE_PLUGIN_ROOT}/workflows/action-menu.md` and follow the instructions to display PRs and present the action menu. After the user selects an action, continue to **Execute** below.
 
 ---
 
@@ -457,7 +204,7 @@ When the user selects an action from the menu above, **read the relevant workflo
 | "Work through all issues" | `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` | "Handle Work Through All Issues" |
 | "Pick from your issue list" | `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` | "Handle Pick Issue From List" |
 | Specific PR selection (via "Other") | `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` | "Handle Specific PR Selection" |
-| "Review issue replies" | Handled in core (below) | "Handle Review Issue Replies" |
+| "Review issue replies" | `${CLAUDE_PLUGIN_ROOT}/workflows/review-issue-replies.md` | "Handle Review Issue Replies" |
 | "Search for new issues" | Handled in core (below) | "Handle Find New Issues" |
 | "Done for now" | Handled in core (below) | "Session End" |
 
@@ -466,32 +213,6 @@ When the user selects an action from the menu above, **read the relevant workflo
 **If a workflow file fails to load** (Read tool returns error): Tell the user which file could not be loaded and the error. Suggest reinstalling the plugin (`/plugin install oss-autopilot@oss-autopilot`). Do NOT attempt to reconstruct the workflow from memory.
 
 For CLI command syntax and agent names, read: `${CLAUDE_PLUGIN_ROOT}/workflows/reference.md`
-
-### Handle "Review Issue Replies"
-
-When the user selects "Review issue replies", display each commented issue with a maintainer response from `data.daily.commentedIssues` (filtered to `status === 'new_response'`):
-
-```
-## Issue Replies
-
-Maintainers responded to your comments on these issues:
-
-1. **owner/repo#123** — Issue title
-   └─ @maintainer: "Go for it! Feel free to submit a PR..."
-   └─ Your comment: 5 days ago
-
-2. **owner/repo#456** — Another issue title
-   └─ @maintainer: "Thanks for the interest. Here's what..."
-   └─ Your comment: 2 days ago
-```
-
-For each issue, use AskUserQuestion to offer actions:
-- "Claim this issue" — Run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" claim ISSUE_URL --json` to add it to the tracked pipeline. Also auto-dismiss by running `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" dismiss ISSUE_URL --json`. Then proceed to work on it.
-- "Mark as reviewed" — The user has seen the reply but doesn't want to claim the issue right now. Dismiss it so it won't reappear next session: run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" dismiss ISSUE_URL --json`. If a genuinely new response arrives later (after the dismiss timestamp), the auto-undismiss logic will resurface it.
-- "View full thread" — Display the issue URL for the user to open in browser. After viewing, re-prompt with the same options for this issue (do not advance to the next issue).
-- "Skip" — Leave the reply undismissed. It will reappear next session. Use this when the user wants to defer action to a future session.
-
-After processing all issue replies (or user chooses to stop), return to **Action Menu** to present action choices again.
 
 ### Handle "View Waiting PRs"
 
@@ -581,10 +302,10 @@ Your PRs are tracked. Run /oss anytime to check again.
 1. **Tier 1 (maintenance)**: Rebase + force push is allowed after user selects "Work through all issues" or explicitly approves
 2. **Tier 2 (code/comments)**: NEVER push code or post comments without explicit per-action approval
 3. **Agents report results** for Tier 1, **investigate and recommend** for Tier 2
-4. In Phase C, present Tier 2 items one at a time for sequential approval and execution
+4. When working through actionable issues (see `workflows/work-through-issues.md` Phase C), present Tier 2 items one at a time for sequential approval and execution
 
 ### Workflow Control (CRITICAL)
-5. **After workflow actions, always ask what's next** - after completing a workflow action (addressing a PR, running maintenance, searching for issues), prompt the user for the next step. **Exception:** If the user asked a simple informational question (e.g., "show me a link to issue #1", "what's the status of PR #5"), respond with text only — no AskUserQuestion. See "Handling Informational Questions" in Action Menu.
+5. **After workflow actions, always ask what's next** - after completing a workflow action (addressing a PR, running maintenance, searching for issues), prompt the user for the next step. **Exception:** If the user asked a simple informational question (e.g., "show me a link to issue #1", "what's the status of PR #5"), respond with text only — no AskUserQuestion. See "Handling Informational Questions" in `workflows/action-menu.md`.
 6. **Drive the conversation** - Claude controls the flow, user responds to prompts
 7. **Session ends ONLY when user selects "Done for now"** - never assume user is finished
 8. **ALWAYS include "Done for now"** in every AskUserQuestion (when one is used — see rule 14 for the informational exception)
@@ -595,7 +316,7 @@ Your PRs are tracked. Run /oss anytime to check again.
 11. **NEVER add AI attribution** to commits, comments, or PRs — no `Co-Authored-By` trailers, no "Generated with Claude Code", no robot emoji, no mentions of AI assistance
 12. **Display information before prompting** - show all PRs as text FIRST, then ask for action
 13. **Parse "Other" input flexibly** - accept PR numbers, URLs, repo refs like "ink#861"
-14. **Don't prompt after informational responses** - see "Handling Informational Questions" in Action Menu for details
+14. **Don't prompt after informational responses** - see "Handling Informational Questions" in `workflows/action-menu.md` for details
 
 ### Failure Protocol
 15. **When a task or approach fails, STOP and report back to the user.** Do not silently switch to a fallback strategy, skip the failed step, or improvise a workaround. Explain what failed, why it failed, and what the options are — then let the user decide how to proceed. This applies to tool failures, automation failures, file operations, CI issues, agent failures, or any other task that does not succeed as intended. **Exception:** Fallbacks that are explicitly documented in the workflow or agent instructions (e.g., gh CLI fallback when the TypeScript CLI fails) are permitted, but ONLY if the user is informed before the fallback executes. Undocumented or improvised fallbacks are never permitted.
@@ -609,4 +330,4 @@ Your PRs are tracked. Run /oss anytime to check again.
 19. **Parallel execution** - when addressing multiple repos, launch ALL agents in a SINGLE message, then present consolidated results table
 
 ### Input Validation
-20. **Validate every AskUserQuestion response** per the "AskUserQuestion Validation Protocol" section above.
+20. **Validate every AskUserQuestion response** per the "AskUserQuestion Validation Protocol" in `workflows/reference.md`.

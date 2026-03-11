@@ -115,3 +115,40 @@ Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `
 | `issue-scout` | Find and vet new issues |
 | `repo-evaluator` | Analyze repository health |
 | `contribution-strategist` | Strategic OSS advice |
+
+---
+
+## AskUserQuestion Validation Protocol
+
+**CRITICAL: Apply this protocol after EVERY AskUserQuestion call in all plugin files.**
+
+Some Claude Code auto-accept permission configurations can cause `AskUserQuestion` to auto-complete without presenting the interactive picker to the user. When this happens, the tool returns an empty response with no actual selection.
+
+### Detection
+
+After every `AskUserQuestion` call, check the response for a valid answer. An answer is **invalid** if:
+- The response contains no identifiable selection (empty string, only whitespace, or just a period)
+- The response text matches the pattern `"User has answered your questions:"` followed by nothing meaningful (only whitespace, periods, or empty)
+- The user selected "Other" but provided no follow-up text
+
+### Fallback
+
+If an invalid answer is detected:
+
+1. **Do NOT proceed** with any default or assumed selection. Never guess what the user intended.
+2. **Inform the user:**
+   > "The interactive picker didn't register a selection. Showing options as text instead."
+3. **Re-present the options** as a numbered text list:
+   ```
+   Please type the number of your choice:
+   1. [first option label] — [description]
+   2. [second option label] — [description]
+   3. [third option label] — [description]
+   ...
+   ```
+4. **Wait for the user's text response** before proceeding. Parse their response as a number (mapping to the list above) or as free-text matching one of the options.
+5. **If the text-based fallback also returns an invalid response**, inform the user that input cannot be collected in this session and default to "Done for now" (or the safest available option). Do not retry more than once.
+
+### Scope
+
+This protocol applies to ALL `AskUserQuestion` calls in this plugin, including commands, workflows, and agent files.
