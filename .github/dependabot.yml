@@ -1,9 +1,27 @@
 version: 2
 updates:
   - package-ecosystem: "npm"
+    directories:
+      - "/"
+      - "/packages/*"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+      production-dependencies:
+        dependency-type: "production"
+    open-pull-requests-limit: 15
+
+  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    target-branch: "main"
     commit-message:
       prefix: "chore"
+    groups:
+      actions:
+        patterns:
+          - "*"
