@@ -950,6 +950,57 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── Detect Formatters ────────────────────────────────────────────────
+  {
+    name: 'detect-formatters',
+    localOnly: true,
+    register(program) {
+      program
+        .command('detect-formatters [repo-path]')
+        .description('Detect formatters and linters configured in a repository')
+        .option('--ci-log <path>', 'Analyze CI log file for formatting failures')
+        .option('--json', 'Output as JSON')
+        .action(async (repoPath, options) => {
+          try {
+            const { runDetectFormatters } = await import('./commands/detect-formatters.js');
+            const data = await runDetectFormatters({ repoPath, ciLog: options.ciLog });
+            if (options.json) {
+              outputJson(data);
+            } else {
+              if (data.formatters.length === 0) {
+                console.log('\nNo formatters detected.');
+              } else {
+                console.log(`\nDetected ${data.formatters.length} formatter(s):\n`);
+                for (const f of data.formatters) {
+                  console.log(`  ${f.name} (${f.configPath})`);
+                  console.log(`    Fix:   ${f.fixCommand}`);
+                  console.log(`    Check: ${f.checkCommand}`);
+                }
+              }
+              if (data.packageJsonScripts.length > 0) {
+                console.log('\npackage.json scripts:');
+                for (const s of data.packageJsonScripts) {
+                  console.log(`  ${s.name}: ${s.command}`);
+                }
+              }
+              if (data.ciDiagnosis) {
+                console.log('');
+                if (data.ciDiagnosis.isFormattingFailure) {
+                  console.log(`CI Diagnosis: Formatting failure detected (${data.ciDiagnosis.formatter})`);
+                  console.log(`  Fix: ${data.ciDiagnosis.fixCommand}`);
+                  console.log(`  Evidence: ${data.ciDiagnosis.evidence.join(', ')}`);
+                } else {
+                  console.log('CI Diagnosis: No formatting failure detected.');
+                }
+              }
+            }
+          } catch (err) {
+            handleCommandError(err, options.json);
+          }
+        });
+    },
+  },
+
   // ── Stats ─────────────────────────────────────────────────────────────
   {
     name: 'stats',

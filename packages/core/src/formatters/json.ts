@@ -7,6 +7,7 @@ import type { FetchedPR, DailyDigest, AgentState, RepoGroup, CommentedIssue, She
 import type { ContributionStats } from '../core/stats.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { SearchPriority } from '../core/types.js';
+import type { CIFormatterDiagnosis, FormatterDetectionResult } from '../core/formatter-detection.js';
 
 export interface JsonOutput<T = unknown> {
   success: boolean;
@@ -369,6 +370,11 @@ export interface LocalReposOutput {
   scanPaths: string[];
   cachedAt: string;
   fromCache: boolean;
+}
+
+/** Output of the detect-formatters command. Extends FormatterDetectionResult with optional CI diagnosis. */
+export interface DetectFormattersOutput extends FormatterDetectionResult {
+  ciDiagnosis?: CIFormatterDiagnosis;
 }
 
 /** Output of the stats command */
