@@ -23,7 +23,6 @@ import type {
   DailyDigest,
   AgentState,
   ShelvedPRRef,
-  PRDisplayInfo,
   MaintainerActionHint,
   ComputedRepoSignals,
   RepoGroup,
@@ -145,13 +144,13 @@ function buildRepoMap(prs: FetchedPR[], label: string): Map<string, FetchedPR[]>
 // ---------------------------------------------------------------------------
 
 /**
- * Map a full FetchedPR to a lightweight ShelvedPRRef for digest output.
+ * Project a PR to a lightweight ShelvedPRRef for digest output.
  * Only the fields needed for display are retained, reducing JSON payload size.
  *
- * @param pr - The full PR object to project
+ * @param pr - Any object with at least the ShelvedPRRef fields
  * @returns Lightweight reference for display
  */
-export function toShelvedPRRef(pr: PRDisplayInfo): ShelvedPRRef {
+export function toShelvedPRRef(pr: ShelvedPRRef): ShelvedPRRef {
   return {
     number: pr.number,
     url: pr.url,
