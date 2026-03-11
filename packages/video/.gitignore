@@ -1,0 +1,9 @@
+out/
+dist/
+node_modules/
+src/assets/recordings/*.mp4
+src/assets/recordings/*.webm
+src/assets/recordings/*.mov
+src/assets/audio/*.mp3
+src/assets/audio/*.wav
+src/assets/audio/*.ogg
