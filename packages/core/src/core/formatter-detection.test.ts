@@ -353,6 +353,15 @@ describe('diagnoseCIFormatterFailure', () => {
     expect(result.isFormattingFailure).toBe(true);
     expect(result.fixCommand).toBe('npx prettier --write .');
   });
+
+  it('should gracefully fall back when repoPath is invalid', () => {
+    mockedFs.existsSync.mockReturnValue(false);
+
+    const result = diagnoseCIFormatterFailure('Forgot to run Prettier?', '/nonexistent');
+    expect(result.isFormattingFailure).toBe(true);
+    expect(result.formatter).toBe('prettier');
+    expect(result.fixCommand).toBe('npx prettier --write .');
+  });
 });
 
 describe('getPreferredFormatter', () => {

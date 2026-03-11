@@ -26,11 +26,11 @@ export interface DetectedFormatter {
   name: FormatterName;
   /** Relative to repo root */
   configPath: string;
-  /** e.g., "npx prettier --write" */
+  /** e.g., "npx prettier --write ." */
   fixCommand: string;
-  /** e.g., "npx prettier --check" */
+  /** e.g., "npx prettier --check ." */
   checkCommand: string;
-  /** false for cargo fmt, make fmt */
+  /** Whether the formatter accepts individual file paths as arguments */
   supportsFileArgs: boolean;
 }
 
@@ -92,7 +92,7 @@ const CI_PATTERNS: { formatter: FormatterName; patterns: RegExp[] }[] = [
   },
   {
     formatter: 'ruff',
-    patterns: [/ruff format/i],
+    patterns: [/ruff format.*--check/i, /ruff format.*would reformat/i],
   },
   {
     formatter: 'black',
@@ -378,14 +378,18 @@ export function diagnoseCIFormatterFailure(logOutput: string, repoPath?: string)
   // Cross-reference with local detection to get the fix command
   let fixCommand: string | undefined;
   if (repoPath) {
-    const detected = detectFormatters(repoPath);
-    const localMatch = detected.formatters.find((f) => f.name === matchedFormatter);
-    if (localMatch) {
-      fixCommand = localMatch.fixCommand;
+    try {
+      const detected = detectFormatters(repoPath);
+      const localMatch = detected.formatters.find((f) => f.name === matchedFormatter);
+      if (localMatch) {
+        fixCommand = localMatch.fixCommand;
+      }
+    } catch {
+      // Fall through to fallback commands — cross-reference is best-effort
     }
   }
 
-  // Fallback fix commands when no local detection available
+  // Fallback fix commands when CI-matched formatter wasn't found locally or no repoPath provided
   if (!fixCommand) {
     const fallbackCommands: Record<FormatterName, string> = {
       prettier: 'npx prettier --write .',
