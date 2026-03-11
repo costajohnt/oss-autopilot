@@ -8,6 +8,8 @@ on:
       - 'packages/core/src/**'
       - 'packages/core/typedoc.json'
       - 'packages/core/tsconfig.json'
+      - 'packages/core/package.json'
+      - '.github/workflows/docs.yml'
 
 permissions:
   contents: read
@@ -46,6 +48,13 @@ jobs:
 
       - name: Generate API docs
         run: pnpm run docs
+
+      - name: Verify docs output
+        run: |
+          if [ ! -f packages/core/docs/api/index.html ]; then
+            echo "::error::TypeDoc did not generate expected output at packages/core/docs/api/index.html"
+            exit 1
+          fi
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

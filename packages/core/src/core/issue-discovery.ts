@@ -150,7 +150,7 @@ export class IssueDiscovery {
    * @param options.labels - Issue labels to search for
    * @param options.maxResults - Maximum candidates to return (default: 10)
    * @returns Scored and sorted issue candidates
-   * @throws {ValidationError} If no candidates found across all phases
+   * @throws {ValidationError} If no candidates found and no rate limits prevented the search
    *
    * @example
    * ```typescript

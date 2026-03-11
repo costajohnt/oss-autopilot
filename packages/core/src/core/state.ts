@@ -219,7 +219,7 @@ export class StateManager {
 
   // === Merged PR Storage ===
 
-  /** Returns all stored merged PRs, sorted by merge date descending. */
+  /** Returns all stored merged PRs (sorted by merge date descending via addMergedPRs). */
   getMergedPRs(): StoredMergedPR[] {
     return this.state.mergedPRs ?? [];
   }
@@ -247,7 +247,7 @@ export class StateManager {
 
   // === Closed PR Storage ===
 
-  /** Returns all stored closed-without-merge PRs, sorted by close date descending. */
+  /** Returns all stored closed-without-merge PRs (sorted by close date descending via addClosedPRs). */
   getClosedPRs(): StoredClosedPR[] {
     return this.state.closedPRs ?? [];
   }
@@ -618,7 +618,7 @@ export class StateManager {
 
   /**
    * Returns repos above the score threshold.
-   * @param minScore - Minimum score (default: 7)
+   * @param minScore - Minimum score (default: config.minRepoScoreThreshold)
    */
   getHighScoringRepos(minScore?: number): string[] {
     return repoScoring.getHighScoringRepos(this.state, minScore);
@@ -626,7 +626,7 @@ export class StateManager {
 
   /**
    * Returns repos below the score threshold.
-   * @param maxScore - Maximum score (default: 3)
+   * @param maxScore - Maximum score (default: config.minRepoScoreThreshold)
    */
   getLowScoringRepos(maxScore?: number): string[] {
     return repoScoring.getLowScoringRepos(this.state, maxScore);
