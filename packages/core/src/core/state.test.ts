@@ -2380,3 +2380,345 @@ describe('issueListPath in config', () => {
     expect(sm.getState().config.issueListPath).toBeUndefined();
   });
 });
+
+// ── Helper: build a minimal legacy PR object for v1 migration tests ─────────
+function makeLegacyPR(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: 1,
+    url: 'https://github.com/owner/repo/pull/1',
+    repo: 'owner/repo',
+    number: 1,
+    title: 'Test PR',
+    status: 'merged',
+    activityStatus: 'active',
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+    lastChecked: '2024-01-01T00:00:00Z',
+    lastActivityAt: '2024-01-01T00:00:00Z',
+    daysSinceActivity: 0,
+    hasUnreadComments: false,
+    reviewCommentCount: 0,
+    commitCount: 1,
+    ...overrides,
+  };
+}
+
+// ── migrateFromLegacyLocation ───────────────────────────────────────────────
+// Legacy paths resolve to packages/core/data/ during vitest (process.cwd()).
+// Tests must create/cleanup this directory.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('migrateFromLegacyLocation', () => {
+  const legacyDataDir = path.join(process.cwd(), 'data');
+  const legacyStatePath = path.join(legacyDataDir, 'state.json');
+  const legacyBackupDir = path.join(legacyDataDir, 'backups');
+
+  function createLegacyState(data: Record<string, unknown>): void {
+    fs.mkdirSync(legacyDataDir, { recursive: true });
+    fs.writeFileSync(legacyStatePath, JSON.stringify(data), { mode: 0o600 });
+  }
+
+  function createLegacyBackup(name: string, data: Record<string, unknown>): void {
+    fs.mkdirSync(legacyBackupDir, { recursive: true });
+    fs.writeFileSync(path.join(legacyBackupDir, name), JSON.stringify(data), { mode: 0o600 });
+  }
+
+  function cleanupLegacyDir(): void {
+    fs.rmSync(legacyDataDir, { recursive: true, force: true });
+  }
+
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-legacy-'));
+    cleanupLegacyDir(); // ensure clean slate
+  });
+
+  afterEach(() => {
+    cleanupLegacyDir();
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('should migrate state from legacy ./data/ to new location', () => {
+    createLegacyState(makeV2State({ config: { ...makeBaseConfig(), githubUsername: 'legacy-user' } }));
+
+    const sm = new StateManager(false);
+    expect(sm.getState().config.githubUsername).toBe('legacy-user');
+
+    expect(fs.existsSync(path.join(mockTmpDir, 'state.json'))).toBe(true);
+    expect(fs.existsSync(legacyStatePath)).toBe(false);
+    expect(fs.existsSync(legacyDataDir)).toBe(false);
+  });
+
+  it('should migrate backup files from legacy location', () => {
+    createLegacyState(makeV2State());
+    createLegacyBackup('state-2024-01-01T00-00-00-000Z-abc123.json', makeV2State());
+    createLegacyBackup('state-2024-01-02T00-00-00-000Z-def456.json', makeV2State());
+
+    const sm = new StateManager(false);
+    expect(sm.getState().version).toBe(2);
+
+    // Backups should be in the new location
+    const newBackupDir = path.join(mockTmpDir, 'backups');
+    const backups = fs.readdirSync(newBackupDir).filter((f) => f.startsWith('state-') && f.endsWith('.json'));
+    expect(backups).toContain('state-2024-01-01T00-00-00-000Z-abc123.json');
+    expect(backups).toContain('state-2024-01-02T00-00-00-000Z-def456.json');
+
+    // Legacy backup dir should be removed
+    expect(fs.existsSync(legacyBackupDir)).toBe(false);
+  });
+
+  it('should not remove legacy data dir if other files remain', () => {
+    createLegacyState(makeV2State());
+    fs.writeFileSync(path.join(legacyDataDir, 'other.txt'), 'keep me');
+
+    new StateManager(false);
+
+    expect(fs.existsSync(legacyStatePath)).toBe(false);
+    expect(fs.existsSync(legacyDataDir)).toBe(true);
+    expect(fs.existsSync(path.join(legacyDataDir, 'other.txt'))).toBe(true);
+  });
+
+  it('should skip migration when new state already exists', () => {
+    const newStatePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(
+      newStatePath,
+      JSON.stringify(makeV2State({ config: { ...makeBaseConfig(), githubUsername: 'new-user' } })),
+      { mode: 0o600 },
+    );
+    createLegacyState(makeV2State({ config: { ...makeBaseConfig(), githubUsername: 'legacy-user' } }));
+
+    const sm = new StateManager(false);
+
+    expect(sm.getState().config.githubUsername).toBe('new-user');
+    expect(fs.existsSync(legacyStatePath)).toBe(true);
+  });
+
+  it('should handle migration failure gracefully', () => {
+    createLegacyState(makeV2State());
+    fs.chmodSync(legacyStatePath, 0o000);
+
+    const sm = new StateManager(false);
+    expect(sm.getState().version).toBe(2);
+
+    // Restore permissions so afterEach cleanup works
+    fs.chmodSync(legacyStatePath, 0o600);
+    expect(fs.existsSync(legacyStatePath)).toBe(true);
+  });
+});
+
+// ── State recovery and backup edge cases ────────────────────────────────────
+describe('state recovery and backup edge cases', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-recovery-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('should restore from backup when state has invalid structure', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    // Valid JSON but structurally invalid (config is null -> fails isValidState)
+    fs.writeFileSync(statePath, JSON.stringify({ version: 2, config: null, repoScores: {} }), { mode: 0o600 });
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'),
+      JSON.stringify(makeV2State({ config: { ...makeBaseConfig(), githubUsername: 'backup-user' } })),
+      { mode: 0o600 },
+    );
+
+    const sm = new StateManager(false);
+    expect(sm.getState().config.githubUsername).toBe('backup-user');
+  });
+
+  it('should return fresh state when no valid backup files exist', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, 'CORRUPT JSON', { mode: 0o600 });
+
+    // getBackupDir mock auto-creates the directory, but it will be empty
+    const sm = new StateManager(false);
+    expect(sm.getState().version).toBe(2);
+    expect(sm.getState().config.githubUsername).toBe('');
+  });
+
+  it('should handle backup containing non-object JSON', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, 'CORRUPT', { mode: 0o600 });
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    fs.writeFileSync(path.join(backupDir, 'state-2024-02-01T00-00-00-000Z-zzz000.json'), 'null', { mode: 0o600 });
+    fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-aaa000.json'), '42', { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    expect(sm.getState().version).toBe(2);
+    expect(sm.getState().config.githubUsername).toBe('');
+  });
+});
+
+// ── Save resilience when backup operations fail ─────────────────────────────
+describe('save resilience when backup operations fail', () => {
+  function createBackupFiles(backupDir: string, count: number): void {
+    fs.mkdirSync(backupDir, { recursive: true });
+    for (let i = 0; i < count; i++) {
+      const name = `state-2024-01-${String(i + 1).padStart(2, '0')}T00-00-00-000Z-aabbcc.json`;
+      fs.writeFileSync(path.join(backupDir, name), JSON.stringify(makeV2State()));
+    }
+  }
+
+  function writeInitialState(): string {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(makeV2State()), { mode: 0o600 });
+    return statePath;
+  }
+
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-save-resilience-'));
+  });
+
+  afterEach(() => {
+    const backupDir = path.join(mockTmpDir, 'backups');
+    if (fs.existsSync(backupDir)) {
+      fs.chmodSync(backupDir, 0o700);
+    }
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('should handle unlinkSync failure during backup cleanup', () => {
+    const backupDir = path.join(mockTmpDir, 'backups');
+    createBackupFiles(backupDir, 12);
+
+    // Replace the oldest backup with a directory so unlinkSync fails (EISDIR)
+    const oldestBackup = path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-aabbcc.json');
+    fs.unlinkSync(oldestBackup);
+    fs.mkdirSync(oldestBackup);
+
+    const statePath = writeInitialState();
+    const sm = new StateManager(false);
+    expect(() => sm.save()).not.toThrow();
+
+    // The directory-as-file should still exist (unlinkSync failed, error was caught)
+    expect(fs.existsSync(oldestBackup)).toBe(true);
+    expect(fs.statSync(oldestBackup).isDirectory()).toBe(true);
+
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(written.version).toBe(2);
+  });
+
+  it('should handle readdirSync failure during backup cleanup', () => {
+    const backupDir = path.join(mockTmpDir, 'backups');
+    createBackupFiles(backupDir, 12);
+
+    const statePath = writeInitialState();
+    const sm = new StateManager(false);
+
+    // Make backup dir unreadable so both backup copy and cleanup fail
+    fs.chmodSync(backupDir, 0o000);
+
+    expect(() => sm.save()).not.toThrow();
+
+    fs.chmodSync(backupDir, 0o700);
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(written.version).toBe(2);
+  });
+
+  it('should save state even when backup creation fails', () => {
+    const statePath = writeInitialState();
+    const sm = new StateManager(false);
+    sm.updateConfig({ githubUsername: 'updated-user' });
+
+    // Make backup dir read-only so copyFileSync to backup fails
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    fs.chmodSync(backupDir, 0o555);
+
+    sm.save();
+
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(written.config.githubUsername).toBe('updated-user');
+  });
+});
+
+// ── reloadStateIfChanged additional edge cases ──────────────────────────────
+describe('reloadStateIfChanged additional edge cases', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-reload-edge-'));
+  });
+
+  afterEach(() => {
+    resetStateManager();
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('should return false when state file becomes unreadable', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(makeV2State()), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    fs.chmodSync(statePath, 0o000);
+
+    expect(sm.reloadIfChanged()).toBe(false);
+
+    fs.chmodSync(statePath, 0o600);
+  });
+});
+
+// ── migrateV1ToV2 fallback branches ─────────────────────────────────────────
+describe('migrateV1ToV2 fallback branches', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-v1-fallback-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('should default undefined repoScores, activeIssues, and events to empty values', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const v1 = makeV1State();
+    delete v1.repoScores;
+    delete v1.activeIssues;
+    delete v1.events;
+    fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    expect(sm.getState().version).toBe(2);
+    expect(sm.getState().repoScores).toEqual({});
+    expect(sm.getState().activeIssues).toEqual([]);
+    expect(sm.getState().events).toEqual([]);
+  });
+
+  it('should seed repo scores from mergedPRs and closedPRs when repoScores is missing', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const mergedPR = makeLegacyPR({
+      id: 1,
+      url: 'https://github.com/org-a/repo-a/pull/1',
+      repo: 'org-a/repo-a',
+      title: 'Merged',
+      status: 'merged',
+    });
+    const closedPR = makeLegacyPR({
+      id: 2,
+      url: 'https://github.com/org-b/repo-b/pull/2',
+      repo: 'org-b/repo-b',
+      number: 2,
+      title: 'Closed',
+      status: 'closed',
+    });
+    const v1 = makeV1State({ mergedPRs: [mergedPR], closedPRs: [closedPR] });
+    delete v1.repoScores;
+    fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    expect(sm.getState().version).toBe(2);
+    expect(sm.getState().repoScores['org-a/repo-a']).toBeDefined();
+    expect(sm.getState().repoScores['org-b/repo-b']).toBeDefined();
+    expect(sm.getState().repoScores['org-a/repo-a'].score).toBe(5);
+  });
+});
