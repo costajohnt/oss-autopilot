@@ -207,15 +207,10 @@ export interface FetchedPR {
  * Lightweight reference used in {@link DailyDigest} for shelved and auto-unshelved PRs.
  * Contains only the fields needed for display, avoiding duplication of the full
  * {@link FetchedPR} objects already present in `openPRs` and the status-specific arrays.
+ * Derived from {@link FetchedPR} via `Pick<>` to stay in sync automatically.
  */
-export interface ShelvedPRRef {
-  number: number;
-  url: string;
-  title: string;
-  repo: string;
-  daysSinceActivity: number;
-  status: FetchedPRStatus;
-}
+export type ShelvedPRRef = Pick<FetchedPR, 'number' | 'url' | 'title' | 'repo' | 'daysSinceActivity' | 'status'>;
+
 /** An issue tracked through the contribution pipeline from discovery to PR submission. */
 export interface TrackedIssue {
   // Identity
