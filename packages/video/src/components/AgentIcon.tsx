@@ -1,6 +1,6 @@
 import React from 'react';
 import { useCurrentFrame, spring, useVideoConfig } from 'remotion';
-import { colors, fonts, fontSizes } from '../design-tokens';
+import { colors, fonts, fontSizes, springConfig } from '../design-tokens';
 
 interface AgentIconProps {
   name: string;
@@ -19,7 +19,7 @@ export const AgentIcon: React.FC<AgentIconProps> = ({ name, description, color, 
   const scale = spring({
     frame: frame - startFrame,
     fps,
-    config: { damping: 12, mass: 0.5 },
+    config: springConfig.default,
   });
 
   // Hexagon SVG path (pointy-top)

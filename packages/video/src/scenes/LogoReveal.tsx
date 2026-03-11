@@ -1,6 +1,6 @@
 import React from 'react';
 import { useCurrentFrame, spring, useVideoConfig, interpolate } from 'remotion';
-import { colors, fontSizes, fontWeights, atmosphericBackground } from '../design-tokens';
+import { colors, fontSizes, fontWeights, springConfig, atmosphericBackground } from '../design-tokens';
 import { AnimatedLogo } from '../components/AnimatedLogo';
 import { GradientText } from '../components/GradientText';
 import { TypewriterText } from '../components/TypewriterText';
@@ -22,7 +22,7 @@ export const LogoReveal: React.FC<LogoRevealProps> = ({ format }) => {
   const titleProgress = spring({
     frame: frame - 80,
     fps,
-    config: { damping: 12, mass: 0.5 },
+    config: springConfig.default,
   });
 
   const titleOpacity = titleProgress;

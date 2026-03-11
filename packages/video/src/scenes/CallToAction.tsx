@@ -1,6 +1,6 @@
 import React from 'react';
 import { useCurrentFrame, spring, useVideoConfig, interpolate } from 'remotion';
-import { colors, fonts, fontSizes, fontWeights, atmosphericBackground } from '../design-tokens';
+import { colors, fonts, fontSizes, fontWeights, springConfig, atmosphericBackground } from '../design-tokens';
 import { GradientText } from '../components/GradientText';
 import { AnimatedLogo } from '../components/AnimatedLogo';
 
@@ -31,7 +31,7 @@ export const CallToAction: React.FC<CallToActionProps> = ({ format }) => {
   const titleProgress = spring({
     frame: frame - 15,
     fps,
-    config: { damping: 12, mass: 0.5 },
+    config: springConfig.default,
   });
   const titleOpacity = titleProgress;
   const titleTranslateY = interpolate(titleProgress, [0, 1], [30, 0]);
@@ -40,7 +40,7 @@ export const CallToAction: React.FC<CallToActionProps> = ({ format }) => {
   const subtitleProgress = spring({
     frame: frame - 30,
     fps,
-    config: { damping: 12, mass: 0.5 },
+    config: springConfig.default,
   });
   const subtitleOpacity = subtitleProgress;
   const subtitleTranslateY = interpolate(subtitleProgress, [0, 1], [20, 0]);
@@ -142,7 +142,7 @@ export const CallToAction: React.FC<CallToActionProps> = ({ format }) => {
           const linkProgress = spring({
             frame: frame - linkStartFrame,
             fps,
-            config: { damping: 12, mass: 0.5 },
+            config: springConfig.default,
           });
           const linkOpacity = linkProgress;
           const linkTranslateY = interpolate(linkProgress, [0, 1], [24, 0]);
@@ -155,10 +155,8 @@ export const CallToAction: React.FC<CallToActionProps> = ({ format }) => {
                 transform: `translateY(${linkTranslateY}px)`,
                 backgroundColor: colors.surface,
                 borderRadius: 12,
-                borderLeft: `3px solid ${link.color}`,
                 border: `1px solid ${colors.border}`,
-                borderLeftWidth: 3,
-                borderLeftColor: link.color,
+                borderLeft: `3px solid ${link.color}`,
                 padding: isSquare ? '12px 28px' : '16px 36px',
                 minWidth: isSquare ? 540 : 680,
                 display: 'flex',

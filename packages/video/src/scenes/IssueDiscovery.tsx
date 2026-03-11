@@ -1,6 +1,6 @@
 import React from 'react';
 import { useCurrentFrame, spring, useVideoConfig, interpolate } from 'remotion';
-import { colors, fonts, fontSizes, fontWeights, atmosphericBackground } from '../design-tokens';
+import { colors, fonts, fontSizes, fontWeights, springConfig, atmosphericBackground } from '../design-tokens';
 import { SearchLane } from '../components/SearchLane';
 
 interface IssueDiscoveryProps {
@@ -42,7 +42,7 @@ export const IssueDiscovery: React.FC<IssueDiscoveryProps> = ({ format }) => {
   const funnelScale = spring({
     frame: frame - 100,
     fps,
-    config: { damping: 12, mass: 0.5 },
+    config: springConfig.default,
   });
 
   const funnelLabelOpacity = interpolate(frame - 115, [0, 15], [0, 1], {
@@ -187,7 +187,7 @@ export const IssueDiscovery: React.FC<IssueDiscoveryProps> = ({ format }) => {
           const cardProgress = spring({
             frame: frame - (160 + card.frameOffset),
             fps,
-            config: { damping: 12, mass: 0.5 },
+            config: springConfig.default,
           });
 
           const cardTranslateY = interpolate(cardProgress, [0, 1], [40, 0]);

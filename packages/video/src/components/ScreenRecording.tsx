@@ -1,6 +1,6 @@
 import React from 'react';
 import { useCurrentFrame, interpolate, OffthreadVideo, staticFile } from 'remotion';
-import { colors } from '../design-tokens';
+import { colors, fonts } from '../design-tokens';
 
 interface ScreenRecordingProps {
   /** Path relative to public/ or absolute */
@@ -32,6 +32,10 @@ export const ScreenRecording: React.FC<ScreenRecordingProps> = ({
   style,
 }) => {
   const frame = useCurrentFrame();
+
+  if (!src && frame === 0) {
+    console.warn('[ScreenRecording] No src provided — rendering placeholder.');
+  }
 
   const currentZoom = interpolate(frame, [zoomStartFrame, zoomStartFrame + zoomDuration], [1, zoom], {
     extrapolateLeft: 'clamp',
@@ -87,7 +91,7 @@ export const ScreenRecording: React.FC<ScreenRecordingProps> = ({
             style={{
               color: colors.textMuted,
               fontSize: 28,
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontFamily: fonts.body,
             }}
           >
             Screen recording placeholder

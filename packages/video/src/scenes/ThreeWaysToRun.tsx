@@ -1,6 +1,6 @@
 import React from 'react';
 import { useCurrentFrame, spring, useVideoConfig, interpolate } from 'remotion';
-import { colors, fonts, fontSizes, fontWeights, atmosphericBackground } from '../design-tokens';
+import { colors, fonts, fontSizes, fontWeights, springConfig, atmosphericBackground } from '../design-tokens';
 
 interface ThreeWaysToRunProps {
   format: 'landscape' | 'square';
@@ -120,7 +120,7 @@ export const ThreeWaysToRun: React.FC<ThreeWaysToRunProps> = ({ format }) => {
   const barProgress = spring({
     frame: frame - 80,
     fps,
-    config: { damping: 12, mass: 0.5 },
+    config: springConfig.default,
   });
   const barOpacity = barProgress;
   const barScaleX = interpolate(barProgress, [0, 1], [0, 1]);
@@ -163,7 +163,7 @@ export const ThreeWaysToRun: React.FC<ThreeWaysToRunProps> = ({ format }) => {
           const colProgress = spring({
             frame: frame - col.startFrame,
             fps,
-            config: { damping: 12, mass: 0.5 },
+            config: springConfig.default,
           });
           const translateY = interpolate(colProgress, [0, 1], [60, 0]);
           const opacity = colProgress;

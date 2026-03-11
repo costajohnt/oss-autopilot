@@ -8,12 +8,11 @@
     "studio": "remotion studio src/index.ts",
     "render": "remotion render src/index.ts OSSAutopilot1080p out/OSSAutopilot1080p.mp4",
     "render:square": "remotion render src/index.ts OSSAutopilotSquare out/OSSAutopilotSquare.mp4",
-    "render:all": "npm run render && npm run render:square",
+    "render:all": "pnpm run render && pnpm run render:square",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.0",
-    "@remotion/transitions": "^4.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "remotion": "^4.0.0"

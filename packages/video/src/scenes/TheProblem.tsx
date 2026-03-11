@@ -1,6 +1,6 @@
 import React from 'react';
 import { useCurrentFrame, spring, useVideoConfig, interpolate } from 'remotion';
-import { colors, fonts, fontWeights, atmosphericBackground } from '../design-tokens';
+import { colors, fonts, fontWeights, springConfig, atmosphericBackground } from '../design-tokens';
 
 interface TheProblemProps {
   format: 'landscape' | 'square';
@@ -68,7 +68,7 @@ export const TheProblem: React.FC<TheProblemProps> = ({ format }) => {
   const line1Progress = spring({
     frame: frame - 15,
     fps,
-    config: { damping: 12, mass: 0.5 },
+    config: springConfig.default,
   });
   const line1X = interpolate(line1Progress, [0, 1], [-600, 0]);
   const line1Opacity = line1Progress;
@@ -77,7 +77,7 @@ export const TheProblem: React.FC<TheProblemProps> = ({ format }) => {
   const line2Progress = spring({
     frame: frame - 50,
     fps,
-    config: { damping: 12, mass: 0.5 },
+    config: springConfig.default,
   });
   const line2X = interpolate(line2Progress, [0, 1], [-600, 0]);
   const line2Opacity = line2Progress;
@@ -86,7 +86,7 @@ export const TheProblem: React.FC<TheProblemProps> = ({ format }) => {
   const line3Progress = spring({
     frame: frame - 100,
     fps,
-    config: { damping: 12, mass: 0.5 },
+    config: springConfig.default,
   });
   const line3Opacity = line3Progress;
 

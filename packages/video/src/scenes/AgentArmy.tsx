@@ -1,6 +1,6 @@
 import React from 'react';
 import { useCurrentFrame, spring, useVideoConfig, interpolate } from 'remotion';
-import { colors, fonts, fontSizes, fontWeights, atmosphericBackground } from '../design-tokens';
+import { colors, fonts, fontSizes, fontWeights, springConfig, atmosphericBackground } from '../design-tokens';
 import { AgentIcon } from '../components/AgentIcon';
 
 interface AgentArmyProps {
@@ -134,7 +134,7 @@ export const AgentArmy: React.FC<AgentArmyProps> = ({ format }) => {
   const titleProgress = spring({
     frame,
     fps,
-    config: { damping: 12, mass: 0.5 },
+    config: springConfig.default,
   });
 
   // Compute SVG viewBox from positions

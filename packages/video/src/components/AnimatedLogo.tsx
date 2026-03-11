@@ -1,5 +1,6 @@
 import React from 'react';
 import { useCurrentFrame, spring, useVideoConfig } from 'remotion';
+import { springConfig } from '../design-tokens';
 
 /**
  * Polygon data from packages/dashboard/public/favicon.svg.
@@ -111,7 +112,7 @@ export const AnimatedLogo: React.FC<AnimatedLogoProps> = ({
         const s = spring({
           frame: frame - startFrame - i * stagger,
           fps,
-          config: { damping: 12, mass: 0.5 },
+          config: springConfig.default,
         });
         return (
           <polygon
@@ -134,7 +135,7 @@ export const AnimatedLogo: React.FC<AnimatedLogoProps> = ({
           const edgeProgress = spring({
             frame: frame - edgeStart,
             fps,
-            config: { damping: 15, mass: 0.8 },
+            config: springConfig.gentle,
           });
           // Approximate perimeter for dash animation
           const perimeter = 600;

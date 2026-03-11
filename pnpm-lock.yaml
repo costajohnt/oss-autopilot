@@ -149,9 +149,6 @@ importers:
       '@remotion/cli':
         specifier: ^4.0.0
         version: 4.0.434(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@remotion/transitions':
-        specifier: ^4.0.0
-        version: 4.0.434(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -1094,9 +1091,6 @@ packages:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
 
-  '@remotion/paths@4.0.434':
-    resolution: {integrity: sha512-6gd5NYtpWW4pdwM4P/+T6B6id9wzJnyJemeb2/7X3uGK9qVph+a8/+8uMHtRhOI9z0iQzpJEh0vB8I/oBL1Vwg==}
-
   '@remotion/player@4.0.434':
     resolution: {integrity: sha512-H3SugDjf0QS7lU85A/hej+zUqJLRd0EHfW0jBsu4kerYVXZqi2vswqf7MRqEwQhMGtySVrhI+n9fGBqfcAbRpw==}
     peerDependencies:
@@ -1105,12 +1099,6 @@ packages:
 
   '@remotion/renderer@4.0.434':
     resolution: {integrity: sha512-I0MT0A6YHpO420ntQjF0KzERetpYcnsHlMNUWlNFDeAzFuEjrOgUcZ+6NcUV1lX9nOhixLANvfuMpCrdZazdYg==}
-    peerDependencies:
-      react: '>=16.8.0'
-      react-dom: '>=16.8.0'
-
-  '@remotion/shapes@4.0.434':
-    resolution: {integrity: sha512-sl/mvFRuYRfurGmhWXlr8e2QpF6QSHlId838i+GV0Rp5APRCFKgWEO2qemEqwhbtS8tjmo94ZUczvZ0T3yQZ2A==}
     peerDependencies:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
@@ -1126,12 +1114,6 @@ packages:
 
   '@remotion/studio@4.0.434':
     resolution: {integrity: sha512-faNm11hVsjFyjNg9R7TQZcjsDflUfqkWGgbrq5jSubpVJD+eHEVBo1HIZwrDHIlvee8gTyAscR0tFrH27PLShQ==}
-    peerDependencies:
-      react: '>=16.8.0'
-      react-dom: '>=16.8.0'
-
-  '@remotion/transitions@4.0.434':
-    resolution: {integrity: sha512-qI2XF6ZQ4iYgnUNAKElbPCUT2fdpcm9fRmnMpXmrF68eVXBTbzqxKLCrpB1HD/4ijYTMi/6OXuYoKCS1lmmqHg==}
     peerDependencies:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
@@ -4076,14 +4058,14 @@ snapshots:
       '@remotion/studio-shared': 4.0.434(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@rspack/core': 1.7.6
       '@rspack/plugin-react-refresh': 1.6.1(react-refresh@0.18.0)
-      css-loader: 5.2.7(webpack@5.105.0)
+      css-loader: 5.2.7(webpack@5.105.0(esbuild@0.25.0))
       esbuild: 0.25.0
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       react-refresh: 0.18.0
       remotion: 4.0.434(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       source-map: 0.7.3
-      style-loader: 4.0.0(webpack@5.105.0)
+      style-loader: 4.0.0(webpack@5.105.0(esbuild@0.25.0))
       webpack: 5.105.0(esbuild@0.25.0)
     transitivePeerDependencies:
       - '@swc/core'
@@ -4158,8 +4140,6 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
       remotion: 4.0.434(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
-  '@remotion/paths@4.0.434': {}
-
   '@remotion/player@4.0.434(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       react: 18.3.1
@@ -4189,12 +4169,6 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
-
-  '@remotion/shapes@4.0.434(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@remotion/paths': 4.0.434
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
 
   '@remotion/streaming@4.0.434': {}
 
@@ -4251,14 +4225,6 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
-
-  '@remotion/transitions@4.0.434(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@remotion/paths': 4.0.434
-      '@remotion/shapes': 4.0.434(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-      remotion: 4.0.434(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
   '@remotion/web-renderer@4.0.434(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
@@ -4954,7 +4920,7 @@ snapshots:
       shebang-command: 2.0.0
       which: 2.0.2
 
-  css-loader@5.2.7(webpack@5.105.0):
+  css-loader@5.2.7(webpack@5.105.0(esbuild@0.25.0)):
     dependencies:
       icss-utils: 5.1.0(postcss@8.5.6)
       loader-utils: 2.0.4
@@ -6264,7 +6230,7 @@ snapshots:
 
   strip-final-newline@2.0.0: {}
 
-  style-loader@4.0.0(webpack@5.105.0):
+  style-loader@4.0.0(webpack@5.105.0(esbuild@0.25.0)):
     dependencies:
       webpack: 5.105.0(esbuild@0.25.0)
 

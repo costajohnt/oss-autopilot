@@ -1,6 +1,6 @@
 import React from 'react';
 import { useCurrentFrame, spring, useVideoConfig } from 'remotion';
-import { colors, fonts, fontSizes, fontWeights } from '../design-tokens';
+import { colors, fonts, fontSizes, fontWeights, springConfig } from '../design-tokens';
 
 interface FeatureCalloutProps {
   text: string;
@@ -25,7 +25,7 @@ export const FeatureCallout: React.FC<FeatureCalloutProps> = ({
   const progress = spring({
     frame: frame - startFrame,
     fps,
-    config: { damping: 12, mass: 0.5 },
+    config: springConfig.default,
   });
 
   return (

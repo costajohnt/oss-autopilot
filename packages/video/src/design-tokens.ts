@@ -1,3 +1,5 @@
+import type React from 'react';
+
 /**
  * Design tokens extracted from packages/dashboard/src/styles.css
  * These keep the video visually consistent with the dashboard.
