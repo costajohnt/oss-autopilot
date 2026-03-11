@@ -384,8 +384,8 @@ export function diagnoseCIFormatterFailure(logOutput: string, repoPath?: string)
       if (localMatch) {
         fixCommand = localMatch.fixCommand;
       }
-    } catch {
-      // Fall through to fallback commands — cross-reference is best-effort
+    } catch (err) {
+      debug(MODULE, `Cross-reference failed for ${repoPath}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
