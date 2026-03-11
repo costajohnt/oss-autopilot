@@ -64,4 +64,13 @@ export {
 } from './daily-logic.js';
 export { computeContributionStats, type ContributionStats, type ComputeStatsInput } from './stats.js';
 export { fetchPRTemplate, type PRTemplateResult } from './pr-template.js';
+export {
+  detectFormatters,
+  diagnoseCIFormatterFailure,
+  getPreferredFormatter,
+  type DetectedFormatter,
+  type FormatterDetectionResult,
+  type CIFormatterDiagnosis,
+  type FormatterName,
+} from './formatter-detection.js';
 export * from './types.js';

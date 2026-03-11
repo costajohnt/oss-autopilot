@@ -73,6 +73,8 @@ export { runCheckSetup } from './setup.js';
 export { runParseList } from './parse-list.js';
 /** Check if new files are properly referenced/integrated. */
 export { runCheckIntegration } from './check-integration.js';
+/** Detect formatters/linters configured in a local repository (#703). */
+export { runDetectFormatters } from './detect-formatters.js';
 /** Scan for locally cloned repos. */
 export { runLocalRepos } from './local-repos.js';
 
@@ -83,6 +85,7 @@ export type { DailyOutput, SearchOutput, StartupOutput, StatusOutput, TrackOutpu
 export type { VetOutput, CommentsOutput, PostOutput, ClaimOutput } from '../formatters/json.js';
 export type {
   ConfigOutput,
+  DetectFormattersOutput,
   ParseIssueListOutput,
   CheckIntegrationOutput,
   LocalReposOutput,
