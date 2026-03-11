@@ -64,6 +64,19 @@ export interface CheckSetupOutput {
   username: string;
 }
 
+/**
+ * Interactive setup wizard or direct setting application.
+ *
+ * Three modes:
+ * 1. `--set key=value` — Apply settings directly
+ * 2. Setup complete — Return current config
+ * 3. Setup required — Return prompts for interactive setup
+ *
+ * @param options - Setup options
+ * @param options.reset - Force re-setup even if already complete
+ * @param options.set - Key=value pairs to apply directly
+ * @returns Setup result (applied settings, current config, or setup prompts)
+ */
 export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
   const stateManager = getStateManager();
   const config = stateManager.getState().config;
@@ -349,6 +362,10 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
   };
 }
 
+/**
+ * Check whether initial setup has been completed.
+ * @returns Setup status and configured username
+ */
 export async function runCheckSetup(): Promise<CheckSetupOutput> {
   const stateManager = getStateManager();
 

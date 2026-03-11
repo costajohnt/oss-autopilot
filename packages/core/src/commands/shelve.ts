@@ -24,6 +24,14 @@ export interface UnshelveOutput {
 // Re-export for backward compatibility with tests
 export { PR_URL_PATTERN };
 
+/**
+ * Shelve a PR, hiding it from daily digest and capacity calculations.
+ *
+ * @param options - Shelve options
+ * @param options.prUrl - Full GitHub PR URL
+ * @returns Whether the PR was newly shelved (false if already shelved)
+ * @throws {ValidationError} If the URL is not a valid GitHub PR URL
+ */
 export async function runShelve(options: { prUrl: string }): Promise<ShelveOutput> {
   validateUrl(options.prUrl);
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');
@@ -38,6 +46,14 @@ export async function runShelve(options: { prUrl: string }): Promise<ShelveOutpu
   return { shelved: added, url: options.prUrl };
 }
 
+/**
+ * Unshelve a PR, restoring it to the daily digest.
+ *
+ * @param options - Unshelve options
+ * @param options.prUrl - Full GitHub PR URL
+ * @returns Whether the PR was removed from the shelf (false if not shelved)
+ * @throws {ValidationError} If the URL is not a valid GitHub PR URL
+ */
 export async function runUnshelve(options: { prUrl: string }): Promise<UnshelveOutput> {
   validateUrl(options.prUrl);
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');

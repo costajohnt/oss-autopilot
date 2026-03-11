@@ -13,6 +13,14 @@ interface VetOptions {
   issueUrl: string;
 }
 
+/**
+ * Vet a specific GitHub issue for claimability and project health.
+ *
+ * @param options - Vet options
+ * @param options.issueUrl - Full GitHub issue URL
+ * @returns Vetting result with recommendation, health data, and check outcomes
+ * @throws {ValidationError} If the URL is not a valid GitHub issue URL
+ */
 export async function runVet(options: VetOptions): Promise<VetOutput> {
   validateUrl(options.issueUrl);
   validateGitHubUrl(options.issueUrl, ISSUE_URL_PATTERN, 'issue');

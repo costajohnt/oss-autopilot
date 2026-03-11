@@ -12,6 +12,14 @@ interface StatusOptions {
 
 export type { StatusOutput };
 
+/**
+ * Return contribution statistics from local state.
+ * No API calls — reads from ~/.oss-autopilot/state.json.
+ *
+ * @param options - Status options
+ * @param options.offline - When true, adds cache freshness metadata
+ * @returns Contribution stats (merge rate, PR counts, repo breakdown)
+ */
 export async function runStatus(options: StatusOptions): Promise<StatusOutput> {
   const stateManager = getStateManager();
   const stats = stateManager.getStats();

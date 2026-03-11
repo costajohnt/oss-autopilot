@@ -32,6 +32,16 @@ interface ClaimOptions {
   message?: string;
 }
 
+/**
+ * Fetch all comments, reviews, and inline review comments for a PR.
+ * Filters out the user's own comments and optionally bot comments.
+ *
+ * @param options - Comment fetch options
+ * @param options.prUrl - Full GitHub PR URL
+ * @param options.showBots - Include bot comments (default: false)
+ * @returns Categorized comments with review, inline, and discussion sections
+ * @throws {ValidationError} If the URL is not a valid GitHub PR URL
+ */
 export async function runComments(options: CommentsOptions): Promise<CommentsOutput> {
   validateUrl(options.prUrl);
   validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');
@@ -137,6 +147,15 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
   };
 }
 
+/**
+ * Post a comment on a GitHub issue or PR.
+ *
+ * @param options - Post options
+ * @param options.url - Full GitHub issue or PR URL
+ * @param options.message - Comment body text
+ * @returns Object with commentUrl (the new comment's URL) and url (the original issue/PR URL)
+ * @throws {ValidationError} If the URL or message is invalid
+ */
 export async function runPost(options: PostOptions): Promise<PostOutput> {
   validateUrl(options.url);
   validateGitHubUrl(options.url, ISSUE_OR_PR_URL_PATTERN, 'issue or PR');
@@ -171,6 +190,15 @@ export async function runPost(options: PostOptions): Promise<PostOutput> {
   };
 }
 
+/**
+ * Post a claim comment on a GitHub issue and track it locally.
+ *
+ * @param options - Claim options
+ * @param options.issueUrl - Full GitHub issue URL
+ * @param options.message - Custom claim message (default: standard claim text)
+ * @returns URLs of the created comment and claimed issue
+ * @throws {ValidationError} If the URL or message is invalid
+ */
 export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
   validateUrl(options.issueUrl);
   validateGitHubUrl(options.issueUrl, ISSUE_URL_PATTERN, 'issue');

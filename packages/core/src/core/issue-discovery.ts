@@ -33,6 +33,18 @@ import {
 
 const MODULE = 'issue-discovery';
 
+/**
+ * Multi-phase issue discovery engine that searches GitHub for contributable issues.
+ *
+ * Search phases (in priority order):
+ * 1. Repos where user has merged PRs (highest merge probability)
+ * 2. Preferred organizations
+ * 3. Starred repos
+ * 4. General label-filtered search
+ * 5. Actively maintained repos
+ *
+ * Each candidate is vetted for claimability and scored 0-100 for viability.
+ */
 export class IssueDiscovery {
   private octokit: Octokit;
   private stateManager: ReturnType<typeof getStateManager>;
@@ -42,6 +54,7 @@ export class IssueDiscovery {
   /** Set after searchIssues() runs if rate limits affected the search (low pre-flight quota or mid-search rate limit hits). */
   rateLimitWarning: string | null = null;
 
+  /** @param githubToken - GitHub personal access token or token from `gh auth token` */
   constructor(githubToken: string) {
     this.githubToken = githubToken;
     this.octokit = getOctokit(githubToken);
@@ -52,6 +65,7 @@ export class IssueDiscovery {
   /**
    * Fetch the authenticated user's starred repositories from GitHub.
    * Updates the state manager with the list and timestamp.
+   * @returns Array of starred repo names in "owner/repo" format
    */
   async fetchStarredRepos(): Promise<string[]> {
     info(MODULE, 'Fetching starred repositories...');
@@ -115,7 +129,8 @@ export class IssueDiscovery {
   }
 
   /**
-   * Get starred repos, fetching from GitHub if cache is stale
+   * Get starred repos, fetching from GitHub if cache is stale.
+   * @returns Array of starred repo names in "owner/repo" format
    */
   async getStarredReposWithRefresh(): Promise<string[]> {
     if (this.stateManager.isStarredReposStale()) {
@@ -127,8 +142,26 @@ export class IssueDiscovery {
   /**
    * Search for issues matching our criteria.
    * Searches in priority order: merged-PR repos first (no label filter), then starred repos,
-   * then general search, then actively maintained repos (#349).
+   * then general search, then actively maintained repos.
    * Filters out issues from low-scoring and excluded repos.
+   *
+   * @param options - Search configuration
+   * @param options.languages - Programming languages to filter by
+   * @param options.labels - Issue labels to search for
+   * @param options.maxResults - Maximum candidates to return (default: 10)
+   * @returns Scored and sorted issue candidates
+   * @throws {ValidationError} If no candidates found and no rate limits prevented the search
+   *
+   * @example
+   * ```typescript
+   * import { IssueDiscovery, requireGitHubToken } from '@oss-autopilot/core';
+   *
+   * const discovery = new IssueDiscovery(requireGitHubToken());
+   * const candidates = await discovery.searchIssues({ maxResults: 5 });
+   * for (const c of candidates) {
+   *   console.log(`${c.issue.repo}#${c.issue.number}: ${c.viabilityScore}/100`);
+   * }
+   * ```
    */
   async searchIssues(
     options: {
@@ -589,15 +622,20 @@ export class IssueDiscovery {
   }
 
   /**
-   * Vet a specific issue (delegates to IssueVetter).
+   * Vet a specific issue for claimability and project health.
+   * @param issueUrl - Full GitHub issue URL
+   * @returns The vetted issue candidate with recommendation and scores
+   * @throws {ValidationError} If the URL is invalid or the issue cannot be fetched
    */
   async vetIssue(issueUrl: string): Promise<IssueCandidate> {
     return this.vetter.vetIssue(issueUrl);
   }
 
   /**
-   * Save search results to ~/.oss-autopilot/found-issues.md
-   * Results are sorted by viability score (highest first)
+   * Save search results to ~/.oss-autopilot/found-issues.md.
+   * Results are sorted by viability score (highest first).
+   * @param candidates - Issue candidates to save
+   * @returns Absolute path to the written file
    */
   saveSearchResults(candidates: IssueCandidate[]): string {
     // Sort by viability score descending
@@ -634,7 +672,9 @@ export class IssueDiscovery {
   }
 
   /**
-   * Format issue candidate for display
+   * Format issue candidate as a markdown display string.
+   * @param candidate - The issue candidate to format
+   * @returns Multi-line markdown string with vetting details
    */
   formatCandidate(candidate: IssueCandidate): string {
     const { issue, vettingResult, projectHealth, recommendation, reasonsToApprove, reasonsToSkip } = candidate;

@@ -18,6 +18,9 @@ export function isDebugEnabled(): boolean {
 
 /**
  * Log a debug message. Only outputs when --debug is enabled.
+ * @param module - Module name for log prefix
+ * @param message - Log message
+ * @param args - Additional values to log
  */
 export function debug(module: string, message: string, ...args: unknown[]): void {
   if (!debugEnabled) return;
@@ -28,6 +31,9 @@ export function debug(module: string, message: string, ...args: unknown[]): void
 /**
  * Log an informational message. Always outputs to stderr.
  * Use for user-facing progress indicators during long-running operations.
+ * @param module - Module name for log prefix
+ * @param message - Log message
+ * @param args - Additional values to log
  */
 export function info(module: string, message: string, ...args: unknown[]): void {
   const timestamp = new Date().toISOString();
@@ -36,6 +42,9 @@ export function info(module: string, message: string, ...args: unknown[]): void 
 
 /**
  * Log a warning. Always outputs.
+ * @param module - Module name for log prefix
+ * @param message - Warning message
+ * @param args - Additional values to log
  */
 export function warn(module: string, message: string, ...args: unknown[]): void {
   const timestamp = new Date().toISOString();
@@ -44,6 +53,10 @@ export function warn(module: string, message: string, ...args: unknown[]): void 
 
 /**
  * Time an async operation and log duration in debug mode.
+ * @param module - Module name for log prefix
+ * @param label - Operation label for the timing log
+ * @param fn - Async function to time
+ * @returns The result of the async function
  */
 export async function timed<T>(module: string, label: string, fn: () => Promise<T>): Promise<T> {
   if (!debugEnabled) return fn();

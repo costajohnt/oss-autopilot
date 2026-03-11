@@ -1,0 +1,23 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/core/index.ts", "src/core/types.ts", "src/commands/index.ts"],
+  "entryPointStrategy": "expand",
+  "out": "docs/api",
+  "tsconfig": "tsconfig.json",
+  "name": "@oss-autopilot/core",
+  "readme": "none",
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "excludeInternal": true,
+  "excludeExternals": true,
+  "includeVersion": true,
+  "navigationLinks": {
+    "GitHub": "https://github.com/costajohnt/oss-autopilot",
+    "npm": "https://www.npmjs.com/package/@oss-autopilot/core"
+  },
+  "validation": {
+    "notExported": true,
+    "invalidLink": true,
+    "notDocumented": false
+  }
+}

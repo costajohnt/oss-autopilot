@@ -28,6 +28,17 @@ function validateScope(value: string): IssueScope {
   return value as IssueScope;
 }
 
+/**
+ * Read or write user configuration settings.
+ * When called without a key, returns the full config.
+ * When called with a key and value, updates the setting.
+ *
+ * @param options - Config options
+ * @param options.key - Setting key (e.g., 'username', 'add-language', 'exclude-repo')
+ * @param options.value - Setting value (required when key is provided)
+ * @returns Current config (when reading) or success confirmation (when writing)
+ * @throws {Error} If the key is unknown or the value is invalid
+ */
 export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOutput> {
   const stateManager = getStateManager();
   const currentConfig = stateManager.getState().config;

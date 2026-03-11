@@ -212,6 +212,10 @@ function tomlHasSection(repoPath: string, fileName: string, sectionPattern: stri
  *
  * Checks config files in priority order using fs.existsSync() / fs.readFileSync().
  * Returns all detected formatters, plus any formatting-related package.json scripts.
+ *
+ * @param repoPath - Absolute path to the repository root directory
+ * @returns Detection result with formatters ordered by priority and extracted package.json scripts
+ * @throws {Error} If repoPath does not exist or is not a directory
  */
 export function detectFormatters(repoPath: string): FormatterDetectionResult {
   if (!fs.existsSync(repoPath) || !fs.statSync(repoPath).isDirectory()) {
@@ -349,7 +353,11 @@ export function detectFormatters(repoPath: string): FormatterDetectionResult {
  * Diagnose whether CI log output indicates a formatting failure.
  *
  * Pattern-matches known formatter error strings. When repoPath is provided,
- * cross-references with detectFormatters() to provide a fix command.
+ * cross-references with {@link detectFormatters} to provide a targeted fix command.
+ *
+ * @param logOutput - Raw CI log output to analyze
+ * @param repoPath - Optional repo path for cross-referencing with local formatter config
+ * @returns Diagnosis with matched formatter, fix command, and evidence strings
  */
 export function diagnoseCIFormatterFailure(logOutput: string, repoPath?: string): CIFormatterDiagnosis {
   if (!logOutput.trim()) {
@@ -415,6 +423,9 @@ export function diagnoseCIFormatterFailure(logOutput: string, repoPath?: string)
 
 /**
  * Return the first (highest-priority) detected formatter, or undefined if none found.
+ *
+ * @param result - Detection result from {@link detectFormatters}
+ * @returns The highest-priority formatter, or undefined if none detected
  */
 export function getPreferredFormatter(result: FormatterDetectionResult): DetectedFormatter | undefined {
   return result.formatters[0];

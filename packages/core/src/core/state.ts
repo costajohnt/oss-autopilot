@@ -65,6 +65,7 @@ export class StateManager {
   /**
    * Execute multiple mutations as a single batch, deferring disk I/O until the
    * batch completes. Nested `batch()` calls are flattened — only the outermost saves.
+   * @param fn - The function containing mutations to batch
    */
   batch(fn: () => void): void {
     if (this._batching) {
@@ -161,32 +162,56 @@ export class StateManager {
 
   // === Dashboard Data Setters ===
 
+  /**
+   * Store the latest daily digest and update the digest timestamp.
+   * @param digest - The daily digest to store
+   */
   setLastDigest(digest: DailyDigest): void {
     this.state.lastDigest = digest;
     this.state.lastDigestAt = digest.generatedAt;
     this.autoSave();
   }
 
+  /**
+   * Update monthly merged PR counts for dashboard display.
+   * @param counts - Monthly merged PR counts keyed by YYYY-MM
+   */
   setMonthlyMergedCounts(counts: Record<string, number>): void {
     this.state.monthlyMergedCounts = counts;
     this.autoSave();
   }
 
+  /**
+   * Update monthly closed PR counts for dashboard display.
+   * @param counts - Monthly closed PR counts keyed by YYYY-MM
+   */
   setMonthlyClosedCounts(counts: Record<string, number>): void {
     this.state.monthlyClosedCounts = counts;
     this.autoSave();
   }
 
+  /**
+   * Update monthly opened PR counts for dashboard display.
+   * @param counts - Monthly opened PR counts keyed by YYYY-MM
+   */
   setMonthlyOpenedCounts(counts: Record<string, number>): void {
     this.state.monthlyOpenedCounts = counts;
     this.autoSave();
   }
 
+  /**
+   * Update daily activity counts for dashboard display.
+   * @param counts - Daily activity counts keyed by YYYY-MM-DD
+   */
   setDailyActivityCounts(counts: Record<string, number>): void {
     this.state.dailyActivityCounts = counts;
     this.autoSave();
   }
 
+  /**
+   * Update the local repository cache.
+   * @param cache - Local repository cache mapping repo names to paths
+   */
   setLocalRepoCache(cache: LocalRepoCache): void {
     this.state.localRepoCache = cache;
     this.autoSave();
@@ -194,10 +219,15 @@ export class StateManager {
 
   // === Merged PR Storage ===
 
+  /** Returns all stored merged PRs (sorted by merge date descending via addMergedPRs). */
   getMergedPRs(): StoredMergedPR[] {
     return this.state.mergedPRs ?? [];
   }
 
+  /**
+   * Add merged PRs to storage, deduplicating by URL.
+   * @param prs - Merged PRs to add (duplicates by URL are ignored)
+   */
   addMergedPRs(prs: StoredMergedPR[]): void {
     if (prs.length === 0) return;
     if (!this.state.mergedPRs) this.state.mergedPRs = [];
@@ -210,16 +240,22 @@ export class StateManager {
     this.autoSave();
   }
 
+  /** Returns the most recent merge date, used as a watermark for incremental fetching. */
   getMergedPRWatermark(): string | undefined {
     return this.state.mergedPRs?.[0]?.mergedAt || undefined;
   }
 
   // === Closed PR Storage ===
 
+  /** Returns all stored closed-without-merge PRs (sorted by close date descending via addClosedPRs). */
   getClosedPRs(): StoredClosedPR[] {
     return this.state.closedPRs ?? [];
   }
 
+  /**
+   * Add closed PRs to storage, deduplicating by URL.
+   * @param prs - Closed PRs to add (duplicates by URL are ignored)
+   */
   addClosedPRs(prs: StoredClosedPR[]): void {
     if (prs.length === 0) return;
     if (!this.state.closedPRs) this.state.closedPRs = [];
@@ -232,12 +268,17 @@ export class StateManager {
     this.autoSave();
   }
 
+  /** Returns the most recent close date, used as a watermark for incremental fetching. */
   getClosedPRWatermark(): string | undefined {
     return this.state.closedPRs?.[0]?.closedAt || undefined;
   }
 
   // === Configuration ===
 
+  /**
+   * Merge partial config updates into the current configuration.
+   * @param config - Partial config object to merge
+   */
   updateConfig(config: Partial<AgentState['config']>): void {
     this.state.config = { ...this.state.config, ...config };
     this.autoSave();
@@ -245,6 +286,12 @@ export class StateManager {
 
   // === Event Logging ===
 
+  /**
+   * Append a new event to the event log and auto-persist.
+   * Events are capped at 1000 to prevent unbounded growth.
+   * @param type - The event type identifier
+   * @param data - Arbitrary event payload
+   */
   appendEvent(type: StateEventType, data: Record<string, unknown>): void {
     const event: StateEvent = {
       id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -261,10 +308,21 @@ export class StateManager {
     this.autoSave();
   }
 
+  /**
+   * Filter events by type.
+   * @param type - The event type to filter by
+   * @returns Events matching the given type
+   */
   getEventsByType(type: StateEventType): StateEvent[] {
     return this.state.events.filter((e) => e.type === type);
   }
 
+  /**
+   * Filter events within a date range.
+   * @param since - Start of range (inclusive)
+   * @param until - End of range (inclusive), defaults to now
+   * @returns Events within the date range
+   */
   getEventsInRange(since: Date, until: Date = new Date()): StateEvent[] {
     return this.state.events.filter((e) => {
       const eventTime = new Date(e.at);
@@ -274,6 +332,10 @@ export class StateManager {
 
   // === Issue Management ===
 
+  /**
+   * Track a new issue. No-op if the issue URL is already tracked.
+   * @param issue - The issue to track
+   */
   addIssue(issue: TrackedIssue): void {
     const existing = this.state.activeIssues.find((i) => i.url === issue.url);
     if (existing) {
@@ -288,6 +350,10 @@ export class StateManager {
 
   // === Trusted Projects ===
 
+  /**
+   * Add a repository to the trusted projects list. No-op if already trusted.
+   * @param repo - Repository in "owner/repo" format
+   */
   addTrustedProject(repo: string): void {
     if (!this.state.config.trustedProjects.includes(repo)) {
       this.state.config.trustedProjects.push(repo);
@@ -303,6 +369,11 @@ export class StateManager {
     return false;
   }
 
+  /**
+   * Remove excluded repos/orgs from trusted projects.
+   * @param repos - Repository names to exclude
+   * @param orgs - Organization names to exclude
+   */
   cleanupExcludedData(repos: string[], orgs: string[]): void {
     const matches = (repo: string): boolean => StateManager.matchesExclusion(repo, repos, orgs);
 
@@ -318,10 +389,15 @@ export class StateManager {
 
   // === Starred Repos Management ===
 
+  /** Returns cached starred repository names. */
   getStarredRepos(): string[] {
     return this.state.config.starredRepos || [];
   }
 
+  /**
+   * Update the cached starred repositories and timestamp.
+   * @param repos - Repository names in "owner/repo" format
+   */
   setStarredRepos(repos: string[]): void {
     this.state.config.starredRepos = repos;
     this.state.config.starredReposLastFetched = new Date().toISOString();
@@ -329,6 +405,7 @@ export class StateManager {
     this.autoSave();
   }
 
+  /** Returns true if starred repos cache is older than 24 hours. */
   isStarredReposStale(): boolean {
     const lastFetched = this.state.config.starredReposLastFetched;
     if (!lastFetched) {
@@ -343,6 +420,11 @@ export class StateManager {
 
   // === Shelve/Unshelve ===
 
+  /**
+   * Shelve a PR URL, hiding it from daily digest and capacity.
+   * @param url - The PR URL to shelve
+   * @returns true if newly shelved, false if already shelved
+   */
   shelvePR(url: string): boolean {
     if (!this.state.config.shelvedPRUrls) {
       this.state.config.shelvedPRUrls = [];
@@ -355,6 +437,11 @@ export class StateManager {
     return true;
   }
 
+  /**
+   * Unshelve a PR URL, restoring it to daily digest.
+   * @param url - The PR URL to unshelve
+   * @returns true if removed from shelf, false if not shelved
+   */
   unshelvePR(url: string): boolean {
     if (!this.state.config.shelvedPRUrls) {
       return false;
@@ -368,12 +455,23 @@ export class StateManager {
     return true;
   }
 
+  /**
+   * Check if a PR is currently shelved.
+   * @param url - The PR URL to check
+   * @returns true if the PR is shelved
+   */
   isPRShelved(url: string): boolean {
     return this.state.config.shelvedPRUrls?.includes(url) ?? false;
   }
 
   // === Dismiss / Undismiss Issues ===
 
+  /**
+   * Dismiss an issue's notifications. Auto-resurfaces on new activity.
+   * @param url - The issue URL to dismiss
+   * @param timestamp - ISO timestamp of dismissal
+   * @returns true if newly dismissed, false if already dismissed
+   */
   dismissIssue(url: string, timestamp: string): boolean {
     if (!this.state.config.dismissedIssues) {
       this.state.config.dismissedIssues = {};
@@ -386,6 +484,11 @@ export class StateManager {
     return true;
   }
 
+  /**
+   * Restore a dismissed issue to notifications.
+   * @param url - The issue URL to undismiss
+   * @returns true if undismissed, false if not currently dismissed
+   */
   undismissIssue(url: string): boolean {
     if (!this.state.config.dismissedIssues || !(url in this.state.config.dismissedIssues)) {
       return false;
@@ -395,12 +498,22 @@ export class StateManager {
     return true;
   }
 
+  /**
+   * Get the timestamp when an issue was dismissed, or undefined if not dismissed.
+   * @param url - The issue URL to check
+   */
   getIssueDismissedAt(url: string): string | undefined {
     return this.state.config.dismissedIssues?.[url];
   }
 
   // === Status Overrides ===
 
+  /**
+   * Set a manual status override for a PR. Auto-clears when the PR has new activity.
+   * @param url - The PR URL
+   * @param status - The overridden status
+   * @param lastActivityAt - ISO timestamp of PR's last activity when override was set
+   */
   setStatusOverride(url: string, status: FetchedPRStatus, lastActivityAt: string): void {
     if (!this.state.config.statusOverrides) {
       this.state.config.statusOverrides = {};
@@ -413,6 +526,11 @@ export class StateManager {
     this.autoSave();
   }
 
+  /**
+   * Remove a manual status override for a PR.
+   * @param url - The PR URL
+   * @returns true if an override was removed, false if none existed
+   */
   clearStatusOverride(url: string): boolean {
     if (!this.state.config.statusOverrides || !(url in this.state.config.statusOverrides)) {
       return false;
@@ -422,6 +540,12 @@ export class StateManager {
     return true;
   }
 
+  /**
+   * Get the status override for a PR, auto-clearing if new activity has occurred.
+   * @param url - The PR URL
+   * @param currentUpdatedAt - PR's current updatedAt timestamp for staleness check
+   * @returns The override if still valid, undefined otherwise
+   */
   getStatusOverride(url: string, currentUpdatedAt?: string): StatusOverride | undefined {
     const override = this.state.config.statusOverrides?.[url];
     if (!override) return undefined;
@@ -436,46 +560,79 @@ export class StateManager {
 
   // === Repository Scoring (delegated to repo-score-manager) ===
 
+  /**
+   * Get the score record for a repository.
+   * @param repo - Repository in "owner/repo" format
+   * @returns Read-only score record, or undefined if not tracked
+   */
   getRepoScore(repo: string): Readonly<RepoScore> | undefined {
     return repoScoring.getRepoScore(this.state, repo);
   }
 
+  /**
+   * Update scoring data for a repository.
+   * @param repo - Repository in "owner/repo" format
+   * @param updates - Partial score fields to merge
+   */
   updateRepoScore(repo: string, updates: RepoScoreUpdate): void {
     repoScoring.updateRepoScore(this.state, repo, updates);
     this.autoSave();
   }
 
+  /**
+   * Increment the merged PR count for a repository.
+   * @param repo - Repository in "owner/repo" format
+   */
   incrementMergedCount(repo: string): void {
     repoScoring.incrementMergedCount(this.state, repo);
     this.autoSave();
   }
 
+  /**
+   * Increment the closed-without-merge PR count.
+   * @param repo - Repository in "owner/repo" format
+   */
   incrementClosedCount(repo: string): void {
     repoScoring.incrementClosedCount(this.state, repo);
     this.autoSave();
   }
 
+  /**
+   * Mark a repository as hostile (score zeroed).
+   * @param repo - Repository in "owner/repo" format
+   */
   markRepoHostile(repo: string): void {
     repoScoring.markRepoHostile(this.state, repo);
     this.autoSave();
   }
 
+  /** Returns repository names that have at least one merged PR. */
   getReposWithMergedPRs(): string[] {
     return repoScoring.getReposWithMergedPRs(this.state);
   }
 
+  /** Returns repository names with open PRs but no merged PRs yet. */
   getReposWithOpenPRs(): string[] {
     return repoScoring.getReposWithOpenPRs(this.state);
   }
 
+  /**
+   * Returns repos above the score threshold.
+   * @param minScore - Minimum score (default: config.minRepoScoreThreshold)
+   */
   getHighScoringRepos(minScore?: number): string[] {
     return repoScoring.getHighScoringRepos(this.state, minScore);
   }
 
+  /**
+   * Returns repos below the score threshold.
+   * @param maxScore - Maximum score (default: config.minRepoScoreThreshold)
+   */
   getLowScoringRepos(maxScore?: number): string[] {
     return repoScoring.getLowScoringRepos(this.state, maxScore);
   }
 
+  /** Returns aggregate contribution statistics (merge rate, PR counts, repo breakdown). */
   getStats(): Stats {
     return repoScoring.getStats(this.state);
   }
@@ -486,6 +643,16 @@ let stateManager: StateManager | null = null;
 
 /**
  * Get the singleton StateManager instance, creating it on first call.
+ * @returns The shared StateManager instance
+ *
+ * @example
+ * ```typescript
+ * import { getStateManager } from '@oss-autopilot/core';
+ *
+ * const state = getStateManager();
+ * const config = state.getState().config;
+ * console.log(config.githubUsername);
+ * ```
  */
 export function getStateManager(): StateManager {
   if (!stateManager) {

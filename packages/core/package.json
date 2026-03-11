@@ -34,6 +34,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
+    "docs": "typedoc",
+    "docs:check": "typedoc --emit none",
     "prepublishOnly": "pnpm run build && pnpm run bundle"
   },
   "keywords": [
@@ -68,6 +70,7 @@
     "@vitest/coverage-v8": "^4.0.18",
     "esbuild": "^0.27.3",
     "tsx": "^4.21.0",
+    "typedoc": "^0.28.17",
     "typescript": "^5.9.3",
     "vitest": "^4.0.16"
   }

@@ -69,6 +69,9 @@ export {
 /**
  * Build a star filter from state for use in fetchUserPRCounts.
  * Returns undefined if no star data is available (first run).
+ *
+ * @param state - Current agent state (read-only)
+ * @returns Star filter with minimum threshold and known counts, or undefined on first run
  */
 export function buildStarFilter(state: Readonly<AgentState>): StarFilter | undefined {
   const minStars = state.config.minStars ?? 50;
@@ -550,6 +553,10 @@ function toDailyOutput(result: DailyCheckResult): DailyOutput {
  *   3. updateAnalytics    — store monthly chart data
  *   4. partitionPRs       — shelve/unshelve, generate digest
  *   5. generateDigestOutput — capacity, dismiss filter, action menu assembly
+ *
+ * @param token - GitHub personal access token
+ * @returns Deduplicated daily output
+ * @throws {ConfigurationError} If no GitHub username is configured in state
  */
 export async function executeDailyCheck(token: string): Promise<DailyOutput> {
   const result = await executeDailyCheckInternal(token);
@@ -603,8 +610,22 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
 }
 
 /**
- * Run the daily check and return deduplicated DailyOutput.
- * Errors propagate to the caller.
+ * Run the daily PR check and return a deduplicated digest.
+ *
+ * Fetches all open PRs from GitHub, computes status for each,
+ * updates repo scores, and assembles the action menu.
+ *
+ * @returns Deduplicated daily output with PR digest, capacity, and action menu
+ * @throws {ConfigurationError} If no GitHub token is available
+ *
+ * @example
+ * ```typescript
+ * import { runDaily } from '@oss-autopilot/core/commands';
+ *
+ * const output = await runDaily();
+ * console.log(output.briefSummary);
+ * console.log(`${output.actionableIssues.length} issues need attention`);
+ * ```
  */
 export async function runDaily(): Promise<DailyOutput> {
   // Token is guaranteed by the preAction hook in cli.ts for non-LOCAL_ONLY_COMMANDS.
@@ -615,6 +636,9 @@ export async function runDaily(): Promise<DailyOutput> {
 /**
  * Run the daily check and return the full (non-deduplicated) result.
  * Used by CLI text mode where printDigest() needs full PR objects.
+ *
+ * @returns Full daily check result with non-deduplicated PR objects
+ * @throws {ConfigurationError} If no GitHub token is available
  */
 export async function runDailyForDisplay(): Promise<DailyCheckResult> {
   const token = requireGitHubToken();
