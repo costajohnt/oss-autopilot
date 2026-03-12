@@ -2,7 +2,9 @@
  * Tests for dashboard server (dashboard-server.ts)
  *
  * Covers: static file serving, API data endpoint, action endpoint,
- * method validation, SPA fallback routing, content types.
+ * refresh endpoint, method validation, SPA fallback routing, content types,
+ * security headers, origin validation, rate limiting, path traversal
+ * protection, body size limits, action validation edge cases.
  *
  * Strategy: Mock the http module to capture the request handler passed
  * to createServer, then test it directly without spinning up a real
@@ -187,7 +189,6 @@ interface MockResponseResult {
 }
 
 function createMockRes(): { res: ServerResponse; result: Promise<MockResponseResult> } {
-  // EventEmitter imported at top of file
   const resEmitter = new EventEmitter();
   let statusCode = 200;
   const headers: Record<string, string | number> = {};
@@ -302,7 +303,7 @@ describe('dashboard-server', () => {
     return result;
   }
 
-  // Helper to send a request with custom headers (e.g. Origin for CORS tests)
+  // Helper to send a request with custom headers (e.g. Origin for origin validation / CSRF protection tests)
   async function sendRequestWithHeaders(
     method: string,
     url: string,
@@ -686,6 +687,22 @@ describe('dashboard-server', () => {
       expect(data).toHaveProperty('monthlyMerged');
     });
 
+    it('should return 500 when runMove throws', async () => {
+      mockRunMove.mockRejectedValueOnce(new Error('move failed'));
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({
+          action: 'move',
+          url: 'https://github.com/owner/repo/pull/1',
+          target: 'shelved',
+        }),
+      );
+      expect(result.statusCode).toBe(500);
+      const data = JSON.parse(result.body);
+      expect(data.error).toBe('Action failed');
+    });
+
     it('should accept a valid dismiss_issue_response action', async () => {
       const result = await sendRequest(
         'POST',
@@ -877,6 +894,10 @@ describe('dashboard-server', () => {
   // ── POST /api/refresh ─────────────────────────────────────────
 
   describe('POST /api/refresh', () => {
+    afterEach(() => {
+      vi.mocked(getGitHubToken).mockReturnValue(null as any);
+    });
+
     it('should return 401 when no GitHub token is available', async () => {
       const result = await sendRequest('POST', '/api/refresh');
       expect(result.statusCode).toBe(401);
@@ -900,9 +921,6 @@ describe('dashboard-server', () => {
       expect(data).toHaveProperty('stats');
       expect(data).toHaveProperty('activePRs');
       expect(vi.mocked(fetchDashboardData)).toHaveBeenCalledWith('test-token');
-
-      // Restore default mock
-      vi.mocked(getGitHubToken).mockReturnValue(null as any);
     });
 
     it('should return 500 when fetchDashboardData throws', async () => {
@@ -913,9 +931,6 @@ describe('dashboard-server', () => {
       expect(result.statusCode).toBe(500);
       const data = JSON.parse(result.body);
       expect(data.error).toContain('Refresh failed');
-
-      // Restore default mock
-      vi.mocked(getGitHubToken).mockReturnValue(null as any);
     });
 
     it('should reject refresh with invalid origin', async () => {

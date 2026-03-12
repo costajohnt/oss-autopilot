@@ -921,7 +921,6 @@ describe('fetchDashboardData', () => {
 
   it('degrades gracefully when fetchRecentlyClosedPRs fails', async () => {
     mockFetchRecentlyClosedPRs.mockRejectedValue(new Error('timeout'));
-    mockIsRateLimitOrAuthError.mockReturnValue(false);
 
     const result = await fetchDashboardData('test-token');
 
@@ -942,7 +941,6 @@ describe('fetchDashboardData', () => {
 
   it('degrades gracefully when fetchRecentlyMergedPRs fails', async () => {
     mockFetchRecentlyMergedPRs.mockRejectedValue(new Error('network error'));
-    mockIsRateLimitOrAuthError.mockReturnValue(false);
 
     const result = await fetchDashboardData('test-token');
 
@@ -955,7 +953,6 @@ describe('fetchDashboardData', () => {
 
   it('degrades gracefully when fetchUserMergedPRCounts fails', async () => {
     mockFetchUserMergedPRCounts.mockRejectedValue(new Error('search API error'));
-    mockIsRateLimitOrAuthError.mockReturnValue(false);
 
     const result = await fetchDashboardData('test-token');
 
@@ -966,9 +963,29 @@ describe('fetchDashboardData', () => {
     );
   });
 
+  it('degrades gracefully when fetchUserClosedPRCounts fails', async () => {
+    mockFetchUserClosedPRCounts.mockRejectedValue(new Error('search API error'));
+
+    const result = await fetchDashboardData('test-token');
+
+    expect(result.digest).toBeDefined();
+    expect(mockWarn).toHaveBeenCalledWith(
+      'dashboard-data',
+      expect.stringContaining('Failed to fetch closed PR counts'),
+    );
+  });
+
+  it('warns on general issue conversation fetch failure', async () => {
+    mockFetchCommentedIssues.mockRejectedValue(new Error('socket timeout'));
+
+    const result = await fetchDashboardData('test-token');
+
+    expect(result.commentedIssues).toEqual([]);
+    expect(mockWarn).toHaveBeenCalledWith('dashboard-data', expect.stringContaining('Issue conversation fetch failed'));
+  });
+
   it("handles 'No GitHub username configured' from issue monitor", async () => {
     mockFetchCommentedIssues.mockRejectedValue(new Error('No GitHub username configured'));
-    mockIsRateLimitOrAuthError.mockReturnValue(false);
 
     const result = await fetchDashboardData('test-token');
 
@@ -984,7 +1001,8 @@ describe('fetchDashboardData', () => {
     mockBatch.mockImplementation(() => {
       throw new Error('disk write failed');
     });
-    // Ensure lastDigest is set despite batch failure (it was set before)
+    // Pre-populate lastDigest on state to simulate a previous successful fetch,
+    // so the function can still return data despite the batch failure
     const state = makeDefaultState();
     const digest = makeMockDigest();
     state.lastDigest = digest;
@@ -1075,6 +1093,22 @@ describe('fetchDashboardData', () => {
     expect(mockAddMergedPRs).toHaveBeenCalled();
     expect(mockAddClosedPRs).toHaveBeenCalled();
     expect(mockWarn).toHaveBeenCalledWith('dashboard-data', expect.stringContaining('Failed to store merged PRs'));
+    expect(result.digest).toBeDefined();
+  });
+
+  it('isolates addClosedPRs failure from addMergedPRs', async () => {
+    mockAddClosedPRs.mockImplementation(() => {
+      throw new Error('closed storage failed');
+    });
+    mockFetchClosedPRsSince.mockResolvedValue([
+      { url: 'https://github.com/a/b/pull/2', title: 'New closed', closedAt: '2026-01-02T00:00:00Z' },
+    ]);
+
+    const result = await fetchDashboardData('test-token');
+
+    expect(mockAddMergedPRs).toHaveBeenCalled();
+    expect(mockAddClosedPRs).toHaveBeenCalled();
+    expect(mockWarn).toHaveBeenCalledWith('dashboard-data', expect.stringContaining('Failed to store closed PRs'));
     expect(result.digest).toBeDefined();
   });
 });
