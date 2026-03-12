@@ -342,7 +342,7 @@ function tryRestoreFromBackup(): AgentState | null {
         debug(MODULE, `Successfully restored state from backup: ${backupFile}`);
 
         // Migrate from v1 to v2 if needed
-        if (state.version === 1) {
+        if ((state.version as number) === 1) {
           state = migrateV1ToV2(state as unknown as Record<string, unknown>);
         }
 
@@ -396,7 +396,7 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
       }
 
       // Migrate from v1 to v2 if needed
-      if (state.version === 1) {
+      if ((state.version as number) === 1) {
         state = migrateV1ToV2(state as unknown as Record<string, unknown>);
         // Save the migrated state immediately (atomic write)
         atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
