@@ -15,6 +15,7 @@ import type {
   TrackedIssue,
   IssueVettingResult,
   ProjectHealth,
+  RepoScore,
 } from './types.js';
 import { DEFAULT_CONFIG, INITIAL_STATE } from './types.js';
 import type { CapacityAssessment } from '../formatters/json.js';
@@ -91,6 +92,29 @@ export function makeCapacityAssessment(overrides: Partial<CapacityAssessment> = 
     criticalIssueCount: 0,
     reason: 'You have capacity',
     ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// RepoScore
+// ---------------------------------------------------------------------------
+
+export function makeRepoScore(overrides: Partial<RepoScore> = {}): RepoScore {
+  const { signals: signalOverrides, ...rest } = overrides;
+  return {
+    repo: 'owner/repo',
+    score: 5,
+    mergedPRCount: 0,
+    closedWithoutMergeCount: 0,
+    avgResponseDays: null,
+    lastEvaluatedAt: new Date().toISOString(),
+    signals: {
+      hasActiveMaintainers: true,
+      isResponsive: false,
+      hasHostileComments: false,
+      ...signalOverrides,
+    },
+    ...rest,
   };
 }
 
