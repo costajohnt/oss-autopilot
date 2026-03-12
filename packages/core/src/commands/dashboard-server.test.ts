@@ -107,11 +107,13 @@ vi.mock('./move.js', () => ({
   runMove: (...args: unknown[]) => mockRunMove(...args),
 }));
 
-// Mock rate limiter to always allow requests (avoids test ordering fragility)
+// Mock rate limiter — controllable via module-level variable
+let rateLimitOverride: { allowed: boolean; retryAfterSeconds?: number } | null = null;
+
 vi.mock('./rate-limiter.js', () => ({
   RateLimiter: class {
     check() {
-      return { allowed: true };
+      return rateLimitOverride ?? { allowed: true };
     }
   },
 }));
@@ -126,7 +128,8 @@ import {
   findRunningDashboardServer,
   type DashboardServerInfo,
 } from './dashboard-server.js';
-import { storedToMergedPRs } from './dashboard-data.js';
+import { fetchDashboardData, storedToMergedPRs } from './dashboard-data.js';
+import { getGitHubToken } from '../core/index.js';
 
 // ── Test Data ────────────────────────────────────────────────────────
 
@@ -158,6 +161,8 @@ function createMockReq(method: string, url: string, body?: string): IncomingMess
   req.method = method;
   req.url = url;
   req.headers = {};
+  // Provide a destroy stub so readBody's size-limit abort path works
+  req.destroy = vi.fn(() => req) as any;
 
   // For POST requests, simulate body streaming
   if (body !== undefined) {
@@ -292,6 +297,20 @@ describe('dashboard-server', () => {
   // Helper to send a request through the captured handler
   async function sendRequest(method: string, url: string, body?: string): Promise<MockResponseResult> {
     const req = createMockReq(method, url, body);
+    const { res, result } = createMockRes();
+    capturedHandler!(req, res);
+    return result;
+  }
+
+  // Helper to send a request with custom headers (e.g. Origin for CORS tests)
+  async function sendRequestWithHeaders(
+    method: string,
+    url: string,
+    headers: Record<string, string>,
+    body?: string,
+  ): Promise<MockResponseResult> {
+    const req = createMockReq(method, url, body);
+    Object.assign(req.headers, headers);
     const { res, result } = createMockRes();
     capturedHandler!(req, res);
     return result;
@@ -743,6 +762,231 @@ describe('dashboard-server', () => {
       const result = await sendRequest('GET', '/');
       expect(result.headers['Content-Length']).toBeDefined();
       expect(Number(result.headers['Content-Length'])).toBeGreaterThan(0);
+    });
+  });
+
+  // ── Security headers ────────────────────────────────────────────
+
+  describe('security headers', () => {
+    it('should set X-Content-Type-Options to nosniff', async () => {
+      const result = await sendRequest('GET', '/api/data');
+      expect(result.headers['x-content-type-options']).toBe('nosniff');
+    });
+
+    it('should set X-Frame-Options to DENY', async () => {
+      const result = await sendRequest('GET', '/api/data');
+      expect(result.headers['x-frame-options']).toBe('DENY');
+    });
+
+    it('should set Content-Security-Policy with default-src self', async () => {
+      const result = await sendRequest('GET', '/api/data');
+      expect(result.headers['content-security-policy']).toContain("default-src 'self'");
+    });
+
+    it('should set Referrer-Policy to strict-origin-when-cross-origin', async () => {
+      const result = await sendRequest('GET', '/api/data');
+      expect(result.headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
+    });
+  });
+
+  // ── Origin validation ──────────────────────────────────────────
+
+  describe('origin validation', () => {
+    it('should reject POST /api/action with foreign origin', async () => {
+      const result = await sendRequestWithHeaders(
+        'POST',
+        '/api/action',
+        { origin: 'https://evil.example.com' },
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+      expect(result.statusCode).toBe(403);
+      const data = JSON.parse(result.body);
+      expect(data.error).toContain('Invalid origin');
+    });
+
+    it('should accept POST /api/action with localhost origin', async () => {
+      const result = await sendRequestWithHeaders(
+        'POST',
+        '/api/action',
+        { origin: 'http://localhost:19876' },
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+      expect(result.statusCode).not.toBe(403);
+    });
+
+    it('should accept POST /api/action with 127.0.0.1 origin', async () => {
+      const result = await sendRequestWithHeaders(
+        'POST',
+        '/api/action',
+        { origin: 'http://127.0.0.1:19876' },
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+      expect(result.statusCode).not.toBe(403);
+    });
+
+    it('should accept POST /api/action with no origin header', async () => {
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+      expect(result.statusCode).not.toBe(403);
+    });
+
+    it('should reject POST /api/refresh with foreign origin', async () => {
+      const result = await sendRequestWithHeaders('POST', '/api/refresh', { origin: 'https://evil.example.com' });
+      expect(result.statusCode).toBe(403);
+      const data = JSON.parse(result.body);
+      expect(data.error).toContain('Invalid origin');
+    });
+  });
+
+  // ── Rate limiting ──────────────────────────────────────────────
+
+  describe('rate limiting', () => {
+    afterEach(() => {
+      rateLimitOverride = null;
+    });
+
+    it('should return 429 with Retry-After for GET /api/data when rate-limited', async () => {
+      rateLimitOverride = { allowed: false, retryAfterSeconds: 30 };
+      const result = await sendRequest('GET', '/api/data');
+      expect(result.statusCode).toBe(429);
+      expect(result.headers['retry-after']).toBe('30');
+    });
+
+    it('should return 429 with Retry-After for POST /api/action when rate-limited', async () => {
+      rateLimitOverride = { allowed: false, retryAfterSeconds: 15 };
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+      expect(result.statusCode).toBe(429);
+      expect(result.headers['retry-after']).toBe('15');
+    });
+
+    it('should return 429 with Retry-After for POST /api/refresh when rate-limited', async () => {
+      rateLimitOverride = { allowed: false, retryAfterSeconds: 10 };
+      const result = await sendRequest('POST', '/api/refresh');
+      expect(result.statusCode).toBe(429);
+      expect(result.headers['retry-after']).toBe('10');
+    });
+  });
+
+  // ── POST /api/refresh ─────────────────────────────────────────
+
+  describe('POST /api/refresh', () => {
+    it('should return 401 when no GitHub token is available', async () => {
+      const result = await sendRequest('POST', '/api/refresh');
+      expect(result.statusCode).toBe(401);
+      const data = JSON.parse(result.body);
+      expect(data.error).toContain('No GitHub token');
+    });
+
+    it('should refresh data successfully when token is available', async () => {
+      vi.mocked(getGitHubToken).mockReturnValue('test-token');
+      vi.mocked(fetchDashboardData).mockResolvedValue({
+        digest: makeDigest(),
+        commentedIssues: [],
+        allMergedPRs: [],
+        allClosedPRs: [],
+      });
+
+      const result = await sendRequest('POST', '/api/refresh');
+      expect(result.statusCode).toBe(200);
+
+      const data = JSON.parse(result.body);
+      expect(data).toHaveProperty('stats');
+      expect(data).toHaveProperty('activePRs');
+      expect(vi.mocked(fetchDashboardData)).toHaveBeenCalledWith('test-token');
+
+      // Restore default mock
+      vi.mocked(getGitHubToken).mockReturnValue(null as any);
+    });
+
+    it('should return 500 when fetchDashboardData throws', async () => {
+      vi.mocked(getGitHubToken).mockReturnValue('test-token');
+      vi.mocked(fetchDashboardData).mockRejectedValue(new Error('GitHub API error'));
+
+      const result = await sendRequest('POST', '/api/refresh');
+      expect(result.statusCode).toBe(500);
+      const data = JSON.parse(result.body);
+      expect(data.error).toContain('Refresh failed');
+
+      // Restore default mock
+      vi.mocked(getGitHubToken).mockReturnValue(null as any);
+    });
+
+    it('should reject refresh with invalid origin', async () => {
+      const result = await sendRequestWithHeaders('POST', '/api/refresh', { origin: 'https://attacker.example.com' });
+      expect(result.statusCode).toBe(403);
+    });
+  });
+
+  // ── Path traversal protection ─────────────────────────────────
+
+  describe('path traversal protection', () => {
+    it('should return 403 for paths containing ".."', async () => {
+      const result = await sendRequest('GET', '/../../etc/passwd');
+      expect(result.statusCode).toBe(403);
+      const data = JSON.parse(result.body);
+      expect(data.error).toBe('Forbidden');
+    });
+
+    it('should return 400 for malformed percent-encoded URLs', async () => {
+      const result = await sendRequest('GET', '/%ZZ');
+      expect(result.statusCode).toBe(400);
+      const data = JSON.parse(result.body);
+      expect(data.error).toBe('Malformed URL');
+    });
+
+    it('should return 403 for URL-encoded path traversal', async () => {
+      const result = await sendRequest('GET', '/%2e%2e/etc/passwd');
+      expect(result.statusCode).toBe(403);
+      const data = JSON.parse(result.body);
+      expect(data.error).toBe('Forbidden');
+    });
+  });
+
+  // ── Body size limit ───────────────────────────────────────────
+
+  describe('body size limit', () => {
+    it('should return 413 for oversized POST body', async () => {
+      const largeBody = JSON.stringify({ action: 'move', url: 'x'.repeat(11000), target: 'shelved' });
+      const result = await sendRequest('POST', '/api/action', largeBody);
+      expect(result.statusCode).toBe(413);
+    });
+  });
+
+  // ── Action validation edge cases ──────────────────────────────
+
+  describe('action validation edge cases', () => {
+    it('should return 400 for non-GitHub URL in move action', async () => {
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://example.com/not-github', target: 'shelved' }),
+      );
+      expect(result.statusCode).toBe(400);
+    });
+
+    it('should return 400 for issue URL in move action (expects PR URL)', async () => {
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/issues/1', target: 'shelved' }),
+      );
+      expect(result.statusCode).toBe(400);
+    });
+
+    it('should return 400 for PR URL in dismiss_issue_response (expects issue URL)', async () => {
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'dismiss_issue_response', url: 'https://github.com/owner/repo/pull/1' }),
+      );
+      expect(result.statusCode).toBe(400);
     });
   });
 
