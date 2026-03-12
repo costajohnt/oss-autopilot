@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.60.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.59.0...core-v0.60.0) (2026-03-12)
+
+
+### Features
+
+* add runtime schema validation for state.json deserialization ([#738](https://github.com/costajohnt/oss-autopilot/issues/738)) ([b33a258](https://github.com/costajohnt/oss-autopilot/commit/b33a25888b9b2e3e72d5f2088ce0434861245ccf))
+
+
+### Bug Fixes
+
+* update hono pnpm override to &gt;=4.12.7 (GHSA-v8w9-8mx6-g223) ([#733](https://github.com/costajohnt/oss-autopilot/issues/733)) ([5ce12eb](https://github.com/costajohnt/oss-autopilot/commit/5ce12ebbc585fa4feeae361e741f141f9f5b11a2)), closes [#725](https://github.com/costajohnt/oss-autopilot/issues/725)
+
 ## [0.59.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.58.0...core-v0.59.0) (2026-03-11)
 
 
