@@ -51,6 +51,15 @@ describe('classifyCICheck', () => {
     expect(classifyCICheck('Blacksmith / build')).toBe('infrastructure');
   });
 
+  it('should classify action_required conclusion as auth_gate (#743)', () => {
+    expect(classifyCICheck('some-workflow', undefined, 'action_required')).toBe('auth_gate');
+  });
+
+  it('should classify ReadTheDocs as infrastructure (#743)', () => {
+    expect(classifyCICheck('readthedocs/build')).toBe('infrastructure');
+    expect(classifyCICheck('ReadTheDocs Preview')).toBe('infrastructure');
+  });
+
   it('should fall back to description when name is not classified', () => {
     expect(classifyCICheck('some-check', 'Authorization required')).toBe('auth_gate');
     expect(classifyCICheck('some-check', 'Vercel deployment')).toBe('fork_limitation');
@@ -76,6 +85,12 @@ describe('classifyFailingChecks', () => {
     expect(result[0]).toEqual({ name: 'build', category: 'infrastructure', conclusion: 'cancelled' });
   });
 
+  it('should classify action_required conclusion as auth_gate (#743)', () => {
+    const conclusions = new Map([['gate', 'action_required']]);
+    const result = classifyFailingChecks(['gate'], conclusions);
+    expect(result[0]).toEqual({ name: 'gate', category: 'auth_gate', conclusion: 'action_required' });
+  });
+
   it('should handle empty array', () => {
     expect(classifyFailingChecks([])).toEqual([]);
   });
@@ -94,10 +109,22 @@ describe('analyzeCheckRuns', () => {
     expect(result.hasFailingChecks).toBe(false);
   });
 
-  it('should detect action_required as pending', () => {
+  it('should detect action_required as failing (#743)', () => {
     const result = analyzeCheckRuns([{ name: 'gate', conclusion: 'action_required', status: 'completed' }]);
-    expect(result.hasPendingChecks).toBe(true);
-    expect(result.hasFailingChecks).toBe(false);
+    expect(result.hasFailingChecks).toBe(true);
+    expect(result.hasPendingChecks).toBe(false);
+    expect(result.failingCheckNames).toEqual(['gate']);
+    expect(result.failingCheckConclusions.get('gate')).toBe('action_required');
+  });
+
+  it('should handle mixed action_required and successful checks (#743)', () => {
+    const result = analyzeCheckRuns([
+      { name: 'gate', conclusion: 'action_required', status: 'completed' },
+      { name: 'lint', conclusion: 'success', status: 'completed' },
+    ]);
+    expect(result.hasFailingChecks).toBe(true);
+    expect(result.hasSuccessfulChecks).toBe(true);
+    expect(result.failingCheckNames).toEqual(['gate']);
   });
 
   it('should detect successful checks', () => {
@@ -171,6 +198,18 @@ describe('mergeStatuses', () => {
       1,
     );
     expect(result.status).toBe('pending');
+  });
+
+  it('should report failing with action_required conclusions preserved (#743)', () => {
+    const checkRunAnalysis = analyzeCheckRuns([
+      { name: 'gate', conclusion: 'action_required', status: 'completed' },
+      { name: 'lint', conclusion: 'success', status: 'completed' },
+    ]);
+    const combinedAnalysis = { effectiveCombinedState: 'success', hasStatuses: false, failingStatusNames: [] };
+    const result = mergeStatuses(checkRunAnalysis, combinedAnalysis, 2);
+    expect(result.status).toBe('failing');
+    expect(result.failingCheckNames).toEqual(['gate']);
+    expect(result.failingCheckConclusions.get('gate')).toBe('action_required');
   });
 
   it('should return passing when all checks succeed', () => {
