@@ -2065,12 +2065,13 @@ describe('legacy state cleanup on load', () => {
     const sm = new StateManager(false);
     const state = sm.getState();
 
-    // snoozedPRs should be stripped from loaded state
+    // Zod strips unknown keys in memory — snoozedPRs is absent from parsed state
     expect((state.config as unknown as Record<string, unknown>).snoozedPRs).toBeUndefined();
 
-    // Verify file on disk no longer has snoozedPRs
+    // Note: the stale field persists on disk until the next saveState() call.
+    // Unlike the old isValidState() cleanup, Zod stripping is in-memory only.
     const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-    expect(onDisk.config.snoozedPRs).toBeUndefined();
+    expect(onDisk.config.snoozedPRs).toBeDefined();
   });
 
   it('strips PR URLs from dismissedIssues on load', () => {
@@ -2720,5 +2721,179 @@ describe('migrateV1ToV2 fallback branches', () => {
     expect(sm.getState().repoScores['org-a/repo-a']).toBeDefined();
     expect(sm.getState().repoScores['org-b/repo-b']).toBeDefined();
     expect(sm.getState().repoScores['org-a/repo-a'].score).toBe(5);
+  });
+});
+
+// ── Schema validation in loadState ──────────────────────────────────────────
+// These tests verify that the Zod-based schema validation in the persistence
+// layer (loadState / tryRestoreFromBackup) correctly rejects invalid state
+// structures and fills defaults for missing optional fields.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('schema validation in loadState', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-schema-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('should return fresh state when state is schema-invalid and no backups exist', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    // Valid JSON but schema-invalid: config must be an object, not null
+    fs.writeFileSync(statePath, JSON.stringify({ version: 2, config: null }), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+    expect(state.version).toBe(2);
+    // Fresh state has empty default config values
+    expect(state.config.githubUsername).toBe('');
+    expect(state.config.setupComplete).toBe(false);
+    expect(state.repoScores).toEqual({});
+    expect(state.events).toEqual([]);
+  });
+
+  it('should skip schema-invalid backups and use the next valid one', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    // Corrupted main state file (unparseable JSON)
+    fs.writeFileSync(statePath, 'CORRUPT MAIN', { mode: 0o600 });
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+
+    // Newest backup: valid JSON but schema-invalid (config is null)
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-03-01T00-00-00-000Z-zzz000.json'),
+      JSON.stringify({ version: 2, config: null }),
+      { mode: 0o600 },
+    );
+
+    // Middle backup: also schema-invalid (version is 99, not literal 2)
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-02-01T00-00-00-000Z-mmm000.json'),
+      JSON.stringify({ version: 99, config: { githubUsername: 'bad-version' } }),
+      { mode: 0o600 },
+    );
+
+    // Oldest backup: valid
+    const validBackup = makeV2State();
+    (validBackup.config as Record<string, unknown>)['githubUsername'] = 'valid-old-backup';
+    fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-aaa000.json'), JSON.stringify(validBackup), {
+      mode: 0o600,
+    });
+
+    const sm = new StateManager(false);
+    // Should have skipped the two schema-invalid backups and restored from the valid one
+    expect(sm.getState().config.githubUsername).toBe('valid-old-backup');
+  });
+
+  it('should return fresh state when all backups are schema-invalid', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, 'CORRUPT', { mode: 0o600 });
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+
+    // Multiple backups, all valid JSON but schema-invalid
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-03-01T00-00-00-000Z-aaa000.json'),
+      JSON.stringify({ version: 2, config: null }),
+      { mode: 0o600 },
+    );
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-02-01T00-00-00-000Z-bbb000.json'),
+      JSON.stringify({ version: 99, repoScores: 'not-an-object' }),
+      { mode: 0o600 },
+    );
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-ccc000.json'),
+      JSON.stringify({ version: 2, events: 'not-an-array' }),
+      { mode: 0o600 },
+    );
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+    // All backups rejected by schema validation, so fresh state returned
+    expect(state.version).toBe(2);
+    expect(state.config.githubUsername).toBe('');
+    expect(state.repoScores).toEqual({});
+  });
+
+  it('should fill defaults for missing optional fields via Zod on load', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    // Write a minimal valid v2 state missing optional fields that have defaults
+    const minimalState = {
+      version: 2,
+      // config is missing — Zod default will fill it
+      // events is missing — Zod default will fill it to []
+      // repoScores is missing — Zod default will fill it to {}
+      // lastRunAt is missing — Zod default will fill it
+      // activeIssues is missing — Zod default will fill it to []
+    };
+    fs.writeFileSync(statePath, JSON.stringify(minimalState), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    // Verify Zod defaults are applied at the top level
+    expect(state.version).toBe(2);
+    expect(state.events).toEqual([]);
+    expect(state.repoScores).toEqual({});
+    expect(state.activeIssues).toEqual([]);
+    expect(typeof state.lastRunAt).toBe('string');
+    expect(state.lastRunAt.length).toBeGreaterThan(0);
+
+    // Spot-check config defaults (exhaustive default coverage in state-schema.test.ts)
+    expect(state.config.setupComplete).toBe(false);
+    expect(state.config.maxActivePRs).toBe(10);
+    expect(state.config.githubUsername).toBe('');
+  });
+
+  it('should preserve existing fields while filling missing defaults on load', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    // State with some fields present and some missing
+    const partialState = {
+      version: 2,
+      repoScores: {
+        'owner/repo': {
+          repo: 'owner/repo',
+          score: 8,
+          mergedPRCount: 3,
+          closedWithoutMergeCount: 0,
+          avgResponseDays: 2.5,
+          lastEvaluatedAt: '2024-06-01T00:00:00Z',
+          signals: {
+            hasActiveMaintainers: true,
+            isResponsive: true,
+            hasHostileComments: false,
+          },
+        },
+      },
+      config: {
+        githubUsername: 'existing-user',
+        setupComplete: true,
+        // Other config fields missing — will be filled by Zod defaults
+      },
+      // events, activeIssues, lastRunAt all missing — Zod fills defaults
+    };
+    fs.writeFileSync(statePath, JSON.stringify(partialState), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    // Existing fields preserved
+    expect(state.config.githubUsername).toBe('existing-user');
+    expect(state.config.setupComplete).toBe(true);
+    expect(state.repoScores['owner/repo'].score).toBe(8);
+    expect(state.repoScores['owner/repo'].mergedPRCount).toBe(3);
+
+    // Missing fields filled with defaults
+    expect(state.events).toEqual([]);
+    expect(state.activeIssues).toEqual([]);
+    expect(typeof state.lastRunAt).toBe('string');
+    expect(state.config.maxActivePRs).toBe(10);
+    expect(state.config.languages).toEqual(['typescript', 'javascript']);
+    expect(state.config.excludeRepos).toEqual([]);
   });
 });

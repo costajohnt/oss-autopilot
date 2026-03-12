@@ -6,15 +6,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { AgentState, INITIAL_STATE } from './types.js';
+import { AgentState } from './types.js';
+import { AgentStateSchema } from './state-schema.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
 import { errorMessage } from './errors.js';
 import { debug, warn } from './logger.js';
 
 const MODULE = 'state';
-
-// Current state version
-const CURRENT_STATE_VERSION = 2;
 
 // Lock file timeout: if a lock is older than this, it is considered stale
 const LOCK_TIMEOUT_MS = 30_000; // 30 seconds
@@ -152,74 +150,11 @@ function migrateV1ToV2(rawState: Record<string, unknown>): AgentState {
 }
 
 /**
- * Validate that a loaded state has the required structure.
- * Handles both v1 (with PR arrays) and v2 (without).
- */
-function isValidState(state: unknown): state is AgentState {
-  if (!state || typeof state !== 'object') return false;
-  const s = state as Record<string, unknown>;
-
-  // Migrate older states that don't have repoScores
-  if (s.repoScores === undefined) {
-    s.repoScores = {};
-  }
-
-  // Migrate older states that don't have events
-  if (s.events === undefined) {
-    s.events = [];
-  }
-
-  // Migrate older states that don't have mergedPRs
-  if (s.mergedPRs === undefined) {
-    s.mergedPRs = [];
-  }
-
-  // Base requirements for all versions
-  const hasBaseFields =
-    typeof s.version === 'number' &&
-    typeof s.repoScores === 'object' &&
-    s.repoScores !== null &&
-    Array.isArray(s.events) &&
-    typeof s.config === 'object' &&
-    s.config !== null;
-
-  if (!hasBaseFields) return false;
-
-  // v1 requires base PR arrays to be present (they will be dropped during migration)
-  if (s.version === 1) {
-    return (
-      Array.isArray(s.activePRs) &&
-      Array.isArray(s.dormantPRs) &&
-      Array.isArray(s.mergedPRs) &&
-      Array.isArray(s.closedPRs)
-    );
-  }
-
-  // v2+ doesn't require PR arrays
-  return true;
-}
-
-/**
  * Create a fresh state (v2: fresh GitHub fetching).
+ * Leverages Zod schema defaults to produce a complete state.
  */
 export function createFreshState(): AgentState {
-  return {
-    version: CURRENT_STATE_VERSION,
-    activeIssues: [],
-    repoScores: {},
-    config: {
-      ...INITIAL_STATE.config,
-      setupComplete: false,
-      languages: [...INITIAL_STATE.config.languages],
-      labels: [...INITIAL_STATE.config.labels],
-      excludeRepos: [],
-      trustedProjects: [],
-      shelvedPRUrls: [],
-      dismissedIssues: {},
-    },
-    events: [],
-    lastRunAt: new Date().toISOString(),
-  };
+  return AgentStateSchema.parse({ version: 2 });
 }
 
 /**
@@ -336,15 +271,17 @@ function tryRestoreFromBackup(): AgentState | null {
     const backupPath = path.join(backupDir, backupFile);
     try {
       const data = fs.readFileSync(backupPath, 'utf-8');
-      let state = JSON.parse(data) as AgentState;
+      let raw: unknown = JSON.parse(data);
 
-      if (isValidState(state)) {
+      // Migrate from v1 to v2 if needed (before schema validation)
+      if (typeof raw === 'object' && raw !== null && (raw as Record<string, unknown>).version === 1) {
+        raw = migrateV1ToV2(raw as Record<string, unknown>);
+      }
+
+      const parsed = AgentStateSchema.safeParse(raw);
+      if (parsed.success) {
+        const state = parsed.data;
         debug(MODULE, `Successfully restored state from backup: ${backupFile}`);
-
-        // Migrate from v1 to v2 if needed
-        if (state.version === 1) {
-          state = migrateV1ToV2(state as unknown as Record<string, unknown>);
-        }
 
         const repoCount = Object.keys(state.repoScores).length;
         debug(MODULE, `Restored state v${state.version}: ${repoCount} repo scores`);
@@ -356,6 +293,11 @@ function tryRestoreFromBackup(): AgentState | null {
 
         return state;
       }
+
+      // safeParse failed — log and try next backup
+      const summary = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+      warn(MODULE, `Backup ${backupFile} failed schema validation: ${summary}`);
+      debug(MODULE, `Backup ${backupFile} full validation errors:`, parsed.error.issues);
     } catch (backupErr) {
       // This backup is also corrupted, try the next one
       warn(MODULE, `Backup ${backupFile} is corrupted, trying next...`);
@@ -381,11 +323,32 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
   try {
     if (fs.existsSync(statePath)) {
       const data = fs.readFileSync(statePath, 'utf-8');
-      let state = JSON.parse(data) as AgentState;
+      let raw: unknown = JSON.parse(data);
 
-      // Validate required fields exist
-      if (!isValidState(state)) {
-        warn(MODULE, 'Invalid state file structure, attempting to restore from backup...');
+      // Migrate from v1 to v2 if needed (before schema validation)
+      let wasMigrated = false;
+      if (typeof raw === 'object' && raw !== null && (raw as Record<string, unknown>).version === 1) {
+        raw = migrateV1ToV2(raw as Record<string, unknown>);
+        wasMigrated = true;
+      }
+
+      // Validate through Zod schema (strips unknown keys in memory; stale keys persist on disk until next save)
+      const parsed = AgentStateSchema.safeParse(raw);
+      if (!parsed.success) {
+        const summary = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+        warn(MODULE, `Invalid state file structure: ${summary}`);
+        warn(MODULE, 'Attempting to restore from backup...');
+        debug(MODULE, 'Full validation errors:', parsed.error.issues);
+
+        // Preserve the rejected state file so the user can recover
+        try {
+          const rejectedPath = statePath + '.rejected-' + Date.now();
+          fs.copyFileSync(statePath, rejectedPath);
+          warn(MODULE, `Previous state preserved at: ${rejectedPath}`);
+        } catch (preserveErr) {
+          warn(MODULE, `Could not preserve rejected state file: ${errorMessage(preserveErr)}`);
+        }
+
         const restoredState = tryRestoreFromBackup();
         if (restoredState) {
           const mtimeMs = safeGetMtimeMs(statePath);
@@ -395,24 +358,18 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
         return { state: createFreshState(), mtimeMs: 0 };
       }
 
-      // Migrate from v1 to v2 if needed
-      if (state.version === 1) {
-        state = migrateV1ToV2(state as unknown as Record<string, unknown>);
-        // Save the migrated state immediately (atomic write)
-        atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
-        debug(MODULE, 'Migrated state saved');
+      // Save migrated state only after validation succeeds
+      if (wasMigrated) {
+        atomicWriteFileSync(statePath, JSON.stringify(parsed.data, null, 2), 0o600);
+        debug(MODULE, 'Migrated and validated state saved');
       }
 
-      // Strip legacy fields from persisted state (snoozedPRs and PR dismiss
-      // entries were removed in the three-state PR model simplification)
+      const state = parsed.data;
+
+      // Strip PR URLs from dismissedIssues (PR dismiss removed).
+      // This filters values inside a known field — Zod .strip() only removes unknown keys.
       try {
         let needsCleanupSave = false;
-        const rawConfig = state.config as unknown as Record<string, unknown>;
-        if (rawConfig.snoozedPRs) {
-          delete rawConfig.snoozedPRs;
-          needsCleanupSave = true;
-        }
-        // Strip PR URLs from dismissedIssues (PR dismiss removed)
         if (state.config.dismissedIssues) {
           const PR_URL_RE = /\/pull\/\d+$/;
           for (const url of Object.keys(state.config.dismissedIssues)) {
@@ -424,7 +381,7 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
         }
         if (needsCleanupSave) {
           atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
-          warn(MODULE, 'Cleaned up removed features (snoozedPRs, dismissed PR URLs) from persisted state');
+          warn(MODULE, 'Cleaned up dismissed PR URLs from persisted state');
         }
       } catch (cleanupError) {
         warn(MODULE, `Failed to clean up removed features from state: ${errorMessage(cleanupError)}`);
