@@ -67,9 +67,21 @@ The attack surface is intentionally minimal.
 - **Dependabot:** Weekly automated dependency scanning for the npm ecosystem.
 - **CodeQL:** GitHub's CodeQL security analysis runs on pushes to main and on pull requests.
 
+## Stability Policy
+
+All public APIs follow [semantic versioning](https://semver.org/) from 1.0 forward:
+
+- **CLI commands** — All 26 commands, their flags, and `--json` output structure
+- **Library exports** — The programmatic API from `@oss-autopilot/core`
+- **Plugin interface** — Commands, agents, and skills
+- **MCP server** — Tools, resources, and prompts (separately versioned as `@oss-autopilot/mcp`)
+
+Breaking changes will only occur in major version bumps with migration guidance.
+
 ## Supported Versions
 
-| Version | Supported |
-|---------|-----------|
-| 0.39.x  | Yes       |
-| < 0.39  | No        |
+| Version | Supported          |
+|---------|--------------------|
+| 1.x     | Yes                |
+| 0.60.x  | Security fixes only |
+| < 0.60  | No                 |
