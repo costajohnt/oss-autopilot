@@ -58,7 +58,7 @@ export function classifyCICheck(name: string, description?: string, conclusion?:
   // Infrastructure: cancelled or timed_out jobs are transient failures (#145)
   if (conclusion === 'cancelled' || conclusion === 'timed_out') return 'infrastructure';
 
-  // Auth gate: action_required means maintainer must approve the workflow run (fork PRs)
+  // Auth gate: action_required means the workflow needs external approval (e.g., fork PR or first-time contributor)
   if (conclusion === 'action_required') return 'auth_gate';
 
   const nameLower = name.toLowerCase();
@@ -80,7 +80,7 @@ export function classifyCICheck(name: string, description?: string, conclusion?:
 }
 
 /**
- * Classify all failing checks and return both the flat names array and classified array (#81, #145).
+ * Classify all failing checks and return a ClassifiedCheck array (#81, #145, #743).
  * Accepts optional conclusion data to detect infrastructure failures and auth gates.
  */
 export function classifyFailingChecks(
