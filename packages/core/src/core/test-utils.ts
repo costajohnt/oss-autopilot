@@ -19,6 +19,7 @@ import type {
 import { DEFAULT_CONFIG, INITIAL_STATE } from './types.js';
 import type { CapacityAssessment } from '../formatters/json.js';
 import type { StateManager, Stats } from './state.js';
+import type { GitHubSearchItem } from './issue-filtering.js';
 
 // ---------------------------------------------------------------------------
 // FetchedPR
@@ -204,6 +205,30 @@ export function makeStateManagerMock(
     getHighScoringRepos: () => [],
     getLowScoringRepos: () => [],
   } as unknown as StateManager;
+}
+
+// ---------------------------------------------------------------------------
+// GitHubSearchItem (octokit.search.issuesAndPullRequests result item)
+// ---------------------------------------------------------------------------
+
+export function makeGitHubSearchItem(
+  repo: string,
+  number: number,
+  overrides?: Partial<GitHubSearchItem>,
+): GitHubSearchItem {
+  return {
+    id: number,
+    html_url: `https://github.com/${repo}/issues/${number}`,
+    repository_url: `https://api.github.com/repos/${repo}`,
+    updated_at: new Date().toISOString(),
+    title: `Test issue #${number}`,
+    labels: [{ name: 'good first issue' }],
+    comments: 0,
+    body: 'Test issue body with enough content to be meaningful.',
+    created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    number,
+    ...overrides,
+  };
 }
 
 // ---------------------------------------------------------------------------
