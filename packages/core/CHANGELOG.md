@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.60.1](https://github.com/costajohnt/oss-autopilot/compare/core-v0.60.0...core-v0.60.1) (2026-03-12)
+
+
+### Bug Fixes
+
+* classify action_required checks and RTD failures as non-actionable ([#744](https://github.com/costajohnt/oss-autopilot/issues/744)) ([930ff41](https://github.com/costajohnt/oss-autopilot/commit/930ff415330f590d0648b2e2926c41c5092dec73))
+
 ## [0.60.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.59.0...core-v0.60.0) (2026-03-12)
 
 
