@@ -346,7 +346,7 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
           fs.copyFileSync(statePath, rejectedPath);
           warn(MODULE, `Previous state preserved at: ${rejectedPath}`);
         } catch (preserveErr) {
-          debug(MODULE, `Could not preserve rejected state file: ${errorMessage(preserveErr)}`);
+          warn(MODULE, `Could not preserve rejected state file: ${errorMessage(preserveErr)}`);
         }
 
         const restoredState = tryRestoreFromBackup();
