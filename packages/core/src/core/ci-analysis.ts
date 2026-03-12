@@ -45,16 +45,21 @@ const INFRASTRUCTURE_PATTERNS: RegExp[] = [
   /\bservice\s*unavailable/i,
   /\binfrastructure/i,
   /\bblacksmith\b/i,
+  /\breadthedocs\b/i,
 ];
 
 /**
- * Classify a failing CI check as actionable, fork_limitation, auth_gate, or infrastructure (#81, #145).
+ * Classify a failing CI check as actionable, fork_limitation, auth_gate, or infrastructure (#81, #145, #743).
  * Default is 'actionable' — only known patterns get reclassified.
- * When conclusion is provided (cancelled, timed_out), the check is classified as infrastructure.
+ * Conclusion-based classification (cancelled, timed_out, action_required) takes precedence
+ * over name-based pattern matching.
  */
 export function classifyCICheck(name: string, description?: string, conclusion?: string): CIFailureCategory {
   // Infrastructure: cancelled or timed_out jobs are transient failures (#145)
   if (conclusion === 'cancelled' || conclusion === 'timed_out') return 'infrastructure';
+
+  // Auth gate: action_required means the workflow needs external approval (e.g., fork PR or first-time contributor)
+  if (conclusion === 'action_required') return 'auth_gate';
 
   const nameLower = name.toLowerCase();
 
@@ -75,8 +80,8 @@ export function classifyCICheck(name: string, description?: string, conclusion?:
 }
 
 /**
- * Classify all failing checks and return both the flat names array and classified array (#81, #145).
- * Accepts optional conclusion data to detect infrastructure failures.
+ * Classify all failing checks and return a ClassifiedCheck array (#81, #145, #743).
+ * Accepts optional conclusion data to detect infrastructure failures and auth gates.
  */
 export function classifyFailingChecks(
   failingCheckNames: string[],
@@ -110,12 +115,15 @@ export function analyzeCheckRuns(checkRuns: Array<{ name: string; conclusion: st
   const failingCheckConclusions = new Map<string, string>();
 
   for (const check of checkRuns) {
-    if (check.conclusion === 'failure' || check.conclusion === 'cancelled' || check.conclusion === 'timed_out') {
+    if (
+      check.conclusion === 'failure' ||
+      check.conclusion === 'cancelled' ||
+      check.conclusion === 'timed_out' ||
+      check.conclusion === 'action_required'
+    ) {
       hasFailingChecks = true;
       failingCheckNames.push(check.name);
       failingCheckConclusions.set(check.name, check.conclusion);
-    } else if (check.conclusion === 'action_required') {
-      hasPendingChecks = true; // Maintainer approval gate, not a real failure
     } else if (check.status === 'in_progress' || check.status === 'queued') {
       hasPendingChecks = true;
     } else if (check.conclusion === 'success') {
