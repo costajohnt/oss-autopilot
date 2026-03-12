@@ -2065,8 +2065,13 @@ describe('legacy state cleanup on load', () => {
     const sm = new StateManager(false);
     const state = sm.getState();
 
-    // snoozedPRs should be stripped from loaded state (Zod strips unknown keys)
+    // Zod strips unknown keys in memory — snoozedPRs is absent from parsed state
     expect((state.config as unknown as Record<string, unknown>).snoozedPRs).toBeUndefined();
+
+    // Note: the stale field persists on disk until the next saveState() call.
+    // Unlike the old isValidState() cleanup, Zod stripping is in-memory only.
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(onDisk.config.snoozedPRs).toBeDefined();
   });
 
   it('strips PR URLs from dismissedIssues on load', () => {
