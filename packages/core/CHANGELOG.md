@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.60.1...core-v1.0.0) (2026-03-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* ship 1.0.0 — stability policy and semver commitment ([#746](https://github.com/costajohnt/oss-autopilot/issues/746))
+
+### Features
+
+* ship 1.0.0 — stability policy and semver commitment ([#746](https://github.com/costajohnt/oss-autopilot/issues/746)) ([f1b2ab0](https://github.com/costajohnt/oss-autopilot/commit/f1b2ab04e7034aa788f55827d961de5270d58319)), closes [#667](https://github.com/costajohnt/oss-autopilot/issues/667)
+
 ## [0.60.1](https://github.com/costajohnt/oss-autopilot/compare/core-v0.60.0...core-v0.60.1) (2026-03-12)
 
 
