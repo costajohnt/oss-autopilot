@@ -4,7 +4,6 @@
     ".": {
       "release-type": "simple",
       "component": "core",
-      "bump-minor-pre-major": true,
       "draft": false,
       "prerelease": false,
       "changelog-path": "packages/core/CHANGELOG.md",
