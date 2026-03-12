@@ -2,7 +2,7 @@
  * Core types for the Open Source Contribution Agent
  */
 
-import { AgentConfigSchema, AgentStateSchema } from './state-schema.js';
+import { AgentConfigSchema, AgentStateSchema, ProjectCategorySchema, IssueScopeSchema } from './state-schema.js';
 
 import type {
   FetchedPRStatus,
@@ -335,18 +335,11 @@ export const DEFAULT_CONFIG = AgentConfigSchema.parse({}) as AgentConfig;
 /** Initial state written to `~/.oss-autopilot/state.json` on first run. Uses v2 architecture. */
 export const INITIAL_STATE = AgentStateSchema.parse({ version: 2 }) as AgentState;
 
-// ── Const arrays (kept for runtime iteration) ───────────────────────
+// ── Const arrays (derived from Zod schemas for runtime iteration) ────
 
-export const PROJECT_CATEGORIES = [
-  'nonprofit',
-  'devtools',
-  'infrastructure',
-  'web-frameworks',
-  'data-ml',
-  'education',
-] as const;
+export const PROJECT_CATEGORIES = ProjectCategorySchema.options;
 
-export const ISSUE_SCOPES = ['beginner', 'intermediate', 'advanced'] as const;
+export const ISSUE_SCOPES = IssueScopeSchema.options;
 
 export const SCOPE_LABELS: Record<IssueScope, string[]> = {
   beginner: ['good first issue', 'help wanted', 'easy', 'up-for-grabs', 'first-timers-only', 'beginner'],

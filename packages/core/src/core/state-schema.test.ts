@@ -12,30 +12,28 @@ import {
 } from './state-schema.js';
 
 describe('AgentStateSchema', () => {
-  describe('valid state roundtrip', () => {
-    it('should parse { version: 2 } and fill all defaults', () => {
+  describe('missing optional fields get defaults', () => {
+    it('should populate all fields with defaults from minimal { version: 2 } input', () => {
       const result = AgentStateSchema.parse({ version: 2 });
 
+      // Top-level defaults
       expect(result.version).toBe(2);
       expect(result.repoScores).toEqual({});
       expect(result.events).toEqual([]);
       expect(result.activeIssues).toEqual([]);
 
+      // lastRunAt should be a valid ISO string
+      expect(typeof result.lastRunAt).toBe('string');
+      expect(new Date(result.lastRunAt).toISOString()).toBe(result.lastRunAt);
+
       // Config defaults
+      expect(result.config.setupComplete).toBe(false);
       expect(result.config.githubUsername).toBe('');
       expect(result.config.maxActivePRs).toBe(10);
-      expect(result.config.languages).toEqual(['typescript', 'javascript']);
-    });
-  });
-
-  describe('missing optional fields get defaults', () => {
-    it('should populate all optional fields with defaults from minimal input', () => {
-      const result = AgentStateSchema.parse({ version: 2 });
-
-      expect(result.config.setupComplete).toBe(false);
       expect(result.config.dormantThresholdDays).toBe(30);
       expect(result.config.approachingDormantDays).toBe(25);
       expect(result.config.maxIssueAgeDays).toBe(90);
+      expect(result.config.languages).toEqual(['typescript', 'javascript']);
       expect(result.config.labels).toEqual(['good first issue', 'help wanted']);
       expect(result.config.excludeRepos).toEqual([]);
       expect(result.config.trustedProjects).toEqual([]);
@@ -49,10 +47,6 @@ describe('AgentStateSchema', () => {
       expect(result.config.dismissedIssues).toEqual({});
       expect(result.config.projectCategories).toEqual([]);
       expect(result.config.preferredOrgs).toEqual([]);
-
-      // lastRunAt should be a valid ISO string
-      expect(typeof result.lastRunAt).toBe('string');
-      expect(new Date(result.lastRunAt).toISOString()).toBe(result.lastRunAt);
     });
 
     it('should preserve custom config values while defaulting the rest', () => {
@@ -215,41 +209,26 @@ describe('AgentConfigSchema', () => {
 });
 
 describe('ShelvedPRRefSchema', () => {
+  const validShelvedPR = {
+    number: 1,
+    url: 'https://github.com/owner/repo/pull/1',
+    title: 'Fix bug',
+    repo: 'owner/repo',
+    daysSinceActivity: 5,
+    status: 'needs_addressing' as const,
+  };
+
   describe('enum validation', () => {
     it('should pass for valid ShelvedPRRef with needs_addressing', () => {
-      const result = ShelvedPRRefSchema.safeParse({
-        number: 1,
-        url: 'https://github.com/owner/repo/pull/1',
-        title: 'Fix bug',
-        repo: 'owner/repo',
-        daysSinceActivity: 5,
-        status: 'needs_addressing',
-      });
-      expect(result.success).toBe(true);
+      expect(ShelvedPRRefSchema.safeParse(validShelvedPR).success).toBe(true);
     });
 
     it('should pass for valid ShelvedPRRef with waiting_on_maintainer', () => {
-      const result = ShelvedPRRefSchema.safeParse({
-        number: 2,
-        url: 'https://github.com/owner/repo/pull/2',
-        title: 'Add feature',
-        repo: 'owner/repo',
-        daysSinceActivity: 10,
-        status: 'waiting_on_maintainer',
-      });
-      expect(result.success).toBe(true);
+      expect(ShelvedPRRefSchema.safeParse({ ...validShelvedPR, status: 'waiting_on_maintainer' }).success).toBe(true);
     });
 
     it('should fail for invalid status "dormant"', () => {
-      const result = ShelvedPRRefSchema.safeParse({
-        number: 1,
-        url: 'https://github.com/owner/repo/pull/1',
-        title: 'Fix bug',
-        repo: 'owner/repo',
-        daysSinceActivity: 5,
-        status: 'dormant',
-      });
-      expect(result.success).toBe(false);
+      expect(ShelvedPRRefSchema.safeParse({ ...validShelvedPR, status: 'dormant' }).success).toBe(false);
     });
   });
 });

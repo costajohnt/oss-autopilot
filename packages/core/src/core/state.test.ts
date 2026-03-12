@@ -2836,7 +2836,7 @@ describe('schema validation in loadState', () => {
     const sm = new StateManager(false);
     const state = sm.getState();
 
-    // Verify Zod defaults are applied
+    // Verify Zod defaults are applied at the top level
     expect(state.version).toBe(2);
     expect(state.events).toEqual([]);
     expect(state.repoScores).toEqual({});
@@ -2844,18 +2844,10 @@ describe('schema validation in loadState', () => {
     expect(typeof state.lastRunAt).toBe('string');
     expect(state.lastRunAt.length).toBeGreaterThan(0);
 
-    // Config should have all defaults filled in
+    // Spot-check config defaults (exhaustive default coverage in state-schema.test.ts)
     expect(state.config.setupComplete).toBe(false);
     expect(state.config.maxActivePRs).toBe(10);
-    expect(state.config.dormantThresholdDays).toBe(30);
-    expect(state.config.languages).toEqual(['typescript', 'javascript']);
-    expect(state.config.labels).toEqual(['good first issue', 'help wanted']);
-    expect(state.config.excludeRepos).toEqual([]);
-    expect(state.config.trustedProjects).toEqual([]);
     expect(state.config.githubUsername).toBe('');
-    expect(state.config.minRepoScoreThreshold).toBe(4);
-    expect(state.config.shelvedPRUrls).toEqual([]);
-    expect(state.config.dismissedIssues).toEqual({});
   });
 
   it('should preserve existing fields while filling missing defaults on load', () => {
