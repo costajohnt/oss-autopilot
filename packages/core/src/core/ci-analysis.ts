@@ -49,7 +49,7 @@ const INFRASTRUCTURE_PATTERNS: RegExp[] = [
 ];
 
 /**
- * Classify a failing CI check as actionable, fork_limitation, auth_gate, or infrastructure (#81, #145).
+ * Classify a failing CI check as actionable, fork_limitation, auth_gate, or infrastructure (#81, #145, #743).
  * Default is 'actionable' — only known patterns get reclassified.
  * Conclusion-based classification (cancelled, timed_out, action_required) takes precedence
  * over name-based pattern matching.
@@ -81,7 +81,7 @@ export function classifyCICheck(name: string, description?: string, conclusion?:
 
 /**
  * Classify all failing checks and return both the flat names array and classified array (#81, #145).
- * Accepts optional conclusion data to detect infrastructure failures.
+ * Accepts optional conclusion data to detect infrastructure failures and auth gates.
  */
 export function classifyFailingChecks(
   failingCheckNames: string[],

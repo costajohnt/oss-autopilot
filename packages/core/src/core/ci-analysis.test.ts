@@ -55,6 +55,10 @@ describe('classifyCICheck', () => {
     expect(classifyCICheck('some-workflow', undefined, 'action_required')).toBe('auth_gate');
   });
 
+  it('should prefer action_required conclusion over name-based classification (#743)', () => {
+    expect(classifyCICheck('Vercel Deploy', undefined, 'action_required')).toBe('auth_gate');
+  });
+
   it('should classify ReadTheDocs as infrastructure (#743)', () => {
     expect(classifyCICheck('readthedocs/build')).toBe('infrastructure');
     expect(classifyCICheck('ReadTheDocs Preview')).toBe('infrastructure');
@@ -125,6 +129,18 @@ describe('analyzeCheckRuns', () => {
     expect(result.hasFailingChecks).toBe(true);
     expect(result.hasSuccessfulChecks).toBe(true);
     expect(result.failingCheckNames).toEqual(['gate']);
+  });
+
+  it('should handle mixed action_required and real failure checks (#743)', () => {
+    const result = analyzeCheckRuns([
+      { name: 'gate', conclusion: 'action_required', status: 'completed' },
+      { name: 'tests', conclusion: 'failure', status: 'completed' },
+    ]);
+    expect(result.hasFailingChecks).toBe(true);
+    expect(result.failingCheckNames).toEqual(['gate', 'tests']);
+    const classified = classifyFailingChecks(result.failingCheckNames, result.failingCheckConclusions);
+    expect(classified.find((c) => c.name === 'gate')?.category).toBe('auth_gate');
+    expect(classified.find((c) => c.name === 'tests')?.category).toBe('actionable');
   });
 
   it('should detect successful checks', () => {
@@ -201,12 +217,17 @@ describe('mergeStatuses', () => {
   });
 
   it('should report failing with action_required conclusions preserved (#743)', () => {
-    const checkRunAnalysis = analyzeCheckRuns([
-      { name: 'gate', conclusion: 'action_required', status: 'completed' },
-      { name: 'lint', conclusion: 'success', status: 'completed' },
-    ]);
-    const combinedAnalysis = { effectiveCombinedState: 'success', hasStatuses: false, failingStatusNames: [] };
-    const result = mergeStatuses(checkRunAnalysis, combinedAnalysis, 2);
+    const result = mergeStatuses(
+      {
+        hasFailingChecks: true,
+        hasPendingChecks: false,
+        hasSuccessfulChecks: true,
+        failingCheckNames: ['gate'],
+        failingCheckConclusions: new Map([['gate', 'action_required']]),
+      },
+      { effectiveCombinedState: 'success', hasStatuses: false, failingStatusNames: [] },
+      2,
+    );
     expect(result.status).toBe('failing');
     expect(result.failingCheckNames).toEqual(['gate']);
     expect(result.failingCheckConclusions.get('gate')).toBe('action_required');
