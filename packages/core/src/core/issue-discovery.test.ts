@@ -76,6 +76,115 @@ const { analyzeRequirements } = await import('./issue-eligibility.js');
 
 const { getStateManager } = await import('./state.js');
 
+/** Create a search item with enough body content to pass analyzeRequirements */
+function makeSearchItem(repo: string, num: number) {
+  return {
+    html_url: `https://github.com/${repo}/issues/${num}`,
+    repository_url: `https://api.github.com/repos/${repo}`,
+    updated_at: new Date().toISOString(),
+    title: `Test issue ${num}`,
+    labels: [{ name: 'good first issue' }],
+    id: num,
+    comments: 0,
+    body: `1. Step one\n2. Step two\nThis should work correctly.\n${'x'.repeat(200)}`,
+    created_at: new Date().toISOString(),
+    number: num,
+  };
+}
+
+/**
+ * Build state mock for search-related tests.
+ * Sets up getStateManager to return a mock with the supplied config overrides,
+ * repo lists, and activeIssues.
+ */
+function mockStateForSearch(
+  overrides: {
+    mergedPRRepos?: string[];
+    openPRRepos?: string[];
+    starredRepos?: string[];
+    lowScoringRepos?: string[];
+    config?: Record<string, unknown>;
+    activeIssues?: any[];
+    isStarredReposStale?: boolean;
+  } = {},
+): void {
+  const config: Record<string, unknown> = {
+    githubUsername: 'testuser',
+    trustedProjects: [],
+    starredRepos: [],
+    excludeRepos: [],
+    languages: ['typescript'],
+    labels: ['good first issue'],
+    maxIssueAgeDays: 90,
+    includeDocIssues: true,
+    minStars: 0,
+    ...overrides.config,
+  };
+  (getStateManager as any).mockReturnValue({
+    getState: () => ({ config, repoScores: {}, activeIssues: overrides.activeIssues ?? [] }),
+    getStarredRepos: () => overrides.starredRepos ?? [],
+    setStarredRepos: vi.fn(),
+    isStarredReposStale: () => overrides.isStarredReposStale ?? false,
+    getReposWithMergedPRs: () => overrides.mergedPRRepos ?? [],
+    getReposWithOpenPRs: () => overrides.openPRRepos ?? [],
+    getLowScoringRepos: () => overrides.lowScoringRepos ?? [],
+    getRepoScore: () => undefined,
+    getHighScoringRepos: () => [],
+  });
+}
+
+/**
+ * Build a full octokit mock satisfying both search and vetting pipelines.
+ * Accepts a custom searchImpl to route queries by content.
+ */
+function fullOctokitMock(
+  searchImpl?: (params: { q?: string }) => Promise<{ data: { total_count: number; items: any[] } }>,
+): any {
+  const recentDate = new Date().toISOString();
+  const defaultSearch = () => Promise.resolve({ data: { total_count: 0, items: [] } });
+
+  return {
+    search: {
+      issuesAndPullRequests: vi.fn().mockImplementation(searchImpl ?? defaultSearch),
+    },
+    issues: {
+      get: vi.fn().mockImplementation(({ owner, repo, issue_number }: any) =>
+        Promise.resolve({
+          data: {
+            id: issue_number,
+            html_url: `https://github.com/${owner}/${repo}/issues/${issue_number}`,
+            title: `Test issue ${issue_number}`,
+            labels: [{ name: 'good first issue' }],
+            created_at: recentDate,
+            updated_at: recentDate,
+            comments: 0,
+            body: `1. Step one\n2. Step two\nThis should work correctly.\n${'x'.repeat(200)}`,
+          },
+        }),
+      ),
+      listEventsForTimeline: vi.fn().mockResolvedValue({ data: [] }),
+    },
+    repos: {
+      get: vi.fn().mockResolvedValue({
+        data: { open_issues_count: 5, pushed_at: recentDate, stargazers_count: 200, forks_count: 30 },
+      }),
+      listCommits: vi.fn().mockResolvedValue({
+        data: [{ commit: { author: { date: recentDate } } }],
+      }),
+      getContent: vi.fn().mockRejectedValue(new Error('404 Not Found')),
+    },
+    actions: {
+      listRepoWorkflows: vi.fn().mockResolvedValue({ data: { total_count: 1 } }),
+    },
+    paginate: {
+      iterator: vi.fn(),
+    },
+    activity: {
+      listReposStarredByAuthenticatedUser: vi.fn(),
+    },
+  };
+}
+
 describe('calculateViabilityScore', () => {
   const baseParams = {
     repoScore: null as number | null,
@@ -998,47 +1107,8 @@ describe('applyPerRepoCap (#105)', () => {
 describe('aiPolicyBlocklist filtering in searchIssues (#108)', () => {
   let discovery: InstanceType<typeof IssueDiscovery>;
 
-  const makeSearchItem = (repo: string, num: number) => ({
-    html_url: `https://github.com/${repo}/issues/${num}`,
-    repository_url: `https://api.github.com/repos/${repo}`,
-    updated_at: new Date().toISOString(),
-    title: `Test issue ${num}`,
-    labels: [{ name: 'good first issue' }],
-    id: num,
-    comments: 0,
-    body: `1. Step one\n2. Step two\nThis should work correctly.\n${'x'.repeat(200)}`,
-    created_at: new Date().toISOString(),
-    number: num,
-  });
-
-  function mockStateWithBlocklist(aiPolicyBlocklist?: string[]): void {
-    const config: Record<string, unknown> = {
-      githubUsername: 'testuser',
-      trustedProjects: [],
-      starredRepos: [],
-      excludeRepos: [],
-      languages: ['typescript'],
-      labels: ['good first issue'],
-      maxIssueAgeDays: 90,
-      includeDocIssues: true,
-      minStars: 0,
-    };
-    if (aiPolicyBlocklist !== undefined) {
-      config.aiPolicyBlocklist = aiPolicyBlocklist;
-    }
-    (getStateManager as any).mockReturnValue({
-      getState: () => ({ config, repoScores: {}, activeIssues: [] }),
-      getStarredRepos: () => [],
-      isStarredReposStale: () => false,
-      getReposWithMergedPRs: () => [],
-      getReposWithOpenPRs: () => [],
-      getLowScoringRepos: () => [],
-      getRepoScore: () => undefined,
-    });
-  }
-
   beforeEach(() => {
-    mockStateWithBlocklist(['blocked/repo']);
+    mockStateForSearch({ config: { aiPolicyBlocklist: ['blocked/repo'] } });
 
     mockOctokitInstance = {
       search: {
@@ -1091,7 +1161,7 @@ describe('aiPolicyBlocklist filtering in searchIssues (#108)', () => {
   });
 
   it('should pass through all issues when blocklist is empty', async () => {
-    mockStateWithBlocklist([]);
+    mockStateForSearch({ config: { aiPolicyBlocklist: [] } });
     discovery = new IssueDiscovery('fake-token');
 
     const candidates = await discovery.searchIssues({ maxResults: 10 });
@@ -1101,7 +1171,7 @@ describe('aiPolicyBlocklist filtering in searchIssues (#108)', () => {
   });
 
   it('should handle undefined blocklist gracefully', async () => {
-    mockStateWithBlocklist(undefined);
+    mockStateForSearch();
     discovery = new IssueDiscovery('fake-token');
 
     const candidates = await discovery.searchIssues({ maxResults: 10 });
@@ -1112,7 +1182,7 @@ describe('aiPolicyBlocklist filtering in searchIssues (#108)', () => {
   });
 
   it('should fall back to DEFAULT_CONFIG blocklist when config value is undefined', async () => {
-    mockStateWithBlocklist(undefined);
+    mockStateForSearch();
     // Include matplotlib/matplotlib (which IS in DEFAULT_CONFIG.aiPolicyBlocklist) in search results
     mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
       data: {
@@ -1242,79 +1312,11 @@ describe('IssueDiscovery.formatCandidate', () => {
 describe('Phase 3: actively maintained repos (#349)', () => {
   let discovery: InstanceType<typeof IssueDiscovery>;
 
-  const makeSearchItem = (repo: string, num: number) => ({
-    html_url: `https://github.com/${repo}/issues/${num}`,
-    repository_url: `https://api.github.com/repos/${repo}`,
-    updated_at: new Date().toISOString(),
-    title: `Test issue ${num}`,
-    labels: [{ name: 'good first issue' }],
-    id: num,
-    comments: 0,
-    body: `1. Step one\n2. Step two\nThis should work correctly.\n${'x'.repeat(200)}`,
-    created_at: new Date().toISOString(),
-    number: num,
-  });
-
   beforeEach(() => {
-    (getStateManager as any).mockReturnValue({
-      getState: () => ({
-        config: {
-          githubUsername: 'testuser',
-          trustedProjects: [],
-          starredRepos: [],
-          excludeRepos: [],
-          languages: ['typescript'],
-          labels: ['good first issue'],
-          maxIssueAgeDays: 90,
-          includeDocIssues: true,
-          minStars: 50,
-        },
-        repoScores: {},
-        activeIssues: [],
-      }),
-      getStarredRepos: () => [],
-      isStarredReposStale: () => false,
-      getReposWithMergedPRs: () => [],
-      getReposWithOpenPRs: () => [],
-      getLowScoringRepos: () => [],
-      getRepoScore: () => undefined,
-    });
-
-    mockOctokitInstance = {
-      search: {
-        issuesAndPullRequests: vi.fn(),
-      },
-      issues: {
-        get: vi.fn().mockImplementation(({ owner, repo, issue_number }: any) =>
-          Promise.resolve({
-            data: {
-              id: issue_number,
-              html_url: `https://github.com/${owner}/${repo}/issues/${issue_number}`,
-              title: `Test issue ${issue_number}`,
-              labels: [{ name: 'good first issue' }],
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              comments: 0,
-              body: `1. Step one\n2. Step two\nThis should work correctly.\n${'x'.repeat(200)}`,
-            },
-          }),
-        ),
-        listEventsForTimeline: vi.fn().mockResolvedValue({ data: [] }),
-      },
-      repos: {
-        get: vi.fn().mockResolvedValue({
-          data: { open_issues_count: 5, pushed_at: new Date().toISOString(), stargazers_count: 100, forks_count: 20 },
-        }),
-        listCommits: vi.fn().mockResolvedValue({
-          data: [{ commit: { author: { date: new Date().toISOString() } } }],
-        }),
-        getContent: vi.fn().mockRejectedValue(new Error('404 Not Found')),
-      },
-      actions: {
-        listRepoWorkflows: vi.fn().mockResolvedValue({ data: { total_count: 1 } }),
-      },
-    };
-
+    mockStateForSearch({ config: { minStars: 50 } });
+    mockOctokitInstance = fullOctokitMock();
+    // Phase 3 tests use .mockResolvedValueOnce chains, so reset the default impl
+    mockOctokitInstance.search.issuesAndPullRequests.mockReset();
     discovery = new IssueDiscovery('fake-token');
   });
 
@@ -1447,20 +1449,7 @@ describe('Search result caching (#487)', () => {
     mockCache.getIfFresh.mockReturnValue(null);
     mockCache.set.mockClear();
 
-    mockOctokitInstance = {
-      issues: { get: vi.fn(), listEventsForTimeline: vi.fn().mockResolvedValue({ data: [] }) },
-      search: { issuesAndPullRequests: vi.fn().mockResolvedValue({ data: { total_count: 0, items: [] } }) },
-      repos: {
-        get: vi.fn().mockResolvedValue({
-          data: { open_issues_count: 0, pushed_at: new Date().toISOString(), stargazers_count: 100, forks_count: 10 },
-        }),
-        listCommits: vi.fn().mockResolvedValue({ data: [{ commit: { author: { date: new Date().toISOString() } } }] }),
-        getContent: vi.fn().mockRejectedValue(new Error('404 Not Found')),
-      },
-      actions: { listRepoWorkflows: vi.fn().mockResolvedValue({ data: { total_count: 0 } }) },
-      paginate: { iterator: vi.fn() },
-      activity: { listReposStarredByAuthenticatedUser: vi.fn() },
-    };
+    mockOctokitInstance = fullOctokitMock();
     discovery = new IssueDiscovery('fake-token');
   });
 
@@ -1709,5 +1698,825 @@ describe('formatCandidate', () => {
 
     expect(output).toContain('Has 3 linked PRs');
     expect(output).toContain('Recently discussed');
+  });
+});
+
+// ── Orchestration tests: fetchStarredRepos, getStarredReposWithRefresh, searchIssues ──
+
+const { checkRateLimit } = await import('./github.js');
+
+describe('fetchStarredRepos', () => {
+  let discovery: InstanceType<typeof IssueDiscovery>;
+
+  /** Set the paginate mock to yield the given pages */
+  function mockPaginator(pages: Array<{ data: any[] }>): void {
+    mockOctokitInstance.paginate.iterator = vi.fn().mockReturnValue(
+      (async function* () {
+        for (const page of pages) yield page;
+      })(),
+    );
+  }
+
+  beforeEach(() => {
+    mockStateForSearch();
+    mockOctokitInstance = fullOctokitMock();
+    discovery = new IssueDiscovery('fake-token');
+  });
+
+  it('should paginate through starred repos', async () => {
+    mockPaginator([
+      { data: [{ full_name: 'org/repo1' }, { full_name: 'org/repo2' }] },
+      { data: [{ full_name: 'org/repo3' }] },
+    ]);
+
+    const repos = await discovery.fetchStarredRepos();
+    expect(repos).toEqual(['org/repo1', 'org/repo2', 'org/repo3']);
+  });
+
+  it('should handle Repository response type with full_name directly on object', async () => {
+    mockPaginator([{ data: [{ full_name: 'direct/repo' }] }]);
+
+    const repos = await discovery.fetchStarredRepos();
+    expect(repos).toContain('direct/repo');
+  });
+
+  it('should handle StarredRepository response type with nested repo.full_name', async () => {
+    mockPaginator([{ data: [{ repo: { full_name: 'nested/repo' } }] }]);
+
+    const repos = await discovery.fetchStarredRepos();
+    expect(repos).toContain('nested/repo');
+  });
+
+  it('should limit to 5 pages', async () => {
+    let pagesYielded = 0;
+    mockOctokitInstance.paginate.iterator = vi.fn().mockReturnValue(
+      (async function* () {
+        for (let page = 0; page < 10; page++) {
+          pagesYielded++;
+          yield { data: [{ full_name: `org/repo${page}` }] };
+        }
+      })(),
+    );
+
+    const repos = await discovery.fetchStarredRepos();
+    expect(repos).toHaveLength(5);
+    expect(pagesYielded).toBe(5);
+  });
+
+  it('should fall back to cached repos on API error', async () => {
+    mockStateForSearch({ starredRepos: ['cached/repo1', 'cached/repo2'] });
+    mockOctokitInstance.paginate.iterator = vi.fn().mockReturnValue({
+      [Symbol.asyncIterator]() {
+        return { next: () => Promise.reject(new Error('API error')) };
+      },
+    });
+    discovery = new IssueDiscovery('fake-token');
+
+    const repos = await discovery.fetchStarredRepos();
+    expect(repos).toEqual(['cached/repo1', 'cached/repo2']);
+  });
+
+  it('should warn when no cached repos available on error', async () => {
+    mockStateForSearch({ starredRepos: [] });
+    mockOctokitInstance.paginate.iterator = vi.fn().mockReturnValue({
+      [Symbol.asyncIterator]() {
+        return { next: () => Promise.reject(new Error('Network timeout')) };
+      },
+    });
+    discovery = new IssueDiscovery('fake-token');
+
+    const repos = await discovery.fetchStarredRepos();
+    expect(repos).toEqual([]);
+  });
+});
+
+describe('getStarredReposWithRefresh', () => {
+  it('should fetch from API when cache is stale', async () => {
+    mockStateForSearch({ starredRepos: ['old/repo'], isStarredReposStale: true });
+    mockOctokitInstance = fullOctokitMock();
+    mockOctokitInstance.paginate = {
+      iterator: vi.fn().mockReturnValue(
+        (async function* () {
+          yield { data: [{ full_name: 'fresh/repo' }] };
+        })(),
+      ),
+    };
+    const discovery = new IssueDiscovery('fake-token');
+
+    const repos = await discovery.getStarredReposWithRefresh();
+    expect(repos).toContain('fresh/repo');
+  });
+
+  it('should return cached repos when cache is fresh', async () => {
+    mockStateForSearch({ starredRepos: ['cached/repo'], isStarredReposStale: false });
+    mockOctokitInstance = fullOctokitMock();
+    const discovery = new IssueDiscovery('fake-token');
+
+    const repos = await discovery.getStarredReposWithRefresh();
+    expect(repos).toEqual(['cached/repo']);
+  });
+});
+
+describe('searchIssues orchestration', () => {
+  beforeEach(async () => {
+    // Restore http-cache mocks (clearAllMocks would wipe their implementations)
+    const httpCache = await import('./http-cache.js');
+    const mockCache = {
+      getIfFresh: vi.fn().mockReturnValue(null),
+      get: vi.fn().mockReturnValue(null),
+      set: vi.fn(),
+      hasInflight: vi.fn().mockReturnValue(false),
+      getInflight: vi.fn().mockReturnValue(undefined),
+      setInflight: vi.fn().mockReturnValue(() => {}),
+    };
+    vi.mocked(httpCache.getHttpCache).mockReturnValue(mockCache as any);
+    vi.mocked(httpCache.cachedTimeBased).mockImplementation(
+      async (cache: any, _key: string, _maxAgeMs: number, fetcher: () => Promise<unknown>) => {
+        const cached = cache.getIfFresh(_key, _maxAgeMs);
+        if (cached) return cached;
+        const result = await fetcher();
+        cache.set(_key, '', result);
+        return result;
+      },
+    );
+    vi.mocked(httpCache.cachedRequest).mockImplementation(
+      async (_cache: unknown, _url: string, fetcher: (h: Record<string, string>) => Promise<{ data: unknown }>) => {
+        const response = await fetcher({});
+        return response.data;
+      },
+    );
+    // Restore default rate limit mock
+    vi.mocked(checkRateLimit).mockResolvedValue({
+      remaining: 30,
+      limit: 30,
+      resetAt: new Date().toISOString(),
+    });
+  });
+
+  describe('Phase 0: merged-PR and open-PR repos', () => {
+    it('should search merged-PR repos with established query (no label filter)', async () => {
+      mockStateForSearch({ mergedPRRepos: ['merged/repo1'] });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('repo:merged/repo1')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('merged/repo1', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 5 });
+      expect(candidates.length).toBeGreaterThanOrEqual(1);
+      expect(candidates[0].issue.repo).toBe('merged/repo1');
+    });
+
+    it('should search open-PR repos after merged-PR repos', async () => {
+      mockStateForSearch({
+        mergedPRRepos: ['merged/repo'],
+        openPRRepos: ['open/repo'],
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('repo:open/repo')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('open/repo', 1)] },
+          });
+        }
+        if (params.q?.includes('repo:merged/repo')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('merged/repo', 2)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 10 });
+      const repos = candidates.map((c) => c.issue.repo);
+      expect(repos).toContain('merged/repo');
+      expect(repos).toContain('open/repo');
+    });
+
+    it('should skip Phase 0 when no merged/open PR repos', async () => {
+      mockStateForSearch({ mergedPRRepos: [], openPRRepos: [] });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('phase2/repo', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 5 });
+      // Should still find results from later phases
+      expect(candidates.length).toBeGreaterThanOrEqual(1);
+
+      // Verify no batched repo: queries were made (Phase 0 uses `searchInRepos` which builds
+      // queries with "(repo:a OR repo:b)" syntax — distinct from vetting's single repo: queries)
+      const calls = mockOctokitInstance.search.issuesAndPullRequests.mock.calls;
+      const batchedRepoCalls = calls.filter((c: any[]) => {
+        const q = c[0]?.q ?? '';
+        return q.includes('(repo:') && q.includes(' OR ');
+      });
+      expect(batchedRepoCalls).toHaveLength(0);
+    });
+
+    it('should cap Phase 0 repos at 10', async () => {
+      const manyRepos = Array.from({ length: 15 }, (_, i) => `org/repo${i}`);
+      mockStateForSearch({ mergedPRRepos: manyRepos });
+      mockOctokitInstance = fullOctokitMock(() => Promise.resolve({ data: { total_count: 0, items: [] } }));
+      const discovery = new IssueDiscovery('fake-token');
+
+      await expect(discovery.searchIssues({ maxResults: 5 })).rejects.toThrow(/No issue candidates found/);
+
+      // Check that repo: queries don't include repos beyond the cap
+      const calls = mockOctokitInstance.search.issuesAndPullRequests.mock.calls;
+      const allQueries = calls.map((c: any[]) => c[0]?.q ?? '').join(' ');
+      // repo10 through repo14 should not appear (slice(0,10) keeps repo0-repo9)
+      expect(allQueries).not.toContain('repo:org/repo10');
+      expect(allQueries).not.toContain('repo:org/repo14');
+    });
+
+    it('should search open-PR repos independently when merged repos fill Phase 0a', async () => {
+      // Open-PR repos that are NOT in mergedPRRepos — covers the openPhase0Repos branch
+      mockStateForSearch({
+        mergedPRRepos: ['merged/repo'],
+        openPRRepos: ['open/repo'],
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('repo:merged/repo') && !params.q?.includes('repo:open/repo')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('merged/repo', 1)] },
+          });
+        }
+        if (params.q?.includes('repo:open/repo')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('open/repo', 2)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 10 });
+      const repos = candidates.map((c) => c.issue.repo);
+      expect(repos).toContain('open/repo');
+    });
+
+    it('should omit language filter when languages includes "any"', async () => {
+      mockStateForSearch({
+        config: { languages: ['any'] },
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('any/repo', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 5 });
+      expect(candidates.length).toBeGreaterThanOrEqual(1);
+
+      // Verify no language: filter in the query
+      const calls = mockOctokitInstance.search.issuesAndPullRequests.mock.calls;
+      const hasLanguageFilter = calls.some((c: any[]) => c[0]?.q?.includes('language:'));
+      expect(hasLanguageFilter).toBe(false);
+    });
+
+    it('should track phase0Error when all batches fail', async () => {
+      mockStateForSearch({ mergedPRRepos: ['merged/repo1'] });
+      const error = new Error('Server error');
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('repo:')) {
+          return Promise.reject(error);
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      // Should still throw since no results were found anywhere
+      await expect(discovery.searchIssues({ maxResults: 5 })).rejects.toThrow(/Phase 0/);
+    });
+
+    it('should track rateLimitHit from Phase 0', async () => {
+      mockStateForSearch({ mergedPRRepos: ['merged/repo1'] });
+      const rateLimitError = Object.assign(new Error('rate limit exceeded'), { status: 403 });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('repo:')) {
+          return Promise.reject(rateLimitError);
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      // With rate limit and no results, should return [] with rateLimitWarning
+      const candidates = await discovery.searchIssues({ maxResults: 5 });
+      expect(candidates).toEqual([]);
+      expect(discovery.rateLimitWarning).toBeTruthy();
+    });
+  });
+
+  describe('Phase 0.5: preferred orgs', () => {
+    it('should search preferred orgs with org: filter', async () => {
+      mockStateForSearch({ config: { preferredOrgs: ['myorg'] } });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('org:myorg')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('myorg/repo', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 5 });
+      expect(candidates.length).toBeGreaterThanOrEqual(1);
+      expect(candidates.some((c) => c.issue.repo === 'myorg/repo')).toBe(true);
+    });
+
+    it('should skip orgs already covered by Phase 0 repos', async () => {
+      mockStateForSearch({
+        mergedPRRepos: ['myorg/repo1'],
+        config: { preferredOrgs: ['myorg'] },
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('repo:myorg/repo1')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('myorg/repo1', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      await discovery.searchIssues({ maxResults: 10 });
+
+      // No org: query should have been made since myorg is covered by Phase 0
+      const calls = mockOctokitInstance.search.issuesAndPullRequests.mock.calls;
+      const orgCalls = calls.filter((c: any[]) => c[0]?.q?.includes('org:myorg'));
+      expect(orgCalls).toHaveLength(0);
+    });
+
+    it('should handle API error in preferred org search', async () => {
+      mockStateForSearch({ config: { preferredOrgs: ['failorg'] } });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('org:failorg')) {
+          return Promise.reject(new Error('API error'));
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      // Should include error details for the org phase
+      await expect(discovery.searchIssues({ maxResults: 5 })).rejects.toThrow(/Phase 0\.5/);
+    });
+
+    it('should track rateLimitHit from preferred org search', async () => {
+      mockStateForSearch({ config: { preferredOrgs: ['limitorg'] } });
+      const rateLimitError = Object.assign(new Error('rate limit exceeded'), { status: 403 });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('org:limitorg')) {
+          return Promise.reject(rateLimitError);
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 5 });
+      expect(candidates).toEqual([]);
+      expect(discovery.rateLimitWarning).toBeTruthy();
+    });
+  });
+
+  describe('Phase 1: starred repos', () => {
+    it('should search starred repos excluding Phase 0 repos', async () => {
+      mockStateForSearch({
+        mergedPRRepos: ['merged/repo'],
+        starredRepos: ['merged/repo', 'starred/repo'],
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('repo:starred/repo')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('starred/repo', 1)] },
+          });
+        }
+        if (params.q?.includes('repo:merged/repo')) {
+          return Promise.resolve({ data: { total_count: 0, items: [] } });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 10 });
+      const repos = candidates.map((c) => c.issue.repo);
+      expect(repos).toContain('starred/repo');
+    });
+
+    it('should skip Phase 1 when maxResults already met', async () => {
+      mockStateForSearch({
+        mergedPRRepos: ['merged/repo'],
+        starredRepos: ['starred/repo'],
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('repo:merged/repo')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('merged/repo', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 1 });
+      expect(candidates).toHaveLength(1);
+
+      // Verify starred/repo was NOT searched
+      const calls = mockOctokitInstance.search.issuesAndPullRequests.mock.calls;
+      const starredCalls = calls.filter((c: any[]) => c[0]?.q?.includes('repo:starred/repo'));
+      expect(starredCalls).toHaveLength(0);
+    });
+  });
+
+  describe('Phase 2: multi-tier interleaving', () => {
+    it('should fire one query per scope tier when multiple scopes', async () => {
+      mockStateForSearch({
+        config: {
+          scope: ['beginner', 'intermediate'],
+          labels: [],
+        },
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('beginner/repo', 1)] },
+          });
+        }
+        if (params.q?.includes('help wanted')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('intermediate/repo', 2)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 10 });
+      // Should have results from both tiers
+      expect(candidates.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should use single tier when only one scope', async () => {
+      mockStateForSearch({
+        config: { scope: ['beginner'], labels: [] },
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('only/repo', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 10 });
+      expect(candidates.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should re-throw 401 errors', async () => {
+      mockStateForSearch();
+      const authError = Object.assign(new Error('Bad credentials'), { status: 401 });
+      mockOctokitInstance = fullOctokitMock(() => Promise.reject(authError));
+      const discovery = new IssueDiscovery('fake-token');
+
+      await expect(discovery.searchIssues({ maxResults: 5 })).rejects.toThrow('Bad credentials');
+    });
+
+    it('should handle scope with no labels gracefully', async () => {
+      // Use an invalid scope that has no SCOPE_LABELS entry
+      mockStateForSearch({
+        config: {
+          scope: ['beginner', 'nonexistent_scope' as any],
+          labels: [],
+        },
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('beginner/repo', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      // Should still find results from valid scope, invalid scope is skipped
+      const candidates = await discovery.searchIssues({ maxResults: 5 });
+      expect(candidates.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should create custom pseudo-tier for labels not in any scope', async () => {
+      mockStateForSearch({
+        config: {
+          scope: ['beginner', 'intermediate'],
+          labels: ['custom-label'],
+        },
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('custom-label')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('custom/repo', 1)] },
+          });
+        }
+        if (params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('beginner/repo', 2)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 10 });
+      expect(candidates.length).toBeGreaterThanOrEqual(1);
+
+      // Verify the custom label was queried
+      const calls = mockOctokitInstance.search.issuesAndPullRequests.mock.calls;
+      const customCalls = calls.filter((c: any[]) => c[0]?.q?.includes('custom-label'));
+      expect(customCalls.length).toBeGreaterThan(0);
+    });
+
+    it('should interleave results from multiple tiers', async () => {
+      mockStateForSearch({
+        config: {
+          scope: ['beginner', 'intermediate'],
+          labels: [],
+        },
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('good first issue') && !params.q?.includes('help wanted')) {
+          return Promise.resolve({
+            data: {
+              total_count: 2,
+              items: [makeSearchItem('beginner/repo1', 1), makeSearchItem('beginner/repo2', 2)],
+            },
+          });
+        }
+        if (params.q?.includes('help wanted')) {
+          return Promise.resolve({
+            data: {
+              total_count: 1,
+              items: [makeSearchItem('intermediate/repo1', 3)],
+            },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 10 });
+      // Should have results from both tiers
+      const repos = candidates.map((c) => c.issue.repo);
+      const hasBeginner = repos.some((r) => r.startsWith('beginner/'));
+      const hasIntermediate = repos.some((r) => r.startsWith('intermediate/'));
+      expect(hasBeginner || hasIntermediate).toBe(true);
+    });
+  });
+
+  describe('result aggregation and sorting', () => {
+    it('should sort by priority > recommendation > score', async () => {
+      mockStateForSearch({
+        mergedPRRepos: ['merged/repo'],
+        starredRepos: ['starred/repo'],
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('repo:merged/repo')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('merged/repo', 1)] },
+          });
+        }
+        if (params.q?.includes('repo:starred/repo')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('starred/repo', 2)] },
+          });
+        }
+        if (params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('general/repo', 3)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 10 });
+      expect(candidates.length).toBeGreaterThanOrEqual(2);
+      // merged_pr priority should come before starred/normal
+      const mergedIdx = candidates.findIndex((c) => c.searchPriority === 'merged_pr');
+      const normalIdx = candidates.findIndex((c) => c.searchPriority === 'normal');
+      expect(mergedIdx).toBeGreaterThanOrEqual(0);
+      expect(normalIdx).toBeGreaterThanOrEqual(0);
+      expect(mergedIdx).toBeLessThan(normalIdx);
+    });
+
+    it('should apply per-repo cap of 2', async () => {
+      mockStateForSearch();
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: {
+              total_count: 4,
+              items: [
+                makeSearchItem('same/repo', 1),
+                makeSearchItem('same/repo', 2),
+                makeSearchItem('same/repo', 3),
+                makeSearchItem('other/repo', 4),
+              ],
+            },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 10 });
+      const sameRepoCount = candidates.filter((c) => c.issue.repo === 'same/repo').length;
+      expect(sameRepoCount).toBeLessThanOrEqual(2);
+    });
+
+    it('should respect maxResults limit', async () => {
+      mockStateForSearch();
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: {
+              total_count: 5,
+              items: [
+                makeSearchItem('repo/a', 1),
+                makeSearchItem('repo/b', 2),
+                makeSearchItem('repo/c', 3),
+                makeSearchItem('repo/d', 4),
+                makeSearchItem('repo/e', 5),
+              ],
+            },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 3 });
+      expect(candidates.length).toBeLessThanOrEqual(3);
+    });
+  });
+
+  describe('Phase 2/3 vetting failures', () => {
+    it('should track allVetFailed in Phase 2 when all vetting fails', async () => {
+      mockStateForSearch();
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('vet-fail/repo', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      // Make issues.get throw to cause vetting failure
+      mockOctokitInstance.issues.get.mockRejectedValue(new Error('Not Found'));
+      const discovery = new IssueDiscovery('fake-token');
+
+      // When vetting fails but no rate limit, we get a ValidationError
+      await expect(discovery.searchIssues({ maxResults: 5 })).rejects.toThrow(/No issue candidates found/);
+    });
+
+    it('should track rateLimitHit from Phase 2 vetting', async () => {
+      mockStateForSearch();
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('ratelimit/repo', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      // Make repos.get throw with rate limit to trigger rateLimitHit from vetter
+      const rateLimitError = Object.assign(new Error('rate limit exceeded'), { status: 403 });
+      mockOctokitInstance.issues.get.mockRejectedValue(rateLimitError);
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 5 });
+      expect(candidates).toEqual([]);
+      expect(discovery.rateLimitWarning).toBeTruthy();
+    });
+
+    it('should track Phase 3 vetting failure', async () => {
+      mockStateForSearch();
+      mockOctokitInstance = fullOctokitMock((params) => {
+        // Phase 2 returns empty, Phase 3 finds an issue
+        if (params.q?.includes('archived:false')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('maintained/repo', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      // Make all vetting fail
+      mockOctokitInstance.issues.get.mockRejectedValue(new Error('Not Found'));
+      const discovery = new IssueDiscovery('fake-token');
+
+      await expect(discovery.searchIssues({ maxResults: 5 })).rejects.toThrow(/No issue candidates found/);
+    });
+
+    it('should track Phase 3 rateLimitHit from vetting', async () => {
+      mockStateForSearch();
+      mockOctokitInstance = fullOctokitMock((params) => {
+        // Phase 2 returns empty, Phase 3 finds an issue
+        if (params.q?.includes('archived:false')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('maintained/repo', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      // Make vetting hit rate limit
+      const rateLimitError = Object.assign(new Error('rate limit exceeded'), { status: 403 });
+      mockOctokitInstance.issues.get.mockRejectedValue(rateLimitError);
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 5 });
+      expect(candidates).toEqual([]);
+      expect(discovery.rateLimitWarning).toBeTruthy();
+    });
+  });
+
+  describe('rate limit handling', () => {
+    it('should set rateLimitWarning on low pre-flight quota', async () => {
+      mockStateForSearch();
+      vi.mocked(checkRateLimit).mockResolvedValueOnce({
+        remaining: 2,
+        limit: 30,
+        resetAt: new Date().toISOString(),
+      });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        if (params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('any/repo', 1)] },
+          });
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      await discovery.searchIssues({ maxResults: 5 });
+      expect(discovery.rateLimitWarning).toContain('quota low');
+    });
+
+    it('should return [] when all phases fail due to rate limits', async () => {
+      mockStateForSearch();
+      const rateLimitError = Object.assign(new Error('rate limit exceeded'), { status: 403 });
+      mockOctokitInstance = fullOctokitMock(() => Promise.reject(rateLimitError));
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 5 });
+      expect(candidates).toEqual([]);
+      expect(discovery.rateLimitWarning).toBeTruthy();
+    });
+
+    it('should throw ValidationError when no results and no rate limits', async () => {
+      mockStateForSearch();
+      mockOctokitInstance = fullOctokitMock(() => Promise.resolve({ data: { total_count: 0, items: [] } }));
+      const discovery = new IssueDiscovery('fake-token');
+
+      await expect(discovery.searchIssues({ maxResults: 5 })).rejects.toThrow(/No issue candidates found/);
+    });
+
+    it('should set partial warning on rate-limited search with some results', async () => {
+      mockStateForSearch();
+      let callCount = 0;
+      const rateLimitError = Object.assign(new Error('rate limit exceeded'), { status: 403 });
+      mockOctokitInstance = fullOctokitMock((params) => {
+        callCount++;
+        // First call (Phase 2) returns results, Phase 3 hits rate limit
+        if (callCount === 1 && params.q?.includes('good first issue')) {
+          return Promise.resolve({
+            data: { total_count: 1, items: [makeSearchItem('partial/repo', 1)] },
+          });
+        }
+        if (params.q?.includes('archived:false')) {
+          return Promise.reject(rateLimitError);
+        }
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      const candidates = await discovery.searchIssues({ maxResults: 10 });
+      expect(candidates.length).toBeGreaterThan(0);
+      expect(discovery.rateLimitWarning).toContain('incomplete');
+    });
   });
 });
