@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import * as logger from './logger.js';
 import {
   calculateScore,
   getRepoScore,
@@ -12,40 +13,13 @@ import {
   getLowScoringRepos,
   getStats,
 } from './repo-score-manager.js';
-import type { RepoScore } from './types.js';
-import { makeAgentState } from './test-utils.js';
+import { makeAgentState, makeRepoScore } from './test-utils.js';
 
-// ---------------------------------------------------------------------------
-// Helper: build a RepoScore with sensible defaults
-// ---------------------------------------------------------------------------
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-function makeRepoScore(overrides: Partial<RepoScore> = {}): RepoScore {
-  return {
-    repo: 'owner/repo',
-    score: 5,
-    mergedPRCount: 0,
-    closedWithoutMergeCount: 0,
-    avgResponseDays: null,
-    lastEvaluatedAt: new Date().toISOString(),
-    signals: {
-      hasActiveMaintainers: true,
-      isResponsive: false,
-      hasHostileComments: false,
-      ...overrides.signals,
-    },
-    ...overrides,
-    // Re-apply signals merge so overrides.signals doesn't get clobbered by spread
-    ...(overrides.signals
-      ? {
-          signals: {
-            hasActiveMaintainers: true,
-            isResponsive: false,
-            hasHostileComments: false,
-            ...overrides.signals,
-          },
-        }
-      : {}),
-  };
+/** Return an ISO timestamp N days in the past. */
+function daysAgo(n: number): string {
+  return new Date(Date.now() - n * MS_PER_DAY).toISOString();
 }
 
 // ---------------------------------------------------------------------------
@@ -92,14 +66,17 @@ describe('calculateScore', () => {
 
   describe('recency bonus', () => {
     it('adds +1 when lastMergedAt is within 90 days', () => {
-      const recent = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const rs = makeRepoScore({ lastMergedAt: recent });
+      const rs = makeRepoScore({ lastMergedAt: daysAgo(30) });
       expect(calculateScore(rs)).toBe(6); // 5 + 1
     });
 
+    it('adds +1 when lastMergedAt is exactly 90 days ago', () => {
+      const rs = makeRepoScore({ lastMergedAt: daysAgo(90) });
+      expect(calculateScore(rs)).toBe(6); // 5 + 1 (boundary: <= 90)
+    });
+
     it('gives no bonus when lastMergedAt is older than 90 days', () => {
-      const old = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000).toISOString();
-      const rs = makeRepoScore({ lastMergedAt: old });
+      const rs = makeRepoScore({ lastMergedAt: daysAgo(91) });
       expect(calculateScore(rs)).toBe(5);
     });
 
@@ -108,9 +85,12 @@ describe('calculateScore', () => {
       expect(calculateScore(rs)).toBe(5);
     });
 
-    it('skips recency bonus for invalid lastMergedAt date', () => {
+    it('warns and skips recency bonus for invalid lastMergedAt date', () => {
+      const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
       const rs = makeRepoScore({ lastMergedAt: 'not-a-date' });
       expect(calculateScore(rs)).toBe(5);
+      expect(warnSpy).toHaveBeenCalledWith('scoring', expect.stringContaining('not-a-date'));
+      warnSpy.mockRestore();
     });
   });
 
@@ -144,10 +124,9 @@ describe('calculateScore', () => {
     });
 
     it('never returns above 10', () => {
-      const recent = new Date().toISOString();
       const rs = makeRepoScore({
         mergedPRCount: 100, // +5 (capped)
-        lastMergedAt: recent, // +1
+        lastMergedAt: daysAgo(0), // +1
         signals: { isResponsive: true }, // +1
         // 5 + 5 + 1 + 1 = 12 → clamped to 10
       });
@@ -157,11 +136,10 @@ describe('calculateScore', () => {
 
   describe('combined scenarios', () => {
     it('handles merges + closures + signals together', () => {
-      const recent = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
       const rs = makeRepoScore({
         mergedPRCount: 3, // +4
         closedWithoutMergeCount: 1, // -1
-        lastMergedAt: recent, // +1
+        lastMergedAt: daysAgo(10), // +1
         signals: { isResponsive: true }, // +1
         // 5 + 4 - 1 + 1 + 1 = 10
       });
@@ -252,6 +230,17 @@ describe('updateRepoScore', () => {
     const ts = '2025-06-01T00:00:00Z';
     updateRepoScore(state, 'owner/repo', { lastMergedAt: ts });
     expect(state.repoScores['owner/repo'].lastMergedAt).toBe(ts);
+  });
+
+  it('preserves all fields on empty update', () => {
+    const state = makeAgentState({ repoScores: {} });
+    updateRepoScore(state, 'owner/repo', { mergedPRCount: 3 });
+    const before = { ...state.repoScores['owner/repo'] };
+    updateRepoScore(state, 'owner/repo', {});
+    const after = state.repoScores['owner/repo'];
+    expect(after.mergedPRCount).toBe(before.mergedPRCount);
+    expect(after.closedWithoutMergeCount).toBe(before.closedWithoutMergeCount);
+    expect(after.score).toBe(before.score);
   });
 });
 
@@ -496,20 +485,29 @@ describe('getLowScoringRepos', () => {
     expect(getLowScoringRepos(state)).toEqual(['b/low', 'c/lower', 'a/mid']);
   });
 
-  it('excludes stale scores older than 30 days', () => {
-    const staleDate = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
-    const freshDate = new Date().toISOString();
+  it('includes scores exactly 30 days old', () => {
     const state = makeAgentState({
       config: { minRepoScoreThreshold: 10 },
       repoScores: {
-        'a/stale': makeRepoScore({ repo: 'a/stale', score: 2, lastEvaluatedAt: staleDate }),
-        'b/fresh': makeRepoScore({ repo: 'b/fresh', score: 3, lastEvaluatedAt: freshDate }),
+        'a/boundary': makeRepoScore({ repo: 'a/boundary', score: 2, lastEvaluatedAt: daysAgo(30) }),
+      },
+    });
+    expect(getLowScoringRepos(state)).toEqual(['a/boundary']);
+  });
+
+  it('excludes stale scores older than 30 days', () => {
+    const state = makeAgentState({
+      config: { minRepoScoreThreshold: 10 },
+      repoScores: {
+        'a/stale': makeRepoScore({ repo: 'a/stale', score: 2, lastEvaluatedAt: daysAgo(31) }),
+        'b/fresh': makeRepoScore({ repo: 'b/fresh', score: 3, lastEvaluatedAt: daysAgo(0) }),
       },
     });
     expect(getLowScoringRepos(state)).toEqual(['b/fresh']);
   });
 
-  it('excludes repos with invalid lastEvaluatedAt', () => {
+  it('warns and excludes repos with invalid lastEvaluatedAt', () => {
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => {});
     const state = makeAgentState({
       config: { minRepoScoreThreshold: 10 },
       repoScores: {
@@ -518,6 +516,8 @@ describe('getLowScoringRepos', () => {
       },
     });
     expect(getLowScoringRepos(state)).toEqual(['b/good']);
+    expect(warnSpy).toHaveBeenCalledWith('scoring', expect.stringContaining('invalid-date'));
+    warnSpy.mockRestore();
   });
 });
 
@@ -570,6 +570,15 @@ describe('getStats', () => {
       },
     });
     expect(getStats(state).mergeRate).toBe('0.0%');
+  });
+
+  it('reports 100.0% merge rate when all PRs merged', () => {
+    const state = makeAgentState({
+      repoScores: {
+        'a/repo': makeRepoScore({ repo: 'a/repo', mergedPRCount: 5, closedWithoutMergeCount: 0, stargazersCount: 100 }),
+      },
+    });
+    expect(getStats(state).mergeRate).toBe('100.0%');
   });
 
   it('counts trusted projects from config', () => {
