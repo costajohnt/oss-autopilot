@@ -2,7 +2,8 @@
  * Zod schemas for all types persisted in state.json.
  *
  * This file is the single source of truth for persisted type shapes.
- * Types in types.ts will re-export `z.infer<>` aliases from these schemas.
+ * Types are inferred via `z.infer<>` at the bottom of this file and
+ * re-exported through types.ts.
  *
  * Schemas are defined bottom-up (leaf types first, composites last).
  * Unknown keys are stripped by default (Zod 4 behavior).

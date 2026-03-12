@@ -295,8 +295,9 @@ function tryRestoreFromBackup(): AgentState | null {
       }
 
       // safeParse failed — log and try next backup
-      warn(MODULE, `Backup ${backupFile} failed schema validation, trying next...`);
-      debug(MODULE, `Backup ${backupFile} validation errors:`, parsed.error.issues);
+      const summary = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+      warn(MODULE, `Backup ${backupFile} failed schema validation: ${summary}`);
+      debug(MODULE, `Backup ${backupFile} full validation errors:`, parsed.error.issues);
     } catch (backupErr) {
       // This backup is also corrupted, try the next one
       warn(MODULE, `Backup ${backupFile} is corrupted, trying next...`);
@@ -325,18 +326,29 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
       let raw: unknown = JSON.parse(data);
 
       // Migrate from v1 to v2 if needed (before schema validation)
+      let wasMigrated = false;
       if (typeof raw === 'object' && raw !== null && (raw as Record<string, unknown>).version === 1) {
         raw = migrateV1ToV2(raw as Record<string, unknown>);
-        // Save the migrated state immediately (atomic write)
-        atomicWriteFileSync(statePath, JSON.stringify(raw, null, 2), 0o600);
-        debug(MODULE, 'Migrated state saved');
+        wasMigrated = true;
       }
 
-      // Validate through Zod schema (strips unknown keys like snoozedPRs)
+      // Validate through Zod schema (strips unknown keys in memory; stale keys persist on disk until next save)
       const parsed = AgentStateSchema.safeParse(raw);
       if (!parsed.success) {
-        warn(MODULE, 'Invalid state file structure, attempting to restore from backup...');
-        debug(MODULE, 'State validation errors:', parsed.error.issues);
+        const summary = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+        warn(MODULE, `Invalid state file structure: ${summary}`);
+        warn(MODULE, 'Attempting to restore from backup...');
+        debug(MODULE, 'Full validation errors:', parsed.error.issues);
+
+        // Preserve the rejected state file so the user can recover
+        try {
+          const rejectedPath = statePath + '.rejected-' + Date.now();
+          fs.copyFileSync(statePath, rejectedPath);
+          warn(MODULE, `Previous state preserved at: ${rejectedPath}`);
+        } catch (preserveErr) {
+          debug(MODULE, `Could not preserve rejected state file: ${errorMessage(preserveErr)}`);
+        }
+
         const restoredState = tryRestoreFromBackup();
         if (restoredState) {
           const mtimeMs = safeGetMtimeMs(statePath);
@@ -344,6 +356,12 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
         }
         warn(MODULE, 'No valid backup found, starting fresh');
         return { state: createFreshState(), mtimeMs: 0 };
+      }
+
+      // Save migrated state only after validation succeeds
+      if (wasMigrated) {
+        atomicWriteFileSync(statePath, JSON.stringify(parsed.data, null, 2), 0o600);
+        debug(MODULE, 'Migrated and validated state saved');
       }
 
       const state = parsed.data;
