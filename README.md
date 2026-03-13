@@ -61,8 +61,10 @@ The plugin includes a built-in **pre-commit-reviewer** agent that reviews all co
 <details>
 <summary><strong>MCP Server</strong> (Cursor, Claude Desktop, Codex, Windsurf)</summary>
 
+First initialize your GitHub username (one-time setup):
+
 ```bash
-npx @oss-autopilot/mcp@latest --init <your-github-username>
+npx @oss-autopilot/core@latest init <your-github-username>
 ```
 
 Then add to your MCP client config:
@@ -324,7 +326,7 @@ Example file:
 - ~~https://github.com/vitejs/vite/issues/333 — HMR race condition~~
 ```
 
-The `/oss-search` command can add vetted issues to this file automatically. Issues from your curated list get a +2 score bonus during search.
+The `/oss-search` command can add vetted issues to this file automatically.
 
 ---
 
@@ -353,12 +355,12 @@ OSS Autopilot is a **pnpm monorepo** with four packages, plus a plugin layer:
 │  │ Core Library — @oss-autopilot/core         │  │
 │  │ PR monitoring, issue discovery, state mgmt │  │
 │  │ GitHub API, CLI, structured JSON output    │  │
-│  └──────────────────────┬─────────────────────┘  │
-│                         │                        │
-│  ┌──────────────────────┴─────────────────────┐  │
+│  └────────────────────────────────────────────┘  │
+│                                                  │
+│  ┌────────────────────────────────────────────┐  │
 │  │ Badge Endpoint — @oss-autopilot/badge-     │  │
 │  │ endpoint — Vercel serverless Shields.io    │  │
-│  │ badge API                                  │  │
+│  │ badge API (standalone, uses Octokit)       │  │
 │  └────────────────────────────────────────────┘  │
 │                                                  │
 └──────────────────────────────────────────────────┘
@@ -381,7 +383,7 @@ The MCP server wraps every CLI command as an MCP tool, making OSS Autopilot avai
 | **5 resources** | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}` |
 | **3 prompts** | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues) |
 
-Supports both **stdio** (default) and **HTTP/SSE** (`--http --port 3100`) transports.
+Supports both **stdio** (default) and **HTTP/SSE** (`--http --port 3001`) transports.
 
 ---
 
@@ -464,7 +466,7 @@ claude --plugin-dir ./oss-autopilot
 No. Claude drafts responses and suggests actions. Nothing is posted to GitHub without your explicit approval.
 
 **Where is my data stored?**
-Config in `.claude/oss-autopilot/config.md`. State in `~/.oss-autopilot/`. The dashboard runs locally at `http://localhost:3000`. Nothing is sent to external servers beyond GitHub API calls to fetch your PR data.
+All data lives in `~/.oss-autopilot/` — configuration, PR tracking state, event history, and HTTP cache. The dashboard runs locally at `http://localhost:3000`. Nothing is sent to external servers beyond GitHub API calls to fetch your PR data.
 
 **Does it work with private repos?**
 Yes, as long as your GitHub CLI (`gh`) has access.
