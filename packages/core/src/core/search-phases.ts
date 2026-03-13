@@ -38,7 +38,13 @@ function sleep(ms: number): Promise<void> {
 export function chunkLabels(labels: string[], reservedOps: number = 0): string[][] {
   const maxPerChunk = GITHUB_MAX_BOOLEAN_OPS - reservedOps + 1;
   if (maxPerChunk < 1) {
-    // Degenerate: no room for labels — return one empty chunk so callers still iterate
+    if (labels.length > 0) {
+      warn(
+        MODULE,
+        `Label filtering disabled: ${reservedOps} repo/org ORs exceed GitHub's ${GITHUB_MAX_BOOLEAN_OPS} operator limit. ` +
+          `All ${labels.length} label(s) dropped from query.`,
+      );
+    }
     return [[]];
   }
   if (labels.length <= maxPerChunk) return [labels];
@@ -47,6 +53,10 @@ export function chunkLabels(labels: string[], reservedOps: number = 0): string[]
   for (let i = 0; i < labels.length; i += maxPerChunk) {
     chunks.push(labels.slice(i, i + maxPerChunk));
   }
+  debug(
+    MODULE,
+    `Split ${labels.length} labels into ${chunks.length} chunks (${reservedOps} ops reserved, max ${maxPerChunk} per chunk)`,
+  );
   return chunks;
 }
 
