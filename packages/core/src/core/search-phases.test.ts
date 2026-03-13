@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildLabelQuery, buildEffectiveLabels, interleaveArrays, batchRepos } from './search-phases.js';
+import {
+  buildLabelQuery,
+  buildEffectiveLabels,
+  interleaveArrays,
+  batchRepos,
+  chunkLabels,
+  GITHUB_MAX_BOOLEAN_OPS,
+} from './search-phases.js';
 import { SCOPE_LABELS } from './types.js';
 import type { GitHubSearchItem } from './issue-filtering.js';
 import { makeGitHubSearchItem, makeIssueCandidate } from './test-utils.js';
@@ -31,7 +38,8 @@ vi.mock('./http-cache.js', () => ({
     }),
 }));
 
-const { cachedSearchIssues, filterVetAndScore, searchInRepos } = await import('./search-phases.js');
+const { cachedSearchIssues, filterVetAndScore, searchInRepos, searchWithChunkedLabels } =
+  await import('./search-phases.js');
 const { getHttpCache, cachedTimeBased } = await import('./http-cache.js');
 
 // ── Pure function tests (existing) ──
@@ -152,6 +160,61 @@ describe('batchRepos', () => {
   });
 });
 
+describe('chunkLabels', () => {
+  it('returns single chunk for empty labels', () => {
+    expect(chunkLabels([])).toEqual([[]]);
+  });
+
+  it('returns single chunk for 1 label', () => {
+    expect(chunkLabels(['bug'])).toEqual([['bug']]);
+  });
+
+  it('returns single chunk for 6 labels with 0 reserved ops (max = 6)', () => {
+    const labels = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const result = chunkLabels(labels, 0);
+    expect(result).toEqual([labels]);
+  });
+
+  it('chunks 10 labels with 0 reserved ops into 2 chunks (6 + 4)', () => {
+    const labels = Array.from({ length: 10 }, (_, i) => `label${i}`);
+    const result = chunkLabels(labels, 0);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toHaveLength(6);
+    expect(result[1]).toHaveLength(4);
+    // All labels should be present
+    expect(result.flat()).toEqual(labels);
+  });
+
+  it('chunks 6 labels with 2 reserved ops into 2 chunks (4 + 2)', () => {
+    const labels = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const result = chunkLabels(labels, 2);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toHaveLength(4);
+    expect(result[1]).toHaveLength(2);
+  });
+
+  it('returns empty chunk when reserved ops exceed budget', () => {
+    const labels = ['a', 'b'];
+    const result = chunkLabels(labels, GITHUB_MAX_BOOLEAN_OPS + 1);
+    expect(result).toEqual([[]]);
+  });
+
+  it('handles 4 reserved ops (e.g., 5 orgs) — max 2 per chunk', () => {
+    const labels = ['a', 'b', 'c', 'd', 'e'];
+    const result = chunkLabels(labels, 4);
+    // max = 5 - 4 + 1 = 2, so chunks of 2
+    expect(result).toHaveLength(3);
+    expect(result[0]).toEqual(['a', 'b']);
+    expect(result[1]).toEqual(['c', 'd']);
+    expect(result[2]).toEqual(['e']);
+  });
+
+  it('defaults reservedOps to 0', () => {
+    const labels = ['a', 'b', 'c'];
+    expect(chunkLabels(labels)).toEqual([labels]);
+  });
+});
+
 // ── Infrastructure function tests ──
 
 describe('cachedSearchIssues', () => {
@@ -208,6 +271,70 @@ describe('cachedSearchIssues', () => {
     });
     expect(result).toEqual(cachedData);
     expect(mockOctokit.search.issuesAndPullRequests).not.toHaveBeenCalled();
+  });
+});
+
+describe('searchWithChunkedLabels', () => {
+  let mockOctokit: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockOctokit = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: { total_count: 1, items: [makeGitHubSearchItem('owner/repo', 1)] },
+        }),
+      },
+    };
+    vi.mocked(getHttpCache).mockReturnValue(makeCacheMock() as any);
+  });
+
+  it('should issue one query when labels fit within budget', async () => {
+    const labels = ['a', 'b', 'c']; // 2 ORs, fits in budget of 5
+    await searchWithChunkedLabels(mockOctokit, labels, 0, (lq) => `is:issue ${lq}`, 30);
+
+    expect(mockOctokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(1);
+    const q = mockOctokit.search.issuesAndPullRequests.mock.calls[0][0].q;
+    expect(q).toContain('label:"a"');
+    expect(q).toContain('label:"c"');
+  });
+
+  it('should chunk labels and issue multiple queries when labels exceed budget', async () => {
+    // 4 reserved ops → max 2 per chunk. 5 labels → 3 chunks (2+2+1)
+    const labels = ['a', 'b', 'c', 'd', 'e'];
+    await searchWithChunkedLabels(mockOctokit, labels, 4, (lq) => `is:issue ${lq}`, 30);
+
+    expect(mockOctokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(3);
+  });
+
+  it('should deduplicate items across chunks', async () => {
+    const sharedItem = makeGitHubSearchItem('owner/repo', 42);
+    mockOctokit.search.issuesAndPullRequests.mockResolvedValue({
+      data: { total_count: 1, items: [sharedItem] },
+    });
+
+    const labels = ['a', 'b', 'c', 'd', 'e'];
+    const result = await searchWithChunkedLabels(mockOctokit, labels, 4, (lq) => `is:issue ${lq}`, 30);
+
+    // 3 API calls all return the same item — should only appear once
+    expect(result).toHaveLength(1);
+    expect(result[0].html_url).toBe(sharedItem.html_url);
+  });
+
+  it('should pass buildQuery result as the search query', async () => {
+    await searchWithChunkedLabels(mockOctokit, ['bug'], 0, (lq) => `custom-prefix ${lq} custom-suffix`, 10);
+
+    const q = mockOctokit.search.issuesAndPullRequests.mock.calls[0][0].q;
+    expect(q).toContain('custom-prefix');
+    expect(q).toContain('custom-suffix');
+    expect(q).toContain('label:"bug"');
+  });
+
+  it('should handle empty labels', async () => {
+    await searchWithChunkedLabels(mockOctokit, [], 0, (lq) => `is:issue ${lq}`, 30);
+
+    // Should still make 1 call (empty chunk produces empty label query)
+    expect(mockOctokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -383,22 +510,26 @@ describe('searchInRepos', () => {
   });
 
   it('should batch repos and search each batch', async () => {
-    // 7 repos with batch size 5 = 2 batches
+    // 7 repos with batch size 3 = 3 batches
     const repos = ['a/1', 'a/2', 'a/3', 'a/4', 'a/5', 'a/6', 'a/7'];
-    await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', 20, 'normal', passthrough);
+    await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', [], 20, 'normal', passthrough);
 
-    // Should have made 2 search calls (batches of 5)
-    expect(mockOctokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(2);
+    // Should have made 3 search calls (batches of 3)
+    expect(mockOctokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(3);
 
-    // First batch query should contain repos 1-5
+    // First batch query should contain repos 1-3
     const firstQuery = mockOctokit.search.issuesAndPullRequests.mock.calls[0][0].q;
     expect(firstQuery).toContain('repo:a/1');
-    expect(firstQuery).toContain('repo:a/5');
+    expect(firstQuery).toContain('repo:a/3');
 
-    // Second batch query should contain repos 6-7
+    // Second batch query should contain repos 4-6
     const secondQuery = mockOctokit.search.issuesAndPullRequests.mock.calls[1][0].q;
+    expect(secondQuery).toContain('repo:a/4');
     expect(secondQuery).toContain('repo:a/6');
-    expect(secondQuery).toContain('repo:a/7');
+
+    // Third batch query should contain repo 7
+    const thirdQuery = mockOctokit.search.issuesAndPullRequests.mock.calls[2][0].q;
+    expect(thirdQuery).toContain('repo:a/7');
   });
 
   it('should stop searching when maxResults reached', async () => {
@@ -410,7 +541,7 @@ describe('searchInRepos', () => {
     });
 
     const repos = Array.from({ length: 15 }, (_, i) => `org/repo${i}`);
-    const result = await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', 3, 'normal', passthrough);
+    const result = await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', [], 3, 'normal', passthrough);
 
     // Should have stopped after first batch since we got 3 candidates (= maxResults)
     expect(result.candidates.length).toBeGreaterThanOrEqual(3);
@@ -423,8 +554,8 @@ describe('searchInRepos', () => {
       data: { total_count: 1, items: [makeGitHubSearchItem('org/repo6', 1)] },
     });
 
-    const repos = Array.from({ length: 10 }, (_, i) => `org/repo${i}`);
-    const result = await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', 10, 'normal', passthrough);
+    const repos = Array.from({ length: 6 }, (_, i) => `org/repo${i}`);
+    const result = await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', [], 10, 'normal', passthrough);
 
     expect(result.candidates.length).toBeGreaterThan(0);
     expect(result.allBatchesFailed).toBe(false);
@@ -434,7 +565,7 @@ describe('searchInRepos', () => {
     mockOctokit.search.issuesAndPullRequests.mockRejectedValue(new Error('Server error'));
 
     const repos = ['org/repo1', 'org/repo2'];
-    const result = await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', 10, 'normal', passthrough);
+    const result = await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', [], 10, 'normal', passthrough);
 
     expect(result.allBatchesFailed).toBe(true);
     expect(result.candidates).toEqual([]);
@@ -446,7 +577,7 @@ describe('searchInRepos', () => {
     mockOctokit.search.issuesAndPullRequests.mockRejectedValue(rateLimitError);
 
     const repos = ['org/repo1'];
-    const result = await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', 10, 'normal', passthrough);
+    const result = await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', [], 10, 'normal', passthrough);
 
     expect(result.rateLimitHit).toBe(true);
     expect(result.allBatchesFailed).toBe(true);
@@ -459,7 +590,7 @@ describe('searchInRepos', () => {
     mockOctokit.search.issuesAndPullRequests.mockRejectedValue(rateLimitError);
 
     const repos = ['org/repo1'];
-    const result = await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', 10, 'normal', passthrough);
+    const result = await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', [], 10, 'normal', passthrough);
 
     expect(result.rateLimitHit).toBe(true);
     expect(result.allBatchesFailed).toBe(true);
@@ -467,11 +598,51 @@ describe('searchInRepos', () => {
   });
 
   it('should return empty candidates for empty repos list', async () => {
-    const result = await searchInRepos(mockOctokit, mockVetter, [], 'is:issue', 10, 'normal', passthrough);
+    const result = await searchInRepos(mockOctokit, mockVetter, [], 'is:issue', [], 10, 'normal', passthrough);
 
     expect(result.candidates).toEqual([]);
     expect(result.allBatchesFailed).toBe(false);
     expect(result.rateLimitHit).toBe(false);
     expect(mockOctokit.search.issuesAndPullRequests).not.toHaveBeenCalled();
+  });
+
+  it('should chunk labels when they exceed operator budget', async () => {
+    // 3 repos = 2 repo ORs, leaving budget for 4 labels per chunk
+    // 8 labels should produce 2 chunks (4 + 4)
+    const repos = ['a/1', 'a/2', 'a/3'];
+    const labels = ['l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8'];
+
+    await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', labels, 20, 'normal', passthrough);
+
+    // Should have made 2 search calls (1 batch of 3 repos × 2 label chunks)
+    expect(mockOctokit.search.issuesAndPullRequests).toHaveBeenCalledTimes(2);
+
+    // First call should have first 4 labels
+    const q1 = mockOctokit.search.issuesAndPullRequests.mock.calls[0][0].q;
+    expect(q1).toContain('label:"l1"');
+    expect(q1).toContain('label:"l4"');
+    expect(q1).not.toContain('label:"l5"');
+
+    // Second call should have remaining labels
+    const q2 = mockOctokit.search.issuesAndPullRequests.mock.calls[1][0].q;
+    expect(q2).toContain('label:"l5"');
+    expect(q2).toContain('label:"l8"');
+  });
+
+  it('should dedup items across label chunks', async () => {
+    const repos = ['a/1', 'a/2', 'a/3'];
+    const labels = ['l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7', 'l8'];
+    const sharedItem = makeGitHubSearchItem('a/1', 42);
+
+    // Both label chunks return the same item
+    mockOctokit.search.issuesAndPullRequests.mockResolvedValue({
+      data: { total_count: 1, items: [sharedItem] },
+    });
+
+    await searchInRepos(mockOctokit, mockVetter, repos, 'is:issue', labels, 20, 'normal', passthrough);
+
+    // Vetter should only receive the URL once (deduped)
+    const vettedUrls = mockVetter.vetIssuesParallel.mock.calls[0][0];
+    expect(vettedUrls).toHaveLength(1);
   });
 });
