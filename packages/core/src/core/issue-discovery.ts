@@ -23,12 +23,12 @@ import { type GitHubSearchItem, isDocOnlyIssue, applyPerRepoCap } from './issue-
 import { IssueVetter } from './issue-vetting.js';
 import { getTopicsForCategories } from './category-mapping.js';
 import {
-  buildLabelQuery,
   buildEffectiveLabels,
   interleaveArrays,
   cachedSearchIssues,
   filterVetAndScore,
   searchInRepos,
+  searchWithChunkedLabels,
 } from './search-phases.js';
 
 const MODULE = 'issue-discovery';
@@ -221,14 +221,12 @@ export class IssueDiscovery {
     const now = new Date();
 
     // Build query parts
-    const labelQuery = buildLabelQuery(labels);
     // When languages includes 'any', omit the language filter entirely
     const isAnyLanguage = languages.some((l) => l.toLowerCase() === 'any');
     const langQuery = isAnyLanguage ? '' : languages.map((l) => `language:${l}`).join(' ');
     // Phase 0 uses a broader query — established contributors don't need beginner labels
-    const establishedQuery = `is:issue is:open ${langQuery} no:assignee`.replace(/  +/g, ' ').trim();
-    // Phases 1+ use label-filtered query for discovery in unfamiliar repos
-    const baseQuery = `is:issue is:open ${labelQuery} ${langQuery} no:assignee`.replace(/  +/g, ' ').trim();
+    // Phases 1+ pass labels separately to searchInRepos/searchWithChunkedLabels
+    const baseQualifiers = `is:issue is:open ${langQuery} no:assignee`.replace(/  +/g, ' ').trim();
 
     // Helper to filter issues
     const includeDocIssues = config.includeDocIssues ?? true;
@@ -283,7 +281,8 @@ export class IssueDiscovery {
             this.octokit,
             this.vetter,
             mergedPhase0Repos,
-            establishedQuery,
+            baseQualifiers,
+            [],
             remainingNeeded,
             'merged_pr',
             filterIssues,
@@ -312,7 +311,8 @@ export class IssueDiscovery {
             this.octokit,
             this.vetter,
             openPhase0Repos,
-            establishedQuery,
+            baseQualifiers,
+            [],
             remainingNeeded,
             'starred',
             filterIssues,
@@ -342,18 +342,19 @@ export class IssueDiscovery {
         info(MODULE, `Phase 0.5: Searching issues in ${orgsToSearch.length} preferred org(s)...`);
         const remainingNeeded = maxResults - allCandidates.length;
         const orgRepoFilter = orgsToSearch.map((org) => `org:${org}`).join(' OR ');
-        const orgQuery = `${baseQuery} (${orgRepoFilter})`;
+        const orgOps = orgsToSearch.length - 1;
 
         try {
-          const data = await cachedSearchIssues(this.octokit, {
-            q: orgQuery,
-            sort: 'created',
-            order: 'desc',
-            per_page: remainingNeeded * 3,
-          });
+          const allItems = await searchWithChunkedLabels(
+            this.octokit,
+            labels,
+            orgOps,
+            (labelQ) => `${baseQualifiers} ${labelQ} (${orgRepoFilter})`.replace(/  +/g, ' ').trim(),
+            remainingNeeded * 3,
+          );
 
-          if (data.items.length > 0) {
-            const filtered = filterIssues(data.items).filter((item) => {
+          if (allItems.length > 0) {
+            const filtered = filterIssues(allItems).filter((item) => {
               const repoFullName = item.repository_url.split('/').slice(-2).join('/');
               return !phase0RepoSet.has(repoFullName);
             });
@@ -401,7 +402,8 @@ export class IssueDiscovery {
             this.octokit,
             this.vetter,
             reposToSearch.slice(0, 10),
-            baseQuery,
+            baseQualifiers,
+            labels,
             remainingNeeded,
             'starred',
             filterIssues,
@@ -453,19 +455,16 @@ export class IssueDiscovery {
       const tierResults: IssueCandidate[][] = [];
 
       for (const { tier, tierLabels } of tierLabelGroups) {
-        const tierQuery = `is:issue is:open ${buildLabelQuery(tierLabels)} ${langQuery} no:assignee`
-          .replace(/  +/g, ' ')
-          .trim();
-
         try {
-          const data = await cachedSearchIssues(this.octokit, {
-            q: tierQuery,
-            sort: 'created',
-            order: 'desc',
-            per_page: budgetPerTier * 3,
-          });
+          const allItems = await searchWithChunkedLabels(
+            this.octokit,
+            tierLabels,
+            0, // no repo/org ORs in Phase 2
+            (labelQ) => `${baseQualifiers} ${labelQ}`.replace(/  +/g, ' ').trim(),
+            budgetPerTier * 3,
+          );
 
-          info(MODULE, `Phase 2 [${tier}]: ${data.total_count} total, processing top ${data.items.length}...`);
+          info(MODULE, `Phase 2 [${tier}]: processing ${allItems.length} items...`);
 
           const {
             candidates: tierCandidates,
@@ -473,7 +472,7 @@ export class IssueDiscovery {
             rateLimitHit: vetRateLimitHit,
           } = await filterVetAndScore(
             this.vetter,
-            data.items,
+            allItems,
             filterIssues,
             [phase0RepoSet, starredRepoSet, seenRepos],
             budgetPerTier,
