@@ -44,7 +44,7 @@ Restart Claude Code, then run `/setup-oss`. Done.
 <details>
 <summary><strong>Optional:</strong> Enhanced code review with pr-review-toolkit</summary>
 
-The plugin includes a built-in **pre-commit-reviewer** agent that reviews all code changes before pushing. For enhanced parallel review, install the **pr-review-toolkit** plugin (search for it in the Claude Code plugin marketplace) — it adds 5 specialized reviewers that run simultaneously:
+The plugin includes a built-in **pre-commit-reviewer** agent that reviews all code changes before committing. For enhanced parallel review, install the **pr-review-toolkit** plugin (search for it in the Claude Code plugin marketplace) — it adds 5 specialized reviewers that run simultaneously:
 
 | Agent | Focus |
 |-------|-------|
@@ -88,8 +88,8 @@ The MCP server exposes 20 tools, 5 resources, and 3 prompts — the full OSS Aut
 <summary><strong>Standalone CLI / npm package</strong></summary>
 
 ```bash
-# Run any command directly
-GITHUB_TOKEN=$(gh auth token) npx @oss-autopilot/core daily --json
+# Run any command directly (uses gh auth token automatically)
+npx @oss-autopilot/core daily --json
 npx @oss-autopilot/core dashboard serve
 
 # Or install globally
@@ -197,7 +197,7 @@ All actions persist to `~/.oss-autopilot/state.json`.
 
 A typical contribution lifecycle:
 
-**Day 1 — Find and claim.** Search for issues, pick a high-scoring one from a repo where you've merged before. The issue scout drafts a claim comment for your review. Start working. Before you push, the pre-commit reviewer catches a missing test — you add it. The compliance checker validates your PR against the repo's contribution guidelines.
+**Day 1 — Find and claim.** Search for issues, pick a high-scoring one from a repo where you've merged before. The issue scout drafts a claim comment for your review. Start working. Before you commit, the pre-commit reviewer catches a missing test — you add it. The compliance checker validates your PR against [opensource.guide](https://opensource.guide) best practices.
 
 **Day 2 — Respond.** `/oss` shows the maintainer requested changes 12 hours ago. The PR responder reads the feedback, fetches code context, and drafts a reply. You review, edit, and post.
 
@@ -272,10 +272,10 @@ Show off your open source contributions with a live badge on your GitHub profile
 
 The badge updates hourly and shows your merge rate, total merged PRs, and active PR count. Only counts PRs to external repos (excludes your own) with 50+ stars by default.
 
-Customize the minimum star threshold with `?minStars=100`:
+Customize the minimum star threshold with `?minStars=100` (URL-encode the inner URL):
 
 ```markdown
-![OSS Contributions](https://img.shields.io/endpoint?url=https://oss-autopilot-stats.vercel.app/api/badge/YOUR_USERNAME?minStars=100)
+![OSS Contributions](https://img.shields.io/endpoint?url=https%3A%2F%2Foss-autopilot-stats.vercel.app%2Fapi%2Fbadge%2FYOUR_USERNAME%3FminStars%3D100)
 ```
 
 ---
@@ -375,7 +375,7 @@ OSS Autopilot is a **pnpm monorepo** with four packages, plus a plugin layer:
 
 ### MCP Server
 
-The MCP server wraps every CLI command as an MCP tool, making OSS Autopilot available to any MCP-compatible client:
+The MCP server exposes core CLI commands as MCP tools, making OSS Autopilot available to any MCP-compatible client:
 
 | Feature | What's exposed |
 |---------|---------------|
