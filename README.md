@@ -280,7 +280,7 @@ Customize the minimum star threshold with `?minStars=100`:
 
 ## Configuration
 
-Settings live in `.claude/oss-autopilot/config.md` (YAML frontmatter). Run `/setup-oss` to configure interactively, or edit directly:
+Configuration is stored in `~/.oss-autopilot/state.json` (inside the `config` field). Run `/setup-oss` to configure interactively, or use `setup --set key=value` from the CLI:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -291,9 +291,15 @@ Settings live in `.claude/oss-autopilot/config.md` (YAML frontmatter). Run `/set
 | `minStars` | 50 | Minimum repo stars for inclusion in stats and charts |
 | `languages` | (chosen at setup) | Languages to filter issue search |
 | `labels` | (chosen at setup) | Issue labels to search for |
-| `showHealthCheck` | `true` | Show PR health notification on session start |
+| `showHealthCheck` | (optional) | Show PR health notification on session start |
+| `squashByDefault` | `true` | Squash commits before merging (`true`, `false`, or `"ask"`) |
+| `excludeRepos` | `[]` | Repos to exclude from tracking |
+| `includeDocIssues` | `true` | Include documentation issues in discovery |
+| `issueListPath` | (optional) | Path to curated issue list file |
+| `projectCategories` | `[]` | Project categories to prioritize (nonprofit, devtools, etc.) |
+| `preferredOrgs` | `[]` | GitHub organizations to prioritize |
 
-PR tracking state is stored separately in `~/.oss-autopilot/state.json`.
+PR tracking state, shelved PRs, dismissed issues, and event history are also stored in `~/.oss-autopilot/state.json`.
 
 ### Curated Issue List
 
@@ -409,6 +415,8 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 ├── commands/                    # Plugin slash commands (/oss, /oss-search, /setup-oss, /oss-help)
 ├── agents/                      # 7 specialized agents (PR responder, issue scout, etc.)
 ├── skills/                      # Contribution best practices
+├── workflows/                   # Delegated logic loaded by commands on demand
+├── hooks/                       # Plugin hooks (session-start)
 ├── packages/
 │   ├── core/                    # @oss-autopilot/core — CLI + core library
 │   │   ├── src/commands/        # CLI subcommands
@@ -428,7 +436,16 @@ claude --plugin-dir ./oss-autopilot
 ```
 
 <details>
-<summary>Pre-commit hooks</summary>
+<summary>Hooks</summary>
+
+**Git hooks** (via `simple-git-hooks`):
+
+| Hook | What it runs |
+|------|-------------|
+| `pre-commit` | `pnpm format:check` — blocks commits with formatting issues |
+| `commit-msg` | `scripts/commit-msg.sh` — enforces conventional commit format |
+
+**Claude Code hooks** (`.claude/hooks/`, PreToolUse on Bash):
 
 | Hook | What it blocks |
 |------|----------------|
