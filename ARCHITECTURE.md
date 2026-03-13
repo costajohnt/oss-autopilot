@@ -197,7 +197,18 @@ ETag-based caching for GitHub API responses:
 | `types.ts` | All type definitions (`FetchedPR`, `DailyDigest`, `AgentState`, etc.) |
 | `daily-logic.ts` | Standalone functions for daily digest business logic (action menu computation, summary formatting) |
 | `issue-conversation.ts` | `IssueConversationMonitor` — monitors issues the user has commented on for new maintainer responses |
+| `issue-scoring.ts` | Pure functions for computing viability scores (0-100) and quality bonuses |
+| `issue-vetting.ts` | Vet individual issues: checks open status, assignee, linked PRs, repo health |
+| `issue-eligibility.ts` | Pre-filter candidates before full vetting (age, label, repo checks) |
+| `search-phases.ts` | Multi-phase search strategies (merged repos, starred repos, general) |
+| `status-determination.ts` | Compute `FetchedPRStatus` from CI, review, conflict, and dormancy signals |
+| `state-schema.ts` | Zod schemas for all persisted types (`AgentState`, `AgentConfig`, etc.) |
+| `state-persistence.ts` | Low-level file I/O: read/write state.json with locking and backups |
+| `repo-health.ts` | Repository health scoring for issue discovery |
+| `stats.ts` | Contribution statistics computation (merge rate, PR counts, timeline) |
+| `formatter-detection.ts` | Detect linters and formatters configured in a repository |
 | `comment-utils.ts` | Bot detection and acknowledgment comment filtering |
+| `category-mapping.ts` | Map GitHub topics to project categories (nonprofit, devtools, etc.) |
 
 ## Data Flow
 
@@ -260,6 +271,8 @@ interface AgentState {
   monthlyOpenedCounts?: Record<string, number>;
   dailyActivityCounts?: Record<string, number>;
   localRepoCache?: LocalRepoCache;
+  mergedPRs?: StoredMergedPR[];     // Stored merged PR records
+  closedPRs?: StoredClosedPR[];     // Stored closed PR records
   activeIssues: TrackedIssue[];     // Issues user has claimed
 }
 ```
