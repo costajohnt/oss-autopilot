@@ -38,7 +38,10 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 
 | File | Trigger | Purpose |
 |------|---------|---------|
+| `startup-and-build.md` | `/oss` start | CLI build check, auth, startup call, session state setup |
+| `action-menu.md` | After startup | Present action menu from pre-computed items |
 | `work-through-issues.md` | "Work through all issues" action | Parallel investigation → consolidated display → sequential execution |
+| `review-issue-replies.md` | "Review issue replies" action | Review and respond to maintainer replies on claimed issues |
 | `pre-commit-review.md` | Before any commit/push | Multi-agent code review gate (existing PR updates) |
 | `draft-first-workflow.md` | New contributions | Create draft PR → iterative review → squash → mark ready |
 | `reference.md` | Always loaded | Shared conventions and formatting rules |
@@ -51,7 +54,7 @@ Seven specialized agents handle specific tasks autonomously:
 |-------|------|
 | `pr-responder` | Draft responses to maintainer feedback |
 | `pr-health-checker` | Diagnose CI, rebase, conflict status |
-| `pr-compliance-checker` | Verify PR meets repo conventions |
+| `pr-compliance-checker` | Validate PRs against opensource.guide best practices |
 | `issue-scout` | Vet issues for claimability and fit |
 | `repo-evaluator` | Score repository health and responsiveness |
 | `contribution-strategist` | Plan implementation approach |
@@ -70,12 +73,12 @@ Seven specialized agents handle specific tasks autonomously:
 
 ### Entry Point (`packages/core/src/cli.ts`)
 
-A Commander program that registers subcommands via lazy `import()` calls. Each subcommand is a separate module in `packages/core/src/commands/`. The `--json` flag on any command switches output to structured JSON.
+A Commander program that loads command definitions from `cli-registry.ts`. Each command declares its name, `localOnly` flag, and a `register` function that sets up its Commander options and lazy-loads the implementation module via dynamic `import()`. The `--json` flag on any command switches output to structured JSON.
 
 Key design:
-- **Lazy loading** — only the invoked command's module is evaluated.
+- **Lazy loading** — only the invoked command's module is evaluated (dynamic `import()` inside action handlers).
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`LOCAL_ONLY_COMMANDS`** — 19 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
+- **`LOCAL_ONLY_COMMANDS`** — 20 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 
@@ -115,6 +118,9 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `parse-list` | `parse-list.ts` | Parse a curated issue list file |
 | `check-integration` | `check-integration.ts` | Check if new files are referenced |
 | `read` | `read.ts` | Mark PR comments as read |
+| `stats` | `stats.ts` | Show contribution statistics (merge rate, PR counts) |
+| `detect-formatters` | `detect-formatters.ts` | Detect formatters and linters configured in a repository |
+| `pr-template` | `pr-template.ts` | Fetch a repository's PR description template |
 
 ### Build
 
