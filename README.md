@@ -324,12 +324,12 @@ The `/oss-search` command can add vetted issues to this file automatically. Issu
 
 ## How It Works
 
-OSS Autopilot is a **pnpm monorepo** with three packages, plus a plugin layer:
+OSS Autopilot is a **pnpm monorepo** with four packages, plus a plugin layer:
 
 ```
 ┌──────────────────────────────────────────────────┐
 │  Claude Code Plugin Layer                        │
-│  /oss and /setup-oss commands                    │
+│  /oss, /oss-search, /setup-oss, /oss-help        │
 │  7 specialized agents, contribution skills       │
 ├──────────────────────────────────────────────────┤
 │                                                  │
@@ -347,6 +347,12 @@ OSS Autopilot is a **pnpm monorepo** with three packages, plus a plugin layer:
 │  │ Core Library — @oss-autopilot/core         │  │
 │  │ PR monitoring, issue discovery, state mgmt │  │
 │  │ GitHub API, CLI, structured JSON output    │  │
+│  └──────────────────────┬─────────────────────┘  │
+│                         │                        │
+│  ┌──────────────────────┴─────────────────────┐  │
+│  │ Badge Endpoint — @oss-autopilot/badge-     │  │
+│  │ endpoint — Vercel serverless Shields.io    │  │
+│  │ badge API                                  │  │
 │  └────────────────────────────────────────────┘  │
 │                                                  │
 └──────────────────────────────────────────────────┘
@@ -357,6 +363,7 @@ OSS Autopilot is a **pnpm monorepo** with three packages, plus a plugin layer:
 | `@oss-autopilot/core` | [![npm](https://img.shields.io/npm/v/@oss-autopilot/core)](https://www.npmjs.com/package/@oss-autopilot/core) | Core library + CLI. PR monitoring, issue discovery, state management, GitHub API. |
 | `@oss-autopilot/mcp` | [![npm](https://img.shields.io/npm/v/@oss-autopilot/mcp)](https://www.npmjs.com/package/@oss-autopilot/mcp) | MCP server for Cursor, Claude Desktop, Codex, Windsurf, and any MCP client. |
 | `@oss-autopilot/dashboard` | — | Interactive Preact SPA — PR management, charts, and contribution stats. |
+| `@oss-autopilot/badge-endpoint` | — | Vercel serverless endpoint for Shields.io contribution badges. |
 
 ### MCP Server
 
@@ -399,7 +406,7 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 ### Project Structure
 
 ```
-├── commands/                    # Plugin slash commands (/oss, /setup-oss)
+├── commands/                    # Plugin slash commands (/oss, /oss-search, /setup-oss, /oss-help)
 ├── agents/                      # 7 specialized agents (PR responder, issue scout, etc.)
 ├── skills/                      # Contribution best practices
 ├── packages/
@@ -409,7 +416,8 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 │   │   └── dist/cli.bundle.cjs  # Built bundle (auto-generated)
 │   ├── mcp-server/              # @oss-autopilot/mcp — MCP server
 │   │   └── src/                 # Tools, resources, prompts, server
-│   └── dashboard/               # @oss-autopilot/dashboard — Interactive UI
+│   ├── dashboard/               # @oss-autopilot/dashboard — Interactive UI
+│   └── badge-endpoint/          # @oss-autopilot/badge-endpoint — Vercel badge API
 └── pnpm-workspace.yaml          # Workspace definition
 ```
 

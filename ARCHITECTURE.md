@@ -28,6 +28,7 @@ The plugin layer consists of markdown files that Claude Code discovers and execu
 | `oss.md` | `/oss` | Core router — startup, summary, action menu, execution |
 | `setup-oss.md` | `/setup-oss` | First-run configuration wizard |
 | `oss-search.md` | `/oss-search` | Issue discovery with multi-strategy search |
+| `oss-help.md` | `/oss-help` | Quick reference card for commands, agents, and workflows |
 
 Commands invoke the CLI via bash (`node packages/core/dist/cli.bundle.cjs <subcommand> --json`), parse the JSON response, and present results to the user through Claude Code's conversational interface.
 
