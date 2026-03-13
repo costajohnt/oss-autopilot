@@ -44,7 +44,7 @@ Restart Claude Code, then run `/setup-oss`. Done.
 <details>
 <summary><strong>Optional:</strong> Enhanced code review with pr-review-toolkit</summary>
 
-The plugin includes a built-in **pre-commit-reviewer** agent that reviews all code changes before pushing. For enhanced parallel review, install the **pr-review-toolkit** plugin (search for it in the Claude Code plugin marketplace) — it adds 5 specialized reviewers that run simultaneously:
+The plugin includes a built-in **pre-commit-reviewer** agent that reviews all code changes before committing. For enhanced parallel review, install the **pr-review-toolkit** plugin (search for it in the Claude Code plugin marketplace) — it adds 5 specialized reviewers that run simultaneously:
 
 | Agent | Focus |
 |-------|-------|
@@ -61,8 +61,10 @@ The plugin includes a built-in **pre-commit-reviewer** agent that reviews all co
 <details>
 <summary><strong>MCP Server</strong> (Cursor, Claude Desktop, Codex, Windsurf)</summary>
 
+First initialize your GitHub username (one-time setup):
+
 ```bash
-npx @oss-autopilot/mcp@latest --init <your-github-username>
+npx @oss-autopilot/core@latest init <your-github-username>
 ```
 
 Then add to your MCP client config:
@@ -86,8 +88,8 @@ The MCP server exposes 20 tools, 5 resources, and 3 prompts — the full OSS Aut
 <summary><strong>Standalone CLI / npm package</strong></summary>
 
 ```bash
-# Run any command directly
-GITHUB_TOKEN=$(gh auth token) npx @oss-autopilot/core daily --json
+# Run any command directly (uses gh auth token automatically)
+npx @oss-autopilot/core daily --json
 npx @oss-autopilot/core dashboard serve
 
 # Or install globally
@@ -195,7 +197,7 @@ All actions persist to `~/.oss-autopilot/state.json`.
 
 A typical contribution lifecycle:
 
-**Day 1 — Find and claim.** Search for issues, pick a high-scoring one from a repo where you've merged before. The issue scout drafts a claim comment for your review. Start working. Before you push, the pre-commit reviewer catches a missing test — you add it. The compliance checker validates your PR against the repo's contribution guidelines.
+**Day 1 — Find and claim.** Search for issues, pick a high-scoring one from a repo where you've merged before. The issue scout drafts a claim comment for your review. Start working. Before you commit, the pre-commit reviewer catches a missing test — you add it. The compliance checker validates your PR against [opensource.guide](https://opensource.guide) best practices.
 
 **Day 2 — Respond.** `/oss` shows the maintainer requested changes 12 hours ago. The PR responder reads the feedback, fetches code context, and drafts a reply. You review, edit, and post.
 
@@ -270,17 +272,17 @@ Show off your open source contributions with a live badge on your GitHub profile
 
 The badge updates hourly and shows your merge rate, total merged PRs, and active PR count. Only counts PRs to external repos (excludes your own) with 50+ stars by default.
 
-Customize the minimum star threshold with `?minStars=100`:
+Customize the minimum star threshold with `?minStars=100` (URL-encode the inner URL):
 
 ```markdown
-![OSS Contributions](https://img.shields.io/endpoint?url=https://oss-autopilot-stats.vercel.app/api/badge/YOUR_USERNAME?minStars=100)
+![OSS Contributions](https://img.shields.io/endpoint?url=https%3A%2F%2Foss-autopilot-stats.vercel.app%2Fapi%2Fbadge%2FYOUR_USERNAME%3FminStars%3D100)
 ```
 
 ---
 
 ## Configuration
 
-Settings live in `.claude/oss-autopilot/config.md` (YAML frontmatter). Run `/setup-oss` to configure interactively, or edit directly:
+Configuration is stored in `~/.oss-autopilot/state.json` (inside the `config` field). Run `/setup-oss` to configure interactively, or use `setup --set key=value` from the CLI:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -291,9 +293,15 @@ Settings live in `.claude/oss-autopilot/config.md` (YAML frontmatter). Run `/set
 | `minStars` | 50 | Minimum repo stars for inclusion in stats and charts |
 | `languages` | (chosen at setup) | Languages to filter issue search |
 | `labels` | (chosen at setup) | Issue labels to search for |
-| `showHealthCheck` | `true` | Show PR health notification on session start |
+| `showHealthCheck` | (optional) | Show PR health notification on session start |
+| `squashByDefault` | `true` | Squash commits before merging (`true`, `false`, or `"ask"`) |
+| `excludeRepos` | `[]` | Repos to exclude from tracking |
+| `includeDocIssues` | `true` | Include documentation issues in discovery |
+| `issueListPath` | (optional) | Path to curated issue list file |
+| `projectCategories` | `[]` | Project categories to prioritize (nonprofit, devtools, etc.) |
+| `preferredOrgs` | `[]` | GitHub organizations to prioritize |
 
-PR tracking state is stored separately in `~/.oss-autopilot/state.json`.
+PR tracking state, shelved PRs, dismissed issues, and event history are also stored in `~/.oss-autopilot/state.json`.
 
 ### Curated Issue List
 
@@ -318,18 +326,18 @@ Example file:
 - ~~https://github.com/vitejs/vite/issues/333 — HMR race condition~~
 ```
 
-The `/oss-search` command can add vetted issues to this file automatically. Issues from your curated list get a +2 score bonus during search.
+The `/oss-search` command can add vetted issues to this file automatically.
 
 ---
 
 ## How It Works
 
-OSS Autopilot is a **pnpm monorepo** with three packages, plus a plugin layer:
+OSS Autopilot is a **pnpm monorepo** with four packages, plus a plugin layer:
 
 ```
 ┌──────────────────────────────────────────────────┐
 │  Claude Code Plugin Layer                        │
-│  /oss and /setup-oss commands                    │
+│  /oss, /oss-search, /setup-oss, /oss-help        │
 │  7 specialized agents, contribution skills       │
 ├──────────────────────────────────────────────────┤
 │                                                  │
@@ -349,6 +357,12 @@ OSS Autopilot is a **pnpm monorepo** with three packages, plus a plugin layer:
 │  │ GitHub API, CLI, structured JSON output    │  │
 │  └────────────────────────────────────────────┘  │
 │                                                  │
+│  ┌────────────────────────────────────────────┐  │
+│  │ Badge Endpoint — @oss-autopilot/badge-     │  │
+│  │ endpoint — Vercel serverless Shields.io    │  │
+│  │ badge API (standalone, uses Octokit)       │  │
+│  └────────────────────────────────────────────┘  │
+│                                                  │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -357,10 +371,11 @@ OSS Autopilot is a **pnpm monorepo** with three packages, plus a plugin layer:
 | `@oss-autopilot/core` | [![npm](https://img.shields.io/npm/v/@oss-autopilot/core)](https://www.npmjs.com/package/@oss-autopilot/core) | Core library + CLI. PR monitoring, issue discovery, state management, GitHub API. |
 | `@oss-autopilot/mcp` | [![npm](https://img.shields.io/npm/v/@oss-autopilot/mcp)](https://www.npmjs.com/package/@oss-autopilot/mcp) | MCP server for Cursor, Claude Desktop, Codex, Windsurf, and any MCP client. |
 | `@oss-autopilot/dashboard` | — | Interactive Preact SPA — PR management, charts, and contribution stats. |
+| `@oss-autopilot/badge-endpoint` | — | Vercel serverless endpoint for Shields.io contribution badges. |
 
 ### MCP Server
 
-The MCP server wraps every CLI command as an MCP tool, making OSS Autopilot available to any MCP-compatible client:
+The MCP server exposes core CLI commands as MCP tools, making OSS Autopilot available to any MCP-compatible client:
 
 | Feature | What's exposed |
 |---------|---------------|
@@ -368,7 +383,7 @@ The MCP server wraps every CLI command as an MCP tool, making OSS Autopilot avai
 | **5 resources** | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}` |
 | **3 prompts** | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues) |
 
-Supports both **stdio** (default) and **HTTP/SSE** (`--http --port 3100`) transports.
+Supports both **stdio** (default) and **HTTP/SSE** (`--http --port 3001`) transports.
 
 ---
 
@@ -399,9 +414,11 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 ### Project Structure
 
 ```
-├── commands/                    # Plugin slash commands (/oss, /setup-oss)
+├── commands/                    # Plugin slash commands (/oss, /oss-search, /setup-oss, /oss-help)
 ├── agents/                      # 7 specialized agents (PR responder, issue scout, etc.)
 ├── skills/                      # Contribution best practices
+├── workflows/                   # Delegated logic loaded by commands on demand
+├── hooks/                       # Plugin hooks (session-start)
 ├── packages/
 │   ├── core/                    # @oss-autopilot/core — CLI + core library
 │   │   ├── src/commands/        # CLI subcommands
@@ -409,7 +426,8 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 │   │   └── dist/cli.bundle.cjs  # Built bundle (auto-generated)
 │   ├── mcp-server/              # @oss-autopilot/mcp — MCP server
 │   │   └── src/                 # Tools, resources, prompts, server
-│   └── dashboard/               # @oss-autopilot/dashboard — Interactive UI
+│   ├── dashboard/               # @oss-autopilot/dashboard — Interactive UI
+│   └── badge-endpoint/          # @oss-autopilot/badge-endpoint — Vercel badge API
 └── pnpm-workspace.yaml          # Workspace definition
 ```
 
@@ -420,7 +438,16 @@ claude --plugin-dir ./oss-autopilot
 ```
 
 <details>
-<summary>Pre-commit hooks</summary>
+<summary>Hooks</summary>
+
+**Git hooks** (via `simple-git-hooks`):
+
+| Hook | What it runs |
+|------|-------------|
+| `pre-commit` | `pnpm format:check` — blocks commits with formatting issues |
+| `commit-msg` | `scripts/commit-msg.sh` — enforces conventional commit format |
+
+**Claude Code hooks** (`.claude/hooks/`, PreToolUse on Bash):
 
 | Hook | What it blocks |
 |------|----------------|
@@ -439,7 +466,7 @@ claude --plugin-dir ./oss-autopilot
 No. Claude drafts responses and suggests actions. Nothing is posted to GitHub without your explicit approval.
 
 **Where is my data stored?**
-Config in `.claude/oss-autopilot/config.md`. State in `~/.oss-autopilot/`. The dashboard runs locally at `http://localhost:3000`. Nothing is sent to external servers beyond GitHub API calls to fetch your PR data.
+All data lives in `~/.oss-autopilot/` — configuration, PR tracking state, event history, and HTTP cache. The dashboard runs locally at `http://localhost:3000`. Nothing is sent to external servers beyond GitHub API calls to fetch your PR data.
 
 **Does it work with private repos?**
 Yes, as long as your GitHub CLI (`gh`) has access.

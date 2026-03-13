@@ -28,6 +28,7 @@ The plugin layer consists of markdown files that Claude Code discovers and execu
 | `oss.md` | `/oss` | Core router — startup, summary, action menu, execution |
 | `setup-oss.md` | `/setup-oss` | First-run configuration wizard |
 | `oss-search.md` | `/oss-search` | Issue discovery with multi-strategy search |
+| `oss-help.md` | `/oss-help` | Quick reference card for commands, agents, and workflows |
 
 Commands invoke the CLI via bash (`node packages/core/dist/cli.bundle.cjs <subcommand> --json`), parse the JSON response, and present results to the user through Claude Code's conversational interface.
 
@@ -37,7 +38,10 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 
 | File | Trigger | Purpose |
 |------|---------|---------|
+| `startup-and-build.md` | `/oss` start | CLI build check, auth, startup call, session state setup |
+| `action-menu.md` | After startup | Present action menu from pre-computed items |
 | `work-through-issues.md` | "Work through all issues" action | Parallel investigation → consolidated display → sequential execution |
+| `review-issue-replies.md` | "Review issue replies" action | Review and respond to maintainer replies on claimed issues |
 | `pre-commit-review.md` | Before any commit/push | Multi-agent code review gate (existing PR updates) |
 | `draft-first-workflow.md` | New contributions | Create draft PR → iterative review → squash → mark ready |
 | `reference.md` | Always loaded | Shared conventions and formatting rules |
@@ -50,7 +54,7 @@ Seven specialized agents handle specific tasks autonomously:
 |-------|------|
 | `pr-responder` | Draft responses to maintainer feedback |
 | `pr-health-checker` | Diagnose CI, rebase, conflict status |
-| `pr-compliance-checker` | Verify PR meets repo conventions |
+| `pr-compliance-checker` | Validate PRs against opensource.guide best practices |
 | `issue-scout` | Vet issues for claimability and fit |
 | `repo-evaluator` | Score repository health and responsiveness |
 | `contribution-strategist` | Plan implementation approach |
@@ -69,12 +73,12 @@ Seven specialized agents handle specific tasks autonomously:
 
 ### Entry Point (`packages/core/src/cli.ts`)
 
-A Commander program that registers subcommands via lazy `import()` calls. Each subcommand is a separate module in `packages/core/src/commands/`. The `--json` flag on any command switches output to structured JSON.
+A Commander program that loads command definitions from `cli-registry.ts`. Each command declares its name, `localOnly` flag, and a `register` function that sets up its Commander options and lazy-loads the implementation module via dynamic `import()`. The `--json` flag on any command switches output to structured JSON.
 
 Key design:
-- **Lazy loading** — only the invoked command's module is evaluated.
+- **Lazy loading** — only the invoked command's module is evaluated (dynamic `import()` inside action handlers).
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`LOCAL_ONLY_COMMANDS`** — 19 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
+- **`LOCAL_ONLY_COMMANDS`** — 20 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 
@@ -114,6 +118,9 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `parse-list` | `parse-list.ts` | Parse a curated issue list file |
 | `check-integration` | `check-integration.ts` | Check if new files are referenced |
 | `read` | `read.ts` | Mark PR comments as read |
+| `stats` | `stats.ts` | Show contribution statistics (merge rate, PR counts) |
+| `detect-formatters` | `detect-formatters.ts` | Detect formatters and linters configured in a repository |
+| `pr-template` | `pr-template.ts` | Fetch a repository's PR description template |
 
 ### Build
 
@@ -190,7 +197,18 @@ ETag-based caching for GitHub API responses:
 | `types.ts` | All type definitions (`FetchedPR`, `DailyDigest`, `AgentState`, etc.) |
 | `daily-logic.ts` | Standalone functions for daily digest business logic (action menu computation, summary formatting) |
 | `issue-conversation.ts` | `IssueConversationMonitor` — monitors issues the user has commented on for new maintainer responses |
+| `issue-scoring.ts` | Pure functions for computing viability scores (0-100) and quality bonuses |
+| `issue-vetting.ts` | Vet individual issues: checks open status, assignee, linked PRs, repo health |
+| `issue-eligibility.ts` | Pre-filter candidates before full vetting (age, label, repo checks) |
+| `search-phases.ts` | Multi-phase search strategies (merged repos, starred repos, general) |
+| `status-determination.ts` | Compute `FetchedPRStatus` from CI, review, conflict, and dormancy signals |
+| `state-schema.ts` | Zod schemas for all persisted types (`AgentState`, `AgentConfig`, etc.) |
+| `state-persistence.ts` | Low-level file I/O: read/write state.json with locking and backups |
+| `repo-health.ts` | Repository health scoring for issue discovery |
+| `stats.ts` | Contribution statistics computation (merge rate, PR counts, timeline) |
+| `formatter-detection.ts` | Detect linters and formatters configured in a repository |
 | `comment-utils.ts` | Bot detection and acknowledgment comment filtering |
+| `category-mapping.ts` | Map GitHub topics to project categories (nonprofit, devtools, etc.) |
 
 ## Data Flow
 
@@ -253,6 +271,8 @@ interface AgentState {
   monthlyOpenedCounts?: Record<string, number>;
   dailyActivityCounts?: Record<string, number>;
   localRepoCache?: LocalRepoCache;
+  mergedPRs?: StoredMergedPR[];     // Stored merged PR records
+  closedPRs?: StoredClosedPR[];     // Stored closed PR records
   activeIssues: TrackedIssue[];     // Issues user has claimed
 }
 ```
