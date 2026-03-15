@@ -734,4 +734,42 @@ describe('reconcilePRCounts', () => {
     const updated = reconcilePRCounts(state, [], []);
     expect(updated).toBe(false);
   });
+
+  it('recalculates score after bumping mergedPRCount', () => {
+    const state = makeAgentState({
+      repoScores: {
+        'owner/repo': makeRepoScore({ repo: 'owner/repo', mergedPRCount: 0, score: 5 }),
+      },
+    });
+    const mergedPRs = [
+      { url: 'https://github.com/owner/repo/pull/1', title: 'PR 1', mergedAt: '2025-01-01T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/2', title: 'PR 2', mergedAt: '2025-01-02T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/3', title: 'PR 3', mergedAt: '2025-01-03T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/4', title: 'PR 4', mergedAt: '2025-01-04T00:00:00Z' },
+    ];
+    reconcilePRCounts(state, mergedPRs, []);
+    // 4 merges → logarithmic bonus, score should be higher than base 5
+    expect(state.repoScores['owner/repo'].score).toBeGreaterThan(5);
+  });
+
+  it('bumps both merged and closed counts for the same repo in one call', () => {
+    const state = makeAgentState({
+      repoScores: {
+        'owner/repo': makeRepoScore({ repo: 'owner/repo', mergedPRCount: 1, closedWithoutMergeCount: 0 }),
+      },
+    });
+    const mergedPRs = [
+      { url: 'https://github.com/owner/repo/pull/1', title: 'M1', mergedAt: '2025-01-01T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/2', title: 'M2', mergedAt: '2025-01-02T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/3', title: 'M3', mergedAt: '2025-01-03T00:00:00Z' },
+    ];
+    const closedPRs = [
+      { url: 'https://github.com/owner/repo/pull/10', title: 'C1', closedAt: '2025-02-01T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/11', title: 'C2', closedAt: '2025-02-02T00:00:00Z' },
+    ];
+    const updated = reconcilePRCounts(state, mergedPRs, closedPRs);
+    expect(updated).toBe(true);
+    expect(state.repoScores['owner/repo'].mergedPRCount).toBe(3);
+    expect(state.repoScores['owner/repo'].closedWithoutMergeCount).toBe(2);
+  });
 });

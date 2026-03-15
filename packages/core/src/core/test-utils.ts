@@ -228,7 +228,6 @@ export function makeStateManagerMock(
     getReposWithOpenPRs: () => [],
     getHighScoringRepos: () => [],
     getLowScoringRepos: () => [],
-    reconcilePRCounts: () => {},
   } as unknown as StateManager;
 }
 

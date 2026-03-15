@@ -60,11 +60,20 @@ export class StateManager {
       const result = loadState();
       this.state = result.state;
       this.lastLoadedMtimeMs = result.mtimeMs;
-      try {
-        this.reconcilePRCounts();
-      } catch (err) {
-        warn(MODULE, `PR count reconciliation failed (will retry on next load): ${errorMessage(err)}`);
-      }
+      this.tryReconcilePRCounts();
+    }
+  }
+
+  /**
+   * Attempt PR count reconciliation, logging a warning on failure.
+   * Called after every state load from disk.
+   */
+  private tryReconcilePRCounts(): void {
+    try {
+      this.reconcilePRCounts();
+    } catch (err) {
+      warn(MODULE, `PR count reconciliation failed (will retry on next load): ${errorMessage(err)}`);
+      debug(MODULE, `Reconciliation error details: ${err instanceof Error ? err.stack : String(err)}`);
     }
   }
 
@@ -163,11 +172,7 @@ export class StateManager {
     if (!result) return false;
     this.state = result.state;
     this.lastLoadedMtimeMs = result.mtimeMs;
-    try {
-      this.reconcilePRCounts();
-    } catch (err) {
-      warn(MODULE, `PR count reconciliation failed (will retry on next load): ${errorMessage(err)}`);
-    }
+    this.tryReconcilePRCounts();
     return true;
   }
 
@@ -652,7 +657,7 @@ export class StateManager {
    * Reconcile repoScores merged/closed counts with the stored PR arrays.
    * Bumps counters when the array has more PRs than the counter tracks.
    */
-  reconcilePRCounts(): void {
+  private reconcilePRCounts(): void {
     const merged = this.state.mergedPRs ?? [];
     const closed = this.state.closedPRs ?? [];
     if (merged.length === 0 && closed.length === 0) return;

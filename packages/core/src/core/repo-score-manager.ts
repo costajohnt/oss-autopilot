@@ -248,22 +248,29 @@ export function reconcilePRCounts(
   mergedPRs: StoredMergedPR[],
   closedPRs: StoredClosedPR[],
 ): boolean {
+  const mergedUpdated = reconcileField(state, countByRepo(mergedPRs), 'mergedPRCount');
+  const closedUpdated = reconcileField(state, countByRepo(closedPRs), 'closedWithoutMergeCount');
+  return mergedUpdated || closedUpdated;
+}
+
+/**
+ * Reconcile a single counter field across all repos.
+ * Returns true if any repo's counter was bumped.
+ */
+function reconcileField(
+  state: AgentState,
+  countsByRepo: Map<string, number>,
+  field: 'mergedPRCount' | 'closedWithoutMergeCount',
+): boolean {
   let updated = false;
-
-  const reconcile = (countsByRepo: Map<string, number>, field: 'mergedPRCount' | 'closedWithoutMergeCount'): void => {
-    for (const [repo, arrayCount] of countsByRepo) {
-      const current = state.repoScores[repo]?.[field] ?? 0;
-      if (arrayCount > current) {
-        debug(MODULE, `Reconciling ${repo} ${field}: ${current} → ${arrayCount}`);
-        updateRepoScore(state, repo, { [field]: arrayCount });
-        updated = true;
-      }
+  for (const [repo, arrayCount] of countsByRepo) {
+    const current = state.repoScores[repo]?.[field] ?? 0;
+    if (arrayCount > current) {
+      debug(MODULE, `Reconciling ${repo} ${field}: ${current} → ${arrayCount}`);
+      updateRepoScore(state, repo, { [field]: arrayCount });
+      updated = true;
     }
-  };
-
-  reconcile(countByRepo(mergedPRs), 'mergedPRCount');
-  reconcile(countByRepo(closedPRs), 'closedWithoutMergeCount');
-
+  }
   return updated;
 }
 
