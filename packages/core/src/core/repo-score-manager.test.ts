@@ -12,6 +12,7 @@ import {
   getHighScoringRepos,
   getLowScoringRepos,
   getStats,
+  reconcilePRCounts,
 } from './repo-score-manager.js';
 import { makeAgentState, makeRepoScore } from './test-utils.js';
 
@@ -612,5 +613,163 @@ describe('getStats', () => {
     const stats = getStats(state);
     expect(stats.activeIssues).toBe(0);
     expect(stats.needsResponse).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reconcilePRCounts
+// ---------------------------------------------------------------------------
+
+describe('reconcilePRCounts', () => {
+  it('bumps mergedPRCount when stored array has more PRs than counter', () => {
+    const state = makeAgentState({
+      repoScores: {
+        'owner/repo': makeRepoScore({ repo: 'owner/repo', mergedPRCount: 2 }),
+      },
+    });
+    const mergedPRs = [
+      { url: 'https://github.com/owner/repo/pull/1', title: 'PR 1', mergedAt: '2025-01-01T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/2', title: 'PR 2', mergedAt: '2025-01-02T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/3', title: 'PR 3', mergedAt: '2025-01-03T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/4', title: 'PR 4', mergedAt: '2025-01-04T00:00:00Z' },
+    ];
+    const updated = reconcilePRCounts(state, mergedPRs, []);
+    expect(updated).toBe(true);
+    expect(state.repoScores['owner/repo'].mergedPRCount).toBe(4);
+  });
+
+  it('does not decrease mergedPRCount when counter is higher', () => {
+    const state = makeAgentState({
+      repoScores: {
+        'owner/repo': makeRepoScore({ repo: 'owner/repo', mergedPRCount: 5 }),
+      },
+    });
+    const mergedPRs = [
+      { url: 'https://github.com/owner/repo/pull/1', title: 'PR 1', mergedAt: '2025-01-01T00:00:00Z' },
+    ];
+    const updated = reconcilePRCounts(state, mergedPRs, []);
+    expect(updated).toBe(false);
+    expect(state.repoScores['owner/repo'].mergedPRCount).toBe(5);
+  });
+
+  it('bumps closedWithoutMergeCount when stored array has more', () => {
+    const state = makeAgentState({
+      repoScores: {
+        'owner/repo': makeRepoScore({ repo: 'owner/repo', closedWithoutMergeCount: 1 }),
+      },
+    });
+    const closedPRs = [
+      { url: 'https://github.com/owner/repo/pull/10', title: 'Closed 1', closedAt: '2025-02-01T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/11', title: 'Closed 2', closedAt: '2025-02-02T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/12', title: 'Closed 3', closedAt: '2025-02-03T00:00:00Z' },
+    ];
+    const updated = reconcilePRCounts(state, [], closedPRs);
+    expect(updated).toBe(true);
+    expect(state.repoScores['owner/repo'].closedWithoutMergeCount).toBe(3);
+  });
+
+  it('creates repoScore entry for repos not yet tracked', () => {
+    const state = makeAgentState({ repoScores: {} });
+    const mergedPRs = [{ url: 'https://github.com/new/repo/pull/1', title: 'PR 1', mergedAt: '2025-01-01T00:00:00Z' }];
+    const updated = reconcilePRCounts(state, mergedPRs, []);
+    expect(updated).toBe(true);
+    expect(state.repoScores['new/repo']).toBeDefined();
+    expect(state.repoScores['new/repo'].mergedPRCount).toBe(1);
+  });
+
+  it('handles multiple repos across both arrays', () => {
+    const state = makeAgentState({
+      repoScores: {
+        'a/repo': makeRepoScore({ repo: 'a/repo', mergedPRCount: 1, closedWithoutMergeCount: 0 }),
+        'b/repo': makeRepoScore({ repo: 'b/repo', mergedPRCount: 0, closedWithoutMergeCount: 1 }),
+      },
+    });
+    const mergedPRs = [
+      { url: 'https://github.com/a/repo/pull/1', title: 'A1', mergedAt: '2025-01-01T00:00:00Z' },
+      { url: 'https://github.com/a/repo/pull/2', title: 'A2', mergedAt: '2025-01-02T00:00:00Z' },
+      { url: 'https://github.com/b/repo/pull/3', title: 'B1', mergedAt: '2025-01-03T00:00:00Z' },
+    ];
+    const closedPRs = [
+      { url: 'https://github.com/b/repo/pull/4', title: 'B2', closedAt: '2025-02-01T00:00:00Z' },
+      { url: 'https://github.com/b/repo/pull/5', title: 'B3', closedAt: '2025-02-02T00:00:00Z' },
+    ];
+    const updated = reconcilePRCounts(state, mergedPRs, closedPRs);
+    expect(updated).toBe(true);
+    expect(state.repoScores['a/repo'].mergedPRCount).toBe(2);
+    expect(state.repoScores['b/repo'].mergedPRCount).toBe(1);
+    expect(state.repoScores['b/repo'].closedWithoutMergeCount).toBe(2);
+  });
+
+  it('returns false when counts already match', () => {
+    const state = makeAgentState({
+      repoScores: {
+        'owner/repo': makeRepoScore({ repo: 'owner/repo', mergedPRCount: 2, closedWithoutMergeCount: 1 }),
+      },
+    });
+    const mergedPRs = [
+      { url: 'https://github.com/owner/repo/pull/1', title: 'PR 1', mergedAt: '2025-01-01T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/2', title: 'PR 2', mergedAt: '2025-01-02T00:00:00Z' },
+    ];
+    const closedPRs = [
+      { url: 'https://github.com/owner/repo/pull/3', title: 'Closed 1', closedAt: '2025-02-01T00:00:00Z' },
+    ];
+    const updated = reconcilePRCounts(state, mergedPRs, closedPRs);
+    expect(updated).toBe(false);
+  });
+
+  it('skips PRs with invalid URLs', () => {
+    const state = makeAgentState({ repoScores: {} });
+    const mergedPRs = [
+      { url: 'not-a-github-url', title: 'Bad', mergedAt: '2025-01-01T00:00:00Z' },
+      { url: 'https://github.com/valid/repo/pull/1', title: 'Good', mergedAt: '2025-01-01T00:00:00Z' },
+    ];
+    const updated = reconcilePRCounts(state, mergedPRs, []);
+    expect(updated).toBe(true);
+    expect(state.repoScores['valid/repo'].mergedPRCount).toBe(1);
+    expect(Object.keys(state.repoScores)).toHaveLength(1);
+  });
+
+  it('returns false for empty arrays', () => {
+    const state = makeAgentState({ repoScores: {} });
+    const updated = reconcilePRCounts(state, [], []);
+    expect(updated).toBe(false);
+  });
+
+  it('recalculates score after bumping mergedPRCount', () => {
+    const state = makeAgentState({
+      repoScores: {
+        'owner/repo': makeRepoScore({ repo: 'owner/repo', mergedPRCount: 0, score: 5 }),
+      },
+    });
+    const mergedPRs = [
+      { url: 'https://github.com/owner/repo/pull/1', title: 'PR 1', mergedAt: '2025-01-01T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/2', title: 'PR 2', mergedAt: '2025-01-02T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/3', title: 'PR 3', mergedAt: '2025-01-03T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/4', title: 'PR 4', mergedAt: '2025-01-04T00:00:00Z' },
+    ];
+    reconcilePRCounts(state, mergedPRs, []);
+    // 4 merges → logarithmic bonus, score should be higher than base 5
+    expect(state.repoScores['owner/repo'].score).toBeGreaterThan(5);
+  });
+
+  it('bumps both merged and closed counts for the same repo in one call', () => {
+    const state = makeAgentState({
+      repoScores: {
+        'owner/repo': makeRepoScore({ repo: 'owner/repo', mergedPRCount: 1, closedWithoutMergeCount: 0 }),
+      },
+    });
+    const mergedPRs = [
+      { url: 'https://github.com/owner/repo/pull/1', title: 'M1', mergedAt: '2025-01-01T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/2', title: 'M2', mergedAt: '2025-01-02T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/3', title: 'M3', mergedAt: '2025-01-03T00:00:00Z' },
+    ];
+    const closedPRs = [
+      { url: 'https://github.com/owner/repo/pull/10', title: 'C1', closedAt: '2025-02-01T00:00:00Z' },
+      { url: 'https://github.com/owner/repo/pull/11', title: 'C2', closedAt: '2025-02-02T00:00:00Z' },
+    ];
+    const updated = reconcilePRCounts(state, mergedPRs, closedPRs);
+    expect(updated).toBe(true);
+    expect(state.repoScores['owner/repo'].mergedPRCount).toBe(3);
+    expect(state.repoScores['owner/repo'].closedWithoutMergeCount).toBe(2);
   });
 });
