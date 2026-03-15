@@ -21,7 +21,8 @@ import {
 import { loadState, saveState, reloadStateIfChanged, createFreshState } from './state-persistence.js';
 import * as repoScoring from './repo-score-manager.js';
 import type { Stats } from './repo-score-manager.js';
-import { debug } from './logger.js';
+import { debug, warn } from './logger.js';
+import { errorMessage } from './errors.js';
 
 export { acquireLock, releaseLock, atomicWriteFileSync } from './state-persistence.js';
 export type { Stats } from './repo-score-manager.js';
@@ -59,6 +60,11 @@ export class StateManager {
       const result = loadState();
       this.state = result.state;
       this.lastLoadedMtimeMs = result.mtimeMs;
+      try {
+        this.reconcilePRCounts();
+      } catch (err) {
+        warn(MODULE, `PR count reconciliation failed (will retry on next load): ${errorMessage(err)}`);
+      }
     }
   }
 
@@ -157,6 +163,11 @@ export class StateManager {
     if (!result) return false;
     this.state = result.state;
     this.lastLoadedMtimeMs = result.mtimeMs;
+    try {
+      this.reconcilePRCounts();
+    } catch (err) {
+      warn(MODULE, `PR count reconciliation failed (will retry on next load): ${errorMessage(err)}`);
+    }
     return true;
   }
 
@@ -635,6 +646,18 @@ export class StateManager {
   /** Returns aggregate contribution statistics (merge rate, PR counts, repo breakdown). */
   getStats(): Stats {
     return repoScoring.getStats(this.state);
+  }
+
+  /**
+   * Reconcile repoScores merged/closed counts with the stored PR arrays.
+   * Bumps counters when the array has more PRs than the counter tracks.
+   */
+  reconcilePRCounts(): void {
+    const merged = this.state.mergedPRs ?? [];
+    const closed = this.state.closedPRs ?? [];
+    if (merged.length === 0 && closed.length === 0) return;
+    const updated = repoScoring.reconcilePRCounts(this.state, merged, closed);
+    if (updated) this.autoSave();
   }
 }
 

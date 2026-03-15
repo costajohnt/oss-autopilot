@@ -5,8 +5,9 @@
  * the passed state object in place; query functions are pure.
  */
 
-import { AgentState, RepoScore, RepoScoreUpdate, isBelowMinStars } from './types.js';
+import { AgentState, RepoScore, RepoScoreUpdate, StoredMergedPR, StoredClosedPR, isBelowMinStars } from './types.js';
 import { debug, warn } from './logger.js';
+import { parseGitHubUrl } from './utils.js';
 
 const MODULE = 'scoring';
 
@@ -217,6 +218,53 @@ export interface Stats {
   totalTracked: number;
   /** Number of PRs needing a response. Always 0 in v2 (sourced from fresh fetch instead). */
   needsResponse: number;
+}
+
+/**
+ * Count PRs per repo from an array of stored PR records.
+ * Skips entries with unparseable URLs.
+ */
+function countByRepo(prs: ReadonlyArray<{ url: string }>): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const pr of prs) {
+    const parsed = parseGitHubUrl(pr.url);
+    if (!parsed) {
+      warn(MODULE, `Skipping PR with unparseable URL during reconciliation: "${pr.url}"`);
+      continue;
+    }
+    const repo = `${parsed.owner}/${parsed.repo}`;
+    counts.set(repo, (counts.get(repo) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Reconcile repoScores merged/closed counts with the stored PR arrays.
+ * Counts PRs per repo from the arrays and bumps repoScores counters when
+ * the array count is higher (never decreases). Returns true if any updates were made.
+ */
+export function reconcilePRCounts(
+  state: AgentState,
+  mergedPRs: StoredMergedPR[],
+  closedPRs: StoredClosedPR[],
+): boolean {
+  let updated = false;
+
+  const reconcile = (countsByRepo: Map<string, number>, field: 'mergedPRCount' | 'closedWithoutMergeCount'): void => {
+    for (const [repo, arrayCount] of countsByRepo) {
+      const current = state.repoScores[repo]?.[field] ?? 0;
+      if (arrayCount > current) {
+        debug(MODULE, `Reconciling ${repo} ${field}: ${current} → ${arrayCount}`);
+        updateRepoScore(state, repo, { [field]: arrayCount });
+        updated = true;
+      }
+    }
+  };
+
+  reconcile(countByRepo(mergedPRs), 'mergedPRCount');
+  reconcile(countByRepo(closedPRs), 'closedWithoutMergeCount');
+
+  return updated;
 }
 
 /**
