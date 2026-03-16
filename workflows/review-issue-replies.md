@@ -16,11 +16,11 @@ When there are issues to review, display each one:
 
 Maintainers responded to your comments on these issues:
 
-1. **owner/repo#123** — Issue title
+1. [**owner/repo#123**](https://github.com/owner/repo/issues/123) — Issue title
    └─ @maintainer: "Go for it! Feel free to submit a PR..."
    └─ Your comment: 5 days ago
 
-2. **owner/repo#456** — Another issue title
+2. [**owner/repo#456**](https://github.com/owner/repo/issues/456) — Another issue title
    └─ @maintainer: "Thanks for the interest. Here's what..."
    └─ Your comment: 2 days ago
 ```

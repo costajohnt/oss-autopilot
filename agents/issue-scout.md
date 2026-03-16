@@ -406,7 +406,7 @@ A repo with a dormant PR should almost never be recommended unless the issue is 
 
 ### From Your Starred/Trusted Repos ⭐
 
-#### 1. [repo/repo#123] - Issue Title (Score: 12)
+#### 1. [acme/widgets#123](https://github.com/acme/widgets/issues/123) - Issue Title (Score: 12)
 **Your history:** You merged 2 PRs here - great relationship!
 **Why it's good:**
 - Clear requirements: [yes/somewhat/no]
@@ -421,7 +421,7 @@ A repo with a dormant PR should almost never be recommended unless the issue is 
 
 ### New Repos to Explore 🔍
 
-#### 2. [new-repo#456] - Issue Title (Score: 7)
+#### 2. [cool-org/toolkit#456](https://github.com/cool-org/toolkit/issues/456) - Issue Title (Score: 7)
 **Your history:** No prior relationship
 **Why it's good:**
 - [reasons]
@@ -432,8 +432,8 @@ A repo with a dormant PR should almost never be recommended unless the issue is 
 
 ### Skipped (Relationship Issues) ⚠️
 
-- **oven-sh/bun** - You have a dormant PR (#25791, 30+ days). Skipping until resolved.
-- **other/repo** - Your last PR was closed without merge.
+- [**oven-sh/bun**](https://github.com/oven-sh/bun) - You have a dormant PR ([#25791](https://github.com/oven-sh/bun/pull/25791), 30+ days). Skipping until resolved.
+- [**other/repo**](https://github.com/other/repo) - Your last PR was closed without merge.
 
 Want me to include these anyway? Some may still have good issues.
 ```

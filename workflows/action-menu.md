@@ -39,11 +39,11 @@ Then show the enriched format using the resolved PR's fields:
 ```
 {count} PRs Need Attention (in priority order):
 
-1. {issue.label} {pr.repo}#{pr.number} — {pr.title} ({pr.daysSinceActivity}d)
+1. {issue.label} [{pr.repo}#{pr.number}]({pr.url}) — {pr.title} ({pr.daysSinceActivity}d)
    └─ @{pr.lastMaintainerComment.author}: {formatted maintainerActionHints}
    └─ Effort: {effort} — {action summary}
 
-2. {issue.label} {pr.repo}#{pr.number} — {pr.title} ({pr.daysSinceActivity}d)
+2. {issue.label} [{pr.repo}#{pr.number}]({pr.url}) — {pr.title} ({pr.daysSinceActivity}d)
    └─ @{pr.lastMaintainerComment.author}: {formatted maintainerActionHints}
    └─ Effort: {effort} — {action summary}
 
@@ -74,7 +74,7 @@ If `data.daily.digest.recentlyClosedPRs` has entries, display them **after** the
 
 ```
 Recently closed (informational):
-- {repo}#{number} — {title} (closed without merge on {closedAt date})
+- [{repo}#{number}]({url}) — {title} (closed without merge on {closedAt date})
 ```
 
 These do not require any action. They exist so the user knows what was closed. The Auto-Exclude prompt (in the work-through-issues workflow) may offer to exclude these repos from future searches.
