@@ -369,6 +369,12 @@ If a path is provided, try to read it to verify it exists. If it doesn't exist, 
 
 This sets the global `squashByDefault` setting.
 
+**Question 11: Score Threshold for Vetted Issues**
+- "Minimum score threshold for vetted issues? Issues below this score are auto-filtered during `/oss-search` vetting."
+- Options: "4 (lenient)", "5 (moderate)", "6 (default)", "7 (selective)", "8 (strict)"
+
+Store the selected number in config as `scoreThreshold`.
+
 ## Step 5: Verify GitHub Access
 
 Before creating config files, verify that the token actually works:

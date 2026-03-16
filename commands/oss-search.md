@@ -149,6 +149,8 @@ Use AskUserQuestion:
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --json
    ```
+   If the config command fails, log: "Could not read scoreThreshold from config. Using default threshold of 6." and use 6 as the threshold.
+
    For each vetted issue:
    - Score **>= threshold** → proceed to tier assignment (step 4)
    - Score **< threshold** → skip, do NOT add to any tier

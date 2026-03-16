@@ -4,6 +4,7 @@
  */
 
 import { getStateManager } from '../core/index.js';
+import { ValidationError } from '../core/errors.js';
 import { ISSUE_SCOPES, type IssueScope } from '../core/types.js';
 import type { ConfigOutput } from '../formatters/json.js';
 import { validateGitHubUsername } from './validation.js';
@@ -134,7 +135,7 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
     case 'scoreThreshold': {
       const threshold = Number(value);
       if (!Number.isInteger(threshold) || threshold < 1 || threshold > 10) {
-        throw new Error('Invalid value for scoreThreshold. Must be an integer between 1 and 10.');
+        throw new ValidationError(`Invalid value for scoreThreshold: "${value}". Must be an integer between 1 and 10.`);
       }
       stateManager.updateConfig({ scoreThreshold: threshold });
       break;
