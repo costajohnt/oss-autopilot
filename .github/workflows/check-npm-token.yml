@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Check token validity
         run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          trap 'rm -f ~/.npmrc' EXIT
           RESULT=$(npm whoami --registry https://registry.npmjs.org/ 2>&1) || {
             echo "::error::NPM_TOKEN is expired or invalid. Rotate it at https://www.npmjs.com/settings/tokens and update the GitHub secret."
             echo "npm whoami output: $RESULT"
@@ -23,4 +25,4 @@ jobs:
           }
           echo "NPM token is valid (authenticated as: $RESULT)"
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
