@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.1.0...core-v1.2.0) (2026-03-16)
+
+
+### Features
+
+* add configurable scoreThreshold for vetted issue filtering ([#759](https://github.com/costajohnt/oss-autopilot/issues/759)) ([600b801](https://github.com/costajohnt/oss-autopilot/commit/600b801b4c6c1b850035a12a2a6953c93169a439))
+
 ## [1.1.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.0.1...core-v1.1.0) (2026-03-16)
 
 
