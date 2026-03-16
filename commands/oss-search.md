@@ -133,7 +133,7 @@ Use AskUserQuestion:
 
 1. Add each candidate to the curated list under `## Pending Vet`:
    ```markdown
-   ### {owner}/{repo} ({stars}★) — {repo description}
+   ### [{owner}/{repo}](https://github.com/{owner}/{repo}) ({stars}★) — {repo description}
    - [#{number}]({url}) — {issue title}
      - **Pending vet** — Found in search round {currentRound}, not yet vetted.
    ```
