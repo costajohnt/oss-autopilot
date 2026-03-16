@@ -423,6 +423,7 @@ labels:
 scope: SCOPE_LIST_OR_EMPTY
 issueListPath: PATH_OR_EMPTY
 squashByDefault: true
+scoreThreshold: NUMBER
 githubAccess: gh|mcp
 setupComplete: true
 lastUpdated: YYYY-MM-DD
@@ -443,6 +444,7 @@ This file stores your OSS Autopilot preferences. Edit the YAML frontmatter above
 - **Scope Tiers**: list or "None (custom labels only)"
 - **Issue List**: PATH or "Not configured"
 - **Squash PRs**: Yes (default) / No / Ask each time
+- **Score Threshold**: NUMBER/10
 - **GitHub Access**: gh CLI / MCP server
 ```
 
@@ -534,6 +536,7 @@ Show summary:
 - **GitHub Access**: via [gh CLI / MCP server]
 - **Issue List**: PATH or "Not configured"
 - **Squash PRs**: Yes (default) / No / Ask each time
+- **Score Threshold**: NUMBER/10
 
 ### Imported PRs
 - X open PRs imported

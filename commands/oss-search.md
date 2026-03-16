@@ -149,7 +149,7 @@ Use AskUserQuestion:
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --json
    ```
-   If the config command fails, log: "Could not read scoreThreshold from config. Using default threshold of 6." and use 6 as the threshold.
+   Parse the `scoreThreshold` field from the returned `data.config` object. If the config command fails, log: "Could not read scoreThreshold from config. Using default threshold of 6." and use 6 as the threshold.
 
    For each vetted issue:
    - Score **>= threshold** → proceed to tier assignment (step 4)
@@ -165,7 +165,7 @@ Use AskUserQuestion:
 
    **Important:** `searchRoundScores` should use the **unfiltered** mean (all vetted scores) so diminishing returns detection remains accurate.
 
-4. Update list entries with results — move issues that passed the threshold to appropriate tier (`## Pursue`, `## Maybe`, `## Skip`)
+4. Update list entries with results — move issues that passed the threshold to their vet-recommended tier (`## Pursue`, `## Maybe`, `## Skip`) based on the agent's recommendation field
 
 5. Track round scores: `searchRoundScores.push(mean of all scores)` (unfiltered — includes scores below threshold)
 

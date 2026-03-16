@@ -17,6 +17,17 @@ function parsePositiveInt(value: string, settingName: string): number {
   return parsed;
 }
 
+/** Parse and validate an integer within a specific range [min, max]. */
+function parseBoundedInt(value: string, settingName: string, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new ValidationError(
+      `Invalid value for ${settingName}: "${value}". Must be an integer between ${min} and ${max}.`,
+    );
+  }
+  return parsed;
+}
+
 interface SetupOptions {
   reset?: boolean;
   set?: string[];
@@ -138,17 +149,14 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             }
             break;
           case 'scoreThreshold': {
-            const threshold = parsePositiveInt(value, 'scoreThreshold');
-            if (threshold > 10) {
-              throw new ValidationError(`Invalid value for scoreThreshold: "${value}". Must be between 1 and 10.`);
-            }
+            const threshold = parseBoundedInt(value, 'scoreThreshold', 1, 10);
             stateManager.updateConfig({ scoreThreshold: threshold });
             results[key] = String(threshold);
             break;
           }
           case 'minStars': {
             const stars = Number(value);
-            if (!Number.isFinite(stars) || !Number.isInteger(stars) || stars < 0) {
+            if (!Number.isInteger(stars) || stars < 0) {
               throw new ValidationError(`Invalid value for minStars: "${value}". Must be a non-negative integer.`);
             }
             stateManager.updateConfig({ minStars: stars });
