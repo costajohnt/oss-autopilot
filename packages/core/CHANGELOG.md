@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1](https://github.com/costajohnt/oss-autopilot/compare/core-v1.0.0...core-v1.0.1) (2026-03-15)
+
+
+### Bug Fixes
+
+* chunk GitHub Search queries to stay within 5 boolean operator limit ([#754](https://github.com/costajohnt/oss-autopilot/issues/754)) ([3c1a3eb](https://github.com/costajohnt/oss-autopilot/commit/3c1a3ebde8096016c5a821b7afbddd87bf383f45))
+* reconcile repoScores PR counts with stored arrays ([#756](https://github.com/costajohnt/oss-autopilot/issues/756)) ([a369cc6](https://github.com/costajohnt/oss-autopilot/commit/a369cc6ba838d9ec0bd133a1e48ddfaec4c311b1))
+* update docs with missing badge-endpoint package and oss-help command ([#749](https://github.com/costajohnt/oss-autopilot/issues/749)) ([6148cfb](https://github.com/costajohnt/oss-autopilot/commit/6148cfb59274773b6a06ce0c113a6ee7b6c87acf))
+
 ## [1.0.0](https://github.com/costajohnt/oss-autopilot/compare/core-v0.60.1...core-v1.0.0) (2026-03-12)
 
 
