@@ -169,6 +169,8 @@ export const AgentConfigSchema = z.object({
 
   minRepoScoreThreshold: z.number().default(4),
 
+  scoreThreshold: z.number().default(6),
+
   starredRepos: z.array(z.string()).default([]),
   starredReposLastFetched: z.string().optional(),
 

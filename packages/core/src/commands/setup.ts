@@ -11,7 +11,7 @@ import { PROJECT_CATEGORIES, type ProjectCategory, ISSUE_SCOPES, type IssueScope
 /** Parse and validate a positive integer setting value. */
 function parsePositiveInt(value: string, settingName: string): number {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {
+  if (!Number.isInteger(parsed) || parsed < 1) {
     throw new ValidationError(`Invalid value for ${settingName}: "${value}". Must be a positive integer.`);
   }
   return parsed;
@@ -40,6 +40,7 @@ export interface SetupCompleteOutput {
     projectCategories: ProjectCategory[];
     preferredOrgs: string[];
     scope: IssueScope[];
+    scoreThreshold: number;
   };
 }
 
@@ -136,6 +137,15 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
               results[key] = value !== 'false' ? 'true' : 'false';
             }
             break;
+          case 'scoreThreshold': {
+            const threshold = parsePositiveInt(value, 'scoreThreshold');
+            if (threshold > 10) {
+              throw new ValidationError(`Invalid value for scoreThreshold: "${value}". Must be between 1 and 10.`);
+            }
+            stateManager.updateConfig({ scoreThreshold: threshold });
+            results[key] = String(threshold);
+            break;
+          }
           case 'minStars': {
             const stars = Number(value);
             if (!Number.isFinite(stars) || !Number.isInteger(stars) || stars < 0) {
@@ -278,6 +288,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         projectCategories: config.projectCategories ?? [],
         preferredOrgs: config.preferredOrgs ?? [],
         scope: config.scope ?? [],
+        scoreThreshold: config.scoreThreshold,
       },
     };
   }
@@ -335,6 +346,13 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         current: config.scope ?? [],
         default: [],
         type: 'list',
+      },
+      {
+        setting: 'scoreThreshold',
+        prompt: 'Minimum vet score (1-10) for issues to keep after vetting? Issues below this are auto-filtered.',
+        current: config.scoreThreshold,
+        default: 6,
+        type: 'number',
       },
       {
         setting: 'aiPolicyBlocklist',

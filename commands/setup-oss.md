@@ -171,6 +171,15 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set squas
 
 This sets the global `squashByDefault` setting.
 
+**Question 11: Score Threshold for Vetted Issues**
+- "Minimum score threshold for vetted issues? Issues below this score are auto-filtered during `/oss-search` vetting."
+- Options: "4 (lenient)", "5 (moderate)", "6 (default)", "7 (selective)", "8 (strict)"
+
+Extract the number from the selected option and apply:
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set scoreThreshold=NUMBER --json
+```
+
 ## Step 4-CLI: Verify GitHub Access
 
 Before marking setup complete, verify that the token actually works by making a lightweight API call:
@@ -219,6 +228,7 @@ Show summary:
 - **Preferred Orgs**: list or "None"
 - **Issue List**: PATH or "Not configured"
 - **Squash PRs**: Yes (default) / No / Ask each time
+- **Score Threshold**: NUMBER/10
 
 ### Imported PRs
 - X open PRs imported

@@ -38,6 +38,7 @@ describe('AgentStateSchema', () => {
       expect(result.config.excludeRepos).toEqual([]);
       expect(result.config.trustedProjects).toEqual([]);
       expect(result.config.minRepoScoreThreshold).toBe(4);
+      expect(result.config.scoreThreshold).toBe(6);
       expect(result.config.starredRepos).toEqual([]);
       expect(result.config.squashByDefault).toBe(true);
       expect(result.config.minStars).toBe(50);
@@ -158,6 +159,7 @@ describe('AgentConfigSchema', () => {
       expect(result.trustedProjects).toEqual([]);
       expect(result.githubUsername).toBe('');
       expect(result.minRepoScoreThreshold).toBe(4);
+      expect(result.scoreThreshold).toBe(6);
       expect(result.starredRepos).toEqual([]);
       expect(result.squashByDefault).toBe(true);
       expect(result.minStars).toBe(50);
