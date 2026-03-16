@@ -11,8 +11,19 @@ import { PROJECT_CATEGORIES, type ProjectCategory, ISSUE_SCOPES, type IssueScope
 /** Parse and validate a positive integer setting value. */
 function parsePositiveInt(value: string, settingName: string): number {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {
+  if (!Number.isInteger(parsed) || parsed < 1) {
     throw new ValidationError(`Invalid value for ${settingName}: "${value}". Must be a positive integer.`);
+  }
+  return parsed;
+}
+
+/** Parse and validate an integer within a specific range [min, max]. */
+function parseBoundedInt(value: string, settingName: string, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new ValidationError(
+      `Invalid value for ${settingName}: "${value}". Must be an integer between ${min} and ${max}.`,
+    );
   }
   return parsed;
 }
@@ -40,6 +51,7 @@ export interface SetupCompleteOutput {
     projectCategories: ProjectCategory[];
     preferredOrgs: string[];
     scope: IssueScope[];
+    scoreThreshold: number;
   };
 }
 
@@ -136,9 +148,15 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
               results[key] = value !== 'false' ? 'true' : 'false';
             }
             break;
+          case 'scoreThreshold': {
+            const threshold = parseBoundedInt(value, 'scoreThreshold', 1, 10);
+            stateManager.updateConfig({ scoreThreshold: threshold });
+            results[key] = String(threshold);
+            break;
+          }
           case 'minStars': {
             const stars = Number(value);
-            if (!Number.isFinite(stars) || !Number.isInteger(stars) || stars < 0) {
+            if (!Number.isInteger(stars) || stars < 0) {
               throw new ValidationError(`Invalid value for minStars: "${value}". Must be a non-negative integer.`);
             }
             stateManager.updateConfig({ minStars: stars });
@@ -278,6 +296,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         projectCategories: config.projectCategories ?? [],
         preferredOrgs: config.preferredOrgs ?? [],
         scope: config.scope ?? [],
+        scoreThreshold: config.scoreThreshold,
       },
     };
   }
@@ -335,6 +354,13 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         current: config.scope ?? [],
         default: [],
         type: 'list',
+      },
+      {
+        setting: 'scoreThreshold',
+        prompt: 'Minimum vet score (1-10) for issues to keep after vetting? Issues below this are auto-filtered.',
+        current: config.scoreThreshold,
+        default: 6,
+        type: 'number',
       },
       {
         setting: 'aiPolicyBlocklist',

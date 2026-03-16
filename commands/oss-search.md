@@ -145,11 +145,31 @@ Use AskUserQuestion:
      Return: score (1-10), recommendation (pursue/maybe/skip), red flags.")
    ```
 
-3. Update list entries with results — move to appropriate tier (`## Pursue`, `## Maybe`, `## Skip`)
+3. **Score Threshold Filter:** After all vet agents return, read `scoreThreshold` from config:
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --json
+   ```
+   Parse the `scoreThreshold` field from the returned `data.config` object. If the config command fails, log: "Could not read scoreThreshold from config. Using default threshold of 6." and use 6 as the threshold.
 
-4. Track round scores: `searchRoundScores.push(mean of all scores)`
+   For each vetted issue:
+   - Score **>= threshold** → proceed to tier assignment (step 4)
+   - Score **< threshold** → skip, do NOT add to any tier
 
-5. Present summary, then proceed to **Diminishing Returns Check**
+   If any filtered, display:
+   > "Filtered {count} issue(s) below score threshold ({threshold}/10)."
+
+   List filtered issues briefly:
+   ```
+   - owner/repo#123 (score: 4) — Issue title
+   ```
+
+   **Important:** `searchRoundScores` should use the **unfiltered** mean (all vetted scores) so diminishing returns detection remains accurate.
+
+4. Update list entries with results — move issues that passed the threshold to their vet-recommended tier (`## Pursue`, `## Maybe`, `## Skip`) based on the agent's recommendation field
+
+5. Track round scores: `searchRoundScores.push(mean of all scores)` (unfiltered — includes scores below threshold)
+
+6. Present summary, then proceed to **Diminishing Returns Check**
 
 **"Pick one to vet now":**
 - Display results as numbered list, use AskUserQuestion with up to 3 + "Done for now"
