@@ -183,6 +183,57 @@ Options:
    - If the fix is simple, just push the code with no comment or a one-liner like "fixed" or "done, pushed"
    - Ask clarifying questions only when genuinely stuck
 
+4a. **Verify Draft Accuracy**
+
+   Before presenting the draft to the user, cross-check every factual claim against the actual code changes:
+
+   1. **Extract claims from the draft.** Look for factual statements about what was changed:
+      - "I updated X to do Y" / "Changed X to Y" / "Fixed X"
+      - "Added a check for X" / "The function now handles Y"
+      - References to specific files, functions, or line numbers
+
+   2. **Verify each claim against the diff:**
+      ```bash
+      git diff HEAD~1..HEAD  # or git diff $mergeBase..HEAD for multi-commit changes
+      ```
+
+      For each claim:
+      - **"I updated function X"** → verify function X appears in the diff
+      - **"Changed X to Y"** → verify the old value was X and new value is Y in the diff
+      - **"Added a check for Z"** → verify the check exists in the new code
+      - **File/function references** → verify the referenced file/function was modified
+
+   3. **Handle unverifiable or incorrect claims:**
+      - **Unverifiable** (e.g., runtime behavior claims): Rephrase to avoid unverifiable assertions. Instead of "This now handles edge case X correctly", use "Added handling for X" (which is verifiable from the diff).
+      - **Incorrect** (contradicted by the diff): Auto-correct obvious errors:
+        - Wrong function name → replace with the correct name from the diff
+        - Wrong file path → replace with the correct path
+        - "Added" when actually "modified" → correct the verb
+
+   4. **Present the verified draft.** If corrections were made, note them:
+
+      **If all claims verified:**
+      ```
+      **Draft response (verified ✅):**
+      > [the draft]
+      ```
+
+      **If corrections were made:**
+      ```
+      **Draft response (verified ✅ — 1 correction applied):**
+      > [corrected draft]
+
+      Note: The draft originally said "{original claim}" but the diff shows "{actual change}". Corrected automatically.
+      ```
+
+      **If unresolvable issues remain:**
+      ```
+      **Draft response (⚠️ 1 unverifiable claim):**
+      > [draft with flagged claim]
+
+      ⚠️ Could not verify: "{claim}". Consider rephrasing or removing before posting.
+      ```
+
 5. **Pre-Push Review (Before Pushing Code Changes)**
    Before pushing, run the project's code review tooling on the diff. Fix any findings before pushing.
 
