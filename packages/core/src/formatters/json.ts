@@ -355,6 +355,27 @@ export interface CheckIntegrationOutput {
   unreferencedCount: number;
 }
 
+/** Status of a re-vetted issue from the curated list (#764). */
+export type VetListItemStatus = 'still_available' | 'claimed' | 'closed' | 'has_pr' | 'error';
+
+/** Output of the vet-list command (#764). */
+export interface VetListOutput {
+  results: Array<
+    VetOutput & {
+      listStatus: VetListItemStatus;
+      errorMessage?: string;
+    }
+  >;
+  summary: {
+    total: number;
+    stillAvailable: number;
+    claimed: number;
+    closed: number;
+    hasPR: number;
+    errors: number;
+  };
+}
+
 /** Output of the vet command */
 export interface VetOutput {
   issue: {

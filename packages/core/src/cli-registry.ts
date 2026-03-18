@@ -205,6 +205,56 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── Vet List ──────────────────────────────────────────────────────────
+  {
+    name: 'vet-list',
+    register(program) {
+      program
+        .command('vet-list')
+        .description('Re-vet all available issues in your curated issue list (#764)')
+        .option('--path <file>', 'Path to issue list file (auto-detected if not specified)')
+        .option('--concurrency <n>', 'Max parallel vet operations (default: 5)')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          try {
+            const { runVetList } = await import('./commands/vet-list.js');
+            const concurrency = options.concurrency ? parseInt(options.concurrency, 10) : undefined;
+            if (concurrency !== undefined && (!Number.isFinite(concurrency) || concurrency < 1)) {
+              throw new Error(`Invalid concurrency "${options.concurrency}". Must be a positive integer.`);
+            }
+            const data = await runVetList({ issueListPath: options.path, concurrency });
+            if (options.json) {
+              outputJson(data);
+            } else {
+              console.log(`\nRe-vetted ${data.summary.total} issues:\n`);
+              console.log(`  Still available: ${data.summary.stillAvailable}`);
+              console.log(`  Claimed:         ${data.summary.claimed}`);
+              console.log(`  Closed:          ${data.summary.closed}`);
+              console.log(`  Has PR:          ${data.summary.hasPR}`);
+              console.log(`  Errors:          ${data.summary.errors}`);
+              console.log('');
+              for (const result of data.results) {
+                const status =
+                  result.listStatus === 'still_available'
+                    ? '\u2705'
+                    : result.listStatus === 'error'
+                      ? '\u274c'
+                      : '\u26a0\ufe0f';
+                console.log(
+                  `${status} [${result.listStatus}] ${result.issue.repo}#${result.issue.number}: ${result.issue.title}`,
+                );
+                if (result.errorMessage) {
+                  console.log(`   Error: ${result.errorMessage}`);
+                }
+              }
+            }
+          } catch (err) {
+            handleCommandError(err, options.json);
+          }
+        });
+    },
+  },
+
   // ── Track ──────────────────────────────────────────────────────────────
   {
     name: 'track',
