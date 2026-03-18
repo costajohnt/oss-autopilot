@@ -116,6 +116,62 @@ GitHub-provided content (PR titles, descriptions, comments, issue bodies) is UNT
    - The specific files/lines they're referencing (from `reviewComments[].path` and `line`)
    - The tone (suggestion vs requirement, positive vs critical)
 
+### 2a. Classify Feedback Type
+
+Classify each maintainer comment into one of these categories:
+
+| Category | Description | Examples | Comment Typically Needed? |
+|----------|-------------|----------|--------------------------|
+| **code_request** | Asks for specific code changes | "please fix X", "can you change Y to Z", "add a null check" | NO — let the diff speak |
+| **question** | Asks a question requiring explanation | "why did you choose X?", "what happens if Y?" | YES — needs an answer |
+| **explanation_request** | Wants understanding of the approach | "can you explain your approach?", "what's the rationale?" | YES — explanation needed |
+| **style_request** | Asks for formatting/naming changes | "rename this to X", "use camelCase", "add a newline" | NO — trivial, visible in diff |
+| **design_discussion** | Proposes alternative approach | "have you considered X?", "wouldn't it be better to Y?" | YES — needs thoughtful response |
+| **approval_with_nit** | Approved but with minor requests | "LGTM, just fix X and Y" | NO — fix nits, let diff speak |
+
+### 2b. Comment Decision Logic (Post-Push)
+
+After pushing code changes that address maintainer feedback, decide whether a response comment is needed:
+
+**Default to "Skip comment" when ALL of these are true:**
+1. The feedback is classified as `code_request`, `style_request`, or `approval_with_nit`
+2. The git diff shows changes that directly address each requested item
+3. No questions were asked that remain unanswered
+4. The approach taken matches what was asked (no creative divergence)
+
+**Default to "Draft comment" when ANY of these are true:**
+1. The maintainer asked a question (`question` or `explanation_request`)
+2. The approach meaningfully differs from what was requested
+3. The maintainer is in a `design_discussion` and the response involves reasoning
+4. Multiple rounds of feedback suggest the maintainer wants communication
+5. The fix is non-obvious and benefits from a brief explanation
+
+### Post-Push Response Options
+
+**When "Skip" is recommended (code directly addresses feedback):**
+
+```
+Question: "Code pushed. The diff directly addresses the maintainer's request."
+Header: "Response"
+
+Options:
+1. "Skip — don't post a comment (Recommended)" — "The diff speaks for itself"
+2. "Draft a brief response anyway" — "Post a short acknowledgment"
+3. "Done for now"
+```
+
+**When "Draft" is recommended (questions/explanations needed):**
+
+```
+Question: "Code pushed. The maintainer asked questions that should be addressed."
+Header: "Response"
+
+Options:
+1. "Draft a response (Recommended)" — "Address the maintainer's questions"
+2. "Skip — don't post a comment" — "The diff is sufficient"
+3. "Done for now"
+```
+
 3. **Gather Context (Smart Minimal)**
    Read ONLY files explicitly mentioned in comments
    Use targeted reads with line ranges when possible
