@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.2.0...core-v1.3.0) (2026-03-18)
+
+
+### Features
+
+* add --compact flag to reduce startup JSON payload size ([#770](https://github.com/costajohnt/oss-autopilot/issues/770)) ([5358347](https://github.com/costajohnt/oss-autopilot/commit/535834715d91cfca94972b505df3a259ccde2c7e)), closes [#763](https://github.com/costajohnt/oss-autopilot/issues/763)
+* add investigate-before-claim workflow step ([#773](https://github.com/costajohnt/oss-autopilot/issues/773)) ([66e24ec](https://github.com/costajohnt/oss-autopilot/commit/66e24ece9bca43d0310f9524e962f36a183ea94b)), closes [#766](https://github.com/costajohnt/oss-autopilot/issues/766)
+* add investigation verification checkpoint before implementation ([#774](https://github.com/costajohnt/oss-autopilot/issues/774)) ([5af0dbc](https://github.com/costajohnt/oss-autopilot/commit/5af0dbc5ab223c08096b105e7f787e6a1e52bb36)), closes [#767](https://github.com/costajohnt/oss-autopilot/issues/767)
+* add vet-list command for re-vetting curated issue lists ([#771](https://github.com/costajohnt/oss-autopilot/issues/771)) ([5a5a7fe](https://github.com/costajohnt/oss-autopilot/commit/5a5a7feac66384266e1b1965f2ea7e2e272e9ec9)), closes [#764](https://github.com/costajohnt/oss-autopilot/issues/764)
+* default to skip comment when code push addresses feedback ([#775](https://github.com/costajohnt/oss-autopilot/issues/775)) ([e101458](https://github.com/costajohnt/oss-autopilot/commit/e101458575756c711298f8b0fbdc233d8fdac02c)), closes [#768](https://github.com/costajohnt/oss-autopilot/issues/768)
+* verify factual accuracy of draft PR comments before presenting ([#776](https://github.com/costajohnt/oss-autopilot/issues/776)) ([c6fbfcf](https://github.com/costajohnt/oss-autopilot/commit/c6fbfcf520688102c02df57513bc693cae836838)), closes [#769](https://github.com/costajohnt/oss-autopilot/issues/769)
+* warn when claiming issues while at PR capacity limit ([#772](https://github.com/costajohnt/oss-autopilot/issues/772)) ([2bd87c9](https://github.com/costajohnt/oss-autopilot/commit/2bd87c90bb74b91eb62005c7bc451e6702a6400f)), closes [#765](https://github.com/costajohnt/oss-autopilot/issues/765)
+
 ## [1.2.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.1.0...core-v1.2.0) (2026-03-16)
 
 
