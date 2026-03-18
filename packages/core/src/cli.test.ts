@@ -112,7 +112,18 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'stats',
   ];
 
-  const expectedTokenRequired = ['daily', 'search', 'vet', 'track', 'comments', 'post', 'init', 'claim', 'pr-template'];
+  const expectedTokenRequired = [
+    'daily',
+    'search',
+    'vet',
+    'vet-list',
+    'track',
+    'comments',
+    'post',
+    'init',
+    'claim',
+    'pr-template',
+  ];
 
   it.each(expectedLocalOnly)('should contain local-only command "%s"', (cmd) => {
     expect(LOCAL_ONLY_COMMANDS).toContain(cmd);
@@ -333,6 +344,7 @@ describe('Command registration', () => {
       'status',
       'search',
       'vet',
+      'vet-list',
       'track',
       'untrack',
       'read',
