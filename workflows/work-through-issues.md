@@ -335,13 +335,60 @@ Task(issue-scout, "Vet this issue from the user's curated list:
   Check for recent claims or linked PRs since the list was last updated.")
 ```
 
-### 5. Present vetting results and offer to claim
+### 5. Present vetting results and offer next step
 
 Show the vetting summary. If claimable, offer:
-- "Claim this issue and start working"
-- "Pick a different issue from the list"
-- "Search GitHub instead"
-- "Done for now"
+
+```
+Question: "How would you like to proceed with this issue?"
+Header: "Next Step"
+
+Options:
+1. "Investigate feasibility first (Recommended)" — "Clone the repo, analyze the relevant code, and verify a fix is achievable before publicly claiming"
+2. "Claim and start working" — "Skip investigation and claim the issue now"
+3. "Pick a different issue"
+4. "Done for now"
+```
+
+### 5a. Investigate Feasibility
+
+When user selects "Investigate feasibility first":
+
+1. **Clone/update the repo** — Check local repo registry (`local-repos --json`), clone if needed to `~/Documents/oss/<repo-name>`
+2. **Read the issue context** — Parse the issue body for code references, error messages, expected behavior
+3. **Analyze relevant code** — Use Grep/Read to find the relevant source files and understand the code path involved
+4. **Attempt diagnosis** — Identify root cause, propose a fix approach
+5. **Assess complexity** — Estimate effort (small/medium/large), identify risks and unknowns
+6. **Report findings:**
+
+```
+## Feasibility Assessment
+
+**Root cause:** {description of what causes the issue}
+**Proposed fix:** {approach to fixing it}
+**Complexity:** {Small|Medium|Large}
+**Risk:** {Low|Medium|High — risk of unintended side effects}
+**Files to change:** {list of files that need modification}
+**Tests needed:** {yes/no — whether the repo has test infrastructure and tests should be added}
+
+Confidence: {High|Medium|Low — how confident in the diagnosis}
+```
+
+7. **Post-investigation options:**
+
+```
+Question: "Investigation complete. How would you like to proceed?"
+Header: "Next Step"
+
+Options:
+1. "Claim and implement (Recommended)" — "The fix is feasible, claim the issue and start working"
+2. "Skip this issue" — "Too complex, risky, or unclear"
+3. "Pick a different issue from the list"
+4. "Done for now"
+```
+
+When user selects "Claim and implement", proceed to Step 6 (existing claiming flow).
+When user selects "Skip this issue", return to Step 3 (display available issues).
 
 ### 6. After claiming → implementation → draft PR → review → ready
 
