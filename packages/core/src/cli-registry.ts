@@ -52,12 +52,18 @@ export const commands: CLICommandDef[] = [
         .command('daily')
         .description('Run daily check on all tracked PRs')
         .option('--json', 'Output as JSON')
+        .option('--compact', 'Reduce JSON payload by omitting summary, repoGroups, and full failure details')
         .action(async (options) => {
           try {
             if (options.json) {
               const { runDaily } = await import('./commands/daily.js');
               const data = await runDaily();
-              outputJson(data);
+              if (options.compact) {
+                const { toCompactDailyOutput } = await import('./formatters/json.js');
+                outputJson(toCompactDailyOutput(data));
+              } else {
+                outputJson(data);
+              }
             } else {
               const { runDailyForDisplay, printDigest } = await import('./commands/daily.js');
               const result = await runDailyForDisplay();
@@ -711,12 +717,18 @@ export const commands: CLICommandDef[] = [
         .command('startup')
         .description('Run all pre-flight checks and daily fetch in one call')
         .option('--json', 'Output as JSON')
+        .option('--compact', 'Reduce JSON payload by omitting summary, repoGroups, and full failure details')
         .action(async (options) => {
           try {
             const { runStartup } = await import('./commands/startup.js');
             const data = await runStartup();
             if (options.json) {
-              outputJson(data);
+              if (options.compact) {
+                const { toCompactStartupOutput } = await import('./formatters/json.js');
+                outputJson(toCompactStartupOutput(data));
+              } else {
+                outputJson(data);
+              }
             } else {
               if (!data.setupComplete) {
                 console.log('Setup incomplete. Run /setup-oss first.');
