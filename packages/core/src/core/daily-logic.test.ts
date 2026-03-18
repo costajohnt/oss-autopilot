@@ -606,6 +606,24 @@ describe('computeActionMenu (core)', () => {
     const menu = computeActionMenu([], makeCapacity());
     expect(menu.items.find((i) => i.key === 'search')).toBeDefined();
   });
+
+  it('should add capacityWarning to search item when capacity.hasCapacity is false', () => {
+    const capacity = makeCapacity({ hasCapacity: false, activePRCount: 5, maxActivePRs: 5 });
+    const menu = computeActionMenu([], capacity);
+    const searchItem = menu.items.find((i) => i.key === 'search');
+
+    expect(searchItem).toBeDefined();
+    expect(searchItem!.capacityWarning).toBe("You're at 5/5 active PRs. Claiming a new issue will exceed your limit.");
+  });
+
+  it('should not add capacityWarning to search item when capacity.hasCapacity is true', () => {
+    const capacity = makeCapacity({ hasCapacity: true, activePRCount: 2, maxActivePRs: 5 });
+    const menu = computeActionMenu([], capacity);
+    const searchItem = menu.items.find((i) => i.key === 'search');
+
+    expect(searchItem).toBeDefined();
+    expect(searchItem!.capacityWarning).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
