@@ -393,11 +393,23 @@ export function computeActionMenu(
   // The orchestration layer (commands/oss.md Action Menu section) may insert issue-list
   // options before the search item when a curated list is available.
 
-  items.push({
+  const searchItem: ActionMenuItem = {
     key: 'search',
     label: 'Search for new issues',
     description: 'Look for new contribution opportunities',
-  });
+  };
+  if (!capacity.hasCapacity) {
+    const atLimit = capacity.activePRCount >= capacity.maxActivePRs;
+    const hasCritical = capacity.criticalIssueCount > 0;
+    if (atLimit && hasCritical) {
+      searchItem.capacityWarning = `You're at ${capacity.activePRCount}/${capacity.maxActivePRs} active PRs and have ${capacity.criticalIssueCount} critical issue(s). Resolve existing work before claiming new issues.`;
+    } else if (atLimit) {
+      searchItem.capacityWarning = `You're at ${capacity.activePRCount}/${capacity.maxActivePRs} active PRs. Claiming a new issue will exceed your limit.`;
+    } else {
+      searchItem.capacityWarning = `You have ${capacity.criticalIssueCount} critical issue(s) needing attention. Resolve them before claiming new issues.`;
+    }
+  }
+  items.push(searchItem);
 
   items.push({
     key: 'done',

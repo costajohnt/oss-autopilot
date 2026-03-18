@@ -93,6 +93,10 @@ Use `data.daily.actionMenu.items` directly as AskUserQuestion options. Each item
 
 When inserting issue-list items, keep within the 4-option limit (the 5th is the auto "Other").
 
+**Capacity warning:** If any menu item has a `capacityWarning` field, display the warning prominently before presenting the options:
+> ⚠️ {capacityWarning}
+The option remains available (override), but the warning provides friction before claiming new issues.
+
 **"Replenish your issue list"** routes to **Handle "Find New Issues"** (same as search), but agents should be told to suggest issues suitable for adding to the curated list.
 
 ### Example AskUserQuestion

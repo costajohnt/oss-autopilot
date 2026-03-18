@@ -65,6 +65,8 @@ export interface ActionMenuItem {
   label: string;
   /** Explanation shown below the label. */
   description: string;
+  /** Present when the action would exceed the user's PR capacity limit (#765). */
+  capacityWarning?: string;
 }
 
 /**
