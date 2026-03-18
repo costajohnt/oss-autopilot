@@ -200,6 +200,8 @@ mergeBase=$(git merge-base "origin/$baseBranch" HEAD 2>/dev/null) || true
 
 Use `git diff $mergeBase..HEAD` for the full branch diff. If `$mergeBase` is empty, fall back to `origin/$baseBranch...HEAD`. If neither works, report error — do NOT dispatch agents without diff context. Read `CONTRIBUTING.md` and lint configs if not already loaded.
 
+**Investigation verification:** If investigation findings from Phase A are available in session context, the user was offered a verification checkpoint before implementation began (see `work-through-issues.md` — Investigation Verification Checkpoint). Verified findings should be trusted; flagged concerns should be monitored during review.
+
 ### 2. Dispatch Scope-Aware Review Agents
 
 **Dispatch ALL agents in a SINGLE message.** Always use the full Large tier (code-reviewer, silent-failure-hunter, code-simplifier, pr-test-analyzer + conditional agents) regardless of diff size. Include `Working directory: {local repo path}` in every prompt.

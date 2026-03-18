@@ -176,6 +176,63 @@ Populate the table using data from the Phase A agent results:
 
 **Key findings**: 1-line summary per PR from the agent investigation results. Focus on what the maintainer is asking and what code change is needed.
 
+### Investigation Verification Checkpoint
+
+After presenting Phase B results, before the user selects a PR to work on in Phase C, offer a verification option for any Tier 2 item they select:
+
+When the user selects a PR from the Phase C options, before executing the recommended action, present:
+
+```
+Question: "Would you like to verify the investigation before implementing?"
+Header: "Verification"
+
+Options:
+1. "Verify diagnosis (Recommended)" — "Re-read the relevant code and cross-check the investigation's claims before coding"
+2. "Proceed to implement" — "The diagnosis looks correct, start coding"
+3. "Skip this issue" — "Move to the next item"
+```
+
+**When user selects "Verify diagnosis":**
+
+1. **Re-read the specific code** mentioned in the Phase A investigation — not just grep results, but the actual function/method bodies
+2. **Cross-check each claim from the investigation:**
+   - If the investigation says "function X does Y" → read function X and verify
+   - If it says "the bug is in line N" → read that line with surrounding context
+   - If it proposes "change X to Y" → verify callers won't break
+3. **Check for edge cases** the investigation may have missed:
+   - Empty/null inputs to the modified code
+   - Other callers of the modified function
+   - Whether the fix matches the issue's expected behavior
+4. **Present verification results:**
+
+```
+## Verification Results
+
+✅ Confirmed: {list of claims that match the code}
+⚠️ Concerns: {list of potential issues found}
+❌ Incorrect: {list of claims contradicted by the code}
+
+Recommendation: {proceed / revise diagnosis / skip}
+```
+
+5. **Post-verification options:**
+
+If concerns or incorrect claims found:
+```
+Options:
+1. "Revise and re-investigate" — "Update the approach based on verification findings"
+2. "Proceed anyway" — "The concerns are minor"
+3. "Skip this issue"
+```
+
+If all claims verified:
+```
+Options:
+1. "Proceed to implement (Recommended)"
+2. "Skip this issue"
+3. "Done for now"
+```
+
 ### Phase C: Sequential Tier 2 Execution
 
 If no Tier 2 items remain after Phase A:
