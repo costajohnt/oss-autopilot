@@ -134,6 +134,43 @@ export interface DailyOutput {
 }
 
 /**
+ * Compact version of DailyOutput for reduced JSON payload size (#763).
+ * Omits `summary` (pre-rendered markdown ~8KB that duplicates structured fields),
+ * `repoGroups` (derivable from digest.openPRs), and full `failures` array.
+ * Retains `commentedIssues` because downstream workflows (review-issue-replies.md,
+ * action-menu.md) consume it directly.
+ * Includes `failureCount` so consumers can detect partial fetch failures without
+ * carrying the full error payload.
+ */
+export interface CompactDailyOutput {
+  digest: DailyDigestCompact;
+  capacity: CapacityAssessment;
+  briefSummary: string;
+  actionableIssues: CompactActionableIssue[];
+  actionMenu: ActionMenu;
+  commentedIssues: CommentedIssue[];
+  /** Number of PRs that failed to fetch. Non-zero indicates partial results. */
+  failureCount: number;
+}
+
+/**
+ * Strip a full DailyOutput down to the compact subset (#763).
+ * Omits summary, repoGroups, and full failures array. Retains a failureCount
+ * so consumers can detect partial fetch failures.
+ */
+export function toCompactDailyOutput(output: DailyOutput): CompactDailyOutput {
+  return {
+    digest: output.digest,
+    capacity: output.capacity,
+    briefSummary: output.briefSummary,
+    actionableIssues: output.actionableIssues,
+    actionMenu: output.actionMenu,
+    commentedIssues: output.commentedIssues,
+    failureCount: output.failures.length,
+  };
+}
+
+/**
  * Convert a full DailyDigest to the compact format for JSON output (#287).
  * Category arrays become PR URL arrays; full objects stay only in openPRs.
  * Uses URLs (globally unique) instead of numbers to avoid cross-repo collisions.
@@ -262,6 +299,29 @@ export interface StartupOutput {
   /** URL of the interactive SPA dashboard server, when running (e.g., "http://localhost:3000") */
   dashboardUrl?: string;
   issueList?: IssueListInfo;
+}
+
+/**
+ * Compact version of StartupOutput for reduced JSON payload (#763).
+ * Derived from StartupOutput with CompactDailyOutput substituted for DailyOutput.
+ * Using Omit ensures new fields added to StartupOutput are automatically included.
+ */
+export type CompactStartupOutput = Omit<StartupOutput, 'daily'> & {
+  daily?: CompactDailyOutput;
+};
+
+/**
+ * Convert a full StartupOutput to the compact format (#763).
+ * Uses destructuring to auto-forward any new fields added to StartupOutput.
+ */
+export function toCompactStartupOutput(output: StartupOutput): CompactStartupOutput {
+  const { daily, ...rest } = output;
+  return {
+    ...rest,
+    daily: daily ? toCompactDailyOutput(daily) : undefined,
+    dashboardUrl: output.dashboardUrl,
+    issueList: output.issueList,
+  };
 }
 
 /** A single parsed issue from a markdown list (#82) */
