@@ -53,10 +53,10 @@ export function getRateLimitCallbacks() {
     onSecondaryRateLimit: (retryAfter: number, options: unknown, _octokit: unknown, retryCount: number): boolean => {
       const opts = options as { method: string; url: string };
       const resetAt = new Date(Date.now() + retryAfter * 1000);
-      if (retryCount < 1) {
+      if (retryCount < 3) {
         warn(
           MODULE,
-          `Secondary rate limit hit (retry ${retryCount + 1}/1, waiting ${retryAfter}s, resets at ${formatResetTime(resetAt)}) — ${opts.method} ${opts.url}`,
+          `Secondary rate limit hit (retry ${retryCount + 1}/3, waiting ${retryAfter}s, resets at ${formatResetTime(resetAt)}) — ${opts.method} ${opts.url}`,
         );
         return true;
       }
@@ -74,7 +74,7 @@ export function getRateLimitCallbacks() {
  * Returns a cached instance if the token matches, otherwise creates a new one.
  *
  * The client retries on primary rate limits (up to 2 retries) and
- * secondary rate limits (1 retry).
+ * secondary rate limits (up to 3 retries).
  *
  * @param token - GitHub personal access token
  * @returns Authenticated Octokit instance with rate limit throttling

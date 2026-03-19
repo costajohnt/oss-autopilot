@@ -136,9 +136,21 @@ describe('rate limit callbacks', () => {
     expect(result).toBe(true);
   });
 
-  it('onSecondaryRateLimit should not retry after 1 attempt', () => {
+  it('onSecondaryRateLimit should retry on second attempt', () => {
     const { onSecondaryRateLimit } = getRateLimitCallbacks();
     const result = onSecondaryRateLimit(60, { method: 'GET', url: '/search/issues' }, {} as any, 1);
+    expect(result).toBe(true);
+  });
+
+  it('onSecondaryRateLimit should retry on third attempt', () => {
+    const { onSecondaryRateLimit } = getRateLimitCallbacks();
+    const result = onSecondaryRateLimit(60, { method: 'GET', url: '/search/issues' }, {} as any, 2);
+    expect(result).toBe(true);
+  });
+
+  it('onSecondaryRateLimit should not retry after 3 attempts', () => {
+    const { onSecondaryRateLimit } = getRateLimitCallbacks();
+    const result = onSecondaryRateLimit(60, { method: 'GET', url: '/search/issues' }, {} as any, 3);
     expect(result).toBe(false);
   });
 });

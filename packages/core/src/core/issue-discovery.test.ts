@@ -65,6 +65,8 @@ vi.mock('./utils.js', async (importOriginal) => {
   return {
     ...actual,
     getDataDir: () => testDataDir,
+    // Make sleep a no-op so inter-phase delays don't cause test timeouts
+    sleep: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -2473,7 +2475,9 @@ describe('searchIssues orchestration', () => {
       const discovery = new IssueDiscovery('fake-token');
 
       await discovery.searchIssues({ maxResults: 5 });
-      expect(discovery.rateLimitWarning).toContain('quota low');
+      // With adaptive execution, low quota triggers phase skipping and a budget warning
+      expect(discovery.rateLimitWarning).toBeTruthy();
+      expect(discovery.rateLimitWarning).toContain('API quota');
     });
 
     it('should return [] when all phases fail due to rate limits', async () => {

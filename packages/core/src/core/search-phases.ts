@@ -12,21 +12,18 @@ import { debug, warn } from './logger.js';
 import { getHttpCache, cachedTimeBased } from './http-cache.js';
 import { type GitHubSearchItem, detectLabelFarmingRepos } from './issue-filtering.js';
 import { IssueVetter } from './issue-vetting.js';
+import { sleep } from './utils.js';
 
 const MODULE = 'search-phases';
 
 /** GitHub Search API enforces a max of 5 AND/OR/NOT operators per query. */
 export const GITHUB_MAX_BOOLEAN_OPS = 5;
 
-/** Small delay between search API calls to avoid secondary rate limits. */
-const INTER_QUERY_DELAY_MS = 500;
+/** Delay between search API calls to avoid GitHub's secondary rate limit (~30 req/min). */
+const INTER_QUERY_DELAY_MS = 1500;
 
 /** Batch size for repo queries. 3 repos = 2 OR operators, leaving room for labels. */
 const BATCH_SIZE = 3;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /**
  * Chunk labels into groups that fit within the operator budget.
@@ -261,8 +258,12 @@ export async function searchInRepos(
   let failedBatches = 0;
   let rateLimitFailures = 0;
 
-  for (const batch of batches) {
+  for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+    const batch = batches[batchIdx];
     if (candidates.length >= maxResults) break;
+
+    // Delay between batches to avoid secondary rate limits
+    if (batchIdx > 0) await sleep(INTER_QUERY_DELAY_MS);
 
     try {
       const repoFilter = batch.map((r) => `repo:${r}`).join(' OR ');
