@@ -2,15 +2,20 @@
  * Shared utility functions
  */
 
-/** Default concurrency limit for parallel GitHub API requests. */
-export const DEFAULT_CONCURRENCY = 5;
-
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execFileSync, execFile } from 'child_process';
 import { ConfigurationError } from './errors.js';
 import { debug } from './logger.js';
+
+/** Default concurrency limit for parallel GitHub API requests. */
+export const DEFAULT_CONCURRENCY = 5;
+
+/** Async sleep — exported for mockability in tests. */
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const MODULE = 'utils';
 

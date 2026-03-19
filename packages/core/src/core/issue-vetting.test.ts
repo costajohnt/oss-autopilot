@@ -49,7 +49,7 @@ vi.mock('./logger.js', () => ({
 }));
 
 import { paginateAll } from './pagination.js';
-import { cachedRequest } from './http-cache.js';
+import { cachedRequest, getHttpCache } from './http-cache.js';
 import { warn } from './logger.js';
 
 // ── Helpers ──
@@ -262,6 +262,43 @@ describe('vetIssue', () => {
     mockFn(octokit.issues.get).mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
 
     await expect(vetter.vetIssue(`https://github.com/${owner}/repo/issues/42`)).rejects.toThrow('Not Found');
+  });
+
+  it('returns cached result on vetting cache hit without API calls', async () => {
+    const cachedCandidate = {
+      issue: { url: `https://github.com/${owner}/repo/issues/42`, repo: `${owner}/repo` },
+      viabilityScore: 80,
+      recommendation: 'approve',
+      searchPriority: 'normal',
+      vettingResult: { passedAllChecks: true, checks: {}, notes: [] },
+      projectHealth: { stargazersCount: 100, checkFailed: false },
+      reasonsToApprove: [],
+      reasonsToSkip: [],
+    };
+
+    // Set up cache to return a hit
+    const cache = vi.mocked(getHttpCache)();
+    vi.mocked(cache.getIfFresh).mockReturnValueOnce(cachedCandidate);
+
+    const result = await vetter.vetIssue(`https://github.com/${owner}/repo/issues/42`);
+
+    expect(result).toEqual(cachedCandidate);
+    // Should NOT have called any API methods since cache hit
+    expect(octokit.issues.get).not.toHaveBeenCalled();
+  });
+
+  it('populates vetting cache after successful vet', async () => {
+    const cache = vi.mocked(getHttpCache)();
+    vi.mocked(cache.set).mockClear();
+
+    await vetter.vetIssue(`https://github.com/${owner}/repo/issues/42`);
+
+    // Cache should have been written with the vet: prefix
+    expect(cache.set).toHaveBeenCalledWith(
+      `vet:https://github.com/${owner}/repo/issues/42`,
+      '',
+      expect.objectContaining({ viabilityScore: expect.any(Number) }),
+    );
   });
 
   it('returns approved candidate when all checks pass', async () => {
