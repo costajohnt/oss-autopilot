@@ -8,10 +8,10 @@
  */
 
 import { Octokit } from '@octokit/rest';
-import { parseGitHubUrl, DEFAULT_CONCURRENCY } from './utils.js';
+import { parseGitHubUrl } from './utils.js';
 import { TrackedIssue, IssueVettingResult, type SearchPriority, type IssueCandidate } from './types.js';
 import { ValidationError, errorMessage, isRateLimitError } from './errors.js';
-import { warn } from './logger.js';
+import { debug, warn } from './logger.js';
 import { getStateManager } from './state.js';
 import { calculateRepoQualityBonus, calculateViabilityScore } from './issue-scoring.js';
 import { repoBelongsToCategory } from './category-mapping.js';
@@ -22,10 +22,15 @@ import {
   analyzeRequirements,
 } from './issue-eligibility.js';
 import { checkProjectHealth, fetchContributionGuidelines } from './repo-health.js';
+import { getHttpCache } from './http-cache.js';
 
 const MODULE = 'issue-vetting';
 
-const MAX_CONCURRENT_REQUESTS = DEFAULT_CONCURRENCY;
+/** Vetting concurrency: kept low to reduce burst pressure on GitHub's secondary rate limit. */
+const MAX_CONCURRENT_VETTING = 3;
+
+/** TTL for cached vetting results (15 minutes). Kept short so config changes take effect quickly. */
+const VETTING_CACHE_TTL_MS = 15 * 60 * 1000;
 
 export class IssueVetter {
   private octokit: Octokit;
@@ -38,8 +43,18 @@ export class IssueVetter {
 
   /**
    * Vet a specific issue — runs all checks and computes recommendation + viability score.
+   * Results are cached for 15 minutes to avoid redundant API calls on repeated searches.
    */
   async vetIssue(issueUrl: string): Promise<IssueCandidate> {
+    // Check vetting cache first — avoids ~6+ API calls per issue
+    const cache = getHttpCache();
+    const cacheKey = `vet:${issueUrl}`;
+    const cached = cache.getIfFresh(cacheKey, VETTING_CACHE_TTL_MS);
+    if (cached && typeof cached === 'object' && 'issue' in cached && 'viabilityScore' in cached) {
+      debug(MODULE, `Vetting cache hit for ${issueUrl}`);
+      return cached as IssueCandidate;
+    }
+
     // Parse URL
     const parsed = parseGitHubUrl(issueUrl);
     if (!parsed || parsed.type !== 'issues') {
@@ -233,7 +248,7 @@ export class IssueVetter {
       searchPriority = 'starred';
     }
 
-    return {
+    const result: IssueCandidate = {
       issue: trackedIssue,
       vettingResult,
       projectHealth,
@@ -243,6 +258,11 @@ export class IssueVetter {
       viabilityScore,
       searchPriority,
     };
+
+    // Cache the vetting result to avoid redundant API calls on repeated searches
+    cache.set(cacheKey, '', result);
+
+    return result;
   }
 
   /**
@@ -285,7 +305,7 @@ export class IssueVetter {
       pending.set(url, task);
 
       // Limit concurrency — wait for at least one to complete before launching more
-      if (pending.size >= MAX_CONCURRENT_REQUESTS) {
+      if (pending.size >= MAX_CONCURRENT_VETTING) {
         await Promise.race(pending.values());
       }
     }

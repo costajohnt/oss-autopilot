@@ -25,6 +25,15 @@ function makeCacheMock() {
   };
 }
 
+vi.mock('./utils.js', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    // Make sleep a no-op so inter-batch delays don't slow down tests
+    sleep: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 vi.mock('./http-cache.js', () => ({
   getHttpCache: vi.fn().mockReturnValue(makeCacheMock()),
   cachedTimeBased: vi
