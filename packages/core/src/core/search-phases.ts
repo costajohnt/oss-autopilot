@@ -281,12 +281,13 @@ export async function searchInRepos(
       if (allItems.length > 0) {
         const filtered = filterFn(allItems);
         const remainingNeeded = maxResults - candidates.length;
-        const { candidates: vetted } = await vetter.vetIssuesParallel(
+        const { candidates: vetted, rateLimitHit: vetRateLimitHit } = await vetter.vetIssuesParallel(
           filtered.slice(0, remainingNeeded * 2).map((i) => i.html_url),
           remainingNeeded,
           priority,
         );
         candidates.push(...vetted);
+        if (vetRateLimitHit) rateLimitFailures++;
       }
     } catch (error) {
       failedBatches++;
