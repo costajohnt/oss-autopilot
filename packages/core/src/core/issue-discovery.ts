@@ -15,7 +15,7 @@ import * as path from 'path';
 import { Octokit } from '@octokit/rest';
 import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
-import { daysBetween, getDataDir } from './utils.js';
+import { daysBetween, getDataDir, sleep } from './utils.js';
 import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate, SCOPE_LABELS } from './types.js';
 import { ValidationError, errorMessage, getHttpStatusCode, isRateLimitError } from './errors.js';
 import { debug, info, warn } from './logger.js';
@@ -33,15 +33,24 @@ import {
 
 const MODULE = 'issue-discovery';
 
+/** Delay between major search phases to let GitHub's rate limit window cool down. */
+const INTER_PHASE_DELAY_MS = 2000;
+
+/** If remaining search quota is below this, skip heavy phases (2, 3). */
+const LOW_BUDGET_THRESHOLD = 20;
+
+/** If remaining search quota is below this, only run Phase 0. */
+const CRITICAL_BUDGET_THRESHOLD = 10;
+
 /**
  * Multi-phase issue discovery engine that searches GitHub for contributable issues.
  *
  * Search phases (in priority order):
- * 1. Repos where user has merged PRs (highest merge probability)
- * 2. Preferred organizations
- * 3. Starred repos
- * 4. General label-filtered search
- * 5. Actively maintained repos
+ * 0. Repos where user has merged PRs (highest merge probability)
+ * 0.5. Preferred organizations
+ * 1. Starred repos
+ * 2. General label-filtered search
+ * 3. Actively maintained repos
  *
  * Each candidate is vetted for claimability and scored 0-100 for viability.
  */
@@ -141,8 +150,8 @@ export class IssueDiscovery {
 
   /**
    * Search for issues matching our criteria.
-   * Searches in priority order: merged-PR repos first (no label filter), then starred repos,
-   * then general search, then actively maintained repos.
+   * Searches in priority order: merged-PR repos first (no label filter), then preferred
+   * organizations, then starred repos, then general search, then actively maintained repos.
    * Filters out issues from low-scoring and excluded repos.
    *
    * @param options - Search configuration
@@ -182,22 +191,33 @@ export class IssueDiscovery {
     let phase1Error: string | null = null;
     let rateLimitHitDuringSearch = false;
 
-    // Pre-flight rate limit check (#100)
+    // Pre-flight rate limit check (#100) — also determines adaptive phase budget
     this.rateLimitWarning = null;
+    let searchBudget = LOW_BUDGET_THRESHOLD - 1; // conservative: below threshold to skip heavy phases
     try {
       const rateLimit = await checkRateLimit(this.githubToken);
+      searchBudget = rateLimit.remaining;
       if (rateLimit.remaining < 5) {
         const resetTime = new Date(rateLimit.resetAt).toLocaleTimeString('en-US', { hour12: false });
         this.rateLimitWarning = `GitHub search API quota low (${rateLimit.remaining}/${rateLimit.limit} remaining, resets at ${resetTime}). Search may be slow.`;
         warn(MODULE, this.rateLimitWarning);
+      }
+      if (searchBudget < CRITICAL_BUDGET_THRESHOLD) {
+        info(MODULE, `Search budget critical (${searchBudget} remaining) — running only Phase 0`);
+      } else if (searchBudget < LOW_BUDGET_THRESHOLD) {
+        info(MODULE, `Search budget low (${searchBudget} remaining) — skipping heavy phases (2, 3)`);
       }
     } catch (error) {
       // Fail fast on auth errors — no point searching with a bad token
       if (getHttpStatusCode(error) === 401) {
         throw error;
       }
-      // Non-fatal: proceed with search for transient/network errors
-      warn(MODULE, 'Could not check rate limit:', errorMessage(error));
+      // Non-fatal: proceed with conservative budget for transient/network errors
+      warn(
+        MODULE,
+        'Could not check rate limit — using conservative budget, skipping heavy phases:',
+        errorMessage(error),
+      );
     }
 
     // Get merged-PR repos (highest merge probability)
@@ -331,9 +351,12 @@ export class IssueDiscovery {
     }
 
     // Phase 0.5: Search preferred organizations (explicit user preference)
+    // Skip if budget is critical — Phase 0 results are sufficient
     let phase0_5Error: string | null = null;
     const preferredOrgs = config.preferredOrgs ?? [];
-    if (allCandidates.length < maxResults && preferredOrgs.length > 0) {
+    if (allCandidates.length < maxResults && preferredOrgs.length > 0 && searchBudget >= CRITICAL_BUDGET_THRESHOLD) {
+      // Inter-phase delay to let GitHub's rate limit window cool down
+      if (phase0Repos.length > 0) await sleep(INTER_PHASE_DELAY_MS);
       // Filter out orgs already covered by Phase 0 repos
       const phase0Orgs = new Set(phase0Repos.map((r) => r.split('/')[0]?.toLowerCase()));
       const orgsToSearch = preferredOrgs.filter((org) => !phase0Orgs.has(org.toLowerCase())).slice(0, 5);
@@ -388,7 +411,9 @@ export class IssueDiscovery {
     }
 
     // Phase 1: Search starred repos (filter out already-searched Phase 0 repos)
-    if (allCandidates.length < maxResults && starredRepos.length > 0) {
+    // Skip if budget is critical
+    if (allCandidates.length < maxResults && starredRepos.length > 0 && searchBudget >= CRITICAL_BUDGET_THRESHOLD) {
+      await sleep(INTER_PHASE_DELAY_MS);
       const reposToSearch = starredRepos.filter((r) => !phase0RepoSet.has(r));
       if (reposToSearch.length > 0) {
         info(MODULE, `Phase 1: Searching issues in ${reposToSearch.length} starred repos...`);
@@ -421,11 +446,13 @@ export class IssueDiscovery {
     }
 
     // Phase 2: General search (if still need more)
+    // Skip if budget is low — Phases 0, 0.5, 1 are cheaper and higher-value
     // When multiple scope tiers are active, fire one query per tier and interleave
     // results to prevent high-volume tiers (e.g., "enhancement") from drowning out
     // beginner results.
     let phase2Error: string | null = null;
-    if (allCandidates.length < maxResults) {
+    if (allCandidates.length < maxResults && searchBudget >= LOW_BUDGET_THRESHOLD) {
+      await sleep(INTER_PHASE_DELAY_MS);
       info(MODULE, 'Phase 2: General issue search...');
       const remainingNeeded = maxResults - allCandidates.length;
       const seenRepos = new Set(allCandidates.map((c) => c.issue.repo));
@@ -510,8 +537,10 @@ export class IssueDiscovery {
     }
 
     // Phase 3: Actively maintained repos (#349)
+    // Skip if budget is low — this phase is API-heavy with broad queries
     let phase3Error: string | null = null;
-    if (allCandidates.length < maxResults) {
+    if (allCandidates.length < maxResults && searchBudget >= LOW_BUDGET_THRESHOLD) {
+      await sleep(INTER_PHASE_DELAY_MS);
       info(MODULE, 'Phase 3: Searching actively maintained repos...');
       const remainingNeeded = maxResults - allCandidates.length;
       const thirtyDaysAgo = new Date();
@@ -570,6 +599,15 @@ export class IssueDiscovery {
       }
     }
 
+    // Determine if phases were skipped due to budget constraints
+    const phasesSkippedForBudget = searchBudget < LOW_BUDGET_THRESHOLD;
+    let budgetNote = '';
+    if (searchBudget < CRITICAL_BUDGET_THRESHOLD) {
+      budgetNote = ` Most search phases were skipped due to critically low API quota (${searchBudget} remaining).`;
+    } else if (phasesSkippedForBudget) {
+      budgetNote = ` Some search phases were skipped due to low API quota (${searchBudget} remaining).`;
+    }
+
     if (allCandidates.length === 0) {
       const phaseErrors = [
         phase0Error ? `Phase 0 (merged-PR repos): ${phase0Error}` : null,
@@ -580,9 +618,9 @@ export class IssueDiscovery {
       ].filter(Boolean);
       const details = phaseErrors.length > 0 ? ` ${phaseErrors.join('. ')}.` : '';
 
-      if (rateLimitHitDuringSearch) {
+      if (rateLimitHitDuringSearch || phasesSkippedForBudget) {
         this.rateLimitWarning =
-          `Search returned no results due to GitHub API rate limits.${details} ` +
+          `Search returned no results due to GitHub API rate limits.${details}${budgetNote} ` +
           `Try again after the rate limit resets.`;
         return [];
       }
@@ -594,10 +632,10 @@ export class IssueDiscovery {
     }
 
     // Surface rate limit warning even with partial results (#100)
-    if (rateLimitHitDuringSearch) {
+    if (rateLimitHitDuringSearch || phasesSkippedForBudget) {
       this.rateLimitWarning =
-        `Search results may be incomplete: GitHub API rate limits were hit during search. ` +
-        `Found ${allCandidates.length} candidate${allCandidates.length === 1 ? '' : 's'} but some search phases failed. ` +
+        `Search results may be incomplete: GitHub API rate limits were hit during search.${budgetNote} ` +
+        `Found ${allCandidates.length} candidate${allCandidates.length === 1 ? '' : 's'} but some search phases were limited. ` +
         `Try again after the rate limit resets for complete results.`;
     }
 
