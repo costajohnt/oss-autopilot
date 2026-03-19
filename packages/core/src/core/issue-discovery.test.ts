@@ -2499,6 +2499,80 @@ describe('searchIssues orchestration', () => {
       await expect(discovery.searchIssues({ maxResults: 5 })).rejects.toThrow(/No issue candidates found/);
     });
 
+    it('should skip phases 0.5, 1, 2, 3 when budget is critical (< 10)', async () => {
+      mockStateForSearch({
+        mergedPRRepos: ['merged/repo'],
+        starredRepos: ['starred/repo1'],
+        preferredOrgs: ['preferred-org'],
+      });
+      vi.mocked(checkRateLimit).mockResolvedValueOnce({
+        remaining: 5, // below CRITICAL_BUDGET_THRESHOLD (10)
+        limit: 30,
+        resetAt: new Date().toISOString(),
+      });
+      const queriesIssued: string[] = [];
+      mockOctokitInstance = fullOctokitMock((params) => {
+        queriesIssued.push(params.q || '');
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      await discovery.searchIssues({ maxResults: 5 });
+
+      // Only Phase 0 queries should be present (repo: queries for merged repos)
+      // No org: queries (Phase 0.5), no starred repo queries (Phase 1),
+      // no general label queries (Phase 2), no maintained-repo queries (Phase 3)
+      const hasOrgQuery = queriesIssued.some((q) => q.includes('org:'));
+      const hasGeneralQuery = queriesIssued.some((q) => q.includes('good first issue') && !q.includes('repo:'));
+      const hasMaintainedQuery = queriesIssued.some((q) => q.includes('archived:false'));
+      expect(hasOrgQuery).toBe(false);
+      expect(hasGeneralQuery).toBe(false);
+      expect(hasMaintainedQuery).toBe(false);
+      expect(discovery.rateLimitWarning).toContain('critically low API quota');
+    });
+
+    it('should skip phases 2 and 3 but run 0.5 and 1 when budget is low (< 20)', async () => {
+      mockStateForSearch({
+        starredRepos: ['starred/repo1'],
+        preferredOrgs: ['preferred-org'],
+      });
+      vi.mocked(checkRateLimit).mockResolvedValueOnce({
+        remaining: 15, // between CRITICAL (10) and LOW (20) thresholds
+        limit: 30,
+        resetAt: new Date().toISOString(),
+      });
+      const queriesIssued: string[] = [];
+      mockOctokitInstance = fullOctokitMock((params) => {
+        queriesIssued.push(params.q || '');
+        return Promise.resolve({ data: { total_count: 0, items: [] } });
+      });
+      const discovery = new IssueDiscovery('fake-token');
+
+      await discovery.searchIssues({ maxResults: 5 });
+
+      // Phase 0.5 (org:) and Phase 1 (starred repo:) should run
+      // Phase 2 (general label search) and Phase 3 (maintained repos) should be skipped
+      const hasGeneralQuery = queriesIssued.some(
+        (q) => q.includes('good first issue') && !q.includes('repo:') && !q.includes('org:'),
+      );
+      const hasMaintainedQuery = queriesIssued.some((q) => q.includes('archived:false'));
+      expect(hasGeneralQuery).toBe(false);
+      expect(hasMaintainedQuery).toBe(false);
+      expect(discovery.rateLimitWarning).toContain('low API quota');
+    });
+
+    it('should use conservative budget when checkRateLimit fails', async () => {
+      mockStateForSearch();
+      vi.mocked(checkRateLimit).mockRejectedValueOnce(new Error('Network timeout'));
+      mockOctokitInstance = fullOctokitMock(() => Promise.resolve({ data: { total_count: 0, items: [] } }));
+      const discovery = new IssueDiscovery('fake-token');
+
+      await discovery.searchIssues({ maxResults: 5 });
+
+      // Conservative budget should skip heavy phases and set warning
+      expect(discovery.rateLimitWarning).toContain('API quota');
+    });
+
     it('should set partial warning on rate-limited search with some results', async () => {
       mockStateForSearch();
       let callCount = 0;

@@ -46,11 +46,11 @@ const CRITICAL_BUDGET_THRESHOLD = 10;
  * Multi-phase issue discovery engine that searches GitHub for contributable issues.
  *
  * Search phases (in priority order):
- * 1. Repos where user has merged PRs (highest merge probability)
- * 2. Preferred organizations
- * 3. Starred repos
- * 4. General label-filtered search
- * 5. Actively maintained repos
+ * 0. Repos where user has merged PRs (highest merge probability)
+ * 0.5. Preferred organizations
+ * 1. Starred repos
+ * 2. General label-filtered search
+ * 3. Actively maintained repos
  *
  * Each candidate is vetted for claimability and scored 0-100 for viability.
  */
@@ -150,8 +150,8 @@ export class IssueDiscovery {
 
   /**
    * Search for issues matching our criteria.
-   * Searches in priority order: merged-PR repos first (no label filter), then starred repos,
-   * then general search, then actively maintained repos.
+   * Searches in priority order: merged-PR repos first (no label filter), then preferred
+   * organizations, then starred repos, then general search, then actively maintained repos.
    * Filters out issues from low-scoring and excluded repos.
    *
    * @param options - Search configuration
@@ -193,7 +193,7 @@ export class IssueDiscovery {
 
     // Pre-flight rate limit check (#100) — also determines adaptive phase budget
     this.rateLimitWarning = null;
-    let searchBudget = LOW_BUDGET_THRESHOLD; // conservative default if check fails
+    let searchBudget = LOW_BUDGET_THRESHOLD - 1; // conservative: below threshold to skip heavy phases
     try {
       const rateLimit = await checkRateLimit(this.githubToken);
       searchBudget = rateLimit.remaining;
@@ -601,12 +601,12 @@ export class IssueDiscovery {
 
     // Determine if phases were skipped due to budget constraints
     const phasesSkippedForBudget = searchBudget < LOW_BUDGET_THRESHOLD;
-    const budgetNote =
-      searchBudget < CRITICAL_BUDGET_THRESHOLD
-        ? ` Most search phases were skipped due to critically low API quota (${searchBudget} remaining).`
-        : phasesSkippedForBudget
-          ? ` Some search phases were skipped due to low API quota (${searchBudget} remaining).`
-          : '';
+    let budgetNote = '';
+    if (searchBudget < CRITICAL_BUDGET_THRESHOLD) {
+      budgetNote = ` Most search phases were skipped due to critically low API quota (${searchBudget} remaining).`;
+    } else if (phasesSkippedForBudget) {
+      budgetNote = ` Some search phases were skipped due to low API quota (${searchBudget} remaining).`;
+    }
 
     if (allCandidates.length === 0) {
       const phaseErrors = [

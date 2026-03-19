@@ -46,11 +46,11 @@ export class IssueVetter {
    * Results are cached for 15 minutes to avoid redundant API calls on repeated searches.
    */
   async vetIssue(issueUrl: string): Promise<IssueCandidate> {
-    // Check vetting cache first — avoids ~5 API calls per issue
+    // Check vetting cache first — avoids ~6+ API calls per issue
     const cache = getHttpCache();
     const cacheKey = `vet:${issueUrl}`;
     const cached = cache.getIfFresh(cacheKey, VETTING_CACHE_TTL_MS);
-    if (cached) {
+    if (cached && typeof cached === 'object' && 'issue' in cached && 'viabilityScore' in cached) {
       debug(MODULE, `Vetting cache hit for ${issueUrl}`);
       return cached as IssueCandidate;
     }
