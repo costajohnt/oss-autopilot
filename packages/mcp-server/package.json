@@ -30,12 +30,12 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^25.4.0",
-    "esbuild": "^0.27.3",
+    "@types/node": "^25.5.0",
+    "esbuild": "^0.27.4",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
-    "@vitest/coverage-v8": "^4.0.16",
-    "vitest": "^4.0.16"
+    "@vitest/coverage-v8": "^4.1.0",
+    "vitest": "^4.1.0"
   },
   "engines": {
     "node": ">=20"
