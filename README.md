@@ -197,9 +197,9 @@ All actions persist to `~/.oss-autopilot/state.json`.
 
 A typical contribution lifecycle:
 
-**Day 1 — Find and claim.** Search for issues, pick a high-scoring one from a repo where you've merged before. The issue scout drafts a claim comment for your review. Start working. Before you commit, the pre-commit reviewer catches a missing test — you add it. The compliance checker validates your PR against [opensource.guide](https://opensource.guide) best practices.
+**Day 1 — Find and build.** Search for issues, pick a high-scoring one from a repo where you've merged before. Implement the fix, run the review-fix convergence loop (lint, test, review agents, fix, repeat until clean), and open a draft PR that references the issue. The PR itself is the claim — no need to comment "I'm working on this" first.
 
-**Day 2 — Respond.** `/oss` shows the maintainer requested changes 12 hours ago. The PR responder reads the feedback, fetches code context, and drafts a reply. You review, edit, and post.
+**Day 2 — Respond.** `/oss` shows the maintainer requested changes 12 hours ago. The PR responder reads the feedback, fetches code context, and — if the diff addresses it — skips the comment (code speaks for itself). If the maintainer asked a question, it drafts a reply with every claim verified against the actual diff.
 
 **Day 5 — Merged.** Your repo relationship score improves, and better-matched issues surface next time you search.
 
@@ -208,10 +208,15 @@ A typical contribution lifecycle:
 ## Key Capabilities
 
 - **Monitors all your PRs** — comments, CI failures, merge conflicts, incomplete checklists, maintainer requests
-- **Drafts responses** — reads maintainer feedback and writes a reply for your review
+- **Excludes private repos** — filters out private repos and orgs so you only see OSS contributions
+- **Drafts responses** — reads maintainer feedback and writes a reply for your review, with every claim verified against the actual diff
+- **Smart comment decisions** — defaults to skipping comments when the code speaks for itself; only drafts when it adds info the diff can't convey
 - **Finds issues matched to you** — prioritizes repos where you've merged PRs, scores every issue 0-100
+- **Work-first approach** — implements before claiming; the PR is the claim, no unnecessary "I'm working on this" comments
+- **Review-fix convergence loop** — mandatory lint, test, and review cycle before any PR is declared ready
 - **Scores repositories** — evaluates merge rate, review speed, maintainer responsiveness
 - **Interactive dashboard** — manage PRs visually, shelve/unshelve, override statuses, track stats over time
+- **Optional automation** — headless cron jobs for daily PR status, dependabot triage, issue curation, and weekly audits
 - **Never acts without you** — nothing is posted to GitHub without your explicit approval
 
 ---
@@ -231,7 +236,7 @@ A typical contribution lifecycle:
 3. Claude reads the feedback and drafts a response for your review
 4. Post it after reviewing
 
-**Commands:** `/oss` (daily check), `/oss-search` (find issues), `/setup-oss` (configure), `/oss-help` (reference)
+**Commands:** `/oss` (daily check), `/oss-search` (find issues), `/setup-oss` (configure), `/setup-automation` (cron jobs), `/oss-help` (reference)
 
 ### Specialized Agents
 
@@ -248,6 +253,21 @@ Claude automatically dispatches these based on context:
 | **contribution-strategist** | Strategic advice for your OSS journey | User asks for contribution strategy |
 
 *Agents are available in the Claude Code plugin. MCP and CLI users access the same capabilities through tools and commands.*
+
+### Headless Automation (Optional)
+
+Set up optional cron jobs that run Claude headlessly to pre-compute results before your sessions. Run `/setup-automation` for a guided wizard, or configure manually:
+
+| Automation | Schedule | Output | What it does |
+|-----------|----------|--------|-------------|
+| **Daily PR Status** | Every morning | `~/oss-daily.md` | Fetches all PR statuses so Claude has context at session start |
+| **Dependabot Triage** | Every morning | `~/dependabot-report.md` | Auto-merges safe patch/minor bumps, flags major bumps for review |
+| **Issue List Curation** | Overnight | Updates issue list | Searches, vets, prunes, and re-prioritizes your issue list |
+| **Weekly PR Audit** | Sundays | `~/oss-weekly-audit.md` | Audits shelved/waiting PRs for new comments, CI changes, conflicts |
+
+The SessionStart hook automatically surfaces the daily report when you start a session, giving Claude instant PR context without the "check my PRs" warmup.
+
+All automations are fully optional — the tool works identically without them.
 
 ---
 
@@ -295,7 +315,8 @@ Configuration is stored in `~/.oss-autopilot/state.json` (inside the `config` fi
 | `labels` | (chosen at setup) | Issue labels to search for |
 | `showHealthCheck` | (optional) | Show PR health notification on session start |
 | `squashByDefault` | `true` | Squash commits before merging (`true`, `false`, or `"ask"`) |
-| `excludeRepos` | `[]` | Repos to exclude from tracking |
+| `excludeRepos` | `[]` | Repos to exclude from all tracking (PRs, issues, stats) |
+| `excludeOrgs` | `[]` | Orgs to exclude from all tracking (e.g., private work orgs) |
 | `includeDocIssues` | `true` | Include documentation issues in discovery |
 | `issueListPath` | (optional) | Path to curated issue list file |
 | `projectCategories` | `[]` | Project categories to prioritize (nonprofit, devtools, etc.) |
@@ -414,7 +435,7 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 ### Project Structure
 
 ```
-├── commands/                    # Plugin slash commands (/oss, /oss-search, /setup-oss, /oss-help)
+├── commands/                    # Plugin slash commands (/oss, /oss-search, /setup-oss, /setup-automation, /oss-help)
 ├── agents/                      # 7 specialized agents (PR responder, issue scout, etc.)
 ├── skills/                      # Contribution best practices
 ├── workflows/                   # Delegated logic loaded by commands on demand
