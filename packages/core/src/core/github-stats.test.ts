@@ -546,3 +546,149 @@ describe('fetchRecentlyClosedPRs', () => {
     expect(result[0].closedAt).toBe('2025-07-01T10:00:00Z');
   });
 });
+
+describe('fetchRecentlyMergedPRs — excludeRepos/excludeOrgs filtering (#792)', () => {
+  beforeEach(() => {
+    testCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-cache-recent-merged-exclude-test-'));
+    testCache = new HttpCache(testCacheDir);
+  });
+
+  afterEach(() => {
+    fs.rmSync(testCacheDir, { recursive: true, force: true });
+  });
+
+  it('should exclude PRs from excluded repos', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/excluded-org/private-repo/pull/5',
+        title: 'Private repo PR',
+        pull_request: { merged_at: '2025-06-15T12:00:00Z' },
+        closed_at: '2025-06-15T12:00:00Z',
+      },
+      {
+        html_url: 'https://github.com/oss-org/public-repo/pull/6',
+        title: 'Public repo PR',
+        pull_request: { merged_at: '2025-06-16T12:00:00Z' },
+        closed_at: '2025-06-16T12:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchRecentlyMergedPRs(
+      octokit,
+      { githubUsername: 'testuser', excludeRepos: ['excluded-org/private-repo'], excludeOrgs: [] },
+      7,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].repo).toBe('oss-org/public-repo');
+  });
+
+  it('should exclude PRs from excluded orgs', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/private-org/repo-a/pull/10',
+        title: 'Private org PR',
+        pull_request: { merged_at: '2025-06-15T12:00:00Z' },
+        closed_at: '2025-06-15T12:00:00Z',
+      },
+      {
+        html_url: 'https://github.com/oss-org/public-repo/pull/11',
+        title: 'Public repo PR',
+        pull_request: { merged_at: '2025-06-16T12:00:00Z' },
+        closed_at: '2025-06-16T12:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchRecentlyMergedPRs(
+      octokit,
+      { githubUsername: 'testuser', excludeRepos: [], excludeOrgs: ['private-org'] },
+      7,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].repo).toBe('oss-org/public-repo');
+  });
+
+  it('should be case-insensitive for org exclusion', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/PrivateOrg/repo/pull/1',
+        title: 'Mixed case org PR',
+        pull_request: { merged_at: '2025-06-15T12:00:00Z' },
+        closed_at: '2025-06-15T12:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchRecentlyMergedPRs(
+      octokit,
+      { githubUsername: 'testuser', excludeRepos: [], excludeOrgs: ['privateorg'] },
+      7,
+    );
+
+    expect(result).toHaveLength(0);
+  });
+});
+
+describe('fetchRecentlyClosedPRs — excludeRepos/excludeOrgs filtering (#792)', () => {
+  beforeEach(() => {
+    testCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-cache-recent-closed-exclude-test-'));
+    testCache = new HttpCache(testCacheDir);
+  });
+
+  afterEach(() => {
+    fs.rmSync(testCacheDir, { recursive: true, force: true });
+  });
+
+  it('should exclude PRs from excluded repos', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/excluded-org/private-repo/pull/5',
+        title: 'Private repo PR',
+        closed_at: '2025-06-15T12:00:00Z',
+      },
+      {
+        html_url: 'https://github.com/oss-org/public-repo/pull/6',
+        title: 'Public repo PR',
+        closed_at: '2025-06-16T12:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchRecentlyClosedPRs(
+      octokit,
+      { githubUsername: 'testuser', excludeRepos: ['excluded-org/private-repo'], excludeOrgs: [] },
+      7,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].repo).toBe('oss-org/public-repo');
+  });
+
+  it('should exclude PRs from excluded orgs', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/private-org/repo-a/pull/10',
+        title: 'Private org PR',
+        closed_at: '2025-06-15T12:00:00Z',
+      },
+      {
+        html_url: 'https://github.com/oss-org/public-repo/pull/11',
+        title: 'Public repo PR',
+        closed_at: '2025-06-16T12:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchRecentlyClosedPRs(
+      octokit,
+      { githubUsername: 'testuser', excludeRepos: [], excludeOrgs: ['private-org'] },
+      7,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0].repo).toBe('oss-org/public-repo');
+  });
+});
