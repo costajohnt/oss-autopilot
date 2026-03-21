@@ -262,7 +262,7 @@ export function fetchUserClosedPRCounts(
  */
 async function fetchRecentPRs<T>(
   octokit: Octokit,
-  config: { githubUsername: string },
+  config: { githubUsername: string; excludeRepos?: string[]; excludeOrgs?: string[] },
   query: string,
   label: string,
   days: number,
@@ -303,6 +303,16 @@ async function fetchRecentPRs<T>(
     // Skip own repos
     if (isOwnRepo(parsed.owner, config.githubUsername)) continue;
 
+    // Exclude configured repos and orgs (#792)
+    if (config.excludeRepos?.includes(repo)) {
+      debug(MODULE, `Skipping excluded repo: ${repo}`);
+      continue;
+    }
+    if (config.excludeOrgs?.some((org) => org.toLowerCase() === parsed.owner.toLowerCase())) {
+      debug(MODULE, `Skipping excluded org: ${parsed.owner}`);
+      continue;
+    }
+
     results.push(mapItem(item, { owner: parsed.owner, repo, number: parsed.number }));
   }
 
@@ -316,7 +326,7 @@ async function fetchRecentPRs<T>(
  */
 export async function fetchRecentlyClosedPRs(
   octokit: Octokit,
-  config: { githubUsername: string },
+  config: { githubUsername: string; excludeRepos?: string[]; excludeOrgs?: string[] },
   days: number = 7,
 ): Promise<ClosedPR[]> {
   return fetchRecentPRs<ClosedPR>(
@@ -341,7 +351,7 @@ export async function fetchRecentlyClosedPRs(
  */
 export async function fetchRecentlyMergedPRs(
   octokit: Octokit,
-  config: { githubUsername: string },
+  config: { githubUsername: string; excludeRepos?: string[]; excludeOrgs?: string[] },
   days: number = 7,
 ): Promise<MergedPR[]> {
   return fetchRecentPRs<MergedPR>(
