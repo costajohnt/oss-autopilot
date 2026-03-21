@@ -849,7 +849,7 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
     mockOctokitInstance = {};
     vi.mocked(getStateManager).mockReturnValue(
       makeStateManagerMock({
-        config: { excludeRepos: ['excluded/repo'], excludeOrgs: ['excludedorg'] },
+        config: {},
       }),
     );
   });
@@ -909,7 +909,12 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
     expect(result).toHaveLength(0);
   });
 
-  it('should exclude PRs from excluded repos (#792)', async () => {
+  it('should include PRs from excluded repos in merged results (#591)', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { excludeRepos: ['excluded/repo'] },
+      }),
+    );
     mockOctokitInstance = {
       search: {
         issuesAndPullRequests: vi.fn().mockResolvedValue({
@@ -930,31 +935,8 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
     const monitor = new PRMonitor('fake-token');
     const result = await monitor.fetchRecentlyMergedPRs();
 
-    expect(result).toHaveLength(0);
-  });
-
-  it('should exclude PRs from excluded orgs (#792)', async () => {
-    mockOctokitInstance = {
-      search: {
-        issuesAndPullRequests: vi.fn().mockResolvedValue({
-          data: {
-            items: [
-              {
-                html_url: 'https://github.com/excludedorg/repo/pull/1',
-                title: 'Excluded org PR',
-                pull_request: { merged_at: '2026-02-15T12:00:00Z' },
-                closed_at: '2026-02-15T12:00:00Z',
-              },
-            ],
-          },
-        }),
-      },
-    };
-
-    const monitor = new PRMonitor('fake-token');
-    const result = await monitor.fetchRecentlyMergedPRs();
-
-    expect(result).toHaveLength(0);
+    // excludeRepos only affects issue discovery, not PR tracking
+    expect(result).toHaveLength(1);
   });
 
   it('should return empty array when no username configured', async () => {
@@ -1653,140 +1635,29 @@ describe('isConditionalChecklistItem (#152)', () => {
   });
 });
 
-describe('fetchUserOpenPRs filters by excludeRepos/excludeOrgs (#792)', () => {
-  const makeSearchItem = (url: string) => ({
-    html_url: url,
-    title: 'Test PR',
-    pull_request: { html_url: url },
-    created_at: '2026-02-01T00:00:00Z',
-    updated_at: '2026-02-07T00:00:00Z',
-  });
-
-  // Minimal mock for fetchPRDetails — just enough for the PR to pass through
-  const makePRDetailMocks = (prUrl: string) => {
-    const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
-    if (!match) throw new Error(`Bad URL: ${prUrl}`);
-    const [, _owner, _repo, num] = match;
-    return {
-      pulls: {
-        get: vi.fn().mockResolvedValue({
-          data: {
-            id: Number(num),
-            title: 'Test PR',
-            created_at: '2026-02-01T00:00:00Z',
-            updated_at: '2026-02-07T00:00:00Z',
-            head: { sha: 'abc123' },
-            mergeable: true,
-            mergeable_state: 'clean',
-            body: '',
-            draft: false,
-            review_comments: 0,
-            commits: 1,
-          },
-        }),
-        listReviews: vi.fn().mockResolvedValue({ data: [] }),
-        listReviewComments: vi.fn().mockResolvedValue({ data: [] }),
-      },
-      issues: {
-        listComments: vi.fn().mockResolvedValue({ data: [] }),
-      },
-      repos: {
-        getCombinedStatusForRef: vi.fn().mockResolvedValue({
-          data: { state: 'success', statuses: [] },
-        }),
-      },
-      checks: {
-        listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [] } }),
-      },
-    };
-  };
-
-  beforeEach(() => {
-    mockOctokitInstance = {};
-  });
-
-  it('should exclude PR from excluded repo', async () => {
-    const prUrl = 'https://github.com/excluded/repo/pull/99';
-
+describe('fetchUserOpenPRs does not filter by excludeRepos/excludeOrgs (#591)', () => {
+  it('should use is:public in the search query to exclude private repos (#792)', async () => {
     vi.mocked(getStateManager).mockReturnValue(
       makeStateManagerMock({
-        config: { excludeRepos: ['excluded/repo'], excludeOrgs: [] },
+        config: { excludeRepos: ['excluded/repo'], excludeOrgs: ['excludedorg'] },
       }),
     );
 
-    const detailMocks = makePRDetailMocks(prUrl);
     mockOctokitInstance = {
       search: {
         issuesAndPullRequests: vi.fn().mockResolvedValue({
-          data: {
-            total_count: 1,
-            items: [makeSearchItem(prUrl)],
-          },
+          data: { total_count: 0, items: [] },
         }),
       },
-      ...detailMocks,
     };
 
     const monitor = new PRMonitor('fake-token');
-    const { prs } = await monitor.fetchUserOpenPRs();
+    await monitor.fetchUserOpenPRs();
 
-    expect(prs).toHaveLength(0);
-  });
-
-  it('should exclude PR from excluded org', async () => {
-    const prUrl = 'https://github.com/excludedorg/somerepo/pull/77';
-
-    vi.mocked(getStateManager).mockReturnValue(
-      makeStateManagerMock({
-        config: { excludeRepos: [], excludeOrgs: ['excludedorg'] },
-      }),
-    );
-
-    const detailMocks = makePRDetailMocks(prUrl);
-    mockOctokitInstance = {
-      search: {
-        issuesAndPullRequests: vi.fn().mockResolvedValue({
-          data: {
-            total_count: 1,
-            items: [makeSearchItem(prUrl)],
-          },
-        }),
-      },
-      ...detailMocks,
-    };
-
-    const monitor = new PRMonitor('fake-token');
-    const { prs } = await monitor.fetchUserOpenPRs();
-
-    expect(prs).toHaveLength(0);
-  });
-
-  it('should exclude PR from excluded org case-insensitively', async () => {
-    const prUrl = 'https://github.com/ExcludedOrg/somerepo/pull/77';
-
-    vi.mocked(getStateManager).mockReturnValue(
-      makeStateManagerMock({
-        config: { excludeRepos: [], excludeOrgs: ['excludedorg'] },
-      }),
-    );
-
-    const detailMocks = makePRDetailMocks(prUrl);
-    mockOctokitInstance = {
-      search: {
-        issuesAndPullRequests: vi.fn().mockResolvedValue({
-          data: {
-            total_count: 1,
-            items: [makeSearchItem(prUrl)],
-          },
-        }),
-      },
-      ...detailMocks,
-    };
-
-    const monitor = new PRMonitor('fake-token');
-    const { prs } = await monitor.fetchUserOpenPRs();
-
-    expect(prs).toHaveLength(0);
+    const searchCall = vi.mocked(mockOctokitInstance.search.issuesAndPullRequests).mock.calls[0][0];
+    expect(searchCall.q).toContain('is:public');
+    expect(searchCall.q).not.toContain('excludeRepos');
+    expect(searchCall.q).not.toContain('excludeOrgs');
   });
 });
 
