@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.4.0...core-v1.5.0) (2026-03-21)
+
+
+### Features
+
+* add /setup-automation command for optional headless cron jobs ([#801](https://github.com/costajohnt/oss-autopilot/issues/801)) ([7f1d876](https://github.com/costajohnt/oss-autopilot/commit/7f1d87665dfd74a716c4f918bafeca52edd8f927))
+* add daily PR status cron workflow and SessionStart hook integration ([#800](https://github.com/costajohnt/oss-autopilot/issues/800)) ([44c7888](https://github.com/costajohnt/oss-autopilot/commit/44c7888bafb42e056d6bde9181a58c1b6915514d))
+* add headless cron workflow for automated issue list curation ([#797](https://github.com/costajohnt/oss-autopilot/issues/797)) ([90a036b](https://github.com/costajohnt/oss-autopilot/commit/90a036bd0f974c48b36b7e94d447847be5e4ff79)), closes [#784](https://github.com/costajohnt/oss-autopilot/issues/784)
+* add headless cron workflow for dependabot PR auto-triage ([#783](https://github.com/costajohnt/oss-autopilot/issues/783)) ([#798](https://github.com/costajohnt/oss-autopilot/issues/798)) ([0a2e848](https://github.com/costajohnt/oss-autopilot/commit/0a2e8481038895191755de1f564091577c3d8032))
+* add weekly cron workflow for shelved/waiting PR audit ([#785](https://github.com/costajohnt/oss-autopilot/issues/785)) ([#799](https://github.com/costajohnt/oss-autopilot/issues/799)) ([7c8a79c](https://github.com/costajohnt/oss-autopilot/commit/7c8a79c3a2814a47186ba2ef0c9b527dfa677d51))
+* default to skipping PR comments when code speaks for itself ([#795](https://github.com/costajohnt/oss-autopilot/issues/795)) ([dcd88e1](https://github.com/costajohnt/oss-autopilot/commit/dcd88e1ba4701dc67ef472cdeb92aa0f14ddf94f))
+* include full clickable repo URLs in search results ([#796](https://github.com/costajohnt/oss-autopilot/issues/796)) ([a3ec8e8](https://github.com/costajohnt/oss-autopilot/commit/a3ec8e8d45b594b82c5dd8c3a21fceb9ab4a792d)), closes [#789](https://github.com/costajohnt/oss-autopilot/issues/789)
+* make review-fix convergence loop mandatory before PR readiness ([#794](https://github.com/costajohnt/oss-autopilot/issues/794)) ([fb054f0](https://github.com/costajohnt/oss-autopilot/commit/fb054f0f8021eaf87347328828750d5afa0b714c))
+* strengthen claim verification in PR comment drafting ([#788](https://github.com/costajohnt/oss-autopilot/issues/788)) ([#793](https://github.com/costajohnt/oss-autopilot/issues/793)) ([f6bc2f7](https://github.com/costajohnt/oss-autopilot/commit/f6bc2f742275661c0b69fe35672a6e677cfa39ec))
+* work on issues before claiming them ([#803](https://github.com/costajohnt/oss-autopilot/issues/803)) ([9301411](https://github.com/costajohnt/oss-autopilot/commit/93014110f2f44c7e2e29ec539dd512edd05b526e))
+
+
+### Bug Fixes
+
+* exclude private repos and orgs from PR tracking ([#792](https://github.com/costajohnt/oss-autopilot/issues/792)) ([#802](https://github.com/costajohnt/oss-autopilot/issues/802)) ([c0c453a](https://github.com/costajohnt/oss-autopilot/commit/c0c453a8a3dfbce4136c15ae77ae2755404952a2))
+* resolve flatted prototype pollution vulnerability ([#804](https://github.com/costajohnt/oss-autopilot/issues/804)) ([4e57fa2](https://github.com/costajohnt/oss-autopilot/commit/4e57fa2956a726376a7b9e75f4f2ba6a233c2d93))
+
 ## [1.4.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.3.0...core-v1.4.0) (2026-03-19)
 
 
