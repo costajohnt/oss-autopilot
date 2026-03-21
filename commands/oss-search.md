@@ -174,7 +174,7 @@ Use AskUserQuestion:
 **"Pick one to vet now":**
 - Display results as numbered list, use AskUserQuestion with up to 3 + "Done for now"
 - Dispatch single `issue-scout` agent, present result
-- Offer: "Claim this issue and start working" / "Pick a different one" / "Done for now"
+- Offer: "Start working on this issue" / "Pick a different one" / "Done for now"
 - Record score: `searchRoundScores.push(score)` → **Diminishing Returns Check**
 
 **"Search again":** Route back to **Parallel Multi-Strategy Search** (exclusions carry forward).
@@ -194,7 +194,7 @@ Use AskUserQuestion (if `availableCount >= 5` and advisory shown, place list opt
 - "Search for new issues" — "Run another parallel search round"
 - "Done for now" — end this command; return to parent `/oss` session if applicable
 
-**When the user claims any issue and starts implementing**, set:
+**When the user selects any issue and starts implementing**, set:
 - `isNewContribution = true`
 - `issueContext = { title, url, description }`
 

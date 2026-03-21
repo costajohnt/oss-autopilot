@@ -26,12 +26,12 @@ Maintainers responded to your comments on these issues:
 ```
 
 For each issue, use AskUserQuestion to offer actions:
-- "Claim this issue" — Run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" claim ISSUE_URL --json` to add it to the tracked pipeline. If the claim succeeds, also auto-dismiss by running `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" dismiss ISSUE_URL --json`. Then set `isNewContribution = true` and `issueContext = { title, url, description }` from the issue data, and return to the core router (`commands/oss.md`) — the Pre-Commit Review routing will direct to the draft-first workflow. If the claim fails, show the error and do NOT dismiss — the issue should remain visible for retry.
-- "Mark as reviewed" — The user has seen the reply but doesn't want to claim the issue right now. Dismiss it so it won't reappear next session: run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" dismiss ISSUE_URL --json`. If a genuinely new response arrives later (after the dismiss timestamp), the auto-undismiss logic will resurface it.
+- "Start working on this issue" — Dismiss the issue reply by running `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" dismiss ISSUE_URL --json`. Then set `isNewContribution = true` and `issueContext = { title, url, description }` from the issue data, and return to the core router (`commands/oss.md`) — the Pre-Commit Review routing will direct to the draft-first workflow. Do NOT post a claim comment on the issue; the PR will be the first interaction. If the dismiss fails, show the error but still proceed to the implementation flow.
+- "Mark as reviewed" — The user has seen the reply but doesn't want to work on the issue right now. Dismiss it so it won't reappear next session: run `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" dismiss ISSUE_URL --json`. If a genuinely new response arrives later (after the dismiss timestamp), the auto-undismiss logic will resurface it.
 - "View full thread" — Display the issue URL for the user to open in browser. After viewing, re-prompt with the same options for this issue (do not advance to the next issue).
 - "Skip" — Leave the reply undismissed. It will reappear next session. Use this when the user wants to defer action to a future session.
 - "Done for now" — End session with summary. Routes to Session End in the core router.
 
-**Error handling:** If any CLI command (`claim`, `dismiss`) returns `{ success: false }`, show the `error` field to the user and skip the remaining steps for that issue. Offer to retry or skip to the next issue.
+**Error handling:** If any CLI command (`dismiss`) returns `{ success: false }`, show the `error` field to the user and skip the remaining steps for that issue. Offer to retry or skip to the next issue.
 
 **Return:** Core router (`commands/oss.md`) — **After Each Action** section (which will return to Action Menu since no Tier 1/2 actions were taken).
