@@ -1,6 +1,6 @@
 ---
 name: OSS Contribution Best Practices
-description: This skill should be used when the user is working on open source contributions, responding to maintainer feedback, writing PR descriptions, claiming issues, following up on dormant PRs, or needs guidance on open source etiquette and best practices.
+description: This skill should be used when the user is working on open source contributions, responding to maintainer feedback, writing PR descriptions, working on issues, following up on dormant PRs, or needs guidance on open source etiquette and best practices.
 version: 1.1.0
 ---
 
@@ -95,35 +95,41 @@ The tool should NEVER say "PR is ready", "work is complete", or "changes are don
 - Highlight anything unusual or that needs special attention
 - Don't pad with unnecessary sections
 
-## Claiming Issues
+## Working on Issues
 
-### Before Claiming
+### Before Starting
 
 1. Read the entire issue and all comments
-2. Check if someone else is already working on it
+2. Check if someone else is already working on it (check for linked PRs)
 3. Make sure you understand the requirements
 4. Verify you have the skills/time to complete it
 
-### Claim Message Template
+### Work-First Approach
 
-**Good:**
-> "Hi! I'd like to work on this. I have experience with [relevant tech]. Should I proceed with [brief approach idea]?"
+Do NOT comment to "claim" the issue before you have working code. The workflow is:
 
-**Also good:**
-> "I'd like to take this on! Any guidance on the expected approach?"
+1. Fork/clone the repo
+2. Implement the fix
+3. Verify tests pass locally
+4. Open a PR that references the issue (e.g., "Fixes #123")
 
-**Avoid:**
-- Long introductions about yourself
-- Detailed implementation plans (save for PR)
-- Over-promising timelines
-- Claiming multiple issues at once
-- Claiming without any plan to start soon
+The PR itself is the claim. A separate "I'm working on this" comment is unnecessary noise when the PR is coming soon.
 
-### After Claiming
+### When to Comment on the Issue
 
-- Start within a reasonable time (1-3 days)
-- If blocked, comment with your question
-- If you can't continue, unclaim so others can work on it
+Only comment on the issue itself when:
+- You need clarification from the maintainer before starting
+- The approach is ambiguous and you want confirmation
+- The issue is old and you want to confirm it's still relevant
+
+### If You Can't Solve It
+
+Move on silently. Don't comment that you tried and failed. Don't mark the issue in any way. Remove it from your list and continue to the next one.
+
+### After Opening a PR
+
+- Reference the issue in the PR body: "Fixes #123" or "Closes #123"
+- Only comment on the issue if the PR needs additional context
 
 ## Following Up on Dormant PRs
 

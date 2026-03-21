@@ -1,7 +1,7 @@
 # Work Through Issues
 
 > **Session state:** Expects `actionableIssues`, `hasIssueList`, `issueListPath`, `availableCount`, `completedCount` from core router.
-> **Routing:** Routes to `${CLAUDE_PLUGIN_ROOT}/workflows/pre-commit-review.md` for Tier 2 code changes on existing PRs. Routes to `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` when an issue is claimed and implementation begins. Returns to the core router (`commands/oss.md`) for "After Each Action" and "Session End".
+> **Routing:** Routes to `${CLAUDE_PLUGIN_ROOT}/workflows/pre-commit-review.md` for Tier 2 code changes on existing PRs. Routes to `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` when implementation begins on a new issue. Returns to the core router (`commands/oss.md`) for "After Each Action" and "Session End".
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
 
 ---
@@ -388,21 +388,21 @@ Dispatch the `issue-scout` agent to vet the picked issue. Pass the issue URL and
 Task(issue-scout, "Vet this issue from the user's curated list:
   URL: {issue_url}
   Source: curated-list (pre-vetted, apply +2 score bonus)
-  Verify it's still open, unassigned, and claimable.
-  Check for recent claims or linked PRs since the list was last updated.")
+  Verify it's still open, unassigned, and available.
+  Check for recent linked PRs since the list was last updated.")
 ```
 
 ### 5. Present vetting results and offer next step
 
-Show the vetting summary. If claimable, offer:
+Show the vetting summary. If available, offer:
 
 ```
 Question: "How would you like to proceed with this issue?"
 Header: "Next Step"
 
 Options:
-1. "Investigate feasibility first (Recommended)" — "Clone the repo, analyze the relevant code, and verify a fix is achievable before publicly claiming"
-2. "Claim and start working" — "Skip investigation and claim the issue now"
+1. "Investigate feasibility first (Recommended)" — "Clone the repo, analyze the relevant code, and verify a fix is achievable before starting"
+2. "Start working" — "Skip investigation and begin implementing"
 3. "Pick a different issue"
 4. "Done for now"
 ```
@@ -438,18 +438,18 @@ Question: "Investigation complete. How would you like to proceed?"
 Header: "Next Step"
 
 Options:
-1. "Claim and implement (Recommended)" — "The fix is feasible, claim the issue and start working"
+1. "Start implementing (Recommended)" — "The fix is feasible, begin working on it"
 2. "Skip this issue" — "Too complex, risky, or unclear"
 3. "Pick a different issue from the list"
 4. "Done for now"
 ```
 
-When user selects "Claim and implement", proceed to Step 6 (existing claiming flow).
+When user selects "Start implementing", proceed to Step 6 (implementation flow).
 When user selects "Skip this issue", return to Step 3 (display available issues).
 
-### 6. After claiming → implementation → draft PR → review → ready
+### 6. After selecting issue → implementation → draft PR → review → ready
 
-When the user claims an issue and starts implementing, set:
+When the user selects an issue and starts implementing, set:
 - `isNewContribution = true`
 - `issueContext = { title, url, description }` — the issue being addressed (used for scope-aware review)
 - **Choose a consistent change type** based on the issue labels and nature of the change. Use this type for both the branch prefix and the commit message to avoid mismatches flagged by the compliance checker:

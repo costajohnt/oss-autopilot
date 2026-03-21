@@ -28,7 +28,7 @@ These agents activate automatically when relevant, or you can ask for them direc
 | **pr-responder** | "Help me respond to comments on my PR" — drafts professional replies to maintainer feedback |
 | **pr-health-checker** | "Why is my PR failing CI?" — diagnoses CI failures, merge conflicts, stale reviews, and performs rebases |
 | **pr-compliance-checker** | "Check if my PR is ready" — validates against opensource.guide best practices before submission |
-| **issue-scout** | "Find me issues to work on" — searches, vets, and helps claim good contribution opportunities |
+| **issue-scout** | "Find me issues to work on" — searches and vets good contribution opportunities |
 | **repo-evaluator** | "Is this repo worth contributing to?" — analyzes maintainer responsiveness and project health |
 | **contribution-strategist** | "How am I doing?" — analyzes contribution patterns and provides strategic advice |
 | **pre-commit-reviewer** | "Review my changes before I push" — checks diffs for bugs, style issues, and dead code |
@@ -39,7 +39,7 @@ These agents activate automatically when relevant, or you can ask for them direc
 1. /oss              → See what needs attention
 2. Pick an action    → Respond to review, fix CI, rebase
 3. /oss-search       → Find new issues when you have capacity
-4. Claim an issue    → Work on it → Submit PR
+4. Pick an issue     → Work on it → Submit PR
 5. /oss              → Monitor PR until merged
 ```
 
@@ -49,7 +49,7 @@ The **oss-contribution** skill provides best practices for:
 - Writing PR descriptions and commit messages
 - Responding to maintainer feedback
 - Following repository contribution guidelines
-- Open source etiquette (claiming issues, draft PRs, etc.)
+- Open source etiquette (working on issues, draft PRs, etc.)
 
 ## Optional: Enhanced Code Review
 

@@ -29,7 +29,7 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
  │   │   Parallel investigation → consolidated results → sequential execution
  │   │
  │   ├─ "Pick from your issue list" ──► workflows/work-through-issues.md
- │   │   Display curated list → vet → claim → implement → draft-first workflow
+ │   │   Display curated list → vet → implement → draft-first workflow
  │   │
  │   ├─ Specific PR (via "Other") ──► workflows/work-through-issues.md
  │   │   Dispatch agents for selected PRs only
@@ -58,9 +58,9 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
 |---------------|---------|-------------|
 | `workflows/startup-and-build.md` | CLI build, startup command, output parsing, error recovery | On entry (Startup phase) |
 | `workflows/action-menu.md` | PR display, menu rendering, input parsing, informational questions | After Summary, after each action |
-| `workflows/review-issue-replies.md` | Issue reply triage and claim/dismiss handler | User selects "Review issue replies" |
+| `workflows/review-issue-replies.md` | Issue reply triage and dismiss handler | User selects "Review issue replies" |
 | `workflows/work-through-issues.md` | Orchestrate actionable PR resolution and issue list browsing | User selects "Work through all issues", "Pick from list", or specific PRs |
-| `workflows/draft-first-workflow.md` | Full new contribution pipeline (8 steps) | After claiming an issue and implementing changes |
+| `workflows/draft-first-workflow.md` | Full new contribution pipeline (8 steps) | After selecting an issue and implementing changes |
 | `workflows/pre-commit-review.md` | Code review gate for existing PR updates | After Tier 2 code changes to an existing PR |
 | `workflows/reference.md` | CLI command syntax, agent name reference, AskUserQuestion Validation Protocol | On demand when command syntax or validation rules are needed |
 
@@ -245,7 +245,7 @@ The full search workflow is in the `/oss-search` command. Tell the user:
 
 Then invoke `/oss-search`, passing session state (`hasIssueList`, `availableCount`, `completedCount`, `issueListPath`).
 
-When the user claims any issue found through search and starts implementing, set `isNewContribution = true` and `issueContext = { title, url, description }`. This activates the draft-first workflow (see **Pre-Commit Review** below).
+When the user selects any issue found through search and starts implementing, set `isNewContribution = true` and `issueContext = { title, url, description }`. This activates the draft-first workflow (see **Pre-Commit Review** below).
 
 ### After Each Action
 
@@ -271,7 +271,7 @@ This is a quality gate that catches issues before they reach the maintainer.
 
 ### Routing
 
-**Check `isNewContribution`** (set in Execute when the user claims an issue and starts implementing):
+**Check `isNewContribution`** (set in Execute when the user selects an issue and starts implementing):
 
 - **If `isNewContribution === true`:** Read `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` and follow the Draft-First Path. This covers Steps 1 (draft creation) → 2 (review cycle) → 3 (integration check) → 4 (manual testing) → 5 (squash) → 6 (mark ready) → 7 (compliance) → 8 (list updates).
 - **If `isNewContribution === false` (or not set):** Read `${CLAUDE_PLUGIN_ROOT}/workflows/pre-commit-review.md` and follow the Standard Path for existing PR updates.
