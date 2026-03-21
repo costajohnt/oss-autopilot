@@ -101,6 +101,22 @@ if [ -n "$HEALTH" ]; then
   messages="${messages:+${messages}\n}${HEALTH}"
 fi
 
+# --- Step 4: Inject daily PR status report if fresh ---
+DAILY_REPORT="${HOME}/oss-daily.md"
+if [ -f "$DAILY_REPORT" ]; then
+  # Check if report was generated today
+  report_date=$(date -r "$DAILY_REPORT" +%Y-%m-%d 2>/dev/null || stat -c %y "$DAILY_REPORT" 2>/dev/null | cut -d' ' -f1)
+  today=$(date +%Y-%m-%d)
+  if [ "$report_date" = "$today" ]; then
+    report_content=$(cat "$DAILY_REPORT" 2>/dev/null | head -50)
+    if [ -n "$report_content" ]; then
+      messages="${messages:+${messages}\n}Daily PR status report (generated today):\n${report_content}"
+    fi
+  else
+    messages="${messages:+${messages}\n}Note: Daily PR status report exists but is from ${report_date} (stale). Run the daily cron job or /oss to refresh."
+  fi
+fi
+
 # --- Output JSON ---
 if [ -n "$messages" ]; then
   # Escape for JSON: use jq if available, fall back to sed
