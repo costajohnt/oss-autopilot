@@ -42,6 +42,24 @@ Before pushing commits that address review feedback:
 
 This prevents maintainers from seeing issues that could have been caught locally. It's especially important when responding to feedback — pushing sloppy fix-up commits undermines credibility.
 
+### PR Readiness Gate (Mandatory)
+
+A PR is NEVER "ready" until all of these pass:
+
+1. **Local lint/type check**: Run the repo's linters and type checkers
+2. **Test suite**: Run the full test suite locally
+3. **Code review**: Run review agents (pr-review-toolkit or pre-commit-reviewer)
+4. **Fix and re-run**: Fix all findings, re-run checks
+5. **Convergence**: Repeat until zero Critical/Recommended findings
+6. **Push and verify CI**: Push and confirm CI passes remotely
+7. **Only then** declare the PR ready for maintainer review
+
+The tool should NEVER say "PR is ready", "work is complete", or "changes are done" without having run through this complete loop. This applies to:
+- New contributions (draft-first workflow)
+- Responses to maintainer feedback
+- CI fix pushes
+- Any commit that will be seen by maintainers
+
 ### Things to Avoid
 
 - Being defensive or dismissive
