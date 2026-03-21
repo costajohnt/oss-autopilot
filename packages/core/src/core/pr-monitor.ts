@@ -124,7 +124,7 @@ export class PRMonitor {
     const perPage = 100;
 
     const firstPage = await this.octokit.search.issuesAndPullRequests({
-      q: `is:pr is:open author:${config.githubUsername}`,
+      q: `is:pr is:open is:public author:${config.githubUsername}`,
       sort: 'updated',
       order: 'desc',
       per_page: perPage,
@@ -140,7 +140,7 @@ export class PRMonitor {
     while (page < totalPages) {
       page++;
       const nextPage = await this.octokit.search.issuesAndPullRequests({
-        q: `is:pr is:open author:${config.githubUsername}`,
+        q: `is:pr is:open is:public author:${config.githubUsername}`,
         sort: 'updated',
         order: 'desc',
         per_page: perPage,
@@ -162,15 +162,6 @@ export class PRMonitor {
         return false;
       }
       if (isOwnRepo(parsed.owner, config.githubUsername)) return false;
-      // Exclude configured repos and orgs (#792)
-      if (config.excludeRepos.includes(`${parsed.owner}/${parsed.repo}`)) {
-        debug('pr-monitor', `Skipping excluded repo: ${parsed.owner}/${parsed.repo}`);
-        return false;
-      }
-      if (config.excludeOrgs?.some((org) => org.toLowerCase() === parsed.owner.toLowerCase())) {
-        debug('pr-monitor', `Skipping excluded org: ${parsed.owner}`);
-        return false;
-      }
       return true;
     });
 

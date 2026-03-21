@@ -262,7 +262,7 @@ export function fetchUserClosedPRCounts(
  */
 async function fetchRecentPRs<T>(
   octokit: Octokit,
-  config: { githubUsername: string; excludeRepos?: string[]; excludeOrgs?: string[] },
+  config: { githubUsername: string },
   query: string,
   label: string,
   days: number,
@@ -298,21 +298,10 @@ async function fetchRecentPRs<T>(
       continue;
     }
 
-    const repo = `${parsed.owner}/${parsed.repo}`;
-
     // Skip own repos
     if (isOwnRepo(parsed.owner, config.githubUsername)) continue;
 
-    // Exclude configured repos and orgs (#792)
-    if (config.excludeRepos?.includes(repo)) {
-      debug(MODULE, `Skipping excluded repo: ${repo}`);
-      continue;
-    }
-    if (config.excludeOrgs?.some((org) => org.toLowerCase() === parsed.owner.toLowerCase())) {
-      debug(MODULE, `Skipping excluded org: ${parsed.owner}`);
-      continue;
-    }
-
+    const repo = `${parsed.owner}/${parsed.repo}`;
     results.push(mapItem(item, { owner: parsed.owner, repo, number: parsed.number }));
   }
 
@@ -326,13 +315,13 @@ async function fetchRecentPRs<T>(
  */
 export async function fetchRecentlyClosedPRs(
   octokit: Octokit,
-  config: { githubUsername: string; excludeRepos?: string[]; excludeOrgs?: string[] },
+  config: { githubUsername: string },
   days: number = 7,
 ): Promise<ClosedPR[]> {
   return fetchRecentPRs<ClosedPR>(
     octokit,
     config,
-    'is:pr is:closed is:unmerged author:{username} closed:>={since}',
+    'is:pr is:closed is:unmerged is:public author:{username} closed:>={since}',
     'closed',
     days,
     (item, { repo, number }) => ({
@@ -351,13 +340,13 @@ export async function fetchRecentlyClosedPRs(
  */
 export async function fetchRecentlyMergedPRs(
   octokit: Octokit,
-  config: { githubUsername: string; excludeRepos?: string[]; excludeOrgs?: string[] },
+  config: { githubUsername: string },
   days: number = 7,
 ): Promise<MergedPR[]> {
   return fetchRecentPRs<MergedPR>(
     octokit,
     config,
-    'is:pr is:merged author:{username} merged:>={since}',
+    'is:pr is:merged is:public author:{username} merged:>={since}',
     'merged',
     days,
     (item, { repo, number }) => {
