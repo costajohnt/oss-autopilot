@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1](https://github.com/costajohnt/oss-autopilot/compare/core-v1.5.0...core-v1.5.1) (2026-03-21)
+
+
+### Bug Fixes
+
+* use is:public query to exclude private repos instead of excludeRepos/excludeOrgs ([#807](https://github.com/costajohnt/oss-autopilot/issues/807)) ([198b364](https://github.com/costajohnt/oss-autopilot/commit/198b364e7933395d3ed1823b93790cbef8ba14cf))
+
 ## [1.5.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.4.0...core-v1.5.0) (2026-03-21)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@oss-autopilot/core",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "CLI and core library for managing open source contributions",
   "type": "module",
   "bin": {
