@@ -73,6 +73,7 @@ describe('runSearch', () => {
           expect.objectContaining({
             issue: {
               repo: 'owner/repo',
+              repoUrl: 'https://github.com/owner/repo',
               number: 5,
               title: 'Fix bug',
               url: 'https://github.com/owner/repo/issues/5',
@@ -146,6 +147,30 @@ describe('runSearch', () => {
     const result = await runSearch({ maxResults: 10 });
 
     expect(result.candidates).toEqual([]);
+  });
+
+  it('should include repoUrl derived from repo name (#789)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockSearchIssues.mockResolvedValue([
+      {
+        issue: {
+          repo: 'facebook/react',
+          number: 42,
+          title: 'Some issue',
+          url: 'https://github.com/facebook/react/issues/42',
+          labels: [],
+        },
+        recommendation: 'approve',
+        reasonsToApprove: [],
+        reasonsToSkip: [],
+        searchPriority: 'high',
+        viabilityScore: 90,
+      },
+    ]);
+
+    const result = await runSearch({ maxResults: 5 });
+
+    expect(result.candidates[0].issue.repoUrl).toBe('https://github.com/facebook/react');
   });
 
   it('should propagate errors from searchIssues (#414)', async () => {

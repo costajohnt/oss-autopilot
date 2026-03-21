@@ -47,6 +47,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
       return {
         issue: {
           repo: c.issue.repo,
+          repoUrl: `https://github.com/${c.issue.repo}`,
           number: c.issue.number,
           title: c.issue.title,
           url: c.issue.url,

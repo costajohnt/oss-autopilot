@@ -235,6 +235,7 @@ export interface SearchOutput {
   candidates: Array<{
     issue: {
       repo: string;
+      repoUrl: string;
       number: number;
       title: string;
       url: string;
