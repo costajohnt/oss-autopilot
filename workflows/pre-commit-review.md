@@ -76,6 +76,22 @@ Save as `changeSize` for informational reporting. Report: "> Change size: {tier}
 
 **If classification fails** (command errors, unparseable output, or both counts are zero despite `git status --porcelain` showing changes): default to **Large** to ensure maximum review coverage and warn: "Could not determine change size — defaulting to Large for comprehensive review."
 
+### 2b. Pre-Review Lint and Test Gate
+
+Before dispatching review agents, run the repo's lint and test commands to catch basic issues early. Review agents should not waste cycles on code that does not pass lint or tests.
+
+1. **Detect and run linter/type checker**: Check for `package.json` scripts (`lint`, `typecheck`, `tsc`), `Makefile` targets, or language-specific tooling. Run the detected command(s). If no linter is detected, skip and note: "No linter detected — skipping pre-review lint."
+
+2. **Run test suite**: Check for `package.json` scripts (`test`), `Makefile` targets (`test`, `check`), or language-specific test runners. Run the detected command. If no test runner is detected, skip and note: "No test runner detected — skipping pre-review tests."
+
+3. **Handle failures**: If lint or tests fail, fix the issues before proceeding to review agent dispatch. Report:
+   > "Lint/tests failed — fixing before running review agents..."
+   After fixing, re-run lint and tests to confirm they pass. Loop until both pass (soft limit: 3 attempts). If still failing after 3 attempts, present findings to the user and offer: "Fix manually" / "Proceed to review anyway" / "Done for now".
+
+4. **On success**: Report:
+   > "Lint and tests passed. Dispatching review agents..."
+   Proceed to sub-step 3.
+
 ### 3. Dispatch Review Agents in Parallel
 
 **CRITICAL: Dispatch ALL selected agents in a SINGLE message for true parallelism.**

@@ -492,6 +492,24 @@ Options:
 
 This is the final gate before the PR becomes visible to maintainers.
 
+### 0. Pre-Readiness Verification
+
+Before showing the PR summary, verify the convergence loop was completed:
+
+1. Confirm lint and tests were run and passed in this session
+2. Confirm review agents were dispatched and all Critical/Recommended findings addressed
+3. If any of these are missing, run them now before proceeding
+
+If lint/tests have not been run:
+> "Hold on — running lint and tests before marking ready..."
+Run the repo's lint and test commands. If they fail, fix and loop.
+
+If review agents have not been dispatched:
+> "Hold on — running review agents before marking ready..."
+Dispatch the full review suite (see Step 2) and run the convergence loop. If findings are reported, fix and re-run until convergence.
+
+Only proceed to sub-step 1 after all checks pass.
+
 ### 1. Show PR Summary
 
 Display a summary of the draft PR:
