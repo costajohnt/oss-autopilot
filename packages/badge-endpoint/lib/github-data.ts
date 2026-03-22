@@ -47,7 +47,7 @@ function extractRepo(repositoryUrl: string): string {
   return repositoryUrl.replace('https://api.github.com/repos/', '');
 }
 
-function computeStreak(dailyActivity: Record<string, number>): number {
+export function computeStreak(dailyActivity: Record<string, number>): number {
   const now = new Date();
   const dayOfWeek = now.getUTCDay();
   const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchContributionData, type ContributionData } from './github-data.js';
+import { fetchContributionData, computeStreak, type ContributionData } from './github-data.js';
 
 // Hoist shared mock references so they're available inside vi.mock factory
 const { searchMock, pullsMock } = vi.hoisted(() => {
@@ -96,6 +96,12 @@ describe('fetchContributionData', () => {
     expect(result.error).toBe('rate_limited');
   });
 
+  it('returns api_error for unexpected errors', async () => {
+    searchMock.mockRejectedValueOnce({ status: 500 });
+    const result = await fetchContributionData('anyuser', 'fake-token');
+    expect(result.error).toBe('api_error');
+  });
+
   it('paginates when user has more than 100 merged PRs', async () => {
     const items100 = Array.from({ length: 100 }, (_, i) => ({
       number: i + 1,
@@ -132,6 +138,61 @@ describe('fetchContributionData', () => {
     expect(result.merged).toBe(150);
     expect(result.repoCount).toBe(2); // org/repo + org2/repo2
     expect(result.cappedMerged).toBe(false);
+  });
+});
+
+describe('computeStreak', () => {
+  function mondayOf(date: Date): Date {
+    const d = new Date(date);
+    const dayOfWeek = d.getUTCDay();
+    const mondayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    d.setUTCDate(d.getUTCDate() - mondayOffset);
+    d.setUTCHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function dateKey(date: Date): string {
+    return date.toISOString().slice(0, 10);
+  }
+
+  function addDays(date: Date, days: number): Date {
+    const d = new Date(date);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d;
+  }
+
+  it('returns 0 when there is no activity', () => {
+    expect(computeStreak({})).toBe(0);
+  });
+
+  it('returns 3 for three consecutive weeks with activity', () => {
+    const thisMonday = mondayOf(new Date());
+    const lastMonday = addDays(thisMonday, -7);
+    const twoWeeksAgoMonday = addDays(thisMonday, -14);
+
+    const dailyActivity: Record<string, number> = {
+      [dateKey(thisMonday)]: 1,
+      [dateKey(lastMonday)]: 2,
+      [dateKey(twoWeeksAgoMonday)]: 1,
+    };
+
+    expect(computeStreak(dailyActivity)).toBe(3);
+  });
+
+  it('breaks the streak when there is a gap between weeks', () => {
+    const thisMonday = mondayOf(new Date());
+    const lastMonday = addDays(thisMonday, -7);
+    // Skip two weeks ago — gap
+    const threeWeeksAgoMonday = addDays(thisMonday, -21);
+
+    const dailyActivity: Record<string, number> = {
+      [dateKey(thisMonday)]: 1,
+      [dateKey(lastMonday)]: 1,
+      [dateKey(threeWeeksAgoMonday)]: 1,
+    };
+
+    // Only the two most recent consecutive weeks count; the gap stops the streak
+    expect(computeStreak(dailyActivity)).toBe(2);
   });
 });
 
