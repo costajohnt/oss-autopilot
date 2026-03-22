@@ -198,4 +198,4 @@ Use AskUserQuestion (if `availableCount >= 5` and advisory shown, place list opt
 - `isNewContribution = true`
 - `issueContext = { title, url, description }`
 
-This activates the draft-first workflow (see Pre-Commit Review in `/oss`).
+Before writing code, follow the **Branch Setup Protocol** in `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` Step 6 to create the feature branch from the upstream default branch. This activates the draft-first workflow (see Pre-Commit Review in `/oss`).

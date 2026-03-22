@@ -273,7 +273,7 @@ This is a quality gate that catches issues before they reach the maintainer.
 
 **Check `isNewContribution`** (set in Execute when the user selects an issue and starts implementing):
 
-- **If `isNewContribution === true`:** Read `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` and follow the Draft-First Path. This covers Steps 1 (draft creation) → 2 (review cycle) → 3 (integration check) → 4 (manual testing) → 5 (squash) → 6 (mark ready) → 7 (compliance) → 8 (list updates).
+- **If `isNewContribution === true`:** The feature branch MUST have been created from the upstream default branch per the Branch Setup Protocol in `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` Step 6. If no feature branch exists yet (e.g., the user started coding on the default branch), create one before proceeding. Read `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` and follow the Draft-First Path. This covers Steps 1 (draft creation) → 2 (review cycle) → 3 (integration check) → 4 (manual testing) → 5 (squash) → 6 (mark ready) → 7 (compliance) → 8 (list updates).
 - **If `isNewContribution === false` (or not set):** Read `${CLAUDE_PLUGIN_ROOT}/workflows/pre-commit-review.md` and follow the Standard Path for existing PR updates.
 
 ---
