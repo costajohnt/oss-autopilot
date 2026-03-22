@@ -45,8 +45,8 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
  ├─ Pre-Commit Review (after any code changes) ──┐
  │   │                                             │
  │   ├─ New contribution? ──► workflows/draft-first-workflow.md
- │   │   Steps 1-8: draft PR → review → integration check →
- │   │   manual testing → squash → mark ready → compliance → list update
+ │   │   Steps 1-10: pre-flight → commit → review → integration check →
+ │   │   manual testing → human review → squash → push + create PR → compliance → list update
  │   │
  │   └─ Existing PR update? ──► workflows/pre-commit-review.md
  │       Gather diff → dispatch review agents → consolidate → commit/push → post comment
@@ -60,7 +60,7 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
 | `workflows/action-menu.md` | PR display, menu rendering, input parsing, informational questions | After Summary, after each action |
 | `workflows/review-issue-replies.md` | Issue reply triage and dismiss handler | User selects "Review issue replies" |
 | `workflows/work-through-issues.md` | Orchestrate actionable PR resolution and issue list browsing | User selects "Work through all issues", "Pick from list", or specific PRs |
-| `workflows/draft-first-workflow.md` | Full new contribution pipeline (8 steps) | After selecting an issue and implementing changes |
+| `workflows/draft-first-workflow.md` | Full new contribution pipeline (10 steps) | After selecting an issue and implementing changes |
 | `workflows/pre-commit-review.md` | Code review gate for existing PR updates | After Tier 2 code changes to an existing PR |
 | `workflows/reference.md` | CLI command syntax, agent name reference, AskUserQuestion Validation Protocol | On demand when command syntax or validation rules are needed |
 
@@ -273,7 +273,7 @@ This is a quality gate that catches issues before they reach the maintainer.
 
 **Check `isNewContribution`** (set in Execute when the user selects an issue and starts implementing):
 
-- **If `isNewContribution === true`:** The feature branch MUST have been created from the upstream default branch per the Branch Setup Protocol in `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` Step 6. If no feature branch exists yet (e.g., the user started coding on the default branch), create one before proceeding. Read `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` and follow the Draft-First Path. This covers Steps 1 (draft creation) → 2 (review cycle) → 3 (integration check) → 4 (manual testing) → 5 (squash) → 6 (mark ready) → 7 (compliance) → 8 (list updates).
+- **If `isNewContribution === true`:** The feature branch MUST have been created from the upstream default branch per the Branch Setup Protocol in `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` Step 6. If no feature branch exists yet (e.g., the user started coding on the default branch), create one before proceeding. Read `${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md` and follow the Draft-First Path. This covers Steps 1 (pre-flight) → 2 (commit) → 3 (review cycle) → 4 (integration check) → 5 (manual testing) → 6 (human review) → 7 (squash) → 8 (push + create PR) → 9 (compliance) → 10 (list updates).
 - **If `isNewContribution === false` (or not set):** Read `${CLAUDE_PLUGIN_ROOT}/workflows/pre-commit-review.md` and follow the Standard Path for existing PR updates.
 
 ---
@@ -309,7 +309,7 @@ Your PRs are tracked. Run /oss anytime to check again.
 6. **Drive the conversation** - Claude controls the flow, user responds to prompts
 7. **Session ends ONLY when user selects "Done for now"** - never assume user is finished
 8. **ALWAYS include "Done for now"** in every AskUserQuestion (when one is used — see rule 14 for the informational exception)
-9. **Draft-first workflow is mandatory** — complete all draft-first workflow steps (Steps 2–5 in `draft-first-workflow.md`) in order before reaching Step 6 (Mark Ready). The `gh pr ready` call belongs exclusively in Step 6. Never skip to it directly.
+9. **Draft-first workflow is mandatory** — complete all draft-first workflow steps (Steps 1–7 in `draft-first-workflow.md`) in order before reaching Step 8 (Push + Create PR). The `gh pr create` call belongs exclusively in Step 8. Never push or create a PR before all review gates pass.
 
 ### UX Guidelines
 10. Keep responses professional and concise

@@ -505,13 +505,15 @@ git checkout -b {branchPrefix}{branchSuffix} {remote}/{upstreamDefault}
 Store in session context: `featureBranch`, `upstreamRemote`, `upstreamDefault`.
 
 After implementation, the flow proceeds through the **draft-first workflow** (`${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md`):
-1. Step 1 creates the draft PR
-2. Step 2 runs iterative review cycle (scope-aware, tied to `issueContext`)
-3. Step 3 checks new files are properly integrated (imports, registrations)
-4. Step 4 offers manual testing prompt (build/run the project locally)
-5. Step 5 squashes commits and rewords message
-6. Step 6 marks PR ready for review after user confirmation
-7. Step 7 runs compliance check
-8. Step 8 offers list updates (if issue came from curated list)
+1. Step 1 runs pre-flight checks (changes exist, branch base, CONTRIBUTING.md)
+2. Step 2 stages and commits locally
+3. Step 3 runs iterative review cycle (scope-aware, tied to `issueContext`)
+4. Step 4 checks new files are properly integrated (imports, registrations)
+5. Step 5 offers manual testing prompt (build/run locally)
+6. Step 6 presents final diff for human review
+7. Step 7 squashes commits and rewords message
+8. Step 8 pushes and creates PR (ready or draft, user's choice)
+9. Step 9 runs compliance check
+10. Step 10 offers list updates (if issue came from curated list)
 
-**CRITICAL: Track that the current issue came from the curated list** so Step 8 knows to offer list updates.
+**CRITICAL: Track that the current issue came from the curated list** so Step 10 knows to offer list updates.
