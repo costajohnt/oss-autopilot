@@ -1,15 +1,15 @@
 # Draft-First Workflow (New Contributions)
 
 > **Session state:** Expects `isNewContribution === true`, `issueContext = { title, url, description }`.
-> **Produces:** `draftPRNumber`, `draftPRUrl`, `baseBranch`, `roundNumber`.
+> **Produces:** `prNumber`, `prUrl`, `baseBranch`, `roundNumber`.
 > **Returns to:** Core router (`commands/oss.md`) for "After Each Action" and "Session End".
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
 
 ---
 
-## Step 1: Create Draft PR (new contributions only)
+## Step 1: Pre-flight Checks
 
-### 1a. Pre-flight: Verify Changes Exist
+### 1a. Verify Changes Exist
 
 ```bash
 git status --porcelain
@@ -17,7 +17,7 @@ git status --porcelain
 
 **If output is empty:** Report no changes and return to the core router (`commands/oss.md`).
 
-### 1a-bis. Branch Base Validation
+### 1b. Branch Base Validation
 
 Verify the current branch is based on the latest upstream default. This is a safety net for cases where the branch was created outside the Branch Setup Protocol.
 
@@ -40,19 +40,22 @@ upstreamHead=$(git rev-parse "$remote/$upstreamDefault" 2>/dev/null)
 behindCount=$(git rev-list --count "$mergeBase".."$remote/$upstreamDefault" 2>/dev/null || echo "unknown")
 ```
 
-> **Warning:** Your branch is {behindCount} commit(s) behind `{remote}/{upstreamDefault}`. This can cause merge conflicts that re-introduce deleted code.
+- **1–20 commits behind:** Note: "Your branch is {behindCount} commit(s) behind `{remote}/{upstreamDefault}`. This is normal during active development."
+- **>20 commits behind:** Warn and offer action:
+
+> **Warning:** Your branch is {behindCount} commits behind `{remote}/{upstreamDefault}`. Consider rebasing to reduce merge conflict risk.
 
 Offer:
 1. "Rebase onto upstream (Recommended)" — `git rebase $remote/$upstreamDefault`
 2. "Proceed anyway" — "I know the base is correct"
 
-**If validation commands fail** (no network, gh CLI error): Note "Could not verify branch base — proceeding." Continue to Step 1b.
+**If validation commands fail** (no network, gh CLI error): Note "Could not verify branch base — proceeding." Continue to Step 1c.
 
-**If branch is up to date:** Proceed to Step 1b.
+**If branch is up to date:** Proceed to Step 1c.
 
-### 1b. CONTRIBUTING.md Compliance Check
+### 1c. CONTRIBUTING.md Compliance Check
 
-Before committing, verify the changes satisfy the target repo's contribution requirements. This checks repo-specific requirements (tests, docs, changelog, etc.); Step 7's compliance check covers general open-source best practices via the `pr-compliance-checker` agent.
+Before committing, verify the changes satisfy the target repo's contribution requirements. This checks repo-specific requirements (tests, docs, changelog, etc.); Step 9's compliance check covers general open-source best practices via the `pr-compliance-checker` agent.
 
 #### 1. Search for contribution guidelines
 
@@ -68,11 +71,11 @@ DEVELOPMENT.md
 docs/DEVELOPMENT.md
 ```
 
-**If no guidelines file found:** Note "No CONTRIBUTING.md found — skipping compliance check." and proceed to Step 1c.
+**If no guidelines file found:** Note "No CONTRIBUTING.md found — skipping compliance check." and proceed to Step 2.
 
-**If a file is found but cannot be read** (permission error, encoding issue, excessively large): Note "Found {path} but could not read it: {reason}. Skipping compliance check." and proceed to Step 1c.
+**If a file is found but cannot be read** (permission error, encoding issue, excessively large): Note "Found {path} but could not read it: {reason}. Skipping compliance check." and proceed to Step 2.
 
-Store the file content in session context as `contributingGuidelines` for reuse in later steps (PR body generation in Step 1e, review context in Step 2).
+Store the file content in session context as `contributingGuidelines` for reuse in later steps (PR body generation in Step 8, review context in Step 3).
 
 #### 2. Extract actionable requirements
 
@@ -120,7 +123,7 @@ Source: {path to guidelines file}
 
 #### 5. Handle gaps
 
-**If all requirements met:** Note "All CONTRIBUTING.md requirements satisfied." and proceed to Step 1c.
+**If all requirements met:** Note "All CONTRIBUTING.md requirements satisfied." and proceed to Step 2.
 
 **If gaps found:**
 
@@ -136,11 +139,13 @@ Options:
 
 **"Address the gaps":** For each gap, attempt to resolve it (add changelog entry, update docs, run formatter, etc.). If resolution fails for a gap (tool not installed, requires manual web interaction like CLA signing, introduces new errors), report: "Could not automatically resolve: {requirement}. Reason: {error}." Mark it as requiring manual attention and continue to the next gap. After all gaps have been attempted, re-verify and present the updated checklist. If unresolvable gaps remain, re-present the 3-option prompt. **Soft limit after 3 resolution cycles:** if gaps remain after 3 attempts, note "Some requirements could not be automatically resolved after 3 attempts" and present the proceed/done options.
 
-**"Proceed anyway":** Store skipped requirements in session context as `skippedComplianceRequirements` (list of `{requirement, reason}`). Display to the user: "Proceeding with {count} skipped requirements: {list}." When generating the PR description in Step 1e, include a "Compliance Notes" section listing any consciously skipped requirements. Proceed to Step 1c.
+**"Proceed anyway":** Store skipped requirements in session context as `skippedComplianceRequirements` (list of `{requirement, reason}`). Display to the user: "Proceeding with {count} skipped requirements: {list}." When generating the PR description in Step 8, include a "Compliance Notes" section listing any consciously skipped requirements. Proceed to Step 2.
 
 **"Done for now":** Report: "Compliance check paused — {resolvedCount} requirements met, {gapCount} remaining. Run `/oss` to resume." Return to the core router.
 
-### 1c. Stage and Commit
+---
+
+## Step 2: Stage and Commit
 
 - Stage the specific changed files (not `git add -A`)
 - If staging fails for any file, report which file(s) failed and why
@@ -148,83 +153,23 @@ Options:
 - If commit fails (e.g., pre-commit hook failure, empty commit):
   - Report the specific error to the user
   - If pre-commit hook failed, show the hook output and offer to fix the issues
-  - Do NOT proceed to push
+  - Do NOT proceed to Step 3
 - **Do NOT add AI attribution** (no Co-Authored-By, no "Generated with" mentions)
-
-### 1d. Push
-
-```bash
-git push -u origin HEAD
-```
-
-**If push fails**, report the error and offer to retry or cancel.
-
-### 1e. Create Draft PR
-
-**Always include `--head`** to handle both fork-based and same-repo workflows. The `--head` flag is harmless for same-repo PRs and required for fork-based PRs:
-
-```bash
-forkOwner=$(gh repo view --json owner --jq '.owner.login')
-branch=$(git branch --show-current)
-```
-
-**If `$forkOwner` is empty** (e.g., `gh` not authenticated, network error): fall back to parsing the remote URL: `forkOwner=$(git remote get-url origin | sed -n 's|.*github.com[:/]\([^/]*\)/.*|\1|p')`. If still empty, ask the user to provide their fork owner name manually. **If `$branch` is empty** (detached HEAD state, e.g., during a rebase or in CI): report "Cannot create a PR from a detached HEAD. Please check out a named branch first." Do NOT run `gh pr create` with an empty `$forkOwner` or `$branch`.
-
-**Before generating the PR body**, fetch the target repo's PR template:
-
-```bash
-oss-autopilot pr-template {upstream-owner}/{upstream-repo} --json
-```
-
-If a template is returned (`data.template` is non-null), use it as the structure for the PR body — fill in its sections (e.g., `## Summary`, `## Test Plan`, `## Docs`) with content relevant to your changes. Preserve the template's section headers and formatting. If no template exists or the command fails (network error, API error), use the default format below — template detection is best-effort and must not block PR creation.
-
-Generate the PR title and body following the target repo's conventions (check `CONTRIBUTING.md`, existing PR formats, and the PR template above). Include:
-- Reference to the issue being fixed (e.g., "Fixes #123")
-- Brief description of the approach
-
-```bash
-gh pr create --draft --title "{conventional title}" --body "{PR body}" --repo {upstream-repo} --head "$forkOwner:$branch"
-```
-
-**If `gh pr create --draft` succeeds**, store in session context:
-- `draftPRNumber` — the PR number returned
-- `draftPRUrl` — the PR URL returned
-- `baseBranch` — the base branch name (from the PR creation output or `gh repo view --json defaultBranchRef`)
-
-> "Draft PR created: {draftPRUrl}. It's marked as a draft — maintainers can see it but won't be asked to review yet. Starting review cycle..."
-
-**CRITICAL: Do NOT call `gh pr ready` or skip to Step 6. You MUST complete Step 2 (review cycle), Step 3 (integration check), Step 4 (manual testing), and Step 5 (squash) first. The draft-first workflow exists to catch issues before maintainers see the PR.**
-
-**→ Proceed to Step 2 (Draft PR Review Cycle) below**
-
-**If `gh pr create --draft` fails:**
-- Report the specific error (include stderr output)
-- Offer options:
-  1. "Retry" — re-run the command
-  2. "Create as regular PR instead" — fall back to `gh pr create` without `--draft`. Only offer this if the error indicates draft PRs are not supported (e.g., GitHub Enterprise). For auth/network errors, this option won't help.
-  3. "Done for now" — leave changes pushed, create PR manually later
-
-**If non-draft fallback succeeds:**
-- Store `draftPRNumber` and `draftPRUrl` from the created PR
-- Warn: "Note: This PR is immediately visible to maintainers. The review cycle will still run, but maintainers may see the PR before review is complete."
-- Proceed to Step 2 (review cycle still runs). Step 6 (Mark Ready) will be skipped since the PR is already public.
-
-- **Do NOT proceed to Step 2 without a valid `draftPRNumber` and `draftPRUrl`**
 
 ---
 
-## Step 2: Draft PR Review Cycle
+## Step 3: Local Review Cycle
 
-**Trigger:** After draft PR created in Step 1. Only for new contributions (`isNewContribution === true`).
+**Trigger:** After local commit in Step 2. Only for new contributions (`isNewContribution === true`).
 
 Initialize `roundNumber = 1`.
 
 ### 1. Gather Change Context
 
-Compute `baseBranch` and `mergeBase` (store in session — reused in Steps 3 and 5):
+Compute `baseBranch` and `mergeBase` (store in session — reused in Steps 4, 6, and 7):
 
 ```bash
-baseBranch=$(gh pr view --json baseRefName --jq '.baseRefName' 2>/dev/null || git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}' || echo "main")
+baseBranch=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}' || echo "main")
 if ! git fetch origin "$baseBranch" 2>/dev/null; then
   echo "Warning: git fetch failed — diffs may be based on stale data."
 fi
@@ -355,7 +300,7 @@ If ALL agents fail: offer "Proceed to integration check (skip review)" / "Retry"
 Same as the pre-commit review consolidation format, but separate findings into **In-Scope** (Critical/Recommended/Minor) and **Out-of-Scope** (pre-existing issues). Include test coverage assessment.
 
 ```
-## Draft PR Review — Round {roundNumber}
+## Local Review — Round {roundNumber}
 
 ### In-Scope Findings
 
@@ -384,40 +329,40 @@ Same as the pre-commit review consolidation format, but separate findings into *
 
 ### 5. Handle Choice
 
-**"Address findings":** Fix → commit → push → increment `roundNumber` → loop to sub-step 1. Only increment `roundNumber` if push succeeds. On push failure, report error and offer retry/done. **Soft limit after 3 rounds:** suggest finalizing (diminishing returns).
+**"Address findings":** Fix → commit → increment `roundNumber` → loop to sub-step 1. **Soft limit after 3 rounds:** suggest finalizing (diminishing returns).
 
 **"Show diff":** Output `git diff $mergeBase..HEAD` as code block. If the diff command fails, recompute `$mergeBase` and retry. If still failing, offer "Continue without diff" / "Retry" / "Done for now". Then offer: "Finalize" / "Fix something" / "Done for now".
 
-**"Finalize":** → Step 3 (Integration Check) below
+**"Finalize":** → Step 4 (Integration Check) below
 
-**"Done for now":** Report draft saved, return to the core router (`commands/oss.md`).
+**"Done for now":** Report: "Your changes are saved locally on branch `{branchName}`. Run `/oss` to resume." Return to the core router (`commands/oss.md`).
 
 ---
 
-## Step 3: Integration Check for New Files
+## Step 4: Integration Check for New Files
 
-**Trigger:** After Step 2 finalized. Only for new contributions.
+**Trigger:** After Step 3 finalized. Only for new contributions.
 
 Review agents see diff contents but can't detect whether new files are wired into the codebase. This catches "dead code" PRs.
 
 ### Flow
 
-1. **Find new files:** `git diff --name-only --diff-filter=A "$mergeBase"..HEAD`. If `$mergeBase` is invalid, recompute it. If no new files → skip to Step 4.
+1. **Find new files:** `git diff --name-only --diff-filter=A "$mergeBase"..HEAD`. If `$mergeBase` is invalid, recompute it. If no new files → skip to Step 5.
 
 2. **Check references:** For each new file, search for its name stem in the source tree (grep for imports/registrations, excluding the file itself). Adjust file extensions to match the repo's language.
 
 3. **Flag unreferenced files:** If any new file has zero references, warn the user and offer:
-   - "Investigate and fix" — find entry points, add missing imports, commit + push. If git operations fail, report error and offer retry/skip/done. Do NOT proceed unless push succeeds or user explicitly skips.
+   - "Investigate and fix" — find entry points, add missing imports, commit. If git operations fail, report error and offer retry/skip/done.
    - "Skip — files are referenced differently" — e.g., dynamically loaded, auto-discovered
-   - "Done for now" — leave as draft
+   - "Done for now" — leave changes local
 
-**If all files referenced or user resolves:** → Step 4 (Manual Testing)
+**If all files referenced or user resolves:** → Step 5 (Manual Testing)
 
 ---
 
-## Step 4: Manual Testing Prompt
+## Step 5: Manual Testing Prompt
 
-**Trigger:** After Step 3 (Integration Check) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
+**Trigger:** After Step 4 (Integration Check) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
 
 Automated review catches code patterns, but cannot verify runtime behavior (UI rendering, keyboard shortcuts, browser behavior, CLI output, etc.). This step gives the user a chance to manually verify the feature works before finalizing.
 
@@ -426,7 +371,7 @@ Automated review catches code patterns, but cannot verify runtime behavior (UI r
 - All relevant automated test suites pass
 - Manual testing would require non-trivial environment setup (e.g., CSP headers, specific server config, browser extension loading)
 
-When auto-skipping, note: "Skipping manual testing — non-visual change, all automated tests pass, and manual testing would require non-trivial environment setup." Then proceed directly to Step 5.
+When auto-skipping, note: "Skipping manual testing — non-visual change, all automated tests pass, and manual testing would require non-trivial environment setup." Then proceed directly to Step 6.
 
 ### 1. Prompt for Manual Testing
 
@@ -436,8 +381,8 @@ Header: "Testing"
 
 Options:
 1. "Yes — help me set up testing" — "Walk through building/running the project to test locally"
-2. "Skip — proceed to squash (Recommended for trivial changes)" — "Go directly to squash and finalize"
-3. "Done for now" — "Leave as draft, come back later"
+2. "Skip — proceed to finalize (Recommended for trivial changes)" — "Go directly to human review"
+3. "Done for now" — "Save changes locally, come back later"
 ```
 
 ### 2. Handle User Choice
@@ -466,35 +411,98 @@ Options:
    Header: "Testing"
 
    Options:
-   1. "Tests passed — proceed to squash (Recommended)" — "Everything works as expected"
+   1. "Tests passed — proceed to finalize (Recommended)" — "Everything works as expected"
    2. "Found issues — go back to fix" — "Make additional changes before finalizing"
-   3. "Done for now" — "Leave as draft, come back later"
+   3. "Done for now" — "Save changes locally, come back later"
    ```
 
 **"Found issues — go back to fix":**
 - User makes fixes (with assistance as needed)
-- Stage, commit, and push the fixes
-- **If any git operation fails** (stage, commit, or push), report the specific error and offer: "Retry" / "Skip push and review locally" / "Done for now". Do NOT loop back to Step 2 unless the push succeeds or the user explicitly chooses to review locally
-- Loop back to Step 2 sub-step 1 (re-review with agents) above
+- Stage and commit the fixes
+- **If any git operation fails** (stage, commit), report the specific error and offer: "Retry" / "Done for now"
+- Loop back to Step 3 sub-step 1 (re-review with agents) above
 
-**"Tests passed — proceed to squash" / "Skip — proceed to squash":**
-- **→ Proceed to Step 5 (Squash + Reword) below**
+**"Tests passed — proceed to finalize" / "Skip — proceed to finalize":**
+- **→ Proceed to Step 6 (Human Review) below**
 
 **"Done for now":**
-- Report: "Draft PR #{draftPRNumber} remains as a draft. Run `/oss` later to continue."
+- Report: "Your changes are saved locally on branch `{branchName}`. Run `/oss` later to continue."
 - Return to the core router (`commands/oss.md`)
 
 ---
 
-## Step 5: Squash + Reword
+## Step 6: Human Review
 
-**Trigger:** After Step 4 completes or is skipped. Only for new contributions.
+**Trigger:** After Step 5 (Manual Testing) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
+
+This is the final quality gate before squash and PR creation. The user reviews the complete diff and confirms the work is ready.
+
+### 1. Pre-Readiness Verification
+
+Before showing the diff, verify the review cycle was completed:
+
+1. Confirm lint and tests were run and passed in this session
+2. Confirm review agents were dispatched and all Critical/Recommended findings addressed
+3. If any of these are missing, run them now before proceeding
+
+If lint/tests have not been run:
+> "Hold on — running lint and tests before finalizing..."
+Run the repo's lint and test commands. If they fail, fix and loop.
+
+If review agents have not been dispatched:
+> "Hold on — running review agents before finalizing..."
+Dispatch the full review suite (see Step 3) and run the convergence loop. If findings are reported, fix and re-run until convergence.
+
+Only proceed to sub-step 2 after all checks pass.
+
+### 2. Present Final Diff
+
+Show the complete branch diff with summary:
+
+```bash
+git diff --stat $mergeBase..HEAD
+```
+
+```
+## Final Review
+
+Branch: {branchName}
+Files changed: {count}
+Insertions: {count}, Deletions: {count}
+Issue: {issueContext.url}
+```
+
+Then show the full diff: `git diff $mergeBase..HEAD`
+
+### 3. User Confirmation
+
+```
+Question: "Review complete. How would you like to proceed?"
+Header: "Final Review"
+
+Options:
+1. "Looks good — proceed to finalize (Recommended)" — "Squash, push, and create PR"
+2. "I want to make changes" — "Go back and edit before finalizing"
+3. "Done for now" — "Save locally, come back later"
+```
+
+**"Looks good":** → Proceed to Step 7 (Squash + Reword)
+
+**"I want to make changes":** User makes edits, commit, loop back to Step 3 (re-review with agents).
+
+**"Done for now":** Report: "Your changes are saved locally on branch `{branchName}`. Run `/oss` later to continue." Return to the core router.
+
+---
+
+## Step 7: Squash + Reword
+
+**Trigger:** After Step 6 completes. Only for new contributions.
 
 ### Flow
 
-1. **Count commits:** Validate `$mergeBase` (recompute if invalid), then `git rev-list --count "$mergeBase"..HEAD`. If only 1 commit → skip to Step 6.
+1. **Count commits:** Validate `$mergeBase` (recompute if invalid), then `git rev-list --count "$mergeBase"..HEAD`. If only 1 commit → skip to Step 8.
 
-2. **Check config:** Read squash setting from CLI: `config --json` (check `squashByDefault`, default `true`). If `false` → Step 6. If `"ask"` → prompt user.
+2. **Check config:** Read squash setting from CLI: `config --json` (check `squashByDefault`, default `true`). If `false` → Step 8. If `"ask"` → prompt user.
 
 3. **Generate message:** Create a commit message covering all work (implementation + tests + fixes). Follow repo's commit format, include issue reference. **Present to user for approval BEFORE squashing:**
    - "Approve and squash (Recommended)" / "Edit message" / "Skip squash" / "Done for now"
@@ -505,116 +513,123 @@ Options:
    git tag oss-autopilot-pre-squash                  # safety tag — MUST succeed
    git reset --soft "$mergeBase"
    git commit -m "{approved message}"
-   branch=$(git branch --show-current)
-   git fetch origin "$branch"
-   git push --force-with-lease
    git tag -d oss-autopilot-pre-squash               # cleanup after success
    ```
    **CRITICAL: If the safety tag creation fails, do NOT proceed with the squash.** Report: "Could not create safety recovery tag. Aborting squash to protect your work." Offer: "Retry" / "Skip squash" / "Done for now".
-   On any other failure: recover via `git reset --hard oss-autopilot-pre-squash`, report error, offer retry/undo/done. If `--force-with-lease` fails with stale info, retry once with explicit lease: `git push "--force-with-lease=$branch:$(git rev-parse origin/$branch)" origin $branch`. If force push blocked by branch protection: `git reset --hard oss-autopilot-pre-squash && git push && git tag -d oss-autopilot-pre-squash`. Do NOT proceed to Step 6 unless push succeeded.
+   On any other failure: recover via `git reset --hard oss-autopilot-pre-squash`, report error, offer retry/undo/done.
 
-**→ Step 6 after successful push**
+**→ Step 8 after successful squash**
 
 ---
 
-## Step 6: Mark Ready for Review
+## Step 8: Push and Create PR
 
-**Trigger:** After Step 5 (Squash + Reword) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
+**Trigger:** After Step 7 (Squash + Reword) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
 
-**CRITICAL: This step must NOT be reached without completing Steps 2 (review cycle), 3 (integration check), 4 (manual testing prompt), and 5 (squash). If `gh pr ready` is called before these steps, the draft-first workflow has been bypassed — this is a bug.**
-
-This is the final gate before the PR becomes visible to maintainers.
-
-### 0. Pre-Readiness Verification
-
-Before showing the PR summary, verify the convergence loop was completed:
-
-1. Confirm lint and tests were run and passed in this session
-2. Confirm review agents were dispatched and all Critical/Recommended findings addressed
-3. If any of these are missing, run them now before proceeding
-
-If lint/tests have not been run:
-> "Hold on — running lint and tests before marking ready..."
-Run the repo's lint and test commands. If they fail, fix and loop.
-
-If review agents have not been dispatched:
-> "Hold on — running review agents before marking ready..."
-Dispatch the full review suite (see Step 2) and run the convergence loop. If findings are reported, fix and re-run until convergence.
-
-Only proceed to sub-step 1 after all checks pass.
+**CRITICAL: This step must NOT be reached without completing Steps 3 (review cycle), 4 (integration check), 5 (manual testing), and 6 (human review). If a PR is created before these steps, the workflow has been bypassed — this is a bug.**
 
 ### 1. Show PR Summary
 
-Display a summary of the draft PR:
-
 ```
-## Ready to publish?
+## Ready to create PR?
 
-Draft PR: {draftPRUrl}
-Title: {PR title}
+Branch: {branchName}
+Title: {conventional title}
 Commits: {1 if squashed, N if not}
 Files changed: {count}
 Issue: {issueContext.url}
-
-This will make the PR visible to maintainers for review.
 ```
 
-### 2. User Confirmation
+### 2. User Chooses PR State
 
 ```
-Question: "Mark this PR as ready for review?"
+Question: "Create the PR?"
 Header: "Publish"
 
 Options:
-1. "Mark ready for review (Recommended)" — "PR is clean and ready for maintainers"
-2. "View PR in browser first" — "Open the PR page to inspect it"
-3. "Keep as draft" — "Leave as draft, come back later"
+1. "Create as ready for review (Recommended)" — "All checks passed, maintainers can review immediately"
+2. "Create as draft" — "Create a draft PR for additional iteration"
+3. "View diff one more time" — "Show the full diff before deciding"
+4. "Done for now" — "Leave changes local, create PR later"
 ```
 
-### 3. Handle User Choice
+**"View diff one more time":** Show `git diff $mergeBase..HEAD`, then re-prompt with the same options.
 
-**"Mark ready for review":**
+**"Done for now":** Report: "Your changes are saved locally on branch `{branchName}`. Run `/oss` later to create the PR." Return to the core router.
+
+### 3. Push
+
 ```bash
-gh pr ready {draftPRNumber} --repo {upstream-repo}
+git push -u origin HEAD
 ```
 
-**If `gh pr ready` succeeds:**
-> "PR #{draftPRNumber} is now ready for review: {draftPRUrl}"
+**If push fails**, report the error and offer to retry or cancel. Do NOT create PR without a successful push.
+
+### 4. Create PR
+
+**Always include `--head`** to handle both fork-based and same-repo workflows. The `--head` flag is harmless for same-repo PRs and required for fork-based PRs:
+
+```bash
+forkOwner=$(gh repo view --json owner --jq '.owner.login')
+branch=$(git branch --show-current)
+```
+
+**If `$forkOwner` is empty** (e.g., `gh` not authenticated, network error): fall back to parsing the remote URL: `forkOwner=$(git remote get-url origin | sed -n 's|.*github.com[:/]\([^/]*\)/.*|\1|p')`. If still empty, ask the user to provide their fork owner name manually. **If `$branch` is empty** (detached HEAD state, e.g., during a rebase or in CI): report "Cannot create a PR from a detached HEAD. Please check out a named branch first." Do NOT run `gh pr create` with an empty `$forkOwner` or `$branch`.
+
+**Before generating the PR body**, fetch the target repo's PR template:
+
+```bash
+oss-autopilot pr-template {upstream-owner}/{upstream-repo} --json
+```
+
+If a template is returned (`data.template` is non-null), use it as the structure for the PR body — fill in its sections (e.g., `## Summary`, `## Test Plan`, `## Docs`) with content relevant to your changes. Preserve the template's section headers and formatting. If no template exists or the command fails (network error, API error), use the default format below — template detection is best-effort and must not block PR creation.
+
+Generate the PR title and body following the target repo's conventions (check `CONTRIBUTING.md`, existing PR formats, and the PR template above). Include:
+- Reference to the issue being fixed (e.g., "Fixes #123")
+- Brief description of the approach
+
+**If user chose "Create as ready for review":**
+```bash
+gh pr create --title "{conventional title}" --body "{PR body}" --repo {upstream-repo} --head "$forkOwner:$branch"
+```
+
+**If user chose "Create as draft":**
+```bash
+gh pr create --draft --title "{conventional title}" --body "{PR body}" --repo {upstream-repo} --head "$forkOwner:$branch"
+```
+
+**If `gh pr create` succeeds**, store in session context:
+- `prNumber` — the PR number returned
+- `prUrl` — the PR URL returned
+- `baseBranch` — the base branch name (from the PR creation output or `gh repo view --json defaultBranchRef`)
+
+If created as ready:
+> "PR #{prNumber} created and ready for review: {prUrl}"
+
+If created as draft:
+> "Draft PR #{prNumber} created: {prUrl}. Run `/oss` later to mark it ready."
 
 > **Context tip:** This was a full implementation cycle. Starting a fresh `/oss` session will free up context for more work. You can continue here if needed.
 
-Reset session state: `isNewContribution = false`, clear `issueContext`, `draftPRNumber`, `draftPRUrl`, `baseBranch`, `roundNumber`.
-**→ Proceed to Step 7 (compliance check) below**
+Reset session state: `isNewContribution = false`, clear `issueContext`, `prNumber`, `prUrl`, `baseBranch`, `roundNumber`.
+**→ Proceed to Step 9 (compliance check) below**
 
-**If `gh pr ready` fails:**
-- Report the specific error to the user
+**If `gh pr create` fails:**
+- Report the specific error (include stderr output)
 - Offer options:
   1. "Retry" — re-run the command
-  2. "Open PR in browser to mark ready manually" — `gh pr view {draftPRNumber} --repo {upstream-repo} --web`
-  3. "Keep as draft for now" — leave as draft, come back later
-- **Do NOT report success unless the command exits with code 0**
+  2. "Try the other PR type" — switch between draft/ready if the error suggests draft PRs are not supported
+  3. "Done for now" — leave changes pushed, create PR manually later
 
-**"View PR in browser first":**
-```bash
-gh pr view {draftPRNumber} --repo {upstream-repo} --web
-```
-
-After viewing, re-prompt with the same options.
-
-**"Keep as draft":**
-- Report: "PR #{draftPRNumber} remains as a draft. Run `/oss` later to mark it ready."
-- Reset session state: `isNewContribution = false`, clear `issueContext`, `draftPRNumber`, `draftPRUrl`, `baseBranch`, `roundNumber`.
-- Return to the core router (`commands/oss.md`)
-
-> **Context tip:** You've done significant work this session. Starting a fresh `/oss` session later may help with context limits. Your draft PR is saved.
+- **Do NOT proceed to Step 9 without a valid `prNumber` and `prUrl`**
 
 ---
 
-## Step 7: Compliance Check
+## Step 9: Compliance Check
 
-**For PRs that completed the full draft-first workflow** (Steps 2–6, i.e., `isNewContribution === true` and all steps completed): Skip the general compliance check. The PR was already reviewed by 5+ agents, integration-checked, manually tested, and squashed. However, if `skippedComplianceRequirements` from Step 1b is non-empty, remind the user:
+**For PRs that completed the full draft-first workflow** (Steps 3–8, i.e., `isNewContribution === true` and all steps completed): Skip the general compliance check. The PR was already reviewed by 5+ agents, integration-checked, manually tested, and squashed. However, if `skippedComplianceRequirements` from Step 1c is non-empty, remind the user:
 
-> "Compliance check skipped — this PR went through the full draft-first review workflow. Note: {count} CONTRIBUTING.md requirement(s) were consciously skipped in Step 1b: {list}. Verify these don't need manual attention before maintainer review."
+> "Compliance check skipped — this PR went through the full draft-first review workflow. Note: {count} CONTRIBUTING.md requirement(s) were consciously skipped in Step 1c: {list}. Verify these don't need manual attention before maintainer review."
 
 If no requirements were skipped:
 
@@ -635,7 +650,7 @@ Before submitting a PR, check if the repo has a test directory:
 
 ---
 
-## Step 8: Post-PR List Continuity
+## Step 10: Post-PR List Continuity
 
 **Trigger:** After creating a PR for an issue that came from the curated issue list (`issueListPath`).
 
