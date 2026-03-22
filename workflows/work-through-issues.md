@@ -392,29 +392,14 @@ Task(issue-scout, "Vet this issue from the user's curated list:
   Check for recent linked PRs since the list was last updated.")
 ```
 
-### 5. Present vetting results and offer next step
+### 5. Investigate Feasibility
 
-Show the vetting summary. If available, offer:
+Show the vetting summary, then automatically proceed to investigate the issue. Investigation catches scope issues, identifies the right files, and prevents wasted effort.
 
-```
-Question: "How would you like to proceed with this issue?"
-Header: "Next Step"
-
-Options:
-1. "Investigate feasibility first (Recommended)" — "Clone the repo, analyze the relevant code, and verify a fix is achievable before starting"
-2. "Start working" — "Skip investigation and begin implementing"
-3. "Pick a different issue"
-4. "Done for now"
-```
-
-### 5a. Investigate Feasibility
-
-When user selects "Investigate feasibility first":
-
-1. **Clone/update the repo** — Check local repo registry (`local-repos --json`), clone if needed to `~/Documents/oss/<repo-name>`
-2. **Read the issue context** — Parse the issue body for code references, error messages, expected behavior
-3. **Analyze relevant code** — Use Grep/Read to find the relevant source files and understand the code path involved
-4. **Attempt diagnosis** — Identify root cause, propose a fix approach
+1. **Clone/update the repo** — Check local repo registry (`local-repos --json`), clone if needed to `~/Documents/oss/<repo-name>`. **If clone/update fails** (network error, auth failure, repo deleted, disk full), report the error and offer: "Retry" / "Pick a different issue" / "Done for now". Do NOT proceed to sub-step 2 without a local repo.
+2. **Read the issue context** — Parse the issue body for code references, error messages, expected behavior. If the issue cannot be fetched (rate limit, deleted), note the gap and continue with limited context.
+3. **Analyze relevant code** — Use Grep/Read to find the relevant source files and understand the code path involved. If no relevant files can be identified, note "Could not identify relevant source files" in the assessment.
+4. **Attempt diagnosis** — Identify root cause, propose a fix approach. If diagnosis is inconclusive, set Confidence to "Low" and explicitly state what could not be determined.
 5. **Assess complexity** — Estimate effort (small/medium/large), identify risks and unknowns
 6. **Report findings:**
 
