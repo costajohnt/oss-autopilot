@@ -371,9 +371,9 @@ Use AskUserQuestion with up to 4 options (dynamically chosen from the top of the
 Question: "Which issue would you like to work on?"
 Header: "Issue"
 
-Options:
-1. "{repo}#{number} — {brief title}" (top priority issue)
-2. "{repo}#{number} — {brief title}" (second)
+Options (include full GitHub URL in each description):
+1. Label: "{repo}#{number} — {brief title}", Description: "Score {score}/10. {brief context}. https://github.com/{repo}/issues/{number}"
+2. Label: "{repo}#{number} — {brief title}", Description: "Score {score}/10. {brief context}. https://github.com/{repo}/issues/{number}"
 3. "Search GitHub instead"
 4. "Done for now"
 ```
