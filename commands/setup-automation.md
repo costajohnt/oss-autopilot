@@ -23,8 +23,8 @@ These run Claude headlessly on a schedule to pre-compute results.
 1. **Daily PR Status Report** — Generates ~/oss-daily.md each morning with all PR statuses,
    so Claude has context at session start without the "check my PRs" warmup.
 
-2. **Dependabot Auto-Triage** — Auto-merges safe dependabot PRs (patch/minor with green CI),
-   flags major bumps and failures for manual review.
+2. **Dependabot Auto-Triage** — GitHub Action that auto-merges safe dependabot PRs
+   (patch/minor with green CI), flags major bumps for manual review. No local crontab needed.
 
 3. **Issue List Curation** — Overnight search + vet + prune + re-prioritize your issue list,
    so it's fresh when you start working.
@@ -58,7 +58,7 @@ Question: "What timezone are you in? (This determines when cron jobs run)"
 
 Then confirm default times or let them customize:
 - Daily PR status: 8:00 AM local
-- Dependabot triage: 7:00 AM local
+- Dependabot triage: handled by GitHub Action (no local cron needed)
 - Issue curation: 5:00 AM local (runs slow)
 - Weekly audit: Sunday 7:00 AM local
 
@@ -66,7 +66,7 @@ Then confirm default times or let them customize:
 
 Confirm default output paths:
 - `~/oss-daily.md` — daily PR report
-- `~/dependabot-report.md` — dependabot triage results
+- Dependabot triage — reported via GitHub Issue (no local file)
 - `~/oss-weekly-audit.md` — weekly audit results
 - Issue list path from config (or `~/Documents/notes/open-source/potential-issue-list.md`)
 
@@ -87,8 +87,8 @@ These will be added to your crontab:
 # Daily PR status report — 8:00 AM {timezone}
 {cron expression} claude -p "..." --allowedTools "Bash,Read,Write" > ~/oss-daily.log 2>&1
 
-# Dependabot triage — 7:00 AM {timezone}
-{cron expression} claude -p "..." --allowedTools "Bash,Read,Write" > ~/dependabot-triage.log 2>&1
+# Dependabot triage — handled by GitHub Action (.github/workflows/dependabot-triage.yml)
+# No local crontab entry needed. Ensure DEPENDABOT_TRIAGE_TOKEN secret is set in the repo.
 
 ...
 ```
