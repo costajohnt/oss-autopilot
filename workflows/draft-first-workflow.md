@@ -166,7 +166,7 @@ Initialize `roundNumber = 1`.
 
 ### 1. Gather Change Context
 
-Compute `baseBranch` and `mergeBase` (store in session — reused in Steps 4, 6, and 7):
+Compute `baseBranch` and `mergeBase` (store in session — reused in Steps 4, 6, 7, and 8):
 
 If `upstreamDefault` and `upstreamRemote` are available from Step 1b, use them directly:
 
@@ -626,7 +626,6 @@ If created as draft:
 
 > **Context tip:** This was a full implementation cycle. Starting a fresh `/oss` session will free up context for more work. You can continue here if needed.
 
-Reset session state: `isNewContribution = false`, clear `issueContext`, `prNumber`, `prUrl`, `baseBranch`, `roundNumber`.
 **→ Proceed to Step 9 (compliance check) below**
 
 **If `gh pr create` fails:**
@@ -726,6 +725,9 @@ Then offer:
 - "Search GitHub for new issues"
 - "Find more issues to add to your list"
 - "Done for now"
+
+**After Step 10 completes (or is skipped):**
+Reset session state: `isNewContribution = false`, clear `issueContext`, `prNumber`, `prUrl`, `baseBranch`, `roundNumber`.
 
 **Route based on choice:**
 - "Pick another" → Read `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` — "Handle Pick Issue From List" section
