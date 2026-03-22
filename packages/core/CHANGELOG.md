@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.5.1...core-v1.6.0) (2026-03-22)
+
+
+### Features
+
+* **badge-endpoint:** add shareable profile widgets ([#818](https://github.com/costajohnt/oss-autopilot/issues/818)) ([37a8136](https://github.com/costajohnt/oss-autopilot/commit/37a8136af492961427f738b4e8e7d20ac1de2217))
+* replace LLM dependabot triage with deterministic GitHub Action ([#826](https://github.com/costajohnt/oss-autopilot/issues/826)) ([88ac4ff](https://github.com/costajohnt/oss-autopilot/commit/88ac4ff271acf7f7f4daef5b75a3553dbfc8b58b)), closes [#811](https://github.com/costajohnt/oss-autopilot/issues/811)
+
+
+### Bug Fixes
+
+* always branch from upstream default, not stale local branches ([#822](https://github.com/costajohnt/oss-autopilot/issues/822)) ([bc727b6](https://github.com/costajohnt/oss-autopilot/commit/bc727b6a665e330023ade4fd06c8632dac7c5728)), closes [#821](https://github.com/costajohnt/oss-autopilot/issues/821)
+* auto-investigate issues instead of prompting ([#824](https://github.com/costajohnt/oss-autopilot/issues/824)) ([de205f4](https://github.com/costajohnt/oss-autopilot/commit/de205f49b4f4d1c729f19856c797c1ab11087154))
+* defer PR creation until after all review and testing gates ([#823](https://github.com/costajohnt/oss-autopilot/issues/823)) ([bf0d2f8](https://github.com/costajohnt/oss-autopilot/commit/bf0d2f89bfa835f7b31190513df52385816e693b))
+* include full GitHub URLs in issue list picker options ([#825](https://github.com/costajohnt/oss-autopilot/issues/825)) ([c2f9f9d](https://github.com/costajohnt/oss-autopilot/commit/c2f9f9d869dddee9c7282ea1ab42b7ab0a951121)), closes [#814](https://github.com/costajohnt/oss-autopilot/issues/814)
+
 ## [1.5.1](https://github.com/costajohnt/oss-autopilot/compare/core-v1.5.0...core-v1.5.1) (2026-03-21)
 
 
