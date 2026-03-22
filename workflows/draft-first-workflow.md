@@ -44,14 +44,14 @@ behindCount=$(git rev-list --count "$mergeBase".."$remote/$upstreamDefault" 2>/d
 - **>20 commits behind:** Warn: "Your branch is {behindCount} commits behind `{remote}/{upstreamDefault}`. Consider rebasing to reduce merge conflict risk."
 
 Offer (for any non-zero behind count):
-1. "Rebase onto upstream (Recommended)" — `git rebase $remote/$upstreamDefault`
+1. "Rebase onto upstream (Recommended)" — `git rebase $remote/$upstreamDefault`. If the rebase fails (merge conflicts, dirty worktree), report the error and offer: "Abort rebase and proceed with current base" (`git rebase --abort`) / "I'll resolve conflicts manually" (pause workflow) / "Done for now".
 2. "Proceed anyway" — "I know the base is correct"
 
 **If validation commands fail** (no network, gh CLI error): Note "Could not verify branch base — proceeding." Continue to Step 1c.
 
 **If branch is up to date:** Proceed to Step 1c.
 
-Store in session context: `upstreamDefault` (the default branch name) and `upstreamRemote` (either `"upstream"` or `"origin"`). These are reused in Step 3 for computing `baseBranch`.
+If validation succeeded, store in session context: `upstreamDefault` (the default branch name) and `upstreamRemote` (either `"upstream"` or `"origin"`). These are reused in Step 3 for computing `baseBranch`. If validation failed, do NOT store these values — Step 3 will detect the base branch independently.
 
 ### 1c. CONTRIBUTING.md Compliance Check
 
@@ -434,7 +434,7 @@ Options:
 **"Found issues — go back to fix":**
 - User makes fixes (with assistance as needed)
 - Stage and commit the fixes
-- **If any git operation fails** (stage, commit), report the specific error and offer: "Retry" / "Done for now"
+- **If any git operation fails** (stage, commit), report the specific error and offer: "Retry" / "Done for now". Do NOT loop back to Step 3 unless the commit succeeds.
 - Loop back to Step 3 sub-step 1 (re-review with agents) above
 
 **"Tests passed — proceed to finalize" / "Skip — proceed to finalize":**
@@ -578,7 +578,7 @@ Options:
 git push -u origin HEAD
 ```
 
-**If push fails**, report the error and offer to retry or cancel. Do NOT create PR without a successful push.
+**If push fails**, report the error and offer: "Retry" / "Done for now" — "Your changes are saved locally on branch `{branchName}`. You can push and create the PR later with `/oss`." Do NOT create PR without a successful push.
 
 ### 4. Create PR
 
