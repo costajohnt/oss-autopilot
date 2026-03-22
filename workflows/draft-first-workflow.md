@@ -17,6 +17,39 @@ git status --porcelain
 
 **If output is empty:** Report no changes and return to the core router (`commands/oss.md`).
 
+### 1a-bis. Branch Base Validation
+
+Verify the current branch is based on the latest upstream default. This is a safety net for cases where the branch was created outside the Branch Setup Protocol.
+
+```bash
+upstreamRepo=$(echo "{issueContext.url}" | sed -n 's|https://github.com/\([^/]*/[^/]*\)/.*|\1|p')
+upstreamDefault=$(gh repo view "$upstreamRepo" --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null)
+
+# Determine remote
+remote="upstream"
+git remote get-url upstream 2>/dev/null || remote="origin"
+git fetch "$remote" "$upstreamDefault" 2>/dev/null
+
+mergeBase=$(git merge-base "$remote/$upstreamDefault" HEAD 2>/dev/null)
+upstreamHead=$(git rev-parse "$remote/$upstreamDefault" 2>/dev/null)
+```
+
+**If `$mergeBase` != `$upstreamHead`** (branch is behind upstream):
+
+```bash
+behindCount=$(git rev-list --count "$mergeBase".."$remote/$upstreamDefault" 2>/dev/null || echo "unknown")
+```
+
+> **Warning:** Your branch is {behindCount} commit(s) behind `{remote}/{upstreamDefault}`. This can cause merge conflicts that re-introduce deleted code.
+
+Offer:
+1. "Rebase onto upstream (Recommended)" — `git rebase $remote/$upstreamDefault`
+2. "Proceed anyway" — "I know the base is correct"
+
+**If validation commands fail** (no network, gh CLI error): Note "Could not verify branch base — proceeding." Continue to Step 1b.
+
+**If branch is up to date:** Proceed to Step 1b.
+
 ### 1b. CONTRIBUTING.md Compliance Check
 
 Before committing, verify the changes satisfy the target repo's contribution requirements. This checks repo-specific requirements (tests, docs, changelog, etc.); Step 7's compliance check covers general open-source best practices via the `pr-compliance-checker` agent.

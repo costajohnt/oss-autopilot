@@ -458,6 +458,52 @@ When the user selects an issue and starts implementing, set:
   - Documentation-only changes → `docs/` branch, `docs:` commit
   - If ambiguous, prefer `fix/` for correcting existing behavior and `feat/` for adding new capabilities
 
+#### Branch Setup Protocol
+
+Before writing any code, create the feature branch from the upstream default branch. This prevents merge conflicts from stale local branches (see [#821](https://github.com/costajohnt/oss-autopilot/issues/821)).
+
+**1. Determine upstream repo and default branch:**
+
+```bash
+# Parse owner/repo from issue URL
+upstreamRepo=$(echo "{issueContext.url}" | sed -n 's|https://github.com/\([^/]*/[^/]*\)/.*|\1|p')
+upstreamDefault=$(gh repo view "$upstreamRepo" --json defaultBranchRef --jq '.defaultBranchRef.name')
+```
+
+**If either command fails:** Report the error. Offer: "Retry" / "Specify default branch manually" / "Done for now". Do NOT guess.
+
+**2. Determine the correct remote:**
+
+```bash
+isFork=$(gh repo view --json isFork --jq '.isFork')
+```
+
+- **Fork (`true`):** Check for `upstream` remote (`git remote get-url upstream 2>/dev/null`). If missing, add it: `git remote add upstream "https://github.com/$upstreamRepo.git"`. Fetch: `git fetch upstream`. Base ref: `upstream/$upstreamDefault`.
+- **Same-repo (`false`):** Fetch: `git fetch origin`. Base ref: `origin/$upstreamDefault`.
+- **Detection fails:** Check `git remote -v` for an `upstream` remote. If found, use it. If not, use `origin`. Report which remote is being used.
+
+**If `git fetch` fails:** Report the error. Do NOT proceed — creating a branch from a stale local ref is the bug this protocol prevents. Offer: "Retry" / "Specify a different remote URL" / "Done for now".
+
+**3. Create the feature branch:**
+
+```bash
+git checkout -b {branchPrefix}{branchSuffix} {remote}/{upstreamDefault}
+```
+
+- `{branchPrefix}` comes from the change type logic above (`fix/`, `feat/`, `docs/`)
+- `{branchSuffix}` is a short kebab-case descriptor from the issue title
+
+**If checkout fails:**
+- Branch already exists → Offer "Delete and recreate" / "Switch to existing" / "Different name"
+- Uncommitted changes → Offer "Stash first" / "Discard changes" / "Done for now"
+- Invalid ref → Re-check remote/branch, offer "Specify manually" / "Done for now"
+
+**4. Confirm:**
+
+> Feature branch `{branchName}` created from `{remote}/{upstreamDefault}` (at {short hash}).
+
+Store in session context: `featureBranch`, `upstreamRemote`, `upstreamDefault`.
+
 After implementation, the flow proceeds through the **draft-first workflow** (`${CLAUDE_PLUGIN_ROOT}/workflows/draft-first-workflow.md`):
 1. Step 1 creates the draft PR
 2. Step 2 runs iterative review cycle (scope-aware, tied to `issueContext`)
