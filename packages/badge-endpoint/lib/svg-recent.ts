@@ -7,7 +7,9 @@ const HEADER_H = 44;
 const FOOTER_PAD = 12;
 
 function timeAgo(dateStr: string): string {
-  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const ts = new Date(dateStr).getTime();
+  if (isNaN(ts)) return '';
+  const diffMs = Date.now() - ts;
   if (diffMs < 60000) return 'just now'; // handles negative and very recent
   const diffMin = Math.floor(diffMs / 60_000);
   if (diffMin < 60) return `${diffMin} min ago`;

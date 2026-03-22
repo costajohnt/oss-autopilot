@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchContributionData, computeStreak, type ContributionData } from './github-data.js';
+import { fetchContributionData, computeStreak } from './github-data.js';
 
 // Hoist shared mock references so they're available inside vi.mock factory
 const { searchMock, pullsMock } = vi.hoisted(() => {

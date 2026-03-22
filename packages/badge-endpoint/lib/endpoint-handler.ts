@@ -46,7 +46,7 @@ function makeErrorSvg(message: string, mode: 'light' | 'dark', config: WidgetHan
 }
 
 export function createWidgetHandler(config: WidgetHandlerConfig) {
-  const { prefix, errorWidth, errorHeight, errorTextY, render } = config;
+  const { prefix, render } = config;
   const cache = new Map<string, CacheEntry>();
 
   function errorSvg(message: string, mode: 'light' | 'dark'): string {
@@ -79,12 +79,19 @@ export function createWidgetHandler(config: WidgetHandlerConfig) {
       }
     }
 
+    const computation = fetchContributionData(username, process.env.GITHUB_TOKEN);
+    computation.catch((err) => {
+      console.warn(`[${prefix}] Post-timeout error for ${username}:`, err instanceof Error ? err.message : String(err));
+    });
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const result = await Promise.race([
-      fetchContributionData(username, process.env.GITHUB_TOKEN),
-      new Promise<ContributionResult>((resolve) =>
-        setTimeout(() => resolve({ error: 'api_error' as const }), TIMEOUT_MS),
-      ),
+      computation,
+      new Promise<ContributionResult>((resolve) => {
+        timer = setTimeout(() => resolve({ error: 'api_error' as const }), TIMEOUT_MS);
+      }),
     ]);
+    if (timer) clearTimeout(timer);
 
     if (result.error) {
       // Try stale fallback before returning an error SVG

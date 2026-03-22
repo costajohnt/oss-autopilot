@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { crystalIcon, gradientDefs, theme, svgWrapper } from './svg-utils.js';
+import { crystalIcon, gradientDefs, theme, svgWrapper, escapeXml, truncate } from './svg-utils.js';
 
 describe('crystalIcon', () => {
   it('returns valid SVG group element', () => {
@@ -46,5 +46,31 @@ describe('svgWrapper', () => {
     expect(svg).toContain('height="200"');
     expect(svg).toContain('<rect/>');
     expect(svg).toContain('#ffffff');
+  });
+});
+
+describe('escapeXml', () => {
+  it('escapes all XML special characters', () => {
+    expect(escapeXml('a & b < c > d " e \' f')).toBe('a &amp; b &lt; c &gt; d &quot; e &apos; f');
+  });
+  it('passes through safe strings unchanged', () => {
+    expect(escapeXml('hello world')).toBe('hello world');
+  });
+  it('handles empty string', () => {
+    expect(escapeXml('')).toBe('');
+  });
+});
+
+describe('truncate', () => {
+  it('passes through short strings', () => {
+    expect(truncate('hello', 10)).toBe('hello');
+  });
+  it('passes through strings at exactly maxLen', () => {
+    expect(truncate('12345', 5)).toBe('12345');
+  });
+  it('truncates strings longer than maxLen with ellipsis', () => {
+    const result = truncate('123456', 5);
+    expect(result).toHaveLength(5);
+    expect(result.endsWith('\u2026')).toBe(true);
   });
 });
