@@ -6,7 +6,7 @@ const sampleData: ContributionData = {
   merged: 42,
   open: 3,
   closedUnmerged: 5,
-  mergeRate: 84,
+  mergeRate: 89.4,
   repoCount: 12,
   recentPRs: [],
   cappedMerged: false,

@@ -302,7 +302,7 @@ Customize the minimum star threshold with `?minStars=100` (URL-encode the inner 
 
 Embed live SVG widgets in your GitHub profile README for a richer contribution showcase. All widgets update hourly and support `?theme=dark`.
 
-**Stats Card** — merged count, open count, merge rate, repo count, streak:
+**Stats Card** — merged count, merge rate, repo count, streak:
 
 ```markdown
 [![OSS Contributions](https://oss-autopilot-stats.vercel.app/api/card/YOUR_USERNAME)](https://github.com/costajohnt/oss-autopilot)

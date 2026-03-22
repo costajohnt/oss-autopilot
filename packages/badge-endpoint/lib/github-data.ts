@@ -146,8 +146,8 @@ export async function fetchContributionData(username: string, token: string): Pr
     const merged = mergedResult.totalCount;
     const open = openRes.data.total_count;
     const closedUnmerged = closedRes.data.total_count;
-    const total = merged + open + closedUnmerged;
-    const mergeRate = total > 0 ? (merged / total) * 100 : 0;
+    const mergeTotal = merged + closedUnmerged;
+    const mergeRate = mergeTotal > 0 ? (merged / mergeTotal) * 100 : 0;
 
     const repos = new Set<string>();
     const dailyActivity: Record<string, number> = {};

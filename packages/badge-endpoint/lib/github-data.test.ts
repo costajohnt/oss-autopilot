@@ -62,7 +62,7 @@ describe('fetchContributionData', () => {
     expect(result.merged).toBe(42);
     expect(result.open).toBe(3);
     expect(result.closedUnmerged).toBe(5);
-    expect(result.mergeRate).toBeCloseTo(84, 0); // 42 / (42 + 3 + 5)
+    expect(result.mergeRate).toBeCloseTo(89.4, 0); // 42 / (42 + 5), open PRs excluded from denominator
     expect(result.repoCount).toBe(2);
     expect(result.recentPRs).toHaveLength(2);
     expect(result.recentPRs[0].title).toBe('Fix bug');

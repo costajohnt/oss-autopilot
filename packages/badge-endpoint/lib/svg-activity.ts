@@ -42,13 +42,13 @@ export function renderActivityGraph(data: ContributionData, mode: 'light' | 'dar
   const t = theme(mode);
 
   // Build date grid: 26 columns (weeks), 7 rows (Mon-Sun), newest week on the right
-  // Anchor to today (2026-03-21 per system date, but use actual Date for correctness)
+  // Anchor to the Sunday that ends the current week so today always falls in the rightmost column.
   const today = new Date();
   const dayOfWeek = today.getUTCDay(); // 0=Sun ... 6=Sat
-  // Offset to get to Sunday of the current week (start of last column)
-  const daysToSunday = dayOfWeek; // distance from this Sunday backward
+  // Days until the coming Sunday (0 if today is already Sunday)
+  const daysToSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
   const gridEndSunday = new Date(today);
-  gridEndSunday.setUTCDate(today.getUTCDate() - daysToSunday);
+  gridEndSunday.setUTCDate(today.getUTCDate() + daysToSunday);
   gridEndSunday.setUTCHours(0, 0, 0, 0);
 
   // Total cells: WEEKS * DAYS, column 0 = oldest week, column WEEKS-1 = current week

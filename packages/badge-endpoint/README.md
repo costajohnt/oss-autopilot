@@ -51,7 +51,7 @@ Three SVG widget endpoints render live contribution data directly in any Markdow
 
 ### Stats Card
 
-Shows merged PR count, open PR count, merge rate, repo count, and current streak.
+Shows merged PR count, merge rate, repo count, and current streak.
 
 ```markdown
 [![OSS Contributions](https://oss-autopilot-stats.vercel.app/api/card/YOUR_USERNAME)](https://github.com/costajohnt/oss-autopilot)
