@@ -1,65 +1,76 @@
-# Dependabot PR Auto-Triage (Headless Cron)
+# Dependabot PR Auto-Triage (GitHub Action)
 
-> **Type:** Headless automation — runs without user interaction
-> **Output:** `~/dependabot-report.md` — triage results and actions taken
-> **Schedule:** Daily, morning (e.g., 7:00 AM local time)
+> **Type:** Automated — runs as a scheduled GitHub Action
+> **Output:** GitHub Issue (auto-updated) — triage results and actions taken
+> **Schedule:** Daily at 7:00 AM PT (14:00 UTC)
 
 ## Purpose
 
-Automatically triage dependabot PRs across all your repos. Safe updates are auto-merged; risky ones are flagged for manual review.
+Automatically triage dependabot PRs across all your repos. Safe updates are auto-merged; risky ones are flagged for manual review. Runs as a deterministic GitHub Action — no LLM needed.
 
 ## Triage Rules
 
 | Condition | Action |
 |-----------|--------|
-| Patch/minor bump + green CI + no conflicts | Auto-merge |
+| Patch/minor bump + green CI + no conflicts | Auto-merge (`gh pr merge --squash --auto`) |
 | Major version bump | Flag for manual review |
 | Failing CI | Flag for manual review |
 | Merge conflicts | Flag for manual review |
-| Security advisory fix (any version) | Auto-merge if CI passes |
+| Unknown bump type | Flag for manual review |
 
-## Cron Setup
+## How It Works
 
-### macOS / Linux (crontab)
+The GitHub Action (`.github/workflows/dependabot-triage.yml`):
 
-```bash
-# 7:00 AM PT — dependabot triage + auto-merge
-0 14 * * * claude -p "Check all my repos for open dependabot PRs using gh. For patch and minor version bumps with passing CI and no conflicts, auto-merge them. For major bumps or anything with failing CI/conflicts, add to a report at ~/dependabot-report.md with the reason they need manual review." --allowedTools "Bash,Read,Write" > ~/dependabot-triage.log 2>&1
-```
+1. Queries all open dependabot PRs via `gh search prs --author app/dependabot`
+2. For each PR, parses the version bump type from the title (patch/minor/major)
+3. Checks CI status and mergeability via `gh pr checks` and `gh pr view`
+4. Applies the deterministic triage rules above
+5. Creates or updates a pinned GitHub Issue with the report
+
+### Setup
+
+1. Create a GitHub PAT with `repo` scope (for cross-repo access)
+2. Add it as a repository secret named `DEPENDABOT_TRIAGE_TOKEN`
+3. The Action runs automatically on schedule, or trigger manually via `gh workflow run dependabot-triage.yml`
 
 ## Report Format
 
-After each run, `~/dependabot-report.md` contains:
+The report is posted as a GitHub Issue titled "Dependabot Triage Report (auto-updated)":
 
 ```markdown
-# Dependabot Triage Report — {date}
+# Dependabot Triage Report
 
-## Auto-Merged ({count})
-| Repo | Dependency | Version Change | Type |
-|------|-----------|----------------|------|
-| owner/repo | lodash | 4.17.20 → 4.17.21 | patch |
+**Date:** 2026-03-22
+**PRs found:** 5
 
-## Needs Manual Review ({count})
-| Repo | Dependency | Version Change | Reason |
-|------|-----------|----------------|--------|
-| owner/repo | react | 17.0.2 → 18.0.0 | Major version bump |
-| owner/repo | webpack | 5.88.0 → 5.89.0 | CI failing |
+## Auto-Merged
+
+| PR | Title | Bump |
+|-----|-------|------|
+| [owner/repo#42](url) | Bump lodash from 4.17.20 to 4.17.21 | patch |
+
+## Needs Manual Review
+
+| PR | Title | Reason | CI |
+|-----|-------|--------|-----|
+| [owner/repo#43](url) | Bump react from 17.0.2 to 18.0.0 | Major bump | passing |
 ```
 
 ## Integration
 
-- The SessionStart hook can surface what was auto-merged and what needs attention
+- The SessionStart hook can surface the report from the GitHub Issue (#813)
 - Reduces PR noise so daily triage can focus on real contributions
-- Pairs with: daily PR status (#782), setup wizard (#791)
+- Pairs with: daily PR status (#810), session-start hook (#813)
 
 ## Safety
 
 - Only auto-merges patch/minor bumps — never major versions
-- Requires passing CI before auto-merge
+- Uses `--auto` flag — GitHub waits for CI to pass before merging
 - Requires no merge conflicts
-- All actions logged to `~/dependabot-triage.log`
-- Report persisted to `~/dependabot-report.md` for audit
+- All actions logged in the GitHub Action run log
+- Report persisted as a GitHub Issue for audit
 
 ## Disabling
 
-Remove the crontab entry or use `/setup-automation` to manage.
+Disable the workflow in the GitHub Actions settings or delete `.github/workflows/dependabot-triage.yml`.

@@ -1,0 +1,165 @@
+name: Dependabot Triage
+
+on:
+  schedule:
+    # 7:00 AM PT (14:00 UTC) daily
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Triage dependabot PRs
+        env:
+          GH_TOKEN: ${{ secrets.DEPENDABOT_TRIAGE_TOKEN }}
+          REPORT_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          GITHUB_USER=$(gh api user --jq '.login')
+          echo "Triaging dependabot PRs for $GITHUB_USER..."
+
+          # Find all open dependabot PRs across repos
+          prs=$(gh search prs --author "app/dependabot" --state open --owner "$GITHUB_USER" \
+            --json repository,number,title,url --limit 100 2>/dev/null || echo "[]")
+
+          pr_count=$(echo "$prs" | jq 'length')
+          echo "Found $pr_count open dependabot PR(s)"
+
+          if [ "$pr_count" -eq 0 ]; then
+            echo "No open dependabot PRs found. Skipping report."
+            exit 0
+          fi
+
+          auto_merged=""
+          needs_review=""
+          errors=""
+
+          while IFS= read -r pr; do
+            repo=$(echo "$pr" | jq -r '.repository.nameWithOwner')
+            number=$(echo "$pr" | jq -r '.number')
+            title=$(echo "$pr" | jq -r '.title')
+            url=$(echo "$pr" | jq -r '.url')
+
+            echo "Processing $repo#$number: $title"
+
+            # Determine version bump type from title
+            # Dependabot titles: "Bump foo from 1.0.0 to 2.0.0"
+            bump_type="unknown"
+            if echo "$title" | grep -qiE 'from [0-9]+\.[0-9]+\.[0-9]+ to [0-9]+\.[0-9]+\.[0-9]+'; then
+              from_version=$(echo "$title" | grep -oE 'from [0-9]+\.[0-9]+\.[0-9]+' | head -1 | awk '{print $2}')
+              to_version=$(echo "$title" | grep -oE 'to [0-9]+\.[0-9]+\.[0-9]+' | tail -1 | awk '{print $2}')
+              from_major=$(echo "$from_version" | cut -d. -f1)
+              to_major=$(echo "$to_version" | cut -d. -f1)
+              from_minor=$(echo "$from_version" | cut -d. -f2)
+              to_minor=$(echo "$to_version" | cut -d. -f2)
+
+              if [ "$from_major" != "$to_major" ]; then
+                bump_type="major"
+              elif [ "$from_minor" != "$to_minor" ]; then
+                bump_type="minor"
+              else
+                bump_type="patch"
+              fi
+            fi
+
+            # Check CI status
+            ci_status="unknown"
+            ci_failures=$(gh pr checks "$number" --repo "$repo" --json bucket \
+              --jq '[.[] | select(.bucket == "fail")] | length' 2>/dev/null || echo "-1")
+
+            if [ "$ci_failures" = "-1" ]; then
+              ci_status="error"
+            elif [ "$ci_failures" = "0" ]; then
+              ci_status="passing"
+            else
+              ci_status="failing"
+            fi
+
+            # Check mergeability
+            mergeable=$(gh pr view "$number" --repo "$repo" --json mergeable \
+              --jq '.mergeable' 2>/dev/null || echo "UNKNOWN")
+
+            # Apply triage rules
+            if [ "$bump_type" = "major" ]; then
+              needs_review="${needs_review}| [$repo#$number]($url) | $title | Major bump | $ci_status |\n"
+              echo "  → SKIP: major version bump"
+            elif [ "$ci_status" = "failing" ]; then
+              needs_review="${needs_review}| [$repo#$number]($url) | $title | CI failing | $ci_status |\n"
+              echo "  → SKIP: CI failing"
+            elif [ "$mergeable" = "CONFLICTING" ]; then
+              needs_review="${needs_review}| [$repo#$number]($url) | $title | Merge conflicts | $ci_status |\n"
+              echo "  → SKIP: merge conflicts"
+            elif [ "$bump_type" = "patch" ] || [ "$bump_type" = "minor" ]; then
+              if [ "$ci_status" = "passing" ] && [ "$mergeable" = "MERGEABLE" ]; then
+                echo "  → AUTO-MERGE: $bump_type bump, CI passing, no conflicts"
+                if gh pr merge "$number" --repo "$repo" --squash --auto 2>/dev/null; then
+                  auto_merged="${auto_merged}| [$repo#$number]($url) | $title | $bump_type |\n"
+                else
+                  errors="${errors}| [$repo#$number]($url) | $title | Auto-merge failed |\n"
+                fi
+              else
+                needs_review="${needs_review}| [$repo#$number]($url) | $title | CI: $ci_status, Mergeable: $mergeable | $ci_status |\n"
+                echo "  → SKIP: CI not passing or not mergeable yet"
+              fi
+            else
+              needs_review="${needs_review}| [$repo#$number]($url) | $title | Could not determine bump type | $ci_status |\n"
+              echo "  → SKIP: unknown bump type"
+            fi
+          done < <(echo "$prs" | jq -c '.[]')
+
+          # Build report
+          today=$(date +%Y-%m-%d)
+          report="# Dependabot Triage Report\n\n"
+          report+="**Date:** $today\n"
+          report+="**PRs found:** $pr_count\n\n"
+
+          if [ -n "$auto_merged" ]; then
+            report+="## Auto-Merged\n\n"
+            report+="| PR | Title | Bump |\n"
+            report+="|-----|-------|------|\n"
+            report+="$auto_merged\n"
+          fi
+
+          if [ -n "$needs_review" ]; then
+            report+="## Needs Manual Review\n\n"
+            report+="| PR | Title | Reason | CI |\n"
+            report+="|-----|-------|--------|----|\n"
+            report+="$needs_review\n"
+          fi
+
+          if [ -n "$errors" ]; then
+            report+="## Errors\n\n"
+            report+="| PR | Title | Error |\n"
+            report+="|-----|-------|-------|\n"
+            report+="$errors\n"
+          fi
+
+          if [ -z "$auto_merged" ] && [ -z "$needs_review" ] && [ -z "$errors" ]; then
+            report+="All PRs processed with no actions needed.\n"
+          fi
+
+          # Create or update the report issue
+          report_title="Dependabot Triage Report (auto-updated)"
+          existing_issue=$(gh issue list --repo "$REPORT_REPO" \
+            --search "$report_title in:title" --state open \
+            --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+          report_body=$(printf '%b' "$report")
+
+          if [ -n "$existing_issue" ]; then
+            gh issue edit "$existing_issue" --repo "$REPORT_REPO" \
+              --body "$report_body"
+            echo "Updated report issue #$existing_issue"
+          else
+            gh issue create --repo "$REPORT_REPO" \
+              --title "$report_title" \
+              --body "$report_body" \
+              --label "automation"
+            echo "Created new report issue"
+          fi

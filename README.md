@@ -261,7 +261,7 @@ Set up optional cron jobs that run Claude headlessly to pre-compute results befo
 | Automation | Schedule | Output | What it does |
 |-----------|----------|--------|-------------|
 | **Daily PR Status** | Every morning | `~/oss-daily.md` | Fetches all PR statuses so Claude has context at session start |
-| **Dependabot Triage** | Every morning | `~/dependabot-report.md` | Auto-merges safe patch/minor bumps, flags major bumps for review |
+| **Dependabot Triage** | Daily (GitHub Action) | GitHub Issue report | Auto-merges safe patch/minor bumps, flags major bumps for review |
 | **Issue List Curation** | Overnight | Updates issue list | Searches, vets, prunes, and re-prioritizes your issue list |
 | **Weekly PR Audit** | Sundays | `~/oss-weekly-audit.md` | Audits shelved/waiting PRs for new comments, CI changes, conflicts |
 
