@@ -41,17 +41,17 @@ behindCount=$(git rev-list --count "$mergeBase".."$remote/$upstreamDefault" 2>/d
 ```
 
 - **1–20 commits behind:** Note: "Your branch is {behindCount} commit(s) behind `{remote}/{upstreamDefault}`. This is normal during active development."
-- **>20 commits behind:** Warn and offer action:
+- **>20 commits behind:** Warn: "Your branch is {behindCount} commits behind `{remote}/{upstreamDefault}`. Consider rebasing to reduce merge conflict risk."
 
-> **Warning:** Your branch is {behindCount} commits behind `{remote}/{upstreamDefault}`. Consider rebasing to reduce merge conflict risk.
-
-Offer:
+Offer (for any non-zero behind count):
 1. "Rebase onto upstream (Recommended)" — `git rebase $remote/$upstreamDefault`
 2. "Proceed anyway" — "I know the base is correct"
 
 **If validation commands fail** (no network, gh CLI error): Note "Could not verify branch base — proceeding." Continue to Step 1c.
 
 **If branch is up to date:** Proceed to Step 1c.
+
+Store in session context: `upstreamDefault` (the default branch name) and `upstreamRemote` (either `"upstream"` or `"origin"`). These are reused in Step 3 for computing `baseBranch`.
 
 ### 1c. CONTRIBUTING.md Compliance Check
 
@@ -148,7 +148,7 @@ Options:
 ## Step 2: Stage and Commit
 
 - Stage the specific changed files (not `git add -A`)
-- If staging fails for any file, report which file(s) failed and why
+- If staging fails for any file, report which file(s) failed and why. Offer: "Retry" / "Proceed with staged files only" / "Done for now". Do NOT proceed to commit without user confirmation.
 - Commit following the repo's conventional commit format
 - If commit fails (e.g., pre-commit hook failure, empty commit):
   - Report the specific error to the user
@@ -168,15 +168,30 @@ Initialize `roundNumber = 1`.
 
 Compute `baseBranch` and `mergeBase` (store in session — reused in Steps 4, 6, and 7):
 
+If `upstreamDefault` and `upstreamRemote` are available from Step 1b, use them directly:
+
 ```bash
-baseBranch=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}' || echo "main")
-if ! git fetch origin "$baseBranch" 2>/dev/null; then
-  echo "Warning: git fetch failed — diffs may be based on stale data."
-fi
-mergeBase=$(git merge-base "origin/$baseBranch" HEAD 2>/dev/null) || true
+baseBranch="$upstreamDefault"    # e.g., "main", "master", "develop"
+remote="$upstreamRemote"         # e.g., "upstream" or "origin"
 ```
 
-Use `git diff $mergeBase..HEAD` for the full branch diff. If `$mergeBase` is empty, fall back to `origin/$baseBranch...HEAD`. If neither works, report error — do NOT dispatch agents without diff context. Read `CONTRIBUTING.md` and lint configs if not already loaded.
+If not available (e.g., Step 1b was skipped or failed), fall back to detection:
+
+```bash
+baseBranch=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}')
+remote="origin"
+```
+
+**If `$baseBranch` is still empty:** Report: "Could not determine the default branch. Please specify the base branch name (e.g., main, master, develop)." Do NOT silently default to "main".
+
+```bash
+if ! git fetch "$remote" "$baseBranch" 2>/dev/null; then
+  echo "Warning: git fetch failed — diffs may be based on stale data."
+fi
+mergeBase=$(git merge-base "$remote/$baseBranch" HEAD 2>/dev/null) || true
+```
+
+Use `git diff $mergeBase..HEAD` for the full branch diff. If `$mergeBase` is empty, fall back to `$remote/$baseBranch...HEAD`. If neither works, report error — do NOT dispatch agents without diff context. Read `CONTRIBUTING.md` and lint configs if not already loaded.
 
 **Investigation verification:** If investigation findings from Phase A are available in session context, the user was offered a verification checkpoint before implementation began (see `work-through-issues.md` — Investigation Verification Checkpoint). Verified findings should be trusted; flagged concerns should be monitored during review.
 
@@ -329,7 +344,7 @@ Same as the pre-commit review consolidation format, but separate findings into *
 
 ### 5. Handle Choice
 
-**"Address findings":** Fix → commit → increment `roundNumber` → loop to sub-step 1. **Soft limit after 3 rounds:** suggest finalizing (diminishing returns).
+**"Address findings":** Fix → commit → increment `roundNumber` → loop to sub-step 1. Only increment `roundNumber` if the commit succeeds. If commit fails, report error and offer retry/done without incrementing. **Soft limit after 3 rounds:** suggest finalizing (diminishing returns).
 
 **"Show diff":** Output `git diff $mergeBase..HEAD` as code block. If the diff command fails, recompute `$mergeBase` and retry. If still failing, offer "Continue without diff" / "Retry" / "Done for now". Then offer: "Finalize" / "Fix something" / "Done for now".
 
@@ -352,7 +367,7 @@ Review agents see diff contents but can't detect whether new files are wired int
 2. **Check references:** For each new file, search for its name stem in the source tree (grep for imports/registrations, excluding the file itself). Adjust file extensions to match the repo's language.
 
 3. **Flag unreferenced files:** If any new file has zero references, warn the user and offer:
-   - "Investigate and fix" — find entry points, add missing imports, commit. If git operations fail, report error and offer retry/skip/done.
+   - "Investigate and fix" — find entry points, add missing imports, commit. If git operations fail, report error and offer retry/skip/done. Do NOT proceed to Step 5 unless the commit succeeds or the user explicitly chooses "Skip".
    - "Skip — files are referenced differently" — e.g., dynamically loaded, auto-discovered
    - "Done for now" — leave changes local
 
@@ -447,13 +462,13 @@ Before showing the diff, verify the review cycle was completed:
 
 If lint/tests have not been run:
 > "Hold on — running lint and tests before finalizing..."
-Run the repo's lint and test commands. If they fail, fix and loop.
+Run the repo's lint and test commands. If they fail, fix and loop. **Soft limit after 3 attempts:** report remaining failures and offer: "Proceed to final review anyway" / "Done for now".
 
 If review agents have not been dispatched:
 > "Hold on — running review agents before finalizing..."
-Dispatch the full review suite (see Step 3) and run the convergence loop. If findings are reported, fix and re-run until convergence.
+Dispatch the full review suite (see Step 3) and run the convergence loop. If findings are reported, fix and re-run until convergence. **Soft limit after 3 rounds:** report remaining findings and offer: "Proceed to final review anyway" / "Done for now".
 
-Only proceed to sub-step 2 after all checks pass.
+Only proceed to sub-step 2 after all checks pass or the user explicitly chooses to proceed.
 
 ### 2. Present Final Diff
 
@@ -488,7 +503,7 @@ Options:
 
 **"Looks good":** → Proceed to Step 7 (Squash + Reword)
 
-**"I want to make changes":** User makes edits, commit, loop back to Step 3 (re-review with agents).
+**"I want to make changes":** User makes edits, stage and commit the changes. If any git operation fails (stage, commit), report the specific error and offer: "Retry" / "Done for now". Do NOT loop back to Step 3 unless the commit succeeds. Then loop back to Step 3 (re-review with agents).
 
 **"Done for now":** Report: "Your changes are saved locally on branch `{branchName}`. Run `/oss` later to continue." Return to the core router.
 
@@ -516,7 +531,7 @@ Options:
    git tag -d oss-autopilot-pre-squash               # cleanup after success
    ```
    **CRITICAL: If the safety tag creation fails, do NOT proceed with the squash.** Report: "Could not create safety recovery tag. Aborting squash to protect your work." Offer: "Retry" / "Skip squash" / "Done for now".
-   On any other failure: recover via `git reset --hard oss-autopilot-pre-squash`, report error, offer retry/undo/done.
+   On any other failure: automatically recover via `git reset --hard oss-autopilot-pre-squash` (restores pre-squash commit history), report error, offer "Retry squash" / "Skip squash — proceed with multiple commits" / "Done for now".
 
 **→ Step 8 after successful squash**
 
@@ -526,7 +541,7 @@ Options:
 
 **Trigger:** After Step 7 (Squash + Reword) completes or is skipped. Only runs for new contributions (`isNewContribution === true`).
 
-**CRITICAL: This step must NOT be reached without completing Steps 3 (review cycle), 4 (integration check), 5 (manual testing), and 6 (human review). If a PR is created before these steps, the workflow has been bypassed — this is a bug.**
+**CRITICAL: This step must NOT be reached without completing Steps 3 (review cycle), 4 (integration check), 5 (manual testing), 6 (human review), and 7 (squash, or explicitly skipped). If a PR is created before these steps, the workflow has been bypassed — this is a bug.**
 
 ### 1. Show PR Summary
 
@@ -618,7 +633,7 @@ Reset session state: `isNewContribution = false`, clear `issueContext`, `prNumbe
 - Report the specific error (include stderr output)
 - Offer options:
   1. "Retry" — re-run the command
-  2. "Try the other PR type" — switch between draft/ready if the error suggests draft PRs are not supported
+  2. "Try the other PR type" — switch between draft/ready. Only offer this if the error indicates draft PRs are not supported (e.g., GitHub Enterprise). For auth/network errors, this option won't help — omit it.
   3. "Done for now" — leave changes pushed, create PR manually later
 
 - **Do NOT proceed to Step 9 without a valid `prNumber` and `prUrl`**
