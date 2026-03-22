@@ -212,4 +212,33 @@ describe('createWidgetHandler', () => {
     expect(res._body).toContain('<svg');
     expect(res._body).toContain('Render error');
   });
+
+  it('serves stale cache when past CACHE_TTL but within STALE_TTL and fetch fails', async () => {
+    const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+    // First request — populate the cache
+    fetchMock.mockResolvedValueOnce(makeData());
+    const handler = createWidgetHandler(BASE_CONFIG);
+    const res1 = makeRes();
+    await handler(makeReq({ username: 'costajohnt' }), res1);
+    expect(res1._status).toBe(200);
+    const cachedSvg = res1._body;
+
+    // Advance time past CACHE_TTL (1h) but still within STALE_TTL (24h)
+    const realNow = Date.now();
+    const advancedTime = realNow + CACHE_TTL + 5000; // 1h + 5s
+    vi.spyOn(Date, 'now').mockReturnValue(advancedTime);
+
+    // Fetch now returns an error
+    fetchMock.mockResolvedValueOnce({ error: 'api_error' as const });
+
+    const res2 = makeRes();
+    await handler(makeReq({ username: 'costajohnt' }), res2);
+
+    // Should fall back to stale cache and return 200 with the same SVG
+    expect(res2._status).toBe(200);
+    expect(res2._body).toBe(cachedSvg);
+
+    vi.restoreAllMocks();
+  });
 });

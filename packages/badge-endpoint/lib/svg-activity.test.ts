@@ -2,6 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { renderActivityGraph } from './svg-activity.js';
 import type { ContributionData } from './github-data.js';
 
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 const sampleData: ContributionData = {
   merged: 42,
   open: 3,
@@ -12,11 +18,12 @@ const sampleData: ContributionData = {
   cappedMerged: false,
   cappedClosedUnmerged: false,
   dailyActivity: {
-    '2026-03-20': 3,
-    '2026-03-19': 2,
-    '2026-03-18': 1,
-    '2026-03-10': 4,
-    '2026-03-01': 1,
+    [daysAgo(1)]: 3,
+    [daysAgo(5)]: 1,
+    [daysAgo(14)]: 2,
+    [daysAgo(30)]: 1,
+    [daysAgo(60)]: 4,
+    [daysAgo(90)]: 1,
   },
   streak: 3,
 };
@@ -42,9 +49,10 @@ describe('renderActivityGraph', () => {
     expect(matches!.length).toBeGreaterThanOrEqual(180);
   });
 
-  it('uses #3b82f6 color for active days', () => {
+  it('uses gradient colors for active days', () => {
     const svg = renderActivityGraph(sampleData, 'light');
-    expect(svg).toContain('#3b82f6');
+    const bodyAfterDefs = svg.replace(/<defs>[\s\S]*?<\/defs>/g, '');
+    expect(bodyAfterDefs).toContain('#3b82f6');
   });
 
   it('includes month labels', () => {
