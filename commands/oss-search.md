@@ -172,7 +172,7 @@ Use AskUserQuestion:
 6. Present summary, then proceed to **Diminishing Returns Check**
 
 **"Pick one to vet now":**
-- Display results as numbered list, use AskUserQuestion with up to 3 + "Done for now"
+- Display results as numbered list, use AskUserQuestion with up to 3 + "Done for now". Include the full GitHub issue URL in each option's description field.
 - Dispatch single `issue-scout` agent, present result
 - Offer: "Start working on this issue" / "Pick a different one" / "Done for now"
 - Record score: `searchRoundScores.push(score)` → **Diminishing Returns Check**
