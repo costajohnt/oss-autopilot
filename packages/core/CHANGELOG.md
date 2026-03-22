@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1](https://github.com/costajohnt/oss-autopilot/compare/core-v1.6.0...core-v1.6.1) (2026-03-22)
+
+
+### Bug Fixes
+
+* use fetch+reset for marketplace refresh to handle divergent branches ([#827](https://github.com/costajohnt/oss-autopilot/issues/827)) ([254df84](https://github.com/costajohnt/oss-autopilot/commit/254df84d3ca1dd77508d383c685d0887b4e964c8))
+
 ## [1.6.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.5.1...core-v1.6.0) (2026-03-22)
 
 
