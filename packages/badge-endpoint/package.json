@@ -5,13 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vercel dev",
-    "deploy": "vercel --prod"
+    "deploy": "vercel --prod",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@octokit/rest": "^22.0.1"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.0"
   }
 }
