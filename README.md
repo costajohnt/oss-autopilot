@@ -298,6 +298,30 @@ Customize the minimum star threshold with `?minStars=100` (URL-encode the inner 
 ![OSS Contributions](https://img.shields.io/endpoint?url=https%3A%2F%2Foss-autopilot-stats.vercel.app%2Fapi%2Fbadge%2FYOUR_USERNAME%3FminStars%3D100)
 ```
 
+### Profile Widgets
+
+Embed live SVG widgets in your GitHub profile README for a richer contribution showcase. All widgets update hourly and support `?theme=dark`.
+
+**Stats Card** — merged count, merge rate, repo count, streak:
+
+```markdown
+[![OSS Contributions](https://oss-autopilot-stats.vercel.app/api/card/YOUR_USERNAME)](https://github.com/costajohnt/oss-autopilot)
+```
+
+**Recent Contributions** — your five most recently merged PRs:
+
+```markdown
+![Recent](https://oss-autopilot-stats.vercel.app/api/recent/YOUR_USERNAME)
+```
+
+**Activity Graph** — 26-week contribution heatmap:
+
+```markdown
+![Activity](https://oss-autopilot-stats.vercel.app/api/activity/YOUR_USERNAME)
+```
+
+Add `?theme=dark` to any URL for a dark background to match dark-mode profiles.
+
 ---
 
 ## Configuration
