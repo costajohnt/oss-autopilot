@@ -55,8 +55,6 @@ export function renderActivityGraph(data: ContributionData, mode: 'light' | 'dar
   // Each column is Mon(row0)..Sun(row6)
   // gridEndSunday is the Sunday of the last (rightmost) week — that's row 6, col WEEKS-1
   // The Monday of the last week is gridEndSunday - 6 days
-  const totalDays = WEEKS * DAYS;
-
   // Build an array of Date objects for the grid, row-major within each column
   // col 0, row 0 = oldest Monday
   const cells: Array<{ date: Date; col: number; row: number }> = [];

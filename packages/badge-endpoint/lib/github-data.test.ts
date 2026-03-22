@@ -57,6 +57,8 @@ describe('fetchContributionData', () => {
 
     const result = await fetchContributionData('testuser', 'fake-token');
 
+    expect(result.error).toBeUndefined();
+    if ('error' in result && result.error) throw new Error('unexpected error');
     expect(result.merged).toBe(42);
     expect(result.open).toBe(3);
     expect(result.closedUnmerged).toBe(5);
@@ -76,6 +78,8 @@ describe('fetchContributionData', () => {
 
     const result = await fetchContributionData('prolific-user', 'fake-token');
 
+    expect(result.error).toBeUndefined();
+    if ('error' in result && result.error) throw new Error('unexpected error');
     expect(result.merged).toBe(1500);
     expect(result.cappedMerged).toBe(true);
   });
@@ -135,6 +139,8 @@ describe('fetchContributionData', () => {
 
     const result = await fetchContributionData('testuser', 'fake-token');
 
+    expect(result.error).toBeUndefined();
+    if ('error' in result && result.error) throw new Error('unexpected error');
     expect(result.merged).toBe(150);
     expect(result.repoCount).toBe(2); // org/repo + org2/repo2
     expect(result.cappedMerged).toBe(false);

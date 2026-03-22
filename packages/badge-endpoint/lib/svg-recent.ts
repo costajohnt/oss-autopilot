@@ -6,10 +6,9 @@ const ROW_H = 36;
 const HEADER_H = 44;
 const FOOTER_PAD = 12;
 
-function timeAgo(isoTimestamp: string): string {
-  const then = new Date(isoTimestamp).getTime();
-  const now = Date.now();
-  const diffMs = now - then;
+function timeAgo(dateStr: string): string {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  if (diffMs < 60000) return 'just now'; // handles negative and very recent
   const diffMin = Math.floor(diffMs / 60_000);
   if (diffMin < 60) return `${diffMin} min ago`;
   const diffHr = Math.floor(diffMin / 60);

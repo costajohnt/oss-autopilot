@@ -54,7 +54,6 @@ export function renderStatsCard(data: ContributionData, mode: 'light' | 'dark'):
 
   // 4 metrics in a 2x2 grid
   const mergedLabel = data.cappedMerged ? `${data.merged}+` : `${data.merged}`;
-  const closedLabel = data.cappedClosedUnmerged ? `${data.closedUnmerged}+` : `${data.closedUnmerged}`;
   const mergeRateLabel = `${Math.round(data.mergeRate)}%`;
   const streakLabel = `${data.streak} week${data.streak !== 1 ? 's' : ''}`;
 

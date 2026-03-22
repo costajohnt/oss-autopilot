@@ -1,5 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { fetchContributionData, isValidUsername, type ContributionData } from './github-data.js';
+import {
+  fetchContributionData,
+  isValidUsername,
+  type ContributionData,
+  type ContributionResult,
+} from './github-data.js';
+import { escapeXml } from './svg-utils.js';
 
 /** Minimal Vercel request/response types (avoids heavy @vercel/node devDependency). */
 interface VercelRequest extends IncomingMessage {
@@ -8,11 +14,11 @@ interface VercelRequest extends IncomingMessage {
 interface VercelResponse extends ServerResponse {
   status(code: number): VercelResponse;
   send(body: string): VercelResponse;
-  setHeader(name: string, value: string | string[]): VercelResponse;
 }
 
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 const STALE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const TIMEOUT_MS = 8000;
 
 interface CacheEntry {
   svg: string;
@@ -28,13 +34,14 @@ export interface WidgetHandlerConfig {
   render: (data: ContributionData, mode: 'light' | 'dark') => string;
 }
 
-function makeErrorSvg(message: string, mode: 'light' | 'dark', width: number, height: number, textY: number): string {
+function makeErrorSvg(message: string, mode: 'light' | 'dark', config: WidgetHandlerConfig): string {
+  const { errorWidth: width, errorHeight: height, errorTextY: textY } = config;
   const bg = mode === 'dark' ? '#0d1117' : '#ffffff';
   const text = mode === 'dark' ? '#e6edf3' : '#1e293b';
   const border = mode === 'dark' ? '#30363d' : '#e2e8f0';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" fill="none">
   <rect width="${width}" height="${height}" rx="8" fill="${bg}" stroke="${border}" stroke-width="1"/>
-  <text x="${Math.round(width / 2)}" y="${textY}" font-family="system-ui,sans-serif" font-size="13" fill="${text}" text-anchor="middle">${message}</text>
+  <text x="${Math.round(width / 2)}" y="${textY}" font-family="system-ui,sans-serif" font-size="13" fill="${text}" text-anchor="middle">${escapeXml(message)}</text>
 </svg>`;
 }
 
@@ -43,7 +50,7 @@ export function createWidgetHandler(config: WidgetHandlerConfig) {
   const cache = new Map<string, CacheEntry>();
 
   function errorSvg(message: string, mode: 'light' | 'dark'): string {
-    return makeErrorSvg(message, mode, errorWidth, errorHeight, errorTextY);
+    return makeErrorSvg(message, mode, config);
   }
 
   return async function handler(req: VercelRequest, res: VercelResponse) {
@@ -72,12 +79,18 @@ export function createWidgetHandler(config: WidgetHandlerConfig) {
       }
     }
 
-    const result = await fetchContributionData(username, process.env.GITHUB_TOKEN);
+    const result = await Promise.race([
+      fetchContributionData(username, process.env.GITHUB_TOKEN),
+      new Promise<ContributionResult>((resolve) =>
+        setTimeout(() => resolve({ error: 'api_error' as const }), TIMEOUT_MS),
+      ),
+    ]);
 
     if (result.error) {
       // Try stale fallback before returning an error SVG
       const stale = cache.get(cacheKey);
       if (stale && Date.now() - stale.ts < STALE_TTL) {
+        console.warn(`[${prefix}] Serving stale cache for ${username}: ${result.error}`);
         return res.status(200).send(stale.svg);
       }
 
@@ -90,7 +103,16 @@ export function createWidgetHandler(config: WidgetHandlerConfig) {
       return res.status(502).send(errorSvg('GitHub API error — try again later', mode));
     }
 
-    const svg = render(result, mode);
+    let svg: string;
+    try {
+      svg = render(result, mode);
+    } catch (err) {
+      console.error(`[${prefix}] Render failed for ${username}:`, err instanceof Error ? err.message : String(err));
+      return res
+        .status(500)
+        .setHeader('Content-Type', 'image/svg+xml')
+        .send(makeErrorSvg('Render error', mode, config));
+    }
     cache.set(cacheKey, { svg, ts: Date.now() });
     return res.status(200).send(svg);
   };

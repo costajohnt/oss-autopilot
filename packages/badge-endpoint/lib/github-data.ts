@@ -191,8 +191,10 @@ export async function fetchContributionData(username: string, token: string): Pr
       return { error: 'user_not_found' };
     }
     if (err?.status === 403 || err?.status === 429) {
+      console.warn('[widget] Rate limited for', username);
       return { error: 'rate_limited' };
     }
+    console.error('[widget] API error for', username, err instanceof Error ? err.message : String(err));
     return { error: 'api_error' };
   }
 }
