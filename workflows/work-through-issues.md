@@ -392,24 +392,9 @@ Task(issue-scout, "Vet this issue from the user's curated list:
   Check for recent linked PRs since the list was last updated.")
 ```
 
-### 5. Present vetting results and offer next step
+### 5. Investigate Feasibility
 
-Show the vetting summary. If available, offer:
-
-```
-Question: "How would you like to proceed with this issue?"
-Header: "Next Step"
-
-Options:
-1. "Investigate feasibility first (Recommended)" — "Clone the repo, analyze the relevant code, and verify a fix is achievable before starting"
-2. "Start working" — "Skip investigation and begin implementing"
-3. "Pick a different issue"
-4. "Done for now"
-```
-
-### 5a. Investigate Feasibility
-
-When user selects "Investigate feasibility first":
+Show the vetting summary, then automatically proceed to investigate the issue. Investigation catches scope issues, identifies the right files, and prevents wasted effort.
 
 1. **Clone/update the repo** — Check local repo registry (`local-repos --json`), clone if needed to `~/Documents/oss/<repo-name>`
 2. **Read the issue context** — Parse the issue body for code references, error messages, expected behavior
