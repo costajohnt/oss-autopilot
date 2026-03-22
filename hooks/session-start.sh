@@ -12,10 +12,12 @@ messages=""
 # --- Step 0: Auto-refresh marketplace cache (non-blocking) ---
 # Claude Code caches third-party marketplace repos as git clones but never
 # auto-refreshes them, so plugin updates aren't discoverable. A background
-# pull on every session keeps the cache current without blocking startup.
+# fetch+reset on every session keeps the cache current without blocking startup.
+# Uses fetch+reset instead of pull to handle divergent branches gracefully
+# (e.g. if a local commit was accidentally made in the marketplace clone).
 MARKETPLACE_DIR="$HOME/.claude/plugins/marketplaces/oss-autopilot"
 if [ -d "$MARKETPLACE_DIR/.git" ]; then
-  (cd "$MARKETPLACE_DIR" && git pull --quiet origin main 2>/dev/null) &
+  (cd "$MARKETPLACE_DIR" && git fetch --quiet origin main 2>/dev/null && git reset --hard origin/main --quiet 2>/dev/null) &
 fi
 
 # --- Step 1: Rebuild stale CLI bundle (if needed) ---
