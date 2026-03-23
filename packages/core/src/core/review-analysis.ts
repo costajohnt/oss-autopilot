@@ -114,6 +114,15 @@ export function getInlineCommentBody(reviewId: number, reviewComments: ReviewCom
 }
 
 /**
+ * Check whether a review has any associated inline comments.
+ * Used to prevent the acknowledgment filter from discarding reviews
+ * that also posted inline comments (#829).
+ */
+export function reviewHasInlineComments(reviewId: number, reviewComments: ReviewComment[]): boolean {
+  return reviewComments.some((c) => c.pull_request_review_id === reviewId);
+}
+
+/**
  * Check if there are unresponded comments from maintainers.
  * Combines issue comments and review comments into a timeline,
  * then finds maintainer comments after the user's last comment.
@@ -131,7 +140,7 @@ export function checkUnrespondedComments(
   username: string,
 ): { hasUnrespondedComment: boolean; lastMaintainerComment?: FetchedPR['lastMaintainerComment'] } {
   // Combine comments and reviews into a timeline
-  const timeline: Array<{ author: string; body: string; createdAt: string; isUser: boolean }> = [];
+  const timeline: Array<{ author: string; body: string; createdAt: string; isUser: boolean; reviewId?: number }> = [];
   const usernameLower = username.toLowerCase();
 
   for (const comment of comments) {
@@ -175,6 +184,7 @@ export function checkUnrespondedComments(
       body: resolvedBody,
       createdAt: review.submitted_at,
       isUser: author.toLowerCase() === usernameLower,
+      reviewId: review.id,
     });
   }
 
@@ -191,6 +201,7 @@ export function checkUnrespondedComments(
 
   // Find maintainer comments after the user's last comment
   let lastMaintainerComment: FetchedPR['lastMaintainerComment'] | undefined;
+  let lastMaintainerReviewId: number | undefined;
 
   for (const item of timeline) {
     if (item.isUser) continue; // Skip user's own comments
@@ -204,11 +215,16 @@ export function checkUnrespondedComments(
         body: item.body.slice(0, 200) + (item.body.length > 200 ? '...' : ''),
         createdAt: item.createdAt,
       };
+      lastMaintainerReviewId = item.reviewId;
     }
   }
 
-  // Filter out pure acknowledgment comments that don't require a response
-  if (lastMaintainerComment && isAcknowledgmentComment(lastMaintainerComment.body)) {
+  // Filter out pure acknowledgment comments that don't require a response.
+  // Skip the filter when the review has inline comments — those indicate
+  // feedback beyond the summary body that likely needs a response (#829).
+  const lastReviewHasInlineComments =
+    lastMaintainerReviewId != null && reviewHasInlineComments(lastMaintainerReviewId, reviewComments);
+  if (lastMaintainerComment && isAcknowledgmentComment(lastMaintainerComment.body) && !lastReviewHasInlineComments) {
     lastMaintainerComment = undefined;
   }
 
