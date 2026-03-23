@@ -8,6 +8,7 @@ import {
   getLatestChangesRequestedDate,
   isAllSelfReplies,
   getInlineCommentBody,
+  reviewHasInlineComments,
   checkUnrespondedComments,
 } from './review-analysis.js';
 
@@ -219,6 +220,28 @@ describe('getInlineCommentBody', () => {
   });
 });
 
+describe('reviewHasInlineComments', () => {
+  it('should return true when review has inline comments', () => {
+    expect(
+      reviewHasInlineComments(100, [
+        { id: 1, user: null, body: 'Fix this', created_at: '2026-02-07T10:00:00Z', pull_request_review_id: 100 },
+      ]),
+    ).toBe(true);
+  });
+
+  it('should return false when review has no inline comments', () => {
+    expect(reviewHasInlineComments(100, [])).toBe(false);
+  });
+
+  it('should return false when inline comments belong to different review', () => {
+    expect(
+      reviewHasInlineComments(100, [
+        { id: 1, user: null, body: 'Fix this', created_at: '2026-02-07T10:00:00Z', pull_request_review_id: 200 },
+      ]),
+    ).toBe(false);
+  });
+});
+
 describe('checkUnrespondedComments', () => {
   it('should return false when no comments or reviews', () => {
     const result = checkUnrespondedComments([], [], [], 'testuser');
@@ -328,6 +351,97 @@ describe('checkUnrespondedComments', () => {
       [{ user: { login: 'TestUser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
       [],
       [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('should NOT filter as acknowledgment when review has inline comments (#829)', () => {
+    const result = checkUnrespondedComments(
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
+      [
+        {
+          user: { login: 'reviewer' },
+          body: 'Looks good so far, some comments, thanks!',
+          submitted_at: '2026-02-07T12:00:00Z',
+          state: 'COMMENTED',
+          id: 100,
+        },
+      ],
+      [
+        {
+          id: 1000,
+          user: { login: 'reviewer' },
+          body: 'Please rename this variable for clarity',
+          created_at: '2026-02-07T12:00:00Z',
+          pull_request_review_id: 100,
+        },
+        {
+          id: 1001,
+          user: { login: 'reviewer' },
+          body: 'This needs error handling',
+          created_at: '2026-02-07T12:00:00Z',
+          pull_request_review_id: 100,
+        },
+      ],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(true);
+    expect(result.lastMaintainerComment?.author).toBe('reviewer');
+  });
+
+  it('should still filter pure acknowledgment review without inline comments (#829)', () => {
+    const result = checkUnrespondedComments(
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
+      [
+        {
+          user: { login: 'reviewer' },
+          body: 'Looks good, thanks!',
+          submitted_at: '2026-02-07T12:00:00Z',
+          state: 'APPROVED',
+          id: 100,
+        },
+      ],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('should still filter acknowledgment issue comments without review context (#829)', () => {
+    const result = checkUnrespondedComments(
+      [
+        { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' },
+        { user: { login: 'maintainer' }, body: 'Thanks, will review', created_at: '2026-02-07T12:00:00Z' },
+      ],
+      [],
+      [],
+      'testuser',
+    );
+    expect(result.hasUnrespondedComment).toBe(false);
+  });
+
+  it('should filter ack review when inline comments belong to a different review (#829)', () => {
+    const result = checkUnrespondedComments(
+      [{ user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-07T10:00:00Z' }],
+      [
+        {
+          user: { login: 'reviewer' },
+          body: 'Thanks for this!',
+          submitted_at: '2026-02-07T12:00:00Z',
+          state: 'COMMENTED',
+          id: 100,
+        },
+      ],
+      [
+        {
+          id: 1000,
+          user: { login: 'reviewer' },
+          body: 'Fix this',
+          created_at: '2026-02-07T11:00:00Z',
+          pull_request_review_id: 200,
+        },
+      ],
       'testuser',
     );
     expect(result.hasUnrespondedComment).toBe(false);
