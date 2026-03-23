@@ -146,6 +146,31 @@ export function openInBrowser(url: string): void {
 }
 
 /**
+ * Trigger a data refresh on a running dashboard server.
+ * Hits POST /api/refresh so the SPA picks up fresh data on its next poll.
+ * Non-fatal: errors are logged but don't propagate (#830).
+ */
+async function triggerDashboardRefresh(port: number): Promise<boolean> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/refresh`, {
+      method: 'POST',
+      headers: { Origin: `http://oss.localhost:${port}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error(`[STARTUP] Dashboard refresh returned ${res.status}: ${body}`);
+      return false;
+    }
+    await res.text().catch(() => {});
+    return true;
+  } catch (error) {
+    console.error(`[STARTUP] Could not trigger dashboard refresh: ${errorMessage(error)}`);
+    return false;
+  }
+}
+
+/**
  * Run startup checks and return structured output.
  * Returns StartupOutput with one of three shapes:
  * 1. Setup incomplete: `{ version, setupComplete: false }`
@@ -196,15 +221,20 @@ export async function runStartup(): Promise<StartupOutput> {
   // 4. Launch interactive SPA dashboard
   // Skip opening on first run (0 PRs) — the welcome flow handles onboarding
   let dashboardUrl: string | undefined;
-  let dashboardOpened = false;
+  let dashboardStatus: 'opened' | 'refreshed' | 'running' | undefined;
 
   if (daily.digest.summary.totalActivePRs > 0) {
     try {
       const spaResult = await launchDashboardServer();
       if (spaResult) {
         dashboardUrl = spaResult.url;
-        openInBrowser(spaResult.url);
-        dashboardOpened = true;
+        if (spaResult.alreadyRunning) {
+          const refreshed = await triggerDashboardRefresh(spaResult.port);
+          dashboardStatus = refreshed ? 'refreshed' : 'running';
+        } else {
+          openInBrowser(spaResult.url);
+          dashboardStatus = 'opened';
+        }
       } else {
         console.error('[STARTUP] Dashboard SPA assets not found. Build with: cd packages/dashboard && pnpm run build');
       }
@@ -213,9 +243,13 @@ export async function runStartup(): Promise<StartupOutput> {
     }
   }
 
-  // Append dashboard status to brief summary (only startup opens the browser, not daily)
-  if (dashboardOpened) {
+  // Append dashboard status to brief summary
+  if (dashboardStatus === 'opened') {
     daily.briefSummary += ' | Dashboard opened in browser';
+  } else if (dashboardStatus === 'refreshed') {
+    daily.briefSummary += ' | Dashboard refreshed';
+  } else if (dashboardStatus === 'running') {
+    daily.briefSummary += ' | Dashboard running';
   }
 
   // 5. Detect issue list

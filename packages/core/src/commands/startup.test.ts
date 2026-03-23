@@ -477,19 +477,65 @@ describe('runStartup behavior', () => {
     expect(result.daily?.briefSummary).toContain('Dashboard opened in browser');
   });
 
-  it('should reuse existing SPA server without launching new one', async () => {
+  it('should refresh existing dashboard instead of opening new tab (#830)', async () => {
     const daily = makeDailyOutput(3);
     executeDailyCheck.mockResolvedValue(daily);
     launchDashboardServer.mockResolvedValue({ url: 'http://oss.localhost:3001', port: 3001, alreadyRunning: true });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
 
     const result = await runStartup();
 
     expect(result.dashboardUrl).toBe('http://oss.localhost:3001');
-    expect(execFile).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.arrayContaining(['http://oss.localhost:3001']),
-      expect.any(Function),
+    // Should NOT open a new browser tab
+    expect(execFile).not.toHaveBeenCalled();
+    // Should trigger a refresh on the running server
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'http://127.0.0.1:3001/api/refresh',
+      expect.objectContaining({ method: 'POST' }),
     );
+    expect(result.daily?.briefSummary).toContain('Dashboard refreshed');
+    expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
+    fetchSpy.mockRestore();
+  });
+
+  it('should still succeed when dashboard refresh fails (#830)', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const daily = makeDailyOutput(3);
+    executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({ url: 'http://oss.localhost:3001', port: 3001, alreadyRunning: true });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Connection refused'));
+
+    const result = await runStartup();
+
+    // Startup should succeed despite refresh failure
+    expect(result.dashboardUrl).toBe('http://oss.localhost:3001');
+    expect(execFile).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Could not trigger dashboard refresh'));
+    // Should say "running" not "refreshed" when refresh fails
+    expect(result.daily?.briefSummary).toContain('Dashboard running');
+    expect(result.daily?.briefSummary).not.toContain('Dashboard refreshed');
+    fetchSpy.mockRestore();
+    consoleSpy.mockRestore();
+  });
+
+  it('should log when dashboard refresh returns non-200 (#830)', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const daily = makeDailyOutput(3);
+    executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({ url: 'http://oss.localhost:3001', port: 3001, alreadyRunning: true });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('Too many requests', { status: 429 }));
+
+    const result = await runStartup();
+
+    expect(result.dashboardUrl).toBe('http://oss.localhost:3001');
+    expect(execFile).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Dashboard refresh returned 429'));
+    // Should say "running" not "refreshed" on non-200
+    expect(result.daily?.briefSummary).toContain('Dashboard running');
+    fetchSpy.mockRestore();
+    consoleSpy.mockRestore();
   });
 
   it('should not launch SPA when totalActivePRs is 0', async () => {
