@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2](https://github.com/costajohnt/oss-autopilot/compare/core-v1.6.1...core-v1.6.2) (2026-03-23)
+
+
+### Bug Fixes
+
+* reuse existing dashboard tab instead of opening a new one ([#830](https://github.com/costajohnt/oss-autopilot/issues/830)) ([#834](https://github.com/costajohnt/oss-autopilot/issues/834)) ([7845e14](https://github.com/costajohnt/oss-autopilot/commit/7845e14caa78317c8c6bcd6fe4fd4bcbf9eb112d))
+* skip acknowledgment filter for reviews with inline comments ([#829](https://github.com/costajohnt/oss-autopilot/issues/829)) ([#831](https://github.com/costajohnt/oss-autopilot/issues/831)) ([d018aa4](https://github.com/costajohnt/oss-autopilot/commit/d018aa45c65827474266bb03884f7ee5bf15339b))
+
 ## [1.6.1](https://github.com/costajohnt/oss-autopilot/compare/core-v1.6.0...core-v1.6.1) (2026-03-22)
 
 
