@@ -1,6 +1,7 @@
 {
   "name": "@oss-autopilot/mcp",
-  "version": "2.0.0",
+  "version": "2.0.1",
+  "mcpName": "io.github.costajohnt/oss-autopilot",
   "description": "MCP server for OSS Autopilot — exposes PR tracking, issue discovery, and contribution management as MCP tools",
   "type": "module",
   "bin": {
