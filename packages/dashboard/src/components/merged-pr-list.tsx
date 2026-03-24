@@ -51,9 +51,14 @@ export function MergedPRList({ mergedPRs, repoMetadata, onBack }: MergedPRListPr
     });
   }, [mergedPRs, repoMetadata, sortKey, sortDir]);
 
-  function sortArrow(key: SortKey): string | null {
-    if (sortKey !== key) return null;
-    return sortDir === 'asc' ? '\u25B2' : '\u25BC';
+  function renderHeader(key: SortKey, label: string, extraClass?: string) {
+    const arrow = sortKey === key ? (sortDir === 'asc' ? '\u25B2' : '\u25BC') : null;
+    const className = extraClass ? `${extraClass} sortable-th` : 'sortable-th';
+    return (
+      <th class={className} onClick={() => toggleSort(key)}>
+        {label} {arrow && <span class="sort-arrow">{arrow}</span>}
+      </th>
+    );
   }
 
   return (
@@ -74,18 +79,10 @@ export function MergedPRList({ mergedPRs, repoMetadata, onBack }: MergedPRListPr
         <table class="merged-table">
           <thead>
             <tr>
-              <th class="sortable-th" onClick={() => toggleSort('repo')}>
-                PR {sortArrow('repo') && <span class="sort-arrow">{sortArrow('repo')}</span>}
-              </th>
-              <th class="merged-table-col-stars sortable-th" onClick={() => toggleSort('stars')}>
-                Stars {sortArrow('stars') && <span class="sort-arrow">{sortArrow('stars')}</span>}
-              </th>
-              <th class="merged-table-col-language sortable-th" onClick={() => toggleSort('language')}>
-                Language {sortArrow('language') && <span class="sort-arrow">{sortArrow('language')}</span>}
-              </th>
-              <th class="sortable-th" onClick={() => toggleSort('date')}>
-                Date Merged {sortArrow('date') && <span class="sort-arrow">{sortArrow('date')}</span>}
-              </th>
+              {renderHeader('repo', 'PR')}
+              {renderHeader('stars', 'Stars', 'merged-table-col-stars')}
+              {renderHeader('language', 'Language', 'merged-table-col-language')}
+              {renderHeader('date', 'Date Merged')}
             </tr>
           </thead>
           <tbody>
