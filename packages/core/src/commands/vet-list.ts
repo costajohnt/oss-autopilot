@@ -135,7 +135,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     const { pruneIssueList } = await import('./parse-list.js');
     const content = fs.readFileSync(issueListPath, 'utf-8');
     const { pruned, removedCount } = pruneIssueList(content);
-    if (removedCount > 0) {
+    if (pruned !== content) {
       fs.writeFileSync(issueListPath, pruned, 'utf-8');
     }
     pruneResult = { removedCount };

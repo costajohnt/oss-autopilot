@@ -207,6 +207,21 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
       }
     }
 
+    // Skip cruft lines: "Skip (N issues)", standalone "---", old "Removed" labels
+    if (/^\s*skip\s*\(\d+\s*issues?\)/i.test(line.replace(/[#*]/g, '').trim())) {
+      continue;
+    }
+    if (/^---\s*$/.test(line)) {
+      continue;
+    }
+    if (/^\s*(###?\s*)?(Removed|Previously dropped)/i.test(line)) {
+      continue;
+    }
+    // Skip blockquote metadata lines ("> Sources: ...", "> Prioritized ...")
+    if (/^>\s/.test(line)) {
+      continue;
+    }
+
     // Non-list lines, metadata, and surviving items — keep
     output.push(line);
   }
@@ -230,12 +245,21 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
     cleaned.push(output[i]);
   }
 
-  // Remove trailing blank lines
-  while (cleaned.length > 0 && cleaned[cleaned.length - 1].trim() === '') {
-    cleaned.pop();
+  // Collapse consecutive blank lines into at most one
+  const collapsed: string[] = [];
+  for (const line of cleaned) {
+    if (line.trim() === '' && collapsed.length > 0 && collapsed[collapsed.length - 1].trim() === '') {
+      continue;
+    }
+    collapsed.push(line);
   }
 
-  return { pruned: cleaned.join('\n') + '\n', removedCount };
+  // Remove trailing blank lines
+  while (collapsed.length > 0 && collapsed[collapsed.length - 1].trim() === '') {
+    collapsed.pop();
+  }
+
+  return { pruned: collapsed.join('\n') + '\n', removedCount };
 }
 
 export async function runParseList(options: ParseListOptions): Promise<ParseIssueListOutput> {
