@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { parseIssueList, runParseList } from './parse-list.js';
+import { parseIssueList, pruneIssueList, runParseList } from './parse-list.js';
 
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
@@ -210,5 +210,157 @@ describe('runParseList', () => {
     });
 
     await expect(runParseList({ filePath: 'issues.md' })).rejects.toThrow('Failed to read');
+  });
+});
+
+describe('parseIssueList — score extraction', () => {
+  it('extracts score from sub-bullet', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Maybe** — Score 8/10. Good issue.`;
+    const result = parseIssueList(content);
+    expect(result.available[0].score).toBe(8);
+  });
+
+  it('extracts decimal score', () => {
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - Score 7.5/10`;
+    const result = parseIssueList(content);
+    expect(result.available[0].score).toBe(7.5);
+  });
+
+  it('leaves score undefined when no sub-bullet score', () => {
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug`;
+    const result = parseIssueList(content);
+    expect(result.available[0].score).toBeUndefined();
+  });
+});
+
+describe('parseIssueList — sub-bullet status detection', () => {
+  it('moves Skip items to completed', () => {
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Skip** — Score 3/10. Existing PR.`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(0);
+    expect(result.completed).toHaveLength(1);
+    expect(result.completed[0].number).toBe(1);
+  });
+
+  it('moves Merged items to completed', () => {
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Merged** — PR merged.`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(0);
+    expect(result.completed).toHaveLength(1);
+  });
+
+  it('moves In Progress items to completed (not available) but they are NOT terminal', () => {
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **In Progress** — Working on it.`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(0);
+    expect(result.completed).toHaveLength(1);
+  });
+
+  it('keeps Maybe items as available', () => {
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Maybe** — Score 8/10. Looks good.`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(1);
+    expect(result.completed).toHaveLength(0);
+  });
+});
+
+describe('pruneIssueList', () => {
+  it('removes strikethrough items', () => {
+    const content = `### Repo
+- ~~[#1](https://github.com/owner/repo/issues/1) — Done~~
+- [#2](https://github.com/owner/repo/issues/2) — Active
+  - **Maybe** — Score 8/10
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('#1');
+    expect(pruned).toContain('#2');
+  });
+
+  it('removes items with terminal sub-bullet status', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Skip** — Score 3/10.
+- [#2](https://github.com/owner/repo/issues/2) — Active
+  - **Maybe** — Score 8/10
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('#1');
+    expect(pruned).toContain('#2');
+  });
+
+  it('removes items with score below threshold', () => {
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Low score
+  - Score 4/10
+- [#2](https://github.com/owner/repo/issues/2) — High score
+  - Score 8/10
+`;
+    const { pruned } = pruneIssueList(content, 6);
+    expect(pruned).not.toContain('#1');
+    expect(pruned).toContain('#2');
+  });
+
+  it('preserves In Progress items (not terminal)', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Working on it
+  - **In Progress** — Draft PR open.
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('#1');
+  });
+
+  it('preserves Waiting items (not terminal)', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Waiting for response
+  - **Waiting** — Asked maintainer.
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('#1');
+  });
+
+  it('removes empty section headings', () => {
+    const content = `### Empty Section
+- ~~[#1](https://github.com/owner/repo/issues/1) — Done~~
+
+### Active Section
+- [#2](https://github.com/owner/repo/issues/2) — Active
+  - Score 8/10
+`;
+    const { pruned } = pruneIssueList(content);
+    expect(pruned).not.toContain('Empty Section');
+    expect(pruned).toContain('Active Section');
+  });
+
+  it('collapses consecutive blank lines', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Active
+  - Score 8/10
+
+
+
+`;
+    const { pruned } = pruneIssueList(content);
+    expect(pruned).not.toContain('\n\n\n');
+  });
+
+  it('removes strikethrough list items without URLs', () => {
+    const content = `### Repo
+- ~~Some completed task~~
+- [#1](https://github.com/owner/repo/issues/1) — Active
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('completed task');
+    expect(pruned).toContain('#1');
   });
 });

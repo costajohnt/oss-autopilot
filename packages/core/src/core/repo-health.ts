@@ -68,7 +68,13 @@ export async function checkProjectHealth(octokit: Octokit, owner: string, repo: 
         url,
         (headers) =>
           octokit.repos.get({ owner, repo, headers }) as Promise<{
-            data: { open_issues_count: number; pushed_at: string; stargazers_count: number; forks_count: number };
+            data: {
+              open_issues_count: number;
+              pushed_at: string;
+              stargazers_count: number;
+              forks_count: number;
+              language: string | null;
+            };
             headers: Record<string, string>;
           }>,
       );
@@ -110,6 +116,7 @@ export async function checkProjectHealth(octokit: Octokit, owner: string, repo: 
         isActive: daysSinceLastCommit < 30,
         stargazersCount: repoData.stargazers_count,
         forksCount: repoData.forks_count,
+        language: repoData.language,
       };
     });
   } catch (error) {

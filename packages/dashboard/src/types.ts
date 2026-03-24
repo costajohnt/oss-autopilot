@@ -16,6 +16,8 @@ import type {
   RepoMetadataEntry,
 } from '@oss-autopilot/core/types';
 
+import type { ParsedIssueItem, ParseIssueListOutput } from '@oss-autopilot/core/commands';
+
 // Re-export shared types so consumers keep using `import { X } from '../types'`
 export type {
   FetchedPRStatus,
@@ -26,6 +28,8 @@ export type {
   MergedPR,
   ClosedPR,
   RepoMetadataEntry,
+  ParsedIssueItem,
+  ParseIssueListOutput,
 };
 
 // -- Dashboard-specific types --
@@ -36,6 +40,7 @@ export interface DashboardStats {
   mergedPRs: number;
   closedPRs: number;
   mergeRate: string;
+  availableIssues?: number;
 }
 
 /** The shape of the GET /api/data response from the dashboard server. */
@@ -56,6 +61,7 @@ export interface DashboardData {
   allMergedPRs: MergedPR[];
   allClosedPRs: ClosedPR[];
   repoMetadata?: Record<string, RepoMetadataEntry>;
+  vettedIssues?: ParseIssueListOutput | null;
 }
 
 /** Actions a user can take from the dashboard. */

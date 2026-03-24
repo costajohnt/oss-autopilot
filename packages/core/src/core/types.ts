@@ -241,6 +241,8 @@ export interface ProjectHealth {
   stargazersCount?: number;
   /** GitHub fork count, used for repo quality scoring (#98). */
   forksCount?: number;
+  /** Primary programming language as reported by GitHub. */
+  language?: string | null;
   /** True if the health check itself failed (e.g., API error). */
   checkFailed?: boolean;
   failureReason?: string;

@@ -24,7 +24,8 @@ import {
   storedToClosedPRs,
   type DashboardStats,
 } from './dashboard-data.js';
-import { openInBrowser } from './startup.js';
+import { openInBrowser, detectIssueList } from './startup.js';
+import { parseIssueList, type ParseIssueListOutput } from './parse-list.js';
 import { writeDashboardServerInfo, removeDashboardServerInfo } from './dashboard-process.js';
 import { RateLimiter } from './rate-limiter.js';
 import {
@@ -77,6 +78,7 @@ interface DashboardJsonData {
   allMergedPRs: MergedPR[];
   allClosedPRs: ClosedPR[];
   repoMetadata: Record<string, RepoMetadataEntry>;
+  vettedIssues?: ParseIssueListOutput | null;
   offline?: boolean;
   lastUpdated?: string;
 }
@@ -109,6 +111,21 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+/**
+ * Read and parse the vetted issue list file (non-fatal on failure).
+ */
+function readVettedIssues(): ParseIssueListOutput | null {
+  try {
+    const info = detectIssueList();
+    if (!info) return null;
+    const content = fs.readFileSync(info.path, 'utf-8');
+    return parseIssueList(content);
+  } catch (error) {
+    warn(MODULE, `Failed to read vetted issue list: ${errorMessage(error)}`);
+    return null;
+  }
+}
 
 /**
  * Build the JSON payload that the SPA expects from GET /api/data.
@@ -147,6 +164,11 @@ function buildDashboardJson(
     }
   }
 
+  const vettedIssues = readVettedIssues();
+  if (vettedIssues) {
+    stats.availableIssues = vettedIssues.availableCount;
+  }
+
   return {
     stats,
     prsByRepo,
@@ -164,6 +186,7 @@ function buildDashboardJson(
     allMergedPRs: filteredMergedPRs,
     allClosedPRs: filteredClosedPRs,
     repoMetadata,
+    vettedIssues,
   };
 }
 
