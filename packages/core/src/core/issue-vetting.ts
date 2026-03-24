@@ -259,6 +259,18 @@ export class IssueVetter {
       searchPriority,
     };
 
+    // Persist repo metadata (stars, language) so the dashboard can display it (#839)
+    if (!projectHealth.checkFailed) {
+      try {
+        this.stateManager.updateRepoScore(repoFullName, {
+          stargazersCount: projectHealth.stargazersCount,
+          language: projectHealth.language,
+        });
+      } catch {
+        // Non-fatal — don't block vetting if metadata save fails
+      }
+    }
+
     // Cache the vetting result to avoid redundant API calls on repeated searches
     cache.set(cacheKey, '', result);
 
