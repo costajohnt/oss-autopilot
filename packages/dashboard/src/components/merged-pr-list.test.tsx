@@ -125,15 +125,76 @@ describe('MergedPRList', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} onBack={() => {}} />);
     const headers = container.querySelectorAll('.merged-table th');
     expect(headers).toHaveLength(4);
-    expect(headers[0].textContent).toBe('PR');
-    expect(headers[1].textContent).toBe('Stars');
-    expect(headers[2].textContent).toBe('Language');
-    expect(headers[3].textContent).toBe('Date Merged');
+    expect(headers[0].textContent).toContain('PR');
+    expect(headers[1].textContent).toContain('Stars');
+    expect(headers[2].textContent).toContain('Language');
+    expect(headers[3].textContent).toContain('Date Merged');
   });
 
   it('renders correct number of table rows', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} onBack={() => {}} />);
     const rows = container.querySelectorAll('.merged-table tbody tr');
     expect(rows).toHaveLength(2);
+  });
+
+  it('defaults to newest merge date first', () => {
+    const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
+    const links = container.querySelectorAll('.merged-table-pr-link');
+    expect(links[0].textContent).toBe('a/b#1'); // Jun 10
+    expect(links[1].textContent).toBe('c/d#2'); // Jun 9
+  });
+
+  it('sorts by stars descending on click', () => {
+    const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
+    const starsHeader = container.querySelectorAll('.sortable-th')[1];
+    fireEvent.click(starsHeader);
+    const links = container.querySelectorAll('.merged-table-pr-link');
+    expect(links[0].textContent).toBe('a/b#1'); // 5000 stars
+    expect(links[1].textContent).toBe('c/d#2'); // 200 stars
+  });
+
+  it('toggles sort direction on second click', () => {
+    const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
+    const starsHeader = container.querySelectorAll('.sortable-th')[1];
+    fireEvent.click(starsHeader); // desc
+    fireEvent.click(starsHeader); // asc
+    const links = container.querySelectorAll('.merged-table-pr-link');
+    expect(links[0].textContent).toBe('c/d#2'); // 200 stars (asc)
+    expect(links[1].textContent).toBe('a/b#1'); // 5000 stars
+  });
+
+  it('sorts by repo name ascending on click', () => {
+    const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
+    const prHeader = container.querySelectorAll('.sortable-th')[0];
+    fireEvent.click(prHeader);
+    const links = container.querySelectorAll('.merged-table-pr-link');
+    expect(links[0].textContent).toBe('a/b#1');
+    expect(links[1].textContent).toBe('c/d#2');
+  });
+
+  it('sorts by language alphabetically on click', () => {
+    const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
+    const langHeader = container.querySelectorAll('.sortable-th')[2];
+    fireEvent.click(langHeader);
+    const links = container.querySelectorAll('.merged-table-pr-link');
+    // Python < TypeScript alphabetically
+    expect(links[0].textContent).toBe('c/d#2'); // Python
+    expect(links[1].textContent).toBe('a/b#1'); // TypeScript
+  });
+
+  it('shows sort arrow on active column', () => {
+    const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
+    const arrow = container.querySelector('.sort-arrow');
+    expect(arrow).toBeTruthy();
+    expect(arrow?.textContent).toBe('\u25BC'); // ▼ desc
+  });
+
+  it('handles sorting without repoMetadata', () => {
+    const { container } = render(<MergedPRList mergedPRs={prs} onBack={() => {}} />);
+    const starsHeader = container.querySelectorAll('.sortable-th')[1];
+    fireEvent.click(starsHeader);
+    // Should not crash — all stars default to 0
+    const links = container.querySelectorAll('.merged-table-pr-link');
+    expect(links).toHaveLength(2);
   });
 });
