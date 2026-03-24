@@ -70,7 +70,7 @@ export { runCheckSetup } from './setup.js';
 // ── Utilities ───────────────────────────────────────────────────────────────
 
 /** Parse a curated markdown issue list file into structured issue items. */
-export { runParseList } from './parse-list.js';
+export { runParseList, pruneIssueList } from './parse-list.js';
 /** Check if new files are properly referenced/integrated. */
 export { runCheckIntegration } from './check-integration.js';
 /** Detect formatters/linters configured in a local repository (#703). */

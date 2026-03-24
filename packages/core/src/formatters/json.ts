@@ -378,6 +378,9 @@ export interface VetListOutput {
     hasPR: number;
     errors: number;
   };
+  pruneResult?: {
+    removedCount: number;
+  };
 }
 
 /** Output of the vet command */

@@ -214,6 +214,7 @@ export const commands: CLICommandDef[] = [
         .description('Re-vet all available issues in your curated issue list (#764)')
         .option('--path <file>', 'Path to issue list file (auto-detected if not specified)')
         .option('--concurrency <n>', 'Max parallel vet operations (default: 5)')
+        .option('--prune', 'After vetting, remove completed/skipped/low-score items from the file')
         .option('--json', 'Output as JSON')
         .action(async (options) => {
           try {
@@ -222,7 +223,7 @@ export const commands: CLICommandDef[] = [
             if (concurrency !== undefined && (!Number.isFinite(concurrency) || concurrency < 1)) {
               throw new Error(`Invalid concurrency "${options.concurrency}". Must be a positive integer.`);
             }
-            const data = await runVetList({ issueListPath: options.path, concurrency });
+            const data = await runVetList({ issueListPath: options.path, concurrency, prune: options.prune });
             if (options.json) {
               outputJson(data);
             } else {
@@ -246,6 +247,9 @@ export const commands: CLICommandDef[] = [
                 if (result.errorMessage) {
                   console.log(`   Error: ${result.errorMessage}`);
                 }
+              }
+              if (data.pruneResult) {
+                console.log(`\nPruned ${data.pruneResult.removedCount} items from issue list.`);
               }
             }
           } catch (err) {

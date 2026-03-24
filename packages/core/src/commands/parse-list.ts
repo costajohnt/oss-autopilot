@@ -63,6 +63,13 @@ function extractScore(line: string): number | undefined {
   return match ? parseFloat(match[1]) : undefined;
 }
 
+/** Check if a sub-bullet indicates the item is no longer actionable */
+function isSubBulletTerminal(line: string): boolean {
+  // Bold status markers: **Skip**, **Done**, **Dropped**
+  if (/\*\*(Skip|Done|Dropped)\*\*/i.test(line)) return true;
+  return false;
+}
+
 /** Parse a markdown string into structured issue items */
 export function parseIssueList(content: string): ParseIssueListOutput {
   const lines = content.split('\n');
@@ -70,6 +77,8 @@ export function parseIssueList(content: string): ParseIssueListOutput {
   const completed: ParsedIssueItem[] = [];
   let currentTier = 'Uncategorized';
   let lastItem: ParsedIssueItem | null = null;
+  // Track which array the last item was placed in so sub-bullets can move it
+  let lastItemInAvailable = false;
 
   for (const line of lines) {
     // Check for section headings (# or ##)
@@ -88,11 +97,21 @@ export function parseIssueList(content: string): ParseIssueListOutput {
     // Extract GitHub URL -- skip lines without one
     const ghUrl = extractGitHubUrl(line);
     if (!ghUrl) {
-      // No URL — check if this is a sub-bullet with a score for the previous item
+      // No URL — check if this is a sub-bullet for the previous item
       if (lastItem && /^\s{2,}/.test(line)) {
         const score = extractScore(line);
         if (score !== undefined) {
           lastItem.score = score;
+        }
+        // Check if sub-bullet marks item as terminal (Skip/Done/Dropped)
+        if (lastItemInAvailable && isSubBulletTerminal(line)) {
+          // Move from available to completed
+          const idx = available.indexOf(lastItem);
+          if (idx !== -1) {
+            available.splice(idx, 1);
+            completed.push(lastItem);
+            lastItemInAvailable = false;
+          }
         }
       }
       continue;
@@ -109,8 +128,10 @@ export function parseIssueList(content: string): ParseIssueListOutput {
 
     if (isCompleted(line)) {
       completed.push(item);
+      lastItemInAvailable = false;
     } else {
       available.push(item);
+      lastItemInAvailable = true;
     }
     lastItem = item;
   }
@@ -121,6 +142,100 @@ export function parseIssueList(content: string): ParseIssueListOutput {
     availableCount: available.length,
     completedCount: completed.length,
   };
+}
+
+/**
+ * Prune a markdown issue list: remove completed, skipped, and low-score items.
+ * Rewrites the file in place, removing:
+ * - Items with strikethrough, [x], Done, Skip, or Dropped status
+ * - Items with score < minScore
+ * - Empty section headings left after removal
+ * - Sub-bullets belonging to removed items
+ *
+ * @returns Count of items removed
+ */
+export function pruneIssueList(content: string, minScore: number = 6): { pruned: string; removedCount: number } {
+  const lines = content.split('\n');
+  const output: string[] = [];
+  let removedCount = 0;
+  let skipSubBullets = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Always keep headings (we'll clean empty ones in a second pass)
+    if (/^#{1,3}\s+/.test(line)) {
+      skipSubBullets = false;
+      output.push(line);
+      continue;
+    }
+
+    // Sub-bullet of a removed item — skip it
+    if (skipSubBullets && /^\s{2,}/.test(line)) {
+      continue;
+    }
+    skipSubBullets = false;
+
+    // Check if this is a list item with a GitHub URL
+    const ghUrl = extractGitHubUrl(line);
+    if (ghUrl) {
+      // Check if item itself is completed (strikethrough, checkbox, done)
+      if (isCompleted(line)) {
+        removedCount++;
+        skipSubBullets = true;
+        continue;
+      }
+
+      // Look ahead at sub-bullets for terminal status or low score
+      let shouldRemove = false;
+      let j = i + 1;
+      while (j < lines.length && /^\s{2,}/.test(lines[j])) {
+        if (isSubBulletTerminal(lines[j])) {
+          shouldRemove = true;
+        }
+        const score = extractScore(lines[j]);
+        if (score !== undefined && score < minScore) {
+          shouldRemove = true;
+        }
+        j++;
+      }
+
+      if (shouldRemove) {
+        removedCount++;
+        skipSubBullets = true;
+        continue;
+      }
+    }
+
+    // Non-list lines, metadata, and surviving items — keep
+    output.push(line);
+  }
+
+  // Second pass: remove empty section headings (heading followed by another heading or end of file)
+  const cleaned: string[] = [];
+  for (let i = 0; i < output.length; i++) {
+    const isHeading = /^#{1,3}\s+/.test(output[i]);
+    if (isHeading) {
+      // Check if next non-empty line is another heading or end of content
+      let nextContentIdx = i + 1;
+      while (nextContentIdx < output.length && output[nextContentIdx].trim() === '') {
+        nextContentIdx++;
+      }
+      const nextIsHeadingOrEnd = nextContentIdx >= output.length || /^#{1,3}\s+/.test(output[nextContentIdx]);
+      if (nextIsHeadingOrEnd) {
+        // Skip this empty heading and any blank lines after it
+        continue;
+      }
+    }
+    cleaned.push(output[i]);
+  }
+
+  // Remove trailing blank lines
+  while (cleaned.length > 0 && cleaned[cleaned.length - 1].trim() === '') {
+    cleaned.pop();
+  }
+
+  return { pruned: cleaned.join('\n') + '\n', removedCount };
 }
 
 export async function runParseList(options: ParseListOptions): Promise<ParseIssueListOutput> {

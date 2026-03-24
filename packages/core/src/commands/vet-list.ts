@@ -10,6 +10,7 @@ import { detectIssueList } from './startup.js';
 interface VetListOptions {
   issueListPath?: string;
   concurrency?: number;
+  prune?: boolean;
 }
 
 /**
@@ -127,5 +128,18 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     errors: results.filter((r) => r.listStatus === 'error').length,
   };
 
-  return { results, summary };
+  // 4. Prune the file if requested — remove completed/skipped/low-score items
+  let pruneResult: { removedCount: number } | undefined;
+  if (options.prune && issueListPath) {
+    const fs = await import('fs');
+    const { pruneIssueList } = await import('./parse-list.js');
+    const content = fs.readFileSync(issueListPath, 'utf-8');
+    const { pruned, removedCount } = pruneIssueList(content);
+    if (removedCount > 0) {
+      fs.writeFileSync(issueListPath, pruned, 'utf-8');
+    }
+    pruneResult = { removedCount };
+  }
+
+  return { results, summary, pruneResult };
 }
