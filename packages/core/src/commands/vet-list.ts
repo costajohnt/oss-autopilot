@@ -3,8 +3,10 @@
  * Re-vets all available issues in a curated issue list file.
  */
 
+import * as fs from 'fs';
 import { IssueDiscovery, requireGitHubToken } from '../core/index.js';
 import { type VetListOutput, type VetOutput, type VetListItemStatus } from '../formatters/json.js';
+import { runParseList, pruneIssueList } from './parse-list.js';
 import { detectIssueList } from './startup.js';
 
 interface VetListOptions {
@@ -56,7 +58,6 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     issueListPath = detected.path;
   }
 
-  const { runParseList } = await import('./parse-list.js');
   const parsed = await runParseList({ filePath: issueListPath });
 
   if (parsed.available.length === 0) {
@@ -131,14 +132,17 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   // 4. Prune the file if requested — remove completed/skipped/low-score items
   let pruneResult: { removedCount: number } | undefined;
   if (options.prune && issueListPath) {
-    const fs = await import('fs');
-    const { pruneIssueList } = await import('./parse-list.js');
-    const content = fs.readFileSync(issueListPath, 'utf-8');
-    const { pruned, removedCount } = pruneIssueList(content);
-    if (pruned !== content) {
-      fs.writeFileSync(issueListPath, pruned, 'utf-8');
+    try {
+      const content = fs.readFileSync(issueListPath, 'utf-8');
+      const { pruned, removedCount } = pruneIssueList(content);
+      if (pruned !== content) {
+        fs.writeFileSync(issueListPath, pruned, 'utf-8');
+      }
+      pruneResult = { removedCount };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`Warning: Failed to prune ${issueListPath}: ${msg}`);
     }
-    pruneResult = { removedCount };
   }
 
   return { results, summary, pruneResult };

@@ -63,11 +63,14 @@ function extractScore(line: string): number | undefined {
   return match ? parseFloat(match[1]) : undefined;
 }
 
-/** Check if a sub-bullet indicates the item is no longer actionable */
+/** Check if a sub-bullet indicates the item is terminal (completed/abandoned — safe to prune) */
 function isSubBulletTerminal(line: string): boolean {
-  // Bold status markers: **Skip**, **Done**, **Dropped**
-  if (/\*\*(Skip|Done|Dropped|Merged|Closed|In Progress|Wait|Waiting)\*\*/i.test(line)) return true;
-  return false;
+  return /\*\*(Skip|Done|Dropped|Merged|Closed)\*\*/i.test(line);
+}
+
+/** Check if a sub-bullet indicates the item is in-progress (not available, but NOT safe to prune) */
+function isSubBulletInProgress(line: string): boolean {
+  return /\*\*(In Progress|Wait|Waiting)\*\*/i.test(line);
 }
 
 /** Parse a markdown string into structured issue items */
@@ -103,8 +106,8 @@ export function parseIssueList(content: string): ParseIssueListOutput {
         if (score !== undefined) {
           lastItem.score = score;
         }
-        // Check if sub-bullet marks item as terminal (Skip/Done/Dropped)
-        if (lastItemInAvailable && isSubBulletTerminal(line)) {
+        // Check if sub-bullet marks item as terminal or in-progress
+        if (lastItemInAvailable && (isSubBulletTerminal(line) || isSubBulletInProgress(line))) {
           // Move from available to completed
           const idx = available.indexOf(lastItem);
           if (idx !== -1) {

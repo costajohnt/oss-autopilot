@@ -121,7 +121,8 @@ function readVettedIssues(): ParseIssueListOutput | null {
     if (!info) return null;
     const content = fs.readFileSync(info.path, 'utf-8');
     return parseIssueList(content);
-  } catch {
+  } catch (error) {
+    warn(MODULE, `Failed to read vetted issue list: ${errorMessage(error)}`);
     return null;
   }
 }

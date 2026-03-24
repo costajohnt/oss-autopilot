@@ -266,8 +266,8 @@ export class IssueVetter {
           stargazersCount: projectHealth.stargazersCount,
           language: projectHealth.language,
         });
-      } catch {
-        // Non-fatal — don't block vetting if metadata save fails
+      } catch (error) {
+        warn(MODULE, `Failed to persist repo metadata for ${repoFullName}: ${errorMessage(error)}`);
       }
     }
 

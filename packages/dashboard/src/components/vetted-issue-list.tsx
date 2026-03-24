@@ -8,6 +8,13 @@ interface VettedIssueListProps {
   onBack: () => void;
 }
 
+/** Return the CSS modifier class for a vetting score. */
+function scoreColorClass(score: number): string {
+  if (score >= 8) return 'vetted-score--high';
+  if (score >= 6) return 'vetted-score--mid';
+  return '';
+}
+
 /** Extract stars and language from tier heading text as fallback when repoMetadata is missing */
 function parseTierMeta(tier: string): { stars?: number; language?: string } {
   // Stars: (17.7k★) or (14k★) or (30k★) or (625★)
@@ -28,10 +35,7 @@ export function VettedIssueList({ vettedIssues, repoMetadata, onBack }: VettedIs
 
   const items = useMemo(() => {
     // Filter out items with score < 6, then sort by score descending
-    const filtered = vettedIssues.available.filter((item) => {
-      if (item.score !== undefined && item.score < 6) return false;
-      return true;
-    });
+    const filtered = vettedIssues.available.filter((item) => item.score === undefined || item.score >= 6);
     return filtered.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   }, [vettedIssues.available]);
 
@@ -114,11 +118,7 @@ export function VettedIssueList({ vettedIssues, repoMetadata, onBack }: VettedIs
                   </td>
                   <td class="vetted-col-score">
                     {item.score != null ? (
-                      <span
-                        class={`vetted-score ${item.score >= 8 ? 'vetted-score--high' : item.score >= 6 ? 'vetted-score--mid' : ''}`}
-                      >
-                        {item.score}/10
-                      </span>
+                      <span class={`vetted-score ${scoreColorClass(item.score)}`}>{item.score}/10</span>
                     ) : (
                       <span class="vetted-score">{'\u2014'}</span>
                     )}
