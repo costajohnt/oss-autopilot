@@ -1651,6 +1651,23 @@ a:hover {
   white-space: nowrap;
 }
 
+/* === Sortable Table Headers === */
+
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.sortable-th:hover {
+  color: var(--text-primary);
+}
+
+.sort-arrow {
+  margin-left: 4px;
+  font-size: 0.625rem;
+}
+
 /* === Theme Toggle === */
 
 .theme-toggle {
