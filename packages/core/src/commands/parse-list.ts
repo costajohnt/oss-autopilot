@@ -66,7 +66,7 @@ function extractScore(line: string): number | undefined {
 /** Check if a sub-bullet indicates the item is no longer actionable */
 function isSubBulletTerminal(line: string): boolean {
   // Bold status markers: **Skip**, **Done**, **Dropped**
-  if (/\*\*(Skip|Done|Dropped)\*\*/i.test(line)) return true;
+  if (/\*\*(Skip|Done|Dropped|Merged|Closed|In Progress|Wait|Waiting)\*\*/i.test(line)) return true;
   return false;
 }
 
@@ -176,16 +176,18 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
     }
     skipSubBullets = false;
 
-    // Check if this is a list item with a GitHub URL
+    // Check if this is a list item
+    const isList = /^\s*[-*+]\s/.test(line);
+
+    // Remove any completed list item (even without a GitHub URL)
+    if (isList && isCompleted(line)) {
+      removedCount++;
+      skipSubBullets = true;
+      continue;
+    }
+
     const ghUrl = extractGitHubUrl(line);
     if (ghUrl) {
-      // Check if item itself is completed (strikethrough, checkbox, done)
-      if (isCompleted(line)) {
-        removedCount++;
-        skipSubBullets = true;
-        continue;
-      }
-
       // Look ahead at sub-bullets for terminal status or low score
       let shouldRemove = false;
       let j = i + 1;
