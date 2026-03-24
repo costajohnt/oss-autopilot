@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3](https://github.com/costajohnt/oss-autopilot/compare/core-v1.6.2...core-v1.6.3) (2026-03-24)
+
+
+### Bug Fixes
+
+* **mcp-server:** republish with resolved workspace dependency ([#835](https://github.com/costajohnt/oss-autopilot/issues/835)) ([d4e7ee2](https://github.com/costajohnt/oss-autopilot/commit/d4e7ee2239fb795f9db639fd32163755ab3f8462))
+
 ## [1.6.2](https://github.com/costajohnt/oss-autopilot/compare/core-v1.6.1...core-v1.6.2) (2026-03-23)
 
 
