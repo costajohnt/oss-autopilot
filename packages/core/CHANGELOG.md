@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.6.3...core-v1.7.0) (2026-03-24)
+
+
+### Features
+
+* **dashboard:** add sortable columns to Merged PRs page ([#761](https://github.com/costajohnt/oss-autopilot/issues/761)) ([#841](https://github.com/costajohnt/oss-autopilot/issues/841)) ([e9f00b3](https://github.com/costajohnt/oss-autopilot/commit/e9f00b3f2acfad945986d2ee4f5a6c574e247a5d))
+* **dashboard:** display vetted issue list ([#815](https://github.com/costajohnt/oss-autopilot/issues/815)) ([#838](https://github.com/costajohnt/oss-autopilot/issues/838)) ([54ae43b](https://github.com/costajohnt/oss-autopilot/commit/54ae43b527fce702e89b4b345557af1e28fded7e))
+
 ## [1.6.3](https://github.com/costajohnt/oss-autopilot/compare/core-v1.6.2...core-v1.6.3) (2026-03-24)
 
 
