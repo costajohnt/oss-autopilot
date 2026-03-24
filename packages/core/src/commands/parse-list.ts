@@ -57,18 +57,26 @@ function isCompleted(line: string): boolean {
   return false;
 }
 
+/** Extract a score from a sub-bullet line (e.g., "Score 8/10" or "Score 7.5/10") */
+function extractScore(line: string): number | undefined {
+  const match = line.match(/Score\s+(\d+(?:\.\d+)?)\/10/i);
+  return match ? parseFloat(match[1]) : undefined;
+}
+
 /** Parse a markdown string into structured issue items */
 export function parseIssueList(content: string): ParseIssueListOutput {
   const lines = content.split('\n');
   const available: ParsedIssueItem[] = [];
   const completed: ParsedIssueItem[] = [];
   let currentTier = 'Uncategorized';
+  let lastItem: ParsedIssueItem | null = null;
 
   for (const line of lines) {
     // Check for section headings (# or ##)
     const headingMatch = line.match(/^#{1,3}\s+(.+)/);
     if (headingMatch) {
       currentTier = headingMatch[1].trim();
+      lastItem = null;
       continue;
     }
 
@@ -79,7 +87,16 @@ export function parseIssueList(content: string): ParseIssueListOutput {
 
     // Extract GitHub URL -- skip lines without one
     const ghUrl = extractGitHubUrl(line);
-    if (!ghUrl) continue;
+    if (!ghUrl) {
+      // No URL — check if this is a sub-bullet with a score for the previous item
+      if (lastItem && /^\s{2,}/.test(line)) {
+        const score = extractScore(line);
+        if (score !== undefined) {
+          lastItem.score = score;
+        }
+      }
+      continue;
+    }
 
     const title = extractTitle(line);
     const item: ParsedIssueItem = {
@@ -95,6 +112,7 @@ export function parseIssueList(content: string): ParseIssueListOutput {
     } else {
       available.push(item);
     }
+    lastItem = item;
   }
 
   return {

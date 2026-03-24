@@ -29,6 +29,7 @@ export interface DashboardStats {
   mergedPRs: number;
   closedPRs: number;
   mergeRate: string;
+  availableIssues?: number;
 }
 
 export function buildDashboardStats(

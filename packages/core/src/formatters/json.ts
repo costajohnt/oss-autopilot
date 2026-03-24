@@ -334,6 +334,7 @@ export interface ParsedIssueItem {
   title: string;
   tier: string;
   url: string;
+  score?: number;
 }
 
 /** Output of the parse-issue-list command (#82) */

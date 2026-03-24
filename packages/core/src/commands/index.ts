@@ -87,6 +87,7 @@ export type {
   ConfigOutput,
   DetectFormattersOutput,
   ParseIssueListOutput,
+  ParsedIssueItem,
   CheckIntegrationOutput,
   LocalReposOutput,
 } from '../formatters/json.js';

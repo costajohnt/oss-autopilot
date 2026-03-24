@@ -12,11 +12,13 @@
   --red: #fb7185;
   --blue: #60a5fa;
   --amber: #fbbf24;
+  --teal: #2dd4bf;
   --green-dim: rgba(74, 222, 128, 0.1);
   --purple-dim: rgba(192, 132, 252, 0.1);
   --red-dim: rgba(251, 113, 133, 0.1);
   --blue-dim: rgba(96, 165, 250, 0.08);
   --amber-dim: rgba(251, 191, 36, 0.1);
+  --teal-dim: rgba(45, 212, 191, 0.1);
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
@@ -78,11 +80,13 @@
   --red: #dc2626;
   --blue: #2563eb;
   --amber: #d97706;
+  --teal: #0d9488;
   --green-dim: rgba(22, 163, 74, 0.1);
   --purple-dim: rgba(147, 51, 234, 0.1);
   --red-dim: rgba(220, 38, 38, 0.1);
   --blue-dim: rgba(37, 99, 235, 0.08);
   --amber-dim: rgba(217, 119, 6, 0.1);
+  --teal-dim: rgba(13, 148, 136, 0.1);
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #94a3b8;
@@ -472,7 +476,7 @@ a:hover {
 
 .stats-bar {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: var(--sp-4);
 }
 
@@ -542,6 +546,12 @@ a:hover {
 .stat-card.amber::before {
   background: linear-gradient(135deg, var(--amber), transparent 60%);
 }
+.stat-card.teal {
+  border-left-color: var(--teal);
+}
+.stat-card.teal::before {
+  background: linear-gradient(135deg, var(--teal), transparent 60%);
+}
 
 .stat-card.green .stat-value {
   color: var(--green);
@@ -557,6 +567,9 @@ a:hover {
 }
 .stat-card.amber .stat-value {
   color: var(--amber);
+}
+.stat-card.teal .stat-value {
+  color: var(--teal);
 }
 
 .stat-value {
@@ -1477,6 +1490,9 @@ a:hover {
 .stat-card--clickable.red:hover {
   border-color: var(--red);
 }
+.stat-card--clickable.teal:hover {
+  border-color: var(--teal);
+}
 
 .stat-card--clickable:focus-visible {
   outline-offset: 2px;
@@ -1486,6 +1502,9 @@ a:hover {
 }
 .stat-card--clickable.red:focus-visible {
   outline: 2px solid var(--red);
+}
+.stat-card--clickable.teal:focus-visible {
+  outline: 2px solid var(--teal);
 }
 
 /* === Merged PR Detail View === */
@@ -1687,6 +1706,53 @@ a:hover {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
+}
+
+/* === Vetted Issue List === */
+
+.vetted-search-bar {
+  margin-bottom: var(--sp-4);
+}
+
+.vetted-search-input {
+  width: 100%;
+  max-width: 320px;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.vetted-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.vetted-search-input:focus {
+  border-color: var(--teal);
+}
+
+.vetted-col-score {
+  width: 70px;
+  text-align: center;
+}
+
+.vetted-score {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.vetted-score--high {
+  color: var(--green);
+}
+
+.vetted-score--mid {
+  color: var(--amber);
 }
 
 /* === Responsive === */

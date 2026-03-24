@@ -11,6 +11,7 @@ import { IssueList } from './components/issue-list';
 import { RecentActivity } from './components/recent-activity';
 import { MergedPRList } from './components/merged-pr-list';
 import { ClosedPRList } from './components/closed-pr-list';
+import { VettedIssueList } from './components/vetted-issue-list';
 import { SkeletonLoader } from './components/skeleton-loader';
 import { ThemeToggle } from './components/theme-toggle';
 import { formatRelativeTime, refreshLabel } from './utils';
@@ -158,6 +159,44 @@ function AppContent() {
     );
   }
 
+  // Route: /issues — show vetted issue list
+  if (path === '/issues') {
+    return (
+      <div class="dashboard">
+        <DashboardHeader
+          stats={data.stats}
+          loading={loading}
+          refreshing={refreshing}
+          lastUpdated={lastUpdated}
+          onRefresh={refresh}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        />
+        {data.vettedIssues ? (
+          <VettedIssueList
+            vettedIssues={data.vettedIssues}
+            repoMetadata={data.repoMetadata}
+            onBack={() => route('/')}
+          />
+        ) : (
+          <div class="merged-view merged-view--full-width">
+            <div class="merged-view-header">
+              <button class="merged-view-back" onClick={() => route('/')} type="button">
+                &larr; Back
+              </button>
+              <div>
+                <h2 class="merged-view-title">Vetted Issues</h2>
+              </div>
+            </div>
+            <div class="merged-view-empty">
+              No vetted issue list found. Configure one via /setup-oss or create a potential-issue-list.md file.
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // Default route: dashboard home
   const repos = [...new Set(data.activePRs.map((pr) => pr.repo))].sort();
   const statuses = [...new Set(data.activePRs.map((pr) => pr.status))].sort();
@@ -198,7 +237,12 @@ function AppContent() {
 
       <main class="dashboard-main">
         <div class="animate-in delay-1">
-          <StatsBar stats={data.stats} onMergedClick={() => route('/merged')} onClosedClick={() => route('/closed')} />
+          <StatsBar
+            stats={data.stats}
+            onMergedClick={() => route('/merged')}
+            onClosedClick={() => route('/closed')}
+            onIssuesClick={() => route('/issues')}
+          />
         </div>
         <div class="animate-in delay-2">
           <FilterBar
