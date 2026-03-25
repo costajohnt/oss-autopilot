@@ -270,6 +270,15 @@ describe('App', () => {
     });
   });
 
+  it('renders a skip-to-main link', async () => {
+    mockFetchOk(makeDashboardData());
+    const { container } = render(<App />);
+    await waitFor(() => {
+      expect(container.querySelector('.skip-link')).toBeTruthy();
+    });
+    expect(container.querySelector('.skip-link')?.getAttribute('href')).toBe('#main-content');
+  });
+
   it('shows error banner with dismiss button when error coexists with data', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
 

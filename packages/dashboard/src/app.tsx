@@ -235,7 +235,7 @@ function AppContent() {
         </div>
       )}
 
-      <main class="dashboard-main">
+      <main id="main-content" class="dashboard-main">
         <div class="animate-in delay-1">
           <StatsBar
             stats={data.stats}
@@ -296,6 +296,9 @@ function AppContent() {
 export function App() {
   return (
     <LocationProvider>
+      <a class="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <AppContent />
     </LocationProvider>
   );
