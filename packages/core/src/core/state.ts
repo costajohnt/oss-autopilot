@@ -111,6 +111,9 @@ export class StateManager {
 
     const manager = new StateManager(true); // start in-memory
     manager.state = result.state;
+    if (result.gistId) {
+      manager.state.gistId = result.gistId;
+    }
     manager.gistStore = gistStore;
     manager.gistDegraded = result.degraded ?? false;
     manager.inMemoryOnly = false; // re-enable persistence
