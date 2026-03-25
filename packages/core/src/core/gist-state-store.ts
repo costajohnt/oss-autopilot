@@ -18,7 +18,7 @@
 import * as fs from 'fs';
 import { AgentState } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
-import { createFreshState } from './state-persistence.js';
+import { atomicWriteFileSync, createFreshState, migrateV1ToV2, migrateV2ToV3 } from './state-persistence.js';
 import { getGistIdPath, getStateCachePath } from './utils.js';
 import { debug, warn } from './logger.js';
 
@@ -36,6 +36,7 @@ export interface BootstrapResult {
   state: AgentState;
   created: boolean;
   /** True when state was loaded from local cache due to API failure. */
+  // degraded path implemented in Task 4
   degraded?: boolean;
 }
 
@@ -95,6 +96,7 @@ export class GistStateStore {
     if (localId) {
       debug(MODULE, `Found local Gist ID: ${localId}`);
       try {
+        this.gistId = localId;
         const state = await this.fetchAndCache(localId);
         return { gistId: localId, state, created: false };
       } catch (err) {
@@ -107,6 +109,7 @@ export class GistStateStore {
     const foundId = await this.searchForGist();
     if (foundId) {
       debug(MODULE, `Found Gist via search: ${foundId}`);
+      this.gistId = foundId;
       this.writeLocalGistId(foundId);
       const state = await this.fetchAndCache(foundId);
       return { gistId: foundId, state, created: false };
@@ -164,26 +167,16 @@ export class GistStateStore {
     }
 
     try {
-      let parsed: unknown = JSON.parse(raw);
+      let obj: unknown = JSON.parse(raw);
 
-      // Migrate v2 states to v3 inline
-      if (typeof parsed === 'object' && parsed !== null) {
-        const obj = parsed as Record<string, unknown>;
-        if (obj.version === 2) {
-          debug(MODULE, 'Migrating Gist state from v2 to v3');
-          delete obj.events;
-          delete obj.dailyActivityCounts;
-          const config = obj.config as Record<string, unknown> | undefined;
-          if (config) {
-            delete config.showHealthCheck;
-            delete config.scoreThreshold;
-          }
-          obj.version = 3;
-          parsed = obj;
-        }
+      // Chain migrations using shared helpers from state-persistence
+      if (typeof obj === 'object' && obj !== null) {
+        const record = obj as Record<string, unknown>;
+        if (record.version === 1) obj = migrateV1ToV2(record);
+        if ((obj as Record<string, unknown>).version === 2) obj = migrateV2ToV3(obj as Record<string, unknown>);
       }
 
-      return AgentStateSchema.parse(parsed);
+      return AgentStateSchema.parse(obj);
     } catch (err) {
       warn(MODULE, `Failed to parse state.json from Gist: ${err}`);
       return createFreshState();
@@ -195,15 +188,19 @@ export class GistStateStore {
    * Pages through up to 10 pages (100 Gists per page) to find it.
    */
   private async searchForGist(): Promise<string | null> {
-    const maxPages = 10;
-    for (let page = 1; page <= maxPages; page++) {
-      const { data: gists } = await this.octokit.gists.list({ per_page: 100, page });
-      if (gists.length === 0) break;
+    try {
+      const maxPages = 10;
+      for (let page = 1; page <= maxPages; page++) {
+        const { data: gists } = await this.octokit.gists.list({ per_page: 100, page });
+        if (gists.length === 0) break;
 
-      const match = gists.find((g) => g.description === GIST_DESCRIPTION);
-      if (match) {
-        return match.id;
+        const match = gists.find((g) => g.description === GIST_DESCRIPTION);
+        if (match) {
+          return match.id;
+        }
       }
+    } catch (err) {
+      warn(MODULE, 'Failed to search Gists by description', err);
     }
     return null;
   }
@@ -257,7 +254,7 @@ export class GistStateStore {
   private writeLocalGistId(gistId: string): void {
     try {
       const gistIdPath = getGistIdPath();
-      fs.writeFileSync(gistIdPath, gistId, { mode: 0o600 });
+      atomicWriteFileSync(gistIdPath, gistId, 0o600);
       debug(MODULE, `Wrote Gist ID to ${gistIdPath}`);
     } catch (err) {
       warn(MODULE, `Failed to write local Gist ID file: ${err}`);
@@ -268,7 +265,7 @@ export class GistStateStore {
   private writeLocalStateCache(state: AgentState): void {
     try {
       const cachePath = getStateCachePath();
-      fs.writeFileSync(cachePath, JSON.stringify(state, null, 2), { mode: 0o600 });
+      atomicWriteFileSync(cachePath, JSON.stringify(state, null, 2), 0o600);
       debug(MODULE, `Wrote state cache to ${cachePath}`);
     } catch (err) {
       warn(MODULE, `Failed to write local state cache: ${err}`);
