@@ -17,17 +17,6 @@ function parsePositiveInt(value: string, settingName: string): number {
   return parsed;
 }
 
-/** Parse and validate an integer within a specific range [min, max]. */
-function parseBoundedInt(value: string, settingName: string, min: number, max: number): number {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
-    throw new ValidationError(
-      `Invalid value for ${settingName}: "${value}". Must be an integer between ${min} and ${max}.`,
-    );
-  }
-  return parsed;
-}
-
 interface SetupOptions {
   reset?: boolean;
   set?: string[];

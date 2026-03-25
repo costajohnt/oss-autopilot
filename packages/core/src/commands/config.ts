@@ -4,7 +4,6 @@
  */
 
 import { getStateManager } from '../core/index.js';
-import { ValidationError } from '../core/errors.js';
 import { ISSUE_SCOPES, type IssueScope } from '../core/types.js';
 import type { ConfigOutput } from '../formatters/json.js';
 import { validateGitHubUsername } from './validation.js';
