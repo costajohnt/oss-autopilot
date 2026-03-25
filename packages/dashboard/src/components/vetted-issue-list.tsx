@@ -64,6 +64,7 @@ export function VettedIssueList({ vettedIssues, repoMetadata, onBack }: VettedIs
         <input
           class="vetted-search-input"
           type="text"
+          aria-label="Search issues"
           placeholder="Search issues..."
           value={search}
           onInput={(e) => setSearch((e.target as HTMLInputElement).value)}

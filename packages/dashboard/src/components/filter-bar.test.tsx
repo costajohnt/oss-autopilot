@@ -58,6 +58,15 @@ describe('FilterBar', () => {
     expect(onFilterChange).toHaveBeenCalledWith({ ...defaultFilters, status: 'needs_addressing' });
   });
 
+  it('renders aria-labels on filter controls', () => {
+    const { container } = renderFilterBar();
+    const selects = container.querySelectorAll('select');
+    expect(selects[0]?.getAttribute('aria-label')).toBe('Filter by status');
+    expect(selects[1]?.getAttribute('aria-label')).toBe('Filter by repository');
+    const input = container.querySelector('input');
+    expect(input?.getAttribute('aria-label')).toBe('Search PRs');
+  });
+
   it('calls onFilterChange when search input changes', () => {
     const { container, onFilterChange } = renderFilterBar();
 
