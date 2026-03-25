@@ -885,6 +885,28 @@ describe('GistStateStore', () => {
       expect(octokit.gists.create).not.toHaveBeenCalled();
     });
 
+    it('returns existingState with degraded: true when all API calls fail and no local cache exists', async () => {
+      const existingState = createFreshState();
+      existingState.config.githubUsername = 'migrated-user';
+
+      // No local gist-id file, no local cache file
+      // All Octokit methods reject
+      octokit.gists.get.mockRejectedValue(new Error('Network error'));
+      octokit.gists.list.mockRejectedValue(new Error('Network error'));
+      octokit.gists.create.mockRejectedValue(new Error('Network error'));
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrapWithMigration(existingState);
+
+      // Should return the provided existingState (not a fresh state)
+      expect(result.state.config.githubUsername).toBe('migrated-user');
+      // Should be in degraded mode
+      expect(result.degraded).toBe(true);
+      expect(result.gistId).toBe('');
+      expect(result.created).toBe(false);
+      expect(result.migrated).toBe(false);
+    });
+
     it('returns migrated: true for new migration, false when existing Gist found', async () => {
       const localState = createFreshState();
 

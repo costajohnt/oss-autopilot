@@ -750,7 +750,10 @@ export async function getStateManagerAsync(token?: string): Promise<StateManager
       })
       .catch((err) => {
         asyncManagerPromise = null;
-        warn(MODULE, `Gist initialization failed, falling back to local: ${err}`);
+        warn(
+          MODULE,
+          `Unhandled Gist initialization error, falling back to local-only mode (not a normal degraded bootstrap): ${err}`,
+        );
         return getStateManager(); // fall back to sync/local
       });
     return asyncManagerPromise;
