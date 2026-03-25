@@ -4,6 +4,7 @@
  * and scoring logic to repo-score-manager.ts.
  */
 
+import * as fs from 'fs';
 import {
   AgentState,
   TrackedIssue,
@@ -16,11 +17,19 @@ import {
   StoredMergedPR,
   StoredClosedPR,
 } from './types.js';
-import { loadState, saveState, reloadStateIfChanged, createFreshState } from './state-persistence.js';
+import {
+  loadState,
+  saveState,
+  reloadStateIfChanged,
+  createFreshState,
+  atomicWriteFileSync,
+} from './state-persistence.js';
 import * as repoScoring from './repo-score-manager.js';
 import type { Stats } from './repo-score-manager.js';
 import { debug, warn } from './logger.js';
 import { errorMessage } from './errors.js';
+import { GistStateStore, type OctokitLike } from './gist-state-store.js';
+import { getStatePath, getStateCachePath } from './utils.js';
 
 export { acquireLock, releaseLock, atomicWriteFileSync } from './state-persistence.js';
 export type { Stats } from './repo-score-manager.js';
@@ -35,11 +44,13 @@ const MODULE = 'state';
  * and status overrides.
  */
 export class StateManager {
-  private state: AgentState;
-  private readonly inMemoryOnly: boolean;
+  protected state: AgentState;
+  protected inMemoryOnly: boolean;
   private lastLoadedMtimeMs: number = 0;
   private _batching = false;
   private _batchDirty = false;
+  protected gistStore: GistStateStore | null = null;
+  protected gistDegraded = false;
 
   /**
    * Create a new StateManager instance.
@@ -57,6 +68,41 @@ export class StateManager {
       this.lastLoadedMtimeMs = result.mtimeMs;
       this.tryReconcilePRCounts();
     }
+  }
+
+  /**
+   * Async factory that creates a StateManager backed by a GitHub Gist.
+   *
+   * The regular constructor is synchronous (for backwards-compat), but Gist
+   * bootstrapping requires network calls, so this factory is async.
+   *
+   * @param token - GitHub personal access token with `gist` scope
+   */
+  static async createWithGist(token: string): Promise<StateManager> {
+    // Dynamic import to avoid circular dependencies
+    const { getOctokit } = await import('./github.js');
+
+    const octokit = getOctokit(token) as unknown as OctokitLike;
+    const gistStore = new GistStateStore(octokit);
+
+    // Check if local state exists for migration
+    const statePath = getStatePath();
+    let result;
+    if (fs.existsSync(statePath)) {
+      // TODO: Task 8 will add bootstrapWithMigration() for migrating local state into the Gist.
+      // For now, just use regular bootstrap (the Gist is authoritative once enabled).
+      result = await gistStore.bootstrap();
+    } else {
+      result = await gistStore.bootstrap();
+    }
+
+    const manager = new StateManager(true); // start in-memory
+    manager.state = result.state;
+    manager.gistStore = gistStore;
+    manager.gistDegraded = result.degraded ?? false;
+    manager.inMemoryOnly = false; // re-enable persistence
+
+    return manager;
   }
 
   /**
@@ -139,6 +185,9 @@ export class StateManager {
   /**
    * Persist the current state to disk, creating a timestamped backup of the previous
    * state file first. In in-memory mode, only updates `lastRunAt` without any file I/O.
+   *
+   * In Gist mode, writes to a local cache file (not the main state file) so the Gist
+   * remains the source of truth. Use `checkpoint()` to push state to the Gist.
    */
   save(): void {
     this.state.lastRunAt = new Date().toISOString();
@@ -147,7 +196,36 @@ export class StateManager {
       return;
     }
 
+    if (this.gistStore) {
+      // In Gist mode, write to local cache (not main state file).
+      // The Gist is the source of truth; local cache is for fallback.
+      try {
+        atomicWriteFileSync(getStateCachePath(), JSON.stringify(this.state, null, 2), 0o600);
+      } catch {
+        // Best-effort cache write
+      }
+      return;
+    }
+
+    // Local file mode (existing behavior)
     this.lastLoadedMtimeMs = saveState(this.state);
+  }
+
+  /** Push current state to Gist (async). Call at well-defined moments (end of daily, after claim). */
+  async checkpoint(): Promise<boolean> {
+    if (!this.gistStore) return true; // not in Gist mode
+    this.gistStore.setState(JSON.stringify(this.state, null, 2));
+    return this.gistStore.push();
+  }
+
+  /** Whether this StateManager is backed by a Gist. */
+  isGistMode(): boolean {
+    return this.gistStore !== null;
+  }
+
+  /** Whether the Gist is in degraded mode (using local cache fallback). */
+  isGistDegraded(): boolean {
+    return this.gistDegraded;
   }
 
   /**
