@@ -270,6 +270,23 @@ describe('App', () => {
     });
   });
 
+  it('error banner has role="alert"', async () => {
+    mockFetchOk(makeDashboardData());
+    const { container } = render(<App />);
+    await waitFor(() => {
+      expect(container.querySelector('.refresh-btn')).toBeTruthy();
+    });
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('fail')));
+    const refreshBtn = container.querySelector('.refresh-btn') as HTMLButtonElement;
+    fireEvent.click(refreshBtn);
+
+    await waitFor(() => {
+      const banner = container.querySelector('.error-banner');
+      expect(banner?.getAttribute('role')).toBe('alert');
+    });
+  });
+
   it('renders a skip-to-main link', async () => {
     mockFetchOk(makeDashboardData());
     const { container } = render(<App />);

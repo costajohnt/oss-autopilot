@@ -227,7 +227,7 @@ function AppContent() {
       />
 
       {error && (
-        <div class="error-banner">
+        <div class="error-banner" role="alert">
           <span>{error}</span>
           <button class="error-banner-dismiss" onClick={clearError}>
             Dismiss

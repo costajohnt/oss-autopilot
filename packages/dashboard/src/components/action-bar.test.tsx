@@ -85,4 +85,18 @@ describe('ActionBar', () => {
       expect(container.querySelector('.action-error')?.textContent).toBe('Network error');
     });
   });
+
+  it('renders action error with role="alert"', async () => {
+    const error = new Error('test error');
+    const onAction = vi.fn().mockRejectedValue(error);
+    const { container } = renderActionBar({ onAction });
+
+    const btn = container.querySelector('.action-btn--shelve') as HTMLButtonElement;
+    fireEvent.click(btn);
+
+    await waitFor(() => {
+      const errorEl = container.querySelector('.action-error');
+      expect(errorEl?.getAttribute('role')).toBe('alert');
+    });
+  });
 });
