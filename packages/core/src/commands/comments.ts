@@ -242,8 +242,13 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
       updatedAt: new Date().toISOString(),
       vetted: false,
     });
+    // Push state to Gist if in Gist mode.
+    // If getStateManagerAsync was not called before this command ran,
+    // isGistMode() will be false and checkpoint is correctly skipped.
     try {
-      await stateManager.checkpoint();
+      if (stateManager.isGistMode()) {
+        await stateManager.checkpoint();
+      }
     } catch {
       /* best-effort */
     }

@@ -257,6 +257,7 @@ export class StateManager {
    */
   reloadIfChanged(): boolean {
     if (this.inMemoryOnly) return false;
+    if (this.gistStore) return false; // Gist is the source of truth; skip local file reload
     const result = reloadStateIfChanged(this.lastLoadedMtimeMs);
     if (!result) return false;
     this.state = result.state;
@@ -729,6 +730,12 @@ export function getStateManager(): StateManager {
  * If a StateManager already exists (from sync init), returns it.
  * If a token is provided and no manager exists, creates one with Gist backing.
  * Falls back to sync initialization if no token is provided.
+ *
+ * **Important:** This must be called (and awaited) before any command runs for
+ * Gist mode to be active. It pre-sets the singleton so that subsequent
+ * `getStateManager()` calls return the Gist-backed instance. If this is not
+ * called first, `getStateManager()` will lazily create a local-only
+ * StateManager and Gist checkpoints will be no-ops.
  */
 export async function getStateManagerAsync(token?: string): Promise<StateManager> {
   if (stateManager) return stateManager;
