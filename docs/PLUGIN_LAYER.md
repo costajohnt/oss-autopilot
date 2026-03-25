@@ -2,7 +2,7 @@
 
 Complete index of all Claude Code plugin components in oss-autopilot.
 
-## Commands (6)
+## Commands (5)
 
 User-invocable slash commands.
 
@@ -13,7 +13,6 @@ User-invocable slash commands.
 | `/oss-dashboard` | `commands/oss-dashboard.md` | Open the interactive SPA dashboard in your browser |
 | `/oss-help` | `commands/oss-help.md` | Quick reference card for commands, agents, and workflows |
 | `/setup-oss` | `commands/setup-oss.md` | Configure preferences (languages, labels, PR limits) |
-| `/setup-automation` | `commands/setup-automation.md` | Configure headless cron jobs for automated tasks |
 
 ## Agents (7)
 
@@ -29,7 +28,7 @@ Specialized agents that activate automatically or on request.
 | **repo-evaluator** | `agents/repo-evaluator.md` | Evaluate repository health and maintainer responsiveness |
 | **contribution-strategist** | `agents/contribution-strategist.md` | Analyze contribution patterns and provide strategic advice |
 
-## Workflows (11)
+## Workflows (7)
 
 Orchestration files that define multi-step processes. Read by commands and agents on demand.
 
@@ -42,10 +41,6 @@ Orchestration files that define multi-step processes. Read by commands and agent
 | **Pre-Commit Review** | `workflows/pre-commit-review.md` | `/oss` after Tier 2 code changes to existing PRs |
 | **Review Issue Replies** | `workflows/review-issue-replies.md` | `/oss` when user selects "Review issue replies" |
 | **Reference** | `workflows/reference.md` | On demand — CLI syntax, agent names, shared policies |
-| **Daily PR Status (cron)** | `workflows/daily-pr-status-cron.md` | `/setup-automation` scheduled task |
-| **Dependabot Triage (cron)** | `workflows/dependabot-triage-cron.md` | `/setup-automation` scheduled task |
-| **Issue Curation (cron)** | `workflows/issue-curation-cron.md` | `/setup-automation` scheduled task |
-| **Weekly PR Audit (cron)** | `workflows/weekly-pr-audit-cron.md` | `/setup-automation` scheduled task |
 
 ## Skills (1)
 

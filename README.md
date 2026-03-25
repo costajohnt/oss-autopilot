@@ -216,7 +216,6 @@ A typical contribution lifecycle:
 - **Review-fix convergence loop** — mandatory lint, test, and review cycle before any PR is declared ready
 - **Scores repositories** — evaluates merge rate, review speed, maintainer responsiveness
 - **Interactive dashboard** — manage PRs visually, shelve/unshelve, override statuses, track stats over time
-- **Optional automation** — headless cron jobs for daily PR status, dependabot triage, issue curation, and weekly audits
 - **Never acts without you** — nothing is posted to GitHub without your explicit approval
 
 ---
@@ -236,7 +235,7 @@ A typical contribution lifecycle:
 3. Claude reads the feedback and drafts a response for your review
 4. Post it after reviewing
 
-**Commands:** `/oss` (daily check), `/oss-search` (find issues), `/setup-oss` (configure), `/setup-automation` (cron jobs), `/oss-help` (reference)
+**Commands:** `/oss` (daily check), `/oss-search` (find issues), `/setup-oss` (configure), `/oss-help` (reference)
 
 ### Specialized Agents
 
@@ -253,21 +252,6 @@ Claude automatically dispatches these based on context:
 | **contribution-strategist** | Strategic advice for your OSS journey | User asks for contribution strategy |
 
 *Agents are available in the Claude Code plugin. MCP and CLI users access the same capabilities through tools and commands.*
-
-### Headless Automation (Optional)
-
-Set up optional cron jobs that run Claude headlessly to pre-compute results before your sessions. Run `/setup-automation` for a guided wizard, or configure manually:
-
-| Automation | Schedule | Output | What it does |
-|-----------|----------|--------|-------------|
-| **Daily PR Status** | Every morning | `~/oss-daily.md` | Fetches all PR statuses so Claude has context at session start |
-| **Dependabot Triage** | Daily (GitHub Action) | GitHub Issue report | Auto-merges safe patch/minor bumps, flags major bumps for review |
-| **Issue List Curation** | Overnight | Updates issue list | Searches, vets, prunes, and re-prioritizes your issue list |
-| **Weekly PR Audit** | Sundays | `~/oss-weekly-audit.md` | Audits shelved/waiting PRs for new comments, CI changes, conflicts |
-
-The SessionStart hook automatically surfaces the daily report when you start a session, giving Claude instant PR context without the "check my PRs" warmup.
-
-All automations are fully optional — the tool works identically without them.
 
 ---
 
@@ -459,7 +443,7 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 ### Project Structure
 
 ```
-├── commands/                    # Plugin slash commands (/oss, /oss-search, /setup-oss, /setup-automation, /oss-help)
+├── commands/                    # Plugin slash commands (/oss, /oss-search, /setup-oss, /oss-help)
 ├── agents/                      # 7 specialized agents (PR responder, issue scout, etc.)
 ├── skills/                      # Contribution best practices
 ├── workflows/                   # Delegated logic loaded by commands on demand
