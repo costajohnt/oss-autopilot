@@ -796,4 +796,123 @@ describe('GistStateStore', () => {
       expect(parsed.success).toBe(true);
     });
   });
+
+  describe('bootstrapWithMigration', () => {
+    it('creates Gist seeded with existing state when no Gist found', async () => {
+      const newGistId = 'migration-created';
+      const existingState = createFreshState();
+      existingState.config.githubUsername = 'migrated-user';
+      existingState.config.setupComplete = true;
+
+      // No local gist-id file, search returns empty
+      octokit.gists.list.mockResolvedValue({ data: [] });
+
+      const seededJson = JSON.stringify(existingState, null, 2);
+      octokit.gists.create.mockResolvedValue({
+        data: {
+          id: newGistId,
+          description: GIST_DESCRIPTION,
+          files: {
+            [STATE_FILE_NAME]: { filename: STATE_FILE_NAME, content: seededJson },
+          },
+        },
+      });
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrapWithMigration(existingState);
+
+      expect(result.gistId).toBe(newGistId);
+      expect(result.created).toBe(true);
+      expect(result.migrated).toBe(true);
+      expect(result.state.config.githubUsername).toBe('migrated-user');
+      expect(result.state.config.setupComplete).toBe(true);
+
+      // Gist was created with the existing state content (not a fresh state)
+      expect(octokit.gists.create).toHaveBeenCalledWith({
+        description: GIST_DESCRIPTION,
+        public: false,
+        files: {
+          [STATE_FILE_NAME]: { content: seededJson },
+        },
+      });
+
+      // Local gist-id file should be written
+      const storedId = fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf-8');
+      expect(storedId).toBe(newGistId);
+    });
+
+    it('returns existing Gist when one already exists via local ID (no migration)', async () => {
+      const existingGistId = 'already-exists';
+      const existingStateJson = makeStateJson({ lastRunAt: '2025-01-01T00:00:00.000Z' });
+      const localState = createFreshState();
+
+      // Pre-seed local gist-id
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), existingGistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(existingGistId, existingStateJson));
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrapWithMigration(localState);
+
+      expect(result.gistId).toBe(existingGistId);
+      expect(result.created).toBe(false);
+      expect(result.migrated).toBe(false);
+      // State comes from the Gist, not local
+      expect(result.state.lastRunAt).toBe('2025-01-01T00:00:00.000Z');
+
+      // Should not have created a new Gist
+      expect(octokit.gists.create).not.toHaveBeenCalled();
+    });
+
+    it('returns existing Gist found via search (no migration)', async () => {
+      const searchGistId = 'found-via-search';
+      const existingStateJson = makeStateJson({ lastRunAt: '2025-06-01T00:00:00.000Z' });
+      const localState = createFreshState();
+
+      // No local gist-id, but search finds one
+      octokit.gists.list.mockResolvedValue({
+        data: [{ id: searchGistId, description: GIST_DESCRIPTION }],
+      });
+      octokit.gists.get.mockResolvedValue(makeGistResponse(searchGistId, existingStateJson));
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrapWithMigration(localState);
+
+      expect(result.gistId).toBe(searchGistId);
+      expect(result.created).toBe(false);
+      expect(result.migrated).toBe(false);
+      expect(result.state.lastRunAt).toBe('2025-06-01T00:00:00.000Z');
+
+      expect(octokit.gists.create).not.toHaveBeenCalled();
+    });
+
+    it('returns migrated: true for new migration, false when existing Gist found', async () => {
+      const localState = createFreshState();
+
+      // Scenario A: new migration
+      const newGistId = 'brand-new-gist';
+      octokit.gists.list.mockResolvedValue({ data: [] });
+      const seededJson = JSON.stringify(localState, null, 2);
+      octokit.gists.create.mockResolvedValue({
+        data: {
+          id: newGistId,
+          description: GIST_DESCRIPTION,
+          files: {
+            [STATE_FILE_NAME]: { filename: STATE_FILE_NAME, content: seededJson },
+          },
+        },
+      });
+
+      const storeA = new GistStateStore(octokit);
+      const resultA = await storeA.bootstrapWithMigration(localState);
+      expect(resultA.migrated).toBe(true);
+
+      // Scenario B: existing Gist found via local ID
+      octokit.gists.get.mockResolvedValue(makeGistResponse('existing-id', makeStateJson()));
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), 'existing-id');
+
+      const storeB = new GistStateStore(octokit);
+      const resultB = await storeB.bootstrapWithMigration(localState);
+      expect(resultB.migrated).toBe(false);
+    });
+  });
 });

@@ -89,9 +89,22 @@ export class StateManager {
     const statePath = getStatePath();
     let result;
     if (fs.existsSync(statePath)) {
-      // TODO: Task 8 will add bootstrapWithMigration() for migrating local state into the Gist.
-      // For now, just use regular bootstrap (the Gist is authoritative once enabled).
-      result = await gistStore.bootstrap();
+      // Existing user: load local state and migrate it into the Gist if no Gist exists yet.
+      const localStateResult = loadState();
+      const migrationResult = await gistStore.bootstrapWithMigration(localStateResult.state);
+      result = migrationResult;
+
+      // If a new Gist was just created from local state, rename the local file
+      // so it no longer competes as the source of truth on future startups.
+      if (migrationResult.migrated) {
+        try {
+          const preGistPath = statePath + '.pre-gist-migration';
+          fs.renameSync(statePath, preGistPath);
+          debug(MODULE, `Renamed ${statePath} to ${preGistPath} after Gist migration`);
+        } catch (err) {
+          warn(MODULE, `Failed to rename state.json after Gist migration: ${err}`);
+        }
+      }
     } else {
       result = await gistStore.bootstrap();
     }

@@ -151,6 +151,74 @@ export class GistStateStore {
     }
   }
 
+  /**
+   * Bootstrap with migration from an existing local state.
+   * If a Gist already exists (found via local ID or search), uses it — no migration needed.
+   * If no Gist exists, creates one seeded with the provided existingState instead of a fresh state.
+   * @returns BootstrapResult extended with `migrated: true` if a new Gist was created from local state
+   */
+  async bootstrapWithMigration(existingState: AgentState): Promise<BootstrapResult & { migrated: boolean }> {
+    try {
+      // Step 1: Try loading Gist ID from local file
+      const localId = this.readLocalGistId();
+      if (localId) {
+        debug(MODULE, `bootstrapWithMigration: found local Gist ID: ${localId}`);
+        try {
+          this.gistId = localId;
+          const state = await this.fetchAndCache(localId);
+          return { gistId: localId, state, created: false, migrated: false };
+        } catch (err) {
+          warn(MODULE, `bootstrapWithMigration: failed to fetch Gist ${localId}, will search/create`, err);
+          // Fall through to search
+        }
+      }
+
+      // Step 2: Search user's Gists by description
+      const foundId = await this.searchForGist();
+      if (foundId) {
+        debug(MODULE, `bootstrapWithMigration: found Gist via search: ${foundId}`);
+        this.gistId = foundId;
+        this.writeLocalGistId(foundId);
+        const state = await this.fetchAndCache(foundId);
+        return { gistId: foundId, state, created: false, migrated: false };
+      }
+
+      // Step 3: No existing Gist found — create one seeded with the provided state
+      debug(MODULE, 'bootstrapWithMigration: no existing Gist found, creating one seeded with local state');
+      const { id, state } = await this.createGistFromState(existingState);
+      this.writeLocalGistId(id);
+      return { gistId: id, state, created: true, migrated: true };
+    } catch (err) {
+      // All API paths failed — enter degraded mode
+      warn(MODULE, 'bootstrapWithMigration: all Gist API paths failed, entering degraded mode', err);
+
+      // Try reading from local cache file
+      try {
+        const cachePath = getStateCachePath();
+        if (fs.existsSync(cachePath)) {
+          let obj: unknown = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+
+          // Chain migrations
+          if (typeof obj === 'object' && obj !== null) {
+            const record = obj as Record<string, unknown>;
+            if (record.version === 1) obj = migrateV1ToV2(record);
+            if ((obj as Record<string, unknown>).version === 2) obj = migrateV2ToV3(obj as Record<string, unknown>);
+          }
+
+          const cachedState = AgentStateSchema.parse(obj);
+          debug(MODULE, 'bootstrapWithMigration: loaded state from local cache in degraded mode');
+          return { gistId: '', state: cachedState, created: false, degraded: true, migrated: false };
+        }
+      } catch (cacheErr) {
+        debug(MODULE, `bootstrapWithMigration: failed to read local cache in degraded mode: ${cacheErr}`);
+      }
+
+      // No cache either — use the provided existingState in degraded mode
+      debug(MODULE, 'bootstrapWithMigration: no local cache found, returning existing state in degraded mode');
+      return { gistId: '', state: existingState, created: false, degraded: true, migrated: false };
+    }
+  }
+
   /** Return the resolved Gist ID (available after bootstrap). */
   getGistId(): string | null {
     return this.gistId;
@@ -369,6 +437,36 @@ export class GistStateStore {
     this.writeLocalStateCache(freshState);
 
     return { id: data.id, state: freshState };
+  }
+
+  /**
+   * Create a new private Gist seeded with the provided state (for migration).
+   */
+  private async createGistFromState(seedState: AgentState): Promise<{ id: string; state: AgentState }> {
+    const stateContent = JSON.stringify(seedState, null, 2);
+
+    const { data } = await this.octokit.gists.create({
+      description: GIST_DESCRIPTION,
+      public: false,
+      files: {
+        [STATE_FILE_NAME]: { content: stateContent },
+      },
+    });
+
+    this.gistId = data.id;
+
+    // Populate in-memory cache
+    this.cachedFiles.clear();
+    for (const [filename, file] of Object.entries(data.files)) {
+      if (file && file.content != null) {
+        this.cachedFiles.set(filename, file.content);
+      }
+    }
+
+    // Write-through to local cache
+    this.writeLocalStateCache(seedState);
+
+    return { id: data.id, state: seedState };
   }
 
   /** Read the locally persisted Gist ID, or return null if not found. */
