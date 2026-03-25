@@ -42,6 +42,14 @@ function PRRow({ pr, selected, onSelect }: { pr: FetchedPR; selected: boolean; o
     <div
       class={`pr-row ${statusClass(pr.status)} ${selected ? 'pr-row--selected' : ''}`}
       onClick={() => onSelect(pr.url)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(pr.url);
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
       <span class="pr-row-dot" style={{ background: statusColor(pr.status) }} />
       <a class="pr-row-id" href={pr.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
