@@ -8,6 +8,7 @@
  */
 
 import * as fs from 'fs';
+import * as path from 'path';
 import { execFile } from 'child_process';
 import { getStateManager, getGitHubToken, getCLIVersion, detectGitHubUsername } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
@@ -107,14 +108,38 @@ export function detectIssueList(): IssueListInfo | undefined {
   if (!issueListPath) return undefined;
 
   // 4. Count available/completed items
+  let availableCount = 0;
+  let completedCount = 0;
   try {
     const content = fs.readFileSync(issueListPath, 'utf-8');
-    const { availableCount, completedCount } = countIssueListItems(content);
-    return { path: issueListPath, source, availableCount, completedCount };
+    ({ availableCount, completedCount } = countIssueListItems(content));
   } catch (error) {
     console.error(`[STARTUP] Failed to read issue list at ${issueListPath}:`, errorMessage(error));
-    return { path: issueListPath, source, availableCount: 0, completedCount: 0 };
   }
+
+  // 5. Detect skipped issues file
+  let skippedIssuesPath: string | undefined;
+
+  // Check config first
+  try {
+    const stateManager = getStateManager();
+    const configuredSkipPath = stateManager.getState().config.skippedIssuesPath;
+    if (configuredSkipPath && fs.existsSync(configuredSkipPath)) {
+      skippedIssuesPath = configuredSkipPath;
+    }
+  } catch {
+    /* fall through */
+  }
+
+  // Probe default path: same directory as issue list, named skipped-issues.md
+  if (!skippedIssuesPath && issueListPath) {
+    const defaultSkipPath = path.join(path.dirname(issueListPath), 'skipped-issues.md');
+    if (fs.existsSync(defaultSkipPath)) {
+      skippedIssuesPath = defaultSkipPath;
+    }
+  }
+
+  return { path: issueListPath, source, availableCount, completedCount, skippedIssuesPath };
 }
 
 /**

@@ -311,6 +311,40 @@ describe('detectIssueList', () => {
     expect(result?.path).toBe('state/issues.md');
     expect(result?.source).toBe('configured');
   });
+
+  it('should detect skippedIssuesPath when skip file exists alongside issue list', async () => {
+    existsSyncMock.mockImplementation((p: string) => {
+      if (typeof p === 'string' && p === 'open-source/issues.md') return true;
+      if (typeof p === 'string' && p === 'open-source/skipped-issues.md') return true;
+      return false;
+    });
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](url) — Issue\n');
+
+    // Override getStateManager to return issueListPath pointing to our probe path
+    const { getStateManager } = await import('../core/index.js');
+    vi.mocked(getStateManager).mockReturnValue({
+      isSetupComplete: vi.fn(() => true),
+      getState: vi.fn(() => ({ config: { issueListPath: 'open-source/issues.md' } })),
+    } as any);
+
+    const result = detectIssueList();
+
+    expect(result).toBeDefined();
+    expect(result?.path).toBe('open-source/issues.md');
+    expect(result?.skippedIssuesPath).toBe('open-source/skipped-issues.md');
+  });
+
+  it('should return undefined skippedIssuesPath when skip file does not exist', async () => {
+    existsSyncMock.mockImplementation((p: string) => {
+      return typeof p === 'string' && p === 'issues.md';
+    });
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](url) — Issue\n');
+
+    const result = detectIssueList();
+
+    expect(result).toBeDefined();
+    expect(result?.skippedIssuesPath).toBeUndefined();
+  });
 });
 
 // --- runStartup behavior tests ---
