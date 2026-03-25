@@ -159,6 +159,26 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set issue
 
 If the file doesn't exist at the given path, warn the user but still save the path (they may create it later).
 
+### Skipped Issues File
+
+If the user configured an issue list path, ask:
+
+```
+Question: "Where should skipped/rejected issues be tracked? This prevents re-surfacing issues you've already vetted and rejected. Entries auto-expire after 90 days."
+
+Options:
+1. "Use default ({issueListDir}/skipped-issues.md)" — "Same folder as your issue list"
+2. "Custom path" — "Specify a different location"
+3. "Don't track skipped issues" — "May see duplicates in search results"
+```
+
+Save the chosen path:
+```bash
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --set skippedIssuesPath="{path}" --json
+```
+
+If "Don't track", skip — no config change needed (the search flow handles missing skip files gracefully).
+
 **Question 10: Squash Commits Before Review**
 - "Should PRs be squashed into a single commit before marking ready for review?"
 - Options: "Yes, always squash (Recommended)", "No, keep individual commits", "Ask me each time"
@@ -362,6 +382,26 @@ If yes, ask for the file path:
 - Options: "open-source/potential-issue-list.md (default)", "Enter custom path"
 
 If a path is provided, try to read it to verify it exists. If it doesn't exist, warn but continue — the user may create it later.
+
+### Skipped Issues File
+
+If the user configured an issue list path, ask:
+
+```
+Question: "Where should skipped/rejected issues be tracked? This prevents re-surfacing issues you've already vetted and rejected. Entries auto-expire after 90 days."
+
+Options:
+1. "Use default ({issueListDir}/skipped-issues.md)" — "Same folder as your issue list"
+2. "Custom path" — "Specify a different location"
+3. "Don't track skipped issues" — "May see duplicates in search results"
+```
+
+Save the chosen path:
+```bash
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --set skippedIssuesPath="{path}" --json
+```
+
+If "Don't track", skip — no config change needed (the search flow handles missing skip files gracefully).
 
 **Question 10: Squash Commits Before Review**
 - "Should PRs be squashed into a single commit before marking ready for review?"
