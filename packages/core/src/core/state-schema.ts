@@ -251,6 +251,7 @@ export const DailyDigestSchema = z.object({
 
 export const AgentStateSchema = z.object({
   version: z.literal(3),
+  gistId: z.string().optional(),
 
   repoScores: z.record(z.string(), RepoScoreSchema).default({}),
 
