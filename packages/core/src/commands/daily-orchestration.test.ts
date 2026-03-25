@@ -137,10 +137,8 @@ function makeDigest(prs: FetchedPR[] = []): DailyDigest {
 /** Return a default (empty) state shape for getState() */
 function makeDefaultState(overrides: Record<string, unknown> = {}) {
   return {
-    version: 2,
-    activePRs: [],
+    version: 3,
     activeIssues: [],
-    dormantPRs: [],
     mergedPRs: [],
     closedPRs: [],
     repoScores: {},
@@ -155,7 +153,6 @@ function makeDefaultState(overrides: Record<string, unknown> = {}) {
       shelvedPRUrls: [],
       dismissedIssues: {},
     },
-    events: [],
     lastRunAt: '2026-01-24T10:00:00Z',
     ...overrides,
   };

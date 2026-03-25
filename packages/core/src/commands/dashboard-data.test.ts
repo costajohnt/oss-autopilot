@@ -815,7 +815,7 @@ describe('fetchDashboardData', () => {
   /** Build a default state for mockGetState */
   function makeDefaultState(overrides: Record<string, unknown> = {}) {
     return {
-      version: 2,
+      version: 3,
       repoScores: {},
       config: {
         setupComplete: true,
@@ -828,7 +828,6 @@ describe('fetchDashboardData', () => {
         shelvedPRUrls: [],
         dismissedIssues: {},
       },
-      events: [],
       lastRunAt: '2026-01-24T10:00:00Z',
       lastDigest: null as DailyDigest | null,
       monthlyMergedCounts: {},

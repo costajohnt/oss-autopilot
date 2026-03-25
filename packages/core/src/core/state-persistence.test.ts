@@ -48,7 +48,7 @@ vi.mock('./utils.js', async (importOriginal) => {
   };
 });
 
-// Shared config shape used by both makeV2State and makeV1State.
+// Shared config shape used by both makeCurrentState and makeV1State.
 function makeBaseConfig(): Record<string, unknown> {
   return {
     setupComplete: false,
@@ -72,18 +72,15 @@ function makeBaseConfig(): Record<string, unknown> {
   };
 }
 
-// Helper: build a minimal valid v2 state object for writing to disk in tests.
-function makeV2State(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+// Helper: build a minimal valid v3 state object for writing to disk in tests.
+function makeCurrentState(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     version: 3,
-    activePRs: [],
     activeIssues: [],
-    dormantPRs: [],
     mergedPRs: [],
     closedPRs: [],
     repoScores: {},
     config: makeBaseConfig(),
-    events: [],
     lastRunAt: new Date().toISOString(),
     ...overrides,
   };
@@ -329,12 +326,12 @@ describe('StateManager file-system persistence (save / load)', () => {
     fs.mkdirSync(backupDir, { recursive: true });
     for (let i = 0; i < 12; i++) {
       const name = `state-2024-01-${String(i + 1).padStart(2, '0')}T00-00-00-000Z-aabbcc.json`;
-      fs.writeFileSync(path.join(backupDir, name), JSON.stringify(makeV2State()));
+      fs.writeFileSync(path.join(backupDir, name), JSON.stringify(makeCurrentState()));
     }
 
     // Write state.json so save() has something to back up, then save to trigger cleanup
     const statePath = path.join(mockTmpDir, 'state.json');
-    fs.writeFileSync(statePath, JSON.stringify(makeV2State()), { mode: 0o600 });
+    fs.writeFileSync(statePath, JSON.stringify(makeCurrentState()), { mode: 0o600 });
 
     const sm = new StateManager(false);
     sm.save(); // Backs up the existing state.json (13 total) and then prunes to 10
@@ -372,7 +369,7 @@ describe('StateManager recovery from corrupt state files', () => {
     // Create a valid backup with a custom username
     const backupDir = path.join(mockTmpDir, 'backups');
     fs.mkdirSync(backupDir, { recursive: true });
-    const fullBackup = makeV2State();
+    const fullBackup = makeCurrentState();
     (fullBackup.config as Record<string, unknown>)['githubUsername'] = 'restored-user';
     fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'), JSON.stringify(fullBackup), {
       mode: 0o600,
@@ -389,7 +386,7 @@ describe('StateManager recovery from corrupt state files', () => {
 
     const backupDir = path.join(mockTmpDir, 'backups');
     fs.mkdirSync(backupDir, { recursive: true });
-    const fullBackup = makeV2State();
+    const fullBackup = makeCurrentState();
     (fullBackup.config as Record<string, unknown>)['githubUsername'] = 'from-backup';
     fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'), JSON.stringify(fullBackup), {
       mode: 0o600,
@@ -415,7 +412,7 @@ describe('StateManager recovery from corrupt state files', () => {
     });
 
     // Older backup is valid
-    const validBackup = makeV2State();
+    const validBackup = makeCurrentState();
     (validBackup.config as Record<string, unknown>)['githubUsername'] = 'valid-older-backup';
     fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-aaa000.json'), JSON.stringify(validBackup), {
       mode: 0o600,
@@ -479,7 +476,6 @@ describe('StateManager reloadIfChanged', () => {
         dismissedIssues: {},
         minStars: 50,
       },
-      events: [],
       mergedPRs: [],
       closedPRs: [],
     };
@@ -687,7 +683,7 @@ describe('state recovery and backup edge cases', () => {
     fs.mkdirSync(backupDir, { recursive: true });
     fs.writeFileSync(
       path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'),
-      JSON.stringify(makeV2State({ config: { ...makeBaseConfig(), githubUsername: 'backup-user' } })),
+      JSON.stringify(makeCurrentState({ config: { ...makeBaseConfig(), githubUsername: 'backup-user' } })),
       { mode: 0o600 },
     );
 
@@ -726,13 +722,13 @@ describe('save resilience when backup operations fail', () => {
     fs.mkdirSync(backupDir, { recursive: true });
     for (let i = 0; i < count; i++) {
       const name = `state-2024-01-${String(i + 1).padStart(2, '0')}T00-00-00-000Z-aabbcc.json`;
-      fs.writeFileSync(path.join(backupDir, name), JSON.stringify(makeV2State()));
+      fs.writeFileSync(path.join(backupDir, name), JSON.stringify(makeCurrentState()));
     }
   }
 
   function writeInitialState(): string {
     const statePath = path.join(mockTmpDir, 'state.json');
-    fs.writeFileSync(statePath, JSON.stringify(makeV2State()), { mode: 0o600 });
+    fs.writeFileSync(statePath, JSON.stringify(makeCurrentState()), { mode: 0o600 });
     return statePath;
   }
 
@@ -818,7 +814,7 @@ describe('reloadStateIfChanged additional edge cases', () => {
 
   it('should return false when state file becomes unreadable', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
-    fs.writeFileSync(statePath, JSON.stringify(makeV2State()), { mode: 0o600 });
+    fs.writeFileSync(statePath, JSON.stringify(makeCurrentState()), { mode: 0o600 });
 
     const sm = new StateManager(false);
     fs.chmodSync(statePath, 0o000);

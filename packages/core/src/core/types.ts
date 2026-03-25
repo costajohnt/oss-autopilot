@@ -28,6 +28,7 @@ export type {
   StateEvent,
   StoredMergedPR,
   StoredClosedPR,
+  AnalyzedIssueConversation,
   ContributionGuidelines,
   IssueVettingResult,
   TrackedIssue,

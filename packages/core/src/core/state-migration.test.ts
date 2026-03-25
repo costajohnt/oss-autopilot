@@ -73,17 +73,14 @@ function makeBaseConfig(): Record<string, unknown> {
   };
 }
 
-function makeV2State(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function makeCurrentState(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     version: 3,
-    activePRs: [],
     activeIssues: [],
-    dormantPRs: [],
     mergedPRs: [],
     closedPRs: [],
     repoScores: {},
     config: makeBaseConfig(),
-    events: [],
     lastRunAt: new Date().toISOString(),
     ...overrides,
   };
@@ -296,7 +293,7 @@ describe('legacy state cleanup on load', () => {
 
   it('strips snoozedPRs from config on load', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
-    const stateData = makeV2State();
+    const stateData = makeCurrentState();
     // Inject legacy snoozedPRs field into config
     (stateData.config as Record<string, unknown>).snoozedPRs = {
       'https://github.com/owner/repo/pull/1': '2025-02-01T00:00:00Z',
@@ -317,7 +314,7 @@ describe('legacy state cleanup on load', () => {
 
   it('strips PR URLs from dismissedIssues on load', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
-    const stateData = makeV2State();
+    const stateData = makeCurrentState();
     (stateData.config as Record<string, unknown>).dismissedIssues = {
       'https://github.com/owner/repo/issues/1': '2025-01-10T00:00:00Z',
       'https://github.com/owner/repo/pull/42': '2025-01-11T00:00:00Z',
@@ -340,7 +337,7 @@ describe('legacy state cleanup on load', () => {
 
   it('preserves issue URLs in dismissedIssues', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
-    const stateData = makeV2State();
+    const stateData = makeCurrentState();
     (stateData.config as Record<string, unknown>).dismissedIssues = {
       'https://github.com/owner/repo/issues/10': '2025-02-01T00:00:00Z',
       'https://github.com/owner/repo/issues/20': '2025-02-02T00:00:00Z',
@@ -365,7 +362,7 @@ describe('legacy state cleanup on load', () => {
   it('does not write to disk if no cleanup needed', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     // Write a clean v2 state — no snoozedPRs, no PR URLs in dismissedIssues
-    const stateData = makeV2State();
+    const stateData = makeCurrentState();
     (stateData.config as Record<string, unknown>).dismissedIssues = {
       'https://github.com/owner/repo/issues/1': '2025-01-10T00:00:00Z',
     };
@@ -443,7 +440,7 @@ describe('migrateFromLegacyLocation', () => {
   });
 
   it('should migrate state from legacy ./data/ to new location', () => {
-    createLegacyState(makeV2State({ config: { ...makeBaseConfig(), githubUsername: 'legacy-user' } }));
+    createLegacyState(makeCurrentState({ config: { ...makeBaseConfig(), githubUsername: 'legacy-user' } }));
 
     const sm = new StateManager(false);
     expect(sm.getState().config.githubUsername).toBe('legacy-user');
@@ -454,9 +451,9 @@ describe('migrateFromLegacyLocation', () => {
   });
 
   it('should migrate backup files from legacy location', () => {
-    createLegacyState(makeV2State());
-    createLegacyBackup('state-2024-01-01T00-00-00-000Z-abc123.json', makeV2State());
-    createLegacyBackup('state-2024-01-02T00-00-00-000Z-def456.json', makeV2State());
+    createLegacyState(makeCurrentState());
+    createLegacyBackup('state-2024-01-01T00-00-00-000Z-abc123.json', makeCurrentState());
+    createLegacyBackup('state-2024-01-02T00-00-00-000Z-def456.json', makeCurrentState());
 
     const sm = new StateManager(false);
     expect(sm.getState().version).toBe(3);
@@ -472,7 +469,7 @@ describe('migrateFromLegacyLocation', () => {
   });
 
   it('should not remove legacy data dir if other files remain', () => {
-    createLegacyState(makeV2State());
+    createLegacyState(makeCurrentState());
     fs.writeFileSync(path.join(legacyDataDir, 'other.txt'), 'keep me');
 
     new StateManager(false);
@@ -486,10 +483,10 @@ describe('migrateFromLegacyLocation', () => {
     const newStatePath = path.join(mockTmpDir, 'state.json');
     fs.writeFileSync(
       newStatePath,
-      JSON.stringify(makeV2State({ config: { ...makeBaseConfig(), githubUsername: 'new-user' } })),
+      JSON.stringify(makeCurrentState({ config: { ...makeBaseConfig(), githubUsername: 'new-user' } })),
       { mode: 0o600 },
     );
-    createLegacyState(makeV2State({ config: { ...makeBaseConfig(), githubUsername: 'legacy-user' } }));
+    createLegacyState(makeCurrentState({ config: { ...makeBaseConfig(), githubUsername: 'legacy-user' } }));
 
     const sm = new StateManager(false);
 
@@ -498,7 +495,7 @@ describe('migrateFromLegacyLocation', () => {
   });
 
   it('should handle migration failure gracefully', () => {
-    createLegacyState(makeV2State());
+    createLegacyState(makeCurrentState());
     fs.chmodSync(legacyStatePath, 0o000);
 
     const sm = new StateManager(false);
@@ -616,7 +613,7 @@ describe('schema validation in loadState', () => {
     );
 
     // Oldest backup: valid
-    const validBackup = makeV2State();
+    const validBackup = makeCurrentState();
     (validBackup.config as Record<string, unknown>)['githubUsername'] = 'valid-old-backup';
     fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-aaa000.json'), JSON.stringify(validBackup), {
       mode: 0o600,

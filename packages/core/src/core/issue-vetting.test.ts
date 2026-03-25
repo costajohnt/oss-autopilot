@@ -110,10 +110,9 @@ function makeDefaultConfig(): AgentState['config'] {
 
 function makeDefaultState(overrides: Partial<AgentState> = {}): Partial<AgentState> {
   return {
-    version: 2,
+    version: 3,
     repoScores: {},
     config: makeDefaultConfig(),
-    events: [],
     lastRunAt: '2025-07-01T00:00:00Z',
     activeIssues: [],
     ...overrides,
