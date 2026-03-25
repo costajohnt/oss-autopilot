@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.8.0...core-v1.9.0) (2026-03-25)
+
+
+### Features
+
+* add error codes to JSON output envelope ([#865](https://github.com/costajohnt/oss-autopilot/issues/865)) ([7bcd121](https://github.com/costajohnt/oss-autopilot/commit/7bcd121d39b1435cda8c4744a270cc478e947fdb))
+* complete setup-automation command implementation ([#870](https://github.com/costajohnt/oss-autopilot/issues/870)) ([52eb480](https://github.com/costajohnt/oss-autopilot/commit/52eb48066d0ee6dee783b4150bd1a731b88121fd)), closes [#849](https://github.com/costajohnt/oss-autopilot/issues/849)
+* split issue list into actionable and skipped dedup files ([#873](https://github.com/costajohnt/oss-autopilot/issues/873)) ([1c865e2](https://github.com/costajohnt/oss-autopilot/commit/1c865e21b1f559dbbf1f7392a38703731e9b5889))
+
+
+### Bug Fixes
+
+* add .mcpregistry token files to .gitignore ([#859](https://github.com/costajohnt/oss-autopilot/issues/859)) ([aea5a86](https://github.com/costajohnt/oss-autopilot/commit/aea5a8646563876bf633b5b1cde0f762f338f26a)), closes [#851](https://github.com/costajohnt/oss-autopilot/issues/851)
+* **dashboard:** improve accessibility (a11y) ([#861](https://github.com/costajohnt/oss-autopilot/issues/861)) ([320f376](https://github.com/costajohnt/oss-autopilot/commit/320f37688897c6349f3ce30fe20fb1305fcd04f6))
+* run Strategy B search after A+C to avoid rate limiting ([#872](https://github.com/costajohnt/oss-autopilot/issues/872)) ([8e83d90](https://github.com/costajohnt/oss-autopilot/commit/8e83d901cb8832950e5f63a57e68f69d40912b88)), closes [#846](https://github.com/costajohnt/oss-autopilot/issues/846)
+
 ## [1.8.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.7.1...core-v1.8.0) (2026-03-25)
 
 
