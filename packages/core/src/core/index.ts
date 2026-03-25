@@ -45,6 +45,7 @@ export {
   getHttpStatusCode,
   isRateLimitError,
   isRateLimitOrAuthError,
+  resolveErrorCode,
 } from './errors.js';
 export { enableDebug, isDebugEnabled, debug, info, warn, timed } from './logger.js';
 export { HttpCache, getHttpCache, cachedRequest, type CacheEntry } from './http-cache.js';
