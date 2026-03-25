@@ -17,6 +17,7 @@ Print this reference card for the user. Do NOT run any commands — just display
 | `/oss` | **Daily check** — fetches open PRs, shows status dashboard, suggests actions (respond to reviews, fix CI, rebase, find new issues) |
 | `/oss-search` | **Find issues** — multi-strategy search across GitHub for contributable issues matching your language/label preferences |
 | `/setup-oss` | **Configure** — set GitHub username, languages, labels, PR limits, and other preferences |
+| `/oss-dashboard` | **Dashboard** — open the interactive SPA dashboard in your browser |
 | `/oss-help` | **This card** — quick reference for all plugin capabilities |
 
 ## Agents
