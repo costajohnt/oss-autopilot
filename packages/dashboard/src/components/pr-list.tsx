@@ -108,16 +108,32 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps)
       ))}
       {shelvedPRs.length > 0 && (
         <div class="pr-section pr-section--shelved">
-          <div class="pr-section-header pr-section-header--collapsible" onClick={() => setShelvedOpen(!shelvedOpen)}>
+          <div
+            class="pr-section-header pr-section-header--collapsible"
+            onClick={() => setShelvedOpen(!shelvedOpen)}
+            aria-expanded={shelvedOpen}
+            aria-controls="shelved-pr-list"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setShelvedOpen(!shelvedOpen);
+              }
+            }}
+          >
             <span class="pr-section-dot muted" />
             <span class="pr-section-title">Shelved</span>
             <span class="pr-section-count">{shelvedPRs.length}</span>
             <span class={`pr-section-chevron ${shelvedOpen ? 'pr-section-chevron--open' : ''}`}>&#9656;</span>
           </div>
-          {shelvedOpen &&
-            shelvedPRs.map((pr) => (
-              <PRRow key={pr.url} pr={pr} selected={pr.url === selectedUrl} onSelect={onSelect} />
-            ))}
+          {shelvedOpen && (
+            <div id="shelved-pr-list">
+              {shelvedPRs.map((pr) => (
+                <PRRow key={pr.url} pr={pr} selected={pr.url === selectedUrl} onSelect={onSelect} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

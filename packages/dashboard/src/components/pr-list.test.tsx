@@ -99,6 +99,17 @@ describe('PRList', () => {
     expect(shelvedHeader?.querySelector('.pr-section-count')?.textContent).toBe('1');
   });
 
+  it('sets aria-expanded on shelved section toggle', () => {
+    const prs = [makePR({ url: 'https://github.com/o/r/pull/1', status: 'needs_addressing' })];
+    const shelvedUrls = new Set(['https://github.com/o/r/pull/1']);
+    const { container } = renderPRList({ prs, shelvedUrls });
+    const header = container.querySelector('.pr-section-header--collapsible');
+    expect(header?.getAttribute('aria-expanded')).toBe('false');
+    expect(header?.getAttribute('aria-controls')).toBe('shelved-pr-list');
+    fireEvent.click(header!);
+    expect(header?.getAttribute('aria-expanded')).toBe('true');
+  });
+
   it('displays PR title, repo#number, and activity age', () => {
     const prs = [
       makePR({
