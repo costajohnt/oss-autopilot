@@ -453,6 +453,162 @@ describe('GistStateStore', () => {
     });
   });
 
+  describe('push', () => {
+    it('should be a no-op and return true when dirtyFiles is empty', async () => {
+      const gistId = 'push-noop';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, makeStateJson()));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      const result = await store.push();
+
+      expect(result).toBe(true);
+      expect(octokit.gists.update).not.toHaveBeenCalled();
+    });
+
+    it('should send only dirty files to the Gist', async () => {
+      const gistId = 'push-dirty-only';
+      const stateJson = makeStateJson();
+      const response = makeGistResponse(gistId, stateJson);
+      response.data.files['notes.md'] = { filename: 'notes.md', content: '# Notes' };
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(response);
+
+      octokit.gists.update.mockResolvedValue(makeGistResponse(gistId, stateJson));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      // Mark only state.json dirty — notes.md should not be sent
+      store.markDirty(STATE_FILE_NAME);
+
+      await store.push();
+
+      expect(octokit.gists.update).toHaveBeenCalledWith({
+        gist_id: gistId,
+        files: {
+          [STATE_FILE_NAME]: { content: stateJson },
+        },
+      });
+    });
+
+    it('should clear the dirty set on success', async () => {
+      const gistId = 'push-clears-dirty';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, stateJson));
+      octokit.gists.update.mockResolvedValue(makeGistResponse(gistId, stateJson));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      store.markDirty(STATE_FILE_NAME);
+      expect(store.dirtyFiles.size).toBe(1);
+
+      const result = await store.push();
+
+      expect(result).toBe(true);
+      expect(store.dirtyFiles.size).toBe(0);
+    });
+
+    it('should retry once on failure and succeed on the second attempt', async () => {
+      const gistId = 'push-retry-success';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, stateJson));
+
+      // First update call fails, second succeeds
+      octokit.gists.update
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockResolvedValueOnce(makeGistResponse(gistId, stateJson));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      store.markDirty(STATE_FILE_NAME);
+      const result = await store.push();
+
+      expect(result).toBe(true);
+      expect(octokit.gists.update).toHaveBeenCalledTimes(2);
+      expect(store.dirtyFiles.size).toBe(0);
+    });
+
+    it('should return false after both attempts fail', async () => {
+      const gistId = 'push-retry-fail';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, stateJson));
+
+      octokit.gists.update
+        .mockRejectedValueOnce(new Error('Network error'))
+        .mockRejectedValueOnce(new Error('Network error again'));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      store.markDirty(STATE_FILE_NAME);
+      const result = await store.push();
+
+      expect(result).toBe(false);
+      expect(octokit.gists.update).toHaveBeenCalledTimes(2);
+      // Dirty set should NOT be cleared on failure
+      expect(store.dirtyFiles.size).toBe(1);
+    });
+
+    it('should throw when gistId is null', async () => {
+      const store = new GistStateStore(octokit);
+      store.markDirty(STATE_FILE_NAME);
+      store.cachedFiles.set(STATE_FILE_NAME, makeStateJson());
+
+      await expect(store.push()).rejects.toThrow(/gistId is null/);
+    });
+
+    it('should write the local state cache after a successful push', async () => {
+      const gistId = 'push-writes-cache';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, stateJson));
+      octokit.gists.update.mockResolvedValue(makeGistResponse(gistId, stateJson));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      // Remove cache file to confirm it gets re-written
+      const cachePath = path.join(tmpDir, 'state-cache.json');
+      fs.rmSync(cachePath, { force: true });
+
+      store.markDirty(STATE_FILE_NAME);
+      await store.push();
+
+      expect(fs.existsSync(cachePath)).toBe(true);
+      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+      expect(cached.version).toBe(3);
+    });
+  });
+
+  describe('setState', () => {
+    it('should update cachedFiles and mark state.json dirty', async () => {
+      const gistId = 'set-state-test';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, stateJson));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      // Dirty set starts clean after bootstrap
+      expect(store.dirtyFiles.size).toBe(0);
+
+      const newStateJson = makeStateJson({ lastRunAt: '2026-01-01T00:00:00.000Z' });
+      store.setState(newStateJson);
+
+      expect(store.cachedFiles.get(STATE_FILE_NAME)).toBe(newStateJson);
+      expect(store.dirtyFiles.has(STATE_FILE_NAME)).toBe(true);
+    });
+  });
+
   describe('local state cache validation', () => {
     it('should write a valid AgentState to the local cache file', async () => {
       const gistId = 'validate-cache';

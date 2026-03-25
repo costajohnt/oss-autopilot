@@ -127,6 +127,80 @@ export class GistStateStore {
     return this.gistId;
   }
 
+  /**
+   * Mark a file as dirty so it will be included in the next `push()` call.
+   */
+  markDirty(filename: string): void {
+    this.dirtyFiles.add(filename);
+  }
+
+  /**
+   * Stage new state JSON for the next `push()`. Updates the in-memory cache
+   * for `state.json` and marks it dirty.
+   */
+  setState(stateJson: string): void {
+    this.cachedFiles.set(STATE_FILE_NAME, stateJson);
+    this.markDirty(STATE_FILE_NAME);
+  }
+
+  /**
+   * Push all dirty files to the backing Gist. Retries once on failure.
+   *
+   * Returns `true` on success (or when there is nothing to push).
+   * Returns `false` if both attempts fail.
+   * Throws if the Gist ID has not been resolved yet (bootstrap not called).
+   */
+  async push(): Promise<boolean> {
+    if (this.dirtyFiles.size === 0) {
+      return true;
+    }
+
+    if (this.gistId === null) {
+      throw new Error('GistStateStore: cannot push before bootstrap — gistId is null');
+    }
+
+    // Build PATCH payload from the dirty set
+    const files: Record<string, { content: string }> = {};
+    for (const filename of this.dirtyFiles) {
+      const content = this.cachedFiles.get(filename);
+      if (content !== undefined) {
+        files[filename] = { content };
+      }
+    }
+
+    const attempt = async (): Promise<boolean> => {
+      await this.octokit.gists.update({ gist_id: this.gistId as string, files });
+      return true;
+    };
+
+    try {
+      await attempt();
+    } catch (firstErr) {
+      debug(MODULE, `push failed on first attempt, retrying: ${firstErr}`);
+      try {
+        await attempt();
+      } catch (secondErr) {
+        warn(MODULE, `push failed after retry, giving up: ${secondErr}`);
+        return false;
+      }
+    }
+
+    // Success: flush dirty set and write local cache
+    this.dirtyFiles.clear();
+
+    const raw = this.cachedFiles.get(STATE_FILE_NAME);
+    if (raw) {
+      try {
+        const state = this.parseStateFromCache();
+        this.writeLocalStateCache(state);
+      } catch (err) {
+        debug(MODULE, `push succeeded but local cache write failed: ${err}`);
+      }
+    }
+
+    return true;
+  }
+
   // ── Private helpers ─────────────────────────────────────────────────
 
   /**
