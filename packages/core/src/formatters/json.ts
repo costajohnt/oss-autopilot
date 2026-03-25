@@ -293,6 +293,7 @@ export interface IssueListInfo {
   source: 'configured' | 'auto-detected';
   availableCount: number;
   completedCount: number;
+  skippedIssuesPath?: string;
 }
 
 /**

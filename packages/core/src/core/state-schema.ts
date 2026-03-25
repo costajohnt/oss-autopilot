@@ -194,6 +194,8 @@ export const AgentConfigSchema = z.object({
 
   issueListPath: z.string().optional(),
 
+  skippedIssuesPath: z.string().optional(),
+
   projectCategories: z.array(ProjectCategorySchema).default([]),
 
   preferredOrgs: z.array(z.string()).default([]),

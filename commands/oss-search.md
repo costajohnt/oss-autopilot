@@ -37,9 +37,26 @@ Route based on choice:
 
 ## Parallel Multi-Strategy Search
 
-**CRITICAL: Dispatch Strategies A and C together in a SINGLE message first. After both return, dispatch Strategy B separately.** This avoids GitHub's secondary rate limit (~30 search requests/minute) — A+C use raw `gh` calls while B hits the same Search API via the CLI, and firing all 3 simultaneously causes B to get 403 rate-limited.
+### Pre-Search: Cull Skip File
+
+If a skipped issues file exists (from startup data's `skippedIssuesPath`, or probe `skipped-issues.md` in the same directory as the issue list), auto-cull entries older than 90 days:
+
+```bash
+SKIP_FILE="{skippedIssuesPath}"
+if [ -f "$SKIP_FILE" ]; then
+  CUTOFF=$(date -v-90d +%Y-%m-%d 2>/dev/null || date -d '90 days ago' +%Y-%m-%d)
+  BEFORE=$(grep -cv '^#\|^$' "$SKIP_FILE" 2>/dev/null || echo 0)
+  awk -v cutoff="$CUTOFF" '/^#/ || /^$/ { print; next } $1 >= cutoff { print }' "$SKIP_FILE" > "${SKIP_FILE}.tmp" && mv "${SKIP_FILE}.tmp" "$SKIP_FILE"
+  AFTER=$(grep -cv '^#\|^$' "$SKIP_FILE" 2>/dev/null || echo 0)
+  if [ "$BEFORE" != "$AFTER" ]; then
+    echo "Culled $((BEFORE - AFTER)) expired entries from skip list (>90 days old)"
+  fi
+fi
+```
 
 ### Phase 1: Dispatch A + C in parallel
+
+**CRITICAL: Dispatch Strategies A and C together in a SINGLE message first. After both return, dispatch Strategy B separately.** This avoids GitHub's secondary rate limit (~30 search requests/minute) — A+C use raw `gh` calls while B hits the same Search API via the CLI, and firing all 3 simultaneously causes B to get 403 rate-limited.
 
 **Strategy A — Established repos (merged-PR + open-PR repos):**
 ```
@@ -90,6 +107,11 @@ After all 3 strategies return:
 
 1. **Normalize** all results to: `{ repo, number, title, url, labels, source, metadata }`. For Strategy B, flatten `candidate.issue.{repo, number, title, url, labels}` to the top level and place `candidate.{recommendation, viabilityScore, repoScore, reasonsToApprove, reasonsToSkip}` into `metadata`.
 2. **Filter Strategy B** against `searchedRepos` — remove candidates whose repo appears in `searchedRepos`
+2b. **Skip file dedup** — if skip file exists, read all URLs and remove matching candidates:
+   ```bash
+   SKIP_URLS=$(grep -v '^#\|^$' "$SKIP_FILE" 2>/dev/null | awk '{print $2}')
+   ```
+   Remove any candidate whose URL appears in `SKIP_URLS`. Log: "Filtered {count} previously-skipped issues."
 3. **Cross-strategy spam filter** — apply label-farming detection across ALL results:
    - Flag repos where a single issue has 5+ beginner-type labels (good first issue, hacktoberfest, easy, beginner, starter, up-for-grabs, first-timers-only, help wanted)
    - Flag repos where 3+ issues have near-identical titles (e.g., "Add Entry X", "Create Item Y")
@@ -169,6 +191,15 @@ Use AskUserQuestion:
    - owner/repo#123 (score: 4) — Issue title
    ```
 
+   Append each filtered issue to the skip file:
+   ```bash
+   SKIP_FILE="{skippedIssuesPath}"
+   if [ ! -f "$SKIP_FILE" ]; then
+     printf '# Skipped Issues — auto-culled after 90 days\n# Format: YYYY-MM-DD URL\n\n' > "$SKIP_FILE"
+   fi
+   echo "$(date +%Y-%m-%d) {issue_url}" >> "$SKIP_FILE"
+   ```
+
    **Important:** `searchRoundScores` should use the **unfiltered** mean (all vetted scores) so diminishing returns detection remains accurate.
 
 4. Update list entries with results — move issues that passed the threshold to their vet-recommended tier (`## Pursue`, `## Maybe`, `## Skip`) based on the agent's recommendation field
@@ -180,6 +211,14 @@ Use AskUserQuestion:
 **"Pick one to vet now":**
 - Display results as numbered list, use AskUserQuestion with up to 3 + "Done for now". Include the full GitHub issue URL in each option's description field.
 - Dispatch single `issue-scout` agent, present result
+- If vet result recommendation is "skip", append the issue to the skip file:
+  ```bash
+  SKIP_FILE="{skippedIssuesPath}"
+  if [ ! -f "$SKIP_FILE" ]; then
+    printf '# Skipped Issues — auto-culled after 90 days\n# Format: YYYY-MM-DD URL\n\n' > "$SKIP_FILE"
+  fi
+  echo "$(date +%Y-%m-%d) {issue_url}" >> "$SKIP_FILE"
+  ```
 - Offer: "Start working on this issue" / "Pick a different one" / "Done for now"
 - Record score: `searchRoundScores.push(score)` → **Diminishing Returns Check**
 

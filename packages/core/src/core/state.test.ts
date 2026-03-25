@@ -125,6 +125,12 @@ describe('StateManager', () => {
       const state = stateManager.getState();
       expect(state.config.excludeRepos).toContain('owner/repo');
     });
+
+    it('should store and retrieve skippedIssuesPath', () => {
+      const sm = new StateManager(true);
+      sm.updateConfig({ skippedIssuesPath: '/path/to/skipped-issues.md' });
+      expect(sm.getState().config.skippedIssuesPath).toBe('/path/to/skipped-issues.md');
+    });
   });
 
   describe('Edge Cases', () => {
