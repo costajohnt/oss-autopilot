@@ -27,15 +27,6 @@ export const ProjectCategorySchema = z.enum([
 
 export const IssueScopeSchema = z.enum(['beginner', 'intermediate', 'advanced']);
 
-export const StateEventTypeSchema = z.enum([
-  'pr_tracked',
-  'pr_merged',
-  'pr_closed',
-  'pr_dormant',
-  'daily_check',
-  'comment_posted',
-]);
-
 // ── 2. Leaf schemas ──────────────────────────────────────────────────
 
 export const RepoSignalsSchema = z.object({
@@ -55,13 +46,6 @@ export const RepoScoreSchema = z.object({
   signals: RepoSignalsSchema,
   stargazersCount: z.number().optional(),
   language: z.string().nullable().optional(),
-});
-
-export const StateEventSchema = z.object({
-  id: z.string(),
-  type: StateEventTypeSchema,
-  at: z.string(),
-  data: z.record(z.string(), z.unknown()),
 });
 
 export const StoredMergedPRSchema = z.object({
@@ -298,11 +282,8 @@ export type IssueStatus = z.infer<typeof IssueStatusSchema>;
 export type FetchedPRStatus = z.infer<typeof FetchedPRStatusSchema>;
 export type ProjectCategory = z.infer<typeof ProjectCategorySchema>;
 export type IssueScope = z.infer<typeof IssueScopeSchema>;
-export type StateEventType = z.infer<typeof StateEventTypeSchema>;
-
 export type RepoSignals = z.infer<typeof RepoSignalsSchema>;
 export type RepoScore = z.infer<typeof RepoScoreSchema>;
-export type StateEvent = z.infer<typeof StateEventSchema>;
 export type StoredMergedPR = z.infer<typeof StoredMergedPRSchema>;
 export type StoredClosedPR = z.infer<typeof StoredClosedPRSchema>;
 export type AnalyzedIssueConversation = z.infer<typeof AnalyzedIssueConversationSchema>;

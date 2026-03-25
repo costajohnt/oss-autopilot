@@ -1,6 +1,6 @@
 /**
  * State persistence layer for the OSS Contribution Agent.
- * Handles file I/O, locking, backup/restore, and v1-to-v2 migration.
+ * Handles file I/O, locking, backup/restore, and schema migration (v1→v2→v3).
  * No module-level mutable state — functions accept/return AgentState objects.
  */
 

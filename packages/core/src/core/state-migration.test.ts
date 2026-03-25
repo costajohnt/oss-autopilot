@@ -275,7 +275,7 @@ describe('StateManager v1 → v2 migration', () => {
     );
 
     const sm = new StateManager(false);
-    // Should have been migrated to v2 during restore
+    // Should have been migrated to v3 during restore (v1 -> v2 -> v3 chain)
     expect(sm.getState().version).toBe(3);
   });
 });
