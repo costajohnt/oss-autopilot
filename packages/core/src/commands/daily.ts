@@ -588,11 +588,26 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // Phase 2: Update repo scores (signals, star counts, trust sync)
   await updateRepoScores(prMonitor, prs, mergedCounts, closedCounts);
 
-  // Phase 3: Persist monthly analytics (batch the 3 monthly setter calls).
+  // Phase 3: Persist monthly analytics and store merged/closed PR history.
   // try-catch: analytics are supplementary — save failure should not crash the daily check.
   try {
     getStateManager().batch(() => {
       updateMonthlyAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
+
+      // Store recently merged/closed PRs in the persistent arrays.
+      // This ensures the mergedPRs/closedPRs ledger is populated even when
+      // the dashboard is never opened (which has its own fetch path).
+      // addMergedPRs/addClosedPRs deduplicate by URL, so overlaps are safe.
+      if (recentlyMergedPRs.length > 0) {
+        getStateManager().addMergedPRs(
+          recentlyMergedPRs.map((pr) => ({ url: pr.url, title: pr.title, mergedAt: pr.mergedAt })),
+        );
+      }
+      if (recentlyClosedPRs.length > 0) {
+        getStateManager().addClosedPRs(
+          recentlyClosedPRs.map((pr) => ({ url: pr.url, title: pr.title, closedAt: pr.closedAt })),
+        );
+      }
     });
   } catch (error) {
     warn(MODULE, `Failed to persist monthly analytics: ${errorMessage(error)}`);
