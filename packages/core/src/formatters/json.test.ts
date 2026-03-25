@@ -65,6 +65,18 @@ describe('jsonError', () => {
     const result = jsonError('boom');
     expect(result.timestamp).toMatch(ISO_8601_REGEX);
   });
+
+  it('should include errorCode when provided', () => {
+    const result = jsonError('Auth failed', 'AUTH_REQUIRED');
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Auth failed');
+    expect(result.errorCode).toBe('AUTH_REQUIRED');
+  });
+
+  it('should omit errorCode when not provided', () => {
+    const result = jsonError('Something broke');
+    expect(result.errorCode).toBeUndefined();
+  });
 });
 
 describe('outputJson', () => {

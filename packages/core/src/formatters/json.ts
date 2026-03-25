@@ -9,10 +9,21 @@ import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { SearchPriority } from '../core/types.js';
 import type { CIFormatterDiagnosis, FormatterDetectionResult } from '../core/formatter-detection.js';
 
+export type ErrorCode =
+  | 'AUTH_REQUIRED'
+  | 'RATE_LIMITED'
+  | 'VALIDATION'
+  | 'CONFIGURATION'
+  | 'NETWORK'
+  | 'NOT_FOUND'
+  | 'STATE_CORRUPTED'
+  | 'UNKNOWN';
+
 export interface JsonOutput<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
+  errorCode?: ErrorCode;
   timestamp: string;
 }
 
@@ -485,10 +496,11 @@ export function jsonSuccess<T>(data: T): JsonOutput<T> {
 /**
  * Create an error JSON output
  */
-export function jsonError(message: string): JsonOutput<never> {
+export function jsonError(message: string, errorCode?: ErrorCode): JsonOutput<never> {
   return {
     success: false,
     error: message,
+    errorCode,
     timestamp: new Date().toISOString(),
   };
 }
@@ -503,6 +515,6 @@ export function outputJson<T>(data: T): void {
 /**
  * Output error JSON to stdout (sets success: false)
  */
-export function outputJsonError(message: string): void {
-  console.log(JSON.stringify(jsonError(message), null, 2));
+export function outputJsonError(message: string, errorCode?: ErrorCode): void {
+  console.log(JSON.stringify(jsonError(message, errorCode), null, 2));
 }

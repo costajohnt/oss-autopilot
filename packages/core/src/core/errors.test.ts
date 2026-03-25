@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { OssAutopilotError, ConfigurationError, ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
+import {
+  OssAutopilotError,
+  ConfigurationError,
+  ValidationError,
+  errorMessage,
+  getHttpStatusCode,
+  resolveErrorCode,
+} from './errors.js';
 
 describe('Custom Error Hierarchy', () => {
   describe('OssAutopilotError', () => {
@@ -126,5 +133,67 @@ describe('getHttpStatusCode', () => {
   it('returns undefined for primitives', () => {
     expect(getHttpStatusCode('string')).toBeUndefined();
     expect(getHttpStatusCode(42)).toBeUndefined();
+  });
+});
+
+describe('resolveErrorCode', () => {
+  it('returns CONFIGURATION for ConfigurationError', () => {
+    expect(resolveErrorCode(new ConfigurationError('missing setup'))).toBe('CONFIGURATION');
+  });
+
+  it('returns VALIDATION for ValidationError', () => {
+    expect(resolveErrorCode(new ValidationError('bad url'))).toBe('VALIDATION');
+  });
+
+  it('returns AUTH_REQUIRED for 401 status', () => {
+    const err = Object.assign(new Error('Unauthorized'), { status: 401 });
+    expect(resolveErrorCode(err)).toBe('AUTH_REQUIRED');
+  });
+
+  it('returns RATE_LIMITED for 429 status', () => {
+    const err = Object.assign(new Error('Too many requests'), { status: 429 });
+    expect(resolveErrorCode(err)).toBe('RATE_LIMITED');
+  });
+
+  it('returns RATE_LIMITED for 403 with rate limit message', () => {
+    const err = Object.assign(new Error('API rate limit exceeded'), { status: 403 });
+    expect(resolveErrorCode(err)).toBe('RATE_LIMITED');
+  });
+
+  it('returns RATE_LIMITED for 403 with abuse detection message', () => {
+    const err = Object.assign(new Error('You have triggered an abuse detection mechanism'), {
+      status: 403,
+    });
+    expect(resolveErrorCode(err)).toBe('RATE_LIMITED');
+  });
+
+  it('returns AUTH_REQUIRED for 403 without rate limit message', () => {
+    const err = Object.assign(new Error('Resource not accessible'), { status: 403 });
+    expect(resolveErrorCode(err)).toBe('AUTH_REQUIRED');
+  });
+
+  it('returns NOT_FOUND for 404 status', () => {
+    const err = Object.assign(new Error('Not Found'), { status: 404 });
+    expect(resolveErrorCode(err)).toBe('NOT_FOUND');
+  });
+
+  it('returns NETWORK for connection errors', () => {
+    expect(resolveErrorCode(new Error('getaddrinfo ENOTFOUND api.github.com'))).toBe('NETWORK');
+    expect(resolveErrorCode(new Error('connect ECONNREFUSED'))).toBe('NETWORK');
+    expect(resolveErrorCode(new Error('read ECONNRESET'))).toBe('NETWORK');
+    expect(resolveErrorCode(new Error('connect ETIMEDOUT'))).toBe('NETWORK');
+    expect(resolveErrorCode(new Error('fetch failed'))).toBe('NETWORK');
+  });
+
+  it('returns STATE_CORRUPTED for state corruption messages', () => {
+    expect(resolveErrorCode(new Error('state file is corrupt'))).toBe('STATE_CORRUPTED');
+    expect(resolveErrorCode(new Error('invalid state data'))).toBe('STATE_CORRUPTED');
+  });
+
+  it('returns UNKNOWN for unrecognized errors', () => {
+    expect(resolveErrorCode(new Error('something unexpected'))).toBe('UNKNOWN');
+    expect(resolveErrorCode('string error')).toBe('UNKNOWN');
+    expect(resolveErrorCode(42)).toBe('UNKNOWN');
+    expect(resolveErrorCode(null)).toBe('UNKNOWN');
   });
 });

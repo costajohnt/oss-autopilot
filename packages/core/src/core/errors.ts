@@ -81,3 +81,39 @@ export function isRateLimitOrAuthError(err: unknown): boolean {
   }
   return false;
 }
+
+/**
+ * Map an unknown error to a structured ErrorCode for JSON output.
+ * Checks custom error classes, HTTP status codes (Octokit errors),
+ * and error message patterns in priority order.
+ */
+export function resolveErrorCode(err: unknown): import('../formatters/json.js').ErrorCode {
+  // Check our custom error classes first
+  if (err instanceof ConfigurationError) return 'CONFIGURATION';
+  if (err instanceof ValidationError) return 'VALIDATION';
+
+  // Check HTTP status codes (Octokit errors)
+  const status = getHttpStatusCode(err);
+  if (status === 401) return 'AUTH_REQUIRED';
+  if (status === 403) {
+    const msg = errorMessage(err).toLowerCase();
+    if (msg.includes('rate limit') || msg.includes('abuse detection')) return 'RATE_LIMITED';
+    return 'AUTH_REQUIRED';
+  }
+  if (status === 404) return 'NOT_FOUND';
+  if (status === 429) return 'RATE_LIMITED';
+
+  // Check error message patterns
+  const msg = errorMessage(err).toLowerCase();
+  if (
+    msg.includes('enotfound') ||
+    msg.includes('econnrefused') ||
+    msg.includes('econnreset') ||
+    msg.includes('etimedout') ||
+    msg.includes('fetch failed')
+  )
+    return 'NETWORK';
+  if (msg.includes('state') && (msg.includes('corrupt') || msg.includes('invalid'))) return 'STATE_CORRUPTED';
+
+  return 'UNKNOWN';
+}
