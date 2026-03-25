@@ -37,7 +37,9 @@ Route based on choice:
 
 ## Parallel Multi-Strategy Search
 
-**CRITICAL: Dispatch ALL 3 strategies in a SINGLE message for true parallelism.**
+**CRITICAL: Dispatch Strategies A and C together in a SINGLE message first. After both return, dispatch Strategy B separately.** This avoids GitHub's secondary rate limit (~30 search requests/minute) — A+C use raw `gh` calls while B hits the same Search API via the CLI, and firing all 3 simultaneously causes B to get 403 rate-limited.
+
+### Phase 1: Dispatch A + C in parallel
 
 **Strategy A — Established repos (merged-PR + open-PR repos):**
 ```
@@ -53,6 +55,10 @@ Task(issue-scout, "Find recently-opened issues (last 30 days) in repos where the
   For each: repo, number, title, URL, labels, source: 'established-repo', and brief assessment.")
 ```
 
+### Phase 2: Dispatch B after A+C return
+
+After Strategies A and C have both returned, dispatch Strategy B. If A+C produced results, present them immediately with a note: "CLI search results incoming — showing established and trending results first."
+
 **Strategy B — Filtered CLI search (language + label + star filters):**
 ```
 Task(general-purpose, "Run the CLI search command and return the raw JSON output verbatim:
@@ -63,7 +69,7 @@ Task(general-purpose, "Run the CLI search command and return the raw JSON output
 
 When Strategy B returns, check the JSON `success` field. If `success: false`, treat it as a failed strategy. If `success: true`, tag each candidate in `data.candidates` as source: `'cli-search'`.
 
-**Strategy C — Trending/popular repos in user's language preferences:**
+**Strategy C — Trending/popular repos in user's language preferences** (dispatched in Phase 1 alongside A)**:**
 ```
 Task(issue-scout, "Search for good-first-issue candidates in trending/popular repos the user has NOT contributed to.
   [If searchedRepos is non-empty, insert: "Exclude results from these repos (already searched in prior rounds): {searchedRepos as comma-separated list}."]
