@@ -19,6 +19,7 @@ import { Command } from 'commander';
 
 vi.mock('./core/errors.js', () => ({
   errorMessage: vi.fn((err: unknown) => (err instanceof Error ? err.message : String(err))),
+  resolveErrorCode: vi.fn(() => 'UNKNOWN'),
 }));
 
 vi.mock('./formatters/json.js', () => ({
@@ -118,7 +119,7 @@ describe('handleCommandError', () => {
       'process.exit called',
     );
 
-    expect(mockOutputJsonError).toHaveBeenCalledWith('network failure');
+    expect(mockOutputJsonError).toHaveBeenCalledWith('network failure', 'UNKNOWN');
     expect(consoleErrorSpy).not.toHaveBeenCalledWith(expect.stringContaining('Error:'));
     expect(processExitSpy).toHaveBeenCalledWith(1);
   });
@@ -164,7 +165,10 @@ describe('search count validation', () => {
 
     await expect(program.parseAsync(['node', 'cli', 'search', count, '--json'])).rejects.toThrow('process.exit called');
 
-    expect(mockOutputJsonError).toHaveBeenCalledWith(`Invalid count "${count}". Must be a positive integer.`);
+    expect(mockOutputJsonError).toHaveBeenCalledWith(
+      `Invalid count "${count}". Must be a positive integer.`,
+      'UNKNOWN',
+    );
     expect(mockRunSearch).not.toHaveBeenCalled();
   });
 
@@ -254,6 +258,7 @@ describe('override status validation', () => {
 
     expect(mockOutputJsonError).toHaveBeenCalledWith(
       'Invalid status "invalid_status". Must be one of: needs_addressing, waiting_on_maintainer',
+      'UNKNOWN',
     );
     expect(mockRunMove).not.toHaveBeenCalled();
   });

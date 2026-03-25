@@ -10,7 +10,7 @@
  */
 
 import type { Command } from 'commander';
-import { errorMessage } from './core/errors.js';
+import { errorMessage, resolveErrorCode } from './core/errors.js';
 import { outputJson, outputJsonError } from './formatters/json.js';
 
 interface CLICommandDef {
@@ -26,7 +26,7 @@ interface CLICommandDef {
 function handleCommandError(err: unknown, json?: boolean): never {
   const msg = errorMessage(err);
   if (json) {
-    outputJsonError(msg);
+    outputJsonError(msg, resolveErrorCode(err));
   } else {
     console.error(`Error: ${msg}`);
   }

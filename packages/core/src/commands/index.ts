@@ -81,6 +81,7 @@ export { runLocalRepos } from './local-repos.js';
 // ── Output Types ────────────────────────────────────────────────────────────
 // All commands return JsonOutput<T> where T is the command-specific type below.
 
+export type { ErrorCode } from '../formatters/json.js';
 export type { DailyOutput, SearchOutput, StartupOutput, StatusOutput, TrackOutput } from '../formatters/json.js';
 export type { VetOutput, CommentsOutput, PostOutput, ClaimOutput } from '../formatters/json.js';
 export type {
