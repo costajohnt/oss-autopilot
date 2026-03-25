@@ -9,8 +9,6 @@ import {
   TrackedIssue,
   RepoScore,
   RepoScoreUpdate,
-  StateEvent,
-  StateEventType,
   DailyDigest,
   LocalRepoCache,
   StatusOverride,
@@ -29,14 +27,11 @@ export type { Stats } from './repo-score-manager.js';
 
 const MODULE = 'state';
 
-// Maximum number of events to retain in the event log
-const MAX_EVENTS = 1000;
-
 /**
  * Singleton manager for persistent agent state stored in ~/.oss-autopilot/state.json.
  *
  * Delegates file I/O to state-persistence.ts and scoring logic to repo-score-manager.ts.
- * Retains lightweight CRUD operations for config, events, issues, shelving, dismissal,
+ * Retains lightweight CRUD operations for config, issues, shelving, dismissal,
  * and status overrides.
  */
 export class StateManager {
@@ -216,15 +211,6 @@ export class StateManager {
   }
 
   /**
-   * Update daily activity counts for dashboard display.
-   * @param counts - Daily activity counts keyed by YYYY-MM-DD
-   */
-  setDailyActivityCounts(counts: Record<string, number>): void {
-    this.state.dailyActivityCounts = counts;
-    this.autoSave();
-  }
-
-  /**
    * Update the local repository cache.
    * @param cache - Local repository cache mapping repo names to paths
    */
@@ -298,52 +284,6 @@ export class StateManager {
   updateConfig(config: Partial<AgentState['config']>): void {
     this.state.config = { ...this.state.config, ...config };
     this.autoSave();
-  }
-
-  // === Event Logging ===
-
-  /**
-   * Append a new event to the event log and auto-persist.
-   * Events are capped at 1000 to prevent unbounded growth.
-   * @param type - The event type identifier
-   * @param data - Arbitrary event payload
-   */
-  appendEvent(type: StateEventType, data: Record<string, unknown>): void {
-    const event: StateEvent = {
-      id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      type,
-      at: new Date().toISOString(),
-      data,
-    };
-    this.state.events.push(event);
-
-    // Cap the events array to prevent unbounded growth
-    if (this.state.events.length > MAX_EVENTS) {
-      this.state.events = this.state.events.slice(-MAX_EVENTS);
-    }
-    this.autoSave();
-  }
-
-  /**
-   * Filter events by type.
-   * @param type - The event type to filter by
-   * @returns Events matching the given type
-   */
-  getEventsByType(type: StateEventType): StateEvent[] {
-    return this.state.events.filter((e) => e.type === type);
-  }
-
-  /**
-   * Filter events within a date range.
-   * @param since - Start of range (inclusive)
-   * @param until - End of range (inclusive), defaults to now
-   * @returns Events within the date range
-   */
-  getEventsInRange(since: Date, until: Date = new Date()): StateEvent[] {
-    return this.state.events.filter((e) => {
-      const eventTime = new Date(e.at);
-      return eventTime >= since && eventTime <= until;
-    });
   }
 
   // === Issue Management ===

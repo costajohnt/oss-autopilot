@@ -13,13 +13,12 @@ import {
 
 describe('AgentStateSchema', () => {
   describe('missing optional fields get defaults', () => {
-    it('should populate all fields with defaults from minimal { version: 2 } input', () => {
-      const result = AgentStateSchema.parse({ version: 2 });
+    it('should populate all fields with defaults from minimal { version: 3 } input', () => {
+      const result = AgentStateSchema.parse({ version: 3 });
 
       // Top-level defaults
-      expect(result.version).toBe(2);
+      expect(result.version).toBe(3);
       expect(result.repoScores).toEqual({});
-      expect(result.events).toEqual([]);
       expect(result.activeIssues).toEqual([]);
 
       // lastRunAt should be a valid ISO string
@@ -38,7 +37,6 @@ describe('AgentStateSchema', () => {
       expect(result.config.excludeRepos).toEqual([]);
       expect(result.config.trustedProjects).toEqual([]);
       expect(result.config.minRepoScoreThreshold).toBe(4);
-      expect(result.config.scoreThreshold).toBe(6);
       expect(result.config.starredRepos).toEqual([]);
       expect(result.config.squashByDefault).toBe(true);
       expect(result.config.minStars).toBe(50);
@@ -52,7 +50,7 @@ describe('AgentStateSchema', () => {
 
     it('should preserve custom config values while defaulting the rest', () => {
       const result = AgentStateSchema.parse({
-        version: 2,
+        version: 3,
         config: { githubUsername: 'testuser' },
       });
 
@@ -67,19 +65,19 @@ describe('AgentStateSchema', () => {
   describe('unknown keys stripped', () => {
     it('should strip unknown top-level keys', () => {
       const result = AgentStateSchema.parse({
-        version: 2,
+        version: 3,
         snoozedPRs: { foo: 'bar' },
         extraField: true,
       });
 
       expect(result).not.toHaveProperty('snoozedPRs');
       expect(result).not.toHaveProperty('extraField');
-      expect(result.version).toBe(2);
+      expect(result.version).toBe(3);
     });
 
     it('should strip unknown keys from nested config', () => {
       const result = AgentStateSchema.parse({
-        version: 2,
+        version: 3,
         config: { githubUsername: '', legacyField: 42 },
       });
 
@@ -94,13 +92,18 @@ describe('AgentStateSchema', () => {
       expect(result.success).toBe(false);
     });
 
+    it('should fail for version: 2 (old version literal)', () => {
+      const result = AgentStateSchema.safeParse({ version: 2 });
+      expect(result.success).toBe(false);
+    });
+
     it('should fail for version: "two" (wrong type)', () => {
       const result = AgentStateSchema.safeParse({ version: 'two' });
       expect(result.success).toBe(false);
     });
 
     it('should fail for config as a string', () => {
-      const result = AgentStateSchema.safeParse({ version: 2, config: 'not-an-object' });
+      const result = AgentStateSchema.safeParse({ version: 3, config: 'not-an-object' });
       expect(result.success).toBe(false);
     });
 
@@ -120,25 +123,43 @@ describe('AgentStateSchema', () => {
     });
   });
 
-  describe('nested validation', () => {
-    it('should fail for invalid event type', () => {
-      const result = AgentStateSchema.safeParse({
-        version: 2,
-        events: [{ id: '1', type: 'invalid_type', at: '2025-01-01', data: {} }],
+  describe('new v3 fields', () => {
+    it('should accept StoredMergedPR with learningsExtractedAt', () => {
+      const result = AgentStateSchema.parse({
+        version: 3,
+        mergedPRs: [
+          {
+            url: 'https://github.com/o/r/pull/1',
+            title: 'Fix bug',
+            mergedAt: '2025-01-01',
+            learningsExtractedAt: '2025-02-01',
+          },
+        ],
       });
-      expect(result.success).toBe(false);
+      expect(result.mergedPRs![0].learningsExtractedAt).toBe('2025-02-01');
     });
 
-    it('should pass for valid event type', () => {
-      const result = AgentStateSchema.safeParse({
-        version: 2,
-        events: [{ id: '1', type: 'pr_merged', at: '2025-01-01', data: {} }],
+    it('should accept StoredClosedPR with learningsExtractedAt', () => {
+      const result = AgentStateSchema.parse({
+        version: 3,
+        closedPRs: [
+          {
+            url: 'https://github.com/o/r/pull/2',
+            title: 'Try fix',
+            closedAt: '2025-01-01',
+            learningsExtractedAt: '2025-02-01',
+          },
+        ],
       });
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.events).toHaveLength(1);
-        expect(result.data.events[0].type).toBe('pr_merged');
-      }
+      expect(result.closedPRs![0].learningsExtractedAt).toBe('2025-02-01');
+    });
+
+    it('should accept analyzedIssueConversations', () => {
+      const result = AgentStateSchema.parse({
+        version: 3,
+        analyzedIssueConversations: [{ url: 'https://github.com/o/r/issues/1', repo: 'o/r', analyzedAt: '2025-03-01' }],
+      });
+      expect(result.analyzedIssueConversations).toHaveLength(1);
     });
   });
 });
@@ -159,7 +180,6 @@ describe('AgentConfigSchema', () => {
       expect(result.trustedProjects).toEqual([]);
       expect(result.githubUsername).toBe('');
       expect(result.minRepoScoreThreshold).toBe(4);
-      expect(result.scoreThreshold).toBe(6);
       expect(result.starredRepos).toEqual([]);
       expect(result.squashByDefault).toBe(true);
       expect(result.minStars).toBe(50);

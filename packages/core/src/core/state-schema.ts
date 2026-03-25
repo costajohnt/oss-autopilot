@@ -27,15 +27,6 @@ export const ProjectCategorySchema = z.enum([
 
 export const IssueScopeSchema = z.enum(['beginner', 'intermediate', 'advanced']);
 
-export const StateEventTypeSchema = z.enum([
-  'pr_tracked',
-  'pr_merged',
-  'pr_closed',
-  'pr_dormant',
-  'daily_check',
-  'comment_posted',
-]);
-
 // ── 2. Leaf schemas ──────────────────────────────────────────────────
 
 export const RepoSignalsSchema = z.object({
@@ -57,23 +48,24 @@ export const RepoScoreSchema = z.object({
   language: z.string().nullable().optional(),
 });
 
-export const StateEventSchema = z.object({
-  id: z.string(),
-  type: StateEventTypeSchema,
-  at: z.string(),
-  data: z.record(z.string(), z.unknown()),
-});
-
 export const StoredMergedPRSchema = z.object({
   url: z.string(),
   title: z.string(),
   mergedAt: z.string(),
+  learningsExtractedAt: z.string().optional(),
 });
 
 export const StoredClosedPRSchema = z.object({
   url: z.string(),
   title: z.string(),
   closedAt: z.string(),
+  learningsExtractedAt: z.string().optional(),
+});
+
+export const AnalyzedIssueConversationSchema = z.object({
+  url: z.string(),
+  repo: z.string(),
+  analyzedAt: z.string(),
 });
 
 // ── 3. Contribution schemas ──────────────────────────────────────────
@@ -169,12 +161,8 @@ export const AgentConfigSchema = z.object({
 
   minRepoScoreThreshold: z.number().default(4),
 
-  scoreThreshold: z.number().int().min(1).max(10).default(6),
-
   starredRepos: z.array(z.string()).default([]),
   starredReposLastFetched: z.string().optional(),
-
-  showHealthCheck: z.boolean().optional(),
 
   squashByDefault: z.union([z.boolean(), z.literal('ask')]).default(true),
 
@@ -262,13 +250,11 @@ export const DailyDigestSchema = z.object({
 // ── 8. Root schema ───────────────────────────────────────────────────
 
 export const AgentStateSchema = z.object({
-  version: z.literal(2),
+  version: z.literal(3),
 
   repoScores: z.record(z.string(), RepoScoreSchema).default({}),
 
   config: AgentConfigSchema.default(() => AgentConfigSchema.parse({})),
-
-  events: z.array(StateEventSchema).default([]),
 
   lastRunAt: z.string().default(() => new Date().toISOString()),
 
@@ -279,12 +265,13 @@ export const AgentStateSchema = z.object({
   monthlyMergedCounts: z.record(z.string(), z.number()).optional(),
   monthlyClosedCounts: z.record(z.string(), z.number()).optional(),
   monthlyOpenedCounts: z.record(z.string(), z.number()).optional(),
-  dailyActivityCounts: z.record(z.string(), z.number()).optional(),
 
   localRepoCache: LocalRepoCacheSchema.optional(),
 
   mergedPRs: z.array(StoredMergedPRSchema).optional(),
   closedPRs: z.array(StoredClosedPRSchema).optional(),
+
+  analyzedIssueConversations: z.array(AnalyzedIssueConversationSchema).optional(),
 
   activeIssues: z.array(TrackedIssueSchema).default([]),
 });
@@ -295,13 +282,11 @@ export type IssueStatus = z.infer<typeof IssueStatusSchema>;
 export type FetchedPRStatus = z.infer<typeof FetchedPRStatusSchema>;
 export type ProjectCategory = z.infer<typeof ProjectCategorySchema>;
 export type IssueScope = z.infer<typeof IssueScopeSchema>;
-export type StateEventType = z.infer<typeof StateEventTypeSchema>;
-
 export type RepoSignals = z.infer<typeof RepoSignalsSchema>;
 export type RepoScore = z.infer<typeof RepoScoreSchema>;
-export type StateEvent = z.infer<typeof StateEventSchema>;
 export type StoredMergedPR = z.infer<typeof StoredMergedPRSchema>;
 export type StoredClosedPR = z.infer<typeof StoredClosedPRSchema>;
+export type AnalyzedIssueConversation = z.infer<typeof AnalyzedIssueConversationSchema>;
 
 export type ContributionGuidelines = z.infer<typeof ContributionGuidelinesSchema>;
 export type IssueVettingResult = z.infer<typeof IssueVettingResultSchema>;

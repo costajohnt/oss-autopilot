@@ -294,30 +294,25 @@ describe('StateManager state validity', () => {
     stateManager = new StateManager(true);
   });
 
-  it('should have required v2 structure on initialization', () => {
+  it('should have required v3 structure on initialization', () => {
     const state = stateManager.getState();
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
     expect(state.config).toBeDefined();
     expect(typeof state.config).toBe('object');
     expect(state.repoScores).toBeDefined();
     expect(typeof state.repoScores).toBe('object');
-    expect(Array.isArray(state.events)).toBe(true);
-    expect(state.events).toHaveLength(0);
     expect(Array.isArray(state.activeIssues)).toBe(true);
     expect(typeof state.lastRunAt).toBe('string');
   });
 
   it('should maintain valid structure after operations', () => {
     stateManager.updateRepoScore('owner/repo', { mergedPRCount: 2 });
-    stateManager.appendEvent('daily_check', { note: 'test' });
 
     const state = stateManager.getState();
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
     expect(typeof state.config).toBe('object');
     expect(typeof state.repoScores).toBe('object');
-    expect(Array.isArray(state.events)).toBe(true);
     expect(Object.keys(state.repoScores)).toHaveLength(1);
-    expect(state.events.length).toBeGreaterThanOrEqual(1);
   });
 
   it('should aggregate stats correctly from repo scores', () => {
