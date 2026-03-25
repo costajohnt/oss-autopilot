@@ -10,6 +10,8 @@ import { Octokit } from '@octokit/rest';
 import { paginateAll } from './pagination.js';
 import { errorMessage } from './errors.js';
 import { warn } from './logger.js';
+import { getHttpCache } from './http-cache.js';
+import { getSearchBudgetTracker } from './search-budget.js';
 
 const MODULE = 'issue-eligibility';
 
@@ -41,7 +43,8 @@ const CLAIM_PHRASES = [
 
 /**
  * Check whether an open PR already exists for the given issue.
- * Searches both the PR search index and the issue timeline for linked PRs.
+ * Uses the timeline API (REST) to detect cross-referenced PRs, avoiding
+ * the Search API's strict 30 req/min rate limit.
  */
 export async function checkNoExistingPR(
   octokit: Octokit,
@@ -50,13 +53,11 @@ export async function checkNoExistingPR(
   issueNumber: number,
 ): Promise<CheckResult> {
   try {
-    // Search for PRs that mention this issue
-    const { data } = await octokit.search.issuesAndPullRequests({
-      q: `repo:${owner}/${repo} is:pr ${issueNumber}`,
-      per_page: 5,
-    });
-
-    // Also check timeline for linked PRs
+    // Use the timeline API (REST, not Search) to detect linked PRs.
+    // This avoids consuming GitHub Search API quota (30 req/min limit).
+    // Timeline captures formally linked PRs via cross-referenced events
+    // but may miss PRs that only mention the issue number without a formal
+    // link — an acceptable trade-off since most PRs use "Fixes #N" syntax.
     const timeline = await paginateAll((page) =>
       octokit.issues.listEventsForTimeline({
         owner,
@@ -72,7 +73,7 @@ export async function checkNoExistingPR(
       return e.event === 'cross-referenced' && e.source?.issue?.pull_request;
     });
 
-    return { passed: data.total_count === 0 && linkedPRs.length === 0 };
+    return { passed: linkedPRs.length === 0 };
   } catch (error) {
     const errMsg = errorMessage(error);
     warn(
@@ -83,22 +84,47 @@ export async function checkNoExistingPR(
   }
 }
 
+/** TTL for cached merged-PR counts per repo (15 minutes). */
+const MERGED_PR_CACHE_TTL_MS = 15 * 60 * 1000;
+
 /**
  * Check how many merged PRs the authenticated user has in a repo.
  * Uses GitHub Search API. Returns 0 on error (non-fatal).
+ * Results are cached per-repo for 15 minutes to avoid redundant Search API
+ * calls when multiple issues from the same repo are vetted.
  */
 export async function checkUserMergedPRsInRepo(octokit: Octokit, owner: string, repo: string): Promise<number> {
+  const cache = getHttpCache();
+  const cacheKey = `merged-prs:${owner}/${repo}`;
+
+  // Manual cache check — do not use cachedTimeBased because we must NOT cache
+  // error-path fallback values (a transient failure returning 0 would poison the
+  // cache for 15 minutes, hiding that the user has merged PRs in the repo).
+  const cached = cache.getIfFresh(cacheKey, MERGED_PR_CACHE_TTL_MS);
+  if (cached != null && typeof cached === 'number') {
+    return cached;
+  }
+
   try {
-    // Use @me to search as the authenticated user
-    const { data } = await octokit.search.issuesAndPullRequests({
-      q: `repo:${owner}/${repo} is:pr is:merged author:@me`,
-      per_page: 1, // We only need total_count
-    });
-    return data.total_count;
+    const tracker = getSearchBudgetTracker();
+    await tracker.waitForBudget();
+    try {
+      // Use @me to search as the authenticated user
+      const { data } = await octokit.search.issuesAndPullRequests({
+        q: `repo:${owner}/${repo} is:pr is:merged author:@me`,
+        per_page: 1, // We only need total_count
+      });
+      // Only cache successful results
+      cache.set(cacheKey, '', data.total_count);
+      return data.total_count;
+    } finally {
+      // Always record the call — failed requests still consume GitHub rate limit points
+      tracker.recordCall();
+    }
   } catch (error) {
     const errMsg = errorMessage(error);
     warn(MODULE, `Could not check merged PRs in ${owner}/${repo}: ${errMsg}. Defaulting to 0.`);
-    return 0;
+    return 0; // Not cached — next call will retry
   }
 }
 

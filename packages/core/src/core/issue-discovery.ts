@@ -15,6 +15,7 @@ import * as path from 'path';
 import { Octokit } from '@octokit/rest';
 import { getOctokit, checkRateLimit } from './github.js';
 import { getStateManager } from './state.js';
+import { getSearchBudgetTracker } from './search-budget.js';
 import { daysBetween, getDataDir, sleep } from './utils.js';
 import { DEFAULT_CONFIG, type SearchPriority, type IssueCandidate, SCOPE_LABELS } from './types.js';
 import { ValidationError, errorMessage, getHttpStatusCode, isRateLimitError } from './errors.js';
@@ -193,10 +194,12 @@ export class IssueDiscovery {
 
     // Pre-flight rate limit check (#100) — also determines adaptive phase budget
     this.rateLimitWarning = null;
+    const tracker = getSearchBudgetTracker();
     let searchBudget = LOW_BUDGET_THRESHOLD - 1; // conservative: below threshold to skip heavy phases
     try {
       const rateLimit = await checkRateLimit(this.githubToken);
       searchBudget = rateLimit.remaining;
+      tracker.init(rateLimit.remaining, rateLimit.resetAt);
       if (rateLimit.remaining < 5) {
         const resetTime = new Date(rateLimit.resetAt).toLocaleTimeString('en-US', { hour12: false });
         this.rateLimitWarning = `GitHub search API quota low (${rateLimit.remaining}/${rateLimit.limit} remaining, resets at ${resetTime}). Search may be slow.`;
@@ -212,7 +215,9 @@ export class IssueDiscovery {
       if (getHttpStatusCode(error) === 401) {
         throw error;
       }
-      // Non-fatal: proceed with conservative budget for transient/network errors
+      // Non-fatal: proceed with conservative budget for transient/network errors.
+      // Initialize tracker with conservative defaults so it doesn't fly blind.
+      tracker.init(CRITICAL_BUDGET_THRESHOLD, new Date(Date.now() + 60000).toISOString());
       warn(
         MODULE,
         'Could not check rate limit — using conservative budget, skipping heavy phases:',
@@ -419,6 +424,11 @@ export class IssueDiscovery {
         info(MODULE, `Phase 1: Searching issues in ${reposToSearch.length} starred repos...`);
         const remainingNeeded = maxResults - allCandidates.length;
         if (remainingNeeded > 0) {
+          // Cap labels to reduce Search API calls: starred repos already signal user
+          // interest, so fewer labels suffice. With 3 labels and batch size 3 (2 repo ORs),
+          // each batch fits in a single label chunk instead of 3+, cutting Phase 1 calls
+          // from ~12 to ~4.
+          const phase1Labels = labels.slice(0, 3);
           const {
             candidates: starredCandidates,
             allBatchesFailed,
@@ -428,7 +438,7 @@ export class IssueDiscovery {
             this.vetter,
             reposToSearch.slice(0, 10),
             baseQualifiers,
-            labels,
+            phase1Labels,
             remainingNeeded,
             'starred',
             filterIssues,
@@ -655,6 +665,10 @@ export class IssueDiscovery {
     // Apply per-repo cap: max 2 issues from any single repo (#105)
     const capped = applyPerRepoCap(allCandidates, 2);
 
+    info(
+      MODULE,
+      `Search complete: ${tracker.getTotalCalls()} Search API calls used, ${capped.length} candidates returned`,
+    );
     return capped.slice(0, maxResults);
   }
 

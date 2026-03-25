@@ -60,6 +60,16 @@ vi.mock('./state.js', () => ({
   })),
 }));
 
+vi.mock('./search-budget.js', () => ({
+  getSearchBudgetTracker: vi.fn().mockReturnValue({
+    init: vi.fn(),
+    waitForBudget: vi.fn().mockResolvedValue(undefined),
+    recordCall: vi.fn(),
+    canAfford: vi.fn().mockReturnValue(true),
+    getTotalCalls: vi.fn().mockReturnValue(0),
+  }),
+}));
+
 vi.mock('./utils.js', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return {
@@ -531,8 +541,8 @@ describe('IssueDiscovery.vetIssue inconclusive downgrade', () => {
   });
 
   it('should downgrade to needs_review when checkNoExistingPR is inconclusive', async () => {
-    // Make the search call throw (simulating rate limit / API error)
-    mockOctokitInstance.search.issuesAndPullRequests.mockRejectedValue(new Error('API rate limit exceeded'));
+    // Make the timeline API throw (checkNoExistingPR uses timeline, not Search API)
+    mockOctokitInstance.issues.listEventsForTimeline.mockRejectedValue(new Error('API rate limit exceeded'));
 
     const candidate = await discovery.vetIssue('https://github.com/owner/repo/issues/42');
     expect(candidate.recommendation).toBe('needs_review');

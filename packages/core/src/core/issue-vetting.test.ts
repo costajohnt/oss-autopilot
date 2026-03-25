@@ -42,6 +42,14 @@ vi.mock('./http-cache.js', () => ({
     }),
 }));
 
+vi.mock('./search-budget.js', () => ({
+  getSearchBudgetTracker: vi.fn().mockReturnValue({
+    waitForBudget: vi.fn().mockResolvedValue(undefined),
+    recordCall: vi.fn(),
+    canAfford: vi.fn().mockReturnValue(true),
+  }),
+}));
+
 vi.mock('./logger.js', () => ({
   warn: vi.fn(),
   debug: vi.fn(),
@@ -314,8 +322,11 @@ describe('vetIssue', () => {
     expect(candidate.searchPriority).toBe('normal');
   });
 
-  it('detects existing PRs via search', async () => {
-    mockFn(octokit.search.issuesAndPullRequests).mockImplementation(mockSearchDispatch(1, 0));
+  it('detects existing PRs via timeline', async () => {
+    // Mock timeline to return a cross-referenced PR event (checkNoExistingPR uses timeline, not Search API)
+    vi.mocked(paginateAll).mockResolvedValue([
+      { event: 'cross-referenced', source: { issue: { pull_request: { url: 'https://...' } } } },
+    ]);
 
     const candidate = await vetter.vetIssue(`https://github.com/${owner}/repo/issues/42`);
     expect(candidate.vettingResult.checks.noExistingPR).toBe(false);
@@ -331,12 +342,8 @@ describe('vetIssue', () => {
   });
 
   it('downgrades to needs_review when existing-PR check is inconclusive', async () => {
-    mockFn(octokit.search.issuesAndPullRequests).mockImplementation(({ q }: { q: string }) => {
-      if (q.includes('is:merged') && q.includes('author:@me')) {
-        return Promise.resolve({ data: { total_count: 0 } });
-      }
-      return Promise.reject(new Error('API error'));
-    });
+    // Mock timeline to fail (checkNoExistingPR uses timeline, not Search API)
+    vi.mocked(paginateAll).mockRejectedValue(new Error('API error'));
 
     const candidate = await vetter.vetIssue(`https://github.com/${owner}/repo/issues/42`);
     expect(candidate.recommendation).toBe('needs_review');
@@ -344,7 +351,10 @@ describe('vetIssue', () => {
   });
 
   it('recommends skip when more than 2 skip reasons', async () => {
-    mockFn(octokit.search.issuesAndPullRequests).mockImplementation(mockSearchDispatch(1, 0));
+    // Mock timeline to return a cross-referenced PR event (existing PR detected via timeline)
+    vi.mocked(paginateAll).mockResolvedValue([
+      { event: 'cross-referenced', source: { issue: { pull_request: { url: 'https://...' } } } },
+    ]);
 
     mockFn(octokit.issues.get).mockResolvedValue({
       data: {
