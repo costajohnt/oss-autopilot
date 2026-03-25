@@ -113,7 +113,8 @@ export function getCacheDir(): string {
  * // "/Users/you/.oss-autopilot/gist-id"
  */
 export function getGistIdPath(): string {
-  return path.join(getDataDir(), 'gist-id');
+  const dir = getDataDir();
+  return path.join(dir, 'gist-id');
 }
 
 /**
@@ -131,7 +132,8 @@ export function getGistIdPath(): string {
  * // "/Users/you/.oss-autopilot/state-cache.json"
  */
 export function getStateCachePath(): string {
-  return path.join(getDataDir(), 'state-cache.json');
+  const dir = getDataDir();
+  return path.join(dir, 'state-cache.json');
 }
 
 /**
