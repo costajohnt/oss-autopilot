@@ -15,6 +15,9 @@ data/
 .claude/*.local.md
 .claude/settings.json
 
+# Registry tokens
+.mcpregistry_*
+
 # Logs
 *.log
 
@@ -33,5 +36,4 @@ Thumbs.db
 packages/core/docs/
 
 # Worktrees
-.worktrees/
 .worktrees/
