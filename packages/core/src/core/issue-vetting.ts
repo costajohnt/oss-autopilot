@@ -71,13 +71,18 @@ export class IssueVetter {
       issue_number: number,
     });
 
+    // Check local state first to skip the merged-PR Search API call when
+    // the repo already has authoritative data (saves 1 Search call per issue).
+    const repoScoreRecord = this.stateManager.getRepoScore(repoFullName);
+    const skipMergedPRCheck = repoScoreRecord != null && repoScoreRecord.mergedPRCount > 0;
+
     // Run all vetting checks in parallel — delegates to standalone functions
     const [existingPRCheck, claimCheck, projectHealth, contributionGuidelines, userMergedPRCount] = await Promise.all([
       checkNoExistingPR(this.octokit, owner, repo, number),
       checkNotClaimed(this.octokit, owner, repo, number, ghIssue.comments),
       checkProjectHealth(this.octokit, owner, repo),
       fetchContributionGuidelines(this.octokit, owner, repo),
-      checkUserMergedPRsInRepo(this.octokit, owner, repo),
+      skipMergedPRCheck ? Promise.resolve(0) : checkUserMergedPRsInRepo(this.octokit, owner, repo),
     ]);
 
     const noExistingPR = existingPRCheck.passed;
@@ -153,7 +158,6 @@ export class IssueVetter {
     // Determine effective merged PR count: prefer local state (authoritative if present),
     // fall back to live GitHub API count to detect contributions made before using oss-autopilot (#373)
     const config = this.stateManager.getState().config;
-    const repoScoreRecord = this.stateManager.getRepoScore(repoFullName);
     const effectiveMergedCount =
       repoScoreRecord && repoScoreRecord.mergedPRCount > 0 ? repoScoreRecord.mergedPRCount : userMergedPRCount;
     if (effectiveMergedCount > 0) {

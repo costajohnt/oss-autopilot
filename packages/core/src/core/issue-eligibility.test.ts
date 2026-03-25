@@ -13,6 +13,28 @@ vi.mock('./pagination.js', () => ({
   paginateAll: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock('./http-cache.js', () => ({
+  getHttpCache: vi.fn().mockReturnValue({
+    getIfFresh: vi.fn().mockReturnValue(null),
+    get: vi.fn().mockReturnValue(null),
+    set: vi.fn(),
+  }),
+  cachedTimeBased: vi
+    .fn()
+    .mockImplementation(async (_cache: any, _key: string, _maxAgeMs: number, fetcher: () => Promise<unknown>) => {
+      // Always call fetcher in tests (no caching) so each test gets fresh results
+      return fetcher();
+    }),
+}));
+
+vi.mock('./search-budget.js', () => ({
+  getSearchBudgetTracker: vi.fn().mockReturnValue({
+    waitForBudget: vi.fn().mockResolvedValue(undefined),
+    recordCall: vi.fn(),
+    canAfford: vi.fn().mockReturnValue(true),
+  }),
+}));
+
 vi.mock('./logger.js', () => ({
   warn: vi.fn(),
   debug: vi.fn(),
@@ -21,6 +43,7 @@ vi.mock('./logger.js', () => ({
 
 import { paginateAll } from './pagination.js';
 import { warn } from './logger.js';
+import { getHttpCache } from './http-cache.js';
 
 // ── Helpers ──
 
@@ -102,30 +125,13 @@ describe('checkNoExistingPR', () => {
     vi.mocked(paginateAll).mockResolvedValue([]);
   });
 
-  it('returns passed when no PRs found', async () => {
-    mockFn(octokit.search.issuesAndPullRequests).mockResolvedValue({
-      data: { total_count: 0, items: [] },
-    });
-
+  it('returns passed when no linked PRs in timeline', async () => {
     const result = await checkNoExistingPR(octokit, 'owner', 'repo', 1);
     expect(result.passed).toBe(true);
     expect(result.inconclusive).toBeUndefined();
   });
 
-  it('returns not passed when search finds PRs', async () => {
-    mockFn(octokit.search.issuesAndPullRequests).mockResolvedValue({
-      data: { total_count: 1, items: [{}] },
-    });
-
-    const result = await checkNoExistingPR(octokit, 'owner', 'repo', 1);
-    expect(result.passed).toBe(false);
-    expect(result.inconclusive).toBeUndefined();
-  });
-
   it('returns not passed when timeline has linked PRs', async () => {
-    mockFn(octokit.search.issuesAndPullRequests).mockResolvedValue({
-      data: { total_count: 0, items: [] },
-    });
     vi.mocked(paginateAll).mockResolvedValue([{ event: 'cross-referenced', source: { issue: { pull_request: {} } } }]);
 
     const result = await checkNoExistingPR(octokit, 'owner', 'repo', 1);
@@ -133,9 +139,6 @@ describe('checkNoExistingPR', () => {
   });
 
   it('ignores non-PR cross-references', async () => {
-    mockFn(octokit.search.issuesAndPullRequests).mockResolvedValue({
-      data: { total_count: 0, items: [] },
-    });
     vi.mocked(paginateAll).mockResolvedValue([
       { event: 'cross-referenced', source: { issue: {} } }, // no pull_request
       { event: 'labeled' }, // different event type
@@ -145,8 +148,8 @@ describe('checkNoExistingPR', () => {
     expect(result.passed).toBe(true);
   });
 
-  it('returns passed + inconclusive on API error and logs warning', async () => {
-    mockFn(octokit.search.issuesAndPullRequests).mockRejectedValue(new Error('Network error'));
+  it('returns passed + inconclusive on timeline API error and logs warning', async () => {
+    vi.mocked(paginateAll).mockRejectedValue(new Error('Network error'));
 
     const result = await checkNoExistingPR(octokit, 'owner', 'repo', 1);
     expect(result.passed).toBe(true);
@@ -257,5 +260,35 @@ describe('checkUserMergedPRsInRepo', () => {
     const count = await checkUserMergedPRsInRepo(octokit, 'owner', 'repo');
     expect(count).toBe(0);
     expect(warn).toHaveBeenCalledWith('issue-eligibility', expect.stringContaining('owner/repo'));
+  });
+
+  it('caches successful results', async () => {
+    const cache = vi.mocked(getHttpCache)();
+    mockFn(octokit.search.issuesAndPullRequests).mockResolvedValue({
+      data: { total_count: 5 },
+    });
+
+    await checkUserMergedPRsInRepo(octokit, 'cache-owner', 'repo');
+    expect(cache.set).toHaveBeenCalledWith('merged-prs:cache-owner/repo', '', 5);
+  });
+
+  it('does not cache error fallback values', async () => {
+    const cache = vi.mocked(getHttpCache)();
+    vi.mocked(cache.set).mockClear();
+    mockFn(octokit.search.issuesAndPullRequests).mockRejectedValue(new Error('API error'));
+
+    await checkUserMergedPRsInRepo(octokit, 'err-owner', 'repo');
+    // Error-path 0 should NOT be cached — next call should retry
+    expect(cache.set).not.toHaveBeenCalled();
+  });
+
+  it('returns cached value without API call', async () => {
+    const cache = vi.mocked(getHttpCache)();
+    vi.mocked(cache.getIfFresh).mockReturnValueOnce(7);
+
+    const count = await checkUserMergedPRsInRepo(octokit, 'cached-owner', 'repo');
+    expect(count).toBe(7);
+    // Should not have made an API call
+    expect(octokit.search.issuesAndPullRequests).not.toHaveBeenCalled();
   });
 });

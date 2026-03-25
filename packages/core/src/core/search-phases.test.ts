@@ -34,6 +34,14 @@ vi.mock('./utils.js', async (importOriginal) => {
   };
 });
 
+vi.mock('./search-budget.js', () => ({
+  getSearchBudgetTracker: vi.fn().mockReturnValue({
+    waitForBudget: vi.fn().mockResolvedValue(undefined),
+    recordCall: vi.fn(),
+    canAfford: vi.fn().mockReturnValue(true),
+  }),
+}));
+
 vi.mock('./http-cache.js', () => ({
   getHttpCache: vi.fn().mockReturnValue(makeCacheMock()),
   cachedTimeBased: vi

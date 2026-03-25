@@ -13,14 +13,17 @@ import { getHttpCache, cachedTimeBased } from './http-cache.js';
 import { type GitHubSearchItem, detectLabelFarmingRepos } from './issue-filtering.js';
 import { IssueVetter } from './issue-vetting.js';
 import { sleep } from './utils.js';
+import { getSearchBudgetTracker } from './search-budget.js';
 
 const MODULE = 'search-phases';
 
 /** GitHub Search API enforces a max of 5 AND/OR/NOT operators per query. */
 export const GITHUB_MAX_BOOLEAN_OPS = 5;
 
-/** Delay between search API calls to avoid GitHub's secondary rate limit (~30 req/min). */
-const INTER_QUERY_DELAY_MS = 1500;
+/** Delay between search API calls to avoid GitHub's secondary rate limit (~30 req/min).
+ * Set to 2000ms as a safety floor (max 30/min at the limit). The SearchBudgetTracker
+ * adds additional adaptive delays when needed. */
+const INTER_QUERY_DELAY_MS = 2000;
 
 /** Batch size for repo queries. 3 repos = 2 OR operators, leaving room for labels. */
 const BATCH_SIZE = 3;
@@ -118,8 +121,15 @@ export async function cachedSearchIssues(
 ): Promise<{ total_count: number; items: GitHubSearchItem[] }> {
   const cacheKey = `search:${params.q}:${params.sort}:${params.order}:${params.per_page}`;
   return cachedTimeBased(getHttpCache(), cacheKey, SEARCH_CACHE_TTL_MS, async () => {
-    const { data } = await octokit.search.issuesAndPullRequests(params);
-    return data;
+    const tracker = getSearchBudgetTracker();
+    await tracker.waitForBudget();
+    try {
+      const { data } = await octokit.search.issuesAndPullRequests(params);
+      return data;
+    } finally {
+      // Always record the call — failed requests still consume GitHub rate limit points
+      tracker.recordCall();
+    }
   });
 }
 
