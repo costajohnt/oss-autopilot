@@ -135,6 +135,38 @@ export class GistStateStore {
   }
 
   /**
+   * Read a freeform document from the in-memory cache.
+   * Returns null if the file has not been loaded (or does not exist in the Gist).
+   * Synchronous — all Gist contents are loaded into memory at bootstrap.
+   */
+  getDocument(filename: string): string | null {
+    return this.cachedFiles.get(filename) ?? null;
+  }
+
+  /**
+   * Write a freeform document into the in-memory cache and mark it dirty
+   * so it will be included in the next `push()` call.
+   */
+  setDocument(filename: string, content: string): void {
+    this.cachedFiles.set(filename, content);
+    this.markDirty(filename);
+  }
+
+  /**
+   * Return all filenames in the in-memory cache whose names start with `prefix`.
+   * Useful for listing all guidelines files (e.g. prefix `guidelines--`).
+   */
+  listDocuments(prefix: string): string[] {
+    const results: string[] = [];
+    for (const filename of this.cachedFiles.keys()) {
+      if (filename.startsWith(prefix)) {
+        results.push(filename);
+      }
+    }
+    return results;
+  }
+
+  /**
    * Stage new state JSON for the next `push()`. Updates the in-memory cache
    * for `state.json` and marks it dirty.
    */

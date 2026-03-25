@@ -609,6 +609,118 @@ describe('GistStateStore', () => {
     });
   });
 
+  describe('getDocument', () => {
+    it('should return content from cachedFiles for an existing file', async () => {
+      const gistId = 'get-doc-exists';
+      const response = makeGistResponse(gistId, makeStateJson());
+      response.data.files['guidelines--my-repo.md'] = {
+        filename: 'guidelines--my-repo.md',
+        content: '# My Repo Guidelines\nBe careful.',
+      };
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(response);
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      expect(store.getDocument('guidelines--my-repo.md')).toBe('# My Repo Guidelines\nBe careful.');
+    });
+
+    it('should return null for a nonexistent file', async () => {
+      const gistId = 'get-doc-missing';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, makeStateJson()));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      expect(store.getDocument('guidelines--nonexistent.md')).toBeNull();
+    });
+  });
+
+  describe('setDocument', () => {
+    it('should update cachedFiles and mark the file dirty', async () => {
+      const gistId = 'set-doc-test';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, makeStateJson()));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      store.setDocument('guidelines--some-repo.md', '# Guidelines\nDo good work.');
+
+      expect(store.cachedFiles.get('guidelines--some-repo.md')).toBe('# Guidelines\nDo good work.');
+      expect(store.dirtyFiles.has('guidelines--some-repo.md')).toBe(true);
+    });
+
+    it('should include document in push payload after setDocument', async () => {
+      const gistId = 'set-doc-push';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, stateJson));
+      octokit.gists.update.mockResolvedValue(makeGistResponse(gistId, stateJson));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      store.setDocument('guidelines--new-repo.md', '# New Repo\nKeep it simple.');
+      await store.push();
+
+      expect(octokit.gists.update).toHaveBeenCalledWith({
+        gist_id: gistId,
+        files: {
+          'guidelines--new-repo.md': { content: '# New Repo\nKeep it simple.' },
+        },
+      });
+    });
+  });
+
+  describe('listDocuments', () => {
+    it('should return filenames matching the given prefix', async () => {
+      const gistId = 'list-docs-prefix';
+      const response = makeGistResponse(gistId, makeStateJson());
+      response.data.files['guidelines--repo-a.md'] = { filename: 'guidelines--repo-a.md', content: 'a' };
+      response.data.files['guidelines--repo-b.md'] = { filename: 'guidelines--repo-b.md', content: 'b' };
+      response.data.files['notes--misc.md'] = { filename: 'notes--misc.md', content: 'misc' };
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(response);
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      const docs = store.listDocuments('guidelines--');
+      expect(docs).toHaveLength(2);
+      expect(docs).toContain('guidelines--repo-a.md');
+      expect(docs).toContain('guidelines--repo-b.md');
+      expect(docs).not.toContain('notes--misc.md');
+    });
+
+    it('should return an empty array when no files match the prefix', async () => {
+      const gistId = 'list-docs-empty';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, makeStateJson()));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      expect(store.listDocuments('guidelines--')).toEqual([]);
+    });
+
+    it('should include files added via setDocument', async () => {
+      const gistId = 'list-docs-set';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, makeStateJson()));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      store.setDocument('guidelines--added-repo.md', '# Added');
+
+      const docs = store.listDocuments('guidelines--');
+      expect(docs).toContain('guidelines--added-repo.md');
+    });
+  });
+
   describe('local state cache validation', () => {
     it('should write a valid AgentState to the local cache file', async () => {
       const gistId = 'validate-cache';
