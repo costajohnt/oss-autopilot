@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 messages=""
+NL=$'\n'
 
 # --- Step 0: Auto-refresh marketplace cache (non-blocking) ---
 # Claude Code caches third-party marketplace repos as git clones but never
@@ -41,9 +42,9 @@ if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ "${DASHBOAR
     dashboard_build() { cd "${PLUGIN_ROOT}/packages/dashboard" && npm install --silent 2>/dev/null && npm run build 2>/dev/null; }
   fi
   if (dashboard_build); then
-    messages="${messages:+${messages}\n}Dashboard SPA built successfully."
+    messages="${messages:+${messages}${NL}}Dashboard SPA built successfully."
   else
-    messages="${messages:+${messages}\n}Warning: Dashboard SPA build failed. To fix: cd ${PLUGIN_ROOT} && pnpm install && pnpm run build"
+    messages="${messages:+${messages}${NL}}Warning: Dashboard SPA build failed. To fix: cd ${PLUGIN_ROOT} && pnpm install && pnpm run build"
   fi
 fi
 
@@ -91,7 +92,7 @@ if [ -n "$CURRENT" ]; then
         else
           update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). Auto-pull failed. Run: cd ${MARKETPLACE_DIR} && git pull origin main, then /plugin update oss-autopilot"
         fi
-        messages="${messages:+${messages}\n}${update_msg}"
+        messages="${messages:+${messages}${NL}}${update_msg}"
       fi
     fi
   fi
@@ -100,7 +101,7 @@ fi
 # --- Step 3: Quick PR health check ---
 HEALTH=$(node "${PLUGIN_ROOT}/.claude-plugin/scripts/health-check.cjs" 2>/dev/null || echo "")
 if [ -n "$HEALTH" ]; then
-  messages="${messages:+${messages}\n}${HEALTH}"
+  messages="${messages:+${messages}${NL}}${HEALTH}"
 fi
 
 # --- Output JSON ---
