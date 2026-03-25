@@ -135,13 +135,12 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps)
             <span class="pr-section-count">{shelvedPRs.length}</span>
             <span class={`pr-section-chevron ${shelvedOpen ? 'pr-section-chevron--open' : ''}`}>&#9656;</span>
           </div>
-          {shelvedOpen && (
-            <div id="shelved-pr-list">
-              {shelvedPRs.map((pr) => (
+          <div id="shelved-pr-list">
+            {shelvedOpen &&
+              shelvedPRs.map((pr) => (
                 <PRRow key={pr.url} pr={pr} selected={pr.url === selectedUrl} onSelect={onSelect} />
               ))}
-            </div>
-          )}
+          </div>
         </div>
       )}
     </div>

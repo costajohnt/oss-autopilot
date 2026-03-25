@@ -109,7 +109,7 @@ function AppContent() {
 
   if (error && !data) {
     return (
-      <div class="shell-center">
+      <div class="shell-center" role="alert">
         <p class="shell-status shell-error">Failed to load dashboard data</p>
         <p class="shell-detail">{error}</p>
         <button class="shell-retry" onClick={() => window.location.reload()}>

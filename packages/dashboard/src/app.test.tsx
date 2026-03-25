@@ -291,9 +291,12 @@ describe('App', () => {
     mockFetchOk(makeDashboardData());
     const { container } = render(<App />);
     await waitFor(() => {
-      expect(container.querySelector('.skip-link')).toBeTruthy();
+      expect(container.querySelector('.dashboard')).toBeTruthy();
     });
+    expect(container.querySelector('.skip-link')).toBeTruthy();
     expect(container.querySelector('.skip-link')?.getAttribute('href')).toBe('#main-content');
+    const mainContent = container.querySelector('#main-content');
+    expect(mainContent).toBeTruthy();
   });
 
   it('shows error banner with dismiss button when error coexists with data', async () => {

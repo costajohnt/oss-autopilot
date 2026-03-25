@@ -205,4 +205,11 @@ describe('MergedPRList', () => {
     const links = container.querySelectorAll('.merged-table-pr-link');
     expect(links).toHaveLength(2);
   });
+
+  it('sortable headers are keyboard-accessible', () => {
+    const { container } = render(<MergedPRList mergedPRs={prs} onBack={() => {}} />);
+    const th = container.querySelector('th.sortable-th');
+    expect(th?.getAttribute('tabindex')).toBe('0');
+    expect(th?.getAttribute('role')).toBe('button');
+  });
 });

@@ -68,6 +68,15 @@ describe('PRList', () => {
     expect(onSelect).toHaveBeenCalledWith('https://github.com/o/r/pull/1');
   });
 
+  it('PR rows respond to Space key', () => {
+    const onSelect = vi.fn();
+    const prs = [makePR({ url: 'https://github.com/o/r/pull/1', status: 'needs_addressing', number: 1 })];
+    const { container } = renderPRList({ prs, onSelect });
+    const row = container.querySelector('.pr-row');
+    fireEvent.keyDown(row!, { key: ' ' });
+    expect(onSelect).toHaveBeenCalledWith('https://github.com/o/r/pull/1');
+  });
+
   it('calls onSelect when a PR row is clicked', () => {
     const onSelect = vi.fn();
     const prs = [makePR({ url: 'https://github.com/o/r/pull/1', status: 'waiting_on_maintainer' })];
