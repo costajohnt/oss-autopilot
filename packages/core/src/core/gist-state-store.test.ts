@@ -915,4 +915,148 @@ describe('GistStateStore', () => {
       expect(resultB.migrated).toBe(false);
     });
   });
+
+  describe('integration: full lifecycle — bootstrap, mutate, push, verify', () => {
+    it('should bootstrap, mutate state and documents, push, and verify payload', async () => {
+      const gistId = 'integration-lifecycle';
+      const initialStateJson = makeStateJson({ lastRunAt: '2025-01-01T00:00:00.000Z' });
+
+      // Seed local gist-id so bootstrap takes the fast path (local ID fetch)
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+
+      // Build a Gist response that already has a guidelines file
+      const response = makeGistResponse(gistId, initialStateJson);
+      response.data.files['guidelines--existing-repo.md'] = {
+        filename: 'guidelines--existing-repo.md',
+        content: '# Existing guidelines',
+      };
+      octokit.gists.get.mockResolvedValue(response);
+      octokit.gists.update.mockResolvedValue(makeGistResponse(gistId, initialStateJson));
+
+      // ── Step 1: Bootstrap ──────────────────────────────────────────
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrap();
+
+      // Verify state is loaded and cached
+      expect(result.gistId).toBe(gistId);
+      expect(result.state.version).toBe(3);
+      expect(result.state.lastRunAt).toBe('2025-01-01T00:00:00.000Z');
+      expect(store.cachedFiles.size).toBe(2); // state.json + guidelines--existing-repo.md
+      expect(store.dirtyFiles.size).toBe(0);
+
+      // ── Step 2: Mutate state via setState() ────────────────────────
+      const updatedStateJson = makeStateJson({ lastRunAt: '2026-03-25T12:00:00.000Z' });
+      store.setState(updatedStateJson);
+
+      expect(store.cachedFiles.get(STATE_FILE_NAME)).toBe(updatedStateJson);
+      expect(store.dirtyFiles.has(STATE_FILE_NAME)).toBe(true);
+
+      // ── Step 3: Add a new guidelines document via setDocument() ────
+      const guidelinesContent = '# Test Repo Guidelines\n\nBe thorough with tests.';
+      store.setDocument('guidelines--test--repo.md', guidelinesContent);
+
+      expect(store.cachedFiles.get('guidelines--test--repo.md')).toBe(guidelinesContent);
+      expect(store.dirtyFiles.has('guidelines--test--repo.md')).toBe(true);
+      // Total dirty: state.json + guidelines--test--repo.md
+      expect(store.dirtyFiles.size).toBe(2);
+
+      // ── Step 4: Push ───────────────────────────────────────────────
+      const pushResult = await store.push();
+      expect(pushResult).toBe(true);
+
+      // ── Step 5: Verify update payload ──────────────────────────────
+      expect(octokit.gists.update).toHaveBeenCalledTimes(1);
+      expect(octokit.gists.update).toHaveBeenCalledWith({
+        gist_id: gistId,
+        files: {
+          [STATE_FILE_NAME]: { content: updatedStateJson },
+          'guidelines--test--repo.md': { content: guidelinesContent },
+        },
+      });
+
+      // ── Step 6: Verify dirty set is empty after push ───────────────
+      expect(store.dirtyFiles.size).toBe(0);
+
+      // ── Step 7: Verify local state cache was updated ───────────────
+      const cachePath = path.join(tmpDir, 'state-cache.json');
+      expect(fs.existsSync(cachePath)).toBe(true);
+      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+      expect(cached.version).toBe(3);
+      expect(cached.lastRunAt).toBe('2026-03-25T12:00:00.000Z');
+
+      // ── Step 8: Verify idempotent push (nothing dirty) ─────────────
+      octokit.gists.update.mockClear();
+      const secondPush = await store.push();
+      expect(secondPush).toBe(true);
+      expect(octokit.gists.update).not.toHaveBeenCalled();
+    });
+
+    it('should handle the full cycle with bootstrapWithMigration', async () => {
+      const newGistId = 'integration-migration';
+      const localState = createFreshState();
+      localState.config.githubUsername = 'integration-user';
+      localState.config.setupComplete = true;
+
+      // No local gist-id, search returns empty => triggers migration-create
+      octokit.gists.list.mockResolvedValue({ data: [] });
+
+      const seededJson = JSON.stringify(localState, null, 2);
+      octokit.gists.create.mockResolvedValue({
+        data: {
+          id: newGistId,
+          description: GIST_DESCRIPTION,
+          files: {
+            [STATE_FILE_NAME]: { filename: STATE_FILE_NAME, content: seededJson },
+          },
+        },
+      });
+      octokit.gists.update.mockResolvedValue(makeGistResponse(newGistId, seededJson));
+
+      // ── Bootstrap with migration ──────────────────────────────────
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrapWithMigration(localState);
+
+      expect(result.migrated).toBe(true);
+      expect(result.created).toBe(true);
+      expect(result.state.config.githubUsername).toBe('integration-user');
+      expect(store.dirtyFiles.size).toBe(0);
+
+      // ── Mutate and push ────────────────────────────────────────────
+      store.setDocument('guidelines--integration--repo.md', '# Integration test guidelines');
+      store.setState(makeStateJson({ lastRunAt: '2026-03-25T18:00:00.000Z' }));
+
+      expect(store.dirtyFiles.size).toBe(2);
+
+      const pushResult = await store.push();
+      expect(pushResult).toBe(true);
+      expect(store.dirtyFiles.size).toBe(0);
+
+      expect(octokit.gists.update).toHaveBeenCalledWith({
+        gist_id: newGistId,
+        files: {
+          [STATE_FILE_NAME]: { content: expect.any(String) },
+          'guidelines--integration--repo.md': { content: '# Integration test guidelines' },
+        },
+      });
+    });
+  });
+
+  /*
+   * Integration test for StateManager.createWithGist is intentionally skipped.
+   *
+   * createWithGist uses a dynamic `await import('./github.js')` to get the Octokit
+   * factory, then calls getOctokit(token) to build a real client. Mocking this in
+   * Vitest would require vi.mock('./github.js') at the module level (which would
+   * affect all tests in the file) AND also mocking loadState/fs.existsSync for
+   * the migration path. The resulting test would be extremely fragile and tightly
+   * coupled to internal wiring, providing little value over the unit tests that
+   * already cover:
+   *   - GistStateStore.bootstrap (all 3 code paths + degraded mode)
+   *   - GistStateStore.bootstrapWithMigration (create-with-seed + existing-Gist)
+   *   - GistStateStore.setState / setDocument / push (dirty tracking, payload)
+   *   - The full lifecycle integration test above (bootstrap -> mutate -> push)
+   *
+   * If end-to-end coverage of createWithGist is needed in the future, consider
+   * extracting the Octokit creation into a seam that can be injected for testing.
+   */
 });
