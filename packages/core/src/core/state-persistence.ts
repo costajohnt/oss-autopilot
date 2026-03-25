@@ -108,7 +108,7 @@ export function atomicWriteFileSync(filePath: string, data: string, mode?: numbe
  * Migrate state from v1 (local PR tracking) to v2 (fresh GitHub fetching).
  * Preserves repoScores and config; drops the legacy PR arrays.
  */
-function migrateV1ToV2(rawState: Record<string, unknown>): AgentState {
+function migrateV1ToV2(rawState: Record<string, unknown>): Record<string, unknown> {
   debug(MODULE, 'Migrating state from v1 to v2 (fresh GitHub fetching)...');
 
   // Extract merged/closed PR arrays from v1 state to seed repo scores.
@@ -136,12 +136,11 @@ function migrateV1ToV2(rawState: Record<string, unknown>): AgentState {
     }
   }
 
-  const migratedState: AgentState = {
-    version: 2,
+  const migratedState = {
+    version: 2 as const,
     activeIssues: (rawState.activeIssues as AgentState['activeIssues']) || [],
     repoScores,
     config: rawState.config as AgentState['config'],
-    events: (rawState.events as AgentState['events']) || [],
     lastRunAt: new Date().toISOString(),
   };
 
@@ -150,11 +149,38 @@ function migrateV1ToV2(rawState: Record<string, unknown>): AgentState {
 }
 
 /**
- * Create a fresh state (v2: fresh GitHub fetching).
+ * Migrate state from v2 to v3.
+ * Drops: events, dailyActivityCounts, config.showHealthCheck, config.scoreThreshold.
+ * Adds: analyzedIssueConversations, learningsExtractedAt on StoredMergedPR/StoredClosedPR.
+ * New optional fields are handled by Zod defaults (undefined/optional).
+ */
+function migrateV2ToV3(rawState: Record<string, unknown>): Record<string, unknown> {
+  debug(MODULE, 'Migrating state from v2 to v3 (drop dead fields, add learnings tracking)...');
+
+  // Remove dead fields from root
+  delete rawState.events;
+  delete rawState.dailyActivityCounts;
+
+  // Remove dead fields from config
+  const config = rawState.config as Record<string, unknown> | undefined;
+  if (config) {
+    delete config.showHealthCheck;
+    delete config.scoreThreshold;
+  }
+
+  // Bump version
+  rawState.version = 3;
+
+  debug(MODULE, 'v2 to v3 migration complete.');
+  return rawState;
+}
+
+/**
+ * Create a fresh state (v3).
  * Leverages Zod schema defaults to produce a complete state.
  */
 export function createFreshState(): AgentState {
-  return AgentStateSchema.parse({ version: 2 });
+  return AgentStateSchema.parse({ version: 3 });
 }
 
 /**
@@ -273,9 +299,15 @@ function tryRestoreFromBackup(): AgentState | null {
       const data = fs.readFileSync(backupPath, 'utf-8');
       let raw: unknown = JSON.parse(data);
 
-      // Migrate from v1 to v2 if needed (before schema validation)
-      if (typeof raw === 'object' && raw !== null && (raw as Record<string, unknown>).version === 1) {
-        raw = migrateV1ToV2(raw as Record<string, unknown>);
+      // Chain migrations: v1 → v2 → v3
+      if (typeof raw === 'object' && raw !== null) {
+        const rawObj = raw as Record<string, unknown>;
+        if (rawObj.version === 1) {
+          raw = migrateV1ToV2(rawObj);
+        }
+        if ((raw as Record<string, unknown>).version === 2) {
+          raw = migrateV2ToV3(raw as Record<string, unknown>);
+        }
       }
 
       const parsed = AgentStateSchema.safeParse(raw);
@@ -325,11 +357,18 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
       const data = fs.readFileSync(statePath, 'utf-8');
       let raw: unknown = JSON.parse(data);
 
-      // Migrate from v1 to v2 if needed (before schema validation)
+      // Chain migrations: v1 → v2 → v3
       let wasMigrated = false;
-      if (typeof raw === 'object' && raw !== null && (raw as Record<string, unknown>).version === 1) {
-        raw = migrateV1ToV2(raw as Record<string, unknown>);
-        wasMigrated = true;
+      if (typeof raw === 'object' && raw !== null) {
+        const rawObj = raw as Record<string, unknown>;
+        if (rawObj.version === 1) {
+          raw = migrateV1ToV2(rawObj);
+          wasMigrated = true;
+        }
+        if ((raw as Record<string, unknown>).version === 2) {
+          raw = migrateV2ToV3(raw as Record<string, unknown>);
+          wasMigrated = true;
+        }
       }
 
       // Validate through Zod schema (strips unknown keys in memory; stale keys persist on disk until next save)

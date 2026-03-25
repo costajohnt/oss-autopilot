@@ -112,12 +112,6 @@ describe('runSetup', () => {
     expect(mockMarkSetupComplete).toHaveBeenCalled();
   });
 
-  it('should handle showHealthCheck=false', async () => {
-    await runSetup({ set: ['showHealthCheck=false'] });
-
-    expect(mockUpdateConfig).toHaveBeenCalledWith({ showHealthCheck: false });
-  });
-
   it('should handle squashByDefault with ask value', async () => {
     await runSetup({ set: ['squashByDefault=ask'] });
 
@@ -152,11 +146,6 @@ describe('runSetup', () => {
   it('should handle labels setting', async () => {
     await runSetup({ set: ['labels=bug,feature'] });
     expect(mockUpdateConfig).toHaveBeenCalledWith({ labels: ['bug', 'feature'] });
-  });
-
-  it('should handle showHealthCheck=true', async () => {
-    await runSetup({ set: ['showHealthCheck=true'] });
-    expect(mockUpdateConfig).toHaveBeenCalledWith({ showHealthCheck: true });
   });
 
   it('should handle squashByDefault=true', async () => {
@@ -348,51 +337,7 @@ describe('runSetup', () => {
     expect(settings).toContain('scope');
   });
 
-  it('should handle scoreThreshold setting', async () => {
-    const result = (await runSetup({ set: ['scoreThreshold=7'] })) as SetupSetOutput;
-    expect(mockUpdateConfig).toHaveBeenCalledWith({ scoreThreshold: 7 });
-    expect(result.settings.scoreThreshold).toBe('7');
-  });
-
-  it('should reject scoreThreshold above 10', async () => {
-    await expect(runSetup({ set: ['scoreThreshold=11'] })).rejects.toThrow('Invalid value for scoreThreshold');
-  });
-
-  it('should reject scoreThreshold of 0', async () => {
-    await expect(runSetup({ set: ['scoreThreshold=0'] })).rejects.toThrow('Invalid value for scoreThreshold');
-  });
-
-  it('should include scoreThreshold in setup prompts', async () => {
-    mockGetStateManager.mockReturnValue({
-      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, setupComplete: false } }),
-      updateConfig: mockUpdateConfig,
-      batch: (fn: () => void) => fn(),
-    } as any);
-
-    const result = (await runSetup({})) as SetupRequiredOutput;
-    const settings = result.prompts.map((p) => p.setting);
-    expect(settings).toContain('scoreThreshold');
-  });
-
-  it('should include scoreThreshold in setupComplete config output', async () => {
-    mockGetStateManager.mockReturnValue({
-      getState: vi.fn().mockReturnValue({
-        config: { ...DEFAULT_CONFIG, scoreThreshold: 8 },
-      }),
-      updateConfig: mockUpdateConfig,
-      batch: (fn: () => void) => fn(),
-    } as any);
-
-    const result = await runSetup({});
-    expect(result).toEqual(
-      expect.objectContaining({
-        setupComplete: true,
-        config: expect.objectContaining({
-          scoreThreshold: 8,
-        }),
-      }),
-    );
-  });
+  // scoreThreshold tests removed — field dropped in v3 schema
 });
 
 describe('runCheckSetup', () => {

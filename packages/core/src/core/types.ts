@@ -334,8 +334,8 @@ export type CommentedIssue = CommentedIssueWithResponse | CommentedIssueWithoutR
 /** Default configuration applied to new state files. All fields can be overridden via `/setup-oss`. */
 export const DEFAULT_CONFIG = AgentConfigSchema.parse({}) as AgentConfig;
 
-/** Initial state written to `~/.oss-autopilot/state.json` on first run. Uses v2 architecture. */
-export const INITIAL_STATE = AgentStateSchema.parse({ version: 2 }) as AgentState;
+/** Initial state written to `~/.oss-autopilot/state.json` on first run. Uses v3 architecture. */
+export const INITIAL_STATE = AgentStateSchema.parse({ version: 3 }) as AgentState;
 
 // ── Const arrays (derived from Zod schemas for runtime iteration) ────
 

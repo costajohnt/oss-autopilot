@@ -75,7 +75,7 @@ function makeBaseConfig(): Record<string, unknown> {
 
 function makeV2State(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    version: 2,
+    version: 3,
     activePRs: [],
     activeIssues: [],
     dormantPRs: [],
@@ -143,11 +143,11 @@ describe('StateManager v1 → v2 migration', () => {
 
     const sm = new StateManager(false);
     const state = sm.getState();
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
 
     // Verify migration was persisted to disk
     const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-    expect(onDisk.version).toBe(2);
+    expect(onDisk.version).toBe(3);
   });
 
   it('should preserve config when migrating from v1 to v2', () => {
@@ -169,7 +169,7 @@ describe('StateManager v1 → v2 migration', () => {
 
     const sm = new StateManager(false);
     // v2 migration upgrades version and PR arrays are no longer part of AgentState
-    expect(sm.getState().version).toBe(2);
+    expect(sm.getState().version).toBe(3);
   });
 
   it('should create repo scores from mergedPRs found in v1 state', () => {
@@ -279,7 +279,7 @@ describe('StateManager v1 → v2 migration', () => {
 
     const sm = new StateManager(false);
     // Should have been migrated to v2 during restore
-    expect(sm.getState().version).toBe(2);
+    expect(sm.getState().version).toBe(3);
   });
 });
 
@@ -459,7 +459,7 @@ describe('migrateFromLegacyLocation', () => {
     createLegacyBackup('state-2024-01-02T00-00-00-000Z-def456.json', makeV2State());
 
     const sm = new StateManager(false);
-    expect(sm.getState().version).toBe(2);
+    expect(sm.getState().version).toBe(3);
 
     // Backups should be in the new location
     const newBackupDir = path.join(mockTmpDir, 'backups');
@@ -502,7 +502,7 @@ describe('migrateFromLegacyLocation', () => {
     fs.chmodSync(legacyStatePath, 0o000);
 
     const sm = new StateManager(false);
-    expect(sm.getState().version).toBe(2);
+    expect(sm.getState().version).toBe(3);
 
     // Restore permissions so afterEach cleanup works
     fs.chmodSync(legacyStatePath, 0o600);
@@ -521,19 +521,17 @@ describe('migrateV1ToV2 fallback branches', () => {
     mockTmpDir = '';
   });
 
-  it('should default undefined repoScores, activeIssues, and events to empty values', () => {
+  it('should default undefined repoScores and activeIssues to empty values', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     const v1 = makeV1State();
     delete v1.repoScores;
     delete v1.activeIssues;
-    delete v1.events;
     fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
 
     const sm = new StateManager(false);
-    expect(sm.getState().version).toBe(2);
+    expect(sm.getState().version).toBe(3);
     expect(sm.getState().repoScores).toEqual({});
     expect(sm.getState().activeIssues).toEqual([]);
-    expect(sm.getState().events).toEqual([]);
   });
 
   it('should seed repo scores from mergedPRs and closedPRs when repoScores is missing', () => {
@@ -558,7 +556,7 @@ describe('migrateV1ToV2 fallback branches', () => {
     fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
 
     const sm = new StateManager(false);
-    expect(sm.getState().version).toBe(2);
+    expect(sm.getState().version).toBe(3);
     expect(sm.getState().repoScores['org-a/repo-a']).toBeDefined();
     expect(sm.getState().repoScores['org-b/repo-b']).toBeDefined();
     expect(sm.getState().repoScores['org-a/repo-a'].score).toBe(5);
@@ -583,16 +581,16 @@ describe('schema validation in loadState', () => {
   it('should return fresh state when state is schema-invalid and no backups exist', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     // Valid JSON but schema-invalid: config must be an object, not null
-    fs.writeFileSync(statePath, JSON.stringify({ version: 2, config: null }), { mode: 0o600 });
+    fs.writeFileSync(statePath, JSON.stringify({ version: 3, config: null }), { mode: 0o600 });
 
     const sm = new StateManager(false);
     const state = sm.getState();
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
     // Fresh state has empty default config values
     expect(state.config.githubUsername).toBe('');
     expect(state.config.setupComplete).toBe(false);
     expect(state.repoScores).toEqual({});
-    expect(state.events).toEqual([]);
+    expect(state.activeIssues).toEqual([]);
   });
 
   it('should skip schema-invalid backups and use the next valid one', () => {
@@ -606,7 +604,7 @@ describe('schema validation in loadState', () => {
     // Newest backup: valid JSON but schema-invalid (config is null)
     fs.writeFileSync(
       path.join(backupDir, 'state-2024-03-01T00-00-00-000Z-zzz000.json'),
-      JSON.stringify({ version: 2, config: null }),
+      JSON.stringify({ version: 3, config: null }),
       { mode: 0o600 },
     );
 
@@ -639,7 +637,7 @@ describe('schema validation in loadState', () => {
     // Multiple backups, all valid JSON but schema-invalid
     fs.writeFileSync(
       path.join(backupDir, 'state-2024-03-01T00-00-00-000Z-aaa000.json'),
-      JSON.stringify({ version: 2, config: null }),
+      JSON.stringify({ version: 3, config: null }),
       { mode: 0o600 },
     );
     fs.writeFileSync(
@@ -649,14 +647,14 @@ describe('schema validation in loadState', () => {
     );
     fs.writeFileSync(
       path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-ccc000.json'),
-      JSON.stringify({ version: 2, events: 'not-an-array' }),
+      JSON.stringify({ version: 3, activeIssues: 'not-an-array' }),
       { mode: 0o600 },
     );
 
     const sm = new StateManager(false);
     const state = sm.getState();
     // All backups rejected by schema validation, so fresh state returned
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
     expect(state.config.githubUsername).toBe('');
     expect(state.repoScores).toEqual({});
   });
@@ -665,9 +663,8 @@ describe('schema validation in loadState', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     // Write a minimal valid v2 state missing optional fields that have defaults
     const minimalState = {
-      version: 2,
+      version: 3,
       // config is missing — Zod default will fill it
-      // events is missing — Zod default will fill it to []
       // repoScores is missing — Zod default will fill it to {}
       // lastRunAt is missing — Zod default will fill it
       // activeIssues is missing — Zod default will fill it to []
@@ -678,8 +675,7 @@ describe('schema validation in loadState', () => {
     const state = sm.getState();
 
     // Verify Zod defaults are applied at the top level
-    expect(state.version).toBe(2);
-    expect(state.events).toEqual([]);
+    expect(state.version).toBe(3);
     expect(state.repoScores).toEqual({});
     expect(state.activeIssues).toEqual([]);
     expect(typeof state.lastRunAt).toBe('string');
@@ -695,7 +691,7 @@ describe('schema validation in loadState', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     // State with some fields present and some missing
     const partialState = {
-      version: 2,
+      version: 3,
       repoScores: {
         'owner/repo': {
           repo: 'owner/repo',
@@ -716,7 +712,7 @@ describe('schema validation in loadState', () => {
         setupComplete: true,
         // Other config fields missing — will be filled by Zod defaults
       },
-      // events, activeIssues, lastRunAt all missing — Zod fills defaults
+      // activeIssues, lastRunAt all missing — Zod fills defaults
     };
     fs.writeFileSync(statePath, JSON.stringify(partialState), { mode: 0o600 });
 
@@ -730,7 +726,6 @@ describe('schema validation in loadState', () => {
     expect(state.repoScores['owner/repo'].mergedPRCount).toBe(3);
 
     // Missing fields filled with defaults
-    expect(state.events).toEqual([]);
     expect(state.activeIssues).toEqual([]);
     expect(typeof state.lastRunAt).toBe('string');
     expect(state.config.maxActivePRs).toBe(10);

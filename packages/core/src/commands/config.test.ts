@@ -226,24 +226,5 @@ describe('runConfig', () => {
     await expect(runConfig({ key: 'remove-scope', value: 'expert' })).rejects.toThrow('Invalid scope');
   });
 
-  it('should set scoreThreshold with valid value', async () => {
-    const result = await runConfig({ key: 'scoreThreshold', value: '7' });
-
-    expect(mockUpdateConfig).toHaveBeenCalledWith({ scoreThreshold: 7 });
-    expect(result).toEqual({ success: true, key: 'scoreThreshold', value: '7' });
-  });
-
-  it('should reject scoreThreshold above 10', async () => {
-    await expect(runConfig({ key: 'scoreThreshold', value: '11' })).rejects.toThrow('Invalid value for scoreThreshold');
-  });
-
-  it('should reject scoreThreshold of 0', async () => {
-    await expect(runConfig({ key: 'scoreThreshold', value: '0' })).rejects.toThrow('Invalid value for scoreThreshold');
-  });
-
-  it('should reject non-integer scoreThreshold', async () => {
-    await expect(runConfig({ key: 'scoreThreshold', value: '5.5' })).rejects.toThrow(
-      'Invalid value for scoreThreshold',
-    );
-  });
+  // scoreThreshold tests removed — field dropped in v3 schema
 });

@@ -51,7 +51,6 @@ export interface SetupCompleteOutput {
     projectCategories: ProjectCategory[];
     preferredOrgs: string[];
     scope: IssueScope[];
-    scoreThreshold: number;
   };
 }
 
@@ -135,10 +134,6 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             stateManager.updateConfig({ labels: value.split(',').map((l) => l.trim()) });
             results[key] = value;
             break;
-          case 'showHealthCheck':
-            stateManager.updateConfig({ showHealthCheck: value !== 'false' });
-            results[key] = value !== 'false' ? 'true' : 'false';
-            break;
           case 'squashByDefault':
             if (value === 'ask') {
               stateManager.updateConfig({ squashByDefault: 'ask' });
@@ -148,12 +143,6 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
               results[key] = value !== 'false' ? 'true' : 'false';
             }
             break;
-          case 'scoreThreshold': {
-            const threshold = parseBoundedInt(value, 'scoreThreshold', 1, 10);
-            stateManager.updateConfig({ scoreThreshold: threshold });
-            results[key] = String(threshold);
-            break;
-          }
           case 'minStars': {
             const stars = Number(value);
             if (!Number.isInteger(stars) || stars < 0) {
@@ -296,7 +285,6 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         projectCategories: config.projectCategories ?? [],
         preferredOrgs: config.preferredOrgs ?? [],
         scope: config.scope ?? [],
-        scoreThreshold: config.scoreThreshold,
       },
     };
   }
@@ -354,13 +342,6 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         current: config.scope ?? [],
         default: [],
         type: 'list',
-      },
-      {
-        setting: 'scoreThreshold',
-        prompt: 'Minimum vet score (1-10) for issues to keep after vetting? Issues below this are auto-filtered.',
-        current: config.scoreThreshold,
-        default: 6,
-        type: 'number',
       },
       {
         setting: 'aiPolicyBlocklist',

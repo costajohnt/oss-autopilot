@@ -75,7 +75,7 @@ function makeBaseConfig(): Record<string, unknown> {
 // Helper: build a minimal valid v2 state object for writing to disk in tests.
 function makeV2State(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    version: 2,
+    version: 3,
     activePRs: [],
     activeIssues: [],
     dormantPRs: [],
@@ -125,9 +125,9 @@ describe('Concurrent State Write Protection', () => {
       const filePath = path.join(tmpDir, 'test.json');
       fs.writeFileSync(filePath, '{"version":1}');
 
-      atomicWriteFileSync(filePath, '{"version":2}');
+      atomicWriteFileSync(filePath, '{"version":3}');
 
-      expect(fs.readFileSync(filePath, 'utf-8')).toBe('{"version":2}');
+      expect(fs.readFileSync(filePath, 'utf-8')).toBe('{"version":3}');
     });
 
     it('should apply the specified file mode', () => {
@@ -310,7 +310,7 @@ describe('StateManager file-system persistence (save / load)', () => {
     // No state.json pre-created — should initialize from scratch
     const sm = new StateManager(false);
     const state = sm.getState();
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
 
     expect(typeof state.config).toBe('object');
   });
@@ -362,7 +362,7 @@ describe('StateManager recovery from corrupt state files', () => {
     // No backup exists → falls back to fresh state
     const sm = new StateManager(false);
     const state = sm.getState();
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
   });
 
   it('should restore from backup when state.json is corrupt but a valid backup exists', () => {
@@ -437,7 +437,7 @@ describe('StateManager recovery from corrupt state files', () => {
 
     const sm = new StateManager(false);
     const state = sm.getState();
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
   });
 
   it('should start fresh when state.json has invalid structure (missing required fields)', () => {
@@ -447,7 +447,7 @@ describe('StateManager recovery from corrupt state files', () => {
 
     const sm = new StateManager(false);
     const state = sm.getState();
-    expect(state.version).toBe(2);
+    expect(state.version).toBe(3);
     expect(typeof state.config).toBe('object');
   });
 });
@@ -467,7 +467,7 @@ describe('StateManager reloadIfChanged', () => {
 
   function makeMinimalState(): Record<string, unknown> {
     return {
-      version: 2,
+      version: 3,
       activeIssues: [],
       repoScores: {},
       config: {
@@ -681,7 +681,7 @@ describe('state recovery and backup edge cases', () => {
   it('should restore from backup when state has invalid structure', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     // Valid JSON but structurally invalid (config is null -> fails isValidState)
-    fs.writeFileSync(statePath, JSON.stringify({ version: 2, config: null, repoScores: {} }), { mode: 0o600 });
+    fs.writeFileSync(statePath, JSON.stringify({ version: 3, config: null, repoScores: {} }), { mode: 0o600 });
 
     const backupDir = path.join(mockTmpDir, 'backups');
     fs.mkdirSync(backupDir, { recursive: true });
@@ -701,7 +701,7 @@ describe('state recovery and backup edge cases', () => {
 
     // getBackupDir mock auto-creates the directory, but it will be empty
     const sm = new StateManager(false);
-    expect(sm.getState().version).toBe(2);
+    expect(sm.getState().version).toBe(3);
     expect(sm.getState().config.githubUsername).toBe('');
   });
 
@@ -715,7 +715,7 @@ describe('state recovery and backup edge cases', () => {
     fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-aaa000.json'), '42', { mode: 0o600 });
 
     const sm = new StateManager(false);
-    expect(sm.getState().version).toBe(2);
+    expect(sm.getState().version).toBe(3);
     expect(sm.getState().config.githubUsername).toBe('');
   });
 });
@@ -767,7 +767,7 @@ describe('save resilience when backup operations fail', () => {
     expect(fs.statSync(oldestBackup).isDirectory()).toBe(true);
 
     const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-    expect(written.version).toBe(2);
+    expect(written.version).toBe(3);
   });
 
   it('should handle readdirSync failure during backup cleanup', () => {
@@ -784,7 +784,7 @@ describe('save resilience when backup operations fail', () => {
 
     fs.chmodSync(backupDir, 0o700);
     const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-    expect(written.version).toBe(2);
+    expect(written.version).toBe(3);
   });
 
   it('should save state even when backup creation fails', () => {
