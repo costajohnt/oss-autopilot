@@ -36,7 +36,6 @@ export interface BootstrapResult {
   state: AgentState;
   created: boolean;
   /** True when state was loaded from local cache due to API failure. */
-  // degraded path implemented in Task 4
   degraded?: boolean;
 }
 
@@ -91,35 +90,65 @@ export class GistStateStore {
    * populate the in-memory cache, and write the local cache file.
    */
   async bootstrap(): Promise<BootstrapResult> {
-    // Step 1: Try loading Gist ID from local file
-    const localId = this.readLocalGistId();
-    if (localId) {
-      debug(MODULE, `Found local Gist ID: ${localId}`);
-      try {
-        this.gistId = localId;
-        const state = await this.fetchAndCache(localId);
-        return { gistId: localId, state, created: false };
-      } catch (err) {
-        warn(MODULE, `Failed to fetch Gist ${localId}, will search/create`, err);
-        // Fall through to search
+    try {
+      // Step 1: Try loading Gist ID from local file
+      const localId = this.readLocalGistId();
+      if (localId) {
+        debug(MODULE, `Found local Gist ID: ${localId}`);
+        try {
+          this.gistId = localId;
+          const state = await this.fetchAndCache(localId);
+          return { gistId: localId, state, created: false };
+        } catch (err) {
+          warn(MODULE, `Failed to fetch Gist ${localId}, will search/create`, err);
+          // Fall through to search
+        }
       }
-    }
 
-    // Step 2: Search user's Gists by description
-    const foundId = await this.searchForGist();
-    if (foundId) {
-      debug(MODULE, `Found Gist via search: ${foundId}`);
-      this.gistId = foundId;
-      this.writeLocalGistId(foundId);
-      const state = await this.fetchAndCache(foundId);
-      return { gistId: foundId, state, created: false };
-    }
+      // Step 2: Search user's Gists by description
+      const foundId = await this.searchForGist();
+      if (foundId) {
+        debug(MODULE, `Found Gist via search: ${foundId}`);
+        this.gistId = foundId;
+        this.writeLocalGistId(foundId);
+        const state = await this.fetchAndCache(foundId);
+        return { gistId: foundId, state, created: false };
+      }
 
-    // Step 3: Create a new Gist
-    debug(MODULE, 'No existing Gist found, creating new one');
-    const { id, state } = await this.createGist();
-    this.writeLocalGistId(id);
-    return { gistId: id, state, created: true };
+      // Step 3: Create a new Gist
+      debug(MODULE, 'No existing Gist found, creating new one');
+      const { id, state } = await this.createGist();
+      this.writeLocalGistId(id);
+      return { gistId: id, state, created: true };
+    } catch (err) {
+      // All API paths failed — enter degraded mode
+      warn(MODULE, 'All Gist API paths failed, entering degraded mode', err);
+
+      // Try reading from local cache file
+      try {
+        const cachePath = getStateCachePath();
+        if (fs.existsSync(cachePath)) {
+          let obj: unknown = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+
+          // Chain migrations
+          if (typeof obj === 'object' && obj !== null) {
+            const record = obj as Record<string, unknown>;
+            if (record.version === 1) obj = migrateV1ToV2(record);
+            if ((obj as Record<string, unknown>).version === 2) obj = migrateV2ToV3(obj as Record<string, unknown>);
+          }
+
+          const cachedState = AgentStateSchema.parse(obj);
+          debug(MODULE, 'Loaded state from local cache in degraded mode');
+          return { gistId: '', state: cachedState, created: false, degraded: true };
+        }
+      } catch (cacheErr) {
+        debug(MODULE, `Failed to read local cache in degraded mode: ${cacheErr}`);
+      }
+
+      // No cache either — return fresh state in degraded mode
+      debug(MODULE, 'No local cache found, returning fresh state in degraded mode');
+      return { gistId: '', state: createFreshState(), created: false, degraded: true };
+    }
   }
 
   /** Return the resolved Gist ID (available after bootstrap). */

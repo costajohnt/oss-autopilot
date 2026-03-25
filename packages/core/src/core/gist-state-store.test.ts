@@ -721,6 +721,66 @@ describe('GistStateStore', () => {
     });
   });
 
+  describe('graceful degradation', () => {
+    it('falls back to local cache when all API calls fail', async () => {
+      const cachedState = JSON.parse(makeStateJson({ lastRunAt: '2025-06-01T00:00:00.000Z' }));
+      const cachePath = path.join(tmpDir, 'state-cache.json');
+      fs.writeFileSync(cachePath, JSON.stringify(cachedState, null, 2));
+
+      // All Octokit methods reject
+      octokit.gists.get.mockRejectedValue(new Error('Network error'));
+      octokit.gists.list.mockRejectedValue(new Error('Network error'));
+      octokit.gists.create.mockRejectedValue(new Error('Network error'));
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrap();
+
+      expect(result.degraded).toBe(true);
+      expect(result.gistId).toBe('');
+      expect(result.created).toBe(false);
+      expect(result.state.version).toBe(3);
+      expect(result.state.lastRunAt).toBe('2025-06-01T00:00:00.000Z');
+    });
+
+    it('returns fresh state when API fails AND no local cache exists', async () => {
+      // No cache file written, all API methods reject
+      octokit.gists.get.mockRejectedValue(new Error('Network error'));
+      octokit.gists.list.mockRejectedValue(new Error('Network error'));
+      octokit.gists.create.mockRejectedValue(new Error('Network error'));
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrap();
+
+      expect(result.degraded).toBe(true);
+      expect(result.gistId).toBe('');
+      expect(result.created).toBe(false);
+      expect(result.state.version).toBe(3);
+      expect(result.state.config.setupComplete).toBe(false);
+    });
+
+    it('degraded is true in fallback case', async () => {
+      octokit.gists.list.mockRejectedValue(new Error('Unauthorized'));
+      octokit.gists.create.mockRejectedValue(new Error('Unauthorized'));
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrap();
+
+      expect(result.degraded).toBe(true);
+    });
+
+    it('degraded is false/undefined in normal case', async () => {
+      const gistId = 'normal-boot';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, stateJson));
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrap();
+
+      expect(result.degraded).toBeFalsy();
+    });
+  });
+
   describe('local state cache validation', () => {
     it('should write a valid AgentState to the local cache file', async () => {
       const gistId = 'validate-cache';
