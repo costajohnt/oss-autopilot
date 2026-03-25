@@ -32,6 +32,21 @@ For each issue on the list, check:
 - Re-rank remaining issues by score (highest first)
 - Group by category/language if configured
 
+### 5. Cull Skip File
+
+If a skipped issues file exists, remove entries older than 90 days:
+
+```bash
+SKIP_FILE="{skippedIssuesPath or probe skipped-issues.md in issue list directory}"
+if [ -f "$SKIP_FILE" ]; then
+  CUTOFF=$(date -v-90d +%Y-%m-%d 2>/dev/null || date -d '90 days ago' +%Y-%m-%d)
+  BEFORE=$(grep -cv '^#\|^$' "$SKIP_FILE" 2>/dev/null || echo 0)
+  awk -v cutoff="$CUTOFF" '/^#/ || /^$/ { print; next } $1 >= cutoff { print }' "$SKIP_FILE" > "${SKIP_FILE}.tmp" && mv "${SKIP_FILE}.tmp" "$SKIP_FILE"
+  AFTER=$(grep -cv '^#\|^$' "$SKIP_FILE" 2>/dev/null || echo 0)
+  echo "Skip file: culled $((BEFORE - AFTER)) expired entries, $AFTER remaining"
+fi
+```
+
 ## Cron Setup
 
 ### macOS / Linux (crontab)
