@@ -109,7 +109,7 @@ function AppContent() {
 
   if (error && !data) {
     return (
-      <div class="shell-center">
+      <div class="shell-center" role="alert">
         <p class="shell-status shell-error">Failed to load dashboard data</p>
         <p class="shell-detail">{error}</p>
         <button class="shell-retry" onClick={() => window.location.reload()}>
@@ -227,7 +227,7 @@ function AppContent() {
       />
 
       {error && (
-        <div class="error-banner">
+        <div class="error-banner" role="alert">
           <span>{error}</span>
           <button class="error-banner-dismiss" onClick={clearError}>
             Dismiss
@@ -235,7 +235,7 @@ function AppContent() {
         </div>
       )}
 
-      <main class="dashboard-main">
+      <main id="main-content" class="dashboard-main">
         <div class="animate-in delay-1">
           <StatsBar
             stats={data.stats}
@@ -296,6 +296,9 @@ function AppContent() {
 export function App() {
   return (
     <LocationProvider>
+      <a class="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <AppContent />
     </LocationProvider>
   );

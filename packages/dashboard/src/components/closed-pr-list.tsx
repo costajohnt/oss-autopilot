@@ -25,8 +25,8 @@ export function ClosedPRList({ closedPRs, onBack }: ClosedPRListProps) {
         <table class="merged-table">
           <thead>
             <tr>
-              <th>PR</th>
-              <th>Date Closed</th>
+              <th scope="col">PR</th>
+              <th scope="col">Date Closed</th>
             </tr>
           </thead>
           <tbody>

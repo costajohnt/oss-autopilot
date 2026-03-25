@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/preact';
+import { render, fireEvent, waitFor } from '@testing-library/preact';
 import { IssueList } from './issue-list';
 import { makeIssueResponse } from '../test-helpers';
 
@@ -102,6 +102,20 @@ describe('IssueList', () => {
 
     await vi.waitFor(() => {
       expect(container.querySelector('.action-error')?.textContent).toBe('Rate limited');
+    });
+  });
+
+  it('renders dismiss error with role="alert"', async () => {
+    const onAction = vi.fn().mockRejectedValue(new Error('Dismiss failed'));
+    const issue = makeIssueResponse();
+    const { container } = render(<IssueList issues={[issue]} onAction={onAction} />);
+
+    const btn = container.querySelector('.issue-item-dismiss') as HTMLButtonElement;
+    fireEvent.click(btn);
+
+    await waitFor(() => {
+      const errorEl = container.querySelector('.action-error');
+      expect(errorEl?.getAttribute('role')).toBe('alert');
     });
   });
 });

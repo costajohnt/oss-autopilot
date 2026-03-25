@@ -42,6 +42,14 @@ function PRRow({ pr, selected, onSelect }: { pr: FetchedPR; selected: boolean; o
     <div
       class={`pr-row ${statusClass(pr.status)} ${selected ? 'pr-row--selected' : ''}`}
       onClick={() => onSelect(pr.url)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(pr.url);
+        }
+      }}
+      role="button"
+      tabIndex={0}
     >
       <span class="pr-row-dot" style={{ background: statusColor(pr.status) }} />
       <a class="pr-row-id" href={pr.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
@@ -108,16 +116,31 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps)
       ))}
       {shelvedPRs.length > 0 && (
         <div class="pr-section pr-section--shelved">
-          <div class="pr-section-header pr-section-header--collapsible" onClick={() => setShelvedOpen(!shelvedOpen)}>
+          <div
+            class="pr-section-header pr-section-header--collapsible"
+            onClick={() => setShelvedOpen(!shelvedOpen)}
+            aria-expanded={shelvedOpen}
+            aria-controls="shelved-pr-list"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setShelvedOpen(!shelvedOpen);
+              }
+            }}
+          >
             <span class="pr-section-dot muted" />
             <span class="pr-section-title">Shelved</span>
             <span class="pr-section-count">{shelvedPRs.length}</span>
             <span class={`pr-section-chevron ${shelvedOpen ? 'pr-section-chevron--open' : ''}`}>&#9656;</span>
           </div>
-          {shelvedOpen &&
-            shelvedPRs.map((pr) => (
-              <PRRow key={pr.url} pr={pr} selected={pr.url === selectedUrl} onSelect={onSelect} />
-            ))}
+          <div id="shelved-pr-list">
+            {shelvedOpen &&
+              shelvedPRs.map((pr) => (
+                <PRRow key={pr.url} pr={pr} selected={pr.url === selectedUrl} onSelect={onSelect} />
+              ))}
+          </div>
         </div>
       )}
     </div>

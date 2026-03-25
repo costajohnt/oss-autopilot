@@ -192,13 +192,13 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       <div class="chart-card">
         <h3 class="chart-card-title">Monthly Activity</h3>
         <div class="chart-canvas-wrapper">
-          <canvas ref={lineCanvasRef} />
+          <canvas ref={lineCanvasRef} aria-label="Monthly PR activity chart" role="img" />
         </div>
       </div>
       <div class="chart-card">
         <h3 class="chart-card-title">Top Repos</h3>
         <div class="chart-canvas-wrapper">
-          <canvas ref={barCanvasRef} />
+          <canvas ref={barCanvasRef} aria-label="Top repositories by PR count" role="img" />
         </div>
       </div>
     </div>

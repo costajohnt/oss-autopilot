@@ -46,7 +46,11 @@ function IssueItem({ issue, onAction }: IssueItemProps) {
 
   return (
     <div class="issue-item">
-      {actionError && <p class="action-error">{actionError}</p>}
+      {actionError && (
+        <p class="action-error" role="alert">
+          {actionError}
+        </p>
+      )}
       {onAction && (
         <button class="issue-item-dismiss" aria-label="Dismiss" disabled={busy} onClick={handleDismiss}>
           ×

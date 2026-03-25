@@ -62,6 +62,14 @@ describe('ClosedPRList', () => {
     expect(empty?.textContent).toContain('No closed PRs found');
   });
 
+  it('renders table headers with scope="col"', () => {
+    const { container } = render(<ClosedPRList closedPRs={prs} onBack={() => {}} />);
+    const headers = container.querySelectorAll('th');
+    headers.forEach((th) => {
+      expect(th.getAttribute('scope')).toBe('col');
+    });
+  });
+
   it('renders table with correct column headers', () => {
     const { container } = render(<ClosedPRList closedPRs={prs} onBack={() => {}} />);
     const headers = container.querySelectorAll('.merged-table th');

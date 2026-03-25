@@ -28,7 +28,11 @@ export function ActionBar({ pr, isShelved, onAction }: ActionBarProps) {
 
   return (
     <div class="action-bar">
-      {actionError && <p class="action-error">{actionError}</p>}
+      {actionError && (
+        <p class="action-error" role="alert">
+          {actionError}
+        </p>
+      )}
 
       <button
         class={`action-btn ${isShelved ? 'action-btn--unshelve' : 'action-btn--shelve'}`}

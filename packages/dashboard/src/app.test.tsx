@@ -270,6 +270,35 @@ describe('App', () => {
     });
   });
 
+  it('error banner has role="alert"', async () => {
+    mockFetchOk(makeDashboardData());
+    const { container } = render(<App />);
+    await waitFor(() => {
+      expect(container.querySelector('.refresh-btn')).toBeTruthy();
+    });
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('fail')));
+    const refreshBtn = container.querySelector('.refresh-btn') as HTMLButtonElement;
+    fireEvent.click(refreshBtn);
+
+    await waitFor(() => {
+      const banner = container.querySelector('.error-banner');
+      expect(banner?.getAttribute('role')).toBe('alert');
+    });
+  });
+
+  it('renders a skip-to-main link', async () => {
+    mockFetchOk(makeDashboardData());
+    const { container } = render(<App />);
+    await waitFor(() => {
+      expect(container.querySelector('.dashboard')).toBeTruthy();
+    });
+    expect(container.querySelector('.skip-link')).toBeTruthy();
+    expect(container.querySelector('.skip-link')?.getAttribute('href')).toBe('#main-content');
+    const mainContent = container.querySelector('#main-content');
+    expect(mainContent).toBeTruthy();
+  });
+
   it('shows error banner with dismiss button when error coexists with data', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
 

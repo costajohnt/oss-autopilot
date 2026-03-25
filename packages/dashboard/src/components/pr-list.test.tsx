@@ -57,6 +57,26 @@ describe('PRList', () => {
     expect(rows).toHaveLength(1);
   });
 
+  it('PR rows are keyboard-accessible', () => {
+    const onSelect = vi.fn();
+    const prs = [makePR({ url: 'https://github.com/o/r/pull/1', status: 'needs_addressing', number: 1 })];
+    const { container } = renderPRList({ prs, onSelect });
+    const row = container.querySelector('.pr-row');
+    expect(row?.getAttribute('role')).toBe('button');
+    expect(row?.getAttribute('tabindex')).toBe('0');
+    fireEvent.keyDown(row!, { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledWith('https://github.com/o/r/pull/1');
+  });
+
+  it('PR rows respond to Space key', () => {
+    const onSelect = vi.fn();
+    const prs = [makePR({ url: 'https://github.com/o/r/pull/1', status: 'needs_addressing', number: 1 })];
+    const { container } = renderPRList({ prs, onSelect });
+    const row = container.querySelector('.pr-row');
+    fireEvent.keyDown(row!, { key: ' ' });
+    expect(onSelect).toHaveBeenCalledWith('https://github.com/o/r/pull/1');
+  });
+
   it('calls onSelect when a PR row is clicked', () => {
     const onSelect = vi.fn();
     const prs = [makePR({ url: 'https://github.com/o/r/pull/1', status: 'waiting_on_maintainer' })];
@@ -97,6 +117,17 @@ describe('PRList', () => {
     );
     expect(shelvedHeader).toBeTruthy();
     expect(shelvedHeader?.querySelector('.pr-section-count')?.textContent).toBe('1');
+  });
+
+  it('sets aria-expanded on shelved section toggle', () => {
+    const prs = [makePR({ url: 'https://github.com/o/r/pull/1', status: 'needs_addressing' })];
+    const shelvedUrls = new Set(['https://github.com/o/r/pull/1']);
+    const { container } = renderPRList({ prs, shelvedUrls });
+    const header = container.querySelector('.pr-section-header--collapsible');
+    expect(header?.getAttribute('aria-expanded')).toBe('false');
+    expect(header?.getAttribute('aria-controls')).toBe('shelved-pr-list');
+    fireEvent.click(header!);
+    expect(header?.getAttribute('aria-expanded')).toBe('true');
   });
 
   it('displays PR title, repo#number, and activity age', () => {

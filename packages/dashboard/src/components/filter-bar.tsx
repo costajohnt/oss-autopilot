@@ -30,6 +30,7 @@ export function FilterBar({ filters, onFilterChange, repos, statuses, totalCount
     <div class="filter-bar">
       <select
         class="filter-select"
+        aria-label="Filter by status"
         value={filters.status}
         onChange={(e) => onFilterChange({ ...filters, status: (e.target as HTMLSelectElement).value })}
       >
@@ -43,6 +44,7 @@ export function FilterBar({ filters, onFilterChange, repos, statuses, totalCount
 
       <select
         class="filter-select"
+        aria-label="Filter by repository"
         value={filters.repo}
         onChange={(e) => onFilterChange({ ...filters, repo: (e.target as HTMLSelectElement).value })}
       >
@@ -57,6 +59,7 @@ export function FilterBar({ filters, onFilterChange, repos, statuses, totalCount
       <input
         class="filter-input"
         type="text"
+        aria-label="Search PRs"
         placeholder="Search PRs..."
         value={filters.search}
         onInput={(e) => onFilterChange({ ...filters, search: (e.target as HTMLInputElement).value })}

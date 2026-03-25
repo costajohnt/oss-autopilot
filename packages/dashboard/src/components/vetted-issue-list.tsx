@@ -64,6 +64,7 @@ export function VettedIssueList({ vettedIssues, repoMetadata, onBack }: VettedIs
         <input
           class="vetted-search-input"
           type="text"
+          aria-label="Search issues"
           placeholder="Search issues..."
           value={search}
           onInput={(e) => setSearch((e.target as HTMLInputElement).value)}
@@ -78,10 +79,16 @@ export function VettedIssueList({ vettedIssues, repoMetadata, onBack }: VettedIs
         <table class="merged-table">
           <thead>
             <tr>
-              <th>Issue</th>
-              <th class="merged-table-col-stars">Stars</th>
-              <th class="merged-table-col-language">Language</th>
-              <th class="vetted-col-score">Score</th>
+              <th scope="col">Issue</th>
+              <th scope="col" class="merged-table-col-stars">
+                Stars
+              </th>
+              <th scope="col" class="merged-table-col-language">
+                Language
+              </th>
+              <th scope="col" class="vetted-col-score">
+                Score
+              </th>
             </tr>
           </thead>
           <tbody>

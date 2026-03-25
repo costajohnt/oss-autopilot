@@ -89,6 +89,15 @@ describe('VettedIssueList', () => {
     expect(container.querySelector('.vetted-score--mid')).toBeTruthy();
   });
 
+  it('renders table headers with scope="col"', () => {
+    const items = [makeItem()];
+    const { container } = render(<VettedIssueList vettedIssues={makeOutput(items)} onBack={() => {}} />);
+    const headers = container.querySelectorAll('th');
+    headers.forEach((th) => {
+      expect(th.getAttribute('scope')).toBe('col');
+    });
+  });
+
   it('sorts by score descending', () => {
     const items = [
       makeItem({ number: 1, score: 6, title: 'Low score', url: 'https://github.com/owner/repo/issues/1' }),
