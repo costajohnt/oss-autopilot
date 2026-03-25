@@ -295,15 +295,7 @@ When score is below 90, offer to help fix issues:
 
 ## AI Attribution Check
 
-**CRITICAL:** When checking PRs, verify there is NO unwanted AI attribution:
-- Check commit messages for "Co-Authored-By: Claude" or similar
-- Check PR description for "Generated with Claude", "AI-assisted", or similar mentions
-- Check comments for AI attribution
-
-**Rule:** NEVER add AI attribution to commits, comments, or PRs unless the repository explicitly requires disclosure of AI tool usage. Contributions should appear as solely from the user.
-
-If AI attribution is found and the repository does NOT require it, flag this as an issue:
-> "Found AI attribution in [location]. Unless this repository requires disclosure of AI tool usage, remove this to avoid unnecessary attention and keep contributions appearing as solely from the user."
+See "AI Attribution Rule" in `workflows/reference.md` for the full policy. When checking PRs, verify there is NO unwanted AI attribution in commit messages, PR descriptions, or comments. Flag any found as an issue.
 
 **Related Agents:**
 - For code-level quality review before pushing, suggest **pre-commit-reviewer** to catch bugs and style issues
