@@ -686,6 +686,7 @@ export class StateManager {
 
 // Singleton instance
 let stateManager: StateManager | null = null;
+let asyncManagerPromise: Promise<StateManager> | null = null;
 
 /**
  * Get the singleton StateManager instance, creating it on first call.
@@ -708,8 +709,37 @@ export function getStateManager(): StateManager {
 }
 
 /**
+ * Get or create a StateManager with Gist-backed persistence.
+ * If a StateManager already exists (from sync init), returns it.
+ * If a token is provided and no manager exists, creates one with Gist backing.
+ * Falls back to sync initialization if no token is provided.
+ */
+export async function getStateManagerAsync(token?: string): Promise<StateManager> {
+  if (stateManager) return stateManager;
+  if (asyncManagerPromise) return asyncManagerPromise;
+
+  if (token) {
+    asyncManagerPromise = StateManager.createWithGist(token)
+      .then((mgr) => {
+        stateManager = mgr;
+        asyncManagerPromise = null;
+        return mgr;
+      })
+      .catch((err) => {
+        asyncManagerPromise = null;
+        warn(MODULE, `Gist initialization failed, falling back to local: ${err}`);
+        return getStateManager(); // fall back to sync/local
+      });
+    return asyncManagerPromise;
+  }
+
+  return getStateManager();
+}
+
+/**
  * Reset the singleton StateManager instance to null. Intended for test isolation.
  */
 export function resetStateManager(): void {
   stateManager = null;
+  asyncManagerPromise = null;
 }

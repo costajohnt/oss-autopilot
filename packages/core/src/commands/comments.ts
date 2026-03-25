@@ -242,6 +242,11 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
       updatedAt: new Date().toISOString(),
       vetted: false,
     });
+    try {
+      await stateManager.checkpoint();
+    } catch {
+      /* best-effort */
+    }
   } catch (error) {
     console.error(
       `Warning: Comment posted on ${options.issueUrl} but failed to save to local state: ${error instanceof Error ? error.message : error}`,
