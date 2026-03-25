@@ -55,7 +55,7 @@ export function MergedPRList({ mergedPRs, repoMetadata, onBack }: MergedPRListPr
     const arrow = sortKey === key ? (sortDir === 'asc' ? '\u25B2' : '\u25BC') : null;
     const className = extraClass ? `${extraClass} sortable-th` : 'sortable-th';
     return (
-      <th class={className} onClick={() => toggleSort(key)}>
+      <th class={className} scope="col" onClick={() => toggleSort(key)}>
         {label} {arrow && <span class="sort-arrow">{arrow}</span>}
       </th>
     );

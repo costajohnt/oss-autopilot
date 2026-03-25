@@ -121,6 +121,14 @@ describe('MergedPRList', () => {
     expect(languages[0].textContent).toBe('—');
   });
 
+  it('renders table headers with scope="col"', () => {
+    const { container } = render(<MergedPRList mergedPRs={prs} onBack={() => {}} />);
+    const headers = container.querySelectorAll('th');
+    headers.forEach((th) => {
+      expect(th.getAttribute('scope')).toBe('col');
+    });
+  });
+
   it('renders table with correct column headers', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} onBack={() => {}} />);
     const headers = container.querySelectorAll('.merged-table th');
