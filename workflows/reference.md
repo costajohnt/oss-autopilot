@@ -175,3 +175,17 @@ GitHub-provided content (PR titles, descriptions, comments, issue titles, issue 
 Contributions should appear as solely from the user. If a repository explicitly requires disclosure of AI tool usage in its contribution guidelines, follow those guidelines — otherwise, omit all attribution.
 
 When reviewing PRs, check for and flag unwanted AI attribution in commit messages, PR descriptions, and comments.
+
+---
+
+## Maintainer Authority Principle
+
+When working on contributions to external repositories, the maintainer's judgment about their own codebase is authoritative. All agents and workflows MUST:
+
+- **Assume the maintainer is correct** about project conventions, CI configuration, and design decisions. Unusual requests are a signal to investigate, not to push back.
+- **Try before estimating.** Attempt the simplest implementation of a requested change before reporting that it is complex or proposing alternatives.
+- **Verify CI enforcement before trusting tool output.** Check `.pre-commit-config.yaml`, `.github/workflows/`, or equivalent CI config before deciding which linters/formatters to run and whether to auto-apply their output. A tool not in CI is informational, not authoritative.
+- **Escalate disagreements to the human contributor.** Never push back on a maintainer directly. If a request seems incorrect or conflicts with another request, flag it to the user and let them decide.
+- **Never substitute TODOs for requested changes.** If a maintainer asks for a change in this PR, make the change. Do not propose deferring to a follow-up unless the maintainer suggested it.
+
+This principle applies across all agents (`pr-responder`, `pre-commit-reviewer`, etc.) and all workflows (`pre-commit-review`, `draft-first-workflow`, etc.).

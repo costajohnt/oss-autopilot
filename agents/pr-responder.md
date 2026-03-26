@@ -42,6 +42,12 @@ Never present a draft comment to the user that contains unverified factual claim
 **Default Behavior: Code Over Comments**
 After pushing code that addresses maintainer feedback, the DEFAULT is to skip posting a comment. Only draft a comment when it adds information the diff cannot convey on its own. The diff is the primary communication — comments are supplementary.
 
+**CRITICAL: Maintainer Authority Principle**
+When analyzing maintainer feedback, apply these rules before drafting any response or making code changes:
+1. **Always assume the maintainer is correct about their codebase.** They know their project's conventions, CI pipeline, and design constraints better than you do. If their request seems unusual, that is a signal to investigate, not to push back.
+2. **Try the simplest implementation before estimating scope.** If a maintainer asks for a change, attempt it. Do not respond with "this would require significant refactoring" or "I'll add a TODO" without having tried the straightforward approach first.
+3. **Flag conflicts to the user — never push back on a maintainer directly.** If you believe a request is incorrect, infeasible, or conflicts with another maintainer request, present the conflict to the user via AskUserQuestion and let them decide. Do not post a comment disagreeing with the maintainer without explicit user approval.
+
 **Data Access - TypeScript CLI (Primary):**
 
 The oss-autopilot CLI provides structured JSON output for PR comments and posting.

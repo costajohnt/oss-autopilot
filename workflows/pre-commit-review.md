@@ -82,13 +82,24 @@ Before dispatching review agents, run the repo's lint and test commands to catch
 
 1. **Detect and run linter/type checker**: Check for `package.json` scripts (`lint`, `typecheck`, `tsc`), `Makefile` targets, or language-specific tooling. Run the detected command(s). If no linter is detected, skip and note: "No linter detected — skipping pre-review lint."
 
-2. **Run test suite**: Check for `package.json` scripts (`test`), `Makefile` targets (`test`, `check`), or language-specific test runners. Run the detected command. If no test runner is detected, skip and note: "No test runner detected — skipping pre-review tests."
+2. **Verify tools against CI configuration (CI-enforcement check):** Before treating any linter, formatter, or type checker output as authoritative, confirm the tool is actually enforced by the project's CI. Check these sources in order:
+   - `.pre-commit-config.yaml` — lists hooks that run on every commit/PR. Save the list of repo URLs and hook IDs as `enforcedTools`.
+   - `.github/workflows/*.yml` (or `.gitlab-ci.yml`, `Jenkinsfile`, etc.) — look for tool invocations in CI job steps.
+   - `Makefile` targets referenced by CI — if CI runs `make lint`, check what `make lint` actually invokes.
 
-3. **Handle failures**: If lint or tests fail, fix the issues before proceeding to review agent dispatch. Report:
+   **Rules:**
+   - If a tool is NOT in CI, its output is **informational only** — report findings but do not auto-apply fixes or block on its output.
+   - Never auto-apply a formatter that is not CI-enforced. Running a formatter on a project that doesn't enforce it in CI creates noise the maintainer did not ask for.
+   - If `.pre-commit-config.yaml` exists, read it early (during this sub-step) and save the enforced tools list for use in both this gate and sub-step 6a (formatter detection).
+   - If no CI config files can be found, note: "Could not determine CI-enforced tools — treating all detected tools as informational." Run them but do not auto-apply fixes.
+
+3. **Run test suite**: Check for `package.json` scripts (`test`), `Makefile` targets (`test`, `check`), or language-specific test runners. Run the detected command. If no test runner is detected, skip and note: "No test runner detected — skipping pre-review tests."
+
+4. **Handle failures**: If lint or tests fail, fix the issues before proceeding to review agent dispatch. Report:
    > "Lint/tests failed — fixing before running review agents..."
    After fixing, re-run lint and tests to confirm they pass. Loop until both pass (soft limit: 3 attempts). If still failing after 3 attempts, present findings to the user and offer: "Fix manually" / "Proceed to review anyway" / "Done for now".
 
-4. **On success**: Report:
+5. **On success**: Report:
    > "Lint and tests passed. Dispatching review agents..."
    Proceed to sub-step 3.
 
@@ -334,7 +345,7 @@ Options:
 
 **If `changeSource = "committed"`:** Skip this sub-step — changes are already committed and cannot be reformatted without amending. Proceed directly to push.
 
-**If `changeSource = "uncommitted"`:** Before staging, run the project's linter/formatter to catch formatting issues that would fail CI.
+**If `changeSource = "uncommitted"`:** Before staging, run the project's linter/formatter to catch formatting issues that would fail CI. Consult the `enforcedTools` list from sub-step 2b. Only auto-apply formatters that are CI-enforced. For non-CI-enforced formatters, report findings but do not use `--write` or `--fix` flags.
 
 1. **Detect tooling** from lint/format configs gathered in sub-step 2. Check in order — **use the first match that supports auto-fix**:
    - `package.json` scripts: prefer fix-oriented scripts first: `lint:fix`, `format`, `fmt`. A plain `lint` script (without `:fix`) typically only reports issues — only use it as a last resort and note it will report but not auto-fix. **Important:** `npm run` scripts typically run on the entire project. Only use a script if it accepts file arguments via `--` passthrough (e.g., `npm run format -- {changed files}`). If the script does not accept file arguments, skip it and fall back to running the underlying tool directly on changed files.
