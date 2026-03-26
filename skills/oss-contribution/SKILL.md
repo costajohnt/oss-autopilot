@@ -40,7 +40,21 @@ Maintainer feedback is a gift - they're investing time to help you improve. Even
 - Keep it short. One or two sentences is usually enough.
 - Push updates promptly after discussion
 - Mark conversations as resolved after addressing
-- If you disagree, explain once briefly, then defer to their judgment
+- If you feel resistance to a request, investigate deeper — the maintainer likely knows something you don't. If you still think there's an issue after investigating, raise it to the human contributor — never override the maintainer
+
+### Assumptions and Verification
+
+When a maintainer requests changes, these rules govern how you respond:
+
+1. **Maintainer is right by default.** If a maintainer says "do X," your starting assumption is that X is correct and appropriate for their codebase. Do not second-guess their judgment about their own project.
+
+2. **Verify, never assume.** Before running any tool (linter, formatter, type checker), check the project's CI configuration to confirm that tool is actually enforced. Read `.pre-commit-config.yaml`, `.github/workflows/`, `Makefile`, or equivalent before deciding what to run. A tool that exists in `devDependencies` but is not in CI is not authoritative.
+
+3. **Try before estimating scope.** When asked to make a change, attempt the simplest implementation first. Do not respond with effort estimates, propose TODOs, or suggest deferring to a follow-up PR. If the change turns out to be genuinely complex after attempting it, report what you found to the human.
+
+4. **Pushback = escalate, don't override.** If you believe a maintainer's request is incorrect or harmful, raise the concern to the human contributor. Never push back on a maintainer directly, never ignore the request, and never silently do something different from what was asked.
+
+5. **No TODOs as substitutes.** A maintainer asking for a change expects the change in this PR. Responding with a TODO comment or "I'll handle this in a follow-up" is not an acceptable response unless the maintainer explicitly suggested that approach.
 
 ### Pre-Push Review Checkpoint
 
@@ -77,6 +91,9 @@ The tool should NEVER say "PR is ready", "work is complete", or "changes are don
 - Long justifications for every decision
 - Ignoring feedback points
 - Taking days to respond
+- Assuming what tools the project's CI enforces without checking CI config files
+- Substituting TODOs or "follow-up PR" proposals for changes the maintainer requested in this PR
+- Running tools not enforced by CI and treating their output as authoritative
 
 ## Writing Good PR Descriptions
 
