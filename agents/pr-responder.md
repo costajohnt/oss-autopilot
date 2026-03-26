@@ -130,6 +130,10 @@ Classify each maintainer comment into one of these categories:
 | **style_request** | Asks for formatting/naming changes | "rename this to X", "use camelCase", "add a newline" | NO — trivial, visible in diff |
 | **design_discussion** | Proposes alternative approach | "have you considered X?", "wouldn't it be better to Y?" | YES — needs thoughtful response |
 | **approval_with_nit** | Approved but with minor requests | "LGTM, just fix X and Y" | NO — fix nits, let diff speak |
+| **formatting_complaint** | Maintainer flags unrelated formatting | "revert the formatting changes", "unrelated whitespace changes", "keep the diff focused", "please don't change files unrelated to the fix" | NO — revert formatting, acknowledge only if frustrated |
+
+**When `formatting_complaint` is detected:**
+Revert formatting-only hunks (use `git diff` to identify them, then `git checkout -- {files}` for files where ALL changes are formatting-only, or the Edit tool to surgically undo specific hunks in files with mixed changes). Verify with `git diff` that only functional changes remain, then push. Only draft a brief acknowledgment if the maintainer expressed frustration (e.g., "cleaned up, thanks for flagging").
 
 ### 2b. Comment Decision Logic (Post-Push)
 
@@ -144,6 +148,7 @@ After pushing code changes that address maintainer feedback, decide whether a re
 - Approval with nits — fix nits and push
 - Any request where the diff directly shows compliance
 - The feedback is classified as `code_request`, `style_request`, or `approval_with_nit` and the diff addresses it
+- Formatting revert requested — revert the formatting changes, push the cleaned diff. Only post a brief acknowledgment if the maintainer seemed frustrated
 
 **Rare cases where Draft is needed:**
 - Maintainer asked a question that code can't answer (`question` or `explanation_request`)

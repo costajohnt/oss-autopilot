@@ -125,6 +125,11 @@ Task(pr-review-toolkit:code-reviewer,
      but undefined would also match. Flag === false vs !prop inconsistencies. Flag boolean
      coercion of values that could be 0, "", or null where the intent is only to check
      for undefined.
+   - Formatting hygiene: Scan the diff for hunks that contain only formatting changes
+     (whitespace, quote style, trailing commas, import reordering, line breaks) with no
+     functional change. Flag each as Recommended: 'Formatting-only hunk at {file}:{line}
+     — revert to keep diff minimal.' Do not flag formatting that is part of the functional
+     fix (e.g., a new import that triggers automatic reordering).
    - Documentation accuracy: If docs/README/JSDoc are changed, cross-reference factual claims
      against the actual code. Check that option descriptions match defaults (don't say
      "Enable X" for a feature that's on by default). If code behavior changed but docs
@@ -146,6 +151,8 @@ Task(pr-review-toolkit:silent-failure-hunter,
 Task(pr-review-toolkit:code-simplifier,
   "Review the following code changes for dead code, unnecessary complexity, and
    simplification opportunities. Do NOT modify files — report findings only.
+   Do NOT suggest cosmetic changes (import reordering, quote style, trailing commas,
+   whitespace) as improvements — those expand the diff without functional benefit.
    Working directory: {local repo path}
    Changed files: {changed files list}
 
@@ -345,11 +352,13 @@ Options:
 
 2. **If no tooling detected:** Skip this sub-step. Report: "No linter/formatter detected — skipping auto-format." Proceed to staging.
 
-3. **Run the formatter** on the changed files only (not the entire repo — see file-scoping notes in item 1). Use a 60-second timeout on the bash command. Report what command is being run:
+3. **Capture baseline diff** before running the formatter so you can identify what the formatter changed vs. what you changed: `git diff > /tmp/pre-format.diff`. This baseline is used in step 5 to distinguish functional hunks from formatter-added hunks.
+
+4. **Run the formatter** on the changed files only (not the entire repo — see file-scoping notes in item 1). Use a 60-second timeout on the bash command. Report what command is being run:
    > "Running `{command}` on changed files..."
 
-4. **Handle results:**
-   - **If the command succeeds (exit 0):** Check `git status --porcelain` for files modified by the formatter. Compare the modified files to the original changed files list. If the formatter modified files **outside** the original change set, warn: "Formatter modified {N} file(s) outside your original changes: {list}. Discarding those changes." Restore those files with `git checkout -- {unrelated files}`, then re-run `git status --porcelain` to verify they are no longer modified. If any files could not be restored, warn: "Could not discard formatter changes to {file}. These files will NOT be staged — please resolve manually." Also check for new untracked files (`??` in `git status`) created by the formatter (e.g., cache files) and warn if found — do not stage them. For files within the original change set, report: "Formatter applied changes to {N} file(s). These will be included in the commit."
+5. **Handle results:**
+   - **If the command succeeds (exit 0):** Check `git status --porcelain` for files modified by the formatter. Compare the modified files to the original changed files list. If the formatter modified files **outside** the original change set, warn: "Formatter modified {N} file(s) outside your original changes: {list}. Discarding those changes." Restore those files with `git checkout -- {unrelated files}`, then re-run `git status --porcelain` to verify they are no longer modified. If any files could not be restored, warn: "Could not discard formatter changes to {file}. These files will NOT be staged — please resolve manually." Also check for new untracked files (`??` in `git status`) created by the formatter (e.g., cache files) and warn if found — do not stage them. For files within the original change set: review the formatter's modifications within those files. If the formatter changed lines that were NOT part of the original diff (i.e., reformatted untouched regions of a file you edited), use `git diff` to identify which hunks are formatting-only. For files where ALL changes are formatting-only, use `git checkout -- {files}` to revert them entirely. For files with both formatting and functional changes, use the Edit tool to surgically undo only the formatting-only hunks — never `git checkout --` on these files, as it would destroy the functional changes too. Report: "Formatter applied changes to {N} file(s). Discarded {M} formatting-only hunk(s) to keep the diff minimal."
    - **If the command fails (non-zero exit):** Check `git status --porcelain` for files the formatter partially modified before failing. If files were modified, inform the user: "The linter/formatter modified {N} file(s) before failing. You can undo these partial changes or keep them." Report the error output. Use AskUserQuestion:
      ```
      Question: "Linter reported issues. How to proceed?"

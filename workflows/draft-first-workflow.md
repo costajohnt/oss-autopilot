@@ -204,6 +204,9 @@ Use `git diff $mergeBase..HEAD` for the full branch diff. If `$mergeBase` is emp
 SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
 Focus findings on changes related to this issue. Flag pre-existing issues only
 if they are Critical severity. Do NOT suggest improvements outside the scope of this PR.
+FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
+trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
+before the PR is submitted. Do not flag formatting that is part of the functional fix.
 ```
 
 **Agent prompts** (include the full `git diff $mergeBase..HEAD` output in each):
@@ -213,6 +216,9 @@ Task(pr-review-toolkit:code-reviewer,
   "SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
    Focus findings on changes related to this issue. Flag pre-existing issues only
    if they are Critical severity. Do NOT suggest improvements outside the scope of this PR.
+   FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
+   trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
+   before the PR is submitted. Do not flag formatting that is part of the functional fix.
 
    Review the following code changes for bugs, logic errors, security vulnerabilities,
    and adherence to project conventions. Focus on issue-related changes.
@@ -228,6 +234,9 @@ Task(pr-review-toolkit:silent-failure-hunter,
   "SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
    Focus findings on changes related to this issue. Flag pre-existing issues only
    if they are Critical severity. Do NOT suggest improvements outside the scope of this PR.
+   FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
+   trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
+   before the PR is submitted. Do not flag formatting that is part of the functional fix.
 
    Review the following code changes for silent failures, inadequate error handling,
    and inappropriate fallback behavior. Focus on changed code paths only.
@@ -241,9 +250,14 @@ Task(pr-review-toolkit:code-simplifier,
   "SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
    Focus findings on changes related to this issue. Flag pre-existing issues only
    if they are Critical severity. Do NOT suggest improvements outside the scope of this PR.
+   FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
+   trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
+   before the PR is submitted. Do not flag formatting that is part of the functional fix.
 
    Review the following code changes for dead code, unnecessary complexity, and
    simplification opportunities. Focus on new/modified code only. Do NOT modify files — report findings only.
+   Do NOT suggest cosmetic changes (import reordering, quote style, trailing commas,
+   whitespace) as improvements — only flag them for reversion per the FORMATTING RULE above.
    Working directory: {local repo path}
    Changed files: {changed files list}
 
@@ -254,6 +268,9 @@ Task(pr-review-toolkit:pr-test-analyzer,
   "SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
    Focus findings on changes related to this issue. Flag pre-existing issues only
    if they are Critical severity. Do NOT suggest improvements outside the scope of this PR.
+   FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
+   trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
+   before the PR is submitted. Do not flag formatting that is part of the functional fix.
 
    Analyze test coverage for the following code changes. Focus on new functionality only.
    Check if modified code paths have tests, identify gaps, and recommend what tests should be added.
@@ -272,6 +289,9 @@ Task(pr-review-toolkit:pr-test-analyzer,
   Task(pr-review-toolkit:type-design-analyzer,
     "SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
      Focus on issue-related type changes only.
+     FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
+     trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
+     before the PR is submitted. Do not flag formatting that is part of the functional fix.
 
      Review type design in the following TypeScript changes. Check for proper
      encapsulation, invariant expression, and type safety.
@@ -287,6 +307,9 @@ Task(pr-review-toolkit:pr-test-analyzer,
   Task(pr-review-toolkit:comment-analyzer,
     "SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
      Focus on comments in new/modified code only.
+     FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
+     trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
+     before the PR is submitted. Do not flag formatting that is part of the functional fix.
 
      Review comments in the following code changes for accuracy, completeness,
      and long-term maintainability.
