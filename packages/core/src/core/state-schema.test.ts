@@ -161,6 +161,16 @@ describe('AgentStateSchema', () => {
       });
       expect(result.analyzedIssueConversations).toHaveLength(1);
     });
+
+    it('should accept gistId field', () => {
+      const result = AgentStateSchema.parse({ version: 3, gistId: 'abc123' });
+      expect(result.gistId).toBe('abc123');
+    });
+
+    it('should default gistId to undefined', () => {
+      const result = AgentStateSchema.parse({ version: 3 });
+      expect(result.gistId).toBeUndefined();
+    });
   });
 });
 

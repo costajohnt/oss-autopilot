@@ -108,7 +108,7 @@ export function atomicWriteFileSync(filePath: string, data: string, mode?: numbe
  * Migrate state from v1 (local PR tracking) to v2 (fresh GitHub fetching).
  * Preserves repoScores and config; drops the legacy PR arrays.
  */
-function migrateV1ToV2(rawState: Record<string, unknown>): Record<string, unknown> {
+export function migrateV1ToV2(rawState: Record<string, unknown>): Record<string, unknown> {
   debug(MODULE, 'Migrating state from v1 to v2 (fresh GitHub fetching)...');
 
   // Extract merged/closed PR arrays from v1 state to seed repo scores.
@@ -154,7 +154,7 @@ function migrateV1ToV2(rawState: Record<string, unknown>): Record<string, unknow
  * Adds: analyzedIssueConversations, learningsExtractedAt on StoredMergedPR/StoredClosedPR.
  * New optional fields are handled by Zod defaults (undefined/optional).
  */
-function migrateV2ToV3(rawState: Record<string, unknown>): Record<string, unknown> {
+export function migrateV2ToV3(rawState: Record<string, unknown>): Record<string, unknown> {
   debug(MODULE, 'Migrating state from v2 to v3 (drop dead fields, add learnings tracking)...');
 
   // Remove dead fields from root

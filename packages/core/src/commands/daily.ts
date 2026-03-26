@@ -621,7 +621,21 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   const { activePRs, shelvedPRs, digest } = partitionPRs(prMonitor, prs, recentlyClosedPRs, recentlyMergedPRs);
 
   // Phase 5: Build structured output (capacity, dismiss filter, action menu)
-  return generateDigestOutput(digest, activePRs, shelvedPRs, commentedIssues, failures, previousLastDigestAt);
+  const result = generateDigestOutput(digest, activePRs, shelvedPRs, commentedIssues, failures, previousLastDigestAt);
+
+  // Checkpoint: push state to Gist if in Gist mode.
+  // If getStateManagerAsync was not called before this command ran,
+  // isGistMode() will be false and checkpoint is correctly skipped.
+  try {
+    const sm = getStateManager();
+    if (sm.isGistMode()) {
+      await sm.checkpoint();
+    }
+  } catch (err) {
+    warn(MODULE, `Gist checkpoint failed: ${errorMessage(err)}`);
+  }
+
+  return result;
 }
 
 /**

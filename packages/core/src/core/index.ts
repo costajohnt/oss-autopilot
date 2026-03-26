@@ -3,7 +3,8 @@
  * Re-exports all core functionality for convenient imports
  */
 
-export { StateManager, getStateManager, resetStateManager, type Stats } from './state.js';
+export { StateManager, getStateManager, getStateManagerAsync, resetStateManager, type Stats } from './state.js';
+export { GistStateStore } from './gist-state-store.js';
 export {
   PRMonitor,
   type PRCheckFailure,

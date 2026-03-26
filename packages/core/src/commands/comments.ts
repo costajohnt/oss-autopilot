@@ -242,6 +242,16 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
       updatedAt: new Date().toISOString(),
       vetted: false,
     });
+    // Push state to Gist if in Gist mode.
+    // If getStateManagerAsync was not called before this command ran,
+    // isGistMode() will be false and checkpoint is correctly skipped.
+    try {
+      if (stateManager.isGistMode()) {
+        await stateManager.checkpoint();
+      }
+    } catch {
+      /* best-effort */
+    }
   } catch (error) {
     console.error(
       `Warning: Comment posted on ${options.issueUrl} but failed to save to local state: ${error instanceof Error ? error.message : error}`,

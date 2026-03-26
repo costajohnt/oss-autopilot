@@ -99,6 +99,44 @@ export function getCacheDir(): string {
 }
 
 /**
+ * Returns the path to the local Gist ID file (`~/.oss-autopilot/gist-id`).
+ *
+ * This file stores the GitHub Gist ID used by the Gist-based persistence layer,
+ * avoiding a search-by-description API call on every session.
+ *
+ * Implicitly creates the data directory via {@link getDataDir} if it does not exist.
+ *
+ * @returns Absolute path to `gist-id`
+ *
+ * @example
+ * const gistIdPath = getGistIdPath();
+ * // "/Users/you/.oss-autopilot/gist-id"
+ */
+export function getGistIdPath(): string {
+  const dir = getDataDir();
+  return path.join(dir, 'gist-id');
+}
+
+/**
+ * Returns the path to the local state cache file (`~/.oss-autopilot/state-cache.json`).
+ *
+ * This file is a write-through cache of the Gist-hosted state, used as a fallback
+ * when the GitHub API is unreachable (degraded mode).
+ *
+ * Implicitly creates the data directory via {@link getDataDir} if it does not exist.
+ *
+ * @returns Absolute path to `state-cache.json`
+ *
+ * @example
+ * const cachePath = getStateCachePath();
+ * // "/Users/you/.oss-autopilot/state-cache.json"
+ */
+export function getStateCachePath(): string {
+  const dir = getDataDir();
+  return path.join(dir, 'state-cache.json');
+}
+
+/**
  * Represents a parsed GitHub pull request or issue URL.
  *
  * @property owner - The repository owner (e.g., `"facebook"`)
