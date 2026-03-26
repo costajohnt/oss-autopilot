@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.9.0...core-v1.10.0) (2026-03-26)
+
+
+### Features
+
+* add PreToolUse hook to guard git rebase and force-push operations ([#880](https://github.com/costajohnt/oss-autopilot/issues/880)) ([d86a7b7](https://github.com/costajohnt/oss-autopilot/commit/d86a7b732448bcbaaeb991ac469917416293e39b))
+* AgentState v3 schema audit, migration, and PR ledger wiring ([#876](https://github.com/costajohnt/oss-autopilot/issues/876)) ([71ae182](https://github.com/costajohnt/oss-autopilot/commit/71ae182cac2f277e063bb226e7d398d51096723a))
+* encode maintainer authority and CI-verification rules from OSS contribution lessons ([#882](https://github.com/costajohnt/oss-autopilot/issues/882)) ([3e1e133](https://github.com/costajohnt/oss-autopilot/commit/3e1e1338947ff10e0113724ee3b0d0e5807b0cdf))
+* Gist-based persistence layer ([#878](https://github.com/costajohnt/oss-autopilot/issues/878)) ([0519ccc](https://github.com/costajohnt/oss-autopilot/commit/0519ccc4fa1bdcb3f1ceae664970b8f6823aee69))
+
+
+### Bug Fixes
+
+* add minimal diff discipline to prevent unrelated formatting changes in PRs ([#881](https://github.com/costajohnt/oss-autopilot/issues/881)) ([eafe9cd](https://github.com/costajohnt/oss-autopilot/commit/eafe9cd2a95514b5399d1bb596f60107913a1e1c))
+* use real newlines in session-start hook message concatenation ([#879](https://github.com/costajohnt/oss-autopilot/issues/879)) ([23b53a9](https://github.com/costajohnt/oss-autopilot/commit/23b53a92c0d7bed213dca28eeec1895cf3d7d326))
+
 ## [1.9.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.8.0...core-v1.9.0) (2026-03-25)
 
 
