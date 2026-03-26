@@ -142,6 +142,7 @@ Review the diff (from Phase 1) for:
 ### Recommended (should fix)
 - **Dead code**: Unused variables, unreachable branches, commented-out code left in
 - **Style mismatches**: Naming inconsistent with repo conventions, wrong indentation, import order
+- **Formatting bloat**: Diff hunks that change only existing code's formatting (whitespace, quote style, trailing commas, import reordering) without any functional purpose — these should be reverted to keep the PR focused. Distinct from style mismatches: style mismatches are about new code not following repo conventions; formatting bloat is about reformatting existing code that the fix didn't need to touch
 - **Missing error handling**: Unhandled promise rejections, missing try/catch for I/O
 - **Unnecessary complexity**: Overly nested logic, duplicate code that could be simplified
 - **Truthiness gotchas** (JS/TS only):
@@ -278,6 +279,7 @@ Then use AskUserQuestion:
 4. **Don't over-flag** — only report issues that a maintainer would actually care about
 5. **No AI attribution** — never suggest adding AI attribution to commits or code
 6. **Read only what's needed** — don't read the entire codebase, focus on changed files and their immediate context
+7. **Minimal diff** — flag formatting-only changes (whitespace, quote style, trailing commas, import reordering) that are not part of the functional fix. These expand the diff without benefit and cause maintainers to reject PRs
 
 **Related Agents:**
 - After a clean review, **pr-health-checker** can verify CI status and merge readiness before pushing

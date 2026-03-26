@@ -17,6 +17,17 @@ version: 1.1.0
 4. Be patient - open source moves at its own pace
 5. Give back to the community when you can
 
+## Minimal Diff Discipline
+
+Every line in a PR diff must be directly related to the issue being fixed. Unrelated formatting changes (whitespace, quote style, trailing commas, import reordering, line breaks) make diffs noisy, harder to review, and signal carelessness. Maintainers will flag or reject PRs with formatting bloat.
+
+**Rules:**
+1. **Only touch lines the fix requires.** Don't reorder imports, change quote styles, fix whitespace, or add trailing commas in existing code — unless those changes are part of the fix itself.
+2. **Scope formatter output.** If the repo's formatter must be run (e.g., CI requires it), review the formatter's changes afterward. Use `git diff` to identify formatting-only changes. Use `git checkout -- {files}` only for files where ALL changes are formatting-only. For files with mixed changes, use targeted edits to surgically remove formatting hunks. (In interactive terminal contexts, `git add -p` can also be used for hunk-level staging.)
+3. **Match the repo's style, don't impose your own.** If the repo uses single quotes, use single quotes in your new code. If it uses tabs, use tabs. Never convert existing style to a different one.
+
+**When formatting IS the fix:** If the issue itself is about formatting (e.g., "run prettier on codebase", "fix inconsistent indentation"), then formatting changes are in scope. In all other cases, they are not.
+
 ## Responding to Code Review Feedback
 
 ### Mindset
@@ -164,6 +175,7 @@ Before submitting any PR, verify:
 - [ ] **Description Quality**: Explains what changed and why
 - [ ] **Title Quality**: Descriptive, properly formatted (e.g., `fix: resolve login timeout`)
 - [ ] **Focused Changes**: One logical change per PR (< 10 files, < 400 lines ideal)
+- [ ] **Minimal Diff**: No unrelated formatting changes (whitespace, quotes, imports, trailing commas)
 
 ### Conditional
 - [ ] **Tests Included**: If project requires tests, add them
