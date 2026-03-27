@@ -70,8 +70,8 @@ For each issue in `actionableIssues`, include a Task tool call grouped by repo:
 | CI Not Running | Info | Investigate why CI isn't running. Check if workflows exist, if fork has actions enabled. |
 | Fork Limitation | Info | Note as expected — no action needed. |
 | Merge Conflict | Tier 2 | Identify conflicting files, recommend resolution strategy (see pr-health-checker's "Merge Conflict Resolution Strategies" for direct resolution vs squash-and-reapply vs asking the maintainer). DO NOT push. |
-| Needs Response | Tier 2 | Analyze maintainer feedback, draft a response. DO NOT post — return for approval. |
-| Changes Requested | Tier 2 | Analyze requested changes, investigate what needs to change, recommend approach. |
+| Needs Response | Tier 2 | Analyze maintainer feedback, draft a response (see Code Verification Rules below). DO NOT post — return for approval. |
+| Changes Requested | Tier 2 | Analyze requested changes, identify what's addressed vs outstanding (see Code Verification Rules below). Recommend approach. |
 | Waiting on Maintainer | Info | Note that the ball is in the maintainer's court — either approved and waiting for merge, or changes were pushed after review and awaiting re-review. No contributor action needed. |
 | Missing Required Files | Tier 2 | Identify what's missing (changeset, CLA, etc.), draft the file. DO NOT push. |
 
@@ -99,6 +99,16 @@ After a successful rebase, you MUST follow these steps in order:
   d. NEVER fall back to git push --force. If --force-with-lease fails, abort and report
      the error to the user. The --force-with-lease safety check exists to prevent
      overwriting commits pushed by others. Falling back to --force defeats this protection.
+
+**Code Verification Rules (MANDATORY):**
+- Verify every claim by reading the actual current code. Do NOT say "already addressed"
+  or "this is handled" without reading the current file to confirm.
+- When claiming a tool, check, or test passes or fails, run the actual command. Do not
+  assume based on PR descriptions or comment threads alone.
+- Distinguish between what the LATEST review round asks for vs what earlier rounds asked
+  for. Only report items that are outstanding in the latest round.
+- If you cannot verify a claim (file not found, command fails), say so explicitly rather
+  than guessing.
 
 Report back:
 (a) Commits behind / rebase result
