@@ -326,8 +326,22 @@ Options:
 ```
 
 **"Show full diff" / "Show full diff first":**
-- Run the appropriate diff command based on `changeSource` (`git diff` for uncommitted, or the same `diffRange` that succeeded during the gather phase for committed-but-not-pushed) and **output the full diff as a markdown code block in your text response** so the user can read it
-- **If `git diff` fails**, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly (the user has explicitly chosen to proceed without reviewing the raw diff).
+
+Check the user's configured diff viewer preference:
+```bash
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --json
+```
+
+Read `data.config.diffTool` (defaults to `inline` if not set):
+
+| diffTool | Action |
+|----------|--------|
+| `inline` | Run the appropriate diff command based on `changeSource` and **output the full diff as a markdown code block in your text response** |
+| `sourcetree` | Run `stree .` to open the repo in SourceTree. Tell the user: "Opened in SourceTree — review the diff there." |
+| `vscode` | Run `code --diff` for each changed file against its HEAD version. Tell the user: "Opened diffs in VS Code." |
+| `custom` | Read `data.config.diffToolCustomCommand` and run it with the repo path appended. If the command is not configured, fall back to `inline` and warn. |
+
+- **If the diff command or external tool fails**, report the error and offer: "Retry" / "Continue without diff" / "Done for now". If the user selects "Continue without diff", skip the diff display and present the follow-up prompt directly (the user has explicitly chosen to proceed without reviewing the raw diff).
 - **After** the diff is visible in your response (or user chose to continue without), use AskUserQuestion:
   ```
   Question: "Diff reviewed. Ready to proceed?"

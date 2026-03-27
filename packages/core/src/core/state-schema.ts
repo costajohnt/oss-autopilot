@@ -27,6 +27,8 @@ export const ProjectCategorySchema = z.enum([
 
 export const IssueScopeSchema = z.enum(['beginner', 'intermediate', 'advanced']);
 
+export const DiffToolSchema = z.enum(['inline', 'sourcetree', 'vscode', 'custom']);
+
 // ── 2. Leaf schemas ──────────────────────────────────────────────────
 
 export const RepoSignalsSchema = z.object({
@@ -189,6 +191,9 @@ export const AgentConfigSchema = z.object({
   projectCategories: z.array(ProjectCategorySchema).default([]),
 
   preferredOrgs: z.array(z.string()).default([]),
+
+  diffTool: DiffToolSchema.default('inline'),
+  diffToolCustomCommand: z.string().optional(),
 });
 
 // ── 6. Cache schemas ─────────────────────────────────────────────────
@@ -285,6 +290,7 @@ export type IssueStatus = z.infer<typeof IssueStatusSchema>;
 export type FetchedPRStatus = z.infer<typeof FetchedPRStatusSchema>;
 export type ProjectCategory = z.infer<typeof ProjectCategorySchema>;
 export type IssueScope = z.infer<typeof IssueScopeSchema>;
+export type DiffTool = z.infer<typeof DiffToolSchema>;
 export type RepoSignals = z.infer<typeof RepoSignalsSchema>;
 export type RepoScore = z.infer<typeof RepoScoreSchema>;
 export type StoredMergedPR = z.infer<typeof StoredMergedPRSchema>;
