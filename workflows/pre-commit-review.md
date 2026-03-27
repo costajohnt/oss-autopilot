@@ -267,6 +267,23 @@ If NO issues found across all agents:
 All agents passed. No issues found — changes are clean and ready to commit.
 ```
 
+### 4b. Scope Discipline Check
+
+**When responding to maintainer review feedback, cross-check the changes against what was actually requested before entering the convergence loop.** Skip this step for new contributions where you authored the original change.
+
+1. **Compare requested vs. changed:** Extract the specific asks from the maintainer's latest review comments, then summarize each modified file/hunk. Any change that does not map to a specific request is a scope addition (e.g., unrequested test cases, docstrings, adjacent refactoring, or formatting changes).
+
+2. **Report:**
+```
+### Scope Check
+- Requested: {numbered list of maintainer asks}
+- Implemented: {numbered list of changes made}
+- Scope additions: {list of changes not mapping to a request, or "None"}
+```
+
+3. **Remove scope additions** before proceeding. Only do what was requested. If a removal seems risky, note it for the user but still remove it:
+   > "Removed {count} scope addition(s) not in the maintainer's request. You can add them back after review."
+
 ### 5. Automatic Convergence Loop
 
 After consolidating findings (sub-step 4), automatically fix and re-review until convergence. **Do not prompt the user during this loop** — it runs fully autonomously.
