@@ -109,6 +109,8 @@ After a successful rebase, you MUST follow these steps in order:
   for. Only report items that are outstanding in the latest round.
 - If you cannot verify a claim (file not found, command fails), say so explicitly rather
   than guessing.
+- Report ONLY what the maintainer asked for in the latest review round. Do not suggest
+  additional improvements, extra test cases, or code cleanup beyond what was requested.
 
 Report back:
 (a) Commits behind / rebase result
