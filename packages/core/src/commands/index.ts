@@ -67,6 +67,15 @@ export { runSetup } from './setup.js';
 /** Check whether setup has been completed. */
 export { runCheckSetup } from './setup.js';
 
+// ── State Persistence ────────────────────────────────────────────────────────
+
+/** Show current persistence mode, Gist ID, and sync status. */
+export { runStateShow } from './state-cmd.js';
+/** Force push state to the backing Gist (no-op in local mode). */
+export { runStateSync } from './state-cmd.js';
+/** Disconnect from Gist persistence and switch to local-only mode. */
+export { runStateUnlink } from './state-cmd.js';
+
 // ── Utilities ───────────────────────────────────────────────────────────────
 
 /** Parse a curated markdown issue list file into structured issue items. */
@@ -107,3 +116,4 @@ export type {
   CheckSetupOutput,
 } from './setup.js';
 export type { DailyCheckResult } from './daily.js';
+export type { StateShowOutput, StateSyncOutput, StateUnlinkOutput } from './state-cmd.js';

@@ -40,6 +40,7 @@ export interface SetupCompleteOutput {
     projectCategories: ProjectCategory[];
     preferredOrgs: string[];
     scope: IssueScope[];
+    persistence: 'local' | 'gist';
   };
 }
 
@@ -241,6 +242,13 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = dedupedScopes.length > 0 ? dedupedScopes.join(', ') : '(empty — using labels only)';
             break;
           }
+          case 'persistence':
+            if (value !== 'local' && value !== 'gist') {
+              throw new ValidationError(`Invalid value for persistence: "${value}". Must be "local" or "gist".`);
+            }
+            stateManager.updateConfig({ persistence: value as 'local' | 'gist' });
+            results[key] = value;
+            break;
           case 'issueListPath':
             stateManager.updateConfig({ issueListPath: value || undefined });
             results[key] = value || '(cleared)';
@@ -274,6 +282,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         projectCategories: config.projectCategories ?? [],
         preferredOrgs: config.preferredOrgs ?? [],
         scope: config.scope ?? [],
+        persistence: config.persistence ?? 'local',
       },
     };
   }
@@ -353,6 +362,13 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         current: config.preferredOrgs ?? [],
         default: [],
         type: 'list',
+      },
+      {
+        setting: 'persistence',
+        prompt: 'Where should state be stored? "local" for file only, "gist" for GitHub Gist (survives device loss)',
+        current: config.persistence ?? 'local',
+        default: 'local',
+        type: 'string',
       },
     ],
   };

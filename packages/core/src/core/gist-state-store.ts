@@ -21,6 +21,7 @@ import { AgentStateSchema } from './state-schema.js';
 import { atomicWriteFileSync, createFreshState, migrateV1ToV2, migrateV2ToV3 } from './state-persistence.js';
 import { getGistIdPath, getStateCachePath } from './utils.js';
 import { debug, warn } from './logger.js';
+import { GistPermissionError, isRateLimitError } from './errors.js';
 
 const MODULE = 'gist-store';
 
@@ -80,6 +81,8 @@ export class GistStateStore {
   readonly cachedFiles: Map<string, string> = new Map();
   readonly dirtyFiles: Set<string> = new Set();
   private readonly octokit: OctokitLike;
+  private lastRefreshAt = 0;
+  private static readonly REFRESH_THROTTLE_MS = 30_000;
 
   constructor(octokit: OctokitLike) {
     this.octokit = octokit;
@@ -91,6 +94,8 @@ export class GistStateStore {
    */
   async bootstrap(): Promise<BootstrapResult> {
     try {
+      await this.checkGistScope();
+
       // Step 1: Try loading Gist ID from local file
       const localId = this.readLocalGistId();
       if (localId) {
@@ -121,6 +126,9 @@ export class GistStateStore {
       this.writeLocalGistId(id);
       return { gistId: id, state, created: true };
     } catch (err) {
+      // Configuration errors (e.g. GistPermissionError) must surface, not degrade
+      if (err instanceof GistPermissionError) throw err;
+
       // All API paths failed — enter degraded mode
       warn(MODULE, 'All Gist API paths failed, entering degraded mode', err);
 
@@ -159,6 +167,8 @@ export class GistStateStore {
    */
   async bootstrapWithMigration(existingState: AgentState): Promise<BootstrapResult & { migrated: boolean }> {
     try {
+      await this.checkGistScope();
+
       // Step 1: Try loading Gist ID from local file
       const localId = this.readLocalGistId();
       if (localId) {
@@ -189,6 +199,9 @@ export class GistStateStore {
       this.writeLocalGistId(id);
       return { gistId: id, state, created: true, migrated: true };
     } catch (err) {
+      // Configuration errors (e.g. GistPermissionError) must surface, not degrade
+      if (err instanceof GistPermissionError) throw err;
+
       // All API paths failed — enter degraded mode
       warn(MODULE, 'bootstrapWithMigration: all Gist API paths failed, entering degraded mode', err);
 
@@ -330,7 +343,42 @@ export class GistStateStore {
     return true;
   }
 
+  /**
+   * Re-fetch the Gist and update the in-memory cache.
+   * Throttled to at most once per 30 seconds.
+   */
+  async refreshFromGist(): Promise<boolean> {
+    if (!this.gistId) return false;
+    const now = Date.now();
+    if (now - this.lastRefreshAt < GistStateStore.REFRESH_THROTTLE_MS) return false;
+    try {
+      await this.fetchAndCache(this.gistId);
+      this.lastRefreshAt = now;
+      return true;
+    } catch (err) {
+      warn(MODULE, `refreshFromGist failed: ${err}`);
+      return false;
+    }
+  }
+
   // ── Private helpers ─────────────────────────────────────────────────
+
+  /**
+   * Preflight check: verify the token has Gist API scope.
+   * Costs one cheap API call; catches permission issues early with a clear message.
+   */
+  private async checkGistScope(): Promise<void> {
+    try {
+      await this.octokit.gists.list({ per_page: 1, page: 1 });
+    } catch (err) {
+      if (isRateLimitError(err)) throw err;
+      const status = (err as { status?: number }).status;
+      if (status === 401 || status === 403) {
+        throw new GistPermissionError();
+      }
+      throw err;
+    }
+  }
 
   /**
    * Fetch a Gist by ID, populate the in-memory cache, parse state,

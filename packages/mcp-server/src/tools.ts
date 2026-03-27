@@ -30,6 +30,31 @@ import {
 } from '@oss-autopilot/core/commands';
 import { errorMessage } from '@oss-autopilot/core';
 
+/** One-shot Gist persistence activation (checked once per process). */
+let gistInitDone = false;
+async function ensureGistInit(): Promise<void> {
+  if (gistInitDone) return;
+  gistInitDone = true;
+
+  // Read config file — may legitimately fail (no state file yet)
+  let persistence: string | undefined;
+  try {
+    const { getStatePath } = await import('@oss-autopilot/core');
+    const fs = await import('fs');
+    const raw = fs.readFileSync(getStatePath(), 'utf-8');
+    persistence = JSON.parse(raw)?.config?.persistence;
+  } catch {
+    return;
+  }
+
+  if (persistence === 'gist') {
+    // Gist init errors (GistPermissionError, network) propagate to wrapTool's catch
+    const { getStateManagerAsync, getGitHubTokenAsync } = await import('@oss-autopilot/core');
+    const token = await getGitHubTokenAsync();
+    if (token) await getStateManagerAsync(token);
+  }
+}
+
 /** Standard MCP text content result. */
 function ok(data: unknown) {
   return {
@@ -49,6 +74,7 @@ function err(e: unknown) {
 function wrapTool<A>(fn: (args: A) => Promise<unknown>): (args: A) => Promise<ReturnType<typeof ok | typeof err>> {
   return async (args: A) => {
     try {
+      await ensureGistInit();
       return ok(await fn(args));
     } catch (e) {
       console.error('[MCP] Tool error:', e);
@@ -58,7 +84,7 @@ function wrapTool<A>(fn: (args: A) => Promise<unknown>): (args: A) => Promise<Re
 }
 
 /**
- * Registers all 20 OSS Autopilot CLI commands as MCP tools on the given server.
+ * Registers all OSS Autopilot CLI commands as MCP tools on the given server.
  */
 export function registerTools(server: McpServer): void {
   // 1. daily — Run daily PR check
@@ -346,5 +372,47 @@ export function registerTools(server: McpServer): void {
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
     wrapTool(runMove),
+  );
+
+  // 21. state-show — Show persistence mode
+  server.registerTool(
+    'state-show',
+    {
+      description: 'Show current state persistence mode (local or gist), Gist ID, and sync status.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    wrapTool(async () => {
+      const { runStateShow } = await import('@oss-autopilot/core/commands');
+      return runStateShow();
+    }),
+  );
+
+  // 22. state-sync — Force push to Gist
+  server.registerTool(
+    'state-sync',
+    {
+      description: 'Force push current state to the backing Gist. No-op if not in Gist mode.',
+      inputSchema: {},
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    wrapTool(async () => {
+      const { runStateSync } = await import('@oss-autopilot/core/commands');
+      return runStateSync();
+    }),
+  );
+
+  // 23. state-unlink — Switch from Gist to local persistence
+  server.registerTool(
+    'state-unlink',
+    {
+      description: 'Disconnect from Gist persistence and switch to local-only mode. The remote Gist is preserved.',
+      inputSchema: {},
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    wrapTool(async () => {
+      const { runStateUnlink } = await import('@oss-autopilot/core/commands');
+      return runStateUnlink();
+    }),
   );
 }

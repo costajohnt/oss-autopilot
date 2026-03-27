@@ -66,6 +66,8 @@ const mockStateManager = {
   getMergedPRs: vi.fn().mockReturnValue([]),
   getClosedPRs: vi.fn().mockReturnValue([]),
   reloadIfChanged: vi.fn().mockReturnValue(false),
+  isGistMode: vi.fn().mockReturnValue(false),
+  refreshFromGist: vi.fn().mockResolvedValue(false),
 };
 
 // Create a temp dir for PID file tests (needs to exist before mock is evaluated)

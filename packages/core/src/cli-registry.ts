@@ -113,6 +113,62 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── State ──────────────────────────────────────────────────────────────
+  {
+    name: 'state',
+    register(program) {
+      program
+        .command('state')
+        .description('Manage state persistence (local/gist)')
+        .option('--show', 'Display current persistence mode and Gist ID')
+        .option('--sync', 'Force push state to Gist (no-op if not in Gist mode)')
+        .option('--unlink', 'Switch from Gist back to local persistence')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          try {
+            if (options.unlink) {
+              const { runStateUnlink } = await import('./commands/state-cmd.js');
+              const data = await runStateUnlink();
+              if (options.json) {
+                outputJson(data);
+              } else {
+                console.log(`State written to ${data.localStatePath}`);
+                console.log('Persistence switched to local mode.');
+                if (data.previousGistId) {
+                  console.log(`Previous Gist (${data.previousGistId}) was NOT deleted.`);
+                }
+                console.log('Restart any running processes (e.g. dashboard server) to pick up the change.');
+              }
+            } else if (options.sync) {
+              const { runStateSync } = await import('./commands/state-cmd.js');
+              const data = await runStateSync();
+              if (options.json) {
+                outputJson(data);
+              } else if (data.pushed) {
+                console.log(`State pushed to Gist ${data.gistId}`);
+              } else {
+                console.log('Not in Gist mode. Nothing to sync.');
+              }
+            } else {
+              // Default: --show
+              const { runStateShow } = await import('./commands/state-cmd.js');
+              const data = await runStateShow();
+              if (options.json) {
+                outputJson(data);
+              } else {
+                console.log(`\nPersistence: ${data.persistence}`);
+                if (data.gistId) console.log(`Gist ID: ${data.gistId}`);
+                if (data.gistDegraded) console.log('Status: DEGRADED (using local cache)');
+                console.log(`Last run: ${data.lastRunAt ?? 'Never'}\n`);
+              }
+            }
+          } catch (err) {
+            handleCommandError(err, options.json);
+          }
+        });
+    },
+  },
+
   // ── Search ─────────────────────────────────────────────────────────────
   {
     name: 'search',

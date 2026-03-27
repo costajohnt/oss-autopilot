@@ -123,6 +123,7 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'init',
     'claim',
     'pr-template',
+    'state',
   ];
 
   it.each(expectedLocalOnly)('should contain local-only command "%s"', (cmd) => {
@@ -370,6 +371,7 @@ describe('Command registration', () => {
       'override',
       'clear-override',
       'stats',
+      'state',
     ];
 
     for (const name of expectedCommands) {

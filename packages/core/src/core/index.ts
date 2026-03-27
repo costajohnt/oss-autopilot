@@ -42,6 +42,7 @@ export {
   OssAutopilotError,
   ConfigurationError,
   ValidationError,
+  GistPermissionError,
   errorMessage,
   getHttpStatusCode,
   isRateLimitError,

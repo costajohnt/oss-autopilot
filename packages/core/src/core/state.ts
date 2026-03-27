@@ -17,6 +17,7 @@ import {
   StoredMergedPR,
   StoredClosedPR,
 } from './types.js';
+import { AgentStateSchema } from './state-schema.js';
 import {
   loadState,
   saveState,
@@ -27,7 +28,7 @@ import {
 import * as repoScoring from './repo-score-manager.js';
 import type { Stats } from './repo-score-manager.js';
 import { debug, warn } from './logger.js';
-import { errorMessage } from './errors.js';
+import { errorMessage, ConfigurationError } from './errors.js';
 import { GistStateStore, type OctokitLike } from './gist-state-store.js';
 import { getStatePath, getStateCachePath } from './utils.js';
 
@@ -264,6 +265,30 @@ export class StateManager {
     this.lastLoadedMtimeMs = result.mtimeMs;
     this.tryReconcilePRCounts();
     return true;
+  }
+
+  /**
+   * Re-fetch state from the backing Gist (if in Gist mode).
+   * Throttled to once per 30 seconds by GistStateStore. Returns true if state was refreshed.
+   */
+  async refreshFromGist(): Promise<boolean> {
+    if (!this.gistStore) return false;
+    const refreshed = await this.gistStore.refreshFromGist();
+    if (refreshed) {
+      const raw = this.gistStore.cachedFiles.get('state.json');
+      if (!raw) {
+        warn(MODULE, 'Gist refreshed but state.json missing from cache');
+        return false;
+      }
+      try {
+        this.state = AgentStateSchema.parse(JSON.parse(raw));
+        this.tryReconcilePRCounts();
+      } catch (err) {
+        warn(MODULE, `Failed to parse refreshed Gist state: ${errorMessage(err)}`);
+        return false;
+      }
+    }
+    return refreshed;
   }
 
   // === Dashboard Data Setters ===
@@ -750,11 +775,10 @@ export async function getStateManagerAsync(token?: string): Promise<StateManager
       })
       .catch((err) => {
         asyncManagerPromise = null;
-        warn(
-          MODULE,
-          `Unhandled Gist initialization error, falling back to local-only mode (not a normal degraded bootstrap): ${err}`,
-        );
-        return getStateManager(); // fall back to sync/local
+        // Configuration errors (e.g. GistPermissionError) must surface to the user
+        if (err instanceof ConfigurationError) throw err;
+        warn(MODULE, `Gist initialization failed, falling back to local-only mode: ${err}`);
+        return getStateManager(); // fall back to sync/local for transient errors
       });
     return asyncManagerPromise;
   }

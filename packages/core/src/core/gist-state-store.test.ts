@@ -105,7 +105,7 @@ function makeMockOctokit(): OctokitLike & {
   return {
     gists: {
       get: vi.fn(),
-      list: vi.fn(),
+      list: vi.fn().mockResolvedValue({ data: [] }),
       create: vi.fn(),
       update: vi.fn(),
     },
@@ -146,7 +146,9 @@ describe('GistStateStore', () => {
       expect(result.created).toBe(false);
       expect(result.state.version).toBe(3);
       expect(octokit.gists.get).toHaveBeenCalledWith({ gist_id: gistId });
-      expect(octokit.gists.list).not.toHaveBeenCalled();
+      // list is called once for the preflight scope check, but not for search
+      expect(octokit.gists.list).toHaveBeenCalledTimes(1);
+      expect(octokit.gists.list).toHaveBeenCalledWith({ per_page: 1, page: 1 });
       expect(octokit.gists.create).not.toHaveBeenCalled();
     });
 
@@ -249,6 +251,9 @@ describe('GistStateStore', () => {
       const gistId = 'page-2-gist';
       const stateJson = makeStateJson();
 
+      // Preflight scope check
+      octokit.gists.list.mockResolvedValueOnce({ data: [] });
+
       // Page 1: 100 unrelated Gists (not empty, so search continues)
       const page1 = Array.from({ length: 100 }, (_, i) => ({
         id: `unrelated-${i}`,
@@ -267,7 +272,8 @@ describe('GistStateStore', () => {
       const result = await store.bootstrap();
 
       expect(result.gistId).toBe(gistId);
-      expect(octokit.gists.list).toHaveBeenCalledTimes(2);
+      // 1 preflight + 2 search pages
+      expect(octokit.gists.list).toHaveBeenCalledTimes(3);
     });
   });
 
