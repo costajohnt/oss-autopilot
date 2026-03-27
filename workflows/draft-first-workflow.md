@@ -53,7 +53,29 @@ Offer (for any non-zero behind count):
 
 If validation succeeded, store in session context: `upstreamDefault` (the default branch name) and `upstreamRemote` (either `"upstream"` or `"origin"`). These are reused in Step 3 for computing `baseBranch`. If validation failed, do NOT store these values — Step 3 will detect the base branch independently.
 
-### 1c. CONTRIBUTING.md Compliance Check
+### 1c. Node.js Version Compatibility Check
+
+Before writing code, verify the local Node.js version is compatible with the target repo.
+
+```bash
+# Check repo requirements (in order of precedence), then local version
+cat .nvmrc 2>/dev/null || cat .node-version 2>/dev/null || node -e "const p=require('./package.json'); console.log(p.engines?.node || 'none')"
+node --version
+# Check for version managers (only needed if incompatible)
+command -v nvm 2>/dev/null || command -v fnm 2>/dev/null || command -v volta 2>/dev/null || echo "no version manager found"
+```
+
+**If the repo specifies a version requirement and the local version is incompatible:**
+> "This repo requires Node {required} but you have Node {local}. Tests may not run locally."
+
+Offer:
+1. "Switch Node version" — run `nvm use` / `fnm use` / `volta run` as appropriate
+2. "Proceed anyway" — "I'll handle version issues later"
+3. "Skip this issue" — "Pick a different one"
+
+**If no version requirement found or versions are compatible:** Proceed to Step 1d.
+
+### 1d. CONTRIBUTING.md Compliance Check
 
 Before committing, verify the changes satisfy the target repo's contribution requirements. This checks repo-specific requirements (tests, docs, changelog, etc.); Step 9's compliance check covers general open-source best practices via the `pr-compliance-checker` agent.
 
@@ -664,9 +686,9 @@ If created as draft:
 
 ## Step 9: Compliance Check
 
-**For PRs that completed the full draft-first workflow** (Steps 3–8, i.e., `isNewContribution === true` and all steps completed): Skip the general compliance check. The PR was already reviewed by 5+ agents, integration-checked, manually tested, and squashed. However, if `skippedComplianceRequirements` from Step 1c is non-empty, remind the user:
+**For PRs that completed the full draft-first workflow** (Steps 3–8, i.e., `isNewContribution === true` and all steps completed): Skip the general compliance check. The PR was already reviewed by 5+ agents, integration-checked, manually tested, and squashed. However, if `skippedComplianceRequirements` from Step 1d is non-empty, remind the user:
 
-> "Compliance check skipped — this PR went through the full draft-first review workflow. Note: {count} CONTRIBUTING.md requirement(s) were consciously skipped in Step 1c: {list}. Verify these don't need manual attention before maintainer review."
+> "Compliance check skipped — this PR went through the full draft-first review workflow. Note: {count} CONTRIBUTING.md requirement(s) were consciously skipped in Step 1d: {list}. Verify these don't need manual attention before maintainer review."
 
 If no requirements were skipped:
 
