@@ -314,8 +314,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
           sendError(res, 429, 'Too many requests');
           return;
         }
-        // Re-read state.json if CLI commands modified it externally
-        if (stateManager.reloadIfChanged()) {
+        // Re-read state if modified externally (file mtime for local, Gist API for Gist mode)
+        let stateChanged = false;
+        if (stateManager.isGistMode()) {
+          stateChanged = await stateManager.refreshFromGist();
+        } else {
+          stateChanged = stateManager.reloadIfChanged();
+        }
+        if (stateChanged) {
           try {
             cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
           } catch (error) {
@@ -377,7 +383,11 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   // ── POST /api/action handler ─────────────────────────────────────────────
   async function handleAction(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     // Reload state before mutating to avoid overwriting external CLI changes
-    stateManager.reloadIfChanged();
+    if (stateManager.isGistMode()) {
+      await stateManager.refreshFromGist();
+    } else {
+      stateManager.reloadIfChanged();
+    }
 
     let body: ActionRequest;
     try {
@@ -447,7 +457,11 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     }
 
     try {
-      stateManager.reloadIfChanged();
+      if (stateManager.isGistMode()) {
+        await stateManager.refreshFromGist();
+      } else {
+        stateManager.reloadIfChanged();
+      }
       warn(MODULE, 'Refreshing dashboard data from GitHub...');
       const result = await fetchDashboardData(currentToken);
       cachedDigest = result.digest;
@@ -573,8 +587,12 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   // so subsequent /api/data requests get live data instead of cached state.
   if (token) {
     fetchDashboardData(token)
-      .then((result) => {
-        stateManager.reloadIfChanged();
+      .then(async (result) => {
+        if (stateManager.isGistMode()) {
+          await stateManager.refreshFromGist();
+        } else {
+          stateManager.reloadIfChanged();
+        }
         cachedDigest = result.digest;
         cachedCommentedIssues = result.commentedIssues;
         cachedJsonData = buildDashboardJson(

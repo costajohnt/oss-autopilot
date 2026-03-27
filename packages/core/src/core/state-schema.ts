@@ -144,6 +144,8 @@ export const AgentConfigSchema = z.object({
   setupComplete: z.boolean().default(false),
   setupCompletedAt: z.string().optional(),
 
+  persistence: z.enum(['local', 'gist']).default('local'),
+
   maxActivePRs: z.number().default(10),
   dormantThresholdDays: z.number().default(30),
   approachingDormantDays: z.number().default(25),

@@ -42,6 +42,21 @@ export class ValidationError extends OssAutopilotError {
 }
 
 /**
+ * Gist API scope error (token lacks the "gist" scope).
+ */
+export class GistPermissionError extends ConfigurationError {
+  constructor(message?: string) {
+    super(
+      message ??
+        'Your GitHub token does not have Gist permissions. ' +
+          'Run `gh auth refresh -s gist` to add the required scope, ' +
+          'or create a token with the "gist" scope.',
+    );
+    this.name = 'GistPermissionError';
+  }
+}
+
+/**
  * Extract a human-readable message from an unknown error value.
  */
 export function errorMessage(e: unknown): string {

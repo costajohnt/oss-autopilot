@@ -58,6 +58,23 @@ program.hook('preAction', async (thisCommand, actionCommand) => {
       console.error('Then run your command again.');
       process.exit(1);
     }
+
+    // Activate Gist persistence if configured, before any command runs.
+    // Peek at the config file directly to avoid creating a local-only singleton
+    // (getStateManager() would lock in local mode before getStateManagerAsync runs).
+    let persistence: string | undefined;
+    try {
+      const { getStatePath } = await import('./core/index.js');
+      const fs = await import('fs');
+      const raw = fs.readFileSync(getStatePath(), 'utf-8');
+      persistence = JSON.parse(raw)?.config?.persistence;
+    } catch {
+      // No state file or unreadable — local mode, lazy init
+    }
+    if (persistence === 'gist' && token) {
+      const { getStateManagerAsync } = await import('./core/index.js');
+      await getStateManagerAsync(token);
+    }
   }
 });
 

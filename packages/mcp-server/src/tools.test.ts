@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from './server.js';
 
-/** All 20 tool names that must be registered. */
+/** All 23 tool names that must be registered. */
 const EXPECTED_TOOLS = [
   'daily',
   'status',
@@ -25,6 +25,9 @@ const EXPECTED_TOOLS = [
   'dismiss',
   'undismiss',
   'move',
+  'state-show',
+  'state-sync',
+  'state-unlink',
 ] as const;
 
 describe('MCP tool registrations', () => {
@@ -53,8 +56,8 @@ describe('MCP tool registrations', () => {
     await client.close();
   });
 
-  it('registers exactly 20 tools', () => {
-    expect(tools).toHaveLength(20);
+  it('registers exactly 23 tools', () => {
+    expect(tools).toHaveLength(23);
   });
 
   it('registers all expected tool names', () => {
