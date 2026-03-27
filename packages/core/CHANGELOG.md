@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.10.0...core-v1.11.0) (2026-03-27)
+
+
+### Features
+
+* activate Gist persistence layer with opt-in setup, scope check, dashboard refresh, and unlink ([#885](https://github.com/costajohnt/oss-autopilot/issues/885)) ([2a1de39](https://github.com/costajohnt/oss-autopilot/commit/2a1de397660cc85a533ae8a9434d3cb0e13356ab)), closes [#883](https://github.com/costajohnt/oss-autopilot/issues/883)
+* add configurable diff viewer preference (SourceTree, VS Code, inline) ([#898](https://github.com/costajohnt/oss-autopilot/issues/898)) ([1b3825b](https://github.com/costajohnt/oss-autopilot/commit/1b3825b2bfd8ddf312a29e1420c5f7aaf619f2fe)), closes [#890](https://github.com/costajohnt/oss-autopilot/issues/890)
+* add pre-push hook to auto-run project formatter before pushing ([#901](https://github.com/costajohnt/oss-autopilot/issues/901)) ([ef7c5f9](https://github.com/costajohnt/oss-autopilot/commit/ef7c5f903cd05a4ce8b614761e1dafa507502b5c)), closes [#893](https://github.com/costajohnt/oss-autopilot/issues/893)
+* **dashboard:** split active PRs into Need Attention and Waiting cards ([#894](https://github.com/costajohnt/oss-autopilot/issues/894)) ([d0f5986](https://github.com/costajohnt/oss-autopilot/commit/d0f5986417974a7e16e52a3ff0b0f93961ab3f18))
+
+
+### Bug Fixes
+
+* check Node.js version compatibility before implementing changes ([#900](https://github.com/costajohnt/oss-autopilot/issues/900)) ([db12bd9](https://github.com/costajohnt/oss-autopilot/commit/db12bd9cbe5a5772e3613148271be67cfd9e0f7b)), closes [#892](https://github.com/costajohnt/oss-autopilot/issues/892)
+* display full URLs instead of markdown links in CLI output ([#897](https://github.com/costajohnt/oss-autopilot/issues/897)) ([458b5ba](https://github.com/costajohnt/oss-autopilot/commit/458b5ba4a5711a6d35a9395ce3424292e7914aba)), closes [#889](https://github.com/costajohnt/oss-autopilot/issues/889)
+* enforce code verification in investigation agents ([#896](https://github.com/costajohnt/oss-autopilot/issues/896)) ([8ab168f](https://github.com/costajohnt/oss-autopilot/commit/8ab168fec13d8b830a85d945e6da41ba7b0d93f5)), closes [#888](https://github.com/costajohnt/oss-autopilot/issues/888)
+* enforce scope discipline — only implement what the maintainer asked for ([#899](https://github.com/costajohnt/oss-autopilot/issues/899)) ([0eec7a3](https://github.com/costajohnt/oss-autopilot/commit/0eec7a3a2e8c942a233600ad489a17e247250c71)), closes [#891](https://github.com/costajohnt/oss-autopilot/issues/891)
+* remove verification checkpoint — always auto-investigate before implementing ([#895](https://github.com/costajohnt/oss-autopilot/issues/895)) ([12e441f](https://github.com/costajohnt/oss-autopilot/commit/12e441f5b21041fae5ba257d6591540ba09952bf)), closes [#887](https://github.com/costajohnt/oss-autopilot/issues/887)
+
 ## [1.10.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.9.0...core-v1.10.0) (2026-03-26)
 
 

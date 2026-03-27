@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v3.0.0...mcp-v3.1.0) (2026-03-27)
+
+
+### Features
+
+* activate Gist persistence layer with opt-in setup, scope check, dashboard refresh, and unlink ([#885](https://github.com/costajohnt/oss-autopilot/issues/885)) ([2a1de39](https://github.com/costajohnt/oss-autopilot/commit/2a1de397660cc85a533ae8a9434d3cb0e13356ab)), closes [#883](https://github.com/costajohnt/oss-autopilot/issues/883)
+
 ## [3.0.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v2.0.2...mcp-v3.0.0) (2026-03-24)
 
 
