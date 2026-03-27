@@ -200,6 +200,24 @@ Extract the number from the selected option and apply:
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set scoreThreshold=NUMBER --json
 ```
 
+**Question 12: Diff Viewer Preference**
+- "How would you like to review diffs before committing?"
+- Options: "Inline (default) — print diff in CLI", "SourceTree — open repo in SourceTree", "VS Code — open diff in VS Code", "Custom command"
+
+Apply based on selection:
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set diffTool=VALUE --json
+```
+
+Where VALUE is `inline`, `sourcetree`, `vscode`, or `custom`.
+
+If user selects "Custom command", ask for the command string:
+- "What command should I run? (The repo path will be appended as the last argument)"
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set diffToolCustomCommand="COMMAND" --json
+```
+
 ## Step 4-CLI: Verify GitHub Access
 
 Before marking setup complete, verify that the token actually works by making a lightweight API call:

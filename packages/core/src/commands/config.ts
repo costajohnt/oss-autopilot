@@ -4,7 +4,7 @@
  */
 
 import { getStateManager } from '../core/index.js';
-import { ISSUE_SCOPES, type IssueScope } from '../core/types.js';
+import { ISSUE_SCOPES, type IssueScope, DIFF_TOOLS, type DiffTool } from '../core/types.js';
 import type { ConfigOutput } from '../formatters/json.js';
 import { validateGitHubUsername } from './validation.js';
 
@@ -130,6 +130,18 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
     }
     case 'issueListPath':
       stateManager.updateConfig({ issueListPath: value || undefined });
+      break;
+    case 'diffTool': {
+      if (!(DIFF_TOOLS as readonly string[]).includes(value)) {
+        throw new Error(`Invalid diffTool "${value}". Valid options: ${DIFF_TOOLS.join(', ')}`);
+      }
+      stateManager.updateConfig({ diffTool: value as DiffTool });
+      break;
+    }
+    case 'diffToolCustomCommand':
+      stateManager.updateConfig({
+        diffToolCustomCommand: value || undefined,
+      });
       break;
     default:
       throw new Error(`Unknown config key: ${options.key}`);

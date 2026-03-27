@@ -6,7 +6,14 @@
 import { getStateManager, DEFAULT_CONFIG } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { validateGitHubUsername } from './validation.js';
-import { PROJECT_CATEGORIES, type ProjectCategory, ISSUE_SCOPES, type IssueScope } from '../core/types.js';
+import {
+  PROJECT_CATEGORIES,
+  type ProjectCategory,
+  ISSUE_SCOPES,
+  type IssueScope,
+  DIFF_TOOLS,
+  type DiffTool,
+} from '../core/types.js';
 
 /** Parse and validate a positive integer setting value. */
 function parsePositiveInt(value: string, settingName: string): number {
@@ -251,6 +258,19 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             break;
           case 'issueListPath':
             stateManager.updateConfig({ issueListPath: value || undefined });
+            results[key] = value || '(cleared)';
+            break;
+          case 'diffTool': {
+            if (!(DIFF_TOOLS as readonly string[]).includes(value)) {
+              warnings.push(`Invalid diffTool "${value}". Valid: ${DIFF_TOOLS.join(', ')}`);
+              break;
+            }
+            stateManager.updateConfig({ diffTool: value as DiffTool });
+            results[key] = value;
+            break;
+          }
+          case 'diffToolCustomCommand':
+            stateManager.updateConfig({ diffToolCustomCommand: value || undefined });
             results[key] = value || '(cleared)';
             break;
           case 'complete':

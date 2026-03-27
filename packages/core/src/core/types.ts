@@ -2,7 +2,13 @@
  * Core types for the Open Source Contribution Agent
  */
 
-import { AgentConfigSchema, AgentStateSchema, ProjectCategorySchema, IssueScopeSchema } from './state-schema.js';
+import {
+  AgentConfigSchema,
+  AgentStateSchema,
+  ProjectCategorySchema,
+  IssueScopeSchema,
+  DiffToolSchema,
+} from './state-schema.js';
 
 import type {
   FetchedPRStatus,
@@ -10,6 +16,7 @@ import type {
   TrackedIssue,
   IssueVettingResult,
   IssueScope,
+  DiffTool,
   AgentConfig,
   AgentState,
 } from './state-schema.js';
@@ -22,6 +29,7 @@ export type {
   FetchedPRStatus,
   ProjectCategory,
   IssueScope,
+  DiffTool,
   RepoSignals,
   RepoScore,
   StoredMergedPR,
@@ -341,6 +349,8 @@ export const INITIAL_STATE = AgentStateSchema.parse({ version: 3 }) as AgentStat
 export const PROJECT_CATEGORIES = ProjectCategorySchema.options;
 
 export const ISSUE_SCOPES = IssueScopeSchema.options;
+
+export const DIFF_TOOLS: readonly DiffTool[] = DiffToolSchema.options;
 
 export const SCOPE_LABELS: Record<IssueScope, string[]> = {
   beginner: ['good first issue', 'help wanted', 'easy', 'up-for-grabs', 'first-timers-only', 'beginner'],
