@@ -220,6 +220,7 @@ The user selects a PR, and you:
      - "change X to Y" → verify callers won't break
    - Check for edge cases: empty/null inputs, other callers, expected behavior match
    - If any claims are contradicted by the code, revise the approach before proceeding
+   - **Node.js version check:** If the repo has `package.json`, check `engines.node` (or `.nvmrc`, `.node-version`) against `node --version`. If incompatible, warn before coding: "This repo requires Node {X} but you have Node {Y}. Tests may not run locally." Suggest switching via nvm/fnm/volta if available.
 3. Execute the recommended action for that specific PR
 4. After completing the action, if code was changed, route to Pre-Commit Review in the core router — it will read the appropriate workflow file based on `isNewContribution`. After the review completes, return here to Phase C's loop.
 
