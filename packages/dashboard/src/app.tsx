@@ -92,6 +92,7 @@ function AppContent() {
   const { theme, toggleTheme } = useTheme();
   const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
+  const [shelvedOpen, setShelvedOpen] = useState(false);
   const { path, route } = useLocation();
 
   const shelvedUrls = useMemo(() => new Set(data?.shelvedPRUrls ?? []), [data?.shelvedPRUrls]);
@@ -214,6 +215,15 @@ function AppContent() {
 
   const selectedPR = selectedUrl ? (data.activePRs.find((pr) => pr.url === selectedUrl) ?? null) : null;
 
+  const activePRs = data.activePRs.filter((pr) => !shelvedUrls.has(pr.url));
+  const needAttentionCount = activePRs.filter((pr) => pr.status === 'needs_addressing').length;
+  const waitingCount = activePRs.filter((pr) => pr.status === 'waiting_on_maintainer').length;
+
+  const scrollTo = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div class="dashboard">
       <DashboardHeader
@@ -239,6 +249,15 @@ function AppContent() {
         <div class="animate-in delay-1">
           <StatsBar
             stats={data.stats}
+            needAttentionCount={needAttentionCount}
+            waitingCount={waitingCount}
+            onNeedAttentionClick={() => scrollTo('section-action')}
+            onWaitingClick={() => scrollTo('section-waiting')}
+            onShelvedClick={() => {
+              setShelvedOpen(true);
+              // Delay scroll slightly so the section renders before scrolling
+              setTimeout(() => scrollTo('section-shelved'), 50);
+            }}
             onMergedClick={() => route('/merged')}
             onClosedClick={() => route('/closed')}
             onIssuesClick={() => route('/issues')}
@@ -256,7 +275,14 @@ function AppContent() {
         </div>
 
         <div class="dashboard-content animate-in delay-3">
-          <PRList prs={filteredPRs} selectedUrl={selectedUrl} onSelect={setSelectedUrl} shelvedUrls={shelvedUrls} />
+          <PRList
+            prs={filteredPRs}
+            selectedUrl={selectedUrl}
+            onSelect={setSelectedUrl}
+            shelvedUrls={shelvedUrls}
+            shelvedOpen={shelvedOpen}
+            onShelvedToggle={() => setShelvedOpen(!shelvedOpen)}
+          />
           {selectedPR && (
             <PRDetail
               pr={selectedPR}
