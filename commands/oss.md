@@ -229,8 +229,10 @@ const waitingPRs = data.daily.digest.waitingOnMaintainerPRs.map(url =>
 ```
 Waiting on Others (no action needed):
 
-- [owner/repo#123](https://github.com/owner/repo/pull/123) - Title here (approved, CI passing)
-- [owner/repo#456](https://github.com/owner/repo/pull/456) - Title here (waiting for review)
+- owner/repo#123 - Title here (approved, CI passing)
+  https://github.com/owner/repo/pull/123
+- owner/repo#456 - Title here (waiting for review)
+  https://github.com/owner/repo/pull/456
 ...
 
 These PRs are progressing normally. Focus on the {count} issues that need attention.

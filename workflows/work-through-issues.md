@@ -167,18 +167,18 @@ Only show this section if there are Tier 2 items remaining after Phase A:
 
 | # | PR | Issue Type | Maintainer Ask | Effort | Recommended Action |
 |---|-----|-----------|---------------|--------|-------------------|
-| 1 | [repo#123]({url}) | needs_response | Requested shortcut change + tooltip | Small | Code change + respond |
-| 2 | [repo#456]({url}) | needs_changes | Fix trailing newline, sync docs | Medium | Code changes + push |
-| 3 | [repo#789]({url}) | incomplete_checklist | Missing changelog entry | Small | Add changeset file |
+| 1 | repo#123 | needs_response | Requested shortcut change + tooltip | Small | Code change + respond |
+| 2 | repo#456 | needs_changes | Fix trailing newline, sync docs | Medium | Code changes + push |
+| 3 | repo#789 | incomplete_checklist | Missing changelog entry | Small | Add changeset file |
 
 **Key findings:**
-- [**repo#123**]({url}): Maintainer wants X. 2-line fix in `file.ts`.
-- [**repo#456**]({url}): 3 changes requested. Tests need updating.
-- [**repo#789**]({url}): Missing changelog entry required by changeset-bot.
+- **repo#123** ({url}): Maintainer wants X. 2-line fix in `file.ts`.
+- **repo#456** ({url}): 3 changes requested. Tests need updating.
+- **repo#789** ({url}): Missing changelog entry required by changeset-bot.
 ```
 
 Populate the table using data from the Phase A agent results:
-- **PR**: `[{repo}#{number}]({url})` — clickable link to PR
+- **PR**: `{repo}#{number}` with the full URL on the next line or in parentheses — must be a bare URL so terminal emulators can detect and click it
 - **Issue Type**: From `issue.type` (needs_response, needs_changes, ci_failing, merge_conflict, incomplete_checklist)
 - **Maintainer Ask**: 1-line summary of what the maintainer requested (from agent investigation findings)
 - **Effort**: Use the same heuristic as the Action Menu display (Small/Medium/Large)
@@ -222,8 +222,8 @@ The user selects a PR, and you:
 4. After completing the action, if code was changed, route to Pre-Commit Review in the core router — it will read the appropriate workflow file based on `isNewContribution`. After the review completes, return here to Phase C's loop.
 
 **Action failure handling:** After executing the action for a PR:
-- **If successful**: Show "Completed: [repo#123]({url}) — response posted + code pushed."
-- **If failed**: Show "Failed: [repo#123]({url}) — {specific error message}. This PR was not addressed."
+- **If successful**: Show "Completed: repo#123 — response posted + code pushed." with the full PR URL on the next line
+- **If failed**: Show "Failed: repo#123 — {specific error message}. This PR was not addressed." with the full PR URL on the next line
   - If the error appears transient (network timeout, rate limit, auth token expired): Offer "Retry" / "Skip and move to next" / "Done for now"
   - If the error appears persistent (merge conflict during apply, file not found, branch deleted): Offer "Investigate the error" / "Skip and move to next" / "Done for now" — do NOT offer "Retry" for errors that will deterministically fail again
 - Track completed, failed, and remaining counts separately in the progress display
