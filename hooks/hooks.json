@@ -24,6 +24,11 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/guard-git-operations.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/auto-format-before-push.sh",
+            "timeout": 30
           }
         ]
       }
