@@ -9,12 +9,30 @@ interface PRListOptions {
   selectedUrl?: string | null;
   onSelect?: (url: string) => void;
   shelvedUrls?: Set<string>;
+  shelvedOpen?: boolean;
+  onShelvedToggle?: () => void;
 }
 
 function renderPRList(options: PRListOptions = {}) {
-  const { prs = [], selectedUrl = null, onSelect = vi.fn(), shelvedUrls = new Set<string>() } = options;
+  const {
+    prs = [],
+    selectedUrl = null,
+    onSelect = vi.fn(),
+    shelvedUrls = new Set<string>(),
+    shelvedOpen = false,
+    onShelvedToggle = vi.fn(),
+  } = options;
 
-  return render(<PRList prs={prs} selectedUrl={selectedUrl} onSelect={onSelect} shelvedUrls={shelvedUrls} />);
+  return render(
+    <PRList
+      prs={prs}
+      selectedUrl={selectedUrl}
+      onSelect={onSelect}
+      shelvedUrls={shelvedUrls}
+      shelvedOpen={shelvedOpen}
+      onShelvedToggle={onShelvedToggle}
+    />,
+  );
 }
 
 describe('PRList', () => {
@@ -119,15 +137,16 @@ describe('PRList', () => {
     expect(shelvedHeader?.querySelector('.pr-section-count')?.textContent).toBe('1');
   });
 
-  it('sets aria-expanded on shelved section toggle', () => {
+  it('sets aria-expanded on shelved section based on shelvedOpen prop', () => {
     const prs = [makePR({ url: 'https://github.com/o/r/pull/1', status: 'needs_addressing' })];
     const shelvedUrls = new Set(['https://github.com/o/r/pull/1']);
-    const { container } = renderPRList({ prs, shelvedUrls });
+    const onToggle = vi.fn();
+    const { container } = renderPRList({ prs, shelvedUrls, shelvedOpen: false, onShelvedToggle: onToggle });
     const header = container.querySelector('.pr-section-header--collapsible');
     expect(header?.getAttribute('aria-expanded')).toBe('false');
     expect(header?.getAttribute('aria-controls')).toBe('shelved-pr-list');
     fireEvent.click(header!);
-    expect(header?.getAttribute('aria-expanded')).toBe('true');
+    expect(onToggle).toHaveBeenCalledOnce();
   });
 
   it('displays PR title, repo#number, and activity age', () => {

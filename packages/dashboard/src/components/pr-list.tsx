@@ -1,4 +1,3 @@
-import { useState } from 'preact/hooks';
 import type { FetchedPR, FetchedPRStatus } from '../types';
 import { truncate, statusColor, stripBrackets, pillColorClass } from '../utils';
 
@@ -7,6 +6,8 @@ interface PRListProps {
   selectedUrl: string | null;
   onSelect: (url: string) => void;
   shelvedUrls: Set<string>;
+  shelvedOpen: boolean;
+  onShelvedToggle: () => void;
 }
 
 /** Statuses that belong in the "Need Attention" section. */
@@ -74,7 +75,7 @@ function Section({
   onSelect: (url: string) => void;
 }) {
   return (
-    <div class="pr-section">
+    <div class="pr-section" id={`section-${section.id}`}>
       <div class="pr-section-header">
         <span class={`pr-section-dot ${section.dotClass}`} />
         <span class="pr-section-title">{section.title}</span>
@@ -87,9 +88,7 @@ function Section({
   );
 }
 
-export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps) {
-  const [shelvedOpen, setShelvedOpen] = useState(false);
-
+export function PRList({ prs, selectedUrl, onSelect, shelvedUrls, shelvedOpen, onShelvedToggle }: PRListProps) {
   const activePRs = prs.filter((pr) => !shelvedUrls.has(pr.url));
   const shelvedPRs = prs.filter((pr) => shelvedUrls.has(pr.url));
 
@@ -115,10 +114,10 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps)
         <Section key={section.id} section={section} selectedUrl={selectedUrl} onSelect={onSelect} />
       ))}
       {shelvedPRs.length > 0 && (
-        <div class="pr-section pr-section--shelved">
+        <div class="pr-section pr-section--shelved" id="section-shelved">
           <div
             class="pr-section-header pr-section-header--collapsible"
-            onClick={() => setShelvedOpen(!shelvedOpen)}
+            onClick={onShelvedToggle}
             aria-expanded={shelvedOpen}
             aria-controls="shelved-pr-list"
             role="button"
@@ -126,7 +125,7 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls }: PRListProps)
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                setShelvedOpen(!shelvedOpen);
+                onShelvedToggle();
               }
             }}
           >

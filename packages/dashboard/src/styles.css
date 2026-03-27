@@ -590,6 +590,15 @@ a:hover {
 .stat-card.teal .stat-value {
   color: var(--teal);
 }
+.stat-card.muted {
+  border-left-color: var(--text-muted);
+}
+.stat-card.muted::before {
+  background: linear-gradient(135deg, var(--text-muted), transparent 60%);
+}
+.stat-card.muted .stat-value {
+  color: var(--text-secondary);
+}
 
 .stat-value {
   font-size: 1.75rem;

@@ -2,6 +2,11 @@ import type { DashboardStats } from '../types';
 
 interface StatsBarProps {
   stats: DashboardStats;
+  needAttentionCount: number;
+  waitingCount: number;
+  onNeedAttentionClick?: () => void;
+  onWaitingClick?: () => void;
+  onShelvedClick?: () => void;
   onMergedClick?: () => void;
   onClosedClick?: () => void;
   onIssuesClick?: () => void;
@@ -14,13 +19,23 @@ interface StatCardDef {
   onClick?: () => void;
 }
 
-export function StatsBar({ stats, onMergedClick, onClosedClick, onIssuesClick }: StatsBarProps) {
+export function StatsBar({
+  stats,
+  needAttentionCount,
+  waitingCount,
+  onNeedAttentionClick,
+  onWaitingClick,
+  onShelvedClick,
+  onMergedClick,
+  onClosedClick,
+  onIssuesClick,
+}: StatsBarProps) {
   const cards: StatCardDef[] = [
-    { label: 'Active PRs', value: stats.activePRs, colorClass: 'green' },
-    { label: 'Shelved PRs', value: stats.shelvedPRs, colorClass: 'blue' },
+    { label: 'Need Attention', value: needAttentionCount, colorClass: 'red', onClick: onNeedAttentionClick },
+    { label: 'Waiting on Others', value: waitingCount, colorClass: 'blue', onClick: onWaitingClick },
+    { label: 'Shelved', value: stats.shelvedPRs, colorClass: 'muted', onClick: onShelvedClick },
     { label: 'Merged PRs', value: stats.mergedPRs, colorClass: 'purple', onClick: onMergedClick },
     { label: 'Closed PRs', value: stats.closedPRs, colorClass: 'red', onClick: onClosedClick },
-    { label: 'Merge Rate', value: stats.mergeRate, colorClass: 'amber' },
   ];
   if (stats.availableIssues !== undefined) {
     cards.push({ label: 'Vetted Issues', value: stats.availableIssues, colorClass: 'teal', onClick: onIssuesClick });
