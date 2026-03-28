@@ -22,10 +22,7 @@ export function buildScoutState(): ScoutState {
       labels: config.labels,
       scope: config.scope,
       excludeRepos: config.excludeRepos,
-      // Forward excludeOrgs when @oss-scout/core supports it (>= 0.2.0).
-      // Zod's .default() parser passes unknown keys through at runtime,
-      // so this is safe even if the installed scout version is older.
-      ...(config.excludeOrgs?.length ? { excludeOrgs: config.excludeOrgs } : {}),
+      excludeOrgs: config.excludeOrgs ?? [],
       aiPolicyBlocklist: config.aiPolicyBlocklist,
       preferredOrgs: config.preferredOrgs ?? [],
       projectCategories: config.projectCategories ?? [],
