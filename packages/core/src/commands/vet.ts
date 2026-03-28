@@ -1,9 +1,9 @@
 /**
  * Vet command
- * Vets a specific issue before working on it
+ * Vets a specific issue before working on it via @oss-scout/core
  */
 
-import { IssueDiscovery, requireGitHubToken } from '../core/index.js';
+import { createAutopilotScout } from './scout-bridge.js';
 import { type VetOutput } from '../formatters/json.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
@@ -25,11 +25,8 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
   validateUrl(options.issueUrl);
   validateGitHubUrl(options.issueUrl, ISSUE_URL_PATTERN, 'issue');
 
-  const token = requireGitHubToken();
-
-  const discovery = new IssueDiscovery(token);
-
-  const candidate = await discovery.vetIssue(options.issueUrl);
+  const scout = await createAutopilotScout();
+  const candidate = await scout.vetIssue(options.issueUrl);
 
   return {
     issue: {

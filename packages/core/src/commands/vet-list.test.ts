@@ -7,15 +7,11 @@ import type { VetOutput } from '../formatters/json.js';
 
 const mockVetIssue = vi.fn();
 
-vi.mock('../core/index.js', () => {
-  const MockIssueDiscovery = vi.fn(function (this: any) {
-    this.vetIssue = mockVetIssue;
-  });
-  return {
-    IssueDiscovery: MockIssueDiscovery,
-    requireGitHubToken: vi.fn().mockReturnValue('ghp_test123'),
-  };
-});
+vi.mock('./scout-bridge.js', () => ({
+  createAutopilotScout: vi.fn(async () => ({
+    vetIssue: mockVetIssue,
+  })),
+}));
 
 vi.mock('./startup.js', () => ({
   detectIssueList: vi.fn(),

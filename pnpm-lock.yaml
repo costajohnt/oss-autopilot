@@ -58,6 +58,9 @@ importers:
       '@octokit/rest':
         specifier: ^22.0.1
         version: 22.0.1
+      '@oss-scout/core':
+        specifier: file:../../../oss-scout/packages/core
+        version: file:../oss-scout/packages/core(@octokit/core@7.0.6)
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -641,6 +644,11 @@ packages:
 
   '@octokit/types@16.0.0':
     resolution: {integrity: sha512-sKq+9r1Mm4efXW1FCk7hFSeJo4QKreL/tTbR0rz/qx/r1Oa2VV83LTA/H/MuCOX7uCIJmQVRKBcbmWoySjAnSg==}
+
+  '@oss-scout/core@file:../oss-scout/packages/core':
+    resolution: {directory: ../oss-scout/packages/core, type: directory}
+    engines: {node: '>=20.0.0'}
+    hasBin: true
 
   '@oxc-project/runtime@0.115.0':
     resolution: {integrity: sha512-Rg8Wlt5dCbXhQnsXPrkOjL1DTSvXLgb2R/KYfnf1/K+R0k6UMLEmbQXPM+kwrWqSmWA2t0B1EtHy2/3zikQpvQ==}
@@ -2897,6 +2905,15 @@ snapshots:
   '@octokit/types@16.0.0':
     dependencies:
       '@octokit/openapi-types': 27.0.0
+
+  '@oss-scout/core@file:../oss-scout/packages/core(@octokit/core@7.0.6)':
+    dependencies:
+      '@octokit/plugin-throttling': 11.0.3(@octokit/core@7.0.6)
+      '@octokit/rest': 22.0.1
+      commander: 14.0.3
+      zod: 4.3.6
+    transitivePeerDependencies:
+      - '@octokit/core'
 
   '@oxc-project/runtime@0.115.0': {}
 
