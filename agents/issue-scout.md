@@ -53,17 +53,46 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 | Command | Purpose |
 |---------|---------|
 | `search [n] --json` | Search for new issues (n = number of results, default 5) |
+| `search [n] --strategy <s> --json` | Search with specific strategy (merged, orgs, starred, broad, maintained, all) |
 | `vet <issue-url> --json` | Deep-vet a specific issue for suitability |
+| `results --json` | Show saved search results from the last search |
+| `results clear --json` | Clear saved search results |
+| `vet-list --json` | Re-vet all saved results for availability |
+| `vet-list --prune --json` | Re-vet and remove unavailable issues |
 | `status --json` | Get current stats, tracked PRs, and history |
+
 **Search for Issues:**
 ```bash
 GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" search 15 --json
 ```
 Returns structured data including:
 - Issue details (title, body, labels, assignees)
-- Repository context
-- User's relationship with the repo (prior PRs, starred status)
-- Scoring with explanations
+- Repository context and health metrics
+- Viability scores (0-100) with scoring breakdown
+- Recommendations (approve, needs_review, skip)
+
+**Strategy-Specific Search:**
+```bash
+# Search only repos where the user has merged PRs
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" search 10 --strategy merged --json
+
+# Search only starred repos
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" search 10 --strategy starred --json
+
+# Search by language-based broad discovery
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" search 10 --strategy broad --json
+
+# Search by well-maintained project categories
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" search 10 --strategy maintained --json
+```
+
+Available strategies:
+- `merged` — Repos where the user has previously merged PRs (highest confidence)
+- `orgs` — Preferred organizations from config
+- `starred` — User's starred repos
+- `broad` — Language-based broad discovery across GitHub
+- `maintained` — Well-maintained project categories
+- `all` — Run all strategies (default)
 
 **Vet a Specific Issue:**
 ```bash
@@ -71,9 +100,23 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 ```
 Returns:
 - Availability status (assigned, recent linked PRs)
-- Contribution guidelines (CONTRIBUTING.md, CLA, templates)
-- Previous PR attempts and learnings
-- Detailed recommendation
+- Project health (last commit, CI status, activity level)
+- Viability score with reasons to approve/skip
+- Recommendation
+
+**Re-vet Saved Results:**
+```bash
+# Re-vet all issues from the last search
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" vet-list --json
+
+# Re-vet and remove unavailable issues from the list
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" vet-list --prune --json
+```
+
+**View Saved Results:**
+```bash
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" results --json
+```
 
 **Get Current Status:**
 ```bash
@@ -162,17 +205,16 @@ The `aiPolicyBlocklist` field is included in CLI search JSON output. If you disc
 
    The CLI automatically:
    - Loads user preferences from config
-   - Checks tracked PRs for dormant ones
-   - Applies repo relationship scoring (merged PRs, starred repos, dormant PRs)
-   - Searches starred/trusted repos first, then general GitHub
+   - Applies multi-strategy search (merged repos, orgs, starred, broad, maintained)
+   - Scores issues by viability (0-100)
    - Filters for active, available issues
    - Returns structured, scored results
 
 2. **Parse and Present Results**
    The JSON output includes:
-   - `issues`: Array of scored issues with metadata
-   - `userContext`: User's relationship with each repo
-   - `scoring`: Explanation of why each issue was scored
+   - `candidates`: Array of scored issues with viability scores and recommendations
+   - `excludedRepos`: Repos excluded by config
+   - `rateLimitWarning`: Rate limit status (if approaching limits)
 
 3. **For Manual Context (when needed)**
    Use `status --json` CLI output which includes:

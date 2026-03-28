@@ -13,6 +13,7 @@ import {
   runStatus,
   runSearch,
   runVet,
+  runVetList,
   runTrack,
   runUntrack,
   runRead,
@@ -151,6 +152,22 @@ export function registerTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     wrapTool(runVet),
+  );
+
+  // 4b. vet-list — Re-vet all saved issues
+  server.registerTool(
+    'vet-list',
+    {
+      description:
+        'Re-vet all available issues in the curated issue list for freshness. Checks if issues are still open, unassigned, and have no linked PRs.',
+      inputSchema: {
+        issueListPath: z.string().optional().describe('Path to issue list file (auto-detected if not specified)'),
+        concurrency: z.number().optional().describe('Max parallel vet operations (default: 5)'),
+        prune: z.boolean().optional().describe('After vetting, remove completed/skipped items from the file'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    wrapTool(runVetList),
   );
 
   // 5. track — Track a PR

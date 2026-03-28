@@ -36,9 +36,9 @@ You are a Repository Health Analyst who evaluates open source projects to help c
 4. Assess community health indicators
 5. Provide actionable recommendations
 
-## Data Access - CLI Integration
+## Data Access — CLI Integration
 
-The oss-autopilot CLI tracks repository relationships and can provide context.
+The oss-autopilot CLI provides repository context via several commands.
 
 **CLI Command Pattern:**
 ```bash
@@ -50,7 +50,9 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 | Command | Purpose |
 |---------|---------|
 | `status --json` | Get user's relationship with repos (tracked PRs, history) |
-| `vet <issue-url> --json` | Includes repo health data when vetting issues |
+| `vet <issue-url> --json` | Includes project health data when vetting issues |
+| `results --json` | Shows saved search results with repo scores |
+| `vet-list --json` | Re-vet all saved results for availability |
 
 **Check User's Repo Relationship:**
 ```bash
@@ -61,7 +63,13 @@ Returns:
 - PR history (past success/failure with this repo)
 - Cached repo scores if available
 
-**Note:** For detailed repo-level analysis (commits, releases, PR metrics), the gh CLI is still the primary tool since this data is not PR-specific. The CLI integration provides user relationship context to supplement raw repo data.
+**Vet an Issue (includes project health):**
+```bash
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" vet https://github.com/owner/repo/issues/123 --json
+```
+Returns project health data including last commit, CI status, activity level, and viability score.
+
+**Note:** For detailed repo-level analysis (commits, releases, PR metrics), the gh CLI is the primary tool. The CLI integration provides viability scoring context to supplement raw repo data.
 
 **Evaluation Process (gh CLI):**
 
