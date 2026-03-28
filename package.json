@@ -53,7 +53,8 @@
       "@hono/node-server": ">=1.19.10",
       "express-rate-limit": ">=8.2.2",
       "flatted": ">=3.4.2",
-      "picomatch": ">=4.0.4"
+      "picomatch": ">=4.0.4",
+      "path-to-regexp": ">=8.4.0"
     }
   },
   "devDependencies": {

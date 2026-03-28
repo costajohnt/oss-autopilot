@@ -4,36 +4,26 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const mockSearchIssues = vi.fn();
-let mockRateLimitWarning: string | null = null;
+const mockSearch = vi.fn();
 
-vi.mock('../core/index.js', () => {
-  const MockIssueDiscovery = vi.fn(function (this: any) {
-    this.searchIssues = mockSearchIssues;
-    Object.defineProperty(this, 'rateLimitWarning', {
-      get: () => mockRateLimitWarning,
-    });
-  });
-  return {
-    IssueDiscovery: MockIssueDiscovery,
-    requireGitHubToken: vi.fn(),
-    getStateManager: vi.fn(),
-    DEFAULT_CONFIG: {
-      aiPolicyBlocklist: ['matplotlib/matplotlib'],
-    },
-  };
-});
+vi.mock('./scout-bridge.js', () => ({
+  createAutopilotScout: vi.fn(async () => ({
+    search: mockSearch,
+  })),
+}));
 
-import { requireGitHubToken, getStateManager } from '../core/index.js';
+vi.mock('../core/index.js', () => ({
+  getStateManager: vi.fn(),
+}));
+
+import { getStateManager } from '../core/index.js';
 import { runSearch } from './search.js';
 
-const mockRequireGitHubToken = vi.mocked(requireGitHubToken);
 const mockGetStateManager = vi.mocked(getStateManager);
 
 describe('runSearch', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRateLimitWarning = null;
     mockGetStateManager.mockReturnValue({
       getState: vi.fn().mockReturnValue({
         config: {
@@ -46,27 +36,31 @@ describe('runSearch', () => {
   });
 
   it('should search and return candidates', async () => {
-    mockRequireGitHubToken.mockReturnValue('ghp_test123');
-    mockSearchIssues.mockResolvedValue([
-      {
-        issue: {
-          repo: 'owner/repo',
-          number: 5,
-          title: 'Fix bug',
-          url: 'https://github.com/owner/repo/issues/5',
-          labels: ['bug'],
+    mockSearch.mockResolvedValue({
+      candidates: [
+        {
+          issue: {
+            repo: 'owner/repo',
+            number: 5,
+            title: 'Fix bug',
+            url: 'https://github.com/owner/repo/issues/5',
+            labels: ['bug'],
+          },
+          recommendation: 'approve',
+          reasonsToApprove: ['Active maintainers'],
+          reasonsToSkip: [],
+          searchPriority: 'high',
+          viabilityScore: 85,
         },
-        recommendation: 'approve',
-        reasonsToApprove: ['Active maintainers'],
-        reasonsToSkip: [],
-        searchPriority: 'high',
-        viabilityScore: 85,
-      },
-    ]);
+      ],
+      excludedRepos: ['excluded/repo'],
+      aiPolicyBlocklist: ['matplotlib/matplotlib'],
+      strategiesUsed: ['merged', 'broad'],
+    });
 
     const result = await runSearch({ maxResults: 10 });
 
-    expect(mockSearchIssues).toHaveBeenCalledWith({ maxResults: 10 });
+    expect(mockSearch).toHaveBeenCalledWith({ maxResults: 10 });
     expect(result).toEqual(
       expect.objectContaining({
         candidates: expect.arrayContaining([
@@ -89,23 +83,27 @@ describe('runSearch', () => {
   });
 
   it('should include repo score when available', async () => {
-    mockRequireGitHubToken.mockReturnValue('ghp_test123');
-    mockSearchIssues.mockResolvedValue([
-      {
-        issue: {
-          repo: 'scored/repo',
-          number: 1,
-          title: 'Issue',
-          url: 'https://github.com/scored/repo/issues/1',
-          labels: [],
+    mockSearch.mockResolvedValue({
+      candidates: [
+        {
+          issue: {
+            repo: 'scored/repo',
+            number: 1,
+            title: 'Issue',
+            url: 'https://github.com/scored/repo/issues/1',
+            labels: [],
+          },
+          recommendation: 'approve',
+          reasonsToApprove: [],
+          reasonsToSkip: [],
+          searchPriority: 'medium',
+          viabilityScore: 70,
         },
-        recommendation: 'approve',
-        reasonsToApprove: [],
-        reasonsToSkip: [],
-        searchPriority: 'medium',
-        viabilityScore: 70,
-      },
-    ]);
+      ],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
     mockGetStateManager.mockReturnValue({
       getState: vi.fn().mockReturnValue({
         config: { excludeRepos: [], aiPolicyBlocklist: [] },
@@ -131,9 +129,13 @@ describe('runSearch', () => {
   });
 
   it('should include rate limit warning when present', async () => {
-    mockRequireGitHubToken.mockReturnValue('ghp_test123');
-    mockSearchIssues.mockResolvedValue([]);
-    mockRateLimitWarning = 'Rate limit is low';
+    mockSearch.mockResolvedValue({
+      candidates: [],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      rateLimitWarning: 'Rate limit is low',
+      strategiesUsed: [],
+    });
 
     const result = await runSearch({ maxResults: 10 });
 
@@ -141,8 +143,12 @@ describe('runSearch', () => {
   });
 
   it('should return empty candidates array when no results', async () => {
-    mockRequireGitHubToken.mockReturnValue('ghp_test123');
-    mockSearchIssues.mockResolvedValue([]);
+    mockSearch.mockResolvedValue({
+      candidates: [],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: [],
+    });
 
     const result = await runSearch({ maxResults: 10 });
 
@@ -150,32 +156,35 @@ describe('runSearch', () => {
   });
 
   it('should include repoUrl derived from repo name (#789)', async () => {
-    mockRequireGitHubToken.mockReturnValue('ghp_test123');
-    mockSearchIssues.mockResolvedValue([
-      {
-        issue: {
-          repo: 'facebook/react',
-          number: 42,
-          title: 'Some issue',
-          url: 'https://github.com/facebook/react/issues/42',
-          labels: [],
+    mockSearch.mockResolvedValue({
+      candidates: [
+        {
+          issue: {
+            repo: 'facebook/react',
+            number: 42,
+            title: 'Some issue',
+            url: 'https://github.com/facebook/react/issues/42',
+            labels: [],
+          },
+          recommendation: 'approve',
+          reasonsToApprove: [],
+          reasonsToSkip: [],
+          searchPriority: 'high',
+          viabilityScore: 90,
         },
-        recommendation: 'approve',
-        reasonsToApprove: [],
-        reasonsToSkip: [],
-        searchPriority: 'high',
-        viabilityScore: 90,
-      },
-    ]);
+      ],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
 
     const result = await runSearch({ maxResults: 5 });
 
     expect(result.candidates[0].issue.repoUrl).toBe('https://github.com/facebook/react');
   });
 
-  it('should propagate errors from searchIssues (#414)', async () => {
-    mockRequireGitHubToken.mockReturnValue('ghp_test123');
-    mockSearchIssues.mockRejectedValue(new Error('API rate limit exceeded'));
+  it('should propagate errors from search (#414)', async () => {
+    mockSearch.mockRejectedValue(new Error('API rate limit exceeded'));
 
     await expect(runSearch({ maxResults: 5 })).rejects.toThrow('API rate limit exceeded');
   });

@@ -10,6 +10,7 @@ overrides:
   express-rate-limit: '>=8.2.2'
   flatted: '>=3.4.2'
   picomatch: '>=4.0.4'
+  path-to-regexp: '>=8.4.0'
 
 importers:
 
@@ -58,6 +59,9 @@ importers:
       '@octokit/rest':
         specifier: ^22.0.1
         version: 22.0.1
+      '@oss-scout/core':
+        specifier: ^0.1.1
+        version: 0.1.1(@octokit/core@7.0.6)
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -641,6 +645,11 @@ packages:
 
   '@octokit/types@16.0.0':
     resolution: {integrity: sha512-sKq+9r1Mm4efXW1FCk7hFSeJo4QKreL/tTbR0rz/qx/r1Oa2VV83LTA/H/MuCOX7uCIJmQVRKBcbmWoySjAnSg==}
+
+  '@oss-scout/core@0.1.1':
+    resolution: {integrity: sha512-1RG9eloSdchPTgpoxqMijRjgB/J47jJ+WY0Y6cZpVvDfyVXGjcvxjOT87vavYQ9un4aX5NzlFyUpnW9/a6bdhg==}
+    engines: {node: '>=20.0.0'}
+    hasBin: true
 
   '@oxc-project/runtime@0.115.0':
     resolution: {integrity: sha512-Rg8Wlt5dCbXhQnsXPrkOjL1DTSvXLgb2R/KYfnf1/K+R0k6UMLEmbQXPM+kwrWqSmWA2t0B1EtHy2/3zikQpvQ==}
@@ -1964,8 +1973,8 @@ packages:
     resolution: {integrity: sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==}
     engines: {node: '>=8'}
 
-  path-to-regexp@8.3.0:
-    resolution: {integrity: sha512-7jdwVIRtsP8MYpdXSwOS0YdD0Du+qOoF/AEPIt88PcCFrZCzx41oxku1jD88hZBwbNUIEfpqvuhjFaMAqMTWnA==}
+  path-to-regexp@8.4.0:
+    resolution: {integrity: sha512-PuseHIvAnz3bjrM2rGJtSgo1zjgxapTLZ7x2pjhzWwlp4SJQgK3f3iZIQwkpEnBaKz6seKBADpM4B4ySkuYypg==}
 
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
@@ -2897,6 +2906,15 @@ snapshots:
   '@octokit/types@16.0.0':
     dependencies:
       '@octokit/openapi-types': 27.0.0
+
+  '@oss-scout/core@0.1.1(@octokit/core@7.0.6)':
+    dependencies:
+      '@octokit/plugin-throttling': 11.0.3(@octokit/core@7.0.6)
+      '@octokit/rest': 22.0.1
+      commander: 14.0.3
+      zod: 4.3.6
+    transitivePeerDependencies:
+      - '@octokit/core'
 
   '@oxc-project/runtime@0.115.0': {}
 
@@ -4232,7 +4250,7 @@ snapshots:
 
   path-key@3.1.1: {}
 
-  path-to-regexp@8.3.0: {}
+  path-to-regexp@8.4.0: {}
 
   pathe@2.0.3: {}
 
@@ -4367,7 +4385,7 @@ snapshots:
       depd: 2.0.0
       is-promise: 4.0.0
       parseurl: 1.3.3
-      path-to-regexp: 8.3.0
+      path-to-regexp: 8.4.0
     transitivePeerDependencies:
       - supports-color
 

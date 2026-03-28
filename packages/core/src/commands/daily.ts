@@ -37,6 +37,7 @@ import {
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
+import { createAutopilotScout } from './scout-bridge.js';
 import { updateMonthlyAnalytics } from './dashboard-data.js';
 import {
   deduplicateDigest,
@@ -611,6 +612,22 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     });
   } catch (error) {
     warn(MODULE, `Failed to persist monthly analytics: ${errorMessage(error)}`);
+  }
+
+  // Phase 3.5: Feed merged/closed PRs to oss-scout for cross-tool state sync.
+  if (recentlyMergedPRs.length > 0 || recentlyClosedPRs.length > 0) {
+    try {
+      const scout = await createAutopilotScout();
+      for (const pr of recentlyMergedPRs) {
+        scout.recordMergedPR({ url: pr.url, title: pr.title, mergedAt: pr.mergedAt, repo: pr.repo });
+      }
+      for (const pr of recentlyClosedPRs) {
+        scout.recordClosedPR({ url: pr.url, title: pr.title, closedAt: pr.closedAt, repo: pr.repo });
+      }
+      await scout.checkpoint();
+    } catch (error) {
+      warn(MODULE, `Failed to sync PR data to oss-scout: ${errorMessage(error)}`);
+    }
   }
 
   // Capture lastDigestAt BEFORE Phase 4 overwrites it with the current run's timestamp.

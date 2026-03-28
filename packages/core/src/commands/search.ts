@@ -1,9 +1,10 @@
 /**
  * Search command
- * Searches for new issues to work on
+ * Searches for new issues to work on via @oss-scout/core
  */
 
-import { IssueDiscovery, requireGitHubToken, getStateManager, DEFAULT_CONFIG } from '../core/index.js';
+import { createAutopilotScout } from './scout-bridge.js';
+import { getStateManager } from '../core/index.js';
 import { type SearchOutput } from '../formatters/json.js';
 
 export { type SearchOutput } from '../formatters/json.js';
@@ -31,18 +32,13 @@ interface SearchOptions {
  * ```
  */
 export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
-  const token = requireGitHubToken();
-
-  const discovery = new IssueDiscovery(token);
-
-  const candidates = await discovery.searchIssues({ maxResults: options.maxResults });
+  const scout = await createAutopilotScout();
+  const result = await scout.search({ maxResults: options.maxResults });
 
   const stateManager = getStateManager();
-  const { config } = stateManager.getState();
-  const excludedRepos = config.excludeRepos || [];
-  const aiPolicyBlocklist = config.aiPolicyBlocklist ?? DEFAULT_CONFIG.aiPolicyBlocklist ?? [];
+
   const searchOutput: SearchOutput = {
-    candidates: candidates.map((c) => {
+    candidates: result.candidates.map((c) => {
       const repoScoreRecord = stateManager.getRepoScore(c.issue.repo);
       return {
         issue: {
@@ -69,11 +65,11 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
           : undefined,
       };
     }),
-    excludedRepos,
-    aiPolicyBlocklist,
+    excludedRepos: result.excludedRepos,
+    aiPolicyBlocklist: result.aiPolicyBlocklist,
   };
-  if (discovery.rateLimitWarning) {
-    searchOutput.rateLimitWarning = discovery.rateLimitWarning;
+  if (result.rateLimitWarning) {
+    searchOutput.rateLimitWarning = result.rateLimitWarning;
   }
   return searchOutput;
 }

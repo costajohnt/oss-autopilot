@@ -1,10 +1,10 @@
 /**
  * Vet-list command (#764)
- * Re-vets all available issues in a curated issue list file.
+ * Re-vets all available issues in a curated issue list file via @oss-scout/core.
  */
 
 import * as fs from 'fs';
-import { IssueDiscovery, requireGitHubToken } from '../core/index.js';
+import { createAutopilotScout } from './scout-bridge.js';
 import { type VetListOutput, type VetOutput, type VetListItemStatus } from '../formatters/json.js';
 import { runParseList, pruneIssueList } from './parse-list.js';
 import { detectIssueList } from './startup.js';
@@ -45,7 +45,6 @@ export function classifyListStatus(vetResult: VetOutput): VetListItemStatus {
  * @returns Consolidated vetting results with list status for each issue
  */
 export async function runVetList(options: VetListOptions = {}): Promise<VetListOutput> {
-  const token = requireGitHubToken();
   const concurrency = options.concurrency ?? 5;
 
   // 1. Find and parse the issue list
@@ -68,7 +67,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   }
 
   // 2. Vet each available issue in parallel with concurrency limit
-  const discovery = new IssueDiscovery(token);
+  const scout = await createAutopilotScout();
   const results: VetListOutput['results'] = [];
 
   // Simple concurrency limiter
@@ -79,7 +78,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     while (index < items.length) {
       const item = items[index++];
       try {
-        const candidate = await discovery.vetIssue(item.url);
+        const candidate = await scout.vetIssue(item.url);
         const vetResult: VetOutput = {
           issue: {
             repo: candidate.issue.repo,

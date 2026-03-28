@@ -17,7 +17,7 @@ permissions:
 
 env:
   # Bundle size thresholds (bytes). Update via PR when increases are justified.
-  BUNDLE_MAX_CORE: 700000 # ~684 KB (increased for zod dependency, #724)
+  BUNDLE_MAX_CORE: 720000 # ~703 KB (increased for @oss-scout/core dependency, #902)
   BUNDLE_MAX_MCP: 2000000 # ~1953 KB
   STARTUP_WARN_MS: 500 # Warn if CLI startup exceeds 500ms
 
