@@ -3,12 +3,13 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from './server.js';
 
-/** All 23 tool names that must be registered. */
+/** All 24 tool names that must be registered. */
 const EXPECTED_TOOLS = [
   'daily',
   'status',
   'search',
   'vet',
+  'vet-list',
   'track',
   'untrack',
   'read',
@@ -56,8 +57,8 @@ describe('MCP tool registrations', () => {
     await client.close();
   });
 
-  it('registers exactly 23 tools', () => {
-    expect(tools).toHaveLength(23);
+  it('registers exactly 24 tools', () => {
+    expect(tools).toHaveLength(24);
   });
 
   it('registers all expected tool names', () => {
@@ -165,6 +166,7 @@ describe('MCP tool registrations', () => {
       'dismiss',
       'undismiss',
       'move',
+      'vet-list',
     ];
 
     it.each(readOnlyTools)('read-only tool "%s" has readOnlyHint: true', (name) => {

@@ -28,6 +28,8 @@ export { runStatus } from './status.js';
 export { runSearch } from './search.js';
 /** Vet a single GitHub issue for claimability (open, unassigned, no linked PRs, repo health). */
 export { runVet } from './vet.js';
+/** Re-vet all available issues in a curated issue list for freshness. */
+export { runVetList } from './vet-list.js';
 
 // ── PR Management ───────────────────────────────────────────────────────────
 
@@ -92,7 +94,14 @@ export { runLocalRepos } from './local-repos.js';
 
 export type { ErrorCode } from '../formatters/json.js';
 export type { DailyOutput, SearchOutput, StartupOutput, StatusOutput, TrackOutput } from '../formatters/json.js';
-export type { VetOutput, CommentsOutput, PostOutput, ClaimOutput } from '../formatters/json.js';
+export type {
+  VetOutput,
+  CommentsOutput,
+  PostOutput,
+  ClaimOutput,
+  VetListOutput,
+  VetListItemStatus,
+} from '../formatters/json.js';
 export type {
   ConfigOutput,
   DetectFormattersOutput,
