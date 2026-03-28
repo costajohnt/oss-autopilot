@@ -271,7 +271,7 @@ oss-autopilot stats --badge      # Shields.io endpoint JSON
 Show off your open source contributions with a live badge on your GitHub profile README:
 
 ```markdown
-![OSS Contributions](https://img.shields.io/endpoint?url=https://oss-autopilot-stats.vercel.app/api/badge/YOUR_USERNAME)
+![OSS Contributions](https://img.shields.io/endpoint?url=https://oss-widgets.vercel.app/api/badge/YOUR_USERNAME)
 ```
 
 The badge updates hourly and shows your merge rate, total merged PRs, and active PR count. Only counts PRs to external repos (excludes your own) with 50+ stars by default.
@@ -279,29 +279,29 @@ The badge updates hourly and shows your merge rate, total merged PRs, and active
 Customize the minimum star threshold with `?minStars=100` (URL-encode the inner URL):
 
 ```markdown
-![OSS Contributions](https://img.shields.io/endpoint?url=https%3A%2F%2Foss-autopilot-stats.vercel.app%2Fapi%2Fbadge%2FYOUR_USERNAME%3FminStars%3D100)
+![OSS Contributions](https://img.shields.io/endpoint?url=https%3A%2F%2Foss-widgets.vercel.app%2Fapi%2Fbadge%2FYOUR_USERNAME%3FminStars%3D100)
 ```
 
 ### Profile Widgets
 
-Embed live SVG widgets in your GitHub profile README for a richer contribution showcase. All widgets update hourly and support `?theme=dark`.
+Embed live SVG widgets in your GitHub profile README for a richer contribution showcase. Powered by [oss-widgets](https://github.com/costajohnt/oss-widgets). All widgets update hourly and support `?theme=dark`.
 
 **Stats Card** — merged count, merge rate, repo count, streak:
 
 ```markdown
-[![OSS Contributions](https://oss-autopilot-stats.vercel.app/api/card/YOUR_USERNAME)](https://github.com/costajohnt/oss-autopilot)
+[![OSS Contributions](https://oss-widgets.vercel.app/api/card/YOUR_USERNAME)](https://github.com/costajohnt/oss-autopilot)
 ```
 
 **Recent Contributions** — your five most recently merged PRs:
 
 ```markdown
-![Recent](https://oss-autopilot-stats.vercel.app/api/recent/YOUR_USERNAME)
+![Recent](https://oss-widgets.vercel.app/api/recent/YOUR_USERNAME)
 ```
 
 **Activity Graph** — 26-week contribution heatmap:
 
 ```markdown
-![Activity](https://oss-autopilot-stats.vercel.app/api/activity/YOUR_USERNAME)
+![Activity](https://oss-widgets.vercel.app/api/activity/YOUR_USERNAME)
 ```
 
 Add `?theme=dark` to any URL for a dark background to match dark-mode profiles.
@@ -361,7 +361,7 @@ The `/oss-search` command can add vetted issues to this file automatically.
 
 ## How It Works
 
-OSS Autopilot is a **pnpm monorepo** with four packages, plus a plugin layer:
+OSS Autopilot is a **pnpm monorepo** with three packages, plus a plugin layer:
 
 ```
 ┌──────────────────────────────────────────────────┐
@@ -386,12 +386,6 @@ OSS Autopilot is a **pnpm monorepo** with four packages, plus a plugin layer:
 │  │ GitHub API, CLI, structured JSON output    │  │
 │  └────────────────────────────────────────────┘  │
 │                                                  │
-│  ┌────────────────────────────────────────────┐  │
-│  │ Badge Endpoint — @oss-autopilot/badge-     │  │
-│  │ endpoint — Vercel serverless Shields.io    │  │
-│  │ badge API (standalone, uses Octokit)       │  │
-│  └────────────────────────────────────────────┘  │
-│                                                  │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -400,7 +394,6 @@ OSS Autopilot is a **pnpm monorepo** with four packages, plus a plugin layer:
 | `@oss-autopilot/core` | [![npm](https://img.shields.io/npm/v/@oss-autopilot/core)](https://www.npmjs.com/package/@oss-autopilot/core) | Core library + CLI. PR monitoring, issue discovery, state management, GitHub API. |
 | `@oss-autopilot/mcp` | [![npm](https://img.shields.io/npm/v/@oss-autopilot/mcp)](https://www.npmjs.com/package/@oss-autopilot/mcp) | MCP server for Cursor, Claude Desktop, Codex, Windsurf, and any MCP client. |
 | `@oss-autopilot/dashboard` | — | Interactive Preact SPA — PR management, charts, and contribution stats. |
-| `@oss-autopilot/badge-endpoint` | — | Vercel serverless endpoint for Shields.io contribution badges. |
 
 ### MCP Server
 
@@ -455,8 +448,7 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 │   │   └── dist/cli.bundle.cjs  # Built bundle (auto-generated)
 │   ├── mcp-server/              # @oss-autopilot/mcp — MCP server
 │   │   └── src/                 # Tools, resources, prompts, server
-│   ├── dashboard/               # @oss-autopilot/dashboard — Interactive UI
-│   └── badge-endpoint/          # @oss-autopilot/badge-endpoint — Vercel badge API
+│   └── dashboard/               # @oss-autopilot/dashboard — Interactive UI
 └── pnpm-workspace.yaml          # Workspace definition
 ```
 
