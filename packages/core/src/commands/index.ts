@@ -94,7 +94,14 @@ export { runLocalRepos } from './local-repos.js';
 
 export type { ErrorCode } from '../formatters/json.js';
 export type { DailyOutput, SearchOutput, StartupOutput, StatusOutput, TrackOutput } from '../formatters/json.js';
-export type { VetOutput, CommentsOutput, PostOutput, ClaimOutput, VetListOutput, VetListItemStatus } from '../formatters/json.js';
+export type {
+  VetOutput,
+  CommentsOutput,
+  PostOutput,
+  ClaimOutput,
+  VetListOutput,
+  VetListItemStatus,
+} from '../formatters/json.js';
 export type {
   ConfigOutput,
   DetectFormattersOutput,
