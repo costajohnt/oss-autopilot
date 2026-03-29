@@ -358,7 +358,7 @@ export const SCOPE_LABELS: Record<IssueScope, string[]> = {
   advanced: ['proposal', 'RFC', 'accepted', 'design'],
 };
 
-// ── Issue discovery types (shared across issue-discovery, issue-vetting, issue-scoring) ──
+// ── Issue discovery types (used by formatters and test utilities) ──
 
 /** Priority tier for issue search results. Ordered: merged_pr > preferred_org > starred > normal. */
 export type SearchPriority = 'merged_pr' | 'preferred_org' | 'starred' | 'normal';

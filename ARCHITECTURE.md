@@ -78,7 +78,7 @@ A Commander program that loads command definitions from `cli-registry.ts`. Each 
 Key design:
 - **Lazy loading** — only the invoked command's module is evaluated (dynamic `import()` inside action handlers).
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`LOCAL_ONLY_COMMANDS`** — 20 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
+- **`localOnly` registry flag** — 20 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 
@@ -108,7 +108,8 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `init` | `init.ts` | Initialize with GitHub username and import open PRs |
 | `setup` / `checkSetup` | `setup.ts` | First-run setup and setup verification |
 | `vet` | `vet.ts` | Vet a single issue for claimability |
-| `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-templates.ts`, `dashboard-server.ts`) |
+| `vet-list` | `vet-list.ts` | Re-vet all issues in a curated issue list |
+| `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-lifecycle.ts`, `dashboard-process.ts`, `dashboard-server.ts`) |
 | `move` | `move.ts` | Transition a PR between states: attention, waiting, shelved, auto |
 | `shelve` / `unshelve` | `move.ts` (aliases) | Exclude PRs from capacity and actionable items |
 | `override` / `clear-override` | `move.ts` (aliases) | Backward-compatible status override commands |
@@ -137,8 +138,7 @@ The bundle is a single CommonJS file (gitignored, auto-generated). The `SessionS
 `StateManager` is a singleton that reads/writes `~/.oss-autopilot/state.json`. Features:
 - **Advisory file locking** (`wx` flag) with stale lock detection (30s timeout)
 - **Auto-backups** before every write (stored in `~/.oss-autopilot/backups/`)
-- **v1 → v2 migration** built into the load path
-- **Event log** — up to 1000 structured events tracking PRs tracked, merged, closed
+- **v1 → v2 → v3 migration chain** built into the load path
 
 ### PR Monitoring (`pr-monitor.ts`)
 
@@ -163,13 +163,9 @@ Decomposed into focused sub-modules:
 | `display-utils.ts` | Compute display labels for the dashboard |
 | `github-stats.ts` | Merged/closed PR counts, star fetching |
 
-### Issue Discovery (`issue-discovery.ts`)
+### Issue Discovery (delegated to `@oss-scout/core`)
 
-`IssueDiscovery` finds contributable issues via GitHub's Search API. It:
-- Runs multiple search strategies in parallel (prioritizing repos with merged PRs, starred repos, then general)
-- Vets each candidate: checks if open, unassigned, no linked PRs, repo health
-- Applies heuristic scoring (viability score 0-100)
-- Respects rate limits with pre-flight checks
+Issue discovery, vetting, and scoring are handled by the `@oss-scout/core` package. The CLI bridges to it via `commands/scout-bridge.ts`, which maps oss-autopilot's state (preferences, repo scores, merged/closed PRs) into the format oss-scout expects. The `search`, `vet`, and `vet-list` commands all delegate through this bridge.
 
 ### GitHub Client (`github.ts`)
 
@@ -197,18 +193,15 @@ ETag-based caching for GitHub API responses:
 | `types.ts` | All type definitions (`FetchedPR`, `DailyDigest`, `AgentState`, etc.) |
 | `daily-logic.ts` | Standalone functions for daily digest business logic (action menu computation, summary formatting) |
 | `issue-conversation.ts` | `IssueConversationMonitor` — monitors issues the user has commented on for new maintainer responses |
-| `issue-scoring.ts` | Pure functions for computing viability scores (0-100) and quality bonuses |
-| `issue-vetting.ts` | Vet individual issues: checks open status, assignee, linked PRs, repo health |
-| `issue-eligibility.ts` | Pre-filter candidates before full vetting (age, label, repo checks) |
-| `search-phases.ts` | Multi-phase search strategies (merged repos, starred repos, general) |
 | `status-determination.ts` | Compute `FetchedPRStatus` from CI, review, conflict, and dormancy signals |
 | `state-schema.ts` | Zod schemas for all persisted types (`AgentState`, `AgentConfig`, etc.) |
 | `state-persistence.ts` | Low-level file I/O: read/write state.json with locking and backups |
-| `repo-health.ts` | Repository health scoring for issue discovery |
+| `repo-score-manager.ts` | Repository score tracking with TTL-based staleness |
+| `gist-state-store.ts` | Gist-based persistence layer for cross-machine state sync |
 | `stats.ts` | Contribution statistics computation (merge rate, PR counts, timeline) |
 | `formatter-detection.ts` | Detect linters and formatters configured in a repository |
 | `comment-utils.ts` | Bot detection and acknowledgment comment filtering |
-| `category-mapping.ts` | Map GitHub topics to project categories (nonprofit, devtools, etc.) |
+| `pr-template.ts` | Fetch PR description templates from repositories |
 
 ## Data Flow
 
@@ -255,24 +248,24 @@ Plugin Layer (oss.md)
 
 ### What's Stored Locally (`~/.oss-autopilot/state.json`)
 
-The root `AgentState` interface (see `packages/core/src/core/types.ts` for the canonical definition):
+The root `AgentState` interface (see `packages/core/src/core/state-schema.ts` for the canonical Zod schema):
 
 ```typescript
 interface AgentState {
-  version: number;                   // Currently 2 (v2 fresh-fetch architecture)
+  version: number;                   // Currently 3 (v3 with gist persistence)
+  gistId?: string;                   // Gist ID for cross-machine state sync
   repoScores: Record<string, RepoScore>;
   config: AgentConfig;              // User preferences + shelved/dismissed state
-  events: StateEvent[];             // Audit log (max 1000 entries)
   lastRunAt: string;
   lastDigestAt?: string;
   lastDigest?: DailyDigest;         // Cached for dashboard rendering
   monthlyMergedCounts?: Record<string, number>;
   monthlyClosedCounts?: Record<string, number>;
   monthlyOpenedCounts?: Record<string, number>;
-  dailyActivityCounts?: Record<string, number>;
   localRepoCache?: LocalRepoCache;
   mergedPRs?: StoredMergedPR[];     // Stored merged PR records
   closedPRs?: StoredClosedPR[];     // Stored closed PR records
+  analyzedIssueConversations?: AnalyzedIssueConversation[];
   activeIssues: TrackedIssue[];     // Issues user has claimed
 }
 ```
@@ -290,9 +283,11 @@ PRs are **not** stored in state. On every `daily` run, all open PRs are fetched 
 
 ```
 ~/.oss-autopilot/
-├── state.json          # AgentState (config, issues, scores, events)
-├── backups/            # Auto-backups before each state write
-├── cache/              # ETag-based HTTP response cache
+├── state.json            # AgentState (see state-schema.ts for fields)
+├── backups/              # Auto-backups before each state write
+├── cache/                # ETag-based HTTP response cache
+├── gist-id               # Gist ID for cross-machine state sync (opt-in)
+├── state-cache.json      # Local cache of gist state for offline access
 └── dashboard-server.pid  # Running dashboard server PID + port
 ```
 

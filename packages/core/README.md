@@ -53,7 +53,8 @@ All commands support `--json` for structured output:
 ## Library Usage
 
 ```typescript
-import { PRMonitor, StateManager, IssueDiscovery } from '@oss-autopilot/core';
+import { PRMonitor, getStateManager } from '@oss-autopilot/core';
+import { runSearch, runVet } from '@oss-autopilot/core/commands';
 
 const token = process.env.GITHUB_TOKEN!;
 
@@ -62,12 +63,14 @@ const monitor = new PRMonitor(token);
 const result = await monitor.fetchUserOpenPRs();
 
 // Manage state
-const state = StateManager.getInstance();
+const state = getStateManager();
 const currentState = state.getState();
 
-// Discover contributable issues
-const discovery = new IssueDiscovery(token);
-const issues = await discovery.searchIssues({ languages: ['typescript'], maxResults: 5 });
+// Search for contributable issues (delegates to @oss-scout/core)
+const searchResult = await runSearch({ maxResults: 10 });
+
+// Vet a specific issue
+const vetResult = await runVet({ issueUrl: 'https://github.com/owner/repo/issues/123' });
 ```
 
 ## Claude Code Plugin
