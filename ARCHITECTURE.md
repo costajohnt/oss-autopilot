@@ -108,6 +108,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `init` | `init.ts` | Initialize with GitHub username and import open PRs |
 | `setup` / `checkSetup` | `setup.ts` | First-run setup and setup verification |
 | `vet` | `vet.ts` | Vet a single issue for claimability |
+| `vet-list` | `vet-list.ts` | Re-vet all issues in a curated issue list |
 | `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-templates.ts`, `dashboard-server.ts`) |
 | `move` | `move.ts` | Transition a PR between states: attention, waiting, shelved, auto |
 | `shelve` / `unshelve` | `move.ts` (aliases) | Exclude PRs from capacity and actionable items |
@@ -196,12 +197,12 @@ ETag-based caching for GitHub API responses:
 | `status-determination.ts` | Compute `FetchedPRStatus` from CI, review, conflict, and dormancy signals |
 | `state-schema.ts` | Zod schemas for all persisted types (`AgentState`, `AgentConfig`, etc.) |
 | `state-persistence.ts` | Low-level file I/O: read/write state.json with locking and backups |
-| `repo-score-manager.ts` | Repository score tracking and decay logic |
+| `repo-score-manager.ts` | Repository score tracking with TTL-based staleness |
 | `gist-state-store.ts` | Gist-based persistence layer for cross-machine state sync |
 | `stats.ts` | Contribution statistics computation (merge rate, PR counts, timeline) |
 | `formatter-detection.ts` | Detect linters and formatters configured in a repository |
 | `comment-utils.ts` | Bot detection and acknowledgment comment filtering |
-| `pr-template.ts` | PR template generation for contributions |
+| `pr-template.ts` | Fetch PR description templates from repositories |
 
 ## Data Flow
 
@@ -252,7 +253,7 @@ The root `AgentState` interface (see `packages/core/src/core/types.ts` for the c
 
 ```typescript
 interface AgentState {
-  version: number;                   // Currently 2 (v2 fresh-fetch architecture)
+  version: number;                   // Currently 3 (v3 with gist persistence)
   repoScores: Record<string, RepoScore>;
   config: AgentConfig;              // User preferences + shelved/dismissed state
   events: StateEvent[];             // Audit log (max 1000 entries)
@@ -283,9 +284,11 @@ PRs are **not** stored in state. On every `daily` run, all open PRs are fetched 
 
 ```
 ~/.oss-autopilot/
-├── state.json          # AgentState (config, issues, scores, events)
-├── backups/            # Auto-backups before each state write
-├── cache/              # ETag-based HTTP response cache
+├── state.json            # AgentState (config, issues, scores, events)
+├── backups/              # Auto-backups before each state write
+├── cache/                # ETag-based HTTP response cache
+├── gist-id               # Gist ID for cross-machine state sync (opt-in)
+├── state-cache.json      # Local cache of gist state for offline access
 └── dashboard-server.pid  # Running dashboard server PID + port
 ```
 
