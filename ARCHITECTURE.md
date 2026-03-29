@@ -163,13 +163,9 @@ Decomposed into focused sub-modules:
 | `display-utils.ts` | Compute display labels for the dashboard |
 | `github-stats.ts` | Merged/closed PR counts, star fetching |
 
-### Issue Discovery (`issue-discovery.ts`)
+### Issue Discovery (delegated to `@oss-scout/core`)
 
-`IssueDiscovery` finds contributable issues via GitHub's Search API. It:
-- Runs multiple search strategies in parallel (prioritizing repos with merged PRs, starred repos, then general)
-- Vets each candidate: checks if open, unassigned, no linked PRs, repo health
-- Applies heuristic scoring (viability score 0-100)
-- Respects rate limits with pre-flight checks
+Issue discovery, vetting, and scoring are handled by the `@oss-scout/core` package. The CLI bridges to it via `commands/scout-bridge.ts`, which maps oss-autopilot's state (preferences, repo scores, merged/closed PRs) into the format oss-scout expects. The `search`, `vet`, and `vet-list` commands all delegate through this bridge.
 
 ### GitHub Client (`github.ts`)
 
@@ -197,18 +193,15 @@ ETag-based caching for GitHub API responses:
 | `types.ts` | All type definitions (`FetchedPR`, `DailyDigest`, `AgentState`, etc.) |
 | `daily-logic.ts` | Standalone functions for daily digest business logic (action menu computation, summary formatting) |
 | `issue-conversation.ts` | `IssueConversationMonitor` — monitors issues the user has commented on for new maintainer responses |
-| `issue-scoring.ts` | Pure functions for computing viability scores (0-100) and quality bonuses |
-| `issue-vetting.ts` | Vet individual issues: checks open status, assignee, linked PRs, repo health |
-| `issue-eligibility.ts` | Pre-filter candidates before full vetting (age, label, repo checks) |
-| `search-phases.ts` | Multi-phase search strategies (merged repos, starred repos, general) |
 | `status-determination.ts` | Compute `FetchedPRStatus` from CI, review, conflict, and dormancy signals |
 | `state-schema.ts` | Zod schemas for all persisted types (`AgentState`, `AgentConfig`, etc.) |
 | `state-persistence.ts` | Low-level file I/O: read/write state.json with locking and backups |
-| `repo-health.ts` | Repository health scoring for issue discovery |
+| `repo-score-manager.ts` | Repository score tracking and decay logic |
+| `gist-state-store.ts` | Gist-based persistence layer for cross-machine state sync |
 | `stats.ts` | Contribution statistics computation (merge rate, PR counts, timeline) |
 | `formatter-detection.ts` | Detect linters and formatters configured in a repository |
 | `comment-utils.ts` | Bot detection and acknowledgment comment filtering |
-| `category-mapping.ts` | Map GitHub topics to project categories (nonprofit, devtools, etc.) |
+| `pr-template.ts` | PR template generation for contributions |
 
 ## Data Flow
 
