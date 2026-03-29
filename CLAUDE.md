@@ -51,7 +51,7 @@ The system has three layers:
 
 3. **Core Logic** (`packages/core/src/core/`) — The domain layer. Key modules:
    - `types.ts` — All type definitions. Key PR type: `FetchedPR` (ephemeral, fetched fresh each run in v2). `TrackedPR` was removed in v2.
-   - `state.ts` — `StateManager` singleton. Reads/writes `~/.oss-autopilot/state.json`. Handles v1→v2 migration and auto-backups
+   - `state.ts` — `StateManager` singleton. Reads/writes `~/.oss-autopilot/state.json`. Handles v1→v2→v3 migration and auto-backups
    - `pr-monitor.ts` — `PRMonitor` class. Fetches open PRs from GitHub Search API, enriches each with CI status, review decision, merge conflicts, maintainer comments, and computes `FetchedPRStatus`
    - `github.ts` — Shared Octokit instance with `@octokit/plugin-throttling` for rate limit handling
    - `utils.ts` — GitHub URL parsing, date helpers, token detection (tries `$GITHUB_TOKEN` then `gh auth token`)
@@ -62,7 +62,7 @@ The system has three layers:
 - **v2 "Fresh Fetch" architecture**: PRs are NOT stored in local state. On each `daily` run, all open PRs are fetched from GitHub's Search API. The `TrackedPR` type and legacy PR arrays have been fully removed as of this PR.
 - **`--json` contract**: Every CLI command supports `--json`, outputting `{ success: boolean, data?: T, error?: string, timestamp: string }` (see `packages/core/src/formatters/json.ts`). The plugin layer parses this structured output.
 - **State lives in `~/.oss-autopilot/`**, not in the repo. This separates user data from plugin code.
-- **GitHub auth**: The CLI checks for a token via `$GITHUB_TOKEN` env var (preferred) or `gh auth token` CLI fallback. Commands that don't need GitHub access are listed in `LOCAL_ONLY_COMMANDS` in `cli.ts`.
+- **GitHub auth**: The CLI checks for a token via `$GITHUB_TOKEN` env var (preferred) or `gh auth token` CLI fallback. Commands that don't need GitHub access are marked `localOnly` in the command registry.
 - **pnpm monorepo**: Development uses pnpm workspaces. Plugin auto-build scopes `npm install` to `packages/core/` (end users don't need pnpm).
 
 ### File Structure

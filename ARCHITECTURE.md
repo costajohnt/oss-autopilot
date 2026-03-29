@@ -249,24 +249,24 @@ Plugin Layer (oss.md)
 
 ### What's Stored Locally (`~/.oss-autopilot/state.json`)
 
-The root `AgentState` interface (see `packages/core/src/core/types.ts` for the canonical definition):
+The root `AgentState` interface (see `packages/core/src/core/state-schema.ts` for the canonical Zod schema):
 
 ```typescript
 interface AgentState {
   version: number;                   // Currently 3 (v3 with gist persistence)
+  gistId?: string;                   // Gist ID for cross-machine state sync
   repoScores: Record<string, RepoScore>;
   config: AgentConfig;              // User preferences + shelved/dismissed state
-  events: StateEvent[];             // Audit log (max 1000 entries)
   lastRunAt: string;
   lastDigestAt?: string;
   lastDigest?: DailyDigest;         // Cached for dashboard rendering
   monthlyMergedCounts?: Record<string, number>;
   monthlyClosedCounts?: Record<string, number>;
   monthlyOpenedCounts?: Record<string, number>;
-  dailyActivityCounts?: Record<string, number>;
   localRepoCache?: LocalRepoCache;
   mergedPRs?: StoredMergedPR[];     // Stored merged PR records
   closedPRs?: StoredClosedPR[];     // Stored closed PR records
+  analyzedIssueConversations?: AnalyzedIssueConversation[];
   activeIssues: TrackedIssue[];     // Issues user has claimed
 }
 ```

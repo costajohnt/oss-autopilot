@@ -358,7 +358,7 @@ export const SCOPE_LABELS: Record<IssueScope, string[]> = {
   advanced: ['proposal', 'RFC', 'accepted', 'design'],
 };
 
-// ── Issue discovery types (consumed by @oss-scout/core via scout-bridge) ──
+// ── Issue discovery types (used by formatters and test utilities) ──
 
 /** Priority tier for issue search results. Ordered: merged_pr > preferred_org > starred > normal. */
 export type SearchPriority = 'merged_pr' | 'preferred_org' | 'starred' | 'normal';
