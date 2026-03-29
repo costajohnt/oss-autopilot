@@ -78,7 +78,7 @@ A Commander program that loads command definitions from `cli-registry.ts`. Each 
 Key design:
 - **Lazy loading** — only the invoked command's module is evaluated (dynamic `import()` inside action handlers).
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`LOCAL_ONLY_COMMANDS`** — 20 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
+- **`localOnly` registry flag** — 20 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 
@@ -109,7 +109,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `setup` / `checkSetup` | `setup.ts` | First-run setup and setup verification |
 | `vet` | `vet.ts` | Vet a single issue for claimability |
 | `vet-list` | `vet-list.ts` | Re-vet all issues in a curated issue list |
-| `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-templates.ts`, `dashboard-server.ts`) |
+| `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-lifecycle.ts`, `dashboard-process.ts`, `dashboard-server.ts`) |
 | `move` | `move.ts` | Transition a PR between states: attention, waiting, shelved, auto |
 | `shelve` / `unshelve` | `move.ts` (aliases) | Exclude PRs from capacity and actionable items |
 | `override` / `clear-override` | `move.ts` (aliases) | Backward-compatible status override commands |
@@ -138,8 +138,7 @@ The bundle is a single CommonJS file (gitignored, auto-generated). The `SessionS
 `StateManager` is a singleton that reads/writes `~/.oss-autopilot/state.json`. Features:
 - **Advisory file locking** (`wx` flag) with stale lock detection (30s timeout)
 - **Auto-backups** before every write (stored in `~/.oss-autopilot/backups/`)
-- **v1 → v2 migration** built into the load path
-- **Event log** — up to 1000 structured events tracking PRs tracked, merged, closed
+- **v1 → v2 → v3 migration chain** built into the load path
 
 ### PR Monitoring (`pr-monitor.ts`)
 
@@ -284,7 +283,7 @@ PRs are **not** stored in state. On every `daily` run, all open PRs are fetched 
 
 ```
 ~/.oss-autopilot/
-├── state.json            # AgentState (config, issues, scores, events)
+├── state.json            # AgentState (see state-schema.ts for fields)
 ├── backups/              # Auto-backups before each state write
 ├── cache/                # ETag-based HTTP response cache
 ├── gist-id               # Gist ID for cross-machine state sync (opt-in)
