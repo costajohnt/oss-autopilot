@@ -179,8 +179,16 @@ All commands return `{ success, data, error, timestamp }` with `--json`.
   <img src="https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg" alt="CI">
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/costajohnt/oss-autopilot/badges/.github/badges/tests.json" alt="Tests">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <img src="https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/node/v/@oss-autopilot/core" alt="Node.js">
+  <img src="https://img.shields.io/github/stars/costajohnt/oss-autopilot?style=flat" alt="Stars">
+  <img src="https://img.shields.io/github/last-commit/costajohnt/oss-autopilot" alt="Last Commit">
+</p>
+<p align="center">
   <a href="https://www.npmjs.com/package/@oss-autopilot/core"><img src="https://img.shields.io/npm/v/@oss-autopilot/core" alt="npm @oss-autopilot/core"></a>
+  <a href="https://www.npmjs.com/package/@oss-autopilot/core"><img src="https://img.shields.io/npm/dw/@oss-autopilot/core" alt="npm downloads core"></a>
   <a href="https://www.npmjs.com/package/@oss-autopilot/mcp"><img src="https://img.shields.io/npm/v/@oss-autopilot/mcp" alt="npm @oss-autopilot/mcp"></a>
+  <a href="https://www.npmjs.com/package/@oss-autopilot/mcp"><img src="https://img.shields.io/npm/dw/@oss-autopilot/mcp" alt="npm downloads mcp"></a>
 </p>
 
 ---
