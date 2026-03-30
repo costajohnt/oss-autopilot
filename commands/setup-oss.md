@@ -446,116 +446,7 @@ gh api user --jq '.login'
 
 **If this succeeds**, confirm the username matches and proceed.
 
-## Step 6: Create Directory Structure
-
-```bash
-mkdir -p .claude/oss-autopilot
-```
-
-### Rollback on Failure
-
-Track which files have been successfully created. If any step fails during file creation (Steps 7-8):
-1. **Do NOT set `setupComplete: true`** in the config
-2. Inform the user exactly which step failed:
-   > "Setup failed at [Step X: description]. Files created before this step are intact. Run `/setup-oss` again to retry."
-3. Leave partial files in place so user can inspect or manually fix
-
-The setup is only considered complete when ALL files are written successfully.
-
-## Step 7: Write Configuration
-
-Write the configuration to `.claude/oss-autopilot/config.md`:
-
-```markdown
----
-githubUsername: USERNAME
-maxActivePRs: NUMBER
-dormantDays: NUMBER
-approachingDormantDays: NUMBER
-languages:
-  - typescript
-  - javascript
-labels:
-  - good first issue
-  - help wanted
-scope: SCOPE_LIST_OR_EMPTY
-issueListPath: PATH_OR_EMPTY
-squashByDefault: true
-scoreThreshold: NUMBER
-githubAccess: gh|mcp
-setupComplete: true
-lastUpdated: YYYY-MM-DD
----
-
-# OSS Autopilot Configuration
-
-This file stores your OSS Autopilot preferences. Edit the YAML frontmatter above to change settings, or run `/setup-oss` again.
-
-## Current Settings
-
-- **GitHub Username**: @USERNAME
-- **Max Active PRs**: NUMBER
-- **Dormant Threshold**: NUMBER days
-- **Warning Threshold**: NUMBER days before dormant
-- **Languages**: list
-- **Issue Labels**: list
-- **Scope Tiers**: list or "None (custom labels only)"
-- **Issue List**: PATH or "Not configured"
-- **Squash PRs**: Yes (default) / No / Ask each time
-- **Score Threshold**: NUMBER/10
-- **GitHub Access**: gh CLI / MCP server
-```
-
-## Step 8: Initialize State Files
-
-Create empty state files:
-
-**tracked-prs.md:**
-```markdown
----
-lastUpdated: YYYY-MM-DD
----
-
-# Tracked Pull Requests
-
-| Repo | PR# | Title | Status | Last Activity | Needs Response |
-|------|-----|-------|--------|---------------|----------------|
-```
-
-**pr-history.md:**
-```markdown
----
-lastUpdated: YYYY-MM-DD
----
-
-# PR History
-
-## Merged PRs
-
-| Repo | PR# | Title | Merged Date |
-|------|-----|-------|-------------|
-
-## Closed PRs
-
-| Repo | PR# | Title | Closed Date | Reason |
-|------|-----|-------|-------------|--------|
-```
-
-**repo-scores.md:**
-```markdown
----
-lastUpdated: YYYY-MM-DD
----
-
-# Repository Scores
-
-Cache of repository evaluations for contribution decisions.
-
-| Repo | Score | Response Time | Merge Rate | Last Evaluated |
-|------|-------|---------------|------------|----------------|
-```
-
-## Step 9: Offer to Import Existing PRs
+## Step 6: Offer to Import Existing PRs
 
 Ask user:
 > "Would you like me to import your existing open PRs?"
@@ -575,7 +466,7 @@ Use `mcp__github__search_issues` with query `is:pr is:open author:USERNAME`
 
 Parse results and add each PR to tracked-prs.md.
 
-## Step 10: Confirmation
+## Step 7: Confirmation
 
 Show summary:
 
