@@ -83,43 +83,17 @@ describe('buildScoutState', () => {
     expect(result.savedResults).toEqual([]);
   });
 
-  it('should default excludeOrgs to [] when undefined in config', () => {
-    const state = makeAgentState({
-      config: {
-        excludeOrgs: undefined,
-      },
-    });
+  it.each([
+    ['excludeOrgs', 'excludeOrgs'],
+    ['preferredOrgs', 'preferredOrgs'],
+    ['projectCategories', 'projectCategories'],
+  ] as const)('should default %s to [] when undefined in config', (field) => {
+    const state = makeAgentState({ config: { [field]: undefined } });
     mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
 
     const result = buildScoutState();
 
-    expect(result.preferences.excludeOrgs).toEqual([]);
-  });
-
-  it('should default preferredOrgs to [] when undefined in config', () => {
-    const state = makeAgentState({
-      config: {
-        preferredOrgs: undefined,
-      },
-    });
-    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
-
-    const result = buildScoutState();
-
-    expect(result.preferences.preferredOrgs).toEqual([]);
-  });
-
-  it('should default projectCategories to [] when undefined in config', () => {
-    const state = makeAgentState({
-      config: {
-        projectCategories: undefined,
-      },
-    });
-    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
-
-    const result = buildScoutState();
-
-    expect(result.preferences.projectCategories).toEqual([]);
+    expect(result.preferences[field]).toEqual([]);
   });
 
   it('should correctly project mergedPRs to url, title, mergedAt', () => {
@@ -171,40 +145,18 @@ describe('buildScoutState', () => {
     });
   });
 
-  it('should handle empty mergedPRs array', () => {
-    const state = makeAgentState({ mergedPRs: [] });
+  it.each([
+    ['mergedPRs', [] as any[]],
+    ['mergedPRs', undefined],
+    ['closedPRs', [] as any[]],
+    ['closedPRs', undefined],
+  ] as const)('should return [] for %s when value is %j', (field, value) => {
+    const state = makeAgentState({ [field]: value });
     mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
 
     const result = buildScoutState();
 
-    expect(result.mergedPRs).toEqual([]);
-  });
-
-  it('should handle empty closedPRs array', () => {
-    const state = makeAgentState({ closedPRs: [] });
-    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
-
-    const result = buildScoutState();
-
-    expect(result.closedPRs).toEqual([]);
-  });
-
-  it('should handle undefined mergedPRs (treat as empty)', () => {
-    const state = makeAgentState({ mergedPRs: undefined });
-    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
-
-    const result = buildScoutState();
-
-    expect(result.mergedPRs).toEqual([]);
-  });
-
-  it('should handle undefined closedPRs (treat as empty)', () => {
-    const state = makeAgentState({ closedPRs: undefined });
-    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
-
-    const result = buildScoutState();
-
-    expect(result.closedPRs).toEqual([]);
+    expect(result[field]).toEqual([]);
   });
 
   it('should always set savedResults to an empty array', () => {
