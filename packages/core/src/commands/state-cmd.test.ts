@@ -57,11 +57,6 @@ beforeEach(() => {
 
 describe('runStateShow', () => {
   it('returns state data in gist mode', async () => {
-    const state = makeAgentState({
-      gistId: 'abc123',
-      config: { persistence: 'gist' },
-      lastRunAt: '2026-01-15T10:00:00Z',
-    });
     const sm = {
       ...makeStateManagerMock({
         state: { gistId: 'abc123', lastRunAt: '2026-01-15T10:00:00Z' },
