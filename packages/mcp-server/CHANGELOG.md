@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v3.1.0...mcp-v3.1.1) (2026-03-30)
+
+
+### Bug Fixes
+
+* update agents, add vet-list to MCP, map excludeOrgs ([#905](https://github.com/costajohnt/oss-autopilot/issues/905)) ([822bdea](https://github.com/costajohnt/oss-autopilot/commit/822bdea29d52bf1033f37242daf850fe680b4a82))
+
 ## [3.1.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v3.0.0...mcp-v3.1.0) (2026-03-27)
 
 
