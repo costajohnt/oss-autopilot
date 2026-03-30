@@ -82,7 +82,7 @@ OSS Autopilot monitors all your open PRs across GitHub, alerts you when maintain
 
 **Fresh-fetch architecture** — PRs aren't stored locally. Every run fetches live data from GitHub's Search API and enriches each PR with CI status, review decisions, merge conflict detection, maintainer comment classification, and checklist completion. No stale data, no sync bugs.
 
-**Security discipline** — State files written with `0o600` permissions, data directory created with `0o700`. Concurrent state write protection prevents corruption from parallel runs. Runtime schema validation via Zod on every state file read. Input validation hardened across CLI arguments and API responses.
+**Security discipline** — State files written with `0o600` permissions, data directory created with `0o700`. Concurrent state write protection prevents corruption from parallel runs. Runtime schema validation via Zod on every state file read. XSS prevention tested. Input validation hardened across CLI arguments and API responses.
 
 **Automated release pipeline** — Conventional commits feed into release-please for automatic versioning and changelogs, with CI/CD publishing to npm on merge. 72 releases from v0.1.0 to v1.11.0 in under 3 months of active development.
 
