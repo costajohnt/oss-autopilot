@@ -3,7 +3,9 @@ updates:
   - package-ecosystem: "npm"
     directories:
       - "/"
-      - "/packages/*"
+      - "/packages/core"
+      - "/packages/mcp-server"
+      - "/packages/dashboard"
     schedule:
       interval: "weekly"
     commit-message:

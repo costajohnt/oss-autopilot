@@ -18,6 +18,11 @@ data/
 # Registry tokens
 .mcpregistry_*
 
+# Environment files
+.env
+.env.*
+!.env.example
+
 # Logs
 *.log
 

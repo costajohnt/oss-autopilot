@@ -53,11 +53,8 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 | Command | Purpose |
 |---------|---------|
 | `search [n] --json` | Search for new issues (n = number of results, default 5) |
-| `search [n] --strategy <s> --json` | Search with specific strategy (merged, orgs, starred, broad, maintained, all) |
 | `vet <issue-url> --json` | Deep-vet a specific issue for suitability |
-| `results --json` | Show saved search results from the last search |
-| `results clear --json` | Clear saved search results |
-| `vet-list --json` | Re-vet all saved results for availability |
+| `vet-list --json` | Re-vet all available issues in curated issue list |
 | `vet-list --prune --json` | Re-vet and remove unavailable issues |
 | `status --json` | Get current stats, tracked PRs, and history |
 
@@ -70,29 +67,6 @@ Returns structured data including:
 - Repository context and health metrics
 - Viability scores (0-100) with scoring breakdown
 - Recommendations (approve, needs_review, skip)
-
-**Strategy-Specific Search:**
-```bash
-# Search only repos where the user has merged PRs
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" search 10 --strategy merged --json
-
-# Search only starred repos
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" search 10 --strategy starred --json
-
-# Search by language-based broad discovery
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" search 10 --strategy broad --json
-
-# Search by well-maintained project categories
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" search 10 --strategy maintained --json
-```
-
-Available strategies:
-- `merged` — Repos where the user has previously merged PRs (highest confidence)
-- `orgs` — Preferred organizations from config
-- `starred` — User's starred repos
-- `broad` — Language-based broad discovery across GitHub
-- `maintained` — Well-maintained project categories
-- `all` — Run all strategies (default)
 
 **Vet a Specific Issue:**
 ```bash
