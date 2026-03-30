@@ -3,36 +3,96 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg" alt="CI">
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/costajohnt/oss-autopilot/badges/.github/badges/tests.json" alt="Tests">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-  <a href="https://www.npmjs.com/package/@oss-autopilot/core"><img src="https://img.shields.io/npm/v/@oss-autopilot/core" alt="npm @oss-autopilot/core"></a>
-  <a href="https://www.npmjs.com/package/@oss-autopilot/mcp"><img src="https://img.shields.io/npm/v/@oss-autopilot/mcp" alt="npm @oss-autopilot/mcp"></a>
-  <img src="https://img.shields.io/badge/Claude_Code-Plugin-blueviolet" alt="Claude Code Plugin">
+  <em>An AI-powered workflow engine for managing open source contributions at scale — built as a Claude Code plugin, MCP server, and standalone CLI.</em>
 </p>
 
-You have 12 open PRs across GitHub. A maintainer asked a question 5 days ago. Two PRs have failing CI you haven't noticed. And you're about to open another one.
+---
 
-**Sound familiar?**
+**Built and used daily by [costajohnt](https://github.com/costajohnt)** — 3rd biggest contributor to [Ink](https://github.com/vadimdemedes/ink) (the React CLI framework behind Claude Code, Gemini CLI, and Codex — 32k+ stars) and repeat contributor to [Homebrew](https://github.com/Homebrew/homebrew-cask).
 
-OSS Autopilot is an AI copilot that tracks all your open source PRs, alerts you when something needs attention, and helps you respond to maintainer feedback so your contributions actually get merged.
+<p align="center">
+<a href="https://github.com/costajohnt/oss-autopilot">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://oss-widgets.vercel.app/api/card/costajohnt?theme=dark&minStars=50" />
+  <source media="(prefers-color-scheme: light)" srcset="https://oss-widgets.vercel.app/api/card/costajohnt?theme=light&minStars=50" />
+  <img alt="OSS Stats" src="https://oss-widgets.vercel.app/api/card/costajohnt?theme=dark&minStars=50" width="495" />
+</picture>
+</a>
+</p>
 
-## Quick Start
+<p align="center">
+<a href="https://github.com/costajohnt/oss-widgets">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://oss-widgets.vercel.app/api/top-repos/costajohnt?theme=dark&minStars=50" />
+  <source media="(prefers-color-scheme: light)" srcset="https://oss-widgets.vercel.app/api/top-repos/costajohnt?theme=light&minStars=50" />
+  <img alt="Top Contributed Repos" src="https://oss-widgets.vercel.app/api/top-repos/costajohnt?theme=dark&minStars=50" width="495" />
+</picture>
+</a>
+</p>
 
-```
-/plugin marketplace add costajohnt/oss-autopilot
-/plugin install oss-autopilot@oss-autopilot
-```
+---
 
-Restart Claude Code, run `/oss`. [Full install guide →](#install)
+## What It Does
+
+OSS Autopilot monitors all your open PRs across GitHub, alerts you when maintainers leave feedback, helps you draft responses, diagnoses CI failures, and finds new issues matched to your contribution history. It's the workflow engine behind the stats above.
 
 ![OSS Autopilot Demo](docs/images/demo.gif)
 
-## Install
+---
 
-### Claude Code Plugin (recommended)
+## Engineering Highlights
 
-**Prerequisites:** [Claude Code](https://claude.ai/claude-code), Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh auth login`)
+```
+┌──────────────────────────────────────────────────┐
+│  Claude Code Plugin Layer                        │
+│  /oss, /oss-search, /setup-oss, /oss-help        │
+│  7 specialized agents, contribution skills       │
+├──────────────────────────────────────────────────┤
+│                                                  │
+│  ┌──────────────┐  ┌──────────────────────────┐  │
+│  │ MCP Server   │  │ Interactive Dashboard     │  │
+│  │ @oss-auto-   │  │ @oss-autopilot/dashboard │  │
+│  │ pilot/mcp    │  │ Preact + Vite             │  │
+│  │              │  │ PR management, charts,    │  │
+│  │ 20 tools     │  │ actions                   │  │
+│  │ 5 resources  │  │                           │  │
+│  │ 3 prompts    │  │                           │  │
+│  └──────┬───────┘  └────────────┬─────────────┘  │
+│         │                       │                │
+│  ┌──────┴───────────────────────┴─────────────┐  │
+│  │ Core Library — @oss-autopilot/core         │  │
+│  │ PR monitoring, issue discovery, state mgmt │  │
+│  │ GitHub API, CLI, structured JSON output    │  │
+│  └────────────────────────────────────────────┘  │
+│                                                  │
+└──────────────────────────────────────────────────┘
+```
+
+**Monorepo with three npm packages** — pnpm workspaces with each package independently publishable to npm. Core library, MCP server, and interactive Preact dashboard with shared types.
+
+**Three deployment models** — Claude Code plugin with 7 specialized agents, MCP server for Cursor/Claude Desktop/Codex/Windsurf, and a standalone CLI with `--json` structured output. Same core, different interfaces.
+
+**Deterministic core, AI orchestration layer** — Critical logic (PR status classification, CI failure analysis, state management) lives in tested TypeScript, not in prompts. The CLI returns structured JSON that agents consume. CI failures are categorized into a deterministic taxonomy — actionable vs. fork limitation vs. auth gate vs. infrastructure — rather than asking an LLM each time. 1,762 tests validate the core independently of any LLM.
+
+**Production-grade GitHub API integration** — ETag-based HTTP caching, automatic rate limit backoff with retries, bounded concurrency pools, and paginated fetching. Handles the full complexity of fork-based contribution workflows: correct diff ranges, squash commit counting, and `--head` flag handling for cross-fork PRs. Designed to run daily without hitting API limits.
+
+**Human-in-the-loop guardrails** — Nothing is posted to GitHub without explicit approval. AI drafts responses but the contributor always reviews before sending. Pre-commit review gates catch issues before they reach maintainers. Factual claims in draft comments are verified against the actual diff before presenting to the user.
+
+**Modular extraction** — Issue discovery and vetting grew complex enough to extract into its own npm package ([oss-scout](https://github.com/costajohnt/oss-scout)). Connected via a bridge pattern that maps state between the two systems, following the same approach used by the broader ecosystem of extraction-and-reconnect patterns.
+
+**Fresh-fetch architecture** — PRs aren't stored locally. Every run fetches live data from GitHub's Search API and enriches each PR with CI status, review decisions, merge conflict detection, maintainer comment classification, and checklist completion. No stale data, no sync bugs.
+
+**Security discipline** — State files written with `0o600` permissions, data directory created with `0o700`. Concurrent state write protection prevents corruption from parallel runs. Runtime schema validation via Zod on every state file read. Input validation hardened across CLI arguments and API responses.
+
+**Automated release pipeline** — Conventional commits feed into release-please for automatic versioning and changelogs, with CI/CD publishing to npm on merge. 72 releases from v0.1.0 to v1.11.0 in under 3 months of active development.
+
+Every feature in the list above was driven by real usage — capacity warnings came from overcommitting, "skip comment when code speaks for itself" came from over-commenting, diminishing returns detection came from spending too long searching. The tool is shaped by the contributions it manages.
+
+---
+
+## Install & Usage
+
+**Claude Code Plugin (recommended):**
 
 ```
 /plugin marketplace add costajohnt/oss-autopilot
@@ -40,23 +100,6 @@ Restart Claude Code, run `/oss`. [Full install guide →](#install)
 ```
 
 Restart Claude Code, then run `/setup-oss`. Done.
-
-<details>
-<summary><strong>Optional:</strong> Enhanced code review with pr-review-toolkit</summary>
-
-The plugin includes a built-in **pre-commit-reviewer** agent that reviews all code changes before committing. For enhanced parallel review, install the **pr-review-toolkit** plugin (search for it in the Claude Code plugin marketplace) — it adds 5 specialized reviewers that run simultaneously:
-
-| Agent | Focus |
-|-------|-------|
-| `code-reviewer` | Bugs, logic errors, security, conventions |
-| `silent-failure-hunter` | Error handling gaps, swallowed errors |
-| `code-simplifier` | Dead code, unnecessary complexity |
-| `pr-test-analyzer` | Test coverage and assertion quality |
-| `comment-analyzer` | Comment accuracy and maintainability |
-
-**Without pr-review-toolkit:** The built-in pre-commit-reviewer handles all review phases as a single agent with the same fix-and-re-review loop. Everything works — you get one generalist reviewer instead of five specialists.
-
-</details>
 
 <details>
 <summary><strong>MCP Server</strong> (Cursor, Claude Desktop, Codex, Windsurf)</summary>
@@ -110,134 +153,61 @@ All commands return `{ success, data, error, timestamp }` with `--json`.
 
 </details>
 
+**Daily workflow (5 min):**
+
+1. Run `/oss` to see what needs attention
+2. Work through critical issues (CI failures, maintainer comments, conflicts)
+3. Done for now
+
+**Commands:** `/oss` (daily check), `/oss-search` (find issues), `/setup-oss` (configure), `/oss-help` (reference)
+
 ---
 
-## What It Does
+## By the Numbers
 
-### PR Monitoring
+| Metric | Value |
+|--------|-------|
+| Releases | 72 |
+| Tests | 1,762 across 62 files |
+| Issues + PRs | 912+ |
+| Time span | Jan 2026 → present |
+| npm packages | 3 |
+| CLI commands | 26 |
+| Agents | 7 |
 
-Claude checks every open PR you have across all of GitHub and tells you what needs your attention:
+<p align="center">
+  <img src="https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/costajohnt/oss-autopilot/badges/.github/badges/tests.json" alt="Tests">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <a href="https://www.npmjs.com/package/@oss-autopilot/core"><img src="https://img.shields.io/npm/v/@oss-autopilot/core" alt="npm @oss-autopilot/core"></a>
+  <a href="https://www.npmjs.com/package/@oss-autopilot/mcp"><img src="https://img.shields.io/npm/v/@oss-autopilot/mcp" alt="npm @oss-autopilot/mcp"></a>
+</p>
 
-```
-15 Active PRs | 2 need attention | Dashboard opened in browser
+---
 
-2 PRs Need Attention (in priority order):
+## Everything Else
 
-1. [Needs Response] vadimdemedes/ink#855 - Add kitty keyboard support (3d)
-   maintainer: tests requested
-   Effort: Medium - respond + add tests
-
-2. [CI Failing] rubyforgood/human-essentials#5492 - Add item filter (1d)
-   Failing: rspec, lint
-   Effort: Medium - investigate CI logs
-
-What would you like to do?
-  > Work through all 2 issues (Recommended)
-  > Search for new issues
-  > Done for now
-```
-
-Then Claude walks you through each issue: drafting responses, diagnosing CI failures, resolving conflicts, until everything is handled.
-
-### Issue Discovery
-
-Select "Search for new issues" and the issue scout finds opportunities matched to your history — not just random "good first issue" results:
-
-```
-Found 8 candidates across 6 repos
-
-From repos where you've merged PRs
--
-1. expressjs/express#6012 — Add timeout option to res.download()
-   Labels: feature, good first issue
-   Score: 92/100 — You merged 2 PRs here, clear requirements, active repo
-   unclaimed · no linked PRs · last commit 2 days ago
-
-2. chalk/chalk#642 — Support NO_COLOR in browser builds
-   Labels: enhancement
-   Score: 85/100 — You merged 1 PR here, repo has 7-day merge time
-   unclaimed · no linked PRs · CONTRIBUTING.md found
-
-From your starred repos
--
-3. sindresorhus/execa#831 — Add encoding option to execaNode
-   Labels: good first issue, help wanted
-   Score: 78/100 — High-quality repo, clear requirements, recent activity
-   unclaimed · no linked PRs · last commit 5 days ago
-
-Skipped (not worth your time)
--
-fake-oss/calculator — Label farming detected (6 beginner labels)
-inactive/legacy-app — No commits in 90+ days
-contested/router#44 — Already claimed by @other-dev 2 days ago
-```
-
-Each issue gets a **viability score (0-100)** based on your relationship with the repo, issue clarity, project health, and whether someone else has already claimed it. Repos where your PRs got merged are prioritized first — that's where you have the highest chance of getting another PR accepted.
-
-### Interactive Dashboard
+<details>
+<summary><strong>Interactive Dashboard</strong></summary>
 
 ![dashboard-demo](https://github.com/user-attachments/assets/680ce6d6-8192-499a-b85e-f2686319b961)
 
 The dashboard auto-opens at `http://localhost:3000` when you run `/oss`. It's a Preact SPA you can also launch standalone with `npx @oss-autopilot/core dashboard serve`.
 
-**At a glance:**
 - Stats bar with active, shelved, merged, and closed PR counts plus merge rate
 - Status doughnut, repository breakdown, and contribution timeline charts
 - Filter and search across all PRs
-
-**Manage your PRs:**
-- PRs are grouped into **Need Attention**, **Waiting on Others**, and **Shelved** sections
+- PRs grouped into **Need Attention**, **Waiting on Others**, and **Shelved** sections
 - Click any PR for a detail panel showing CI status, failing check classification, review decision, maintainer comments, and checklist progress
 - **Shelve/Unshelve** — temporarily hide PRs you're not actively working on
 - **Move to Waiting / Move to Need Attention** — override the auto-detected status when you know better
 
 All actions persist to `~/.oss-autopilot/state.json`.
 
-### Putting It Together
+</details>
 
-A typical contribution lifecycle:
-
-**Day 1 — Find and build.** Search for issues, pick a high-scoring one from a repo where you've merged before. Implement the fix, run the review-fix convergence loop (lint, test, review agents, fix, repeat until clean), and open a draft PR that references the issue. The PR itself is the claim — no need to comment "I'm working on this" first.
-
-**Day 2 — Respond.** `/oss` shows the maintainer requested changes 12 hours ago. The PR responder reads the feedback, fetches code context, and — if the diff addresses it — skips the comment (code speaks for itself). If the maintainer asked a question, it drafts a reply with every claim verified against the actual diff.
-
-**Day 5 — Merged.** Your repo relationship score improves, and better-matched issues surface next time you search.
-
----
-
-## Key Capabilities
-
-- **Monitors all your PRs** — comments, CI failures, merge conflicts, incomplete checklists, maintainer requests
-- **Excludes private repos** — filters out private repos and orgs so you only see OSS contributions
-- **Drafts responses** — reads maintainer feedback and writes a reply for your review, with every claim verified against the actual diff
-- **Smart comment decisions** — defaults to skipping comments when the code speaks for itself; only drafts when it adds info the diff can't convey
-- **Finds issues matched to you** — prioritizes repos where you've merged PRs, scores every issue 0-100
-- **Work-first approach** — implements before claiming; the PR is the claim, no unnecessary "I'm working on this" comments
-- **Review-fix convergence loop** — mandatory lint, test, and review cycle before any PR is declared ready
-- **Scores repositories** — evaluates merge rate, review speed, maintainer responsiveness
-- **Interactive dashboard** — manage PRs visually, shelve/unshelve, override statuses, track stats over time
-- **Never acts without you** — nothing is posted to GitHub without your explicit approval
-
----
-
-## Usage
-
-### Daily Workflow (5 min)
-
-1. Run `/oss` to see what needs attention
-2. Work through critical issues (CI failures, maintainer comments, conflicts)
-3. Done for now
-
-### Responding to Feedback (10 min)
-
-1. Run `/oss` to see PRs with new comments
-2. Select a PR that needs a response
-3. Claude reads the feedback and drafts a response for your review
-4. Post it after reviewing
-
-**Commands:** `/oss` (daily check), `/oss-search` (find issues), `/setup-oss` (configure), `/oss-help` (reference)
-
-### Specialized Agents
+<details>
+<summary><strong>Specialized Agents</strong></summary>
 
 Claude automatically dispatches these based on context:
 
@@ -253,11 +223,10 @@ Claude automatically dispatches these based on context:
 
 *Agents are available in the Claude Code plugin. MCP and CLI users access the same capabilities through tools and commands.*
 
----
+</details>
 
-## Contribution Stats & Badges
-
-### View Your Stats
+<details>
+<summary><strong>Contribution Stats & Badges</strong></summary>
 
 ```bash
 oss-autopilot stats              # Terminal output
@@ -266,49 +235,18 @@ oss-autopilot stats --markdown   # Shareable markdown report
 oss-autopilot stats --badge      # Shields.io endpoint JSON
 ```
 
-### Add a Badge to Your GitHub Profile
-
-Show off your open source contributions with a live badge on your GitHub profile README:
+Add a live badge to your GitHub profile README:
 
 ```markdown
 ![OSS Contributions](https://img.shields.io/endpoint?url=https://oss-widgets.vercel.app/api/badge/YOUR_USERNAME)
 ```
 
-The badge updates hourly and shows your merge rate, total merged PRs, and active PR count. Only counts PRs to external repos (excludes your own) with 50+ stars by default.
+Embed rich SVG widgets powered by [oss-widgets](https://github.com/costajohnt/oss-widgets) — stats card, recent contributions, and 26-week activity graph. All update hourly and support `?theme=dark`.
 
-Customize the minimum star threshold with `?minStars=100` (URL-encode the inner URL):
+</details>
 
-```markdown
-![OSS Contributions](https://img.shields.io/endpoint?url=https%3A%2F%2Foss-widgets.vercel.app%2Fapi%2Fbadge%2FYOUR_USERNAME%3FminStars%3D100)
-```
-
-### Profile Widgets
-
-Embed live SVG widgets in your GitHub profile README for a richer contribution showcase. Powered by [oss-widgets](https://github.com/costajohnt/oss-widgets). All widgets update hourly and support `?theme=dark`.
-
-**Stats Card** — merged count, merge rate, repo count, streak:
-
-```markdown
-[![OSS Contributions](https://oss-widgets.vercel.app/api/card/YOUR_USERNAME)](https://github.com/costajohnt/oss-autopilot)
-```
-
-**Recent Contributions** — your five most recently merged PRs:
-
-```markdown
-![Recent](https://oss-widgets.vercel.app/api/recent/YOUR_USERNAME)
-```
-
-**Activity Graph** — 26-week contribution heatmap:
-
-```markdown
-![Activity](https://oss-widgets.vercel.app/api/activity/YOUR_USERNAME)
-```
-
-Add `?theme=dark` to any URL for a dark background to match dark-mode profiles.
-
----
-
-## Configuration
+<details>
+<summary><strong>Configuration</strong></summary>
 
 Configuration is stored in `~/.oss-autopilot/state.json` (inside the `config` field). Run `/setup-oss` to configure interactively, or use `setup --set key=value` from the CLI:
 
@@ -317,112 +255,65 @@ Configuration is stored in `~/.oss-autopilot/state.json` (inside the `config` fi
 | `githubUsername` | (detected) | Your GitHub username |
 | `maxActivePRs` | 10 | Capacity limit before suggesting focus |
 | `dormantDays` | 30 | Days until PR marked dormant |
-| `approachingDormantDays` | 25 | Days until dormancy warning |
 | `minStars` | 50 | Minimum repo stars for inclusion in stats and charts |
 | `languages` | (chosen at setup) | Languages to filter issue search |
 | `labels` | (chosen at setup) | Issue labels to search for |
-| `showHealthCheck` | (optional) | Show PR health notification on session start |
 | `squashByDefault` | `true` | Squash commits before merging (`true`, `false`, or `"ask"`) |
-| `excludeRepos` | `[]` | Repos to exclude from all tracking (PRs, issues, stats) |
+| `excludeRepos` | `[]` | Repos to exclude from all tracking |
 | `excludeOrgs` | `[]` | Orgs to exclude from all tracking (e.g., private work orgs) |
 | `includeDocIssues` | `true` | Include documentation issues in discovery |
 | `issueListPath` | (optional) | Path to curated issue list file |
 | `projectCategories` | `[]` | Project categories to prioritize (nonprofit, devtools, etc.) |
 | `preferredOrgs` | `[]` | GitHub organizations to prioritize |
 
-PR tracking state, shelved PRs, dismissed issues, and event history are also stored in `~/.oss-autopilot/state.json`.
+</details>
 
-### Curated Issue List
+<details>
+<summary><strong>FAQ & Troubleshooting</strong></summary>
 
-You can maintain a markdown file of pre-researched issues. Set the path during `/setup-oss` or via `setup --set issueListPath=PATH`. The parser recognizes:
+**Does Claude post comments or push code automatically?**
+No. Claude drafts responses and suggests actions. Nothing is posted to GitHub without your explicit approval.
 
-- **GitHub URLs** in list items (issues or PRs)
-- **Section headings** (`#`, `##`, `###`) as tier labels
-- **Checkboxes** (`[x]`), **strikethrough** (`~~text~~`), or the word **Done** to mark completed items
+**Where is my data stored?**
+All data lives in `~/.oss-autopilot/` — configuration, PR tracking state, event history, and HTTP cache. The dashboard runs locally at `http://localhost:3000`. Nothing is sent to external servers beyond GitHub API calls.
 
-Example file:
+**Can I use this without Claude Code?**
+Yes. The MCP server (`npx @oss-autopilot/mcp`) works with Cursor, Claude Desktop, Codex, Windsurf, and any MCP client. The CLI (`npx @oss-autopilot/core daily --json`) runs standalone. The Claude Code plugin provides the best experience with specialized agents and skills, but all core functionality is available through any path.
 
-```markdown
-## Pursue (High Priority)
-- https://github.com/facebook/react/issues/12345 — Fix useEffect cleanup order
-- https://github.com/vercel/next.js/issues/67890 — Add streaming support for app router
+**How do I update?**
+Plugin: `/plugin update oss-autopilot`. MCP server / CLI: uses `npx @latest` by default, so you always get the latest. Your configuration is preserved across updates. See the [Changelog](packages/core/CHANGELOG.md) for what's new.
 
-## Maybe (Worth Investigating)
-- https://github.com/expressjs/express/issues/111 — Update error handling docs
+**Any tips for getting started?**
+Set `maxActivePRs` to 3-5 when starting out. Fewer active PRs with fast responses beats many stale ones. Run `/oss` every few days — stale PRs are hard to revive.
 
-## Completed
-- [x] https://github.com/nodejs/node/issues/222 — Fix stream backpressure (Done)
-- ~~https://github.com/vitejs/vite/issues/333 — HMR race condition~~
+**GitHub CLI authentication errors:**
+
+```bash
+brew install gh    # macOS
+gh auth login
 ```
 
-The `/oss-search` command can add vetted issues to this file automatically.
+**Build fails on first run:**
 
----
+```bash
+# Find your plugin directory
+find ~/.claude/plugins -name "oss-autopilot" -type d
 
-## How It Works
-
-OSS Autopilot is a **pnpm monorepo** with three packages, plus a plugin layer:
-
-```
-┌──────────────────────────────────────────────────┐
-│  Claude Code Plugin Layer                        │
-│  /oss, /oss-search, /setup-oss, /oss-help        │
-│  7 specialized agents, contribution skills       │
-├──────────────────────────────────────────────────┤
-│                                                  │
-│  ┌──────────────┐  ┌──────────────────────────┐  │
-│  │ MCP Server   │  │ Interactive Dashboard     │  │
-│  │ @oss-auto-   │  │ @oss-autopilot/dashboard │  │
-│  │ pilot/mcp    │  │ Preact + Vite             │  │
-│  │              │  │ PR management, charts,    │  │
-│  │ 20 tools     │  │ actions                   │  │
-│  │ 5 resources  │  │                           │  │
-│  │ 3 prompts    │  │                           │  │
-│  └──────┬───────┘  └────────────┬─────────────┘  │
-│         │                       │                │
-│  ┌──────┴───────────────────────┴─────────────┐  │
-│  │ Core Library — @oss-autopilot/core         │  │
-│  │ PR monitoring, issue discovery, state mgmt │  │
-│  │ GitHub API, CLI, structured JSON output    │  │
-│  └────────────────────────────────────────────┘  │
-│                                                  │
-└──────────────────────────────────────────────────┘
+# Rebuild
+cd <path-from-find-command>/packages/core
+npm install
+npm run bundle
 ```
 
-| Package | npm | Description |
-|---------|-----|-------------|
-| `@oss-autopilot/core` | [![npm](https://img.shields.io/npm/v/@oss-autopilot/core)](https://www.npmjs.com/package/@oss-autopilot/core) | Core library + CLI. PR monitoring, issue discovery, state management, GitHub API. |
-| `@oss-autopilot/mcp` | [![npm](https://img.shields.io/npm/v/@oss-autopilot/mcp)](https://www.npmjs.com/package/@oss-autopilot/mcp) | MCP server for Cursor, Claude Desktop, Codex, Windsurf, and any MCP client. |
-| `@oss-autopilot/dashboard` | — | Interactive Preact SPA — PR management, charts, and contribution stats. |
+**PRs not showing up:**
+- Run `/setup-oss` to ensure your GitHub username is configured
+- Check that `gh auth status` shows you're authenticated
+- The plugin only tracks PRs you authored
 
-### MCP Server
+</details>
 
-The MCP server exposes core CLI commands as MCP tools, making OSS Autopilot available to any MCP-compatible client:
-
-| Feature | What's exposed |
-|---------|---------------|
-| **20 tools** | `daily`, `status`, `search`, `vet`, `track`, `untrack`, `read`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move` |
-| **5 resources** | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}` |
-| **3 prompts** | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues) |
-
-Supports both **stdio** (default) and **HTTP/SSE** (`--http --port 3001`) transports.
-
----
-
-## Updating
-
-**Plugin:**
-```
-/plugin update oss-autopilot
-```
-
-**MCP server / CLI:** Uses `npx @latest` by default, so you always get the latest version. Or pin a version in your config.
-
-Your configuration is preserved across updates. See the [Changelog](packages/core/CHANGELOG.md) for what's new.
-
----
-
-## Development
+<details>
+<summary><strong>Development</strong></summary>
 
 ```bash
 git clone https://github.com/costajohnt/oss-autopilot.git
@@ -433,7 +324,7 @@ pnpm start -- daily --json   # Run CLI via tsx (no bundle needed)
 pnpm run bundle              # Rebuild CLI bundle (esbuild)
 ```
 
-### Project Structure
+**Project structure:**
 
 ```
 ├── commands/                    # Plugin slash commands (/oss, /oss-search, /setup-oss, /oss-help)
@@ -458,108 +349,36 @@ Test as a local plugin:
 claude --plugin-dir ./oss-autopilot
 ```
 
+</details>
+
 <details>
-<summary>Hooks</summary>
+<summary><strong>Enhanced Code Review (optional)</strong></summary>
 
-**Git hooks** (via `simple-git-hooks`):
+The plugin includes a built-in **pre-commit-reviewer** agent that reviews all code changes before committing. For enhanced parallel review, install the **pr-review-toolkit** plugin (search for it in the Claude Code plugin marketplace) — it adds 5 specialized reviewers that run simultaneously:
 
-| Hook | What it runs |
-|------|-------------|
-| `pre-commit` | `pnpm format:check` — blocks commits with formatting issues |
-| `commit-msg` | `scripts/commit-msg.sh` — enforces conventional commit format |
+| Agent | Focus |
+|-------|-------|
+| `code-reviewer` | Bugs, logic errors, security, conventions |
+| `silent-failure-hunter` | Error handling gaps, swallowed errors |
+| `code-simplifier` | Dead code, unnecessary complexity |
+| `pr-test-analyzer` | Test coverage and assertion quality |
+| `comment-analyzer` | Comment accuracy and maintainability |
 
-**Claude Code hooks** (`.claude/hooks/`, PreToolUse on Bash):
-
-| Hook | What it blocks |
-|------|----------------|
-| `check-versions.sh` | Commits when `package.json` and `plugin.json` versions don't match |
-| `no-ai-attribution.sh` | Commits containing AI attribution phrases |
-| `no-commit-on-main.sh` | Direct commits to `main` or `master` |
-| `conventional-commits.sh` | Commit messages without `feat:`/`fix:`/`chore:` prefix |
+Without pr-review-toolkit, the built-in pre-commit-reviewer handles all review phases as a single agent with the same fix-and-re-review loop.
 
 </details>
 
 ---
-
-## FAQ & Troubleshooting
-
-**Does Claude post comments or push code automatically?**
-No. Claude drafts responses and suggests actions. Nothing is posted to GitHub without your explicit approval.
-
-**Where is my data stored?**
-All data lives in `~/.oss-autopilot/` — configuration, PR tracking state, event history, and HTTP cache. The dashboard runs locally at `http://localhost:3000`. Nothing is sent to external servers beyond GitHub API calls to fetch your PR data.
-
-**Does it work with private repos?**
-Yes, as long as your GitHub CLI (`gh`) has access.
-
-**Can I use this without Claude Code?**
-Yes. The **MCP server** (`npx @oss-autopilot/mcp`) works with Cursor, Claude Desktop, Codex, Windsurf, and any MCP client. The **CLI** (`npx @oss-autopilot/core daily --json`) runs standalone. The **npm package** (`@oss-autopilot/core`) can be imported programmatically. The Claude Code plugin provides the best experience with specialized agents and skills, but all core functionality is available through any path.
-
-**Any tips for getting started?**
-Set `maxActivePRs` to 3-5 when starting out. Fewer active PRs with fast responses beats many stale ones. Run `/oss` every few days — stale PRs are hard to revive.
-
-**GitLab / Gitea / Bitbucket support?**
-Not yet — see [Limitations](#limitations) below.
-
-<details>
-<summary>GitHub CLI authentication errors</summary>
-
-```
-Error: gh: command not found
-```
-
-Install [GitHub CLI](https://cli.github.com/) and authenticate:
-
-```bash
-brew install gh    # macOS
-gh auth login
-```
-</details>
-
-<details>
-<summary>Build fails on first run</summary>
-
-The CLI bundles automatically on first use. If it fails:
-
-```bash
-# Find your plugin directory
-find ~/.claude/plugins -name "oss-autopilot" -type d
-
-# Rebuild
-cd <path-from-find-command>/packages/core
-npm install
-npm run bundle
-```
-</details>
-
-<details>
-<summary>Dashboard doesn't open</summary>
-
-The interactive dashboard runs at `http://localhost:3000`. If it doesn't open automatically, try launching it manually with `npx @oss-autopilot/core dashboard serve`, then open `http://localhost:3000` in your browser.
-</details>
-
-<details>
-<summary>PRs not showing up</summary>
-
-- Run `/setup-oss` to ensure your GitHub username is configured
-- Check that `gh auth status` shows you're authenticated
-- The plugin only tracks PRs you authored
-</details>
 
 ## Limitations
 
 - **GitHub only** — GitLab, Bitbucket, and other forges are not supported. Contributions welcome.
-- **1,000 PR cap** — GitHub's Search API returns at most 1,000 results per query. If you have more than 1,000 open, merged, or closed PRs, the oldest results from each search may be truncated.
-- **Rate limiting** — The CLI automatically backs off on GitHub rate limits (with up to 2 retries) and secondary rate limits (1 retry), but sustained heavy use can exhaust these retries. If this happens, wait a few minutes and retry.
+- **1,000 PR cap** — GitHub's Search API returns at most 1,000 results per query. If you have more than 1,000 open, merged, or closed PRs, the oldest results may be truncated.
 - **Individual contributor focus** — Designed for solo contributors managing their own PRs. No team dashboards, shared state, or multi-user workflows.
-
----
 
 ## API Documentation
 
 Full API documentation for `@oss-autopilot/core` is available at [jcosta.tech/oss-autopilot](https://jcosta.tech/oss-autopilot/).
-
----
 
 ## Contributing
 
