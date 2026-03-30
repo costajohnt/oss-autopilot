@@ -63,7 +63,10 @@ describe('runStateShow', () => {
       lastRunAt: '2026-01-15T10:00:00Z',
     });
     const sm = {
-      ...makeStateManagerMock({ state: { gistId: 'abc123', lastRunAt: '2026-01-15T10:00:00Z' }, config: { persistence: 'gist' } }),
+      ...makeStateManagerMock({
+        state: { gistId: 'abc123', lastRunAt: '2026-01-15T10:00:00Z' },
+        config: { persistence: 'gist' },
+      }),
       isGistDegraded: vi.fn().mockReturnValue(false),
     };
     mockGetStateManager.mockReturnValue(sm as any);
@@ -110,7 +113,7 @@ describe('runStateShow', () => {
       isGistDegraded: vi.fn().mockReturnValue(false),
     };
     // Patch getState to return a state with no lastRunAt
-    sm.getState = () => ({ ...makeAgentState(), lastRunAt: undefined } as any);
+    sm.getState = () => ({ ...makeAgentState(), lastRunAt: undefined }) as any;
     mockGetStateManager.mockReturnValue(sm as any);
 
     const result = await runStateShow();
@@ -211,11 +214,7 @@ describe('runStateUnlink', () => {
 
     expect(mockRefreshFromGist).toHaveBeenCalledOnce();
     expect(mockAtomicWriteFileSync).toHaveBeenCalledOnce();
-    expect(mockAtomicWriteFileSync).toHaveBeenCalledWith(
-      STATE_PATH,
-      expect.any(String),
-      0o600,
-    );
+    expect(mockAtomicWriteFileSync).toHaveBeenCalledWith(STATE_PATH, expect.any(String), 0o600);
     // Written state should not have gistId and should have persistence: 'local'
     const writtenJson = JSON.parse(mockAtomicWriteFileSync.mock.calls[0][1] as string);
     expect(writtenJson.gistId).toBeUndefined();
