@@ -6,6 +6,21 @@
   <em>An AI-powered workflow engine for managing open source contributions at scale — built as a Claude Code plugin, MCP server, and standalone CLI.</em>
 </p>
 
+<p align="center">
+  <img src="https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <img src="https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/node/v/@oss-autopilot/core" alt="Node.js">
+  <img src="https://img.shields.io/github/stars/costajohnt/oss-autopilot?style=flat" alt="Stars">
+  <img src="https://img.shields.io/github/last-commit/costajohnt/oss-autopilot" alt="Last Commit">
+</p>
+<p align="center">
+  <a href="https://www.npmjs.com/package/@oss-autopilot/core"><img src="https://img.shields.io/npm/v/@oss-autopilot/core" alt="npm @oss-autopilot/core"></a>
+  <a href="https://www.npmjs.com/package/@oss-autopilot/core"><img src="https://img.shields.io/npm/dw/@oss-autopilot/core" alt="npm downloads core"></a>
+  <a href="https://www.npmjs.com/package/@oss-autopilot/mcp"><img src="https://img.shields.io/npm/v/@oss-autopilot/mcp" alt="npm @oss-autopilot/mcp"></a>
+  <a href="https://www.npmjs.com/package/@oss-autopilot/mcp"><img src="https://img.shields.io/npm/dw/@oss-autopilot/mcp" alt="npm downloads mcp"></a>
+</p>
+
 ---
 
 **Built and used daily by [costajohnt](https://github.com/costajohnt)** — 3rd biggest contributor to [Ink](https://github.com/vadimdemedes/ink) (the React CLI framework behind Claude Code, Gemini CLI, and Codex — 32k+ stars) and repeat contributor to [Homebrew](https://github.com/Homebrew/homebrew-cask).
@@ -37,6 +52,12 @@
 OSS Autopilot monitors all your open PRs across GitHub, alerts you when maintainers leave feedback, helps you draft responses, diagnoses CI failures, and finds new issues matched to your contribution history. It's the workflow engine behind the stats above.
 
 ![OSS Autopilot Demo](docs/images/demo.gif)
+
+### Interactive Dashboard
+
+![dashboard-demo](https://github.com/user-attachments/assets/680ce6d6-8192-499a-b85e-f2686319b961)
+
+A Preact SPA that auto-opens when you run `/oss` — PR management, charts, contribution stats, and status overrides. Also available standalone: `npx @oss-autopilot/core dashboard serve`.
 
 ---
 
@@ -175,44 +196,9 @@ All commands return `{ success, data, error, timestamp }` with `--json`.
 | CLI commands | 30+ |
 | Agents | 7 |
 
-<p align="center">
-  <img src="https://github.com/costajohnt/oss-autopilot/actions/workflows/ci.yml/badge.svg" alt="CI">
-  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/costajohnt/oss-autopilot/badges/.github/badges/tests.json" alt="Tests">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-  <img src="https://img.shields.io/badge/TypeScript-strict-blue?logo=typescript&logoColor=white" alt="TypeScript">
-  <img src="https://img.shields.io/node/v/@oss-autopilot/core" alt="Node.js">
-  <img src="https://img.shields.io/github/stars/costajohnt/oss-autopilot?style=flat" alt="Stars">
-  <img src="https://img.shields.io/github/last-commit/costajohnt/oss-autopilot" alt="Last Commit">
-</p>
-<p align="center">
-  <a href="https://www.npmjs.com/package/@oss-autopilot/core"><img src="https://img.shields.io/npm/v/@oss-autopilot/core" alt="npm @oss-autopilot/core"></a>
-  <a href="https://www.npmjs.com/package/@oss-autopilot/core"><img src="https://img.shields.io/npm/dw/@oss-autopilot/core" alt="npm downloads core"></a>
-  <a href="https://www.npmjs.com/package/@oss-autopilot/mcp"><img src="https://img.shields.io/npm/v/@oss-autopilot/mcp" alt="npm @oss-autopilot/mcp"></a>
-  <a href="https://www.npmjs.com/package/@oss-autopilot/mcp"><img src="https://img.shields.io/npm/dw/@oss-autopilot/mcp" alt="npm downloads mcp"></a>
-</p>
-
 ---
 
 ## Everything Else
-
-<details>
-<summary><strong>Interactive Dashboard</strong></summary>
-
-![dashboard-demo](https://github.com/user-attachments/assets/680ce6d6-8192-499a-b85e-f2686319b961)
-
-The dashboard auto-opens at `http://localhost:3000` when you run `/oss`. It's a Preact SPA you can also launch standalone with `npx @oss-autopilot/core dashboard serve`.
-
-- Stats bar with active, shelved, merged, and closed PR counts plus merge rate
-- Status doughnut, repository breakdown, and contribution timeline charts
-- Filter and search across all PRs
-- PRs grouped into **Need Attention**, **Waiting on Others**, and **Shelved** sections
-- Click any PR for a detail panel showing CI status, failing check classification, review decision, maintainer comments, and checklist progress
-- **Shelve/Unshelve** — temporarily hide PRs you're not actively working on
-- **Move to Waiting / Move to Need Attention** — override the auto-detected status when you know better
-
-All actions persist to `~/.oss-autopilot/state.json`.
-
-</details>
 
 <details>
 <summary><strong>Specialized Agents</strong></summary>
