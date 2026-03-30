@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.11.0...core-v1.12.0) (2026-03-30)
+
+
+### Features
+
+* replace search engine with @oss-scout/core dependency ([#902](https://github.com/costajohnt/oss-autopilot/issues/902)) ([3e62090](https://github.com/costajohnt/oss-autopilot/commit/3e62090918195ad0c7d68689cca2b539c0772ae5))
+
+
+### Bug Fixes
+
+* update agents, add vet-list to MCP, map excludeOrgs ([#905](https://github.com/costajohnt/oss-autopilot/issues/905)) ([822bdea](https://github.com/costajohnt/oss-autopilot/commit/822bdea29d52bf1033f37242daf850fe680b4a82))
+
 ## [1.11.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.10.0...core-v1.11.0) (2026-03-27)
 
 
