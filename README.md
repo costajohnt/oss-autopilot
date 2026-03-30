@@ -54,7 +54,7 @@ OSS Autopilot monitors all your open PRs across GitHub, alerts you when maintain
 │  │ @oss-auto-   │  │ @oss-autopilot/dashboard │  │
 │  │ pilot/mcp    │  │ Preact + Vite             │  │
 │  │              │  │ PR management, charts,    │  │
-│  │ 20 tools     │  │ actions                   │  │
+│  │ 25 tools     │  │ actions                   │  │
 │  │ 5 resources  │  │                           │  │
 │  │ 3 prompts    │  │                           │  │
 │  └──────┬───────┘  └────────────┬─────────────┘  │
@@ -84,7 +84,7 @@ OSS Autopilot monitors all your open PRs across GitHub, alerts you when maintain
 
 **Security discipline** — State files written with `0o600` permissions, data directory created with `0o700`. Concurrent state write protection prevents corruption from parallel runs. Runtime schema validation via Zod on every state file read. XSS prevention tested. Input validation hardened across CLI arguments and API responses.
 
-**Automated release pipeline** — Conventional commits feed into release-please for automatic versioning and changelogs, with CI/CD publishing to npm on merge. 72 releases from v0.1.0 to v1.11.0 in under 3 months of active development.
+**Automated release pipeline** — Conventional commits feed into release-please for automatic versioning and changelogs, with CI/CD publishing to npm on merge. 70+ published releases since March 2026, with 150+ changelog versions spanning the full v0.1.0 → v1.11.0 history.
 
 Every feature in the list above was driven by real usage — capacity warnings came from overcommitting, "skip comment when code speaks for itself" came from over-commenting, diminishing returns detection came from spending too long searching. The tool is shaped by the contributions it manages.
 
@@ -123,7 +123,7 @@ Then add to your MCP client config:
 }
 ```
 
-The MCP server exposes 20 tools, 5 resources, and 3 prompts — the full OSS Autopilot feature set.
+The MCP server exposes 25 tools, 5 resources, and 3 prompts — the full OSS Autopilot feature set.
 
 </details>
 
@@ -167,12 +167,12 @@ All commands return `{ success, data, error, timestamp }` with `--json`.
 
 | Metric | Value |
 |--------|-------|
-| Releases | 72 |
+| Releases | 70+ published (150+ changelog versions, v0.1.0 → v1.11.0) |
 | Tests | 1,762 across 62 files |
 | Issues + PRs | 912+ |
 | Time span | Jan 2026 → present |
 | npm packages | 3 |
-| CLI commands | 26 |
+| CLI commands | 30+ |
 | Agents | 7 |
 
 <p align="center">
