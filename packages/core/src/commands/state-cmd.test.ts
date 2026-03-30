@@ -18,6 +18,13 @@ vi.mock('../core/utils.js', () => ({
   getGistIdPath: vi.fn(),
 }));
 
+vi.mock('../core/logger.js', () => ({
+  warn: vi.fn(),
+  debug: vi.fn(),
+  info: vi.fn(),
+  timed: vi.fn(),
+}));
+
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
   return {
@@ -30,6 +37,7 @@ vi.mock('fs', async () => {
 import { getStateManager, resetStateManager } from '../core/state.js';
 import { atomicWriteFileSync } from '../core/state-persistence.js';
 import { getStatePath, getGistIdPath } from '../core/utils.js';
+import { warn } from '../core/logger.js';
 import * as fs from 'fs';
 import { runStateShow, runStateSync, runStateUnlink } from './state-cmd.js';
 import { makeStateManagerMock, makeAgentState } from '../core/test-utils.js';
@@ -41,6 +49,7 @@ const mockGetStatePath = vi.mocked(getStatePath);
 const mockGetGistIdPath = vi.mocked(getGistIdPath);
 const mockExistsSync = vi.mocked(fs.existsSync);
 const mockUnlinkSync = vi.mocked(fs.unlinkSync);
+const mockWarn = vi.mocked(warn);
 
 const STATE_PATH = '/home/user/.oss-autopilot/state.json';
 const GIST_ID_PATH = '/home/user/.oss-autopilot/gist-id';
@@ -174,7 +183,9 @@ describe('runStateSync', () => {
     };
     mockGetStateManager.mockReturnValue(sm as any);
 
-    await expect(runStateSync()).rejects.toThrow('Failed to push state to Gist');
+    await expect(runStateSync()).rejects.toThrow(
+      'Failed to push state to Gist after retry. Check network connectivity and token permissions.',
+    );
   });
 
   it('propagates errors thrown by checkpoint', async () => {
@@ -257,7 +268,7 @@ describe('runStateUnlink', () => {
     expect(mockUnlinkSync).not.toHaveBeenCalled();
   });
 
-  it('continues and warns when unlinkSync throws', async () => {
+  it('continues, warns, and resets state manager when unlinkSync throws', async () => {
     const state = makeAgentState({ gistId: 'abc123' });
     const sm = {
       getState: vi.fn().mockReturnValue(state),
@@ -270,28 +281,10 @@ describe('runStateUnlink', () => {
       throw new Error('permission denied');
     });
 
-    // Should not throw — error is caught and warned
     const result = await runStateUnlink();
 
     expect(result.unlinked).toBe(true);
     expect(mockResetStateManager).toHaveBeenCalledOnce();
-  });
-
-  it('resets state manager even when gist-id removal fails', async () => {
-    const state = makeAgentState({ gistId: 'abc123' });
-    const sm = {
-      getState: vi.fn().mockReturnValue(state),
-      isGistMode: vi.fn().mockReturnValue(false),
-      refreshFromGist: vi.fn(),
-    };
-    mockGetStateManager.mockReturnValue(sm as any);
-    mockExistsSync.mockReturnValue(true);
-    mockUnlinkSync.mockImplementation(() => {
-      throw new Error('io error');
-    });
-
-    await runStateUnlink();
-
-    expect(mockResetStateManager).toHaveBeenCalledOnce();
+    expect(mockWarn).toHaveBeenCalledWith('state-cmd', expect.stringContaining('Failed to remove gist-id file'));
   });
 });
