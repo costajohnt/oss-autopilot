@@ -69,7 +69,6 @@ describe('buildScoutState', () => {
     expect(result.preferences.excludeRepos).toEqual(['owner/excluded']);
     expect(result.preferences.excludeOrgs).toEqual(['bad-org']);
     expect(result.preferences.aiPolicyBlocklist).toEqual(['matplotlib/matplotlib']);
-    expect(result.preferences.preferredOrgs).toEqual(['microsoft', 'vercel']);
     expect(result.preferences.projectCategories).toEqual(['web', 'cli']);
     expect(result.preferences.minStars).toBe(100);
     expect(result.preferences.maxIssueAgeDays).toBe(30);
@@ -85,7 +84,6 @@ describe('buildScoutState', () => {
 
   it.each([
     ['excludeOrgs', 'excludeOrgs'],
-    ['preferredOrgs', 'preferredOrgs'],
     ['projectCategories', 'projectCategories'],
   ] as const)('should default %s to [] when undefined in config', (field) => {
     const state = makeAgentState({ config: { [field]: undefined } });

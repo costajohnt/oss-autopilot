@@ -24,12 +24,14 @@ export function buildScoutState(): ScoutState {
       excludeRepos: config.excludeRepos,
       excludeOrgs: config.excludeOrgs ?? [],
       aiPolicyBlocklist: config.aiPolicyBlocklist,
-      preferredOrgs: config.preferredOrgs ?? [],
       projectCategories: config.projectCategories ?? [],
       minStars: config.minStars,
       maxIssueAgeDays: config.maxIssueAgeDays,
       includeDocIssues: config.includeDocIssues,
       minRepoScoreThreshold: config.minRepoScoreThreshold,
+      interPhaseDelayMs: 30000,
+      broadPhaseDelayMs: 90000,
+      skipBroadWhenSufficientResults: 15,
       persistence: config.persistence as 'local' | 'gist',
     },
     repoScores: state.repoScores,
@@ -46,6 +48,7 @@ export function buildScoutState(): ScoutState {
       closedAt: pr.closedAt,
     })),
     savedResults: [],
+    skippedIssues: [],
     lastRunAt: state.lastRunAt,
   };
 }
