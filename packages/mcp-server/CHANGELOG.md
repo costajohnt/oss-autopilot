@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.2](https://github.com/costajohnt/oss-autopilot/compare/mcp-v3.1.1...mcp-v3.1.2) (2026-04-01)
+
+
+### Bug Fixes
+
+* address comprehensive repo audit findings ([#918](https://github.com/costajohnt/oss-autopilot/issues/918)) ([bce859c](https://github.com/costajohnt/oss-autopilot/commit/bce859cb19a58b88526d75ad809f6b8c72909be3))
+
 ## [3.1.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v3.1.0...mcp-v3.1.1) (2026-03-30)
 
 
