@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.2](https://github.com/costajohnt/oss-autopilot/compare/core-v1.12.1...core-v1.12.2) (2026-04-08)
+
+
+### Bug Fixes
+
+* **dashboard:** resolve blank page from duplicate Preact instances ([#931](https://github.com/costajohnt/oss-autopilot/issues/931)) ([e07f243](https://github.com/costajohnt/oss-autopilot/commit/e07f243eac20acb6e2af7ed58312273a1d2b1154))
+
 ## [1.12.1](https://github.com/costajohnt/oss-autopilot/compare/core-v1.12.0...core-v1.12.1) (2026-04-01)
 
 
