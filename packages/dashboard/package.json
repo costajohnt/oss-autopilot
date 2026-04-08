@@ -22,7 +22,7 @@
   "dependencies": {
     "@oss-autopilot/core": "workspace:*",
     "chart.js": "^4.4.8",
-    "preact": "^10.29.0",
+    "preact": "^10.29.1",
     "preact-iso": "^2.11.1"
   },
   "devDependencies": {
