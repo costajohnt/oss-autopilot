@@ -20,6 +20,8 @@ export function CelebrationToast({ count, onDismiss }: CelebrationToastProps) {
     [],
   );
 
+  if (count < 1) return null;
+
   const message = count === 1 ? '1 new PR merged. Great work!' : `${count} new PRs merged. Great work!`;
 
   return (

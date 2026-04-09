@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
 
 const MERGED_COUNT_KEY = 'oss-autopilot-merged-count';
-const CELEBRATIONS_KEY = 'oss-autopilot-celebrations';
+export const CELEBRATIONS_KEY = 'oss-autopilot-celebrations';
 const AUTO_DISMISS_MS = 5_000;
 
 export function useCelebration(mergedCount: number | undefined) {
@@ -25,8 +25,8 @@ export function useCelebration(mergedCount: number | undefined) {
           timerRef.current = setTimeout(() => setNewMergeCount(null), AUTO_DISMISS_MS);
         }
       }
-    } catch {
-      // localStorage unavailable — skip silently
+    } catch (err) {
+      console.warn('[useCelebration] localStorage unavailable, skipping celebration check:', err);
     }
   }, [mergedCount]);
 

@@ -15,7 +15,7 @@ import { VettedIssueList } from './components/vetted-issue-list';
 import { SkeletonLoader } from './components/skeleton-loader';
 import { ThemeToggle } from './components/theme-toggle';
 import { CelebrationToast } from './components/celebration-toast';
-import { useCelebration } from './hooks/use-celebration';
+import { useCelebration, CELEBRATIONS_KEY } from './hooks/use-celebration';
 import { formatRelativeTime, refreshLabel } from './utils';
 import type { DashboardStats } from './types';
 
@@ -112,8 +112,9 @@ function AppContent() {
   const { celebrating, newMergeCount, dismiss: dismissCelebration } = useCelebration(data?.stats.mergedPRs);
   const [celebrationsOn, setCelebrationsOn] = useState(() => {
     try {
-      return localStorage.getItem('oss-autopilot-celebrations') !== 'false';
-    } catch {
+      return localStorage.getItem(CELEBRATIONS_KEY) !== 'false';
+    } catch (err) {
+      console.warn('[celebrations] Could not read preference from localStorage:', err);
       return true;
     }
   });
@@ -122,9 +123,9 @@ function AppContent() {
     setCelebrationsOn((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem('oss-autopilot-celebrations', String(next));
-      } catch {
-        // Ignore
+        localStorage.setItem(CELEBRATIONS_KEY, String(next));
+      } catch (err) {
+        console.warn('[celebrations] Failed to persist celebration preference:', err);
       }
       return next;
     });
@@ -279,7 +280,7 @@ function AppContent() {
         onToggleCelebrations={toggleCelebrations}
       />
 
-      {celebrating && newMergeCount !== null && (
+      {celebrationsOn && newMergeCount !== null && (
         <CelebrationToast count={newMergeCount} onDismiss={dismissCelebration} />
       )}
 
