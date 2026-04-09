@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'preact/hooks';
+import { useState, useMemo, useCallback } from 'preact/hooks';
 import { LocationProvider, useLocation } from 'preact-iso';
 import { useDashboard } from './hooks/use-dashboard';
 import { useTheme, type Theme } from './hooks/use-theme';
@@ -14,6 +14,8 @@ import { ClosedPRList } from './components/closed-pr-list';
 import { VettedIssueList } from './components/vetted-issue-list';
 import { SkeletonLoader } from './components/skeleton-loader';
 import { ThemeToggle } from './components/theme-toggle';
+import { CelebrationToast } from './components/celebration-toast';
+import { useCelebration } from './hooks/use-celebration';
 import { formatRelativeTime, refreshLabel } from './utils';
 import type { DashboardStats } from './types';
 
@@ -25,6 +27,8 @@ interface DashboardHeaderProps {
   onRefresh: () => void;
   theme: Theme;
   onToggleTheme: () => void;
+  celebrationsOn: boolean;
+  onToggleCelebrations: () => void;
 }
 
 function RefreshIcon() {
@@ -44,6 +48,8 @@ function DashboardHeader({
   onRefresh,
   theme,
   onToggleTheme,
+  celebrationsOn,
+  onToggleCelebrations,
 }: DashboardHeaderProps) {
   return (
     <header class="dashboard-header">
@@ -76,6 +82,15 @@ function DashboardHeader({
         </div>
         <div class="header-right">
           {lastUpdated && <span class="last-updated">{formatRelativeTime(lastUpdated)}</span>}
+          <button
+            class={`celebrations-toggle${celebrationsOn ? '' : ' celebrations-toggle--off'}`}
+            onClick={onToggleCelebrations}
+            title={celebrationsOn ? 'Celebrations on' : 'Celebrations off'}
+            aria-label={celebrationsOn ? 'Disable merge celebrations' : 'Enable merge celebrations'}
+            type="button"
+          >
+            🎉
+          </button>
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           <button class="refresh-btn" onClick={onRefresh} disabled={loading || refreshing}>
             {loading || refreshing ? <span class="spinner" /> : <RefreshIcon />}
@@ -94,6 +109,26 @@ function AppContent() {
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const [shelvedOpen, setShelvedOpen] = useState(false);
   const { path, route } = useLocation();
+  const { celebrating, newMergeCount, dismiss: dismissCelebration } = useCelebration(data?.stats.mergedPRs);
+  const [celebrationsOn, setCelebrationsOn] = useState(() => {
+    try {
+      return localStorage.getItem('oss-autopilot-celebrations') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleCelebrations = useCallback(() => {
+    setCelebrationsOn((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('oss-autopilot-celebrations', String(next));
+      } catch {
+        // Ignore
+      }
+      return next;
+    });
+  }, []);
 
   const shelvedUrls = useMemo(() => new Set(data?.shelvedPRUrls ?? []), [data?.shelvedPRUrls]);
 
@@ -135,6 +170,8 @@ function AppContent() {
           onRefresh={refresh}
           theme={theme}
           onToggleTheme={toggleTheme}
+          celebrationsOn={celebrationsOn}
+          onToggleCelebrations={toggleCelebrations}
         />
         <MergedPRList mergedPRs={mergedPRs} repoMetadata={data.repoMetadata} onBack={() => route('/')} />
       </div>
@@ -154,6 +191,8 @@ function AppContent() {
           onRefresh={refresh}
           theme={theme}
           onToggleTheme={toggleTheme}
+          celebrationsOn={celebrationsOn}
+          onToggleCelebrations={toggleCelebrations}
         />
         <ClosedPRList closedPRs={closedPRs} onBack={() => route('/')} />
       </div>
@@ -172,6 +211,8 @@ function AppContent() {
           onRefresh={refresh}
           theme={theme}
           onToggleTheme={toggleTheme}
+          celebrationsOn={celebrationsOn}
+          onToggleCelebrations={toggleCelebrations}
         />
         {data.vettedIssues ? (
           <VettedIssueList
@@ -234,7 +275,13 @@ function AppContent() {
         onRefresh={refresh}
         theme={theme}
         onToggleTheme={toggleTheme}
+        celebrationsOn={celebrationsOn}
+        onToggleCelebrations={toggleCelebrations}
       />
+
+      {celebrating && newMergeCount !== null && (
+        <CelebrationToast count={newMergeCount} onDismiss={dismissCelebration} />
+      )}
 
       {error && (
         <div class="error-banner" role="alert">

@@ -251,6 +251,118 @@
   animation-delay: 0.36s;
 }
 
+/* === Celebration Toast === */
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(60px) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+.celebration-toast {
+  position: fixed;
+  top: var(--sp-4);
+  right: var(--sp-4);
+  z-index: 1000;
+  overflow: hidden;
+  border-radius: var(--radius);
+  animation: slideInRight 0.4s var(--ease) forwards;
+}
+
+.celebration-content {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--purple);
+  border-radius: var(--radius);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 24px rgba(192, 132, 252, 0.15);
+}
+
+.celebration-emoji {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.celebration-message {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.celebration-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: var(--sp-1);
+  line-height: 1;
+  transition: color 0.15s var(--ease);
+}
+
+.celebration-dismiss:hover {
+  color: var(--text-primary);
+}
+
+.celebration-confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  animation: confettiFall 1.5s var(--ease) forwards;
+}
+
+/* === Celebrations Toggle === */
+
+.celebrations-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-1) var(--sp-2);
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  transition: all 0.15s var(--ease);
+}
+
+.celebrations-toggle:hover {
+  border-color: var(--border-hover);
+  background: var(--hover-bg);
+}
+
+.celebrations-toggle--off {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
 /* === Base Reset & Layout === */
 
 *,
