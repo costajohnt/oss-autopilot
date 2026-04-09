@@ -109,7 +109,7 @@ function AppContent() {
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const [shelvedOpen, setShelvedOpen] = useState(false);
   const { path, route } = useLocation();
-  const { celebrating, newMergeCount, dismiss: dismissCelebration } = useCelebration(data?.stats.mergedPRs);
+  const { newMergeCount, dismiss: dismissCelebration } = useCelebration(data?.stats.mergedPRs);
   const [celebrationsOn, setCelebrationsOn] = useState(() => {
     try {
       return localStorage.getItem(CELEBRATIONS_KEY) !== 'false';
