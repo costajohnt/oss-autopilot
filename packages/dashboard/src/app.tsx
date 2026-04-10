@@ -2,6 +2,7 @@ import { useState, useMemo } from 'preact/hooks';
 import { LocationProvider, useLocation } from 'preact-iso';
 import { useDashboard } from './hooks/use-dashboard';
 import { useTheme, type Theme } from './hooks/use-theme';
+import { useCelebration } from './hooks/use-celebration';
 import { StatsBar } from './components/stats-bar';
 import { FilterBar, type Filters } from './components/filter-bar';
 import { PRList } from './components/pr-list';
@@ -14,6 +15,7 @@ import { ClosedPRList } from './components/closed-pr-list';
 import { VettedIssueList } from './components/vetted-issue-list';
 import { SkeletonLoader } from './components/skeleton-loader';
 import { ThemeToggle } from './components/theme-toggle';
+import { CelebrationToast } from './components/celebration-toast';
 import { formatRelativeTime, refreshLabel } from './utils';
 import type { DashboardStats } from './types';
 
@@ -90,6 +92,7 @@ function DashboardHeader({
 function AppContent() {
   const { data, loading, refreshing, error, clearError, refresh, performAction, lastUpdated } = useDashboard();
   const { theme, toggleTheme } = useTheme();
+  const { celebration, dismiss: dismissCelebration } = useCelebration(data?.stats.mergedPRs);
   const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const [shelvedOpen, setShelvedOpen] = useState(false);
@@ -137,6 +140,7 @@ function AppContent() {
           onToggleTheme={toggleTheme}
         />
         <MergedPRList mergedPRs={mergedPRs} repoMetadata={data.repoMetadata} onBack={() => route('/')} />
+        <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
       </div>
     );
   }
@@ -156,6 +160,7 @@ function AppContent() {
           onToggleTheme={toggleTheme}
         />
         <ClosedPRList closedPRs={closedPRs} onBack={() => route('/')} />
+        <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
       </div>
     );
   }
@@ -194,6 +199,7 @@ function AppContent() {
             </div>
           </div>
         )}
+        <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
       </div>
     );
   }
@@ -315,6 +321,7 @@ function AppContent() {
           <IssueList issues={data.issueResponses} onAction={performAction} />
         </div>
       </main>
+      <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
     </div>
   );
 }
