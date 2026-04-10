@@ -1852,6 +1852,51 @@ a:hover {
   }
 }
 
+/* === Celebration Toast === */
+.celebration-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  /* Must sit above the confetti canvas (z-index 9999 in use-celebration.ts) */
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: var(--purple);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  animation: fadeInUp 0.5s var(--ease) forwards;
+}
+
+.celebration-toast-message {
+  white-space: nowrap;
+}
+
+.celebration-toast-dismiss {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.8;
+}
+
+.celebration-toast-dismiss:hover,
+.celebration-toast-dismiss:focus-visible {
+  opacity: 1;
+}
+
+.celebration-toast-dismiss:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* === Accessibility: Reduced Motion === */
 @media (prefers-reduced-motion: reduce) {
   *,
