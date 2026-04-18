@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.12.2...core-v1.13.0) (2026-04-10)
+
+
+### Features
+
+* **dashboard:** celebration toast when new PRs are merged ([#937](https://github.com/costajohnt/oss-autopilot/issues/937)) ([0e23017](https://github.com/costajohnt/oss-autopilot/commit/0e23017b12a311d31a7468c9effe03770542c470))
+
 ## [1.12.2](https://github.com/costajohnt/oss-autopilot/compare/core-v1.12.1...core-v1.12.2) (2026-04-08)
 
 
