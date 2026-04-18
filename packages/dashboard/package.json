@@ -27,12 +27,12 @@
     "preact-iso": "^2.11.1"
   },
   "devDependencies": {
-    "@preact/preset-vite": "^2.10.4",
+    "@preact/preset-vite": "^2.10.5",
     "@testing-library/preact": "^3.2.4",
     "@types/canvas-confetti": "^1.9.0",
-    "jsdom": "^29.0.0",
-    "typescript": "^5.9.3",
-    "vite": "^8.0.7",
-    "vitest": "^4.1.0"
+    "jsdom": "^29.0.2",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4"
   }
 }
