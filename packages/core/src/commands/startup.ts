@@ -16,6 +16,7 @@ import { warn } from '../core/logger.js';
 import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
 import { launchDashboardServer } from './dashboard-lifecycle.js';
+import { parseIssueList } from './parse-list.js';
 
 /**
  * Parse issueListPath from a config file's YAML frontmatter.
@@ -32,26 +33,13 @@ export function parseIssueListPathFromConfig(configContent: string): string | un
 
 /**
  * Count available and completed items in an issue list file.
- * Available: list items (`- [`) NOT struck through or marked Done.
- * Completed: list items that ARE struck through or marked Done.
- *
- * @param content - Raw markdown content of the issue list
- * @returns Counts of available and completed items
+ * Available items exclude any vetting status that moves an item out of the
+ * actionable pool — strikethrough, `**Done**`, and sub-bullet markers like
+ * `**Skip**`, `**Merged**`, `**Dropped**`, `**Closed**`, `**In Progress**`,
+ * `**Waiting**`. Matches the parse-issue-list command's classification (#907).
  */
 export function countIssueListItems(content: string): { availableCount: number; completedCount: number } {
-  let availableCount = 0;
-  let completedCount = 0;
-  const lines = content.split('\n');
-  for (const line of lines) {
-    // Match list items: "- [" or "- ~~[" (strikethrough completed items)
-    if (/^\s*- (?:~~)?\[/.test(line)) {
-      if (/~~|\*\*Done\*\*/.test(line)) {
-        completedCount++;
-      } else {
-        availableCount++;
-      }
-    }
-  }
+  const { availableCount, completedCount } = parseIssueList(content);
   return { availableCount, completedCount };
 }
 

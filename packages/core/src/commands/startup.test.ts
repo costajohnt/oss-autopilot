@@ -134,8 +134,8 @@ Just some text, no issue list items.
   });
 
   it('should detect strikethrough as completed', () => {
-    const content = `- ~~[#1](url) — Done item~~
-- [#2](url) — Active item
+    const content = `- ~~[#1](https://github.com/o/r/issues/1) — Done item~~
+- [#2](https://github.com/o/r/issues/2) — Active item
 `;
     const result = countIssueListItems(content);
     expect(result.availableCount).toBe(1);
@@ -143,8 +143,8 @@ Just some text, no issue list items.
   });
 
   it('should detect **Done** marker as completed', () => {
-    const content = `- [#1](url) — Item with **Done** marker
-- [#2](url) — Active item
+    const content = `- [#1](https://github.com/o/r/issues/1) — Item with **Done** marker
+- [#2](https://github.com/o/r/issues/2) — Active item
 `;
     const result = countIssueListItems(content);
     expect(result.availableCount).toBe(1);
@@ -152,37 +152,49 @@ Just some text, no issue list items.
   });
 
   it('should handle indented list items', () => {
-    const content = `  - [#1](url) — Indented available
-  - ~~[#2](url) — Indented done~~
+    const content = `  - [#1](https://github.com/o/r/issues/1) — Indented available
+  - ~~[#2](https://github.com/o/r/issues/2) — Indented done~~
 `;
     const result = countIssueListItems(content);
     expect(result.availableCount).toBe(1);
     expect(result.completedCount).toBe(1);
   });
 
-  it('should not count lines that do not start with - [', () => {
+  it('should not count lines without GitHub URLs', () => {
     const content = `- Some regular list item
 - Another item
-- [#1](url) — Real issue list item
-  - Sub-item that starts with - [but is indented sub-bullet
+- [#1](https://github.com/o/r/issues/1) — Real issue list item
 `;
     const result = countIssueListItems(content);
-    // Only "- [#1]" matches — "  - Sub-item..." has "S" not "[" after "- "
     expect(result.availableCount).toBe(1);
     expect(result.completedCount).toBe(0);
   });
 
   it('should handle mixed available and completed items', () => {
-    const content = `- [#1](url) — Available 1
-- ~~[#2](url) — Done 1~~
-- [#3](url) — Available 2
-- [#4](url) — Has **Done** in text
-- ~~[#5](url) — Done 2~~
-- [#6](url) — Available 3
+    const content = `- [#1](https://github.com/o/r/issues/1) — Available 1
+- ~~[#2](https://github.com/o/r/issues/2) — Done 1~~
+- [#3](https://github.com/o/r/issues/3) — Available 2
+- [#4](https://github.com/o/r/issues/4) — Has **Done** in text
+- ~~[#5](https://github.com/o/r/issues/5) — Done 2~~
+- [#6](https://github.com/o/r/issues/6) — Available 3
 `;
     const result = countIssueListItems(content);
     expect(result.availableCount).toBe(3);
     expect(result.completedCount).toBe(3);
+  });
+
+  it('excludes items with **Skip** sub-bullet from availableCount (#907)', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Actionable
+  - **Maybe** — Score 8/10
+- [#2](https://github.com/owner/repo/issues/2) — Already vetted out
+  - **Skip** — Score 3/10. Existing PR.
+- [#3](https://github.com/owner/repo/issues/3) — Merged elsewhere
+  - **Merged** — PR merged upstream.
+`;
+    const result = countIssueListItems(content);
+    expect(result.availableCount).toBe(1);
+    expect(result.completedCount).toBe(2);
   });
 });
 
@@ -224,7 +236,7 @@ describe('detectIssueList', () => {
       if (path === '.claude/oss-autopilot/config.md') {
         return '---\nissueListPath: custom/issues.md\n---\n';
       }
-      return '- [#1](url) — Issue\n';
+      return '- [#1](https://github.com/o/r/issues/1) — Issue\n';
     });
 
     const result = detectIssueList();
@@ -255,7 +267,11 @@ describe('detectIssueList', () => {
     existsSyncMock.mockImplementation((path: string) => {
       return typeof path === 'string' && path === 'issues.md';
     });
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](url) — Issue\n- ~~[#2](url) — Done~~\n');
+    (fsImport as any).readFileSync = vi
+      .fn()
+      .mockReturnValue(
+        '- [#1](https://github.com/o/r/issues/1) — Issue\n- ~~[#2](https://github.com/o/r/issues/2) — Done~~\n',
+      );
 
     const result = detectIssueList();
 
@@ -276,7 +292,7 @@ describe('detectIssueList', () => {
     existsSyncMock.mockImplementation((p: string) => {
       return typeof p === 'string' && p === 'state/issues.md';
     });
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](url) — Issue\n');
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
 
     const result = detectIssueList();
 
@@ -302,7 +318,7 @@ describe('detectIssueList', () => {
       if (path === '.claude/oss-autopilot/config.md') {
         return '---\nissueListPath: config/issues.md\n---\n';
       }
-      return '- [#1](url) — Issue\n';
+      return '- [#1](https://github.com/o/r/issues/1) — Issue\n';
     });
 
     const result = detectIssueList();
@@ -318,7 +334,7 @@ describe('detectIssueList', () => {
       if (typeof p === 'string' && p === 'open-source/skipped-issues.md') return true;
       return false;
     });
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](url) — Issue\n');
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
 
     // Override getStateManager to return issueListPath pointing to our probe path
     const { getStateManager } = await import('../core/index.js');
@@ -338,7 +354,7 @@ describe('detectIssueList', () => {
     existsSyncMock.mockImplementation((p: string) => {
       return typeof p === 'string' && p === 'issues.md';
     });
-    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](url) — Issue\n');
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
 
     const result = detectIssueList();
 
