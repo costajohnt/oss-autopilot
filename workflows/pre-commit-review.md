@@ -327,7 +327,7 @@ Header: "Review"
 
 Options:
 1. "Show full diff first" — "Review the complete diff before committing"
-2. "Commit and push (Recommended)" — "Stage, commit, and push changes"
+2. "Yes, commit (Recommended)" — "Stage and commit locally; confirm push separately"
 3. "Done for now" — "Cancel, return to main flow"
 ```
 
@@ -338,7 +338,7 @@ Header: "Review"
 
 Options:
 1. "Show full diff" — "Display complete diff for manual review"
-2. "Commit and push anyway" — "Push current changes despite remaining findings"
+2. "Commit anyway" — "Commit current changes despite remaining findings; confirm push separately"
 3. "Done for now" — "Cancel, return to main flow"
 ```
 
@@ -365,12 +365,12 @@ Read `data.config.diffTool` (defaults to `inline` if not set):
   Header: "Diff"
 
   Options:
-  1. "Commit and push (Recommended)" — "Stage and push these changes"
+  1. "Yes, commit (Recommended)" — "Stage and commit; confirm push separately"
   2. "Fix something first" — "Make additional changes before committing"
   3. "Done for now" — "Cancel"
   ```
 
-**"Commit and push anyway" / "Commit and push (Recommended)":**
+**"Commit anyway" / "Yes, commit" / "Yes, commit (Recommended)":**
 
 **6a. Run project linter/formatter (uncommitted changes only):**
 
@@ -423,14 +423,45 @@ Read `data.config.diffTool` (defaults to `inline` if not set):
      3. "Done for now" — "Cancel"
      ```
 
-**6b. Stage, commit, and push:**
+**6b. Stage and commit (local only):**
 
 - **If `changeSource = "uncommitted"`:** Stage the specific changed files (not `git add -A`) — including any files modified by the formatter in 6a — then commit following the repo's conventional commit format
-- **If `changeSource = "committed"`:** Changes are already committed — skip staging and committing, proceed directly to push
+- **If `changeSource = "committed"`:** Changes are already committed — skip staging and committing, proceed directly to 6c
 - **Do NOT add AI attribution** (no Co-Authored-By, no "Generated with" mentions)
-- Push to the PR branch
-- **If any git operation fails** (staging, commit, or push), report the specific error to the user and offer to retry or cancel
+- **Do NOT push yet.** Push is confirmed separately in 6c.
+- **If staging or commit fails,** report the specific error to the user and offer to retry or cancel. Do not proceed to 6c until the local commit succeeds.
+
+**6c. Confirm push (remote, visible, may trigger CI):**
+
+After the commit succeeds, display the final state so the user can verify what is about to leave their machine:
+
+- Branch name, target remote (e.g. `origin`), and target branch (`origin/{branch}` or the tracking branch)
+- Commits that will be sent: `git log --oneline @{u}..HEAD` (or `git log --oneline origin/{branch}..HEAD` if no upstream is set)
+- Whether this is a fast-forward push or a force push (from `changeSource` / rebase state — see force-push note below)
+
+Then use AskUserQuestion:
+```
+Question: "Commit created locally. Push to {remote}/{branch}?"
+Header: "Push"
+
+Options:
+1. "Yes, push" — "Push the commit(s) shown above to the remote"
+2. "Not yet" — "Keep the commit local; I'll push later"
+3. "Done for now" — "Cancel, return to main flow"
+```
+
+**Force-push friction:** If the push will require `--force-with-lease` (e.g. after a rebase rewrote history), the question above MUST call that out explicitly and include the count of commits being rewritten plus the old and new tip hashes, so the user can confirm they intend to replace the remote history with exactly what is being pushed. The options stay the same, but frame option 1 as "Yes, force-push with lease" and describe the rewrite scope in the option description.
+
+On "Yes, push" / "Yes, force-push with lease":
+- Run the push. For force-push, use `--force-with-lease` (never `--force`) so a concurrent remote update aborts the push instead of silently overwriting it.
+- **If the push fails,** report the specific error and offer retry/cancel. Do not proceed to sub-step 7.
 - **After confirming the push succeeded, proceed to sub-step 7 (Post Response Comment)**
+
+On "Not yet":
+- Leave the commit in place locally. Inform the user: "Commit made on `{branch}`. Push with `git push` when ready." Do NOT proceed to sub-step 7 (no push means nothing to respond to on the PR yet).
+
+On "Done for now":
+- Return to the core router without pushing. The commit remains in the local branch.
 
 **"Done for now":**
 - Return to the core router (`commands/oss.md`) without committing

@@ -600,22 +600,23 @@ Files changed: {count}
 Issue: {issueContext.url}
 ```
 
-### 2. User Chooses PR State
+### 2. Confirm Push
+
+Push (remote, visible) is confirmed separately from PR creation so the user can verify exactly what is about to leave their machine before any irreversible action.
 
 ```
-Question: "Create the PR?"
-Header: "Publish"
+Question: "Push branch `{branchName}` to origin?"
+Header: "Push"
 
 Options:
-1. "Create as ready for review (Recommended)" — "All checks passed, maintainers can review immediately"
-2. "Create as draft" — "Create a draft PR for additional iteration"
-3. "View diff one more time" — "Show the full diff before deciding"
-4. "Done for now" — "Leave changes local, create PR later"
+1. "Yes, push" — "Push the commit(s) shown above to origin"
+2. "View diff first" — "Show git diff $mergeBase..HEAD, then re-prompt"
+3. "Done for now" — "Leave changes local, push and create PR later"
 ```
 
-**"View diff one more time":** Show `git diff $mergeBase..HEAD`, then re-prompt with the same options.
+**"View diff first":** Show `git diff $mergeBase..HEAD`, then re-prompt with the same options.
 
-**"Done for now":** Report: "Your changes are saved locally on branch `{branchName}`. Run `/oss` later to create the PR." Return to the core router.
+**"Done for now":** Report: "Your changes are saved locally on branch `{branchName}`. Run `/oss` later to push and create the PR." Return to the core router.
 
 ### 3. Push
 
@@ -623,9 +624,23 @@ Options:
 git push -u origin HEAD
 ```
 
-**If push fails**, report the error and offer: "Retry" / "Done for now" — "Your changes are saved locally on branch `{branchName}`. You can push and create the PR later with `/oss`." Do NOT create PR without a successful push.
+**If push fails**, report the error and offer: "Retry" / "Done for now" — "Your changes are saved locally on branch `{branchName}`. You can push and create the PR later with `/oss`." Do NOT proceed to PR creation without a successful push.
 
-### 4. Create PR
+### 4. Confirm PR State and Create PR
+
+After the push succeeds, confirm the PR state separately:
+
+```
+Question: "Push succeeded. Create the PR now?"
+Header: "Publish"
+
+Options:
+1. "Create as ready for review (Recommended)" — "All checks passed, maintainers can review immediately"
+2. "Create as draft" — "Create a draft PR for additional iteration"
+3. "Not yet" — "Leave the pushed branch in place; I'll open the PR manually"
+```
+
+**"Not yet":** Report: "Branch `{branchName}` is pushed to origin but no PR was created. Open one manually when ready via the GitHub UI or `gh pr create`." Return to the core router.
 
 **Always include `--head`** to handle both fork-based and same-repo workflows. The `--head` flag is harmless for same-repo PRs and required for fork-based PRs:
 
