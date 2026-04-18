@@ -152,20 +152,34 @@ The CLI handles exclusions automatically when using the `search` command — thi
 
 ---
 
-**AI Policy Awareness (#108):**
+**AI Policy Awareness (#108, #911):**
 
 Some repositories have anti-AI contribution policies that reject or hide AI-assisted contributions. The CLI automatically filters repos listed in `aiPolicyBlocklist` during search.
 
-When **manually vetting** an issue (outside the CLI search), watch for these signals:
-- Comments hidden as spam
-- Policy PRs or issues filed against AI-assisted contributions
-- CONTRIBUTING.md language explicitly prohibiting AI tools
-- Maintainer comments about AI-generated code
+**During every vetting (CLI or manual), scan CONTRIBUTING.md, CODE_OF_CONDUCT.md, and README for anti-LLM/AI policy language. This is a hard skip — the entire OSS autopilot workflow is AI-assisted, so these repos are fundamentally incompatible.**
 
-The `aiPolicyBlocklist` field is included in CLI search JSON output. If you discover a repo has an anti-AI policy during vetting:
-1. Warn the user immediately — do not proceed with working on the issue
-2. Recommend adding the repo to their blocklist: `setup --set aiPolicyBlocklist="matplotlib/matplotlib,new-owner/new-repo"` (this **replaces** the entire blocklist — include all existing entries)
-3. Note the discovery in the vetting summary under a "Policy Warning" section
+Run this scan on the files already fetched in section 2 (Contribution Guidelines Check) — no extra API calls needed. Look for any of these patterns (case-insensitive) in the text:
+
+| Signal | Example phrases |
+|---|---|
+| Explicit LLM ban | `do not submit code written by LLM`, `no LLM-generated`, `no LLM-authored`, `no AI-generated code`, `no AI-written`, `no AI contributions` |
+| Specific tool bans | `no Copilot`, `no ChatGPT`, `no Claude`, `no Cursor`, `no AI coding tools` |
+| Disclosure requirement framed as discouragement | `we do not accept AI-generated`, `AI contributions will be closed`, `AI-assisted PRs are rejected` |
+| Hidden/spammed signals | Comments hidden as spam on issues, policy PRs filed against AI-assisted contributions, maintainer comments about AI-generated code |
+
+**If any anti-LLM/AI signal is detected, this is a HARD SKIP regardless of the viability score:**
+
+1. Set recommendation to `skip` with reason `"anti-LLM policy"` (or `"anti-AI policy"` — match the repo's wording).
+2. Auto-exclude the repo from future searches by updating the blocklist:
+   ```bash
+   # Read current list (comma-separated), add this repo, write back
+   CURRENT=$(GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --json | jq -r '.data.config.aiPolicyBlocklist // ""')
+   NEW="${CURRENT:+$CURRENT,}{OWNER}/{REPO}"
+   GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set aiPolicyBlocklist="$NEW"
+   ```
+   (Always concatenate with the existing list — `--set aiPolicyBlocklist=...` **replaces** the entire value.)
+3. Report the detection to the user in the vetting summary under a "Policy Skip" section, quoting the exact language found in the repo's docs so they can verify the classification.
+4. **Do NOT proceed with working on the issue**, even if the score is otherwise high. Pick the next issue from the list.
 
 ---
 
