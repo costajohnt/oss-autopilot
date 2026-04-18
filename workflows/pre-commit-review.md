@@ -480,6 +480,30 @@ On "Done for now":
 
 **If the push was in response to maintainer feedback:**
 
+**7a. Classify the feedback — does a comment add value, or does the diff speak for itself? (#904)**
+
+Before drafting, decide whether a comment is actually needed. When the fix is self-evident from the diff, a comment that restates it wastes the maintainer's attention. Err on the side of skipping — the push is already a response.
+
+**Skip the comment entirely if ALL of these are true:**
+- Every piece of maintainer feedback addressed in this push maps to a concrete code change (e.g. "avoid `T.untyped` here", "add a nil check", "rename this variable")
+- The code change was made and the diff makes the fix self-evident
+- No question was asked, no ambiguity was raised, and nothing was intentionally left unchanged that the maintainer might wonder about
+
+**Draft a comment if ANY of these are true:**
+- The maintainer asked a question ("why did you choose X over Y?", "what happens when Z?")
+- The feedback is conceptual or design-level and the implementation choice needs brief explanation
+- Something was intentionally left unchanged and the maintainer might wonder about it
+- Only some of multiple requested changes were addressed — say which, and why, for the ones you did not
+- You had to deviate from exactly what the maintainer asked (e.g. they suggested approach A but you implemented B because A didn't work)
+
+When in doubt, lean toward skipping — the diff already communicates the functional changes. A missed question is easier to follow up on than an over-explained comment to walk back.
+
+**If the feedback is "code change only":** Skip directly to "After this sub-step completes" below — do not draft, do not prompt, do not call `gh pr comment`. Report to the user: "Feedback was addressed entirely by the code change — not drafting a response comment."
+
+**If a comment is warranted**, continue to 7b.
+
+**7b. Draft the response comment:**
+
 1. Draft a brief response comment:
    - Keep it to one or two sentences describing what you changed — avoid bullet-point changelogs
    - Mention anything intentionally left unchanged only if the maintainer will wonder about it
