@@ -262,8 +262,18 @@ Also check the issue body and comments for PR links:
 gh issue view OWNER/REPO#NUMBER --json body,comments --jq '[.body, .comments[].body] | join("\n")' | grep -oE '#[0-9]+|pull/[0-9]+'
 ```
 
-- If open PR exists: **skip** (someone is actively working)
-- If closed PR exists: Note it - may indicate difficulty or maintainer preferences
+**When interpreting the linked-PR result, check authorship against the user's own GitHub login first (#910):**
+
+```bash
+USER_LOGIN=$(gh api user --jq '.login')
+```
+
+Classify the linked PR by `author.login`:
+- **Open PR authored by `$USER_LOGIN`** → the user is already working on this. **Mark the issue as "In Progress" with a link to their PR. Do NOT recommend Pursue/Maybe — this is already claimed by the user themselves.** In the curated list, update the entry to `**In Progress** — PR #XX` (user's own). Do NOT include the issue in "pick from your list" options.
+- **Open PR authored by someone else** → competition. Skip (someone is actively working).
+- **Closed PR authored by `$USER_LOGIN`** → the user's prior attempt was closed without merge. Note this as a relationship signal (possible friction); may still be worth Pursue if the issue is still open and the closure reason was unrelated.
+- **Closed PR authored by someone else** → note it; may indicate difficulty or maintainer preferences, but the issue is still technically available.
+- **No linked PR** → proceed to normal scoring.
 
 ### 2. Contribution Guidelines Check
 
