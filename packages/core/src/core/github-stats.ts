@@ -369,28 +369,52 @@ export async function fetchRecentlyMergedPRs(
 }
 
 /**
- * Fetch merged PRs since a watermark date for incremental storage.
- * If no watermark is provided (first-ever fetch), fetches all merged PRs (up to pagination cap).
- * Returns StoredMergedPR[] (minimal: url, title, mergedAt) for state persistence.
+ * Shared adapter for the two `since`-incremental PR fetches (merged and
+ * closed-without-merge). Both walk the Search API up to MAX_PAGINATION_PAGES,
+ * skip own-org results, and project each item into a stored-shape record —
+ * they differ only in the search query, the date field on the result, and
+ * label strings (#958).
  */
-export async function fetchMergedPRsSince(
+interface PRFetchAdapter<T> {
+  /** Label used in log / warn messages — "merged" or "closed". */
+  kind: string;
+  /** Noun used in "no {noun} date" skip warnings — "merge" or "close". */
+  dateNoun: string;
+  /** Build the Search API `q` query string. */
+  buildQuery: (username: string, since: string | undefined) => string;
+  /** Extract the relevant timestamp from a search item. Return empty string if missing. */
+  extractDate: (item: SearchItemForPRs) => string;
+  /** Build the stored-shape record from an item and its extracted date. */
+  buildRecord: (item: SearchItemForPRs, date: string) => T;
+}
+
+/** Minimal subset of the Search API item fields we consume. */
+type SearchItemForPRs = {
+  html_url: string;
+  title: string;
+  closed_at?: string | null;
+  pull_request?: { merged_at?: string | null } | null;
+};
+
+async function fetchPRsSince<T>(
   octokit: Octokit,
   config: { githubUsername: string },
+  adapter: PRFetchAdapter<T>,
   since?: string,
-): Promise<StoredMergedPR[]> {
+): Promise<T[]> {
   if (!config.githubUsername) {
-    warn(MODULE, 'Skipping merged PRs fetch: no githubUsername configured.');
+    warn(MODULE, `Skipping ${adapter.kind} PRs fetch: no githubUsername configured.`);
     return [];
   }
 
-  const dateFilter = since ? ` merged:>${since}` : '';
-  const q = `is:pr is:merged author:${config.githubUsername} -user:${config.githubUsername}${dateFilter}`;
+  const q = adapter.buildQuery(config.githubUsername, since);
+  debug(MODULE, `Fetching ${adapter.kind} PRs${since ? ` since ${since}` : ' (all time)'}...`);
 
-  debug(MODULE, `Fetching merged PRs${since ? ` since ${since}` : ' (all time)'}...`);
-
-  const results: StoredMergedPR[] = [];
+  const results: T[] = [];
   let page = 1;
   let fetched = 0;
+  // Populated from the first Search API response; always set before we exit the loop.
+  let totalCount!: number;
 
   while (true) {
     const { data } = await octokit.search.issuesAndPullRequests({
@@ -401,37 +425,65 @@ export async function fetchMergedPRsSince(
       page,
     });
 
-    for (const item of data.items) {
+    totalCount = data.total_count;
+
+    for (const item of data.items as SearchItemForPRs[]) {
       const parsed = parseGitHubUrl(item.html_url);
       if (!parsed) {
-        warn(MODULE, `Skipping merged PR with unparseable URL: ${item.html_url}`);
+        warn(MODULE, `Skipping ${adapter.kind} PR with unparseable URL: ${item.html_url}`);
         continue;
       }
       if (isOwnRepo(parsed.owner, config.githubUsername)) continue;
 
-      const mergedAt = item.pull_request?.merged_at || item.closed_at || '';
-      if (!mergedAt) {
-        warn(MODULE, `Skipping merged PR with no merge date: ${item.html_url}`);
+      const date = adapter.extractDate(item);
+      if (!date) {
+        warn(MODULE, `Skipping ${adapter.kind} PR with no ${adapter.dateNoun} date: ${item.html_url}`);
         continue;
       }
-      results.push({
-        url: item.html_url,
-        title: item.title,
-        mergedAt,
-      });
+      results.push(adapter.buildRecord(item, date));
     }
 
     fetched += data.items.length;
 
-    if (fetched >= data.total_count || fetched >= 1000 || data.items.length === 0 || page >= MAX_PAGINATION_PAGES) {
+    if (fetched >= totalCount || fetched >= 1000 || data.items.length === 0 || page >= MAX_PAGINATION_PAGES) {
       break;
     }
-
     page++;
   }
 
-  debug(MODULE, `Fetched ${results.length} merged PRs${since ? ' (incremental)' : ' (initial)'}`);
+  if (fetched < totalCount && page >= MAX_PAGINATION_PAGES) {
+    warn(
+      MODULE,
+      `Pagination capped at ${MAX_PAGINATION_PAGES} pages: fetched ${fetched} of ${totalCount} ${adapter.kind} PRs. Oldest PRs may be missing.`,
+    );
+  }
+
+  debug(MODULE, `Fetched ${results.length} ${adapter.kind} PRs${since ? ' (incremental)' : ' (initial)'}`);
   return results;
+}
+
+/**
+ * Fetch merged PRs since a watermark date for incremental storage.
+ * If no watermark is provided (first-ever fetch), fetches all merged PRs (up to pagination cap).
+ * Returns StoredMergedPR[] (minimal: url, title, mergedAt) for state persistence.
+ */
+export async function fetchMergedPRsSince(
+  octokit: Octokit,
+  config: { githubUsername: string },
+  since?: string,
+): Promise<StoredMergedPR[]> {
+  return fetchPRsSince<StoredMergedPR>(
+    octokit,
+    config,
+    {
+      kind: 'merged',
+      dateNoun: 'merge',
+      buildQuery: (u, s) => `is:pr is:merged author:${u} -user:${u}${s ? ` merged:>${s}` : ''}`,
+      extractDate: (item) => item.pull_request?.merged_at || item.closed_at || '',
+      buildRecord: (item, date) => ({ url: item.html_url, title: item.title, mergedAt: date }),
+    },
+    since,
+  );
 }
 
 /**
@@ -445,68 +497,16 @@ export async function fetchClosedPRsSince(
   config: { githubUsername: string },
   since?: string,
 ): Promise<StoredClosedPR[]> {
-  if (!config.githubUsername) {
-    warn(MODULE, 'Skipping closed PRs fetch: no githubUsername configured.');
-    return [];
-  }
-
-  const dateFilter = since ? ` closed:>${since}` : '';
-  const q = `is:pr is:closed is:unmerged author:${config.githubUsername} -user:${config.githubUsername}${dateFilter}`;
-
-  debug(MODULE, `Fetching closed PRs${since ? ` since ${since}` : ' (all time)'}...`);
-
-  const results: StoredClosedPR[] = [];
-  let page = 1;
-  let fetched = 0;
-  let totalCount: number;
-
-  while (true) {
-    const { data } = await octokit.search.issuesAndPullRequests({
-      q,
-      sort: 'updated',
-      order: 'desc',
-      per_page: 100,
-      page,
-    });
-
-    totalCount = data.total_count;
-
-    for (const item of data.items) {
-      const parsed = parseGitHubUrl(item.html_url);
-      if (!parsed) {
-        warn(MODULE, `Skipping closed PR with unparseable URL: ${item.html_url}`);
-        continue;
-      }
-      if (isOwnRepo(parsed.owner, config.githubUsername)) continue;
-
-      const closedAt = item.closed_at || '';
-      if (!closedAt) {
-        warn(MODULE, `Skipping closed PR with no close date: ${item.html_url}`);
-        continue;
-      }
-      results.push({
-        url: item.html_url,
-        title: item.title,
-        closedAt,
-      });
-    }
-
-    fetched += data.items.length;
-
-    if (fetched >= totalCount || fetched >= 1000 || data.items.length === 0 || page >= MAX_PAGINATION_PAGES) {
-      break;
-    }
-
-    page++;
-  }
-
-  if (fetched < totalCount && page >= MAX_PAGINATION_PAGES) {
-    warn(
-      MODULE,
-      `Pagination capped at ${MAX_PAGINATION_PAGES} pages: fetched ${fetched} of ${totalCount} closed PRs. Oldest PRs may be missing.`,
-    );
-  }
-
-  debug(MODULE, `Fetched ${results.length} closed PRs${since ? ' (incremental)' : ' (initial)'}`);
-  return results;
+  return fetchPRsSince<StoredClosedPR>(
+    octokit,
+    config,
+    {
+      kind: 'closed',
+      dateNoun: 'close',
+      buildQuery: (u, s) => `is:pr is:closed is:unmerged author:${u} -user:${u}${s ? ` closed:>${s}` : ''}`,
+      extractDate: (item) => item.closed_at || '',
+      buildRecord: (item, date) => ({ url: item.html_url, title: item.title, closedAt: date }),
+    },
+    since,
+  );
 }

@@ -34,7 +34,7 @@ import {
   type AgentState,
   type StarFilter,
 } from '../core/index.js';
-import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
+import { errorMessage, isRateLimitOrAuthError, nonFatalCatch } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
 import { createAutopilotScout } from './scout-bridge.js';
@@ -157,26 +157,25 @@ async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<Fetched
   const issueMonitor = new IssueConversationMonitor(token);
   const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs, issueConversationResult] = await Promise.all(
     [
-      prMonitor.fetchUserMergedPRCounts(starFilter).catch((err) => {
-        if (isRateLimitOrAuthError(err)) throw err;
-        warn(MODULE, `Failed to fetch merged PR counts: ${errorMessage(err)}`);
-        return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
-      }),
-      prMonitor.fetchUserClosedPRCounts(starFilter).catch((err) => {
-        if (isRateLimitOrAuthError(err)) throw err;
-        warn(MODULE, `Failed to fetch closed PR counts: ${errorMessage(err)}`);
-        return emptyPRCountsResult<number>();
-      }),
-      prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
-        if (isRateLimitOrAuthError(err)) throw err;
-        warn(MODULE, `Failed to fetch recently closed PRs: ${errorMessage(err)}`);
-        return [];
-      }),
-      prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
-        if (isRateLimitOrAuthError(err)) throw err;
-        warn(MODULE, `Failed to fetch recently merged PRs: ${errorMessage(err)}`);
-        return [];
-      }),
+      prMonitor.fetchUserMergedPRCounts(starFilter).catch(
+        nonFatalCatch({
+          module: MODULE,
+          label: 'fetch merged PR counts',
+          fallback: emptyPRCountsResult<{ count: number; lastMergedAt: string }>(),
+        }),
+      ),
+      prMonitor
+        .fetchUserClosedPRCounts(starFilter)
+        .catch(
+          nonFatalCatch({ module: MODULE, label: 'fetch closed PR counts', fallback: emptyPRCountsResult<number>() }),
+        ),
+      prMonitor
+        .fetchRecentlyClosedPRs()
+        .catch(nonFatalCatch({ module: MODULE, label: 'fetch recently closed PRs', fallback: [] as ClosedPR[] })),
+      prMonitor
+        .fetchRecentlyMergedPRs()
+        .catch(nonFatalCatch({ module: MODULE, label: 'fetch recently merged PRs', fallback: [] as MergedPR[] })),
+      // Issue conversation fetch has custom messaging based on the error content, so it keeps its bespoke catch.
       issueMonitor.fetchCommentedIssues().catch((error) => {
         if (isRateLimitOrAuthError(error)) throw error;
         const msg = errorMessage(error);
