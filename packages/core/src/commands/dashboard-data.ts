@@ -18,7 +18,12 @@ import {
   type StoredMergedPR,
   type StoredClosedPR,
   type CommentedIssue,
+  type CommentedIssueWithResponse,
+  type FetchedPR,
+  type ShelvedPRRef,
+  type RepoMetadataEntry,
 } from '../core/types.js';
+import type { ParseIssueListOutput } from '../formatters/json.js';
 import { toShelvedPRRef, buildStarFilter } from './daily.js';
 
 const MODULE = 'dashboard-data';
@@ -30,6 +35,34 @@ export interface DashboardStats {
   closedPRs: number;
   mergeRate: string;
   availableIssues?: number;
+}
+
+/**
+ * Shape of the JSON payload served by `GET /api/data` from the dashboard
+ * HTTP server. Single source of truth (#965) — imported by
+ * dashboard-server.ts, which previously redeclared this interface inline
+ * and so silently drifted whenever this module changed shape.
+ */
+export interface DashboardJsonData {
+  stats: DashboardStats;
+  prsByRepo: Record<string, { active: number; merged: number; closed: number }>;
+  topRepos: Array<{ repo: string; active: number; merged: number; closed: number }>;
+  monthlyMerged: Record<string, number>;
+  monthlyOpened: Record<string, number>;
+  monthlyClosed: Record<string, number>;
+  activePRs: FetchedPR[];
+  shelvedPRUrls: string[];
+  recentlyMergedPRs: MergedPR[];
+  recentlyClosedPRs: ClosedPR[];
+  autoUnshelvedPRs: ShelvedPRRef[];
+  commentedIssues: CommentedIssue[];
+  issueResponses: CommentedIssueWithResponse[];
+  allMergedPRs: MergedPR[];
+  allClosedPRs: ClosedPR[];
+  repoMetadata: Record<string, RepoMetadataEntry>;
+  vettedIssues?: ParseIssueListOutput | null;
+  offline?: boolean;
+  lastUpdated?: string;
 }
 
 export function buildDashboardStats(
