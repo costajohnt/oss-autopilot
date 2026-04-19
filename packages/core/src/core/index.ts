@@ -46,6 +46,7 @@ export {
   getHttpStatusCode,
   isRateLimitError,
   isRateLimitOrAuthError,
+  nonFatalCatch,
   resolveErrorCode,
 } from './errors.js';
 export { enableDebug, isDebugEnabled, debug, info, warn, timed } from './logger.js';

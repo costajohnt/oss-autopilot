@@ -5,7 +5,7 @@
  */
 
 import { getStateManager, PRMonitor, IssueConversationMonitor, getOctokit } from '../core/index.js';
-import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
+import { errorMessage, isRateLimitOrAuthError, nonFatalCatch } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult, fetchMergedPRsSince, fetchClosedPRsSince } from '../core/github-stats.js';
 import { parseGitHubUrl } from '../core/utils.js';
@@ -18,7 +18,12 @@ import {
   type StoredMergedPR,
   type StoredClosedPR,
   type CommentedIssue,
+  type CommentedIssueWithResponse,
+  type FetchedPR,
+  type ShelvedPRRef,
+  type RepoMetadataEntry,
 } from '../core/types.js';
+import type { ParseIssueListOutput } from '../formatters/json.js';
 import { toShelvedPRRef, buildStarFilter } from './daily.js';
 
 const MODULE = 'dashboard-data';
@@ -30,6 +35,34 @@ export interface DashboardStats {
   closedPRs: number;
   mergeRate: string;
   availableIssues?: number;
+}
+
+/**
+ * Shape of the JSON payload served by `GET /api/data` from the dashboard
+ * HTTP server. Single source of truth (#965) — imported by
+ * dashboard-server.ts, which previously redeclared this interface inline
+ * and so silently drifted whenever this module changed shape.
+ */
+export interface DashboardJsonData {
+  stats: DashboardStats;
+  prsByRepo: Record<string, { active: number; merged: number; closed: number }>;
+  topRepos: Array<{ repo: string; active: number; merged: number; closed: number }>;
+  monthlyMerged: Record<string, number>;
+  monthlyOpened: Record<string, number>;
+  monthlyClosed: Record<string, number>;
+  activePRs: FetchedPR[];
+  shelvedPRUrls: string[];
+  recentlyMergedPRs: MergedPR[];
+  recentlyClosedPRs: ClosedPR[];
+  autoUnshelvedPRs: ShelvedPRRef[];
+  commentedIssues: CommentedIssue[];
+  issueResponses: CommentedIssueWithResponse[];
+  allMergedPRs: MergedPR[];
+  allClosedPRs: ClosedPR[];
+  repoMetadata: Record<string, RepoMetadataEntry>;
+  vettedIssues?: ParseIssueListOutput | null;
+  offline?: boolean;
+  lastUpdated?: string;
 }
 
 export function buildDashboardStats(
@@ -170,26 +203,25 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     newClosedPRs,
   ] = await Promise.all([
     prMonitor.fetchUserOpenPRs(),
-    prMonitor.fetchRecentlyClosedPRs().catch((err): ClosedPR[] => {
-      if (isRateLimitOrAuthError(err)) throw err;
-      warn(MODULE, `Failed to fetch recently closed PRs: ${errorMessage(err)}`);
-      return [];
-    }),
-    prMonitor.fetchRecentlyMergedPRs().catch((err): MergedPR[] => {
-      if (isRateLimitOrAuthError(err)) throw err;
-      warn(MODULE, `Failed to fetch recently merged PRs: ${errorMessage(err)}`);
-      return [];
-    }),
-    prMonitor.fetchUserMergedPRCounts(starFilter).catch((err) => {
-      if (isRateLimitOrAuthError(err)) throw err;
-      warn(MODULE, `Failed to fetch merged PR counts: ${errorMessage(err)}`);
-      return emptyPRCountsResult<{ count: number; lastMergedAt: string }>();
-    }),
-    prMonitor.fetchUserClosedPRCounts(starFilter).catch((err) => {
-      if (isRateLimitOrAuthError(err)) throw err;
-      warn(MODULE, `Failed to fetch closed PR counts: ${errorMessage(err)}`);
-      return emptyPRCountsResult<number>();
-    }),
+    prMonitor
+      .fetchRecentlyClosedPRs()
+      .catch(nonFatalCatch({ module: MODULE, label: 'fetch recently closed PRs', fallback: [] as ClosedPR[] })),
+    prMonitor
+      .fetchRecentlyMergedPRs()
+      .catch(nonFatalCatch({ module: MODULE, label: 'fetch recently merged PRs', fallback: [] as MergedPR[] })),
+    prMonitor.fetchUserMergedPRCounts(starFilter).catch(
+      nonFatalCatch({
+        module: MODULE,
+        label: 'fetch merged PR counts',
+        fallback: emptyPRCountsResult<{ count: number; lastMergedAt: string }>(),
+      }),
+    ),
+    prMonitor
+      .fetchUserClosedPRCounts(starFilter)
+      .catch(
+        nonFatalCatch({ module: MODULE, label: 'fetch closed PR counts', fallback: emptyPRCountsResult<number>() }),
+      ),
+    // Issue conversation fetch has custom messaging based on the error content, so it keeps its bespoke catch.
     issueMonitor.fetchCommentedIssues().catch((error) => {
       if (isRateLimitOrAuthError(error)) throw error;
       const msg = errorMessage(error);
@@ -203,16 +235,12 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
         failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
       };
     }),
-    fetchMergedPRsSince(octokit, config, watermark).catch((err): StoredMergedPR[] => {
-      if (isRateLimitOrAuthError(err)) throw err;
-      warn(MODULE, `Failed to fetch merged PRs for storage: ${errorMessage(err)}`);
-      return [];
-    }),
-    fetchClosedPRsSince(octokit, config, closedWatermark).catch((err): StoredClosedPR[] => {
-      if (isRateLimitOrAuthError(err)) throw err;
-      warn(MODULE, `Failed to fetch closed PRs for storage: ${errorMessage(err)}`);
-      return [];
-    }),
+    fetchMergedPRsSince(octokit, config, watermark).catch(
+      nonFatalCatch({ module: MODULE, label: 'fetch merged PRs for storage', fallback: [] as StoredMergedPR[] }),
+    ),
+    fetchClosedPRsSince(octokit, config, closedWatermark).catch(
+      nonFatalCatch({ module: MODULE, label: 'fetch closed PRs for storage', fallback: [] as StoredClosedPR[] }),
+    ),
   ]);
 
   const commentedIssues = fetchedIssues.issues;
@@ -278,11 +306,17 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
 }
 
 /**
- * Convert StoredMergedPR[] to MergedPR[] by deriving repo and number from URL.
- * Skips entries with unparseable URLs.
+ * Convert a stored-shape PR array (StoredMergedPR[] or StoredClosedPR[]) to
+ * its display-shape equivalent (MergedPR[] / ClosedPR[]) by deriving `repo`
+ * and `number` from the URL. Skips entries whose URL cannot be parsed.
+ * Shared by storedToMergedPRs and storedToClosedPRs (#959).
  */
-export function storedToMergedPRs(stored: StoredMergedPR[]): MergedPR[] {
-  const results: MergedPR[] = [];
+function storedToPRs<
+  S extends { url: string; title: string } & Record<DateField, string>,
+  R extends { url: string; repo: string; number: number; title: string } & Record<DateField, string>,
+  DateField extends string,
+>(stored: readonly S[], dateField: DateField, label: string): R[] {
+  const results: R[] = [];
   let skipped = 0;
   for (const pr of stored) {
     const parsed = parseGitHubUrl(pr.url);
@@ -295,13 +329,21 @@ export function storedToMergedPRs(stored: StoredMergedPR[]): MergedPR[] {
       repo: `${parsed.owner}/${parsed.repo}`,
       number: parsed.number,
       title: pr.title,
-      mergedAt: pr.mergedAt,
-    });
+      [dateField]: pr[dateField],
+    } as unknown as R);
   }
   if (skipped > 0) {
-    warn(MODULE, `Skipped ${skipped} stored merged PR(s) with unparseable URLs`);
+    warn(MODULE, `Skipped ${skipped} stored ${label} PR(s) with unparseable URLs`);
   }
   return results;
+}
+
+/**
+ * Convert StoredMergedPR[] to MergedPR[] by deriving repo and number from URL.
+ * Skips entries with unparseable URLs.
+ */
+export function storedToMergedPRs(stored: StoredMergedPR[]): MergedPR[] {
+  return storedToPRs<StoredMergedPR, MergedPR, 'mergedAt'>(stored, 'mergedAt', 'merged');
 }
 
 /**
@@ -309,26 +351,7 @@ export function storedToMergedPRs(stored: StoredMergedPR[]): MergedPR[] {
  * Skips entries with unparseable URLs.
  */
 export function storedToClosedPRs(stored: StoredClosedPR[]): ClosedPR[] {
-  const results: ClosedPR[] = [];
-  let skipped = 0;
-  for (const pr of stored) {
-    const parsed = parseGitHubUrl(pr.url);
-    if (!parsed) {
-      skipped++;
-      continue;
-    }
-    results.push({
-      url: pr.url,
-      repo: `${parsed.owner}/${parsed.repo}`,
-      number: parsed.number,
-      title: pr.title,
-      closedAt: pr.closedAt,
-    });
-  }
-  if (skipped > 0) {
-    warn(MODULE, `Skipped ${skipped} stored closed PR(s) with unparseable URLs`);
-  }
-  return results;
+  return storedToPRs<StoredClosedPR, ClosedPR, 'closedAt'>(stored, 'closedAt', 'closed');
 }
 
 /**
