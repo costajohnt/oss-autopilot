@@ -416,19 +416,9 @@ A repo with a dormant PR should almost never be recommended unless the issue is 
 
 **Success Likelihood Grade (#858):**
 
-Alongside the numeric score, surface a letter grade that predicts how likely a contribution will be *accepted and merged*, using signals already gathered during vetting — no extra API calls. This helps contributors prioritize opportunities where maintainers actually merge external PRs.
+Alongside the numeric score, surface a letter grade that predicts how likely a contribution will be *accepted and merged*. This helps contributors prioritize opportunities where maintainers actually merge external PRs. The grade is separate from the numeric score — score answers "is this issue good to work on?", grade answers "will my PR actually merge?"
 
-Compute the grade from these three signals (all derived from data fetched in sections 1–3 of vetting):
-
-| Signal | A | B | C | F |
-|---|---|---|---|---|
-| Maintainer responsiveness | avg response < 3 days | 3–14 days | 14–60 days | unresponsive / > 60 days |
-| Repo merge rate (merged PRs / total PRs in recent window) | > 70% | 40–70% | 10–40% | < 10% or unknown with no merges in 90 days |
-| Activity (recent commits + releases) | commit in last 7 days | last 30 days | last 90 days | no commit in 90+ days |
-
-Take the **worst** of the three letters as the overall grade (a single failing signal dominates — one maintainer who never responds sinks the whole grade). If any signal is `Unknown` due to API errors or missing data, degrade the grade by one step rather than ignore it — missing data is a risk signal.
-
-Display as `{Letter} ({brief reason})`, e.g. `A (merges 85% of PRs, 2-day avg response)`, `C (40-day avg response)`, `F (unresponsive maintainer)`. The grade is separate from the numeric score — score answers "is this issue good to work on?", grade answers "will my PR actually merge?"
+The grade is computed by the CLI and returned in the `grade` field of `vet --json` output: `{ letter: 'A' | 'B' | 'C' | 'F', reason: string }`. Display it verbatim as `{letter} ({reason})` — e.g. `A (~2-day avg response)`, `C (40-day avg response)`, `F (unresponsive maintainers)`. The algorithm (worst-of-three-signals with unknown-degrades-one-step) lives in `packages/core/src/core/issue-grading.ts` with full unit tests.
 
 **Output Format:**
 

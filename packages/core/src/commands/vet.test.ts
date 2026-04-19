@@ -5,12 +5,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockVetIssue = vi.fn();
+const mockGetRepoScore = vi.fn();
 
 vi.mock('./scout-bridge.js', () => ({
   createAutopilotScout: vi.fn(async () => ({
     vetIssue: mockVetIssue,
   })),
 }));
+
+vi.mock('../core/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
+  return {
+    ...actual,
+    getStateManager: () => ({ getRepoScore: mockGetRepoScore }),
+  };
+});
 
 import { runVet } from './vet.js';
 
@@ -27,22 +36,44 @@ describe('runVet', () => {
       recommendation: 'approve' as const,
       reasonsToApprove: ['Active maintainers', 'Good first issue label'],
       reasonsToSkip: [],
-      projectHealth: { stars: 1000, openIssues: 50 },
+      projectHealth: { avgIssueResponseDays: 2, daysSinceLastCommit: 1 },
       vettingResult: { isViable: true },
     };
     mockVetIssue.mockResolvedValue(candidate);
+    mockGetRepoScore.mockReturnValue({ mergedPRCount: 17, closedWithoutMergeCount: 3 });
 
     const result = await runVet({ issueUrl: TEST_ISSUE_URL });
 
     expect(mockVetIssue).toHaveBeenCalledWith(TEST_ISSUE_URL);
+    expect(mockGetRepoScore).toHaveBeenCalledWith('owner/repo');
     expect(result).toEqual({
       issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: TEST_ISSUE_URL, labels: ['bug'] },
       recommendation: 'approve',
       reasonsToApprove: ['Active maintainers', 'Good first issue label'],
       reasonsToSkip: [],
-      projectHealth: { stars: 1000, openIssues: 50 },
+      projectHealth: { avgIssueResponseDays: 2, daysSinceLastCommit: 1 },
       vettingResult: { isViable: true },
+      grade: { letter: 'A', reason: expect.stringMatching(/respons|merge|commit/i) },
     });
+  });
+
+  it('includes grade with unknown merge rate when no repo score exists', async () => {
+    const candidate = {
+      issue: { repo: 'owner/repo', number: 5, title: 'Fix bug', url: TEST_ISSUE_URL, labels: [] },
+      recommendation: 'approve' as const,
+      reasonsToApprove: [],
+      reasonsToSkip: [],
+      projectHealth: { avgIssueResponseDays: 1, daysSinceLastCommit: 1 },
+      vettingResult: {},
+    };
+    mockVetIssue.mockResolvedValue(candidate);
+    mockGetRepoScore.mockReturnValue(undefined);
+
+    const result = await runVet({ issueUrl: TEST_ISSUE_URL });
+
+    // Two A signals + one unknown → degraded to B
+    expect(result.grade.letter).toBe('B');
+    expect(result.grade.reason).toMatch(/unknown/i);
   });
 
   it('should reject a non-GitHub issue URL', async () => {
