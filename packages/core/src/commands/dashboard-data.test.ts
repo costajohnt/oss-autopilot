@@ -117,9 +117,19 @@ vi.mock('../core/logger.js', () => ({
 
 vi.mock('../core/errors.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../core/errors.js')>();
+  const mockedIsRateLimitOrAuthError = (...args: unknown[]) => mockIsRateLimitOrAuthError(...args);
   return {
     ...actual,
-    isRateLimitOrAuthError: (...args: unknown[]) => mockIsRateLimitOrAuthError(...args),
+    isRateLimitOrAuthError: mockedIsRateLimitOrAuthError,
+    // Override nonFatalCatch so it consults the mocked predicate, not the
+    // original in-module reference (which is not replaced by `...actual`).
+    nonFatalCatch: <T>(params: { module: string; label: string; fallback: T }) => {
+      return (err: unknown): T => {
+        if (mockedIsRateLimitOrAuthError(err)) throw err;
+        mockWarn(params.module, `Failed to ${params.label}: ${actual.errorMessage(err)}`);
+        return params.fallback;
+      };
+    },
   };
 });
 

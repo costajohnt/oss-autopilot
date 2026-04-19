@@ -8,6 +8,8 @@
  * Other errors degrade gracefully — modules return partial results and log warnings.
  */
 
+import { warn } from './logger.js';
+
 /**
  * Base error for all oss-autopilot errors.
  */
@@ -95,6 +97,33 @@ export function isRateLimitOrAuthError(err: unknown): boolean {
     return msg.includes('rate limit') || msg.includes('abuse detection');
   }
   return false;
+}
+
+/**
+ * Build a `.catch()` handler for the "non-fatal parallel fetch" pattern used
+ * by daily.ts and dashboard-data.ts (#960). When a sibling fetch fails during
+ * a bulk-parallel orchestration, we want:
+ *
+ * - rate-limit / auth errors to propagate (those abort the whole run — the
+ *   user needs to see them), and
+ * - every other error to log a warning and fall back to a safe default so
+ *   the other siblings can still succeed.
+ *
+ * Inline at each call site, this is ~4 lines of boilerplate repeated 10+
+ * times. Consolidated here so the rate-limit-rethrow rule lives in exactly
+ * one place.
+ *
+ * @example
+ *   prMonitor.fetchRecentlyClosedPRs().catch(
+ *     nonFatalCatch({ module: MODULE, label: 'fetch recently closed PRs', fallback: [] as ClosedPR[] })
+ *   );
+ */
+export function nonFatalCatch<T>(params: { module: string; label: string; fallback: T }): (err: unknown) => T {
+  return (err: unknown) => {
+    if (isRateLimitOrAuthError(err)) throw err;
+    warn(params.module, `Failed to ${params.label}: ${errorMessage(err)}`);
+    return params.fallback;
+  };
 }
 
 /**
