@@ -1,0 +1,75 @@
+{
+  "candidates": [
+    {
+      "issue": {
+        "repo": "octocat/spoon-knife",
+        "repoUrl": "https://github.com/octocat/spoon-knife",
+        "number": 101,
+        "title": "Solid first pick",
+        "url": "https://github.com/octocat/spoon-knife/issues/101",
+        "labels": [
+          "good first issue"
+        ]
+      },
+      "recommendation": "approve",
+      "reasonsToApprove": [
+        "Active maintainers",
+        "Relationship history"
+      ],
+      "reasonsToSkip": [],
+      "searchPriority": "merged_pr",
+      "viabilityScore": 88,
+      "repoScore": {
+        "score": 8,
+        "mergedPRCount": 4,
+        "closedWithoutMergeCount": 0,
+        "isResponsive": true,
+        "lastMergedAt": "2026-01-10T00:00:00.000Z"
+      }
+    },
+    {
+      "issue": {
+        "repo": "unknown-org/unknown-repo",
+        "repoUrl": "https://github.com/unknown-org/unknown-repo",
+        "number": 7,
+        "title": "Worth a look",
+        "url": "https://github.com/unknown-org/unknown-repo/issues/7",
+        "labels": [
+          "help wanted"
+        ]
+      },
+      "recommendation": "needs_review",
+      "reasonsToApprove": [
+        "Clear scope"
+      ],
+      "reasonsToSkip": [
+        "No prior relationship"
+      ],
+      "searchPriority": "normal",
+      "viabilityScore": 60
+    },
+    {
+      "issue": {
+        "repo": "stale-org/stale-repo",
+        "repoUrl": "https://github.com/stale-org/stale-repo",
+        "number": 1,
+        "title": "Probably dormant",
+        "url": "https://github.com/stale-org/stale-repo/issues/1",
+        "labels": []
+      },
+      "recommendation": "skip",
+      "reasonsToApprove": [],
+      "reasonsToSkip": [
+        "Maintainer unresponsive for 120 days"
+      ],
+      "searchPriority": "normal",
+      "viabilityScore": 12
+    }
+  ],
+  "excludedRepos": [
+    "excluded-org/excluded-repo"
+  ],
+  "aiPolicyBlocklist": [
+    "anti-llm-org/anti-llm-repo"
+  ]
+}

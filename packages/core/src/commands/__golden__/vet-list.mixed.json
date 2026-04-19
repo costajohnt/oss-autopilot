@@ -1,0 +1,102 @@
+{
+  "results": [
+    {
+      "issue": {
+        "repo": "owner/repo-a",
+        "number": 1,
+        "title": "Still available",
+        "url": "https://github.com/owner/repo-a/issues/1",
+        "labels": [
+          "good first issue"
+        ]
+      },
+      "recommendation": "approve",
+      "reasonsToApprove": [
+        "Active project"
+      ],
+      "reasonsToSkip": [],
+      "projectHealth": {
+        "repo": "owner/repo-a",
+        "lastCommitAt": "2026-04-15T00:00:00.000Z",
+        "daysSinceLastCommit": 3,
+        "openIssuesCount": 10,
+        "avgIssueResponseDays": 0,
+        "ciStatus": "passing",
+        "isActive": true
+      },
+      "vettingResult": {
+        "passedAllChecks": true,
+        "checks": {},
+        "notes": []
+      },
+      "grade": {
+        "letter": "B",
+        "reason": "3-day avg response"
+      },
+      "listStatus": "still_available"
+    },
+    {
+      "issue": {
+        "repo": "owner/repo-b",
+        "number": 2,
+        "title": "Already claimed",
+        "url": "https://github.com/owner/repo-b/issues/2",
+        "labels": []
+      },
+      "recommendation": "skip",
+      "reasonsToApprove": [],
+      "reasonsToSkip": [
+        "Issue is already claimed by another user"
+      ],
+      "projectHealth": {
+        "repo": "owner/repo-b",
+        "lastCommitAt": "2026-04-15T00:00:00.000Z",
+        "daysSinceLastCommit": 3,
+        "openIssuesCount": 10,
+        "avgIssueResponseDays": 0,
+        "ciStatus": "passing",
+        "isActive": true
+      },
+      "vettingResult": {
+        "passedAllChecks": false,
+        "checks": {},
+        "notes": []
+      },
+      "grade": {
+        "letter": "B",
+        "reason": "3-day avg response"
+      },
+      "listStatus": "claimed"
+    },
+    {
+      "issue": {
+        "repo": "owner/repo-c",
+        "number": 3,
+        "title": "Will error",
+        "url": "https://github.com/owner/repo-c/issues/3",
+        "labels": []
+      },
+      "recommendation": "skip",
+      "reasonsToApprove": [],
+      "reasonsToSkip": [
+        "Error: Network timeout"
+      ],
+      "projectHealth": {},
+      "vettingResult": {},
+      "grade": {
+        "letter": "F",
+        "reason": "unknown maintainer responsiveness, merge rate, activity"
+      },
+      "listStatus": "error",
+      "errorMessage": "Network timeout"
+    }
+  ],
+  "summary": {
+    "total": 3,
+    "stillAvailable": 1,
+    "claimed": 1,
+    "closed": 0,
+    "hasPR": 0,
+    "errors": 1
+  }
+}
