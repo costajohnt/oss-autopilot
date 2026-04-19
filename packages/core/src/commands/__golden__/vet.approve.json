@@ -1,0 +1,43 @@
+{
+  "issue": {
+    "repo": "owner/repo",
+    "number": 42,
+    "title": "Improve error handling in foo()",
+    "url": "https://github.com/owner/repo/issues/42",
+    "labels": [
+      "good first issue",
+      "bug"
+    ]
+  },
+  "recommendation": "approve",
+  "reasonsToApprove": [
+    "Active maintainers",
+    "Clear scope",
+    "Good first issue label"
+  ],
+  "reasonsToSkip": [],
+  "projectHealth": {
+    "repo": "owner/repo",
+    "lastCommitAt": "2026-04-15T00:00:00.000Z",
+    "daysSinceLastCommit": 3,
+    "openIssuesCount": 42,
+    "avgIssueResponseDays": 0,
+    "ciStatus": "passing",
+    "isActive": true
+  },
+  "vettingResult": {
+    "passedAllChecks": true,
+    "checks": {
+      "noExistingPR": true,
+      "notClaimed": true,
+      "projectActive": true,
+      "clearRequirements": true,
+      "contributionGuidelinesFound": true
+    },
+    "notes": []
+  },
+  "grade": {
+    "letter": "B",
+    "reason": "4-day avg response"
+  }
+}
