@@ -158,16 +158,15 @@ Some repositories have anti-AI contribution policies that reject or hide AI-assi
 
 **During every vetting (CLI or manual), scan CONTRIBUTING.md, CODE_OF_CONDUCT.md, and README for anti-LLM/AI policy language. This is a hard skip — the entire OSS autopilot workflow is AI-assisted, so these repos are fundamentally incompatible.**
 
-Run this scan on the files already fetched in section 2 (Contribution Guidelines Check) — no extra API calls needed. Look for any of these patterns (case-insensitive) in the text:
+Run this scan on the files already fetched in section 2 (Contribution Guidelines Check) — no extra API calls needed. The keyword-match algorithm lives in `packages/core/src/core/anti-llm-policy.ts`: call `scanForAntiLLMPolicy(text)` with the concatenated contents of those files. The returned `AntiLLMScanResult` has `matched: boolean` and `matches: Array<{ category, phrase, excerpt }>`, where `category` is one of:
 
-| Signal | Example phrases |
-|---|---|
-| Explicit LLM ban | `do not submit code written by LLM`, `no LLM-generated`, `no LLM-authored`, `no AI-generated code`, `no AI-written`, `no AI contributions` |
-| Specific tool bans | `no Copilot`, `no ChatGPT`, `no Claude`, `no Cursor`, `no AI coding tools` |
-| Disclosure requirement framed as discouragement | `we do not accept AI-generated`, `AI contributions will be closed`, `AI-assisted PRs are rejected` |
-| Hidden/spammed signals | Comments hidden as spam on issues, policy PRs filed against AI-assisted contributions, maintainer comments about AI-generated code |
+- `explicit_ban` — phrases like "no AI-generated" / "no LLM-authored"
+- `tool_ban` — named-tool bans like "no Copilot" / "no ChatGPT"
+- `reject_framing` — "AI contributions will be closed", "we do not accept AI"
 
-**If any anti-LLM/AI signal is detected, this is a HARD SKIP regardless of the viability score:**
+Hidden/spammed signals (comments hidden as spam on issues, policy PRs against AI contributions, etc.) are not scannable from document text alone — note those manually when observed during vetting.
+
+**If `scanForAntiLLMPolicy` returns `matched: true`, this is a HARD SKIP regardless of the viability score:**
 
 1. Set recommendation to `skip` with reason `"anti-LLM policy"` (or `"anti-AI policy"` — match the repo's wording).
 2. Auto-exclude the repo from future searches by updating the blocklist:

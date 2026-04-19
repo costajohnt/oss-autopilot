@@ -74,6 +74,12 @@ export {
   type LinkedPRState,
 } from './linked-pr-classification.js';
 export {
+  scanForAntiLLMPolicy,
+  type AntiLLMCategory,
+  type AntiLLMMatch,
+  type AntiLLMScanResult,
+} from './anti-llm-policy.js';
+export {
   detectFormatters,
   diagnoseCIFormatterFailure,
   getPreferredFormatter,
