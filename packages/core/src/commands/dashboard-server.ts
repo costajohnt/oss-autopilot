@@ -119,8 +119,12 @@ function getIssueListMtimeMs(): number | null {
 
 /**
  * Build the JSON payload that the SPA expects from GET /api/data.
+ *
+ * Exported for unit testing of response-shape concerns that the full
+ * handler harness can't reach (it bakes a stale cachedDigest at server
+ * start-up, so tests that need a specific digest should call this directly).
  */
-function buildDashboardJson(
+export function buildDashboardJson(
   digest: DailyDigest,
   state: Readonly<AgentState>,
   commentedIssues: CommentedIssue[],
@@ -167,7 +171,11 @@ function buildDashboardJson(
     monthlyOpened,
     monthlyClosed,
     activePRs: applyStatusOverrides(digest.openPRs || [], state),
-    shelvedPRUrls: state.config.shelvedPRUrls || [],
+    // Source of truth is digest.shelvedPRs (union of explicitly-shelved URLs
+    // and dormant-non-addressing PRs auto-shelved for display). Returning
+    // only state.config.shelvedPRUrls would under-count and desync from
+    // stats.shelvedPRs, which is already derived from digest.shelvedPRs. (#981)
+    shelvedPRUrls: (digest.shelvedPRs || []).map((ref) => ref.url),
     recentlyMergedPRs: digest.recentlyMergedPRs || [],
     recentlyClosedPRs: digest.recentlyClosedPRs || [],
     autoUnshelvedPRs: digest.autoUnshelvedPRs || [],
