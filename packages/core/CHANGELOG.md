@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.1](https://github.com/costajohnt/oss-autopilot/compare/core-v1.15.0...core-v1.15.1) (2026-04-19)
+
+
+### Bug Fixes
+
+* **dashboard:** align shelvedPRUrls with stats.shelvedPRs count ([#984](https://github.com/costajohnt/oss-autopilot/issues/984)) ([a3cb258](https://github.com/costajohnt/oss-autopilot/commit/a3cb258b7dd45be8b72916c956a53dc83cd602b6)), closes [#981](https://github.com/costajohnt/oss-autopilot/issues/981)
+
 ## [1.15.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.14.0...core-v1.15.0) (2026-04-19)
 
 
