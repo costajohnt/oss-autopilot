@@ -394,7 +394,17 @@ Options:
 ```
 
 When user selects "Start implementing", proceed to Step 6 (implementation flow).
-When user selects "Skip this issue", return to Step 3 (display available issues).
+
+When user selects "Skip this issue":
+1. Persist the skip so scout filters it out of future searches. Capture the JSON result and the exit code:
+   ```bash
+   SKIP_OUT=$(node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" skip-add "{issue_url}" --json)
+   SKIP_RC=$?
+   ```
+   - On success (`$SKIP_RC == 0`), `SKIP_OUT` is JSON with `{ added, alreadyPresent, url, path, date? }`. Briefly confirm to the user whether the URL was newly added or already present.
+   - On failure (`$SKIP_RC != 0`), do NOT silently return to Step 3. Parse the error envelope from `SKIP_OUT` (`{ success: false, error }`) or fall back to displaying the raw output. Offer: retry / skip-persistence-for-this-session / done-for-now. The user decides.
+   - `skip-add` is `localOnly` — no GitHub token required.
+2. Return to Step 3 (display available issues).
 
 ### 6. After selecting issue → implementation → draft PR → review → ready
 
