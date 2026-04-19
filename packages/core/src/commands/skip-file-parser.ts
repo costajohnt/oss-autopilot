@@ -26,33 +26,47 @@ export function parseSkippedIssuesContent(content: string): SkippedIssue[] {
   const results: SkippedIssue[] = [];
 
   const lines = content.split(/\r?\n/);
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
+  for (let i = 0; i < lines.length; i++) {
+    const lineNumber = i + 1;
+    const line = lines[i].trim();
     if (line === '' || line.startsWith('#')) continue;
 
     // Split on first whitespace run: "YYYY-MM-DD <url>"
     const match = line.match(/^(\S+)\s+(\S+)\s*$/);
     if (!match) {
-      warn('skip-file-parser', `Ignoring malformed line (expected "<date> <url>"): ${line}`);
+      warn('skip-file-parser', `Line ${lineNumber}: malformed (expected "<date> <url>"): ${line}`);
       continue;
     }
 
     const [, dateStr, url] = match;
 
     if (!DATE_RE.test(dateStr)) {
-      warn('skip-file-parser', `Ignoring line with invalid date (expected YYYY-MM-DD): ${line}`);
+      warn('skip-file-parser', `Line ${lineNumber}: invalid date format (expected YYYY-MM-DD): ${line}`);
       continue;
     }
 
     const dateMs = Date.parse(`${dateStr}T00:00:00.000Z`);
     if (Number.isNaN(dateMs)) {
-      warn('skip-file-parser', `Ignoring line with unparseable date: ${line}`);
+      warn('skip-file-parser', `Line ${lineNumber}: unparseable date: ${line}`);
+      continue;
+    }
+
+    // Guard against JS Date normalization — Date.parse silently shifts
+    // invalid calendar dates (e.g. 2026-02-30 → 2026-03-02). Without this
+    // round-trip check the entry would be stored under the wrong date and
+    // scout's 90-day cull would run against a shifted value.
+    const roundTrip = new Date(dateMs).toISOString().slice(0, 10);
+    if (roundTrip !== dateStr) {
+      warn(
+        'skip-file-parser',
+        `Line ${lineNumber}: invalid calendar date ${dateStr} (would be normalized to ${roundTrip}): ${line}`,
+      );
       continue;
     }
 
     const urlMatch = url.match(GITHUB_URL_RE);
     if (!urlMatch) {
-      warn('skip-file-parser', `Ignoring line with non-GitHub-issue URL: ${line}`);
+      warn('skip-file-parser', `Line ${lineNumber}: non-GitHub-issue URL: ${line}`);
       continue;
     }
 

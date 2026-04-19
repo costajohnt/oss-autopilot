@@ -102,6 +102,38 @@ not-a-valid-line
     });
   });
 
+  it('should reject invalid calendar dates that JS would silently normalize', () => {
+    // Date.parse('2026-02-30T00:00:00.000Z') silently rolls over to Mar 2.
+    // Without a round-trip guard this entry would be stored under the wrong
+    // date and scout's 90-day cull would fire against a shifted value.
+    const content = `2026-02-30 https://github.com/owner/repo/issues/1
+2026-02-29 https://github.com/owner/repo/issues/2
+2026-04-15 https://github.com/good/repo/issues/99
+`;
+    const result = parseSkippedIssuesContent(content);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].url).toBe('https://github.com/good/repo/issues/99');
+    // Both invalid calendar dates must trigger a warning that includes the
+    // normalized date so the user can find and fix them.
+    const warnMessages = mockWarn.mock.calls.map((call) => call[1]);
+    expect(warnMessages.some((m: unknown) => typeof m === 'string' && m.includes('2026-02-30'))).toBe(true);
+    expect(warnMessages.some((m: unknown) => typeof m === 'string' && m.includes('2026-02-29'))).toBe(true);
+  });
+
+  it('should include 1-based line numbers in warnings', () => {
+    const content = `# header
+2026-04-15 https://github.com/good/repo/issues/1
+not-a-valid-line
+2026-04-16 https://github.com/good/repo/issues/2
+`;
+    parseSkippedIssuesContent(content);
+
+    // The malformed line is line 3 (header is 1, first valid is 2).
+    const warnMessages = mockWarn.mock.calls.map((call) => call[1]);
+    expect(warnMessages.some((m: unknown) => typeof m === 'string' && m.includes('Line 3'))).toBe(true);
+  });
+
   it('should tolerate blank lines between entries', () => {
     const content = `
 2026-04-15 https://github.com/owner/repo/issues/1
