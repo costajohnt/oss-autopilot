@@ -1,13 +1,3 @@
-/**
- * Skip-add command — append an issue URL to the skipped-issues file.
- *
- * Closes the write-side gap left open by #989: the read-side (scout-bridge
- * parsing the file into state) is already done, but no workflow other than
- * /oss-search had a way to append to the file. Now any flow — including
- * /oss "Pick from list" — can invoke `oss-autopilot skip-add <url>` and the
- * URL will be picked up by scout's search filter on the next boot.
- */
-
 import * as fs from 'fs';
 import { loadSkippedIssues } from './skip-file-parser.js';
 import { getStateManager } from '../core/index.js';

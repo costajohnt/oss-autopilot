@@ -48,6 +48,9 @@ vi.mock('./commands/local-repos.js', () => ({ runLocalRepos: mockRunLocalRepos }
 const mockServeDashboard = vi.fn();
 vi.mock('./commands/dashboard.js', () => ({ serveDashboard: mockServeDashboard }));
 
+const mockRunSkipAdd = vi.fn();
+vi.mock('./commands/skip-add.js', () => ({ runSkipAdd: mockRunSkipAdd }));
+
 // ─── Import after mocks ────────────────────────────────────────────────────
 
 import { commands } from './cli-registry.js';
@@ -389,5 +392,103 @@ describe('--json vs display output branching', () => {
     await program.parseAsync(['node', 'cli', 'undismiss', ISSUE_URL]);
 
     expect(consoleLogSpy).toHaveBeenCalledWith('Was not dismissed.');
+  });
+});
+
+// ─── skip-add action ────────────────────────────────────────────────────────
+
+describe('skip-add action', () => {
+  const SKIP_FILE = '/tmp/test-skip.md';
+
+  it('prints "Added to skip list" on successful new append', async () => {
+    mockRunSkipAdd.mockReturnValue({
+      added: true,
+      alreadyPresent: false,
+      url: ISSUE_URL,
+      path: SKIP_FILE,
+      date: '2026-04-19',
+    });
+    const program = buildProgram('skip-add');
+
+    await program.parseAsync(['node', 'cli', 'skip-add', ISSUE_URL]);
+
+    expect(mockRunSkipAdd).toHaveBeenCalledWith({ issueUrl: ISSUE_URL, skipFilePath: undefined });
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Added to skip list: ${ISSUE_URL} (2026-04-19)`);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`  File: ${SKIP_FILE}`);
+    expect(mockOutputJson).not.toHaveBeenCalled();
+  });
+
+  it('prints "Already on skip list" when URL is already present', async () => {
+    mockRunSkipAdd.mockReturnValue({
+      added: false,
+      alreadyPresent: true,
+      url: ISSUE_URL,
+      path: SKIP_FILE,
+    });
+    const program = buildProgram('skip-add');
+
+    await program.parseAsync(['node', 'cli', 'skip-add', ISSUE_URL]);
+
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Already on skip list: ${ISSUE_URL}`);
+    expect(consoleLogSpy).toHaveBeenCalledWith(`  File: ${SKIP_FILE}`);
+  });
+
+  it('emits JSON and skips text output when --json is set', async () => {
+    const payload = {
+      added: true,
+      alreadyPresent: false,
+      url: ISSUE_URL,
+      path: SKIP_FILE,
+      date: '2026-04-19',
+    };
+    mockRunSkipAdd.mockReturnValue(payload);
+    const program = buildProgram('skip-add');
+
+    await program.parseAsync(['node', 'cli', 'skip-add', ISSUE_URL, '--json']);
+
+    expect(mockOutputJson).toHaveBeenCalledWith(payload);
+    expect(consoleLogSpy).not.toHaveBeenCalled();
+  });
+
+  it('passes --path through to runSkipAdd', async () => {
+    mockRunSkipAdd.mockReturnValue({
+      added: true,
+      alreadyPresent: false,
+      url: ISSUE_URL,
+      path: SKIP_FILE,
+      date: '2026-04-19',
+    });
+    const program = buildProgram('skip-add');
+
+    await program.parseAsync(['node', 'cli', 'skip-add', ISSUE_URL, '--path', SKIP_FILE]);
+
+    expect(mockRunSkipAdd).toHaveBeenCalledWith({ issueUrl: ISSUE_URL, skipFilePath: SKIP_FILE });
+  });
+
+  it('routes errors through handleCommandError (text mode)', async () => {
+    mockRunSkipAdd.mockImplementation(() => {
+      throw new Error('bad url');
+    });
+    const program = buildProgram('skip-add');
+
+    await expect(program.parseAsync(['node', 'cli', 'skip-add', 'bogus'])).rejects.toThrow('process.exit called');
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Error: bad url');
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+    expect(mockOutputJsonError).not.toHaveBeenCalled();
+  });
+
+  it('routes errors through handleCommandError (JSON mode)', async () => {
+    mockRunSkipAdd.mockImplementation(() => {
+      throw new Error('bad url');
+    });
+    const program = buildProgram('skip-add');
+
+    await expect(program.parseAsync(['node', 'cli', 'skip-add', 'bogus', '--json'])).rejects.toThrow(
+      'process.exit called',
+    );
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith('bad url', 'UNKNOWN');
+    expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 });

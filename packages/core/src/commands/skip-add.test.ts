@@ -1,7 +1,3 @@
-/**
- * Tests for skip-add.
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
