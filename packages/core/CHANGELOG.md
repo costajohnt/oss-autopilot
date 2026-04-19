@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.14.0...core-v1.15.0) (2026-04-19)
+
+
+### Features
+
+* pass open-PR repos to oss-scout search via bridge ([#974](https://github.com/costajohnt/oss-autopilot/issues/974)) ([76a6925](https://github.com/costajohnt/oss-autopilot/commit/76a6925c1654fe35fe79e20a3a0278d43d54f9cd))
+
 ## [1.14.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.13.1...core-v1.14.0) (2026-04-19)
 
 
