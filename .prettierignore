@@ -2,3 +2,7 @@ packages/*/dist/
 node_modules/
 pnpm-lock.yaml
 *.md
+
+# Golden snapshots are machine-generated via `toMatchFileSnapshot`; the
+# generated formatting must be preserved exactly so the next run matches.
+packages/core/src/commands/__golden__/

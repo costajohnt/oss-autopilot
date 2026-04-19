@@ -1,0 +1,42 @@
+{
+  "issue": {
+    "repo": "owner/repo",
+    "number": 99,
+    "title": "Already claimed issue",
+    "url": "https://github.com/owner/repo/issues/99",
+    "labels": []
+  },
+  "recommendation": "skip",
+  "reasonsToApprove": [],
+  "reasonsToSkip": [
+    "Issue already has a linked PR"
+  ],
+  "projectHealth": {
+    "repo": "owner/repo",
+    "lastCommitAt": "2026-01-01T00:00:00.000Z",
+    "daysSinceLastCommit": 100,
+    "openIssuesCount": 500,
+    "avgIssueResponseDays": 0,
+    "ciStatus": "unknown",
+    "isActive": false,
+    "checkFailed": true,
+    "failureReason": "Rate limited"
+  },
+  "vettingResult": {
+    "passedAllChecks": false,
+    "checks": {
+      "noExistingPR": false,
+      "notClaimed": true,
+      "projectActive": false,
+      "clearRequirements": true,
+      "contributionGuidelinesFound": false
+    },
+    "notes": [
+      "Linked PR already exists"
+    ]
+  },
+  "grade": {
+    "letter": "F",
+    "reason": "unknown maintainer responsiveness, merge rate, activity"
+  }
+}
