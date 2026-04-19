@@ -68,6 +68,12 @@ export {
 export { computeContributionStats, type ContributionStats, type ComputeStatsInput } from './stats.js';
 export { fetchPRTemplate, type PRTemplateResult } from './pr-template.js';
 export {
+  classifyLinkedPR,
+  type LinkedPR,
+  type LinkedPRClassification,
+  type LinkedPRState,
+} from './linked-pr-classification.js';
+export {
   detectFormatters,
   diagnoseCIFormatterFailure,
   getPreferredFormatter,
