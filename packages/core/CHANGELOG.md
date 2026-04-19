@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.13.1...core-v1.14.0) (2026-04-19)
+
+
+### Features
+
+* **agents:** add success-likelihood grade to issue-scout output ([#858](https://github.com/costajohnt/oss-autopilot/issues/858)) ([#954](https://github.com/costajohnt/oss-autopilot/issues/954)) ([81d0f07](https://github.com/costajohnt/oss-autopilot/commit/81d0f0763bb0781669aa1f67c5fbbea77a320161))
+* **workflows:** skip PR response comment when diff speaks for itself ([#904](https://github.com/costajohnt/oss-autopilot/issues/904)) ([#950](https://github.com/costajohnt/oss-autopilot/issues/950)) ([6981083](https://github.com/costajohnt/oss-autopilot/commit/69810836f9ab635142bfc45c486b7aba797ab411))
+
+
+### Bug Fixes
+
+* **agents:** auto-skip repos with anti-LLM/AI policies during vetting ([#911](https://github.com/costajohnt/oss-autopilot/issues/911)) ([#953](https://github.com/costajohnt/oss-autopilot/issues/953)) ([b496482](https://github.com/costajohnt/oss-autopilot/commit/b496482cb628767ddae3e02c2be947265b4914fe))
+* **agents:** distinguish user's own PR from competition in issue-scout ([#910](https://github.com/costajohnt/oss-autopilot/issues/910)) ([#952](https://github.com/costajohnt/oss-autopilot/issues/952)) ([978b8d4](https://github.com/costajohnt/oss-autopilot/commit/978b8d49c2079f4b104be271e3e6220afef480ab))
+* invalidate dashboard cache when issue list file is edited ([#924](https://github.com/costajohnt/oss-autopilot/issues/924)) ([#947](https://github.com/costajohnt/oss-autopilot/issues/947)) ([b227ea5](https://github.com/costajohnt/oss-autopilot/commit/b227ea5e73817cb01727bdb312eb0a1d660f8461))
+* **workflows:** split commit and push into separate confirmations ([#941](https://github.com/costajohnt/oss-autopilot/issues/941)) ([#949](https://github.com/costajohnt/oss-autopilot/issues/949)) ([e1c670a](https://github.com/costajohnt/oss-autopilot/commit/e1c670a7692e708df44c89ad2a9ba69e801b6d01))
+
 ## [1.13.1](https://github.com/costajohnt/oss-autopilot/compare/core-v1.13.0...core-v1.13.1) (2026-04-18)
 
 
