@@ -15,7 +15,7 @@ vi.mock('@oss-scout/core', () => ({
 
 import { getStateManager } from '../core/index.js';
 import { buildScoutState } from './scout-bridge.js';
-import { makeAgentState, makeStateManagerMock } from '../core/test-utils.js';
+import { makeAgentState, makeDailyDigest, makeFetchedPR, makeStateManagerMock } from '../core/test-utils.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
 
@@ -155,6 +155,51 @@ describe('buildScoutState', () => {
     const result = buildScoutState();
 
     expect(result[field]).toEqual([]);
+  });
+
+  it('should project ephemeral openPRs from last digest into scout openPRs (url, title, openedAt)', () => {
+    const state = makeAgentState({
+      lastDigest: makeDailyDigest({
+        openPRs: [
+          makeFetchedPR({
+            repo: 'owner/repo',
+            number: 42,
+            title: 'feat: add thing',
+            createdAt: '2026-03-01T00:00:00Z',
+          }),
+          makeFetchedPR({
+            repo: 'other/repo',
+            number: 7,
+            title: 'fix: bug',
+            createdAt: '2026-03-15T00:00:00Z',
+          }),
+        ],
+      }),
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const result = buildScoutState();
+
+    expect(result.openPRs).toHaveLength(2);
+    expect(result.openPRs[0]).toEqual({
+      url: 'https://github.com/owner/repo/pull/42',
+      title: 'feat: add thing',
+      openedAt: '2026-03-01T00:00:00Z',
+    });
+    expect(result.openPRs[1]).toEqual({
+      url: 'https://github.com/other/repo/pull/7',
+      title: 'fix: bug',
+      openedAt: '2026-03-15T00:00:00Z',
+    });
+  });
+
+  it('should return [] for openPRs when no digest is present', () => {
+    const state = makeAgentState({ lastDigest: undefined });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const result = buildScoutState();
+
+    expect(result.openPRs).toEqual([]);
   });
 
   it('should always set savedResults to an empty array', () => {

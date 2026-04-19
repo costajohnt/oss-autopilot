@@ -47,6 +47,13 @@ export function buildScoutState(): ScoutState {
       title: pr.title,
       closedAt: pr.closedAt,
     })),
+    // Map ephemeral openPRs (regenerated each daily run) from the last digest
+    // so oss-scout's Phase 0 also searches repos with active-but-unmerged PRs.
+    openPRs: (state.lastDigest?.openPRs ?? []).map((pr: { url: string; title: string; createdAt: string }) => ({
+      url: pr.url,
+      title: pr.title,
+      openedAt: pr.createdAt,
+    })),
     savedResults: [],
     skippedIssues: [],
     lastRunAt: state.lastRunAt,
