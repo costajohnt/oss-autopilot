@@ -235,11 +235,11 @@ Then use AskUserQuestion:
 **If Critical or Recommended findings exist:**
 - "Address findings" — "Fix issues, then re-review"
 - "Show full diff" — "Display the complete diff for manual review"
-- "Commit and push anyway" — "Skip fixes and push current changes"
+- "Commit anyway" — "Skip fixes and commit current changes; push is confirmed separately"
 
 **If only Minor issues or no issues:**
 - "Show full diff first" — "Review the complete diff before committing"
-- "Commit and push (Recommended)" — "Stage, commit, and push changes"
+- "Yes, commit (Recommended)" — "Stage and commit locally; push is confirmed separately"
 - "Done for now" — "Cancel, return without committing"
 
 **When user selects "Address findings":**
@@ -250,12 +250,22 @@ Then use AskUserQuestion:
 - Reset `categoriesWithFindings` and rebuild from the new results
 - Continue looping until all categories pass cleanly or the user selects a different option
 
-**"Commit and push anyway" / "Commit and push (Recommended)":**
+**"Commit anyway" / "Yes, commit" / "Yes, commit (Recommended)":**
 - **If changes are uncommitted:** Stage the specific changed files (not `git add -A`), then commit following the repo's conventional commit format
-- **If changes are committed-but-not-pushed:** Changes are already committed — skip staging and committing, proceed directly to push
+- **If changes are committed-but-not-pushed:** Changes are already committed — skip staging and committing, proceed directly to the push confirmation below
 - **Do NOT add AI attribution** (no Co-Authored-By, no "Generated with" mentions)
-- Push to the PR branch
-- **If any git operation fails**, report the specific error to the user and offer to retry or cancel
+- **Do NOT push yet.** After the commit succeeds, use AskUserQuestion:
+  ```
+  Question: "Commit created locally. Push to {remote}/{branch}?"
+  Header: "Push"
+
+  Options:
+  1. "Yes, push" — "Push the commit(s) above to the remote"
+  2. "Not yet" — "Keep the commit local; I'll push later"
+  3. "Done for now" — "Cancel, return to main flow"
+  ```
+  Before asking, display the branch, target remote, commits about to be sent (`git log --oneline @{u}..HEAD`), and whether this is a fast-forward or force push. For force-push (after rebase), use `--force-with-lease` (never `--force`) and frame option 1 as "Yes, force-push with lease", including the commit rewrite count and old/new tip hashes in the prompt.
+- **If any git operation fails**, report the specific error to the user and offer to retry or cancel.
 
 **When user selects "Show full diff" / "Show full diff first":**
 - Run the appropriate diff command (use the saved `diffRange` for committed-but-not-pushed changes, otherwise `git diff`) and **output the full diff as a markdown code block in your text response** so the user can read it
@@ -266,7 +276,7 @@ Then use AskUserQuestion:
   Header: "Diff"
 
   Options:
-  1. "Commit and push (Recommended)" — "Stage and push these changes"
+  1. "Yes, commit (Recommended)" — "Stage and commit; push is confirmed separately"
   2. "Fix something first" — "Make additional changes before committing"
   3. "Done for now" — "Cancel"
   ```
