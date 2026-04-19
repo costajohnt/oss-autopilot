@@ -1118,4 +1118,132 @@ describe('dashboard-server', () => {
       expect(readDashboardServerInfo()).toBeNull();
     });
   });
+
+  // ── Issue-list cache invalidation (#924, regression test #956) ─────
+  //
+  // The dashboard caches its /api/data payload and only rebuilds it when
+  // state.json changes. Before #924 was fixed, edits to the vetted issue
+  // list file left the cached "N available issues" count stale until an
+  // unrelated state mutation happened to trigger a rebuild.
+  //
+  // These tests guard that fix: GET /api/data must reflect the current
+  // on-disk issue list, and subsequent requests with no change must still
+  // serve the cached payload (no spurious rebuilds on every request).
+
+  describe('GET /api/data — issue-list cache invalidation (#924)', () => {
+    let issueListDir: string;
+    let issueListPath: string;
+
+    beforeEach(() => {
+      // Fresh tmp file per test so mtimes don't collide across tests.
+      issueListDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-issuelist-'));
+      issueListPath = path.join(issueListDir, 'potential-issue-list.md');
+
+      // Point the mocked state manager at our tmp file.
+      const digest = makeDigest();
+      const state = makeState({
+        lastDigest: digest,
+        config: { issueListPath, skippedIssuesPath: undefined } as any,
+      });
+      mockStateManager.getState.mockReturnValue(state);
+    });
+
+    afterEach(() => {
+      try {
+        fs.rmSync(issueListDir, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup errors
+      }
+    });
+
+    /**
+     * Write content to the issue list file with an explicitly newer mtime.
+     * On filesystems with coarse timestamp resolution (macOS HFS+ is ~1s),
+     * two back-to-back writes in the same test can produce identical
+     * mtimes, which defeats the invalidation we are testing.
+     */
+    function writeIssueList(content: string, mtimeMs: number): void {
+      fs.writeFileSync(issueListPath, content);
+      const seconds = mtimeMs / 1000;
+      fs.utimesSync(issueListPath, seconds, seconds);
+    }
+
+    it('reflects an edited issue-list file on the next GET /api/data', async () => {
+      const baseTime = Date.now();
+
+      // Initial state: one Pursue issue.
+      writeIssueList('## Pursue\n- [#1](https://github.com/o/r/issues/1) — First issue\n', baseTime);
+
+      const first = await sendRequest('GET', '/api/data');
+      const firstData = JSON.parse(first.body);
+      expect(firstData.stats.availableIssues).toBe(1);
+
+      // Edit: add a second Pursue issue, bump mtime.
+      writeIssueList(
+        '## Pursue\n- [#1](https://github.com/o/r/issues/1) — First\n- [#2](https://github.com/o/r/issues/2) — Second\n',
+        baseTime + 60_000,
+      );
+
+      const second = await sendRequest('GET', '/api/data');
+      const secondData = JSON.parse(second.body);
+      expect(secondData.stats.availableIssues).toBe(2);
+    });
+
+    it('excludes a Skip sub-bullet after the file is edited (#907 + #924 together)', async () => {
+      const baseTime = Date.now();
+
+      // Two Pursue issues.
+      writeIssueList(
+        '## Pursue\n' +
+          '- [#1](https://github.com/o/r/issues/1) — First\n' +
+          '  - **Maybe** — Score 8/10\n' +
+          '- [#2](https://github.com/o/r/issues/2) — Second\n' +
+          '  - **Maybe** — Score 8/10\n',
+        baseTime,
+      );
+
+      const first = await sendRequest('GET', '/api/data');
+      expect(JSON.parse(first.body).stats.availableIssues).toBe(2);
+
+      // Mark #2 as Skip — user vetted it out. Count should drop.
+      writeIssueList(
+        '## Pursue\n' +
+          '- [#1](https://github.com/o/r/issues/1) — First\n' +
+          '  - **Maybe** — Score 8/10\n' +
+          '- [#2](https://github.com/o/r/issues/2) — Second\n' +
+          '  - **Skip** — Existing PR.\n',
+        baseTime + 60_000,
+      );
+
+      const second = await sendRequest('GET', '/api/data');
+      expect(JSON.parse(second.body).stats.availableIssues).toBe(1);
+    });
+
+    it('serves cached payload (same response shape) when the file is untouched', async () => {
+      writeIssueList('## Pursue\n- [#1](https://github.com/o/r/issues/1) — Only issue\n', Date.now());
+
+      const first = await sendRequest('GET', '/api/data');
+      const second = await sendRequest('GET', '/api/data');
+
+      // Identical payloads across two requests when nothing changes.
+      expect(second.body).toBe(first.body);
+      expect(JSON.parse(second.body).stats.availableIssues).toBe(1);
+    });
+
+    it('handles a missing issue-list file without crashing', async () => {
+      // Point at a path that does not exist; dashboard should degrade gracefully.
+      const missingPath = path.join(issueListDir, 'does-not-exist.md');
+      const state = makeState({
+        lastDigest: makeDigest(),
+        config: { issueListPath: missingPath, skippedIssuesPath: undefined } as any,
+      });
+      mockStateManager.getState.mockReturnValue(state);
+
+      const result = await sendRequest('GET', '/api/data');
+      expect(result.statusCode).toBe(200);
+      // availableIssues falls back to whatever buildDashboardStats supplied (no override).
+      const data = JSON.parse(result.body);
+      expect(data.stats).toBeDefined();
+    });
+  });
 });
