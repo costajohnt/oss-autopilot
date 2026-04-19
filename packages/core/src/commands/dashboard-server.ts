@@ -128,6 +128,20 @@ function readVettedIssues(): ParseIssueListOutput | null {
 }
 
 /**
+ * Get the mtime of the vetted issue list file in ms, or null if unknown.
+ * Used to detect external edits and invalidate the cached dashboard payload.
+ */
+function getIssueListMtimeMs(): number | null {
+  try {
+    const info = detectIssueList();
+    if (!info) return null;
+    return fs.statSync(info.path).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Build the JSON payload that the SPA expects from GET /api/data.
  */
 function buildDashboardJson(
@@ -286,6 +300,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
   // ── Build cached JSON response ───────────────────────────────────────────
   let cachedJsonData: DashboardJsonData;
+  let cachedIssueListMtimeMs = getIssueListMtimeMs();
   try {
     cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
   } catch (error) {
@@ -321,9 +336,13 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         } else {
           stateChanged = stateManager.reloadIfChanged();
         }
-        if (stateChanged) {
+        // Also rebuild when the vetted issue list file was edited outside this server (#924)
+        const currentIssueListMtimeMs = getIssueListMtimeMs();
+        const issueListChanged = currentIssueListMtimeMs !== cachedIssueListMtimeMs;
+        if (stateChanged || issueListChanged) {
           try {
             cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+            cachedIssueListMtimeMs = currentIssueListMtimeMs;
           } catch (error) {
             warn(MODULE, `Failed to rebuild dashboard data after state reload: ${errorMessage(error)}`);
             // Intentional: serve previous cachedJsonData rather than returning 500
@@ -444,6 +463,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
     // Rebuild dashboard data from cached digest + updated state
     cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+    cachedIssueListMtimeMs = getIssueListMtimeMs();
 
     sendJson(res, 200, cachedJsonData);
   }
@@ -473,6 +493,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         result.allMergedPRs,
         result.allClosedPRs,
       );
+      cachedIssueListMtimeMs = getIssueListMtimeMs();
       sendJson(res, 200, cachedJsonData);
     } catch (error) {
       warn(MODULE, `Dashboard refresh failed: ${errorMessage(error)}`);
@@ -602,6 +623,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
           result.allMergedPRs,
           result.allClosedPRs,
         );
+        cachedIssueListMtimeMs = getIssueListMtimeMs();
         warn(MODULE, 'Background data refresh complete');
       })
       .catch((error) => {
