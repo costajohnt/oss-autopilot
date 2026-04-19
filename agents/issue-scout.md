@@ -268,12 +268,16 @@ gh issue view OWNER/REPO#NUMBER --json body,comments --jq '[.body, .comments[].b
 USER_LOGIN=$(gh api user --jq '.login')
 ```
 
-Classify the linked PR by `author.login`:
-- **Open PR authored by `$USER_LOGIN`** → the user is already working on this. **Mark the issue as "In Progress" with a link to their PR. Do NOT recommend Pursue/Maybe — this is already claimed by the user themselves.** In the curated list, update the entry to `**In Progress** — PR #XX` (user's own). Do NOT include the issue in "pick from your list" options.
-- **Open PR authored by someone else** → competition. Skip (someone is actively working).
-- **Closed PR authored by `$USER_LOGIN`** → the user's prior attempt was closed without merge. Note this as a relationship signal (possible friction); may still be worth Pursue if the issue is still open and the closure reason was unrelated.
-- **Closed PR authored by someone else** → note it; may indicate difficulty or maintainer preferences, but the issue is still technically available.
-- **No linked PR** → proceed to normal scoring.
+Classification is a pure function in `packages/core/src/core/linked-pr-classification.ts` — call `classifyLinkedPR({ linkedPR, userLogin })` with the first linked PR (or `null` if none) and the user's login. Map the returned value as follows:
+
+- `user_open` — the user is already working on this. **Mark the issue as "In Progress" with a link to their PR. Do NOT recommend Pursue/Maybe — this is already claimed by the user themselves.** In the curated list, update the entry to `**In Progress** — PR #XX` (user's own). Do NOT include the issue in "pick from your list" options.
+- `other_open` — competition. Skip (someone is actively working).
+- `user_closed` — the user's prior attempt was closed without merge. Note this as a relationship signal (possible friction); may still be worth Pursue if the issue is still open and the closure reason was unrelated.
+- `other_closed` — note it; may indicate difficulty or maintainer preferences, but the issue is still technically available.
+- `user_merged` / `other_merged` — a linked PR was merged. The issue is almost certainly resolved even if GitHub still shows it open; skip and flag the stale issue.
+- `none` — proceed to normal scoring.
+
+The pure function handles case-insensitive GitHub login matching, ghost-author edge cases, and both REST lowercase + GraphQL uppercase state values. Once scout surfaces linked-PR metadata on `IssueCandidate` (tracked in #978), the vet command will call this function and return the classification as a structured field in `vet --json`.
 
 ### 2. Contribution Guidelines Check
 
