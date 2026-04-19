@@ -13,11 +13,17 @@ vi.mock('@oss-scout/core', () => ({
   createScout: vi.fn(),
 }));
 
+vi.mock('./skip-file-parser.js', () => ({
+  loadSkippedIssues: vi.fn(() => []),
+}));
+
 import { getStateManager } from '../core/index.js';
 import { buildScoutState } from './scout-bridge.js';
+import { loadSkippedIssues } from './skip-file-parser.js';
 import { makeAgentState, makeDailyDigest, makeFetchedPR, makeStateManagerMock } from '../core/test-utils.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
+const mockLoadSkippedIssues = vi.mocked(loadSkippedIssues);
 
 describe('buildScoutState', () => {
   beforeEach(() => {
@@ -209,5 +215,38 @@ describe('buildScoutState', () => {
     const result = buildScoutState();
 
     expect(result.savedResults).toEqual([]);
+  });
+
+  it('should populate skippedIssues from the parsed skip file', () => {
+    const state = makeAgentState({
+      config: { skippedIssuesPath: '/vault/open-source/skipped-issues.md' },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const skipped = [
+      {
+        url: 'https://github.com/owncast/owncast/issues/4883',
+        repo: 'owncast/owncast',
+        number: 4883,
+        title: '',
+        skippedAt: '2026-04-15T00:00:00.000Z',
+      },
+    ];
+    mockLoadSkippedIssues.mockReturnValueOnce(skipped);
+
+    const result = buildScoutState();
+
+    expect(mockLoadSkippedIssues).toHaveBeenCalledWith('/vault/open-source/skipped-issues.md');
+    expect(result.skippedIssues).toEqual(skipped);
+  });
+
+  it('should default skippedIssues to [] when parser returns empty', () => {
+    const state = makeAgentState({ config: { skippedIssuesPath: undefined } });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+    mockLoadSkippedIssues.mockReturnValueOnce([]);
+
+    const result = buildScoutState();
+
+    expect(result.skippedIssues).toEqual([]);
   });
 });

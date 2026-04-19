@@ -5,6 +5,7 @@
 
 import { createScout, type OssScout, type ScoutState } from '@oss-scout/core';
 import { getStateManager, requireGitHubToken } from '../core/index.js';
+import { loadSkippedIssues } from './skip-file-parser.js';
 
 /**
  * Build a ScoutState from the current AgentState.
@@ -55,7 +56,7 @@ export function buildScoutState(): ScoutState {
       openedAt: pr.createdAt,
     })),
     savedResults: [],
-    skippedIssues: [],
+    skippedIssues: loadSkippedIssues(config.skippedIssuesPath),
     lastRunAt: state.lastRunAt,
   };
 }
