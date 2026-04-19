@@ -1,12 +1,12 @@
 ---
 name: oss-search
-description: "Search for new open source issues to contribute to — parallel multi-strategy search with vetting"
+description: "Search for new open source issues to contribute to — delegates to oss-scout"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, mcp__*
 ---
 
 # OSS Issue Search
 
-This command searches for new open source issues to contribute to using parallel multi-strategy search with automated vetting.
+This command searches for new open source issues to contribute to by delegating to the `@oss-scout/core` package (via the CLI's `search` command). Scout runs a staged multi-phase search (merged-PR repos + open-PR repos → starred → broad → maintained) with built-in rate-limit budgeting, skip-list dedup, spam filtering, and vetting — there is no reason for this skill to duplicate any of that logic (#929).
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
 
@@ -14,7 +14,6 @@ This command searches for new open source issues to contribute to using parallel
 
 **Initialize on entry** (reset each time):
 - `searchRoundScores`: number[] = [] (average vetting score per search round)
-- `searchedRepos`: string[] = [] (repos surfaced in previous rounds, auto-excluded from subsequent rounds)
 
 **Inherited from `/oss` session** (if invoked from there):
 - `hasIssueList`, `availableCount`, `completedCount`, `issueListPath` — curated issue list info
@@ -25,17 +24,17 @@ This command searches for new open source issues to contribute to using parallel
 
 Use AskUserQuestion:
 - "Review from your curated list ({availableCount} available)" — "Pick from pre-vetted issues you've already researched"
-- "Search GitHub" — "Find new issues via parallel multi-strategy search"
+- "Search GitHub" — "Find new issues via oss-scout"
 - "Both — list first, then search" — "Review your list, then search for more"
 - "Done for now"
 
 Route based on choice:
 - "Review from list" → this command requires `/oss` context. Tell the user: "Returning to `/oss` to browse your issue list." End this command; the parent `/oss` session handles "Pick Issue From List".
-- "Search GitHub" → continue with **Parallel Multi-Strategy Search** below
-- "Both" → show list first (return to `/oss` for "Pick Issue From List"), then continue with **Parallel Multi-Strategy Search**
+- "Search GitHub" → continue with **Run Search** below
+- "Both" → show list first (return to `/oss` for "Pick Issue From List"), then continue with **Run Search**
 - "Done for now" → end this command. If invoked from `/oss`, return to the parent session. If standalone, exit.
 
-## Parallel Multi-Strategy Search
+## Run Search
 
 ### Pre-Search: Cull Skip File
 
@@ -54,94 +53,53 @@ if [ -f "$SKIP_FILE" ]; then
 fi
 ```
 
-### Phase 1: Dispatch A + C in parallel
+### Dispatch Scout Search
 
-**CRITICAL: Dispatch Strategies A and C together in a SINGLE message first. After both return, dispatch Strategy B separately.** This avoids GitHub's secondary rate limit (~30 search requests/minute) — A+C use raw `gh` calls while B hits the same Search API via the CLI, and firing all 3 simultaneously causes B to get 403 rate-limited.
+Run the CLI search command — one call replaces the old 3-strategy orchestration. Scout handles rate-limit budgeting, skip-list integration, exclude-list filtering, spam detection, and deduplication internally:
 
-**Strategy A — Established repos (merged-PR + open-PR repos):**
-```
-Task(issue-scout, "Find recently-opened issues (last 30 days) in repos where the user has merged or open PRs.
-  [If searchedRepos is non-empty, insert: "Exclude results from these repos (already searched in prior rounds): {searchedRepos as comma-separated list}."]
-  Get merged-PR repos: read ~/.oss-autopilot/state.json, extract repo names from repoScores entries where mergedPRCount > 0 (sorted by mergedPRCount descending).
-  Get open-PR repos: run `gh search prs --author @me --state open --json repository --jq '.[].repository.nameWithOwner' | sort -u`.
-  Combine both lists (merged-PR repos first), deduplicate.
-  Read config.excludeRepos and config.excludeOrgs from ~/.oss-autopilot/state.json. Remove any repo that appears in excludeRepos or whose owner matches an entry in excludeOrgs (case-insensitive) from the combined list before searching.
-  For each repo: `gh search issues --repo OWNER/REPO --state open --sort created --limit 5`.
-  Exclude issues authored by the user (get username from `gh api user -q .login`).
-  Return at most 15 total results (prioritize repos with higher mergedPRCount).
-  For each: repo, number, title, URL, labels, source: 'established-repo', and brief assessment.")
-```
-
-### Phase 2: Dispatch B after A+C return
-
-After Strategies A and C have both returned, dispatch Strategy B. If A+C produced results, present them immediately with a note: "CLI search results incoming — showing established and trending results first."
-
-**Strategy B — Filtered CLI search (language + label + star filters):**
 ```
 Task(general-purpose, "Run the CLI search command and return the raw JSON output verbatim:
   ```bash
-  GITHUB_TOKEN=$(gh auth token) node \"${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs\" search 10 --json
+  GITHUB_TOKEN=$(gh auth token) node \"${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs\" search 25 --json
   ```")
 ```
 
-When Strategy B returns, check the JSON `success` field. If `success: false`, treat it as a failed strategy. If `success: true`, tag each candidate in `data.candidates` as source: `'cli-search'`.
+**Parsing the response:**
 
-**Strategy C — Trending/popular repos in user's language preferences** (dispatched in Phase 1 alongside A)**:**
-```
-Task(issue-scout, "Search for good-first-issue candidates in trending/popular repos the user has NOT contributed to.
-  [If searchedRepos is non-empty, insert: "Exclude results from these repos (already searched in prior rounds): {searchedRepos as comma-separated list}."]
-  Exclude issues authored by the user (get username from `gh api user -q .login`).
-  Read the user's language preferences from CLI: `config --json`.
-  Read minStars, config.excludeRepos, and config.excludeOrgs from ~/.oss-autopilot/state.json (default minStars to 50 if missing or null).
-  Then: gh search issues --label 'good first issue' --language {lang} --state open --sort reactions-+1 --limit 20
-  For each candidate, check the repo's star count via `gh api repos/{owner}/{repo} -q .stargazers_count`.
-  Filter out repos with fewer stars than minStars. Also filter out any repo in excludeRepos or whose owner matches an entry in excludeOrgs (case-insensitive).
-  Focus on repos with high star counts and recent activity.
-  Return at most 10 results that pass the filter.
-  For each: repo, number, title, URL, labels, star count, source: 'trending-repo', and brief assessment.")
-```
-
-## Combine, Filter, and Deduplicate
-
-After all 3 strategies return:
-
-1. **Normalize** all results to: `{ repo, number, title, url, labels, source, metadata }`. For Strategy B, flatten `candidate.issue.{repo, number, title, url, labels}` to the top level and place `candidate.{recommendation, viabilityScore, repoScore, reasonsToApprove, reasonsToSkip}` into `metadata`.
-2. **Filter Strategy B** against `searchedRepos` — remove candidates whose repo appears in `searchedRepos`
-2b. **Skip file dedup** — if skip file exists, read all URLs and remove matching candidates:
-   ```bash
-   SKIP_URLS=$(grep -v '^#\|^$' "$SKIP_FILE" 2>/dev/null | awk '{print $2}')
+1. Check the JSON `success` field. If `success: false`, display the `error` field and offer retry/done.
+2. If `success: true`, each entry in `data.candidates` has this shape:
    ```
-   Remove any candidate whose URL appears in `SKIP_URLS`. Log: "Filtered {count} previously-skipped issues."
-3. **Cross-strategy spam filter** — apply label-farming detection across ALL results:
-   - Flag repos where a single issue has 5+ beginner-type labels (good first issue, hacktoberfest, easy, beginner, starter, up-for-grabs, first-timers-only, help wanted)
-   - Flag repos where 3+ issues have near-identical titles (e.g., "Add Entry X", "Create Item Y")
-   - Remove all issues from flagged repos across all strategies, log: "Filtered {count} issues from {repos} (label-farming detected)"
-4. **Deduplicate** by issue URL — keep the entry with richest metadata, assign **highest-priority source tag** (Established repo > CLI search > Trending repo)
-5. **Sort** by source priority: Established repo first, then CLI search, then Trending repo
-6. **Update `searchedRepos`** — append all repos from deduplicated results
+   {
+     issue: { repo, number, title, url, labels, createdAt },
+     recommendation: "approve" | "skip" | "needs_review",
+     viabilityScore: number,
+     searchPriority: "merged_pr" | "starred" | "normal",
+     reasonsToApprove: string[],
+     reasonsToSkip: string[]
+   }
+   ```
+3. Normalize to `{ repo, number, title, url, labels, source, metadata }` where `source` is derived from `searchPriority`:
+   - `merged_pr` → `"established-repo"` (user has merged or open PRs in this repo)
+   - `starred` → `"starred-repo"` (user starred this repo)
+   - `normal` → `"trending-repo"` (discovered via broad/maintained phases)
 
-**If ALL strategies failed** (all 3 returned errors):
-Show each strategy's specific error message, then:
-> "All 3 search strategies failed. Check: `gh auth status`, CLI build exists, network connectivity."
+**If `data.candidates` is empty:**
+> "No matching issues found. Scout's search returned zero candidates — the skip list, exclude list, or filters may be too narrow."
 
-Use AskUserQuestion: "Retry search" / "Done for now". Route: retry → top of search, done → end.
+Use AskUserQuestion: "Retry" / "Done for now".
 
-**If some strategies failed**, report which strategy failed and its error message, then continue with available results. Omit strategies that returned zero results without comment.
+## Present Results
 
-**If total candidate count is zero** (all succeeded but empty):
-> "No matching issues found. Exclusion list may be too large or filters too narrow."
+Group candidates by `source` (omit empty groups):
 
-Use AskUserQuestion: "Retry with broader criteria" (broaden Strategy C to include `'help wanted'` label) / "Done for now".
-
-Present combined results grouped by source (omit empty groups):
 ```
-## Search Results ({totalCount} candidates from {successCount} strategies)
+## Search Results ({totalCount} candidates)
 
 ### From Established Repos ({count})
 {results with source: 'established-repo'}
 
-### From CLI Search ({count})
-{results with source: 'cli-search'}
+### From Starred Repos ({count})
+{results with source: 'starred-repo'}
 
 ### From Trending Repos ({count})
 {results with source: 'trending-repo'}
@@ -154,7 +112,7 @@ Set `currentRound = searchRoundScores.length + 1`.
 Use AskUserQuestion:
 - "Add all to list and vet in parallel (Recommended)" — "Add candidates to your issue list as 'Pending vet', then dispatch parallel vet agents"
 - "Pick one to vet now" — "Select a single candidate to investigate immediately"
-- "Search again with different criteria" — "Run another parallel search round (prior repos auto-excluded)"
+- "Search again" — "Run another search round (scout's skip list carries forward)"
 - "Done for now"
 
 **"Add all to list and vet in parallel":**
@@ -222,7 +180,7 @@ Use AskUserQuestion:
 - Offer: "Start working on this issue" / "Pick a different one" / "Done for now"
 - Record score: `searchRoundScores.push(score)` → **Diminishing Returns Check**
 
-**"Search again":** Route back to **Parallel Multi-Strategy Search** (exclusions carry forward).
+**"Search again":** Route back to **Run Search** (scout's internal state tracks the skip list across rounds; no manual repo-exclusion bookkeeping required here).
 
 ## Diminishing Returns Check
 
@@ -236,7 +194,7 @@ dropPercent = (previousAvg - currentAvg) / previousAvg * 100
 
 Use AskUserQuestion (if `availableCount >= 5` and advisory shown, place list option first with "(Recommended)"):
 - "Pick from your issue list ({availableCount} ready)" (if available) — "Start working on a vetted issue"
-- "Search for new issues" — "Run another parallel search round"
+- "Search for new issues" — "Run another search round"
 - "Done for now" — end this command; return to parent `/oss` session if applicable
 
 **When the user selects any issue and starts implementing**, set:
