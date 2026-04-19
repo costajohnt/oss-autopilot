@@ -111,11 +111,7 @@ export function useCelebration(mergedCount: number | undefined): {
       typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 
     if (!reducedMotion) {
-      try {
-        fireConfetti();
-      } catch (err) {
-        console.warn('[useCelebration] confetti setup failed:', err);
-      }
+      fireConfetti();
     }
 
     const message = delta === 1 ? '1 new PR merged. Great work!' : `${delta} new PRs merged. Great work!`;
