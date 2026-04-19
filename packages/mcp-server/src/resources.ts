@@ -8,7 +8,6 @@ import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { runStatus, runConfig } from '@oss-autopilot/core/commands';
 import { getStateManager, splitRepo } from '@oss-autopilot/core';
-import { errorMessage } from '@oss-autopilot/core';
 
 /** Build a standard MCP resource response with a single JSON content entry. */
 function resourceContent(uri: URL, data: unknown) {
@@ -17,14 +16,22 @@ function resourceContent(uri: URL, data: unknown) {
   };
 }
 
-/** Wrap an async data-fetching function with error handling for use as an MCP resource callback. */
+/**
+ * Wrap an async data-fetching function for use as an MCP resource callback.
+ *
+ * Logs failures and rethrows so the MCP SDK produces a proper JSON-RPC error
+ * response. Previously this swallowed errors and returned them as a 200 OK
+ * resource payload with `{ error: "..." }` in the body — clients that did not
+ * introspect the JSON saw a successful read and treated the error string as
+ * resource data (#957).
+ */
 function wrapResource(fn: () => Promise<unknown>): (uri: URL) => Promise<ReturnType<typeof resourceContent>> {
   return async (uri: URL) => {
     try {
       return resourceContent(uri, await fn());
     } catch (e) {
       console.error('[MCP] Resource error:', e);
-      return resourceContent(uri, { error: errorMessage(e) });
+      throw e;
     }
   };
 }
@@ -114,7 +121,9 @@ export function registerResources(server: McpServer): void {
           };
         } catch (e) {
           console.error('[MCP] Failed to list PR resources:', e);
-          return { resources: [] };
+          // Rethrow so the MCP client sees a failed list request rather than
+          // an empty list that hides the API / state error (#957).
+          throw e;
         }
       },
     }),
@@ -125,20 +134,25 @@ export function registerResources(server: McpServer): void {
       mimeType: 'application/json',
     },
     async (uri, { owner, repo, number }) => {
+      // Validate input before touching state. Any of these throws produces a
+      // proper JSON-RPC error response to the MCP client, rather than a 200
+      // OK payload with an `{ error: "..." }` body that clients could mistake
+      // for valid resource content (#957).
+      const prNumber = parseInt(String(number), 10);
+      if (Number.isNaN(prNumber)) {
+        throw new Error(`Invalid PR number: ${String(number)}`);
+      }
       try {
         const openPRs = getStateManager().getState().lastDigest?.openPRs ?? [];
-        const prNumber = parseInt(String(number), 10);
-        if (Number.isNaN(prNumber)) {
-          return resourceContent(uri, { error: `Invalid PR number: ${String(number)}` });
-        }
         const fullRepo = `${String(owner)}/${String(repo)}`;
         const pr = openPRs.find((p) => p.repo === fullRepo && p.number === prNumber);
         if (!pr) {
-          return resourceContent(uri, { error: `PR ${fullRepo}#${prNumber} not found in last daily digest` });
+          throw new Error(`PR ${fullRepo}#${prNumber} not found in last daily digest`);
         }
         return resourceContent(uri, pr);
       } catch (e) {
-        return resourceContent(uri, { error: errorMessage(e) });
+        console.error('[MCP] PR detail error:', e);
+        throw e;
       }
     },
   );
