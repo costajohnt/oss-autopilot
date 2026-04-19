@@ -8,6 +8,10 @@ import { createAutopilotScout } from './scout-bridge.js';
 import { type VetListOutput, type VetOutput, type VetListItemStatus } from '../formatters/json.js';
 import { runParseList, pruneIssueList } from './parse-list.js';
 import { detectIssueList } from './startup.js';
+import { computeSuccessGrade, gradeFromCandidate } from '../core/issue-grading.js';
+import { getStateManager } from '../core/index.js';
+
+const UNKNOWN_GRADE = computeSuccessGrade({ avgResponseDays: null, mergeRate: null, daysSinceLastCommit: null });
 
 interface VetListOptions {
   issueListPath?: string;
@@ -79,6 +83,11 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
       const item = items[index++];
       try {
         const candidate = await scout.vetIssue(item.url);
+        const grade = gradeFromCandidate({
+          repo: candidate.issue.repo,
+          projectHealth: candidate.projectHealth,
+          getRepoScore: (repo) => getStateManager().getRepoScore(repo),
+        });
         const vetResult: VetOutput = {
           issue: {
             repo: candidate.issue.repo,
@@ -92,6 +101,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
           reasonsToSkip: candidate.reasonsToSkip,
           projectHealth: candidate.projectHealth,
           vettingResult: candidate.vettingResult,
+          grade,
         };
 
         results.push({
@@ -107,6 +117,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
           reasonsToSkip: [`Error: ${error instanceof Error ? error.message : String(error)}`],
           projectHealth: {},
           vettingResult: {},
+          grade: UNKNOWN_GRADE,
           listStatus: 'error',
           errorMessage: error instanceof Error ? error.message : String(error),
         });
