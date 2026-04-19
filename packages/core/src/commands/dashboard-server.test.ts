@@ -123,6 +123,7 @@ vi.mock('./rate-limiter.js', () => ({
 }));
 
 import {
+  buildDashboardJson,
   startDashboardServer,
   getDashboardPidPath,
   writeDashboardServerInfo,
@@ -420,6 +421,43 @@ describe('dashboard-server', () => {
       const result = await sendRequest('GET', '/api/data');
       const data = JSON.parse(result.body);
       expect(Array.isArray(data.shelvedPRUrls)).toBe(true);
+    });
+
+    it('should derive shelvedPRUrls from digest.shelvedPRs, not config.shelvedPRUrls (#981)', () => {
+      // Dashboard card shows `stats.shelvedPRs`, which counts digest.shelvedPRs.
+      // The response's shelvedPRUrls must use the same source so the PR list
+      // filter matches. Previously it pulled from config.shelvedPRUrls, which
+      // excluded dormant-non-addressing PRs the orchestration layer had
+      // already moved into digest.shelvedPRs — leaving them visible in the
+      // active list while still counted in the shelved card.
+      const digest = makeDigest({
+        shelvedPRs: [
+          {
+            number: 1,
+            url: 'https://github.com/o/r/pull/1',
+            title: 'Explicit shelf',
+            repo: 'o/r',
+            daysSinceActivity: 10,
+            status: 'waiting_on_maintainer',
+          },
+          {
+            number: 2,
+            url: 'https://github.com/o/r/pull/2',
+            title: 'Dormant auto-shelf',
+            repo: 'o/r',
+            daysSinceActivity: 45,
+            status: 'waiting_on_maintainer',
+          },
+        ],
+      });
+      const state = makeState({
+        config: { shelvedPRUrls: ['https://github.com/o/r/pull/1'] },
+        lastDigest: digest,
+      });
+
+      const data = buildDashboardJson(digest, state, []);
+
+      expect(data.shelvedPRUrls).toEqual(['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/2']);
     });
 
     it('should include repos with metadata and exclude repos without in repoMetadata (#677)', async () => {
