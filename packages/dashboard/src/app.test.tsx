@@ -30,6 +30,10 @@ describe('App', () => {
     vi.restoreAllMocks();
     localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
+    // Reset the URL so route-dependent tests start from "/" regardless of
+    // what the previous test navigated to (preact-iso's LocationProvider
+    // reads window.location which is shared across tests in the same file).
+    window.history.replaceState(null, '', '/');
   });
 
   it('shows loading state initially', () => {
@@ -340,5 +344,205 @@ describe('App', () => {
     expect(container.querySelector('.error-banner-dismiss')).toBeTruthy();
 
     vi.useRealTimers();
+  });
+
+  // ── Action round-trips (#966) ─────────────────────────────────────
+  //
+  // These tests exercise the wiring between the ActionBar buttons in the
+  // PR detail pane and the POST /api/action endpoint. The hooks are
+  // covered by unit tests; this verifies the glue in app.tsx that routes
+  // the performAction callback through PRDetail -> ActionBar.
+
+  describe('action round-trips', () => {
+    it('shelve button fires POST /api/action with the right payload and re-renders', async () => {
+      const pr = makePR({ url: 'https://github.com/owner/repo/pull/42', number: 42, title: 'Fix it' });
+      const initial = makeDashboardData({ activePRs: [pr] });
+      const afterShelve = makeDashboardData({ activePRs: [pr], shelvedPRUrls: [pr.url] });
+
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(initial) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(afterShelve) });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+
+      fireEvent.click(container.querySelector('.pr-row') as HTMLElement);
+      await waitFor(() => expect(container.querySelector('.action-btn--shelve')).toBeTruthy());
+      fireEvent.click(container.querySelector('.action-btn--shelve') as HTMLButtonElement);
+
+      await waitFor(() => {
+        const actionCall = fetchMock.mock.calls.find((c) => c[0] === '/api/action');
+        expect(actionCall).toBeDefined();
+      });
+      const actionCall = fetchMock.mock.calls.find((c) => c[0] === '/api/action')!;
+      expect(actionCall[1].method).toBe('POST');
+      expect(JSON.parse(actionCall[1].body as string)).toEqual({
+        action: 'move',
+        url: pr.url,
+        target: 'shelved',
+      });
+
+      await waitFor(() => expect(container.querySelector('.action-btn--unshelve')).toBeTruthy());
+    });
+
+    it('status override button (Move to Waiting) fires the correct target', async () => {
+      const pr = makePR({
+        url: 'https://github.com/owner/repo/pull/7',
+        number: 7,
+        status: 'needs_addressing',
+      });
+      const initial = makeDashboardData({ activePRs: [pr] });
+
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(initial) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(initial) });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+
+      fireEvent.click(container.querySelector('.pr-row') as HTMLElement);
+      await waitFor(() => expect(container.querySelector('.action-btn--override')).toBeTruthy());
+      fireEvent.click(container.querySelector('.action-btn--override') as HTMLButtonElement);
+
+      await waitFor(() => {
+        const call = fetchMock.mock.calls.find((c) => c[0] === '/api/action');
+        expect(call).toBeDefined();
+        expect(JSON.parse(call![1].body as string)).toMatchObject({
+          action: 'move',
+          url: pr.url,
+          target: 'waiting',
+        });
+      });
+    });
+
+    it('surfaces action error to the user without crashing', async () => {
+      const pr = makePR();
+      const initial = makeDashboardData({ activePRs: [pr] });
+
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(initial) })
+        .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({ error: 'Boom' }) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(initial) });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+
+      fireEvent.click(container.querySelector('.pr-row') as HTMLElement);
+      await waitFor(() => expect(container.querySelector('.action-btn--shelve')).toBeTruthy());
+      fireEvent.click(container.querySelector('.action-btn--shelve') as HTMLButtonElement);
+
+      await waitFor(() => {
+        expect(container.querySelector('.action-error')).toBeTruthy();
+      });
+      expect(container.querySelector('.action-error')?.textContent).toContain('Boom');
+    });
+  });
+
+  // ── Celebration toast (#966) ──────────────────────────────────────
+  //
+  // The celebration hook is unit-tested, but the wiring through app.tsx
+  // where the data fetch's mergedPRs count is passed to useCelebration
+  // was not covered.
+
+  describe('celebration toast integration', () => {
+    it('shows a celebration toast when mergedPRs jumps above the stored count', async () => {
+      localStorage.setItem('oss-autopilot-merged-count', '5');
+
+      const data = makeDashboardData({
+        stats: { activePRs: 0, shelvedPRs: 0, mergedPRs: 7, closedPRs: 0, mergeRate: '100%' },
+      });
+      mockFetchOk(data);
+
+      const { container } = render(<App />);
+
+      await waitFor(() => {
+        expect(container.querySelector('.celebration-toast')).toBeTruthy();
+      });
+      expect(container.querySelector('.celebration-toast')?.textContent).toContain('2 new PRs merged');
+    });
+
+    it('does not show a toast when mergedPRs matches the stored count', async () => {
+      localStorage.setItem('oss-autopilot-merged-count', '5');
+
+      const data = makeDashboardData({
+        stats: { activePRs: 0, shelvedPRs: 0, mergedPRs: 5, closedPRs: 0, mergeRate: '100%' },
+      });
+      mockFetchOk(data);
+
+      const { container } = render(<App />);
+
+      await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(container.querySelector('.celebration-toast')).toBeFalsy();
+    });
+  });
+
+  // ── Route navigation (#966) ───────────────────────────────────────
+
+  describe('route navigation', () => {
+    it('clicking the Merged PRs stat pill navigates to /merged and renders MergedPRList', async () => {
+      const data = makeDashboardData({
+        stats: { activePRs: 0, shelvedPRs: 0, mergedPRs: 3, closedPRs: 0, mergeRate: '100%' },
+        allMergedPRs: [
+          {
+            url: 'https://github.com/o/r/pull/1',
+            repo: 'o/r',
+            number: 1,
+            title: 'Merged A',
+            mergedAt: '2026-01-01T00:00:00Z',
+          },
+        ],
+      });
+      mockFetchOk(data);
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+
+      const mergedButton = Array.from(container.querySelectorAll('button')).find((b) =>
+        b.textContent?.includes('Merged PRs'),
+      );
+      expect(mergedButton).toBeTruthy();
+      fireEvent.click(mergedButton!);
+
+      await waitFor(() => {
+        expect(container.textContent).toContain('Merged A');
+      });
+    });
+
+    it('clicking the Closed PRs stat pill navigates to /closed and renders ClosedPRList', async () => {
+      const data = makeDashboardData({
+        stats: { activePRs: 0, shelvedPRs: 0, mergedPRs: 0, closedPRs: 2, mergeRate: '0%' },
+        allClosedPRs: [
+          {
+            url: 'https://github.com/o/r/pull/5',
+            repo: 'o/r',
+            number: 5,
+            title: 'Closed X',
+            closedAt: '2026-01-05T00:00:00Z',
+          },
+        ],
+      });
+      mockFetchOk(data);
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+
+      const closedButton = Array.from(container.querySelectorAll('button')).find((b) =>
+        b.textContent?.includes('Closed PRs'),
+      );
+      expect(closedButton).toBeTruthy();
+      fireEvent.click(closedButton!);
+
+      await waitFor(() => {
+        expect(container.textContent).toContain('Closed X');
+      });
+    });
   });
 });
