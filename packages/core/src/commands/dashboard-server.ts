@@ -22,7 +22,7 @@ import {
   buildDashboardStats,
   storedToMergedPRs,
   storedToClosedPRs,
-  type DashboardStats,
+  type DashboardJsonData,
 } from './dashboard-data.js';
 import { openInBrowser, detectIssueList } from './startup.js';
 import { parseIssueList, type ParseIssueListOutput } from './parse-list.js';
@@ -34,10 +34,8 @@ import {
   type AgentState,
   type CommentedIssue,
   type CommentedIssueWithResponse,
-  type FetchedPR,
   type MergedPR,
   type ClosedPR,
-  type ShelvedPRRef,
   type RepoMetadataEntry,
 } from '../core/types.js';
 
@@ -59,28 +57,6 @@ export interface DashboardServerOptions {
   assetsDir: string;
   token: string | null;
   open: boolean;
-}
-
-interface DashboardJsonData {
-  stats: DashboardStats;
-  prsByRepo: Record<string, { active: number; merged: number; closed: number }>;
-  topRepos: Array<{ repo: string; active: number; merged: number; closed: number }>;
-  monthlyMerged: Record<string, number>;
-  monthlyOpened: Record<string, number>;
-  monthlyClosed: Record<string, number>;
-  activePRs: FetchedPR[];
-  shelvedPRUrls: string[];
-  recentlyMergedPRs: MergedPR[];
-  recentlyClosedPRs: ClosedPR[];
-  autoUnshelvedPRs: ShelvedPRRef[];
-  commentedIssues: CommentedIssue[];
-  issueResponses: CommentedIssueWithResponse[];
-  allMergedPRs: MergedPR[];
-  allClosedPRs: ClosedPR[];
-  repoMetadata: Record<string, RepoMetadataEntry>;
-  vettedIssues?: ParseIssueListOutput | null;
-  offline?: boolean;
-  lastUpdated?: string;
 }
 
 interface ActionRequest {
