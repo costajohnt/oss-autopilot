@@ -18,6 +18,9 @@
   "files": [
     "dist/"
   ],
+  "engines": {
+    "node": ">=20"
+  },
   "license": "MIT",
   "dependencies": {
     "@oss-autopilot/core": "workspace:*",
