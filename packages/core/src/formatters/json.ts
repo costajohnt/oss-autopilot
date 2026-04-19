@@ -409,6 +409,11 @@ export interface VetOutput {
   reasonsToSkip: string[];
   projectHealth: unknown;
   vettingResult: unknown;
+  /** Success-likelihood grade (#858): predicts whether a PR will merge. */
+  grade: {
+    letter: 'A' | 'B' | 'C' | 'F';
+    reason: string;
+  };
 }
 
 /** Output of the comments command */

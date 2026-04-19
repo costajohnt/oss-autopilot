@@ -247,10 +247,11 @@ export const commands: CLICommandDef[] = [
             if (options.json) {
               outputJson(data);
             } else {
-              const { issue, recommendation, reasonsToApprove, reasonsToSkip } = data;
+              const { issue, recommendation, reasonsToApprove, reasonsToSkip, grade } = data;
               console.log(`\nVetting issue: ${issueUrl}\n`);
               console.log(`[${recommendation.toUpperCase()}] ${issue.repo}#${issue.number}: ${issue.title}`);
               console.log(`  URL: ${issue.url}`);
+              console.log(`  Success grade: ${grade.letter} (${grade.reason})`);
               if (reasonsToApprove.length > 0) console.log(`  Approve: ${reasonsToApprove.join(', ')}`);
               if (reasonsToSkip.length > 0) console.log(`  Skip: ${reasonsToSkip.join(', ')}`);
             }

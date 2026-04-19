@@ -6,6 +6,8 @@
 import { createAutopilotScout } from './scout-bridge.js';
 import { type VetOutput } from '../formatters/json.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
+import { gradeFromCandidate } from '../core/issue-grading.js';
+import { getStateManager } from '../core/index.js';
 
 export { type VetOutput } from '../formatters/json.js';
 
@@ -28,6 +30,12 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
   const scout = await createAutopilotScout();
   const candidate = await scout.vetIssue(options.issueUrl);
 
+  const grade = gradeFromCandidate({
+    repo: candidate.issue.repo,
+    projectHealth: candidate.projectHealth,
+    getRepoScore: (repo) => getStateManager().getRepoScore(repo),
+  });
+
   return {
     issue: {
       repo: candidate.issue.repo,
@@ -41,5 +49,6 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     reasonsToSkip: candidate.reasonsToSkip,
     projectHealth: candidate.projectHealth,
     vettingResult: candidate.vettingResult,
+    grade,
   };
 }
