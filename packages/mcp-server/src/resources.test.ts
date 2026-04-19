@@ -204,13 +204,8 @@ describe('MCP resource registrations', () => {
       expect(data.title).toBe('Fix typo in README');
     });
 
-    it('returns error for an unknown PR', async () => {
-      const result = await client.readResource({
-        uri: 'oss://pr/octocat/hello-world/999',
-      });
-      expect(result.contents).toHaveLength(1);
-      const data = JSON.parse(result.contents[0].text as string);
-      expect(data.error).toContain('not found');
+    it('rejects read for an unknown PR (#957)', async () => {
+      await expect(client.readResource({ uri: 'oss://pr/octocat/hello-world/999' })).rejects.toThrow(/not found/);
     });
 
     it('lists known PRs via the template list callback', async () => {
@@ -224,52 +219,38 @@ describe('MCP resource registrations', () => {
       expect(uris).toContain('oss://pr/octocat/spoon-knife/7');
     });
 
-    it('returns error for invalid PR number (NaN)', async () => {
-      const result = await client.readResource({
-        uri: 'oss://pr/octocat/hello-world/abc',
-      });
-      expect(result.contents).toHaveLength(1);
-      const data = JSON.parse(result.contents[0].text as string);
-      expect(data.error).toContain('Invalid PR number');
+    it('rejects read for invalid PR number (NaN) (#957)', async () => {
+      await expect(client.readResource({ uri: 'oss://pr/octocat/hello-world/abc' })).rejects.toThrow(
+        /Invalid PR number/,
+      );
     });
   });
 
-  describe('resource error handling', () => {
-    it('wrapResource returns error JSON when runStatus rejects', async () => {
+  describe('resource error handling (#957)', () => {
+    // Resource failures now propagate as JSON-RPC errors instead of being
+    // swallowed as 200 OK payloads with `{ error: "..." }` in the body.
+    // Clients that do not introspect the JSON no longer mistake failures for
+    // successful reads.
+
+    it('wrapResource rejects readResource when the underlying command throws', async () => {
       vi.mocked(runStatus).mockRejectedValueOnce(new Error('State file not found'));
-
-      const result = await client.readResource({ uri: 'oss://status' });
-
-      expect(result.contents).toHaveLength(1);
-      const data = JSON.parse(result.contents[0].text as string);
-      expect(data.error).toContain('State file not found');
+      await expect(client.readResource({ uri: 'oss://status' })).rejects.toThrow(/State file not found/);
     });
 
-    it('template list returns empty resources on error', async () => {
+    it('template list propagates state errors instead of returning an empty list', async () => {
       vi.mocked(getStateManager).mockImplementationOnce(() => {
         throw new Error('State corrupted');
       });
-
-      const result = await client.listResources();
-
-      // Should not throw — the template list catch returns { resources: [] }
-      // Static resources should still be listed
-      const staticUris = result.resources.filter((r) => !r.uri.startsWith('oss://pr/')).map((r) => r.uri);
-      expect(staticUris).toContain('oss://status');
+      await expect(client.listResources()).rejects.toThrow(/State corrupted/);
     });
 
-    it('pr-detail read handler catches thrown errors', async () => {
+    it('pr-detail read propagates unexpected exceptions', async () => {
       vi.mocked(getStateManager).mockImplementationOnce(() => {
         throw new Error('Unexpected state error');
       });
-
-      const result = await client.readResource({
-        uri: 'oss://pr/octocat/hello-world/42',
-      });
-
-      expect(result.contents).toHaveLength(1);
-      const data = JSON.parse(result.contents[0].text as string);
-      expect(data.error).toContain('Unexpected state error');
+      await expect(client.readResource({ uri: 'oss://pr/octocat/hello-world/42' })).rejects.toThrow(
+        /Unexpected state error/,
+      );
     });
   });
 });
