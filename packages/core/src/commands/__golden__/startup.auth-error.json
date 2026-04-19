@@ -1,0 +1,5 @@
+{
+  "version": "99.99.99-test",
+  "setupComplete": true,
+  "authError": "GitHub authentication required. Install GitHub CLI (https://cli.github.com/) and run \"gh auth login\", or set GITHUB_TOKEN."
+}
