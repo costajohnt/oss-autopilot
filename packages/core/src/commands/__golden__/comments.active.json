@@ -1,0 +1,44 @@
+{
+  "pr": {
+    "title": "Fix error handling in foo()",
+    "state": "open",
+    "mergeable": true,
+    "head": "feature/fix-foo",
+    "base": "main",
+    "url": "https://github.com/owner/repo/pull/42"
+  },
+  "reviews": [
+    {
+      "user": "reviewer2",
+      "state": "APPROVED",
+      "body": "LGTM after fixing the one comment",
+      "submittedAt": "2026-04-18T12:00:00.000Z"
+    },
+    {
+      "user": "reviewer1",
+      "state": "CHANGES_REQUESTED",
+      "body": "See inline comments",
+      "submittedAt": "2026-04-18T10:05:00.000Z"
+    }
+  ],
+  "reviewComments": [
+    {
+      "user": "reviewer1",
+      "body": "Consider using a guard clause here",
+      "path": "src/foo.ts",
+      "createdAt": "2026-04-18T10:00:00.000Z"
+    }
+  ],
+  "issueComments": [
+    {
+      "user": "maintainer",
+      "body": "Thanks for the PR! Could you also update the CHANGELOG?",
+      "createdAt": "2026-04-18T09:00:00.000Z"
+    }
+  ],
+  "summary": {
+    "reviewCount": 2,
+    "inlineCommentCount": 1,
+    "discussionCommentCount": 1
+  }
+}

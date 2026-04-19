@@ -525,8 +525,11 @@ function generateDigestOutput(
  * Convert a full DailyCheckResult to the compact DailyOutput for JSON serialization (#287).
  * Deduplicates PR objects: category arrays become PR URL references,
  * full objects live only in digest.openPRs. Reduces JSON payload size ~60-70%.
+ *
+ * Exported for the `daily --json` contract test (#986), which pins this
+ * shape transformation without spinning up the full fetch pipeline.
  */
-function toDailyOutput(result: DailyCheckResult): DailyOutput {
+export function toDailyOutput(result: DailyCheckResult): DailyOutput {
   return {
     digest: deduplicateDigest(result.digest),
     capacity: result.capacity,

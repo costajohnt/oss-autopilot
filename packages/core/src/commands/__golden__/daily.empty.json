@@ -1,0 +1,53 @@
+{
+  "digest": {
+    "generatedAt": "2025-06-20T00:00:00Z",
+    "openPRs": [],
+    "needsAddressingPRs": [],
+    "waitingOnMaintainerPRs": [],
+    "recentlyClosedPRs": [],
+    "recentlyMergedPRs": [],
+    "shelvedPRs": [],
+    "autoUnshelvedPRs": [],
+    "summary": {
+      "totalActivePRs": 0,
+      "totalNeedingAttention": 0,
+      "totalMergedAllTime": 0,
+      "mergeRate": 0
+    }
+  },
+  "capacity": {
+    "hasCapacity": true,
+    "activePRCount": 0,
+    "maxActivePRs": 10,
+    "shelvedPRCount": 0,
+    "criticalIssueCount": 0,
+    "reason": "You have capacity"
+  },
+  "summary": "No open PRs.",
+  "briefSummary": "No open PRs",
+  "actionableIssues": [],
+  "actionMenu": {
+    "items": [
+      {
+        "key": "search",
+        "label": "Search for new issues",
+        "description": "Find a new contribution"
+      },
+      {
+        "key": "done",
+        "label": "Done",
+        "description": "Exit"
+      }
+    ],
+    "context": {
+      "hasActionableIssues": false,
+      "actionableCount": 0,
+      "hasCapacity": true,
+      "hasIssueResponses": false,
+      "issueResponseCount": 0
+    }
+  },
+  "commentedIssues": [],
+  "repoGroups": [],
+  "failures": []
+}

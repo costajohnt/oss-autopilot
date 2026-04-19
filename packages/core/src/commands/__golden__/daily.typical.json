@@ -1,0 +1,126 @@
+{
+  "digest": {
+    "generatedAt": "2025-06-20T00:00:00Z",
+    "openPRs": [
+      {
+        "id": 1,
+        "url": "https://github.com/octocat/spoon-knife/pull/42",
+        "repo": "octocat/spoon-knife",
+        "number": 42,
+        "title": "Test PR",
+        "status": "needs_addressing",
+        "waitReason": "pending_review",
+        "stalenessTier": "active",
+        "displayLabel": "[CI Failing]",
+        "displayDescription": "Awaiting review",
+        "createdAt": "2025-06-01T00:00:00Z",
+        "updatedAt": "2025-06-15T00:00:00Z",
+        "daysSinceActivity": 2,
+        "ciStatus": "failing",
+        "failingCheckNames": [
+          "Node 20 / ubuntu-latest"
+        ],
+        "classifiedChecks": [],
+        "hasMergeConflict": false,
+        "reviewDecision": "approved",
+        "hasUnrespondedComment": false,
+        "hasIncompleteChecklist": false,
+        "maintainerActionHints": []
+      },
+      {
+        "id": 1,
+        "url": "https://github.com/octocat/spoon-knife/pull/43",
+        "repo": "octocat/spoon-knife",
+        "number": 43,
+        "title": "Test PR",
+        "status": "waiting_on_maintainer",
+        "waitReason": "pending_review",
+        "stalenessTier": "active",
+        "displayLabel": "[Waiting on Maintainer]",
+        "displayDescription": "Awaiting review",
+        "createdAt": "2025-06-01T00:00:00Z",
+        "updatedAt": "2025-06-15T00:00:00Z",
+        "daysSinceActivity": 2,
+        "ciStatus": "passing",
+        "failingCheckNames": [],
+        "classifiedChecks": [],
+        "hasMergeConflict": false,
+        "reviewDecision": "approved",
+        "hasUnrespondedComment": false,
+        "hasIncompleteChecklist": false,
+        "maintainerActionHints": []
+      }
+    ],
+    "needsAddressingPRs": [
+      "https://github.com/octocat/spoon-knife/pull/42"
+    ],
+    "waitingOnMaintainerPRs": [
+      "https://github.com/octocat/spoon-knife/pull/43"
+    ],
+    "recentlyClosedPRs": [],
+    "recentlyMergedPRs": [],
+    "shelvedPRs": [],
+    "autoUnshelvedPRs": [],
+    "summary": {
+      "totalActivePRs": 2,
+      "totalNeedingAttention": 1,
+      "totalMergedAllTime": 12,
+      "mergeRate": 0.85
+    }
+  },
+  "capacity": {
+    "hasCapacity": true,
+    "activePRCount": 2,
+    "maxActivePRs": 10,
+    "shelvedPRCount": 0,
+    "criticalIssueCount": 0,
+    "reason": "You have capacity"
+  },
+  "summary": "One PR needs attention; one waiting on review.",
+  "briefSummary": "2 active PRs: 1 needs attention",
+  "actionableIssues": [
+    {
+      "type": "ci_failing",
+      "prUrl": "https://github.com/octocat/spoon-knife/pull/42",
+      "label": "[CI Failing]",
+      "isNewContribution": false
+    }
+  ],
+  "actionMenu": {
+    "items": [
+      {
+        "key": "address_all",
+        "label": "Address this issue (Recommended)",
+        "description": "Fix the issue blocking your PR"
+      },
+      {
+        "key": "search",
+        "label": "Search for new issues",
+        "description": "Find a new contribution"
+      },
+      {
+        "key": "done",
+        "label": "Done",
+        "description": "Exit"
+      }
+    ],
+    "context": {
+      "hasActionableIssues": true,
+      "actionableCount": 1,
+      "hasCapacity": true,
+      "hasIssueResponses": false,
+      "issueResponseCount": 0
+    }
+  },
+  "commentedIssues": [],
+  "repoGroups": [
+    {
+      "repo": "octocat/spoon-knife",
+      "prUrls": [
+        "https://github.com/octocat/spoon-knife/pull/42",
+        "https://github.com/octocat/spoon-knife/pull/43"
+      ]
+    }
+  ],
+  "failures": []
+}

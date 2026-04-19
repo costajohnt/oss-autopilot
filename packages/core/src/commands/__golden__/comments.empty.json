@@ -1,0 +1,18 @@
+{
+  "pr": {
+    "title": "Quiet PR",
+    "state": "open",
+    "mergeable": null,
+    "head": "feature/quiet",
+    "base": "main",
+    "url": "https://github.com/owner/repo/pull/99"
+  },
+  "reviews": [],
+  "reviewComments": [],
+  "issueComments": [],
+  "summary": {
+    "reviewCount": 0,
+    "inlineCommentCount": 0,
+    "discussionCommentCount": 0
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "totalMerged": 6,
+  "totalClosed": 1,
+  "mergeRate": 0.8571428571428571,
+  "activePRs": 3,
+  "reposContributed": 2,
+  "topRepos": [
+    {
+      "repo": "octocat/spoon-knife",
+      "mergedCount": 5
+    },
+    {
+      "repo": "torvalds/linux",
+      "mergedCount": 1
+    }
+  ],
+  "mergeRateFormatted": "85.7%",
+  "username": "testuser"
+}
