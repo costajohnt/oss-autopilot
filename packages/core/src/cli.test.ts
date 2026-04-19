@@ -110,6 +110,7 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'override',
     'clear-override',
     'stats',
+    'skip-add',
   ];
 
   const expectedTokenRequired = [
@@ -372,6 +373,7 @@ describe('Command registration', () => {
       'clear-override',
       'stats',
       'state',
+      'skip-add',
     ];
 
     for (const name of expectedCommands) {

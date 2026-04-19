@@ -316,6 +316,36 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── Skip Add ───────────────────────────────────────────────────────────
+  {
+    name: 'skip-add',
+    localOnly: true,
+    register(program) {
+      program
+        .command('skip-add <issue-url>')
+        .description('Append an issue URL to the skipped-issues file (idempotent)')
+        .option('--path <file>', 'Skipped-issues file path (falls back to config.skippedIssuesPath)')
+        .option('--json', 'Output as JSON')
+        .action(async (issueUrl, options) => {
+          try {
+            const { runSkipAdd } = await import('./commands/skip-add.js');
+            const data = runSkipAdd({ issueUrl, skipFilePath: options.path });
+            if (options.json) {
+              outputJson(data);
+            } else if (data.added) {
+              console.log(`Added to skip list: ${data.url} (${data.date})`);
+              console.log(`  File: ${data.path}`);
+            } else {
+              console.log(`Already on skip list: ${data.url}`);
+              console.log(`  File: ${data.path}`);
+            }
+          } catch (err) {
+            handleCommandError(err, options.json);
+          }
+        });
+    },
+  },
+
   // ── Track ──────────────────────────────────────────────────────────────
   {
     name: 'track',

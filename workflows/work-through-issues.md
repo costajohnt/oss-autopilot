@@ -394,7 +394,15 @@ Options:
 ```
 
 When user selects "Start implementing", proceed to Step 6 (implementation flow).
-When user selects "Skip this issue", return to Step 3 (display available issues).
+
+When user selects "Skip this issue":
+1. Persist the skip so scout filters it out of future searches. Use the CLI:
+   ```bash
+   GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" skip-add {issueUrl} --json
+   ```
+   - This appends `YYYY-MM-DD <url>` to the configured `skippedIssuesPath` (idempotent; a no-op if already present).
+   - On error (no path configured, invalid URL), surface the message to the user and ask whether to retry or continue without persisting.
+2. Return to Step 3 (display available issues).
 
 ### 6. After selecting issue → implementation → draft PR → review → ready
 
