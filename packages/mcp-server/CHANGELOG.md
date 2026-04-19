@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.3](https://github.com/costajohnt/oss-autopilot/compare/mcp-v3.1.2...mcp-v3.1.3) (2026-04-19)
+
+
+### Bug Fixes
+
+* **mcp:** propagate resource errors as JSON-RPC errors instead of 200 OK payloads ([#957](https://github.com/costajohnt/oss-autopilot/issues/957)) ([#970](https://github.com/costajohnt/oss-autopilot/issues/970)) ([900f437](https://github.com/costajohnt/oss-autopilot/commit/900f43750a7fabbd532b53729b4721c3b4508b75))
+
 ## [3.1.2](https://github.com/costajohnt/oss-autopilot/compare/mcp-v3.1.1...mcp-v3.1.2) (2026-04-01)
 
 
