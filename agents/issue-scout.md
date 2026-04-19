@@ -414,6 +414,22 @@ Rate issues on a scale where higher is better:
 
 A repo with a dormant PR should almost never be recommended unless the issue is exceptional.
 
+**Success Likelihood Grade (#858):**
+
+Alongside the numeric score, surface a letter grade that predicts how likely a contribution will be *accepted and merged*, using signals already gathered during vetting — no extra API calls. This helps contributors prioritize opportunities where maintainers actually merge external PRs.
+
+Compute the grade from these three signals (all derived from data fetched in sections 1–3 of vetting):
+
+| Signal | A | B | C | F |
+|---|---|---|---|---|
+| Maintainer responsiveness | avg response < 3 days | 3–14 days | 14–60 days | unresponsive / > 60 days |
+| Repo merge rate (merged PRs / total PRs in recent window) | > 70% | 40–70% | 10–40% | < 10% or unknown with no merges in 90 days |
+| Activity (recent commits + releases) | commit in last 7 days | last 30 days | last 90 days | no commit in 90+ days |
+
+Take the **worst** of the three letters as the overall grade (a single failing signal dominates — one maintainer who never responds sinks the whole grade). If any signal is `Unknown` due to API errors or missing data, degrade the grade by one step rather than ignore it — missing data is a risk signal.
+
+Display as `{Letter} ({brief reason})`, e.g. `A (merges 85% of PRs, 2-day avg response)`, `C (40-day avg response)`, `F (unresponsive maintainer)`. The grade is separate from the numeric score — score answers "is this issue good to work on?", grade answers "will my PR actually merge?"
+
 **Output Format:**
 
 ```markdown
@@ -421,8 +437,9 @@ A repo with a dormant PR should almost never be recommended unless the issue is 
 
 ### From Your Starred/Trusted Repos ⭐
 
-#### 1. [acme/widgets#123](https://github.com/acme/widgets/issues/123) - Issue Title (Score: 12)
+#### 1. [acme/widgets#123](https://github.com/acme/widgets/issues/123) - Issue Title (Score: 12, Grade: A)
 **Your history:** You merged 2 PRs here - great relationship!
+**Success likelihood:** A (merges 85% of PRs, 2-day avg response)
 **Why it's good:**
 - Clear requirements: [yes/somewhat/no]
 - Appropriate scope: [yes/maybe/no]
@@ -436,8 +453,9 @@ A repo with a dormant PR should almost never be recommended unless the issue is 
 
 ### New Repos to Explore 🔍
 
-#### 2. [cool-org/toolkit#456](https://github.com/cool-org/toolkit/issues/456) - Issue Title (Score: 7)
+#### 2. [cool-org/toolkit#456](https://github.com/cool-org/toolkit/issues/456) - Issue Title (Score: 7, Grade: B)
 **Your history:** No prior relationship
+**Success likelihood:** B (60% merge rate, 8-day avg response)
 **Why it's good:**
 - [reasons]
 
