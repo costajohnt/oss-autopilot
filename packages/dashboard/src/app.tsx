@@ -27,6 +27,7 @@ interface DashboardHeaderProps {
   onRefresh: () => void;
   theme: Theme;
   onToggleTheme: () => void;
+  onCelebrate: () => void;
 }
 
 function RefreshIcon() {
@@ -46,6 +47,7 @@ function DashboardHeader({
   onRefresh,
   theme,
   onToggleTheme,
+  onCelebrate,
 }: DashboardHeaderProps) {
   return (
     <header class="dashboard-header">
@@ -79,6 +81,9 @@ function DashboardHeader({
         <div class="header-right">
           {lastUpdated && <span class="last-updated">{formatRelativeTime(lastUpdated)}</span>}
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <button type="button" class="celebrate-btn" onClick={onCelebrate} aria-label="Celebrate">
+            🎉
+          </button>
           <button class="refresh-btn" onClick={onRefresh} disabled={loading || refreshing}>
             {loading || refreshing ? <span class="spinner" /> : <RefreshIcon />}
             {refreshLabel(loading, refreshing)}
@@ -92,7 +97,11 @@ function DashboardHeader({
 function AppContent() {
   const { data, loading, refreshing, error, clearError, refresh, performAction, lastUpdated } = useDashboard();
   const { theme, toggleTheme } = useTheme();
-  const { celebration, dismiss: dismissCelebration } = useCelebration(data?.stats.mergedPRs);
+  const {
+    celebration,
+    dismiss: dismissCelebration,
+    trigger: triggerCelebration,
+  } = useCelebration(data?.stats.mergedPRs);
   const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const [shelvedOpen, setShelvedOpen] = useState(false);
@@ -125,20 +134,23 @@ function AppContent() {
 
   if (!data) return null;
 
+  const headerProps: DashboardHeaderProps = {
+    stats: data.stats,
+    loading,
+    refreshing,
+    lastUpdated,
+    onRefresh: refresh,
+    theme,
+    onToggleTheme: toggleTheme,
+    onCelebrate: triggerCelebration,
+  };
+
   // Route: /merged — show all merged PRs
   if (path === '/merged') {
     const mergedPRs = data.allMergedPRs ?? [];
     return (
       <div class="dashboard">
-        <DashboardHeader
-          stats={data.stats}
-          loading={loading}
-          refreshing={refreshing}
-          lastUpdated={lastUpdated}
-          onRefresh={refresh}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-        />
+        <DashboardHeader {...headerProps} />
         <MergedPRList mergedPRs={mergedPRs} repoMetadata={data.repoMetadata} onBack={() => route('/')} />
         <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
       </div>
@@ -150,15 +162,7 @@ function AppContent() {
     const closedPRs = data.allClosedPRs ?? [];
     return (
       <div class="dashboard">
-        <DashboardHeader
-          stats={data.stats}
-          loading={loading}
-          refreshing={refreshing}
-          lastUpdated={lastUpdated}
-          onRefresh={refresh}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-        />
+        <DashboardHeader {...headerProps} />
         <ClosedPRList closedPRs={closedPRs} onBack={() => route('/')} />
         <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
       </div>
@@ -169,15 +173,7 @@ function AppContent() {
   if (path === '/issues') {
     return (
       <div class="dashboard">
-        <DashboardHeader
-          stats={data.stats}
-          loading={loading}
-          refreshing={refreshing}
-          lastUpdated={lastUpdated}
-          onRefresh={refresh}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-        />
+        <DashboardHeader {...headerProps} />
         {data.vettedIssues ? (
           <VettedIssueList
             vettedIssues={data.vettedIssues}
@@ -232,15 +228,7 @@ function AppContent() {
 
   return (
     <div class="dashboard">
-      <DashboardHeader
-        stats={data.stats}
-        loading={loading}
-        refreshing={refreshing}
-        lastUpdated={lastUpdated}
-        onRefresh={refresh}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-      />
+      <DashboardHeader {...headerProps} />
 
       {error && (
         <div class="error-banner" role="alert">

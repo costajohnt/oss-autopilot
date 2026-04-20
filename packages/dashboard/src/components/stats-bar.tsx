@@ -1,4 +1,5 @@
 import type { DashboardStats } from '../types';
+import { AnimatedValue } from './animated-value';
 
 interface StatsBarProps {
   stats: DashboardStats;
@@ -52,7 +53,9 @@ export function StatsBar({
             onClick={card.onClick}
             {...(card.onClick ? { type: 'button' as const } : {})}
           >
-            <span class="stat-value">{card.value}</span>
+            <span class="stat-value">
+              <AnimatedValue value={card.value} />
+            </span>
             <span class="stat-label">{card.label}</span>
           </Tag>
         );

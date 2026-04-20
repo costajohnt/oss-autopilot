@@ -491,6 +491,27 @@ a:hover {
   animation: spin 0.8s linear infinite;
 }
 
+.celebrate-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-1) var(--sp-2);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  transition: all 0.2s var(--ease);
+}
+
+.celebrate-btn:hover {
+  border-color: var(--border-hover);
+  transform: scale(1.15);
+}
+
+.celebrate-btn:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
 /* === Stats Bar === */
 
 .stats-bar {

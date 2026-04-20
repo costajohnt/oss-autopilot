@@ -84,9 +84,21 @@ function fireConfetti(): void {
   frame();
 }
 
+/**
+ * Fire confetti unless the user has requested reduced motion. `fireConfetti`
+ * already swallows its own synchronous throws (see the try/catch in `frame()`
+ * above), so callers don't need to wrap this in their own try/catch.
+ */
+function playConfettiIfAllowed(): void {
+  const reducedMotion =
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  if (!reducedMotion) fireConfetti();
+}
+
 export function useCelebration(mergedCount: number | undefined): {
   celebration: Celebration | null;
   dismiss: () => void;
+  trigger: () => void;
 } {
   const [celebration, setCelebration] = useState<Celebration | null>(null);
 
@@ -106,13 +118,7 @@ export function useCelebration(mergedCount: number | undefined): {
 
     const delta = mergedCount - stored;
     writeStoredCount(mergedCount);
-
-    const reducedMotion =
-      typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
-
-    if (!reducedMotion) {
-      fireConfetti();
-    }
+    playConfettiIfAllowed();
 
     const message = delta === 1 ? '1 new PR merged. Great work!' : `${delta} new PRs merged. Great work!`;
     setCelebration({ message, shownAt: Date.now() });
@@ -120,5 +126,10 @@ export function useCelebration(mergedCount: number | undefined): {
 
   const dismiss = useCallback(() => setCelebration(null), []);
 
-  return { celebration, dismiss };
+  const trigger = useCallback(() => {
+    playConfettiIfAllowed();
+    setCelebration({ message: 'Party time!', shownAt: Date.now() });
+  }, []);
+
+  return { celebration, dismiss, trigger };
 }
