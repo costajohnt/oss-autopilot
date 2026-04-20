@@ -33,6 +33,32 @@ function handleCommandError(err: unknown, json?: boolean): never {
   process.exit(1);
 }
 
+/**
+ * Shared action wrapper: runs the command, routes to JSON or display output,
+ * and uniformly handles errors (#999).
+ *
+ * Captures the try/catch + `--json` branching boilerplate that was
+ * duplicated in every command action. Commands with non-standard output
+ * modes (e.g. `--compact`, `--markdown`, `--badge`) inline their own
+ * branching rather than squeezing through this helper.
+ */
+async function executeAction<T>(
+  options: { json?: boolean },
+  run: () => Promise<T>,
+  display: (data: T) => void | Promise<void>,
+): Promise<void> {
+  try {
+    const data = await run();
+    if (options.json) {
+      outputJson(data);
+    } else {
+      await display(data);
+    }
+  } catch (err) {
+    handleCommandError(err, options.json);
+  }
+}
+
 /** Print local repos in human-readable format (used by local-repos command). */
 function printRepos(repos: Record<string, { path: string; currentBranch: string | null }>): void {
   const entries = Object.entries(repos).sort(([a], [b]) => a.localeCompare(b));
@@ -86,13 +112,14 @@ export const commands: CLICommandDef[] = [
         .description('Show current status and stats')
         .option('--json', 'Output as JSON')
         .option('--offline', 'Use cached data only (no GitHub API calls)')
-        .action(async (options) => {
-          try {
-            const { runStatus } = await import('./commands/status.js');
-            const data = await runStatus({ offline: options.offline });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((options) =>
+          executeAction(
+            options,
+            async () => {
+              const { runStatus } = await import('./commands/status.js');
+              return runStatus({ offline: options.offline });
+            },
+            (data) => {
               console.log('\n\ud83d\udcca OSS Status\n');
               console.log(`Merged PRs: ${data.stats.mergedPRs}`);
               console.log(`Closed PRs: ${data.stats.closedPRs}`);
@@ -105,11 +132,9 @@ export const commands: CLICommandDef[] = [
                 console.log(`\nLast Run: ${data.lastRunAt || 'Never'}`);
               }
               console.log('\nRun with --json for structured output');
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -125,45 +150,43 @@ export const commands: CLICommandDef[] = [
         .option('--unlink', 'Switch from Gist back to local persistence')
         .option('--json', 'Output as JSON')
         .action(async (options) => {
-          try {
-            if (options.unlink) {
-              const { runStateUnlink } = await import('./commands/state-cmd.js');
-              const data = await runStateUnlink();
-              if (options.json) {
-                outputJson(data);
-              } else {
+          if (options.unlink) {
+            await executeAction(
+              options,
+              async () => (await import('./commands/state-cmd.js')).runStateUnlink(),
+              (data) => {
                 console.log(`State written to ${data.localStatePath}`);
                 console.log('Persistence switched to local mode.');
                 if (data.previousGistId) {
                   console.log(`Previous Gist (${data.previousGistId}) was NOT deleted.`);
                 }
                 console.log('Restart any running processes (e.g. dashboard server) to pick up the change.');
-              }
-            } else if (options.sync) {
-              const { runStateSync } = await import('./commands/state-cmd.js');
-              const data = await runStateSync();
-              if (options.json) {
-                outputJson(data);
-              } else if (data.pushed) {
-                console.log(`State pushed to Gist ${data.gistId}`);
-              } else {
-                console.log('Not in Gist mode. Nothing to sync.');
-              }
-            } else {
-              // Default: --show
-              const { runStateShow } = await import('./commands/state-cmd.js');
-              const data = await runStateShow();
-              if (options.json) {
-                outputJson(data);
-              } else {
+              },
+            );
+          } else if (options.sync) {
+            await executeAction(
+              options,
+              async () => (await import('./commands/state-cmd.js')).runStateSync(),
+              (data) => {
+                if (data.pushed) {
+                  console.log(`State pushed to Gist ${data.gistId}`);
+                } else {
+                  console.log('Not in Gist mode. Nothing to sync.');
+                }
+              },
+            );
+          } else {
+            // Default: --show
+            await executeAction(
+              options,
+              async () => (await import('./commands/state-cmd.js')).runStateShow(),
+              (data) => {
                 console.log(`\nPersistence: ${data.persistence}`);
                 if (data.gistId) console.log(`Gist ID: ${data.gistId}`);
                 if (data.gistDegraded) console.log('Status: DEGRADED (using local cache)');
                 console.log(`Last run: ${data.lastRunAt ?? 'Never'}\n`);
-              }
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
+              },
+            );
           }
         });
     },
@@ -177,29 +200,30 @@ export const commands: CLICommandDef[] = [
         .command('search [count]')
         .description('Search for new issues to work on')
         .option('--json', 'Output as JSON')
-        .action(async (count, options) => {
-          try {
-            const { runSearch } = await import('./commands/search.js');
-            let maxResults = 5;
-            if (count !== undefined) {
-              const parsed = Number(count);
-              if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {
-                throw new Error(`Invalid count "${count}". Must be a positive integer.`);
+        .action((count, options) =>
+          executeAction(
+            options,
+            async () => {
+              const { runSearch } = await import('./commands/search.js');
+              let maxResults = 5;
+              if (count !== undefined) {
+                const parsed = Number(count);
+                if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {
+                  throw new Error(`Invalid count "${count}". Must be a positive integer.`);
+                }
+                maxResults = parsed;
               }
-              maxResults = parsed;
-            }
-            const MAX_SEARCH_RESULTS = 100;
-            if (maxResults > MAX_SEARCH_RESULTS) {
-              console.warn(`Capping search to ${MAX_SEARCH_RESULTS} results (requested: ${maxResults})`);
-              maxResults = MAX_SEARCH_RESULTS;
-            }
-            if (!options.json) {
-              console.log(`\nSearching for issues (max ${maxResults})...\n`);
-            }
-            const data = await runSearch({ maxResults });
-            if (options.json) {
-              outputJson(data);
-            } else {
+              const MAX_SEARCH_RESULTS = 100;
+              if (maxResults > MAX_SEARCH_RESULTS) {
+                console.warn(`Capping search to ${MAX_SEARCH_RESULTS} results (requested: ${maxResults})`);
+                maxResults = MAX_SEARCH_RESULTS;
+              }
+              if (!options.json) {
+                console.log(`\nSearching for issues (max ${maxResults})...\n`);
+              }
+              return runSearch({ maxResults });
+            },
+            (data) => {
               if (data.candidates.length === 0) {
                 if (data.rateLimitWarning) {
                   console.warn(`\n${data.rateLimitWarning}\n`);
@@ -224,11 +248,9 @@ export const commands: CLICommandDef[] = [
                 if (reasonsToSkip.length > 0) console.log(`  Skip: ${reasonsToSkip.join(', ')}`);
                 console.log('---');
               }
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -240,13 +262,11 @@ export const commands: CLICommandDef[] = [
         .command('vet <issue-url>')
         .description('Vet a specific issue before working on it')
         .option('--json', 'Output as JSON')
-        .action(async (issueUrl, options) => {
-          try {
-            const { runVet } = await import('./commands/vet.js');
-            const data = await runVet({ issueUrl });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((issueUrl, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/vet.js')).runVet({ issueUrl }),
+            (data) => {
               const { issue, recommendation, reasonsToApprove, reasonsToSkip, grade } = data;
               console.log(`\nVetting issue: ${issueUrl}\n`);
               console.log(`[${recommendation.toUpperCase()}] ${issue.repo}#${issue.number}: ${issue.title}`);
@@ -254,11 +274,9 @@ export const commands: CLICommandDef[] = [
               console.log(`  Success grade: ${grade.letter} (${grade.reason})`);
               if (reasonsToApprove.length > 0) console.log(`  Approve: ${reasonsToApprove.join(', ')}`);
               if (reasonsToSkip.length > 0) console.log(`  Skip: ${reasonsToSkip.join(', ')}`);
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -273,17 +291,18 @@ export const commands: CLICommandDef[] = [
         .option('--concurrency <n>', 'Max parallel vet operations (default: 5)')
         .option('--prune', 'After vetting, remove completed/skipped/low-score items from the file')
         .option('--json', 'Output as JSON')
-        .action(async (options) => {
-          try {
-            const { runVetList } = await import('./commands/vet-list.js');
-            const concurrency = options.concurrency ? parseInt(options.concurrency, 10) : undefined;
-            if (concurrency !== undefined && (!Number.isFinite(concurrency) || concurrency < 1)) {
-              throw new Error(`Invalid concurrency "${options.concurrency}". Must be a positive integer.`);
-            }
-            const data = await runVetList({ issueListPath: options.path, concurrency, prune: options.prune });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((options) =>
+          executeAction(
+            options,
+            async () => {
+              const { runVetList } = await import('./commands/vet-list.js');
+              const concurrency = options.concurrency ? parseInt(options.concurrency, 10) : undefined;
+              if (concurrency !== undefined && (!Number.isFinite(concurrency) || concurrency < 1)) {
+                throw new Error(`Invalid concurrency "${options.concurrency}". Must be a positive integer.`);
+              }
+              return runVetList({ issueListPath: options.path, concurrency, prune: options.prune });
+            },
+            (data) => {
               console.log(`\nRe-vetted ${data.summary.total} issues:\n`);
               console.log(`  Still available: ${data.summary.stillAvailable}`);
               console.log(`  Claimed:         ${data.summary.claimed}`);
@@ -308,11 +327,9 @@ export const commands: CLICommandDef[] = [
               if (data.pruneResult) {
                 console.log(`\nPruned ${data.pruneResult.removedCount} items from issue list.`);
               }
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -326,23 +343,21 @@ export const commands: CLICommandDef[] = [
         .description('Append an issue URL to the skipped-issues file (idempotent)')
         .option('--path <file>', 'Skipped-issues file path (falls back to config.skippedIssuesPath)')
         .option('--json', 'Output as JSON')
-        .action(async (issueUrl, options) => {
-          try {
-            const { runSkipAdd } = await import('./commands/skip-add.js');
-            const data = runSkipAdd({ issueUrl, skipFilePath: options.path });
-            if (options.json) {
-              outputJson(data);
-            } else if (data.added) {
-              console.log(`Added to skip list: ${data.url} (${data.date})`);
-              console.log(`  File: ${data.path}`);
-            } else {
-              console.log(`Already on skip list: ${data.url}`);
-              console.log(`  File: ${data.path}`);
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+        .action((issueUrl, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/skip-add.js')).runSkipAdd({ issueUrl, skipFilePath: options.path }),
+            (data) => {
+              if (data.added) {
+                console.log(`Added to skip list: ${data.url} (${data.date})`);
+                console.log(`  File: ${data.path}`);
+              } else {
+                console.log(`Already on skip list: ${data.url}`);
+                console.log(`  File: ${data.path}`);
+              }
+            },
+          ),
+        );
     },
   },
 
@@ -354,21 +369,17 @@ export const commands: CLICommandDef[] = [
         .command('track <pr-url>')
         .description('Fetch metadata for a PR (informational — v2 does not maintain a local tracking list)')
         .option('--json', 'Output as JSON')
-        .action(async (prUrl, options) => {
-          try {
-            const { runTrack } = await import('./commands/track.js');
-            const data = await runTrack({ prUrl });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((prUrl, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/track.js')).runTrack({ prUrl }),
+            (data) => {
               console.log(`\nPR: ${data.pr.repo}#${data.pr.number} - ${data.pr.title}`);
               console.log('Note: In v2, PRs are discovered automatically on each daily run — this command only');
               console.log('fetches metadata for inspection. Nothing is persisted locally.');
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -381,21 +392,17 @@ export const commands: CLICommandDef[] = [
         .command('untrack <pr-url>')
         .description('[DEPRECATED] No-op in v2. Use `shelve` to hide a PR from the daily digest.')
         .option('--json', 'Output as JSON')
-        .action(async (prUrl, options) => {
-          try {
-            const { runUntrack } = await import('./commands/track.js');
-            const data = await runUntrack({ prUrl });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((prUrl, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/track.js')).runUntrack({ prUrl }),
+            () => {
               // Stderr so scripts piping stdout don't see the deprecation notice.
               console.error('[DEPRECATED] `untrack` is a no-op in v2. PRs are fetched fresh on each daily run —');
               console.error('there is no local tracking list to remove from. Use `shelve` to hide a PR instead.');
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -409,21 +416,17 @@ export const commands: CLICommandDef[] = [
         .description('Mark PR comments as read')
         .option('--all', 'Mark all PRs as read')
         .option('--json', 'Output as JSON')
-        .action(async (prUrl, options) => {
-          try {
-            const { runRead } = await import('./commands/read.js');
-            const data = await runRead({ prUrl, all: options.all });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((prUrl, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/read.js')).runRead({ prUrl, all: options.all }),
+            () => {
               console.log(
                 'Note: In v2, PR read state is not tracked locally. PRs are fetched fresh on each daily run.',
               );
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -436,13 +439,11 @@ export const commands: CLICommandDef[] = [
         .description('Show all comments on a PR')
         .option('--bots', 'Include bot comments')
         .option('--json', 'Output as JSON')
-        .action(async (prUrl, options) => {
-          try {
-            const { runComments } = await import('./commands/comments.js');
-            const data = await runComments({ prUrl, showBots: options.bots });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((prUrl, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/comments.js')).runComments({ prUrl, showBots: options.bots }),
+            async (data) => {
               const { formatRelativeTime } = await import('./core/utils.js');
               console.log(`\nFetching comments for: ${prUrl}\n`);
               console.log(`## ${data.pr.title}\n`);
@@ -493,11 +494,9 @@ export const commands: CLICommandDef[] = [
               console.log(
                 `**Summary:** ${data.summary.reviewCount} reviews, ${data.summary.inlineCommentCount} inline comments, ${data.summary.discussionCommentCount} discussion comments`,
               );
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -510,29 +509,28 @@ export const commands: CLICommandDef[] = [
         .description('Post a comment to a PR or issue')
         .option('--stdin', 'Read message from stdin')
         .option('--json', 'Output as JSON')
-        .action(async (url, messageParts, options) => {
-          try {
-            let message: string;
-            if (options.stdin) {
-              const chunks: Buffer[] = [];
-              for await (const chunk of process.stdin) {
-                chunks.push(chunk);
+        .action((url, messageParts, options) =>
+          executeAction(
+            options,
+            async () => {
+              let message: string;
+              if (options.stdin) {
+                const chunks: Buffer[] = [];
+                for await (const chunk of process.stdin) {
+                  chunks.push(chunk);
+                }
+                message = Buffer.concat(chunks).toString('utf-8').trim();
+              } else {
+                message = messageParts.join(' ');
               }
-              message = Buffer.concat(chunks).toString('utf-8').trim();
-            } else {
-              message = messageParts.join(' ');
-            }
-            const { runPost } = await import('./commands/comments.js');
-            const data = await runPost({ url, message });
-            if (options.json) {
-              outputJson(data);
-            } else {
+              const { runPost } = await import('./commands/comments.js');
+              return runPost({ url, message });
+            },
+            (data) => {
               console.log(`Comment posted: ${data.commentUrl}`);
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -544,20 +542,19 @@ export const commands: CLICommandDef[] = [
         .command('claim <issue-url> [message...]')
         .description('Claim an issue by posting a comment')
         .option('--json', 'Output as JSON')
-        .action(async (issueUrl, messageParts, options) => {
-          try {
-            const { runClaim } = await import('./commands/comments.js');
-            const message = messageParts.length > 0 ? messageParts.join(' ') : undefined;
-            const data = await runClaim({ issueUrl, message });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((issueUrl, messageParts, options) =>
+          executeAction(
+            options,
+            async () => {
+              const { runClaim } = await import('./commands/comments.js');
+              const message = messageParts.length > 0 ? messageParts.join(' ') : undefined;
+              return runClaim({ issueUrl, message });
+            },
+            (data) => {
               console.log(`Issue claimed: ${data.commentUrl}`);
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -570,22 +567,20 @@ export const commands: CLICommandDef[] = [
         .command('config [key] [value]')
         .description('Show or update configuration')
         .option('--json', 'Output as JSON')
-        .action(async (key, value, options) => {
-          try {
-            const { runConfig } = await import('./commands/config.js');
-            const data = await runConfig({ key, value });
-            if (options.json) {
-              outputJson(data);
-            } else if ('config' in data) {
-              console.log('\n\u2699\ufe0f Current Configuration:\n');
-              console.log(JSON.stringify(data.config, null, 2));
-            } else {
-              console.log(`Set ${data.key} to: ${data.value}`);
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+        .action((key, value, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/config.js')).runConfig({ key, value }),
+            (data) => {
+              if ('config' in data) {
+                console.log('\n\u2699\ufe0f Current Configuration:\n');
+                console.log(JSON.stringify(data.config, null, 2));
+              } else {
+                console.log(`Set ${data.key} to: ${data.value}`);
+              }
+            },
+          ),
+        );
     },
   },
 
@@ -597,20 +592,16 @@ export const commands: CLICommandDef[] = [
         .command('init <username>')
         .description('Initialize with your GitHub username and import open PRs')
         .option('--json', 'Output as JSON')
-        .action(async (username, options) => {
-          try {
-            const { runInit } = await import('./commands/init.js');
-            const data = await runInit({ username });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((username, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/init.js')).runInit({ username }),
+            (data) => {
               console.log(`\nUsername set to @${data.username}.`);
               console.log('Run `oss-autopilot daily` to fetch your open PRs from GitHub.');
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -625,60 +616,58 @@ export const commands: CLICommandDef[] = [
         .option('--reset', 'Re-run setup even if already complete')
         .option('--set <settings...>', 'Set specific values (key=value)')
         .option('--json', 'Output as JSON')
-        .action(async (options) => {
-          try {
-            const { runSetup } = await import('./commands/setup.js');
-            const data = await runSetup({ reset: options.reset, set: options.set });
-            if (options.json) {
-              outputJson(data);
-            } else if ('success' in data) {
-              // --set mode
-              for (const [key, value] of Object.entries(data.settings)) {
-                console.log(`\u2713 ${key}: ${value}`);
-              }
-              if (data.warnings) {
-                for (const w of data.warnings) {
-                  console.warn(w);
+        .action((options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/setup.js')).runSetup({ reset: options.reset, set: options.set }),
+            (data) => {
+              if ('success' in data) {
+                // --set mode
+                for (const [key, value] of Object.entries(data.settings)) {
+                  console.log(`\u2713 ${key}: ${value}`);
                 }
-              }
-            } else if ('setupComplete' in data && data.setupComplete) {
-              // Already complete
-              console.log('\n\u2699\ufe0f  OSS Autopilot Setup\n');
-              console.log('\u2713 Setup already complete!\n');
-              console.log('Current settings:');
-              console.log(`  GitHub username:    ${data.config.githubUsername || '(not set)'}`);
-              console.log(`  Max active PRs:     ${data.config.maxActivePRs}`);
-              console.log(`  Dormant threshold:  ${data.config.dormantThresholdDays} days`);
-              console.log(`  Approaching dormant: ${data.config.approachingDormantDays} days`);
-              console.log(`  Languages:          ${data.config.languages.join(', ')}`);
-              console.log(`  Labels:             ${data.config.labels.join(', ')}`);
-              console.log(`\nRun 'setup --reset' to reconfigure.`);
-            } else if ('setupRequired' in data) {
-              // Needs setup
-              console.log('\n\u2699\ufe0f  OSS Autopilot Setup\n');
-              console.log('SETUP_REQUIRED');
-              console.log('---');
-              console.log('Please configure the following settings:\n');
-              for (const prompt of data.prompts) {
-                console.log(`SETTING: ${prompt.setting}`);
-                console.log(`PROMPT: ${prompt.prompt}`);
-                const currentVal = Array.isArray(prompt.current) ? prompt.current.join(', ') : prompt.current;
-                console.log(`CURRENT: ${currentVal ?? '(not set)'}`);
-                if (prompt.required) console.log('REQUIRED: true');
-                if (prompt.default !== undefined) {
-                  const defaultVal = Array.isArray(prompt.default) ? prompt.default.join(', ') : prompt.default;
-                  console.log(`DEFAULT: ${defaultVal}`);
+                if (data.warnings) {
+                  for (const w of data.warnings) {
+                    console.warn(w);
+                  }
                 }
-                if (prompt.type) console.log(`TYPE: ${prompt.type}`);
-                console.log('');
+              } else if ('setupComplete' in data && data.setupComplete) {
+                // Already complete
+                console.log('\n\u2699\ufe0f  OSS Autopilot Setup\n');
+                console.log('\u2713 Setup already complete!\n');
+                console.log('Current settings:');
+                console.log(`  GitHub username:    ${data.config.githubUsername || '(not set)'}`);
+                console.log(`  Max active PRs:     ${data.config.maxActivePRs}`);
+                console.log(`  Dormant threshold:  ${data.config.dormantThresholdDays} days`);
+                console.log(`  Approaching dormant: ${data.config.approachingDormantDays} days`);
+                console.log(`  Languages:          ${data.config.languages.join(', ')}`);
+                console.log(`  Labels:             ${data.config.labels.join(', ')}`);
+                console.log(`\nRun 'setup --reset' to reconfigure.`);
+              } else if ('setupRequired' in data) {
+                // Needs setup
+                console.log('\n\u2699\ufe0f  OSS Autopilot Setup\n');
+                console.log('SETUP_REQUIRED');
+                console.log('---');
+                console.log('Please configure the following settings:\n');
+                for (const prompt of data.prompts) {
+                  console.log(`SETTING: ${prompt.setting}`);
+                  console.log(`PROMPT: ${prompt.prompt}`);
+                  const currentVal = Array.isArray(prompt.current) ? prompt.current.join(', ') : prompt.current;
+                  console.log(`CURRENT: ${currentVal ?? '(not set)'}`);
+                  if (prompt.required) console.log('REQUIRED: true');
+                  if (prompt.default !== undefined) {
+                    const defaultVal = Array.isArray(prompt.default) ? prompt.default.join(', ') : prompt.default;
+                    console.log(`DEFAULT: ${defaultVal}`);
+                  }
+                  if (prompt.type) console.log(`TYPE: ${prompt.type}`);
+                  console.log('');
+                }
+                console.log('---');
+                console.log('END_SETUP_PROMPTS');
               }
-              console.log('---');
-              console.log('END_SETUP_PROMPTS');
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -691,22 +680,20 @@ export const commands: CLICommandDef[] = [
         .command('checkSetup')
         .description('Check if setup is complete')
         .option('--json', 'Output as JSON')
-        .action(async (options) => {
-          try {
-            const { runCheckSetup } = await import('./commands/setup.js');
-            const data = await runCheckSetup();
-            if (options.json) {
-              outputJson(data);
-            } else if (data.setupComplete) {
-              console.log('SETUP_COMPLETE');
-              console.log(`username=${data.username}`);
-            } else {
-              console.log('SETUP_INCOMPLETE');
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+        .action((options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/setup.js')).runCheckSetup(),
+            (data) => {
+              if (data.setupComplete) {
+                console.log('SETUP_COMPLETE');
+                console.log(`username=${data.username}`);
+              } else {
+                console.log('SETUP_INCOMPLETE');
+              }
+            },
+          ),
+        );
     },
   },
 
@@ -746,13 +733,11 @@ export const commands: CLICommandDef[] = [
         .command('parse-issue-list <path>')
         .description('Parse a markdown issue list into structured JSON')
         .option('--json', 'Output as JSON')
-        .action(async (filePath, options) => {
-          try {
-            const { runParseList } = await import('./commands/parse-list.js');
-            const data = await runParseList({ filePath });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((filePath, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/parse-list.js')).runParseList({ filePath }),
+            async (data) => {
               const path = await import('path');
               const resolvedPath = path.resolve(filePath);
               console.log(`\n\ud83d\udccb Issue List: ${resolvedPath}\n`);
@@ -769,11 +754,9 @@ export const commands: CLICommandDef[] = [
                   console.log(`  [${item.tier}] ${item.repo}#${item.number}: ${item.title}`);
                 }
               }
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -787,15 +770,15 @@ export const commands: CLICommandDef[] = [
         .description('Detect new files not referenced by the codebase')
         .option('--base <branch>', 'Base branch to compare against', 'main')
         .option('--json', 'Output as JSON')
-        .action(async (options) => {
-          try {
-            const { runCheckIntegration } = await import('./commands/check-integration.js');
-            const data = await runCheckIntegration({ base: options.base });
-            if (options.json) {
-              outputJson(data);
-            } else if (data.newFiles.length === 0) {
-              console.log('\nNo new code files to check.');
-            } else {
+        .action((options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/check-integration.js')).runCheckIntegration({ base: options.base }),
+            (data) => {
+              if (data.newFiles.length === 0) {
+                console.log('\nNo new code files to check.');
+                return;
+              }
               console.log(`\n\ud83d\udd0d Integration Check (base: ${options.base})\n`);
               console.log(`New files: ${data.newFiles.length} | Unreferenced: ${data.unreferencedCount}\n`);
               for (const file of data.newFiles) {
@@ -810,11 +793,9 @@ export const commands: CLICommandDef[] = [
                   }
                 }
               }
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -829,23 +810,25 @@ export const commands: CLICommandDef[] = [
         .option('--scan', 'Force re-scan (ignores cache)')
         .option('--paths <dirs...>', 'Directories to scan')
         .option('--json', 'Output as JSON')
-        .action(async (options) => {
-          try {
-            const { runLocalRepos } = await import('./commands/local-repos.js');
-            const data = await runLocalRepos({ scan: options.scan, paths: options.paths });
-            if (options.json) {
-              outputJson(data);
-            } else if (data.fromCache) {
-              console.log(`\n\ud83d\udcc1 Local Repos (cached ${data.cachedAt})\n`);
-              printRepos(data.repos);
-            } else {
-              console.log(`Found ${Object.keys(data.repos).length} repos:\n`);
-              printRepos(data.repos);
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+        .action((options) =>
+          executeAction(
+            options,
+            async () =>
+              (await import('./commands/local-repos.js')).runLocalRepos({
+                scan: options.scan,
+                paths: options.paths,
+              }),
+            (data) => {
+              if (data.fromCache) {
+                console.log(`\n\ud83d\udcc1 Local Repos (cached ${data.cachedAt})\n`);
+                printRepos(data.repos);
+              } else {
+                console.log(`Found ${Object.keys(data.repos).length} repos:\n`);
+                printRepos(data.repos);
+              }
+            },
+          ),
+        );
     },
   },
 
@@ -896,19 +879,15 @@ export const commands: CLICommandDef[] = [
         .command('shelve <pr-url>')
         .description('Shelve a PR (exclude from capacity and actionable issues)')
         .option('--json', 'Output as JSON')
-        .action(async (prUrl, options) => {
-          try {
-            const { runMove } = await import('./commands/move.js');
-            const data = await runMove({ prUrl, target: 'shelved' });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((prUrl, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/move.js')).runMove({ prUrl, target: 'shelved' }),
+            (data) => {
               console.log(data.description);
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -921,19 +900,15 @@ export const commands: CLICommandDef[] = [
         .command('unshelve <pr-url>')
         .description('Unshelve a PR (include in capacity and actionable issues again)')
         .option('--json', 'Output as JSON')
-        .action(async (prUrl, options) => {
-          try {
-            const { runMove } = await import('./commands/move.js');
-            const data = await runMove({ prUrl, target: 'auto' });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((prUrl, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/move.js')).runMove({ prUrl, target: 'auto' }),
+            (data) => {
               console.log(data.description);
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -946,19 +921,15 @@ export const commands: CLICommandDef[] = [
         .command('move <pr-url> <target>')
         .description('Move a PR between states: attention, waiting, shelved, or auto (reset to computed)')
         .option('--json', 'Output as JSON')
-        .action(async (prUrl, target, options) => {
-          try {
-            const { runMove } = await import('./commands/move.js');
-            const data = await runMove({ prUrl, target });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((prUrl, target, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/move.js')).runMove({ prUrl, target }),
+            (data) => {
               console.log(data.description);
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -971,23 +942,21 @@ export const commands: CLICommandDef[] = [
         .command('dismiss <url>')
         .description('Dismiss notifications for an issue (resurfaces on new activity)')
         .option('--json', 'Output as JSON')
-        .action(async (url, options) => {
-          try {
-            const { runDismiss } = await import('./commands/dismiss.js');
-            const data = await runDismiss({ url });
-            if (options.json) {
-              outputJson(data);
-            } else if (data.dismissed) {
-              console.log(`Dismissed: ${url}`);
-              console.log('Notifications are now muted.');
-              console.log('New responses after this point will resurface automatically.');
-            } else {
-              console.log('Already dismissed.');
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+        .action((url, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/dismiss.js')).runDismiss({ url }),
+            (data) => {
+              if (data.dismissed) {
+                console.log(`Dismissed: ${url}`);
+                console.log('Notifications are now muted.');
+                console.log('New responses after this point will resurface automatically.');
+              } else {
+                console.log('Already dismissed.');
+              }
+            },
+          ),
+        );
     },
   },
 
@@ -1000,22 +969,20 @@ export const commands: CLICommandDef[] = [
         .command('undismiss <url>')
         .description('Undismiss an issue (re-enable notifications)')
         .option('--json', 'Output as JSON')
-        .action(async (url, options) => {
-          try {
-            const { runUndismiss } = await import('./commands/dismiss.js');
-            const data = await runUndismiss({ url });
-            if (options.json) {
-              outputJson(data);
-            } else if (data.undismissed) {
-              console.log(`Undismissed: ${url}`);
-              console.log('Notifications are active again.');
-            } else {
-              console.log('Was not dismissed.');
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+        .action((url, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/dismiss.js')).runUndismiss({ url }),
+            (data) => {
+              if (data.undismissed) {
+                console.log(`Undismissed: ${url}`);
+                console.log('Notifications are active again.');
+              } else {
+                console.log('Was not dismissed.');
+              }
+            },
+          ),
+        );
     },
   },
 
@@ -1028,24 +995,23 @@ export const commands: CLICommandDef[] = [
         .command('override <pr-url> <status>')
         .description('Manually override PR status (needs_addressing or waiting_on_maintainer)')
         .option('--json', 'Output as JSON')
-        .action(async (prUrl, status, options) => {
-          try {
-            const { runMove } = await import('./commands/move.js');
-            const validStatuses = ['needs_addressing', 'waiting_on_maintainer'];
-            if (!validStatuses.includes(status)) {
-              throw new Error(`Invalid status "${status}". Must be one of: ${validStatuses.join(', ')}`);
-            }
-            const target = status === 'needs_addressing' ? 'attention' : 'waiting';
-            const data = await runMove({ prUrl, target });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((prUrl, status, options) =>
+          executeAction(
+            options,
+            async () => {
+              const validStatuses = ['needs_addressing', 'waiting_on_maintainer'];
+              if (!validStatuses.includes(status)) {
+                throw new Error(`Invalid status "${status}". Must be one of: ${validStatuses.join(', ')}`);
+              }
+              const target = status === 'needs_addressing' ? 'attention' : 'waiting';
+              const { runMove } = await import('./commands/move.js');
+              return runMove({ prUrl, target });
+            },
+            (data) => {
               console.log(data.description);
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -1058,19 +1024,15 @@ export const commands: CLICommandDef[] = [
         .command('clear-override <pr-url>')
         .description('Clear a manual status override for a PR')
         .option('--json', 'Output as JSON')
-        .action(async (prUrl, options) => {
-          try {
-            const { runMove } = await import('./commands/move.js');
-            const data = await runMove({ prUrl, target: 'auto' });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((prUrl, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/move.js')).runMove({ prUrl, target: 'auto' }),
+            (data) => {
               console.log(data.description);
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
@@ -1082,24 +1044,22 @@ export const commands: CLICommandDef[] = [
         .command('pr-template <repo>')
         .description("Fetch a repository's PR description template")
         .option('--json', 'Output as JSON')
-        .action(async (repo, options) => {
-          try {
-            const { runPRTemplate } = await import('./commands/pr-template.js');
-            const data = await runPRTemplate({ repo });
-            if (options.json) {
-              outputJson(data);
-            } else if (data.template) {
-              console.log(`\nPR template found at: ${data.source}\n`);
-              console.log(data.template);
-            } else if (data.error) {
-              console.error(`\nWarning: Could not check for PR template: ${data.error}`);
-            } else {
-              console.log('\nNo PR template found for this repository.');
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+        .action((repo, options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/pr-template.js')).runPRTemplate({ repo }),
+            (data) => {
+              if (data.template) {
+                console.log(`\nPR template found at: ${data.source}\n`);
+                console.log(data.template);
+              } else if (data.error) {
+                console.error(`\nWarning: Could not check for PR template: ${data.error}`);
+              } else {
+                console.log('\nNo PR template found for this repository.');
+              }
+            },
+          ),
+        );
     },
   },
 
@@ -1113,13 +1073,15 @@ export const commands: CLICommandDef[] = [
         .description('Detect formatters and linters configured in a repository')
         .option('--ci-log <path>', 'Analyze CI log file for formatting failures')
         .option('--json', 'Output as JSON')
-        .action(async (repoPath, options) => {
-          try {
-            const { runDetectFormatters } = await import('./commands/detect-formatters.js');
-            const data = await runDetectFormatters({ repoPath, ciLog: options.ciLog });
-            if (options.json) {
-              outputJson(data);
-            } else {
+        .action((repoPath, options) =>
+          executeAction(
+            options,
+            async () =>
+              (await import('./commands/detect-formatters.js')).runDetectFormatters({
+                repoPath,
+                ciLog: options.ciLog,
+              }),
+            (data) => {
               if (data.formatters.length === 0) {
                 console.log('\nNo formatters detected.');
               } else {
@@ -1146,11 +1108,9 @@ export const commands: CLICommandDef[] = [
                   console.log('CI Diagnosis: No formatting failure detected.');
                 }
               }
-            }
-          } catch (err) {
-            handleCommandError(err, options.json);
-          }
-        });
+            },
+          ),
+        );
     },
   },
 
