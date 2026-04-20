@@ -14,6 +14,8 @@ data/
 # Local settings
 .claude/*.local.md
 .claude/settings.json
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # Registry tokens
 .mcpregistry_*
