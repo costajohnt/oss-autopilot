@@ -4,11 +4,25 @@ This roadmap reflects the current development priorities for oss-autopilot. Item
 
 Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/discussions) or file an issue.
 
-## Current Focus
+## Now (next 1-2 weeks)
 
-No open issues at this time. The backlog is clear!
+- [ ] Node 20 EOL transition — bump engines and CI matrix before April 30, 2026 ([#983](https://github.com/costajohnt/oss-autopilot/issues/983))
+- [ ] Unify skip-list persistence — the `.md` file and `state.skippedIssues` currently drift ([#992](https://github.com/costajohnt/oss-autopilot/issues/992))
+- [ ] Audit-v2 follow-up sprint — close the 15 issues filed by the 2026-04-19 audit ([#993](https://github.com/costajohnt/oss-autopilot/issues/993)–[#1007](https://github.com/costajohnt/oss-autopilot/issues/1007))
 
-File a new issue or start a discussion to suggest improvements.
+## Next (next 1-2 months)
+
+- [ ] Runtime `--json` contract enforcement — golden-file tests cover the happy path but nothing validates output shape at runtime ([#965](https://github.com/costajohnt/oss-autopilot/issues/965))
+- [ ] Per-repo learning from merged PR review feedback — adapt pursue-order signals based on what actually gets merged ([#867](https://github.com/costajohnt/oss-autopilot/issues/867))
+- [ ] Contract tests for mutating CLI commands (`track`, `dismiss`, `shelve`, `move`) ([#997](https://github.com/costajohnt/oss-autopilot/issues/997))
+
+## Later (no fixed timeline)
+
+- [ ] 1.0 launch content — blog post, social posts, competitive positioning ([#731](https://github.com/costajohnt/oss-autopilot/issues/731))
+- [ ] Dashboard live demo for non-dev audiences — 30-min visual walkthrough ([#940](https://github.com/costajohnt/oss-autopilot/issues/940))
+- [ ] Co-maintainer recruitment — the project is currently solo-maintained (bus factor of 1)
+
+Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/discussions) or file an issue.
 
 ## Completed (Recent)
 
