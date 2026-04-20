@@ -250,7 +250,9 @@ describe('launchDashboardServer', () => {
       unref: vi.fn(),
       pid: 99999,
       on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
-        if (event === 'error') setTimeout(() => cb(new Error('ENOENT')), 50);
+        // queueMicrotask fires on the next microtask — deterministic, no wall-clock
+        // dependency, avoids CI-slowness flakes vs a setTimeout (#1004).
+        if (event === 'error') queueMicrotask(() => cb(new Error('ENOENT')));
       }),
     });
     mockReadDashboardServerInfo.mockReturnValue(null);
@@ -268,7 +270,7 @@ describe('launchDashboardServer', () => {
       unref: vi.fn(),
       pid: 99999,
       on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
-        if (event === 'exit') setTimeout(() => cb(1), 50);
+        if (event === 'exit') queueMicrotask(() => cb(1));
       }),
     });
     mockReadDashboardServerInfo.mockReturnValue(null);
