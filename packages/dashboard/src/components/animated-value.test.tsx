@@ -43,6 +43,18 @@ describe('AnimatedValue', () => {
     expect(container.textContent).toBe('N/A');
   });
 
+  it('renders decimal-containing strings statically (no mangled partial animation)', () => {
+    // `"76.9%"` would partially match a naive /^(\d+)(.*)$/ as 76 + ".9%",
+    // causing the user to briefly see "0.9%", "37.9%", etc. Render statically.
+    const { container } = render(<AnimatedValue value="76.9%" />);
+    expect(container.textContent).toBe('76.9%');
+
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(container.textContent).toBe('76.9%');
+  });
+
   it('animates integer values without decimals', () => {
     const { container } = render(<AnimatedValue value={10} />);
 

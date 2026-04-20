@@ -7,13 +7,18 @@ interface UseCountUpOptions {
 export function useCountUp(target: number, options?: UseCountUpOptions): number {
   const duration = options?.duration ?? 800;
   const [value, setValue] = useState(0);
+  const valueRef = useRef(0);
+  valueRef.current = value;
   const rafRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
   const startValueRef = useRef(0);
 
   useEffect(() => {
-    // Skip animation when user prefers reduced motion
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    // Skip animation when user prefers reduced motion. Guard `matchMedia` for
+    // SSR/test environments that don't polyfill it — mirror `use-celebration.ts`.
+    const prefersReducedMotion =
+      typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+    if (prefersReducedMotion) {
       setValue(target);
       return;
     }
@@ -23,7 +28,10 @@ export function useCountUp(target: number, options?: UseCountUpOptions): number 
       return;
     }
 
-    startValueRef.current = value;
+    // Read via ref so we animate from the currently-displayed value without
+    // needing `value` in the dep array (which would re-fire the effect on
+    // every frame).
+    startValueRef.current = valueRef.current;
     startTimeRef.current = 0;
 
     const step = (timestamp: number) => {

@@ -27,7 +27,7 @@ interface DashboardHeaderProps {
   onRefresh: () => void;
   theme: Theme;
   onToggleTheme: () => void;
-  onCelebrate?: () => void;
+  onCelebrate: () => void;
 }
 
 function RefreshIcon() {
@@ -81,11 +81,9 @@ function DashboardHeader({
         <div class="header-right">
           {lastUpdated && <span class="last-updated">{formatRelativeTime(lastUpdated)}</span>}
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-          {onCelebrate && (
-            <button type="button" class="celebrate-btn" onClick={onCelebrate} aria-label="Celebrate">
-              🎉
-            </button>
-          )}
+          <button type="button" class="celebrate-btn" onClick={onCelebrate} aria-label="Celebrate">
+            🎉
+          </button>
           <button class="refresh-btn" onClick={onRefresh} disabled={loading || refreshing}>
             {loading || refreshing ? <span class="spinner" /> : <RefreshIcon />}
             {refreshLabel(loading, refreshing)}
@@ -136,21 +134,23 @@ function AppContent() {
 
   if (!data) return null;
 
+  const headerProps: DashboardHeaderProps = {
+    stats: data.stats,
+    loading,
+    refreshing,
+    lastUpdated,
+    onRefresh: refresh,
+    theme,
+    onToggleTheme: toggleTheme,
+    onCelebrate: triggerCelebration,
+  };
+
   // Route: /merged — show all merged PRs
   if (path === '/merged') {
     const mergedPRs = data.allMergedPRs ?? [];
     return (
       <div class="dashboard">
-        <DashboardHeader
-          stats={data.stats}
-          loading={loading}
-          refreshing={refreshing}
-          lastUpdated={lastUpdated}
-          onRefresh={refresh}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          onCelebrate={triggerCelebration}
-        />
+        <DashboardHeader {...headerProps} />
         <MergedPRList mergedPRs={mergedPRs} repoMetadata={data.repoMetadata} onBack={() => route('/')} />
         <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
       </div>
@@ -162,16 +162,7 @@ function AppContent() {
     const closedPRs = data.allClosedPRs ?? [];
     return (
       <div class="dashboard">
-        <DashboardHeader
-          stats={data.stats}
-          loading={loading}
-          refreshing={refreshing}
-          lastUpdated={lastUpdated}
-          onRefresh={refresh}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          onCelebrate={triggerCelebration}
-        />
+        <DashboardHeader {...headerProps} />
         <ClosedPRList closedPRs={closedPRs} onBack={() => route('/')} />
         <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
       </div>
@@ -182,16 +173,7 @@ function AppContent() {
   if (path === '/issues') {
     return (
       <div class="dashboard">
-        <DashboardHeader
-          stats={data.stats}
-          loading={loading}
-          refreshing={refreshing}
-          lastUpdated={lastUpdated}
-          onRefresh={refresh}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          onCelebrate={triggerCelebration}
-        />
+        <DashboardHeader {...headerProps} />
         {data.vettedIssues ? (
           <VettedIssueList
             vettedIssues={data.vettedIssues}
@@ -246,16 +228,7 @@ function AppContent() {
 
   return (
     <div class="dashboard">
-      <DashboardHeader
-        stats={data.stats}
-        loading={loading}
-        refreshing={refreshing}
-        lastUpdated={lastUpdated}
-        onRefresh={refresh}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        onCelebrate={triggerCelebration}
-      />
+      <DashboardHeader {...headerProps} />
 
       {error && (
         <div class="error-banner" role="alert">
