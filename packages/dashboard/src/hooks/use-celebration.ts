@@ -87,6 +87,7 @@ function fireConfetti(): void {
 export function useCelebration(mergedCount: number | undefined): {
   celebration: Celebration | null;
   dismiss: () => void;
+  trigger: () => void;
 } {
   const [celebration, setCelebration] = useState<Celebration | null>(null);
 
@@ -120,5 +121,18 @@ export function useCelebration(mergedCount: number | undefined): {
 
   const dismiss = useCallback(() => setCelebration(null), []);
 
-  return { celebration, dismiss };
+  const trigger = useCallback(() => {
+    const reducedMotion =
+      typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+    if (!reducedMotion) {
+      try {
+        fireConfetti();
+      } catch (err) {
+        console.warn('[useCelebration] confetti setup failed:', err);
+      }
+    }
+    setCelebration({ message: 'Party time!', shownAt: Date.now() });
+  }, []);
+
+  return { celebration, dismiss, trigger };
 }

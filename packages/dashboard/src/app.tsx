@@ -27,6 +27,7 @@ interface DashboardHeaderProps {
   onRefresh: () => void;
   theme: Theme;
   onToggleTheme: () => void;
+  onCelebrate?: () => void;
 }
 
 function RefreshIcon() {
@@ -46,6 +47,7 @@ function DashboardHeader({
   onRefresh,
   theme,
   onToggleTheme,
+  onCelebrate,
 }: DashboardHeaderProps) {
   return (
     <header class="dashboard-header">
@@ -79,6 +81,11 @@ function DashboardHeader({
         <div class="header-right">
           {lastUpdated && <span class="last-updated">{formatRelativeTime(lastUpdated)}</span>}
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          {onCelebrate && (
+            <button type="button" class="celebrate-btn" onClick={onCelebrate} aria-label="Celebrate">
+              🎉
+            </button>
+          )}
           <button class="refresh-btn" onClick={onRefresh} disabled={loading || refreshing}>
             {loading || refreshing ? <span class="spinner" /> : <RefreshIcon />}
             {refreshLabel(loading, refreshing)}
@@ -92,7 +99,11 @@ function DashboardHeader({
 function AppContent() {
   const { data, loading, refreshing, error, clearError, refresh, performAction, lastUpdated } = useDashboard();
   const { theme, toggleTheme } = useTheme();
-  const { celebration, dismiss: dismissCelebration } = useCelebration(data?.stats.mergedPRs);
+  const {
+    celebration,
+    dismiss: dismissCelebration,
+    trigger: triggerCelebration,
+  } = useCelebration(data?.stats.mergedPRs);
   const [filters, setFilters] = useState<Filters>({ status: 'all', repo: 'all', search: '' });
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const [shelvedOpen, setShelvedOpen] = useState(false);
@@ -138,6 +149,7 @@ function AppContent() {
           onRefresh={refresh}
           theme={theme}
           onToggleTheme={toggleTheme}
+          onCelebrate={triggerCelebration}
         />
         <MergedPRList mergedPRs={mergedPRs} repoMetadata={data.repoMetadata} onBack={() => route('/')} />
         <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
@@ -158,6 +170,7 @@ function AppContent() {
           onRefresh={refresh}
           theme={theme}
           onToggleTheme={toggleTheme}
+          onCelebrate={triggerCelebration}
         />
         <ClosedPRList closedPRs={closedPRs} onBack={() => route('/')} />
         <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
@@ -177,6 +190,7 @@ function AppContent() {
           onRefresh={refresh}
           theme={theme}
           onToggleTheme={toggleTheme}
+          onCelebrate={triggerCelebration}
         />
         {data.vettedIssues ? (
           <VettedIssueList
@@ -240,6 +254,7 @@ function AppContent() {
         onRefresh={refresh}
         theme={theme}
         onToggleTheme={toggleTheme}
+        onCelebrate={triggerCelebration}
       />
 
       {error && (

@@ -1,10 +1,18 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/preact';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, fireEvent, act } from '@testing-library/preact';
 import { StatsBar } from './stats-bar';
 
 describe('StatsBar', () => {
   const stats = { activePRs: 5, shelvedPRs: 2, mergedPRs: 10, closedPRs: 3, mergeRate: '76.9%' };
   const baseProps = { stats, needAttentionCount: 3, waitingCount: 2 };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('renders all stat cards', () => {
     const { container } = render(<StatsBar {...baseProps} />);
@@ -12,8 +20,11 @@ describe('StatsBar', () => {
     expect(cards).toHaveLength(5);
   });
 
-  it('displays correct values', () => {
+  it('displays correct values after animation', () => {
     const { container } = render(<StatsBar {...baseProps} />);
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     const values = [...container.querySelectorAll('.stat-value')].map((el) => el.textContent);
     expect(values).toEqual(['3', '2', '2', '10', '3']);
   });
