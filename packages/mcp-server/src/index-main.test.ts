@@ -30,6 +30,8 @@ vi.mock('@oss-autopilot/core', () => ({
       lastDigest: { openPRs: [], shelvedPRs: [] },
     }),
   }),
+  getGitHubTokenAsync: vi.fn().mockResolvedValue(null),
+  ensureGistPersistence: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock StdioServerTransport — must use function() not arrow to support `new`

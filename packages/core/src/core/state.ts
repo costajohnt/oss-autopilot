@@ -789,6 +789,41 @@ export async function getStateManagerAsync(token?: string): Promise<StateManager
 }
 
 /**
+ * Bootstrap helper for processes that may run in Gist persistence mode.
+ *
+ * Peeks at the state file to check if Gist mode is configured. If so and a
+ * valid token is provided, pre-sets the singleton via {@link getStateManagerAsync}
+ * so subsequent synchronous {@link getStateManager} calls return the Gist-backed
+ * instance. No-op when the state file is absent, unparseable, or not in Gist mode.
+ *
+ * Consolidates identical filesystem-peek + getStateManagerAsync logic that
+ * was duplicated between the CLI bootstrap (`cli.ts`) and MCP tool bootstrap
+ * (`mcp-server/src/tools.ts`) — #1000.
+ *
+ * @param token - GitHub token with `gist` scope, or `null` to skip activation
+ *
+ * @example
+ * // CLI bootstrap
+ * await ensureGistPersistence(token);
+ */
+export async function ensureGistPersistence(token: string | null): Promise<void> {
+  if (!token) return;
+
+  let persistence: string | undefined;
+  try {
+    const raw = fs.readFileSync(getStatePath(), 'utf-8');
+    persistence = JSON.parse(raw)?.config?.persistence;
+  } catch {
+    // No state file or unreadable — stay in local mode
+    return;
+  }
+
+  if (persistence === 'gist') {
+    await getStateManagerAsync(token);
+  }
+}
+
+/**
  * Reset the singleton StateManager instance to null. Intended for test isolation.
  */
 export function resetStateManager(): void {

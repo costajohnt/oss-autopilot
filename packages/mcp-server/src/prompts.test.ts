@@ -68,6 +68,8 @@ vi.mock('@oss-autopilot/core', () => ({
       lastDigest: { openPRs: [], shelvedPRs: [] },
     }),
   }),
+  getGitHubTokenAsync: vi.fn().mockResolvedValue(null),
+  ensureGistPersistence: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { createServer } from './server.js';
