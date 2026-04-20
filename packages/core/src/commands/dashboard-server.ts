@@ -323,20 +323,16 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         // Also rebuild when the vetted issue list file was edited outside this server (#924)
         const currentIssueListMtimeMs = getIssueListMtimeMs();
         const issueListChanged = currentIssueListMtimeMs !== cachedIssueListMtimeMs;
-        let staleRebuild = false;
         if (stateChanged || issueListChanged) {
           try {
             cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
             cachedIssueListMtimeMs = currentIssueListMtimeMs;
           } catch (error) {
             warn(MODULE, `Failed to rebuild dashboard data after state reload: ${errorMessage(error)}`);
-            // Intentional: serve previous cachedJsonData rather than returning 500.
+            // Serve previous cachedJsonData rather than returning 500.
             // Signal staleness via response header so clients can detect the degraded mode (#994).
-            staleRebuild = true;
+            res.setHeader('X-Dashboard-Stale', '1');
           }
-        }
-        if (staleRebuild) {
-          res.setHeader('X-Dashboard-Stale', '1');
         }
         sendJson(res, 200, cachedJsonData);
         return;
