@@ -38,23 +38,12 @@ async function ensureGistInit(): Promise<void> {
   if (gistInitDone) return;
   gistInitDone = true;
 
-  // Read config file — may legitimately fail (no state file yet)
-  let persistence: string | undefined;
-  try {
-    const { getStatePath } = await import('@oss-autopilot/core');
-    const fs = await import('fs');
-    const raw = fs.readFileSync(getStatePath(), 'utf-8');
-    persistence = JSON.parse(raw)?.config?.persistence;
-  } catch {
-    return;
-  }
-
-  if (persistence === 'gist') {
-    // Gist init errors (GistPermissionError, network) propagate to wrapTool's catch
-    const { getStateManagerAsync, getGitHubTokenAsync } = await import('@oss-autopilot/core');
-    const token = await getGitHubTokenAsync();
-    if (token) await getStateManagerAsync(token);
-  }
+  // Gist init errors (GistPermissionError, network) propagate to wrapTool's catch.
+  // Shared helper in core unifies the "peek at state file, check persistence mode,
+  // pre-set singleton" logic that was previously duplicated with cli.ts (#1000).
+  const { ensureGistPersistence, getGitHubTokenAsync } = await import('@oss-autopilot/core');
+  const token = await getGitHubTokenAsync();
+  await ensureGistPersistence(token);
 }
 
 /** Standard MCP text content result. */

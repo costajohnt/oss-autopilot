@@ -40,6 +40,8 @@ vi.mock('@oss-autopilot/core', () => ({
     const [owner, repo] = fullName.split('/');
     return { owner, repo };
   },
+  getGitHubTokenAsync: vi.fn().mockResolvedValue(null),
+  ensureGistPersistence: vi.fn().mockResolvedValue(undefined),
   getStateManager: vi.fn().mockReturnValue({
     getState: vi.fn().mockReturnValue({
       lastDigest: {
