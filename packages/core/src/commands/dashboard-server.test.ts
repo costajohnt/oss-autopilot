@@ -1283,5 +1283,49 @@ describe('dashboard-server', () => {
       const data = JSON.parse(result.body);
       expect(data.stats).toBeDefined();
     });
+
+    it('sets X-Dashboard-Stale: 1 and serves cached payload when rebuild fails (#994)', async () => {
+      const baseTime = Date.now();
+      writeIssueList('## Pursue\n- [#1](https://github.com/o/r/issues/1) — First\n', baseTime);
+
+      // Prime the cache with a successful GET (no stale header expected).
+      const first = await sendRequest('GET', '/api/data');
+      expect(first.statusCode).toBe(200);
+      expect(first.headers['x-dashboard-stale']).toBeUndefined();
+      const firstBody = first.body;
+
+      // Bump the issue-list mtime to force a rebuild, then swap getState to a
+      // throwing impl for the duration of the second request so buildDashboardJson
+      // fails inside the rebuild try/catch.
+      writeIssueList(
+        '## Pursue\n- [#1](https://github.com/o/r/issues/1) — First\n- [#2](https://github.com/o/r/issues/2) — Second\n',
+        baseTime + 60_000,
+      );
+      const healthyState = mockStateManager.getState.getMockImplementation();
+      mockStateManager.getState.mockImplementation(() => {
+        throw new Error('boom');
+      });
+
+      const second = await sendRequest('GET', '/api/data');
+      expect(second.statusCode).toBe(200);
+      expect(second.headers['x-dashboard-stale']).toBe('1');
+      // Stale payload matches the last successful one — degraded mode, not 500.
+      expect(second.body).toBe(firstBody);
+
+      // Restore healthy getState; the stale header should not be sticky.
+      if (healthyState) {
+        mockStateManager.getState.mockImplementation(healthyState);
+      } else {
+        mockStateManager.getState.mockReturnValue(
+          makeState({
+            lastDigest: makeDigest(),
+            config: { issueListPath, skippedIssuesPath: undefined } as any,
+          }),
+        );
+      }
+      const third = await sendRequest('GET', '/api/data');
+      expect(third.statusCode).toBe(200);
+      expect(third.headers['x-dashboard-stale']).toBeUndefined();
+    });
   });
 });
