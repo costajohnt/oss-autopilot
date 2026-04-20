@@ -218,8 +218,10 @@ export class StateManager {
       // The Gist is the source of truth; local cache is for fallback.
       try {
         atomicWriteFileSync(getStateCachePath(), JSON.stringify(this.state, null, 2), 0o600);
-      } catch {
-        // Best-effort cache write
+      } catch (err) {
+        // Cache write failure is non-fatal (Gist remains source of truth), but
+        // silent failure masks degraded-mode risk on next offline bootstrap (#994).
+        warn(MODULE, `Failed to write Gist local cache: ${errorMessage(err)}`);
       }
       return;
     }

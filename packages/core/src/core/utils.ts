@@ -253,14 +253,14 @@ export function extractOwnerRepo(url: string): { owner: string; repo: string } |
 }
 
 /**
- * Calculates the number of whole days between two dates, using floor rounding.
+ * Calculates the number of whole days between two dates, clamped to zero.
  *
- * Can return negative values if `from` is after `to`. Partial days are truncated
- * (e.g., 1.9 days returns 1).
+ * Returns `0` if `from` is after `to` — reversed ranges and clock-skew do not
+ * produce negative values. Partial days are truncated (e.g., 1.9 days -> 1).
  *
  * @param from - The start date
  * @param to - The end date (defaults to the current date/time)
- * @returns Number of whole days between the two dates (may be negative)
+ * @returns Number of whole days between the two dates, minimum `0`
  *
  * @example
  * daysBetween(new Date('2024-01-01'), new Date('2024-01-10'))
@@ -268,7 +268,7 @@ export function extractOwnerRepo(url: string): { owner: string; repo: string } |
  *
  * @example
  * daysBetween(new Date('2024-01-10'), new Date('2024-01-01'))
- * // -9
+ * // 0 (clamped; reversed ranges are not signed)
  */
 export function daysBetween(from: Date, to: Date = new Date()): number {
   return Math.max(0, Math.floor((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)));

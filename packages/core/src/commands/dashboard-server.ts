@@ -329,7 +329,9 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
             cachedIssueListMtimeMs = currentIssueListMtimeMs;
           } catch (error) {
             warn(MODULE, `Failed to rebuild dashboard data after state reload: ${errorMessage(error)}`);
-            // Intentional: serve previous cachedJsonData rather than returning 500
+            // Serve previous cachedJsonData rather than returning 500.
+            // Signal staleness via response header so clients can detect the degraded mode (#994).
+            res.setHeader('X-Dashboard-Stale', '1');
           }
         }
         sendJson(res, 200, cachedJsonData);

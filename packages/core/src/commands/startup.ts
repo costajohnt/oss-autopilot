@@ -115,8 +115,11 @@ export function detectIssueList(): IssueListInfo | undefined {
     if (configuredSkipPath && fs.existsSync(configuredSkipPath)) {
       skippedIssuesPath = configuredSkipPath;
     }
-  } catch {
-    /* fall through */
+  } catch (err) {
+    // State access can fail on a degraded state file (corrupt JSON, EACCES).
+    // Default-path probe below still runs; warn so the underlying cause is visible (#994).
+    // Matches the sibling warn at line 64 for `issueListPath` read failures.
+    warn('startup', `Could not read skippedIssuesPath from state: ${errorMessage(err)}`);
   }
 
   // Probe default path: same directory as issue list, named skipped-issues.md
