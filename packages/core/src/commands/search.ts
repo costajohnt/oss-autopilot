@@ -9,6 +9,13 @@ import { type SearchOutput } from '../formatters/json.js';
 
 export { type SearchOutput } from '../formatters/json.js';
 
+/**
+ * Hard cap on issue-search result count. Shared between CLI (`cli-registry.ts`),
+ * MCP tool (`tools.ts`), and MCP prompt (`prompts.ts`) so a future adjustment
+ * lands in one place instead of three (#1002).
+ */
+export const MAX_SEARCH_RESULTS = 100;
+
 interface SearchOptions {
   maxResults: number;
 }

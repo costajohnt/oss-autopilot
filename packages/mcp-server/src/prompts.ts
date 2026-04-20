@@ -9,7 +9,7 @@
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { runDaily, runComments, runSearch } from '@oss-autopilot/core/commands';
+import { runDaily, runComments, runSearch, MAX_SEARCH_RESULTS } from '@oss-autopilot/core/commands';
 import { errorMessage } from '@oss-autopilot/core';
 
 /** Build a single-message prompt result with a user text message. */
@@ -83,7 +83,6 @@ export function registerPrompts(server: McpServer): void {
     },
     async ({ maxResults }) => {
       try {
-        const MAX_SEARCH_RESULTS = 100;
         let capped = maxResults ?? 5;
         if (!Number.isInteger(capped) || capped < 1) capped = 5;
         if (capped > MAX_SEARCH_RESULTS) capped = MAX_SEARCH_RESULTS;

@@ -423,15 +423,13 @@ describe('Command registration', () => {
 // ─── Search maxResults cap ────────────────────────────────────────────────────
 
 describe('Search maxResults cap', () => {
-  it('should enforce MAX_SEARCH_RESULTS = 100 in the search command definition', () => {
+  it('should enforce MAX_SEARCH_RESULTS = 100 via the shared export (#1002)', async () => {
     const searchCmd = commands.find((c) => c.name === 'search');
     expect(searchCmd).toBeDefined();
 
-    // Verify the cap constant is defined in the source (structural check)
-    const src = readFileSync(join(__dirname, 'cli-registry.ts'), 'utf-8');
-    const match = src.match(/const MAX_SEARCH_RESULTS\s*=\s*(\d+)/);
-    expect(match).not.toBeNull();
-    expect(Number(match![1])).toBe(100);
+    // Behavior check: assert the single-source-of-truth constant equals 100.
+    const { MAX_SEARCH_RESULTS } = await import('./commands/search.js');
+    expect(MAX_SEARCH_RESULTS).toBe(100);
   });
 
   it('should warn to console when capping maxResults', () => {

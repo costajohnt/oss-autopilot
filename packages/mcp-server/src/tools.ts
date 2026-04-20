@@ -28,6 +28,7 @@ import {
   runDismiss,
   runUndismiss,
   runMove,
+  MAX_SEARCH_RESULTS,
 } from '@oss-autopilot/core/commands';
 import { errorMessage } from '@oss-autopilot/core';
 
@@ -128,7 +129,6 @@ export function registerTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     wrapTool((args: { maxResults?: number }) => {
-      const MAX_SEARCH_RESULTS = 100;
       let maxResults = args.maxResults ?? 5;
       if (!Number.isInteger(maxResults) || maxResults < 1) {
         throw new Error(`Invalid maxResults: ${maxResults}. Must be a positive integer.`);

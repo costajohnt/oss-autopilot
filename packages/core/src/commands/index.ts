@@ -25,7 +25,7 @@ export { runStartup } from './startup.js';
 /** Return contribution statistics (merge rate, PR counts, repo breakdown) from local state. */
 export { runStatus } from './status.js';
 /** Search GitHub for contributable issues using multi-strategy discovery. */
-export { runSearch } from './search.js';
+export { runSearch, MAX_SEARCH_RESULTS } from './search.js';
 /** Vet a single GitHub issue for claimability (open, unassigned, no linked PRs, repo health). */
 export { runVet } from './vet.js';
 /** Re-vet all available issues in a curated issue list for freshness. */
