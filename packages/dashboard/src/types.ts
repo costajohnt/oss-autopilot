@@ -16,7 +16,13 @@ import type {
   RepoMetadataEntry,
 } from '@oss-autopilot/core/types';
 
-import type { ParsedIssueItem, ParseIssueListOutput } from '@oss-autopilot/core/commands';
+import type {
+  ParsedIssueItem,
+  ParseIssueListOutput,
+  DashboardStats,
+  DashboardActionType,
+  ActionRequest,
+} from '@oss-autopilot/core/commands';
 
 // Re-export shared types so consumers keep using `import { X } from '../types'`
 export type {
@@ -30,18 +36,10 @@ export type {
   RepoMetadataEntry,
   ParsedIssueItem,
   ParseIssueListOutput,
+  DashboardStats,
+  DashboardActionType,
+  ActionRequest,
 };
-
-// -- Dashboard-specific types --
-
-export interface DashboardStats {
-  activePRs: number;
-  shelvedPRs: number;
-  mergedPRs: number;
-  closedPRs: number;
-  mergeRate: string;
-  availableIssues?: number;
-}
 
 /** The shape of the GET /api/data response from the dashboard server. */
 export interface DashboardData {
@@ -62,15 +60,4 @@ export interface DashboardData {
   allClosedPRs: ClosedPR[];
   repoMetadata?: Record<string, RepoMetadataEntry>;
   vettedIssues?: ParseIssueListOutput | null;
-}
-
-/** Actions a user can take from the dashboard. */
-export type ActionType = 'move' | 'dismiss_issue_response';
-
-/** Request body for POST /api/action. */
-export interface ActionRequest {
-  action: ActionType;
-  url: string;
-  /** Target state for move action. */
-  target?: 'attention' | 'waiting' | 'shelved' | 'auto';
 }

@@ -89,6 +89,12 @@ export { runDetectFormatters } from './detect-formatters.js';
 /** Scan for locally cloned repos. */
 export { runLocalRepos } from './local-repos.js';
 
+// ── Dashboard Data Contract ─────────────────────────────────────────────────
+// Single source of truth for the types the dashboard SPA consumes.
+// Imported by @oss-autopilot/dashboard to prevent drift (#965, #998).
+
+export type { DashboardJsonData, DashboardStats, DashboardActionType, ActionRequest } from './dashboard-data.js';
+
 // ── Output Types ────────────────────────────────────────────────────────────
 // All commands return JsonOutput<T> where T is the command-specific type below.
 

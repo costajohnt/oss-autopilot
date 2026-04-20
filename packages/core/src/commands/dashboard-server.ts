@@ -23,6 +23,7 @@ import {
   storedToMergedPRs,
   storedToClosedPRs,
   type DashboardJsonData,
+  type ActionRequest,
 } from './dashboard-data.js';
 import { openInBrowser, detectIssueList } from './startup.js';
 import { parseIssueList, type ParseIssueListOutput } from './parse-list.js';
@@ -57,13 +58,6 @@ export interface DashboardServerOptions {
   assetsDir: string;
   token: string | null;
   open: boolean;
-}
-
-interface ActionRequest {
-  action: 'move' | 'dismiss_issue_response';
-  url: string;
-  /** Target state for move action. */
-  target?: 'attention' | 'waiting' | 'shelved' | 'auto';
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────

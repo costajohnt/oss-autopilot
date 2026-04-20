@@ -65,6 +65,17 @@ export interface DashboardJsonData {
   lastUpdated?: string;
 }
 
+/** Action types the dashboard can request via POST /api/action. */
+export type DashboardActionType = 'move' | 'dismiss_issue_response';
+
+/** Body shape for POST /api/action — single source for both server validation and SPA client (#998). */
+export interface ActionRequest {
+  action: DashboardActionType;
+  url: string;
+  /** Target state for move action. */
+  target?: 'attention' | 'waiting' | 'shelved' | 'auto';
+}
+
 export function buildDashboardStats(
   digest: DailyDigest,
   state: Readonly<AgentState>,
