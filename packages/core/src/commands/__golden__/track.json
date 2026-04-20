@@ -1,0 +1,8 @@
+{
+  "pr": {
+    "repo": "owner/repo",
+    "number": 42,
+    "title": "Improve error handling in foo()",
+    "url": "https://github.com/owner/repo/pull/42"
+  }
+}
