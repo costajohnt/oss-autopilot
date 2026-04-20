@@ -13,7 +13,24 @@ jobs:
   triage:
     runs-on: ubuntu-latest
     steps:
+      - name: Verify DEPENDABOT_TRIAGE_TOKEN is configured
+        id: check-token
+        env:
+          GH_TOKEN: ${{ secrets.DEPENDABOT_TRIAGE_TOKEN }}
+        shell: bash
+        run: |
+          # The triage script needs a PAT with cross-repo search + auto-merge scope.
+          # If the secret is missing/expired, skip with a clear signal rather than
+          # failing the workflow every day (#995).
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning title=Triage skipped::DEPENDABOT_TRIAGE_TOKEN secret is not set. Configure a PAT with 'repo' scope to enable auto-merge triage."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Triage dependabot PRs
+        if: steps.check-token.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ secrets.DEPENDABOT_TRIAGE_TOKEN }}
           REPORT_REPO: ${{ github.repository }}
