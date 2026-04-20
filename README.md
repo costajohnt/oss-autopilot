@@ -92,7 +92,7 @@ A Preact SPA that auto-opens when you run `/oss` — PR management, charts, cont
 
 **Three deployment models** — Claude Code plugin with 7 specialized agents, MCP server for Cursor/Claude Desktop/Codex/Windsurf, and a standalone CLI with `--json` structured output. Same core, different interfaces.
 
-**Deterministic core, AI orchestration layer** — Critical logic (PR status classification, CI failure analysis, state management) lives in tested TypeScript, not in prompts. The CLI returns structured JSON that agents consume. CI failures are categorized into a deterministic taxonomy — actionable vs. fork limitation vs. auth gate vs. infrastructure — rather than asking an LLM each time. 2,260+ tests validate the core independently of any LLM.
+**Deterministic core, AI orchestration layer** — Critical logic (PR status classification, CI failure analysis, state management) lives in tested TypeScript, not in prompts. The CLI returns structured JSON that agents consume. CI failures are categorized into a deterministic taxonomy — actionable vs. fork limitation vs. auth gate vs. infrastructure — rather than asking an LLM each time. 2,200+ tests validate the core independently of any LLM.
 
 **Production-grade GitHub API integration** — ETag-based HTTP caching, automatic rate limit backoff with retries, bounded concurrency pools, and paginated fetching. Handles the full complexity of fork-based contribution workflows: correct diff ranges, squash commit counting, and `--head` flag handling for cross-fork PRs. Designed to run daily without hitting API limits.
 
@@ -104,7 +104,7 @@ A Preact SPA that auto-opens when you run `/oss` — PR management, charts, cont
 
 **Security discipline** — State files written with `0o600` permissions, data directory created with `0o700`. Concurrent state write protection prevents corruption from parallel runs. Runtime schema validation via Zod on every state file read. XSS prevention tested. Input validation hardened across CLI arguments and API responses.
 
-**Automated release pipeline** — Conventional commits feed into release-please for automatic versioning and changelogs, with CI/CD publishing to npm on merge. 140+ published releases since March 2026, with 200+ changelog versions spanning the full v0.1.0 → v1.15.x history.
+**Automated release pipeline** — Conventional commits feed into release-please for automatic versioning and changelogs, with CI/CD publishing to npm on merge. 140+ published releases since March 2026, with 170+ changelog versions spanning the full v0.1.0 → v1.15.x history.
 
 Every feature in the list above was driven by real usage — capacity warnings came from overcommitting, "skip comment when code speaks for itself" came from over-commenting, diminishing returns detection came from spending too long searching. The tool is shaped by the contributions it manages.
 
@@ -187,8 +187,8 @@ All commands return `{ success, data, error, timestamp }` with `--json`.
 
 | Metric | Value |
 |--------|-------|
-| Releases | 140+ published (200+ changelog versions, v0.1.0 → v1.15.x) |
-| Tests | 2,260+ across 100+ files |
+| Releases | 140+ published (170+ changelog versions, v0.1.0 → v1.15.x) |
+| Tests | 2,200+ across 100+ files |
 | Issues + PRs | 1,000+ |
 | Time span | Jan 2026 → present |
 | npm packages | 3 |
