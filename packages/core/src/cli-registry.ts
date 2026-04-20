@@ -352,7 +352,7 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('track <pr-url>')
-        .description('Add a PR to track')
+        .description('Fetch metadata for a PR (informational — v2 does not maintain a local tracking list)')
         .option('--json', 'Output as JSON')
         .action(async (prUrl, options) => {
           try {
@@ -362,7 +362,8 @@ export const commands: CLICommandDef[] = [
               outputJson(data);
             } else {
               console.log(`\nPR: ${data.pr.repo}#${data.pr.number} - ${data.pr.title}`);
-              console.log('Note: In v2, PRs are tracked automatically via the daily run.');
+              console.log('Note: In v2, PRs are discovered automatically on each daily run — this command only');
+              console.log('fetches metadata for inspection. Nothing is persisted locally.');
             }
           } catch (err) {
             handleCommandError(err, options.json);
@@ -378,7 +379,7 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('untrack <pr-url>')
-        .description('Stop tracking a PR')
+        .description('[DEPRECATED] No-op in v2. Use `shelve` to hide a PR from the daily digest.')
         .option('--json', 'Output as JSON')
         .action(async (prUrl, options) => {
           try {
@@ -387,10 +388,9 @@ export const commands: CLICommandDef[] = [
             if (options.json) {
               outputJson(data);
             } else {
-              console.log(
-                'Note: In v2, PRs are fetched fresh on each daily run \u2014 there is no local tracking list to remove from.',
-              );
-              console.log('Use `shelve` to temporarily hide a PR from the daily summary.');
+              // Stderr so scripts piping stdout don't see the deprecation notice.
+              console.error('[DEPRECATED] `untrack` is a no-op in v2. PRs are fetched fresh on each daily run —');
+              console.error('there is no local tracking list to remove from. Use `shelve` to hide a PR instead.');
             }
           } catch (err) {
             handleCommandError(err, options.json);
