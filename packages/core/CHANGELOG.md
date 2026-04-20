@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.15.2...core-v1.16.0) (2026-04-20)
+
+
+### Features
+
+* **dashboard:** animated stat counters and manual celebrate button ([#1019](https://github.com/costajohnt/oss-autopilot/issues/1019)) ([e2b2966](https://github.com/costajohnt/oss-autopilot/commit/e2b296659300314578a73615e746e15b947cf7a7))
+
+
+### Bug Fixes
+
+* audit-v2 batch 1 — daysBetween docs + three silent catches ([#1009](https://github.com/costajohnt/oss-autopilot/issues/1009)) ([7c89a74](https://github.com/costajohnt/oss-autopilot/commit/7c89a74d9d97af6a8e45b28bae6d6bf051b33d4a))
+* **ci:** skip Dependabot Triage gracefully when token secret is missing ([#1010](https://github.com/costajohnt/oss-autopilot/issues/1010)) ([eb3c876](https://github.com/costajohnt/oss-autopilot/commit/eb3c876e4551757177240107f282b7842ace9149))
+
 ## [1.15.2](https://github.com/costajohnt/oss-autopilot/compare/core-v1.15.1...core-v1.15.2) (2026-04-19)
 
 
