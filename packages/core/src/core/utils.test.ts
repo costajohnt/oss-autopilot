@@ -479,11 +479,47 @@ describe('getGitHubTokenAsync', () => {
 });
 
 describe('stateFileExists', () => {
-  it('should agree with direct filesystem check on the state file path', () => {
-    // Validates the function returns the correct boolean by comparing against
-    // a manual check of the same path. Covers both true (dev) and false (CI) cases.
-    const stateFile = path.join(os.homedir(), '.oss-autopilot', 'state.json');
-    expect(stateFileExists()).toBe(fs.existsSync(stateFile));
+  let tempHome: string;
+  let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
+
+  beforeEach(() => {
+    // Hermetic fixture: redirect os.homedir() (which reads HOME on Unix,
+    // USERPROFILE on Windows) so stateFileExists checks the temp dir, not
+    // the developer/CI user's real ~/.oss-autopilot (#1003).
+    tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-statefile-test-'));
+    originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
+    process.env.HOME = tempHome;
+    process.env.USERPROFILE = tempHome;
+  });
+
+  afterEach(() => {
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+    try {
+      fs.rmSync(tempHome, { recursive: true, force: true });
+    } catch {
+      // Ignore cleanup errors
+    }
+  });
+
+  it('returns false when the state file does not exist', () => {
+    expect(stateFileExists()).toBe(false);
+  });
+
+  it('returns true when the state file exists', () => {
+    const dir = path.join(tempHome, '.oss-autopilot');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'state.json'), '{}');
+    expect(stateFileExists()).toBe(true);
+  });
+
+  it('returns false when the directory exists but the file does not', () => {
+    fs.mkdirSync(path.join(tempHome, '.oss-autopilot'), { recursive: true });
+    expect(stateFileExists()).toBe(false);
   });
 });
 
