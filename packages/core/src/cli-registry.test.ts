@@ -30,7 +30,7 @@ vi.mock('./formatters/json.js', () => ({
 // ─── Mock dynamic command-module imports ────────────────────────────────────
 
 const mockRunSearch = vi.fn();
-vi.mock('./commands/search.js', () => ({ runSearch: mockRunSearch }));
+vi.mock('./commands/search.js', () => ({ runSearch: mockRunSearch, MAX_SEARCH_RESULTS: 100 }));
 
 const mockRunDismiss = vi.fn();
 const mockRunUndismiss = vi.fn();

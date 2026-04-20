@@ -29,6 +29,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runDismiss: vi.fn(),
   runUndismiss: vi.fn(),
   runMove: mockRunMove,
+  MAX_SEARCH_RESULTS: 100,
 }));
 
 vi.mock('@oss-autopilot/core', () => ({

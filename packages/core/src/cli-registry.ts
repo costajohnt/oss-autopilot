@@ -204,7 +204,7 @@ export const commands: CLICommandDef[] = [
           executeAction(
             options,
             async () => {
-              const { runSearch } = await import('./commands/search.js');
+              const { runSearch, MAX_SEARCH_RESULTS } = await import('./commands/search.js');
               let maxResults = 5;
               if (count !== undefined) {
                 const parsed = Number(count);
@@ -213,7 +213,6 @@ export const commands: CLICommandDef[] = [
                 }
                 maxResults = parsed;
               }
-              const MAX_SEARCH_RESULTS = 100;
               if (maxResults > MAX_SEARCH_RESULTS) {
                 console.warn(`Capping search to ${MAX_SEARCH_RESULTS} results (requested: ${maxResults})`);
                 maxResults = MAX_SEARCH_RESULTS;
