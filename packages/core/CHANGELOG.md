@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.2](https://github.com/costajohnt/oss-autopilot/compare/core-v1.15.1...core-v1.15.2) (2026-04-19)
+
+
+### Bug Fixes
+
+* parse skipped-issues file into scout state ([#989](https://github.com/costajohnt/oss-autopilot/issues/989)) ([#990](https://github.com/costajohnt/oss-autopilot/issues/990)) ([ecc602e](https://github.com/costajohnt/oss-autopilot/commit/ecc602ed86868ef0a5158034bc98a6e2bb53ecc4))
+* persist /oss Pick-from-list skips to skipped-issues file ([#1008](https://github.com/costajohnt/oss-autopilot/issues/1008)) ([d500e7c](https://github.com/costajohnt/oss-autopilot/commit/d500e7c06d3514824e889f0b05169bffdbf33f64))
+
 ## [1.15.1](https://github.com/costajohnt/oss-autopilot/compare/core-v1.15.0...core-v1.15.1) (2026-04-19)
 
 
