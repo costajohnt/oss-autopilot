@@ -5,20 +5,19 @@ interface AnimatedValueProps {
 }
 
 export function AnimatedValue({ value }: AnimatedValueProps) {
-  if (typeof value === 'number') {
-    return <>{useCountUp(value)}</>;
-  }
+  // Always call useCountUp unconditionally to satisfy the Rules of Hooks:
+  // if `value` transitions between number/string/non-numeric-string across
+  // renders, a conditional hook call would throw "Rendered fewer hooks".
+  const stringMatch = typeof value === 'string' ? value.match(/^(\d+)(.*)$/) : null;
+  const target = typeof value === 'number' ? value : stringMatch ? parseInt(stringMatch[1], 10) : 0;
+  const animated = useCountUp(target);
 
-  const match = value.match(/^(\d+)(.*)$/);
-  if (!match) return <>{value}</>;
-
-  const num = parseInt(match[1], 10);
-  const suffix = match[2];
-
+  if (typeof value === 'number') return <>{animated}</>;
+  if (!stringMatch) return <>{value}</>;
   return (
     <>
-      {useCountUp(num)}
-      {suffix}
+      {animated}
+      {stringMatch[2]}
     </>
   );
 }

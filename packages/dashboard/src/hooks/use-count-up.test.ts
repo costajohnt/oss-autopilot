@@ -35,7 +35,7 @@ describe('useCountUp', () => {
 
   it('always returns an integer (no decimals during animation)', () => {
     const values: number[] = [];
-    const { result } = renderHook(() => {
+    renderHook(() => {
       const val = useCountUp(7, { duration: 300 });
       values.push(val);
       return val;
@@ -77,7 +77,7 @@ describe('useCountUp', () => {
 
   it('produces intermediate values between 0 and the target', () => {
     const values = new Set<number>();
-    const { result } = renderHook(() => {
+    renderHook(() => {
       const val = useCountUp(100, { duration: 500 });
       values.add(val);
       return val;
