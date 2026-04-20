@@ -149,12 +149,12 @@ describe('MCP tool registrations', () => {
   });
 
   describe('annotations', () => {
-    const readOnlyTools = ['status', 'search', 'vet', 'comments', 'check-setup'];
+    // track is read-only in v2: fetches metadata from GitHub, does not persist (#1001).
+    // untrack is a no-op in v2 (#1001) — deprecated, also read-only since it doesn't mutate state.
+    const readOnlyTools = ['status', 'search', 'vet', 'comments', 'check-setup', 'track', 'untrack'];
     const mutatingTools = [
       'daily',
       'startup',
-      'track',
-      'untrack',
       'read',
       'post',
       'claim',
@@ -181,11 +181,6 @@ describe('MCP tool registrations', () => {
       expect(tool).toBeDefined();
       expect(tool!.annotations).toBeDefined();
       expect((tool!.annotations as Record<string, unknown>).readOnlyHint).toBe(false);
-    });
-
-    it('untrack has destructiveHint: true', () => {
-      const tool = tools.find((t) => t.name === 'untrack')!;
-      expect((tool.annotations as Record<string, unknown>).destructiveHint).toBe(true);
     });
   });
 });

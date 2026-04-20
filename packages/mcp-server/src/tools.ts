@@ -170,29 +170,32 @@ export function registerTools(server: McpServer): void {
     wrapTool(runVetList),
   );
 
-  // 5. track — Track a PR
+  // 5. track — Fetch PR metadata (informational; v2 does not persist a tracking list)
   server.registerTool(
     'track',
     {
       description:
-        'Start tracking a pull request. Adds the PR to your monitored list so it appears in daily checks and status reports.',
+        'Fetch metadata for a pull request (repo, number, title). Informational only — in v2, PRs are discovered automatically on each daily run and nothing is persisted locally. Use `daily` or `status` for ongoing monitoring.',
       inputSchema: {
-        prUrl: z.string().describe('Full GitHub PR URL to track (e.g. https://github.com/owner/repo/pull/123)'),
+        prUrl: z
+          .string()
+          .describe('Full GitHub PR URL to fetch metadata for (e.g. https://github.com/owner/repo/pull/123)'),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false },
+      annotations: { readOnlyHint: true },
     },
     wrapTool(runTrack),
   );
 
-  // 6. untrack — Stop tracking a PR
+  // 6. untrack — Deprecated no-op (v2 has no local tracking list)
   server.registerTool(
     'untrack',
     {
-      description: 'Stop tracking a pull request. Removes the PR from your monitored list.',
+      description:
+        '[DEPRECATED] No-op in v2. PRs are fetched fresh on each daily run, so there is no local tracking list to remove from. Use `shelve` to hide a PR from the daily digest instead.',
       inputSchema: {
-        prUrl: z.string().describe('Full GitHub PR URL to untrack (e.g. https://github.com/owner/repo/pull/123)'),
+        prUrl: z.string().describe('Full GitHub PR URL (ignored — command is a no-op)'),
       },
-      annotations: { readOnlyHint: false, destructiveHint: true },
+      annotations: { readOnlyHint: true },
     },
     wrapTool(runUntrack),
   );
