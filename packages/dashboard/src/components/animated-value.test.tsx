@@ -62,18 +62,24 @@ describe('AnimatedValue', () => {
     // Regression: useCountUp must be called unconditionally, otherwise
     // Preact throws "Rendered fewer hooks than expected" on a shape change.
     const { container, rerender } = render(<AnimatedValue value={5} />);
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     expect(container.textContent).toBe('5');
 
     rerender(<AnimatedValue value="42%" />);
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     expect(container.textContent).toBe('42%');
 
     rerender(<AnimatedValue value="N/A" />);
     expect(container.textContent).toBe('N/A');
 
     rerender(<AnimatedValue value={7} />);
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
     expect(container.textContent).toBe('7');
   });
 });
