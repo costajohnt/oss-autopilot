@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.2](https://github.com/costajohnt/oss-autopilot/compare/core-v1.16.1...core-v1.16.2) (2026-04-21)
+
+
+### Bug Fixes
+
+* **dashboard:** allow blob: workers in CSP for canvas-confetti ([#1025](https://github.com/costajohnt/oss-autopilot/issues/1025)) ([fa3f881](https://github.com/costajohnt/oss-autopilot/commit/fa3f881776574af937b0425a5157e164b1a3b6ff))
+
 ## [1.16.1](https://github.com/costajohnt/oss-autopilot/compare/core-v1.16.0...core-v1.16.1) (2026-04-21)
 
 
