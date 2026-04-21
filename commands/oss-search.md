@@ -131,18 +131,14 @@ Use AskUserQuestion:
      Return: score (1-10), recommendation (pursue/maybe/skip), red flags.")
    ```
 
-3. **Score Threshold Filter:** After all vet agents return, read `scoreThreshold` from config:
-   ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --json
-   ```
-   Parse the `scoreThreshold` field from the returned `data.config` object. If the config command fails, log: "Could not read scoreThreshold from config. Using default threshold of 6." and use 6 as the threshold.
+3. **Score Threshold Filter:** After all vet agents return, filter on a fixed threshold of 6/10.
 
    For each vetted issue:
-   - Score **>= threshold** → proceed to tier assignment (step 4)
-   - Score **< threshold** → skip, do NOT add to any tier
+   - Score **>= 6** → proceed to tier assignment (step 4)
+   - Score **< 6** → skip, do NOT add to any tier
 
    If any filtered, display:
-   > "Filtered {count} issue(s) below score threshold ({threshold}/10)."
+   > "Filtered {count} issue(s) below score threshold (6/10)."
 
    List filtered issues briefly:
    ```
