@@ -216,9 +216,13 @@ function readBody(req: http.IncomingMessage, maxBytes: number = MAX_BODY_BYTES):
 function setSecurityHeaders(res: http.ServerResponse): void {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
+  // worker-src: canvas-confetti generates its animation worker as a Blob and
+  // loads it via a blob: URL. Without this directive the browser falls back
+  // to script-src, which doesn't list blob:, and the celebrate button fails
+  // silently. Scoped to workers only — safer than widening script-src.
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'",
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; worker-src 'self' blob:",
   );
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 }
