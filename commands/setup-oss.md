@@ -191,16 +191,7 @@ node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set squas
 
 This sets the global `squashByDefault` setting.
 
-**Question 11: Score Threshold for Vetted Issues**
-- "Minimum score threshold for vetted issues? Issues below this score are auto-filtered during `/oss-search` vetting."
-- Options: "4 (lenient)", "5 (moderate)", "6 (default)", "7 (selective)", "8 (strict)"
-
-Extract the number from the selected option and apply:
-```bash
-node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set scoreThreshold=NUMBER --json
-```
-
-**Question 12: Diff Viewer Preference**
+**Question 11: Diff Viewer Preference**
 - "How would you like to review diffs before committing?"
 - Options: "Inline (default) — print diff in CLI", "SourceTree — open repo in SourceTree", "VS Code — open diff in VS Code", "Custom command"
 
@@ -426,12 +417,6 @@ If "Don't track", skip — no config change needed (the search flow handles miss
 - Options: "Yes, always squash (Recommended)", "No, keep individual commits", "Ask me each time"
 
 This sets the global `squashByDefault` setting.
-
-**Question 11: Score Threshold for Vetted Issues**
-- "Minimum score threshold for vetted issues? Issues below this score are auto-filtered during `/oss-search` vetting."
-- Options: "4 (lenient)", "5 (moderate)", "6 (default)", "7 (selective)", "8 (strict)"
-
-Store the selected number in config as `scoreThreshold`.
 
 ## Step 5: Verify GitHub Access
 

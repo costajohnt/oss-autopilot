@@ -6,13 +6,9 @@
  *
  * Behavior:
  * - Reads ~/.oss-autopilot/state.json (cached from last /oss run)
- * - If showHealthCheck is false in config, exits silently
  * - If no state exists, shows a first-run hint to run /oss
  * - If last digest is >7 days old, nudges the user to catch up
  * - Otherwise, outputs a compact one-liner: "OSS: 15 active PRs — 3 need addressing, 12 waiting on maintainer (2h ago)"
- *
- * Configuration: Set showHealthCheck to false to disable:
- *   node packages/core/dist/cli.bundle.cjs setup --set showHealthCheck=false
  *
  * Error handling: Errors are logged to stderr (visible in debug) but never
  * disrupt session start — the hook always exits cleanly.
@@ -28,7 +24,6 @@ try {
     process.exit(0);
   }
   const state = JSON.parse(s);
-  if (state.config && state.config.showHealthCheck === false) process.exit(0);
   const lastRun = state.lastDigestAt || state.lastRunAt;
   if (!lastRun || !state.lastDigest) {
     console.log('OSS: No PR data yet. Run /oss to get started.');

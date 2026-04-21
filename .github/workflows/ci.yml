@@ -78,6 +78,18 @@ jobs:
       - name: Test session-start hook helpers
         run: bash hooks/safe-refresh-marketplace.test.sh
 
+      - name: Guard against phantom config field regressions
+        # These keys were deleted from the v3 state schema (see
+        # state-persistence.ts migrateV2ToV3). They must NOT reappear in
+        # plugin-facing docs or scripts — setup --set silently no-ops on
+        # deleted keys, so references become lies.
+        run: |
+          if grep -rn --include='*.md' --include='*.cjs' --include='*.sh' \
+             -E '(scoreThreshold|showHealthCheck)' commands/ .claude-plugin/; then
+            echo "::error::Found references to deleted v3 config keys. See issue #1033."
+            exit 1
+          fi
+
       - name: Coverage report
         if: matrix.node-version == 22
         run: pnpm run test:coverage
