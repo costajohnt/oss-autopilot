@@ -840,6 +840,15 @@ describe('dashboard-server', () => {
       expect(result.headers['content-security-policy']).toContain("default-src 'self'");
     });
 
+    it('should allow blob: workers in Content-Security-Policy (canvas-confetti)', async () => {
+      // Regression: canvas-confetti loads its animation worker from a blob: URL.
+      // Without an explicit worker-src directive, the browser falls back to
+      // script-src, which does not list blob:, and the celebrate button fails
+      // silently in production.
+      const result = await sendRequest('GET', '/api/data');
+      expect(result.headers['content-security-policy']).toContain("worker-src 'self' blob:");
+    });
+
     it('should set Referrer-Policy to strict-origin-when-cross-origin', async () => {
       const result = await sendRequest('GET', '/api/data');
       expect(result.headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
