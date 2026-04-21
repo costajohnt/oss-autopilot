@@ -90,6 +90,29 @@ jobs:
             exit 1
           fi
 
+      - name: Guard MCP metadata consistency
+        # Catches drift between packages/mcp-server/package.json, server.json,
+        # the registered tool count in tools.ts, and what the README claims.
+        # See issue #1034.
+        run: |
+          PKG_VERSION=$(node -p "require('./packages/mcp-server/package.json').version")
+          SERVER_JSON_VERSION=$(node -p "require('./packages/mcp-server/server.json').version")
+          PACKAGE_ENTRY_VERSION=$(node -p "require('./packages/mcp-server/server.json').packages[0].version")
+
+          if [ "$PKG_VERSION" != "$SERVER_JSON_VERSION" ] || [ "$PKG_VERSION" != "$PACKAGE_ENTRY_VERSION" ]; then
+            echo "::error::MCP server.json version ($SERVER_JSON_VERSION / $PACKAGE_ENTRY_VERSION) does not match package.json ($PKG_VERSION). Bump server.json to match."
+            exit 1
+          fi
+
+          REGISTERED=$(grep -c 'server.registerTool(' packages/mcp-server/src/tools.ts)
+          README_COUNT=$(grep -oE '\*\*Tools\*\* \| [0-9]+' packages/mcp-server/README.md | grep -oE '[0-9]+' | head -1)
+          README_ROWS=$(awk '/^## Tools Reference/,/^## Resources Reference/' packages/mcp-server/README.md | grep -c '^| `')
+
+          if [ "$REGISTERED" != "$README_COUNT" ] || [ "$REGISTERED" != "$README_ROWS" ]; then
+            echo "::error::MCP tool count drift: tools.ts registers $REGISTERED, README summary says $README_COUNT, README table rows $README_ROWS. Align all three."
+            exit 1
+          fi
+
       - name: Guard against mcp__* wildcard in agent tools
         # Agents must declare specific MCP tools, never the wildcard. See
         # agents/README.md for rationale. mcp__* would grant access to every

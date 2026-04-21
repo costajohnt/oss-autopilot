@@ -10,7 +10,7 @@ MCP server for [OSS Autopilot](https://github.com/costajohnt/oss-autopilot) — 
 
 | Feature | Count | Description |
 |---------|-------|-------------|
-| **Tools** | 20 | `daily`, `status`, `search`, `vet`, `track`, `untrack`, `read`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move` |
+| **Tools** | 24 | `daily`, `status`, `search`, `vet`, `vet-list`, `track`, `untrack`, `read`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink` |
 | **Resources** | 5 | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}` |
 | **Prompts** | 3 | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues) |
 
@@ -24,12 +24,12 @@ Supports **stdio** (default) and **Streamable HTTP** transports.
 ## Quick Start
 
 ```bash
-# 1. Initialize with your GitHub username
-npx @oss-autopilot/mcp@latest --init <your-github-username>
+# 1. Add the server to your MCP client (see config examples below)
 
-# 2. Add the server to your MCP client (see config examples below)
+# 2. From your MCP client, call the `init` tool once with your GitHub username
+#    (this writes ~/.oss-autopilot/state.json).
 
-# 3. Use the tools — e.g. "daily" to check your PRs, "search" to find issues
+# 3. Use the other tools — e.g. `daily` to check your PRs, `search` to find issues.
 ```
 
 ## Client Configuration
@@ -103,6 +103,7 @@ The server listens at `http://127.0.0.1:3001/mcp` and accepts POST requests.
 | `status` | Show current PR tracking status | Yes |
 | `search` | Search GitHub for contributable issues | Yes |
 | `vet` | Analyze an issue for contribution suitability | Yes |
+| `vet-list` | Re-vet all available issues in the curated issue list | No |
 | `track` | Start tracking a pull request | No |
 | `untrack` | Stop tracking a pull request | No |
 | `read` | Mark PR notifications as read | No |
@@ -119,6 +120,9 @@ The server listens at `http://127.0.0.1:3001/mcp` and accepts POST requests.
 | `dismiss` | Dismiss an issue from notifications | No |
 | `undismiss` | Re-enable notifications for a dismissed issue | No |
 | `move` | Move a PR between states (attention, waiting, shelved, auto) | No |
+| `state-show` | Show current state persistence mode (local or Gist) and sync status | Yes |
+| `state-sync` | Force push current state to the backing Gist | No |
+| `state-unlink` | Disconnect from Gist persistence and switch to local-only mode | No |
 
 ## Resources Reference
 
