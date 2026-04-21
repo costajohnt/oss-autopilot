@@ -90,6 +90,19 @@ jobs:
             exit 1
           fi
 
+      - name: Guard against mcp__* wildcard in agent tools
+        # Agents must declare specific MCP tools, never the wildcard. See
+        # agents/README.md for rationale. mcp__* would grant access to every
+        # MCP server on the user's machine (including cross-channel posting),
+        # bypassing the draft-review-post gate the global CLAUDE.md enforces.
+        # Matches only `tools:` frontmatter lines so prose in README.md that
+        # discusses the pattern (for documentation) does not false-positive.
+        run: |
+          if grep -Hn '^tools:.*mcp__\*' agents/*.md; then
+            echo "::error::Agent frontmatter contains mcp__* wildcard. Use a narrow allowlist. See agents/README.md and issue #1029."
+            exit 1
+          fi
+
       - name: Coverage report
         if: matrix.node-version == 22
         run: pnpm run test:coverage

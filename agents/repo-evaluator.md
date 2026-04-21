@@ -22,7 +22,7 @@ User wants to predict maintainer engagement before contributing.
 
 model: inherit
 color: blue
-tools: ["Bash", "Read", "Write", "Glob", "mcp__*"]
+tools: ["Bash", "Read", "Glob", "mcp__plugin_oss-autopilot_oss-autopilot__vet"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.

@@ -40,7 +40,7 @@ User wants help with goal-setting.
 
 model: inherit
 color: magenta
-tools: ["Bash", "Read", "Write", "mcp__*"]
+tools: ["Bash", "Read"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
