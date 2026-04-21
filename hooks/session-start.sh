@@ -31,9 +31,13 @@ if [ -f "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ] && [ "${PLUGIN_ROOT
 fi
 
 # --- Step 1.5: Build dashboard SPA if missing or stale ---
+# Stale check scans src/, vite.config.ts, tsconfig.json, and package.json
+# against dist/index.html. Must match the check in commands/oss-dashboard.md —
+# checking package.json alone misses the common case where only src/ changes
+# (package.json is private, pinned at 0.1.0, and rarely touched).
 DASHBOARD_INDEX="${PLUGIN_ROOT}/packages/dashboard/dist/index.html"
 DASHBOARD_PKG="${PLUGIN_ROOT}/packages/dashboard/package.json"
-if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ "${DASHBOARD_PKG}" -nt "${DASHBOARD_INDEX}" ]; }; then
+if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ -n "$(find "${PLUGIN_ROOT}/packages/dashboard/src" "${DASHBOARD_PKG}" "${PLUGIN_ROOT}/packages/dashboard/vite.config.ts" "${PLUGIN_ROOT}/packages/dashboard/tsconfig.json" -newer "${DASHBOARD_INDEX}" -print -quit 2>/dev/null)" ]; }; then
   # Dashboard depends on @oss-autopilot/core types via workspace:* protocol.
   # Use pnpm if available (required for workspace: resolution), fall back to npm.
   if command -v pnpm &>/dev/null; then
