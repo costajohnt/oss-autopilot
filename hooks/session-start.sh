@@ -10,16 +10,8 @@ PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 messages=""
 NL=$'\n'
 
-# --- Step 0: Auto-refresh marketplace cache (non-blocking) ---
-# Claude Code caches third-party marketplace repos as git clones but never
-# auto-refreshes them, so plugin updates aren't discoverable. A background
-# fetch+reset on every session keeps the cache current without blocking startup.
-# Uses fetch+reset instead of pull to handle divergent branches gracefully
-# (e.g. if a local commit was accidentally made in the marketplace clone).
+# Marketplace clone path; refresh is handled by safe-refresh-marketplace.sh in Step 2.
 MARKETPLACE_DIR="$HOME/.claude/plugins/marketplaces/oss-autopilot"
-if [ -d "$MARKETPLACE_DIR/.git" ]; then
-  (cd "$MARKETPLACE_DIR" && git fetch --quiet origin main 2>/dev/null && git reset --hard origin/main --quiet 2>/dev/null) &
-fi
 
 # --- Step 1: Rebuild stale CLI bundle (if needed) ---
 if [ -f "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ] && [ "${PLUGIN_ROOT}/packages/core/package.json" -nt "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ]; then
@@ -72,27 +64,34 @@ if [ -n "$CURRENT" ]; then
       # Mark check as done only after a successful API response
       touch "$LAST_CHECK"
       if [ "$LATEST" != "$CURRENT" ]; then
-        # Pull the marketplace clone so /plugin update sees the new version
-        MARKETPLACE_DIR="${HOME}/.claude/plugins/marketplaces/oss-autopilot"
+        # Pull marketplace clone so /plugin update sees the new version.
+        # Helper preserves dirty trees (exit 1) and reports corrupt-repo state.
         marketplace_pulled=false
-        if [ -d "${MARKETPLACE_DIR}/.git" ]; then
-          if git -C "${MARKETPLACE_DIR}" fetch origin main --quiet 2>/dev/null \
-            && git -C "${MARKETPLACE_DIR}" reset --hard origin/main --quiet 2>/dev/null; then
-            marketplace_pulled=true
-          fi
-        fi
-        # Update known_marketplaces.json so Claude Code recognises the marketplace change.
+        marketplace_skip_msg=""
+        refresh_output=$("${SCRIPT_DIR}/safe-refresh-marketplace.sh" "${MARKETPLACE_DIR}") && refresh_rc=0 || refresh_rc=$?
+        case "$refresh_rc" in
+          0) marketplace_pulled=true ;;
+          1) marketplace_skip_msg="$refresh_output" ;;
+          2|3) : ;;  # fetch/reset failed or no clone — generic "Auto-pull failed" fires below
+          *) marketplace_skip_msg="Auto-refresh helper exited unexpectedly (code ${refresh_rc})." ;;
+        esac
+        # Update known_marketplaces.json only if the clone actually refreshed —
+        # bumping `lastUpdated` when we skipped the pull would lie about state.
         # Uses atomic write (tmp + mv) to prevent corruption on interruption.
-        KNOWN_MP="${HOME}/.claude/plugins/known_marketplaces.json"
-        if [ -f "$KNOWN_MP" ] && command -v jq &>/dev/null; then
-          jq --arg ts "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
-            'if has("oss-autopilot") then .["oss-autopilot"].lastUpdated = $ts else . end' \
-            "$KNOWN_MP" > "${KNOWN_MP}.tmp" \
-            && mv "${KNOWN_MP}.tmp" "$KNOWN_MP" \
-            || rm -f "${KNOWN_MP}.tmp"
+        if [ "$marketplace_pulled" = true ]; then
+          KNOWN_MP="${HOME}/.claude/plugins/known_marketplaces.json"
+          if [ -f "$KNOWN_MP" ] && command -v jq &>/dev/null; then
+            jq --arg ts "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)" \
+              'if has("oss-autopilot") then .["oss-autopilot"].lastUpdated = $ts else . end' \
+              "$KNOWN_MP" > "${KNOWN_MP}.tmp" \
+              && mv "${KNOWN_MP}.tmp" "$KNOWN_MP" \
+              || rm -f "${KNOWN_MP}.tmp"
+          fi
         fi
         if [ "$marketplace_pulled" = true ]; then
           update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). Run: /plugin update oss-autopilot"
+        elif [ -n "$marketplace_skip_msg" ]; then
+          update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). ${marketplace_skip_msg} Then run: /plugin update oss-autopilot"
         else
           update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). Auto-pull failed. Run: cd ${MARKETPLACE_DIR} && git pull origin main, then /plugin update oss-autopilot"
         fi
