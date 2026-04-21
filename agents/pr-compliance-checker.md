@@ -31,7 +31,7 @@ User wants pre-submission guidance on PR quality.
 
 model: inherit
 color: orange
-tools: ["Bash", "Read", "Glob", "Grep", "WebFetch", "mcp__*"]
+tools: ["Bash", "Read", "Glob", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__read", "mcp__plugin_oss-autopilot_oss-autopilot__comments"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.

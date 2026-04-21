@@ -31,7 +31,7 @@ Merge conflicts are a health issue this agent handles.
 
 model: inherit
 color: yellow
-tools: ["Bash", "Read", "Write", "Grep", "mcp__*"]
+tools: ["Bash", "Read", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__read", "mcp__plugin_oss-autopilot_oss-autopilot__comments"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.

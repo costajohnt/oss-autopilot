@@ -22,7 +22,7 @@ Post-conflict resolution is a critical moment where bugs can be introduced. Revi
 
 model: inherit
 color: red
-tools: ["Bash", "Read", "Glob", "Grep", "mcp__*"]
+tools: ["Bash", "Read", "Glob", "Grep"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.

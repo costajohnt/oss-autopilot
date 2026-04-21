@@ -22,7 +22,7 @@ User wants to evaluate a specific issue before investing time.
 
 model: inherit
 color: green
-tools: ["Bash", "Read", "Write", "mcp__*"]
+tools: ["Bash", "Read", "mcp__plugin_oss-autopilot_oss-autopilot__search", "mcp__plugin_oss-autopilot_oss-autopilot__vet", "mcp__plugin_oss-autopilot_oss-autopilot__vet-list"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
