@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'preact/hooks';
+import { useState, useMemo, useEffect, useRef } from 'preact/hooks';
 import { LocationProvider, useLocation } from 'preact-iso';
 import { useDashboard } from './hooks/use-dashboard';
 import { useTheme, type Theme } from './hooks/use-theme';
@@ -94,6 +94,10 @@ function DashboardHeader({
   );
 }
 
+// Explicit route table (#1052). Any path outside this set renders a 404 view
+// rather than silently falling through to the dashboard home.
+const KNOWN_ROUTES = new Set(['/', '/merged', '/closed', '/issues']);
+
 function AppContent() {
   const { data, loading, refreshing, error, clearError, refresh, performAction, lastUpdated } = useDashboard();
   const { theme, toggleTheme } = useTheme();
@@ -106,6 +110,15 @@ function AppContent() {
   const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
   const [shelvedOpen, setShelvedOpen] = useState(false);
   const { path, route } = useLocation();
+  const routeHeadingRef = useRef<HTMLHeadingElement | null>(null);
+
+  // Route-change focus management (#1052). When the path changes, move
+  // keyboard focus to the active view's primary heading so screen readers
+  // announce the new view. Using tabIndex=-1 on the h2 lets programmatic
+  // focus succeed without placing the heading in the normal tab order.
+  useEffect(() => {
+    routeHeadingRef.current?.focus({ preventScroll: false });
+  }, [path]);
 
   const shelvedUrls = useMemo(() => new Set(data?.shelvedPRUrls ?? []), [data?.shelvedPRUrls]);
 
@@ -167,7 +180,12 @@ function AppContent() {
       <div class="dashboard">
         <DashboardHeader {...headerProps} />
         {partialBanner}
-        <MergedPRList mergedPRs={mergedPRs} repoMetadata={data.repoMetadata} onBack={() => route('/')} />
+        <main id="main-content" class="dashboard-main">
+          <h2 ref={routeHeadingRef} tabIndex={-1} class="visually-hidden">
+            Merged pull requests
+          </h2>
+          <MergedPRList mergedPRs={mergedPRs} repoMetadata={data.repoMetadata} onBack={() => route('/')} />
+        </main>
         <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
       </div>
     );
@@ -180,7 +198,12 @@ function AppContent() {
       <div class="dashboard">
         <DashboardHeader {...headerProps} />
         {partialBanner}
-        <ClosedPRList closedPRs={closedPRs} onBack={() => route('/')} />
+        <main id="main-content" class="dashboard-main">
+          <h2 ref={routeHeadingRef} tabIndex={-1} class="visually-hidden">
+            Closed pull requests
+          </h2>
+          <ClosedPRList closedPRs={closedPRs} onBack={() => route('/')} />
+        </main>
         <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
       </div>
     );
@@ -192,27 +215,64 @@ function AppContent() {
       <div class="dashboard">
         <DashboardHeader {...headerProps} />
         {partialBanner}
-        {data.vettedIssues ? (
-          <VettedIssueList
-            vettedIssues={data.vettedIssues}
-            repoMetadata={data.repoMetadata}
-            onBack={() => route('/')}
-          />
-        ) : (
+        <main id="main-content" class="dashboard-main">
+          <h2 ref={routeHeadingRef} tabIndex={-1} class="visually-hidden">
+            Vetted issues
+          </h2>
+          {data.vettedIssues ? (
+            <VettedIssueList
+              vettedIssues={data.vettedIssues}
+              repoMetadata={data.repoMetadata}
+              onBack={() => route('/')}
+            />
+          ) : (
+            <div class="merged-view merged-view--full-width">
+              <div class="merged-view-header">
+                <button class="merged-view-back" onClick={() => route('/')} type="button">
+                  &larr; Back
+                </button>
+                <div>
+                  <h2 class="merged-view-title">Vetted Issues</h2>
+                </div>
+              </div>
+              <div class="merged-view-empty">
+                No vetted issue list found. Configure one via /setup-oss or create a potential-issue-list.md file.
+              </div>
+            </div>
+          )}
+        </main>
+        <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
+      </div>
+    );
+  }
+
+  // Route: 404 — unknown path (#1052). Explicit view instead of silently
+  // falling through to the dashboard home.
+  if (!KNOWN_ROUTES.has(path)) {
+    return (
+      <div class="dashboard">
+        <DashboardHeader {...headerProps} />
+        {partialBanner}
+        <main id="main-content" class="dashboard-main" role="alert">
           <div class="merged-view merged-view--full-width">
             <div class="merged-view-header">
               <button class="merged-view-back" onClick={() => route('/')} type="button">
-                &larr; Back
+                &larr; Back to dashboard
               </button>
               <div>
-                <h2 class="merged-view-title">Vetted Issues</h2>
+                <h2 ref={routeHeadingRef} tabIndex={-1} class="merged-view-title">
+                  Page not found
+                </h2>
               </div>
             </div>
             <div class="merged-view-empty">
-              No vetted issue list found. Configure one via /setup-oss or create a potential-issue-list.md file.
+              <p>
+                The path <code>{path}</code> doesn&apos;t match any known route. Try the dashboard home, or one of the
+                stat pills to navigate to merged / closed / issue views.
+              </p>
             </div>
           </div>
-        )}
+        </main>
         <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
       </div>
     );
@@ -260,6 +320,9 @@ function AppContent() {
       {partialBanner}
 
       <main id="main-content" class="dashboard-main">
+        <h2 ref={routeHeadingRef} tabIndex={-1} class="visually-hidden">
+          Dashboard
+        </h2>
         <div class="animate-in delay-1">
           <StatsBar
             stats={data.stats}
