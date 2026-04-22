@@ -30,7 +30,40 @@ import {
   runMove,
   MAX_SEARCH_RESULTS,
 } from '@oss-autopilot/core/commands';
-import { errorMessage } from '@oss-autopilot/core';
+import { errorMessage, getSetupKeys, getConfigKeys } from '@oss-autopilot/core';
+
+// ── GitHub URL validation (#1053) ─────────────────────────────────────
+// Previously every `url` / `prUrl` / `issueUrl` was `z.string()` with no
+// validation — an LLM could pass nonsense and the error surfaced only at
+// `runPost` / `runClaim`. These schemas put the constraint at the MCP
+// boundary so invalid URLs fail with `InvalidParams` before any network or
+// state mutation runs.
+
+const GITHUB_ISSUE_URL_REGEX = /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+$/;
+const GITHUB_PR_URL_REGEX = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
+const GITHUB_ISSUE_OR_PR_URL_REGEX = /^https:\/\/github\.com\/[^/]+\/[^/]+\/(?:issues|pull)\/\d+$/;
+
+const githubIssueUrlSchema = z
+  .string()
+  .url()
+  .regex(GITHUB_ISSUE_URL_REGEX, 'Must be a GitHub issue URL like https://github.com/owner/repo/issues/123');
+const githubPrUrlSchema = z
+  .string()
+  .url()
+  .regex(GITHUB_PR_URL_REGEX, 'Must be a GitHub PR URL like https://github.com/owner/repo/pull/123');
+const githubIssueOrPrUrlSchema = z
+  .string()
+  .url()
+  .regex(
+    GITHUB_ISSUE_OR_PR_URL_REGEX,
+    'Must be a GitHub issue or PR URL like https://github.com/owner/repo/issues/123 or /pull/123',
+  );
+
+// Known config-key enum (#1053) sourced from @oss-autopilot/core so it stays
+// in sync with the CLI surface. Union of setup + config keys — the config
+// tool delegates to both `runConfig` and `runSetup` internally.
+const KNOWN_CONFIG_KEYS = Array.from(new Set([...getSetupKeys(), ...getConfigKeys()]));
+const configKeySchema = KNOWN_CONFIG_KEYS.length > 0 ? z.enum(KNOWN_CONFIG_KEYS as [string, ...string[]]) : z.string(); // defensive: if the registry is empty, fall back to the old shape
 
 /** One-shot Gist persistence activation (checked once per process). */
 let gistInitDone = false;
@@ -136,7 +169,9 @@ export function registerTools(server: McpServer): void {
       description:
         'Analyze a GitHub issue to determine if it is a good candidate for contribution. Checks for clarity, scope, existing assignees, and staleness.',
       inputSchema: {
-        issueUrl: z.string().describe('Full GitHub issue URL to vet (e.g. https://github.com/owner/repo/issues/123)'),
+        issueUrl: githubIssueUrlSchema.describe(
+          'Full GitHub issue URL to vet (e.g. https://github.com/owner/repo/issues/123)',
+        ),
       },
       annotations: { readOnlyHint: true },
     },
@@ -166,9 +201,9 @@ export function registerTools(server: McpServer): void {
       description:
         'Fetch metadata for a pull request (repo, number, title). Informational only — in v2, PRs are discovered automatically on each daily run and nothing is persisted locally. Use `daily` or `status` for ongoing monitoring.',
       inputSchema: {
-        prUrl: z
-          .string()
-          .describe('Full GitHub PR URL to fetch metadata for (e.g. https://github.com/owner/repo/pull/123)'),
+        prUrl: githubPrUrlSchema.describe(
+          'Full GitHub PR URL to fetch metadata for (e.g. https://github.com/owner/repo/pull/123)',
+        ),
       },
       annotations: { readOnlyHint: true },
     },
@@ -182,7 +217,7 @@ export function registerTools(server: McpServer): void {
       description:
         '[DEPRECATED] No-op in v2. PRs are fetched fresh on each daily run, so there is no local tracking list to remove from. Use `shelve` to hide a PR from the daily digest instead.',
       inputSchema: {
-        prUrl: z.string().describe('Full GitHub PR URL (ignored — command is a no-op)'),
+        prUrl: githubPrUrlSchema.describe('Full GitHub PR URL (ignored — command is a no-op)'),
       },
       annotations: { readOnlyHint: true },
     },
@@ -195,7 +230,7 @@ export function registerTools(server: McpServer): void {
     {
       description: 'Mark PR notifications as read. Requires either prUrl or all to be specified.',
       inputSchema: {
-        prUrl: z.string().optional().describe('Full GitHub PR URL to mark as read. Omit to use --all instead.'),
+        prUrl: githubPrUrlSchema.optional().describe('Full GitHub PR URL to mark as read. Omit to use --all instead.'),
         all: z.boolean().optional().describe('If true, mark all PRs as read'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
@@ -209,7 +244,7 @@ export function registerTools(server: McpServer): void {
     {
       description: 'Fetch and display comments on a pull request, including review comments and issue comments.',
       inputSchema: {
-        prUrl: z.string().describe('Full GitHub PR URL to fetch comments for'),
+        prUrl: githubPrUrlSchema.describe('Full GitHub PR URL to fetch comments for'),
         showBots: z.boolean().optional().describe('If true, include bot comments in the output'),
       },
       annotations: { readOnlyHint: true },
@@ -217,30 +252,32 @@ export function registerTools(server: McpServer): void {
     wrapTool(runComments),
   );
 
-  // 9. post — Post a comment
+  // 9. post — Post a comment (#1053: destructive; posts under user's identity)
   server.registerTool(
     'post',
     {
-      description: 'Post a comment on a GitHub issue or pull request.',
+      description:
+        "Post a comment on a GitHub issue or pull request. WARNING: posts a public comment under the authenticated user's identity. Irreversible (the comment can only be edited or deleted, not un-posted). Do not call without explicit user confirmation.",
       inputSchema: {
-        url: z.string().describe('Full GitHub issue or PR URL to comment on'),
-        message: z.string().describe('The comment text to post'),
+        url: githubIssueOrPrUrlSchema.describe('Full GitHub issue or PR URL to comment on'),
+        message: z.string().min(1).describe('The comment text to post'),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true },
     },
     wrapTool(runPost),
   );
 
-  // 10. claim — Claim an issue
+  // 10. claim — Claim an issue (#1053: destructive; posts under user's identity)
   server.registerTool(
     'claim',
     {
-      description: 'Claim a GitHub issue by posting a comment expressing intent to work on it.',
+      description:
+        "Claim a GitHub issue by posting a comment expressing intent to work on it. WARNING: posts a public comment under the authenticated user's identity. Irreversible. Do not call without explicit user confirmation.",
       inputSchema: {
-        issueUrl: z.string().describe('Full GitHub issue URL to claim'),
+        issueUrl: githubIssueUrlSchema.describe('Full GitHub issue URL to claim'),
         message: z.string().optional().describe('Custom claim message. If omitted, a default message is used.'),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true },
     },
     wrapTool(runClaim),
   );
@@ -252,7 +289,11 @@ export function registerTools(server: McpServer): void {
       description:
         'Get or set OSS Autopilot configuration values. With no args, shows all config. With key and value, sets the value.',
       inputSchema: {
-        key: z.string().optional().describe('Configuration key to get or set (e.g. "languages", "username")'),
+        key: configKeySchema
+          .optional()
+          .describe(
+            `Configuration key to get or set. Must be one of the known keys (derived from @oss-autopilot/core config-registry). Examples: "username", "languages", "minStars". Run the tool with no args to see all current config.`,
+          ),
         value: z.string().optional().describe('Value to set for the given key. Omit to read the current value.'),
       },
       annotations: { readOnlyHint: false, idempotentHint: true },
@@ -322,7 +363,7 @@ export function registerTools(server: McpServer): void {
     {
       description: 'Shelve a PR to temporarily hide it from daily checks and status reports without untracking it.',
       inputSchema: {
-        prUrl: z.string().describe('Full GitHub PR URL to shelve'),
+        prUrl: githubPrUrlSchema.describe('Full GitHub PR URL to shelve'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
@@ -335,7 +376,7 @@ export function registerTools(server: McpServer): void {
     {
       description: 'Unshelve a previously shelved PR, returning it to active monitoring.',
       inputSchema: {
-        prUrl: z.string().describe('Full GitHub PR URL to unshelve'),
+        prUrl: githubPrUrlSchema.describe('Full GitHub PR URL to unshelve'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
@@ -348,7 +389,7 @@ export function registerTools(server: McpServer): void {
     {
       description: 'Dismiss a GitHub issue so it no longer appears in notifications.',
       inputSchema: {
-        url: z.string().describe('Full GitHub issue URL to dismiss'),
+        url: githubIssueUrlSchema.describe('Full GitHub issue URL to dismiss'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
@@ -361,7 +402,7 @@ export function registerTools(server: McpServer): void {
     {
       description: 'Undismiss a previously dismissed issue, re-enabling notifications.',
       inputSchema: {
-        url: z.string().describe('Full GitHub issue URL to undismiss'),
+        url: githubIssueUrlSchema.describe('Full GitHub issue URL to undismiss'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
@@ -375,7 +416,7 @@ export function registerTools(server: McpServer): void {
       description:
         'Move a PR between states: attention (need attention), waiting (waiting on maintainer), shelved (hidden), or auto (reset to computed status).',
       inputSchema: {
-        prUrl: z.string().describe('Full GitHub PR URL'),
+        prUrl: githubPrUrlSchema.describe('Full GitHub PR URL'),
         target: z.enum(['attention', 'waiting', 'shelved', 'auto']).describe('Target state for the PR'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },

@@ -70,6 +70,8 @@ vi.mock('@oss-autopilot/core', () => ({
   }),
   getGitHubTokenAsync: vi.fn().mockResolvedValue(null),
   ensureGistPersistence: vi.fn().mockResolvedValue(undefined),
+  getSetupKeys: () => ['username', 'languages', 'minStars'],
+  getConfigKeys: () => ['username', 'add-label', 'remove-label'],
 }));
 
 import { createServer } from './server.js';

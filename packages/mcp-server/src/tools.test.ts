@@ -182,5 +182,75 @@ describe('MCP tool registrations', () => {
       expect(tool!.annotations).toBeDefined();
       expect((tool!.annotations as Record<string, unknown>).readOnlyHint).toBe(false);
     });
+
+    // #1053 — tools that post public content under the user's identity must
+    // carry destructiveHint: true so MCP clients flag them for confirmation,
+    // and the description must warn the LLM that the action is irreversible.
+    it.each(['post', 'claim'])('destructive tool "%s" has destructiveHint: true', (name) => {
+      const tool = tools.find((t) => t.name === name);
+      expect(tool).toBeDefined();
+      expect((tool!.annotations as Record<string, unknown>).destructiveHint).toBe(true);
+    });
+
+    it.each(['post', 'claim'])('destructive tool "%s" description warns about irreversibility', (name) => {
+      const tool = tools.find((t) => t.name === name);
+      expect(tool!.description).toMatch(/irreversible/i);
+    });
+  });
+
+  // ── #1053 input-schema validation at the tool boundary ────────────────
+
+  describe('URL input validation', () => {
+    it('rejects a non-GitHub URL on `post` at the schema layer', async () => {
+      // Zod validation failures surface as isError:true results via the MCP
+      // SDK's callTool path — not as thrown rejections.
+      const result = await client.callTool({
+        name: 'post',
+        arguments: { url: 'https://example.com/comment', message: 'hi' },
+      });
+      expect(result.isError).toBe(true);
+      const text = (result.content as Array<{ text: string }>)[0]?.text ?? '';
+      expect(text).toMatch(/github/i);
+    });
+
+    it('rejects a malformed PR URL on `track` at the schema layer', async () => {
+      const result = await client.callTool({
+        name: 'track',
+        arguments: { prUrl: 'not-a-url' },
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it('rejects an issue URL where the tool expects a PR URL', async () => {
+      // `shelve` requires a PR URL; passing an issue URL should fail schema
+      // validation before the tool handler runs.
+      const result = await client.callTool({
+        name: 'shelve',
+        arguments: { prUrl: 'https://github.com/owner/repo/issues/1' },
+      });
+      expect(result.isError).toBe(true);
+      const text = (result.content as Array<{ text: string }>)[0]?.text ?? '';
+      expect(text).toMatch(/pr/i);
+    });
+  });
+
+  describe('config key enum', () => {
+    it('rejects an unknown config key at the schema layer', async () => {
+      const result = await client.callTool({
+        name: 'config',
+        arguments: { key: 'totallyMadeUpKey', value: 'x' },
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it('accepts a known config key (via registry)', async () => {
+      // We don't actually care about the result — just that the schema
+      // doesn't reject. The mocked runConfig is fine with anything.
+      const result = await client.callTool({
+        name: 'config',
+        arguments: { key: 'username', value: 'example-user' },
+      });
+      expect(result.isError).not.toBe(true);
+    });
   });
 });
