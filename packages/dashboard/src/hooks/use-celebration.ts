@@ -124,7 +124,14 @@ function playConfettiIfAllowed(): void {
 export function useCelebration(mergedCount: number | undefined): {
   celebration: Celebration | null;
   dismiss: () => void;
-  trigger: () => void;
+  /**
+   * Fire a celebration toast on demand (#940). The optional `delta` controls
+   * the message copy ("1 new PR merged." vs "3 new PRs merged."). Defaults to
+   * 3 so the demo-mode button has a realistic-looking message. Does NOT touch
+   * localStorage — the stored merged count is unaffected so the organic
+   * on-increase celebration still fires later on a real merge.
+   */
+  trigger: (delta?: number) => void;
 } {
   const [celebration, setCelebration] = useState<Celebration | null>(null);
 
@@ -152,9 +159,11 @@ export function useCelebration(mergedCount: number | undefined): {
 
   const dismiss = useCallback(() => setCelebration(null), []);
 
-  const trigger = useCallback(() => {
+  const trigger = useCallback((delta = 3) => {
     playConfettiIfAllowed();
-    setCelebration({ message: 'Party time!', shownAt: Date.now() });
+    const safeDelta = Number.isFinite(delta) && delta > 0 ? Math.floor(delta) : 3;
+    const message = safeDelta === 1 ? '1 new PR merged. Great work!' : `${safeDelta} new PRs merged. Great work!`;
+    setCelebration({ message, shownAt: Date.now() });
   }, []);
 
   return { celebration, dismiss, trigger };

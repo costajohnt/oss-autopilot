@@ -122,6 +122,8 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        // Entrance animation (#940) — visible for demos, tasteful for daily use.
+        animation: { duration: 1500, easing: 'easeOutQuart' },
         plugins: { legend: legendOpts },
         scales: {
           x: scaleOpts,
@@ -172,6 +174,9 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        // Entrance animation (#940) matched with the line chart so both charts
+        // "come alive" together when the dashboard loads.
+        animation: { duration: 1500, easing: 'easeOutQuart' },
         indexAxis: 'y',
         plugins: { legend: legendOpts },
         scales: {
