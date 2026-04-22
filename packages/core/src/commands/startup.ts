@@ -252,9 +252,15 @@ export async function runStartup(): Promise<StartupOutput> {
           const refreshed = await triggerDashboardRefresh(spaResult.port);
           dashboardStatus = refreshed ? 'refreshed' : 'running';
         } else {
-          openInBrowser(spaResult.url);
           dashboardStatus = 'opened';
         }
+        // Always surface the dashboard: `open`/`xdg-open`/`start` focus an
+        // existing tab matching the URL instead of duplicating it, so this is
+        // safe whether the server was just started or was already running.
+        // Closes #830 properly. The original fix assumed "server running"
+        // implied "tab open", but the user can close the tab while the daemon
+        // keeps running, leaving subsequent /oss runs with no visible dashboard.
+        openInBrowser(spaResult.url);
       } else {
         console.error('[STARTUP] Dashboard SPA assets not found. Build with: cd packages/dashboard && pnpm run build');
       }
