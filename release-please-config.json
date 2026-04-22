@@ -30,12 +30,12 @@
       "extra-files": [
         {
           "type": "json",
-          "path": "packages/mcp-server/server.json",
+          "path": "server.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "packages/mcp-server/server.json",
+          "path": "server.json",
           "jsonpath": "$.packages[0].version"
         }
       ]
