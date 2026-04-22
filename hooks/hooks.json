@@ -31,6 +31,16 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "mcp__plugin_oss-autopilot_oss-autopilot__post|mcp__plugin_oss-autopilot_oss-autopilot__claim",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/guard-public-posts.sh",
+            "timeout": 5
+          }
+        ]
       }
     ]
   }
