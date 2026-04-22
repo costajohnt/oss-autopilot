@@ -117,7 +117,8 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `comments` / `post` / `claim` | `comments.ts` | Track issue conversations, post comments, claim issues |
 | `local-repos` | `local-repos.ts` | Scan for locally cloned repos |
 | `parse-list` | `parse-list.ts` | Parse a curated issue list file |
-| `check-integration` | `check-integration.ts` | Check if new files are referenced |
+| `orphan-files` (alias: `check-integration`) | `check-integration.ts` | Audit new files on this branch for cross-references |
+| `doctor` | `doctor.ts` | System-health diagnostic — token, bundle, state, scout, rate limit |
 | `read` | `read.ts` | Mark PR comments as read |
 | `stats` | `stats.ts` | Show contribution statistics (merge rate, PR counts) |
 | `detect-formatters` | `detect-formatters.ts` | Detect formatters and linters configured in a repository |
