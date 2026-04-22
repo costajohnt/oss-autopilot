@@ -1,7 +1,7 @@
 ---
 name: oss-search
 description: "Search for new open source issues to contribute to — delegates to oss-scout"
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, mcp__*
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, mcp__plugin_oss-autopilot_*
 ---
 
 # OSS Issue Search

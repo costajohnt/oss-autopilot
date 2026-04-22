@@ -152,7 +152,9 @@ Only comment on the issue itself when:
 
 ### If You Can't Solve It
 
-Move on silently. Don't comment that you tried and failed. Don't mark the issue in any way. Remove it from your list and continue to the next one.
+Move on silently. Don't comment that you tried and failed. Don't mark the issue on the upstream repo in any way. Remove it from your local list and continue to the next one.
+
+**Persistent skip (optional):** the `/oss` "Work Through Issues" workflow (`workflows/work-through-issues.md`, Phase C) can persist the skip to your local `skipped-issues.md` via the CLI's `skip-add` command so the same issue doesn't resurface in future searches. This is a local-only record — nothing is posted on GitHub.
 
 ### After Opening a PR
 

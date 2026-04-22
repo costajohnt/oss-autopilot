@@ -1,7 +1,7 @@
 ---
 name: setup-oss
 description: Configure OSS autopilot preferences
-allowed-tools: Bash, Write, Read, Glob, mcp__*
+allowed-tools: Bash, Write, Read, Glob, mcp__plugin_oss-autopilot_*
 ---
 
 # OSS Autopilot Setup

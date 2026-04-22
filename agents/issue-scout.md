@@ -66,7 +66,14 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 
 The CLI auto-filters repos in `aiPolicyBlocklist`. During every vetting, scan CONTRIBUTING.md, CODE_OF_CONDUCT.md, and README for anti-LLM policy language — this is a **hard skip** regardless of score (the whole workflow is AI-assisted). The matcher lives in `packages/core/src/core/anti-llm-policy.ts`; `vet --json` surfaces matches in reasons-to-skip. Categories: `explicit_ban` ("no AI-generated"), `tool_ban` ("no Copilot"), `reject_framing` ("we do not accept AI"). See `docs/anti-llm-policy.md` for the full category definitions and appeal process.
 
-**If matched:** (1) recommendation → `skip` with reason `"anti-LLM policy"`; (2) auto-exclude the repo (concatenate, don't replace — `--set aiPolicyBlocklist=…` replaces the whole value):
+**If matched:** (1) recommendation → `skip` with reason `"anti-LLM policy"`; (2) quote the matching language in the summary so the user can verify the match; (3) do NOT proceed even if score is high.
+
+**Ask before persisting the exclusion.** False positives are possible, and `aiPolicyBlocklist` is a permanent, cross-session filter. Present the match to the user and use AskUserQuestion with:
+- "Add `{OWNER}/{REPO}` to the anti-LLM blocklist" — "Never surface issues from this repo again"
+- "Skip this issue but leave the repo searchable" — "Treat as one-off; do not change config"
+- "Undo (false positive)" — "Don't skip; I'll review the match manually"
+
+Only if the user picks the first option, run the config update (concatenate — `--set aiPolicyBlocklist=…` replaces the whole value):
 
 ```bash
 CURRENT=$(GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --json | jq -r '.data.config.aiPolicyBlocklist // ""')
@@ -74,7 +81,7 @@ NEW="${CURRENT:+$CURRENT,}{OWNER}/{REPO}"
 GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set aiPolicyBlocklist="$NEW"
 ```
 
-(3) Quote the matching language in the summary. (4) Do NOT proceed even if score is high. Hidden signals (policy PRs, hidden comments) aren't document-scannable — note manually when observed.
+Hidden signals (policy PRs, hidden comments) aren't document-scannable — note manually when observed and offer to add the repo to the blocklist with the same confirmation prompt above.
 
 ## Search Process
 
