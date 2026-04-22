@@ -194,6 +194,12 @@ export const AgentConfigSchema = z.object({
 
   diffTool: DiffToolSchema.default('inline'),
   diffToolCustomCommand: z.string().optional(),
+
+  /**
+   * Opt-in gate for the auto-format-before-push hook (#1045). Default false:
+   * the hook does nothing on every push unless the user explicitly enables it.
+   */
+  autoFormatBeforePush: z.boolean().default(false),
 });
 
 // ── 6. Cache schemas ─────────────────────────────────────────────────

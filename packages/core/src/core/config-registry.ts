@@ -204,6 +204,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     settableVia: 'setup',
     valueHint: 'one of: local,gist',
   },
+  {
+    key: 'autoFormatBeforePush',
+    description:
+      'Opt-in: run the project formatter and append a `style:` commit before every `git push`. Off by default because formatting commits surprise OSS maintainers; the hook also skips automatically when the branch tracks a fork upstream.',
+    settableVia: 'setup',
+    valueHint: 'true|false',
+  },
 
   // ── Setup-only completion flag ──────────────────────────────────────
   {

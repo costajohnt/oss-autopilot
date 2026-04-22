@@ -183,6 +183,17 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             stateManager.updateConfig({ skippedIssuesPath: value || undefined });
             results[key] = value || '(cleared)';
             break;
+          case 'autoFormatBeforePush': {
+            if (value !== 'true' && value !== 'false') {
+              throw new ValidationError(
+                `Invalid value for autoFormatBeforePush: "${value}". Must be "true" or "false".`,
+              );
+            }
+            const enabled = value === 'true';
+            stateManager.updateConfig({ autoFormatBeforePush: enabled });
+            results[key] = String(enabled);
+            break;
+          }
           case 'includeDocIssues':
             stateManager.updateConfig({ includeDocIssues: value === 'true' });
             results[key] = value === 'true' ? 'true' : 'false';

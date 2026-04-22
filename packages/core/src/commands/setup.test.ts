@@ -247,6 +247,24 @@ describe('runSetup', () => {
     expect(result.settings).toMatchObject({ skippedIssuesPath: '(cleared)' });
   });
 
+  it('should set autoFormatBeforePush to true', async () => {
+    const result = (await runSetup({ set: ['autoFormatBeforePush=true'] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ autoFormatBeforePush: true });
+    expect(result.settings).toMatchObject({ autoFormatBeforePush: 'true' });
+  });
+
+  it('should set autoFormatBeforePush to false', async () => {
+    const result = (await runSetup({ set: ['autoFormatBeforePush=false'] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ autoFormatBeforePush: false });
+    expect(result.settings).toMatchObject({ autoFormatBeforePush: 'false' });
+  });
+
+  it('should reject non-boolean autoFormatBeforePush values', async () => {
+    await expect(runSetup({ set: ['autoFormatBeforePush=yes'] })).rejects.toThrow(/must be "true" or "false"/i);
+  });
+
   it('should not complete=true when value is not true', async () => {
     await runSetup({ set: ['complete=false'] });
     expect(mockMarkSetupComplete).not.toHaveBeenCalled();
