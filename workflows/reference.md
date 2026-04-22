@@ -32,11 +32,17 @@ Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `
 # Deep-vet a specific issue
 <prefix> vet <issue-url> --json
 
+# Re-vet every available issue in the curated list (use --prune to drop unavailable items)
+<prefix> vet-list --json [--prune]
+
 # Claim an issue with optional message
 <prefix> claim <issue-url> [message...] --json
 
 # Parse an issue list from a file
 <prefix> parse-issue-list <path> --json
+
+# Append an issue URL to the skipped-issues file (auto-culled after 90 days)
+<prefix> skip-add <issue-url> --json [--path <file>]
 ```
 
 ### PR Management
@@ -67,6 +73,13 @@ Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `
 # Dismiss/undismiss an issue
 <prefix> dismiss <issue-url> --json
 <prefix> undismiss <issue-url> --json
+
+# Override a PR's computed status until cleared
+<prefix> override <pr-url> <attention|waiting> --json
+<prefix> clear-override <pr-url> --json
+
+# Fetch the target repo's PR description template (used by the draft-first workflow)
+<prefix> pr-template <pr-url> --json
 ```
 
 ### Dashboard
@@ -93,6 +106,11 @@ Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `
 
 # Quick init with username (local-only)
 <prefix> init <username> --json
+
+# State persistence management (local-only)
+<prefix> state --show --json          # Display current persistence mode and Gist ID
+<prefix> state --sync --json          # Force push state to Gist (no-op if local mode)
+<prefix> state --unlink --json        # Switch from Gist back to local persistence
 ```
 
 The canonical list of config keys lives in
@@ -111,7 +129,29 @@ rejected with a did-you-mean suggestion.
 
 # Audit new files on this branch for cross-references (old name: check-integration)
 <prefix> orphan-files --json [--base <branch>]
+
+# Detect formatters/linters configured in a repository
+<prefix> detect-formatters [<repo-path>] --json
+
+# Contribution statistics (merged/closed counts, merge rate)
+<prefix> stats --json
 ```
+
+### Common Flags
+
+| Flag | Commands | Purpose |
+|---|---|---|
+| `--json` | all | Emit a structured `{success, data?, error?, timestamp}` envelope. Preferred for agent / programmatic consumption. |
+| `--compact` | `daily` | Reduce payload size by omitting `summary`, `repoGroups`, and full `failures` details. Retains `failureCount` + `warnings`. |
+| `--port <n>` | `dashboard serve` | TCP port for the interactive SPA (default 3000). |
+| `--open` | `dashboard serve` | Auto-open the dashboard in the default browser after starting. |
+| `--show-bots` | `comments` | Include bot authors in the comment listing (default filters them out). |
+| `--base <branch>` | `orphan-files` | Base branch to diff against for new-file detection (default `main`). |
+| `--reset` | `setup` | Re-run the setup wizard even if already complete. |
+| `--set key=value` | `setup` | Apply settings non-interactively. Repeatable. Unknown keys are rejected with a did-you-mean suggestion. |
+| `--list-keys` | `config` | Dump every known config key with descriptions (alternative to `--json`). |
+| `--prune` | `vet-list` | Remove unavailable items from the curated list file after re-vetting. |
+| `--path <file>` | `skip-add` | Override the configured `skippedIssuesPath` for a single invocation. |
 
 ---
 
