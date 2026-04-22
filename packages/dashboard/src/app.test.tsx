@@ -159,7 +159,7 @@ describe('App', () => {
 
       const rows = container.querySelectorAll('.pr-row');
       expect(rows).toHaveLength(1);
-      expect(rows[0].textContent).toContain('Update docs');
+      expect(rows[0]!.textContent).toContain('Update docs');
     });
 
     it('filters by search text (case-insensitive)', async () => {
@@ -174,7 +174,7 @@ describe('App', () => {
 
       const rows = container.querySelectorAll('.pr-row');
       expect(rows).toHaveLength(1);
-      expect(rows[0].textContent).toContain('Fix auth bug');
+      expect(rows[0]!.textContent).toContain('Fix auth bug');
     });
 
     it('filters by search text matching repo name', async () => {
@@ -189,7 +189,7 @@ describe('App', () => {
 
       const rows = container.querySelectorAll('.pr-row');
       expect(rows).toHaveLength(1);
-      expect(rows[0].textContent).toContain('Update docs');
+      expect(rows[0]!.textContent).toContain('Update docs');
     });
 
     it('filters by search text matching PR number', async () => {
@@ -204,7 +204,7 @@ describe('App', () => {
 
       const rows = container.querySelectorAll('.pr-row');
       expect(rows).toHaveLength(1);
-      expect(rows[0].textContent).toContain('Add feature');
+      expect(rows[0]!.textContent).toContain('Add feature');
     });
 
     it('combines multiple filters', async () => {
@@ -224,7 +224,7 @@ describe('App', () => {
 
       const rows = container.querySelectorAll('.pr-row');
       expect(rows).toHaveLength(1);
-      expect(rows[0].textContent).toContain('Add feature');
+      expect(rows[0]!.textContent).toContain('Add feature');
     });
   });
 

@@ -9,6 +9,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // Emit source maps to dist/ for local debugging but don't reference them
+    // from the built JS, so prod users don't see `sourceMappingURL` (#1058 M39).
+    sourcemap: 'hidden',
   },
   server: {
     proxy: {

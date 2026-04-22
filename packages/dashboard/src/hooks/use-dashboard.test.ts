@@ -372,9 +372,9 @@ describe('useDashboard', () => {
       const actionPosts = calls.filter((c) => c[0] === '/api/action');
       expect(actionPosts).toHaveLength(2);
 
-      const firstHeaders = actionPosts[0][1]?.headers as Record<string, string> | undefined;
+      const firstHeaders = actionPosts[0]![1]?.headers as Record<string, string> | undefined;
       expect(firstHeaders?.['X-CSRF-Token']).toBe('stale-token');
-      const retryHeaders = actionPosts[1][1]?.headers as Record<string, string> | undefined;
+      const retryHeaders = actionPosts[1]![1]?.headers as Record<string, string> | undefined;
       expect(retryHeaders?.['X-CSRF-Token']).toBe('fresh-token');
 
       // Retry's response wins — data state reflects the successful POST.

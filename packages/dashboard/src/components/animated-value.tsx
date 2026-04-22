@@ -13,7 +13,10 @@ export function AnimatedValue({ value }: AnimatedValueProps) {
   // render a broken count-up (`"0.9%"`, `"37.9%"`, `"76.9%"`). Decimal or
   // otherwise non-matching strings fall through to static rendering.
   const stringMatch = typeof value === 'string' ? value.match(/^(\d+)([^\d.].*)?$/) : null;
-  const target = typeof value === 'number' ? value : stringMatch ? parseInt(stringMatch[1], 10) : 0;
+  // Group 1 is `(\d+)` and is mandatory in a successful match, so when
+  // `stringMatch` is truthy, `stringMatch[1]` is always a string. The `?? '0'`
+  // exists only to satisfy `noUncheckedIndexedAccess` (#1058 M38).
+  const target = typeof value === 'number' ? value : stringMatch ? parseInt(stringMatch[1] ?? '0', 10) : 0;
   const animated = useCountUp(target);
 
   if (typeof value === 'number') return <>{animated}</>;

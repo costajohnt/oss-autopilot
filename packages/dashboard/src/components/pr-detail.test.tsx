@@ -86,9 +86,9 @@ describe('PRDetail', () => {
 
     const checks = container.querySelectorAll('.pr-detail-check');
     expect(checks).toHaveLength(2);
-    expect(checks[0].querySelector('.pr-detail-check-name')?.textContent).toBe('tests');
-    expect(checks[0].querySelector('.pr-detail-check-badge')?.textContent).toBe('Actionable');
-    expect(checks[1].querySelector('.pr-detail-check-badge')?.textContent).toBe('Fork Limitation');
+    expect(checks[0]!.querySelector('.pr-detail-check-name')?.textContent).toBe('tests');
+    expect(checks[0]!.querySelector('.pr-detail-check-badge')?.textContent).toBe('Actionable');
+    expect(checks[1]!.querySelector('.pr-detail-check-badge')?.textContent).toBe('Fork Limitation');
   });
 
   it('does not render checks section when classifiedChecks is empty', () => {

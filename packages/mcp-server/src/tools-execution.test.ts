@@ -100,15 +100,22 @@ describe('tool execution', () => {
       expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 5 });
     });
 
-    it('caps maxResults at 100 when exceeded', async () => {
-      mockRunSearch.mockResolvedValueOnce({ candidates: [] });
+    // Previously the handler silently clamped maxResults > 100 to the cap.
+    // After #1058 M41, the Zod schema rejects values over the cap with a
+    // proper JSON-RPC -32602 InvalidParams error so misuse is surfaced
+    // rather than silently papered over.
+    it('rejects maxResults exceeding the cap at the schema layer (#1058 M41)', async () => {
+      const result = await client.callTool({
+        name: 'search',
+        arguments: { maxResults: 500 },
+      });
 
-      await client.callTool({ name: 'search', arguments: { maxResults: 500 } });
-
-      expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 100 });
+      expect(result.isError).toBe(true);
+      const content = result.content[0] as { type: string; text: string };
+      expect(content.text).toMatch(/maxResults/i);
     });
 
-    it('returns error for invalid maxResults (-1)', async () => {
+    it('rejects invalid maxResults (-1) at the schema layer', async () => {
       const result = await client.callTool({
         name: 'search',
         arguments: { maxResults: -1 },
@@ -116,10 +123,11 @@ describe('tool execution', () => {
 
       expect(result.isError).toBe(true);
       const content = result.content[0] as { type: string; text: string };
-      expect(content.text).toContain('Invalid maxResults');
+      // Zod's structured error payload surfaces the field name.
+      expect(content.text).toMatch(/maxResults/i);
     });
 
-    it('returns error for non-integer maxResults (1.5)', async () => {
+    it('rejects non-integer maxResults (1.5) at the schema layer', async () => {
       const result = await client.callTool({
         name: 'search',
         arguments: { maxResults: 1.5 },
@@ -127,7 +135,7 @@ describe('tool execution', () => {
 
       expect(result.isError).toBe(true);
       const content = result.content[0] as { type: string; text: string };
-      expect(content.text).toContain('Invalid maxResults');
+      expect(content.text).toMatch(/maxResults/i);
     });
   });
 

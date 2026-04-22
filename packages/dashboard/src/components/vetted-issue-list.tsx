@@ -20,13 +20,14 @@ function parseTierMeta(tier: string): { stars?: number; language?: string } {
   // Stars: (17.7k★) or (14k★) or (30k★) or (625★)
   let stars: number | undefined;
   const starsMatch = tier.match(/\(([\d.]+)([kK])?★\)/);
-  if (starsMatch) {
+  if (starsMatch && starsMatch[1] !== undefined) {
     const num = parseFloat(starsMatch[1]);
     stars = starsMatch[2] ? Math.round(num * 1000) : num;
   }
   // Language: last parenthesized text in the heading, e.g., (TypeScript), (Rust), (JS)
   const langMatches = [...tier.matchAll(/\(([^)★\d][^)]*)\)/g)];
-  const language = langMatches.length ? langMatches[langMatches.length - 1][1].trim() : undefined;
+  const lastMatch = langMatches[langMatches.length - 1];
+  const language = lastMatch?.[1]?.trim();
   return { stars, language };
 }
 
