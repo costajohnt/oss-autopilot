@@ -95,6 +95,20 @@ npx @oss-autopilot/mcp@latest --http --port 3001
 
 The server listens at `http://127.0.0.1:3001/mcp` and accepts POST requests.
 
+#### Authentication
+
+HTTP mode requires a bearer token on every request (stdio mode does not — it inherits the parent process identity). On first `--http` startup, the server generates a random 32-byte token and writes it to `~/.oss-autopilot/mcp.token` with `0600` permissions. The path and "newly generated" marker are logged to stderr at startup.
+
+Every HTTP client must send:
+
+```
+Authorization: Bearer <contents of ~/.oss-autopilot/mcp.token>
+```
+
+Requests without a valid `Authorization` header return `401`. The `Bearer` scheme is case-insensitive per RFC 7235; the token value itself is compared byte-for-byte in constant time. Requests with a non-loopback `Host` header return `403` (DNS-rebinding defense). Requests must declare a numeric `Content-Length` ≤ 1 MiB — missing, non-numeric, or oversize Content-Length values return `413`.
+
+The token persists across restarts. To rotate, delete the file and restart — a new token will be generated. To relocate the token (e.g. for multi-user or CI setups), set `OSS_AUTOPILOT_MCP_TOKEN_PATH` to the desired absolute path before starting the server.
+
 ## Tools Reference
 
 | Tool | Description | Read-only |
