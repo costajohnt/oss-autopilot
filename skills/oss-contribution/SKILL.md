@@ -167,6 +167,8 @@ Move on silently. Don't comment that you tried and failed. Don't mark the issue 
 
 Be patient, not pushy. Only follow up once per timeframe. Check if maintainers are active elsewhere before escalating.
 
+**Workflow:** `workflows/dormant-pr-follow-up.md` operationalizes this cadence — run via the `/oss` router or the action menu. It surfaces dormant PRs, buckets them into tiers, and drafts a tier-appropriate follow-up through the `draft-review-post` skill (never auto-posts).
+
 ## Time Management
 
 ### Sustainable Pace
