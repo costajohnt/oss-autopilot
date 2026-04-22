@@ -67,6 +67,7 @@ function makeFixture(overrides: Partial<DailyCheckResult> = {}): DailyCheckResul
     commentedIssues: [],
     repoGroups: [{ repo: 'octocat/spoon-knife', prs: [pr1, pr2] }],
     failures: [],
+    warnings: [],
     ...overrides,
   };
 }
@@ -102,5 +103,18 @@ describe('daily --json contract', () => {
       }),
     );
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/daily.empty.json');
+  });
+
+  it('degraded-day output surfaces warnings for ancillary failures (#1042)', async () => {
+    const result = toDailyOutput(
+      makeFixture({
+        warnings: [
+          { phase: 'fetch', operation: 'fetch recently merged PRs', message: 'Network error' },
+          { phase: 'repo-scores', operation: 'fetch repo metadata', message: 'Secondary rate limit' },
+          { phase: 'gist-checkpoint', operation: 'Gist checkpoint', message: 'Unauthorized' },
+        ],
+      }),
+    );
+    await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/daily.degraded.json');
   });
 });

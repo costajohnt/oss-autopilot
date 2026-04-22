@@ -135,6 +135,32 @@ export interface CompactRepoGroup {
   prUrls: string[];
 }
 
+/**
+ * Phase tags for non-fatal warnings emitted during a `daily` run.
+ * See `DailyWarning` and issue #1042 for the rationale — keeping this a
+ * fixed union so downstream consumers can switch on it without drift.
+ */
+export type DailyWarningPhase =
+  | 'fetch'
+  | 'repo-scores'
+  | 'analytics'
+  | 'scout-sync'
+  | 'partition'
+  | 'dismiss-filter'
+  | 'gist-checkpoint';
+
+/**
+ * A single non-fatal failure surfaced from the `daily` pipeline. Unlike
+ * `PRCheckFailure` (which is scoped to per-PR fetch errors), this covers
+ * ancillary fetches that previously demoted to a log-only `warn()` — repo
+ * metadata, monthly analytics, scout sync, Gist checkpoint, etc.
+ */
+export interface DailyWarning {
+  phase: DailyWarningPhase;
+  operation: string;
+  message: string;
+}
+
 export interface DailyOutput {
   digest: DailyDigestCompact;
   capacity: CapacityAssessment;
@@ -145,6 +171,12 @@ export interface DailyOutput {
   commentedIssues: CommentedIssue[]; // Issues user commented on with conversation state
   repoGroups: CompactRepoGroup[]; // PRs grouped by repo for safe parallel dispatch (#80)
   failures: PRCheckFailure[]; // PRs that failed to fetch (e.g., rate limits, network errors)
+  /**
+   * Non-fatal warnings from ancillary pipeline phases (repo metadata,
+   * analytics, scout sync, Gist checkpoint, etc.). Always an array — empty
+   * on clean runs. See #1042.
+   */
+  warnings: DailyWarning[];
 }
 
 /**
@@ -165,6 +197,12 @@ export interface CompactDailyOutput {
   commentedIssues: CommentedIssue[];
   /** Number of PRs that failed to fetch. Non-zero indicates partial results. */
   failureCount: number;
+  /**
+   * Non-fatal warnings from ancillary pipeline phases — full list retained so
+   * downstream consumers (dashboard, MCP) can surface degradation even under
+   * the `--compact` payload. See #1042.
+   */
+  warnings: DailyWarning[];
 }
 
 /**
@@ -181,6 +219,7 @@ export function toCompactDailyOutput(output: DailyOutput): CompactDailyOutput {
     actionMenu: output.actionMenu,
     commentedIssues: output.commentedIssues,
     failureCount: output.failures.length,
+    warnings: output.warnings,
   };
 }
 

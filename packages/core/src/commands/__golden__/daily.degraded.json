@@ -123,5 +123,21 @@
     }
   ],
   "failures": [],
-  "warnings": []
+  "warnings": [
+    {
+      "phase": "fetch",
+      "operation": "fetch recently merged PRs",
+      "message": "Network error"
+    },
+    {
+      "phase": "repo-scores",
+      "operation": "fetch repo metadata",
+      "message": "Secondary rate limit"
+    },
+    {
+      "phase": "gist-checkpoint",
+      "operation": "Gist checkpoint",
+      "message": "Unauthorized"
+    }
+  ]
 }

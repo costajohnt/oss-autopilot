@@ -415,6 +415,7 @@ describe('runStartup behavior', () => {
       commentedIssues: [],
       repoGroups: [],
       failures: [],
+      warnings: [],
     };
   }
 

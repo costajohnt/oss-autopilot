@@ -193,6 +193,7 @@ function makeMockDailyOutput(): DailyOutput {
     ],
     repoGroups: [{ repo: 'org/repo', prUrls: ['https://github.com/org/repo/pull/1'] }],
     failures: [{ prUrl: 'https://github.com/org/repo/pull/2', error: 'timeout' }],
+    warnings: [],
   };
 }
 
