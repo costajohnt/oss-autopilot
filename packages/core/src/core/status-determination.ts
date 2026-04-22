@@ -38,16 +38,33 @@ export function isContributorCommit(commitAuthor?: string, contributorUsername?:
 }
 
 /**
+ * Parse an ISO-8601-ish date string into epoch milliseconds.
+ *
+ * Central helper so the whole module compares dates numerically via `getTime()`
+ * rather than relying on the lexicographic property of UTC ISO strings — the
+ * latter happens to sort correctly today but silently breaks on any other date
+ * format (local-time ISO, `Date.toString()`, non-standard). See #1044.
+ *
+ * Returns `NaN` for `undefined`, empty, or unparseable inputs so callers can
+ * make an explicit fail-closed decision; never throws.
+ */
+export function normalizeToEpochMs(date: string | undefined | null): number {
+  if (!date) return Number.NaN;
+  return new Date(date).getTime();
+}
+
+/**
  * Check whether the contributor's commit is meaningfully after the maintainer's
  * comment — i.e. the commit timestamp is at least MIN_RESPONSE_GAP_MS later (#547).
+ *
+ * Fails closed (returns `false`) if either date is unparseable, avoiding the
+ * silent lexicographic fallback that would produce wrong results for non-UTC
+ * ISO inputs. See #1044.
  */
 export function isCommitAfterComment(commitDate: string, commentDate: string): boolean {
-  const commitMs = new Date(commitDate).getTime();
-  const commentMs = new Date(commentDate).getTime();
-  if (Number.isNaN(commitMs) || Number.isNaN(commentMs)) {
-    // Fall back to simple string comparison (pre-#547 behavior)
-    return commitDate > commentDate;
-  }
+  const commitMs = normalizeToEpochMs(commitDate);
+  const commentMs = normalizeToEpochMs(commentDate);
+  if (!Number.isFinite(commitMs) || !Number.isFinite(commentMs)) return false;
   return commitMs - commentMs >= MIN_RESPONSE_GAP_MS;
 }
 
@@ -69,15 +86,28 @@ function isCommentAddressedByCommit(
 ): boolean {
   if (!commitDate || !commentDate) return false;
   if (!isCommitAfterComment(commitDate, commentDate)) return false;
-  // Safety net (#431): if a CHANGES_REQUESTED review came after the commit, it's not addressed
-  if (changesRequestedDate && commitDate < changesRequestedDate) return false;
+  // Safety net (#431): if a CHANGES_REQUESTED review came after the commit, it's not addressed.
+  // Fail-closed on unparseable `changesRequestedDate` (#1044): treat unknown ordering as "not addressed".
+  if (changesRequestedDate) {
+    const commitMs = normalizeToEpochMs(commitDate);
+    const changesRequestedMs = normalizeToEpochMs(changesRequestedDate);
+    if (!Number.isFinite(commitMs) || !Number.isFinite(changesRequestedMs)) return false;
+    if (commitMs < changesRequestedMs) return false;
+  }
   return true;
 }
 
-/** Check whether a changes_requested review has been addressed by a subsequent contributor commit. */
+/**
+ * Check whether a changes_requested review has been addressed by a subsequent contributor commit.
+ *
+ * Fails closed (returns `false`) on unparseable inputs (#1044).
+ */
 function isChangesAddressedByCommit(commitDate: string | undefined, changesRequestedDate: string | undefined): boolean {
   if (!commitDate || !changesRequestedDate) return false;
-  return commitDate >= changesRequestedDate;
+  const commitMs = normalizeToEpochMs(commitDate);
+  const changesRequestedMs = normalizeToEpochMs(changesRequestedDate);
+  if (!Number.isFinite(commitMs) || !Number.isFinite(changesRequestedMs)) return false;
+  return commitMs >= changesRequestedMs;
 }
 
 /**
