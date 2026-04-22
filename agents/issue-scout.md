@@ -64,7 +64,7 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 
 ### Anti-LLM / AI Policy
 
-The CLI auto-filters repos in `aiPolicyBlocklist`. During every vetting, scan CONTRIBUTING.md, CODE_OF_CONDUCT.md, and README for anti-LLM policy language — this is a **hard skip** regardless of score (the whole workflow is AI-assisted). The matcher lives in `packages/core/src/core/anti-llm-policy.ts`; `vet --json` surfaces matches in reasons-to-skip. Categories: `explicit_ban` ("no AI-generated"), `tool_ban` ("no Copilot"), `reject_framing` ("we do not accept AI").
+The CLI auto-filters repos in `aiPolicyBlocklist`. During every vetting, scan CONTRIBUTING.md, CODE_OF_CONDUCT.md, and README for anti-LLM policy language — this is a **hard skip** regardless of score (the whole workflow is AI-assisted). The matcher lives in `packages/core/src/core/anti-llm-policy.ts`; `vet --json` surfaces matches in reasons-to-skip. Categories: `explicit_ban` ("no AI-generated"), `tool_ban` ("no Copilot"), `reject_framing` ("we do not accept AI"). See `docs/anti-llm-policy.md` for the full category definitions and appeal process.
 
 **If matched:** (1) recommendation → `skip` with reason `"anti-LLM policy"`; (2) auto-exclude the repo (concatenate, don't replace — `--set aiPolicyBlocklist=…` replaces the whole value):
 

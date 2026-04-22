@@ -16,6 +16,11 @@
  * contribution surface without recourse. We only match on phrases
  * that combine a rejection keyword (no / reject / will be closed /
  * don't accept) with an AI/LLM noun.
+ *
+ * **User-facing reference:** `docs/anti-llm-policy.md` — explains the
+ * three categories, example phrases per category, and the false-positive-
+ * resistance design (why "AI division will be closed at end of Q4"
+ * does NOT match).
  */
 
 export type AntiLLMCategory = 'explicit_ban' | 'tool_ban' | 'reject_framing';
