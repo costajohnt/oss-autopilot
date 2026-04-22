@@ -129,7 +129,7 @@ jobs:
             exit 1
           fi
 
-      - name: Guard against `model: inherit` in agent frontmatter
+      - name: "Guard against `model: inherit` in agent frontmatter"
         # Every agent must declare an explicit tier (haiku/sonnet/opus) so
         # cheap bounded tasks and heavy reasoning tasks don't silently inherit
         # whatever model the parent session uses. See agents/README.md for the
