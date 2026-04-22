@@ -13,19 +13,80 @@ export { registerPrompts } from './prompts.js';
 
 const MAX_BODY_BYTES = 1_048_576; // 1 MiB
 
+const HELP_TEXT = `
+OSS Autopilot MCP Server
+
+Usage:
+  oss-autopilot-mcp                      Run stdio transport (for MCP clients that spawn subprocesses)
+  oss-autopilot-mcp --http [--port N]    Run Streamable HTTP transport on 127.0.0.1 (default port 3001)
+
+Flags:
+  --http           Use HTTP transport instead of stdio
+  --port <N>       Port for HTTP transport (1-65535, default 3001; accepts --port=N or --port N)
+  --help, -h       Show this help and exit
+  --version, -v    Show version and exit
+
+See docs/mcp.md in the oss-autopilot repo for client configuration examples.
+`.trim();
+
+async function readVersion(): Promise<string> {
+  // Read our own package.json so `--version` doesn't drift from the npm manifest.
+  try {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, resolve } = await import('node:path');
+    const here = typeof __dirname === 'string' ? __dirname : dirname(fileURLToPath(import.meta.url));
+    const raw = readFileSync(resolve(here, '..', 'package.json'), 'utf-8');
+    return String(JSON.parse(raw).version ?? 'unknown');
+  } catch {
+    return 'unknown';
+  }
+}
+
 export async function main() {
   const args = process.argv.slice(2);
+
+  // `--help` / `--version` short-circuit BEFORE we try to spin up any
+  // transport (#1059 L9). Previously `npx @oss-autopilot/mcp --help` fell
+  // through to stdio mode and hung waiting on stdin.
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(HELP_TEXT);
+    return;
+  }
+  if (args.includes('--version') || args.includes('-v')) {
+    console.log(await readVersion());
+    return;
+  }
+
   const httpMode = args.includes('--http');
 
   if (httpMode) {
-    // Parse port from --port=N or --port N
+    // Parse port from --port=N or --port N.
+    //
+    // Validates the raw argument before parseInt (#1059 L6) — previously
+    // `--port abc` silently became NaN → terse error with no hint at the
+    // real problem. Now we reject non-numeric values with a clear message.
     const portArg = args.find((a) => a.startsWith('--port='));
     const portIdx = args.indexOf('--port');
     let port = 3001;
+    let portRaw: string | undefined;
     if (portArg) {
-      port = parseInt(portArg.split('=')[1], 10);
+      portRaw = portArg.split('=')[1];
     } else if (portIdx >= 0) {
-      port = parseInt(args[portIdx + 1], 10);
+      portRaw = args[portIdx + 1];
+      if (portRaw === undefined) {
+        // Bare `--port` with no value — don't silently fall back to the
+        // default; the user meant to specify something (#1059 L6 follow-up).
+        console.error('Missing value for --port. Usage: --port <N> or --port=<N>.');
+        process.exit(1);
+      }
+    }
+    if (portRaw !== undefined) {
+      if (!/^\d+$/.test(portRaw)) {
+        console.error(`Invalid --port value: "${portRaw}". Must be an integer between 1 and 65535.`);
+        process.exit(1);
+      }
+      port = parseInt(portRaw, 10);
     }
 
     if (isNaN(port) || port < 1 || port > 65535) {

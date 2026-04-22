@@ -10,15 +10,24 @@ PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 messages=""
 NL=$'\n'
 
+# Rebuild flags (#1059 L1). Accumulated through Steps 1/1.5 and flushed as a
+# single consolidated line ("Rebuilt after plugin update: CLI, Dashboard
+# SPA.") rather than two separate system-reminder lines, which are quieter in
+# the session-start reminder stream.
+rebuilt_cli=false
+rebuilt_dashboard=false
+cli_rebuild_error=""
+dashboard_rebuild_error=""
+
 # Marketplace clone path; refresh is handled by safe-refresh-marketplace.sh in Step 2.
 MARKETPLACE_DIR="$HOME/.claude/plugins/marketplaces/oss-autopilot"
 
 # --- Step 1: Rebuild stale CLI bundle (if needed) ---
 if [ -f "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ] && [ "${PLUGIN_ROOT}/packages/core/package.json" -nt "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ]; then
   if (cd "${PLUGIN_ROOT}/packages/core" && npm install --silent 2>/dev/null && npm run bundle --silent 2>/dev/null); then
-    messages="CLI bundle rebuilt after plugin update."
+    rebuilt_cli=true
   else
-    messages="Warning: CLI bundle rebuild failed. Run /oss to retry, or: cd ${PLUGIN_ROOT}/packages/core && npm install && npm run bundle"
+    cli_rebuild_error="cd ${PLUGIN_ROOT}/packages/core && npm install && npm run bundle"
   fi
 fi
 
@@ -29,7 +38,10 @@ fi
 # (package.json is private, pinned at 0.1.0, and rarely touched).
 DASHBOARD_INDEX="${PLUGIN_ROOT}/packages/dashboard/dist/index.html"
 DASHBOARD_PKG="${PLUGIN_ROOT}/packages/dashboard/package.json"
-if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ -n "$(find "${PLUGIN_ROOT}/packages/dashboard/src" "${DASHBOARD_PKG}" "${PLUGIN_ROOT}/packages/dashboard/vite.config.ts" "${PLUGIN_ROOT}/packages/dashboard/tsconfig.json" -newer "${DASHBOARD_INDEX}" -print -quit 2>/dev/null)" ]; }; then
+# Exclude junk (DS_Store, editor swap files, backups, .git, node_modules) so
+# the stale-check doesn't rebuild on every session over an editor-touched
+# swap file (#1059 L3).
+if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ -n "$(find "${PLUGIN_ROOT}/packages/dashboard/src" "${DASHBOARD_PKG}" "${PLUGIN_ROOT}/packages/dashboard/vite.config.ts" "${PLUGIN_ROOT}/packages/dashboard/tsconfig.json" -type f ! -path '*/node_modules/*' ! -path '*/.git/*' ! -name '.DS_Store' ! -name '*~' ! -name '*.swp' ! -name '*.swo' ! -name '.#*' -newer "${DASHBOARD_INDEX}" -print -quit 2>/dev/null)" ]; }; then
   # Dashboard depends on @oss-autopilot/core types via workspace:* protocol.
   # Use pnpm if available (required for workspace: resolution), fall back to npm.
   if command -v pnpm &>/dev/null; then
@@ -38,10 +50,28 @@ if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ -n "$(find 
     dashboard_build() { cd "${PLUGIN_ROOT}/packages/dashboard" && npm install --silent 2>/dev/null && npm run build 2>/dev/null; }
   fi
   if (dashboard_build); then
-    messages="${messages:+${messages}${NL}}Dashboard SPA built successfully."
+    rebuilt_dashboard=true
   else
-    messages="${messages:+${messages}${NL}}Warning: Dashboard SPA build failed. To fix: cd ${PLUGIN_ROOT} && pnpm install && pnpm run build"
+    dashboard_rebuild_error="cd ${PLUGIN_ROOT} && pnpm install && pnpm run build"
   fi
+fi
+
+# Emit a single consolidated line for successful rebuilds, and separate warning
+# lines for any rebuild failures (errors are rarer and benefit from being
+# immediately legible). #1059 L1.
+rebuilt_parts=""
+if [ "$rebuilt_cli" = true ]; then rebuilt_parts="CLI"; fi
+if [ "$rebuilt_dashboard" = true ]; then
+  rebuilt_parts="${rebuilt_parts:+${rebuilt_parts}, }Dashboard SPA"
+fi
+if [ -n "$rebuilt_parts" ]; then
+  messages="${messages:+${messages}${NL}}Rebuilt after plugin update: ${rebuilt_parts}."
+fi
+if [ -n "$cli_rebuild_error" ]; then
+  messages="${messages:+${messages}${NL}}Warning: CLI bundle rebuild failed. Run /oss to retry, or: ${cli_rebuild_error}"
+fi
+if [ -n "$dashboard_rebuild_error" ]; then
+  messages="${messages:+${messages}${NL}}Warning: Dashboard SPA build failed. To fix: ${dashboard_rebuild_error}"
 fi
 
 # --- Step 2: Check for updates (every 6 hours) ---
@@ -59,8 +89,9 @@ if [ -n "$CURRENT" ]; then
   if [ "$should_check" = true ]; then
     mkdir -p "${HOME}/.oss-autopilot"
     LATEST=$(gh api repos/costajohnt/oss-autopilot/releases/latest --jq '.tag_name' 2>/dev/null | sed 's/^[^0-9]*//' || echo "")
-    # Validate LATEST looks like a version (digits and dots), not an error response
-    if [ -n "$LATEST" ] && echo "$LATEST" | grep -qE '^[0-9]+\.'; then
+    # Require full x.y.z semver so partial matches like "1.x" or release tag
+    # prefixes that happen to start with digits don't sneak through (#1059 L4).
+    if [ -n "$LATEST" ] && echo "$LATEST" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
       # Mark check as done only after a successful API response
       touch "$LAST_CHECK"
       if [ "$LATEST" != "$CURRENT" ]; then
@@ -113,7 +144,13 @@ if [ -n "$messages" ]; then
   if command -v jq &>/dev/null; then
     escaped=$(printf '%s' "$messages" | jq -Rrs '@json | .[1:-1]')
   else
-    escaped=$(printf '%s' "$messages" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | tr '\n' ' ')
+    # Fallback escaper: jq is preferred and is what produces fully-correct
+    # JSON. The sed path only handles the escapes BSD sed can match reliably
+    # (`\\`, `"`, `\t`, `\r`) — BSD sed treats `\b` as a word boundary and
+    # `\f` as the letter `f`, so attempting to escape those corrupts ordinary
+    # prose. Messages emitted by this hook never contain raw 0x08/0x0C bytes,
+    # so the gap is acceptable. See #1059 L2 for the investigation.
+    escaped=$(printf '%s' "$messages" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r/\\r/g' | tr '\n' ' ')
   fi
   cat <<EOF
 {

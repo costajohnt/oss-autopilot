@@ -120,6 +120,14 @@ function AppContent() {
     routeHeadingRef.current?.focus({ preventScroll: false });
   }, [path]);
 
+  // Glanceable tab title (#1059 L8). Prefix the needs-addressing count so
+  // users with a backgrounded tab can see "(2) OSS Autopilot" and react.
+  // Counting here instead of memoing because the dep list is already minimal.
+  useEffect(() => {
+    const needCount = data?.activePRs?.filter((pr) => pr.status === 'needs_addressing').length ?? 0;
+    document.title = needCount > 0 ? `(${needCount}) OSS Autopilot` : 'OSS Autopilot Dashboard';
+  }, [data?.activePRs]);
+
   const shelvedUrls = useMemo(() => new Set(data?.shelvedPRUrls ?? []), [data?.shelvedPRUrls]);
 
   if (loading && !data) {
