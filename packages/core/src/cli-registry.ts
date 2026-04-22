@@ -111,7 +111,10 @@ export const commands: CLICommandDef[] = [
         .command('status')
         .description('Show current status and stats')
         .option('--json', 'Output as JSON')
-        .option('--offline', 'Use cached data only (no GitHub API calls)')
+        .option(
+          '--offline',
+          'Show cache-freshness metadata (lastUpdated). Status always reads local state — no GitHub API calls are made either way.',
+        )
         .action((options) =>
           executeAction(
             options,
@@ -127,7 +130,7 @@ export const commands: CLICommandDef[] = [
               console.log(`Needs Response: ${data.stats.needsResponse}`);
               if (data.offline) {
                 console.log(`\nLast Updated: ${data.lastUpdated || 'Never'}`);
-                console.log('(Offline mode: showing cached data)');
+                console.log('(Status reads from local state — no GitHub API calls)');
               } else {
                 console.log(`\nLast Run: ${data.lastRunAt || 'Never'}`);
               }

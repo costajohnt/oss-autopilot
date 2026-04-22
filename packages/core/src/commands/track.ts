@@ -14,6 +14,7 @@
  */
 
 import { getOctokit, requireGitHubToken } from '../core/index.js';
+import { ValidationError } from '../core/errors.js';
 import type { TrackOutput } from '../formatters/json.js';
 import { validateUrl, PR_URL_PATTERN, validateGitHubUrl } from './validation.js';
 import { parseGitHubUrl } from '../core/utils.js';
@@ -45,7 +46,7 @@ export async function runTrack(options: { prUrl: string }): Promise<TrackOutput>
 
   const parsed = parseGitHubUrl(options.prUrl);
   if (!parsed || parsed.type !== 'pull') {
-    throw new Error(`Invalid PR URL: ${options.prUrl}`);
+    throw new ValidationError(`Invalid PR URL: ${options.prUrl}`);
   }
 
   const { owner, repo, number } = parsed;

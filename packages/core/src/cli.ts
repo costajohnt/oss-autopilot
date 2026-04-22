@@ -46,16 +46,30 @@ program.hook('preAction', async (thisCommand, actionCommand) => {
   if (!localOnlySet.has(commandName)) {
     const token = await getGitHubTokenAsync();
     if (!token) {
-      console.error('Error: GitHub authentication required.');
-      console.error('');
-      console.error('Option 1 (Recommended): Install and authenticate GitHub CLI');
-      console.error('  Install: https://cli.github.com/');
-      console.error('  Then run: gh auth login');
-      console.error('');
-      console.error('Option 2: Set GITHUB_TOKEN environment variable');
-      console.error('  export GITHUB_TOKEN="your-github-token-here"');
-      console.error('');
-      console.error('Then run your command again.');
+      // Honor --json at the CLI boundary so machine consumers (plugins, MCP
+      // stdio harnesses, scripts) get a parseable envelope instead of a
+      // stderr blob followed by a non-zero exit. Commander has already parsed
+      // the action's own options, so we check both the action command and the
+      // raw argv as a fallback (#1056 M20).
+      const wantsJson = Boolean(actionCommand.opts().json) || process.argv.includes('--json');
+      if (wantsJson) {
+        const { outputJsonError } = await import('./formatters/json.js');
+        outputJsonError(
+          'GitHub authentication required. Install gh CLI and run `gh auth login`, or set GITHUB_TOKEN.',
+          'AUTH_REQUIRED',
+        );
+      } else {
+        console.error('Error: GitHub authentication required.');
+        console.error('');
+        console.error('Option 1 (Recommended): Install and authenticate GitHub CLI');
+        console.error('  Install: https://cli.github.com/');
+        console.error('  Then run: gh auth login');
+        console.error('');
+        console.error('Option 2: Set GITHUB_TOKEN environment variable');
+        console.error('  export GITHUB_TOKEN="your-github-token-here"');
+        console.error('');
+        console.error('Then run your command again.');
+      }
       process.exit(1);
     }
 

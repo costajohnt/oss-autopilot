@@ -28,7 +28,7 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/auto-format-before-push.sh",
-            "timeout": 30
+            "timeout": 60
           }
         ]
       },

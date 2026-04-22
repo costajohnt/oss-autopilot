@@ -4,6 +4,7 @@
  */
 
 import { getStateManager, maybeCheckpoint } from '../core/index.js';
+import { ValidationError } from '../core/errors.js';
 import { PR_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 
 const MODULE = 'move';
@@ -26,8 +27,7 @@ export interface MoveOutput {
  * @param options.prUrl - Full GitHub PR URL
  * @param options.target - Target state: 'attention' | 'waiting' | 'shelved' | 'auto'
  * @returns The move result with a human-readable description
- * @throws {ValidationError} If the URL is not a valid GitHub PR URL
- * @throws {Error} If the target is invalid
+ * @throws {ValidationError} If the URL is not a valid GitHub PR URL or the target is invalid
  */
 export async function runMove(options: { prUrl: string; target: string }): Promise<MoveOutput> {
   validateUrl(options.prUrl);
@@ -35,7 +35,7 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
 
   const target = options.target as MoveTarget;
   if (!VALID_TARGETS.includes(target)) {
-    throw new Error(`Invalid target "${options.target}". Must be one of: ${VALID_TARGETS.join(', ')}`);
+    throw new ValidationError(`Invalid target "${options.target}". Must be one of: ${VALID_TARGETS.join(', ')}`);
   }
 
   const stateManager = getStateManager();

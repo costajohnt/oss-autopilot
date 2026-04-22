@@ -69,11 +69,14 @@ describe.skipIf(!BUNDLE_EXISTS)('daily --json E2E', () => {
     fs.rmSync(TEST_HOME, { recursive: true, force: true });
   });
 
-  it('should exit with an auth error when no GitHub token is available', async () => {
-    const { stderr, exitCode } = await runDaily({ GITHUB_TOKEN: '', PATH: process.env.PATH || '' });
-    // The preAction hook writes to stderr and calls process.exit(1)
+  it('should exit with an auth error envelope when --json is passed and no GitHub token is available', async () => {
+    // `daily --json` always uses JSON, so the preAction hook must emit a
+    // parseable `{ success:false, errorCode:'AUTH_REQUIRED' }` envelope on
+    // stdout instead of a stderr blob (#1056 M20).
+    const { json, stdout, exitCode } = await runDaily({ GITHUB_TOKEN: '' });
     expect(exitCode).not.toBe(0);
-    expect(stderr).toContain('GitHub authentication required');
+    expect(json, `expected parseable JSON envelope; got stdout=${stdout.slice(0, 300)}`).not.toBeNull();
+    expect(json).toMatchObject({ success: false, errorCode: 'AUTH_REQUIRED' });
   });
 
   describe.skipIf(!HAS_GITHUB_TOKEN)('with GitHub token', () => {

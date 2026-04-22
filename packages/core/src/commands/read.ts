@@ -4,6 +4,7 @@
  * This command is a no-op preserved for backward compatibility.
  */
 
+import { ValidationError } from '../core/errors.js';
 import { validateUrl } from './validation.js';
 
 export type ReadOutput =
@@ -12,7 +13,7 @@ export type ReadOutput =
 
 export async function runRead(options: { prUrl?: string; all?: boolean }): Promise<ReadOutput> {
   if (!options.all && !options.prUrl) {
-    throw new Error('PR URL or --all flag required');
+    throw new ValidationError('PR URL or --all flag required');
   }
 
   if (options.prUrl) {

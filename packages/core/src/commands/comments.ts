@@ -4,6 +4,8 @@
  */
 
 import { getStateManager, getOctokit, parseGitHubUrl, requireGitHubToken, maybeCheckpoint } from '../core/index.js';
+import { ValidationError } from '../core/errors.js';
+import { warn } from '../core/logger.js';
 
 const MODULE = 'comments';
 import { paginateAll } from '../core/pagination.js';
@@ -56,7 +58,7 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
   // Parse PR URL
   const parsed = parseGitHubUrl(options.prUrl);
   if (!parsed || parsed.type !== 'pull') {
-    throw new Error('Invalid PR URL format');
+    throw new ValidationError('Invalid PR URL format');
   }
 
   const { owner, repo, number: pull_number } = parsed;
@@ -163,7 +165,7 @@ export async function runPost(options: PostOptions): Promise<PostOutput> {
   validateGitHubUrl(options.url, ISSUE_OR_PR_URL_PATTERN, 'issue or PR');
 
   if (!options.message.trim()) {
-    throw new Error('No message provided');
+    throw new ValidationError('No message provided');
   }
 
   validateMessage(options.message);
@@ -173,7 +175,7 @@ export async function runPost(options: PostOptions): Promise<PostOutput> {
   // Parse URL
   const parsed = parseGitHubUrl(options.url);
   if (!parsed) {
-    throw new Error('Invalid GitHub URL format');
+    throw new ValidationError('Invalid GitHub URL format');
   }
 
   const { owner, repo, number } = parsed;
@@ -215,7 +217,7 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
   // Parse URL
   const parsed = parseGitHubUrl(options.issueUrl);
   if (!parsed || parsed.type !== 'issues') {
-    throw new Error('Invalid issue URL format (must be an issue, not a PR)');
+    throw new ValidationError('Invalid issue URL format (must be an issue, not a PR)');
   }
 
   const { owner, repo, number } = parsed;
@@ -229,6 +231,27 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
     body: message,
   });
 
+  // Fetch the real issue title + labels so the tracked entry has useful metadata
+  // rather than a permanent "(claimed)" placeholder that never gets backfilled
+  // (#1056 M24). Best-effort: if the fetch fails, fall back to the placeholder
+  // so state still records the claim.
+  let issueTitle = '(claimed)';
+  let issueLabels: string[] = [];
+  let issueCreatedAt = new Date().toISOString();
+  try {
+    const { data: issue } = await octokit.issues.get({ owner, repo, issue_number: number });
+    if (issue.title) issueTitle = issue.title;
+    issueLabels = (issue.labels ?? [])
+      .map((l) => (typeof l === 'string' ? l : (l.name ?? '')))
+      .filter((name): name is string => Boolean(name));
+    if (issue.created_at) issueCreatedAt = issue.created_at;
+  } catch (error) {
+    warn(
+      MODULE,
+      `Claimed ${options.issueUrl} but failed to enrich issue metadata (title/labels): ${error instanceof Error ? error.message : error}`,
+    );
+  }
+
   // Add to tracked issues — non-fatal if state save fails (comment already posted)
   try {
     const stateManager = getStateManager();
@@ -237,10 +260,10 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
       url: options.issueUrl,
       repo: `${owner}/${repo}`,
       number,
-      title: '(claimed)',
+      title: issueTitle,
       status: 'claimed',
-      labels: [],
-      createdAt: new Date().toISOString(),
+      labels: issueLabels,
+      createdAt: issueCreatedAt,
       updatedAt: new Date().toISOString(),
       vetted: false,
     });
@@ -249,8 +272,11 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
     // signal (#1036 audit H1).
     await maybeCheckpoint(stateManager, MODULE);
   } catch (error) {
-    console.error(
-      `Warning: Comment posted on ${options.issueUrl} but failed to save to local state: ${error instanceof Error ? error.message : error}`,
+    // Structured warning instead of bare console.error so the breadcrumb shows
+    // up in the plugin's log pipeline (#1056 M24).
+    warn(
+      MODULE,
+      `Comment posted on ${options.issueUrl} but failed to save to local state: ${error instanceof Error ? error.message : error}`,
     );
   }
 

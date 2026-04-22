@@ -233,15 +233,22 @@ describe('runClaim', () => {
     );
   });
 
-  it('should claim an issue and return result', async () => {
+  it('should claim an issue and return result with real title from issues.get', async () => {
     mockRequireGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 10, type: 'issues' });
 
     const mockCreateComment = vi.fn().mockResolvedValue({
       data: { html_url: 'https://github.com/owner/repo/issues/10#issuecomment-1' },
     });
+    const mockIssuesGet = vi.fn().mockResolvedValue({
+      data: {
+        title: 'Fix the thing',
+        labels: [{ name: 'bug' }, { name: 'good first issue' }],
+        created_at: '2026-04-20T10:00:00Z',
+      },
+    });
     mockGetOctokit.mockReturnValue({
-      issues: { createComment: mockCreateComment },
+      issues: { createComment: mockCreateComment, get: mockIssuesGet },
     } as any);
     const mockAddIssue = vi.fn();
     mockGetStateManager.mockReturnValue({
@@ -251,18 +258,48 @@ describe('runClaim', () => {
     const result = await runClaim({ issueUrl: TEST_ISSUE_URL });
 
     expect(mockCreateComment).toHaveBeenCalled();
+    // Issue metadata enrichment landed in state — no permanent "(claimed)" placeholder.
     expect(mockAddIssue).toHaveBeenCalledWith(
       expect.objectContaining({
         url: TEST_ISSUE_URL,
         repo: 'owner/repo',
         number: 10,
         status: 'claimed',
+        title: 'Fix the thing',
+        labels: ['bug', 'good first issue'],
+        createdAt: '2026-04-20T10:00:00Z',
       }),
     );
     expect(result).toEqual({
       commentUrl: 'https://github.com/owner/repo/issues/10#issuecomment-1',
       issueUrl: TEST_ISSUE_URL,
     });
+  });
+
+  it('should fall back to (claimed) placeholder if issues.get fails', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 10, type: 'issues' });
+
+    const mockCreateComment = vi.fn().mockResolvedValue({
+      data: { html_url: 'https://github.com/owner/repo/issues/10#issuecomment-1' },
+    });
+    const mockIssuesGet = vi.fn().mockRejectedValue(new Error('403 from GitHub'));
+    mockGetOctokit.mockReturnValue({
+      issues: { createComment: mockCreateComment, get: mockIssuesGet },
+    } as any);
+    const mockAddIssue = vi.fn();
+    mockGetStateManager.mockReturnValue({
+      addIssue: mockAddIssue,
+    } as any);
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await runClaim({ issueUrl: TEST_ISSUE_URL });
+
+    expect(result.commentUrl).toBe('https://github.com/owner/repo/issues/10#issuecomment-1');
+    expect(mockAddIssue).toHaveBeenCalledWith(expect.objectContaining({ title: '(claimed)', labels: [] }));
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[WARN] [comments] Claimed'));
+    consoleSpy.mockRestore();
   });
 
   it('should still return success when state save fails (comment already posted)', async () => {
@@ -272,8 +309,11 @@ describe('runClaim', () => {
     const mockCreateComment = vi.fn().mockResolvedValue({
       data: { html_url: 'https://github.com/owner/repo/issues/10#issuecomment-1' },
     });
+    const mockIssuesGet = vi.fn().mockResolvedValue({
+      data: { title: 'x', labels: [], created_at: '2026-04-20T10:00:00Z' },
+    });
     mockGetOctokit.mockReturnValue({
-      issues: { createComment: mockCreateComment },
+      issues: { createComment: mockCreateComment, get: mockIssuesGet },
     } as any);
 
     mockGetStateManager.mockReturnValue({
@@ -288,7 +328,8 @@ describe('runClaim', () => {
     const result = await runClaim({ issueUrl: TEST_ISSUE_URL });
 
     expect(result.commentUrl).toBe('https://github.com/owner/repo/issues/10#issuecomment-1');
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Warning: Comment posted on'));
+    // Structured warning breadcrumb via logger.warn (#1056 M24).
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[WARN] [comments] Comment posted on'));
     consoleSpy.mockRestore();
   });
 
