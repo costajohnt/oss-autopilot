@@ -7,7 +7,7 @@ import { StatsBar } from './components/stats-bar';
 import { FilterBar, type Filters } from './components/filter-bar';
 import { PRList } from './components/pr-list';
 import { PRDetail } from './components/pr-detail';
-import { ChartPanel } from './components/chart-panel';
+import { LazyChartPanel } from './components/chart-panel-lazy';
 import { IssueList } from './components/issue-list';
 import { RecentActivity } from './components/recent-activity';
 import { MergedPRList } from './components/merged-pr-list';
@@ -308,7 +308,7 @@ function AppContent() {
         </div>
 
         <div class="animate-in delay-4">
-          <ChartPanel
+          <LazyChartPanel
             monthlyMerged={data.monthlyMerged}
             monthlyOpened={data.monthlyOpened}
             monthlyClosed={data.monthlyClosed}

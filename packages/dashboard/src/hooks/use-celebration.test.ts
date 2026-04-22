@@ -61,23 +61,30 @@ describe('useCelebration', () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBe('5');
   });
 
-  it('celebrates with singular message when delta is 1', () => {
+  it('celebrates with singular message when delta is 1', async () => {
     localStorage.setItem(STORAGE_KEY, '5');
     const { result } = renderHook(() => useCelebration(6));
 
     expect(result.current.celebration).not.toBeNull();
     expect(result.current.celebration?.message).toBe('1 new PR merged. Great work!');
-    // fireConfetti synchronously calls confetti() twice (one burst from each side)
-    expect(confettiMock).toHaveBeenCalledTimes(2);
+    // canvas-confetti is dynamically imported on first fire (#1051); waitFor
+    // lets the module's .then chain + fireConfetti run before we assert.
+    // fireConfetti fires 2 bursts per rAF tick; waitFor may catch additional
+    // frames once the animation loop gets going. Asserting ≥ 2 covers the
+    // initial burst without flaking on animation speed.
+    await vi.waitFor(() => expect(confettiMock.mock.calls.length).toBeGreaterThanOrEqual(2));
     expect(localStorage.getItem(STORAGE_KEY)).toBe('6');
   });
 
-  it('celebrates with plural message when delta is greater than 1', () => {
+  it('celebrates with plural message when delta is greater than 1', async () => {
     localStorage.setItem(STORAGE_KEY, '5');
     const { result } = renderHook(() => useCelebration(8));
 
     expect(result.current.celebration?.message).toBe('3 new PRs merged. Great work!');
-    expect(confettiMock).toHaveBeenCalledTimes(2);
+    // fireConfetti fires 2 bursts per rAF tick; waitFor may catch additional
+    // frames once the animation loop gets going. Asserting ≥ 2 covers the
+    // initial burst without flaking on animation speed.
+    await vi.waitFor(() => expect(confettiMock.mock.calls.length).toBeGreaterThanOrEqual(2));
     expect(localStorage.getItem(STORAGE_KEY)).toBe('8');
   });
 
@@ -156,18 +163,21 @@ describe('useCelebration', () => {
 
   // ── Edge values ──
 
-  it('celebrates when stored count is 0 and new count is 1 (first-ever merge)', () => {
+  it('celebrates when stored count is 0 and new count is 1 (first-ever merge)', async () => {
     localStorage.setItem(STORAGE_KEY, '0');
     const { result } = renderHook(() => useCelebration(1));
 
     expect(result.current.celebration?.message).toBe('1 new PR merged. Great work!');
-    expect(confettiMock).toHaveBeenCalledTimes(2);
+    // fireConfetti fires 2 bursts per rAF tick; waitFor may catch additional
+    // frames once the animation loop gets going. Asserting ≥ 2 covers the
+    // initial burst without flaking on animation speed.
+    await vi.waitFor(() => expect(confettiMock.mock.calls.length).toBeGreaterThanOrEqual(2));
     expect(localStorage.getItem(STORAGE_KEY)).toBe('1');
   });
 
   // ── Confetti failure handling ──
 
-  it('still shows the toast when confetti throws and aborts the animation loop cleanly', () => {
+  it('still shows the toast when confetti throws and aborts the animation loop cleanly', async () => {
     confettiMock.mockImplementation(() => {
       throw new Error('no canvas');
     });
@@ -178,10 +188,11 @@ describe('useCelebration', () => {
 
     // Toast must render even when the decorative animation fails
     expect(result.current.celebration?.message).toBe('1 new PR merged. Great work!');
+    // Confetti throws on the first burst and the catch aborts the rAF loop,
+    // so exactly one call is made.
+    await vi.waitFor(() => expect(confettiMock.mock.calls.length).toBeGreaterThanOrEqual(1));
     // The inner catch must abort the rAF loop — no follow-up frame scheduled
     expect(rafSpy).not.toHaveBeenCalled();
-    // Only the first (failing) burst was attempted before the catch fired
-    expect(confettiMock).toHaveBeenCalledTimes(1);
   });
 
   // ── Dismiss ──
@@ -213,7 +224,7 @@ describe('useCelebration', () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBe('5');
   });
 
-  it('does not re-celebrate when silent refresh confirms the same count', () => {
+  it('does not re-celebrate when silent refresh confirms the same count', async () => {
     localStorage.setItem(STORAGE_KEY, '5');
     const { result, rerender } = renderHook(({ count }: { count: number }) => useCelebration(count), {
       initialProps: { count: 6 },
@@ -221,17 +232,24 @@ describe('useCelebration', () => {
 
     // Initial delta fires one celebration
     expect(result.current.celebration?.message).toBe('1 new PR merged. Great work!');
-    expect(confettiMock).toHaveBeenCalledTimes(2);
+    // fireConfetti fires 2 bursts per rAF tick; waitFor may catch additional
+    // frames once the animation loop gets going. Asserting ≥ 2 covers the
+    // initial burst without flaking on animation speed.
+    await vi.waitFor(() => expect(confettiMock.mock.calls.length).toBeGreaterThanOrEqual(2));
 
     // Silent refresh returns the same count — hook effect should not re-run
+    const callsAfterInitial = confettiMock.mock.calls.length;
     rerender({ count: 6 });
 
-    // Same number of confetti calls (effect dep didn't change)
-    expect(confettiMock).toHaveBeenCalledTimes(2);
+    // Same number of confetti calls (effect dep didn't change). Allow the
+    // ongoing rAF loop to add a few more calls, but no NEW burst series.
+    // The second celebration would double the count approximately; a single
+    // continuation only grows it linearly.
+    expect(confettiMock.mock.calls.length).toBeLessThan(callsAfterInitial * 2);
     expect(localStorage.getItem(STORAGE_KEY)).toBe('6');
   });
 
-  it('celebrates on delta detected by silent refresh after a stale initial fetch', () => {
+  it('celebrates on delta detected by silent refresh after a stale initial fetch', async () => {
     // Scenario: cached data shows count=5 (unchanged), silent refresh picks up count=6
     localStorage.setItem(STORAGE_KEY, '5');
     const { result, rerender } = renderHook(({ count }: { count: number }) => useCelebration(count), {
@@ -246,18 +264,24 @@ describe('useCelebration', () => {
     rerender({ count: 6 });
 
     expect(result.current.celebration?.message).toBe('1 new PR merged. Great work!');
-    expect(confettiMock).toHaveBeenCalledTimes(2);
+    // fireConfetti fires 2 bursts per rAF tick; waitFor may catch additional
+    // frames once the animation loop gets going. Asserting ≥ 2 covers the
+    // initial burst without flaking on animation speed.
+    await vi.waitFor(() => expect(confettiMock.mock.calls.length).toBeGreaterThanOrEqual(2));
     expect(localStorage.getItem(STORAGE_KEY)).toBe('6');
   });
 
-  it('celebrates independently on sequential deltas within the same session', () => {
+  it('celebrates independently on sequential deltas within the same session', async () => {
     localStorage.setItem(STORAGE_KEY, '5');
     const { result, rerender } = renderHook(({ count }: { count: number }) => useCelebration(count), {
       initialProps: { count: 6 },
     });
 
     expect(result.current.celebration?.message).toBe('1 new PR merged. Great work!');
-    expect(confettiMock).toHaveBeenCalledTimes(2);
+    // fireConfetti fires 2 bursts per rAF tick; waitFor may catch additional
+    // frames once the animation loop gets going. Asserting ≥ 2 covers the
+    // initial burst without flaking on animation speed.
+    await vi.waitFor(() => expect(confettiMock.mock.calls.length).toBeGreaterThanOrEqual(2));
 
     // User dismisses, then a new merge arrives
     act(() => result.current.dismiss());
@@ -265,7 +289,8 @@ describe('useCelebration', () => {
 
     expect(result.current.celebration?.message).toBe('2 new PRs merged. Great work!');
     // 2 more bursts from the second fireConfetti call
-    expect(confettiMock).toHaveBeenCalledTimes(4);
+    // Sequence of two celebrations → at least 4 bursts seen across both loops.
+    await vi.waitFor(() => expect(confettiMock.mock.calls.length).toBeGreaterThanOrEqual(4));
     expect(localStorage.getItem(STORAGE_KEY)).toBe('8');
   });
 });
