@@ -1,7 +1,7 @@
 ---
 name: oss
 description: "Daily OSS contribution check - uses CLI with --json for structured data"
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, mcp__*
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, mcp__plugin_oss-autopilot_*
 ---
 
 # OSS Autopilot Daily Check
@@ -175,7 +175,7 @@ Use AskUserQuestion with these options:
 | "Just exploring" | "Take a look around — run /oss again anytime" |
 
 **Routing:**
-- **Search for issues** → Jump to "Handle Find New Issues" (same as the Execute section's search flow)
+- **Search for issues** → Invoke `/oss-search` directly (passing session state: `hasIssueList`, `availableCount`, `completedCount`, `issueListPath`). No intermediate hop.
 - **Import existing PRs** → Run the import command: `GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" init "$(gh api user --jq '.login')" --json`. If it succeeds, re-run `startup --json` (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json 2>/tmp/oss-startup-stderr.log`) and parse the result from the top (same routing as the initial startup call). If it fails, show the error and suggest checking `gh auth status`.
 - **Just exploring** → Show a brief tip: "Run `/oss` whenever you want to check on your contributions. It works best when you have a few open PRs to track." Then end.
 

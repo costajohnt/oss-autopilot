@@ -66,17 +66,19 @@ gh api repos/OWNER/REPO/contents/CONTRIBUTING.md --jq '.content' 2>/dev/null | b
 
 ## Metrics to Compute
 
-- **PR review time:** avg PR-open→first-review and open→merge; flag > 14 days.
+- **PR merge time:** avg time from `createdAt` to `mergedAt` on recent merged PRs (available from `gh pr list --state merged --json createdAt,mergedAt`); flag > 14 days.
 - **Merge rate:** merged / opened (last 90 days); >70% good, <30% concerning.
 - **Maintainer activity:** last commit date, contributors in last 90 days, issue response times.
 - **Community health:** CONTRIBUTING.md, issue templates, PR templates, code of conduct, recent releases.
+
+**Do not attempt to compute "time to first review" from `gh pr list` JSON.** That payload does not include review timestamps, so any such number would be fabricated. If you want review timing, fetch `gh api repos/OWNER/REPO/pulls/PULL_NUMBER/reviews` per PR — otherwise omit the metric.
 
 ## Scoring Rubric (1–10)
 
 | Factor | Weight | Criteria |
 |---|---|---|
 | Activity | 25% | Commits in last 30 days |
-| PR speed | 25% | Avg merge time < 7 days |
+| PR speed | 25% | Avg PR merge time < 7 days (from createdAt→mergedAt) |
 | Merge rate | 20% | >70% of PRs merged |
 | Responsiveness | 15% | Issues get responses < 3 days |
 | Guidelines | 10% | CONTRIBUTING.md, templates |
@@ -93,10 +95,12 @@ gh api repos/OWNER/REPO/contents/CONTRIBUTING.md --jq '.content' 2>/dev/null | b
 ⭐ X,XXX stars · 🍴 XXX forks · 📝 XX issues · 🔧 XX PRs · 📅 last commit Xd ago
 
 ### Health Metrics
-- **PR review:** avg first review Xd, avg merge Xd — [Fast/Moderate/Slow]
+- **PR merge time:** avg Xd on recent merged PRs — [Fast/Moderate/Slow]
 - **Merge rate (90d):** XX merged / XX opened = XX% — [High/Medium/Low]
 - **Maintainer activity:** X active, issue response [Quick/Moderate/Slow], last release Xd ago
 - **Community health:** [✓/✗] CONTRIBUTING · [✓/✗] issue templates · [✓/✗] PR templates · [✓/✗] code of conduct
+
+(Skip "first review" timing unless you actually fetched reviews via `gh api .../pulls/N/reviews` — do not estimate from list metadata.)
 
 ### Recent PR Samples
 | PR# | Title | Days to merge |
@@ -108,7 +112,7 @@ gh api repos/OWNER/REPO/contents/CONTRIBUTING.md --jq '.content' 2>/dev/null | b
 [Clear yes/no with reasoning]
 
 **What to expect:**
-- PR review in approximately X days
+- Merged PRs ship in approximately X days (based on recent merged-PR timing)
 - [Key pattern to be aware of]
 - [Best way to get maintainer attention]
 ```
