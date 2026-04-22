@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
-import { validateDashboardData } from '@oss-autopilot/core';
+// Use the dedicated subpath export so Vite only bundles the pure zod schema,
+// not the core barrel (which eagerly loads state/pr-monitor/etc. — Node-only
+// modules that throw `process is not defined` in the browser bundle).
+import { validateDashboardData } from '@oss-autopilot/core/dashboard-schema';
 import type { DashboardData, ActionRequest } from '../types';
 
 // Module-scoped CSRF token cache — the server returns X-CSRF-Token on every

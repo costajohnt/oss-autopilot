@@ -18,6 +18,10 @@
     "./commands": {
       "import": "./dist/commands/index.js",
       "types": "./dist/commands/index.d.ts"
+    },
+    "./dashboard-schema": {
+      "import": "./dist/core/dashboard-data-schema.js",
+      "types": "./dist/core/dashboard-data-schema.d.ts"
     }
   },
   "files": [
