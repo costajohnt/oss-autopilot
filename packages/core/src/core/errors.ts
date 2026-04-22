@@ -59,6 +59,29 @@ export class GistPermissionError extends ConfigurationError {
 }
 
 /**
+ * Thrown when an optimistic compare-and-swap on state.json detects that
+ * another process wrote the file between load and save. See issue #1030.
+ *
+ * Library consumers should call `stateManager.reloadIfChanged()` and
+ * re-apply their mutation. The runtime `message` is phrased for CLI
+ * end-users; the structured `expectedMtimeMs` / `actualMtimeMs` fields
+ * are for programmatic handling.
+ */
+export class ConcurrencyError extends OssAutopilotError {
+  constructor(
+    public readonly expectedMtimeMs: number,
+    public readonly actualMtimeMs: number,
+  ) {
+    super(
+      'Another oss-autopilot process wrote state.json concurrently. ' +
+        'Re-run the command to retry — the last write wins and no data was lost from the other process.',
+      'CONCURRENCY_ERROR',
+    );
+    this.name = 'ConcurrencyError';
+  }
+}
+
+/**
  * Extract a human-readable message from an unknown error value.
  */
 export function errorMessage(e: unknown): string {
@@ -135,6 +158,7 @@ export function resolveErrorCode(err: unknown): import('../formatters/json.js').
   // Check our custom error classes first
   if (err instanceof ConfigurationError) return 'CONFIGURATION';
   if (err instanceof ValidationError) return 'VALIDATION';
+  if (err instanceof ConcurrencyError) return 'CONCURRENCY';
 
   // Check HTTP status codes (Octokit errors)
   const status = getHttpStatusCode(err);

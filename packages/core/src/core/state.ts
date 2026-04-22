@@ -28,7 +28,7 @@ import {
 import * as repoScoring from './repo-score-manager.js';
 import type { Stats } from './repo-score-manager.js';
 import { debug, warn } from './logger.js';
-import { errorMessage, ConfigurationError } from './errors.js';
+import { errorMessage, ConfigurationError, ConcurrencyError } from './errors.js';
 import { GistStateStore, type OctokitLike } from './gist-state-store.js';
 import { getStatePath, getStateCachePath } from './utils.js';
 
@@ -205,8 +205,19 @@ export class StateManager {
    *
    * In Gist mode, writes to a local cache file (not the main state file) so the Gist
    * remains the source of truth. Use `checkpoint()` to push state to the Gist.
+   *
+   * Local-file mode uses optimistic compare-and-swap: if another process has
+   * written `state.json` since we last loaded/saved, `saveState` throws
+   * `ConcurrencyError`. See issue #1030.
+   *
+   * @throws ConcurrencyError (local file mode only) when the on-disk state
+   *   was modified externally between this StateManager's last load/save
+   *   and now. Callers that tolerate silent merge can set
+   *   `{ allowReloadAndLoseMutation: true }` to downgrade the error into a
+   *   warning — but note that doing so abandons any in-memory mutation
+   *   made since the last load. Fail-loud (the default) is preferred.
    */
-  save(): void {
+  save(options: { allowReloadAndLoseMutation?: boolean } = {}): void {
     this.state.lastRunAt = new Date().toISOString();
 
     if (this.inMemoryOnly) {
@@ -216,6 +227,10 @@ export class StateManager {
     if (this.gistStore) {
       // In Gist mode, write to local cache (not main state file).
       // The Gist is the source of truth; local cache is for fallback.
+      // Intentionally NO compare-and-swap on this cache path — two processes
+      // racing on state-cache.json can clobber each other, but the next
+      // `refreshFromGist()` or `checkpoint()` re-syncs from the authoritative
+      // Gist. The trade-off is a transiently-stale offline bootstrap (#1030).
       try {
         atomicWriteFileSync(getStateCachePath(), JSON.stringify(this.state, null, 2), 0o600);
       } catch (err) {
@@ -226,8 +241,17 @@ export class StateManager {
       return;
     }
 
-    // Local file mode (existing behavior)
-    this.lastLoadedMtimeMs = saveState(this.state);
+    // Local file mode with optimistic compare-and-swap.
+    try {
+      this.lastLoadedMtimeMs = saveState(this.state, this.lastLoadedMtimeMs);
+    } catch (err) {
+      if (err instanceof ConcurrencyError && options.allowReloadAndLoseMutation) {
+        warn(MODULE, `Concurrent external write detected; reloading and discarding in-memory mutation. ${err.message}`);
+        this.reloadIfChanged();
+        return;
+      }
+      throw err;
+    }
   }
 
   /** Push current state to Gist (async). Call at well-defined moments (end of daily, after claim). */

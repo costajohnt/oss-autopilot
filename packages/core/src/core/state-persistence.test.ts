@@ -5,6 +5,8 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { StateManager, acquireLock, releaseLock, atomicWriteFileSync, resetStateManager } from './state.js';
+import { saveState, createFreshState } from './state-persistence.js';
+import { ConcurrencyError } from './errors.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -822,5 +824,129 @@ describe('reloadStateIfChanged additional edge cases', () => {
     expect(sm.reloadIfChanged()).toBe(false);
 
     fs.chmodSync(statePath, 0o600);
+  });
+});
+
+// ── Cross-process optimistic concurrency (#1030) ────────────────────────────
+//
+// The advisory lock in saveState() blocks concurrent *writers*, but before
+// this fix there was no guard against the classic lost-update race:
+// process A and process B both load at time T1, both mutate in memory, both
+// queue behind the lock, and whichever writes last silently clobbers the
+// other's changes. saveState now compares the caller-supplied expected mtime
+// against the on-disk mtime inside the lock and throws ConcurrencyError on
+// mismatch. StateManager.save() propagates that error up.
+describe('saveState optimistic compare-and-swap (#1030)', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-cas-'));
+  });
+
+  afterEach(() => {
+    resetStateManager();
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('saves normally when no external write happened between load and save', () => {
+    const sm = new StateManager(false);
+    sm.updateConfig({ githubUsername: 'alice' });
+    sm.save(); // seeds the file + lastLoadedMtimeMs
+
+    // In-process mutate + save again — mtime still matches because we
+    // were the last writer.
+    sm.updateConfig({ githubUsername: 'bob' });
+    expect(() => sm.save()).not.toThrow();
+
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(written.config.githubUsername).toBe('bob');
+  });
+
+  it('throws ConcurrencyError when another process wrote between load and save', async () => {
+    // Seed state + capture loaded mtime.
+    const sm = new StateManager(false);
+    sm.updateConfig({ githubUsername: 'alice' });
+    sm.save();
+
+    // Simulate another process writing the file.
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const raw = fs.readFileSync(statePath, 'utf-8');
+    const otherProcState = JSON.parse(raw);
+    otherProcState.config.githubUsername = 'bob-wrote-this-from-another-process';
+    // Sleep briefly so the new mtime is meaningfully different from the
+    // last write. macOS tmpfs has low mtime resolution; a short sleep +
+    // utimesSync forces a detectable new mtime.
+    await new Promise((r) => setTimeout(r, 50));
+    fs.writeFileSync(statePath, JSON.stringify(otherProcState, null, 2), { mode: 0o600 });
+    const future = new Date(Date.now() + 1000);
+    fs.utimesSync(statePath, future, future);
+
+    // updateConfig calls autoSave → save → saveState, which throws.
+    // Wrap the mutation itself since that's where the throw originates.
+    expect(() => sm.updateConfig({ githubUsername: 'alice-would-clobber-bob' })).toThrow(ConcurrencyError);
+
+    // The on-disk file still has bob's write — alice did NOT clobber it.
+    const final = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(final.config.githubUsername).toBe('bob-wrote-this-from-another-process');
+  });
+
+  it('saveState bypasses the check when expectedMtimeMs is null (first write path)', () => {
+    const fresh = createFreshState();
+    // No file on disk; passing null means "skip CAS" — should succeed.
+    expect(() => saveState(fresh, null)).not.toThrow();
+    const statePath = path.join(mockTmpDir, 'state.json');
+    expect(fs.existsSync(statePath)).toBe(true);
+  });
+
+  it('saveState with matching expectedMtimeMs succeeds, with mismatching throws', async () => {
+    const fresh = createFreshState();
+    const firstMtime = saveState(fresh, null);
+    expect(firstMtime).toBeGreaterThan(0);
+
+    // Matching mtime — writes fine.
+    const secondMtime = saveState(fresh, firstMtime);
+    expect(secondMtime).toBeGreaterThan(0);
+
+    // Force the on-disk mtime forward without going through saveState.
+    const statePath = path.join(mockTmpDir, 'state.json');
+    await new Promise((r) => setTimeout(r, 50));
+    const future = new Date(Date.now() + 2000);
+    fs.utimesSync(statePath, future, future);
+
+    // Now saveState with the stale mtime must throw.
+    expect(() => saveState(fresh, secondMtime)).toThrow(ConcurrencyError);
+  });
+
+  it('allowReloadAndLoseMutation downgrades ConcurrencyError to a reload warning', async () => {
+    const sm = new StateManager(false);
+    sm.updateConfig({ githubUsername: 'alice' });
+    sm.save();
+
+    // External writer races in.
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const other = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    other.config.githubUsername = 'carol';
+    await new Promise((r) => setTimeout(r, 50));
+    fs.writeFileSync(statePath, JSON.stringify(other, null, 2), { mode: 0o600 });
+    const future = new Date(Date.now() + 1000);
+    fs.utimesSync(statePath, future, future);
+
+    // Directly mutate state without going through autoSave so the
+    // mutation survives long enough to call save() explicitly with the
+    // bypass flag. This simulates a caller that has set the flag up-front
+    // for idempotent / observer-only mutations.
+    const st = sm.getState() as typeof sm.getState extends () => infer S ? S : never;
+    // Typing gymnastics — getState returns Readonly<AgentState>, but we
+    // need to mutate for the test. Cast through any.
+    (sm.getState() as unknown as { config: { githubUsername: string } }).config.githubUsername =
+      'alice-overwrite-attempt';
+    void st;
+
+    expect(() => sm.save({ allowReloadAndLoseMutation: true })).not.toThrow();
+
+    // In-memory state now reflects the external write, NOT our stale mutation.
+    expect(sm.getState().config.githubUsername).toBe('carol');
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(onDisk.config.githubUsername).toBe('carol');
   });
 });

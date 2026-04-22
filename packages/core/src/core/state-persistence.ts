@@ -9,7 +9,7 @@ import * as path from 'path';
 import { AgentState } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
 import { getStatePath, getBackupDir, getDataDir } from './utils.js';
-import { errorMessage } from './errors.js';
+import { errorMessage, ConcurrencyError } from './errors.js';
 import { debug, warn } from './logger.js';
 
 const MODULE = 'state';
@@ -490,9 +490,22 @@ function cleanupBackups(): void {
 /**
  * Persist state to disk, creating a timestamped backup of the previous
  * state file first. Retains at most 10 backup files.
+ *
+ * When `expectedMtimeMs` is provided (non-null, non-zero), implements
+ * optimistic compare-and-swap: if the on-disk file has been modified since
+ * the caller last loaded it, throws `ConcurrencyError` instead of
+ * overwriting. This prevents the classic read-modify-write lost-update
+ * race across processes (see issue #1030). Pass `null` / `0` to disable
+ * the check (first write, or when the caller has already reloaded).
+ *
+ * The check runs *inside* the advisory lock so the compare-and-swap is
+ * atomic with respect to the write.
+ *
  * @returns The file's mtime after writing (for change detection).
+ * @throws ConcurrencyError when `expectedMtimeMs` is provided and the
+ *   on-disk mtime no longer matches.
  */
-export function saveState(state: Readonly<AgentState>): number {
+export function saveState(state: Readonly<AgentState>, expectedMtimeMs: number | null = null): number {
   const statePath = getStatePath();
   const lockPath = statePath + '.lock';
   const backupDir = getBackupDir();
@@ -501,6 +514,16 @@ export function saveState(state: Readonly<AgentState>): number {
   acquireLock(lockPath);
 
   try {
+    // Compare-and-swap: reject the write if the file changed externally
+    // between the caller's last load and now. Zero/null bypasses the
+    // check for first writes and Gist-mode local-cache paths.
+    if (expectedMtimeMs !== null && expectedMtimeMs > 0 && fs.existsSync(statePath)) {
+      const currentMtimeMs = safeGetMtimeMs(statePath);
+      if (currentMtimeMs !== expectedMtimeMs) {
+        throw new ConcurrencyError(expectedMtimeMs, currentMtimeMs);
+      }
+    }
+
     // Create backup of existing state (best-effort, non-fatal)
     try {
       if (fs.existsSync(statePath)) {

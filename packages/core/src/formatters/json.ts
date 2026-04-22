@@ -17,6 +17,7 @@ export type ErrorCode =
   | 'NETWORK'
   | 'NOT_FOUND'
   | 'STATE_CORRUPTED'
+  | 'CONCURRENCY'
   | 'UNKNOWN';
 
 export interface JsonOutput<T = unknown> {
