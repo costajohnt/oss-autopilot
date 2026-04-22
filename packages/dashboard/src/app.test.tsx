@@ -5,10 +5,15 @@ import { makePR, makeDashboardData } from './test-helpers';
 import type { DashboardData } from './types';
 
 function mockFetchOk(data: DashboardData) {
+  const headers = new Headers();
+  // Mirror production: every GET /api/data response carries a CSRF token so
+  // subsequent POSTs get a cached token without re-priming. See #1031.
+  headers.set('X-CSRF-Token', 'test-token');
   vi.stubGlobal(
     'fetch',
     vi.fn().mockResolvedValue({
       ok: true,
+      headers,
       json: () => Promise.resolve(data),
     }),
   );
@@ -20,6 +25,7 @@ function mockFetchError(status: number, body?: { error: string }) {
     vi.fn().mockResolvedValue({
       ok: false,
       status,
+      headers: new Headers(),
       json: () => (body ? Promise.resolve(body) : Promise.reject(new Error('no body'))),
     }),
   );
@@ -307,14 +313,20 @@ describe('App', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
     const data = makeDashboardData();
+    const hdr = new Headers({ 'X-CSRF-Token': 'test-token' });
     const fetchMock = vi
       .fn()
-      // 1. Initial GET /api/data — success
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(data) })
+      // 1. Initial GET /api/data — success (includes CSRF token header)
+      .mockResolvedValueOnce({ ok: true, headers: hdr, json: () => Promise.resolve(data) })
       // 2. Auto-refresh POST /api/refresh — success (silent background refresh after 5s)
-      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(data) })
+      .mockResolvedValueOnce({ ok: true, headers: hdr, json: () => Promise.resolve(data) })
       // 3. Manual refresh POST /api/refresh — failure (triggered by button click)
-      .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({ error: 'Refresh failed' }) });
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        headers: new Headers(),
+        json: () => Promise.resolve({ error: 'Refresh failed' }),
+      });
     vi.stubGlobal('fetch', fetchMock);
 
     const { container } = render(<App />);
@@ -359,10 +371,11 @@ describe('App', () => {
       const initial = makeDashboardData({ activePRs: [pr] });
       const afterShelve = makeDashboardData({ activePRs: [pr], shelvedPRUrls: [pr.url] });
 
+      const hdr = new Headers({ 'X-CSRF-Token': 'test-token' });
       const fetchMock = vi
         .fn()
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(initial) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(afterShelve) });
+        .mockResolvedValueOnce({ ok: true, headers: hdr, json: () => Promise.resolve(initial) })
+        .mockResolvedValueOnce({ ok: true, headers: hdr, json: () => Promise.resolve(afterShelve) });
       vi.stubGlobal('fetch', fetchMock);
 
       const { container } = render(<App />);
@@ -395,10 +408,11 @@ describe('App', () => {
       });
       const initial = makeDashboardData({ activePRs: [pr] });
 
+      const hdr = new Headers({ 'X-CSRF-Token': 'test-token' });
       const fetchMock = vi
         .fn()
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(initial) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(initial) });
+        .mockResolvedValueOnce({ ok: true, headers: hdr, json: () => Promise.resolve(initial) })
+        .mockResolvedValueOnce({ ok: true, headers: hdr, json: () => Promise.resolve(initial) });
       vi.stubGlobal('fetch', fetchMock);
 
       const { container } = render(<App />);
@@ -423,11 +437,17 @@ describe('App', () => {
       const pr = makePR();
       const initial = makeDashboardData({ activePRs: [pr] });
 
+      const hdr = new Headers({ 'X-CSRF-Token': 'test-token' });
       const fetchMock = vi
         .fn()
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(initial) })
-        .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({ error: 'Boom' }) })
-        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(initial) });
+        .mockResolvedValueOnce({ ok: true, headers: hdr, json: () => Promise.resolve(initial) })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          headers: new Headers(),
+          json: () => Promise.resolve({ error: 'Boom' }),
+        })
+        .mockResolvedValueOnce({ ok: true, headers: hdr, json: () => Promise.resolve(initial) });
       vi.stubGlobal('fetch', fetchMock);
 
       const { container } = render(<App />);

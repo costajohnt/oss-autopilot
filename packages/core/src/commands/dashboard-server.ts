@@ -9,6 +9,7 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { getStateManager, getGitHubToken, getCLIVersion, applyStatusOverrides } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
@@ -228,14 +229,55 @@ function setSecurityHeaders(res: http.ServerResponse): void {
 }
 
 /**
+ * Valid Host header values for this server — used for both Origin checks
+ * (strips the `http://` scheme) and Host-header DNS-rebinding checks.
+ */
+function allowedHostsFor(port: number): string[] {
+  return [`localhost:${port}`, `127.0.0.1:${port}`, `oss.localhost:${port}`];
+}
+
+/**
  * Validate that POST requests originate from the local dashboard.
- * Returns true if the Origin is acceptable, false otherwise.
+ *
+ * Returns true only if the `Origin` header is present AND matches the
+ * loopback allow-list. A missing `Origin` now returns false — previously it
+ * returned true to allow non-browser same-origin calls, but that let any
+ * local process (curl, scripts) POST to /api/action and /api/refresh. See
+ * issue #1031.
  */
 function isValidOrigin(req: http.IncomingMessage, port: number): boolean {
   const origin = req.headers['origin'];
-  if (!origin) return true; // No Origin header = same-origin request (non-browser or same-page)
-  const allowed = [`http://localhost:${port}`, `http://127.0.0.1:${port}`, `http://oss.localhost:${port}`];
+  if (typeof origin !== 'string') return false;
+  const allowed = allowedHostsFor(port).map((h) => `http://${h}`);
   return allowed.includes(origin);
+}
+
+/**
+ * Validate the `Host` header against the loopback allow-list.
+ *
+ * Blocks DNS-rebinding attacks: a victim browser resolves an attacker domain
+ * to 127.0.0.1, reaches this server, and the `Host` header carries the
+ * attacker's hostname. Rejecting non-loopback Host headers closes that path
+ * for both GET /api/data (data exfil) and the POST endpoints.
+ */
+function isValidHost(req: http.IncomingMessage, port: number): boolean {
+  const host = req.headers['host'];
+  if (typeof host !== 'string') return false;
+  return allowedHostsFor(port).includes(host);
+}
+
+/**
+ * Validate the CSRF token header for state-mutating POST endpoints.
+ */
+function isValidCsrfToken(req: http.IncomingMessage, expected: string): boolean {
+  const token = req.headers['x-csrf-token'];
+  if (typeof token !== 'string' || token.length !== expected.length) return false;
+  // Constant-time comparison to avoid leaking token bytes via timing.
+  try {
+    return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -266,6 +308,15 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
   const stateManager = getStateManager();
   const resolvedAssetsDir = path.resolve(assetsDir);
+
+  // ── CSRF token ──────────────────────────────────────────────────────────
+  // Fresh per server-start. Exposed to the SPA via X-CSRF-Token on every
+  // /api/data response; required back on X-CSRF-Token for state-mutating
+  // POST endpoints. Prevents local non-browser processes (curl, scripts)
+  // from invoking /api/action and /api/refresh even when they guess the
+  // Origin header — the token itself is only reachable by calling
+  // /api/data, which enforces the Host check.
+  const csrfToken = crypto.randomBytes(32).toString('hex');
 
   // ── Cached data ──────────────────────────────────────────────────────────
   // Start immediately with state.json data (written by the daily check that
@@ -303,6 +354,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     const url = req.url || '/';
 
     try {
+      // ── Host-header check (DNS-rebinding defense) ──────────────────────
+      // Applied to every request including static files so a rebound
+      // attacker hostname cannot read SPA assets or API responses.
+      if (url.startsWith('/api/') && !isValidHost(req, actualPort)) {
+        sendError(res, 403, 'Invalid host');
+        return;
+      }
+
       // ── API routes ─────────────────────────────────────────────────────
       if (url === '/api/data' && method === 'GET') {
         const check = dataLimiter.check();
@@ -311,6 +370,9 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
           sendError(res, 429, 'Too many requests');
           return;
         }
+        // Expose the CSRF token to the SPA on every data fetch so the client
+        // can attach it on subsequent POSTs. Fresh fetch → fresh token view.
+        res.setHeader('X-CSRF-Token', csrfToken);
         // Re-read state if modified externally (file mtime for local, Gist API for Gist mode)
         let stateChanged = false;
         if (stateManager.isGistMode()) {
@@ -337,14 +399,21 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       }
 
       if (url === '/api/action' && method === 'POST') {
-        if (!isValidOrigin(req, actualPort)) {
-          sendError(res, 403, 'Invalid origin');
-          return;
-        }
+        // Rate limit BEFORE auth checks so a local attacker cannot flood
+        // invalid-CSRF requests without consuming their quota. The Host
+        // check above already ran; still need Origin + CSRF below.
         const check = actionLimiter.check();
         if (!check.allowed) {
           res.setHeader('Retry-After', String(check.retryAfterSeconds));
           sendError(res, 429, 'Too many requests');
+          return;
+        }
+        if (!isValidOrigin(req, actualPort)) {
+          sendError(res, 403, 'Invalid origin');
+          return;
+        }
+        if (!isValidCsrfToken(req, csrfToken)) {
+          sendError(res, 403, 'Missing or invalid CSRF token');
           return;
         }
         await handleAction(req, res);
@@ -352,14 +421,18 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       }
 
       if (url === '/api/refresh' && method === 'POST') {
-        if (!isValidOrigin(req, actualPort)) {
-          sendError(res, 403, 'Invalid origin');
-          return;
-        }
         const check = refreshLimiter.check();
         if (!check.allowed) {
           res.setHeader('Retry-After', String(check.retryAfterSeconds));
           sendError(res, 429, 'Too many requests');
+          return;
+        }
+        if (!isValidOrigin(req, actualPort)) {
+          sendError(res, 403, 'Invalid origin');
+          return;
+        }
+        if (!isValidCsrfToken(req, csrfToken)) {
+          sendError(res, 403, 'Missing or invalid CSRF token');
           return;
         }
         await handleRefresh(req, res);
