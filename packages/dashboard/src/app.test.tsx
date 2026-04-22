@@ -1,5 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, waitFor } from '@testing-library/preact';
+
+// The lazy chart panel uses dynamic import('./chart-panel') which pulls in
+// Chart.js — its browser-only canvas init can throw in jsdom and bubble into
+// the ErrorBoundary, masking the panels the test actually wants to probe
+// (stat pills, PR lists, route navigation). Stub the lazy panel with a
+// no-op so every app test renders the deterministic tree. See #1051.
+vi.mock('./components/chart-panel-lazy', () => ({
+  LazyChartPanel: () => null,
+}));
+
 import { App } from './app';
 import { makePR, makeDashboardData } from './test-helpers';
 import type { DashboardData } from './types';

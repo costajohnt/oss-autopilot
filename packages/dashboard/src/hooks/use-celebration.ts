@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import confetti from 'canvas-confetti';
 
 /**
  * Transient state describing an active celebration.
@@ -12,6 +11,29 @@ import confetti from 'canvas-confetti';
 export interface Celebration {
   message: string;
   shownAt: number;
+}
+
+// `canvas-confetti` is ~20 KB and only fires on merge-count increase or manual
+// trigger (most page loads never call it). Dynamically import on first fire
+// so the initial chunk stays lean (#1051). Module-scope cache + in-flight
+// promise guarantee one fetch across all call sites.
+type ConfettiFn = (opts: Record<string, unknown>) => void;
+let confettiFn: ConfettiFn | null = null;
+let confettiInflight: Promise<ConfettiFn | null> | null = null;
+
+function loadConfetti(): Promise<ConfettiFn | null> {
+  if (confettiFn) return Promise.resolve(confettiFn);
+  if (confettiInflight) return confettiInflight;
+  confettiInflight = import('canvas-confetti')
+    .then((mod) => {
+      confettiFn = mod.default as ConfettiFn;
+      return confettiFn;
+    })
+    .catch((err) => {
+      console.warn('[useCelebration] canvas-confetti import failed, skipping animation:', err);
+      return null;
+    });
+  return confettiInflight;
 }
 
 const STORAGE_KEY = 'oss-autopilot-merged-count';
@@ -58,7 +80,7 @@ function writeStoredCount(count: number): void {
  * Preact's commit phase and could blank the dashboard. Swallow confetti
  * failures — the toast is the canonical feedback, the animation is decorative.
  */
-function fireConfetti(): void {
+function fireConfetti(confetti: ConfettiFn): void {
   const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
   const end = Date.now() + 800;
 
@@ -85,14 +107,18 @@ function fireConfetti(): void {
 }
 
 /**
- * Fire confetti unless the user has requested reduced motion. `fireConfetti`
- * already swallows its own synchronous throws (see the try/catch in `frame()`
- * above), so callers don't need to wrap this in their own try/catch.
+ * Fire confetti unless the user has requested reduced motion. Dynamically
+ * imports `canvas-confetti` on first fire so page loads that never trigger
+ * a celebration don't pay the download cost (#1051). Any import failure is
+ * swallowed — the toast is canonical, the animation is decorative.
  */
 function playConfettiIfAllowed(): void {
   const reducedMotion =
     typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
-  if (!reducedMotion) fireConfetti();
+  if (reducedMotion) return;
+  loadConfetti().then((fn) => {
+    if (fn) fireConfetti(fn);
+  });
 }
 
 export function useCelebration(mergedCount: number | undefined): {
