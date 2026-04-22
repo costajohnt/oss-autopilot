@@ -1157,6 +1157,22 @@ a:hover {
   color: var(--base);
 }
 
+/* Non-fatal "showing partial data" notice — uses amber/warning palette rather
+ * than red, so users can distinguish it from hard errors that block actions.
+ * See #1035.
+ */
+.partial-banner {
+  display: flex;
+  align-items: center;
+  padding: var(--sp-3) var(--sp-4);
+  margin: 0 0 var(--sp-3);
+  border-radius: var(--radius);
+  background: var(--amber-dim);
+  color: var(--text-primary);
+  border-left: 3px solid var(--amber);
+  font-size: 0.85rem;
+}
+
 .action-error {
   width: 100%;
   margin: 0 0 var(--sp-2);

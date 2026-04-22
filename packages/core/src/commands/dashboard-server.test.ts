@@ -447,6 +447,23 @@ describe('dashboard-server', () => {
       expect(Array.isArray(data.shelvedPRUrls)).toBe(true);
     });
 
+    it('buildDashboardJson sets partialFailures only when non-empty (#1035)', () => {
+      // Omitted/undefined → no field on the response. Empty array → no field.
+      // Non-empty → field present. This keeps the wire format minimal and
+      // lets the SPA guard via `data.partialFailures?.length > 0`.
+      const digest = makeDigest();
+      const state = makeState({ lastDigest: digest });
+
+      const none = buildDashboardJson(digest, state, []);
+      expect(none.partialFailures).toBeUndefined();
+
+      const empty = buildDashboardJson(digest, state, [], undefined, undefined, []);
+      expect(empty.partialFailures).toBeUndefined();
+
+      const some = buildDashboardJson(digest, state, [], undefined, undefined, ['fetch recently merged PRs']);
+      expect(some.partialFailures).toEqual(['fetch recently merged PRs']);
+    });
+
     it('should derive shelvedPRUrls from digest.shelvedPRs, not config.shelvedPRUrls (#981)', () => {
       // Dashboard card shows `stats.shelvedPRs`, which counts digest.shelvedPRs.
       // The response's shelvedPRUrls must use the same source so the PR list
@@ -1069,6 +1086,7 @@ describe('dashboard-server', () => {
         commentedIssues: [],
         allMergedPRs: [],
         allClosedPRs: [],
+        partialFailures: [],
       });
 
       const result = await sendRequest('POST', '/api/refresh');

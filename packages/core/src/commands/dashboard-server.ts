@@ -125,6 +125,7 @@ export function buildDashboardJson(
   commentedIssues: CommentedIssue[],
   allMergedPRs?: MergedPR[],
   allClosedPRs?: ClosedPR[],
+  partialFailures?: string[],
 ): DashboardJsonData {
   const prsByRepo = computePRsByRepo(digest, state);
   const topRepos = computeTopRepos(prsByRepo);
@@ -180,6 +181,7 @@ export function buildDashboardJson(
     allClosedPRs: filteredClosedPRs,
     repoMetadata,
     vettedIssues,
+    partialFailures: partialFailures && partialFailures.length > 0 ? partialFailures : undefined,
   };
 }
 
@@ -324,6 +326,12 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   // cache after the port is bound, so the startup poller sees us in time.
   let cachedDigest: DailyDigest = stateManager.getState().lastDigest!;
   let cachedCommentedIssues: CommentedIssue[] = [];
+  // Persist the last-known partialFailures across rebuild requests (#1035).
+  // Cleared only when a fresh fetchDashboardData returns zero failures;
+  // re-threaded into every buildDashboardJson call so the SPA banner does
+  // not disappear when /api/data rebuilds after a state change or after a
+  // POST /api/action completes.
+  let cachedPartialFailures: string[] | undefined = undefined;
 
   if (!cachedDigest) {
     throw new Error(
@@ -335,7 +343,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   let cachedJsonData: DashboardJsonData;
   let cachedIssueListMtimeMs = getIssueListMtimeMs();
   try {
-    cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+    cachedJsonData = buildDashboardJson(
+      cachedDigest,
+      stateManager.getState(),
+      cachedCommentedIssues,
+      undefined,
+      undefined,
+      cachedPartialFailures,
+    );
   } catch (error) {
     throw new Error(
       `Failed to build dashboard data: ${errorMessage(error)}. State data may be corrupted — try running: daily --json`,
@@ -385,7 +400,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         const issueListChanged = currentIssueListMtimeMs !== cachedIssueListMtimeMs;
         if (stateChanged || issueListChanged) {
           try {
-            cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+            cachedJsonData = buildDashboardJson(
+              cachedDigest,
+              stateManager.getState(),
+              cachedCommentedIssues,
+              undefined,
+              undefined,
+              cachedPartialFailures,
+            );
             cachedIssueListMtimeMs = currentIssueListMtimeMs;
           } catch (error) {
             warn(MODULE, `Failed to rebuild dashboard data after state reload: ${errorMessage(error)}`);
@@ -518,8 +540,18 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       return;
     }
 
-    // Rebuild dashboard data from cached digest + updated state
-    cachedJsonData = buildDashboardJson(cachedDigest, stateManager.getState(), cachedCommentedIssues);
+    // Rebuild dashboard data from cached digest + updated state. Persist
+    // the last-known partialFailures across action rebuilds (#1035) so the
+    // SPA banner survives user interactions until the next successful
+    // refresh clears it.
+    cachedJsonData = buildDashboardJson(
+      cachedDigest,
+      stateManager.getState(),
+      cachedCommentedIssues,
+      undefined,
+      undefined,
+      cachedPartialFailures,
+    );
     cachedIssueListMtimeMs = getIssueListMtimeMs();
 
     sendJson(res, 200, cachedJsonData);
@@ -543,12 +575,16 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       const result = await fetchDashboardData(currentToken);
       cachedDigest = result.digest;
       cachedCommentedIssues = result.commentedIssues;
+      // Update the persistent banner signal — clear on a clean refresh,
+      // set when one or more sub-fetches degraded. See #1035.
+      cachedPartialFailures = result.partialFailures.length > 0 ? result.partialFailures : undefined;
       cachedJsonData = buildDashboardJson(
         cachedDigest,
         stateManager.getState(),
         cachedCommentedIssues,
         result.allMergedPRs,
         result.allClosedPRs,
+        cachedPartialFailures,
       );
       cachedIssueListMtimeMs = getIssueListMtimeMs();
       sendJson(res, 200, cachedJsonData);
@@ -673,12 +709,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         }
         cachedDigest = result.digest;
         cachedCommentedIssues = result.commentedIssues;
+        cachedPartialFailures = result.partialFailures.length > 0 ? result.partialFailures : undefined;
         cachedJsonData = buildDashboardJson(
           cachedDigest,
           stateManager.getState(),
           cachedCommentedIssues,
           result.allMergedPRs,
           result.allClosedPRs,
+          cachedPartialFailures,
         );
         cachedIssueListMtimeMs = getIssueListMtimeMs();
         warn(MODULE, 'Background data refresh complete');

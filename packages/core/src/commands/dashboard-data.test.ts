@@ -510,6 +510,23 @@ describe('mergeMonthlyCounts', () => {
     expect(existing).toEqual({ '2026-01': 5 });
     expect(fresh).toEqual({ '2026-02': 10 });
   });
+
+  it('does not shrink an existing month when fresh count is lower (#1035)', () => {
+    // Scenario: fresh fetch was capped at 3 pages and only covered a partial
+    // window of an older month. Without anti-regression, the smaller partial
+    // count would silently overwrite the authoritative historical count.
+    const existing = { '2025-11': 42, '2026-01': 9 };
+    const fresh = { '2025-11': 8, '2026-01': 11 };
+    const result = mergeMonthlyCounts(existing, fresh);
+    expect(result).toEqual({ '2025-11': 42, '2026-01': 11 });
+  });
+
+  it('takes the maximum when fresh equals existing (identity)', () => {
+    const existing = { '2025-11': 42 };
+    const fresh = { '2025-11': 42 };
+    const result = mergeMonthlyCounts(existing, fresh);
+    expect(result).toEqual({ '2025-11': 42 });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1119,5 +1136,36 @@ describe('fetchDashboardData', () => {
     expect(mockAddClosedPRs).toHaveBeenCalled();
     expect(mockWarn).toHaveBeenCalledWith('dashboard-data', expect.stringContaining('Failed to store closed PRs'));
     expect(result.digest).toBeDefined();
+  });
+
+  // ── partialFailures surfacing (#1035) ────────────────────────────────
+
+  it('returns empty partialFailures when all sub-fetches succeed', async () => {
+    const result = await fetchDashboardData('test-token');
+    expect(result.partialFailures).toEqual([]);
+  });
+
+  it('records the failing label in partialFailures when a sub-fetch degrades', async () => {
+    mockFetchRecentlyMergedPRs.mockRejectedValue(new Error('network timeout'));
+    const result = await fetchDashboardData('test-token');
+    expect(result.partialFailures).toContain('fetch recently merged PRs');
+  });
+
+  it('accumulates multiple labels when several sub-fetches fail', async () => {
+    mockFetchRecentlyMergedPRs.mockRejectedValue(new Error('network error'));
+    mockFetchRecentlyClosedPRs.mockRejectedValue(new Error('network error'));
+    mockFetchUserMergedPRCounts.mockRejectedValue(new Error('search API error'));
+    const result = await fetchDashboardData('test-token');
+    expect(result.partialFailures).toEqual(
+      expect.arrayContaining(['fetch recently merged PRs', 'fetch recently closed PRs', 'fetch merged PR counts']),
+    );
+    expect(result.partialFailures.length).toBe(3);
+  });
+
+  it('does not record a rate-limit-or-auth rejection in partialFailures (re-throws instead)', async () => {
+    const rateLimitError = new Error('API rate limit exceeded');
+    mockFetchRecentlyMergedPRs.mockRejectedValue(rateLimitError);
+    mockIsRateLimitOrAuthError.mockImplementation((err: unknown) => err === rateLimitError);
+    await expect(fetchDashboardData('test-token')).rejects.toThrow('API rate limit exceeded');
   });
 });
