@@ -60,4 +60,10 @@ export interface DashboardData {
   allClosedPRs: ClosedPR[];
   repoMetadata?: Record<string, RepoMetadataEntry>;
   vettedIssues?: ParseIssueListOutput | null;
+  /**
+   * Labels of non-critical sub-fetches that degraded to empty fallbacks
+   * on the last refresh. Non-empty → UI should warn the user that slices
+   * of the response are stale/zero'd rather than authoritative (#1035).
+   */
+  partialFailures?: string[];
 }

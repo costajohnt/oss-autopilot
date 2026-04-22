@@ -5,7 +5,7 @@
  */
 
 import { getStateManager, PRMonitor, IssueConversationMonitor, getOctokit } from '../core/index.js';
-import { errorMessage, isRateLimitOrAuthError, nonFatalCatch } from '../core/errors.js';
+import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult, fetchMergedPRsSince, fetchClosedPRsSince } from '../core/github-stats.js';
 import { parseGitHubUrl } from '../core/utils.js';
@@ -63,6 +63,14 @@ export interface DashboardJsonData {
   vettedIssues?: ParseIssueListOutput | null;
   offline?: boolean;
   lastUpdated?: string;
+  /**
+   * Labels of sub-fetches that degraded to empty fallbacks during this data
+   * build. Non-empty means one or more background calls failed and the
+   * corresponding sections of the response are approximations (stale or
+   * zero'd) rather than authoritative. The SPA surfaces this as a banner
+   * so users know the dashboard is showing partial data. See #1035.
+   */
+  partialFailures?: string[];
 }
 
 /** Action types the dashboard can request via POST /api/action. */
@@ -114,8 +122,15 @@ export function buildDashboardStats(
 /**
  * Merge fresh API counts into existing stored counts.
  * Months present in the fresh data are updated; months only in the existing data are preserved.
- * This prevents historical data loss when the API returns incomplete results
- * (e.g. due to pagination limits or transient failures).
+ *
+ * Anti-regression guard (#1035): when the fresh count for a given month is
+ * smaller than the already-stored count for that month, we keep the larger
+ * value. This matters when the fresh fetch was capped (pagination limits,
+ * 1000-result Search API ceiling, or partial failures) and would otherwise
+ * silently overwrite authoritative historical data with a partial window.
+ * The trade-off: a month that genuinely shrinks (e.g., user deleted a merged
+ * PR reference remotely) cannot be decremented via this path — but that is
+ * a rare case, and the alternative is silent decay of historical analytics.
  */
 export function mergeMonthlyCounts(
   existing: Record<string, number>,
@@ -123,7 +138,8 @@ export function mergeMonthlyCounts(
 ): Record<string, number> {
   const merged = { ...existing };
   for (const [month, count] of Object.entries(fresh)) {
-    merged[month] = count;
+    const current = merged[month];
+    merged[month] = current === undefined ? count : Math.max(current, count);
   }
   return merged;
 }
@@ -182,6 +198,15 @@ export interface DashboardFetchResult {
   commentedIssues: CommentedIssue[];
   allMergedPRs: MergedPR[];
   allClosedPRs: ClosedPR[];
+  /**
+   * Labels of non-critical sub-fetches that degraded to empty fallbacks
+   * during this run. Empty array means every fetch succeeded. Non-empty
+   * means one or more slices of the returned data are approximations —
+   * callers surface this to the user so "0 recently merged" does not look
+   * authoritative when it is actually "fetch failed, fell back to empty".
+   * See #1035.
+   */
+  partialFailures: string[];
 }
 
 /**
@@ -203,6 +228,20 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   const watermark = stateManager.getMergedPRWatermark();
   const closedWatermark = stateManager.getClosedPRWatermark();
 
+  // Track which non-critical sub-fetches degraded to fallbacks so the SPA
+  // can surface a "partial data" banner instead of silently showing zeros.
+  // Rate-limit / auth errors still rethrow via isRateLimitOrAuthError —
+  // those abort the whole run, not a partial surface.
+  const partialFailures: string[] = [];
+  const trackingCatch = <T>(label: string, fallback: T) => {
+    return (err: unknown): T => {
+      if (isRateLimitOrAuthError(err)) throw err;
+      partialFailures.push(label);
+      warn(MODULE, `Failed to ${label}: ${errorMessage(err)}`);
+      return fallback;
+    };
+  };
+
   const [
     { prs, failures },
     recentlyClosedPRs,
@@ -214,24 +253,14 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     newClosedPRs,
   ] = await Promise.all([
     prMonitor.fetchUserOpenPRs(),
+    prMonitor.fetchRecentlyClosedPRs().catch(trackingCatch('fetch recently closed PRs', [] as ClosedPR[])),
+    prMonitor.fetchRecentlyMergedPRs().catch(trackingCatch('fetch recently merged PRs', [] as MergedPR[])),
     prMonitor
-      .fetchRecentlyClosedPRs()
-      .catch(nonFatalCatch({ module: MODULE, label: 'fetch recently closed PRs', fallback: [] as ClosedPR[] })),
-    prMonitor
-      .fetchRecentlyMergedPRs()
-      .catch(nonFatalCatch({ module: MODULE, label: 'fetch recently merged PRs', fallback: [] as MergedPR[] })),
-    prMonitor.fetchUserMergedPRCounts(starFilter).catch(
-      nonFatalCatch({
-        module: MODULE,
-        label: 'fetch merged PR counts',
-        fallback: emptyPRCountsResult<{ count: number; lastMergedAt: string }>(),
-      }),
-    ),
+      .fetchUserMergedPRCounts(starFilter)
+      .catch(trackingCatch('fetch merged PR counts', emptyPRCountsResult<{ count: number; lastMergedAt: string }>())),
     prMonitor
       .fetchUserClosedPRCounts(starFilter)
-      .catch(
-        nonFatalCatch({ module: MODULE, label: 'fetch closed PR counts', fallback: emptyPRCountsResult<number>() }),
-      ),
+      .catch(trackingCatch('fetch closed PR counts', emptyPRCountsResult<number>())),
     // Issue conversation fetch has custom messaging based on the error content, so it keeps its bespoke catch.
     issueMonitor.fetchCommentedIssues().catch((error) => {
       if (isRateLimitOrAuthError(error)) throw error;
@@ -240,6 +269,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
         warn(MODULE, `Issue conversation tracking requires setup: ${msg}`);
       } else {
         warn(MODULE, `Issue conversation fetch failed: ${msg}`);
+        partialFailures.push('fetch issue conversations');
       }
       return {
         issues: [] as CommentedIssue[],
@@ -247,10 +277,10 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       };
     }),
     fetchMergedPRsSince(octokit, config, watermark).catch(
-      nonFatalCatch({ module: MODULE, label: 'fetch merged PRs for storage', fallback: [] as StoredMergedPR[] }),
+      trackingCatch('fetch merged PRs for storage', [] as StoredMergedPR[]),
     ),
     fetchClosedPRsSince(octokit, config, closedWatermark).catch(
-      nonFatalCatch({ module: MODULE, label: 'fetch closed PRs for storage', fallback: [] as StoredClosedPR[] }),
+      trackingCatch('fetch closed PRs for storage', [] as StoredClosedPR[]),
     ),
   ]);
 
@@ -313,7 +343,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     throw new Error('Dashboard data fetch failed: digest was not generated');
   }
 
-  return { digest, commentedIssues, allMergedPRs, allClosedPRs };
+  return { digest, commentedIssues, allMergedPRs, allClosedPRs, partialFailures };
 }
 
 /**

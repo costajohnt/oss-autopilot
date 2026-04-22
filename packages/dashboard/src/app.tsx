@@ -145,12 +145,28 @@ function AppContent() {
     onCelebrate: triggerCelebration,
   };
 
+  // Shared partial-data banner — rendered on every route so users don't
+  // lose the "showing partial data" signal when navigating to /merged
+  // etc., where the affected arrays (allMergedPRs, allClosedPRs) are the
+  // primary content. See #1035.
+  const partialBanner =
+    data.partialFailures && data.partialFailures.length > 0 ? (
+      <div class="partial-banner" role="status" aria-live="polite">
+        <span>
+          Showing partial data — {data.partialFailures.length} background fetch
+          {data.partialFailures.length === 1 ? '' : 'es'} failed ({data.partialFailures.join(', ')}). Some sections may
+          be incomplete; try refreshing.
+        </span>
+      </div>
+    ) : null;
+
   // Route: /merged — show all merged PRs
   if (path === '/merged') {
     const mergedPRs = data.allMergedPRs ?? [];
     return (
       <div class="dashboard">
         <DashboardHeader {...headerProps} />
+        {partialBanner}
         <MergedPRList mergedPRs={mergedPRs} repoMetadata={data.repoMetadata} onBack={() => route('/')} />
         <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
       </div>
@@ -163,6 +179,7 @@ function AppContent() {
     return (
       <div class="dashboard">
         <DashboardHeader {...headerProps} />
+        {partialBanner}
         <ClosedPRList closedPRs={closedPRs} onBack={() => route('/')} />
         <CelebrationToast celebration={celebration} onDismiss={dismissCelebration} />
       </div>
@@ -174,6 +191,7 @@ function AppContent() {
     return (
       <div class="dashboard">
         <DashboardHeader {...headerProps} />
+        {partialBanner}
         {data.vettedIssues ? (
           <VettedIssueList
             vettedIssues={data.vettedIssues}
@@ -238,6 +256,8 @@ function AppContent() {
           </button>
         </div>
       )}
+
+      {partialBanner}
 
       <main id="main-content" class="dashboard-main">
         <div class="animate-in delay-1">
