@@ -6,7 +6,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { determineStatus, STALE_CI_DEMOTION_DAYS } from './status-determination.js';
+import {
+  determineStatus,
+  isCommitAfterComment,
+  normalizeToEpochMs,
+  STALE_CI_DEMOTION_DAYS,
+} from './status-determination.js';
 import type { DetermineStatusInput } from './types.js';
 
 /** Shared helper — call determineStatus with sensible defaults, overriding only the fields under test. */
@@ -769,5 +774,105 @@ describe('determineStatus multiple action reasons (#675)', () => {
     // Primary is needs_response (highest priority)
     expect(result.actionReason).toBe('needs_response');
     expect(result.actionReasons).toEqual(['needs_response', 'failing_ci', 'merge_conflict']);
+  });
+});
+
+// ── #1044 date-parsing hardening ─────────────────────────────────────
+
+describe('normalizeToEpochMs', () => {
+  it('parses well-formed UTC ISO-8601 strings', () => {
+    expect(normalizeToEpochMs('2026-02-08T12:00:00Z')).toBe(Date.UTC(2026, 1, 8, 12, 0, 0));
+  });
+
+  it('parses ISO strings with timezone offsets into the correct UTC epoch', () => {
+    // Non-UTC ISO strings are the exact case the old lex-order comparison
+    // would get wrong. Numeric parsing must reconcile them.
+    const utc = normalizeToEpochMs('2026-02-08T12:00:00Z');
+    const plusOne = normalizeToEpochMs('2026-02-08T13:00:00+01:00');
+    expect(plusOne).toBe(utc);
+  });
+
+  it('returns NaN for unparseable / empty / nullish inputs', () => {
+    expect(Number.isNaN(normalizeToEpochMs(undefined))).toBe(true);
+    expect(Number.isNaN(normalizeToEpochMs(null))).toBe(true);
+    expect(Number.isNaN(normalizeToEpochMs(''))).toBe(true);
+    expect(Number.isNaN(normalizeToEpochMs('not a date'))).toBe(true);
+  });
+});
+
+describe('isCommitAfterComment fail-closed semantics (#1044)', () => {
+  it('returns false when commitDate is unparseable', () => {
+    expect(isCommitAfterComment('not-a-date', '2026-02-07T10:00:00Z')).toBe(false);
+  });
+
+  it('returns false when commentDate is unparseable', () => {
+    expect(isCommitAfterComment('2026-02-08T12:00:00Z', 'garbage')).toBe(false);
+  });
+});
+
+describe('determineStatus fails closed on malformed dates (#1044)', () => {
+  function callDetermineStatus(overrides: Partial<DetermineStatusInput> = {}) {
+    const defaults: DetermineStatusInput = {
+      ciStatus: 'passing',
+      hasMergeConflict: false,
+      hasUnrespondedComment: false,
+      hasIncompleteChecklist: false,
+      reviewDecision: 'review_required',
+      daysSinceActivity: 2,
+      dormantThreshold: 30,
+      approachingThreshold: 25,
+      latestCommitDate: undefined,
+      lastMaintainerCommentDate: undefined,
+      latestChangesRequestedDate: undefined,
+    };
+    return determineStatus({ ...defaults, ...overrides });
+  }
+
+  it('treats an unparseable latestCommitDate as "not addressed" — status stays needs_response', () => {
+    const result = callDetermineStatus({
+      hasUnrespondedComment: true,
+      reviewDecision: 'changes_requested',
+      latestCommitDate: 'garbage-timestamp',
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      latestChangesRequestedDate: '2026-02-06T10:00:00Z',
+    });
+    expect(result.status).toBe('needs_addressing');
+    expect(result.actionReason).toBe('needs_response');
+  });
+
+  it('treats an unparseable latestChangesRequestedDate as "not addressed"', () => {
+    const result = callDetermineStatus({
+      hasUnrespondedComment: true,
+      reviewDecision: 'changes_requested',
+      latestCommitDate: '2026-02-08T12:00:00Z',
+      lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      latestChangesRequestedDate: 'not-an-iso-string',
+    });
+    // Commit is after comment, but we can't verify it's after the malformed
+    // changesRequested date — fail closed: treat as not addressed.
+    expect(result.actionReason).toBe('needs_response');
+  });
+
+  it('handles mixed-format ISO strings where lex order disagrees with chronological order', () => {
+    // Regression demonstrator for the old `commitDate >= changesRequestedDate`
+    // string compare in `isChangesAddressedByCommit`:
+    //
+    //   commit (UTC)            = 2026-02-08T12:00:00Z (via +01:00 offset)
+    //   changesRequested (UTC)  = 2026-02-08T12:30:00Z
+    //
+    // Chronologically: commit < changesRequested → NOT addressed (correct).
+    // Lexicographically: '2026-02-08T13:00:00+01:00' > '2026-02-08T12:30:00Z'
+    // because '3' > '2' at position 12 → OLD code said "addressed" (wrong).
+    //
+    // After #1044 this is parsed numerically, so the comparison reflects
+    // chronological order: status stays needs_changes / needs_response.
+    const result = callDetermineStatus({
+      hasUnrespondedComment: false,
+      reviewDecision: 'changes_requested',
+      latestCommitDate: '2026-02-08T13:00:00+01:00', // = 12:00 UTC
+      latestChangesRequestedDate: '2026-02-08T12:30:00Z', // 30 min AFTER commit
+    });
+    expect(result.status).toBe('needs_addressing');
+    expect(result.actionReason).toBe('needs_changes');
   });
 });
