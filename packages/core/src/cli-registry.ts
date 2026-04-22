@@ -870,6 +870,11 @@ export const commands: CLICommandDef[] = [
   },
 
   // ── Shelve ─────────────────────────────────────────────────────────────
+  // Delegates to runShelve so the CLI emits the same `ShelveOutput`
+  // ({shelved, url}) as the library export + MCP tool. Previously it called
+  // runMove and emitted `MoveOutput` ({url, target, description}), which
+  // drifted from the pinned contract test and broke plugin consumers
+  // reading `data.shelved`. See issue #1037.
   {
     name: 'shelve',
     localOnly: true,
@@ -881,9 +886,9 @@ export const commands: CLICommandDef[] = [
         .action((prUrl, options) =>
           executeAction(
             options,
-            async () => (await import('./commands/move.js')).runMove({ prUrl, target: 'shelved' }),
+            async () => (await import('./commands/shelve.js')).runShelve({ prUrl }),
             (data) => {
-              console.log(data.description);
+              console.log(data.shelved ? `Shelved ${data.url}` : `Already shelved: ${data.url}`);
             },
           ),
         );
@@ -902,9 +907,9 @@ export const commands: CLICommandDef[] = [
         .action((prUrl, options) =>
           executeAction(
             options,
-            async () => (await import('./commands/move.js')).runMove({ prUrl, target: 'auto' }),
+            async () => (await import('./commands/shelve.js')).runUnshelve({ prUrl }),
             (data) => {
-              console.log(data.description);
+              console.log(data.unshelved ? `Unshelved ${data.url}` : `Not currently shelved: ${data.url}`);
             },
           ),
         );
