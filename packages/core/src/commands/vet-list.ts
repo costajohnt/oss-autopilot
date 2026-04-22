@@ -20,16 +20,81 @@ interface VetListOptions {
 }
 
 /**
- * Determine the list status from vetting results.
- * Maps vetting recommendation + reasons to a list-level status.
+ * Scout-side enumerated skip reasons (#1043). If scout emits a `skipReason`
+ * field on its vet candidate, we route on that directly rather than doing
+ * fragile substring matches against free-text. The strings scout uses today
+ * (e.g. "Issue is closed", "Issue is already claimed") would silently stop
+ * matching on a rewording — the enum makes the data contract explicit.
+ *
+ * Scout has not yet landed the enum emitter; this PR lands the reader so the
+ * switchover is drop-in when scout ships it. The substring fallback below
+ * covers the transition period.
  */
-export function classifyListStatus(vetResult: VetOutput): VetListItemStatus {
-  const skipReasons = vetResult.reasonsToSkip.map((r) => r.toLowerCase());
+export type ScoutSkipReason =
+  | 'issue_closed'
+  | 'has_linked_pr'
+  | 'claimed'
+  | 'score_too_low'
+  | 'anti_llm_policy'
+  | 'other';
 
-  if (skipReasons.some((r) => r.includes('closed'))) return 'closed';
-  if (skipReasons.some((r) => r.includes('claimed') || r.includes('assigned'))) return 'claimed';
-  if (skipReasons.some((r) => r.includes('existing pr') || r.includes('linked pr') || r.includes('pull request')))
-    return 'has_pr';
+const KNOWN_SKIP_REASONS: ReadonlySet<ScoutSkipReason> = new Set([
+  'issue_closed',
+  'has_linked_pr',
+  'claimed',
+  'score_too_low',
+  'anti_llm_policy',
+  'other',
+]);
+
+function mapSkipReasonToStatus(reason: ScoutSkipReason): VetListItemStatus | null {
+  switch (reason) {
+    case 'issue_closed':
+      return 'closed';
+    case 'claimed':
+      return 'claimed';
+    case 'has_linked_pr':
+      return 'has_pr';
+    case 'score_too_low':
+    case 'anti_llm_policy':
+    case 'other':
+      return null; // fall through to recommendation / default
+  }
+}
+
+/**
+ * Defensively extract a `skipReason` from a scout candidate. Scout's types
+ * don't expose it yet, and we want to ignore any value scout emits that
+ * isn't one of the expected enum members (forward-compat + poison guard).
+ */
+export function extractSkipReason(candidate: unknown): ScoutSkipReason | undefined {
+  if (typeof candidate !== 'object' || candidate === null) return undefined;
+  const raw = (candidate as { skipReason?: unknown }).skipReason;
+  if (typeof raw !== 'string') return undefined;
+  return KNOWN_SKIP_REASONS.has(raw as ScoutSkipReason) ? (raw as ScoutSkipReason) : undefined;
+}
+
+/**
+ * Determine the list status from vetting results.
+ *
+ * Prefers scout's structured `skipReason` enum when present; falls back to
+ * substring matching on the free-text `reasonsToSkip` for the transition
+ * period before scout emits the enum. See #1043.
+ */
+export function classifyListStatus(vetResult: VetOutput, skipReason?: ScoutSkipReason): VetListItemStatus {
+  if (skipReason) {
+    const fromEnum = mapSkipReasonToStatus(skipReason);
+    if (fromEnum) return fromEnum;
+    // skipReason was set but maps to 'other' / low-score / policy — let the
+    // recommendation-based branches below decide final status.
+  } else {
+    const skipReasons = vetResult.reasonsToSkip.map((r) => r.toLowerCase());
+
+    if (skipReasons.some((r) => r.includes('closed'))) return 'closed';
+    if (skipReasons.some((r) => r.includes('claimed') || r.includes('assigned'))) return 'claimed';
+    if (skipReasons.some((r) => r.includes('existing pr') || r.includes('linked pr') || r.includes('pull request')))
+      return 'has_pr';
+  }
 
   if (vetResult.recommendation === 'approve' || vetResult.recommendation === 'needs_review') {
     return 'still_available';
@@ -106,7 +171,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
 
         results.push({
           ...vetResult,
-          listStatus: classifyListStatus(vetResult),
+          listStatus: classifyListStatus(vetResult, extractSkipReason(candidate)),
         });
       } catch (error) {
         // Per-issue errors don't fail the batch

@@ -188,4 +188,108 @@ describe('runSearch', () => {
 
     await expect(runSearch({ maxResults: 5 })).rejects.toThrow('API rate limit exceeded');
   });
+
+  // ── #1043 data-contract defenses ─────────────────────────────────────
+
+  it('assigns a grade letter to every candidate (#1043)', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [
+        {
+          issue: {
+            repo: 'unknown/repo',
+            number: 1,
+            title: 'Issue',
+            url: 'https://github.com/unknown/repo/issues/1',
+            labels: [],
+          },
+          recommendation: 'approve',
+          reasonsToApprove: [],
+          reasonsToSkip: [],
+          searchPriority: 'medium',
+          viabilityScore: 70,
+        },
+      ],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+
+    const result = await runSearch({ maxResults: 5 });
+
+    // Repo has no autopilot-tracked score, scout-side signals are treated as
+    // unknown — every signal missing degrades to F per issue-grading policy.
+    expect(result.candidates[0].grade.letter).toBe('F');
+    expect(result.candidates[0].grade.reason).toMatch(/unknown/i);
+  });
+
+  it('computes a higher grade when a healthy repoScore is known (#1043)', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [
+        {
+          issue: {
+            repo: 'healthy/repo',
+            number: 1,
+            title: 'Issue',
+            url: 'https://github.com/healthy/repo/issues/1',
+            labels: [],
+          },
+          recommendation: 'approve',
+          reasonsToApprove: [],
+          reasonsToSkip: [],
+          searchPriority: 'high',
+          viabilityScore: 88,
+        },
+      ],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['merged'],
+    });
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { excludeRepos: [], aiPolicyBlocklist: [] } }),
+      getRepoScore: vi.fn().mockReturnValue({
+        score: 9,
+        mergedPRCount: 20,
+        closedWithoutMergeCount: 3,
+        avgResponseDays: 2,
+        signals: { isResponsive: true },
+      }),
+    } as any);
+
+    const result = await runSearch({ maxResults: 5 });
+
+    // High merge rate (20/23 ≈ 87%) + fast response → at worst C after the
+    // one-step degrade for unknown commit activity. Assert it beat F.
+    expect(result.candidates[0].grade.letter).not.toBe('F');
+  });
+
+  it('sanitizes an out-of-contract viabilityScore from scout (#1043)', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [
+        {
+          issue: {
+            repo: 'sketchy/repo',
+            number: 1,
+            title: 'Issue',
+            url: 'https://github.com/sketchy/repo/issues/1',
+            labels: [],
+          },
+          recommendation: 'approve',
+          reasonsToApprove: [],
+          reasonsToSkip: [],
+          searchPriority: 'medium',
+          viabilityScore: 999, // out-of-contract (should be 0-100)
+        },
+      ],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await runSearch({ maxResults: 5 });
+
+    expect(result.candidates[0].viabilityScore).toBe(0);
+    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('out-of-contract viabilityScore'));
+    errSpy.mockRestore();
+  });
 });
