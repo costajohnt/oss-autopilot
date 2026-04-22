@@ -81,8 +81,14 @@ async function ensureGistInit(): Promise<void> {
 
 /** Standard MCP text content result. */
 function ok(data: unknown) {
+  // Explicit `undefined` guard (#1059 L5). `JSON.stringify(undefined)` returns
+  // the value `undefined` (not `"undefined"`), so the old `?? 'null'` fallback
+  // engaged but rendered a misleading "null" string. Tools that legitimately
+  // return no data now serialize to the empty-object literal, which is both
+  // valid JSON and a truthful representation.
+  const text = data === undefined ? '{}' : JSON.stringify(data, null, 2);
   return {
-    content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) ?? 'null' }],
+    content: [{ type: 'text' as const, text }],
   };
 }
 
