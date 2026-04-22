@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.3](https://github.com/costajohnt/oss-autopilot/compare/core-v1.17.2...core-v1.17.3) (2026-04-22)
+
+
+### Bug Fixes
+
+* **dashboard:** eliminate 'process is not defined' in browser bundle ([#1121](https://github.com/costajohnt/oss-autopilot/issues/1121)) ([218d1d3](https://github.com/costajohnt/oss-autopilot/commit/218d1d33bf6ba76c19175b8358f166966343efb4))
+
 ## [1.17.2](https://github.com/costajohnt/oss-autopilot/compare/core-v1.17.1...core-v1.17.2) (2026-04-22)
 
 
