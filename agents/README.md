@@ -37,3 +37,38 @@ advisory; both hard gates must be kept narrow.
 When a new agent genuinely needs a tool not listed above, add it explicitly —
 never use `mcp__*`. CI enforces this via the "Guard against `mcp__*` wildcard
 in agent tools" step.
+
+---
+
+# Subagents — model tiering
+
+Each agent declares an explicit `model:` value (never `inherit`). The goal is
+to pair workload with the right model class: cheap bounded tasks on `haiku`,
+judgment-heavy procedures on `sonnet`. A user running `/oss` with Haiku should
+not silently degrade `pr-responder`'s claim verification; a user running with
+Opus should not burn tokens on `pr-compliance-checker`'s deterministic rubric.
+
+## Current tiering
+
+| Agent | Tier | Workload |
+|-------|------|---------|
+| `contribution-strategist` | `haiku` | Aggregates `status --json` into a markdown summary. Bounded scope, no judgment calls. |
+| `issue-scout` | `sonnet` | Judgment on issue viability + anti-AI policy detection; reads scout-bridge output and filters. |
+| `pr-compliance-checker` | `haiku` | Deterministic 6-weight rubric emission against a PR. Structured output, minimal ambiguity. |
+| `pr-health-checker` | `sonnet` | Git rebase flow + CI log diagnosis; needs to reason about error messages and suggest fixes. |
+| `pr-responder` | `sonnet` | Claim verification + tone calibration + multi-step draft-accuracy procedure. Heavy reasoning. |
+| `pre-commit-reviewer` | `sonnet` | Five-phase diff review including security scan. Heavy reasoning. |
+| `repo-evaluator` | `haiku` | Aggregates cached repo scores into a verdict. Bounded scope. |
+
+Policy: **no agent uses `model: inherit`.** CI enforces this via the "Guard
+against `model: inherit` in agent frontmatter" step. If a future agent
+genuinely needs to inherit, add an inline frontmatter comment explaining why
+and update the CI check to allow that specific file.
+
+## Tuning
+
+These defaults are placeholders informed by workload shape, not benchmarked
+quality-per-dollar numbers. If a downstream regression surfaces (e.g., a
+`haiku`-tier agent consistently produces low-quality output, or a `sonnet`
+agent's cost makes the `/oss` flow unaffordable), bump the tier and document
+the rationale in the commit.

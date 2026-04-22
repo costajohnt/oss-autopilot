@@ -129,6 +129,20 @@ jobs:
             exit 1
           fi
 
+      - name: "Guard against `model: inherit` in agent frontmatter"
+        # Every agent must declare an explicit tier (haiku/sonnet/opus) so
+        # cheap bounded tasks and heavy reasoning tasks don't silently inherit
+        # whatever model the parent session uses. See agents/README.md for the
+        # workload→tier rationale and issue #1040 for the original audit.
+        # Matches only top-of-file frontmatter `model:` keys on `*.md` files
+        # inside agents/ so prose discussing the pattern does not
+        # false-positive.
+        run: |
+          if grep -Hn '^model:[[:space:]]*inherit' agents/*.md; then
+            echo "::error::Agent frontmatter contains 'model: inherit'. Pick an explicit tier — see agents/README.md and issue #1040."
+            exit 1
+          fi
+
       - name: Coverage report
         if: matrix.node-version == 22
         run: pnpm run test:coverage

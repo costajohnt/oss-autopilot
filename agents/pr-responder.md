@@ -20,7 +20,7 @@ User needs help understanding and responding to a specific code review comment.
 </commentary>
 </example>
 
-model: inherit
+model: sonnet
 color: cyan
 tools: ["Bash", "Read", "Write", "Glob", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__read", "mcp__plugin_oss-autopilot_oss-autopilot__comments"]
 ---

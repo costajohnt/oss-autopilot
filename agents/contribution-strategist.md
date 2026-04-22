@@ -38,7 +38,7 @@ User wants help with goal-setting.
 </commentary>
 </example>
 
-model: inherit
+model: haiku
 color: magenta
 tools: ["Bash", "Read"]
 ---

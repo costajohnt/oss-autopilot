@@ -20,7 +20,7 @@ User wants to predict maintainer engagement before contributing.
 </commentary>
 </example>
 
-model: inherit
+model: haiku
 color: blue
 tools: ["Bash", "Read", "Glob", "mcp__plugin_oss-autopilot_oss-autopilot__vet"]
 ---
