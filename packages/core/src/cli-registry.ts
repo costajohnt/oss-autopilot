@@ -775,12 +775,13 @@ export const commands: CLICommandDef[] = [
 
   // ── Check Integration ──────────────────────────────────────────────────
   {
-    name: 'check-integration',
+    name: 'orphan-files',
     localOnly: true,
     register(program) {
       program
-        .command('check-integration')
-        .description('Detect new files not referenced by the codebase')
+        .command('orphan-files')
+        .alias('check-integration')
+        .description('Detect new files on this branch that no other file references')
         .option('--base <branch>', 'Base branch to compare against', 'main')
         .option('--json', 'Output as JSON')
         .action((options) =>
@@ -806,6 +807,37 @@ export const commands: CLICommandDef[] = [
                   }
                 }
               }
+            },
+          ),
+        );
+    },
+  },
+
+  // ── Doctor ─────────────────────────────────────────────────────────────
+  {
+    name: 'doctor',
+    localOnly: true,
+    register(program) {
+      program
+        .command('doctor')
+        .description('Run a system-health diagnostic (token, bundle, state, scout, rate limit)')
+        .option('--json', 'Output as JSON')
+        .action((options) =>
+          executeAction(
+            options,
+            async () => (await import('./commands/doctor.js')).runDoctor(),
+            (data) => {
+              console.log('\nSystem health\n');
+              for (const check of data.checks) {
+                const icon = check.status === 'ok' ? '[OK]   ' : check.status === 'warning' ? '[WARN] ' : '[ERR]  ';
+                console.log(`${icon}${check.name}: ${check.message}`);
+                if (check.remediation) {
+                  console.log(`       ↳ ${check.remediation}`);
+                }
+              }
+              console.log(
+                `\n${data.summary.ok} ok / ${data.summary.warnings} warning / ${data.summary.errors} error\n`,
+              );
             },
           ),
         );

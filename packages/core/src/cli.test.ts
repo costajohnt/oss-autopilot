@@ -98,7 +98,8 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'checkSetup',
     'serve',
     'parse-issue-list',
-    'check-integration',
+    'orphan-files',
+    'doctor',
     'detect-formatters',
     'local-repos',
     'startup',
@@ -359,7 +360,8 @@ describe('Command registration', () => {
       'checkSetup',
       'serve',
       'parse-issue-list',
-      'check-integration',
+      'orphan-files',
+      'doctor',
       'detect-formatters',
       'local-repos',
       'startup',
@@ -609,8 +611,8 @@ describe('CLI argument parsing', () => {
     expect(portOpt!.defaultValue).toBe('3000');
   });
 
-  it('check-integration has --base option defaulting to "main"', () => {
-    const cmd = findCmd('check-integration');
+  it('orphan-files has --base option defaulting to "main"', () => {
+    const cmd = findCmd('orphan-files');
     expect(cmd).toBeDefined();
     const baseOpt = cmd!.options.find((o) => o.long === '--base');
     expect(baseOpt).toBeDefined();

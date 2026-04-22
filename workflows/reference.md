@@ -106,8 +106,11 @@ rejected with a did-you-mean suggestion.
 # Scan for local git repos
 <prefix> local-repos --json [--scan] [--clear-cache]
 
-# Check GitHub integration
-<prefix> check-integration --json
+# System-health diagnostic (token, bundle, state, scout, rate limit)
+<prefix> doctor --json
+
+# Audit new files on this branch for cross-references (old name: check-integration)
+<prefix> orphan-files --json [--base <branch>]
 ```
 
 ---

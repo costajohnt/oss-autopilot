@@ -84,6 +84,8 @@ export { runStateUnlink } from './state-cmd.js';
 export { runParseList, pruneIssueList } from './parse-list.js';
 /** Check if new files are properly referenced/integrated. */
 export { runCheckIntegration } from './check-integration.js';
+/** System-health diagnostic — verifies tokens, bundle, state, scout, rate limit. */
+export { runDoctor, type DoctorCheck, type DoctorCheckStatus, type DoctorOutput } from './doctor.js';
 /** Detect formatters/linters configured in a local repository (#703). */
 export { runDetectFormatters } from './detect-formatters.js';
 /** Scan for locally cloned repos. */
