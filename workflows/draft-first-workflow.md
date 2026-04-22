@@ -219,161 +219,29 @@ Use `git diff $mergeBase..HEAD` for the full branch diff. If `$mergeBase` is emp
 
 ### 2. Dispatch Scope-Aware Review Agents
 
-**Dispatch ALL agents in a SINGLE message.** Always use the full Large tier (code-reviewer, silent-failure-hunter, code-simplifier, pr-test-analyzer + conditional agents) regardless of diff size. Include `Working directory: {local repo path}` in every prompt.
+**See `workflows/dispatch-review.md`** — the canonical multi-agent dispatch template (agent roster, SCOPE block, convergence loop, fallback, report format).
 
-**Prepend this SCOPE block to each agent prompt:**
-```
-SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
-Focus findings on changes related to this issue. Flag pre-existing issues only
-if they are Critical severity. Do NOT suggest improvements outside the scope of this PR.
-FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
-trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
-before the PR is submitted. Do not flag formatting that is part of the functional fix.
-```
+Caller-specific inputs for this workflow:
+- `issueContext = { title: issueContext.title, url: issueContext.url }` — the SCOPE block is required for new contributions.
+- `reviewDiff = git diff $mergeBase..HEAD` (full branch diff from sub-step 1).
+- `workingDir` = local repo path.
+- `reviewPass = 1`, `agentsWithFindings = []`.
 
-**Agent prompts** (include the full `git diff $mergeBase..HEAD` output in each):
-
-```
-Task(pr-review-toolkit:code-reviewer,
-  "SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
-   Focus findings on changes related to this issue. Flag pre-existing issues only
-   if they are Critical severity. Do NOT suggest improvements outside the scope of this PR.
-   FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
-   trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
-   before the PR is submitted. Do not flag formatting that is part of the functional fix.
-
-   Review the following code changes for bugs, logic errors, security vulnerabilities,
-   and adherence to project conventions. Focus on issue-related changes.
-   Repository: {repo name}
-   Working directory: {local repo path}
-   Convention notes: {any CONTRIBUTING.md or lint config findings}
-   Changed files: {changed files list}
-
-   Diff:
-   {git diff $mergeBase..HEAD output}")
-
-Task(pr-review-toolkit:silent-failure-hunter,
-  "SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
-   Focus findings on changes related to this issue. Flag pre-existing issues only
-   if they are Critical severity. Do NOT suggest improvements outside the scope of this PR.
-   FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
-   trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
-   before the PR is submitted. Do not flag formatting that is part of the functional fix.
-
-   Review the following code changes for silent failures, inadequate error handling,
-   and inappropriate fallback behavior. Focus on changed code paths only.
-   Working directory: {local repo path}
-   Changed files: {changed files list}
-
-   Diff:
-   {git diff $mergeBase..HEAD output}")
-
-Task(pr-review-toolkit:code-simplifier,
-  "SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
-   Focus findings on changes related to this issue. Flag pre-existing issues only
-   if they are Critical severity. Do NOT suggest improvements outside the scope of this PR.
-   FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
-   trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
-   before the PR is submitted. Do not flag formatting that is part of the functional fix.
-
-   Review the following code changes for dead code, unnecessary complexity, and
-   simplification opportunities. Focus on new/modified code only. Do NOT modify files — report findings only.
-   Do NOT suggest cosmetic changes (import reordering, quote style, trailing commas,
-   whitespace) as improvements — only flag them for reversion per the FORMATTING RULE above.
-   Working directory: {local repo path}
-   Changed files: {changed files list}
-
-   Diff:
-   {git diff $mergeBase..HEAD output}")
-
-Task(pr-review-toolkit:pr-test-analyzer,
-  "SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
-   Focus findings on changes related to this issue. Flag pre-existing issues only
-   if they are Critical severity. Do NOT suggest improvements outside the scope of this PR.
-   FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
-   trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
-   before the PR is submitted. Do not flag formatting that is part of the functional fix.
-
-   Analyze test coverage for the following code changes. Focus on new functionality only.
-   Check if modified code paths have tests, identify gaps, and recommend what tests should be added.
-   Working directory: {local repo path}
-   Test directory: {test dir path}
-   Changed files: {changed files list}
-
-   Diff:
-   {git diff $mergeBase..HEAD output}")
-```
-
-**Conditional agents (dispatch in the SAME message if applicable):**
-
-- **`pr-review-toolkit:type-design-analyzer`** — dispatch only if changed files include TypeScript (`.ts`, `.tsx`) or other typed languages
-  ```
-  Task(pr-review-toolkit:type-design-analyzer,
-    "SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
-     Focus on issue-related type changes only.
-     FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
-     trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
-     before the PR is submitted. Do not flag formatting that is part of the functional fix.
-
-     Review type design in the following TypeScript changes. Check for proper
-     encapsulation, invariant expression, and type safety.
-     Working directory: {local repo path}
-     Changed files: {changed .ts/.tsx files}
-
-     Diff:
-     {git diff $mergeBase..HEAD output for .ts/.tsx files}")
-  ```
-
-- **`pr-review-toolkit:comment-analyzer`** — dispatch only if 5+ files were changed
-  ```
-  Task(pr-review-toolkit:comment-analyzer,
-    "SCOPE: This PR addresses issue '{issueContext.title}' ({issueContext.url}).
-     Focus on comments in new/modified code only.
-     FORMATTING RULE: Flag any diff hunks that are formatting-only (whitespace, quote style,
-     trailing commas, import reordering) and unrelated to the issue fix. These must be reverted
-     before the PR is submitted. Do not flag formatting that is part of the functional fix.
-
-     Review comments in the following code changes for accuracy, completeness,
-     and long-term maintainability.
-     Working directory: {local repo path}
-     Changed files: {changed files list}
-
-     Diff:
-     {git diff $mergeBase..HEAD output}")
-  ```
-
-**Fallback:** If the PR review toolkit agents are unavailable, dispatch the local `pre-commit-reviewer` agent instead:
-
-> "PR review toolkit agents are not available. Falling back to the built-in pre-commit reviewer."
-
-```
-Task(pre-commit-reviewer,
-  "Review my pending code changes before committing.
-   Repository: {repo name}
-   Working directory: {path}")
-```
-
-If ALL agents fail: offer "Proceed to integration check (skip review)" / "Retry" / "Done for now".
+Initialize `roundNumber = 1` for the outer loop, then run the dispatch-review template. The convergence loop in that template handles re-dispatch automatically.
 
 ### 3. Consolidate and Present
 
-Same as the pre-commit review consolidation format, but separate findings into **In-Scope** (Critical/Recommended/Minor) and **Out-of-Scope** (pre-existing issues). Include test coverage assessment.
+Use the "In-Scope vs Out-of-Scope" split described in `dispatch-review.md` — since `issueContext` is provided, split findings into:
+- **In-Scope** (Critical / Recommended / Minor) — changes related to the issue.
+- **Out-of-Scope (pre-existing)** — Critical-severity findings only.
+
+Include the test-coverage assessment from `pr-test-analyzer`.
 
 ```
 ## Local Review — Round {roundNumber}
 
 ### In-Scope Findings
-
-#### Critical ({count}) — Must fix before publishing
-- **{file}:{line}** — {description} (found by: {agent})
-  Suggestion: {fix}
-
-#### Recommended ({count}) — Should fix
-- **{file}:{line}** — {description} (found by: {agent})
-  Suggestion: {fix}
-
-#### Minor ({count}) — Nice to have
-- **{file}:{line}** — {description}
+[Critical / Recommended / Minor — per dispatch-review.md format]
 
 ### Out-of-Scope (pre-existing)
 - {list, if any Critical-severity pre-existing issues were flagged}
