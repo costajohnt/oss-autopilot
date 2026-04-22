@@ -124,7 +124,8 @@ mkdir -p "$(dirname "$FORMAT_ERROR_LOG")" 2>/dev/null || true
 # Batched formatter helpers (#1045): run the formatter once (or at most a few
 # times if xargs splits the command line) rather than once per file. A 50-file
 # diff used to spawn 50 `npx` processes, each resolving `.bin/` — easily past
-# the 30s hook timeout. `-r` skips the call entirely if the list is empty.
+# the hook timeout (currently 60s in hooks.json). `-r` skips the call entirely
+# if the list is empty.
 run_formatter() {
   local name="$1"
   shift
