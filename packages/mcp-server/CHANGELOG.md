@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.1.4](https://github.com/costajohnt/oss-autopilot/compare/mcp-v3.1.3...mcp-v3.1.4) (2026-04-22)
+
+
+### Bug Fixes
+
+* close UM4 dashboard SPA + MCP polish findings M37/M38/M39/M40/M41 ([#1094](https://github.com/costajohnt/oss-autopilot/issues/1094)) ([076c00f](https://github.com/costajohnt/oss-autopilot/commit/076c00f4d85daaf095b42415fbb96c9bcf5abfc8))
+* **mcp:** align README and server.json with reality ([#1065](https://github.com/costajohnt/oss-autopilot/issues/1065)) ([414cd14](https://github.com/costajohnt/oss-autopilot/commit/414cd14050c9565507ce5939f41a8fee517a92d3))
+* **mcp:** bearer-token auth for HTTP transport ([#1028](https://github.com/costajohnt/oss-autopilot/issues/1028)) ([#1068](https://github.com/costajohnt/oss-autopilot/issues/1068)) ([d6f0a54](https://github.com/costajohnt/oss-autopilot/commit/d6f0a545689b776348fa91dfbee6f27fb916992a))
+* **mcp:** destructive hints + URL validation + config-key enum ([#1053](https://github.com/costajohnt/oss-autopilot/issues/1053)) ([#1089](https://github.com/costajohnt/oss-autopilot/issues/1089)) ([5c70a8e](https://github.com/costajohnt/oss-autopilot/commit/5c70a8e2a59aefdb69772f3fee479abe8c1cc278))
+
 ## [3.1.3](https://github.com/costajohnt/oss-autopilot/compare/mcp-v3.1.2...mcp-v3.1.3) (2026-04-19)
 
 
