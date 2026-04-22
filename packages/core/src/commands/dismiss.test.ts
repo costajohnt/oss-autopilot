@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock getStateManager for command-level tests
 vi.mock('../core/index.js', () => ({
   getStateManager: vi.fn(),
+  maybeCheckpoint: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { getStateManager } from '../core/index.js';

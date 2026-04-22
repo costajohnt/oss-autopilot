@@ -21,6 +21,7 @@ vi.mock('../core/index.js', async () => {
     getStateManager: () => ({
       dismissIssue: mockDismissIssue,
       undismissIssue: mockUndismissIssue,
+      isGistMode: () => false,
     }),
   };
 });

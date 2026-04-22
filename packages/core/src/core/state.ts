@@ -38,6 +38,28 @@ export type { Stats } from './repo-score-manager.js';
 const MODULE = 'state';
 
 /**
+ * Push state to the backing Gist when Gist mode is active. Best-effort:
+ * network/auth failures are logged via `warn()` but never propagated —
+ * the caller's primary mutation has already succeeded locally and the
+ * next successful push (or a daily run) will re-sync.
+ *
+ * Intended for state-mutating PR-flow commands (shelve / unshelve / move /
+ * dismiss / undismiss / claim) so Gist-sync users don't see day-long drift
+ * between machines waiting for the next `daily` checkpoint. See issue #1036.
+ */
+export async function maybeCheckpoint(stateManager: StateManager, callerModule: string): Promise<void> {
+  if (!stateManager.isGistMode()) return;
+  try {
+    await stateManager.checkpoint();
+  } catch (err) {
+    warn(
+      callerModule,
+      `Gist checkpoint failed (local mutation succeeded, will retry on next push): ${errorMessage(err)}`,
+    );
+  }
+}
+
+/**
  * Singleton manager for persistent agent state stored in ~/.oss-autopilot/state.json.
  *
  * Delegates file I/O to state-persistence.ts and scoring logic to repo-score-manager.ts.

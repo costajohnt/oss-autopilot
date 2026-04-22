@@ -26,6 +26,7 @@ vi.mock('../core/index.js', async () => {
       shelvePR: mockShelvePR,
       unshelvePR: mockUnshelvePR,
       batch: mockBatch,
+      isGistMode: () => false,
     }),
   };
 });
