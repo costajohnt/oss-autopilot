@@ -106,9 +106,9 @@ describe('VettedIssueList', () => {
     ];
     const { container } = render(<VettedIssueList vettedIssues={makeOutput(items)} onBack={() => {}} />);
     const links = container.querySelectorAll('.merged-table-pr-link');
-    expect(links[0].textContent).toBe('owner/repo#2');
-    expect(links[1].textContent).toBe('owner/repo#3');
-    expect(links[2].textContent).toBe('owner/repo#1');
+    expect(links[0]!.textContent).toBe('owner/repo#2');
+    expect(links[1]!.textContent).toBe('owner/repo#3');
+    expect(links[2]!.textContent).toBe('owner/repo#1');
   });
 
   it('filters out items with score below 6', () => {

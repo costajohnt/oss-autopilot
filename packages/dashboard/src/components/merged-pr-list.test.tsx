@@ -42,8 +42,8 @@ describe('MergedPRList', () => {
     expect((links[0] as HTMLAnchorElement).href).toBe('https://github.com/a/b/pull/1');
     expect((links[0] as HTMLAnchorElement).target).toBe('_blank');
     expect((links[0] as HTMLAnchorElement).rel).toBe('noopener noreferrer');
-    expect(links[0].textContent).toBe('a/b#1');
-    expect(links[1].textContent).toBe('c/d#2');
+    expect(links[0]!.textContent).toBe('a/b#1');
+    expect(links[1]!.textContent).toBe('c/d#2');
   });
 
   it('shows formatted merge dates', () => {
@@ -51,7 +51,7 @@ describe('MergedPRList', () => {
     const dates = container.querySelectorAll('.merged-table-date');
     expect(dates).toHaveLength(2);
     // Just check they render (formatting depends on locale)
-    expect(dates[0].textContent).toBeTruthy();
+    expect(dates[0]!.textContent).toBeTruthy();
   });
 
   it('shows count in subtitle', () => {
@@ -71,13 +71,13 @@ describe('MergedPRList', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
     const stars = container.querySelectorAll('.merged-table-stars');
     expect(stars).toHaveLength(2);
-    expect(stars[0].textContent).toContain('5.0k');
-    expect(stars[1].textContent).toContain('200');
+    expect(stars[0]!.textContent).toContain('5.0k');
+    expect(stars[1]!.textContent).toContain('200');
 
     const languages = container.querySelectorAll('.merged-table-language');
     expect(languages).toHaveLength(2);
-    expect(languages[0].textContent).toContain('TypeScript');
-    expect(languages[1].textContent).toContain('Python');
+    expect(languages[0]!.textContent).toContain('TypeScript');
+    expect(languages[1]!.textContent).toContain('Python');
   });
 
   it('renders gracefully without repoMetadata', () => {
@@ -85,13 +85,13 @@ describe('MergedPRList', () => {
     // Table cells still exist, but show dashes
     const stars = container.querySelectorAll('.merged-table-stars');
     expect(stars).toHaveLength(2);
-    expect(stars[0].textContent).toBe('—');
-    expect(stars[1].textContent).toBe('—');
+    expect(stars[0]!.textContent).toBe('—');
+    expect(stars[1]!.textContent).toBe('—');
 
     const languages = container.querySelectorAll('.merged-table-language');
     expect(languages).toHaveLength(2);
-    expect(languages[0].textContent).toBe('—');
-    expect(languages[1].textContent).toBe('—');
+    expect(languages[0]!.textContent).toBe('—');
+    expect(languages[1]!.textContent).toBe('—');
   });
 
   it('handles missing repo in metadata map', () => {
@@ -99,26 +99,26 @@ describe('MergedPRList', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={partialMetadata} onBack={() => {}} />);
     const stars = container.querySelectorAll('.merged-table-stars');
     expect(stars).toHaveLength(2);
-    expect(stars[0].textContent).toContain('1.0k');
-    expect(stars[1].textContent).toBe('—');
+    expect(stars[0]!.textContent).toContain('1.0k');
+    expect(stars[1]!.textContent).toBe('—');
 
     const languages = container.querySelectorAll('.merged-table-language');
     expect(languages).toHaveLength(2);
-    expect(languages[0].textContent).toContain('Go');
-    expect(languages[1].textContent).toBe('—');
+    expect(languages[0]!.textContent).toContain('Go');
+    expect(languages[1]!.textContent).toBe('—');
   });
 
   it('handles repo with stars but no language', () => {
     const metaNoLang = { 'a/b': { stars: 500, language: null } };
-    const { container } = render(<MergedPRList mergedPRs={[prs[0]]} repoMetadata={metaNoLang} onBack={() => {}} />);
+    const { container } = render(<MergedPRList mergedPRs={[prs[0]!]} repoMetadata={metaNoLang} onBack={() => {}} />);
     const stars = container.querySelectorAll('.merged-table-stars');
     expect(stars).toHaveLength(1);
-    expect(stars[0].textContent).toContain('500');
+    expect(stars[0]!.textContent).toContain('500');
 
     // Language cell exists but shows dash
     const languages = container.querySelectorAll('.merged-table-language');
     expect(languages).toHaveLength(1);
-    expect(languages[0].textContent).toBe('—');
+    expect(languages[0]!.textContent).toBe('—');
   });
 
   it('renders table headers with scope="col"', () => {
@@ -133,10 +133,10 @@ describe('MergedPRList', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} onBack={() => {}} />);
     const headers = container.querySelectorAll('.merged-table th');
     expect(headers).toHaveLength(4);
-    expect(headers[0].textContent).toContain('PR');
-    expect(headers[1].textContent).toContain('Stars');
-    expect(headers[2].textContent).toContain('Language');
-    expect(headers[3].textContent).toContain('Date Merged');
+    expect(headers[0]!.textContent).toContain('PR');
+    expect(headers[1]!.textContent).toContain('Stars');
+    expect(headers[2]!.textContent).toContain('Language');
+    expect(headers[3]!.textContent).toContain('Date Merged');
   });
 
   it('renders correct number of table rows', () => {
@@ -148,46 +148,46 @@ describe('MergedPRList', () => {
   it('defaults to newest merge date first', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
     const links = container.querySelectorAll('.merged-table-pr-link');
-    expect(links[0].textContent).toBe('a/b#1'); // Jun 10
-    expect(links[1].textContent).toBe('c/d#2'); // Jun 9
+    expect(links[0]!.textContent).toBe('a/b#1'); // Jun 10
+    expect(links[1]!.textContent).toBe('c/d#2'); // Jun 9
   });
 
   it('sorts by stars descending on click', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
-    const starsHeader = container.querySelectorAll('.sortable-th')[1];
+    const starsHeader = container.querySelectorAll('.sortable-th')[1]!;
     fireEvent.click(starsHeader);
     const links = container.querySelectorAll('.merged-table-pr-link');
-    expect(links[0].textContent).toBe('a/b#1'); // 5000 stars
-    expect(links[1].textContent).toBe('c/d#2'); // 200 stars
+    expect(links[0]!.textContent).toBe('a/b#1'); // 5000 stars
+    expect(links[1]!.textContent).toBe('c/d#2'); // 200 stars
   });
 
   it('toggles sort direction on second click', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
-    const starsHeader = container.querySelectorAll('.sortable-th')[1];
+    const starsHeader = container.querySelectorAll('.sortable-th')[1]!;
     fireEvent.click(starsHeader); // desc
     fireEvent.click(starsHeader); // asc
     const links = container.querySelectorAll('.merged-table-pr-link');
-    expect(links[0].textContent).toBe('c/d#2'); // 200 stars (asc)
-    expect(links[1].textContent).toBe('a/b#1'); // 5000 stars
+    expect(links[0]!.textContent).toBe('c/d#2'); // 200 stars (asc)
+    expect(links[1]!.textContent).toBe('a/b#1'); // 5000 stars
   });
 
   it('sorts by repo name ascending on click', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
-    const prHeader = container.querySelectorAll('.sortable-th')[0];
+    const prHeader = container.querySelectorAll('.sortable-th')[0]!;
     fireEvent.click(prHeader);
     const links = container.querySelectorAll('.merged-table-pr-link');
-    expect(links[0].textContent).toBe('a/b#1');
-    expect(links[1].textContent).toBe('c/d#2');
+    expect(links[0]!.textContent).toBe('a/b#1');
+    expect(links[1]!.textContent).toBe('c/d#2');
   });
 
   it('sorts by language alphabetically on click', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} repoMetadata={repoMetadata} onBack={() => {}} />);
-    const langHeader = container.querySelectorAll('.sortable-th')[2];
+    const langHeader = container.querySelectorAll('.sortable-th')[2]!;
     fireEvent.click(langHeader);
     const links = container.querySelectorAll('.merged-table-pr-link');
     // Python < TypeScript alphabetically
-    expect(links[0].textContent).toBe('c/d#2'); // Python
-    expect(links[1].textContent).toBe('a/b#1'); // TypeScript
+    expect(links[0]!.textContent).toBe('c/d#2'); // Python
+    expect(links[1]!.textContent).toBe('a/b#1'); // TypeScript
   });
 
   it('shows sort arrow on active column', () => {
@@ -199,7 +199,7 @@ describe('MergedPRList', () => {
 
   it('handles sorting without repoMetadata', () => {
     const { container } = render(<MergedPRList mergedPRs={prs} onBack={() => {}} />);
-    const starsHeader = container.querySelectorAll('.sortable-th')[1];
+    const starsHeader = container.querySelectorAll('.sortable-th')[1]!;
     fireEvent.click(starsHeader);
     // Should not crash — all stars default to 0
     const links = container.querySelectorAll('.merged-table-pr-link');

@@ -33,8 +33,8 @@ describe('FilterBar', () => {
 
     const statusSelect = selects[0] as HTMLSelectElement;
     expect(statusSelect.options).toHaveLength(3);
-    expect(statusSelect.options[1].textContent).toBe('Needs Addressing');
-    expect(statusSelect.options[2].textContent).toBe('Waiting on Maintainer');
+    expect(statusSelect.options[1]!.textContent).toBe('Needs Addressing');
+    expect(statusSelect.options[2]!.textContent).toBe('Waiting on Maintainer');
   });
 
   it('renders repo select with options', () => {

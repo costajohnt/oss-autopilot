@@ -146,18 +146,24 @@ export function registerTools(server: McpServer): void {
       description:
         'Search GitHub for beginner-friendly open-source issues to contribute to. Returns issues matching configured languages and interests.',
       inputSchema: {
-        maxResults: z.number().optional().describe('Maximum number of issues to return (default: 5)'),
+        // Zod schema replaces the prior manual throw inside the handler
+        // (#1058 M41). Invalid values now surface as proper schema
+        // validation errors via the MCP SDK rather than as generic
+        // `Error`-wrapped `isError: true` payloads.
+        maxResults: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_SEARCH_RESULTS)
+          .optional()
+          .describe(
+            `Maximum number of issues to return (default: 5, max: ${MAX_SEARCH_RESULTS}). Must be a positive integer.`,
+          ),
       },
       annotations: { readOnlyHint: true },
     },
     wrapTool((args: { maxResults?: number }) => {
-      let maxResults = args.maxResults ?? 5;
-      if (!Number.isInteger(maxResults) || maxResults < 1) {
-        throw new Error(`Invalid maxResults: ${maxResults}. Must be a positive integer.`);
-      }
-      if (maxResults > MAX_SEARCH_RESULTS) {
-        maxResults = MAX_SEARCH_RESULTS;
-      }
+      const maxResults = args.maxResults ?? 5;
       return runSearch({ maxResults });
     }),
   );

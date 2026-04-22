@@ -37,8 +37,8 @@ describe('ClosedPRList', () => {
     expect((links[0] as HTMLAnchorElement).href).toBe('https://github.com/a/b/pull/1');
     expect((links[0] as HTMLAnchorElement).target).toBe('_blank');
     expect((links[0] as HTMLAnchorElement).rel).toBe('noopener noreferrer');
-    expect(links[0].textContent).toBe('a/b#1');
-    expect(links[1].textContent).toBe('c/d#2');
+    expect(links[0]!.textContent).toBe('a/b#1');
+    expect(links[1]!.textContent).toBe('c/d#2');
   });
 
   it('shows formatted close dates', () => {
@@ -46,7 +46,7 @@ describe('ClosedPRList', () => {
     const dates = container.querySelectorAll('.merged-table-date');
     expect(dates).toHaveLength(2);
     // Just check they render (formatting depends on locale)
-    expect(dates[0].textContent).toBeTruthy();
+    expect(dates[0]!.textContent).toBeTruthy();
   });
 
   it('shows count in subtitle', () => {
@@ -74,8 +74,8 @@ describe('ClosedPRList', () => {
     const { container } = render(<ClosedPRList closedPRs={prs} onBack={() => {}} />);
     const headers = container.querySelectorAll('.merged-table th');
     expect(headers).toHaveLength(2);
-    expect(headers[0].textContent).toBe('PR');
-    expect(headers[1].textContent).toBe('Date Closed');
+    expect(headers[0]!.textContent).toBe('PR');
+    expect(headers[1]!.textContent).toBe('Date Closed');
   });
 
   it('renders correct number of table rows', () => {

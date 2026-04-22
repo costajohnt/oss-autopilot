@@ -278,24 +278,34 @@ function AppContent() {
     );
   }
 
-  // Default route: dashboard home
-  const repos = [...new Set(data.activePRs.map((pr) => pr.repo))].sort();
-  const statuses = [...new Set(data.activePRs.map((pr) => pr.status))].sort();
+  // Default route: dashboard home.
+  //
+  // These derivations were previously recomputed on every render — including
+  // every keystroke in the search input — even though they only depend on
+  // the stable PR list. Memoize so `filter` over hundreds of PRs doesn't
+  // rerun on unrelated state changes (#1058 M37).
+  const repos = useMemo(() => [...new Set(data.activePRs.map((pr) => pr.repo))].sort(), [data.activePRs]);
+  const statuses = useMemo(() => [...new Set(data.activePRs.map((pr) => pr.status))].sort(), [data.activePRs]);
 
-  const filteredPRs = data.activePRs.filter((pr) => {
-    if (filters.status !== 'all' && pr.status !== filters.status) return false;
-    if (filters.repo !== 'all' && pr.repo !== filters.repo) return false;
-    if (filters.search) {
-      const term = filters.search.toLowerCase();
-      const searchable = `${pr.title} ${pr.repo} ${pr.number}`.toLowerCase();
-      if (!searchable.includes(term)) return false;
-    }
-    return true;
-  });
+  const filteredPRs = useMemo(() => {
+    return data.activePRs.filter((pr) => {
+      if (filters.status !== 'all' && pr.status !== filters.status) return false;
+      if (filters.repo !== 'all' && pr.repo !== filters.repo) return false;
+      if (filters.search) {
+        const term = filters.search.toLowerCase();
+        const searchable = `${pr.title} ${pr.repo} ${pr.number}`.toLowerCase();
+        if (!searchable.includes(term)) return false;
+      }
+      return true;
+    });
+  }, [data.activePRs, filters.status, filters.repo, filters.search]);
 
   const selectedPR = selectedUrl ? (data.activePRs.find((pr) => pr.url === selectedUrl) ?? null) : null;
 
-  const activePRs = data.activePRs.filter((pr) => !shelvedUrls.has(pr.url));
+  const activePRs = useMemo(
+    () => data.activePRs.filter((pr) => !shelvedUrls.has(pr.url)),
+    [data.activePRs, shelvedUrls],
+  );
   const needAttentionCount = activePRs.filter((pr) => pr.status === 'needs_addressing').length;
   const waitingCount = activePRs.filter((pr) => pr.status === 'waiting_on_maintainer').length;
 

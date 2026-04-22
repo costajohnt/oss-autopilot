@@ -24,6 +24,34 @@
     />
   </head>
   <body>
+    <noscript>
+      <div
+        style="
+          max-width: 40rem;
+          margin: 4rem auto;
+          padding: 1.5rem;
+          font-family:
+            system-ui,
+            -apple-system,
+            sans-serif;
+          line-height: 1.5;
+          color: #e0e0e0;
+          background: #1a1a1a;
+          border: 1px solid #333;
+          border-radius: 8px;
+        "
+      >
+        <h1 style="margin-top: 0">JavaScript required</h1>
+        <p>
+          The OSS Autopilot dashboard is a single-page app that renders entirely on the client. Please enable JavaScript
+          for this origin to use the interactive UI.
+        </p>
+        <p>
+          For a raw JSON view of the same data, fetch
+          <code style="background: #252525; padding: 0.125rem 0.375rem; border-radius: 3px">/api/data</code> directly.
+        </p>
+      </div>
+    </noscript>
     <div id="app"></div>
     <script type="module" src="/src/index.tsx"></script>
   </body>
