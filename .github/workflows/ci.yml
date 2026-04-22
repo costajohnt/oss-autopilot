@@ -17,7 +17,7 @@ permissions:
 
 env:
   # Bundle size thresholds (bytes). Update via PR when increases are justified.
-  BUNDLE_MAX_CORE: 720000 # ~703 KB (increased for @oss-scout/core dependency, #902)
+  BUNDLE_MAX_CORE: 730000 # ~713 KB (increased for config-key registry + did-you-mean helpers, #1038)
   BUNDLE_MAX_MCP: 2000000 # ~1953 KB
   STARTUP_WARN_MS: 500 # Warn if CLI startup exceeds 500ms
 
