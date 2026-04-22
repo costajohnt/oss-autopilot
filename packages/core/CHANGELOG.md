@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.2](https://github.com/costajohnt/oss-autopilot/compare/core-v1.17.1...core-v1.17.2) (2026-04-22)
+
+
+### Bug Fixes
+
+* **startup:** always launch dashboard and auto-repair placeholder usernames ([#1103](https://github.com/costajohnt/oss-autopilot/issues/1103)) ([02479d4](https://github.com/costajohnt/oss-autopilot/commit/02479d4bc93d42200aee9ea86bc89483d8b3451c))
+
 ## [1.17.1](https://github.com/costajohnt/oss-autopilot/compare/core-v1.17.0...core-v1.17.1) (2026-04-22)
 
 
