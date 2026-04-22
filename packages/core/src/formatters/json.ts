@@ -362,6 +362,13 @@ export interface StartupOutput {
   daily?: DailyOutput;
   /** URL of the interactive SPA dashboard server, when running (e.g., "http://localhost:3000") */
   dashboardUrl?: string;
+  /**
+   * Set when the dashboard launch or refresh failed (assets missing, port
+   * conflict, spawn error, etc.). The dashboard is always attempted, so JSON
+   * consumers — which previously saw only a missing `dashboardUrl` — now have
+   * a structured signal to surface or recover from the failure.
+   */
+  dashboardError?: string;
   issueList?: IssueListInfo;
 }
 
@@ -384,6 +391,7 @@ export function toCompactStartupOutput(output: StartupOutput): CompactStartupOut
     ...rest,
     daily: daily ? toCompactDailyOutput(daily) : undefined,
     dashboardUrl: output.dashboardUrl,
+    dashboardError: output.dashboardError,
     issueList: output.issueList,
   };
 }

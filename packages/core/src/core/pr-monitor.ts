@@ -56,6 +56,32 @@ export { isConditionalChecklistItem } from './checklist-analysis.js';
 export { determineStatus } from './status-determination.js';
 
 /**
+ * Known placeholder values that can end up in `config.githubUsername` from
+ * doc snippets, example configs, or aborted setup flows. When the configured
+ * username matches one of these, the PR fetch silently returns zero results
+ * and the dashboard looks like a fresh install. Detecting these lets us
+ * auto-repair the config from the authenticated viewer before fetching.
+ *
+ * Entries must be lowercase — `Lowercase<string>` on the source tuple makes
+ * a non-lowercase entry a compile error, keeping the case-insensitive lookup
+ * contract type-checked instead of comment-documented.
+ */
+const PLACEHOLDER_USERNAMES: readonly Lowercase<string>[] = [
+  'example-user',
+  'your-username',
+  'your-github-username',
+] as const;
+const KNOWN_PLACEHOLDER_USERNAMES: ReadonlySet<string> = new Set(PLACEHOLDER_USERNAMES);
+
+function isPlaceholderUsername(username: string): boolean {
+  return KNOWN_PLACEHOLDER_USERNAMES.has(username.toLowerCase());
+}
+
+// Module-private on purpose: callers should only use the predicate so the
+// `.toLowerCase()` contract can't be bypassed by reading the set directly.
+export { isPlaceholderUsername };
+
+/**
  * Check if a PR has a merge conflict based on GitHub's mergeable flag and mergeable_state.
  * Returns true when mergeable is explicitly false or the mergeable_state is 'dirty'.
  *
@@ -79,10 +105,13 @@ export interface FetchPRsResult {
   prs: FetchedPR[];
   failures: PRCheckFailure[];
   /**
-   * Non-fatal warnings accumulated while fetching. Currently populated when
-   * the GitHub Search API's 1000-result ceiling truncates the user's PR
-   * list — callers (daily, dashboard) surface these so users know the data
-   * may be incomplete (#1057 M25).
+   * Non-fatal warnings accumulated while fetching. Populated by:
+   * - Placeholder auto-repair (stale/example `githubUsername` replaced with
+   *   the authenticated viewer's login before the search runs).
+   * - Post-fetch viewer-mismatch guardrail (configured username differs
+   *   from the authenticated viewer when the search returned zero PRs).
+   * - Search API 1000-result truncation (#1057 M25).
+   * Callers (daily, dashboard) surface these so users see the signal.
    */
   warnings?: string[];
 }
@@ -123,13 +152,69 @@ export class PRMonitor {
    * ```
    */
   async fetchUserOpenPRs(): Promise<FetchPRsResult> {
-    const config = this.stateManager.getState().config;
+    const initialConfig = this.stateManager.getState().config;
 
-    if (!config.githubUsername) {
+    if (!initialConfig.githubUsername) {
       throw new ConfigurationError('No GitHub username configured. Run setup first.');
     }
 
-    debug('pr-monitor', `Fetching open PRs for @${config.githubUsername}...`);
+    // Non-fatal warnings threaded into the result (#1057 M25). When the
+    // Search API's hard 1000-result ceiling truncates the user's PR list we
+    // previously silently dropped the overflow; now the caller can surface
+    // it so the daily digest doesn't quietly report a partial view.
+    const warnings: string[] = [];
+
+    // Username used for the search — mutated below if the pre-fetch placeholder
+    // repair fires. Writing to config is separate from rebinding this local.
+    let searchUsername = initialConfig.githubUsername;
+
+    // Proactive placeholder repair: if the configured username is a known
+    // placeholder (e.g. "example-user" carried over from docs or an aborted
+    // setup), cross-check against the authenticated viewer and persist the
+    // corrected name before fetching. Without this, the search silently
+    // returns zero results and the dashboard looks like a fresh install.
+    // Errors here are non-fatal; rate-limit/auth failures still abort so we
+    // don't mask a revoked token by downgrading to a no-op.
+    let didRepair = false;
+    if (isPlaceholderUsername(searchUsername)) {
+      try {
+        const { data: viewer } = await this.octokit.users.getAuthenticated();
+        const newLogin = viewer.login?.trim();
+        // Guard against an empty/whitespace viewer login (enterprise proxies,
+        // stubbed Octokit clients) and against the pathological case where the
+        // authenticated viewer's login is itself one of our placeholder strings
+        // — persisting either would swap one broken config for another.
+        if (!newLogin || isPlaceholderUsername(newLogin)) {
+          const message =
+            `Placeholder username "${searchUsername}" detected but authenticated viewer ` +
+            `returned an unusable login (${JSON.stringify(viewer.login)}); skipping auto-repair.`;
+          warnings.push(message);
+          warn(MODULE, message);
+        } else {
+          this.stateManager.updateConfig({ githubUsername: newLogin });
+          searchUsername = newLogin;
+          didRepair = true;
+          const message =
+            `Configured GitHub username "${initialConfig.githubUsername}" looks like a placeholder. ` +
+            `Auto-repaired to "${newLogin}" using the authenticated viewer.`;
+          warnings.push(message);
+          warn(MODULE, message);
+        }
+      } catch (err) {
+        if (isRateLimitOrAuthError(err)) throw err;
+        // Non-fatal viewer-lookup failures (5xx, network, unexpected shape):
+        // surface as a warning (not debug) so the daily digest shows that
+        // auto-repair was attempted and couldn't complete. Falls through to
+        // the normal fetch with the placeholder, which will then return zero
+        // results — the post-fetch guardrail skips its own getAuthenticated
+        // attempt since this one already failed the same way.
+        const message = `Could not auto-repair placeholder username "${searchUsername}": ${errorMessage(err)}`;
+        warnings.push(message);
+        warn(MODULE, message);
+      }
+    }
+
+    debug('pr-monitor', `Fetching open PRs for @${searchUsername}...`);
 
     // Search for all open PRs authored by the user with pagination
     const allItems: typeof firstPage.data.items = [];
@@ -137,7 +222,7 @@ export class PRMonitor {
     const perPage = 100;
 
     const firstPage = await this.octokit.search.issuesAndPullRequests({
-      q: `is:pr is:open is:public author:${config.githubUsername}`,
+      q: `is:pr is:open is:public author:${searchUsername}`,
       sort: 'updated',
       order: 'desc',
       per_page: perPage,
@@ -153,24 +238,18 @@ export class PRMonitor {
     const MAX_PAGES = Math.ceil(SEARCH_API_RESULT_CAP / perPage); // 10 pages at per_page=100
     const totalPages = Math.min(Math.ceil(totalCount / perPage), MAX_PAGES);
 
-    // Non-fatal warnings threaded into the result (#1057 M25). When the
-    // Search API's hard 1000-result ceiling truncates the user's PR list we
-    // previously silently dropped the overflow; now the caller can surface
-    // it so the daily digest doesn't quietly report a partial view.
-    const warnings: string[] = [];
-
     // Guardrail: if the Search API returned zero PRs, cross-check the
-    // configured username against the authenticated viewer. A real failure
-    // mode was a stale/placeholder username (e.g. "example-user") silently
-    // producing zero results with no error — the dashboard just showed
-    // "0 active PRs" and looked like a fresh install. getAuthenticated is
-    // advisory; a failure here never breaks the fetch.
-    if (totalCount === 0) {
+    // configured username against the authenticated viewer. This catches
+    // stale usernames (e.g. a renamed GitHub account) that are not in the
+    // known-placeholder set. Skipped when the pre-fetch repair already
+    // reconciled the two — no need to spend a second getAuthenticated call
+    // just to confirm a match we already established.
+    if (totalCount === 0 && !didRepair) {
       try {
         const { data: viewer } = await this.octokit.users.getAuthenticated();
-        if (viewer.login.toLowerCase() !== config.githubUsername.toLowerCase()) {
+        if (viewer.login.toLowerCase() !== searchUsername.toLowerCase()) {
           const message =
-            `Configured GitHub username @${config.githubUsername} does not match ` +
+            `Configured GitHub username @${searchUsername} does not match ` +
             `authenticated user @${viewer.login}. Did you mean to run ` +
             `\`oss-autopilot config username ${viewer.login}\`? Zero PRs returned.`;
           warnings.push(message);
@@ -189,7 +268,7 @@ export class PRMonitor {
 
     if (totalCount > SEARCH_API_RESULT_CAP) {
       warnings.push(
-        `GitHub Search API returned ${totalCount} PRs for @${config.githubUsername}, ` +
+        `GitHub Search API returned ${totalCount} PRs for @${searchUsername}, ` +
           `but results are capped at ${SEARCH_API_RESULT_CAP}. ` +
           `Showing the ${SEARCH_API_RESULT_CAP} most recently updated PRs.`,
       );
@@ -199,7 +278,7 @@ export class PRMonitor {
     while (page < totalPages) {
       page++;
       const nextPage = await this.octokit.search.issuesAndPullRequests({
-        q: `is:pr is:open is:public author:${config.githubUsername}`,
+        q: `is:pr is:open is:public author:${searchUsername}`,
         sort: 'updated',
         order: 'desc',
         per_page: perPage,
@@ -220,7 +299,7 @@ export class PRMonitor {
         warn('pr-monitor', `Skipping PR with unparseable URL: ${item.html_url}`);
         return false;
       }
-      if (isOwnRepo(parsed.owner, config.githubUsername)) return false;
+      if (isOwnRepo(parsed.owner, searchUsername)) return false;
       return true;
     });
 

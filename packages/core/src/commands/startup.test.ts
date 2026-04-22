@@ -441,17 +441,28 @@ describe('runStartup behavior', () => {
     expect(execFile).toHaveBeenCalledWith(expect.any(String), expect.arrayContaining([url]), expect.any(Function));
   }
 
-  it('should NOT open browser when totalActivePRs is 0', async () => {
+  it('should still launch SPA when totalActivePRs is 0 (dashboard empty-state is fine)', async () => {
+    // Regression: the old `> 0` gate swallowed the dashboard for misconfigured
+    // username, transient API flakes, and users between contributions. The
+    // dashboard's own empty-state UI renders zero PRs cleanly, so launch it
+    // whenever setup + auth succeed.
     const daily = makeDailyOutput(0);
     executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({
+      url: 'http://localhost:3000',
+      port: 3000,
+      alreadyRunning: false,
+    });
 
     const result = await runStartup();
 
-    expect(execFile).not.toHaveBeenCalled();
-    expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
+    expect(launchDashboardServer).toHaveBeenCalled();
+    expectBrowserOpenedWith('http://localhost:3000');
+    expect(result.dashboardUrl).toBe('http://localhost:3000');
+    expect(result.daily?.briefSummary).toContain('Dashboard opened in browser');
   });
 
-  it('should log error when SPA unavailable and totalActivePRs > 0', async () => {
+  it('should log error and surface dashboardError when SPA assets are unavailable', async () => {
     const daily = makeDailyOutput(3);
     executeDailyCheck.mockResolvedValue(daily);
     launchDashboardServer.mockResolvedValue(null);
@@ -462,6 +473,9 @@ describe('runStartup behavior', () => {
     expect(launchDashboardServer).toHaveBeenCalled();
     expect(execFile).not.toHaveBeenCalled();
     expect(result.dashboardUrl).toBeUndefined();
+    // JSON consumers need a structured signal, not just a stderr line, since
+    // the dashboard is now always attempted and missing-URL is ambiguous.
+    expect(result.dashboardError).toMatch(/SPA assets not found/);
     expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('SPA assets not found'));
     consoleSpy.mockRestore();
@@ -615,18 +629,23 @@ describe('runStartup behavior', () => {
     consoleSpy.mockRestore();
   });
 
-  it('should not launch SPA when totalActivePRs is 0', async () => {
+  it('launches SPA even when totalActivePRs is 0 (covers misconfig + transient + between-PRs)', async () => {
     const daily = makeDailyOutput(0);
     executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({
+      url: 'http://localhost:3000',
+      port: 3000,
+      alreadyRunning: false,
+    });
 
     const result = await runStartup();
 
-    expect(launchDashboardServer).not.toHaveBeenCalled();
-    expect(execFile).not.toHaveBeenCalled();
-    expect(result.dashboardUrl).toBeUndefined();
+    expect(launchDashboardServer).toHaveBeenCalled();
+    expectBrowserOpenedWith('http://localhost:3000');
+    expect(result.dashboardUrl).toBe('http://localhost:3000');
   });
 
-  it('should log error when SPA launch throws', async () => {
+  it('should surface dashboardError and log when SPA launch throws', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const daily = makeDailyOutput(5);
     executeDailyCheck.mockResolvedValue(daily);
@@ -634,11 +653,15 @@ describe('runStartup behavior', () => {
 
     const result = await runStartup();
 
-    // Should not crash — dashboard is unavailable but startup continues
+    // Should not crash — dashboard is unavailable but startup continues.
     expect(result.dashboardUrl).toBeUndefined();
     expect(execFile).not.toHaveBeenCalled();
     expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('SPA dashboard launch failed'), 'spawn ENOENT');
+    // Structured signal for JSON consumers (plugin layer, MCP), plus the
+    // existing stderr line for humans tailing logs.
+    expect(result.dashboardError).toMatch(/SPA dashboard launch failed/);
+    expect(result.dashboardError).toMatch(/spawn ENOENT/);
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('SPA dashboard launch failed'));
     consoleSpy.mockRestore();
   });
 
