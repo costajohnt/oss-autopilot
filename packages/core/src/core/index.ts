@@ -96,4 +96,15 @@ export {
   type CIFormatterDiagnosis,
   type FormatterName,
 } from './formatter-detection.js';
+export {
+  CONFIG_KEY_REGISTRY,
+  type ConfigKeyDef,
+  type SettableVia,
+  isKnownKey,
+  getKeyDef,
+  getSetupKeys,
+  getConfigKeys,
+  suggestKey,
+  formatUnknownKeyError,
+} from './config-registry.js';
 export * from './types.js';

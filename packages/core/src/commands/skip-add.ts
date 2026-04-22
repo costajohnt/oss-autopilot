@@ -42,7 +42,7 @@ export function runSkipAdd(options: SkipAddOptions): SkipAddOutput {
 
   if (!skipFilePath) {
     throw new Error(
-      'No skipped-issues path configured. Set one via `oss-autopilot config --set skippedIssuesPath=<path>` or pass --path.',
+      'No skipped-issues path configured. Set one via `oss-autopilot setup --set skippedIssuesPath=<path>` or pass --path.',
     );
   }
 

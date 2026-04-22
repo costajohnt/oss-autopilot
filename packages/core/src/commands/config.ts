@@ -3,7 +3,8 @@
  * Shows or updates configuration
  */
 
-import { getStateManager } from '../core/index.js';
+import { CONFIG_KEY_REGISTRY, type ConfigKeyDef, formatUnknownKeyError, getStateManager } from '../core/index.js';
+import { ValidationError } from '../core/errors.js';
 import { ISSUE_SCOPES, type IssueScope, DIFF_TOOLS, type DiffTool } from '../core/types.js';
 import type { ConfigOutput } from '../formatters/json.js';
 import { validateGitHubUsername } from './validation.js';
@@ -11,6 +12,7 @@ import { validateGitHubUsername } from './validation.js';
 interface ConfigOptions {
   key?: string;
   value?: string;
+  listKeys?: boolean;
 }
 
 export interface ConfigSetOutput {
@@ -19,7 +21,11 @@ export interface ConfigSetOutput {
   value: string;
 }
 
-export type ConfigCommandOutput = ConfigOutput | ConfigSetOutput;
+export interface ConfigListKeysOutput {
+  keys: readonly ConfigKeyDef[];
+}
+
+export type ConfigCommandOutput = ConfigOutput | ConfigSetOutput | ConfigListKeysOutput;
 
 function validateScope(value: string): IssueScope {
   if (!(ISSUE_SCOPES as readonly string[]).includes(value)) {
@@ -32,14 +38,25 @@ function validateScope(value: string): IssueScope {
  * Read or write user configuration settings.
  * When called without a key, returns the full config.
  * When called with a key and value, updates the setting.
+ * When called with --list-keys, returns the full registry of known keys.
  *
  * @param options - Config options
  * @param options.key - Setting key (e.g., 'username', 'add-language', 'exclude-repo')
  * @param options.value - Setting value (required when key is provided)
- * @returns Current config (when reading) or success confirmation (when writing)
+ * @param options.listKeys - When true, return the registry of known keys
+ * @returns Current config, success confirmation, or key registry
  * @throws {Error} If the key is unknown or the value is invalid
  */
 export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOutput> {
+  if (options.listKeys) {
+    if (options.key || options.value) {
+      throw new ValidationError(
+        '`--list-keys` cannot be combined with a key/value. Run `config --list-keys` on its own.',
+      );
+    }
+    return { keys: CONFIG_KEY_REGISTRY };
+  }
+
   const stateManager = getStateManager();
   const currentConfig = stateManager.getState().config;
 
@@ -144,7 +161,7 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
       });
       break;
     default:
-      throw new Error(`Unknown config key: ${options.key}`);
+      throw new ValidationError(formatUnknownKeyError(options.key, 'config'));
   }
 
   return { success: true, key: options.key, value };

@@ -566,12 +566,26 @@ export const commands: CLICommandDef[] = [
         .command('config [key] [value]')
         .description('Show or update configuration')
         .option('--json', 'Output as JSON')
+        .option('--list-keys', 'List every known config key with descriptions')
         .action((key, value, options) =>
           executeAction(
             options,
-            async () => (await import('./commands/config.js')).runConfig({ key, value }),
+            async () =>
+              (await import('./commands/config.js')).runConfig({
+                key,
+                value,
+                listKeys: options.listKeys,
+              }),
             (data) => {
-              if ('config' in data) {
+              if ('keys' in data) {
+                console.log('\nConfig keys\n');
+                for (const def of data.keys) {
+                  const flag = def.settableVia === 'auto' ? '(auto)' : `[${def.settableVia}]`;
+                  console.log(`  ${def.key.padEnd(28)} ${flag.padEnd(10)} ${def.description}`);
+                  console.log(`  ${''.padEnd(28)} ${''.padEnd(10)} value: ${def.valueHint}`);
+                }
+                console.log('');
+              } else if ('config' in data) {
                 console.log('\n\u2699\ufe0f Current Configuration:\n');
                 console.log(JSON.stringify(data.config, null, 2));
               } else {
