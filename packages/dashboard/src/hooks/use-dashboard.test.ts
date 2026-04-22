@@ -9,6 +9,9 @@ describe('useDashboard', () => {
 
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Reset call history and mockResolvedValueOnce queue between tests —
+    // the mock is module-scoped and would otherwise leak across tests.
+    mockFetch.mockReset();
     vi.stubGlobal('fetch', mockFetch);
   });
 
@@ -17,9 +20,16 @@ describe('useDashboard', () => {
     vi.restoreAllMocks();
   });
 
-  function mockFetchOk(data: DashboardData) {
+  // Default includes an X-CSRF-Token header so the hook's proactive token
+  // prime (needed when csrfTokenRef is null on POST) does not require every
+  // test to double-mock. Tests that specifically exercise the no-token path
+  // pass `null` or a different value.
+  function mockFetchOk(data: DashboardData, csrfToken: string | null = 'test-token') {
+    const headers = new Headers();
+    if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
     mockFetch.mockResolvedValueOnce({
       ok: true,
+      headers,
       json: () => Promise.resolve(data),
     });
   }
@@ -28,6 +38,7 @@ describe('useDashboard', () => {
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status,
+      headers: new Headers(),
       json: () => (body ? Promise.resolve(body) : Promise.reject(new Error('no body'))),
     });
   }
@@ -105,7 +116,10 @@ describe('useDashboard', () => {
       await result.current.refresh();
     });
 
-    expect(mockFetch).toHaveBeenLastCalledWith('/api/refresh', { method: 'POST' });
+    expect(mockFetch).toHaveBeenLastCalledWith('/api/refresh', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': 'test-token' },
+    });
     expect(result.current.data?.stats.activePRs).toBe(3);
   });
 
@@ -132,7 +146,7 @@ describe('useDashboard', () => {
 
     expect(mockFetch).toHaveBeenLastCalledWith('/api/action', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'test-token' },
       body: JSON.stringify({ action: 'move', url: 'https://github.com/org/repo/pull/1', target: 'shelved' }),
     });
     expect(result.current.data?.shelvedPRUrls).toEqual(['https://github.com/org/repo/pull/1']);
@@ -283,6 +297,89 @@ describe('useDashboard', () => {
 
     await vi.waitFor(() => {
       expect(result.current.refreshing).toBe(false);
+    });
+  });
+
+  // ── CSRF token (#1031) ────────────────────────────────────────
+
+  describe('CSRF token handling', () => {
+    // Real timers here — the auto-refresh cascade under fake timers consumed
+    // mocks unpredictably and masked the actual behavior under test.
+    beforeEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('attaches X-CSRF-Token from the last /api/data response to POST /api/action', async () => {
+      const data = makeDashboardData();
+      mockFetchOk(data, 'server-token-abc123');
+      const updated = makeDashboardData({ shelvedPRUrls: ['https://github.com/o/r/pull/1'] });
+      mockFetchOk(updated, 'server-token-abc123');
+
+      const { result } = renderHook(() => useDashboard());
+      await vi.waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.performAction({
+          action: 'move',
+          url: 'https://github.com/o/r/pull/1',
+          target: 'shelved',
+        });
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/action',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ 'X-CSRF-Token': 'server-token-abc123' }),
+        }),
+      );
+    });
+
+    it('recovers from a stale token by re-priming via /api/data and retrying once', async () => {
+      // Scenario: server restarted and minted a new CSRF token while the SPA
+      // still had the old one cached. First POST returns 403 "CSRF token".
+      // The hook re-fetches /api/data (picking up the new token) and retries
+      // the POST, which now succeeds.
+      const data = makeDashboardData();
+      const updated = makeDashboardData({ shelvedPRUrls: ['https://github.com/o/r/pull/1'] });
+
+      // Mock 1: mount GET /api/data → caches stale token
+      mockFetchOk(data, 'stale-token');
+      // Mock 2: first POST /api/action → 403 "CSRF token"
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        headers: new Headers(),
+        json: () => Promise.resolve({ error: 'Missing or invalid CSRF token' }),
+      });
+      // Mock 3: re-prime GET /api/data → returns fresh token
+      mockFetchOk(data, 'fresh-token');
+      // Mock 4: retry POST /api/action → success
+      mockFetchOk(updated, 'fresh-token');
+
+      const { result } = renderHook(() => useDashboard());
+      await vi.waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.performAction({
+          action: 'move',
+          url: 'https://github.com/o/r/pull/1',
+          target: 'shelved',
+        });
+      });
+
+      const calls = mockFetch.mock.calls as Array<[string, RequestInit?]>;
+      const actionPosts = calls.filter((c) => c[0] === '/api/action');
+      expect(actionPosts).toHaveLength(2);
+
+      const firstHeaders = actionPosts[0][1]?.headers as Record<string, string> | undefined;
+      expect(firstHeaders?.['X-CSRF-Token']).toBe('stale-token');
+      const retryHeaders = actionPosts[1][1]?.headers as Record<string, string> | undefined;
+      expect(retryHeaders?.['X-CSRF-Token']).toBe('fresh-token');
+
+      // Retry's response wins — data state reflects the successful POST.
+      expect(result.current.data?.shelvedPRUrls).toEqual(['https://github.com/o/r/pull/1']);
+      expect(result.current.error).toBe(null);
     });
   });
 });
