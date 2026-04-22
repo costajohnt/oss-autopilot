@@ -3,7 +3,9 @@
  * Handles GitHub comment interactions
  */
 
-import { getStateManager, getOctokit, parseGitHubUrl, requireGitHubToken } from '../core/index.js';
+import { getStateManager, getOctokit, parseGitHubUrl, requireGitHubToken, maybeCheckpoint } from '../core/index.js';
+
+const MODULE = 'comments';
 import { paginateAll } from '../core/pagination.js';
 import { type CommentsOutput, type PostOutput, type ClaimOutput } from '../formatters/json.js';
 import {
@@ -242,16 +244,10 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
       updatedAt: new Date().toISOString(),
       vetted: false,
     });
-    // Push state to Gist if in Gist mode.
-    // If getStateManagerAsync was not called before this command ran,
-    // isGistMode() will be false and checkpoint is correctly skipped.
-    try {
-      if (stateManager.isGistMode()) {
-        await stateManager.checkpoint();
-      }
-    } catch {
-      /* best-effort */
-    }
+    // Push state to Gist if in Gist mode. Best-effort — logs on failure
+    // rather than silently swallowing, so operators see the degraded-sync
+    // signal (#1036 audit H1).
+    await maybeCheckpoint(stateManager, MODULE);
   } catch (error) {
     console.error(
       `Warning: Comment posted on ${options.issueUrl} but failed to save to local state: ${error instanceof Error ? error.message : error}`,

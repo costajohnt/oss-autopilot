@@ -3,8 +3,10 @@
  * attention, waiting, shelved, or auto (reset to computed status).
  */
 
-import { getStateManager } from '../core/index.js';
+import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { PR_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
+
+const MODULE = 'move';
 
 export const VALID_TARGETS = ['attention', 'waiting', 'shelved', 'auto'] as const;
 
@@ -50,6 +52,7 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
         stateManager.setStatusOverride(options.prUrl, status, lastActivityAt);
         stateManager.unshelvePR(options.prUrl);
       });
+      await maybeCheckpoint(stateManager, MODULE);
       return { url: options.prUrl, target, description: `Moved to ${label}` };
     }
     case 'shelved': {
@@ -57,6 +60,7 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
         stateManager.shelvePR(options.prUrl);
         stateManager.clearStatusOverride(options.prUrl);
       });
+      await maybeCheckpoint(stateManager, MODULE);
       return {
         url: options.prUrl,
         target,
@@ -68,6 +72,7 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
         stateManager.clearStatusOverride(options.prUrl);
         stateManager.unshelvePR(options.prUrl);
       });
+      await maybeCheckpoint(stateManager, MODULE);
       return {
         url: options.prUrl,
         target,

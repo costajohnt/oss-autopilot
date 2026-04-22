@@ -8,8 +8,10 @@
  * to keep the library API consistent.
  */
 
-import { getStateManager } from '../core/index.js';
+import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { PR_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
+
+const MODULE = 'shelve';
 
 export interface ShelveOutput {
   shelved: boolean;
@@ -42,6 +44,7 @@ export async function runShelve(options: { prUrl: string }): Promise<ShelveOutpu
     added = stateManager.shelvePR(options.prUrl);
     stateManager.clearStatusOverride(options.prUrl);
   });
+  await maybeCheckpoint(stateManager, MODULE);
 
   return { shelved: added, url: options.prUrl };
 }
@@ -64,6 +67,7 @@ export async function runUnshelve(options: { prUrl: string }): Promise<UnshelveO
     removed = stateManager.unshelvePR(options.prUrl);
     stateManager.clearStatusOverride(options.prUrl);
   });
+  await maybeCheckpoint(stateManager, MODULE);
 
   return { unshelved: removed, url: options.prUrl };
 }

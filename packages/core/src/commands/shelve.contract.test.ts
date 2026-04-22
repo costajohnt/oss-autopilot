@@ -25,6 +25,10 @@ vi.mock('../core/index.js', async () => {
       unshelvePR: mockUnshelvePR,
       clearStatusOverride: mockClearStatusOverride,
       batch: mockBatch,
+      // maybeCheckpoint() checks isGistMode first; stub to false so the
+      // real helper short-circuits and contract tests don't need to mock
+      // Gist plumbing.
+      isGistMode: () => false,
     }),
   };
 });

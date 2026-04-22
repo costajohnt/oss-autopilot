@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   requireGitHubToken: vi.fn().mockReturnValue('fake-token'),
   stateManager: {
     getState: vi.fn().mockReturnValue({ config: { githubUsername: 'testuser' } }),
+    addIssue: vi.fn(),
+    isGistMode: () => false,
   },
   // Octokit endpoints
   pullsGet: vi.fn(),

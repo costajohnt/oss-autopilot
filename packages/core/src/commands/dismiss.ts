@@ -4,8 +4,10 @@
  * Dismissed URLs resurface automatically when new responses arrive after the dismiss timestamp.
  */
 
-import { getStateManager } from '../core/index.js';
+import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
+
+const MODULE = 'dismiss';
 
 export interface DismissOutput {
   dismissed: boolean;
@@ -32,6 +34,7 @@ export async function runDismiss(options: { url: string }): Promise<DismissOutpu
 
   const stateManager = getStateManager();
   const added = stateManager.dismissIssue(options.url, new Date().toISOString());
+  await maybeCheckpoint(stateManager, MODULE);
 
   return { dismissed: added, url: options.url };
 }
@@ -50,6 +53,7 @@ export async function runUndismiss(options: { url: string }): Promise<UndismissO
 
   const stateManager = getStateManager();
   const removed = stateManager.undismissIssue(options.url);
+  await maybeCheckpoint(stateManager, MODULE);
 
   return { undismissed: removed, url: options.url };
 }

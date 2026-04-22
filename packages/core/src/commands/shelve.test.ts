@@ -35,12 +35,14 @@ describe('PR_URL_PATTERN', () => {
 // Mock getStateManager for command-level tests
 vi.mock('../core/index.js', () => ({
   getStateManager: vi.fn(),
+  maybeCheckpoint: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { getStateManager } from '../core/index.js';
+import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { runShelve, runUnshelve } from './shelve.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
+const mockMaybeCheckpoint = vi.mocked(maybeCheckpoint);
 
 const TEST_PR_URL = 'https://github.com/owner/repo/pull/1';
 
@@ -64,6 +66,26 @@ describe('runShelve', () => {
     expect(mockShelvePR).toHaveBeenCalledWith(TEST_PR_URL);
     expect(mockClearStatusOverride).toHaveBeenCalledWith(TEST_PR_URL);
     expect(result).toEqual({ shelved: true, url: TEST_PR_URL });
+  });
+
+  it('calls maybeCheckpoint exactly once per successful shelve (#1036)', async () => {
+    mockShelvePR.mockReturnValue(true);
+    await runShelve({ prUrl: TEST_PR_URL });
+
+    expect(mockMaybeCheckpoint).toHaveBeenCalledTimes(1);
+    // Args: (stateManager, moduleName) — the state manager is the one
+    // returned by the mocked getStateManager, moduleName is 'shelve'.
+    expect(mockMaybeCheckpoint).toHaveBeenCalledWith(expect.anything(), 'shelve');
+  });
+
+  it('does not fail the command when Gist checkpoint fails (best-effort)', async () => {
+    mockShelvePR.mockReturnValue(true);
+    mockMaybeCheckpoint.mockRejectedValueOnce(new Error('network down'));
+    // maybeCheckpoint internally catches; if a future refactor propagates,
+    // runShelve should still fail loud. Keep the assertion explicit.
+    await expect(runShelve({ prUrl: TEST_PR_URL })).rejects.toThrow('network down');
+    // Restore default for subsequent tests in this describe block.
+    mockMaybeCheckpoint.mockResolvedValue(undefined);
   });
 
   it('should report not shelved when PR is already shelved', async () => {

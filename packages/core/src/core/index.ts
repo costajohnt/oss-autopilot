@@ -8,6 +8,7 @@ export {
   getStateManager,
   getStateManagerAsync,
   ensureGistPersistence,
+  maybeCheckpoint,
   resetStateManager,
   type Stats,
 } from './state.js';
