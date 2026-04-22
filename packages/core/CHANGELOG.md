@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.16.2...core-v1.17.0) (2026-04-22)
+
+
+### Features
+
+* **cli:** add doctor command, rename check-integration → orphan-files ([#1039](https://github.com/costajohnt/oss-autopilot/issues/1039)) ([#1074](https://github.com/costajohnt/oss-autopilot/issues/1074)) ([2b3606b](https://github.com/costajohnt/oss-autopilot/commit/2b3606bd2aae8e2d7a8f65188cc131569f38b401))
+* **dashboard:** live demo features — chart entrance + Shift+C celebrate ([#940](https://github.com/costajohnt/oss-autopilot/issues/940)) ([#1097](https://github.com/costajohnt/oss-autopilot/issues/1097)) ([81f7c16](https://github.com/costajohnt/oss-autopilot/commit/81f7c16b4f4d72ccfedc459732e4efdc931d8a37))
+
+
+### Bug Fixes
+
+* **agents:** declare explicit model tier instead of inherit ([#1040](https://github.com/costajohnt/oss-autopilot/issues/1040)) ([#1075](https://github.com/costajohnt/oss-autopilot/issues/1075)) ([07bd37f](https://github.com/costajohnt/oss-autopilot/commit/07bd37f862a72c5ff8e7321d57088b21ab78c9c8))
+* **agents:** narrow tool allowlists, drop mcp__* wildcard ([#1064](https://github.com/costajohnt/oss-autopilot/issues/1064)) ([25f26e9](https://github.com/costajohnt/oss-autopilot/commit/25f26e902139f24706eeae0ef7e9fce922e71028))
+* **cli:** shelve/unshelve CLI now emits ShelveOutput, not MoveOutput ([#1037](https://github.com/costajohnt/oss-autopilot/issues/1037)) ([#1072](https://github.com/costajohnt/oss-autopilot/issues/1072)) ([b993443](https://github.com/costajohnt/oss-autopilot/commit/b993443a4127c7b16d2adbe92fdefbfc8304db64))
+* **cli:** single source-of-truth config key registry ([#1038](https://github.com/costajohnt/oss-autopilot/issues/1038)) ([#1073](https://github.com/costajohnt/oss-autopilot/issues/1073)) ([b294d01](https://github.com/costajohnt/oss-autopilot/commit/b294d01e8bc1ffa60bdb0de6ac8a31a76c8972a6))
+* close UM1 plugin/agent prose polish findings M1/M4/M5/M6/M10/M14 ([#1091](https://github.com/costajohnt/oss-autopilot/issues/1091)) ([2d44dbd](https://github.com/costajohnt/oss-autopilot/commit/2d44dbd1ea535181473888181526be1232c46d5b))
+* close UM2 hook + CLI PR-flow hygiene findings M17/M20/M21/M23/M24 ([#1092](https://github.com/costajohnt/oss-autopilot/issues/1092)) ([f120802](https://github.com/costajohnt/oss-autopilot/commit/f1208021893eee03366565ddf9fca1ba01af20f5))
+* close UM3 infra + core-domain findings M25/M27/M30/M34 ([#1093](https://github.com/costajohnt/oss-autopilot/issues/1093)) ([fc3e422](https://github.com/costajohnt/oss-autopilot/commit/fc3e422c3029453816345ead576f93aebacdd51b))
+* close UM4 dashboard SPA + MCP polish findings M37/M38/M39/M40/M41 ([#1094](https://github.com/costajohnt/oss-autopilot/issues/1094)) ([076c00f](https://github.com/costajohnt/oss-autopilot/commit/076c00f4d85daaf095b42415fbb96c9bcf5abfc8))
+* **commands:** remove phantom scoreThreshold/showHealthCheck config refs ([#1063](https://github.com/costajohnt/oss-autopilot/issues/1063)) ([6cf0aab](https://github.com/costajohnt/oss-autopilot/commit/6cf0aabd341e529e6f88b86251f688b85a0208ab))
+* **daily:** surface non-fatal pipeline failures via DailyOutput.warnings ([#1042](https://github.com/costajohnt/oss-autopilot/issues/1042)) ([#1077](https://github.com/costajohnt/oss-autopilot/issues/1077)) ([498d90a](https://github.com/costajohnt/oss-autopilot/commit/498d90a794c55950d8d68005f8b9d17bd2ddd9aa))
+* **dashboard:** 404 + focus + skip-link on every route ([#1052](https://github.com/costajohnt/oss-autopilot/issues/1052)) ([#1088](https://github.com/costajohnt/oss-autopilot/issues/1088)) ([482812a](https://github.com/costajohnt/oss-autopilot/commit/482812aa2211619d1619dd84a01825beb3e1f956))
+* **dashboard:** add root error boundary + runtime schema validation ([#1050](https://github.com/costajohnt/oss-autopilot/issues/1050)) ([#1085](https://github.com/costajohnt/oss-autopilot/issues/1085)) ([e650d15](https://github.com/costajohnt/oss-autopilot/commit/e650d15bc1a9db634a40643b9f76475122491041))
+* **dashboard:** surface partial-fetch failures to the user ([#1035](https://github.com/costajohnt/oss-autopilot/issues/1035)) ([#1070](https://github.com/costajohnt/oss-autopilot/issues/1070)) ([6c0386c](https://github.com/costajohnt/oss-autopilot/commit/6c0386c63524a99623b3ff6b74076bcb29965d2e))
+* **dashboard:** tighten dashboard server auth for [#1031](https://github.com/costajohnt/oss-autopilot/issues/1031) ([#1066](https://github.com/costajohnt/oss-autopilot/issues/1066)) ([411b793](https://github.com/costajohnt/oss-autopilot/commit/411b7936aa90c523508338600c08189ea8766228))
+* **hooks:** expand guard-public-posts coverage ([#1032](https://github.com/costajohnt/oss-autopilot/issues/1032)) ([#1067](https://github.com/costajohnt/oss-autopilot/issues/1067)) ([a280775](https://github.com/costajohnt/oss-autopilot/commit/a28077525fd0059222ae9380c6eef00dc6322711))
+* **hooks:** gate auto-format-before-push behind opt-in config ([#1045](https://github.com/costajohnt/oss-autopilot/issues/1045)) ([#1080](https://github.com/costajohnt/oss-autopilot/issues/1080)) ([1e3dd20](https://github.com/costajohnt/oss-autopilot/commit/1e3dd20d9de9d0b1eb0137dd48a02abc52c11ca2))
+* **hooks:** preserve local edits to marketplace clone on auto-refresh ([#1061](https://github.com/costajohnt/oss-autopilot/issues/1061)) ([c80ed26](https://github.com/costajohnt/oss-autopilot/commit/c80ed26822315111c978ea8247e41dc1a297ecc2))
+* **mcp:** align README and server.json with reality ([#1065](https://github.com/costajohnt/oss-autopilot/issues/1065)) ([414cd14](https://github.com/costajohnt/oss-autopilot/commit/414cd14050c9565507ce5939f41a8fee517a92d3))
+* **release-please:** server.json path is relative to component root ([#1099](https://github.com/costajohnt/oss-autopilot/issues/1099)) ([8e3d9f6](https://github.com/costajohnt/oss-autopilot/commit/8e3d9f6f09f2887253637fcaed2c443d667ca07e))
+* **release-please:** track server.json version under mcp-server component ([#1098](https://github.com/costajohnt/oss-autopilot/issues/1098)) ([d240f60](https://github.com/costajohnt/oss-autopilot/commit/d240f608bbe2286e2f51364b10aec75605f2030e))
+* **search,vet-list:** defend against scout data-contract drift ([#1043](https://github.com/costajohnt/oss-autopilot/issues/1043)) ([#1078](https://github.com/costajohnt/oss-autopilot/issues/1078)) ([838ce18](https://github.com/costajohnt/oss-autopilot/commit/838ce188b59d387cce7fbf899bba03741f65705f))
+* **startup:** use async token resolver so gh CLI fallback fires ([#1041](https://github.com/costajohnt/oss-autopilot/issues/1041)) ([#1076](https://github.com/costajohnt/oss-autopilot/issues/1076)) ([561f869](https://github.com/costajohnt/oss-autopilot/commit/561f869af37eac29a9b036b3aca69b1f25ffa700))
+* **state:** Gist checkpoint after mutating PR-flow commands ([#1036](https://github.com/costajohnt/oss-autopilot/issues/1036)) ([#1071](https://github.com/costajohnt/oss-autopilot/issues/1071)) ([b8237cd](https://github.com/costajohnt/oss-autopilot/commit/b8237cddccf5eea2c620beb8a2f2e37fa1fdae4a))
+* **state:** optimistic compare-and-swap for state.json writes ([#1030](https://github.com/costajohnt/oss-autopilot/issues/1030)) ([#1069](https://github.com/costajohnt/oss-autopilot/issues/1069)) ([d175a94](https://github.com/costajohnt/oss-autopilot/commit/d175a94d7552990e822ad7dd3d1da70593306f4f))
+* **status:** parse dates numerically instead of lex-comparing strings ([#1044](https://github.com/costajohnt/oss-autopilot/issues/1044)) ([#1079](https://github.com/costajohnt/oss-autopilot/issues/1079)) ([08f0a2a](https://github.com/costajohnt/oss-autopilot/commit/08f0a2a2620a2423855acd4ba77a7b6796dc32d3))
+
+
+### Performance Improvements
+
+* **dashboard:** code-split Chart.js and canvas-confetti off critical path ([#1051](https://github.com/costajohnt/oss-autopilot/issues/1051)) ([#1086](https://github.com/costajohnt/oss-autopilot/issues/1086)) ([9202780](https://github.com/costajohnt/oss-autopilot/commit/9202780976e768d85358aceab3f12f67ea549e6a))
+
 ## [1.16.2](https://github.com/costajohnt/oss-autopilot/compare/core-v1.16.1...core-v1.16.2) (2026-04-21)
 
 
