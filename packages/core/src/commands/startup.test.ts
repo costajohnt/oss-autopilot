@@ -437,6 +437,10 @@ describe('runStartup behavior', () => {
     launchDashboardServer.mockResolvedValue(null);
   });
 
+  function expectBrowserOpenedWith(url: string): void {
+    expect(execFile).toHaveBeenCalledWith(expect.any(String), expect.arrayContaining([url]), expect.any(Function));
+  }
+
   it('should NOT open browser when totalActivePRs is 0', async () => {
     const daily = makeDailyOutput(0);
     executeDailyCheck.mockResolvedValue(daily);
@@ -540,16 +544,12 @@ describe('runStartup behavior', () => {
     const result = await runStartup();
 
     // Opens SPA URL
-    expect(execFile).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.arrayContaining(['http://oss.localhost:3000']),
-      expect.any(Function),
-    );
+    expectBrowserOpenedWith('http://oss.localhost:3000');
     expect(result.dashboardUrl).toBe('http://oss.localhost:3000');
     expect(result.daily?.briefSummary).toContain('Dashboard opened in browser');
   });
 
-  it('should refresh existing dashboard instead of opening new tab (#830)', async () => {
+  it('should refresh existing dashboard and focus it in the browser (#830)', async () => {
     const daily = makeDailyOutput(3);
     executeDailyCheck.mockResolvedValue(daily);
     launchDashboardServer.mockResolvedValue({ url: 'http://oss.localhost:3001', port: 3001, alreadyRunning: true });
@@ -558,13 +558,15 @@ describe('runStartup behavior', () => {
     const result = await runStartup();
 
     expect(result.dashboardUrl).toBe('http://oss.localhost:3001');
-    // Should NOT open a new browser tab
-    expect(execFile).not.toHaveBeenCalled();
     // Should trigger a refresh on the running server
     expect(fetchSpy).toHaveBeenCalledWith(
       'http://127.0.0.1:3001/api/refresh',
       expect.objectContaining({ method: 'POST' }),
     );
+    // Should always call the OS browser-opener: native `open`/`xdg-open`/`start`
+    // focus an existing tab matching the URL instead of duplicating it, so
+    // surfacing the dashboard after /oss is safe here.
+    expectBrowserOpenedWith('http://oss.localhost:3001');
     expect(result.daily?.briefSummary).toContain('Dashboard refreshed');
     expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
     fetchSpy.mockRestore();
@@ -581,8 +583,10 @@ describe('runStartup behavior', () => {
 
     // Startup should succeed despite refresh failure
     expect(result.dashboardUrl).toBe('http://oss.localhost:3001');
-    expect(execFile).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Could not trigger dashboard refresh'));
+    // Browser open is independent of refresh health: still focus the dashboard
+    // so the user sees cached data rather than nothing.
+    expectBrowserOpenedWith('http://oss.localhost:3001');
     // Should say "running" not "refreshed" when refresh fails
     expect(result.daily?.briefSummary).toContain('Dashboard running');
     expect(result.daily?.briefSummary).not.toContain('Dashboard refreshed');
@@ -602,8 +606,9 @@ describe('runStartup behavior', () => {
     const result = await runStartup();
 
     expect(result.dashboardUrl).toBe('http://oss.localhost:3001');
-    expect(execFile).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Dashboard refresh returned 429'));
+    // Browser open still happens: user gets stale-but-visible data instead of silent nothing.
+    expectBrowserOpenedWith('http://oss.localhost:3001');
     // Should say "running" not "refreshed" on non-200
     expect(result.daily?.briefSummary).toContain('Dashboard running');
     fetchSpy.mockRestore();
