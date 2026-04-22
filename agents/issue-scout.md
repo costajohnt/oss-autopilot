@@ -20,7 +20,7 @@ User wants to evaluate a specific issue before investing time.
 </commentary>
 </example>
 
-model: inherit
+model: sonnet
 color: green
 tools: ["Bash", "Read", "mcp__plugin_oss-autopilot_oss-autopilot__search", "mcp__plugin_oss-autopilot_oss-autopilot__vet", "mcp__plugin_oss-autopilot_oss-autopilot__vet-list"]
 ---

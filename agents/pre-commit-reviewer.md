@@ -20,7 +20,7 @@ Post-conflict resolution is a critical moment where bugs can be introduced. Revi
 </commentary>
 </example>
 
-model: inherit
+model: sonnet
 color: red
 tools: ["Bash", "Read", "Glob", "Grep"]
 ---

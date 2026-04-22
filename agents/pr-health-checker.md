@@ -29,7 +29,7 @@ Merge conflicts are a health issue this agent handles.
 </commentary>
 </example>
 
-model: inherit
+model: sonnet
 color: yellow
 tools: ["Bash", "Read", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__read", "mcp__plugin_oss-autopilot_oss-autopilot__comments"]
 ---

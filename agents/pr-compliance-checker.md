@@ -29,7 +29,7 @@ User wants pre-submission guidance on PR quality.
 </commentary>
 </example>
 
-model: inherit
+model: haiku
 color: orange
 tools: ["Bash", "Read", "Glob", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__read", "mcp__plugin_oss-autopilot_oss-autopilot__comments"]
 ---
