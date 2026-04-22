@@ -1661,6 +1661,59 @@ describe('fetchUserOpenPRs does not filter by excludeRepos/excludeOrgs (#591)', 
   });
 });
 
+// #1057 M25 — the GitHub Search API caps results at 1000, so a user with
+// >1000 open PRs silently gets a truncated list. fetchUserOpenPRs must
+// surface a warning for the caller (daily.ts) to include in the digest.
+describe('fetchUserOpenPRs surfaces 1000-cap truncation (#1057 M25)', () => {
+  it('returns warnings when total_count exceeds the 1000-result search cap', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'heavyuser', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          // 1500 > 1000 → truncation warning expected.
+          data: { total_count: 1500, items: [] },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserOpenPRs();
+
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings!.length).toBeGreaterThanOrEqual(1);
+    expect(result.warnings![0]).toMatch(/1500/);
+    expect(result.warnings![0]).toMatch(/1000/);
+    expect(result.warnings![0]).toMatch(/heavyuser/);
+  });
+
+  it('does NOT emit a warning when total_count <= 1000', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'normaluser', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: { total_count: 42, items: [] },
+        }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserOpenPRs();
+
+    // No warnings (absent field or empty array both acceptable).
+    expect(result.warnings ?? []).toEqual([]);
+  });
+});
+
 describe('isBotAuthor (#143)', () => {
   it('should identify [bot] suffix accounts', () => {
     expect(isBotAuthor('dependabot[bot]')).toBe(true);

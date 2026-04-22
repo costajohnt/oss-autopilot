@@ -200,6 +200,49 @@ describe('HttpCache', () => {
       expect(missing.size()).toBe(0);
     });
   });
+
+  // #1057 M27 — opportunistic max-entries cap on write, so long-lived
+  // sessions don't accumulate unbounded cache files between the daily
+  // `evictStale()` sweep.
+  describe('max-entries cap (opportunistic eviction on set)', () => {
+    it('caps the cache at maxEntries, evicting the oldest on overflow', () => {
+      const capped = new HttpCache(cacheDir, 3);
+
+      // Seed four entries; older files get older mtimes so eviction is
+      // deterministic. Without the sleep, the resolution may round all
+      // four mtimes to the same millisecond on some filesystems.
+      capped.set('/a', '"e1"', { k: 1 });
+      const aPath = path.join(cacheDir, crypto.createHash('sha256').update('/a').digest('hex') + '.json');
+      fs.utimesSync(aPath, 0, 0);
+
+      capped.set('/b', '"e2"', { k: 2 });
+      const bPath = path.join(cacheDir, crypto.createHash('sha256').update('/b').digest('hex') + '.json');
+      fs.utimesSync(bPath, 100, 100);
+
+      capped.set('/c', '"e3"', { k: 3 });
+      const cPath = path.join(cacheDir, crypto.createHash('sha256').update('/c').digest('hex') + '.json');
+      fs.utimesSync(cPath, 200, 200);
+
+      // Before the overflow: 3 entries, all present.
+      expect(capped.size()).toBe(3);
+
+      // Fourth write should trigger eviction of the oldest (/a).
+      capped.set('/d', '"e4"', { k: 4 });
+      expect(capped.size()).toBe(3);
+      expect(capped.get('/a')).toBeNull();
+      expect(capped.get('/b')).not.toBeNull();
+      expect(capped.get('/c')).not.toBeNull();
+      expect(capped.get('/d')).not.toBeNull();
+    });
+
+    it('disables the cap when maxEntries <= 0', () => {
+      const unbounded = new HttpCache(cacheDir, 0);
+      for (let i = 0; i < 10; i++) {
+        unbounded.set(`/k/${i}`, `"e${i}"`, { i });
+      }
+      expect(unbounded.size()).toBe(10);
+    });
+  });
 });
 
 describe('cachedRequest', () => {

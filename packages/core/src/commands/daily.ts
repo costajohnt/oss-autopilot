@@ -179,7 +179,8 @@ interface PartitionedPRs {
  */
 async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyWarning[]): Promise<FetchedPRData> {
   // Fetch all open PRs fresh from GitHub
-  const { prs, failures } = await prMonitor.fetchUserOpenPRs();
+  const fetchResult = await prMonitor.fetchUserOpenPRs();
+  const { prs, failures } = fetchResult;
 
   // Log any failures (but continue with successful checks)
   if (failures.length > 0) {
@@ -191,6 +192,19 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
       message: `${failures.length} PR fetch(es) failed`,
     });
     warn(MODULE, `${failures.length} PR fetch(es) failed`);
+  }
+
+  // Surface search-API truncation warnings (#1057 M25) so daily consumers
+  // see the partial-view signal in their `warnings` array rather than only
+  // in server logs.
+  if (fetchResult.warnings) {
+    for (const message of fetchResult.warnings) {
+      warnings.push({
+        phase: 'fetch',
+        operation: 'fetch open PRs (truncated)',
+        message,
+      });
+    }
   }
 
   // Build star filter from cached repoScores so low-star repos are excluded

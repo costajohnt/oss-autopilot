@@ -243,7 +243,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   };
 
   const [
-    { prs, failures },
+    { prs, failures, warnings: fetchWarnings },
     recentlyClosedPRs,
     recentlyMergedPRs,
     mergedResult,
@@ -291,6 +291,16 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
 
   if (failures.length > 0) {
     warn(MODULE, `${failures.length} PR fetch(es) failed`);
+  }
+
+  // Surface search-API truncation warnings (#1057 M25) into the dashboard's
+  // partialFailures banner so a user with >1000 open PRs sees the "partial
+  // view" signal in the SPA rather than silently seeing an incomplete list.
+  if (fetchWarnings) {
+    for (const message of fetchWarnings) {
+      partialFailures.push(message);
+      warn(MODULE, message);
+    }
   }
 
   // Wrap all state mutations in a batch for a single disk write.
