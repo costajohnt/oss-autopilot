@@ -128,6 +128,24 @@ function AppContent() {
     document.title = needCount > 0 ? `(${needCount}) OSS Autopilot` : 'OSS Autopilot Dashboard';
   }, [data?.activePRs]);
 
+  // Global Shift+C fires a celebration (#940). Ignored when the user is
+  // typing into an input/textarea/contenteditable so the shortcut doesn't
+  // steal keystrokes during search or note-taking.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.shiftKey || e.key !== 'C') return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+      }
+      e.preventDefault();
+      triggerCelebration();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [triggerCelebration]);
+
   const shelvedUrls = useMemo(() => new Set(data?.shelvedPRUrls ?? []), [data?.shelvedPRUrls]);
 
   if (loading && !data) {

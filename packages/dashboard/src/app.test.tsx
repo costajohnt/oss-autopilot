@@ -512,6 +512,45 @@ describe('App', () => {
 
       expect(container.querySelector('.celebration-toast')).toBeFalsy();
     });
+
+    // #940 — demo-mode Shift+C shortcut fires the celebration on demand.
+    it('fires a celebration when Shift+C is pressed globally', async () => {
+      localStorage.setItem('oss-autopilot-merged-count', '5');
+      const data = makeDashboardData({
+        stats: { activePRs: 0, shelvedPRs: 0, mergedPRs: 5, closedPRs: 0, mergeRate: '100%' },
+      });
+      mockFetchOk(data);
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+
+      // No toast yet — merged count hasn't changed.
+      expect(container.querySelector('.celebration-toast')).toBeFalsy();
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'C', shiftKey: true }));
+
+      await waitFor(() => expect(container.querySelector('.celebration-toast')).toBeTruthy());
+      expect(container.querySelector('.celebration-toast')?.textContent).toMatch(/new PRs? merged/i);
+    });
+
+    it('does NOT fire Shift+C while the user is typing in an input', async () => {
+      localStorage.setItem('oss-autopilot-merged-count', '5');
+      const data = makeDashboardData({
+        stats: { activePRs: 1, shelvedPRs: 0, mergedPRs: 5, closedPRs: 0, mergeRate: '100%' },
+        activePRs: [makePR({ repo: 'a/b', title: 'search for this', status: 'needs_addressing' })],
+      });
+      mockFetchOk(data);
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.filter-input')).toBeTruthy());
+
+      const search = container.querySelector('.filter-input') as HTMLInputElement;
+      search.focus();
+      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'C', shiftKey: true, bubbles: true }));
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(container.querySelector('.celebration-toast')).toBeFalsy();
+    });
   });
 
   // ── Route navigation (#966) ───────────────────────────────────────
