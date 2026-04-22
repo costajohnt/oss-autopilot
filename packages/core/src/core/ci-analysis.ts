@@ -26,7 +26,12 @@ const FORK_LIMITATION_PATTERNS: RegExp[] = [
   /chromatic/i,
   /percy/i,
   /cloudflare pages/i,
-  /\binternal\b/i,
+  // Tightened from plain `\binternal\b` (#1057 M34). Still catches the
+  // known "Facebook Internal", "Meta Internal", and "Internal - <thing>"
+  // fork-limitation checks (#675), but the negative lookahead prevents
+  // misclassifying legitimate test checks like "Internal API tests" or
+  // "Internal Integration Tests".
+  /\binternal\b(?!\s+(?:api|test|integration|smoke|unit|e2e|regression|functional))/i,
 ];
 
 /**

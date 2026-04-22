@@ -72,6 +72,13 @@ export interface PRCheckFailure {
 export interface FetchPRsResult {
   prs: FetchedPR[];
   failures: PRCheckFailure[];
+  /**
+   * Non-fatal warnings accumulated while fetching. Currently populated when
+   * the GitHub Search API's 1000-result ceiling truncates the user's PR
+   * list — callers (daily, dashboard) surface these so users know the data
+   * may be incomplete (#1057 M25).
+   */
+  warnings?: string[];
 }
 
 /**
@@ -133,10 +140,27 @@ export class PRMonitor {
 
     allItems.push(...firstPage.data.items);
     const totalCount = firstPage.data.total_count;
-    debug('pr-monitor', `Found ${totalCount} open PRs`);
+    debug(MODULE, `Found ${totalCount} open PRs`);
 
     // Fetch remaining pages if needed (GitHub search API returns max 1000 results)
-    const totalPages = Math.min(Math.ceil(totalCount / perPage), 10); // Cap at 1000 results
+    const SEARCH_API_RESULT_CAP = 1000;
+    const MAX_PAGES = Math.ceil(SEARCH_API_RESULT_CAP / perPage); // 10 pages at per_page=100
+    const totalPages = Math.min(Math.ceil(totalCount / perPage), MAX_PAGES);
+
+    // Non-fatal warnings threaded into the result (#1057 M25). When the
+    // Search API's hard 1000-result ceiling truncates the user's PR list we
+    // previously silently dropped the overflow; now the caller can surface
+    // it so the daily digest doesn't quietly report a partial view.
+    const warnings: string[] = [];
+    if (totalCount > SEARCH_API_RESULT_CAP) {
+      warnings.push(
+        `GitHub Search API returned ${totalCount} PRs for @${config.githubUsername}, ` +
+          `but results are capped at ${SEARCH_API_RESULT_CAP}. ` +
+          `Showing the ${SEARCH_API_RESULT_CAP} most recently updated PRs.`,
+      );
+      warn(MODULE, warnings[warnings.length - 1]);
+    }
+
     while (page < totalPages) {
       page++;
       const nextPage = await this.octokit.search.issuesAndPullRequests({
@@ -192,7 +216,7 @@ export class PRMonitor {
       return a.status === 'needs_addressing' ? -1 : 1;
     });
 
-    return { prs, failures };
+    return warnings.length > 0 ? { prs, failures, warnings } : { prs, failures };
   }
 
   /**

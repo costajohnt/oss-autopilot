@@ -46,6 +46,18 @@ describe('classifyCICheck', () => {
     expect(classifyCICheck('Meta Internal')).toBe('fork_limitation');
   });
 
+  // #1057 M34 — the plain `\binternal\b` pattern was too broad and would
+  // misclassify test-family checks named "Internal X Tests" as fork
+  // limitations. Tightened pattern excludes a small set of test-descriptor
+  // qualifiers so these are still treated as real CI.
+  it('should NOT classify "internal <test-type>" checks as fork_limitation', () => {
+    expect(classifyCICheck('Internal API Tests')).not.toBe('fork_limitation');
+    expect(classifyCICheck('Internal Integration Tests')).not.toBe('fork_limitation');
+    expect(classifyCICheck('Internal Unit Tests')).not.toBe('fork_limitation');
+    expect(classifyCICheck('Internal E2E')).not.toBe('fork_limitation');
+    expect(classifyCICheck('Internal Regression')).not.toBe('fork_limitation');
+  });
+
   it('should classify Blacksmith CI runners as infrastructure (#675)', () => {
     expect(classifyCICheck('Playwright Tests (blacksmith-8vcpu-ubuntu, beta)')).toBe('infrastructure');
     expect(classifyCICheck('Blacksmith / build')).toBe('infrastructure');

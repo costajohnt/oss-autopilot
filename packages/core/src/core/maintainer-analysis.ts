@@ -62,9 +62,15 @@ export function extractMaintainerActionHints(
     hints.push('docs_requested');
   }
 
-  // Rebase requests
-  const rebaseKeywords = ['rebase', 'merge conflict', 'out of date', 'behind main', 'behind master'];
-  if (rebaseKeywords.some((kw) => lower.includes(kw))) {
+  // Rebase requests.
+  //
+  // The `rebase` term uses a word-boundary regex so past-tense mentions like
+  // "after rebasing this was fine" or "I already rebased this" don't trigger
+  // a rebase_requested hint (#1057 M30). The other phrases are specific
+  // enough that plain substring matching is sufficient.
+  const rebasePhrases = ['merge conflict', 'out of date', 'behind main', 'behind master'];
+  const hasRebaseWord = /\brebase\b/i.test(commentBody);
+  if (hasRebaseWord || rebasePhrases.some((kw) => lower.includes(kw))) {
     hints.push('rebase_requested');
   }
 

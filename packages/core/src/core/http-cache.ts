@@ -36,6 +36,16 @@ export interface CacheEntry {
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * Soft cap on the number of entries kept on disk (#1057 M27). `set()`
+ * opportunistically evicts the oldest entries when the directory grows past
+ * this ceiling. The cap is deliberately high (2000) so it doesn't thrash a
+ * normal day's traffic — it's a belt-and-suspenders guard against unbounded
+ * growth on long-running sessions that accumulate cache files between the
+ * daily `evictStale()` sweep.
+ */
+const DEFAULT_MAX_ENTRIES = 2000;
+
+/**
  * File-based HTTP cache backed by `~/.oss-autopilot/cache/`.
  *
  * Each cache entry is stored as a separate JSON file keyed by the SHA-256
@@ -44,12 +54,14 @@ const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
  */
 export class HttpCache {
   private readonly cacheDir: string;
+  private readonly maxEntries: number;
 
   /** In-flight request deduplication map: URL -> Promise<response>. */
   private readonly inflightRequests = new Map<string, Promise<unknown>>();
 
-  constructor(cacheDir?: string) {
+  constructor(cacheDir?: string, maxEntries: number = DEFAULT_MAX_ENTRIES) {
     this.cacheDir = cacheDir ?? getCacheDir();
+    this.maxEntries = maxEntries;
   }
 
   /** Derive a filesystem-safe cache key from a URL. */
@@ -107,9 +119,54 @@ export class HttpCache {
     try {
       fs.writeFileSync(this.pathFor(url), JSON.stringify(entry), { encoding: 'utf-8', mode: 0o600 });
       debug(MODULE, `Cached response for ${url}`);
+      // Best-effort size cap (#1057 M27). Runs after each write rather than on
+      // a schedule so long-lived sessions can't accumulate past the cap.
+      this.evictIfExceeds(this.maxEntries);
     } catch (err) {
       // Non-fatal: cache write failure should not break the request
       debug(MODULE, `Failed to write cache for ${url}`, err);
+    }
+  }
+
+  /**
+   * If the cache directory exceeds `maxEntries`, evict the oldest entries
+   * (by mtime) until it's at the cap. Best-effort — any I/O failure is
+   * swallowed so cache-bookkeeping never breaks the request path.
+   */
+  private evictIfExceeds(maxEntries: number): void {
+    if (maxEntries <= 0) return;
+    try {
+      const entries = fs.readdirSync(this.cacheDir).filter((f) => f.endsWith('.json'));
+      if (entries.length <= maxEntries) return;
+
+      // Stat once; sort oldest first so we evict the stalest files.
+      const withMtime = entries
+        .map((file) => {
+          const fullPath = path.join(this.cacheDir, file);
+          try {
+            return { fullPath, mtimeMs: fs.statSync(fullPath).mtimeMs };
+          } catch {
+            return null;
+          }
+        })
+        .filter((e): e is { fullPath: string; mtimeMs: number } => e !== null)
+        .sort((a, b) => a.mtimeMs - b.mtimeMs);
+
+      const toEvict = withMtime.length - maxEntries;
+      let evicted = 0;
+      for (let i = 0; i < toEvict; i++) {
+        try {
+          fs.unlinkSync(withMtime[i].fullPath);
+          evicted++;
+        } catch {
+          // Another process may have raced us — ignore.
+        }
+      }
+      if (evicted > 0) {
+        debug(MODULE, `Capped cache at ${maxEntries} entries: evicted ${evicted} oldest`);
+      }
+    } catch {
+      // Cache dir missing / unreadable — not fatal.
     }
   }
 
