@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks';
+import { validateDashboardData } from '@oss-autopilot/core';
 import type { DashboardData, ActionRequest } from '../types';
 
 // Module-scoped CSRF token cache — the server returns X-CSRF-Token on every
@@ -34,8 +35,19 @@ async function fetchJsonWithToken(url: string, init?: RequestInit): Promise<Json
     throw new Error(message);
   }
   const csrfToken = res.headers.get('X-CSRF-Token');
-  const data = (await res.json()) as DashboardData;
-  return { data, csrfToken };
+  const rawJson = await res.json();
+
+  // Runtime schema validation (#1050). TypeScript can't reach across the
+  // process boundary to the CLI server — if the server drops or renames a
+  // field, the dashboard would previously hit `Cannot read property X of
+  // undefined` at some random render site. Validate here so drift surfaces
+  // as a clean error message instead of a render crash.
+  const validation = validateDashboardData(rawJson);
+  if (!validation.ok) {
+    console.error('[dashboard] /api/data schema validation failed:', validation.message, rawJson);
+    throw new Error(validation.message);
+  }
+  return { data: validation.data as unknown as DashboardData, csrfToken };
 }
 
 export function useDashboard() {
