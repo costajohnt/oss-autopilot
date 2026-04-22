@@ -105,167 +105,19 @@ Before dispatching review agents, run the repo's lint and test commands to catch
 
 ### 3. Dispatch Review Agents in Parallel
 
-**CRITICAL: Dispatch ALL selected agents in a SINGLE message for true parallelism.**
+**See `workflows/dispatch-review.md`** — the canonical multi-agent dispatch template (agent roster, prompt content, convergence loop, fallback, consolidated report format).
 
-Pass `reviewDiff` (from sub-step 2) as context to each agent.
+Caller-specific inputs for this workflow:
+- **No `issueContext`** — this is a generic pre-commit review, not tied to a specific upstream issue. The SCOPE block is therefore omitted. Sub-step 4b (Scope Discipline Check) handles the maintainer-feedback case where requested-vs-implemented discipline matters.
+- `reviewDiff` comes from sub-step 2.
+- `workingDir` is the local repo path.
+- `reviewPass = 1`, `agentsWithFindings = []`.
 
-**Initialize tracking:** Set `reviewPass = 1` and `agentsWithFindings = []` (empty list). These are used in the convergence loop (sub-step 5) to enable targeted re-dispatch.
-
-**IMPORTANT: Always include `Working directory: {local repo path}` in every agent prompt so agents can find and read files in the correct location. Without this, agents inherit the parent session's working directory and file lookups will fail.**
-
-**Always dispatch the full base agent suite** regardless of change size. The convergence loop (sub-step 5) depends on comprehensive coverage — scaling down agents undermines the guarantee that fixes don't introduce new problems.
-
-**Base agents (always dispatched):** `code-reviewer`, `silent-failure-hunter`, `code-simplifier`, `pr-test-analyzer`, `comment-analyzer`
-
-**Agent prompts** (dispatch ALL base agents plus any conditional agents in a SINGLE message; include the full `git diff` output in each):
-
-```
-Task(pr-review-toolkit:code-reviewer,
-  "Review the following code changes for bugs, logic errors, security vulnerabilities,
-   and adherence to project conventions.
-   Repository: {repo name}
-   Working directory: {local repo path}
-   Convention notes: {any CONTRIBUTING.md or lint config findings}
-   Changed files: {changed files list}
-
-   Additional checks:
-   - API naming conventions: If new public API surface is added (exports, options, CLI flags),
-     scan existing APIs in the same module for naming patterns. Flag double-negative boolean
-     names (e.g., nonInteractive when the codebase uses positive booleans like interactive).
-   - JS/TS truthiness: Flag !obj.prop when the intent is to check for false specifically
-     but undefined would also match. Flag === false vs !prop inconsistencies. Flag boolean
-     coercion of values that could be 0, "", or null where the intent is only to check
-     for undefined.
-   - Formatting hygiene: Scan the diff for hunks that contain only formatting changes
-     (whitespace, quote style, trailing commas, import reordering, line breaks) with no
-     functional change. Flag each as Recommended: 'Formatting-only hunk at {file}:{line}
-     — revert to keep diff minimal.' Do not flag formatting that is part of the functional
-     fix (e.g., a new import that triggers automatic reordering).
-   - Documentation accuracy: If docs/README/JSDoc are changed, cross-reference factual claims
-     against the actual code. Check that option descriptions match defaults (don't say
-     "Enable X" for a feature that's on by default). If code behavior changed but docs
-     were NOT changed, flag any docs/JSDoc/comments on the changed functions that describe
-     the old behavior.
-
-   Diff:
-   {git diff output}")
-
-Task(pr-review-toolkit:silent-failure-hunter,
-  "Review the following code changes for silent failures, inadequate error handling,
-   and inappropriate fallback behavior.
-   Working directory: {local repo path}
-   Changed files: {changed files list}
-
-   Diff:
-   {git diff output}")
-
-Task(pr-review-toolkit:code-simplifier,
-  "Review the following code changes for dead code, unnecessary complexity, and
-   simplification opportunities. Do NOT modify files — report findings only.
-   Do NOT suggest cosmetic changes (import reordering, quote style, trailing commas,
-   whitespace) as improvements — those expand the diff without functional benefit.
-   Working directory: {local repo path}
-   Changed files: {changed files list}
-
-   Diff:
-   {git diff output}")
-
-Task(pr-review-toolkit:pr-test-analyzer,
-  "Analyze test coverage and assertion quality for the following code changes.
-   Working directory: {local repo path}
-   Test directory: {test dir path}
-   Changed files: {changed files list}
-
-   Coverage: Check if modified code paths have tests, identify gaps.
-
-   Assertion strength: For each new or modified test, ask 'If I broke the feature under
-   test, would this test actually catch it?' Flag:
-   - Assertions too broad (only checking final output, not intermediate states)
-   - Test names claiming comprehensive coverage but only checking a subset
-   - Tests that would still pass if the feature regressed (e.g., only .toBeDefined()
-     when a specific value is expected)
-   - Override/disable tests that don't prove the override is working, just that code runs
-
-   Diff:
-   {git diff output}")
-
-Task(pr-review-toolkit:comment-analyzer,
-  "Review comments in the following code changes for accuracy, completeness,
-   and long-term maintainability.
-   Working directory: {local repo path}
-   Changed files: {changed files list}
-
-   Diff:
-   {git diff output}")
-```
-
-**Conditional agents (dispatch in the SAME message if applicable):**
-
-- **`pr-review-toolkit:type-design-analyzer`** — dispatch only if changed files include TypeScript (`.ts`, `.tsx`) or other typed languages
-  ```
-  Task(pr-review-toolkit:type-design-analyzer,
-    "Review type design in the following TypeScript changes. Check for proper
-     encapsulation, invariant expression, and type safety.
-     Working directory: {local repo path}
-     Changed files: {changed .ts/.tsx files}
-
-     Diff:
-     {git diff output for .ts/.tsx files}")
-  ```
-
-**Fallback:** If the PR review toolkit agents are unavailable (Task tool returns an error for those agent types), inform the user and dispatch the local `pre-commit-reviewer` agent instead:
-
-> "PR review toolkit agents are not available. Falling back to the built-in pre-commit reviewer. This provides a general code review but does not include specialized checks for silent failures, type design, or test coverage."
-
-```
-Task(pre-commit-reviewer,
-  "Review my pending code changes before committing.
-   Repository: {repo name}
-   Working directory: {path}")
-```
-
-**Partial failure:** If some toolkit agents succeed and others fail, consolidate the successful results and note which reviews were skipped:
-> "Note: The following specialized reviews could not be completed: {list}."
+The template handles the full dispatch + convergence flow. Return here when the loop exits (either converged or max passes reached) with a consolidated report, then proceed to sub-step 4b (scope discipline check when responding to maintainer feedback) and sub-step 6 (user decision point).
 
 ### 4. Consolidate Findings
 
-After all agents complete, merge their outputs into a unified report. Deduplicate findings that multiple agents flagged.
-
-**Track which agents found issues:** For each agent that reported Critical or Recommended findings, add its name to `agentsWithFindings`. This list is used in the convergence loop (sub-step 5) to enable targeted re-dispatch on subsequent passes.
-
-**If any agent did not complete or returned an error**, note it in the report:
-> "Warning: {agent-name} did not complete. Its findings are not included."
-
-```
-## Pre-Commit Review Summary
-
-### Critical ({count}) — Must fix before pushing
-- **{file}:{line}** — {description} (found by: {agent})
-  Suggestion: {fix}
-
-### Recommended ({count}) — Should fix
-- **{file}:{line}** — {description} (found by: {agent})
-  Suggestion: {fix}
-
-### Minor ({count}) — Nice to have
-- **{file}:{line}** — {description}
-
-### Test Coverage & Quality
-- {assessment from pr-test-analyzer, including assertion strength concerns}
-
-### Documentation Accuracy
-- {any doc/README claims that don't match the code, or stale docs not updated after code changes}
-
-### Convention Alignment
-- {any style/convention/naming mismatches}
-```
-
-If NO issues found across all agents:
-```
-## Pre-Commit Review Summary
-
-All agents passed. No issues found — changes are clean and ready to commit.
-```
+Consolidation format is covered in `dispatch-review.md`. A generic pre-commit review does NOT split findings into in-scope vs out-of-scope (there is no issue context to scope against) — all findings are treated as actionable. The maintainer-feedback-response flow adds a scope-discipline check in sub-step 4b below.
 
 ### 4b. Scope Discipline Check
 
