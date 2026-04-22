@@ -107,4 +107,10 @@ export {
   suggestKey,
   formatUnknownKeyError,
 } from './config-registry.js';
+export {
+  DashboardDataSchema,
+  DashboardStatsSchema,
+  validateDashboardData,
+  type DashboardDataParsed,
+} from './dashboard-data-schema.js';
 export * from './types.js';

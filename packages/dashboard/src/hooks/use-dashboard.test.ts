@@ -382,4 +382,57 @@ describe('useDashboard', () => {
       expect(result.current.error).toBe(null);
     });
   });
+
+  // ── #1050 runtime schema validation ───────────────────────────────────
+
+  describe('schema validation (#1050)', () => {
+    it('surfaces an error when /api/data returns a malformed shape (missing stats)', async () => {
+      // Response is well-formed JSON but missing the required `stats` field —
+      // previously would have committed to state and crashed at render time.
+      const malformed = { ...makeDashboardData(), stats: undefined };
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers(),
+        json: () => Promise.resolve(malformed),
+      });
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { result } = renderHook(() => useDashboard());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.data).toBe(null);
+      expect(result.current.error).toMatch(/Server response did not match expected shape/i);
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('schema validation failed'),
+        expect.any(String),
+        expect.anything(),
+      );
+      consoleSpy.mockRestore();
+    });
+
+    it('rejects a null response as malformed', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers(),
+        json: () => Promise.resolve(null),
+      });
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { result } = renderHook(() => useDashboard());
+      await act(async () => {
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.error).toMatch(/Server response did not match expected shape/i);
+      consoleSpy.mockRestore();
+    });
+  });
 });
