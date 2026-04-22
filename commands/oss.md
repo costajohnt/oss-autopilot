@@ -40,6 +40,10 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
  │   ├─ "Review issue replies" ──► workflows/review-issue-replies.md
  │   │   Issue reply triage handler
  │   │
+ │   ├─ "Follow up on dormant PRs" ──► workflows/dormant-pr-follow-up.md
+ │   │   Surface waiting-on-maintainer PRs past the 7/14/30-day cadence and draft
+ │   │   a polite follow-up via the draft-review-post skill (user posts themselves)
+ │   │
  │   └─ "Done for now" ──► Session End
  │
  ├─ Pre-Commit Review (after any code changes) ──┐
@@ -59,6 +63,7 @@ This command (`oss.md`) is the **core router** that orchestrates the entire flow
 | `workflows/startup-and-build.md` | CLI build, startup command, output parsing, error recovery | On entry (Startup phase) |
 | `workflows/action-menu.md` | PR display, menu rendering, input parsing, informational questions | After Summary, after each action |
 | `workflows/review-issue-replies.md` | Issue reply triage and dismiss handler | User selects "Review issue replies" |
+| `workflows/dormant-pr-follow-up.md` | Drafts a polite follow-up for PRs waiting on maintainer (7/14/30-day cadence) | User selects "Follow up on dormant PRs" or invokes from action menu |
 | `workflows/work-through-issues.md` | Orchestrate actionable PR resolution and issue list browsing | User selects "Work through all issues", "Pick from list", or specific PRs |
 | `workflows/draft-first-workflow.md` | Full new contribution pipeline (10 steps) | After selecting an issue and implementing changes |
 | `workflows/pre-commit-review.md` | Code review gate for existing PR updates | After Tier 2 code changes to an existing PR |

@@ -169,6 +169,21 @@ rejected with a did-you-mean suggestion.
 
 ---
 
+## Workflow Index
+
+| Workflow | Purpose |
+|---|---|
+| `workflows/startup-and-build.md` | CLI build, startup command, output parsing, error recovery |
+| `workflows/action-menu.md` | PR display, menu rendering, input parsing, informational questions |
+| `workflows/work-through-issues.md` | Orchestrate actionable PR resolution and issue list browsing |
+| `workflows/draft-first-workflow.md` | Full new contribution pipeline (10 steps) |
+| `workflows/pre-commit-review.md` | Code review gate for existing PR updates |
+| `workflows/dispatch-review.md` | Shared multi-agent review-dispatch template (consumed by both review workflows) |
+| `workflows/review-issue-replies.md` | Issue reply triage and dismiss handler |
+| `workflows/dormant-pr-follow-up.md` | Operationalizes the 7/14/30-day follow-up cadence for waiting-on-maintainer PRs |
+
+---
+
 ## AskUserQuestion Validation Protocol
 
 **CRITICAL: Apply this protocol after EVERY AskUserQuestion call in all plugin files.**
