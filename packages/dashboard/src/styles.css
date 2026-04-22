@@ -1944,3 +1944,19 @@ a:hover {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Screen-reader-only utility for route-change announcements (#1052).
+   Kept focusable (width/height 1px rather than display:none) so the
+   programmatic `element.focus()` call in App's route-change effect
+   moves focus to the heading for AT users. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

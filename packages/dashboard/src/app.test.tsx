@@ -574,5 +574,73 @@ describe('App', () => {
         expect(container.textContent).toContain('Closed X');
       });
     });
+
+    // ── #1052 routing hardening ──────────────────────────────────────
+
+    it('renders a 404 view for unknown paths instead of silently falling through to home', async () => {
+      const data = makeDashboardData();
+      mockFetchOk(data);
+
+      // Start at an unregistered path before mounting.
+      window.history.replaceState(null, '', '/foo');
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+
+      expect(container.textContent).toContain('Page not found');
+      expect(container.textContent).toContain('/foo');
+      // Home-only UI (StatsBar action pills) should NOT be rendered on 404.
+      expect(Array.from(container.querySelectorAll('button')).some((b) => b.textContent?.includes('Merged PRs'))).toBe(
+        false,
+      );
+    });
+
+    it('exposes #main-content on every route so the skip link always resolves', async () => {
+      const data = makeDashboardData({ allMergedPRs: [] });
+      mockFetchOk(data);
+
+      for (const path of ['/', '/merged', '/closed', '/issues', '/unknown']) {
+        window.history.replaceState(null, '', path);
+        const { container, unmount } = render(<App />);
+        await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+        expect(container.querySelector('#main-content'), `route ${path} should have #main-content`).toBeTruthy();
+        unmount();
+      }
+    });
+
+    it('moves keyboard focus to the route heading when the path changes', async () => {
+      const data = makeDashboardData({
+        stats: { activePRs: 0, shelvedPRs: 0, mergedPRs: 1, closedPRs: 0, mergeRate: '100%' },
+        allMergedPRs: [
+          {
+            url: 'https://github.com/o/r/pull/1',
+            repo: 'o/r',
+            number: 1,
+            title: 'Merged A',
+            mergedAt: '2026-01-01T00:00:00Z',
+          },
+        ],
+      });
+      mockFetchOk(data);
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+
+      const mergedButton = Array.from(container.querySelectorAll('button')).find((b) =>
+        b.textContent?.includes('Merged PRs'),
+      );
+      fireEvent.click(mergedButton!);
+
+      // Wait for the /merged view to mount, then confirm the route-change
+      // effect moved focus to the route heading. jsdom preserves the
+      // programmatic focus call, so activeElement should be the h2.
+      await waitFor(() => {
+        const heading = container.querySelector('h2[tabindex="-1"]');
+        expect(heading?.textContent).toContain('Merged pull requests');
+      });
+      const activeH2 = document.activeElement as HTMLElement | null;
+      expect(activeH2?.tagName.toLowerCase()).toBe('h2');
+      expect(activeH2?.textContent).toContain('Merged pull requests');
+    });
   });
 });
