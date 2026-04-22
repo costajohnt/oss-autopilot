@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.1](https://github.com/costajohnt/oss-autopilot/compare/core-v1.17.0...core-v1.17.1) (2026-04-22)
+
+
+### Bug Fixes
+
+* **pr-monitor:** warn when configured username does not match authenticated viewer ([#1101](https://github.com/costajohnt/oss-autopilot/issues/1101)) ([1b8f6dc](https://github.com/costajohnt/oss-autopilot/commit/1b8f6dca6385918d2e79aea9cf87b1a63381529b))
+* **startup:** focus dashboard tab on /oss when server is already running ([#1100](https://github.com/costajohnt/oss-autopilot/issues/1100)) ([a570823](https://github.com/costajohnt/oss-autopilot/commit/a57082355457decb59269ec971ba850229fcab97))
+
 ## [1.17.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.16.2...core-v1.17.0) (2026-04-22)
 
 
