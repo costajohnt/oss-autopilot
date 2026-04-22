@@ -82,6 +82,9 @@ Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `
 # View/set config (local-only)
 <prefix> config [key] [value] --json
 
+# List every known config key with descriptions (local-only)
+<prefix> config --list-keys --json
+
 # Interactive setup (local-only)
 <prefix> setup --json [--set key=value...] [--reset]
 
@@ -91,6 +94,11 @@ Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `
 # Quick init with username (local-only)
 <prefix> init <username> --json
 ```
+
+The canonical list of config keys lives in
+`packages/core/src/core/config-registry.ts`. Run `config --list-keys` to see
+the live list (including which command accepts each key). Unknown keys are
+rejected with a did-you-mean suggestion.
 
 ### Utilities
 

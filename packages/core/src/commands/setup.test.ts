@@ -4,12 +4,16 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../core/index.js', () => ({
-  getStateManager: vi.fn(),
-  DEFAULT_CONFIG: {
-    aiPolicyBlocklist: ['matplotlib/matplotlib'],
-  },
-}));
+vi.mock('../core/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
+  return {
+    ...actual,
+    getStateManager: vi.fn(),
+    DEFAULT_CONFIG: {
+      aiPolicyBlocklist: ['matplotlib/matplotlib'],
+    },
+  };
+});
 
 vi.mock('./validation.js', () => ({
   validateGitHubUsername: vi.fn(),
@@ -189,13 +193,58 @@ describe('runSetup', () => {
     );
   });
 
-  it('should handle unknown setting key', async () => {
-    const result = await runSetup({ set: ['unknownKey=value'] });
+  it('should reject unknown setting with a did-you-mean suggestion', async () => {
+    await expect(runSetup({ set: ['usrname=value'] })).rejects.toThrow(/Unknown setting "usrname"/);
+    await expect(runSetup({ set: ['usrname=value'] })).rejects.toThrow(/did you mean "username"/i);
+  });
 
-    expect(result).toHaveProperty('warnings');
-    if ('warnings' in result && result.warnings) {
-      expect(result.warnings).toContain('Unknown setting: unknownKey');
-    }
+  it('should reject totally-unrecognized keys but still point at --list-keys', async () => {
+    await expect(runSetup({ set: ['totallyBogus=value'] })).rejects.toThrow(/config --list-keys/);
+  });
+
+  it('rejects unknown keys before applying any valid ones in the same batch', async () => {
+    // If a --set list contains an unknown key, no state mutations from the batch
+    // should be applied (avoids partial-update drift in long-running consumers
+    // like the MCP server that share the StateManager singleton).
+    await expect(runSetup({ set: ['username=valid', 'totallyBogus=x'] })).rejects.toThrow(/Unknown setting/);
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+  });
+
+  it('should set maxIssueAgeDays', async () => {
+    const result = (await runSetup({ set: ['maxIssueAgeDays=60'] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ maxIssueAgeDays: 60 });
+    expect(result.settings).toMatchObject({ maxIssueAgeDays: '60' });
+  });
+
+  it('should reject invalid maxIssueAgeDays', async () => {
+    await expect(runSetup({ set: ['maxIssueAgeDays=0'] })).rejects.toThrow(/positive integer/);
+    await expect(runSetup({ set: ['maxIssueAgeDays=-5'] })).rejects.toThrow(/positive integer/);
+  });
+
+  it('should set minRepoScoreThreshold', async () => {
+    const result = (await runSetup({ set: ['minRepoScoreThreshold=0'] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ minRepoScoreThreshold: 0 });
+    expect(result.settings).toMatchObject({ minRepoScoreThreshold: '0' });
+  });
+
+  it('should reject negative minRepoScoreThreshold', async () => {
+    await expect(runSetup({ set: ['minRepoScoreThreshold=-1'] })).rejects.toThrow(/non-negative integer/);
+  });
+
+  it('should set skippedIssuesPath', async () => {
+    const result = (await runSetup({ set: ['skippedIssuesPath=/tmp/skip.txt'] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ skippedIssuesPath: '/tmp/skip.txt' });
+    expect(result.settings).toMatchObject({ skippedIssuesPath: '/tmp/skip.txt' });
+  });
+
+  it('should clear skippedIssuesPath when value is empty', async () => {
+    const result = (await runSetup({ set: ['skippedIssuesPath='] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ skippedIssuesPath: undefined });
+    expect(result.settings).toMatchObject({ skippedIssuesPath: '(cleared)' });
   });
 
   it('should not complete=true when value is not true', async () => {

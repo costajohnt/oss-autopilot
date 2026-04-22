@@ -3,7 +3,7 @@
  * Interactive setup / configuration
  */
 
-import { getStateManager, DEFAULT_CONFIG } from '../core/index.js';
+import { getStateManager, DEFAULT_CONFIG, formatUnknownKeyError, getSetupKeys } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { validateGitHubUsername } from './validation.js';
 import {
@@ -94,6 +94,19 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
     const results: Record<string, string> = {};
     const warnings: string[] = [];
 
+    // Pre-validate every key before mutating state. `stateManager.batch()` only
+    // defers the disk write — it does not snapshot in-memory state, so throwing
+    // mid-loop would leave earlier successful updates applied in memory (a real
+    // issue for long-running consumers like the MCP server and dashboard that
+    // share the StateManager singleton across requests).
+    const knownKeys = new Set(getSetupKeys());
+    for (const setting of options.set) {
+      const [key] = setting.split('=');
+      if (!knownKeys.has(key)) {
+        throw new ValidationError(formatUnknownKeyError(key, 'setup'));
+      }
+    }
+
     stateManager.batch(() => {
       for (const setting of options.set!) {
         const [key, ...valueParts] = setting.split('=');
@@ -149,6 +162,27 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = String(stars);
             break;
           }
+          case 'maxIssueAgeDays': {
+            const days = parsePositiveInt(value, 'maxIssueAgeDays');
+            stateManager.updateConfig({ maxIssueAgeDays: days });
+            results[key] = String(days);
+            break;
+          }
+          case 'minRepoScoreThreshold': {
+            const threshold = Number(value);
+            if (!Number.isInteger(threshold) || threshold < 0) {
+              throw new ValidationError(
+                `Invalid value for minRepoScoreThreshold: "${value}". Must be a non-negative integer.`,
+              );
+            }
+            stateManager.updateConfig({ minRepoScoreThreshold: threshold });
+            results[key] = String(threshold);
+            break;
+          }
+          case 'skippedIssuesPath':
+            stateManager.updateConfig({ skippedIssuesPath: value || undefined });
+            results[key] = value || '(cleared)';
+            break;
           case 'includeDocIssues':
             stateManager.updateConfig({ includeDocIssues: value === 'true' });
             results[key] = value === 'true' ? 'true' : 'false';
@@ -280,7 +314,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             }
             break;
           default:
-            warnings.push(`Unknown setting: ${key}`);
+            throw new ValidationError(formatUnknownKeyError(key, 'setup'));
         }
       }
     });

@@ -4,9 +4,13 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../core/index.js', () => ({
-  getStateManager: vi.fn(),
-}));
+vi.mock('../core/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
+  return {
+    ...actual,
+    getStateManager: vi.fn(),
+  };
+});
 
 import { getStateManager } from '../core/index.js';
 import { runConfig } from './config.js';
@@ -101,8 +105,28 @@ describe('runConfig', () => {
     await expect(runConfig({ key: 'exclude-org', value: 'owner/repo' })).rejects.toThrow('Invalid org name');
   });
 
-  it('should throw error for unknown config key', async () => {
-    await expect(runConfig({ key: 'unknown-key', value: 'val' })).rejects.toThrow('Unknown config key: unknown-key');
+  it('should throw a did-you-mean error for unknown config key', async () => {
+    await expect(runConfig({ key: 'add-lable', value: 'val' })).rejects.toThrow(/Unknown config key "add-lable"/);
+    await expect(runConfig({ key: 'add-lable', value: 'val' })).rejects.toThrow(/did you mean "add-label"/i);
+  });
+
+  it('should point at --list-keys when no close match exists', async () => {
+    await expect(runConfig({ key: 'xyzabc', value: 'val' })).rejects.toThrow(/config --list-keys/);
+  });
+
+  it('should return the full key registry when listKeys is true', async () => {
+    const result = await runConfig({ listKeys: true });
+    expect('keys' in result).toBe(true);
+    if ('keys' in result) {
+      expect(result.keys.length).toBeGreaterThan(10);
+      expect(result.keys.some((k) => k.key === 'username')).toBe(true);
+      expect(result.keys.some((k) => k.key === 'skippedIssuesPath')).toBe(true);
+    }
+  });
+
+  it('should reject listKeys combined with a positional key or value', async () => {
+    await expect(runConfig({ listKeys: true, key: 'username' })).rejects.toThrow(/cannot be combined/);
+    await expect(runConfig({ listKeys: true, value: 'foo' })).rejects.toThrow(/cannot be combined/);
   });
 
   it('should reject an invalid GitHub username', async () => {
