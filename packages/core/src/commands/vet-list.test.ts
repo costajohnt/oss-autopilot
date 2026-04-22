@@ -42,6 +42,7 @@ function makeVetOutput(overrides: Partial<VetOutput> = {}): VetOutput {
     reasonsToSkip: [],
     projectHealth: { stars: 500 },
     vettingResult: { isViable: true },
+    grade: { letter: 'B', reason: 'test fixture' },
     ...overrides,
   };
 }
@@ -135,6 +136,60 @@ describe('classifyListStatus', () => {
       }),
     );
     expect(result).toBe('closed');
+  });
+
+  // ── #1043 structured skipReason preference ───────────────────────────
+
+  it('prefers scout-emitted skipReason enum over substring match (#1043)', () => {
+    // Scout could reword the free-text ("Issue was resolved") so the
+    // substring match against 'closed' no longer fires. The enum takes
+    // precedence and routes correctly.
+    const result = classifyListStatus(
+      makeVetOutput({
+        recommendation: 'skip',
+        reasonsToSkip: ['Issue was resolved'],
+      }),
+      'issue_closed',
+    );
+    expect(result).toBe('closed');
+  });
+
+  it('routes via enum to claimed/has_pr when scout emits the enum (#1043)', () => {
+    expect(classifyListStatus(makeVetOutput({ recommendation: 'skip', reasonsToSkip: [] }), 'claimed')).toBe('claimed');
+    expect(classifyListStatus(makeVetOutput({ recommendation: 'skip', reasonsToSkip: [] }), 'has_linked_pr')).toBe(
+      'has_pr',
+    );
+  });
+
+  it('falls through to recommendation-based branches for non-routing enum values (#1043)', () => {
+    // score_too_low and anti_llm_policy are skip reasons that shouldn't
+    // change the list status — let the recommendation drive it.
+    expect(classifyListStatus(makeVetOutput({ recommendation: 'approve' }), 'score_too_low')).toBe('still_available');
+    expect(classifyListStatus(makeVetOutput({ recommendation: 'skip' }), 'anti_llm_policy')).toBe('still_available');
+  });
+});
+
+describe('extractSkipReason', () => {
+  it('returns the scout-emitted enum value', async () => {
+    const { extractSkipReason } = await import('./vet-list.js');
+    expect(extractSkipReason({ skipReason: 'issue_closed' })).toBe('issue_closed');
+  });
+
+  it('returns undefined when skipReason is missing', async () => {
+    const { extractSkipReason } = await import('./vet-list.js');
+    expect(extractSkipReason({ other: 'field' })).toBeUndefined();
+  });
+
+  it('ignores unknown enum values (forward-compat poison guard)', async () => {
+    const { extractSkipReason } = await import('./vet-list.js');
+    expect(extractSkipReason({ skipReason: 'future_value_not_in_enum' })).toBeUndefined();
+  });
+
+  it('ignores non-string values', async () => {
+    const { extractSkipReason } = await import('./vet-list.js');
+    expect(extractSkipReason({ skipReason: 42 })).toBeUndefined();
+    expect(extractSkipReason(null)).toBeUndefined();
+    expect(extractSkipReason('not an object')).toBeUndefined();
   });
 });
 

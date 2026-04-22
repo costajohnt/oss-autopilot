@@ -105,6 +105,20 @@ describe('search --json contract', () => {
     });
 
     const result = await runSearch({ maxResults: 10 });
+
+    // #1043 boundary defenses: every candidate must hold a finite score in
+    // range, a valid GitHub issue URL, and a letter grade — regardless of
+    // what scout emits. Asserted alongside the golden so a scout regression
+    // to `null` / `NaN` / reshaped fields breaks autopilot CI here, not in
+    // production.
+    for (const candidate of result.candidates) {
+      expect(Number.isFinite(candidate.viabilityScore)).toBe(true);
+      expect(candidate.viabilityScore).toBeGreaterThanOrEqual(0);
+      expect(candidate.viabilityScore).toBeLessThanOrEqual(100);
+      expect(candidate.issue.url).toMatch(/^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+$/);
+      expect(candidate.grade.letter).toMatch(/^[ABCF]$/);
+    }
+
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/search.json');
   });
 

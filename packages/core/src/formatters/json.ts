@@ -296,8 +296,17 @@ export interface SearchOutput {
     reasonsToApprove: string[];
     reasonsToSkip: string[];
     searchPriority: SearchPriority;
-    /** 0-100 scale composite viability score */
+    /** 0-100 scale composite viability score. Sanitized on the boundary (#1043): out-of-contract values are coerced to 0 and logged. */
     viabilityScore: number;
+    /**
+     * Letter grade (A/B/C/F) computed from the autopilot-tracked repoScore.
+     * Scout's `search` does not emit per-candidate projectHealth, so scout-side
+     * signals are treated as unknown; unscored repos grade 'F'. See #1043.
+     */
+    grade: {
+      letter: 'A' | 'B' | 'C' | 'F';
+      reason: string;
+    };
     repoScore?: {
       /** 1-10 scale repository quality score */
       score: number;
