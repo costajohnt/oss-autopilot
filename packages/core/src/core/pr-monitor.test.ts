@@ -1714,15 +1714,17 @@ describe('fetchUserOpenPRs surfaces 1000-cap truncation (#1057 M25)', () => {
   });
 });
 
-// A stale/placeholder githubUsername (e.g. "example-user") silently returns
+// A stale githubUsername (e.g. a renamed GitHub account) silently returns
 // zero Search results with no error — the dashboard then looks like a fresh
 // install with no PRs. fetchUserOpenPRs must cross-check the authenticated
 // viewer and surface a mismatch warning instead of silently reporting zero.
+// Known placeholder strings (see KNOWN_PLACEHOLDER_USERNAMES) take a separate
+// auto-repair path covered by the suite below.
 describe('fetchUserOpenPRs detects username/viewer mismatch when total_count is 0', () => {
   it('warns when configured username does not match authenticated viewer', async () => {
     vi.mocked(getStateManager).mockReturnValue(
       makeStateManagerMock({
-        config: { githubUsername: 'example-user', excludeRepos: [], excludeOrgs: [] },
+        config: { githubUsername: 'renamed-account', excludeRepos: [], excludeOrgs: [] },
       }),
     );
 
@@ -1742,7 +1744,7 @@ describe('fetchUserOpenPRs detects username/viewer mismatch when total_count is 
 
     expect(result.warnings).toBeDefined();
     expect(result.warnings!.length).toBe(1);
-    expect(result.warnings![0]).toMatch(/example-user/);
+    expect(result.warnings![0]).toMatch(/renamed-account/);
     expect(result.warnings![0]).toMatch(/costajohnt/);
     expect(result.warnings![0]).toMatch(/config username costajohnt/);
   });
@@ -1774,7 +1776,7 @@ describe('fetchUserOpenPRs detects username/viewer mismatch when total_count is 
   it('does not perform the mismatch check when total_count > 0', async () => {
     vi.mocked(getStateManager).mockReturnValue(
       makeStateManagerMock({
-        config: { githubUsername: 'example-user', excludeRepos: [], excludeOrgs: [] },
+        config: { githubUsername: 'renamed-account', excludeRepos: [], excludeOrgs: [] },
       }),
     );
 
@@ -1786,7 +1788,7 @@ describe('fetchUserOpenPRs detects username/viewer mismatch when total_count is 
           // (total_count agrees with items.length) while exercising the non-zero guard path.
           data: {
             total_count: 1,
-            items: [{ pull_request: {}, html_url: 'https://github.com/example-user/self/pull/1' }],
+            items: [{ pull_request: {}, html_url: 'https://github.com/renamed-account/self/pull/1' }],
           },
         }),
       },
@@ -1803,7 +1805,7 @@ describe('fetchUserOpenPRs detects username/viewer mismatch when total_count is 
   it('swallows non-fatal getAuthenticated failures (guardrail is advisory)', async () => {
     vi.mocked(getStateManager).mockReturnValue(
       makeStateManagerMock({
-        config: { githubUsername: 'example-user', excludeRepos: [], excludeOrgs: [] },
+        config: { githubUsername: 'renamed-account', excludeRepos: [], excludeOrgs: [] },
       }),
     );
 
@@ -1829,7 +1831,7 @@ describe('fetchUserOpenPRs detects username/viewer mismatch when total_count is 
   it('rethrows rate-limit / auth errors from getAuthenticated', async () => {
     vi.mocked(getStateManager).mockReturnValue(
       makeStateManagerMock({
-        config: { githubUsername: 'example-user', excludeRepos: [], excludeOrgs: [] },
+        config: { githubUsername: 'renamed-account', excludeRepos: [], excludeOrgs: [] },
       }),
     );
 
@@ -1843,6 +1845,147 @@ describe('fetchUserOpenPRs detects username/viewer mismatch when total_count is 
         issuesAndPullRequests: vi.fn().mockResolvedValue({
           data: { total_count: 0, items: [] },
         }),
+      },
+      users: {
+        getAuthenticated: vi.fn().mockRejectedValue(authError),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    await expect(monitor.fetchUserOpenPRs()).rejects.toThrow('Bad credentials');
+  });
+});
+
+// Known-placeholder usernames (e.g. "example-user" from doc snippets or an
+// aborted setup) silently produce zero Search results. fetchUserOpenPRs must
+// auto-repair the config from the authenticated viewer *before* the search
+// so the first /oss run actually surfaces the user's PRs.
+describe('fetchUserOpenPRs auto-repairs known placeholder usernames', () => {
+  it('repairs the config and issues the search with the viewer login', async () => {
+    const updateConfigSpy = vi.fn();
+    const stateManagerMock = makeStateManagerMock({
+      config: { githubUsername: 'example-user', excludeRepos: [], excludeOrgs: [] },
+    });
+    stateManagerMock.updateConfig = updateConfigSpy;
+    vi.mocked(getStateManager).mockReturnValue(stateManagerMock);
+
+    const searchSpy = vi.fn().mockResolvedValue({ data: { total_count: 0, items: [] } });
+    const getAuthenticatedSpy = vi.fn().mockResolvedValue({ data: { login: 'costajohnt' } });
+    mockOctokitInstance = {
+      search: { issuesAndPullRequests: searchSpy },
+      users: { getAuthenticated: getAuthenticatedSpy },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserOpenPRs();
+
+    // Config was persisted to the authenticated viewer's login.
+    expect(updateConfigSpy).toHaveBeenCalledWith({ githubUsername: 'costajohnt' });
+    // The search used the repaired username, not the placeholder.
+    expect(searchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ q: expect.stringContaining('author:costajohnt') }),
+    );
+    expect(searchSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ q: expect.stringContaining('author:example-user') }),
+    );
+    // Pre-fetch repair already reconciled the usernames — the post-fetch
+    // guardrail must not spend a second getAuthenticated call to re-confirm.
+    expect(getAuthenticatedSpy).toHaveBeenCalledTimes(1);
+    // Warning surfaces the repair so the daily digest shows what changed.
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings!.some((w) => /placeholder/i.test(w) && /costajohnt/.test(w))).toBe(true);
+  });
+
+  it('skips persisting when the authenticated viewer login is empty or also a placeholder', async () => {
+    const updateConfigSpy = vi.fn();
+    const stateManagerMock = makeStateManagerMock({
+      config: { githubUsername: 'example-user', excludeRepos: [], excludeOrgs: [] },
+    });
+    stateManagerMock.updateConfig = updateConfigSpy;
+    vi.mocked(getStateManager).mockReturnValue(stateManagerMock);
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({ data: { total_count: 0, items: [] } }),
+      },
+      users: {
+        // Whitespace-only login — treat as unusable rather than swapping one
+        // broken config for another.
+        getAuthenticated: vi.fn().mockResolvedValue({ data: { login: '   ' } }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserOpenPRs();
+
+    expect(updateConfigSpy).not.toHaveBeenCalled();
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings!.some((w) => /unusable/i.test(w))).toBe(true);
+  });
+
+  it('skips repair when the username is not a known placeholder', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'real-user', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+
+    const getAuthenticatedSpy = vi.fn().mockResolvedValue({ data: { login: 'real-user' } });
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({ data: { total_count: 5, items: [] } }),
+      },
+      users: { getAuthenticated: getAuthenticatedSpy },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserOpenPRs();
+
+    // Non-placeholder + non-zero search → neither the pre-fetch repair nor the
+    // post-fetch guardrail should call getAuthenticated.
+    expect(getAuthenticatedSpy).not.toHaveBeenCalled();
+    expect(result.warnings ?? []).toEqual([]);
+  });
+
+  it('swallows non-fatal viewer lookup failures and falls through to the normal fetch', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'example-user', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({ data: { total_count: 0, items: [] } }),
+      },
+      users: {
+        getAuthenticated: vi.fn().mockRejectedValue(new Error('Service timeout')),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserOpenPRs();
+
+    // When repair can't run, we do NOT throw — but we DO emit a warning so
+    // the daily digest shows that auto-repair was attempted and failed.
+    // Without the warning, a user in this state sees zero PRs with no
+    // breadcrumb to follow.
+    expect(result.prs).toEqual([]);
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings!.some((w) => /Could not auto-repair/i.test(w))).toBe(true);
+  });
+
+  it('rethrows rate-limit / auth errors from viewer lookup', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'example-user', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+
+    const authError = Object.assign(new Error('Bad credentials'), { status: 401 });
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({ data: { total_count: 0, items: [] } }),
       },
       users: {
         getAuthenticated: vi.fn().mockRejectedValue(authError),

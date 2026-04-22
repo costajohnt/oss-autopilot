@@ -238,35 +238,43 @@ export async function runStartup(): Promise<StartupOutput> {
   // 3. Run daily check
   const daily = await executeDailyCheck(token);
 
-  // 4. Launch interactive SPA dashboard
-  // Skip opening on first run (0 PRs) — the welcome flow handles onboarding
+  // 4. Launch interactive SPA dashboard.
+  //
+  // Launched unconditionally once setup and auth pass. A prior heuristic skipped
+  // launch whenever `totalActivePRs === 0`, assuming that meant a genuine first
+  // run and deferring to the CLI's welcome flow. That gate also swallowed the
+  // dashboard in three legitimate cases: a misconfigured/stale `githubUsername`
+  // (Search API returns zero), transient GitHub API flakes (state still holds
+  // merged PRs but the live count is zero), and users genuinely between PRs.
+  // The dashboard's own empty-state UI renders "no PRs" cleanly, so always
+  // surfacing it is the right default.
   let dashboardUrl: string | undefined;
   let dashboardStatus: 'opened' | 'refreshed' | 'running' | undefined;
+  let dashboardError: string | undefined;
 
-  if (daily.digest.summary.totalActivePRs > 0) {
-    try {
-      const spaResult = await launchDashboardServer();
-      if (spaResult) {
-        dashboardUrl = spaResult.url;
-        if (spaResult.alreadyRunning) {
-          const refreshed = await triggerDashboardRefresh(spaResult.port);
-          dashboardStatus = refreshed ? 'refreshed' : 'running';
-        } else {
-          dashboardStatus = 'opened';
-        }
-        // Always surface the dashboard: `open`/`xdg-open`/`start` focus an
-        // existing tab matching the URL instead of duplicating it, so this is
-        // safe whether the server was just started or was already running.
-        // Closes #830 properly. The original fix assumed "server running"
-        // implied "tab open", but the user can close the tab while the daemon
-        // keeps running, leaving subsequent /oss runs with no visible dashboard.
-        openInBrowser(spaResult.url);
+  try {
+    const spaResult = await launchDashboardServer();
+    if (spaResult) {
+      dashboardUrl = spaResult.url;
+      if (spaResult.alreadyRunning) {
+        const refreshed = await triggerDashboardRefresh(spaResult.port);
+        dashboardStatus = refreshed ? 'refreshed' : 'running';
       } else {
-        console.error('[STARTUP] Dashboard SPA assets not found. Build with: cd packages/dashboard && pnpm run build');
+        dashboardStatus = 'opened';
       }
-    } catch (error) {
-      console.error('[STARTUP] SPA dashboard launch failed:', errorMessage(error));
+      // `open`/`xdg-open`/`start` focus an existing tab matching the URL
+      // instead of duplicating it, so this is safe whether the server was
+      // just started or was already running. Closes #830 properly — a user
+      // can close the dashboard tab while the daemon keeps running, leaving
+      // subsequent /oss runs with no visible dashboard if we didn't re-open.
+      openInBrowser(spaResult.url);
+    } else {
+      dashboardError = 'Dashboard SPA assets not found. Build with: cd packages/dashboard && pnpm run build';
+      console.error(`[STARTUP] ${dashboardError}`);
     }
+  } catch (error) {
+    dashboardError = `SPA dashboard launch failed: ${errorMessage(error)}`;
+    console.error(`[STARTUP] ${dashboardError}`);
   }
 
   // Append dashboard status to brief summary
@@ -287,6 +295,7 @@ export async function runStartup(): Promise<StartupOutput> {
     autoDetected,
     daily,
     dashboardUrl,
+    dashboardError,
     issueList,
   };
 }
