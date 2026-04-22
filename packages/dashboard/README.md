@@ -53,7 +53,7 @@ pnpm --filter @oss-autopilot/dashboard test         # one-shot
 pnpm --filter @oss-autopilot/dashboard test:watch   # watch mode
 ```
 
-Tests use `vitest` + `@testing-library/preact` + `jsdom`. Current count: 227 tests across 18 files (see root [README](../../README.md#by-the-numbers) for the full project totals).
+Tests use `vitest` + `@testing-library/preact` + `jsdom`. Current count: 253 tests across 21 files (see root [README](../../README.md#by-the-numbers) for the full project totals).
 
 ## File layout
 
