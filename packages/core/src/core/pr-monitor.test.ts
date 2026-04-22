@@ -1714,6 +1714,146 @@ describe('fetchUserOpenPRs surfaces 1000-cap truncation (#1057 M25)', () => {
   });
 });
 
+// A stale/placeholder githubUsername (e.g. "example-user") silently returns
+// zero Search results with no error — the dashboard then looks like a fresh
+// install with no PRs. fetchUserOpenPRs must cross-check the authenticated
+// viewer and surface a mismatch warning instead of silently reporting zero.
+describe('fetchUserOpenPRs detects username/viewer mismatch when total_count is 0', () => {
+  it('warns when configured username does not match authenticated viewer', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'example-user', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: { total_count: 0, items: [] },
+        }),
+      },
+      users: {
+        getAuthenticated: vi.fn().mockResolvedValue({ data: { login: 'costajohnt' } }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserOpenPRs();
+
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings!.length).toBe(1);
+    expect(result.warnings![0]).toMatch(/example-user/);
+    expect(result.warnings![0]).toMatch(/costajohnt/);
+    expect(result.warnings![0]).toMatch(/config username costajohnt/);
+  });
+
+  it('does not warn when configured username matches authenticated viewer (case-insensitive)', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'CostaJohnT', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: { total_count: 0, items: [] },
+        }),
+      },
+      users: {
+        getAuthenticated: vi.fn().mockResolvedValue({ data: { login: 'costajohnt' } }),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserOpenPRs();
+
+    expect(result.warnings ?? []).toEqual([]);
+  });
+
+  it('does not perform the mismatch check when total_count > 0', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'example-user', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+
+    const getAuthenticatedSpy = vi.fn();
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          // One item that the own-repo filter will drop — mirrors a real GH response shape
+          // (total_count agrees with items.length) while exercising the non-zero guard path.
+          data: {
+            total_count: 1,
+            items: [{ pull_request: {}, html_url: 'https://github.com/example-user/self/pull/1' }],
+          },
+        }),
+      },
+      users: { getAuthenticated: getAuthenticatedSpy },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    await monitor.fetchUserOpenPRs();
+
+    // Guardrail is strictly for the zero-result surprise; non-zero paths skip the extra API call.
+    expect(getAuthenticatedSpy).not.toHaveBeenCalled();
+  });
+
+  it('swallows non-fatal getAuthenticated failures (guardrail is advisory)', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'example-user', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: { total_count: 0, items: [] },
+        }),
+      },
+      users: {
+        getAuthenticated: vi.fn().mockRejectedValue(new Error('Service timeout')),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserOpenPRs();
+
+    // No warning emitted because we couldn't confirm the mismatch, and no error thrown.
+    expect(result.warnings ?? []).toEqual([]);
+    expect(result.prs).toEqual([]);
+  });
+
+  it('rethrows rate-limit / auth errors from getAuthenticated', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'example-user', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+
+    // 401 means the token is revoked/expired — the very failure mode this guardrail
+    // should surface. The unauthenticated Search above still returns total_count: 0
+    // for a bogus author, so swallowing the 401 would silently downgrade a broken
+    // token to "looks like a fresh install."
+    const authError = Object.assign(new Error('Bad credentials'), { status: 401 });
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: { total_count: 0, items: [] },
+        }),
+      },
+      users: {
+        getAuthenticated: vi.fn().mockRejectedValue(authError),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    await expect(monitor.fetchUserOpenPRs()).rejects.toThrow('Bad credentials');
+  });
+});
+
 describe('isBotAuthor (#143)', () => {
   it('should identify [bot] suffix accounts', () => {
     expect(isBotAuthor('dependabot[bot]')).toBe(true);

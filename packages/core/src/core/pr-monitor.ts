@@ -20,7 +20,13 @@ import { daysBetween, parseGitHubUrl, extractOwnerRepo, isOwnRepo, DEFAULT_CONCU
 import { FetchedPR, DailyDigest, ClosedPR, MergedPR, StarFilter } from './types.js';
 import { determineStatus } from './status-determination.js';
 import { runWorkerPool } from './concurrency.js';
-import { ConfigurationError, ValidationError, errorMessage, getHttpStatusCode } from './errors.js';
+import {
+  ConfigurationError,
+  ValidationError,
+  errorMessage,
+  getHttpStatusCode,
+  isRateLimitOrAuthError,
+} from './errors.js';
 import { paginateAll } from './pagination.js';
 import { debug, warn, timed } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
@@ -152,6 +158,35 @@ export class PRMonitor {
     // previously silently dropped the overflow; now the caller can surface
     // it so the daily digest doesn't quietly report a partial view.
     const warnings: string[] = [];
+
+    // Guardrail: if the Search API returned zero PRs, cross-check the
+    // configured username against the authenticated viewer. A real failure
+    // mode was a stale/placeholder username (e.g. "example-user") silently
+    // producing zero results with no error — the dashboard just showed
+    // "0 active PRs" and looked like a fresh install. getAuthenticated is
+    // advisory; a failure here never breaks the fetch.
+    if (totalCount === 0) {
+      try {
+        const { data: viewer } = await this.octokit.users.getAuthenticated();
+        if (viewer.login.toLowerCase() !== config.githubUsername.toLowerCase()) {
+          const message =
+            `Configured GitHub username @${config.githubUsername} does not match ` +
+            `authenticated user @${viewer.login}. Did you mean to run ` +
+            `\`oss-autopilot config username ${viewer.login}\`? Zero PRs returned.`;
+          warnings.push(message);
+          warn(MODULE, message);
+        }
+      } catch (err) {
+        // Rate-limit/401/403 errors must abort the run just like every sibling
+        // fetch in this pipeline — swallowing them here would mask the exact
+        // class of failure the guardrail is meant to surface (e.g. revoked
+        // token returning 401 while the unauthenticated Search above still
+        // succeeds with zero results).
+        if (isRateLimitOrAuthError(err)) throw err;
+        debug(MODULE, `Could not cross-check viewer login: ${errorMessage(err)}`);
+      }
+    }
+
     if (totalCount > SEARCH_API_RESULT_CAP) {
       warnings.push(
         `GitHub Search API returned ${totalCount} PRs for @${config.githubUsername}, ` +
