@@ -67,6 +67,28 @@ vi.mock('@modelcontextprotocol/sdk/server/streamableHttp.js', () => ({
   }),
 }));
 
+// Mock auth.js so tests don't touch the real ~/.oss-autopilot/mcp.token
+// (#1028). Tests pass the stub token through the Authorization header.
+// `vi.hoisted` is required because vi.mock factories are hoisted above the
+// file; a plain `const` outside the factory would be `undefined` at mock
+// resolution time.
+const { TEST_TOKEN } = vi.hoisted(() => ({
+  TEST_TOKEN: 'test-bearer-token-0123456789abcdef0123456789abcdef012345678',
+}));
+vi.mock('./auth.js', () => ({
+  ensureHttpToken: vi.fn().mockResolvedValue({
+    token: TEST_TOKEN,
+    path: '/tmp/fake-mcp-token',
+    freshlyGenerated: false,
+  }),
+  validateBearerToken: vi.fn(
+    (header: string | undefined, expected: string) => typeof header === 'string' && header === `Bearer ${expected}`,
+  ),
+  isValidHost: vi.fn(
+    (host: string | undefined, port: number) => host === `127.0.0.1:${port}` || host === `localhost:${port}`,
+  ),
+}));
+
 import { main, ENTRY_SUFFIXES } from './index.js';
 
 // Sentinel error for mocked process.exit
@@ -181,11 +203,27 @@ describe('main() in-process', () => {
       return requestHandler;
     }
 
+    // Common request fixture: every /api/ route now requires a loopback
+    // Host header and a bearer token. Tests that exercise the post-auth
+    // code paths use this helper; Host/Auth negative tests construct their
+    // own request objects directly.
+    const withAuthHeaders = (req: Partial<{ url: string; method: string }>) => ({
+      url: req.url,
+      method: req.method,
+      headers: {
+        host: '127.0.0.1:3001',
+        authorization: `Bearer ${TEST_TOKEN}`,
+        // POSTs now require a numeric Content-Length in range (#1028 review).
+        // GETs ignore it.
+        'content-length': '100',
+      },
+    });
+
     it('returns 404 for non-/mcp paths', async () => {
       const handler = await setupHttpHandler();
 
       const res = { writeHead: vi.fn(), end: vi.fn(), headersSent: false };
-      await handler({ url: '/wrong-path', method: 'POST' }, res);
+      await handler(withAuthHeaders({ url: '/wrong-path', method: 'POST' }), res);
 
       expect(res.writeHead).toHaveBeenCalledWith(404);
       expect(res.end).toHaveBeenCalledWith('Not Found');
@@ -195,7 +233,7 @@ describe('main() in-process', () => {
       const handler = await setupHttpHandler();
 
       const res = { writeHead: vi.fn(), end: vi.fn(), headersSent: false };
-      await handler({ url: '/mcp', method: 'GET' }, res);
+      await handler(withAuthHeaders({ url: '/mcp', method: 'GET' }), res);
 
       expect(res.writeHead).toHaveBeenCalledWith(405);
       expect(res.end).toHaveBeenCalledWith('Method Not Allowed');
@@ -204,7 +242,7 @@ describe('main() in-process', () => {
     it('processes valid POST /mcp through transport', async () => {
       const handler = await setupHttpHandler();
 
-      const req = { url: '/mcp', method: 'POST' };
+      const req = withAuthHeaders({ url: '/mcp', method: 'POST' });
       const res = { writeHead: vi.fn(), end: vi.fn(), headersSent: false };
       await handler(req, res);
 
@@ -219,7 +257,7 @@ describe('main() in-process', () => {
       mockHandleRequest.mockRejectedValueOnce(new Error('Transport error'));
 
       const res = { writeHead: vi.fn(), end: vi.fn(), headersSent: false };
-      await handler({ url: '/mcp', method: 'POST' }, res);
+      await handler(withAuthHeaders({ url: '/mcp', method: 'POST' }), res);
 
       expect(res.writeHead).toHaveBeenCalledWith(500);
       expect(res.end).toHaveBeenCalledWith('Internal Server Error');
@@ -231,9 +269,69 @@ describe('main() in-process', () => {
       mockHandleRequest.mockRejectedValueOnce(new Error('Transport error'));
 
       const res = { writeHead: vi.fn(), end: vi.fn(), headersSent: true };
-      await handler({ url: '/mcp', method: 'POST' }, res);
+      await handler(withAuthHeaders({ url: '/mcp', method: 'POST' }), res);
 
       expect(res.writeHead).not.toHaveBeenCalled();
+    });
+
+    it('rejects requests with an invalid Host header (403)', async () => {
+      const handler = await setupHttpHandler();
+
+      const res = { writeHead: vi.fn(), end: vi.fn(), headersSent: false };
+      await handler(
+        {
+          url: '/mcp',
+          method: 'POST',
+          headers: { host: 'evil.example.com', authorization: `Bearer ${TEST_TOKEN}` },
+        },
+        res,
+      );
+
+      expect(res.writeHead).toHaveBeenCalledWith(403);
+      expect(res.end).toHaveBeenCalledWith('Invalid host');
+    });
+
+    it('rejects requests with a missing Authorization header (401)', async () => {
+      const handler = await setupHttpHandler();
+
+      const res = { writeHead: vi.fn(), end: vi.fn(), headersSent: false };
+      await handler(
+        {
+          url: '/mcp',
+          method: 'POST',
+          headers: { host: '127.0.0.1:3001', 'content-length': '100' },
+        },
+        res,
+      );
+
+      expect(res.writeHead).toHaveBeenCalledWith(
+        401,
+        expect.objectContaining({
+          'WWW-Authenticate': expect.stringMatching(/Bearer/),
+        }),
+      );
+      expect(res.end).toHaveBeenCalledWith('Unauthorized');
+    });
+
+    it('rejects requests whose Content-Length exceeds 1 MiB (413)', async () => {
+      const handler = await setupHttpHandler();
+
+      const res = { writeHead: vi.fn(), end: vi.fn(), headersSent: false };
+      await handler(
+        {
+          url: '/mcp',
+          method: 'POST',
+          headers: {
+            host: '127.0.0.1:3001',
+            authorization: `Bearer ${TEST_TOKEN}`,
+            'content-length': String(1_048_577),
+          },
+        },
+        res,
+      );
+
+      expect(res.writeHead).toHaveBeenCalledWith(413);
+      expect(res.end).toHaveBeenCalledWith('Payload Too Large');
     });
   });
 });

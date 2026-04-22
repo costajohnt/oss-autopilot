@@ -3,6 +3,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { request } from 'node:http';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 const MCP_SERVER_CWD = new URL('..', import.meta.url).pathname;
 
@@ -34,12 +37,28 @@ function randomPort(): number {
   return 10000 + Math.floor(Math.random() * 50000);
 }
 
-/** Spawn an HTTP MCP server and wait for it to be listening. */
-function spawnHttpServer(args: string[]): Promise<{ port: number; proc: ChildProcess; close: () => void }> {
+/** Spawn an HTTP MCP server and wait for it to be listening. Returns the
+ * resolved bearer token from the test-isolated token file alongside the
+ * server handle. */
+interface HttpServerHandle {
+  port: number;
+  proc: ChildProcess;
+  close: () => void;
+  token: string;
+  tokenPath: string;
+}
+
+function spawnHttpServer(args: string[], env: Record<string, string> = {}): Promise<HttpServerHandle> {
   return new Promise((resolve, reject) => {
+    // Per-server token path so concurrent tests don't collide with each
+    // other or with the user's real ~/.oss-autopilot/mcp.token.
+    const tokenPath =
+      env.OSS_AUTOPILOT_MCP_TOKEN_PATH ??
+      path.join(os.tmpdir(), `oss-autopilot-mcp-test-${Date.now()}-${Math.random().toString(36).slice(2)}.token`);
     const proc = spawn('npx', ['tsx', 'src/index.ts', ...args], {
       cwd: MCP_SERVER_CWD,
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, OSS_AUTOPILOT_MCP_TOKEN_PATH: tokenPath, ...env },
     });
 
     const timeout = setTimeout(() => {
@@ -48,20 +67,31 @@ function spawnHttpServer(args: string[]): Promise<{ port: number; proc: ChildPro
     }, 10_000);
 
     let stderrData = '';
-    proc.stderr!.on('data', (chunk: Buffer) => {
+    let resolved = false;
+    const onData = (chunk: Buffer) => {
       stderrData += chunk.toString();
+      if (resolved) return;
       // Server prints "listening on http://127.0.0.1:<port>/mcp" when ready
       const match = stderrData.match(/listening on http:\/\/127\.0\.0\.1:(\d+)\/mcp/);
-      if (match) {
-        clearTimeout(timeout);
-        const port = parseInt(match[1], 10);
-        resolve({
-          port,
-          proc,
-          close: () => proc.kill('SIGTERM'),
-        });
-      }
-    });
+      if (!match) return;
+      resolved = true;
+      clearTimeout(timeout);
+      proc.stderr!.off('data', onData);
+      const port = parseInt(match[1], 10);
+      // Token file was written synchronously by ensureHttpToken before
+      // httpServer.listen, so it must exist by the time the banner prints.
+      const token = fs.readFileSync(tokenPath, 'utf-8').trim();
+      resolve({
+        port,
+        proc,
+        token,
+        tokenPath,
+        close: () => {
+          proc.kill('SIGTERM');
+        },
+      });
+    };
+    proc.stderr!.on('data', onData);
 
     proc.on('error', (err) => {
       clearTimeout(timeout);
@@ -83,26 +113,34 @@ function httpRequest(
   method: string,
   path: string,
   body?: string,
-): Promise<{ status: number; body: string }> {
+  extraHeaders: Record<string, string> = {},
+): Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined> }> {
   return new Promise((resolve, reject) => {
+    const baseHeaders: Record<string, string | number> = body
+      ? {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          'Content-Length': Buffer.byteLength(body),
+        }
+      : {};
     const req = request(
       {
         hostname: '127.0.0.1',
         port,
         path,
         method,
-        headers: body
-          ? {
-              'Content-Type': 'application/json',
-              Accept: 'application/json, text/event-stream',
-              'Content-Length': Buffer.byteLength(body),
-            }
-          : {},
+        headers: { ...baseHeaders, ...extraHeaders },
       },
       (res) => {
         let data = '';
         res.on('data', (chunk: Buffer) => (data += chunk.toString()));
-        res.on('end', () => resolve({ status: res.statusCode!, body: data }));
+        res.on('end', () =>
+          resolve({
+            status: res.statusCode!,
+            body: data,
+            headers: res.headers as Record<string, string | string[] | undefined>,
+          }),
+        );
       },
     );
     req.on('error', reject);
@@ -141,7 +179,7 @@ describe('MCP server stdio transport', { timeout: 30_000 }, () => {
 });
 
 describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
-  let serverHandle: { port: number; proc: ChildProcess; close: () => void } | undefined;
+  let serverHandle: HttpServerHandle | undefined;
 
   afterEach(() => {
     if (serverHandle) {
@@ -150,11 +188,16 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
     }
   });
 
+  function authHeader(): Record<string, string> {
+    if (!serverHandle) throw new Error('serverHandle not initialized');
+    return { Authorization: `Bearer ${serverHandle.token}` };
+  }
+
   it('POST /mcp with JSON-RPC initialize returns valid response', async () => {
     const port = randomPort();
     serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
 
-    const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY);
+    const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, authHeader());
 
     expect(res.status).toBe(200);
     // Streamable HTTP transport returns SSE — extract JSON from "data:" lines
@@ -194,9 +237,92 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
     const port = randomPort();
     serverHandle = await spawnHttpServer(['--http', '--port', String(port)]);
 
-    const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY);
+    const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, authHeader());
 
     expect(res.status).toBe(200);
+  });
+
+  // ── Bearer-token auth (#1028) ───────────────────────────────────
+
+  it('rejects POST /mcp with no Authorization header (401)', async () => {
+    const port = randomPort();
+    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+
+    const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY);
+
+    expect(res.status).toBe(401);
+    expect(res.body).toBe('Unauthorized');
+    expect(res.headers['www-authenticate']).toMatch(/Bearer/);
+  });
+
+  it('rejects POST /mcp with a malformed Authorization header (401)', async () => {
+    const port = randomPort();
+    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+
+    const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, {
+      Authorization: 'Basic user:pass',
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects POST /mcp with a wrong bearer token (401)', async () => {
+    const port = randomPort();
+    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+
+    const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, {
+      Authorization: `Bearer ${'0'.repeat(64)}`,
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('persists the token across server restarts', async () => {
+    const tokenPath = path.join(os.tmpdir(), `oss-autopilot-mcp-test-persist-${Date.now()}.token`);
+    const port1 = randomPort();
+    const first = await spawnHttpServer(['--http', `--port=${port1}`], {
+      OSS_AUTOPILOT_MCP_TOKEN_PATH: tokenPath,
+    });
+    const firstToken = first.token;
+    first.proc.kill('SIGTERM');
+    await new Promise((r) => setTimeout(r, 300));
+
+    const port2 = randomPort();
+    serverHandle = await spawnHttpServer(['--http', `--port=${port2}`], {
+      OSS_AUTOPILOT_MCP_TOKEN_PATH: tokenPath,
+    });
+    expect(serverHandle.token).toBe(firstToken);
+  });
+
+  // ── Host-header validation ──────────────────────────────────────
+
+  it('rejects requests with a non-loopback Host header (403)', async () => {
+    const port = randomPort();
+    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+
+    const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, {
+      ...authHeader(),
+      Host: 'evil.example.com',
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toBe('Invalid host');
+  });
+
+  // ── Body-size cap ───────────────────────────────────────────────
+
+  it('rejects requests whose Content-Length exceeds 1 MiB (413)', async () => {
+    const port = randomPort();
+    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+
+    // Lie about Content-Length — server should reject before reading the body.
+    const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, {
+      ...authHeader(),
+      'Content-Length': String(1_048_577),
+    });
+
+    expect(res.status).toBe(413);
+    expect(res.body).toBe('Payload Too Large');
   });
 });
 
