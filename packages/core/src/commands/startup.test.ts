@@ -12,6 +12,7 @@ vi.mock('../core/index.js', () => ({
     isSetupComplete: vi.fn(() => true),
   })),
   getGitHubToken: vi.fn(() => 'fake-token'),
+  getGitHubTokenAsync: vi.fn(() => Promise.resolve('fake-token')),
   getCLIVersion: vi.fn(() => '0.0.0-test'),
   getStatePath: vi.fn(() => '/tmp/state.json'),
   detectGitHubUsername: vi.fn(() => Promise.resolve(null)),
@@ -473,14 +474,14 @@ describe('runStartup behavior', () => {
     expect(result.setupComplete).toBe(false);
   });
 
-  it('should return auth error when no token', async () => {
-    const { getStateManager, getGitHubToken } = await import('../core/index.js');
+  it('should return auth error when no token is available from either source', async () => {
+    const { getStateManager, getGitHubTokenAsync } = await import('../core/index.js');
     const mockGetStateManager = getStateManager as ReturnType<typeof vi.fn>;
-    const mockGetGitHubToken = getGitHubToken as ReturnType<typeof vi.fn>;
+    const mockGetGitHubTokenAsync = getGitHubTokenAsync as ReturnType<typeof vi.fn>;
     mockGetStateManager.mockReturnValue({
       isSetupComplete: vi.fn(() => true),
     });
-    mockGetGitHubToken.mockReturnValue(null);
+    mockGetGitHubTokenAsync.mockResolvedValue(null);
 
     const result = await runStartup();
 
@@ -488,11 +489,31 @@ describe('runStartup behavior', () => {
     expect(result.authError).toContain('authentication required');
   });
 
+  it('proceeds when only the `gh auth token` fallback returns a token (#1041)', async () => {
+    // Regression: `startup` used the sync `getGitHubToken()` which reads env
+    // only. A user authenticated via `gh auth login` but without
+    // $GITHUB_TOKEN was wrongly routed to `authError`. The async fallback
+    // must now drive the decision.
+    const { getStateManager, getGitHubToken, getGitHubTokenAsync } = await import('../core/index.js');
+    (getStateManager as ReturnType<typeof vi.fn>).mockReturnValue({
+      isSetupComplete: vi.fn(() => true),
+    });
+    (getGitHubToken as ReturnType<typeof vi.fn>).mockReturnValue(null); // env var unset
+    (getGitHubTokenAsync as ReturnType<typeof vi.fn>).mockResolvedValue('token-from-gh-cli');
+    executeDailyCheck.mockResolvedValue(makeDailyOutput(0));
+
+    const result = await runStartup();
+
+    expect(result.setupComplete).toBe(true);
+    expect(result.authError).toBeUndefined();
+    expect(executeDailyCheck).toHaveBeenCalledWith('token-from-gh-cli');
+  });
+
   it('should propagate daily check failure to caller', async () => {
     // Reset mocks to ensure auth passes
-    const { getStateManager: gsm, getGitHubToken: ght } = await import('../core/index.js');
+    const { getStateManager: gsm, getGitHubTokenAsync: ghtAsync } = await import('../core/index.js');
     (gsm as ReturnType<typeof vi.fn>).mockReturnValue({ isSetupComplete: vi.fn(() => true) });
-    (ght as ReturnType<typeof vi.fn>).mockReturnValue('fake-token');
+    (ghtAsync as ReturnType<typeof vi.fn>).mockResolvedValue('fake-token');
 
     executeDailyCheck.mockRejectedValue(new Error('Network error'));
 

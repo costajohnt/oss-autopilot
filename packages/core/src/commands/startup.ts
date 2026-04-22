@@ -10,7 +10,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execFile } from 'child_process';
-import { getStateManager, getGitHubToken, getCLIVersion, detectGitHubUsername } from '../core/index.js';
+import { getStateManager, getGitHubTokenAsync, getCLIVersion, detectGitHubUsername } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
@@ -220,8 +220,12 @@ export async function runStartup(): Promise<StartupOutput> {
     }
   }
 
-  // 2. Check auth
-  const token = getGitHubToken();
+  // 2. Check auth — use the async variant so the `gh auth token` CLI fallback
+  // fires for users who ran `gh auth login` but never exported $GITHUB_TOKEN.
+  // The sync `getGitHubToken()` reads only the env var, matching the `preAction`
+  // token check that the CLI's `localOnly: true` flag on `startup` deliberately
+  // skips — the mismatch produced a spurious `authError` for valid users.
+  const token = await getGitHubTokenAsync();
   if (!token) {
     return {
       version,

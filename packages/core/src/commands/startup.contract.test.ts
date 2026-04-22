@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   },
   getCLIVersion: vi.fn().mockReturnValue('99.99.99-test'),
   getGitHubToken: vi.fn(),
+  getGitHubTokenAsync: vi.fn(),
   detectGitHubUsername: vi.fn(),
 }));
 
@@ -32,6 +33,7 @@ vi.mock('../core/index.js', async () => {
     getStateManager: () => mocks.stateManager,
     getCLIVersion: mocks.getCLIVersion,
     getGitHubToken: mocks.getGitHubToken,
+    getGitHubTokenAsync: mocks.getGitHubTokenAsync,
     detectGitHubUsername: mocks.detectGitHubUsername,
   };
 });
@@ -71,7 +73,10 @@ describe('startup --json contract', () => {
 
   it('auth-error output matches the golden shape', async () => {
     mocks.stateManager.isSetupComplete.mockReturnValue(true);
+    // Both token sources must be empty for the authError branch to fire —
+    // runStartup uses the async variant (env → `gh auth token` fallback).
     mocks.getGitHubToken.mockReturnValue(null);
+    mocks.getGitHubTokenAsync.mockResolvedValue(null);
 
     const result = await runStartup();
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/startup.auth-error.json');
