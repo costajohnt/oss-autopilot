@@ -34,7 +34,7 @@ import {
   type AgentState,
   type StarFilter,
 } from '../core/index.js';
-import { errorMessage, isRateLimitOrAuthError, nonFatalCatch } from '../core/errors.js';
+import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
 import { createAutopilotScout } from './scout-bridge.js';
@@ -44,12 +44,49 @@ import {
   compactActionableIssues,
   compactRepoGroups,
   type DailyOutput,
+  type DailyWarning,
+  type DailyWarningPhase,
   type CapacityAssessment,
   type ActionableIssue,
   type ActionMenu,
 } from '../formatters/json.js';
 
 const MODULE = 'daily';
+
+/**
+ * Record a non-fatal failure: push a structured entry into the run's warnings
+ * collector AND emit the existing log line. Consumers (dashboard, MCP, tests)
+ * inspect `DailyOutput.warnings` so a partial run is visible beyond log noise.
+ * See #1042.
+ */
+function recordWarning(
+  warnings: DailyWarning[],
+  phase: DailyWarningPhase,
+  operation: string,
+  err: unknown,
+  humanMessage?: string,
+): void {
+  const message = humanMessage ?? errorMessage(err);
+  warnings.push({ phase, operation, message });
+  warn(MODULE, `${operation}: ${message}`);
+}
+
+/**
+ * Variant of `nonFatalCatch` that also records a structured warning. Returns
+ * the fallback value on error (same semantics as `nonFatalCatch`) AND pushes
+ * an entry into the collector so the failure shows up in `DailyOutput.warnings`.
+ */
+function nonFatalCatchWithWarning<T>(opts: {
+  warnings: DailyWarning[];
+  phase: DailyWarningPhase;
+  operation: string;
+  fallback: T;
+}): (err: unknown) => T {
+  return (err: unknown): T => {
+    recordWarning(opts.warnings, opts.phase, opts.operation, err);
+    return opts.fallback;
+  };
+}
 
 // Re-export domain functions so existing consumers (tests, dashboard, startup)
 // can continue importing from './daily.js' without changes.
@@ -102,6 +139,8 @@ export interface DailyCheckResult {
   commentedIssues: CommentedIssue[];
   repoGroups: RepoGroup[];
   failures: PRCheckFailure[];
+  /** Non-fatal warnings from ancillary pipeline phases — see #1042. */
+  warnings: DailyWarning[];
 }
 
 // ---------------------------------------------------------------------------
@@ -138,12 +177,19 @@ interface PartitionedPRs {
  * Retrieves open PRs, merged/closed counts, recently closed/merged PRs, and
  * issue conversation data — all in parallel where possible.
  */
-async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<FetchedPRData> {
+async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyWarning[]): Promise<FetchedPRData> {
   // Fetch all open PRs fresh from GitHub
   const { prs, failures } = await prMonitor.fetchUserOpenPRs();
 
   // Log any failures (but continue with successful checks)
   if (failures.length > 0) {
+    // Per-PR detail lives in `result.failures`; record a rollup warning so
+    // consumers that only read `warnings[]` still see the degradation signal.
+    warnings.push({
+      phase: 'fetch',
+      operation: 'fetch open PRs',
+      message: `${failures.length} PR fetch(es) failed`,
+    });
     warn(MODULE, `${failures.length} PR fetch(es) failed`);
   }
 
@@ -158,32 +204,46 @@ async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<Fetched
   const [mergedResult, closedResult, recentlyClosedPRs, recentlyMergedPRs, issueConversationResult] = await Promise.all(
     [
       prMonitor.fetchUserMergedPRCounts(starFilter).catch(
-        nonFatalCatch({
-          module: MODULE,
-          label: 'fetch merged PR counts',
+        nonFatalCatchWithWarning({
+          warnings,
+          phase: 'fetch',
+          operation: 'fetch merged PR counts',
           fallback: emptyPRCountsResult<{ count: number; lastMergedAt: string }>(),
         }),
       ),
-      prMonitor
-        .fetchUserClosedPRCounts(starFilter)
-        .catch(
-          nonFatalCatch({ module: MODULE, label: 'fetch closed PR counts', fallback: emptyPRCountsResult<number>() }),
-        ),
-      prMonitor
-        .fetchRecentlyClosedPRs()
-        .catch(nonFatalCatch({ module: MODULE, label: 'fetch recently closed PRs', fallback: [] as ClosedPR[] })),
-      prMonitor
-        .fetchRecentlyMergedPRs()
-        .catch(nonFatalCatch({ module: MODULE, label: 'fetch recently merged PRs', fallback: [] as MergedPR[] })),
+      prMonitor.fetchUserClosedPRCounts(starFilter).catch(
+        nonFatalCatchWithWarning({
+          warnings,
+          phase: 'fetch',
+          operation: 'fetch closed PR counts',
+          fallback: emptyPRCountsResult<number>(),
+        }),
+      ),
+      prMonitor.fetchRecentlyClosedPRs().catch(
+        nonFatalCatchWithWarning({
+          warnings,
+          phase: 'fetch',
+          operation: 'fetch recently closed PRs',
+          fallback: [] as ClosedPR[],
+        }),
+      ),
+      prMonitor.fetchRecentlyMergedPRs().catch(
+        nonFatalCatchWithWarning({
+          warnings,
+          phase: 'fetch',
+          operation: 'fetch recently merged PRs',
+          fallback: [] as MergedPR[],
+        }),
+      ),
       // Issue conversation fetch has custom messaging based on the error content, so it keeps its bespoke catch.
       issueMonitor.fetchCommentedIssues().catch((error) => {
         if (isRateLimitOrAuthError(error)) throw error;
         const msg = errorMessage(error);
-        if (msg.includes('No GitHub username configured')) {
-          warn(MODULE, `Issue conversation tracking requires setup: ${msg}`);
-        } else {
-          warn(MODULE, `Issue conversation fetch failed: ${msg}`);
-        }
+        const needsSetup = msg.includes('No GitHub username configured');
+        const humanMessage = needsSetup
+          ? `Issue conversation tracking requires setup: ${msg}`
+          : `Issue conversation fetch failed: ${msg}`;
+        recordWarning(warnings, 'fetch', 'fetch commented issues', error, humanMessage);
         return {
           issues: [] as CommentedIssue[],
           failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
@@ -194,6 +254,11 @@ async function fetchPRData(prMonitor: PRMonitor, token: string): Promise<Fetched
 
   const commentedIssues = issueConversationResult.issues;
   if (issueConversationResult.failures.length > 0) {
+    warnings.push({
+      phase: 'fetch',
+      operation: 'fetch commented issues',
+      message: `${issueConversationResult.failures.length} issue conversation check(s) failed`,
+    });
     warn(MODULE, `${issueConversationResult.failures.length} issue conversation check(s) failed`);
   }
 
@@ -229,6 +294,7 @@ async function updateRepoScores(
   prs: FetchedPR[],
   mergedCounts: Map<string, { count: number; lastMergedAt: string | null }>,
   closedCounts: Map<string, number>,
+  warnings: DailyWarning[],
 ): Promise<void> {
   const stateManager = getStateManager();
 
@@ -267,6 +333,14 @@ async function updateRepoScores(
         }
       }
       if (mergedCountFailures === mergedCounts.size && mergedCounts.size > 0) {
+        // Total failure: batch outer-catch sees nothing because the batch itself
+        // succeeded, but every individual mutation inside threw. State may be
+        // silently stale — surface it as a warning distinct from the outer catch.
+        warnings.push({
+          phase: 'repo-scores',
+          operation: 'update merged counts',
+          message: `All ${mergedCounts.size} merged count update(s) failed. This may indicate corrupted state.`,
+        });
         warn(MODULE, `[ALL_MERGED_COUNT_UPDATES_FAILED] All ${mergedCounts.size} merged count update(s) failed.`);
       }
 
@@ -290,6 +364,11 @@ async function updateRepoScores(
         }
       }
       if (closedCountFailures === closedCounts.size && closedCounts.size > 0) {
+        warnings.push({
+          phase: 'repo-scores',
+          operation: 'update closed counts',
+          message: `All ${closedCounts.size} closed count update(s) failed. This may indicate corrupted state.`,
+        });
         warn(MODULE, `[ALL_CLOSED_COUNT_UPDATES_FAILED] All ${closedCounts.size} closed count update(s) failed.`);
       }
 
@@ -305,6 +384,11 @@ async function updateRepoScores(
         }
       }
       if (signalUpdateFailures === repoSignals.size && repoSignals.size > 0) {
+        warnings.push({
+          phase: 'repo-scores',
+          operation: 'update repo signals',
+          message: `All ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`,
+        });
         warn(
           MODULE,
           `[ALL_SIGNAL_UPDATES_FAILED] All ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`,
@@ -312,7 +396,7 @@ async function updateRepoScores(
       }
     });
   } catch (error) {
-    warn(MODULE, `Failed to persist repo score updates: ${errorMessage(error)}`);
+    recordWarning(warnings, 'repo-scores', 'persist repo score updates', error);
   }
 
   // Fetch metadata (stars + language) for all scored repos — async, so outside the batch above
@@ -322,7 +406,7 @@ async function updateRepoScores(
     repoMetadata = await prMonitor.fetchRepoMetadata(allRepos);
   } catch (error) {
     if (isRateLimitOrAuthError(error)) throw error;
-    warn(MODULE, `Failed to fetch repo metadata: ${errorMessage(error)}`);
+    recordWarning(warnings, 'repo-scores', 'fetch repo metadata', error);
     warn(
       MODULE,
       'Repos without cached metadata will be excluded from dashboard stats and metadata badges until fetched on the next successful run.',
@@ -342,6 +426,11 @@ async function updateRepoScores(
         }
       }
       if (metadataUpdateFailures === repoMetadata.size && repoMetadata.size > 0) {
+        warnings.push({
+          phase: 'repo-scores',
+          operation: 'update repo metadata',
+          message: `All ${repoMetadata.size} metadata update(s) failed. This may indicate corrupted state.`,
+        });
         warn(MODULE, `[ALL_METADATA_UPDATES_FAILED] All ${repoMetadata.size} metadata update(s) failed.`);
       }
 
@@ -356,6 +445,11 @@ async function updateRepoScores(
         }
       }
       if (trustSyncFailures === mergedCounts.size && mergedCounts.size > 0) {
+        warnings.push({
+          phase: 'repo-scores',
+          operation: 'sync trusted projects',
+          message: `All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`,
+        });
         warn(
           MODULE,
           `[ALL_TRUST_SYNCS_FAILED] All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`,
@@ -363,7 +457,7 @@ async function updateRepoScores(
       }
     });
   } catch (error) {
-    warn(MODULE, `Failed to persist metadata/trust updates: ${errorMessage(error)}`);
+    recordWarning(warnings, 'repo-scores', 'persist metadata/trust updates', error);
   }
 }
 
@@ -377,6 +471,7 @@ function partitionPRs(
   prs: FetchedPR[],
   recentlyClosedPRs: ClosedPR[],
   recentlyMergedPRs: MergedPR[],
+  warnings: DailyWarning[],
 ): PartitionedPRs {
   const stateManager = getStateManager();
 
@@ -426,7 +521,7 @@ function partitionPRs(
       stateManager.setLastDigest(digest);
     });
   } catch (error) {
-    warn(MODULE, `Failed to persist partition state: ${errorMessage(error)}`);
+    recordWarning(warnings, 'partition', 'persist partition state', error);
   }
 
   // Digest was created inside batch — reconstruct from state
@@ -446,6 +541,7 @@ function generateDigestOutput(
   shelvedPRs: ShelvedPRRef[],
   commentedIssues: CommentedIssue[],
   failures: PRCheckFailure[],
+  warnings: DailyWarning[],
   previousLastDigestAt?: string,
 ): DailyCheckResult {
   const stateManager = getStateManager();
@@ -479,7 +575,7 @@ function generateDigestOutput(
             try {
               stateManager.undismissIssue(issue.url);
             } catch (error) {
-              warn(MODULE, `Failed to persist auto-undismiss for ${issue.url}: ${errorMessage(error)}`);
+              recordWarning(warnings, 'dismiss-filter', `persist auto-undismiss for ${issue.url}`, error);
             }
             return true;
           }
@@ -489,7 +585,7 @@ function generateDigestOutput(
       });
     });
   } catch (error) {
-    warn(MODULE, `Failed to persist auto-undismiss state: ${errorMessage(error)}`);
+    recordWarning(warnings, 'dismiss-filter', 'persist auto-undismiss state', error);
   }
 
   const issueResponses = filteredCommentedIssues.filter(
@@ -514,6 +610,7 @@ function generateDigestOutput(
     commentedIssues: filteredCommentedIssues,
     repoGroups,
     failures,
+    warnings,
   };
 }
 
@@ -540,6 +637,7 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
     commentedIssues: result.commentedIssues,
     repoGroups: compactRepoGroups(result.repoGroups),
     failures: result.failures,
+    warnings: result.warnings,
   };
 }
 
@@ -572,6 +670,9 @@ export async function executeDailyCheck(token: string): Promise<DailyOutput> {
  */
 async function executeDailyCheckInternal(token: string): Promise<DailyCheckResult> {
   const prMonitor = new PRMonitor(token);
+  // One collector shared by every phase — threaded through explicitly so the
+  // callgraph documents which phases can produce non-fatal warnings. See #1042.
+  const warnings: DailyWarning[] = [];
 
   // Phase 1: Fetch all PR data from GitHub
   const {
@@ -586,10 +687,10 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     recentlyClosedPRs,
     recentlyMergedPRs,
     commentedIssues,
-  } = await fetchPRData(prMonitor, token);
+  } = await fetchPRData(prMonitor, token, warnings);
 
   // Phase 2: Update repo scores (signals, star counts, trust sync)
-  await updateRepoScores(prMonitor, prs, mergedCounts, closedCounts);
+  await updateRepoScores(prMonitor, prs, mergedCounts, closedCounts, warnings);
 
   // Phase 3: Persist monthly analytics and store merged/closed PR history.
   // try-catch: analytics are supplementary — save failure should not crash the daily check.
@@ -613,7 +714,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
       }
     });
   } catch (error) {
-    warn(MODULE, `Failed to persist monthly analytics: ${errorMessage(error)}`);
+    recordWarning(warnings, 'analytics', 'persist monthly analytics', error);
   }
 
   // Phase 3.5: Feed merged/closed PRs to oss-scout for cross-tool state sync.
@@ -628,7 +729,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
       }
       await scout.checkpoint();
     } catch (error) {
-      warn(MODULE, `Failed to sync PR data to oss-scout: ${errorMessage(error)}`);
+      recordWarning(warnings, 'scout-sync', 'sync PR data to oss-scout', error);
     }
   }
 
@@ -637,10 +738,24 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   const previousLastDigestAt = getStateManager().getState().lastDigestAt;
 
   // Phase 4: Partition PRs, generate and save digest
-  const { activePRs, shelvedPRs, digest } = partitionPRs(prMonitor, prs, recentlyClosedPRs, recentlyMergedPRs);
+  const { activePRs, shelvedPRs, digest } = partitionPRs(
+    prMonitor,
+    prs,
+    recentlyClosedPRs,
+    recentlyMergedPRs,
+    warnings,
+  );
 
   // Phase 5: Build structured output (capacity, dismiss filter, action menu)
-  const result = generateDigestOutput(digest, activePRs, shelvedPRs, commentedIssues, failures, previousLastDigestAt);
+  const result = generateDigestOutput(
+    digest,
+    activePRs,
+    shelvedPRs,
+    commentedIssues,
+    failures,
+    warnings,
+    previousLastDigestAt,
+  );
 
   // Checkpoint: push state to Gist if in Gist mode.
   // If getStateManagerAsync was not called before this command ran,
@@ -651,7 +766,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
       await sm.checkpoint();
     }
   } catch (err) {
-    warn(MODULE, `Gist checkpoint failed: ${errorMessage(err)}`);
+    recordWarning(warnings, 'gist-checkpoint', 'Gist checkpoint', err);
   }
 
   return result;

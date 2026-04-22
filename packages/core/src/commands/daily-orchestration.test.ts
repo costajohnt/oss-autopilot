@@ -667,7 +667,11 @@ describe('executeDailyCheck() — error resilience', () => {
 
     // Should still return a valid result
     expect(result).toHaveProperty('digest');
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to fetch recently closed PRs'));
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('fetch recently closed PRs'));
+    // New structured warnings surface the same failure for programmatic consumers (#1042).
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ phase: 'fetch', operation: 'fetch recently closed PRs' })]),
+    );
     consoleSpy.mockRestore();
   });
 
@@ -678,7 +682,10 @@ describe('executeDailyCheck() — error resilience', () => {
     const result = await executeDailyCheck('test-token');
 
     expect(result).toHaveProperty('digest');
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to fetch recently merged PRs'));
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('fetch recently merged PRs'));
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ phase: 'fetch', operation: 'fetch recently merged PRs' })]),
+    );
     consoleSpy.mockRestore();
   });
 
