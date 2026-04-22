@@ -3,6 +3,9 @@
  * Functions that operate on AgentState for scoring, querying,
  * and computing aggregate statistics. Mutation functions modify
  * the passed state object in place; query functions are pure.
+ *
+ * **User-facing reference:** `docs/repo-scoring.md` — plain-language
+ * explanation of the formula and what a given score means.
  */
 
 import { AgentState, RepoScore, RepoScoreUpdate, StoredMergedPR, StoredClosedPR, isBelowMinStars } from './types.js';
@@ -10,6 +13,36 @@ import { debug, warn } from './logger.js';
 import { parseGitHubUrl } from './utils.js';
 
 const MODULE = 'scoring';
+
+// ── Scoring constants (#1054) ─────────────────────────────────────────
+// Previously inlined as magic numbers in `calculateScore`. Extracted with
+// rationale comments so the formula is auditable without source spelunking.
+// Changing any of these is a behavior change — update docs/repo-scoring.md
+// and the tests below in lockstep.
+
+/** Starting point before any signals are applied. Deliberately optimistic so first-time repos aren't punished. */
+const BASE_SCORE = 5;
+
+/** Logarithmic merge bonus: 1 merge→+2, 2→+3, 3→+4, 4+→+5. Log instead of linear so a 20th merge doesn't dominate. */
+const MERGE_BONUS_COEFFICIENT = 2;
+const MERGE_BONUS_CAP = 5;
+
+/** −1 per closed-without-merge PR, capped so a few rejections don't zero out an otherwise-healthy repo. */
+const CLOSED_PENALTY_CAP = 3;
+
+/** Repos whose most-recent merge is within this window get a +1 freshness bonus. */
+const RECENCY_WINDOW_DAYS = 90;
+const RECENCY_BONUS = 1;
+
+/** +1 when the repo's signals say maintainers respond to PRs (per-PR computed; see issue-grading.ts). */
+const RESPONSIVENESS_BONUS = 1;
+
+/** −2 when hostile maintainer comments have been detected (e.g., explicit rejection of PRs without review). */
+const HOSTILITY_PENALTY = 2;
+
+/** Final clamp — scores always land in this inclusive range. */
+const SCORE_MIN = 1;
+const SCORE_MAX = 10;
 
 /** Repo scores older than this are considered stale and excluded from low-scoring lists. */
 const SCORE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -20,7 +53,7 @@ const SCORE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 function createDefaultRepoScore(repo: string): RepoScore {
   return {
     repo,
-    score: 5, // Base score
+    score: BASE_SCORE,
     mergedPRCount: 0,
     closedWithoutMergeCount: 0,
     avgResponseDays: null,
@@ -34,24 +67,34 @@ function createDefaultRepoScore(repo: string): RepoScore {
 }
 
 /**
- * Calculate the score based on the repo's metrics.
- * Base 5, logarithmic merge bonus (max +5), -1 per closed without merge (max -3),
- * +1 if recently merged (within 90 days), +1 if responsive, -2 if hostile. Clamp 1-10.
+ * Calculate a 1–10 score for a repo based on the user's PR history and the
+ * repo's maintainer-health signals.
+ *
+ * Formula (all constants named above with rationale):
+ *   BASE_SCORE
+ *     + min(round(log2(merged + 1) * MERGE_BONUS_COEFFICIENT), MERGE_BONUS_CAP)
+ *     − min(closedWithoutMergeCount, CLOSED_PENALTY_CAP)
+ *     + (lastMergedAt within RECENCY_WINDOW_DAYS ? RECENCY_BONUS : 0)
+ *     + (isResponsive ? RESPONSIVENESS_BONUS : 0)
+ *     − (hasHostileComments ? HOSTILITY_PENALTY : 0)
+ *   clamped to [SCORE_MIN, SCORE_MAX].
+ *
+ * See `docs/repo-scoring.md` for user-facing intent and what a given
+ * score means in practice.
  */
 export function calculateScore(repoScore: RepoScore): number {
-  let score = 5; // Base score
+  let score = BASE_SCORE;
 
-  // Logarithmic merge bonus (max +5): 1→+2, 2→+3, 3→+4, 4+→+5
   if (repoScore.mergedPRCount > 0) {
-    const mergedBonus = Math.min(Math.round(Math.log2(repoScore.mergedPRCount + 1) * 2), 5);
+    const mergedBonus = Math.min(
+      Math.round(Math.log2(repoScore.mergedPRCount + 1) * MERGE_BONUS_COEFFICIENT),
+      MERGE_BONUS_CAP,
+    );
     score += mergedBonus;
   }
 
-  // -1 per closed without merge (max -3)
-  const closedPenalty = Math.min(repoScore.closedWithoutMergeCount, 3);
-  score -= closedPenalty;
+  score -= Math.min(repoScore.closedWithoutMergeCount, CLOSED_PENALTY_CAP);
 
-  // +1 if lastMergedAt is set and within 90 days (recency)
   if (repoScore.lastMergedAt) {
     const lastMergedDate = new Date(repoScore.lastMergedAt);
     if (isNaN(lastMergedDate.getTime())) {
@@ -62,24 +105,21 @@ export function calculateScore(repoScore: RepoScore): number {
     } else {
       const msPerDay = 1000 * 60 * 60 * 24;
       const daysSince = Math.floor((Date.now() - lastMergedDate.getTime()) / msPerDay);
-      if (daysSince <= 90) {
-        score += 1;
+      if (daysSince <= RECENCY_WINDOW_DAYS) {
+        score += RECENCY_BONUS;
       }
     }
   }
 
-  // +1 if responsive
   if (repoScore.signals.isResponsive) {
-    score += 1;
+    score += RESPONSIVENESS_BONUS;
   }
 
-  // -2 if hostile
   if (repoScore.signals.hasHostileComments) {
-    score -= 2;
+    score -= HOSTILITY_PENALTY;
   }
 
-  // Clamp to 1-10
-  return Math.max(1, Math.min(10, score));
+  return Math.max(SCORE_MIN, Math.min(SCORE_MAX, score));
 }
 
 /**

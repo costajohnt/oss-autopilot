@@ -369,6 +369,15 @@ Without pr-review-toolkit, the built-in pre-commit-reviewer handles all review p
 - **1,000 PR cap** — GitHub's Search API returns at most 1,000 results per query. If you have more than 1,000 open, merged, or closed PRs, the oldest results may be truncated.
 - **Individual contributor focus** — Designed for solo contributors managing their own PRs. No team dashboards, shared state, or multi-user workflows.
 
+## How It Decides
+
+Two heuristics directly shape which repos surface in discovery:
+
+- **[Repo scoring](docs/repo-scoring.md)** — 1–10 score per repo, factoring merged/closed PR history, recency, maintainer responsiveness, and hostility signals. The default `minRepoScoreThreshold` (4) excludes repos below the cutoff from search results.
+- **[Anti-LLM policy detection](docs/anti-llm-policy.md)** — scans CONTRIBUTING / CODE_OF_CONDUCT / README for language indicating the project doesn't accept AI-assisted contributions. Hard skip when matched.
+
+Both docs explain the exact rules so you can understand why a given repo did or didn't surface.
+
 ## API Documentation
 
 Full API documentation for `@oss-autopilot/core` is available at [jcosta.tech/oss-autopilot](https://jcosta.tech/oss-autopilot/).
