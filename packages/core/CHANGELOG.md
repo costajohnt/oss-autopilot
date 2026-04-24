@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.4](https://github.com/costajohnt/oss-autopilot/compare/core-v1.17.3...core-v1.17.4) (2026-04-24)
+
+
+### Bug Fixes
+
+* **dashboard:** stop lazy chart init from calling ChartPanel on remount ([#1124](https://github.com/costajohnt/oss-autopilot/issues/1124)) ([a918350](https://github.com/costajohnt/oss-autopilot/commit/a918350cbbd89e05f4fa5d627e8fe4fe8b1b6e28))
+
 ## [1.17.3](https://github.com/costajohnt/oss-autopilot/compare/core-v1.17.2...core-v1.17.3) (2026-04-22)
 
 
