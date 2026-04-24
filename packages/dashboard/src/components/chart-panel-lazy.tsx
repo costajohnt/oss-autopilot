@@ -54,7 +54,12 @@ function ChartSkeleton() {
 }
 
 export function LazyChartPanel(props: ChartPanelProps) {
-  const [Component, setComponent] = useState<ComponentType<ChartPanelProps> | null>(cached);
+  // Wrap `cached` in an initializer: useState treats a bare function initial
+  // value as a lazy initializer and calls it once as `fn(undefined)`. After
+  // the dynamic import resolves, `cached` is the ChartPanel function, so on
+  // any subsequent mount the unwrapped form would evaluate `ChartPanel(undefined)`
+  // during init and crash on the props destructure.
+  const [Component, setComponent] = useState<ComponentType<ChartPanelProps> | null>(() => cached);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
