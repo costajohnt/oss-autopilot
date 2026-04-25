@@ -58,7 +58,7 @@ interface IssueBlock {
 /** Identify which "## Pursue|Maybe|Skip" section a line index sits under, if any. */
 function tierForLine(lines: string[], lineIndex: number): string | undefined {
   for (let i = lineIndex - 1; i >= 0; i--) {
-    const m = lines[i].match(/^##\s+(.+?)\s*$/);
+    const m = lines[i].match(/^##\s+(.+)$/);
     if (m) return m[1].trim();
     // A higher-level heading also resets — we don't reach back across `# Foo`.
     if (/^#\s+/.test(lines[i])) return undefined;
@@ -92,7 +92,7 @@ function findIssueBlocks(lines: string[], issueUrl: string): IssueBlock[] {
 function findTierHeaderIndex(lines: string[], tier: Tier): number | undefined {
   const expected = TIER_HEADERS[tier].toLowerCase();
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^##\s+(.+?)\s*$/);
+    const m = lines[i].match(/^##\s+(.+)$/);
     if (m && `## ${m[1].trim()}`.toLowerCase() === expected) {
       return i;
     }

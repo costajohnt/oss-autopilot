@@ -17,7 +17,7 @@ permissions:
 
 env:
   # Bundle size thresholds (bytes). Update via PR when increases are justified.
-  BUNDLE_MAX_CORE: 740000 # ~722 KB (increased for doctor command + config-key registry, #1038/#1039)
+  BUNDLE_MAX_CORE: 760000 # ~742 KB (increased for list-move-tier command, #1107)
   BUNDLE_MAX_MCP: 2000000 # ~1953 KB
   STARTUP_WARN_MS: 500 # Warn if CLI startup exceeds 500ms
 

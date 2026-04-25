@@ -91,9 +91,10 @@ describe('moveIssueToTier (pure transform)', () => {
     const maybeSection = result.content.slice(result.content.indexOf('## Maybe'), result.content.indexOf('## Skip'));
     expect(pursueSection).not.toContain(URL_A);
     expect(maybeSection).not.toContain(URL_A);
-    // Both copies should now be in Skip
+    // Both copies should now be in Skip — count occurrences via split (avoids
+    // building a RegExp from a literal URL string).
     const skipSection = result.content.slice(result.content.indexOf('## Skip'));
-    expect(skipSection.match(new RegExp(URL_A.replace(/[/.]/g, '\\$&'), 'g'))?.length).toBe(2);
+    expect(skipSection.split(URL_A).length - 1).toBe(2);
   });
 
   it('creates the target tier section when missing', () => {
