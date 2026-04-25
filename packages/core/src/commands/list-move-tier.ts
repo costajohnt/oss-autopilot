@@ -55,13 +55,22 @@ interface IssueBlock {
   tier: string | undefined;
 }
 
+/** Extract the heading text from a line that starts with `## ` (returns undefined otherwise).
+ * Avoids regex on the heading body so a long whitespace prefix can't trigger
+ * backtracking in static analyzers (CodeQL js/polynomial-redos).
+ */
+function parseLevel2Heading(line: string): string | undefined {
+  if (line.startsWith('## ')) return line.slice(3).trim();
+  return undefined;
+}
+
 /** Identify which "## Pursue|Maybe|Skip" section a line index sits under, if any. */
 function tierForLine(lines: string[], lineIndex: number): string | undefined {
   for (let i = lineIndex - 1; i >= 0; i--) {
-    const m = lines[i].match(/^##\s+(.+)$/);
-    if (m) return m[1].trim();
+    const heading = parseLevel2Heading(lines[i]);
+    if (heading !== undefined) return heading;
     // A higher-level heading also resets — we don't reach back across `# Foo`.
-    if (/^#\s+/.test(lines[i])) return undefined;
+    if (lines[i].startsWith('# ')) return undefined;
   }
   return undefined;
 }
@@ -92,8 +101,8 @@ function findIssueBlocks(lines: string[], issueUrl: string): IssueBlock[] {
 function findTierHeaderIndex(lines: string[], tier: Tier): number | undefined {
   const expected = TIER_HEADERS[tier].toLowerCase();
   for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^##\s+(.+)$/);
-    if (m && `## ${m[1].trim()}`.toLowerCase() === expected) {
+    const heading = parseLevel2Heading(lines[i]);
+    if (heading !== undefined && `## ${heading}`.toLowerCase() === expected) {
       return i;
     }
   }
