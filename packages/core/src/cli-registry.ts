@@ -147,7 +147,10 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('state')
-        .description('Manage state persistence (local/gist)')
+        .description(
+          'Manage state persistence (local/gist). Gist mode uses ETag-based optimistic concurrency: ' +
+            'a concurrent push from another machine surfaces as a CONCURRENCY error rather than silently overwriting (#1115).',
+        )
         .option('--show', 'Display current persistence mode and Gist ID')
         .option('--sync', 'Force push state to Gist (no-op if not in Gist mode)')
         .option('--unlink', 'Switch from Gist back to local persistence')

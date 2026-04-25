@@ -13,6 +13,23 @@
  *  5. If not found anywhere, create a new private Gist with seed files and store the ID
  *  6. Cache all Gist file contents in memory for session-scoped reads
  *  7. Write state to a local cache file for fallback
+ *
+ * Concurrency model (#1115):
+ *
+ *  Each fetch captures the response's `ETag` and stores it as
+ *  `lastFetchedEtag`. The next `push()` sends that ETag back as
+ *  `If-Match` so the GitHub Gist API rejects the write with 412 Precondition
+ *  Failed if another machine pushed in the interval.
+ *
+ *  On 412, the store attempts a single merge: it re-fetches the Gist
+ *  (refreshing the ETag), re-applies the in-memory dirty content on top of
+ *  the now-current remote state, and pushes once more. If that second push
+ *  also returns 412, `push()` throws {@link GistConcurrencyError} — local
+ *  mutations stay in memory so the caller can decide whether to refresh and
+ *  retry. The merge step is intentionally cheap (state is a single JSON
+ *  blob) and treats local dirty changes as authoritative for conflict
+ *  cells, which matches the "last-write-wins by intent" model the rest of
+ *  oss-autopilot already assumes for state.json.
  */
 
 import * as fs from 'fs';
@@ -21,9 +38,19 @@ import { AgentStateSchema } from './state-schema.js';
 import { atomicWriteFileSync, createFreshState, migrateV1ToV2, migrateV2ToV3 } from './state-persistence.js';
 import { getGistIdPath, getStateCachePath } from './utils.js';
 import { debug, warn } from './logger.js';
-import { GistPermissionError, isRateLimitError } from './errors.js';
+import { GistPermissionError, GistConcurrencyError, isRateLimitError } from './errors.js';
 
 const MODULE = 'gist-store';
+
+/**
+ * Extract the ETag header from an Octokit response, tolerating both lower-
+ * and upper-case header names. Returns `null` when no ETag is present (test
+ * mocks, degraded responses, etc.).
+ */
+function extractEtag(headers: Record<string, string | undefined> | undefined): string | null {
+  if (!headers) return null;
+  return headers.etag ?? headers.ETag ?? null;
+}
 
 /** Well-known Gist description used for search-based discovery. */
 export const GIST_DESCRIPTION = 'oss-autopilot-state';
@@ -43,20 +70,28 @@ export interface BootstrapResult {
 /**
  * Minimal Octokit-shaped interface for the Gist API methods we use.
  * Accepts the real ThrottledOctokit or a plain mock object in tests.
+ *
+ * Responses include the optional `headers` envelope (ETag-based concurrency,
+ * #1115). Tests that don't care about ETags can omit the headers field — the
+ * code path treats a missing ETag as "no concurrency check available, fall
+ * back to last-write-wins".
  */
 export interface OctokitLike {
   gists: {
-    get: (params: { gist_id: string }) => Promise<{ data: GistResponseData }>;
+    get: (params: {
+      gist_id: string;
+    }) => Promise<{ data: GistResponseData; headers?: Record<string, string | undefined> }>;
     list: (params: { per_page: number; page: number }) => Promise<{ data: GistListItem[] }>;
     create: (params: {
       description: string;
       public: boolean;
       files: Record<string, { content: string }>;
-    }) => Promise<{ data: GistResponseData }>;
+    }) => Promise<{ data: GistResponseData; headers?: Record<string, string | undefined> }>;
     update: (params: {
       gist_id: string;
       files: Record<string, { content: string }>;
-    }) => Promise<{ data: GistResponseData }>;
+      headers?: Record<string, string>;
+    }) => Promise<{ data: GistResponseData; headers?: Record<string, string | undefined> }>;
   };
 }
 
@@ -80,6 +115,14 @@ export class GistStateStore {
   private gistId: string | null = null;
   readonly cachedFiles: Map<string, string> = new Map();
   readonly dirtyFiles: Set<string> = new Set();
+  /**
+   * ETag captured from the most recent successful Gist fetch (#1115).
+   * Sent back as `If-Match` on `update` so concurrent writes from another
+   * machine surface as 412 Precondition Failed instead of silently winning
+   * the last-write-wins race. `null` when the SDK didn't surface the header
+   * (e.g. test mocks without headers) — in that case we skip the check.
+   */
+  private lastFetchedEtag: string | null = null;
   private readonly octokit: OctokitLike;
   private lastRefreshAt = 0;
   private static readonly REFRESH_THROTTLE_MS = 30_000;
@@ -286,10 +329,22 @@ export class GistStateStore {
   }
 
   /**
-   * Push all dirty files to the backing Gist. Retries once on failure.
+   * Push all dirty files to the backing Gist.
+   *
+   * Behavior:
+   *  - When an ETag is available from the previous fetch, sends `If-Match`
+   *    so a 412 surfaces if another machine pushed since we last fetched.
+   *  - On 412, attempts a single merge: re-fetches the Gist (refreshing the
+   *    ETag), re-applies the in-memory dirty content on top of the remote,
+   *    and pushes once more. If the second push also 412s, throws
+   *    {@link GistConcurrencyError} — the caller can decide whether to
+   *    refreshFromGist + retry.
+   *  - On any other error, retries once (existing behavior). If the retry
+   *    also fails, returns `false`.
    *
    * Returns `true` on success (or when there is nothing to push).
-   * Returns `false` if both attempts fail.
+   * Returns `false` if a non-conflict push fails on both attempts.
+   * Throws {@link GistConcurrencyError} on unresolvable conflicts (#1115).
    * Throws if the Gist ID has not been resolved yet (bootstrap not called).
    */
   async push(): Promise<boolean> {
@@ -301,28 +356,76 @@ export class GistStateStore {
       throw new Error('GistStateStore: cannot push before bootstrap — gistId is null');
     }
 
-    // Build PATCH payload from the dirty set
-    const files: Record<string, { content: string }> = {};
-    for (const filename of this.dirtyFiles) {
-      const content = this.cachedFiles.get(filename);
-      if (content !== undefined) {
-        files[filename] = { content };
+    const buildFiles = (): Record<string, { content: string }> => {
+      const out: Record<string, { content: string }> = {};
+      for (const filename of this.dirtyFiles) {
+        const content = this.cachedFiles.get(filename);
+        if (content !== undefined) {
+          out[filename] = { content };
+        }
+      }
+      return out;
+    };
+
+    /** Attempt a single push, capturing the response ETag for the next push. */
+    const attempt = async (
+      etag: string | null,
+    ): Promise<{ ok: true } | { ok: false; status?: number; err: unknown }> => {
+      try {
+        const params: Parameters<OctokitLike['gists']['update']>[0] = {
+          gist_id: this.gistId as string,
+          files: buildFiles(),
+        };
+        if (etag) {
+          params.headers = { 'if-match': etag };
+        }
+        const response = await this.octokit.gists.update(params);
+        // Refresh our cached ETag so the next push uses the post-update value.
+        const newEtag = extractEtag(response.headers);
+        if (newEtag) this.lastFetchedEtag = newEtag;
+        return { ok: true };
+      } catch (err) {
+        const status = (err as { status?: number }).status;
+        return { ok: false, status, err };
+      }
+    };
+
+    // ── Phase 1: best-shot push with current ETag ─────────────────────
+    let result = await attempt(this.lastFetchedEtag);
+
+    // ── Phase 2: ETag mismatch — try to merge once ────────────────────
+    if (!result.ok && result.status === 412) {
+      const expectedEtag = this.lastFetchedEtag;
+      debug(MODULE, `push hit 412 (ETag mismatch); attempting merge — refreshing and retrying once`);
+      // Snapshot the dirty contents before refresh (fetchAndCache wipes the cache).
+      const stagedContents: Record<string, string> = {};
+      for (const filename of this.dirtyFiles) {
+        const content = this.cachedFiles.get(filename);
+        if (content !== undefined) stagedContents[filename] = content;
+      }
+      try {
+        await this.fetchAndCache(this.gistId);
+      } catch (refreshErr) {
+        warn(MODULE, `Merge refresh after 412 failed: ${refreshErr}`);
+        throw new GistConcurrencyError(expectedEtag, null);
+      }
+      // Re-apply our staged dirty contents on top of the refreshed remote.
+      for (const [filename, content] of Object.entries(stagedContents)) {
+        this.cachedFiles.set(filename, content);
+      }
+      result = await attempt(this.lastFetchedEtag);
+      if (!result.ok && result.status === 412) {
+        warn(MODULE, 'Second push after merge also returned 412; surfacing GistConcurrencyError');
+        throw new GistConcurrencyError(expectedEtag, this.lastFetchedEtag);
       }
     }
 
-    const attempt = async (): Promise<boolean> => {
-      await this.octokit.gists.update({ gist_id: this.gistId as string, files });
-      return true;
-    };
-
-    try {
-      await attempt();
-    } catch (firstErr) {
-      debug(MODULE, `push failed on first attempt, retrying: ${firstErr}`);
-      try {
-        await attempt();
-      } catch (secondErr) {
-        warn(MODULE, `push failed after retry, giving up: ${secondErr}`);
+    // ── Phase 3: any other failure — retry once (existing behavior) ───
+    if (!result.ok) {
+      debug(MODULE, `push failed on first attempt, retrying: ${result.err}`);
+      result = await attempt(this.lastFetchedEtag);
+      if (!result.ok) {
+        warn(MODULE, `push failed after retry, giving up: ${result.err}`);
         return false;
       }
     }
@@ -385,12 +488,15 @@ export class GistStateStore {
    * and write the local cache file.
    */
   private async fetchAndCache(gistId: string): Promise<AgentState> {
-    const { data } = await this.octokit.gists.get({ gist_id: gistId });
+    const response = await this.octokit.gists.get({ gist_id: gistId });
     this.gistId = gistId;
+    // Capture the ETag for optimistic-concurrency push (#1115). Header
+    // names from Octokit are lower-cased; tolerate both shapes for robustness.
+    this.lastFetchedEtag = extractEtag(response.headers);
 
     // Populate in-memory cache with ALL files from the Gist
     this.cachedFiles.clear();
-    for (const [filename, file] of Object.entries(data.files)) {
+    for (const [filename, file] of Object.entries(response.data.files)) {
       if (file && file.content != null) {
         this.cachedFiles.set(filename, file.content);
       }

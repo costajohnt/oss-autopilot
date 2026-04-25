@@ -82,6 +82,29 @@ export class ConcurrencyError extends OssAutopilotError {
 }
 
 /**
+ * Thrown when a Gist push collides with a concurrent write from another
+ * machine and the in-flight merge attempt also lost the race (#1115).
+ *
+ * Carries the ETag we tried to write against (`expectedEtag`) and the
+ * ETag we observed during the merge refetch (`remoteEtag`) so callers /
+ * tests can assert on the precise mismatch. The message is phrased for
+ * end-users; `state-sync` retries from a fresh fetch.
+ */
+export class GistConcurrencyError extends OssAutopilotError {
+  constructor(
+    public readonly expectedEtag: string | null,
+    public readonly remoteEtag: string | null,
+  ) {
+    super(
+      'Another machine pushed to the state Gist while this push was in flight, and the merge attempt also collided. ' +
+        'Re-run `oss-autopilot state --sync` to retry — your local mutations are still in memory.',
+      'CONCURRENCY_ERROR',
+    );
+    this.name = 'GistConcurrencyError';
+  }
+}
+
+/**
  * Extract a human-readable message from an unknown error value.
  */
 export function errorMessage(e: unknown): string {
@@ -159,6 +182,7 @@ export function resolveErrorCode(err: unknown): import('../formatters/json.js').
   if (err instanceof ConfigurationError) return 'CONFIGURATION';
   if (err instanceof ValidationError) return 'VALIDATION';
   if (err instanceof ConcurrencyError) return 'CONCURRENCY';
+  if (err instanceof GistConcurrencyError) return 'CONCURRENCY';
 
   // Check HTTP status codes (Octokit errors)
   const status = getHttpStatusCode(err);
