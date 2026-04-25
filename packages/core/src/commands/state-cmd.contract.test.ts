@@ -17,10 +17,14 @@ vi.mock('../core/state-persistence.js', () => ({
   atomicWriteFileSync: vi.fn(),
 }));
 
-vi.mock('../core/utils.js', () => ({
-  getStatePath: vi.fn().mockReturnValue('/fake/state.json'),
-  getGistIdPath: vi.fn().mockReturnValue('/fake/gist-id'),
-}));
+vi.mock('../core/utils.js', async () => {
+  const actual = await vi.importActual<typeof import('../core/utils.js')>('../core/utils.js');
+  return {
+    ...actual,
+    getStatePath: vi.fn().mockReturnValue('/fake/state.json'),
+    getGistIdPath: vi.fn().mockReturnValue('/fake/gist-id'),
+  };
+});
 
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');

@@ -728,6 +728,36 @@ describe('StateManager merged PRs', () => {
 
       expect(stateManager.getMergedPRs()).toHaveLength(1);
     });
+
+    it('drops entries with invalid URLs and reports the count (#1120)', () => {
+      const valid = { url: 'https://github.com/a/b/pull/1', title: 'Valid', mergedAt: '2025-06-10T00:00:00Z' };
+      const bogus = { url: 'not-a-real-url', title: 'Bogus', mergedAt: '2025-06-09T00:00:00Z' };
+      const nonGithub = {
+        url: 'https://example.com/foo/bar/pull/1',
+        title: 'Non-GitHub',
+        mergedAt: '2025-06-08T00:00:00Z',
+      };
+
+      const result = stateManager.addMergedPRs([valid, bogus, nonGithub]);
+
+      expect(result).toEqual({ added: 1, dropped: 2 });
+      expect(stateManager.getMergedPRs()).toEqual([valid]);
+    });
+
+    it('returns added/dropped counts on a normal add', () => {
+      const pr = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', mergedAt: '2025-06-10T00:00:00Z' };
+      expect(stateManager.addMergedPRs([pr])).toEqual({ added: 1, dropped: 0 });
+    });
+
+    it('returns zero counts on empty input', () => {
+      expect(stateManager.addMergedPRs([])).toEqual({ added: 0, dropped: 0 });
+    });
+
+    it('returns zero added when all inputs are duplicates of stored entries', () => {
+      const pr = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', mergedAt: '2025-06-10T00:00:00Z' };
+      stateManager.addMergedPRs([pr]);
+      expect(stateManager.addMergedPRs([pr])).toEqual({ added: 0, dropped: 0 });
+    });
   });
 
   describe('getMergedPRWatermark', () => {
@@ -825,6 +855,16 @@ describe('StateManager merged PRs', () => {
       stateManager.addClosedPRs([pr]);
 
       expect(stateManager.getClosedPRs()).toHaveLength(1);
+    });
+
+    it('drops entries with invalid URLs and reports the count (#1120)', () => {
+      const valid = { url: 'https://github.com/a/b/pull/1', title: 'Valid', closedAt: '2025-06-10T00:00:00Z' };
+      const bogus = { url: 'garbage', title: 'Bogus', closedAt: '2025-06-09T00:00:00Z' };
+
+      const result = stateManager.addClosedPRs([valid, bogus]);
+
+      expect(result).toEqual({ added: 1, dropped: 1 });
+      expect(stateManager.getClosedPRs()).toEqual([valid]);
     });
   });
 

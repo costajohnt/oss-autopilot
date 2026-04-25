@@ -6,16 +6,24 @@
 import * as fs from 'fs';
 import { getStateManager, resetStateManager } from '../core/state.js';
 import { atomicWriteFileSync } from '../core/state-persistence.js';
-import { getStatePath, getGistIdPath } from '../core/utils.js';
+import { getStatePath, getGistIdPath, parseGitHubUrl } from '../core/utils.js';
 import { warn } from '../core/logger.js';
 
 const MODULE = 'state-cmd';
+
+export interface InvalidUrlEntry {
+  kind: 'merged' | 'closed';
+  url: string;
+  title: string;
+}
 
 export interface StateShowOutput {
   persistence: 'local' | 'gist';
   gistId: string | null;
   gistDegraded: boolean;
   lastRunAt: string | undefined;
+  /** Present only when validate=true. Existing entries with unparseable URLs. */
+  invalidEntries?: InvalidUrlEntry[];
 }
 
 export interface StateSyncOutput {
@@ -29,15 +37,34 @@ export interface StateUnlinkOutput {
   previousGistId: string | null;
 }
 
-export async function runStateShow(): Promise<StateShowOutput> {
+export async function runStateShow(options: { validate?: boolean } = {}): Promise<StateShowOutput> {
   const sm = getStateManager();
   const state = sm.getState();
-  return {
+  const output: StateShowOutput = {
     persistence: state.config.persistence ?? 'local',
     gistId: state.gistId ?? null,
     gistDegraded: sm.isGistDegraded(),
     lastRunAt: state.lastRunAt,
   };
+  if (options.validate) {
+    output.invalidEntries = collectInvalidUrlEntries(sm);
+  }
+  return output;
+}
+
+function collectInvalidUrlEntries(sm: ReturnType<typeof getStateManager>): InvalidUrlEntry[] {
+  const invalid: InvalidUrlEntry[] = [];
+  for (const pr of sm.getMergedPRs()) {
+    if (parseGitHubUrl(pr.url) === null) {
+      invalid.push({ kind: 'merged', url: pr.url, title: pr.title });
+    }
+  }
+  for (const pr of sm.getClosedPRs()) {
+    if (parseGitHubUrl(pr.url) === null) {
+      invalid.push({ kind: 'closed', url: pr.url, title: pr.title });
+    }
+  }
+  return invalid;
 }
 
 export async function runStateSync(): Promise<StateSyncOutput> {

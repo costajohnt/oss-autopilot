@@ -30,12 +30,34 @@ import type { Stats } from './repo-score-manager.js';
 import { debug, warn } from './logger.js';
 import { errorMessage, ConfigurationError, ConcurrencyError } from './errors.js';
 import { GistStateStore, type OctokitLike } from './gist-state-store.js';
-import { getStatePath, getStateCachePath } from './utils.js';
+import { getStatePath, getStateCachePath, parseGitHubUrl } from './utils.js';
 
 export { acquireLock, releaseLock, atomicWriteFileSync } from './state-persistence.js';
 export type { Stats } from './repo-score-manager.js';
 
 const MODULE = 'state';
+
+/**
+ * Validate stored-PR URL shape before persistence (mirror of the read-side
+ * filter in dashboard-data#storedToMergedPRs/storedToClosedPRs). Bad URLs are
+ * logged at warn level so operators see the drop in the daily output.
+ */
+function filterValidUrlEntries<T extends { url: string }>(
+  entries: T[],
+  kind: 'merged' | 'closed',
+): { valid: T[]; dropped: number } {
+  const valid: T[] = [];
+  let dropped = 0;
+  for (const entry of entries) {
+    if (parseGitHubUrl(entry.url) === null) {
+      warn(MODULE, `Dropping ${kind} PR with invalid URL: ${entry.url}`);
+      dropped++;
+      continue;
+    }
+    valid.push(entry);
+  }
+  return { valid, dropped };
+}
 
 /**
  * Push state to the backing Gist when Gist mode is active. Best-effort:
@@ -396,18 +418,25 @@ export class StateManager {
 
   /**
    * Add merged PRs to storage, deduplicating by URL.
+   * Entries with URLs that fail {@link parseGitHubUrl} are dropped before
+   * persistence (read-side filters in dashboard-data already skip them, but
+   * this prevents the bad data from reaching disk in the first place).
    * @param prs - Merged PRs to add (duplicates by URL are ignored)
+   * @returns count of entries added vs. dropped (invalid URL)
    */
-  addMergedPRs(prs: StoredMergedPR[]): void {
-    if (prs.length === 0) return;
+  addMergedPRs(prs: StoredMergedPR[]): { added: number; dropped: number } {
+    if (prs.length === 0) return { added: 0, dropped: 0 };
+    const { valid, dropped } = filterValidUrlEntries(prs, 'merged');
+    if (valid.length === 0) return { added: 0, dropped };
     if (!this.state.mergedPRs) this.state.mergedPRs = [];
     const existingUrls = new Set(this.state.mergedPRs.map((pr) => pr.url));
-    const newPRs = prs.filter((pr) => !existingUrls.has(pr.url));
-    if (newPRs.length === 0) return;
+    const newPRs = valid.filter((pr) => !existingUrls.has(pr.url));
+    if (newPRs.length === 0) return { added: 0, dropped };
     this.state.mergedPRs.push(...newPRs);
     this.state.mergedPRs.sort((a, b) => b.mergedAt.localeCompare(a.mergedAt));
     debug(MODULE, `Added ${newPRs.length} merged PRs (total: ${this.state.mergedPRs.length})`);
     this.autoSave();
+    return { added: newPRs.length, dropped };
   }
 
   /** Returns the most recent merge date, used as a watermark for incremental fetching. */
@@ -424,18 +453,25 @@ export class StateManager {
 
   /**
    * Add closed PRs to storage, deduplicating by URL.
+   * Entries with URLs that fail {@link parseGitHubUrl} are dropped before
+   * persistence (read-side filters in dashboard-data already skip them, but
+   * this prevents the bad data from reaching disk in the first place).
    * @param prs - Closed PRs to add (duplicates by URL are ignored)
+   * @returns count of entries added vs. dropped (invalid URL)
    */
-  addClosedPRs(prs: StoredClosedPR[]): void {
-    if (prs.length === 0) return;
+  addClosedPRs(prs: StoredClosedPR[]): { added: number; dropped: number } {
+    if (prs.length === 0) return { added: 0, dropped: 0 };
+    const { valid, dropped } = filterValidUrlEntries(prs, 'closed');
+    if (valid.length === 0) return { added: 0, dropped };
     if (!this.state.closedPRs) this.state.closedPRs = [];
     const existingUrls = new Set(this.state.closedPRs.map((pr) => pr.url));
-    const newPRs = prs.filter((pr) => !existingUrls.has(pr.url));
-    if (newPRs.length === 0) return;
+    const newPRs = valid.filter((pr) => !existingUrls.has(pr.url));
+    if (newPRs.length === 0) return { added: 0, dropped };
     this.state.closedPRs.push(...newPRs);
     this.state.closedPRs.sort((a, b) => b.closedAt.localeCompare(a.closedAt));
     debug(MODULE, `Added ${newPRs.length} closed PRs (total: ${this.state.closedPRs.length})`);
     this.autoSave();
+    return { added: newPRs.length, dropped };
   }
 
   /** Returns the most recent close date, used as a watermark for incremental fetching. */
