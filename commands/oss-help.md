@@ -44,13 +44,13 @@ These agents activate automatically when relevant, or you can ask for them direc
 5. /oss              → Monitor PR until merged
 ```
 
-## Skill
+## Skills
 
-The **oss-contribution** skill provides best practices for:
-- Writing PR descriptions and commit messages
-- Responding to maintainer feedback
-- Following repository contribution guidelines
-- Open source etiquette (working on issues, draft PRs, etc.)
+Three sibling skills cover OSS contribution best practices:
+
+- **oss-contribution** (index): universal rules — minimal-diff discipline, working on issues, time management, failure protocol.
+- **pr-etiquette**: review-feedback responses, PR descriptions, dormant-PR follow-up cadence, PR quality checklist, communication style.
+- **contribution-ethics**: AI attribution rules, AI-tell avoidance in maintainer-visible writing, when to defer to a human contributor.
 
 ## Optional: Enhanced Code Review
 
