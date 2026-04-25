@@ -32,6 +32,9 @@ vi.mock('./formatters/json.js', () => ({
   SearchOutputSchema: {},
   DailyOutputSchema: {},
   CompactDailyOutputSchema: {},
+  DoctorOutputSchema: {},
+  SkipAddOutputSchema: {},
+  ListMoveTierOutputSchema: {},
 }));
 
 // ─── Mock dynamic command-module imports ────────────────────────────────────
@@ -455,7 +458,8 @@ describe('skip-add action', () => {
 
     await program.parseAsync(['node', 'cli', 'skip-add', ISSUE_URL, '--json']);
 
-    expect(mockOutputJson).toHaveBeenCalledWith(payload);
+    // skip-add now routes through outputJsonValidated (#1148)
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), payload);
     expect(consoleLogSpy).not.toHaveBeenCalled();
   });
 

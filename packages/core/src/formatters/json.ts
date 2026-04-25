@@ -422,6 +422,42 @@ export const SearchOutputSchema = z.object({
   rateLimitWarning: z.string().optional(),
 });
 
+// ── Doctor / skip-add / list-move-tier output schemas (#1148) ────────
+
+const DoctorCheckSchema = z.object({
+  name: z.string(),
+  status: z.enum(['ok', 'warning', 'error']),
+  message: z.string(),
+  remediation: z.string().optional(),
+});
+
+export const DoctorOutputSchema = z.object({
+  checks: z.array(DoctorCheckSchema),
+  summary: z.object({
+    ok: z.number().int().nonnegative(),
+    warnings: z.number().int().nonnegative(),
+    errors: z.number().int().nonnegative(),
+  }),
+});
+
+export const SkipAddOutputSchema = z.object({
+  added: z.boolean(),
+  alreadyPresent: z.boolean(),
+  url: z.string(),
+  path: z.string(),
+  date: z.string().optional(),
+});
+
+export const ListMoveTierOutputSchema = z.object({
+  moved: z.boolean(),
+  filePath: z.string(),
+  url: z.string(),
+  toTier: z.enum(['pursue', 'maybe', 'skip']),
+  fromTier: z.string().optional(),
+  count: z.number().int().nonnegative(),
+  reason: z.string().optional(),
+});
+
 export interface SearchOutput {
   candidates: Array<{
     issue: {
