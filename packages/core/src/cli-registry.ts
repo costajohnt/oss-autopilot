@@ -460,7 +460,7 @@ export const commands: CLICommandDef[] = [
     localOnly: true,
     register(program) {
       program
-        .command('untrack <pr-url>')
+        .command('untrack <pr-url>', { hidden: true })
         .description('[DEPRECATED, removed in v4] No-op in v2. Use `shelve` to hide a PR from the daily digest.')
         .option('--json', 'Output as JSON')
         .action((prUrl, options) =>
@@ -485,7 +485,7 @@ export const commands: CLICommandDef[] = [
     localOnly: true,
     register(program) {
       program
-        .command('read [pr-url]')
+        .command('read [pr-url]', { hidden: true })
         .description('[DEPRECATED, removed in v4] No-op in v2. PR read state is not tracked locally.')
         .option('--all', 'Mark all PRs as read')
         .option('--json', 'Output as JSON')
