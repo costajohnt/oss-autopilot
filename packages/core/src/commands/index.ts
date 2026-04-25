@@ -33,12 +33,8 @@ export { runVetList } from './vet-list.js';
 
 // ── PR Management ───────────────────────────────────────────────────────────
 
-/** Add a PR to tracking state. */
+/** Fetch PR metadata from GitHub (informational; nothing is persisted). */
 export { runTrack } from './track.js';
-/** Remove a PR from tracking state. */
-export { runUntrack } from './track.js';
-/** Mark PR comments as read. */
-export { runRead } from './read.js';
 /** Temporarily hide a PR from the daily digest. */
 export { runShelve } from './shelve.js';
 /** Restore a shelved PR to the daily digest. */
@@ -126,11 +122,9 @@ export type {
   CheckIntegrationOutput,
   LocalReposOutput,
 } from '../formatters/json.js';
-export type { ReadOutput } from './read.js';
 export type { ShelveOutput, UnshelveOutput } from './shelve.js';
 export type { MoveOutput, MoveTarget } from './move.js';
 export type { DismissOutput, UndismissOutput } from './dismiss.js';
-export type { UntrackOutput } from './track.js';
 export type { InitOutput } from './init.js';
 export type { ConfigSetOutput, ConfigCommandOutput } from './config.js';
 export type {

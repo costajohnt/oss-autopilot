@@ -92,8 +92,6 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
   const expectedLocalOnly = [
     'status',
     'config',
-    'read',
-    'untrack',
     'setup',
     'checkSetup',
     'serve',
@@ -350,8 +348,6 @@ describe('Command registration', () => {
       'vet',
       'vet-list',
       'track',
-      'untrack',
-      'read',
       'comments',
       'post',
       'claim',
@@ -589,13 +585,6 @@ describe('CLI argument parsing', () => {
     expect(scanOpt, 'local-repos should have --scan').toBeDefined();
     const pathsOpt = cmd!.options.find((o) => o.long === '--paths');
     expect(pathsOpt, 'local-repos should have --paths').toBeDefined();
-  });
-
-  it('read has --all option', () => {
-    const cmd = findCmd('read');
-    expect(cmd).toBeDefined();
-    const opt = cmd!.options.find((o) => o.long === '--all');
-    expect(opt, 'read should have --all').toBeDefined();
   });
 
   it('post has --stdin option', () => {

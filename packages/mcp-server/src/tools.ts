@@ -15,8 +15,6 @@ import {
   runVet,
   runVetList,
   runTrack,
-  runUntrack,
-  runRead,
   runComments,
   runPost,
   runClaim,
@@ -222,38 +220,11 @@ export function registerTools(server: McpServer): void {
     wrapTool(runTrack),
   );
 
-  // 6. untrack — Deprecated no-op (v2 has no local tracking list).
-  // Slated for removal in MCP server v4 (#1112).
-  server.registerTool(
-    'untrack',
-    {
-      description:
-        '[DEPRECATED, REMOVED IN v4] No-op in v2. PRs are fetched fresh on each daily run, so there is no local tracking list to remove from. Use `shelve` to hide a PR from the daily digest instead.',
-      inputSchema: {
-        prUrl: githubPrUrlSchema.describe('Full GitHub PR URL (ignored — command is a no-op)'),
-      },
-      annotations: { title: '[deprecated] untrack', readOnlyHint: true },
-    },
-    wrapTool(runUntrack),
-  );
+  // The v1→v2 `untrack` and `read` stubs were removed in v4 (#1133). Use
+  // `shelve`/`unshelve` to hide PRs from the daily digest. MCP clients that
+  // hard-coded these tool names will get a "tool not found" error.
 
-  // 7. read — Deprecated no-op (v2 doesn't track read state locally).
-  // Slated for removal in MCP server v4 (#1112).
-  server.registerTool(
-    'read',
-    {
-      description:
-        '[DEPRECATED, REMOVED IN v4] No-op in v2. PR read state is not tracked locally — PRs are fetched fresh on each daily run, so all comments appear every time. Use `shelve` to hide a PR you do not want to see in the digest.',
-      inputSchema: {
-        prUrl: githubPrUrlSchema.optional().describe('Full GitHub PR URL to mark as read. Omit to use --all instead.'),
-        all: z.boolean().optional().describe('If true, mark all PRs as read'),
-      },
-      annotations: { title: '[deprecated] read', readOnlyHint: true, destructiveHint: false },
-    },
-    wrapTool(runRead),
-  );
-
-  // 8. comments — Show PR comments
+  // 6. comments — Show PR comments
   server.registerTool(
     'comments',
     {

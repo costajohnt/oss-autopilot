@@ -51,14 +51,8 @@ Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `
 ### PR Management
 
 ```bash
-# Track a PR
+# Track a PR (informational lookup; nothing persists)
 <prefix> track <pr-url> --json
-
-# Untrack a PR
-<prefix> untrack <pr-url> --json
-
-# Read PR details (or read all if no URL given)
-<prefix> read [pr-url] --json
 
 # View comments on a PR
 <prefix> comments <pr-url> --json [--show-bots]

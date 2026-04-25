@@ -3,7 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from './server.js';
 
-/** All 24 tool names that must be registered. */
+/** All 22 tool names that must be registered (untrack and read removed in v4 — #1133). */
 const EXPECTED_TOOLS = [
   'daily',
   'status',
@@ -11,8 +11,6 @@ const EXPECTED_TOOLS = [
   'vet',
   'vet-list',
   'track',
-  'untrack',
-  'read',
   'comments',
   'post',
   'claim',
@@ -57,8 +55,8 @@ describe('MCP tool registrations', () => {
     await client.close();
   });
 
-  it('registers exactly 24 tools', () => {
-    expect(tools).toHaveLength(24);
+  it('registers exactly 22 tools', () => {
+    expect(tools).toHaveLength(22);
   });
 
   it('registers all expected tool names', () => {
@@ -129,15 +127,6 @@ describe('MCP tool registrations', () => {
       expect(schema.properties).toHaveProperty('offline');
     });
 
-    it('read has optional prUrl and all', () => {
-      const tool = tools.find((t) => t.name === 'read')!;
-      const schema = tool.inputSchema as { required?: string[]; properties?: Record<string, unknown> };
-      expect(schema.required ?? []).not.toContain('prUrl');
-      expect(schema.required ?? []).not.toContain('all');
-      expect(schema.properties).toHaveProperty('prUrl');
-      expect(schema.properties).toHaveProperty('all');
-    });
-
     it('setup has optional reset and set', () => {
       const tool = tools.find((t) => t.name === 'setup')!;
       const schema = tool.inputSchema as { required?: string[]; properties?: Record<string, unknown> };
@@ -150,8 +139,8 @@ describe('MCP tool registrations', () => {
 
   describe('annotations', () => {
     // track is read-only in v2: fetches metadata from GitHub, does not persist (#1001).
-    // untrack and read are no-ops in v2 (#1001, #1112) — deprecated, also read-only.
-    const readOnlyTools = ['status', 'search', 'vet', 'comments', 'check-setup', 'track', 'untrack', 'read'];
+    // untrack and read v1→v2 stubs were removed in v4 (#1133).
+    const readOnlyTools = ['status', 'search', 'vet', 'comments', 'check-setup', 'track'];
     const mutatingTools = [
       'daily',
       'startup',
