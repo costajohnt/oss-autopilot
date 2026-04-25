@@ -17,18 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/guard-public-posts.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/guard-git-operations.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/auto-format-before-push.sh",
-            "timeout": 60
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-tool-use-dispatcher.sh",
+            "timeout": 70
           }
         ]
       },
