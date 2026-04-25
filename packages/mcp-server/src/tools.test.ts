@@ -150,12 +150,11 @@ describe('MCP tool registrations', () => {
 
   describe('annotations', () => {
     // track is read-only in v2: fetches metadata from GitHub, does not persist (#1001).
-    // untrack is a no-op in v2 (#1001) — deprecated, also read-only since it doesn't mutate state.
-    const readOnlyTools = ['status', 'search', 'vet', 'comments', 'check-setup', 'track', 'untrack'];
+    // untrack and read are no-ops in v2 (#1001, #1112) — deprecated, also read-only.
+    const readOnlyTools = ['status', 'search', 'vet', 'comments', 'check-setup', 'track', 'untrack', 'read'];
     const mutatingTools = [
       'daily',
       'startup',
-      'read',
       'post',
       'claim',
       'config',
