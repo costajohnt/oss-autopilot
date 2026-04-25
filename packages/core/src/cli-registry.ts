@@ -461,56 +461,9 @@ export const commands: CLICommandDef[] = [
     },
   },
 
-  // ── Untrack ────────────────────────────────────────────────────────────
-  // Slated for removal in v4 (#1112).
-  {
-    name: 'untrack',
-    localOnly: true,
-    register(program) {
-      program
-        .command('untrack <pr-url>', { hidden: true })
-        .description('[DEPRECATED, removed in v4] No-op in v2. Use `shelve` to hide a PR from the daily digest.')
-        .option('--json', 'Output as JSON')
-        .action((prUrl, options) =>
-          executeAction(
-            options,
-            async () => (await import('./commands/track.js')).runUntrack({ prUrl }),
-            () => {
-              // Stderr so scripts piping stdout don't see the deprecation notice.
-              console.error('[DEPRECATED] `untrack` is a no-op in v2 and will be removed in v4. PRs are fetched');
-              console.error('fresh on each daily run — there is no local tracking list to remove from. Use');
-              console.error('`shelve` to hide a PR from the daily digest instead.');
-            },
-          ),
-        );
-    },
-  },
-
-  // ── Read ───────────────────────────────────────────────────────────────
-  // Slated for removal in v4 (#1112).
-  {
-    name: 'read',
-    localOnly: true,
-    register(program) {
-      program
-        .command('read [pr-url]', { hidden: true })
-        .description('[DEPRECATED, removed in v4] No-op in v2. PR read state is not tracked locally.')
-        .option('--all', 'Mark all PRs as read')
-        .option('--json', 'Output as JSON')
-        .action((prUrl, options) =>
-          executeAction(
-            options,
-            async () => (await import('./commands/read.js')).runRead({ prUrl, all: options.all }),
-            () => {
-              // Stderr so scripts piping stdout don't see the deprecation notice.
-              console.error('[DEPRECATED] `read` is a no-op in v2 and will be removed in v4. PR read state is');
-              console.error('not tracked locally — PRs are fetched fresh on each daily run, so all comments');
-              console.error('appear every time. Use `shelve` to hide a PR from the daily digest instead.');
-            },
-          ),
-        );
-    },
-  },
+  // The v1→v2 `untrack` and `read` stubs were removed in v4 (#1133). Use
+  // `shelve`/`unshelve` to hide PRs from the daily digest. Scripts that hard-
+  // coded these commands now get an "unknown command" error from commander.
 
   // ── Comments ───────────────────────────────────────────────────────────
   {

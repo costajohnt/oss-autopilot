@@ -1,16 +1,14 @@
 /**
- * Track/Untrack commands (v2 semantics — see #1001)
+ * Track command (v2 semantics — see #1001)
  *
- * **These commands do not mutate state.** In v2, PRs are discovered and
+ * **This command does not mutate state.** In v2, PRs are discovered and
  * enriched automatically on every `daily` run — there is no local tracking
- * list to add to or remove from. The commands are preserved for backwards
- * compatibility with v1 callers, but:
+ * list to add to. `runTrack` is an **informational lookup** that fetches PR
+ * metadata from GitHub and returns it; useful for inspecting a specific
+ * PR's shape without waiting for the next `daily` run. Nothing is persisted.
  *
- * - `runTrack` is an **informational lookup** that fetches PR metadata from
- *   GitHub and returns it. Useful for inspecting a specific PR's shape
- *   without waiting for the next `daily` run. Nothing is persisted.
- * - `runUntrack` is **deprecated** and always a no-op. Use `shelve` to hide
- *   a PR from the daily digest.
+ * The `runUntrack` v1→v2 stub was removed in v4 (#1133). Use `shelve`/
+ * `unshelve` to hide a PR from the daily digest.
  */
 
 import { getOctokit, requireGitHubToken } from '../core/index.js';
@@ -18,12 +16,6 @@ import { ValidationError } from '../core/errors.js';
 import type { TrackOutput } from '../formatters/json.js';
 import { validateUrl, PR_URL_PATTERN, validateGitHubUrl } from './validation.js';
 import { parseGitHubUrl } from '../core/utils.js';
-
-export interface UntrackOutput {
-  removed: boolean;
-  url: string;
-  message: string;
-}
 
 /**
  * Fetch metadata for a PR URL (informational — does not persist).
@@ -60,27 +52,5 @@ export async function runTrack(options: { prUrl: string }): Promise<TrackOutput>
       title: ghPR.title,
       url: options.prUrl,
     },
-  };
-}
-
-/**
- * @deprecated No-op in v2. Use `runShelve` to hide a PR from the daily digest.
- *
- * Kept for backwards compatibility with v1 callers. PRs are fetched fresh
- * on each `daily` run, so there is no local tracking list to remove from.
- *
- * @param options - Untrack options
- * @param options.prUrl - Full GitHub PR URL (validated but not used)
- * @returns Output object with `removed: false` and a message explaining v2 behavior
- * @throws {ValidationError} If the URL is not a valid GitHub PR URL
- */
-export async function runUntrack(options: { prUrl: string }): Promise<UntrackOutput> {
-  validateUrl(options.prUrl);
-  validateGitHubUrl(options.prUrl, PR_URL_PATTERN, 'PR');
-
-  return {
-    removed: false,
-    url: options.prUrl,
-    message: 'In v2, PRs are fetched fresh on each daily run — there is no local tracking list to remove from.',
   };
 }

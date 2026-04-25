@@ -22,7 +22,7 @@ vi.mock('./validation.js', () => ({
 
 import { requireGitHubToken, getOctokit } from '../core/index.js';
 import { parseGitHubUrl } from '../core/utils.js';
-import { runTrack, runUntrack } from './track.js';
+import { runTrack } from './track.js';
 
 const mockRequireGitHubToken = vi.mocked(requireGitHubToken);
 const mockGetOctokit = vi.mocked(getOctokit);
@@ -69,15 +69,5 @@ describe('runTrack', () => {
   });
 });
 
-describe('runUntrack', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('should return v2 info message', async () => {
-    const result = await runUntrack({ prUrl: TEST_PR_URL });
-
-    expect(result).toEqual(expect.objectContaining({ removed: false, url: TEST_PR_URL }));
-    expect(result.message).toContain('v2');
-  });
-});
+// runUntrack was removed in v4 (#1133). Use runShelve to hide a PR from the
+// daily digest.
