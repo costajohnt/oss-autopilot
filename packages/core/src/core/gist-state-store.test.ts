@@ -944,6 +944,144 @@ describe('GistStateStore', () => {
     });
   });
 
+  describe('ETag-based optimistic concurrency (#1115)', () => {
+    it('captures the ETag from a fetch and sends If-Match on the next push', async () => {
+      const gistId = 'etag-capture';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue({
+        ...makeGistResponse(gistId, stateJson),
+        headers: { etag: 'W/"abc123"' },
+      });
+      octokit.gists.update.mockResolvedValue({
+        ...makeGistResponse(gistId, stateJson),
+        headers: { etag: 'W/"def456"' },
+      });
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      store.markDirty(STATE_FILE_NAME);
+      const ok = await store.push();
+
+      expect(ok).toBe(true);
+      expect(octokit.gists.update).toHaveBeenCalledWith({
+        gist_id: gistId,
+        files: { [STATE_FILE_NAME]: { content: stateJson } },
+        headers: { 'if-match': 'W/"abc123"' },
+      });
+    });
+
+    it('omits the If-Match header when the SDK does not surface an ETag (test mocks)', async () => {
+      const gistId = 'etag-missing';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      // No headers field — represents either a degraded SDK or an old test mock.
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, stateJson));
+      octokit.gists.update.mockResolvedValue(makeGistResponse(gistId, stateJson));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      store.markDirty(STATE_FILE_NAME);
+      await store.push();
+
+      expect(octokit.gists.update).toHaveBeenCalledWith({
+        gist_id: gistId,
+        files: { [STATE_FILE_NAME]: { content: stateJson } },
+      });
+    });
+
+    it('refreshes and retries once on 412, succeeding after merge', async () => {
+      const gistId = 'etag-merge';
+      const initialStateJson = makeStateJson({ lastRunAt: '2025-01-01T00:00:00.000Z' });
+      const remoteStateJson = makeStateJson({ lastRunAt: '2025-06-01T00:00:00.000Z' });
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+
+      // Bootstrap fetch returns the initial state with ETag #1.
+      octokit.gists.get.mockResolvedValueOnce({
+        ...makeGistResponse(gistId, initialStateJson),
+        headers: { etag: 'W/"v1"' },
+      });
+      // First update: 412 (another machine pushed in between).
+      const conflictErr = Object.assign(new Error('Precondition failed'), { status: 412 });
+      octokit.gists.update.mockRejectedValueOnce(conflictErr);
+      // Refresh fetch returns the remote state with a new ETag.
+      octokit.gists.get.mockResolvedValueOnce({
+        ...makeGistResponse(gistId, remoteStateJson),
+        headers: { etag: 'W/"v2"' },
+      });
+      // Second update: succeeds with the new ETag.
+      octokit.gists.update.mockResolvedValueOnce({
+        ...makeGistResponse(gistId, initialStateJson),
+        headers: { etag: 'W/"v3"' },
+      });
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      store.markDirty(STATE_FILE_NAME);
+      const ok = await store.push();
+
+      expect(ok).toBe(true);
+      // First call sent If-Match: v1, second call sent If-Match: v2 (post-refresh).
+      expect(octokit.gists.update).toHaveBeenCalledTimes(2);
+      expect(octokit.gists.update).toHaveBeenNthCalledWith(1, {
+        gist_id: gistId,
+        files: { [STATE_FILE_NAME]: { content: initialStateJson } },
+        headers: { 'if-match': 'W/"v1"' },
+      });
+      expect(octokit.gists.update).toHaveBeenNthCalledWith(2, {
+        gist_id: gistId,
+        files: { [STATE_FILE_NAME]: { content: initialStateJson } },
+        headers: { 'if-match': 'W/"v2"' },
+      });
+    });
+
+    it('throws GistConcurrencyError when the merged push also returns 412', async () => {
+      const gistId = 'etag-double-conflict';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+
+      octokit.gists.get.mockResolvedValueOnce({
+        ...makeGistResponse(gistId, stateJson),
+        headers: { etag: 'W/"v1"' },
+      });
+      const conflictErr = Object.assign(new Error('Precondition failed'), { status: 412 });
+      octokit.gists.update.mockRejectedValueOnce(conflictErr).mockRejectedValueOnce(conflictErr);
+      octokit.gists.get.mockResolvedValueOnce({
+        ...makeGistResponse(gistId, stateJson),
+        headers: { etag: 'W/"v2"' },
+      });
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      store.markDirty(STATE_FILE_NAME);
+
+      const { GistConcurrencyError } = await import('./errors.js');
+      await expect(store.push()).rejects.toThrow(GistConcurrencyError);
+    });
+
+    it('throws GistConcurrencyError when the merge refresh itself fails', async () => {
+      const gistId = 'etag-refresh-fail';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+
+      octokit.gists.get.mockResolvedValueOnce({
+        ...makeGistResponse(gistId, stateJson),
+        headers: { etag: 'W/"v1"' },
+      });
+      const conflictErr = Object.assign(new Error('Precondition failed'), { status: 412 });
+      octokit.gists.update.mockRejectedValueOnce(conflictErr);
+      // Refresh blows up entirely
+      octokit.gists.get.mockRejectedValueOnce(new Error('Network error'));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      store.markDirty(STATE_FILE_NAME);
+
+      const { GistConcurrencyError } = await import('./errors.js');
+      await expect(store.push()).rejects.toThrow(GistConcurrencyError);
+    });
+  });
+
   describe('integration: full lifecycle — bootstrap, mutate, push, verify', () => {
     it('should bootstrap, mutate state and documents, push, and verify payload', async () => {
       const gistId = 'integration-lifecycle';
