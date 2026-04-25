@@ -50,8 +50,13 @@ async function executeAction<T>(
   /** Optional Zod schema. When provided, the JSON output is validated against
    * it (#1105). On mismatch, executeAction throws and the standard error
    * envelope fires — surfacing a contract drift instead of silently shipping
-   * a broken shape. */
-  schema?: ZodType<T>,
+   * a broken shape.
+   *
+   * Typed as `ZodType<unknown>` because validation is a runtime concern: the
+   * schema runs `safeParse(data: unknown)`, and Zod-inferred union types do
+   * not always structurally match hand-written TS union interfaces. The test
+   * harness still catches drift via `safeParse`. */
+  schema?: ZodType<unknown>,
 ): Promise<void> {
   try {
     const data = await run();
@@ -544,8 +549,9 @@ export const commands: CLICommandDef[] = [
         .description('Post a comment to a PR or issue')
         .option('--stdin', 'Read message from stdin')
         .option('--json', 'Output as JSON')
-        .action((url, messageParts, options) =>
-          executeAction(
+        .action(async (url, messageParts, options) => {
+          const { PostOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => {
               let message: string;
@@ -564,8 +570,9 @@ export const commands: CLICommandDef[] = [
             (data) => {
               console.log(`Comment posted: ${data.commentUrl}`);
             },
-          ),
-        );
+            PostOutputSchema,
+          );
+        });
     },
   },
 
@@ -577,8 +584,9 @@ export const commands: CLICommandDef[] = [
         .command('claim <issue-url> [message...]')
         .description('Claim an issue by posting a comment')
         .option('--json', 'Output as JSON')
-        .action((issueUrl, messageParts, options) =>
-          executeAction(
+        .action(async (issueUrl, messageParts, options) => {
+          const { ClaimOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => {
               const { runClaim } = await import('./commands/comments.js');
@@ -588,8 +596,9 @@ export const commands: CLICommandDef[] = [
             (data) => {
               console.log(`Issue claimed: ${data.commentUrl}`);
             },
-          ),
-        );
+            ClaimOutputSchema,
+          );
+        });
     },
   },
 
@@ -603,8 +612,9 @@ export const commands: CLICommandDef[] = [
         .description('Show or update configuration')
         .option('--json', 'Output as JSON')
         .option('--list-keys', 'List every known config key with descriptions')
-        .action((key, value, options) =>
-          executeAction(
+        .action(async (key, value, options) => {
+          const { ConfigCommandOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () =>
               (await import('./commands/config.js')).runConfig({
@@ -628,8 +638,9 @@ export const commands: CLICommandDef[] = [
                 console.log(`Set ${data.key} to: ${data.value}`);
               }
             },
-          ),
-        );
+            ConfigCommandOutputSchema,
+          );
+        });
     },
   },
 
@@ -641,16 +652,18 @@ export const commands: CLICommandDef[] = [
         .command('init <username>')
         .description('Initialize with your GitHub username and import open PRs')
         .option('--json', 'Output as JSON')
-        .action((username, options) =>
-          executeAction(
+        .action(async (username, options) => {
+          const { InitOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => (await import('./commands/init.js')).runInit({ username }),
             (data) => {
               console.log(`\nUsername set to @${data.username}.`);
               console.log('Run `oss-autopilot daily` to fetch your open PRs from GitHub.');
             },
-          ),
-        );
+            InitOutputSchema,
+          );
+        });
     },
   },
 
@@ -665,8 +678,9 @@ export const commands: CLICommandDef[] = [
         .option('--reset', 'Re-run setup even if already complete')
         .option('--set <settings...>', 'Set specific values (key=value)')
         .option('--json', 'Output as JSON')
-        .action((options) =>
-          executeAction(
+        .action(async (options) => {
+          const { SetupOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => (await import('./commands/setup.js')).runSetup({ reset: options.reset, set: options.set }),
             (data) => {
@@ -715,8 +729,9 @@ export const commands: CLICommandDef[] = [
                 console.log('END_SETUP_PROMPTS');
               }
             },
-          ),
-        );
+            SetupOutputSchema,
+          );
+        });
     },
   },
 
@@ -729,8 +744,9 @@ export const commands: CLICommandDef[] = [
         .command('checkSetup')
         .description('Check if setup is complete')
         .option('--json', 'Output as JSON')
-        .action((options) =>
-          executeAction(
+        .action(async (options) => {
+          const { CheckSetupOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => (await import('./commands/setup.js')).runCheckSetup(),
             (data) => {
@@ -741,8 +757,9 @@ export const commands: CLICommandDef[] = [
                 console.log('SETUP_INCOMPLETE');
               }
             },
-          ),
-        );
+            CheckSetupOutputSchema,
+          );
+        });
     },
   },
 
@@ -782,8 +799,9 @@ export const commands: CLICommandDef[] = [
         .command('parse-issue-list <path>')
         .description('Parse a markdown issue list into structured JSON')
         .option('--json', 'Output as JSON')
-        .action((filePath, options) =>
-          executeAction(
+        .action(async (filePath, options) => {
+          const { ParseIssueListOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => (await import('./commands/parse-list.js')).runParseList({ filePath }),
             async (data) => {
@@ -804,8 +822,9 @@ export const commands: CLICommandDef[] = [
                 }
               }
             },
-          ),
-        );
+            ParseIssueListOutputSchema,
+          );
+        });
     },
   },
 
@@ -820,8 +839,9 @@ export const commands: CLICommandDef[] = [
         .description('Detect new files on this branch that no other file references')
         .option('--base <branch>', 'Base branch to compare against', 'main')
         .option('--json', 'Output as JSON')
-        .action((options) =>
-          executeAction(
+        .action(async (options) => {
+          const { CheckIntegrationOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => (await import('./commands/check-integration.js')).runCheckIntegration({ base: options.base }),
             (data) => {
@@ -844,8 +864,9 @@ export const commands: CLICommandDef[] = [
                 }
               }
             },
-          ),
-        );
+            CheckIntegrationOutputSchema,
+          );
+        });
     },
   },
 
@@ -893,8 +914,9 @@ export const commands: CLICommandDef[] = [
         .option('--scan', 'Force re-scan (ignores cache)')
         .option('--paths <dirs...>', 'Directories to scan')
         .option('--json', 'Output as JSON')
-        .action((options) =>
-          executeAction(
+        .action(async (options) => {
+          const { LocalReposOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () =>
               (await import('./commands/local-repos.js')).runLocalRepos({
@@ -910,8 +932,9 @@ export const commands: CLICommandDef[] = [
                 printRepos(data.repos);
               }
             },
-          ),
-        );
+            LocalReposOutputSchema,
+          );
+        });
     },
   },
 
@@ -1083,8 +1106,9 @@ export const commands: CLICommandDef[] = [
         .command('override <pr-url> <status>')
         .description('Manually override PR status (needs_addressing or waiting_on_maintainer)')
         .option('--json', 'Output as JSON')
-        .action((prUrl, status, options) =>
-          executeAction(
+        .action(async (prUrl, status, options) => {
+          const { MoveOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => {
               const validStatuses = ['needs_addressing', 'waiting_on_maintainer'];
@@ -1098,8 +1122,9 @@ export const commands: CLICommandDef[] = [
             (data) => {
               console.log(data.description);
             },
-          ),
-        );
+            MoveOutputSchema,
+          );
+        });
     },
   },
 
@@ -1112,15 +1137,17 @@ export const commands: CLICommandDef[] = [
         .command('clear-override <pr-url>')
         .description('Clear a manual status override for a PR')
         .option('--json', 'Output as JSON')
-        .action((prUrl, options) =>
-          executeAction(
+        .action(async (prUrl, options) => {
+          const { MoveOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => (await import('./commands/move.js')).runMove({ prUrl, target: 'auto' }),
             (data) => {
               console.log(data.description);
             },
-          ),
-        );
+            MoveOutputSchema,
+          );
+        });
     },
   },
 
@@ -1132,8 +1159,9 @@ export const commands: CLICommandDef[] = [
         .command('pr-template <repo>')
         .description("Fetch a repository's PR description template")
         .option('--json', 'Output as JSON')
-        .action((repo, options) =>
-          executeAction(
+        .action(async (repo, options) => {
+          const { PRTemplateOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => (await import('./commands/pr-template.js')).runPRTemplate({ repo }),
             (data) => {
@@ -1146,8 +1174,9 @@ export const commands: CLICommandDef[] = [
                 console.log('\nNo PR template found for this repository.');
               }
             },
-          ),
-        );
+            PRTemplateOutputSchema,
+          );
+        });
     },
   },
 
@@ -1161,8 +1190,9 @@ export const commands: CLICommandDef[] = [
         .description('Detect formatters and linters configured in a repository')
         .option('--ci-log <path>', 'Analyze CI log file for formatting failures')
         .option('--json', 'Output as JSON')
-        .action((repoPath, options) =>
-          executeAction(
+        .action(async (repoPath, options) => {
+          const { DetectFormattersOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () =>
               (await import('./commands/detect-formatters.js')).runDetectFormatters({
@@ -1197,8 +1227,9 @@ export const commands: CLICommandDef[] = [
                 }
               }
             },
-          ),
-        );
+            DetectFormattersOutputSchema,
+          );
+        });
     },
   },
 
