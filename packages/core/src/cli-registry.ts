@@ -50,8 +50,13 @@ async function executeAction<T>(
   /** Optional Zod schema. When provided, the JSON output is validated against
    * it (#1105). On mismatch, executeAction throws and the standard error
    * envelope fires — surfacing a contract drift instead of silently shipping
-   * a broken shape. */
-  schema?: ZodType<T>,
+   * a broken shape.
+   *
+   * Typed as `ZodType<unknown>` because validation is a runtime concern: the
+   * schema runs `safeParse(data: unknown)`, and Zod-inferred union types do
+   * not always structurally match hand-written TS union interfaces. The test
+   * harness still catches drift via `safeParse`. */
+  schema?: ZodType<unknown>,
 ): Promise<void> {
   try {
     const data = await run();
