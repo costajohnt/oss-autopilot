@@ -6,8 +6,29 @@
 import type { FetchedPR, DailyDigest, AgentState, RepoGroup, CommentedIssue, ShelvedPRRef } from '../core/types.js';
 import type { ContributionStats } from '../core/stats.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
-import type { SearchPriority } from '../core/types.js';
+import type {
+  SearchPriority,
+  CapacityAssessment,
+  ActionableIssue,
+  ActionableIssueType,
+  CompactActionableIssue,
+  ActionMenuItem,
+  ActionMenu,
+} from '../core/types.js';
 import type { CIFormatterDiagnosis, FormatterDetectionResult } from '../core/formatter-detection.js';
+
+// Re-export the daily aggregation types from their canonical home in core/types.
+// External consumers and downstream tests have historically imported them from
+// here; the re-exports keep that surface stable while removing the cross-layer
+// dependency in core/ (#1117).
+export type {
+  CapacityAssessment,
+  ActionableIssue,
+  ActionableIssueType,
+  CompactActionableIssue,
+  ActionMenuItem,
+  ActionMenu,
+};
 
 export type ErrorCode =
   | 'AUTH_REQUIRED'
@@ -28,76 +49,11 @@ export interface JsonOutput<T = unknown> {
   timestamp: string;
 }
 
-export interface CapacityAssessment {
-  hasCapacity: boolean;
-  activePRCount: number;
-  maxActivePRs: number;
-  shelvedPRCount: number;
-  criticalIssueCount: number;
-  reason: string;
-}
-
-export type ActionableIssueType =
-  | 'ci_failing'
-  | 'merge_conflict'
-  | 'needs_response'
-  | 'needs_changes'
-  | 'incomplete_checklist';
-
-export interface ActionableIssue {
-  type: ActionableIssueType;
-  pr: FetchedPR;
-  label: string; // e.g., "[CI Failing]"
-  /** True if the PR was created after the last daily digest (first time seen). */
-  isNewContribution: boolean;
-}
-
-/**
- * Compact version of ActionableIssue for JSON output.
- * References the PR by URL instead of embedding the full object,
- * since the full PR is already available in digest.openPRs.
- * Uses URL (globally unique) instead of number to avoid cross-repo collisions.
- */
-export interface CompactActionableIssue {
-  type: ActionableIssueType;
-  prUrl: string;
-  label: string;
-  /** True if the PR was created after the last daily digest (first time seen). */
-  isNewContribution: boolean;
-}
-
-/**
- * A single action menu item pre-computed by the CLI.
- * The orchestration layer can use these directly in AskUserQuestion prompts.
- */
-export interface ActionMenuItem {
-  /** Stable identifier for routing (e.g., "address_all", "search", "done"). */
-  key: string;
-  /** Display text for the option (e.g., "Work through all 3 issues (Recommended)"). */
-  label: string;
-  /** Explanation shown below the label. */
-  description: string;
-  /** Present when the action would exceed the user's PR capacity limit (#765). */
-  capacityWarning?: string;
-}
-
-/**
- * Pre-computed action menu for the orchestration layer.
- * Contains the menu items the CLI can determine from PR data and capacity,
- * plus context flags so the orchestration can insert issue-list options.
- */
-export interface ActionMenu {
-  /** Ordered list of menu items. The orchestration may insert issue-list items after the CLI-generated items (address_all, issue_replies) or at the start when none exist. */
-  items: ActionMenuItem[];
-  /** Context flags for the orchestration layer to decide on issue-list options. */
-  context: {
-    hasActionableIssues: boolean;
-    actionableCount: number;
-    hasCapacity: boolean;
-    hasIssueResponses: boolean;
-    issueResponseCount: number;
-  };
-}
+// CapacityAssessment, ActionableIssue, ActionableIssueType,
+// CompactActionableIssue, ActionMenuItem, and ActionMenu are now defined in
+// `../core/types.ts` and re-exported above. Their definitions used to live
+// here, but core/ already produces these values in daily-aggregations.ts —
+// keeping the canonical type next to its producer (#1117).
 
 /**
  * Deduplicated daily digest for JSON output (#287).

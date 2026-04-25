@@ -1,17 +1,20 @@
 /**
- * Domain logic extracted from src/commands/daily.ts.
+ * Domain aggregation logic extracted from src/commands/daily.ts.
  *
- * Pure or near-pure functions that operate on FetchedPR data:
+ * Pure or near-pure functions that operate on FetchedPR data and produce
+ * the data types that the renderers / JSON output consume:
  *   - computeRepoSignals / groupPRsByRepo — per-repo aggregations
  *   - assessCapacity — capacity assessment against active PRs
  *   - collectActionableIssues — ordered list of issues needing attention
  *   - computeActionMenu — pre-computed action menu for orchestration
  *   - toShelvedPRRef — lightweight projection for digest display
- *   - formatActionHint — human-readable maintainer action hint label
- *   - formatBriefSummary / formatSummary / printDigest — rendering
+ *
+ * Rendering functions (formatActionHint, formatBriefSummary, formatSummary,
+ * printDigest) live in src/commands/daily-render.ts (#1117). This file
+ * re-exports them at the bottom so existing imports keep working without
+ * a sweep.
  */
 
-import { formatRelativeTime } from './utils.js';
 import { warn } from './logger.js';
 import { errorMessage } from './errors.js';
 import { getStateManager } from './state.js';
@@ -20,22 +23,18 @@ import type {
   FetchedPRStatus,
   StalenessTier,
   ActionReason,
-  DailyDigest,
   AgentState,
   ShelvedPRRef,
-  MaintainerActionHint,
   ComputedRepoSignals,
   RepoGroup,
   CommentedIssue,
   CommentedIssueWithResponse,
-} from './types.js';
-import type {
   CapacityAssessment,
   ActionableIssue,
   ActionableIssueType,
   ActionMenu,
   ActionMenuItem,
-} from '../formatters/json.js';
+} from './types.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -329,26 +328,6 @@ export function collectActionableIssues(prs: FetchedPR[], lastDigestAt?: string)
 }
 
 /**
- * Format a maintainer action hint as a human-readable label.
- * @param hint - The maintainer action hint enum value
- * @returns Human-readable label (e.g., "tests requested")
- */
-export function formatActionHint(hint: MaintainerActionHint): string {
-  switch (hint) {
-    case 'demo_requested':
-      return 'demo/screenshot requested';
-    case 'tests_requested':
-      return 'tests requested';
-    case 'changes_requested':
-      return 'code changes requested';
-    case 'docs_requested':
-      return 'documentation requested';
-    case 'rebase_requested':
-      return 'rebase requested';
-  }
-}
-
-/**
  * Compute the action menu from PR data and capacity.
  * The orchestration layer can insert issue-list options (e.g., "Pick from list")
  * using the context flags.
@@ -430,221 +409,10 @@ export function computeActionMenu(
 }
 
 // ---------------------------------------------------------------------------
-// Rendering / formatting
+// Rendering re-exports (back-compat)
 // ---------------------------------------------------------------------------
-
-/**
- * Format a brief one-liner summary for the action-first flow.
- *
- * @param digest - The daily digest containing PR summary stats
- * @param issueCount - Number of actionable issues needing attention
- * @param issueResponseCount - Number of issue replies from maintainers
- * @returns One-line status string (e.g., "3 Active PRs | 1 needs attention | 2 issue replies")
- */
-export function formatBriefSummary(digest: DailyDigest, issueCount: number, issueResponseCount: number = 0): string {
-  const attentionText = issueCount > 0 ? `${issueCount} need${issueCount === 1 ? 's' : ''} attention` : 'all on track';
-  const issueReplyText =
-    issueResponseCount > 0 ? ` | ${issueResponseCount} issue repl${issueResponseCount === 1 ? 'y' : 'ies'}` : '';
-  return `\u{1F4CA} ${digest.summary.totalActivePRs} Active PRs | ${attentionText}${issueReplyText}`;
-}
-
-/**
- * Format the full dashboard summary as markdown.
- * Used in JSON output for Claude to display verbatim — includes all PR sections,
- * issue replies, and capacity status.
- *
- * @param digest - The daily digest with all PR categories
- * @param capacity - Current capacity assessment for display
- * @param issueResponses - Issue replies from maintainers to display
- * @returns Multi-line markdown string suitable for terminal or chat display
- */
-export function formatSummary(
-  digest: DailyDigest,
-  capacity: CapacityAssessment,
-  issueResponses: CommentedIssueWithResponse[] = [],
-): string {
-  const lines: string[] = [];
-
-  // Header
-  lines.push('## OSS Dashboard');
-  lines.push('');
-  lines.push(
-    `\u{1F4CA} **${digest.summary.totalActivePRs} Active PRs** | ${digest.summary.totalMergedAllTime} Merged | ${digest.summary.mergeRate}% Merge Rate`,
-  );
-  lines.push('\u2713 Dashboard generated \u2014 say "open dashboard" to view in browser');
-  lines.push('');
-
-  // Needs Addressing
-  if (digest.needsAddressingPRs.length > 0) {
-    lines.push('### \u274C Needs Addressing');
-    for (const pr of digest.needsAddressingPRs) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-      lines.push(`  \u2514\u2500 ${pr.displayLabel} ${pr.displayDescription}`);
-    }
-    lines.push('');
-  }
-
-  // Waiting on Maintainer
-  if (digest.waitingOnMaintainerPRs.length > 0) {
-    lines.push('### \u23F3 Waiting on Maintainer');
-    for (const pr of digest.waitingOnMaintainerPRs) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-      lines.push(`  \u2514\u2500 ${pr.displayDescription}`);
-    }
-    lines.push('');
-  }
-
-  // Recently Merged (wins!)
-  if (digest.recentlyMergedPRs.length > 0) {
-    lines.push('### \u{1F389} Recently Merged');
-    for (const pr of digest.recentlyMergedPRs) {
-      const mergedDate = pr.mergedAt ? new Date(pr.mergedAt).toLocaleDateString() : '';
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}${mergedDate ? ` (merged ${mergedDate})` : ''}`);
-    }
-    lines.push('');
-  }
-
-  // Recently Closed (closed without merge)
-  if (digest.recentlyClosedPRs.length > 0) {
-    lines.push('### \u{1F6AB} Recently Closed');
-    for (const pr of digest.recentlyClosedPRs) {
-      const closedDate = pr.closedAt ? new Date(pr.closedAt).toLocaleDateString() : '';
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}${closedDate ? ` (closed ${closedDate})` : ''}`);
-    }
-    lines.push('');
-  }
-
-  // Auto-unshelved (important: maintainer engagement on shelved PRs)
-  if (digest.autoUnshelvedPRs.length > 0) {
-    lines.push('### \u{1F514} Auto-Unshelved');
-    lines.push('> These PRs were shelved but a maintainer engaged \u2014 moved back to active.');
-    for (const pr of digest.autoUnshelvedPRs) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title} (${pr.status.replace(/_/g, ' ')})`);
-    }
-    lines.push('');
-  }
-
-  // Shelved PRs (dimmed, excluded from capacity)
-  if (digest.shelvedPRs.length > 0) {
-    lines.push('### \u{1F4E6} Shelved');
-    for (const pr of digest.shelvedPRs) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-    }
-    lines.push('');
-  }
-
-  // Issue Replies
-  if (issueResponses.length > 0) {
-    lines.push('### \u{1F4AC} Issue Replies');
-    for (const issue of issueResponses) {
-      lines.push(`- [${issue.repo}#${issue.number}](${issue.url}): ${issue.title}`);
-      const timeAgo = formatRelativeTime(issue.lastResponseAt);
-      lines.push(
-        `  \u2514\u2500 @${issue.lastResponseAuthor}: "${issue.lastResponseBody.slice(0, 80)}${issue.lastResponseBody.length > 80 ? '...' : ''}"${timeAgo ? ` (${timeAgo})` : ''}`,
-      );
-    }
-    lines.push('');
-  }
-
-  // Capacity
-  const capacityIcon = capacity.hasCapacity ? '\u2705' : '\u26A0\uFE0F';
-  const capacityLabel = capacity.hasCapacity ? 'Ready for new work' : 'Focus on existing PRs';
-  const shelvedNote = capacity.shelvedPRCount > 0 ? ` + ${capacity.shelvedPRCount} shelved` : '';
-  lines.push(
-    `**Capacity:** ${capacityIcon} ${capacityLabel} (${capacity.activePRCount}/${capacity.maxActivePRs} PRs${shelvedNote})`,
-  );
-
-  return lines.join('\n');
-}
-
-/**
- * Print digest to console as plain text.
- * Unified renderer: uses the same section ordering as {@link formatSummary}
- * but outputs plain text with console.log instead of markdown links.
- *
- * @param digest - The daily digest with all PR categories
- * @param capacity - Current capacity assessment for display
- * @param commentedIssues - All commented issues (filtered to responses internally)
- */
-export function printDigest(
-  digest: DailyDigest,
-  capacity: CapacityAssessment,
-  commentedIssues: CommentedIssue[] = [],
-): void {
-  console.log('\n\u{1F4CA} OSS Daily Check\n');
-  console.log(`Active PRs: ${digest.summary.totalActivePRs}`);
-  console.log(`Needing Attention: ${digest.summary.totalNeedingAttention}`);
-  console.log(`Merged (all time): ${digest.summary.totalMergedAllTime}`);
-  console.log(`Merge Rate: ${digest.summary.mergeRate}%`);
-  console.log(
-    `\nCapacity: ${capacity.hasCapacity ? '\u2705 Ready for new work' : '\u26A0\uFE0F  Focus on existing work'}`,
-  );
-  console.log(`  ${capacity.reason}\n`);
-
-  if (digest.needsAddressingPRs.length > 0) {
-    console.log('\u274C Needs Addressing:');
-    for (const pr of digest.needsAddressingPRs) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
-      console.log(`    ${pr.displayLabel} ${pr.displayDescription}`);
-    }
-    console.log('');
-  }
-
-  if (digest.waitingOnMaintainerPRs.length > 0) {
-    console.log('\u23F3 Waiting on Maintainer:');
-    for (const pr of digest.waitingOnMaintainerPRs) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
-      console.log(`    ${pr.displayDescription}`);
-    }
-    console.log('');
-  }
-
-  if (digest.recentlyMergedPRs.length > 0) {
-    console.log('\u{1F389} Recently Merged:');
-    for (const pr of digest.recentlyMergedPRs) {
-      const mergedDate = pr.mergedAt ? new Date(pr.mergedAt).toLocaleDateString() : '';
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}${mergedDate ? ` (merged ${mergedDate})` : ''}`);
-    }
-    console.log('');
-  }
-
-  if (digest.recentlyClosedPRs.length > 0) {
-    console.log('\u{1F6AB} Recently Closed:');
-    for (const pr of digest.recentlyClosedPRs) {
-      const closedDate = pr.closedAt ? new Date(pr.closedAt).toLocaleDateString() : '';
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}${closedDate ? ` (closed ${closedDate})` : ''}`);
-    }
-    console.log('');
-  }
-
-  if (digest.autoUnshelvedPRs.length > 0) {
-    console.log('\u{1F514} Auto-Unshelved:');
-    for (const pr of digest.autoUnshelvedPRs) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (${pr.status.replace(/_/g, ' ')})`);
-    }
-    console.log('');
-  }
-
-  if (digest.shelvedPRs.length > 0) {
-    console.log('\u{1F4E6} Shelved:');
-    for (const pr of digest.shelvedPRs) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title}`);
-    }
-    console.log('');
-  }
-
-  const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
-  if (issueResponses.length > 0) {
-    console.log('\u{1F4AC} Issue Replies:');
-    for (const issue of issueResponses) {
-      console.log(`  - ${issue.repo}#${issue.number}: ${issue.title}`);
-      console.log(
-        `    @${issue.lastResponseAuthor}: ${issue.lastResponseBody.slice(0, 80)}${issue.lastResponseBody.length > 80 ? '...' : ''}`,
-      );
-    }
-    console.log('');
-  }
-
-  console.log('Run with --json for structured output');
-  console.log('Run "dashboard serve" for browser view');
-}
+//
+// The actual implementations live in src/commands/daily-render.ts. Existing
+// callers that import these from `core/daily-logic` continue to work; new
+// callers should import from `commands/daily-render` directly.
+export { formatActionHint, formatBriefSummary, formatSummary, printDigest } from '../commands/daily-render.js';
