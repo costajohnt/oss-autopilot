@@ -21,6 +21,11 @@ dashboard_rebuild_error=""
 
 # Marketplace clone path; refresh is handled by safe-refresh-marketplace.sh in Step 2.
 MARKETPLACE_DIR="$HOME/.claude/plugins/marketplaces/oss-autopilot"
+# Lock file guarding the marketplace-clone fetch+reset against concurrent
+# session-starts (#1114). Lock is released automatically when the FD closes
+# at script exit; the lock file itself persists as a small stub (deleting it
+# would itself race), and the directory is created by Step 2 below as needed.
+MARKETPLACE_LOCK="${HOME}/.oss-autopilot/.marketplace-refresh.lock"
 
 # --- Step 1: Rebuild stale CLI bundle (if needed) ---
 # Use pnpm if available (this is a pnpm workspace; running `npm install` from
@@ -113,13 +118,45 @@ if [ -n "$CURRENT" ]; then
         # Helper preserves dirty trees (exit 1) and reports corrupt-repo state.
         marketplace_pulled=false
         marketplace_skip_msg=""
-        refresh_output=$("${SCRIPT_DIR}/safe-refresh-marketplace.sh" "${MARKETPLACE_DIR}") && refresh_rc=0 || refresh_rc=$?
-        case "$refresh_rc" in
-          0) marketplace_pulled=true ;;
-          1) marketplace_skip_msg="$refresh_output" ;;
-          2|3) : ;;  # fetch/reset failed or no clone — generic "Auto-pull failed" fires below
-          *) marketplace_skip_msg="Auto-refresh helper exited unexpectedly (code ${refresh_rc})." ;;
-        esac
+        # Guard against concurrent SessionStart hooks racing on the same clone
+        # with a non-blocking flock (#1114). If another session already holds
+        # the lock, skip this run's refresh — the holder will pull the same
+        # update, so by the time the user follows the banner's instructions
+        # the new version is in place. flock isn't part of POSIX and isn't
+        # shipped by default on macOS; if it's missing we fall back to the
+        # original unguarded behavior, which is no worse than pre-#1114.
+        run_refresh=true
+        fd_open=false
+        contended=false
+        if command -v flock &>/dev/null; then
+          # Brace group around the redirect so 2>/dev/null actually catches a
+          # bash "9>: cannot open" diagnostic (~ unwritable HOME, lock path
+          # exists as a dir, etc.). Without the group, bash emits the error
+          # before the redirection takes effect.
+          if { exec 9>"${MARKETPLACE_LOCK}"; } 2>/dev/null; then
+            fd_open=true
+            if ! flock -n 9 2>/dev/null; then
+              run_refresh=false
+              contended=true
+            fi
+          fi
+        fi
+        if [ "$run_refresh" = true ]; then
+          refresh_output=$("${SCRIPT_DIR}/safe-refresh-marketplace.sh" "${MARKETPLACE_DIR}") && refresh_rc=0 || refresh_rc=$?
+        fi
+        if [ "$fd_open" = true ]; then
+          # Releasing the FD releases the flock; safe regardless of whether
+          # this session held the lock or only opened it.
+          exec 9>&-
+        fi
+        if [ "$contended" = false ]; then
+          case "$refresh_rc" in
+            0) marketplace_pulled=true ;;
+            1) marketplace_skip_msg="$refresh_output" ;;
+            2|3) : ;;  # fetch/reset failed or no clone — generic "Auto-pull failed" fires below
+            *) marketplace_skip_msg="Auto-refresh helper exited unexpectedly (code ${refresh_rc})." ;;
+          esac
+        fi
         # Update known_marketplaces.json only if the clone actually refreshed —
         # bumping `lastUpdated` when we skipped the pull would lie about state.
         # Uses atomic write (tmp + mv) to prevent corruption on interruption.
@@ -134,6 +171,10 @@ if [ -n "$CURRENT" ]; then
           fi
         fi
         if [ "$marketplace_pulled" = true ]; then
+          update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). Run: /plugin update oss-autopilot"
+        elif [ "$contended" = true ]; then
+          # Sister session is doing the pull; the marketplace clone will be
+          # fresh by the time the user follows the instructions.
           update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). Run: /plugin update oss-autopilot"
         elif [ -n "$marketplace_skip_msg" ]; then
           update_msg="OSS Autopilot v${LATEST} available (you have v${CURRENT}). ${marketplace_skip_msg} Then run: /plugin update oss-autopilot"
