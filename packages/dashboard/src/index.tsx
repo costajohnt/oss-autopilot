@@ -1,6 +1,7 @@
 import { render } from 'preact';
 import { App } from './app';
 import { ErrorBoundary } from './error-boundary';
+import './fonts.css';
 import './styles.css';
 
 const root = document.getElementById('app');

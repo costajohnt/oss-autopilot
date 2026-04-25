@@ -1,0 +1,21 @@
+/*
+ * Self-hosted fonts (#1119).
+ *
+ * Sources @fontsource (npm) — pre-bundled woff2 files for Plus Jakarta Sans
+ * and JetBrains Mono. Vite copies the woff2 files into dist/assets/ at build
+ * time and rewrites the URLs.
+ *
+ * Latin subset only — the dashboard ships in English; we don't need cyrillic /
+ * vietnamese / latin-ext for the current UI. Cuts bundle weight by ~75%.
+ *
+ * Both fonts are licensed under the SIL Open Font License v1.1; see
+ * LICENSE-FONTS in this directory for the full text and attribution.
+ */
+
+@import '@fontsource/plus-jakarta-sans/latin-400.css';
+@import '@fontsource/plus-jakarta-sans/latin-500.css';
+@import '@fontsource/plus-jakarta-sans/latin-600.css';
+@import '@fontsource/plus-jakarta-sans/latin-700.css';
+@import '@fontsource/plus-jakarta-sans/latin-800.css';
+@import '@fontsource/jetbrains-mono/latin-400.css';
+@import '@fontsource/jetbrains-mono/latin-500.css';
