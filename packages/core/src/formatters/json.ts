@@ -382,6 +382,46 @@ export const CompactDailyOutputSchema = z.object({
   warnings: z.array(DailyWarningSchema),
 });
 
+// ── Search output schema (#1147) ─────────────────────────────────────
+
+const SearchPrioritySchema = z.enum(['merged_pr', 'preferred_org', 'starred', 'normal']);
+
+const SearchCandidateSchema = z.object({
+  issue: z.object({
+    repo: z.string(),
+    repoUrl: z.string(),
+    number: z.number().int(),
+    title: z.string(),
+    url: z.string(),
+    labels: z.array(z.string()),
+  }),
+  recommendation: z.enum(['approve', 'skip', 'needs_review']),
+  reasonsToApprove: z.array(z.string()),
+  reasonsToSkip: z.array(z.string()),
+  searchPriority: SearchPrioritySchema,
+  viabilityScore: z.number(),
+  grade: z.object({
+    letter: z.enum(['A', 'B', 'C', 'F']),
+    reason: z.string(),
+  }),
+  repoScore: z
+    .object({
+      score: z.number(),
+      mergedPRCount: z.number().int().nonnegative(),
+      closedWithoutMergeCount: z.number().int().nonnegative(),
+      isResponsive: z.boolean(),
+      lastMergedAt: z.string().optional(),
+    })
+    .optional(),
+});
+
+export const SearchOutputSchema = z.object({
+  candidates: z.array(SearchCandidateSchema),
+  excludedRepos: z.array(z.string()),
+  aiPolicyBlocklist: z.array(z.string()),
+  rateLimitWarning: z.string().optional(),
+});
+
 export interface SearchOutput {
   candidates: Array<{
     issue: {
