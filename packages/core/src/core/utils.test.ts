@@ -1,25 +1,23 @@
 /**
- * Tests for utility functions in utils.ts
+ * Tests for utility functions originally in utils.ts.
+ *
+ * The functions now live in the focused modules created by #1116
+ * (urls.ts, dates.ts, paths.ts, auth.ts). The shim was removed in #1141;
+ * this test file was kept under the historical name to preserve git
+ * history and is still the canonical home for cross-module utility tests.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { parseGitHubUrl, extractOwnerRepo, splitRepo } from './urls.js';
+import { daysBetween, formatRelativeTime, byDateDescending } from './dates.js';
 import {
-  parseGitHubUrl,
-  extractOwnerRepo,
-  daysBetween,
-  splitRepo,
-  formatRelativeTime,
-  byDateDescending,
   getGitHubToken,
   getGitHubTokenAsync,
   requireGitHubToken,
   resetGitHubTokenCache,
-  getDataDir,
-  getStatePath,
-  getBackupDir,
   detectGitHubUsername,
-  stateFileExists,
-} from './utils.js';
+} from './auth.js';
+import { getDataDir, getStatePath, getBackupDir, stateFileExists } from './paths.js';
 import { execFileSync, execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';

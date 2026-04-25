@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { AgentState } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
-import { getStatePath, getBackupDir, getDataDir } from './utils.js';
+import { getStatePath, getBackupDir, getDataDir } from './paths.js';
 import { errorMessage, ConcurrencyError } from './errors.js';
 import { debug, warn } from './logger.js';
 

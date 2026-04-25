@@ -4,7 +4,7 @@
  */
 
 import { Octokit } from '@octokit/rest';
-import { extractOwnerRepo, parseGitHubUrl, isOwnRepo } from './utils.js';
+import { extractOwnerRepo, parseGitHubUrl, isOwnRepo } from './urls.js';
 import { ClosedPR, MergedPR, StoredMergedPR, StoredClosedPR, isBelowMinStars, type StarFilter } from './types.js';
 import { debug, warn } from './logger.js';
 import { getHttpCache } from './http-cache.js';

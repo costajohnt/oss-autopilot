@@ -479,7 +479,7 @@ export const commands: CLICommandDef[] = [
             options,
             async () => (await import('./commands/comments.js')).runComments({ prUrl, showBots: options.bots }),
             async (data) => {
-              const { formatRelativeTime } = await import('./core/utils.js');
+              const { formatRelativeTime } = await import('./core/dates.js');
               console.log(`\nFetching comments for: ${prUrl}\n`);
               console.log(`## ${data.pr.title}\n`);
               console.log(`**Status:** ${data.pr.state} | **Mergeable:** ${data.pr.mergeable ?? 'checking...'}`);

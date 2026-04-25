@@ -13,7 +13,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { getCacheDir } from './utils.js';
+import { getCacheDir } from './paths.js';
 import { debug } from './logger.js';
 import { getHttpStatusCode } from './errors.js';
 

@@ -10,7 +10,7 @@ vi.mock('../core/index.js', () => ({
   getOctokit: vi.fn(),
 }));
 
-vi.mock('../core/utils.js', () => ({
+vi.mock('../core/urls.js', () => ({
   parseGitHubUrl: vi.fn(),
 }));
 
@@ -21,7 +21,7 @@ vi.mock('./validation.js', () => ({
 }));
 
 import { requireGitHubToken, getOctokit } from '../core/index.js';
-import { parseGitHubUrl } from '../core/utils.js';
+import { parseGitHubUrl } from '../core/urls.js';
 import { runTrack } from './track.js';
 
 const mockRequireGitHubToken = vi.mocked(requireGitHubToken);

@@ -36,7 +36,7 @@ import * as fs from 'fs';
 import { AgentState } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
 import { atomicWriteFileSync, createFreshState, migrateV1ToV2, migrateV2ToV3 } from './state-persistence.js';
-import { getGistIdPath, getStateCachePath } from './utils.js';
+import { getGistIdPath, getStateCachePath } from './paths.js';
 import { debug, warn } from './logger.js';
 import { GistPermissionError, GistConcurrencyError, isRateLimitError } from './errors.js';
 
