@@ -373,3 +373,76 @@ export interface IssueCandidate {
   viabilityScore: number; // 0-100 scale
   searchPriority: SearchPriority; // Priority level for sorting
 }
+
+// ── Daily aggregation types (formerly in formatters/json.ts; relocated #1117) ──
+// These describe domain data that core/daily-aggregations.ts produces. They
+// previously sat in formatters/json.ts, which forced core/ to import from
+// formatters/ — a cross-layer dependency we've now removed.
+
+export interface CapacityAssessment {
+  hasCapacity: boolean;
+  activePRCount: number;
+  maxActivePRs: number;
+  shelvedPRCount: number;
+  criticalIssueCount: number;
+  reason: string;
+}
+
+export type ActionableIssueType =
+  | 'ci_failing'
+  | 'merge_conflict'
+  | 'needs_response'
+  | 'needs_changes'
+  | 'incomplete_checklist';
+
+export interface ActionableIssue {
+  type: ActionableIssueType;
+  pr: FetchedPR;
+  label: string; // e.g., "[CI Failing]"
+  /** True if the PR was created after the last daily digest (first time seen). */
+  isNewContribution: boolean;
+}
+
+/**
+ * Compact version of ActionableIssue for JSON output.
+ * References the PR by URL instead of embedding the full object,
+ * since the full PR is already available in digest.openPRs.
+ */
+export interface CompactActionableIssue {
+  type: ActionableIssueType;
+  prUrl: string;
+  label: string;
+  /** True if the PR was created after the last daily digest (first time seen). */
+  isNewContribution: boolean;
+}
+
+/**
+ * A single action menu item pre-computed by the CLI.
+ * The orchestration layer can use these directly in AskUserQuestion prompts.
+ */
+export interface ActionMenuItem {
+  /** Stable identifier for routing (e.g., "address_all", "search", "done"). */
+  key: string;
+  /** Display text for the option (e.g., "Work through all 3 issues (Recommended)"). */
+  label: string;
+  /** Explanation shown below the label. */
+  description: string;
+  /** Present when the action would exceed the user's PR capacity limit (#765). */
+  capacityWarning?: string;
+}
+
+/**
+ * Pre-computed action menu for the orchestration layer.
+ */
+export interface ActionMenu {
+  /** Ordered list of menu items. */
+  items: ActionMenuItem[];
+  /** Context flags for the orchestration layer to decide on issue-list options. */
+  context: {
+    hasActionableIssues: boolean;
+    actionableCount: number;
+    hasCapacity: boolean;
+    hasIssueResponses: boolean;
+    issueResponseCount: number;
+  };
+}

@@ -16,9 +16,9 @@ import type {
   IssueVettingResult,
   ProjectHealth,
   RepoScore,
+  CapacityAssessment,
 } from './types.js';
 import { DEFAULT_CONFIG, INITIAL_STATE } from './types.js';
-import type { CapacityAssessment } from '../formatters/json.js';
 import type { StateManager, Stats } from './state.js';
 // ---------------------------------------------------------------------------
 // FetchedPR
