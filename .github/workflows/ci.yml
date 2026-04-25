@@ -17,6 +17,19 @@ permissions:
 
 env:
   # Bundle size thresholds (bytes). Update via PR when increases are justified.
+  #
+  # Threshold-bump policy:
+  #   - **Justified bump (just edit the number):** the increase comes from a
+  #     deliberate addition — a new command, a new schema, a new dependency
+  #     that was needed. Append a parenthetical citing the issue/PR that
+  #     justified the bump.
+  #   - **Investigate before bumping:** the increase has no obvious source
+  #     in the diff. Likely candidates: an accidental large dep import, a
+  #     transitive bundling regression, a schema duplication. Look at
+  #     `pnpm run bundle` output and the diff before raising the cap.
+  #   - **Don't bump for a flaky measurement:** esbuild output is
+  #     deterministic. If the threshold trips on a no-op rebuild, it's a
+  #     real increase somewhere upstream — not noise.
   BUNDLE_MAX_CORE: 760000 # ~742 KB (increased for list-move-tier command, #1107)
   BUNDLE_MAX_MCP: 2000000 # ~1953 KB
   STARTUP_WARN_MS: 500 # Warn if CLI startup exceeds 500ms

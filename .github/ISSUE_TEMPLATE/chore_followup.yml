@@ -1,0 +1,43 @@
+name: Chore / Follow-up
+description: A scoped follow-up to an existing issue or PR (deferred work, next-step refactor, mechanical cleanup)
+title: "chore: "
+labels: ["chore"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for follow-up work split out of a parent issue or PR.
+        Keep the description focused on what's still to do, not why the parent
+        existed — link to the parent for that context.
+  - type: input
+    id: parent
+    attributes:
+      label: Parent issue / PR
+      description: "Number or URL of the issue or PR this follows up on"
+      placeholder: "#1234"
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: One short paragraph — what's deferred and why, with a link or hint at the relevant code path. Don't restate the parent.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Checklist the implementer can use to know when the work is done.
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Optional. Constraints, gotchas, or pointers picked up while filing.
+    validations:
+      required: false
