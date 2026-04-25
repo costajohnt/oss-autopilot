@@ -30,7 +30,8 @@ import type { Stats } from './repo-score-manager.js';
 import { debug, warn } from './logger.js';
 import { errorMessage, ConfigurationError, ConcurrencyError } from './errors.js';
 import { GistStateStore, type OctokitLike } from './gist-state-store.js';
-import { getStatePath, getStateCachePath, parseGitHubUrl } from './utils.js';
+import { getStatePath, getStateCachePath } from './paths.js';
+import { parseGitHubUrl } from './urls.js';
 
 export { acquireLock, releaseLock, atomicWriteFileSync } from './state-persistence.js';
 export type { Stats } from './repo-score-manager.js';

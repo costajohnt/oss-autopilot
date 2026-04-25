@@ -8,7 +8,7 @@ import { getStateManager, PRMonitor, IssueConversationMonitor, getOctokit } from
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult, fetchMergedPRsSince, fetchClosedPRsSince } from '../core/github-stats.js';
-import { parseGitHubUrl } from '../core/utils.js';
+import { parseGitHubUrl } from '../core/urls.js';
 import {
   isBelowMinStars,
   type DailyDigest,

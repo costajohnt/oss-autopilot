@@ -10,7 +10,7 @@
 
 import { AgentState, RepoScore, RepoScoreUpdate, StoredMergedPR, StoredClosedPR, isBelowMinStars } from './types.js';
 import { debug, warn } from './logger.js';
-import { parseGitHubUrl } from './utils.js';
+import { parseGitHubUrl } from './urls.js';
 
 const MODULE = 'scoring';
 

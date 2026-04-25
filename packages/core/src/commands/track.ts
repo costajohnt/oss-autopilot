@@ -15,7 +15,7 @@ import { getOctokit, requireGitHubToken } from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import type { TrackOutput } from '../formatters/json.js';
 import { validateUrl, PR_URL_PATTERN, validateGitHubUrl } from './validation.js';
-import { parseGitHubUrl } from '../core/utils.js';
+import { parseGitHubUrl } from '../core/urls.js';
 
 /**
  * Fetch metadata for a PR URL (informational — does not persist).

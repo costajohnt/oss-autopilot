@@ -17,8 +17,8 @@ vi.mock('../core/state-persistence.js', () => ({
   atomicWriteFileSync: vi.fn(),
 }));
 
-vi.mock('../core/utils.js', async () => {
-  const actual = await vi.importActual<typeof import('../core/utils.js')>('../core/utils.js');
+vi.mock('../core/paths.js', async () => {
+  const actual = await vi.importActual<typeof import('../core/paths.js')>('../core/paths.js');
   return {
     ...actual,
     getStatePath: vi.fn().mockReturnValue('/fake/state.json'),

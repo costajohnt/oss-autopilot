@@ -5,7 +5,8 @@
  */
 
 import { getOctokit } from '../core/github.js';
-import { requireGitHubToken, splitRepo } from '../core/utils.js';
+import { requireGitHubToken } from '../core/auth.js';
+import { splitRepo } from '../core/urls.js';
 import { fetchPRTemplate, type PRTemplateResult } from '../core/pr-template.js';
 
 export async function runPRTemplate(opts: { repo: string }): Promise<PRTemplateResult> {

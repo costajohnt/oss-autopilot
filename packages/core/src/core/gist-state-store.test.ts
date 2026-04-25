@@ -14,8 +14,8 @@ import { createFreshState } from './state-persistence.js';
 
 let mockTmpDir = '';
 
-vi.mock('./utils.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./utils.js')>();
+vi.mock('./paths.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./paths.js')>();
   return {
     ...actual,
     getDataDir: () => {

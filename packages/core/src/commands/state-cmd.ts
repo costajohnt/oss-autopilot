@@ -6,7 +6,8 @@
 import * as fs from 'fs';
 import { getStateManager, resetStateManager } from '../core/state.js';
 import { atomicWriteFileSync } from '../core/state-persistence.js';
-import { getStatePath, getGistIdPath, parseGitHubUrl } from '../core/utils.js';
+import { getStatePath, getGistIdPath } from '../core/paths.js';
+import { parseGitHubUrl } from '../core/urls.js';
 import { warn } from '../core/logger.js';
 
 const MODULE = 'state-cmd';

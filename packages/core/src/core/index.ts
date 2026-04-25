@@ -25,26 +25,17 @@ export {
 export { IssueConversationMonitor } from './issue-conversation.js';
 export { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 export { getOctokit, checkRateLimit, type RateLimitInfo } from './github.js';
+export { parseGitHubUrl, splitRepo, isOwnRepo } from './urls.js';
+export { daysBetween, formatRelativeTime, byDateDescending } from './dates.js';
+export { getCLIVersion, getDataDir, getStatePath, getBackupDir, getCacheDir, stateFileExists } from './paths.js';
 export {
-  parseGitHubUrl,
-  daysBetween,
-  splitRepo,
-  isOwnRepo,
-  getCLIVersion,
-  getDataDir,
-  getStatePath,
-  getBackupDir,
-  getCacheDir,
-  formatRelativeTime,
-  byDateDescending,
   getGitHubToken,
   getGitHubTokenAsync,
   requireGitHubToken,
   resetGitHubTokenCache,
   detectGitHubUsername,
-  stateFileExists,
-  DEFAULT_CONCURRENCY,
-} from './utils.js';
+} from './auth.js';
+export { DEFAULT_CONCURRENCY } from './concurrency.js';
 export {
   OssAutopilotError,
   ConfigurationError,
