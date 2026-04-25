@@ -151,6 +151,7 @@ export const commands: CLICommandDef[] = [
         .option('--show', 'Display current persistence mode and Gist ID')
         .option('--sync', 'Force push state to Gist (no-op if not in Gist mode)')
         .option('--unlink', 'Switch from Gist back to local persistence')
+        .option('--validate', 'When used with --show, also report stored PR entries with unparseable URLs')
         .option('--json', 'Output as JSON')
         .action(async (options) => {
           if (options.unlink) {
@@ -182,12 +183,23 @@ export const commands: CLICommandDef[] = [
             // Default: --show
             await executeAction(
               options,
-              async () => (await import('./commands/state-cmd.js')).runStateShow(),
+              async () => (await import('./commands/state-cmd.js')).runStateShow({ validate: !!options.validate }),
               (data) => {
                 console.log(`\nPersistence: ${data.persistence}`);
                 if (data.gistId) console.log(`Gist ID: ${data.gistId}`);
                 if (data.gistDegraded) console.log('Status: DEGRADED (using local cache)');
-                console.log(`Last run: ${data.lastRunAt ?? 'Never'}\n`);
+                console.log(`Last run: ${data.lastRunAt ?? 'Never'}`);
+                if (data.invalidEntries) {
+                  if (data.invalidEntries.length === 0) {
+                    console.log('Validation: no invalid PR URLs in stored state.');
+                  } else {
+                    console.log(`Validation: ${data.invalidEntries.length} stored PR(s) with invalid URLs:`);
+                    for (const e of data.invalidEntries) {
+                      console.log(`  [${e.kind}] ${e.url}  ${e.title}`);
+                    }
+                  }
+                }
+                console.log('');
               },
             );
           }

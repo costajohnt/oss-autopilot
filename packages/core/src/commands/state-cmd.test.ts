@@ -13,10 +13,14 @@ vi.mock('../core/state-persistence.js', () => ({
   atomicWriteFileSync: vi.fn(),
 }));
 
-vi.mock('../core/utils.js', () => ({
-  getStatePath: vi.fn(),
-  getGistIdPath: vi.fn(),
-}));
+vi.mock('../core/utils.js', async () => {
+  const actual = await vi.importActual<typeof import('../core/utils.js')>('../core/utils.js');
+  return {
+    ...actual,
+    getStatePath: vi.fn(),
+    getGistIdPath: vi.fn(),
+  };
+});
 
 vi.mock('../core/logger.js', () => ({
   warn: vi.fn(),
@@ -123,6 +127,56 @@ describe('runStateShow', () => {
     const result = await runStateShow();
 
     expect(result.lastRunAt).toBeUndefined();
+  });
+
+  it('omits invalidEntries unless validate is requested', async () => {
+    const sm = {
+      ...makeStateManagerMock({ config: { persistence: 'local' } }),
+      isGistDegraded: vi.fn().mockReturnValue(false),
+      getMergedPRs: vi.fn().mockReturnValue([]),
+      getClosedPRs: vi.fn().mockReturnValue([]),
+    };
+    mockGetStateManager.mockReturnValue(sm as any);
+
+    const result = await runStateShow();
+    expect(result.invalidEntries).toBeUndefined();
+  });
+
+  it('reports invalid stored URLs when validate=true (#1120)', async () => {
+    const sm = {
+      ...makeStateManagerMock({ config: { persistence: 'local' } }),
+      isGistDegraded: vi.fn().mockReturnValue(false),
+      getMergedPRs: vi.fn().mockReturnValue([
+        { url: 'https://github.com/a/b/pull/1', title: 'OK', mergedAt: '2025-06-10T00:00:00Z' },
+        { url: 'garbage', title: 'Bad merged', mergedAt: '2025-06-09T00:00:00Z' },
+      ]),
+      getClosedPRs: vi
+        .fn()
+        .mockReturnValue([{ url: 'not-a-url', title: 'Bad closed', closedAt: '2025-06-08T00:00:00Z' }]),
+    };
+    mockGetStateManager.mockReturnValue(sm as any);
+
+    const result = await runStateShow({ validate: true });
+
+    expect(result.invalidEntries).toEqual([
+      { kind: 'merged', url: 'garbage', title: 'Bad merged' },
+      { kind: 'closed', url: 'not-a-url', title: 'Bad closed' },
+    ]);
+  });
+
+  it('returns empty invalidEntries when validate=true and all URLs are valid', async () => {
+    const sm = {
+      ...makeStateManagerMock({ config: { persistence: 'local' } }),
+      isGistDegraded: vi.fn().mockReturnValue(false),
+      getMergedPRs: vi
+        .fn()
+        .mockReturnValue([{ url: 'https://github.com/a/b/pull/1', title: 'OK', mergedAt: '2025-06-10T00:00:00Z' }]),
+      getClosedPRs: vi.fn().mockReturnValue([]),
+    };
+    mockGetStateManager.mockReturnValue(sm as any);
+
+    const result = await runStateShow({ validate: true });
+    expect(result.invalidEntries).toEqual([]);
   });
 
   it('defaults persistence to "local" when config.persistence is not set', async () => {

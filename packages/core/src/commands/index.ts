@@ -133,4 +133,4 @@ export type {
   CheckSetupOutput,
 } from './setup.js';
 export type { DailyCheckResult } from './daily.js';
-export type { StateShowOutput, StateSyncOutput, StateUnlinkOutput } from './state-cmd.js';
+export type { StateShowOutput, StateSyncOutput, StateUnlinkOutput, InvalidUrlEntry } from './state-cmd.js';

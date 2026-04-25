@@ -309,14 +309,20 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
     stateManager.batch(() => {
       // Store new merged PRs incrementally (dedupes by URL)
       try {
-        stateManager.addMergedPRs(newMergedPRs);
+        const { dropped } = stateManager.addMergedPRs(newMergedPRs);
+        if (dropped > 0) {
+          partialFailures.push(`Dropped ${dropped} merged PR(s) with invalid URLs before persistence`);
+        }
       } catch (error) {
         warn(MODULE, `Failed to store merged PRs: ${errorMessage(error)}`);
       }
 
       // Store new closed PRs incrementally (dedupes by URL)
       try {
-        stateManager.addClosedPRs(newClosedPRs);
+        const { dropped } = stateManager.addClosedPRs(newClosedPRs);
+        if (dropped > 0) {
+          partialFailures.push(`Dropped ${dropped} closed PR(s) with invalid URLs before persistence`);
+        }
       } catch (error) {
         warn(MODULE, `Failed to store closed PRs: ${errorMessage(error)}`);
       }
