@@ -182,6 +182,7 @@ Always look for opportunities to refactor, simplify, and remove dead code. Fix a
 - Use [conventional commits](https://www.conventionalcommits.org/): `feat:` (minor), `fix:` (patch), `chore:` (no release). Releasable commits (`feat:`, `fix:`) become CHANGELOG entries, so write them descriptively
 - On push to main, release-please opens or updates a release PR that bumps all version-bearing files (configured in `release-please-config.json`)
 - Merge the release-please PR to create a GitHub release, which triggers npm publish
+- **release-please force-updates its branch** (`release-please--branches--main`) on every push to main. `git pull --rebase` will print a `forced update` notice for that ref — that's expected, ignore it. The notice never affects your branch.
 
 ## AI Attribution Rule (CRITICAL)
 
