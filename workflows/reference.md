@@ -43,6 +43,9 @@ Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `
 
 # Append an issue URL to the skipped-issues file (auto-culled after 90 days)
 <prefix> skip-add <issue-url> --json [--path <file>]
+
+# Move an issue between Pursue / Maybe / Skip sections of a curated list (#1107)
+<prefix> list-move-tier <issue-url> --tier <pursue|maybe|skip> --list-path <file> --json
 ```
 
 ### PR Management

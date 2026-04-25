@@ -375,6 +375,47 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── List Move Tier ─────────────────────────────────────────────────────
+  {
+    name: 'list-move-tier',
+    localOnly: true,
+    register(program) {
+      program
+        .command('list-move-tier <issue-url>')
+        .description('Move an issue between Pursue / Maybe / Skip sections of a curated list (#1107)')
+        .requiredOption('--tier <tier>', 'Target tier: pursue, maybe, or skip')
+        .requiredOption('--list-path <file>', 'Path to the markdown issue list')
+        .option('--json', 'Output as JSON')
+        .action((issueUrl, options) =>
+          executeAction(
+            options,
+            async () => {
+              const tier = String(options.tier).toLowerCase();
+              if (tier !== 'pursue' && tier !== 'maybe' && tier !== 'skip') {
+                throw new Error(`Invalid --tier "${options.tier}". Must be one of: pursue, maybe, skip.`);
+              }
+              return (await import('./commands/list-move-tier.js')).runListMoveTier({
+                issueUrl,
+                tier,
+                listPath: options.listPath,
+              });
+            },
+            (data) => {
+              if (data.moved) {
+                const fromLabel = data.fromTier ? ` (from ${data.fromTier})` : '';
+                const countLabel = data.count > 1 ? ` × ${data.count}` : '';
+                console.log(`Moved ${data.url} to ${data.toTier}${fromLabel}${countLabel}`);
+                console.log(`  File: ${data.filePath}`);
+              } else {
+                console.log(`No move: ${data.url} — ${data.reason ?? 'unchanged'}`);
+                console.log(`  File: ${data.filePath}`);
+              }
+            },
+          ),
+        );
+    },
+  },
+
   // ── Track ──────────────────────────────────────────────────────────────
   {
     name: 'track',
