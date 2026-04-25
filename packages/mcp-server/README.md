@@ -10,7 +10,7 @@ MCP server for [OSS Autopilot](https://github.com/costajohnt/oss-autopilot) — 
 
 | Feature | Count | Description |
 |---------|-------|-------------|
-| **Tools** | 24 | `daily`, `status`, `search`, `vet`, `vet-list`, `track`, `untrack`, `read`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink` |
+| **Tools** | 22 | `daily`, `status`, `search`, `vet`, `vet-list`, `track`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink` |
 | **Resources** | 5 | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}` |
 | **Prompts** | 3 | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues) |
 
@@ -118,9 +118,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `search` | Search GitHub for contributable issues | Yes |
 | `vet` | Analyze an issue for contribution suitability | Yes |
 | `vet-list` | Re-vet all available issues in the curated issue list | No |
-| `track` | Start tracking a pull request | No |
-| `untrack` | Stop tracking a pull request | No |
-| `read` | Mark PR notifications as read | No |
+| `track` | Fetch metadata for a pull request (informational; nothing persists) | No |
 | `comments` | Fetch and display PR comments | Yes |
 | `post` | Post a comment on an issue or PR | No |
 | `claim` | Claim an issue by posting a comment | No |
