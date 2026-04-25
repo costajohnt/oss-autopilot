@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.17.4...core-v2.0.0) (2026-04-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* external consumers importing from @oss-autopilot/core/utils (or any deep-path equivalent) will fail to resolve. The replacement modules are:   - paths      → getDataDir, getStatePath, getBackupDir, getCacheDir,                  getGistIdPath, getStateCachePath, stateFileExists,                  getCLIVersion   - urls       → parseGitHubUrl, extractOwnerRepo, splitRepo, isOwnRepo,                  ParsedGitHubUrl   - dates      → daysBetween, formatRelativeTime, byDateDescending   - auth       → getGitHubToken, getGitHubTokenAsync, requireGitHubToken,                  resetGitHubTokenCache, detectGitHubUsername   - concurrency → DEFAULT_CONCURRENCY, sleep, runWorkerPool
+* the MCP tools `read` and `untrack` are no longer registered. Clients that hard-coded these tool names will get a "tool not found" error from listTools / callTool. The CLI commands of the same name are also removed; scripts that invoked them get "unknown command" from commander.
+
+### Features
+
+* add /pr-ready slash command and wait-for-ci.sh helper ([#1153](https://github.com/costajohnt/oss-autopilot/issues/1153)) ([20809d4](https://github.com/costajohnt/oss-autopilot/commit/20809d460fe5e5c74fe6ea7ebfb70fa21ab50a5f))
+* **cli:** list-move-tier command ([#1107](https://github.com/costajohnt/oss-autopilot/issues/1107)) ([#1140](https://github.com/costajohnt/oss-autopilot/issues/1140)) ([37d813d](https://github.com/costajohnt/oss-autopilot/commit/37d813d619998ae57b259be266483f4faed18a0c))
+* **core:** Gist ETag + conflict resolution for state sync ([#1115](https://github.com/costajohnt/oss-autopilot/issues/1115)) ([#1145](https://github.com/costajohnt/oss-autopilot/issues/1145)) ([d6ec379](https://github.com/costajohnt/oss-autopilot/commit/d6ec37939de7d3d11a4a7235f6bf7f4b8870533e))
+* remove core/utils.ts re-export shim ([#1141](https://github.com/costajohnt/oss-autopilot/issues/1141)) ([#1158](https://github.com/costajohnt/oss-autopilot/issues/1158)) ([85d5255](https://github.com/costajohnt/oss-autopilot/commit/85d525580ad502566fb91eac6dccab6ff1ce695f))
+* remove read/untrack v1 stubs from CLI and MCP server ([#1133](https://github.com/costajohnt/oss-autopilot/issues/1133)) ([#1157](https://github.com/costajohnt/oss-autopilot/issues/1157)) ([a957feb](https://github.com/costajohnt/oss-autopilot/commit/a957febd0341c447a4e4f735b83d086c025b0694))
+
+
+### Bug Fixes
+
+* **core:** validate URLs on write-side of addMergedPRs/addClosedPRs ([#1120](https://github.com/costajohnt/oss-autopilot/issues/1120)) ([#1128](https://github.com/costajohnt/oss-autopilot/issues/1128)) ([592a727](https://github.com/costajohnt/oss-autopilot/commit/592a727f24da6b5f8980aa61e1def4f0a8496074))
+
 ## [1.17.4](https://github.com/costajohnt/oss-autopilot/compare/core-v1.17.3...core-v1.17.4) (2026-04-24)
 
 
