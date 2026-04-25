@@ -4,11 +4,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { z } from 'zod';
 import {
   jsonSuccess,
   jsonError,
   outputJson,
   outputJsonError,
+  formatJson,
+  outputJsonValidated,
+  StatusOutputSchema,
   toCompactDailyOutput,
   toCompactStartupOutput,
   type DailyOutput,
@@ -311,5 +315,92 @@ describe('toCompactStartupOutput (#763)', () => {
 
     expect(compact.authError).toBe('No token');
     expect(compact.daily).toBeUndefined();
+  });
+});
+
+describe('formatJson (#1105)', () => {
+  const SmallSchema = z.object({
+    name: z.string(),
+    count: z.number().int().nonnegative(),
+  });
+
+  it('wraps schema-conformant data in the standard envelope', () => {
+    const out = formatJson(SmallSchema, { name: 'foo', count: 3 });
+    expect(out.success).toBe(true);
+    expect(out.data).toEqual({ name: 'foo', count: 3 });
+    expect(out.timestamp).toMatch(ISO_8601_REGEX);
+  });
+
+  it('throws a contract-drift error with field paths on mismatch', () => {
+    expect(() => formatJson(SmallSchema, { name: 'foo', count: -1 })).toThrow(/contract drift.*count/i);
+    expect(() => formatJson(SmallSchema, { name: 'foo' })).toThrow(/contract drift.*count/i);
+    expect(() => formatJson(SmallSchema, { name: 42, count: 0 })).toThrow(/contract drift.*name/i);
+  });
+
+  it('rejects extra fields by default? (Zod default is to strip unless strict)', () => {
+    // The default Zod object schema strips unknown keys rather than rejecting,
+    // so this passes through validation. Surface that explicitly so a future
+    // contributor doesn't expect strict behavior accidentally.
+    const out = formatJson(SmallSchema, { name: 'foo', count: 3, extra: 'ignored' });
+    expect(out.data).toEqual({ name: 'foo', count: 3 });
+  });
+
+  it('validates real StatusOutputSchema-conformant data round-trip', () => {
+    const data = {
+      stats: {
+        mergedPRs: 5,
+        closedPRs: 1,
+        activeIssues: 2,
+        trustedProjects: 4,
+        mergeRate: '83%',
+        needsResponse: 1,
+      },
+      lastRunAt: '2026-04-25T00:00:00.000Z',
+    };
+    const out = formatJson(StatusOutputSchema, data);
+    expect(out.success).toBe(true);
+    expect(out.data).toMatchObject(data);
+  });
+
+  it('rejects StatusOutputSchema input where stats.mergeRate is the wrong type', () => {
+    const data = {
+      stats: {
+        mergedPRs: 5,
+        closedPRs: 1,
+        activeIssues: 2,
+        trustedProjects: 4,
+        mergeRate: 0.83, // should be string per the schema
+        needsResponse: 1,
+      },
+      lastRunAt: '2026-04-25T00:00:00.000Z',
+    };
+    expect(() => formatJson(StatusOutputSchema, data)).toThrow(/contract drift.*stats\.mergeRate/i);
+  });
+});
+
+describe('outputJsonValidated (#1105)', () => {
+  let consoleSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    consoleSpy.mockRestore();
+  });
+
+  it('prints the validated envelope to stdout', () => {
+    const Schema = z.object({ ok: z.literal(true) });
+    outputJsonValidated(Schema, { ok: true });
+    const printed = consoleSpy.mock.calls[0][0] as string;
+    const parsed = JSON.parse(printed);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).toEqual({ ok: true });
+  });
+
+  it('throws on contract drift before printing', () => {
+    const Schema = z.object({ ok: z.literal(true) });
+    expect(() => outputJsonValidated(Schema, { ok: false })).toThrow(/contract drift/i);
+    expect(consoleSpy).not.toHaveBeenCalled();
   });
 });

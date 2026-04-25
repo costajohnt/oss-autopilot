@@ -3,6 +3,7 @@
  * Provides structured output that can be consumed by scripts and plugins
  */
 
+import { z, type ZodType } from 'zod';
 import type { FetchedPR, DailyDigest, AgentState, RepoGroup, CommentedIssue, ShelvedPRRef } from '../core/types.js';
 import type { ContributionStats } from '../core/stats.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
@@ -224,19 +225,21 @@ export function compactRepoGroups(groups: RepoGroup[]): CompactRepoGroup[] {
   }));
 }
 
-export interface StatusOutput {
-  stats: {
-    mergedPRs: number;
-    closedPRs: number;
-    activeIssues: number;
-    trustedProjects: number;
-    mergeRate: string;
-    needsResponse: number;
-  };
-  lastRunAt: string;
-  offline?: boolean;
-  lastUpdated?: string;
-}
+export const StatusOutputSchema = z.object({
+  stats: z.object({
+    mergedPRs: z.number().int().nonnegative(),
+    closedPRs: z.number().int().nonnegative(),
+    activeIssues: z.number().int().nonnegative(),
+    trustedProjects: z.number().int().nonnegative(),
+    mergeRate: z.string(),
+    needsResponse: z.number().int().nonnegative(),
+  }),
+  lastRunAt: z.string(),
+  offline: z.boolean().optional(),
+  lastUpdated: z.string().optional(),
+});
+
+export type StatusOutput = z.infer<typeof StatusOutputSchema>;
 
 export interface SearchOutput {
   candidates: Array<{
@@ -536,4 +539,40 @@ export function outputJson<T>(data: T): void {
  */
 export function outputJsonError(message: string, errorCode?: ErrorCode): void {
   console.log(JSON.stringify(jsonError(message, errorCode), null, 2));
+}
+
+/**
+ * Validate `data` against a Zod schema and wrap the result in the standard
+ * JSON output envelope (#1105 long-term ask from #965).
+ *
+ * Throws a contract-drift `Error` if `data` doesn't match the schema. The
+ * error's message lists the failing field paths so a developer can find the
+ * drift quickly. Use this at the `--json` boundary of every CLI command —
+ * whenever the producer adds, renames, or drops a field that doesn't match
+ * the schema, the test harness fails immediately rather than silently
+ * shipping a contract break to consumers (plugin layer, MCP server,
+ * downstream scripts).
+ *
+ * @example
+ *   import { formatJson, StatusOutputSchema } from '../formatters/json.js';
+ *   const envelope = formatJson(StatusOutputSchema, await runStatus());
+ *   console.log(JSON.stringify(envelope, null, 2));
+ */
+export function formatJson<T>(schema: ZodType<T>, data: unknown): JsonOutput<T> {
+  const result = schema.safeParse(data);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `${i.path.length > 0 ? i.path.join('.') : '<root>'}: ${i.message}`)
+      .join('; ');
+    throw new Error(`--json contract drift: command output does not match its declared schema. ${issues}`);
+  }
+  return jsonSuccess(result.data);
+}
+
+/**
+ * `outputJson(data)` plus Zod validation. Same throwing semantics as
+ * {@link formatJson}; the validated envelope is what gets printed.
+ */
+export function outputJsonValidated<T>(schema: ZodType<T>, data: unknown): void {
+  console.log(JSON.stringify(formatJson(schema, data), null, 2));
 }
