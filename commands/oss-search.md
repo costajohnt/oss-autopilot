@@ -156,7 +156,16 @@ Use AskUserQuestion:
 
    **Important:** `searchRoundScores` should use the **unfiltered** mean (all vetted scores) so diminishing returns detection remains accurate.
 
-4. Update list entries with results — move issues that passed the threshold to their vet-recommended tier (`## Pursue`, `## Maybe`, `## Skip`) based on the agent's recommendation field
+4. Update list entries with results — move each surviving issue into its vet-recommended tier (`## Pursue`, `## Maybe`, `## Skip`) using the deterministic CLI helper (#1107):
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" list-move-tier "{issue_url}" \
+     --tier {pursue|maybe|skip} \
+     --list-path "{issueListPath}" \
+     --json
+   ```
+
+   The command preserves blank lines and sub-bullets between entries, is idempotent (re-running with the same tier is a no-op), and creates the target tier section if it doesn't already exist.
 
 5. Track round scores: `searchRoundScores.push(mean of all scores)` (unfiltered — includes scores below threshold)
 

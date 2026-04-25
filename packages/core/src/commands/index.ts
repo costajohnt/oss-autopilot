@@ -82,6 +82,14 @@ export { runStateUnlink } from './state-cmd.js';
 
 /** Parse a curated markdown issue list file into structured issue items. */
 export { runParseList, pruneIssueList } from './parse-list.js';
+/** Move an issue between Pursue / Maybe / Skip sections of a curated list (#1107). */
+export {
+  runListMoveTier,
+  moveIssueToTier,
+  type Tier,
+  type ListMoveTierOptions,
+  type ListMoveTierOutput,
+} from './list-move-tier.js';
 /** Check if new files are properly referenced/integrated. */
 export { runCheckIntegration } from './check-integration.js';
 /** System-health diagnostic — verifies tokens, bundle, state, scout, rate limit. */
