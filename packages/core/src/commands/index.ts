@@ -122,11 +122,9 @@ export type {
   CheckIntegrationOutput,
   LocalReposOutput,
 } from '../formatters/json.js';
-export type { ReadOutput } from './read.js';
 export type { ShelveOutput, UnshelveOutput } from './shelve.js';
 export type { MoveOutput, MoveTarget } from './move.js';
 export type { DismissOutput, UndismissOutput } from './dismiss.js';
-export type { UntrackOutput } from './track.js';
 export type { InitOutput } from './init.js';
 export type { ConfigSetOutput, ConfigCommandOutput } from './config.js';
 export type {
