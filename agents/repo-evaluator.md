@@ -73,16 +73,9 @@ gh api repos/OWNER/REPO/contents/CONTRIBUTING.md --jq '.content' 2>/dev/null | b
 
 **Do not attempt to compute "time to first review" from `gh pr list` JSON.** That payload does not include review timestamps, so any such number would be fabricated. If you want review timing, fetch `gh api repos/OWNER/REPO/pulls/PULL_NUMBER/reviews` per PR — otherwise omit the metric.
 
-## Scoring Rubric (1–10)
+## Scoring Rubric
 
-| Factor | Weight | Criteria |
-|---|---|---|
-| Activity | 25% | Commits in last 30 days |
-| PR speed | 25% | Avg PR merge time < 7 days (from createdAt→mergedAt) |
-| Merge rate | 20% | >70% of PRs merged |
-| Responsiveness | 15% | Issues get responses < 3 days |
-| Guidelines | 10% | CONTRIBUTING.md, templates |
-| Stability | 5% | Not archived, regular releases |
+Use the canonical 1–10 rubric in [`docs/repo-rubric.md`](../docs/repo-rubric.md). It is the same rubric `issue-scout` references for the repo-health portion of its score, so two agents looking at the same repo produce comparable numbers.
 
 ## Output Format
 
@@ -121,21 +114,9 @@ gh api repos/OWNER/REPO/contents/CONTRIBUTING.md --jq '.content' 2>/dev/null | b
 
 Repository scores are cached in `~/.oss-autopilot/state.json` and updated automatically when PRs are merged or closed. The `status` tool returns current cached values.
 
-## Red Flags
-- No commits in 60+ days
-- PRs unreviewed for 30+ days
-- Many closed PRs without merge
-- Archived repository
-- No response to issues
-- Hostile comments
+## Red Flags & Green Flags
 
-## Green Flags
-- Regular releases
-- Quick PR turnaround
-- Active issue discussions
-- Multiple maintainers
-- Clear contribution guidelines
-- First-timer / good-first-issue labels
+See [`docs/repo-rubric.md`](../docs/repo-rubric.md) §Red Flags / §Green Flags — same canonical lists `issue-scout` uses.
 
 ## Related Agents
 - **issue-scout** — find specific issues after deciding a repo is healthy.
