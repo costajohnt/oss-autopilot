@@ -138,11 +138,13 @@ If `gh` also fails, STOP and report.
 
 ## Scoring (summary)
 
-Issue quality (0–5): clarity + scope + competition. Repo quality (0–5): activity + responsiveness + language fit.
+The composite score is **issue quality + repo quality + relationship modifiers**.
 
-Relationship modifiers: merged PR here **+3**; starred **+2**; healthy open PR **+1**; dormant PR (20+ days) **−3**; PR closed without merge **−1**. A repo with a dormant PR should almost never be recommended unless the issue is exceptional.
+- **Issue quality (0–5):** clarity + scope + competition.
+- **Repo quality (0–5):** condensed projection of the canonical health rubric in [`docs/repo-rubric.md`](../docs/repo-rubric.md) — activity, PR speed/merge rate, responsiveness, guidelines, stability. (Same rubric `repo-evaluator` uses, so two agents looking at the same repo produce comparable numbers.)
+- **Relationship modifiers:** merged PR here **+3**; starred **+2**; healthy open PR **+1**; dormant PR (20+ days) **−3**; PR closed without merge **−1**. A repo with a dormant PR should almost never be recommended unless the issue is exceptional.
 
-**Success likelihood grade (#858):** CLI returns `grade: {letter: 'A'|'B'|'C'|'F', reason}` in `vet --json`. Display verbatim — e.g. `A (~2-day avg response)`, `F (unresponsive maintainers)`. Algorithm (worst-of-three, unknown-degrades-one-step) lives in `packages/core/src/core/issue-grading.ts`.
+**Success likelihood grade (#858):** CLI returns `grade: {letter: 'A'|'B'|'C'|'F', reason}` in `vet --json`. Display verbatim — e.g. `A (~2-day avg response)`, `F (unresponsive maintainers)`. Algorithm and source: [`docs/repo-rubric.md` §Success Likelihood Grade](../docs/repo-rubric.md#success-likelihood-grade).
 
 ## Output Format
 
