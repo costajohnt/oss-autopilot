@@ -62,7 +62,9 @@ Seven specialized agents handle specific tasks autonomously:
 
 ### Skills (`skills/`)
 
-- `oss-contribution/SKILL.md` — Best practices for open source contribution etiquette, PR descriptions, commit messages, and maintainer interaction.
+- `oss-contribution/SKILL.md` — Index for the contribution skill family. Universal rules: minimal-diff discipline, working on issues, time management, failure protocol.
+- `pr-etiquette/SKILL.md` — Review-feedback responses, PR descriptions, dormant-PR follow-up cadence, PR quality checklist, communication style.
+- `contribution-ethics/SKILL.md` — AI attribution rules, AI-tell avoidance in maintainer-visible writing, when to defer to a human contributor.
 
 ### Hooks (`hooks/`)
 

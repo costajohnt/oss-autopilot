@@ -2,7 +2,7 @@
 
 > **Session state:** Expects `data.daily.digest.openPRs` from a recent `daily --json` run.
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
-> **Policy:** Operationalizes the 7/14/30-day cadence defined in `skills/oss-contribution/SKILL.md` §6 "Following Up on Dormant PRs".
+> **Policy:** Operationalizes the 7/14/30-day cadence defined in `skills/pr-etiquette/SKILL.md` §"Following Up on Dormant PRs".
 
 Surfaces PRs that are waiting on maintainer response and offers the user a chance to send a polite follow-up. Runs only on user initiative — never auto-posts comments.
 
@@ -97,7 +97,7 @@ Per the skill: **only one follow-up per timeframe.** The workflow does not track
 
 ## Cross-references
 
-- Policy: `skills/oss-contribution/SKILL.md` §6 "Following Up on Dormant PRs".
+- Policy: `skills/pr-etiquette/SKILL.md` §"Following Up on Dormant PRs".
 - Draft/post protocol: `draft-review-post` skill (mandatory for any externally-visible comment).
 - Router: `commands/oss.md`.
 - Menu integration: `workflows/action-menu.md`.

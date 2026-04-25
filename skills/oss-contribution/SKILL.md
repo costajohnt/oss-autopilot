@@ -1,20 +1,28 @@
 ---
 name: OSS Contribution Best Practices
 description: This skill should be used when the user is working on open source contributions, responding to maintainer feedback, writing PR descriptions, working on issues, following up on dormant PRs, or needs guidance on open source etiquette and best practices.
-version: 1.1.0
+version: 2.0.0
 ---
 
 # Open Source Contribution Best Practices
 
 **Reference:** Based on [opensource.guide](https://opensource.guide/how-to-contribute/)
 
+This skill is the index. The detail topics live in two sibling skills that load on demand:
+
+- **`pr-etiquette`** — responding to code review feedback, writing PR descriptions, dormant-PR follow-up cadence, PR quality checklist, communication etiquette.
+- **`contribution-ethics`** — AI attribution rules, AI-tell avoidance in maintainer-visible writing, when to defer to a human.
+
+Both are linked below. Use this file for the universal rules that apply to every contribution regardless of stage; jump to the sibling skills when you're at a specific stage in the cycle.
+
 ## Core Principles
 
 **Be a good open source citizen:**
-1. Respect maintainers' time - they're often unpaid volunteers
+
+1. Respect maintainers' time — they're often unpaid volunteers
 2. Read contribution guidelines before contributing
 3. Communicate clearly and professionally
-4. Be patient - open source moves at its own pace
+4. Be patient — open source moves at its own pace
 5. Give back to the community when you can
 
 ## Minimal Diff Discipline
@@ -22,106 +30,12 @@ version: 1.1.0
 Every line in a PR diff must be directly related to the issue being fixed. Unrelated formatting changes (whitespace, quote style, trailing commas, import reordering, line breaks) make diffs noisy, harder to review, and signal carelessness. Maintainers will flag or reject PRs with formatting bloat.
 
 **Rules:**
+
 1. **Only touch lines the fix requires.** Don't reorder imports, change quote styles, fix whitespace, or add trailing commas in existing code — unless those changes are part of the fix itself.
 2. **Scope formatter output.** If the repo's formatter must be run (e.g., CI requires it), review the formatter's changes afterward. Use `git diff` to identify formatting-only changes. Use `git checkout -- {files}` only for files where ALL changes are formatting-only. For files with mixed changes, use targeted edits to surgically remove formatting hunks. (In interactive terminal contexts, `git add -p` can also be used for hunk-level staging.)
 3. **Match the repo's style, don't impose your own.** If the repo uses single quotes, use single quotes in your new code. If it uses tabs, use tabs. Never convert existing style to a different one.
 
 **When formatting IS the fix:** If the issue itself is about formatting (e.g., "run prettier on codebase", "fix inconsistent indentation"), then formatting changes are in scope. In all other cases, they are not.
-
-## Responding to Code Review Feedback
-
-### Mindset
-
-Maintainer feedback is a gift - they're investing time to help you improve. Even critical feedback should be received gracefully.
-
-### Response Approach
-
-- Address every point they raise
-- Keep it short. One or two sentences is usually enough.
-- Push updates promptly after discussion
-- Mark conversations as resolved after addressing
-- If you feel resistance to a request, investigate deeper — the maintainer likely knows something you don't. If you still think there's an issue after investigating, raise it to the human contributor — never override the maintainer
-
-### Assumptions and Verification
-
-When a maintainer requests changes, these rules govern how you respond:
-
-1. **Maintainer is right by default.** If a maintainer says "do X," your starting assumption is that X is correct and appropriate for their codebase. Do not second-guess their judgment about their own project.
-
-2. **Verify, never assume.** Before running any tool (linter, formatter, type checker), check the project's CI configuration to confirm that tool is actually enforced. Read `.pre-commit-config.yaml`, `.github/workflows/`, `Makefile`, or equivalent before deciding what to run. A tool that exists in `devDependencies` but is not in CI is not authoritative.
-
-3. **Try before estimating scope.** When asked to make a change, attempt the simplest implementation first. Do not respond with effort estimates, propose TODOs, or suggest deferring to a follow-up PR. If the change turns out to be genuinely complex after attempting it, report what you found to the human.
-
-4. **Pushback = escalate, don't override.** If you believe a maintainer's request is incorrect or harmful, raise the concern to the human contributor. Never push back on a maintainer directly, never ignore the request, and never silently do something different from what was asked.
-
-5. **No TODOs as substitutes.** A maintainer asking for a change expects the change in this PR. Responding with a TODO comment or "I'll handle this in a follow-up" is not an acceptable response unless the maintainer explicitly suggested that approach.
-
-### Pre-Push Review Checkpoint
-
-Before pushing commits that address review feedback:
-
-1. Run the project's code review tooling on your diff (the pr-review-toolkit agents if installed, otherwise the built-in pre-commit-reviewer)
-2. Fix any issues found (bugs, style violations, missing error handling)
-3. Re-run until clean — no actionable findings
-4. Only then push your changes
-
-This prevents maintainers from seeing issues that could have been caught locally. It's especially important when responding to feedback — pushing sloppy fix-up commits undermines credibility.
-
-### PR Readiness Gate (Mandatory)
-
-A PR is NEVER "ready" until all of these pass:
-
-1. **Local lint/type check**: Run the repo's linters and type checkers
-2. **Test suite**: Run the full test suite locally
-3. **Code review**: Run review agents (pr-review-toolkit or pre-commit-reviewer)
-4. **Fix and re-run**: Fix all findings, re-run checks
-5. **Convergence**: Repeat until zero Critical/Recommended findings
-6. **Push and verify CI**: Push and confirm CI passes remotely
-7. **Only then** declare the PR ready for maintainer review
-
-The tool should NEVER say "PR is ready", "work is complete", or "changes are done" without having run through this complete loop. This applies to:
-- New contributions (draft-first workflow)
-- Responses to maintainer feedback
-- CI fix pushes
-- Any commit that will be seen by maintainers
-
-### Things to Avoid
-
-- Being defensive or dismissive
-- Long justifications for every decision
-- Ignoring feedback points
-- Taking days to respond
-- Assuming what tools the project's CI enforces without checking CI config files
-- Substituting TODOs or "follow-up PR" proposals for changes the maintainer requested in this PR
-- Running tools not enforced by CI and treating their output as authoritative
-
-## Writing Good PR Descriptions
-
-### Structure
-
-```markdown
-## Summary
-[1-2 sentences explaining what this PR does]
-
-## Problem
-[What problem does this solve? Link to issue if applicable]
-
-## Solution
-[Brief explanation of your approach]
-
-## Testing
-[How you tested the changes]
-
-## Screenshots (if UI changes)
-[Before/after screenshots]
-```
-
-### Tips
-
-- Link to related issues: "Fixes #123" or "Closes #123"
-- Keep it concise - maintainers review many PRs
-- Highlight anything unusual or that needs special attention
-- Don't pad with unnecessary sections
 
 ## Working on Issues
 
@@ -146,6 +60,7 @@ The PR itself is the claim. A separate "I'm working on this" comment is unnecess
 ### When to Comment on the Issue
 
 Only comment on the issue itself when:
+
 - You need clarification from the maintainer before starting
 - The approach is ambiguous and you want confirmation
 - The issue is old and you want to confirm it's still relevant
@@ -160,16 +75,6 @@ Move on silently. Don't comment that you tried and failed. Don't mark the issue 
 
 - Reference the issue in the PR body: "Fixes #123" or "Closes #123"
 - Only comment on the issue if the PR needs additional context
-
-## Following Up on Dormant PRs
-
-- **7 days:** Light check-in ("Anything else needed from my side?")
-- **14 days:** Direct follow-up ("Still on your radar? Happy to make changes.")
-- **30 days:** Final check ("Understand if priorities shifted. Let me know!")
-
-Be patient, not pushy. Only follow up once per timeframe. Check if maintainers are active elsewhere before escalating.
-
-**Workflow:** `workflows/dormant-pr-follow-up.md` operationalizes this cadence — run via the `/oss` router or the action menu. It surfaces dormant PRs, buckets them into tiers, and drafts a tier-appropriate follow-up through the `draft-review-post` skill (never auto-posts).
 
 ## Time Management
 
@@ -187,81 +92,6 @@ Be patient, not pushy. Only follow up once per timeframe. Check if maintainers a
 - Don't let PRs go stale
 - Know when to close and move on
 
-## PR Quality Checklist
-
-Before submitting any PR, verify:
-
-### Required
-- [ ] **Issue Reference**: PR links to issue (`Closes #X` or `Fixes #X`)
-- [ ] **Description Quality**: Explains what changed and why
-- [ ] **Title Quality**: Descriptive, properly formatted (e.g., `fix: resolve login timeout`)
-- [ ] **Focused Changes**: One logical change per PR (< 10 files, < 400 lines ideal)
-- [ ] **Minimal Diff**: No unrelated formatting changes (whitespace, quotes, imports, trailing commas)
-
-### Conditional
-- [ ] **Tests Included**: If project requires tests, add them
-- [ ] **Docs Updated**: If behavior changed, update docs
-
-### Optional
-- [ ] **Branch Naming**: Follows convention (`feature/`, `fix/`, `docs/`)
-- [ ] **Screenshots**: Included for UI changes
-
-**Tip:** Use the `pr-compliance-checker` agent to validate your PR before requesting review.
-
-## Communication Etiquette
-
-### Always
-- Be patient - maintainers are often volunteers
-- Respond promptly to feedback (within 24-48 hours)
-- Keep discussions public and constructive
-- Accept decisions gracefully, even if you disagree
-
-### Never
-- Argue or be defensive
-- Ping maintainers repeatedly
-- Take rejection personally
-- Ignore feedback points
-- Make demands or set ultimatums
-
-### Writing Style (Avoiding AI Tells)
-
-AI-generated comments have recognizable patterns. Avoid these:
-
-- **No changelogs in comments.** "Changes in the latest commit:" with bullet points is a dead giveaway. Describe what you did in a sentence, or let the diff speak.
-- **Vary your openings.** Don't start every response with "Thanks for the review!" or "Good catch!" Sometimes just jump to the substance.
-- **Match their length.** If the maintainer wrote two sentences, don't respond with four paragraphs.
-- **Read the whole thread first.** Asking about something explained three comments up is the fastest way to lose credibility.
-- **Mean what you say.** Don't defend a position then immediately abandon it. Push back or agree -- pick one.
-- **Figure things out yourself.** If a maintainer says "add a screenshot," look at existing examples. Don't ask them to explain the tooling.
-
-### When to Respond Personally
-
-Some situations require the human contributor, not an AI tool:
-
-- **Maintainer frustration or AI accusations** — respond honestly and personally
-- **Visual/subjective tasks** — screenshots, design opinions, UX judgments
-- **Heated discussions** — any thread about AI ethics, contribution policies, or governance
-- **Process questions with obvious answers** — look at existing examples instead of asking
-
-## Contribution Ethics
-
-### Do
-
-- Attribute work properly (co-authors for human pair work)
-- Give credit to human contributors in PR descriptions
-- Share knowledge with other contributors
-
-### Don't
-
-- Add AI attribution to commits or PRs:
-  - No `Co-Authored-By: Claude` trailers
-  - No "Generated with Claude Code" in PR descriptions
-  - No robot emoji attributions
-  - No mentions of AI assistance in comments
-- Claim credit for others' work
-- Submit low-quality PRs just for contribution graphs
-- Spam repos with trivial changes
-
 ## Failure Protocol
 
 When a task or approach fails, **STOP and report back to the user** with what failed and why. Don't silently switch strategies or improvise workarounds — let the user decide how to proceed.
@@ -274,6 +104,11 @@ In short:
 
 - **Documented branch in a workflow** (a step that names its fallback options) → follow it; surface the choices to the user; do what they pick.
 - **Improvised fallback** (substituting a different command, retrying with no plan, swapping in a less-specific approach because the first didn't work) → never. Stop and ask.
+
+## See Also
+
+- `pr-etiquette` skill — review responses, PR descriptions, dormant-PR follow-up, PR quality checklist, communication style.
+- `contribution-ethics` skill — AI attribution rules, AI-tell avoidance, when to defer to a human.
 
 ## Resources
 
