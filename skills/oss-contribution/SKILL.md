@@ -264,7 +264,16 @@ Some situations require the human contributor, not an AI tool:
 
 ## Failure Protocol
 
-When a task or approach fails, **STOP and report back to the user** with what failed and why. Do not silently switch strategies or improvise workarounds — let the user decide how to proceed. Documented fallbacks (e.g., gh CLI fallback) are permitted if the user is informed first. Undocumented or improvised fallbacks are never permitted.
+When a task or approach fails, **STOP and report back to the user** with what failed and why. Don't silently switch strategies or improvise workarounds — let the user decide how to proceed.
+
+This protocol governs **unexpected** failures: a tool crashing, an external command returning an error you weren't prepared for, a check producing output you don't know how to handle, an assumption turning out to be wrong. In those cases: stop, report what failed, ask.
+
+It does **not** override decision points that the workflow itself documents. The `/oss` workflows surface explicit fallback choices in several places (e.g., "if retry fails, offer retry / skip / done for now"). Those branches were planned, are surfaced to the user, and are exactly the kind of "let the user decide" behavior this protocol asks for. Follow them as written.
+
+In short:
+
+- **Documented branch in a workflow** (a step that names its fallback options) → follow it; surface the choices to the user; do what they pick.
+- **Improvised fallback** (substituting a different command, retrying with no plan, swapping in a less-specific approach because the first didn't work) → never. Stop and ask.
 
 ## Resources
 
