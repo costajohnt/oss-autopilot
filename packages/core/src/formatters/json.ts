@@ -241,6 +241,147 @@ export const StatusOutputSchema = z.object({
 
 export type StatusOutput = z.infer<typeof StatusOutputSchema>;
 
+// ── Daily output schemas (#1146) ─────────────────────────────────────
+//
+// FetchedPR / CommentedIssue / PRCheckFailure are large heterogeneous shapes
+// whose state-schema counterparts already use `z.any()` / pass-through
+// validation. We mirror that here — strict on the wrapper (so drift in
+// top-level keys / category arrays surfaces immediately) and tolerant on the
+// opaque payload entries.
+
+const FetchedPRPassthroughSchema = z.record(z.string(), z.unknown());
+const CommentedIssuePassthroughSchema = z.record(z.string(), z.unknown());
+const PRCheckFailurePassthroughSchema = z.record(z.string(), z.unknown());
+
+const ShelvedPRRefStrictSchema = z.object({
+  number: z.number(),
+  url: z.string(),
+  title: z.string(),
+  repo: z.string(),
+  daysSinceActivity: z.number(),
+  status: z.string(),
+});
+
+const RecentClosedPRSchema = z.object({
+  number: z.number(),
+  url: z.string(),
+  title: z.string(),
+  closedAt: z.string(),
+});
+
+const RecentMergedPRSchema = z.object({
+  number: z.number(),
+  url: z.string(),
+  title: z.string(),
+  mergedAt: z.string(),
+});
+
+const DailyDigestSummarySchemaStrict = z.object({
+  totalActivePRs: z.number(),
+  totalNeedingAttention: z.number(),
+  totalMergedAllTime: z.number(),
+  mergeRate: z.number(),
+});
+
+const DailyDigestCompactSchema = z.object({
+  generatedAt: z.string(),
+  openPRs: z.array(FetchedPRPassthroughSchema),
+  needsAddressingPRs: z.array(z.string()),
+  waitingOnMaintainerPRs: z.array(z.string()),
+  recentlyClosedPRs: z.array(RecentClosedPRSchema),
+  recentlyMergedPRs: z.array(RecentMergedPRSchema),
+  shelvedPRs: z.array(ShelvedPRRefStrictSchema),
+  autoUnshelvedPRs: z.array(ShelvedPRRefStrictSchema),
+  summary: DailyDigestSummarySchemaStrict,
+});
+
+const CapacityAssessmentSchema = z.object({
+  hasCapacity: z.boolean(),
+  activePRCount: z.number().int().nonnegative(),
+  maxActivePRs: z.number().int().nonnegative(),
+  shelvedPRCount: z.number().int().nonnegative(),
+  criticalIssueCount: z.number().int().nonnegative(),
+  reason: z.string(),
+});
+
+const ActionableIssueTypeSchema = z.enum([
+  'ci_failing',
+  'merge_conflict',
+  'needs_response',
+  'needs_changes',
+  'incomplete_checklist',
+]);
+
+const CompactActionableIssueSchema = z.object({
+  type: ActionableIssueTypeSchema,
+  prUrl: z.string(),
+  label: z.string(),
+  isNewContribution: z.boolean(),
+});
+
+const ActionMenuItemSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  description: z.string(),
+  capacityWarning: z.string().optional(),
+});
+
+const ActionMenuSchema = z.object({
+  items: z.array(ActionMenuItemSchema),
+  context: z.object({
+    hasActionableIssues: z.boolean(),
+    actionableCount: z.number().int().nonnegative(),
+    hasCapacity: z.boolean(),
+    hasIssueResponses: z.boolean(),
+    issueResponseCount: z.number().int().nonnegative(),
+  }),
+});
+
+const CompactRepoGroupSchema = z.object({
+  repo: z.string(),
+  prUrls: z.array(z.string()),
+});
+
+const DailyWarningPhaseSchema = z.enum([
+  'fetch',
+  'repo-scores',
+  'analytics',
+  'scout-sync',
+  'partition',
+  'dismiss-filter',
+  'gist-checkpoint',
+]);
+
+const DailyWarningSchema = z.object({
+  phase: DailyWarningPhaseSchema,
+  operation: z.string(),
+  message: z.string(),
+});
+
+export const DailyOutputSchema = z.object({
+  digest: DailyDigestCompactSchema,
+  capacity: CapacityAssessmentSchema,
+  summary: z.string(),
+  briefSummary: z.string(),
+  actionableIssues: z.array(CompactActionableIssueSchema),
+  actionMenu: ActionMenuSchema,
+  commentedIssues: z.array(CommentedIssuePassthroughSchema),
+  repoGroups: z.array(CompactRepoGroupSchema),
+  failures: z.array(PRCheckFailurePassthroughSchema),
+  warnings: z.array(DailyWarningSchema),
+});
+
+export const CompactDailyOutputSchema = z.object({
+  digest: DailyDigestCompactSchema,
+  capacity: CapacityAssessmentSchema,
+  briefSummary: z.string(),
+  actionableIssues: z.array(CompactActionableIssueSchema),
+  actionMenu: ActionMenuSchema,
+  commentedIssues: z.array(CommentedIssuePassthroughSchema),
+  failureCount: z.number().int().nonnegative(),
+  warnings: z.array(DailyWarningSchema),
+});
+
 export interface SearchOutput {
   candidates: Array<{
     issue: {

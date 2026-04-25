@@ -13,6 +13,8 @@ import {
   formatJson,
   outputJsonValidated,
   StatusOutputSchema,
+  DailyOutputSchema,
+  CompactDailyOutputSchema,
   toCompactDailyOutput,
   toCompactStartupOutput,
   type DailyOutput,
@@ -402,5 +404,60 @@ describe('outputJsonValidated (#1105)', () => {
     const Schema = z.object({ ok: z.literal(true) });
     expect(() => outputJsonValidated(Schema, { ok: false })).toThrow(/contract drift/i);
     expect(consoleSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('DailyOutputSchema (#1146)', () => {
+  it('round-trips a fully populated DailyOutput from the fixture', () => {
+    const fixture = makeMockDailyOutput();
+    const out = formatJson(DailyOutputSchema, fixture);
+    expect(out.success).toBe(true);
+  });
+
+  it('rejects drift: missing top-level field', () => {
+    const fixture = makeMockDailyOutput();
+    const broken = { ...fixture, summary: undefined } as unknown;
+    expect(() => formatJson(DailyOutputSchema, broken)).toThrow(/contract drift.*summary/i);
+  });
+
+  it('rejects drift: needsAddressingPRs not a string array', () => {
+    const fixture = makeMockDailyOutput();
+    const broken = {
+      ...fixture,
+      digest: { ...fixture.digest, needsAddressingPRs: [{ url: 'x' }] },
+    };
+    expect(() => formatJson(DailyOutputSchema, broken)).toThrow(/contract drift.*needsAddressingPRs/i);
+  });
+
+  it('rejects drift: actionMenu missing context flag', () => {
+    const fixture = makeMockDailyOutput();
+    const broken = {
+      ...fixture,
+      actionMenu: {
+        items: fixture.actionMenu.items,
+        context: {
+          hasActionableIssues: true,
+          actionableCount: 1,
+          hasCapacity: true,
+          // hasIssueResponses removed
+          issueResponseCount: 0,
+        },
+      },
+    } as unknown;
+    expect(() => formatJson(DailyOutputSchema, broken)).toThrow(/contract drift.*hasIssueResponses/i);
+  });
+});
+
+describe('CompactDailyOutputSchema (#1146)', () => {
+  it('round-trips toCompactDailyOutput(fixture)', () => {
+    const compact = toCompactDailyOutput(makeMockDailyOutput());
+    const out = formatJson(CompactDailyOutputSchema, compact);
+    expect(out.success).toBe(true);
+  });
+
+  it('rejects drift: failureCount as a string', () => {
+    const compact = toCompactDailyOutput(makeMockDailyOutput());
+    const broken = { ...compact, failureCount: '0' } as unknown;
+    expect(() => formatJson(CompactDailyOutputSchema, broken)).toThrow(/contract drift.*failureCount/i);
   });
 });

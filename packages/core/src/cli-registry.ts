@@ -95,10 +95,12 @@ export const commands: CLICommandDef[] = [
               const { runDaily } = await import('./commands/daily.js');
               const data = await runDaily();
               if (options.compact) {
-                const { toCompactDailyOutput } = await import('./formatters/json.js');
-                outputJson(toCompactDailyOutput(data));
+                const { toCompactDailyOutput, outputJsonValidated, CompactDailyOutputSchema } =
+                  await import('./formatters/json.js');
+                outputJsonValidated(CompactDailyOutputSchema, toCompactDailyOutput(data));
               } else {
-                outputJson(data);
+                const { outputJsonValidated, DailyOutputSchema } = await import('./formatters/json.js');
+                outputJsonValidated(DailyOutputSchema, data);
               }
             } else {
               const { runDailyForDisplay, printDigest } = await import('./commands/daily.js');
