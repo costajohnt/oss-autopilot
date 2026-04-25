@@ -35,6 +35,18 @@ vi.mock('./formatters/json.js', () => ({
   DoctorOutputSchema: {},
   SkipAddOutputSchema: {},
   ListMoveTierOutputSchema: {},
+  PostOutputSchema: {},
+  ClaimOutputSchema: {},
+  InitOutputSchema: {},
+  CheckSetupOutputSchema: {},
+  SetupOutputSchema: {},
+  ConfigCommandOutputSchema: {},
+  MoveOutputSchema: {},
+  PRTemplateOutputSchema: {},
+  ParseIssueListOutputSchema: {},
+  CheckIntegrationOutputSchema: {},
+  DetectFormattersOutputSchema: {},
+  LocalReposOutputSchema: {},
 }));
 
 // ─── Mock dynamic command-module imports ────────────────────────────────────
@@ -251,7 +263,10 @@ describe('override status validation', () => {
       prUrl: PR_URL,
       target: expectedTarget,
     });
-    expect(mockOutputJson).toHaveBeenCalledWith({ description: `Moved to ${expectedTarget}` });
+    // override now routes through outputJsonValidated (#1155)
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), {
+      description: `Moved to ${expectedTarget}`,
+    });
   });
 
   it('should display description in non-JSON mode', async () => {
@@ -313,7 +328,7 @@ describe('printRepos (via local-repos command)', () => {
     expect(repoAIndex).toBeLessThan(repoBIndex);
   });
 
-  it('should call outputJson when --json is passed', async () => {
+  it('should call outputJsonValidated when --json is passed', async () => {
     const repoData = {
       repos: { 'owner/repo': { path: '/home/user/repo', currentBranch: 'main' } },
       scanPaths: ['/home/user'],
@@ -325,7 +340,8 @@ describe('printRepos (via local-repos command)', () => {
 
     await program.parseAsync(['node', 'cli', 'local-repos', '--json']);
 
-    expect(mockOutputJson).toHaveBeenCalledWith(repoData);
+    // local-repos now routes through outputJsonValidated (#1155)
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), repoData);
   });
 
   it('should show cached header when fromCache is true', async () => {

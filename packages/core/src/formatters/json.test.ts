@@ -19,6 +19,18 @@ import {
   DoctorOutputSchema,
   SkipAddOutputSchema,
   ListMoveTierOutputSchema,
+  PostOutputSchema,
+  ClaimOutputSchema,
+  InitOutputSchema,
+  CheckSetupOutputSchema,
+  SetupOutputSchema,
+  ConfigCommandOutputSchema,
+  MoveOutputSchema,
+  PRTemplateOutputSchema,
+  ParseIssueListOutputSchema,
+  CheckIntegrationOutputSchema,
+  DetectFormattersOutputSchema,
+  LocalReposOutputSchema,
   toCompactDailyOutput,
   toCompactStartupOutput,
   type DailyOutput,
@@ -625,5 +637,112 @@ describe('ListMoveTierOutputSchema (#1148)', () => {
       count: 1,
     } as unknown;
     expect(() => formatJson(ListMoveTierOutputSchema, data)).toThrow(/contract drift.*toTier/i);
+  });
+});
+
+describe('Misc command schemas (#1155)', () => {
+  it('PostOutputSchema round-trip + drift', () => {
+    expect(formatJson(PostOutputSchema, { commentUrl: 'a', url: 'b' }).success).toBe(true);
+    expect(() => formatJson(PostOutputSchema, { commentUrl: 'a' })).toThrow(/contract drift.*url/i);
+  });
+
+  it('ClaimOutputSchema round-trip + drift', () => {
+    expect(formatJson(ClaimOutputSchema, { commentUrl: 'a', issueUrl: 'b' }).success).toBe(true);
+    expect(() => formatJson(ClaimOutputSchema, { commentUrl: 'a' })).toThrow(/contract drift.*issueUrl/i);
+  });
+
+  it('InitOutputSchema round-trip + drift', () => {
+    expect(formatJson(InitOutputSchema, { username: 'foo', message: 'ok' }).success).toBe(true);
+    expect(() => formatJson(InitOutputSchema, { username: 'foo' })).toThrow(/contract drift.*message/i);
+  });
+
+  it('CheckSetupOutputSchema accepts both setupComplete states', () => {
+    expect(formatJson(CheckSetupOutputSchema, { setupComplete: true, username: 'a' }).success).toBe(true);
+    expect(formatJson(CheckSetupOutputSchema, { setupComplete: false, username: '' }).success).toBe(true);
+    expect(() => formatJson(CheckSetupOutputSchema, { setupComplete: 'yes', username: 'a' })).toThrow(
+      /contract drift/i,
+    );
+  });
+
+  it('SetupOutputSchema accepts all three union variants', () => {
+    expect(formatJson(SetupOutputSchema, { success: true, settings: { a: 'b' } }).success).toBe(true);
+    expect(
+      formatJson(SetupOutputSchema, {
+        setupComplete: true,
+        config: {
+          githubUsername: 'x',
+          maxActivePRs: 5,
+          dormantThresholdDays: 30,
+          approachingDormantDays: 25,
+          languages: [],
+          labels: [],
+          projectCategories: [],
+          preferredOrgs: [],
+          scope: [],
+          persistence: 'local',
+        },
+      }).success,
+    ).toBe(true);
+    expect(formatJson(SetupOutputSchema, { setupRequired: true, prompts: [] }).success).toBe(true);
+  });
+
+  it('ConfigCommandOutputSchema accepts all three union variants', () => {
+    expect(formatJson(ConfigCommandOutputSchema, { config: { foo: 'bar' } }).success).toBe(true);
+    expect(formatJson(ConfigCommandOutputSchema, { success: true, key: 'k', value: 'v' }).success).toBe(true);
+    expect(formatJson(ConfigCommandOutputSchema, { keys: [{ key: 'a' }] }).success).toBe(true);
+  });
+
+  it('MoveOutputSchema round-trip + drift on target enum', () => {
+    expect(formatJson(MoveOutputSchema, { url: 'u', target: 'attention', description: 'd' }).success).toBe(true);
+    expect(() => formatJson(MoveOutputSchema, { url: 'u', target: 'invalid', description: 'd' })).toThrow(
+      /contract drift.*target/i,
+    );
+  });
+
+  it('PRTemplateOutputSchema accepts null template/source', () => {
+    expect(formatJson(PRTemplateOutputSchema, { template: 'body', source: '.github/PR.md' }).success).toBe(true);
+    expect(formatJson(PRTemplateOutputSchema, { template: null, source: null }).success).toBe(true);
+    expect(formatJson(PRTemplateOutputSchema, { template: null, source: null, error: 'oops' }).success).toBe(true);
+  });
+
+  it('ParseIssueListOutputSchema round-trip with items', () => {
+    const data = {
+      available: [{ repo: 'a/b', number: 1, title: 't', tier: 'pursue', url: 'u', score: 8 }],
+      completed: [],
+      availableCount: 1,
+      completedCount: 0,
+    };
+    expect(formatJson(ParseIssueListOutputSchema, data).success).toBe(true);
+  });
+
+  it('CheckIntegrationOutputSchema round-trip', () => {
+    expect(formatJson(CheckIntegrationOutputSchema, { newFiles: [], unreferencedCount: 0 }).success).toBe(true);
+  });
+
+  it('DetectFormattersOutputSchema round-trip with formatters', () => {
+    const data = {
+      formatters: [
+        {
+          name: 'prettier' as const,
+          configPath: '.prettierrc',
+          fixCommand: 'npx prettier --write .',
+          checkCommand: 'npx prettier --check .',
+          supportsFileArgs: true,
+        },
+      ],
+      packageJsonScripts: [{ name: 'lint', command: 'eslint .' }],
+      repoPath: '/repo',
+    };
+    expect(formatJson(DetectFormattersOutputSchema, data).success).toBe(true);
+  });
+
+  it('LocalReposOutputSchema round-trip', () => {
+    const data = {
+      repos: { 'a/b': { path: '/p', exists: true, currentBranch: 'main' } },
+      scanPaths: ['/p'],
+      cachedAt: '2026-04-25',
+      fromCache: false,
+    };
+    expect(formatJson(LocalReposOutputSchema, data).success).toBe(true);
   });
 });

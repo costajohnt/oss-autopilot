@@ -458,6 +458,175 @@ export const ListMoveTierOutputSchema = z.object({
   reason: z.string().optional(),
 });
 
+// ── #1155: Zod coverage for remaining CLI commands ───────────────────
+
+export const PostOutputSchema = z.object({
+  commentUrl: z.string(),
+  url: z.string(),
+});
+
+export const ClaimOutputSchema = z.object({
+  commentUrl: z.string(),
+  issueUrl: z.string(),
+});
+
+export const InitOutputSchema = z.object({
+  username: z.string(),
+  message: z.string(),
+});
+
+export const CheckSetupOutputSchema = z.object({
+  setupComplete: z.boolean(),
+  username: z.string(),
+});
+
+const SetupSetOutputSchema = z.object({
+  success: z.literal(true),
+  settings: z.record(z.string(), z.string()),
+  warnings: z.array(z.string()).optional(),
+});
+
+const SetupCompleteOutputSchema = z.object({
+  setupComplete: z.literal(true),
+  config: z.object({
+    githubUsername: z.string(),
+    maxActivePRs: z.number(),
+    dormantThresholdDays: z.number(),
+    approachingDormantDays: z.number(),
+    languages: z.array(z.string()),
+    labels: z.array(z.string()),
+    projectCategories: z.array(z.string()),
+    preferredOrgs: z.array(z.string()),
+    scope: z.array(z.string()),
+    persistence: z.enum(['local', 'gist']),
+  }),
+});
+
+const SetupRequiredOutputSchema = z.object({
+  setupRequired: z.literal(true),
+  prompts: z.array(
+    z.object({
+      setting: z.string(),
+      prompt: z.string(),
+      current: z.union([z.string(), z.number(), z.array(z.string()), z.null()]),
+      required: z.boolean().optional(),
+      default: z.union([z.string(), z.number(), z.array(z.string())]).optional(),
+      type: z.string().optional(),
+    }),
+  ),
+});
+
+export const SetupOutputSchema = z.union([SetupSetOutputSchema, SetupCompleteOutputSchema, SetupRequiredOutputSchema]);
+
+const ConfigKeyDefSchema = z.object({}).passthrough();
+
+const ConfigGetOutputSchema = z.object({
+  config: z.record(z.string(), z.unknown()),
+});
+
+const ConfigSetOutputSchema = z.object({
+  success: z.literal(true),
+  key: z.string(),
+  value: z.string(),
+});
+
+const ConfigListKeysOutputSchema = z.object({
+  keys: z.array(ConfigKeyDefSchema),
+});
+
+export const ConfigCommandOutputSchema = z.union([
+  ConfigGetOutputSchema,
+  ConfigSetOutputSchema,
+  ConfigListKeysOutputSchema,
+]);
+
+export const MoveOutputSchema = z.object({
+  url: z.string(),
+  target: z.enum(['attention', 'waiting', 'shelved', 'auto']),
+  description: z.string(),
+});
+
+export const PRTemplateOutputSchema = z.object({
+  template: z.string().nullable(),
+  source: z.string().nullable(),
+  error: z.string().optional(),
+});
+
+const ParsedIssueItemSchema = z.object({
+  repo: z.string(),
+  number: z.number(),
+  title: z.string(),
+  tier: z.string(),
+  url: z.string(),
+  score: z.number().optional(),
+});
+
+export const ParseIssueListOutputSchema = z.object({
+  available: z.array(ParsedIssueItemSchema),
+  completed: z.array(ParsedIssueItemSchema),
+  availableCount: z.number().int().nonnegative(),
+  completedCount: z.number().int().nonnegative(),
+});
+
+const NewFileInfoSchema = z.object({
+  path: z.string(),
+  referencedBy: z.array(z.string()),
+  isIntegrated: z.boolean(),
+  suggestedEntryPoints: z.array(z.string()).optional(),
+});
+
+export const CheckIntegrationOutputSchema = z.object({
+  newFiles: z.array(NewFileInfoSchema),
+  unreferencedCount: z.number().int().nonnegative(),
+});
+
+const FormatterNameSchema = z.enum([
+  'prettier',
+  'eslint',
+  'biome',
+  'black',
+  'ruff',
+  'rustfmt',
+  'gofmt',
+  'clang-format',
+  'rubocop',
+]);
+
+const DetectedFormatterSchema = z.object({
+  name: FormatterNameSchema,
+  configPath: z.string(),
+  fixCommand: z.string(),
+  checkCommand: z.string(),
+  supportsFileArgs: z.boolean(),
+});
+
+const CIFormatterDiagnosisSchema = z.object({
+  isFormattingFailure: z.boolean(),
+  formatter: FormatterNameSchema.optional(),
+  fixCommand: z.string().optional(),
+  evidence: z.array(z.string()),
+});
+
+export const DetectFormattersOutputSchema = z.object({
+  formatters: z.array(DetectedFormatterSchema),
+  packageJsonScripts: z.array(z.object({ name: z.string(), command: z.string() })),
+  repoPath: z.string(),
+  ciDiagnosis: CIFormatterDiagnosisSchema.optional(),
+});
+
+const LocalRepoInfoSchema = z.object({
+  path: z.string(),
+  exists: z.boolean(),
+  currentBranch: z.string().nullable(),
+});
+
+export const LocalReposOutputSchema = z.object({
+  repos: z.record(z.string(), LocalRepoInfoSchema),
+  scanPaths: z.array(z.string()),
+  cachedAt: z.string(),
+  fromCache: z.boolean(),
+});
+
 export interface SearchOutput {
   candidates: Array<{
     issue: {
