@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.0.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v3.1.4...mcp-v4.0.0) (2026-04-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* the MCP tools `read` and `untrack` are no longer registered. Clients that hard-coded these tool names will get a "tool not found" error from listTools / callTool. The CLI commands of the same name are also removed; scripts that invoked them get "unknown command" from commander.
+
+### Features
+
+* remove read/untrack v1 stubs from CLI and MCP server ([#1133](https://github.com/costajohnt/oss-autopilot/issues/1133)) ([#1157](https://github.com/costajohnt/oss-autopilot/issues/1157)) ([a957feb](https://github.com/costajohnt/oss-autopilot/commit/a957febd0341c447a4e4f735b83d086c025b0694))
+
 ## [3.1.4](https://github.com/costajohnt/oss-autopilot/compare/mcp-v3.1.3...mcp-v3.1.4) (2026-04-22)
 
 

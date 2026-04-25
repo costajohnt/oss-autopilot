@@ -7,12 +7,12 @@
     "source": "github",
     "subfolder": "packages/mcp-server"
   },
-  "version": "3.1.4",
+  "version": "4.0.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@oss-autopilot/mcp",
-      "version": "3.1.4",
+      "version": "4.0.0",
       "transport": {
         "type": "stdio"
       },
