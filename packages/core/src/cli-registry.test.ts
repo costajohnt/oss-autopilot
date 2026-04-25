@@ -25,6 +25,13 @@ vi.mock('./core/errors.js', () => ({
 vi.mock('./formatters/json.js', () => ({
   outputJson: vi.fn(),
   outputJsonError: vi.fn(),
+  outputJsonValidated: vi.fn(),
+  // Schemas referenced by command actions — exported as opaque markers; the
+  // mocked outputJsonValidated above doesn't actually validate.
+  StatusOutputSchema: {},
+  SearchOutputSchema: {},
+  DailyOutputSchema: {},
+  CompactDailyOutputSchema: {},
 }));
 
 // ─── Mock dynamic command-module imports ────────────────────────────────────
@@ -54,10 +61,11 @@ vi.mock('./commands/skip-add.js', () => ({ runSkipAdd: mockRunSkipAdd }));
 // ─── Import after mocks ────────────────────────────────────────────────────
 
 import { commands } from './cli-registry.js';
-import { outputJson, outputJsonError } from './formatters/json.js';
+import { outputJson, outputJsonError, outputJsonValidated } from './formatters/json.js';
 
 const mockOutputJson = vi.mocked(outputJson);
 const mockOutputJsonError = vi.mocked(outputJsonError);
+const mockOutputJsonValidated = vi.mocked(outputJsonValidated);
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -150,7 +158,8 @@ describe('search count validation', () => {
     await program.parseAsync(['node', 'cli', 'search', '--json']);
 
     expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 5 });
-    expect(mockOutputJson).toHaveBeenCalledWith(emptySearchResult);
+    // search routes through outputJsonValidated (#1147); the second arg is the result
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), emptySearchResult);
   });
 
   it('should accept a valid positive integer count', async () => {
@@ -160,7 +169,7 @@ describe('search count validation', () => {
     await program.parseAsync(['node', 'cli', 'search', '10', '--json']);
 
     expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 10 });
-    expect(mockOutputJson).toHaveBeenCalledWith(emptySearchResult);
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), emptySearchResult);
   });
 
   it.each(['abc', '1.5', '0', '-3'])('should reject invalid count "%s"', async (count) => {
@@ -183,7 +192,7 @@ describe('search count validation', () => {
 
     expect(consoleWarnSpy).toHaveBeenCalledWith('Capping search to 100 results (requested: 150)');
     expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 100 });
-    expect(mockOutputJson).toHaveBeenCalledWith(emptySearchResult);
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), emptySearchResult);
   });
 });
 

@@ -15,6 +15,7 @@ import {
   StatusOutputSchema,
   DailyOutputSchema,
   CompactDailyOutputSchema,
+  SearchOutputSchema,
   toCompactDailyOutput,
   toCompactStartupOutput,
   type DailyOutput,
@@ -459,5 +460,68 @@ describe('CompactDailyOutputSchema (#1146)', () => {
     const compact = toCompactDailyOutput(makeMockDailyOutput());
     const broken = { ...compact, failureCount: '0' } as unknown;
     expect(() => formatJson(CompactDailyOutputSchema, broken)).toThrow(/contract drift.*failureCount/i);
+  });
+});
+
+describe('SearchOutputSchema (#1147)', () => {
+  function makeSearchCandidate() {
+    return {
+      issue: {
+        repo: 'foo/bar',
+        repoUrl: 'https://github.com/foo/bar',
+        number: 42,
+        title: 'fix the thing',
+        url: 'https://github.com/foo/bar/issues/42',
+        labels: ['good first issue'],
+      },
+      recommendation: 'approve' as const,
+      reasonsToApprove: ['active maintainer'],
+      reasonsToSkip: [],
+      searchPriority: 'starred' as const,
+      viabilityScore: 88,
+      grade: { letter: 'A' as const, reason: 'fast merges' },
+      repoScore: {
+        score: 9.2,
+        mergedPRCount: 3,
+        closedWithoutMergeCount: 0,
+        isResponsive: true,
+        lastMergedAt: '2026-04-01T00:00:00Z',
+      },
+    };
+  }
+
+  it('round-trips a fully populated candidate', () => {
+    const data = {
+      candidates: [makeSearchCandidate()],
+      excludedRepos: ['stale/abandoned'],
+      aiPolicyBlocklist: ['anti-ai/repo'],
+    };
+    expect(formatJson(SearchOutputSchema, data).success).toBe(true);
+  });
+
+  it('round-trips an empty result', () => {
+    const data = { candidates: [], excludedRepos: [], aiPolicyBlocklist: [] };
+    expect(formatJson(SearchOutputSchema, data).success).toBe(true);
+  });
+
+  it('rejects drift: invalid grade letter', () => {
+    const candidate = makeSearchCandidate();
+    (candidate.grade as { letter: string; reason: string }).letter = 'D';
+    const data = { candidates: [candidate], excludedRepos: [], aiPolicyBlocklist: [] };
+    expect(() => formatJson(SearchOutputSchema, data)).toThrow(/contract drift.*letter/i);
+  });
+
+  it('rejects drift: missing reasonsToApprove', () => {
+    const candidate = makeSearchCandidate() as unknown as Record<string, unknown>;
+    delete candidate.reasonsToApprove;
+    const data = { candidates: [candidate], excludedRepos: [], aiPolicyBlocklist: [] };
+    expect(() => formatJson(SearchOutputSchema, data)).toThrow(/contract drift.*reasonsToApprove/i);
+  });
+
+  it('accepts a candidate without optional repoScore', () => {
+    const candidate = makeSearchCandidate() as unknown as Record<string, unknown>;
+    delete candidate.repoScore;
+    const data = { candidates: [candidate], excludedRepos: [], aiPolicyBlocklist: [] };
+    expect(formatJson(SearchOutputSchema, data).success).toBe(true);
   });
 });

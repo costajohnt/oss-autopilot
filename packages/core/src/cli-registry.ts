@@ -232,8 +232,9 @@ export const commands: CLICommandDef[] = [
         .command('search [count]')
         .description('Search for new issues to work on')
         .option('--json', 'Output as JSON')
-        .action((count, options) =>
-          executeAction(
+        .action(async (count, options) => {
+          const { SearchOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => {
               const { runSearch, MAX_SEARCH_RESULTS } = await import('./commands/search.js');
@@ -280,8 +281,9 @@ export const commands: CLICommandDef[] = [
                 console.log('---');
               }
             },
-          ),
-        );
+            SearchOutputSchema,
+          );
+        });
     },
   },
 
