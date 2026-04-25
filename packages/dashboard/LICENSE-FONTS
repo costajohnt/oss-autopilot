@@ -1,0 +1,56 @@
+Self-hosted fonts shipped with the OSS Autopilot dashboard
+==========================================================
+
+The dashboard self-hosts the following fonts (see #1119). Each is distributed
+under the SIL Open Font License v1.1 (OFL-1.1), which permits redistribution
+and bundling with applications. Fonts are sourced via the @fontsource npm
+packages, which mirror the Google Fonts releases.
+
+Plus Jakarta Sans
+-----------------
+
+  Designer: Tokotype Foundry
+  Source:   https://github.com/tokotype/PlusJakartaSans
+  License:  SIL Open Font License v1.1
+            https://github.com/tokotype/PlusJakartaSans/blob/master/OFL.txt
+
+  Copyright 2020 The Plus Jakarta Sans Project Authors
+
+JetBrains Mono
+--------------
+
+  Designer: JetBrains
+  Source:   https://github.com/JetBrains/JetBrainsMono
+  License:  SIL Open Font License v1.1
+            https://github.com/JetBrains/JetBrainsMono/blob/master/OFL.txt
+
+  Copyright 2020 The JetBrains Mono Project Authors
+
+SIL Open Font License v1.1 (excerpt)
+------------------------------------
+
+The fonts are licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+http://scripts.sil.org/OFL
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1. Neither the Font Software nor any of its individual components,
+   in Original or Modified Versions, may be sold by itself.
+
+2. Original or Modified Versions of the Font Software may be bundled,
+   redistributed and/or sold with any software, provided that each copy
+   contains the above copyright notice and this license. These can be
+   included either as stand-alone text files, human-readable headers or
+   in the appropriate machine-readable metadata fields within text or
+   binary files as long as those fields can be easily viewed by the user.
+
+3. No Modified Version of the Font Software may use the Reserved Font
+   Name(s) unless explicit written permission is granted by the
+   corresponding Copyright Holder. This restriction only applies to the
+   primary font name as presented to the users.
+
+(Full text: see the upstream OFL.txt files referenced above.)

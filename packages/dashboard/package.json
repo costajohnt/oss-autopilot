@@ -31,6 +31,8 @@
     "preact-iso": "^2.11.1"
   },
   "devDependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/plus-jakarta-sans": "^5.2.8",
     "@preact/preset-vite": "^2.10.4",
     "@testing-library/preact": "^3.2.4",
     "@types/canvas-confetti": "^1.9.0",
