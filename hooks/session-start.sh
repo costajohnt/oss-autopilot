@@ -23,11 +23,25 @@ dashboard_rebuild_error=""
 MARKETPLACE_DIR="$HOME/.claude/plugins/marketplaces/oss-autopilot"
 
 # --- Step 1: Rebuild stale CLI bundle (if needed) ---
+# Use pnpm if available (this is a pnpm workspace; running `npm install` from
+# packages/core/ would generate a stray package-lock.json next to pnpm-lock.yaml
+# and confuse pnpm on the next install). Fall back to npm for end users that
+# only have npm — works today because @oss-autopilot/core has no workspace:*
+# deps. Mirrors the Step 1.5 dashboard pattern.
 if [ -f "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ] && [ "${PLUGIN_ROOT}/packages/core/package.json" -nt "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ]; then
-  if (cd "${PLUGIN_ROOT}/packages/core" && npm install --silent 2>/dev/null && npm run bundle --silent 2>/dev/null); then
+  if command -v pnpm &>/dev/null; then
+    cli_build() { cd "${PLUGIN_ROOT}" && pnpm install --silent 2>/dev/null && pnpm --silent --filter @oss-autopilot/core run bundle 2>/dev/null; }
+  else
+    cli_build() { cd "${PLUGIN_ROOT}/packages/core" && npm install --silent 2>/dev/null && npm run bundle --silent 2>/dev/null; }
+  fi
+  if (cli_build); then
     rebuilt_cli=true
   else
-    cli_rebuild_error="cd ${PLUGIN_ROOT}/packages/core && npm install && npm run bundle"
+    if command -v pnpm &>/dev/null; then
+      cli_rebuild_error="cd ${PLUGIN_ROOT} && pnpm install && pnpm --filter @oss-autopilot/core run bundle"
+    else
+      cli_rebuild_error="cd ${PLUGIN_ROOT}/packages/core && npm install && npm run bundle"
+    fi
   fi
 fi
 
