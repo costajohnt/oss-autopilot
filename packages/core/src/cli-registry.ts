@@ -376,8 +376,9 @@ export const commands: CLICommandDef[] = [
         .description('Append an issue URL to the skipped-issues file (idempotent)')
         .option('--path <file>', 'Skipped-issues file path (falls back to config.skippedIssuesPath)')
         .option('--json', 'Output as JSON')
-        .action((issueUrl, options) =>
-          executeAction(
+        .action(async (issueUrl, options) => {
+          const { SkipAddOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => (await import('./commands/skip-add.js')).runSkipAdd({ issueUrl, skipFilePath: options.path }),
             (data) => {
@@ -389,8 +390,9 @@ export const commands: CLICommandDef[] = [
                 console.log(`  File: ${data.path}`);
               }
             },
-          ),
-        );
+            SkipAddOutputSchema,
+          );
+        });
     },
   },
 
@@ -405,8 +407,9 @@ export const commands: CLICommandDef[] = [
         .requiredOption('--tier <tier>', 'Target tier: pursue, maybe, or skip')
         .requiredOption('--list-path <file>', 'Path to the markdown issue list')
         .option('--json', 'Output as JSON')
-        .action((issueUrl, options) =>
-          executeAction(
+        .action(async (issueUrl, options) => {
+          const { ListMoveTierOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => {
               const tier = String(options.tier).toLowerCase();
@@ -430,8 +433,9 @@ export const commands: CLICommandDef[] = [
                 console.log(`  File: ${data.filePath}`);
               }
             },
-          ),
-        );
+            ListMoveTierOutputSchema,
+          );
+        });
     },
   },
 
@@ -901,8 +905,9 @@ export const commands: CLICommandDef[] = [
         .command('doctor')
         .description('Run a system-health diagnostic (token, bundle, state, scout, rate limit)')
         .option('--json', 'Output as JSON')
-        .action((options) =>
-          executeAction(
+        .action(async (options) => {
+          const { DoctorOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => (await import('./commands/doctor.js')).runDoctor(),
             (data) => {
@@ -918,8 +923,9 @@ export const commands: CLICommandDef[] = [
                 `\n${data.summary.ok} ok / ${data.summary.warnings} warning / ${data.summary.errors} error\n`,
               );
             },
-          ),
-        );
+            DoctorOutputSchema,
+          );
+        });
     },
   },
 

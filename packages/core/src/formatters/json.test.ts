@@ -16,6 +16,9 @@ import {
   DailyOutputSchema,
   CompactDailyOutputSchema,
   SearchOutputSchema,
+  DoctorOutputSchema,
+  SkipAddOutputSchema,
+  ListMoveTierOutputSchema,
   toCompactDailyOutput,
   toCompactStartupOutput,
   type DailyOutput,
@@ -523,5 +526,104 @@ describe('SearchOutputSchema (#1147)', () => {
     delete candidate.repoScore;
     const data = { candidates: [candidate], excludedRepos: [], aiPolicyBlocklist: [] };
     expect(formatJson(SearchOutputSchema, data).success).toBe(true);
+  });
+});
+
+describe('DoctorOutputSchema (#1148)', () => {
+  it('round-trips a typical multi-check report', () => {
+    const data = {
+      checks: [
+        { name: 'github-token', status: 'ok' as const, message: 'token resolved' },
+        {
+          name: 'cli-bundle',
+          status: 'warning' as const,
+          message: 'bundle is stale',
+          remediation: 'run pnpm run bundle',
+        },
+      ],
+      summary: { ok: 1, warnings: 1, errors: 0 },
+    };
+    expect(formatJson(DoctorOutputSchema, data).success).toBe(true);
+  });
+
+  it('rejects drift: invalid status enum', () => {
+    const data = {
+      checks: [{ name: 'foo', status: 'unknown', message: 'x' }],
+      summary: { ok: 0, warnings: 0, errors: 0 },
+    } as unknown;
+    expect(() => formatJson(DoctorOutputSchema, data)).toThrow(/contract drift.*status/i);
+  });
+
+  it('rejects drift: summary errors as a string', () => {
+    const data = {
+      checks: [],
+      summary: { ok: 0, warnings: 0, errors: 'zero' },
+    } as unknown;
+    expect(() => formatJson(DoctorOutputSchema, data)).toThrow(/contract drift.*errors/i);
+  });
+});
+
+describe('SkipAddOutputSchema (#1148)', () => {
+  it('round-trips a successful append', () => {
+    const data = {
+      added: true,
+      alreadyPresent: false,
+      url: 'https://github.com/foo/bar/issues/1',
+      path: '/tmp/skipped.md',
+      date: '2026-04-25',
+    };
+    expect(formatJson(SkipAddOutputSchema, data).success).toBe(true);
+  });
+
+  it('round-trips a no-op (already present)', () => {
+    const data = {
+      added: false,
+      alreadyPresent: true,
+      url: 'https://github.com/foo/bar/issues/1',
+      path: '/tmp/skipped.md',
+    };
+    expect(formatJson(SkipAddOutputSchema, data).success).toBe(true);
+  });
+
+  it('rejects drift: missing url', () => {
+    const data = { added: true, alreadyPresent: false, path: '/tmp/x.md' } as unknown;
+    expect(() => formatJson(SkipAddOutputSchema, data)).toThrow(/contract drift.*url/i);
+  });
+});
+
+describe('ListMoveTierOutputSchema (#1148)', () => {
+  it('round-trips a successful move', () => {
+    const data = {
+      moved: true,
+      filePath: '/tmp/list.md',
+      url: 'https://github.com/foo/bar/issues/1',
+      toTier: 'skip' as const,
+      fromTier: 'Pursue',
+      count: 1,
+    };
+    expect(formatJson(ListMoveTierOutputSchema, data).success).toBe(true);
+  });
+
+  it('round-trips a no-op move with reason', () => {
+    const data = {
+      moved: false,
+      filePath: '/tmp/list.md',
+      url: 'https://github.com/foo/bar/issues/1',
+      toTier: 'pursue' as const,
+      count: 0,
+      reason: 'already in target tier',
+    };
+    expect(formatJson(ListMoveTierOutputSchema, data).success).toBe(true);
+  });
+
+  it('rejects drift: invalid tier enum', () => {
+    const data = {
+      moved: true,
+      filePath: '/tmp/list.md',
+      url: 'https://github.com/foo/bar/issues/1',
+      toTier: 'archive',
+      count: 1,
+    } as unknown;
+    expect(() => formatJson(ListMoveTierOutputSchema, data)).toThrow(/contract drift.*toTier/i);
   });
 });
