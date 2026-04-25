@@ -11,7 +11,8 @@
 
 import type { Command } from 'commander';
 import { errorMessage, resolveErrorCode } from './core/errors.js';
-import { outputJson, outputJsonError } from './formatters/json.js';
+import { outputJson, outputJsonError, outputJsonValidated } from './formatters/json.js';
+import type { ZodType } from 'zod';
 
 interface CLICommandDef {
   /** Command name (used to build the local-only set for the preAction hook). */
@@ -46,11 +47,20 @@ async function executeAction<T>(
   options: { json?: boolean },
   run: () => Promise<T>,
   display: (data: T) => void | Promise<void>,
+  /** Optional Zod schema. When provided, the JSON output is validated against
+   * it (#1105). On mismatch, executeAction throws and the standard error
+   * envelope fires — surfacing a contract drift instead of silently shipping
+   * a broken shape. */
+  schema?: ZodType<T>,
 ): Promise<void> {
   try {
     const data = await run();
     if (options.json) {
-      outputJson(data);
+      if (schema) {
+        outputJsonValidated(schema, data);
+      } else {
+        outputJson(data);
+      }
     } else {
       await display(data);
     }
@@ -115,8 +125,9 @@ export const commands: CLICommandDef[] = [
           '--offline',
           'Show cache-freshness metadata (lastUpdated). Status always reads local state — no GitHub API calls are made either way.',
         )
-        .action((options) =>
-          executeAction(
+        .action(async (options) => {
+          const { StatusOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => {
               const { runStatus } = await import('./commands/status.js');
@@ -136,8 +147,9 @@ export const commands: CLICommandDef[] = [
               }
               console.log('\nRun with --json for structured output');
             },
-          ),
-        );
+            StatusOutputSchema,
+          );
+        });
     },
   },
 
