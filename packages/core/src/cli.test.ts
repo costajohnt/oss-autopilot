@@ -374,6 +374,7 @@ describe('Command registration', () => {
       'state',
       'skip-add',
       'list-move-tier',
+      'guidelines',
     ];
 
     for (const name of expectedCommands) {
@@ -503,8 +504,13 @@ describe('CLI argument parsing', () => {
     return undefined;
   }
 
-  it('every command should have --json option (except serve)', () => {
+  it('every command should have --json option (except serve and parent groups)', () => {
     const commandNames = commands.map((c) => c.name);
+
+    // Parent command groups (e.g. `guidelines` → `view`/`store`/`reset`) don't
+    // expose --json themselves; their subcommands do. Verify each subcommand
+    // separately rather than expecting the parent to carry the flag.
+    const parentGroups = new Set<string>(['guidelines']);
 
     for (const name of commandNames) {
       const cmd = findCmd(name);
@@ -514,6 +520,12 @@ describe('CLI argument parsing', () => {
         // serve intentionally lacks --json
         const jsonOpt = cmd!.options.find((o) => o.long === '--json');
         expect(jsonOpt, 'serve should NOT have --json').toBeUndefined();
+      } else if (parentGroups.has(name)) {
+        // Parent group: every subcommand must have --json instead.
+        for (const sub of cmd!.commands) {
+          const jsonOpt = sub.options.find((o) => o.long === '--json');
+          expect(jsonOpt, `${name} ${sub.name()} should have --json`).toBeDefined();
+        }
       } else {
         const jsonOpt = cmd!.options.find((o) => o.long === '--json');
         expect(jsonOpt, `command "${name}" should have --json`).toBeDefined();
