@@ -45,8 +45,8 @@ importers:
         specifier: ^22.0.1
         version: 22.0.1
       '@oss-scout/core':
-        specifier: ^0.6.0
-        version: 0.6.0(@octokit/core@7.0.6)
+        specifier: ^0.7.1
+        version: 0.7.1(@octokit/core@7.0.6)
       commander:
         specifier: ^14.0.3
         version: 14.0.3
@@ -816,8 +816,8 @@ packages:
   '@octokit/types@16.0.0':
     resolution: {integrity: sha512-sKq+9r1Mm4efXW1FCk7hFSeJo4QKreL/tTbR0rz/qx/r1Oa2VV83LTA/H/MuCOX7uCIJmQVRKBcbmWoySjAnSg==}
 
-  '@oss-scout/core@0.6.0':
-    resolution: {integrity: sha512-j3BY0hEgEgWxG2/MMctTI86Pknh+AJraOMzFU+CfOnHloY8i1zH9Sgltpm3lEVnyG3hFRGBPRxhX55wg/WwbDQ==}
+  '@oss-scout/core@0.7.1':
+    resolution: {integrity: sha512-3a3uQTsJVd6Lsf7q6rxrOwC7JFE3kkdI3Ok+UH1n7S/RHcWNOUUQm+Jh5+FC4dI/b8j1Q912xFOPnbfbQTbR8Q==}
     engines: {node: '>=20.0.0'}
     hasBin: true
 
@@ -3169,7 +3169,7 @@ snapshots:
     dependencies:
       '@octokit/openapi-types': 27.0.0
 
-  '@oss-scout/core@0.6.0(@octokit/core@7.0.6)':
+  '@oss-scout/core@0.7.1(@octokit/core@7.0.6)':
     dependencies:
       '@octokit/plugin-throttling': 11.0.3(@octokit/core@7.0.6)
       '@octokit/rest': 22.0.1

@@ -62,6 +62,7 @@ describe('runVet', () => {
       vettingResult: { isViable: true },
       antiLLMPolicy: undefined,
       linkedPRClassification: 'none',
+      slmTriage: null,
       grade: { letter: 'A', reason: expect.stringMatching(/respons|merge|commit/i) },
     });
   });

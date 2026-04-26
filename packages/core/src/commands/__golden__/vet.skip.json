@@ -36,6 +36,7 @@
     ]
   },
   "linkedPRClassification": "none",
+  "slmTriage": null,
   "grade": {
     "letter": "F",
     "reason": "unknown maintainer responsiveness, merge rate, activity"

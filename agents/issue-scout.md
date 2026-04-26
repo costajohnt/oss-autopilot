@@ -117,6 +117,17 @@ The `vet` response includes a `linkedPRClassification` when scout exposes the ra
 
 Classification handles case-insensitive logins, ghost authors, and REST/GraphQL state-value casing.
 
+### SLM pre-triage (optional, opt-in)
+
+When the user has configured `slmTriageModel` (e.g. `gemma4:e4b`), the `vet` response includes an `slmTriage: { decision, confidence, reasons, modelVersion }` field. Use it as a *prior*, not a gate:
+
+- `decision: 'pursue'` with `confidence: 'high'` — proceed normally; surface as a strong signal in your summary.
+- `decision: 'investigate'` — read the issue body before recommending; don't auto-approve.
+- `decision: 'skip'` — surface the model's reasons in the skip rationale; still let the user override.
+- `null` — model not configured or unreachable; behave as before.
+
+Never make a recommendation that contradicts the SLM call without saying so explicitly in the summary; users want to see the disagreement, not paper over it.
+
 ### gh fallback vetting
 
 If MCP + CLI both fail, collect the vetting data with `gh` (inform the user first):
