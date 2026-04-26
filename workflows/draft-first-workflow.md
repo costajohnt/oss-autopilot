@@ -525,7 +525,16 @@ branch=$(git branch --show-current)
 oss-autopilot pr-template {upstream-owner}/{upstream-repo} --json
 ```
 
-If a template is returned (`data.template` is non-null), use it as the structure for the PR body — fill in its sections (e.g., `## Summary`, `## Test Plan`, `## Docs`) with content relevant to your changes. Preserve the template's section headers and formatting. If no template exists or the command fails (network error, API error), use the default format below — template detection is best-effort and must not block PR creation.
+If a template is returned (`data.template` is non-null), the template body is the **baseline** for your PR description. You are merging your generated summary INTO it, not replacing it. Specifically:
+
+1. **Preserve the template verbatim.** Do not delete, reorder, or rewrite sections, headings, HTML comments (`<!-- ... -->`), or checklist items. Maintainers and bots (e.g., DCO checkers, changeset enforcers) rely on these — wiping them often violates the repo's contribution rules and reads as careless.
+2. **Leave every checkbox unchecked** (`- [ ]`, never `- [x]`). The contributor must actively confirm each item, which is the entire point of a checklist. Pre-checking checklist items defeats the safety mechanism.
+3. **Insert your generated summary into the right slot:**
+   - If the template has a labeled summary/description heading (e.g. `## Summary`, `## Description`, `## What does this PR do?`, `## Motivation`), put your summary text directly under that heading, replacing only any placeholder text (e.g. `<!-- Describe your change here -->`).
+   - Otherwise, prepend a `## Summary` block at the very top with your summary text, leaving the template intact below.
+4. **Insert your test plan / verification under any matching template heading** (e.g. `## Testing`, `## How was this tested?`); otherwise append a `## Test plan` block before the template's checklists, again leaving any test-related checklist items in the template untouched.
+
+If no template exists or the command fails (network error, API error), use the default format below — template detection is best-effort and must not block PR creation.
 
 Generate the PR title and body following the target repo's conventions (check `CONTRIBUTING.md`, existing PR formats, and the PR template above). Include:
 - Reference to the issue being fixed (e.g., "Fixes #123")
