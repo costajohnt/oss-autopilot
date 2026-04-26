@@ -13,11 +13,11 @@ import {
 
 describe('AgentStateSchema', () => {
   describe('missing optional fields get defaults', () => {
-    it('should populate all fields with defaults from minimal { version: 3 } input', () => {
-      const result = AgentStateSchema.parse({ version: 3 });
+    it('should populate all fields with defaults from minimal { version: 4 } input', () => {
+      const result = AgentStateSchema.parse({ version: 4 });
 
       // Top-level defaults
-      expect(result.version).toBe(3);
+      expect(result.version).toBe(4);
       expect(result.repoScores).toEqual({});
       expect(result.activeIssues).toEqual([]);
 
@@ -50,7 +50,7 @@ describe('AgentStateSchema', () => {
 
     it('should preserve custom config values while defaulting the rest', () => {
       const result = AgentStateSchema.parse({
-        version: 3,
+        version: 4,
         config: { githubUsername: 'testuser' },
       });
 
@@ -65,19 +65,19 @@ describe('AgentStateSchema', () => {
   describe('unknown keys stripped', () => {
     it('should strip unknown top-level keys', () => {
       const result = AgentStateSchema.parse({
-        version: 3,
+        version: 4,
         snoozedPRs: { foo: 'bar' },
         extraField: true,
       });
 
       expect(result).not.toHaveProperty('snoozedPRs');
       expect(result).not.toHaveProperty('extraField');
-      expect(result.version).toBe(3);
+      expect(result.version).toBe(4);
     });
 
     it('should strip unknown keys from nested config', () => {
       const result = AgentStateSchema.parse({
-        version: 3,
+        version: 4,
         config: { githubUsername: '', legacyField: 42 },
       });
 
@@ -103,7 +103,7 @@ describe('AgentStateSchema', () => {
     });
 
     it('should fail for config as a string', () => {
-      const result = AgentStateSchema.safeParse({ version: 3, config: 'not-an-object' });
+      const result = AgentStateSchema.safeParse({ version: 4, config: 'not-an-object' });
       expect(result.success).toBe(false);
     });
 
@@ -123,10 +123,10 @@ describe('AgentStateSchema', () => {
     });
   });
 
-  describe('new v3 fields', () => {
+  describe('new v4 fields', () => {
     it('should accept StoredMergedPR with learningsExtractedAt', () => {
       const result = AgentStateSchema.parse({
-        version: 3,
+        version: 4,
         mergedPRs: [
           {
             url: 'https://github.com/o/r/pull/1',
@@ -141,7 +141,7 @@ describe('AgentStateSchema', () => {
 
     it('should accept StoredClosedPR with learningsExtractedAt', () => {
       const result = AgentStateSchema.parse({
-        version: 3,
+        version: 4,
         closedPRs: [
           {
             url: 'https://github.com/o/r/pull/2',
@@ -156,19 +156,19 @@ describe('AgentStateSchema', () => {
 
     it('should accept analyzedIssueConversations', () => {
       const result = AgentStateSchema.parse({
-        version: 3,
+        version: 4,
         analyzedIssueConversations: [{ url: 'https://github.com/o/r/issues/1', repo: 'o/r', analyzedAt: '2025-03-01' }],
       });
       expect(result.analyzedIssueConversations).toHaveLength(1);
     });
 
     it('should accept gistId field', () => {
-      const result = AgentStateSchema.parse({ version: 3, gistId: 'abc123' });
+      const result = AgentStateSchema.parse({ version: 4, gistId: 'abc123' });
       expect(result.gistId).toBe('abc123');
     });
 
     it('should default gistId to undefined', () => {
-      const result = AgentStateSchema.parse({ version: 3 });
+      const result = AgentStateSchema.parse({ version: 4 });
       expect(result.gistId).toBeUndefined();
     });
   });

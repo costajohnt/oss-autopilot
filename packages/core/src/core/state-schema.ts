@@ -54,6 +54,9 @@ export const StoredMergedPRSchema = z.object({
   url: z.string(),
   title: z.string(),
   mergedAt: z.string(),
+  /** When the raw review-comment bundle for this PR was last fetched (#867). */
+  commentsFetchedAt: z.string().optional(),
+  /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
   learningsExtractedAt: z.string().optional(),
 });
 
@@ -61,6 +64,9 @@ export const StoredClosedPRSchema = z.object({
   url: z.string(),
   title: z.string(),
   closedAt: z.string(),
+  /** When the raw review-comment bundle for this PR was last fetched (#867). */
+  commentsFetchedAt: z.string().optional(),
+  /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
   learningsExtractedAt: z.string().optional(),
 });
 
@@ -278,7 +284,7 @@ export const DailyDigestSchema = z.object({
 // ── 8. Root schema ───────────────────────────────────────────────────
 
 export const AgentStateSchema = z.object({
-  version: z.literal(3),
+  version: z.literal(4),
   gistId: z.string().optional(),
 
   repoScores: z.record(z.string(), RepoScoreSchema).default({}),

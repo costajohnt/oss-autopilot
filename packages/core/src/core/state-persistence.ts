@@ -176,11 +176,23 @@ export function migrateV2ToV3(rawState: Record<string, unknown>): Record<string,
 }
 
 /**
+ * Migrate state from v3 to v4 (#867).
+ * Adds: commentsFetchedAt on StoredMergedPR / StoredClosedPR. The new field is
+ * optional, so no data transformation is needed — only the version bump.
+ */
+export function migrateV3ToV4(rawState: Record<string, unknown>): Record<string, unknown> {
+  debug(MODULE, 'Migrating state from v3 to v4 (add commentsFetchedAt to stored PR records)...');
+  rawState.version = 4;
+  debug(MODULE, 'v3 to v4 migration complete (no data transformation required).');
+  return rawState;
+}
+
+/**
  * Create a fresh state (v3).
  * Leverages Zod schema defaults to produce a complete state.
  */
 export function createFreshState(): AgentState {
-  return AgentStateSchema.parse({ version: 3 });
+  return AgentStateSchema.parse({ version: 4 });
 }
 
 /**
@@ -308,6 +320,9 @@ function tryRestoreFromBackup(): AgentState | null {
         if ((raw as Record<string, unknown>).version === 2) {
           raw = migrateV2ToV3(raw as Record<string, unknown>);
         }
+        if ((raw as Record<string, unknown>).version === 3) {
+          raw = migrateV3ToV4(raw as Record<string, unknown>);
+        }
       }
 
       const parsed = AgentStateSchema.safeParse(raw);
@@ -357,7 +372,7 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
       const data = fs.readFileSync(statePath, 'utf-8');
       let raw: unknown = JSON.parse(data);
 
-      // Chain migrations: v1 → v2 → v3
+      // Chain migrations: v1 → v2 → v3 → v4
       let wasMigrated = false;
       if (typeof raw === 'object' && raw !== null) {
         const rawObj = raw as Record<string, unknown>;
@@ -367,6 +382,10 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
         }
         if ((raw as Record<string, unknown>).version === 2) {
           raw = migrateV2ToV3(raw as Record<string, unknown>);
+          wasMigrated = true;
+        }
+        if ((raw as Record<string, unknown>).version === 3) {
+          raw = migrateV3ToV4(raw as Record<string, unknown>);
           wasMigrated = true;
         }
       }
