@@ -156,4 +156,50 @@ export function registerResources(server: McpServer): void {
       }
     },
   );
+
+  // 6. repo-guidelines — Per-repo learning guidelines extracted from past
+  // PR feedback (#867). Returned as text/markdown so MCP clients can inject
+  // the content directly into a context window without re-parsing JSON.
+  server.registerResource(
+    'repo-guidelines',
+    new ResourceTemplate('oss://repo/{owner}/{repo}/guidelines', {
+      list: async () => {
+        try {
+          const repos = getStateManager().listGuidelinesRepos();
+          return {
+            resources: repos.map((fullRepo) => {
+              const { owner, repo } = splitRepo(fullRepo);
+              return {
+                uri: `oss://repo/${owner}/${repo}/guidelines`,
+                name: `${fullRepo} guidelines`,
+                description: `Per-repo learning guidelines for ${fullRepo}`,
+                mimeType: 'text/markdown' as const,
+              };
+            }),
+          };
+        } catch (e) {
+          console.error('[MCP] Failed to list repo-guidelines resources:', e);
+          throw e;
+        }
+      },
+    }),
+    {
+      title: 'Repo Guidelines',
+      description: 'Per-repo learning guidelines extracted from past PR feedback (#867).',
+      mimeType: 'text/markdown',
+    },
+    async (uri, { owner, repo }) => {
+      try {
+        const fullRepo = `${String(owner)}/${String(repo)}`;
+        const content = getStateManager().getGuidelines(fullRepo);
+        if (!content) {
+          throw new Error(`No guidelines stored for ${fullRepo}`);
+        }
+        return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: content }] };
+      } catch (e) {
+        console.error('[MCP] repo-guidelines resource error:', e);
+        throw e;
+      }
+    },
+  );
 }

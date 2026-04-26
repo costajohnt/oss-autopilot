@@ -6,11 +6,27 @@
  *   - triage: Daily PR triage and prioritization
  *   - respond-to-pr: Draft responses to maintainer feedback
  *   - find-issues: Discover and rank contributable issues
+ *   - extract-learnings: Distill durable guidance from past PR feedback (#867)
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { runDaily, runComments, runSearch, MAX_SEARCH_RESULTS } from '@oss-autopilot/core/commands';
 import { errorMessage } from '@oss-autopilot/core';
+
+/**
+ * Subset of `PRCommentBundle` from `@oss-autopilot/core` that we render in the
+ * extract-learnings prompt. Inlined as a structural type to avoid pulling in
+ * the full implementation module just for a JSON shape.
+ */
+interface PRCommentBundleShape {
+  prUrl: string;
+  prTitle: string;
+  repo: string;
+  mergedAt: string;
+  reviews: { author: string; authorAssociation: string; body: string }[];
+  reviewComments: { author: string; authorAssociation: string; body: string; path: string }[];
+  issueComments: { author: string; authorAssociation: string; body: string }[];
+}
 
 /** Build a single-message prompt result with a user text message. */
 function userMessage(text: string) {
@@ -101,6 +117,105 @@ export function registerPrompts(server: McpServer): void {
         console.error('[MCP] Prompt error (find-issues):', e);
         return userMessage(`Failed to search for issues: ${errorMessage(e)}`);
       }
+    },
+  );
+
+  // 4. extract-learnings — given a corpus of PR comment bundles, ask the host
+  // LLM to distill durable per-repo guidance (#867 PR 5).
+  server.registerPrompt(
+    'extract-learnings',
+    {
+      title: 'Extract Per-Repo Learnings',
+      description:
+        'Given raw PR comment bundles for a repo, produce a structured guidelines document distilling durable maintainer preferences. Filter PR-specific nitpicks; keep general rules. Optional existingGuidelines argument enables incremental updates.',
+      argsSchema: {
+        repo: z.string().describe('Target repo as owner/repo'),
+        corpus: z.string().describe('JSON-serialized array of PRCommentBundle objects from guidelines-fetch-corpus'),
+        existingGuidelines: z
+          .string()
+          .optional()
+          .describe('Existing guidelines markdown to update incrementally; omit on first extraction'),
+      },
+    },
+    async ({ repo, corpus, existingGuidelines }) => {
+      let bundles: PRCommentBundleShape[];
+      try {
+        const parsed = JSON.parse(corpus);
+        if (!Array.isArray(parsed)) {
+          return userMessage(`Invalid corpus: expected an array of PRCommentBundle objects, got ${typeof parsed}.`);
+        }
+        bundles = parsed as PRCommentBundleShape[];
+      } catch (e) {
+        return userMessage(`Invalid corpus JSON: ${errorMessage(e)}`);
+      }
+
+      if (bundles.length === 0) {
+        return userMessage(
+          `No PR comment bundles supplied for ${repo}. Run guidelines-fetch-corpus first, then re-run this prompt with its output.`,
+        );
+      }
+
+      const prSections = bundles
+        .map((b) => {
+          const reviews = (b.reviews ?? [])
+            .map((r) => `[REVIEW by ${r.author} (${r.authorAssociation})]\n${r.body}`)
+            .join('\n\n');
+          const inline = (b.reviewComments ?? [])
+            .map((c) => `[INLINE on ${c.path} by ${c.author} (${c.authorAssociation})]\n${c.body}`)
+            .join('\n\n');
+          const issue = (b.issueComments ?? [])
+            .map((c) => `[COMMENT by ${c.author} (${c.authorAssociation})]\n${c.body}`)
+            .join('\n\n');
+          const sections = [reviews, inline, issue].filter((s) => s.length > 0).join('\n\n');
+          return `### ${b.prTitle} (${b.prUrl}, merged/closed: ${b.mergedAt})\n${sections}`;
+        })
+        .join('\n\n---\n\n');
+
+      const existing = existingGuidelines
+        ? `\n\nEXISTING GUIDELINES (update incrementally; deduplicate; preserve every rule unless directly contradicted):\n${existingGuidelines}`
+        : '';
+
+      const prompt = [
+        `Distill durable contribution guidance for ${repo} from the PR review feedback below.`,
+        '',
+        'Rules for the extraction:',
+        '1. KEEP only **durable rules** that apply to future PRs — code style preferences, test requirements, architectural conventions, process expectations, dependency constraints, project philosophy.',
+        '2. DISCARD PR-specific nitpicks: "LGTM", "Thanks!", scope-of-this-PR asks, one-time workarounds, status updates, CI flake notes, typo fixes, formatting tweaks on the specific code touched, historical context with no actionable rule.',
+        '3. WEIGHT comments by authorAssociation: OWNER, MEMBER, COLLABORATOR carry strong signal; CONTRIBUTOR/NONE only when they articulate a clear project-wide rule.',
+        '4. FLAG contradictions between maintainer comments rather than silently picking one side.',
+        '5. CAP output at ~6,000 bytes (well under the 8 KB store limit). If the corpus produces more, prefer the rules with strongest signal.',
+        '',
+        'Output format (single markdown document, exactly five fixed categories plus "Other"):',
+        '```markdown',
+        `# Contribution Guidelines: ${repo}`,
+        "_Auto-generated from contribution history. Last updated: <today's date>._",
+        '',
+        '## Code Style',
+        '- ...',
+        '',
+        '## Process',
+        '- ...',
+        '',
+        '## Architecture',
+        '- ...',
+        '',
+        '## Testing',
+        '- ...',
+        '',
+        '## Other',
+        '- ...',
+        '```',
+        '',
+        existing,
+        '',
+        'PR comment corpus:',
+        '',
+        prSections,
+        '',
+        'After producing the guidelines markdown, call the `guidelines-store` tool with `repo` and `content` to persist the result.',
+      ].join('\n');
+
+      return userMessage(prompt);
     },
   );
 }

@@ -10,9 +10,9 @@ MCP server for [OSS Autopilot](https://github.com/costajohnt/oss-autopilot) — 
 
 | Feature | Count | Description |
 |---------|-------|-------------|
-| **Tools** | 22 | `daily`, `status`, `search`, `vet`, `vet-list`, `track`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink` |
-| **Resources** | 5 | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}` |
-| **Prompts** | 3 | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues) |
+| **Tools** | 26 | `daily`, `status`, `search`, `vet`, `vet-list`, `track`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus` |
+| **Resources** | 6 | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}`, `oss://repo/{owner}/{repo}/guidelines` |
+| **Prompts** | 4 | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues), `extract-learnings` (distill per-repo guidance from past PR feedback) |
 
 Supports **stdio** (default) and **Streamable HTTP** transports.
 
@@ -135,6 +135,10 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `state-show` | Show current state persistence mode (local or Gist) and sync status | Yes |
 | `state-sync` | Force push current state to the backing Gist | No |
 | `state-unlink` | Disconnect from Gist persistence and switch to local-only mode | No |
+| `guidelines-get` | Read per-repo learning guidelines extracted from past PR feedback | Yes |
+| `guidelines-store` | Persist per-repo guidelines (8 KB cap; requires Gist mode) | No |
+| `guidelines-reset` | Tombstone the guidelines file for a repo | No |
+| `guidelines-fetch-corpus` | Fetch raw PR comment bundles for the host's `extract-learnings` prompt to consume | No |
 
 ## Resources Reference
 
@@ -145,6 +149,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `oss://prs` | Active open PRs from last daily digest |
 | `oss://prs/shelved` | Shelved PRs |
 | `oss://pr/{owner}/{repo}/{number}` | Detail for a specific PR |
+| `oss://repo/{owner}/{repo}/guidelines` | Per-repo learning guidelines (markdown) |
 
 ## Prompts Reference
 
@@ -153,6 +158,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `triage` | none | Fetches daily digest and builds a prioritized triage list |
 | `respond-to-pr` | `prUrl` | Fetches PR comments and context for drafting a response |
 | `find-issues` | `maxResults?` | Searches for issues ranked by viability score |
+| `extract-learnings` | `repo`, `corpus`, `existingGuidelines?` | Distills durable per-repo guidance from raw PR comment bundles (#867) |
 
 ## Programmatic Usage
 

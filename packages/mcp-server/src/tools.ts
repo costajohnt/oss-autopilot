@@ -26,6 +26,10 @@ import {
   runDismiss,
   runUndismiss,
   runMove,
+  runGuidelinesView,
+  runGuidelinesStore,
+  runGuidelinesReset,
+  runFetchCorpus,
   MAX_SEARCH_RESULTS,
 } from '@oss-autopilot/core/commands';
 import { errorMessage, getSetupKeys, getConfigKeys } from '@oss-autopilot/core';
@@ -450,5 +454,76 @@ export function registerTools(server: McpServer): void {
       const { runStateUnlink } = await import('@oss-autopilot/core/commands');
       return runStateUnlink();
     }),
+  );
+
+  // ── Per-Repo Guidelines (#867) ──────────────────────────────────────
+  // 23. guidelines-get
+  server.registerTool(
+    'guidelines-get',
+    {
+      description:
+        'Read per-repo learning guidelines extracted from past PR feedback. Returns null content when no guidelines exist or when running in local mode without Gist persistence.',
+      inputSchema: {
+        repo: z
+          .string()
+          .regex(/^[^/]+\/[^/]+$/, 'Must be owner/repo format')
+          .describe('Repository identifier in owner/repo form'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    wrapTool((args: { repo: string }) => runGuidelinesView({ repo: args.repo })),
+  );
+
+  // 24. guidelines-store
+  server.registerTool(
+    'guidelines-store',
+    {
+      description:
+        'Persist per-repo guidelines extracted from PR review feedback. Overwrites any existing guidelines for the repo. Content is capped at 8 KB. Requires Gist persistence — fails with GUIDELINES_NOT_AVAILABLE in local mode.',
+      inputSchema: {
+        repo: z.string().regex(/^[^/]+\/[^/]+$/, 'Must be owner/repo format'),
+        content: z
+          .string()
+          .min(1, 'Cannot store empty content; use guidelines-reset to delete')
+          .max(8192, 'Content exceeds 8 KB cap')
+          .describe('Markdown content extracted from past PR review feedback'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    wrapTool((args: { repo: string; content: string }) =>
+      runGuidelinesStore({ repo: args.repo, content: args.content }),
+    ),
+  );
+
+  // 25. guidelines-reset
+  server.registerTool(
+    'guidelines-reset',
+    {
+      description:
+        'Tombstone the per-repo guidelines file so subsequent reads return null. No-op when no guidelines exist. Requires Gist persistence.',
+      inputSchema: {
+        repo: z.string().regex(/^[^/]+\/[^/]+$/, 'Must be owner/repo format'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true },
+    },
+    wrapTool((args: { repo: string }) => runGuidelinesReset({ repo: args.repo })),
+  );
+
+  // 26. guidelines-fetch-corpus
+  server.registerTool(
+    'guidelines-fetch-corpus',
+    {
+      description:
+        "Fetch raw review-comment bundles for a repo's recent merged/closed PRs. Returns the corpus the host's extract-learnings prompt should consume. Does not call any LLM. Filters: same-repo only, recency cliff at 12 months, skips PRs already processed unless forceRefetch is true.",
+      inputSchema: {
+        repo: z.string().regex(/^[^/]+\/[^/]+$/, 'Must be owner/repo format'),
+        limit: z.number().int().min(1).max(10).optional().describe('Max PRs to fetch (default 5, max 10)'),
+        forceRefetch: z.boolean().optional().describe('Re-fetch even when commentsFetchedAt is already set on the PR'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    wrapTool((args: { repo: string; limit?: number; forceRefetch?: boolean }) =>
+      runFetchCorpus({ repo: args.repo, limit: args.limit, forceRefetch: args.forceRefetch }),
+    ),
   );
 }

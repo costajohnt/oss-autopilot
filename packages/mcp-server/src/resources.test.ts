@@ -44,6 +44,8 @@ vi.mock('@oss-autopilot/core', () => ({
   getSetupKeys: () => ['username', 'languages', 'minStars'],
   getConfigKeys: () => ['username', 'add-label', 'remove-label'],
   getStateManager: vi.fn().mockReturnValue({
+    listGuidelinesRepos: vi.fn().mockReturnValue([]),
+    getGuidelines: vi.fn().mockReturnValue(null),
     getState: vi.fn().mockReturnValue({
       lastDigest: {
         generatedAt: '2026-02-28T12:00:00Z',
