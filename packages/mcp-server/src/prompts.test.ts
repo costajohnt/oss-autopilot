@@ -56,6 +56,10 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runDismiss: vi.fn(),
   runUndismiss: vi.fn(),
   runMove: vi.fn(),
+  runGuidelinesView: vi.fn(),
+  runGuidelinesStore: vi.fn(),
+  runGuidelinesReset: vi.fn(),
+  runFetchCorpus: vi.fn(),
   MAX_SEARCH_RESULTS: 100,
 }));
 
@@ -222,6 +226,99 @@ describe('MCP prompt registrations', () => {
       const text = (result.messages[0].content as { type: 'text'; text: string }).text;
       expect(text).toContain('Failed to search for issues');
       expect(text).toContain('Search quota exceeded');
+    });
+  });
+
+  describe('extract-learnings prompt (#867)', () => {
+    function getText(result: { messages: { content: unknown }[] }): string {
+      return (result.messages[0].content as { type: 'text'; text: string }).text;
+    }
+
+    it('builds a structured prompt from a valid corpus', async () => {
+      const corpus = JSON.stringify([
+        {
+          prUrl: 'https://github.com/owner/repo/pull/1',
+          prTitle: 'Fix sort order',
+          repo: 'owner/repo',
+          mergedAt: '2026-04-20T12:00:00Z',
+          reviews: [{ author: 'maintainer1', authorAssociation: 'OWNER', body: 'Use camelCase' }],
+          reviewComments: [{ author: 'maintainer1', authorAssociation: 'OWNER', body: 'Inline nit', path: 'src/x.ts' }],
+          issueComments: [{ author: 'maintainer2', authorAssociation: 'COLLABORATOR', body: 'Tests please' }],
+        },
+      ]);
+
+      const result = await client.getPrompt({
+        name: 'extract-learnings',
+        arguments: { repo: 'owner/repo', corpus },
+      });
+
+      const text = getText(result);
+      expect(text).toContain('Distill durable contribution guidance for owner/repo');
+      // Categories from the design log §6
+      expect(text).toContain('## Code Style');
+      expect(text).toContain('## Process');
+      expect(text).toContain('## Architecture');
+      expect(text).toContain('## Testing');
+      expect(text).toContain('## Other');
+      // Per-PR section structure
+      expect(text).toContain('### Fix sort order');
+      expect(text).toContain('[REVIEW by maintainer1 (OWNER)]');
+      expect(text).toContain('[INLINE on src/x.ts by maintainer1 (OWNER)]');
+      expect(text).toContain('[COMMENT by maintainer2 (COLLABORATOR)]');
+      // Closing instruction
+      expect(text).toContain('call the `guidelines-store` tool');
+    });
+
+    it('threads existingGuidelines into an incremental update', async () => {
+      const corpus = JSON.stringify([
+        {
+          prUrl: 'https://github.com/owner/repo/pull/2',
+          prTitle: 'Refactor parser',
+          repo: 'owner/repo',
+          mergedAt: '2026-04-21T00:00:00Z',
+          reviews: [],
+          reviewComments: [],
+          issueComments: [{ author: 'm', authorAssociation: 'OWNER', body: 'No new deps' }],
+        },
+      ]);
+
+      const result = await client.getPrompt({
+        name: 'extract-learnings',
+        arguments: { repo: 'owner/repo', corpus, existingGuidelines: '## Code Style\n- Existing rule' },
+      });
+
+      const text = getText(result);
+      expect(text).toContain('EXISTING GUIDELINES');
+      expect(text).toContain('Existing rule');
+      expect(text).toContain('deduplicate');
+    });
+
+    it('returns a friendly error when corpus is not valid JSON', async () => {
+      const result = await client.getPrompt({
+        name: 'extract-learnings',
+        arguments: { repo: 'owner/repo', corpus: '{not valid' },
+      });
+
+      expect(getText(result)).toContain('Invalid corpus JSON');
+    });
+
+    it('returns a friendly error when corpus is JSON but not an array', async () => {
+      const result = await client.getPrompt({
+        name: 'extract-learnings',
+        arguments: { repo: 'owner/repo', corpus: '{"foo":1}' },
+      });
+
+      expect(getText(result)).toContain('expected an array');
+    });
+
+    it('returns a friendly message when the corpus array is empty', async () => {
+      const result = await client.getPrompt({
+        name: 'extract-learnings',
+        arguments: { repo: 'owner/repo', corpus: '[]' },
+      });
+
+      expect(getText(result)).toContain('No PR comment bundles supplied');
+      expect(getText(result)).toContain('guidelines-fetch-corpus');
     });
   });
 });
