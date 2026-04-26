@@ -3,9 +3,27 @@
  * Maps state fields and creates scout instances for search/vet commands.
  */
 
-import { createScout, type OssScout, type ScoutState } from '@oss-scout/core';
+import { createScout, type LinkedPR as ScoutLinkedPR, type OssScout, type ScoutState } from '@oss-scout/core';
 import { getStateManager, requireGitHubToken } from '../core/index.js';
+import type { LinkedPR } from '../core/linked-pr-classification.js';
 import { loadSkippedIssues } from './skip-file-parser.js';
+
+/**
+ * Convert scout 0.6.0's `LinkedPR` (separate `state` + `merged`) into the
+ * shape `classifyLinkedPR` expects (`state` already folded with `merged`).
+ *
+ * Scout exposes the raw GitHub fields verbatim, but the classifier was
+ * written before scout surfaced this data and uses a tri-state
+ * `'open' | 'closed' | 'merged'` enum. Folding `merged` into the state
+ * preserves the function's existing contract + tests.
+ */
+export function adaptScoutLinkedPR(scoutLinkedPR: ScoutLinkedPR | null | undefined): LinkedPR | null {
+  if (!scoutLinkedPR) return null;
+  return {
+    author: { login: scoutLinkedPR.author },
+    state: scoutLinkedPR.merged ? 'merged' : scoutLinkedPR.state,
+  };
+}
 
 /**
  * Build a ScoutState from the current AgentState.

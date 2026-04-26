@@ -811,6 +811,30 @@ export interface VetOutput {
   reasonsToSkip: string[];
   projectHealth: unknown;
   vettingResult: unknown;
+  /**
+   * Result of scout's anti-LLM policy scan over CONTRIBUTING.md /
+   * CODE_OF_CONDUCT.md / README.md (#979). When `matched` is true the issue
+   * should be skipped — the project explicitly disallows AI-generated
+   * contributions.
+   */
+  antiLLMPolicy?: {
+    matched: boolean;
+    matchedKeywords: string[];
+    sourceFile: string | null;
+  };
+  /**
+   * Classification of the issue's first linked PR (#978). `'none'` when
+   * no linked PR exists. The other buckets distinguish whether the user
+   * already has work in flight vs. a competing contributor.
+   */
+  linkedPRClassification?:
+    | 'none'
+    | 'user_open'
+    | 'user_closed'
+    | 'user_merged'
+    | 'other_open'
+    | 'other_closed'
+    | 'other_merged';
   /** Success-likelihood grade (#858): predicts whether a PR will merge. */
   grade: {
     letter: 'A' | 'B' | 'C' | 'F';

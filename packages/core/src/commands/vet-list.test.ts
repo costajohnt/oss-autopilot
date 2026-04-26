@@ -7,11 +7,26 @@ import type { VetOutput } from '../formatters/json.js';
 
 const mockVetIssue = vi.fn();
 
-vi.mock('./scout-bridge.js', () => ({
-  createAutopilotScout: vi.fn(async () => ({
-    vetIssue: mockVetIssue,
-  })),
-}));
+vi.mock('./scout-bridge.js', async () => {
+  const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
+  return {
+    ...actual,
+    createAutopilotScout: vi.fn(async () => ({
+      vetIssue: mockVetIssue,
+    })),
+  };
+});
+
+vi.mock('../core/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
+  return {
+    ...actual,
+    getStateManager: () => ({
+      getRepoScore: () => undefined,
+      getState: () => ({ config: { githubUsername: 'costajohnt' } }),
+    }),
+  };
+});
 
 vi.mock('./startup.js', () => ({
   detectIssueList: vi.fn(),

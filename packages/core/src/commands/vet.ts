@@ -7,7 +7,8 @@ import { createAutopilotScout } from './scout-bridge.js';
 import { type VetOutput } from '../formatters/json.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 import { gradeFromCandidate } from '../core/issue-grading.js';
-import { getStateManager } from '../core/index.js';
+import { getStateManager, classifyLinkedPR } from '../core/index.js';
+import { adaptScoutLinkedPR } from './scout-bridge.js';
 
 export { type VetOutput } from '../formatters/json.js';
 
@@ -36,6 +37,12 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     getRepoScore: (repo) => getStateManager().getRepoScore(repo),
   });
 
+  const userLogin = getStateManager().getState().config.githubUsername;
+  const linkedPRClassification = classifyLinkedPR({
+    linkedPR: adaptScoutLinkedPR(candidate.vettingResult.linkedPR),
+    userLogin,
+  });
+
   return {
     issue: {
       repo: candidate.issue.repo,
@@ -49,6 +56,8 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     reasonsToSkip: candidate.reasonsToSkip,
     projectHealth: candidate.projectHealth,
     vettingResult: candidate.vettingResult,
+    antiLLMPolicy: candidate.antiLLMPolicy,
+    linkedPRClassification,
     grade,
   };
 }

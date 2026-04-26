@@ -7,17 +7,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockVetIssue = vi.fn();
 const mockGetRepoScore = vi.fn();
 
-vi.mock('./scout-bridge.js', () => ({
-  createAutopilotScout: vi.fn(async () => ({
-    vetIssue: mockVetIssue,
-  })),
-}));
+vi.mock('./scout-bridge.js', async () => {
+  const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
+  return {
+    ...actual,
+    createAutopilotScout: vi.fn(async () => ({
+      vetIssue: mockVetIssue,
+    })),
+  };
+});
 
 vi.mock('../core/index.js', async () => {
   const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
   return {
     ...actual,
-    getStateManager: () => ({ getRepoScore: mockGetRepoScore }),
+    getStateManager: () => ({
+      getRepoScore: mockGetRepoScore,
+      getState: () => ({ config: { githubUsername: 'costajohnt' } }),
+    }),
   };
 });
 
@@ -53,6 +60,8 @@ describe('runVet', () => {
       reasonsToSkip: [],
       projectHealth: { avgIssueResponseDays: 2, daysSinceLastCommit: 1 },
       vettingResult: { isViable: true },
+      antiLLMPolicy: undefined,
+      linkedPRClassification: 'none',
       grade: { letter: 'A', reason: expect.stringMatching(/respons|merge|commit/i) },
     });
   });
