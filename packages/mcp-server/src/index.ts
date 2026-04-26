@@ -142,6 +142,17 @@ export async function main() {
 
       // Stateless mode: fresh server + transport per request to avoid
       // race conditions from concurrent connect() calls on a shared instance.
+      //
+      // Measurement (#1118, hey -n 1000 -c 10): createServer() costs ~0.87ms
+      // per call (~30 registerTool/Resource/Prompt calls into the MCP SDK).
+      // Average request latency is 16-19ms (initialize / tools/list), so the
+      // registration overhead is 4.6%-5.4% of avg latency and <3% of p95.
+      // Real-world MCP HTTP traffic is paced by LLM thinking time and lands
+      // far below 500 req/s, so this is not a meaningful bottleneck.
+      // Keeping the per-request pattern intact: memoizing the McpServer would
+      // either require sharing the instance (the race condition this guards
+      // against) or rebuilding wrappers around a cached registry, which adds
+      // complexity for ~1ms savings on a request already dominated by I/O.
       const server = createServer();
       try {
         const transport = new StreamableHTTPServerTransport({
