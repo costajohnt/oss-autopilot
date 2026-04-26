@@ -928,4 +928,29 @@ describe('StateManager merged PRs', () => {
       expect(stateManager.getClosedPRs()[0].learningsExtractedAt).toBe('2026-04-26T01:00:00Z');
     });
   });
+
+  describe('per-repo guidelines (#867)', () => {
+    it('isGuidelinesAvailable returns false in local mode', () => {
+      // Default StateManager constructed in this file is local-only.
+      expect(stateManager.isGuidelinesAvailable()).toBe(false);
+    });
+
+    it('getGuidelines returns null in local mode', () => {
+      expect(stateManager.getGuidelines('owner/repo')).toBeNull();
+    });
+
+    it('listGuidelinesRepos returns [] in local mode', () => {
+      expect(stateManager.listGuidelinesRepos()).toEqual([]);
+    });
+
+    it('setGuidelines throws GuidelinesNotAvailableError in local mode', () => {
+      expect(() => stateManager.setGuidelines('owner/repo', 'x')).toThrow(
+        /Per-repo guidelines require Gist persistence/,
+      );
+    });
+
+    it('deleteGuidelines throws GuidelinesNotAvailableError in local mode', () => {
+      expect(() => stateManager.deleteGuidelines('owner/repo')).toThrow(/Per-repo guidelines require Gist persistence/);
+    });
+  });
 });

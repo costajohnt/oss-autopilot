@@ -30,6 +30,7 @@ import type { Stats } from './repo-score-manager.js';
 import { debug, warn } from './logger.js';
 import { errorMessage, ConfigurationError, ConcurrencyError } from './errors.js';
 import { GistStateStore, type OctokitLike } from './gist-state-store.js';
+import * as guidelinesStoreModule from './guidelines-store.js';
 import { getStatePath, getStateCachePath } from './paths.js';
 import { parseGitHubUrl } from './urls.js';
 
@@ -314,6 +315,46 @@ export class StateManager {
   /** Whether the Gist is in degraded mode (using local cache fallback). */
   isGistDegraded(): boolean {
     return this.gistDegraded;
+  }
+
+  /**
+   * Whether per-repo guidelines (#867) are available. True iff the Gist store
+   * is initialized — in local-only mode, guidelines are unavailable and
+   * write operations would throw {@link GuidelinesNotAvailableError}.
+   */
+  isGuidelinesAvailable(): boolean {
+    return this.gistStore !== null;
+  }
+
+  /**
+   * Read the per-repo guidelines for `repo` (#867). Returns null when in
+   * local mode, when no file exists, or when the file is empty (tombstoned).
+   */
+  getGuidelines(repo: string): string | null {
+    return guidelinesStoreModule.getGuidelines(this.gistStore, repo);
+  }
+
+  /**
+   * Persist per-repo guidelines for `repo`. Throws when not in Gist mode or
+   * when content exceeds the byte budget.
+   */
+  setGuidelines(repo: string, content: string): void {
+    guidelinesStoreModule.setGuidelines(this.gistStore, repo, content);
+    this.autoSave();
+  }
+
+  /**
+   * Tombstone the guidelines file for `repo` so subsequent reads return null.
+   * Throws when not in Gist mode.
+   */
+  deleteGuidelines(repo: string): void {
+    guidelinesStoreModule.deleteGuidelines(this.gistStore, repo);
+    this.autoSave();
+  }
+
+  /** List repos with non-empty guidelines stored in the Gist. */
+  listGuidelinesRepos(): string[] {
+    return guidelinesStoreModule.listGuidelinesRepos(this.gistStore);
   }
 
   /**

@@ -14,6 +14,14 @@ export {
 } from './state.js';
 export { GistStateStore } from './gist-state-store.js';
 export {
+  guidelinesFilename,
+  repoFromGuidelinesFilename,
+  GUIDELINES_FILE_PREFIX,
+  GUIDELINES_MAX_BYTES,
+  GuidelinesNotAvailableError,
+  GuidelinesTooLargeError,
+} from './guidelines-store.js';
+export {
   PRMonitor,
   type PRCheckFailure,
   type FetchPRsResult,
