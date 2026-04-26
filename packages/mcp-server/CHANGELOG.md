@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.0.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.0.0...mcp-v5.0.1) (2026-04-26)
+
+
+### Performance Improvements
+
+* **mcp:** cite load-test data on per-request createServer pattern ([#1167](https://github.com/costajohnt/oss-autopilot/issues/1167)) ([b4a4fd2](https://github.com/costajohnt/oss-autopilot/commit/b4a4fd22c56d755e748795db5d01b27ebe08f0d0))
+
 ## [5.0.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v4.0.0...mcp-v5.0.0) (2026-04-26)
 
 
