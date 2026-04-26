@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0](https://github.com/costajohnt/oss-autopilot/compare/core-v2.0.0...core-v3.0.0) (2026-04-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* users on Node 20 will see npm EBADENGINE warnings on install. Upgrade to Node 22 (LTS) or 24 (current) before pulling this release.
+
+### Features
+
+* drop Node 20 support, require Node 22+ ([#1162](https://github.com/costajohnt/oss-autopilot/issues/1162)) ([f88a064](https://github.com/costajohnt/oss-autopilot/commit/f88a0647c0bf7df295442b7615e1a9e131152b14))
+
 ## [2.0.0](https://github.com/costajohnt/oss-autopilot/compare/core-v1.17.4...core-v2.0.0) (2026-04-25)
 
 
