@@ -22,7 +22,7 @@ jobs:
       # Uses a PAT so that the push to the release branch triggers CI.
       # GITHUB_TOKEN events don't trigger other workflows (prevents loops),
       # but PAT events do.
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           config-file: release-please-config.json
