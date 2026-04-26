@@ -12,7 +12,7 @@ Customize your OSS Autopilot preferences. This is **optional** — the tool work
 
 ## Step 0: Ensure CLI is Built and Available
 
-This flow delegates entirely to the CLI. There is no markdown-only fallback — if the CLI cannot be built, ask the user to install Node 20+ and re-run.
+This flow delegates entirely to the CLI. There is no markdown-only fallback — if the CLI cannot be built, ask the user to install Node 22+ and re-run.
 
 Build the CLI on first run (auto-installs deps):
 
@@ -26,9 +26,9 @@ fi
 
 **If the build succeeded but the bundle file still isn't there**, or **if `node` is unavailable**: Stop the flow and tell the user:
 
-> "OSS Autopilot setup needs the CLI. Install Node.js 20+ from <https://nodejs.org>, then re-run `/setup-oss`. (Alternative: build manually with `cd ${CLAUDE_PLUGIN_ROOT}/packages/core && npm install && npm run bundle`.)"
+> "OSS Autopilot setup needs the CLI. Install Node.js 22+ from <https://nodejs.org>, then re-run `/setup-oss`. (Alternative: build manually with `cd ${CLAUDE_PLUGIN_ROOT}/packages/core && npm install && npm run bundle`.)"
 
-**If output starts with `BUILD_FAILED`**: Show the error lines and the same install/re-run guidance. Common causes: missing Node 20+, stale `node_modules`, no network for `npm install`.
+**If output starts with `BUILD_FAILED`**: Show the error lines and the same install/re-run guidance. Common causes: missing Node 22+, stale `node_modules`, no network for `npm install`.
 
 Then verify the CLI is callable:
 

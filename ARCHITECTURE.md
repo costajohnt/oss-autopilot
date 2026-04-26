@@ -129,7 +129,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 ### Build
 
 ```
-esbuild src/cli.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/cli.bundle.cjs  # run from packages/core/
+esbuild src/cli.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/cli.bundle.cjs  # run from packages/core/
 ```
 
 The bundle is a single CommonJS file (gitignored, auto-generated). The `SessionStart` hook rebuilds it if `package.json` is newer than the bundle.

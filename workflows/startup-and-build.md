@@ -90,9 +90,9 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 
 Show any captured error output (from `$BUILD_LOG`, stderr, or the `error` field). Then troubleshoot based on the error type:
 
-- **Build failure** (BUILD_FAILED sentinel): `cd ${CLAUDE_PLUGIN_ROOT}/packages/core && npm install && npm run bundle`. Common causes: missing Node.js 20+, stale `node_modules` (delete and reinstall), npm permission issues.
+- **Build failure** (BUILD_FAILED sentinel): `cd ${CLAUDE_PLUGIN_ROOT}/packages/core && npm install && npm run bundle`. Common causes: missing Node.js 22+, stale `node_modules` (delete and reinstall), npm permission issues.
 - **Auth/network error** (`success: false` with valid JSON): Check `gh auth status` and network connectivity. The CLI built fine — the daily check itself failed.
-- **Invalid output** (empty or non-JSON): Try running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json`. Check `node --version` (need 20+).
+- **Invalid output** (empty or non-JSON): Try running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json`. Check `node --version` (need 22+).
 - **Dashboard not showing or stale**: The dashboard build is non-blocking. Check `/tmp/oss-dashboard-build.log` for build errors. Rebuild manually: `cd ${CLAUDE_PLUGIN_ROOT}/packages/dashboard && npm install && npm run build`.
 
 **Return:** Core router (`commands/oss.md`) — **Summary** section with the parsed startup data.

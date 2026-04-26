@@ -6,7 +6,7 @@ Thanks for your interest in contributing! This project helps developers manage t
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - [pnpm](https://pnpm.io/) (install: `corepack enable && corepack prepare pnpm@latest --activate`)
 - GitHub CLI (`gh`) authenticated: `gh auth login`
 

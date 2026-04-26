@@ -18,7 +18,7 @@ Supports **stdio** (default) and **Streamable HTTP** transports.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - [GitHub CLI](https://cli.github.com/) authenticated (`gh auth login`)
 
 ## Quick Start
