@@ -835,6 +835,17 @@ export interface VetOutput {
     | 'other_open'
     | 'other_closed'
     | 'other_merged';
+  /**
+   * Optional SLM pre-triage classification (#1122). Populated when the
+   * user has set `slmTriageModel` and a local Ollama instance answered
+   * within the timeout. `null` otherwise.
+   */
+  slmTriage?: {
+    decision: 'pursue' | 'investigate' | 'skip';
+    confidence: 'high' | 'medium' | 'low';
+    reasons: string[];
+    modelVersion: string;
+  } | null;
   /** Success-likelihood grade (#858): predicts whether a PR will merge. */
   grade: {
     letter: 'A' | 'B' | 'C' | 'F';

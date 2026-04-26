@@ -173,6 +173,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
           vettingResult: candidate.vettingResult,
           antiLLMPolicy: candidate.antiLLMPolicy,
           linkedPRClassification,
+          slmTriage: candidate.slmTriage ?? null,
           grade,
         };
 

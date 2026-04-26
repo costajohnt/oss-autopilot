@@ -52,6 +52,8 @@ export function buildScoutState(): ScoutState {
       broadPhaseDelayMs: 90000,
       skipBroadWhenSufficientResults: 15,
       persistence: config.persistence as 'local' | 'gist',
+      slmTriageModel: config.slmTriageModel,
+      slmTriageHost: config.slmTriageHost,
     },
     repoScores: state.repoScores,
     starredRepos: config.starredRepos,

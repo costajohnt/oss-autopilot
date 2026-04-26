@@ -200,6 +200,21 @@ export const AgentConfigSchema = z.object({
    * the hook does nothing on every push unless the user explicitly enables it.
    */
   autoFormatBeforePush: z.boolean().default(false),
+
+  /**
+   * Optional Ollama model for SLM pre-triage during issue vetting (#1122).
+   * Empty disables the feature. Recommended: `gemma4:e4b` (default for
+   * capable hardware), `gemma4:e2b` or `qwen3:1.7b` for low-RAM machines.
+   * Threaded through to scout via the bridge in `scout-bridge.ts`.
+   */
+  slmTriageModel: z.string().default(''),
+
+  /**
+   * Optional Ollama HTTP host override. Defaults to `http://127.0.0.1:11434`
+   * when empty. Useful when Ollama runs on a different machine on the
+   * local network.
+   */
+  slmTriageHost: z.string().default(''),
 });
 
 // ── 6. Cache schemas ─────────────────────────────────────────────────

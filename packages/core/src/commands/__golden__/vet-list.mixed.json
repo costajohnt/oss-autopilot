@@ -30,6 +30,7 @@
         "notes": []
       },
       "linkedPRClassification": "none",
+      "slmTriage": null,
       "grade": {
         "letter": "B",
         "reason": "3-day avg response"
@@ -64,6 +65,7 @@
         "notes": []
       },
       "linkedPRClassification": "none",
+      "slmTriage": null,
       "grade": {
         "letter": "B",
         "reason": "3-day avg response"
