@@ -128,6 +128,17 @@ When the user has configured `slmTriageModel` (e.g. `gemma4:e4b`), the `vet` res
 
 Never make a recommendation that contradicts the SLM call without saying so explicitly in the summary; users want to see the disagreement, not paper over it.
 
+### Per-repo learning guidelines (#867)
+
+After feasibility analysis but before claiming, the work-through-issues workflow injects any stored per-repo guidelines via `oss-autopilot guidelines view --repo OWNER/REPO --json`. These are extracted from past PR feedback in the user's Gist and encode durable maintainer preferences (code style, process, architecture, testing rules).
+
+When implementing, treat injected guidelines as **strong preferences**, not absolute rules:
+
+- Follow them by default. They reflect what the maintainer has historically wanted.
+- If your proposed approach **contradicts** a stated rule, surface the conflict explicitly in your summary so the user can confirm. Don't silently override.
+- They take precedence over generic CONTRIBUTING.md when the two conflict (the guidelines incorporate CONTRIBUTING.md context already).
+- Absence of guidelines is normal — the user may not have generated them yet for this repo. Fall back to CONTRIBUTING.md and the issue-scout's standard rubric.
+
 ### gh fallback vetting
 
 If MCP + CLI both fail, collect the vetting data with `gh` (inform the user first):
