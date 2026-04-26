@@ -892,4 +892,40 @@ describe('StateManager merged PRs', () => {
       expect(stateManager.getClosedPRWatermark()).toBeUndefined();
     });
   });
+
+  describe('markPRCommentsFetched / markPRLearningsExtracted (#867)', () => {
+    const URL_M = 'https://github.com/a/b/pull/1';
+    const URL_C = 'https://github.com/a/b/pull/2';
+
+    beforeEach(() => {
+      stateManager.addMergedPRs([{ url: URL_M, title: 'merged', mergedAt: '2026-01-01T00:00:00Z' }]);
+      stateManager.addClosedPRs([{ url: URL_C, title: 'closed', closedAt: '2026-01-01T00:00:00Z' }]);
+    });
+
+    it('stamps commentsFetchedAt on the matching merged PR', () => {
+      stateManager.markPRCommentsFetched(URL_M, '2026-04-26T00:00:00Z');
+      expect(stateManager.getMergedPRs()[0].commentsFetchedAt).toBe('2026-04-26T00:00:00Z');
+    });
+
+    it('stamps commentsFetchedAt on the matching closed PR', () => {
+      stateManager.markPRCommentsFetched(URL_C, '2026-04-26T00:00:00Z');
+      expect(stateManager.getClosedPRs()[0].commentsFetchedAt).toBe('2026-04-26T00:00:00Z');
+    });
+
+    it('is a no-op when the URL matches no stored PR', () => {
+      const before = JSON.stringify(stateManager.getState());
+      stateManager.markPRCommentsFetched('https://github.com/a/b/pull/9999', '2026-04-26T00:00:00Z');
+      expect(JSON.stringify(stateManager.getState())).toBe(before);
+    });
+
+    it('stamps learningsExtractedAt on the matching merged PR', () => {
+      stateManager.markPRLearningsExtracted(URL_M, '2026-04-26T01:00:00Z');
+      expect(stateManager.getMergedPRs()[0].learningsExtractedAt).toBe('2026-04-26T01:00:00Z');
+    });
+
+    it('stamps learningsExtractedAt on the matching closed PR', () => {
+      stateManager.markPRLearningsExtracted(URL_C, '2026-04-26T01:00:00Z');
+      expect(stateManager.getClosedPRs()[0].learningsExtractedAt).toBe('2026-04-26T01:00:00Z');
+    });
+  });
 });

@@ -75,7 +75,7 @@ function makeBaseConfig(): Record<string, unknown> {
 
 function makeCurrentState(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    version: 3,
+    version: 4,
     activeIssues: [],
     mergedPRs: [],
     closedPRs: [],
@@ -140,11 +140,11 @@ describe('StateManager v1 → v2 migration', () => {
 
     const sm = new StateManager(false);
     const state = sm.getState();
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
 
     // Verify migration was persisted to disk
     const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-    expect(onDisk.version).toBe(3);
+    expect(onDisk.version).toBe(4);
   });
 
   it('should preserve config when migrating from v1 to v2', () => {
@@ -166,7 +166,7 @@ describe('StateManager v1 → v2 migration', () => {
 
     const sm = new StateManager(false);
     // v2 migration upgrades version and PR arrays are no longer part of AgentState
-    expect(sm.getState().version).toBe(3);
+    expect(sm.getState().version).toBe(4);
   });
 
   it('should create repo scores from mergedPRs found in v1 state', () => {
@@ -276,7 +276,53 @@ describe('StateManager v1 → v2 migration', () => {
 
     const sm = new StateManager(false);
     // Should have been migrated to v3 during restore (v1 -> v2 -> v3 chain)
-    expect(sm.getState().version).toBe(3);
+    expect(sm.getState().version).toBe(4);
+  });
+});
+
+// ── v3 → v4 migration (#867) ─────────────────────────────────────────────────
+describe('StateManager v3 → v4 migration', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-migration-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('migrates a v3 state with stored PRs to v4 without dropping data', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const v3State = {
+      version: 3,
+      config: makeBaseConfig(),
+      activeIssues: [],
+      shelvedPRs: [],
+      autoUnshelvedPRs: [],
+      mergedPRs: [
+        {
+          url: 'https://github.com/a/b/pull/1',
+          title: 'old merged',
+          mergedAt: '2026-01-01T00:00:00Z',
+          learningsExtractedAt: '2026-02-01T00:00:00Z',
+        },
+      ],
+      closedPRs: [{ url: 'https://github.com/a/b/pull/2', title: 'old closed', closedAt: '2026-01-15T00:00:00Z' }],
+    };
+    fs.writeFileSync(statePath, JSON.stringify(v3State), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    expect(state.version).toBe(4);
+    expect(state.mergedPRs?.[0].url).toBe('https://github.com/a/b/pull/1');
+    expect(state.mergedPRs?.[0].learningsExtractedAt).toBe('2026-02-01T00:00:00Z');
+    expect(state.mergedPRs?.[0].commentsFetchedAt).toBeUndefined();
+    expect(state.closedPRs?.[0].url).toBe('https://github.com/a/b/pull/2');
+    expect(state.closedPRs?.[0].commentsFetchedAt).toBeUndefined();
+
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    expect(onDisk.version).toBe(4);
   });
 });
 
@@ -456,7 +502,7 @@ describe('migrateFromLegacyLocation', () => {
     createLegacyBackup('state-2024-01-02T00-00-00-000Z-def456.json', makeCurrentState());
 
     const sm = new StateManager(false);
-    expect(sm.getState().version).toBe(3);
+    expect(sm.getState().version).toBe(4);
 
     // Backups should be in the new location
     const newBackupDir = path.join(mockTmpDir, 'backups');
@@ -499,7 +545,7 @@ describe('migrateFromLegacyLocation', () => {
     fs.chmodSync(legacyStatePath, 0o000);
 
     const sm = new StateManager(false);
-    expect(sm.getState().version).toBe(3);
+    expect(sm.getState().version).toBe(4);
 
     // Restore permissions so afterEach cleanup works
     fs.chmodSync(legacyStatePath, 0o600);
@@ -526,7 +572,7 @@ describe('migrateV1ToV2 fallback branches', () => {
     fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
 
     const sm = new StateManager(false);
-    expect(sm.getState().version).toBe(3);
+    expect(sm.getState().version).toBe(4);
     expect(sm.getState().repoScores).toEqual({});
     expect(sm.getState().activeIssues).toEqual([]);
   });
@@ -553,7 +599,7 @@ describe('migrateV1ToV2 fallback branches', () => {
     fs.writeFileSync(statePath, JSON.stringify(v1), { mode: 0o600 });
 
     const sm = new StateManager(false);
-    expect(sm.getState().version).toBe(3);
+    expect(sm.getState().version).toBe(4);
     expect(sm.getState().repoScores['org-a/repo-a']).toBeDefined();
     expect(sm.getState().repoScores['org-b/repo-b']).toBeDefined();
     expect(sm.getState().repoScores['org-a/repo-a'].score).toBe(5);
@@ -578,11 +624,11 @@ describe('schema validation in loadState', () => {
   it('should return fresh state when state is schema-invalid and no backups exist', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     // Valid JSON but schema-invalid: config must be an object, not null
-    fs.writeFileSync(statePath, JSON.stringify({ version: 3, config: null }), { mode: 0o600 });
+    fs.writeFileSync(statePath, JSON.stringify({ version: 4, config: null }), { mode: 0o600 });
 
     const sm = new StateManager(false);
     const state = sm.getState();
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     // Fresh state has empty default config values
     expect(state.config.githubUsername).toBe('');
     expect(state.config.setupComplete).toBe(false);
@@ -601,7 +647,7 @@ describe('schema validation in loadState', () => {
     // Newest backup: valid JSON but schema-invalid (config is null)
     fs.writeFileSync(
       path.join(backupDir, 'state-2024-03-01T00-00-00-000Z-zzz000.json'),
-      JSON.stringify({ version: 3, config: null }),
+      JSON.stringify({ version: 4, config: null }),
       { mode: 0o600 },
     );
 
@@ -634,7 +680,7 @@ describe('schema validation in loadState', () => {
     // Multiple backups, all valid JSON but schema-invalid
     fs.writeFileSync(
       path.join(backupDir, 'state-2024-03-01T00-00-00-000Z-aaa000.json'),
-      JSON.stringify({ version: 3, config: null }),
+      JSON.stringify({ version: 4, config: null }),
       { mode: 0o600 },
     );
     fs.writeFileSync(
@@ -644,14 +690,14 @@ describe('schema validation in loadState', () => {
     );
     fs.writeFileSync(
       path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-ccc000.json'),
-      JSON.stringify({ version: 3, activeIssues: 'not-an-array' }),
+      JSON.stringify({ version: 4, activeIssues: 'not-an-array' }),
       { mode: 0o600 },
     );
 
     const sm = new StateManager(false);
     const state = sm.getState();
     // All backups rejected by schema validation, so fresh state returned
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.config.githubUsername).toBe('');
     expect(state.repoScores).toEqual({});
   });
@@ -660,7 +706,7 @@ describe('schema validation in loadState', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     // Write a minimal valid v2 state missing optional fields that have defaults
     const minimalState = {
-      version: 3,
+      version: 4,
       // config is missing — Zod default will fill it
       // repoScores is missing — Zod default will fill it to {}
       // lastRunAt is missing — Zod default will fill it
@@ -672,7 +718,7 @@ describe('schema validation in loadState', () => {
     const state = sm.getState();
 
     // Verify Zod defaults are applied at the top level
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.repoScores).toEqual({});
     expect(state.activeIssues).toEqual([]);
     expect(typeof state.lastRunAt).toBe('string');
@@ -688,7 +734,7 @@ describe('schema validation in loadState', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     // State with some fields present and some missing
     const partialState = {
-      version: 3,
+      version: 4,
       repoScores: {
         'owner/repo': {
           repo: 'owner/repo',

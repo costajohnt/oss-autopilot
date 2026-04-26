@@ -35,7 +35,13 @@
 import * as fs from 'fs';
 import { AgentState } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
-import { atomicWriteFileSync, createFreshState, migrateV1ToV2, migrateV2ToV3 } from './state-persistence.js';
+import {
+  atomicWriteFileSync,
+  createFreshState,
+  migrateV1ToV2,
+  migrateV2ToV3,
+  migrateV3ToV4,
+} from './state-persistence.js';
 import { getGistIdPath, getStateCachePath } from './paths.js';
 import { debug, warn } from './logger.js';
 import { GistPermissionError, GistConcurrencyError, isRateLimitError } from './errors.js';
@@ -186,6 +192,7 @@ export class GistStateStore {
             const record = obj as Record<string, unknown>;
             if (record.version === 1) obj = migrateV1ToV2(record);
             if ((obj as Record<string, unknown>).version === 2) obj = migrateV2ToV3(obj as Record<string, unknown>);
+            if ((obj as Record<string, unknown>).version === 3) obj = migrateV3ToV4(obj as Record<string, unknown>);
           }
 
           const cachedState = AgentStateSchema.parse(obj);
@@ -259,6 +266,7 @@ export class GistStateStore {
             const record = obj as Record<string, unknown>;
             if (record.version === 1) obj = migrateV1ToV2(record);
             if ((obj as Record<string, unknown>).version === 2) obj = migrateV2ToV3(obj as Record<string, unknown>);
+            if ((obj as Record<string, unknown>).version === 3) obj = migrateV3ToV4(obj as Record<string, unknown>);
           }
 
           const cachedState = AgentStateSchema.parse(obj);
@@ -513,7 +521,7 @@ export class GistStateStore {
 
   /**
    * Parse `state.json` from the in-memory cache. Handles v2 migration
-   * by running through the Zod schema (which requires version: 3).
+   * by running through the Zod schema (which requires version: 4).
    * Falls back to fresh state if the file is missing or unparseable.
    */
   private parseStateFromCache(): AgentState {
@@ -531,6 +539,7 @@ export class GistStateStore {
         const record = obj as Record<string, unknown>;
         if (record.version === 1) obj = migrateV1ToV2(record);
         if ((obj as Record<string, unknown>).version === 2) obj = migrateV2ToV3(obj as Record<string, unknown>);
+        if ((obj as Record<string, unknown>).version === 3) obj = migrateV3ToV4(obj as Record<string, unknown>);
       }
 
       return AgentStateSchema.parse(obj);

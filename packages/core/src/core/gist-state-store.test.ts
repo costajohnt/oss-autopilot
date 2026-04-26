@@ -44,10 +44,10 @@ vi.mock('./paths.js', async (importOriginal) => {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Build a minimal valid v3 state object as JSON string. */
+/** Build a minimal valid v4 state object as JSON string. */
 function makeStateJson(overrides: Record<string, unknown> = {}): string {
   const state = {
-    version: 3,
+    version: 4,
     activeIssues: [],
     repoScores: {},
     config: {
@@ -144,7 +144,7 @@ describe('GistStateStore', () => {
 
       expect(result.gistId).toBe(gistId);
       expect(result.created).toBe(false);
-      expect(result.state.version).toBe(3);
+      expect(result.state.version).toBe(4);
       expect(octokit.gists.get).toHaveBeenCalledWith({ gist_id: gistId });
       // list is called once for the preflight scope check, but not for search
       expect(octokit.gists.list).toHaveBeenCalledTimes(1);
@@ -187,7 +187,7 @@ describe('GistStateStore', () => {
       expect(fs.existsSync(cachePath)).toBe(true);
 
       const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
-      expect(cached.version).toBe(3);
+      expect(cached.version).toBe(4);
     });
 
     it('should fall through to search if local Gist ID fetch fails', async () => {
@@ -237,7 +237,7 @@ describe('GistStateStore', () => {
 
       expect(result.gistId).toBe(gistId);
       expect(result.created).toBe(false);
-      expect(result.state.version).toBe(3);
+      expect(result.state.version).toBe(4);
 
       // Should have written the local gist-id file
       const storedId = fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf-8');
@@ -303,7 +303,7 @@ describe('GistStateStore', () => {
 
       expect(result.gistId).toBe(newGistId);
       expect(result.created).toBe(true);
-      expect(result.state.version).toBe(3);
+      expect(result.state.version).toBe(4);
 
       // Should have been called with correct params
       expect(octokit.gists.create).toHaveBeenCalledWith({
@@ -324,7 +324,7 @@ describe('GistStateStore', () => {
   });
 
   describe('state parsing and migration', () => {
-    it('should migrate v2 state from Gist to v3', async () => {
+    it('should migrate v2 state from Gist all the way to v4', async () => {
       const gistId = 'v2-gist';
       const v2State = JSON.stringify({
         version: 2,
@@ -367,7 +367,7 @@ describe('GistStateStore', () => {
       const store = new GistStateStore(octokit);
       const result = await store.bootstrap();
 
-      expect(result.state.version).toBe(3);
+      expect(result.state.version).toBe(4);
       expect(result.state.config.githubUsername).toBe('migrated-user');
       expect(result.state.config.setupComplete).toBe(true);
     });
@@ -388,7 +388,7 @@ describe('GistStateStore', () => {
       const store = new GistStateStore(octokit);
       const result = await store.bootstrap();
 
-      expect(result.state.version).toBe(3);
+      expect(result.state.version).toBe(4);
       expect(result.state.config.setupComplete).toBe(false);
     });
 
@@ -401,7 +401,7 @@ describe('GistStateStore', () => {
       const store = new GistStateStore(octokit);
       const result = await store.bootstrap();
 
-      expect(result.state.version).toBe(3);
+      expect(result.state.version).toBe(4);
       expect(result.state.config.setupComplete).toBe(false);
     });
   });
@@ -590,7 +590,7 @@ describe('GistStateStore', () => {
 
       expect(fs.existsSync(cachePath)).toBe(true);
       const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
-      expect(cached.version).toBe(3);
+      expect(cached.version).toBe(4);
     });
   });
 
@@ -744,7 +744,7 @@ describe('GistStateStore', () => {
       expect(result.degraded).toBe(true);
       expect(result.gistId).toBe('');
       expect(result.created).toBe(false);
-      expect(result.state.version).toBe(3);
+      expect(result.state.version).toBe(4);
       expect(result.state.lastRunAt).toBe('2025-06-01T00:00:00.000Z');
     });
 
@@ -760,7 +760,7 @@ describe('GistStateStore', () => {
       expect(result.degraded).toBe(true);
       expect(result.gistId).toBe('');
       expect(result.created).toBe(false);
-      expect(result.state.version).toBe(3);
+      expect(result.state.version).toBe(4);
       expect(result.state.config.setupComplete).toBe(false);
     });
 
@@ -1105,7 +1105,7 @@ describe('GistStateStore', () => {
 
       // Verify state is loaded and cached
       expect(result.gistId).toBe(gistId);
-      expect(result.state.version).toBe(3);
+      expect(result.state.version).toBe(4);
       expect(result.state.lastRunAt).toBe('2025-01-01T00:00:00.000Z');
       expect(store.cachedFiles.size).toBe(2); // state.json + guidelines--existing-repo.md
       expect(store.dirtyFiles.size).toBe(0);
@@ -1147,7 +1147,7 @@ describe('GistStateStore', () => {
       const cachePath = path.join(tmpDir, 'state-cache.json');
       expect(fs.existsSync(cachePath)).toBe(true);
       const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
-      expect(cached.version).toBe(3);
+      expect(cached.version).toBe(4);
       expect(cached.lastRunAt).toBe('2026-03-25T12:00:00.000Z');
 
       // ── Step 8: Verify idempotent push (nothing dirty) ─────────────

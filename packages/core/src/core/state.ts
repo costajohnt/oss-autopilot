@@ -480,6 +480,42 @@ export class StateManager {
     return this.state.closedPRs?.[0]?.closedAt || undefined;
   }
 
+  /**
+   * Stamp `commentsFetchedAt` on the merged or closed PR matching `url` (#867).
+   * No-op when no PR with that URL is stored.
+   */
+  markPRCommentsFetched(url: string, fetchedAt: string): void {
+    const merged = this.state.mergedPRs?.find((pr) => pr.url === url);
+    if (merged) {
+      merged.commentsFetchedAt = fetchedAt;
+      this.autoSave();
+      return;
+    }
+    const closed = this.state.closedPRs?.find((pr) => pr.url === url);
+    if (closed) {
+      closed.commentsFetchedAt = fetchedAt;
+      this.autoSave();
+    }
+  }
+
+  /**
+   * Stamp `learningsExtractedAt` on the merged or closed PR matching `url` (#867).
+   * No-op when no PR with that URL is stored.
+   */
+  markPRLearningsExtracted(url: string, extractedAt: string): void {
+    const merged = this.state.mergedPRs?.find((pr) => pr.url === url);
+    if (merged) {
+      merged.learningsExtractedAt = extractedAt;
+      this.autoSave();
+      return;
+    }
+    const closed = this.state.closedPRs?.find((pr) => pr.url === url);
+    if (closed) {
+      closed.learningsExtractedAt = extractedAt;
+      this.autoSave();
+    }
+  }
+
   // === Configuration ===
 
   /**

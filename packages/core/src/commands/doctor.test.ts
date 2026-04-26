@@ -240,7 +240,7 @@ describe('checkStateFile', () => {
     fs.writeFileSync(
       statePath,
       JSON.stringify({
-        version: 3,
+        version: 4,
         repoScores: {},
         config: { githubUsername: 'u' },
         lastRunAt: new Date().toISOString(),
@@ -249,7 +249,7 @@ describe('checkStateFile', () => {
     );
     const result = checkStateFile({ statePathOverride: statePath });
     expect(result.status).toBe('ok');
-    expect(result.message).toMatch(/v3/);
+    expect(result.message).toMatch(/v4/);
   });
 
   it('reports error when state file has invalid JSON', () => {

@@ -294,9 +294,9 @@ describe('StateManager state validity', () => {
     stateManager = new StateManager(true);
   });
 
-  it('should have required v3 structure on initialization', () => {
+  it('should have required v4 structure on initialization', () => {
     const state = stateManager.getState();
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.config).toBeDefined();
     expect(typeof state.config).toBe('object');
     expect(state.repoScores).toBeDefined();
@@ -309,7 +309,7 @@ describe('StateManager state validity', () => {
     stateManager.updateRepoScore('owner/repo', { mergedPRCount: 2 });
 
     const state = stateManager.getState();
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(typeof state.config).toBe('object');
     expect(typeof state.repoScores).toBe('object');
     expect(Object.keys(state.repoScores)).toHaveLength(1);
