@@ -13,7 +13,7 @@ Then follow the steps below.
 ### Step 1: Check prerequisites
 
 ```bash
-node --version  # Need 20+
+node --version  # Need 22+
 gh auth status  # Need GitHub CLI authenticated
 ```
 
@@ -33,7 +33,7 @@ If `gh` is not installed or authenticated:
 
 After restart, `/oss` and `/setup-oss` commands will be available.
 
-The CLI auto-builds on first run (requires Node.js 20+ and npm).
+The CLI auto-builds on first run (requires Node.js 22+ and npm).
 
 ---
 

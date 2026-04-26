@@ -6,7 +6,6 @@ Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/di
 
 ## Now (next 1-2 weeks)
 
-- [ ] Node 20 EOL transition — bump engines and CI matrix before April 30, 2026 ([#983](https://github.com/costajohnt/oss-autopilot/issues/983))
 - [ ] Unify skip-list persistence — the `.md` file and `state.skippedIssues` currently drift ([#992](https://github.com/costajohnt/oss-autopilot/issues/992))
 - [ ] Audit-v2 follow-up sprint — close the 15 issues filed by the 2026-04-19 audit ([#993](https://github.com/costajohnt/oss-autopilot/issues/993)–[#1007](https://github.com/costajohnt/oss-autopilot/issues/1007))
 

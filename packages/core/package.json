@@ -31,7 +31,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node20 --format=cjs --minify --sourcemap --outfile=dist/cli.bundle.cjs",
+    "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node22 --format=cjs --minify --sourcemap --outfile=dist/cli.bundle.cjs",
     "start": "tsx src/cli.ts",
     "dev": "tsx watch src/cli.ts",
     "typecheck": "tsc --noEmit",
@@ -62,7 +62,7 @@
     "url": "https://github.com/costajohnt/oss-autopilot/issues"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "@octokit/plugin-throttling": "^11.0.3",

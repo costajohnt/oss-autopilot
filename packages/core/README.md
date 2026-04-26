@@ -18,7 +18,7 @@ npx @oss-autopilot/core daily --json
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22+
 - GitHub CLI (`gh`) authenticated, or `GITHUB_TOKEN` environment variable
 
 ## CLI Usage
