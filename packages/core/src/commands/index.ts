@@ -65,6 +65,17 @@ export { runSetup } from './setup.js';
 /** Check whether setup has been completed. */
 export { runCheckSetup } from './setup.js';
 
+// ── Per-Repo Guidelines (#867) ──────────────────────────────────────────────
+
+/** Read the guidelines file for a repo. */
+export { runGuidelinesView } from './guidelines.js';
+/** Persist a guidelines file for a repo (overwrites on subsequent calls). */
+export { runGuidelinesStore } from './guidelines.js';
+/** Tombstone a guidelines file so subsequent reads return null. */
+export { runGuidelinesReset } from './guidelines.js';
+/** Fetch raw PR comment bundles for the host's extract-learnings prompt. */
+export { runFetchCorpus } from './guidelines.js';
+
 // ── State Persistence ────────────────────────────────────────────────────────
 
 /** Show current persistence mode, Gist ID, and sync status. */
@@ -124,6 +135,12 @@ export type {
 } from '../formatters/json.js';
 export type { ShelveOutput, UnshelveOutput } from './shelve.js';
 export type { MoveOutput, MoveTarget } from './move.js';
+export type {
+  GuidelinesViewOutput,
+  GuidelinesStoreOutput,
+  GuidelinesResetOutput,
+  FetchCorpusOutput,
+} from './guidelines.js';
 export type { DismissOutput, UndismissOutput } from './dismiss.js';
 export type { InitOutput } from './init.js';
 export type { ConfigSetOutput, ConfigCommandOutput } from './config.js';

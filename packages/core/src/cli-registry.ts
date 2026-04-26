@@ -1275,4 +1275,107 @@ export const commands: CLICommandDef[] = [
         });
     },
   },
+
+  // ── Guidelines (#867) ──────────────────────────────────────────────────
+  {
+    name: 'guidelines',
+    register(program) {
+      const group = program
+        .command('guidelines')
+        .description('Manage per-repo learning guidelines extracted from PR feedback (#867)');
+
+      group
+        .command('view')
+        .description('Read the per-repo guidelines file (returns null when none exists or in local mode)')
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () => (await import('./commands/guidelines.js')).runGuidelinesView({ repo: options.repo }),
+            (data) => {
+              if (data.content === null) {
+                console.log(`No guidelines stored for ${data.repo} (storage: ${data.storageMode}).`);
+              } else {
+                console.log(`# Guidelines for ${data.repo} (${data.byteSize} bytes)\n`);
+                console.log(data.content);
+              }
+            },
+          );
+        });
+
+      group
+        .command('store')
+        .description('Persist per-repo guidelines (overwrites). Reads markdown content from --content or stdin.')
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--content <markdown>', 'Markdown content. If omitted, reads from stdin.')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () => {
+              const content = options.content ?? (await readStdin());
+              return (await import('./commands/guidelines.js')).runGuidelinesStore({ repo: options.repo, content });
+            },
+            (data) => {
+              console.log(`Stored ${data.byteSize} bytes of guidelines for ${data.repo}.`);
+            },
+          );
+        });
+
+      group
+        .command('reset')
+        .description('Tombstone the guidelines file for a repo (subsequent reads return null)')
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () => (await import('./commands/guidelines.js')).runGuidelinesReset({ repo: options.repo }),
+            (data) => {
+              console.log(
+                data.deleted
+                  ? `Reset guidelines for ${data.repo}.`
+                  : `No guidelines existed for ${data.repo}; nothing to reset.`,
+              );
+            },
+          );
+        });
+
+      group
+        .command('fetch-corpus')
+        .description('Fetch raw PR comment bundles for the host extract-learnings prompt to consume')
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--limit <n>', 'Max PRs to process (1-10, default 5)', (v: string) => parseInt(v, 10))
+        .option('--force', 'Re-fetch even when commentsFetchedAt is already set')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () =>
+              (await import('./commands/guidelines.js')).runFetchCorpus({
+                repo: options.repo,
+                limit: options.limit,
+                forceRefetch: options.force,
+              }),
+            (data) => {
+              console.log(`Fetched ${data.prCount} PR comment bundle(s) for ${data.repo}.`);
+              if (data.skipped > 0) {
+                console.log(`  Skipped ${data.skipped} PR(s) already processed (use --force to re-fetch).`);
+              }
+            },
+          );
+        });
+    },
+  },
 ];
+
+/** Read full stdin content. Used when `guidelines store` content isn't passed inline. */
+async function readStdin(): Promise<string> {
+  if (process.stdin.isTTY) {
+    throw new Error('No --content provided and stdin is a TTY. Pipe content or pass --content "...".');
+  }
+  let data = '';
+  for await (const chunk of process.stdin) data += chunk;
+  return data;
+}
