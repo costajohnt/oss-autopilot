@@ -93,15 +93,15 @@ describe('MCP prompt registrations', () => {
   });
 
   describe('prompt listing', () => {
-    it('lists exactly 3 prompts', async () => {
+    it('lists exactly 4 prompts', async () => {
       const result = await client.listPrompts();
-      expect(result.prompts).toHaveLength(3);
+      expect(result.prompts).toHaveLength(4);
     });
 
     it('registers the expected prompt names', async () => {
       const result = await client.listPrompts();
       const names = result.prompts.map((p) => p.name).sort();
-      expect(names).toEqual(['find-issues', 'respond-to-pr', 'triage']);
+      expect(names).toEqual(['extract-learnings', 'find-issues', 'respond-to-pr', 'triage']);
     });
 
     it('each prompt has a name and description', async () => {
