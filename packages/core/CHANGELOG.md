@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.0.1...core-v3.1.0) (2026-04-26)
+
+
+### Features
+
+* **vet:** consume slmTriage from scout 0.7.1 + add config surface ([#1170](https://github.com/costajohnt/oss-autopilot/issues/1170)) ([6728542](https://github.com/costajohnt/oss-autopilot/commit/6728542d161bfdc22b8e5d5d416a6771bb650b9f))
+* **vet:** surface linkedPRClassification + antiLLMPolicy from scout 0.6.0 ([#1168](https://github.com/costajohnt/oss-autopilot/issues/1168)) ([031adee](https://github.com/costajohnt/oss-autopilot/commit/031adeebf0c9ab764da7837bdf4fda18e0727304))
+
 ## [3.0.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.0.0...core-v3.0.1) (2026-04-26)
 
 
