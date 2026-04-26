@@ -78,7 +78,17 @@ The tool should NEVER say "PR is ready", "work is complete", or "changes are don
 
 ## Writing Good PR Descriptions
 
-### Structure
+### When the upstream repo has a PR template
+
+If `.github/PULL_REQUEST_TEMPLATE.md` (or a sibling at `.github/pull_request_template.md`, `docs/pull_request_template.md`, or repo root) exists, the template is the **baseline** for your PR body — you merge your summary INTO it, not over it. Use `oss-autopilot pr-template <owner>/<repo>` to fetch it.
+
+- Preserve the template's headings, HTML comments, and checklist items verbatim.
+- Leave every checkbox unchecked (`- [ ]`). Maintainers' bots (DCO, changesets, license headers) rely on those items being actively ticked.
+- Drop your summary under an existing summary/description heading if there is one; otherwise prepend it.
+
+Wiping the template is the most common reason a maintainer flags an autopilot PR as careless.
+
+### Structure (when no template exists)
 
 ```markdown
 ## Summary
