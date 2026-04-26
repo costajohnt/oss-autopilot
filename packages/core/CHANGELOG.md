@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.1.0...core-v3.2.0) (2026-04-26)
+
+
+### Features
+
+* add commentsFetchedAt + v4 state migration ([#867](https://github.com/costajohnt/oss-autopilot/issues/867) PR 1) ([#1171](https://github.com/costajohnt/oss-autopilot/issues/1171)) ([8183651](https://github.com/costajohnt/oss-autopilot/commit/818365149a2de54d592456413be24c8f717a37ed))
+* guidelines CLI commands (view/store/reset/fetch-corpus) ([#867](https://github.com/costajohnt/oss-autopilot/issues/867) PR 4) ([#1175](https://github.com/costajohnt/oss-autopilot/issues/1175)) ([202291e](https://github.com/costajohnt/oss-autopilot/commit/202291e75413525047c9c0e6eaafa33fe163ec2e))
+* guidelines-store — Gist freeform document API for per-repo guidelines ([#867](https://github.com/costajohnt/oss-autopilot/issues/867) PR 2) ([#1173](https://github.com/costajohnt/oss-autopilot/issues/1173)) ([d0c8ed3](https://github.com/costajohnt/oss-autopilot/commit/d0c8ed3e57e0fc824ab54509bffab78b8a11c74e))
+* **plugin:** add extract-learnings workflow + post-merge nudge ([#867](https://github.com/costajohnt/oss-autopilot/issues/867) PR 7) ([#1178](https://github.com/costajohnt/oss-autopilot/issues/1178)) ([9cdfdb0](https://github.com/costajohnt/oss-autopilot/commit/9cdfdb06c37f91231b912f7792567b49af8ac199))
+* **plugin:** inject per-repo guidelines at claim time ([#867](https://github.com/costajohnt/oss-autopilot/issues/867) PR 6) ([#1177](https://github.com/costajohnt/oss-autopilot/issues/1177)) ([d4c3555](https://github.com/costajohnt/oss-autopilot/commit/d4c3555ac3a5f3f7301e70622313550adbaf52ae))
+* pr-comments-fetcher — fetch raw comment bundles for closed/merged PRs ([#867](https://github.com/costajohnt/oss-autopilot/issues/867) PR 3) ([#1174](https://github.com/costajohnt/oss-autopilot/issues/1174)) ([d7a25a2](https://github.com/costajohnt/oss-autopilot/commit/d7a25a2cc23bcbb7a0be6782cd9af6a02de9b368))
+
 ## [3.1.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.0.1...core-v3.1.0) (2026-04-26)
 
 
