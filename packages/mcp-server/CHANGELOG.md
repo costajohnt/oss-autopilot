@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.0.1...mcp-v5.1.0) (2026-04-26)
+
+
+### Features
+
+* **mcp:** add guidelines tools + extract-learnings prompt + repo-guidelines resource ([#867](https://github.com/costajohnt/oss-autopilot/issues/867) PR 5) ([#1176](https://github.com/costajohnt/oss-autopilot/issues/1176)) ([b476d23](https://github.com/costajohnt/oss-autopilot/commit/b476d23bdaca70374336af127332abea0b08a117))
+
 ## [5.0.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.0.0...mcp-v5.0.1) (2026-04-26)
 
 
