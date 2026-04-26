@@ -380,7 +380,27 @@ Show the vetting summary, then automatically proceed to investigate the issue. I
 Confidence: {High|Medium|Low — how confident in the diagnosis}
 ```
 
-7. **Post-investigation options:**
+7. **Inject per-repo guidelines (#867).** Before presenting the post-investigation options, fetch any stored guidelines for the target repo. These encode durable maintainer preferences extracted from past PR feedback.
+
+```bash
+GUIDELINES_OUT=$(GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" guidelines view --repo {owner}/{repo} --json 2>/dev/null)
+```
+
+Parse `data.exists` and `data.content`:
+
+- **If `data.exists === true` and `data.content` is non-empty:** Display to the user before offering the options:
+
+  > **Maintainer preferences for {owner}/{repo}** (from past PR feedback):
+  >
+  > {data.content}
+  >
+  > These take precedence over CONTRIBUTING.md when they conflict. When implementing, flag any case where your proposed approach contradicts a stated preference so the user can confirm.
+
+- **If `data.exists === false`** or `data.storageMode === 'local-unavailable'`: skip silently. Per-repo guidelines are opt-in and only available in Gist mode.
+
+- **If the command fails** (network error, malformed output): skip silently. Never block claim on guidelines unavailability — the implementation flow must work even when the guidelines layer is offline.
+
+8. **Post-investigation options:**
 
 ```
 Question: "Investigation complete. How would you like to proceed?"
