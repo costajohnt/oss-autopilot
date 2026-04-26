@@ -35,6 +35,7 @@
       "Linked PR already exists"
     ]
   },
+  "linkedPRClassification": "none",
   "grade": {
     "letter": "F",
     "reason": "unknown maintainer responsiveness, merge rate, activity"

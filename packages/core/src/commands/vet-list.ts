@@ -4,12 +4,12 @@
  */
 
 import * as fs from 'fs';
-import { createAutopilotScout } from './scout-bridge.js';
+import { adaptScoutLinkedPR, createAutopilotScout } from './scout-bridge.js';
 import { type VetListOutput, type VetOutput, type VetListItemStatus } from '../formatters/json.js';
 import { runParseList, pruneIssueList } from './parse-list.js';
 import { detectIssueList } from './startup.js';
 import { computeSuccessGrade, gradeFromCandidate } from '../core/issue-grading.js';
-import { getStateManager } from '../core/index.js';
+import { getStateManager, classifyLinkedPR } from '../core/index.js';
 
 const UNKNOWN_GRADE = computeSuccessGrade({ avgResponseDays: null, mergeRate: null, daysSinceLastCommit: null });
 
@@ -153,6 +153,11 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
           projectHealth: candidate.projectHealth,
           getRepoScore: (repo) => getStateManager().getRepoScore(repo),
         });
+        const userLogin = getStateManager().getState().config.githubUsername;
+        const linkedPRClassification = classifyLinkedPR({
+          linkedPR: adaptScoutLinkedPR(candidate.vettingResult.linkedPR),
+          userLogin,
+        });
         const vetResult: VetOutput = {
           issue: {
             repo: candidate.issue.repo,
@@ -166,6 +171,8 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
           reasonsToSkip: candidate.reasonsToSkip,
           projectHealth: candidate.projectHealth,
           vettingResult: candidate.vettingResult,
+          antiLLMPolicy: candidate.antiLLMPolicy,
+          linkedPRClassification,
           grade,
         };
 

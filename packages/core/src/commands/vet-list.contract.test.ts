@@ -18,9 +18,13 @@ const mocks = vi.hoisted(() => ({
   runParseList: vi.fn(),
 }));
 
-vi.mock('./scout-bridge.js', () => ({
-  createAutopilotScout: vi.fn(async () => ({ vetIssue: mocks.vetIssue })),
-}));
+vi.mock('./scout-bridge.js', async () => {
+  const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
+  return {
+    ...actual,
+    createAutopilotScout: vi.fn(async () => ({ vetIssue: mocks.vetIssue })),
+  };
+});
 
 vi.mock('./startup.js', () => ({ detectIssueList: mocks.detectIssueList }));
 vi.mock('./parse-list.js', () => ({
@@ -32,7 +36,10 @@ vi.mock('../core/index.js', async () => {
   const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
   return {
     ...actual,
-    getStateManager: () => ({ getRepoScore: mocks.getRepoScore }),
+    getStateManager: () => ({
+      getRepoScore: mocks.getRepoScore,
+      getState: () => ({ config: { githubUsername: 'costajohnt' } }),
+    }),
   };
 });
 
