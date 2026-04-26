@@ -48,6 +48,24 @@ Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `
 <prefix> list-move-tier <issue-url> --tier <pursue|maybe|skip> --list-path <file> --json
 ```
 
+### Per-Repo Guidelines (#867)
+
+```bash
+# Read stored guidelines for a repo
+<prefix> guidelines view --repo <owner/repo> --json
+
+# Persist guidelines (reads stdin when --content omitted)
+<prefix> guidelines store --repo <owner/repo> --content <markdown> --json
+
+# Tombstone the guidelines file
+<prefix> guidelines reset --repo <owner/repo> --json
+
+# Fetch raw PR comment bundles for the host's extract-learnings prompt to consume
+<prefix> guidelines fetch-corpus --repo <owner/repo> [--limit N] [--force] --json
+```
+
+The full extraction workflow lives at [`workflows/extract-learnings.md`](extract-learnings.md). Guidelines require Gist persistence; standalone-mode users see `'local-unavailable'` storage mode.
+
 ### PR Management
 
 ```bash

@@ -197,3 +197,11 @@ Before any push (including post-rebase force-pushes and CI fix commits):
 - **pre-commit-reviewer** — quality review before pushing after a rebase / CI fix.
 - **pr-responder** — draft maintainer replies when addressing review comments.
 - **repo-evaluator** — understand responsiveness patterns for unfamiliar repos.
+
+## Post-merge nudge (#867)
+
+When you observe that one of the user's PRs has just transitioned to merged, optionally surface the per-repo learnings extractor as a follow-up:
+
+> Your PR `{repo}#{number}` was just merged. Want to extract learnings from the review feedback before moving on? See `workflows/extract-learnings.md`.
+
+The nudge is opt-in — extraction is token-intensive and the user may already know what feedback was given. Do not run the extraction automatically.
