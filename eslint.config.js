@@ -9,7 +9,9 @@ import vitest from '@vitest/eslint-plugin';
 
 export default tseslint.config(
   eslint.configs.recommended,
-  ...tseslint.configs.recommended,
+  // Type-aware preset for source files only (test files are excluded from
+  // per-package tsconfig.json — see scoped block below).
+  ...tseslint.configs.recommendedTypeChecked,
   importX.flatConfigs.recommended,
   // Skip importX.flatConfigs.typescript — typescript-eslint already handles
   // module resolution; the import-x typescript resolver fights it and emits
@@ -19,9 +21,22 @@ export default tseslint.config(
   regexp.configs['flat/recommended'],
   eslintConfigPrettier,
   {
-    ignores: ['packages/*/dist/**', 'packages/*/docs/**', 'node_modules/**', '*.cjs'],
+    ignores: [
+      'packages/*/dist/**',
+      'packages/*/docs/**',
+      'packages/*/coverage/**',
+      'node_modules/**',
+      '*.cjs',
+    ],
   },
   {
+    languageOptions: {
+      parserOptions: {
+        // projectService discovers tsconfig.json per-package automatically.
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     rules: {
       // Allow unused vars prefixed with _ (common pattern)
       '@typescript-eslint/no-unused-vars': [
@@ -37,6 +52,34 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'warn',
       // Allow non-null assertion (used in tests)
       '@typescript-eslint/no-non-null-assertion': 'off',
+
+      // ── Type-aware rules — kept as ERROR (these catch real bugs) ─────
+      // no-floating-promises catches the audit's silent-failure pattern;
+      // no-misused-promises catches passing async fns where sync is expected.
+      '@typescript-eslint/no-floating-promises': 'error',
+      // Allow async functions as React event handlers and as Node http.createServer
+      // callbacks — both APIs handle returned promises fine. Still catches
+      // higher-signal cases like `if (asyncFn())` and conditional checks.
+      '@typescript-eslint/no-misused-promises': [
+        'error',
+        { checksVoidReturn: { arguments: false, attributes: false, properties: false } },
+      ],
+      '@typescript-eslint/no-base-to-string': 'error',
+      '@typescript-eslint/prefer-promise-reject-errors': 'error',
+
+      // ── Type-aware rules — downgraded to WARN ───────────────────────
+      // The unsafe-* family fires heavily on JSON.parse, env vars, third-party
+      // returns. Each one needs hand-review; warn level keeps them visible
+      // without gating CI. Ratchet to error once the warning count is low.
+      '@typescript-eslint/no-unsafe-assignment': 'warn',
+      '@typescript-eslint/no-unsafe-member-access': 'warn',
+      '@typescript-eslint/no-unsafe-call': 'warn',
+      '@typescript-eslint/no-unsafe-argument': 'warn',
+      '@typescript-eslint/no-unsafe-return': 'warn',
+      '@typescript-eslint/restrict-template-expressions': 'warn',
+      '@typescript-eslint/require-await': 'warn',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
+      '@typescript-eslint/no-redundant-type-constituents': 'warn',
 
       // import-x: dev dependencies are fine in tests + tooling
       'import-x/no-unresolved': 'off', // typescript-eslint handles resolution
@@ -59,10 +102,23 @@ export default tseslint.config(
     },
   },
   {
-    // Test files use `any` extensively for mocking — keep it off there
-    files: ['**/*.test.ts'],
+    // Test files are excluded from per-package tsconfig.json (they don't ship
+    // in dist). Disable type-aware rules for them — vitest already provides
+    // type checking at runtime. The high-value rules (no-floating-promises,
+    // no-misused-promises) primarily catch bugs in production code paths,
+    // not test setup.
+    files: [
+      '**/*.test.ts',
+      '**/*.test.tsx',
+      '**/*.e2e.test.ts',
+      '**/vitest.config.ts',
+      '**/vitest.setup.ts',
+      '**/vite.config.ts',
+    ],
+    ...tseslint.configs.disableTypeChecked,
     plugins: { vitest },
     rules: {
+      ...tseslint.configs.disableTypeChecked.rules,
       '@typescript-eslint/no-explicit-any': 'off',
       ...vitest.configs.recommended.rules,
       // Allow `it.skip` for gated tests; project uses `it.todo` for stubs
