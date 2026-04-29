@@ -720,6 +720,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         );
         cachedIssueListMtimeMs = getIssueListMtimeMs();
         warn(MODULE, 'Background data refresh complete');
+        return;
       })
       .catch((error) => {
         warn(MODULE, `Background data refresh failed (serving cached data): ${errorMessage(error)}`);

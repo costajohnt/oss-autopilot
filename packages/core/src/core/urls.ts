@@ -21,8 +21,8 @@ export interface ParsedGitHubUrl {
 }
 
 // Validation patterns for GitHub owner and repo names
-const OWNER_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const REPO_PATTERN = /^[a-zA-Z0-9_.-]+$/;
+const OWNER_PATTERN = /^[\w-]+$/;
+const REPO_PATTERN = /^[\w.-]+$/;
 
 function isValidOwnerRepo(owner: string, repo: string): boolean {
   return OWNER_PATTERN.test(owner) && REPO_PATTERN.test(repo);

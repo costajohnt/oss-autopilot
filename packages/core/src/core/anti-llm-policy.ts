@@ -103,7 +103,7 @@ function makeExcerpt(text: string, matchIndex: number, matchLength: number): str
 function normalizeText(text: string): string {
   return text
     .normalize('NFKC')
-    .replace(/[\u00A0]/g, ' ')
+    .replace(/\u00A0/g, ' ')
     .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015]/g, '-');
 }
 

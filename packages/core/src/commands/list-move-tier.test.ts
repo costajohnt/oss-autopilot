@@ -167,7 +167,7 @@ describe('runListMoveTier (filesystem)', () => {
     fs.writeFileSync(listPath, original);
     const before = fs.statSync(listPath).mtimeMs;
     // small delay to allow mtime resolution
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
     const out = await runListMoveTier({ issueUrl: URL_A, tier: 'pursue', listPath });
     expect(out.moved).toBe(false);
     expect(out.count).toBe(0);

@@ -68,6 +68,7 @@ export function LazyChartPanel(props: ChartPanelProps) {
     loadChartPanel()
       .then((C) => {
         if (!cancelled) setComponent(() => C);
+        return;
       })
       .catch((err) => {
         if (!cancelled) {

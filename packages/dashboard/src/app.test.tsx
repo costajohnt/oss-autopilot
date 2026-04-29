@@ -508,7 +508,7 @@ describe('App', () => {
       const { container } = render(<App />);
 
       await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(container.querySelector('.celebration-toast')).toBeFalsy();
     });
@@ -548,7 +548,7 @@ describe('App', () => {
       search.focus();
       search.dispatchEvent(new KeyboardEvent('keydown', { key: 'C', shiftKey: true, bubbles: true }));
 
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
       expect(container.querySelector('.celebration-toast')).toBeFalsy();
     });
   });
