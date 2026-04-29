@@ -6,6 +6,23 @@ import nodePlugin from 'eslint-plugin-n';
 import promise from 'eslint-plugin-promise';
 import * as regexp from 'eslint-plugin-regexp';
 import vitest from '@vitest/eslint-plugin';
+import unicorn from 'eslint-plugin-unicorn';
+import sonarjs from 'eslint-plugin-sonarjs';
+
+// Helper: take a flat-config preset and downgrade every rule it sets to 'warn'.
+// Used to onboard opinionated plugins (unicorn, sonarjs) without gating CI
+// while we triage. Ratchet to 'error' as warning counts drop.
+function downgradeToWarn(config) {
+  return {
+    ...config,
+    rules: Object.fromEntries(
+      Object.entries(config.rules ?? {}).map(([rule, value]) => [
+        rule,
+        Array.isArray(value) ? ['warn', ...value.slice(1)] : 'warn',
+      ]),
+    ),
+  };
+}
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -19,6 +36,10 @@ export default tseslint.config(
   nodePlugin.configs['flat/recommended-module'],
   promise.configs['flat/recommended'],
   regexp.configs['flat/recommended'],
+  // Unicorn + SonarJS as warnings — opinionated rule sets we want to surface
+  // gradually rather than gate CI on. See downgradeToWarn comment.
+  downgradeToWarn(unicorn.configs.recommended),
+  downgradeToWarn(sonarjs.configs.recommended),
   eslintConfigPrettier,
   {
     ignores: [
@@ -99,6 +120,32 @@ export default tseslint.config(
       // shebang — esbuild copies it through to the bundle, and the CI verify
       // step grep's for it. Disable globally; entry points keep the shebang.
       'n/hashbang': 'off',
+
+      // ── Opinionated unicorn/sonarjs rules disabled (signal:noise too low) ──
+      // Variable naming — too subjective; we have established conventions
+      'unicorn/prevent-abbreviations': 'off',
+      // null vs undefined — codebase intentionally uses null for "absent"
+      // (matches GitHub API, JSON, and our Zod schemas)
+      'unicorn/no-null': 'off',
+      // wants `(error)` not `(err)` — bikeshed; codebase uses both
+      'unicorn/catch-error-name': 'off',
+      // wants `(arg) => ...` over `arg => ...` — prettier already enforces
+      'sonarjs/arrow-function-convention': 'off',
+      // flags any string literal repeated 3+ times — false positive heaven
+      // for CLI tools where flag/option strings recur intentionally
+      'sonarjs/no-duplicate-string': 'off',
+      // wants a copyright header in every file — we don't use them
+      'sonarjs/file-header': 'off',
+      // wants explicit `=== undefined` over destructured defaults — noisy
+      'sonarjs/no-undefined-assignment': 'off',
+      // already covered by typescript-eslint's import resolution
+      'sonarjs/no-wildcard-import': 'off',
+      // false positive on ES modules — top-level declarations are module-
+      // scoped, not global. Rule is designed for legacy script files.
+      'sonarjs/declarations-in-global-scope': 'off',
+      // false positive on Node globals (`process`, `Buffer`) — sonarjs
+      // doesn't load @types/node
+      'sonarjs/no-reference-error': 'off',
     },
   },
   {
