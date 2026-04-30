@@ -475,6 +475,22 @@ export const InitOutputSchema = z.object({
   message: z.string(),
 });
 
+// ── #1190: plugin → CLI contract ─────────────────────────────────────
+//
+// Pinned shape lets the plugin's session-start hook verify that the bundled
+// CLI exposes the subcommands the markdown layer expects. Bumping
+// `schemaVersion` is a breaking change to that contract.
+export const ManifestOutputSchema = z.object({
+  schemaVersion: z.literal(1),
+  cliVersion: z.string().regex(/^\d+\.\d+\.\d+/),
+  commands: z.array(
+    z.object({
+      name: z.string(),
+      localOnly: z.boolean(),
+    }),
+  ),
+});
+
 export const CheckSetupOutputSchema = z.object({
   setupComplete: z.boolean(),
   username: z.string(),

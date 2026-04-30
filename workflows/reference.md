@@ -8,7 +8,7 @@ All commands support `--json` flag for structured output.
 
 **Prefix:** `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs"`
 
-Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `config`, `local-repos`, `parse-issue-list`, `serve`.
+Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `config`, `local-repos`, `parse-issue-list`, `serve`, `manifest`.
 
 ### Core Workflow
 
@@ -150,6 +150,9 @@ rejected with a did-you-mean suggestion.
 
 # Contribution statistics (merged/closed counts, merge rate)
 <prefix> stats --json
+
+# Plugin → CLI contract introspection (#1190): list registered commands + version
+<prefix> manifest --json
 ```
 
 ### Common Flags

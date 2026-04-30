@@ -22,6 +22,13 @@ vi.mock('./core/errors.js', () => ({
   resolveErrorCode: vi.fn(() => 'UNKNOWN'),
 }));
 
+// `manifest` reads getCLIVersion from the barrel export. Stub it so the test
+// doesn't pull in the full core/ side effects (state/gist/path modules) that
+// other tests in this file already avoid by mocking submodule-level paths.
+vi.mock('./core/index.js', () => ({
+  getCLIVersion: vi.fn(() => '0.0.0-test'),
+}));
+
 vi.mock('./formatters/json.js', () => ({
   outputJson: vi.fn(),
   outputJsonError: vi.fn(),
@@ -47,6 +54,7 @@ vi.mock('./formatters/json.js', () => ({
   CheckIntegrationOutputSchema: {},
   DetectFormattersOutputSchema: {},
   LocalReposOutputSchema: {},
+  ManifestOutputSchema: {},
 }));
 
 // ─── Mock dynamic command-module imports ────────────────────────────────────
@@ -519,5 +527,55 @@ describe('skip-add action', () => {
 
     expect(mockOutputJsonError).toHaveBeenCalledWith('bad url', 'UNKNOWN');
     expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+// ─── manifest command (#1190) ───────────────────────────────────────────────
+
+describe('manifest command (#1190)', () => {
+  it('produces a payload matching the contract shape', async () => {
+    const program = buildProgram('manifest');
+
+    await program.parseAsync(['node', 'cli', 'manifest', '--json']);
+
+    expect(mockOutputJsonValidated).toHaveBeenCalledTimes(1);
+    const [, payload] = mockOutputJsonValidated.mock.calls[0];
+    expect(payload).toMatchObject({
+      schemaVersion: 1,
+      cliVersion: expect.stringMatching(/^\d+\.\d+\.\d+/),
+      commands: expect.any(Array),
+    });
+    const commandsField = (payload as { commands: Array<{ name: string; localOnly: boolean }> }).commands;
+    // Every entry has only the two declared keys.
+    for (const entry of commandsField) {
+      expect(Object.keys(entry).sort()).toEqual(['localOnly', 'name']);
+      expect(typeof entry.name).toBe('string');
+      expect(typeof entry.localOnly).toBe('boolean');
+    }
+    // Commands list matches the registry length and includes 'manifest' itself.
+    expect(commandsField.length).toBe(commands.length);
+    expect(commandsField.map((c) => c.name)).toContain('manifest');
+  });
+
+  it('returns commands sorted alphabetically for stable diffing', async () => {
+    const program = buildProgram('manifest');
+
+    await program.parseAsync(['node', 'cli', 'manifest', '--json']);
+
+    const [, payload] = mockOutputJsonValidated.mock.calls[0];
+    const names = (payload as { commands: Array<{ name: string }> }).commands.map((c) => c.name);
+    const sorted = [...names].sort((a, b) => a.localeCompare(b));
+    expect(names).toEqual(sorted);
+  });
+
+  it('prints a one-liner summary in display mode', async () => {
+    const program = buildProgram('manifest');
+
+    await program.parseAsync(['node', 'cli', 'manifest']);
+
+    expect(mockOutputJsonValidated).not.toHaveBeenCalled();
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^oss-autopilot v\d+\.\d+\.\d+.* \(\d+ commands\)$/),
+    );
   });
 });
