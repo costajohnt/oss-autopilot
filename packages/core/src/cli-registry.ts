@@ -85,6 +85,42 @@ function printRepos(repos: Record<string, { path: string; currentBranch: string 
 }
 
 export const commands: CLICommandDef[] = [
+  // ── Manifest (#1190) ───────────────────────────────────────────────────
+  // Lets the plugin's session-start hook verify CLI/plugin contract drift —
+  // it diffs the registered commands against `.claude-plugin/expected-cli-contract.json`
+  // and warns when the markdown layer references commands the CLI no longer
+  // exposes. Local-only: no GitHub access needed.
+  {
+    name: 'manifest',
+    localOnly: true,
+    register(program) {
+      program
+        .command('manifest')
+        .description('Print the CLI contract (registered commands + version) for plugin/MCP introspection (#1190)')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          const { ManifestOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
+            options,
+            async () => {
+              const { getCLIVersion } = await import('./core/index.js');
+              return {
+                schemaVersion: 1 as const,
+                cliVersion: getCLIVersion(),
+                commands: commands
+                  .map((c) => ({ name: c.name, localOnly: !!c.localOnly }))
+                  .sort((a, b) => a.name.localeCompare(b.name)),
+              };
+            },
+            (data) => {
+              console.log(`oss-autopilot v${data.cliVersion} (${data.commands.length} commands)`);
+            },
+            ManifestOutputSchema,
+          );
+        });
+    },
+  },
+
   // ── Daily ──────────────────────────────────────────────────────────────
   {
     name: 'daily',

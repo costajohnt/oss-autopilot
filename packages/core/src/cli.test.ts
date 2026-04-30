@@ -111,6 +111,7 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'stats',
     'skip-add',
     'list-move-tier',
+    'manifest',
   ];
 
   const expectedTokenRequired = [
@@ -375,6 +376,7 @@ describe('Command registration', () => {
       'skip-add',
       'list-move-tier',
       'guidelines',
+      'manifest',
     ];
 
     for (const name of expectedCommands) {
