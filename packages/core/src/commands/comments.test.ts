@@ -29,6 +29,7 @@ describe('runComments', () => {
     vi.clearAllMocks();
     mockGetStateManager.mockReturnValue({
       getState: vi.fn().mockReturnValue({ config: { githubUsername: 'testuser' } }),
+      getStateStaleness: vi.fn().mockReturnValue(null),
     } as any);
   });
 

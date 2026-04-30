@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
     getState: vi.fn().mockReturnValue({ config: { githubUsername: 'testuser' } }),
     addIssue: vi.fn(),
     isGistMode: () => false,
+    getStateStaleness: vi.fn().mockReturnValue(null),
   },
   // Octokit endpoints
   pullsGet: vi.fn(),

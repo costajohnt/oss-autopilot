@@ -10,6 +10,7 @@ import { warn } from '../core/logger.js';
 const MODULE = 'comments';
 import { paginateAll } from '../core/pagination.js';
 import { type CommentsOutput, type PostOutput, type ClaimOutput } from '../formatters/json.js';
+import { buildStalenessWarning } from '../formatters/json.js';
 import {
   validateUrl,
   validateMessage,
@@ -117,6 +118,7 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
     .filter((r) => filterComment(r) && r.body && r.body.trim())
     .sort((a, b) => new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime());
 
+  const staleness = stateManager.getStateStaleness();
   return {
     pr: {
       title: pr.title,
@@ -148,6 +150,7 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
       inlineCommentCount: relevantReviewComments.length,
       discussionCommentCount: relevantIssueComments.length,
     },
+    ...(staleness ? { warnings: [buildStalenessWarning(staleness)] } : {}),
   };
 }
 

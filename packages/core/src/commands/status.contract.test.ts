@@ -45,6 +45,7 @@ describe('status --json contract', () => {
     mockGetStateManager.mockReturnValue({
       getStats: vi.fn().mockReturnValue(DETERMINISTIC_STATS),
       getState: vi.fn().mockReturnValue(DETERMINISTIC_STATE),
+      getStateStaleness: vi.fn().mockReturnValue(null),
     } as unknown as ReturnType<typeof getStateManager>);
   });
 
