@@ -5,6 +5,7 @@
 
 import { getStateManager } from '../core/index.js';
 import type { StatusOutput } from '../formatters/json.js';
+import { buildStalenessWarning } from '../formatters/json.js';
 
 interface StatusOptions {
   offline?: boolean;
@@ -38,6 +39,13 @@ export async function runStatus(options: StatusOptions): Promise<StatusOutput> {
   if (options.offline) {
     output.offline = true;
     output.lastUpdated = lastUpdated;
+  }
+
+  // Surface Gist staleness as a structured warning so cron / dashboard
+  // consumers don't need to scrape stderr (#1193).
+  const staleness = stateManager.getStateStaleness();
+  if (staleness) {
+    output.warnings = [buildStalenessWarning(staleness)];
   }
 
   return output;
