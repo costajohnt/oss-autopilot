@@ -43,6 +43,7 @@ import {
   deduplicateDigest,
   compactActionableIssues,
   compactRepoGroups,
+  buildStalenessWarning,
   type DailyOutput,
   type DailyWarning,
   type DailyWarningPhase,
@@ -687,6 +688,12 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // One collector shared by every phase — threaded through explicitly so the
   // callgraph documents which phases can produce non-fatal warnings. See #1042.
   const warnings: DailyWarning[] = [];
+
+  // Surface Gist staleness up-front so consumers see it even if Phase 1 fails (#1193).
+  const staleness = getStateManager().getStateStaleness();
+  if (staleness) {
+    warnings.push(buildStalenessWarning(staleness));
+  }
 
   // Phase 1: Fetch all PR data from GitHub
   const {

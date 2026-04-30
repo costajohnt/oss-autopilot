@@ -90,6 +90,25 @@ export async function maybeCheckpoint(stateManager: StateManager, callerModule: 
  * Retains lightweight CRUD operations for config, issues, shelving, dismissal,
  * and status overrides.
  */
+/**
+ * Surfaced when the in-memory cached state is no longer in sync with the
+ * canonical Gist — typically because `refreshFromGist()` failed (network
+ * blip, rate limit, expired token) or because the bootstrap fell back to
+ * the local cache file (#1193). Commands include this in their `--json`
+ * envelope so cron/dashboard consumers can react instead of silently
+ * operating on stale data.
+ */
+export interface StalenessInfo {
+  /** Why we're operating on cached data. Forward-compatible with future sources. */
+  source: 'cache';
+  /** Human-readable reason from the underlying error. */
+  reason: string;
+  /** ISO timestamp of the most recent successful refresh, or null if never. */
+  lastSuccessfulRefresh: string | null;
+  /** ISO timestamp when this staleness marker was first set. */
+  detectedAt: string;
+}
+
 export class StateManager {
   protected state: AgentState;
   protected inMemoryOnly: boolean;
@@ -98,6 +117,8 @@ export class StateManager {
   private _batchDirty = false;
   protected gistStore: GistStateStore | null = null;
   protected gistDegraded = false;
+  private staleness: StalenessInfo | null = null;
+  private lastSuccessfulRefreshAt: string | null = null;
 
   /**
    * Create a new StateManager instance.
@@ -164,6 +185,17 @@ export class StateManager {
     manager.gistStore = gistStore;
     manager.gistDegraded = result.degraded ?? false;
     manager.inMemoryOnly = false; // re-enable persistence
+
+    // Seed the staleness marker if bootstrap fell back to the local cache —
+    // a `daily` running on a cron right after this start needs to know.
+    if (result.degraded) {
+      manager.staleness = {
+        source: 'cache',
+        reason: 'initial Gist bootstrap fell back to local cache',
+        lastSuccessfulRefresh: null,
+        detectedAt: new Date().toISOString(),
+      };
+    }
 
     return manager;
   }
@@ -390,6 +422,15 @@ export class StateManager {
       const raw = this.gistStore.cachedFiles.get('state.json');
       if (!raw) {
         warn(MODULE, 'Gist refreshed but state.json missing from cache');
+        // HTTP fetch succeeded but the Gist body is missing state.json — we
+        // still have stale in-memory data, so surface a marker rather than
+        // silently returning false (#1193 review).
+        this.staleness = {
+          source: 'cache',
+          reason: 'Gist refresh returned no state.json file',
+          lastSuccessfulRefresh: this.lastSuccessfulRefreshAt,
+          detectedAt: new Date().toISOString(),
+        };
         return false;
       }
       try {
@@ -397,10 +438,40 @@ export class StateManager {
         this.tryReconcilePRCounts();
       } catch (err) {
         warn(MODULE, `Failed to parse refreshed Gist state: ${errorMessage(err)}`);
+        // Same reasoning as the missing-file branch: parse failure leaves us
+        // on stale in-memory state, so flag it.
+        this.staleness = {
+          source: 'cache',
+          reason: `Gist refresh succeeded but payload was invalid: ${errorMessage(err)}`,
+          lastSuccessfulRefresh: this.lastSuccessfulRefreshAt,
+          detectedAt: new Date().toISOString(),
+        };
         return false;
       }
+      // Successful refresh clears any prior staleness (#1193).
+      this.lastSuccessfulRefreshAt = new Date().toISOString();
+      this.staleness = null;
+    } else if (this.gistStore.lastRefreshError) {
+      // Distinguish "fetch failed" (set marker) from "throttled" (preserve
+      // any existing marker, set nothing new).
+      this.staleness = {
+        source: 'cache',
+        reason: errorMessage(this.gistStore.lastRefreshError),
+        lastSuccessfulRefresh: this.lastSuccessfulRefreshAt,
+        detectedAt: new Date().toISOString(),
+      };
     }
     return refreshed;
+  }
+
+  /**
+   * Returns a staleness marker when the in-memory state diverged from the
+   * canonical Gist (refresh failure or degraded bootstrap), or `null` when
+   * state is current. Commands surface this via their `--json` warnings
+   * envelope (#1193).
+   */
+  getStateStaleness(): StalenessInfo | null {
+    return this.staleness;
   }
 
   // === Dashboard Data Setters ===
