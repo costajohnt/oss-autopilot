@@ -32,6 +32,13 @@ export {
 // Search/vetting now delegated to @oss-scout/core via commands/scout-bridge.ts
 export { IssueConversationMonitor } from './issue-conversation.js';
 export { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
+export {
+  wrapUntrustedContent,
+  extractFromFence,
+  UNTRUSTED_OPEN_TAG_NAME,
+  UNTRUSTED_CLOSE_TAG,
+  type UntrustedContentMeta,
+} from './untrusted-content.js';
 export { getOctokit, checkRateLimit, type RateLimitInfo } from './github.js';
 export { parseGitHubUrl, splitRepo, isOwnRepo } from './urls.js';
 export { daysBetween, formatRelativeTime, byDateDescending } from './dates.js';

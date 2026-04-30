@@ -58,6 +58,19 @@ The plugin layer (agents, commands, skills) consumes untrusted data from GitHub.
 - **Human-in-the-loop enforcement.** The pre-commit review workflow requires explicit user approval before posting comments, with enumerated acceptance phrases and negation checking to prevent accidental posts.
 - **AI attribution prevention.** CLAUDE.md rules prevent AI-identifying markers in commits, comments, and PRs submitted to external repositories.
 
+#### Agent input threat model (#1192)
+
+PR titles, PR bodies, issue bodies, review comments, discussion comments, and CI logs returned to agents are attacker-controllable. The known threats are: making the agent post a comment on the user's behalf without their consent (`post`/`claim` paths), make false claims in a PR response, raise an issue's vetting score, dismiss notifications, or exfiltrate session context.
+
+Controls in priority order:
+
+1. **Human-in-the-loop on every state-changing GitHub call.** `post` and `claim` require explicit user approval before sending (#1053). This is the primary control — every other layer is defense-in-depth.
+2. **Input fencing.** The `wrapUntrustedContent(text, label, meta?)` helper in `@oss-autopilot/core` wraps GitHub content in a `<github-content>` fence with escape-proof handling (open- and close-tag escaping, lossless round-trip). Agents are instructed in `workflows/reference.md` to treat anything inside that fence as data, not instructions.
+3. **Agent guidance.** `pr-responder` and `issue-scout` carry pointer text directing them to fence GitHub content and flag close-tag escape attempts via AskUserQuestion.
+4. **Regression corpus.** `packages/core/src/core/prompt-injection-corpus.test.ts` runs a CI-resident corpus of known injection shapes (classic, fake-system-tag, markdown, delimiter-collision, unicode, long) against the fencing helper and pins the structural contract: exactly one open and one close tag, lossless round-trip, payload contained.
+
+Explicit non-goals: no automated detection of injection content (false-positive prone, weakens the human-review signal); no server-side filtering (we don't control GitHub); no LLM-side trust assumptions (model behavior under adversarial input is not part of the contract).
+
 ### Dependency Security
 
 The attack surface is intentionally minimal.
