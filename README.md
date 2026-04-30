@@ -27,9 +27,9 @@
 <p align="center">
 <a href="https://github.com/costajohnt/oss-autopilot">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://oss-widgets.vercel.app/api/card/costajohnt?theme=dark&minStars=50" />
-  <source media="(prefers-color-scheme: light)" srcset="https://oss-widgets.vercel.app/api/card/costajohnt?theme=light&minStars=50" />
-  <img alt="OSS Stats" src="https://oss-widgets.vercel.app/api/card/costajohnt?theme=dark&minStars=50" width="495" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://oss-widgets.vercel.app/api/card/costajohnt?theme=dark&minStars=0" />
+  <source media="(prefers-color-scheme: light)" srcset="https://oss-widgets.vercel.app/api/card/costajohnt?theme=light&minStars=0" />
+  <img alt="OSS Stats" src="https://oss-widgets.vercel.app/api/card/costajohnt?theme=dark&minStars=0" width="495" />
 </picture>
 </a>
 </p>
@@ -37,9 +37,9 @@
 <p align="center">
 <a href="https://github.com/costajohnt/oss-widgets">
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://oss-widgets.vercel.app/api/top-repos/costajohnt?theme=dark&minStars=50" />
-  <source media="(prefers-color-scheme: light)" srcset="https://oss-widgets.vercel.app/api/top-repos/costajohnt?theme=light&minStars=50" />
-  <img alt="Top Contributed Repos" src="https://oss-widgets.vercel.app/api/top-repos/costajohnt?theme=dark&minStars=50" width="495" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://oss-widgets.vercel.app/api/top-repos/costajohnt?theme=dark&minStars=0" />
+  <source media="(prefers-color-scheme: light)" srcset="https://oss-widgets.vercel.app/api/top-repos/costajohnt?theme=light&minStars=0" />
+  <img alt="Top Contributed Repos" src="https://oss-widgets.vercel.app/api/top-repos/costajohnt?theme=dark&minStars=0" width="495" />
 </picture>
 </a>
 </p>
@@ -74,9 +74,9 @@ A Preact SPA that auto-opens when you run `/oss` — PR management, charts, cont
 │  │ @oss-auto-   │  │ @oss-autopilot/dashboard │  │
 │  │ pilot/mcp    │  │ Preact + Vite             │  │
 │  │              │  │ PR management, charts,    │  │
-│  │ 24 tools     │  │ actions                   │  │
-│  │ 5 resources  │  │                           │  │
-│  │ 3 prompts    │  │                           │  │
+│  │ 26 tools     │  │ actions                   │  │
+│  │ 6 resources  │  │                           │  │
+│  │ 4 prompts    │  │                           │  │
 │  └──────┬───────┘  └────────────┬─────────────┘  │
 │         │                       │                │
 │  ┌──────┴───────────────────────┴─────────────┐  │
@@ -92,7 +92,7 @@ A Preact SPA that auto-opens when you run `/oss` — PR management, charts, cont
 
 **Three deployment models** — Claude Code plugin with 7 specialized agents, MCP server for Cursor/Claude Desktop/Codex/Windsurf, and a standalone CLI with `--json` structured output. Same core, different interfaces.
 
-**Deterministic core, AI orchestration layer** — Critical logic (PR status classification, CI failure analysis, state management) lives in tested TypeScript, not in prompts. The CLI returns structured JSON that agents consume. CI failures are categorized into a deterministic taxonomy — actionable vs. fork limitation vs. auth gate vs. infrastructure — rather than asking an LLM each time. 2,400+ tests validate the core independently of any LLM.
+**Deterministic core, AI orchestration layer** — Critical logic (PR status classification, CI failure analysis, state management) lives in tested TypeScript, not in prompts. The CLI returns structured JSON that agents consume. CI failures are categorized into a deterministic taxonomy — actionable vs. fork limitation vs. auth gate vs. infrastructure — rather than asking an LLM each time. 2,250+ tests validate the core independently of any LLM.
 
 **Production-grade GitHub API integration** — ETag-based HTTP caching, automatic rate limit backoff with retries, bounded concurrency pools, and paginated fetching. Handles the full complexity of fork-based contribution workflows: correct diff ranges, squash commit counting, and `--head` flag handling for cross-fork PRs. Designed to run daily without hitting API limits.
 
@@ -104,7 +104,7 @@ A Preact SPA that auto-opens when you run `/oss` — PR management, charts, cont
 
 **Security discipline** — State files written with `0o600` permissions, data directory created with `0o700`. Concurrent state write protection prevents corruption from parallel runs. Runtime schema validation via Zod on every state file read. XSS prevention tested. Input validation hardened across CLI arguments and API responses.
 
-**Automated release pipeline** — Conventional commits feed into release-please for automatic versioning and changelogs, with CI/CD publishing to npm on merge. 148+ published releases since March 2026, with 170+ changelog versions spanning the full v0.1.0 → v1.16.x history.
+**Automated release pipeline** — Conventional commits feed into release-please for automatic versioning and changelogs, with CI/CD publishing to npm on merge. 189+ changelog versions across both packages (core v0.1.0 → v3.2.0, mcp through v5.1.0) since the first release in January 2025.
 
 Every feature in the list above was driven by real usage — capacity warnings came from overcommitting, "skip comment when code speaks for itself" came from over-commenting, diminishing returns detection came from spending too long searching. The tool is shaped by the contributions it manages.
 
@@ -143,7 +143,7 @@ Then add to your MCP client config:
 }
 ```
 
-The MCP server exposes 24 tools, 5 resources, and 3 prompts — the full OSS Autopilot feature set.
+The MCP server exposes 26 tools, 6 resources, and 4 prompts — the full OSS Autopilot feature set.
 
 </details>
 
@@ -187,12 +187,12 @@ All commands return `{ success, data, error, timestamp }` with `--json`.
 
 | Metric | Value |
 |--------|-------|
-| Releases | 148+ published (170+ changelog versions, v0.1.0 → v1.16.x) |
-| Tests | 2,400+ across 115+ files |
+| Releases | 189+ changelog versions (core v0.1.0 → v3.2.0; mcp through v5.1.0) |
+| Tests | 2,250+ across 105 files |
 | Issues + PRs | 1,000+ |
-| Time span | Jan 2026 → present |
+| Time span | Jan 2025 → present |
 | npm packages | 3 |
-| CLI commands | 30+ |
+| CLI commands | 34 |
 | Agents | 7 |
 
 ---
