@@ -36,3 +36,46 @@ describe('cli-registry ↔ workflows/reference.md parity (#1048)', () => {
     expect(missing, `Add these commands to workflows/reference.md: ${missing.join(', ')}`).toEqual([]);
   });
 });
+
+describe('cli-registry ↔ .claude-plugin/expected-cli-contract.json parity (#1190)', () => {
+  const contractPath = path.resolve(__dirname, '../../../.claude-plugin/expected-cli-contract.json');
+  const pluginRoot = path.resolve(__dirname, '../../..');
+
+  interface Contract {
+    schemaVersion: number;
+    expectedCommands: string[];
+    expectedWorkflowFiles: string[];
+  }
+
+  it('expected-cli-contract.json exists', () => {
+    expect(fs.existsSync(contractPath)).toBe(true);
+  });
+
+  it('every command in expectedCommands is registered (no plugin-side dangling references)', () => {
+    const contract: Contract = JSON.parse(fs.readFileSync(contractPath, 'utf-8'));
+    const registered = new Set(commands.map((c) => c.name));
+    const dangling = contract.expectedCommands.filter((name) => !registered.has(name));
+    expect(
+      dangling,
+      `Commands referenced by the plugin contract but missing from cli-registry.ts: ${dangling.join(', ')}. ` +
+        `Either restore the command or remove it from .claude-plugin/expected-cli-contract.json.`,
+    ).toEqual([]);
+  });
+
+  it('every registered command appears in expectedCommands (no silent additions)', () => {
+    const contract: Contract = JSON.parse(fs.readFileSync(contractPath, 'utf-8'));
+    const expected = new Set(contract.expectedCommands);
+    const unlisted = commands.map((c) => c.name).filter((name) => !expected.has(name));
+    expect(
+      unlisted,
+      `New CLI commands not yet pinned in the plugin contract: ${unlisted.join(', ')}. ` +
+        `Add them to .claude-plugin/expected-cli-contract.json so plugin/markdown drift is caught at session start.`,
+    ).toEqual([]);
+  });
+
+  it('every workflow file referenced by the contract exists on disk', () => {
+    const contract: Contract = JSON.parse(fs.readFileSync(contractPath, 'utf-8'));
+    const missing = contract.expectedWorkflowFiles.filter((rel) => !fs.existsSync(path.join(pluginRoot, rel)));
+    expect(missing, `Workflow files referenced by the contract are missing: ${missing.join(', ')}`).toEqual([]);
+  });
+});
