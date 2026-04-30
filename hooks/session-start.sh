@@ -93,6 +93,47 @@ if [ -n "$dashboard_rebuild_error" ]; then
   messages="${messages:+${messages}${NL}}Warning: Dashboard SPA build failed. To fix: ${dashboard_rebuild_error}"
 fi
 
+# --- Step 1.75: Verify plugin → CLI contract (#1190) ---
+# The markdown command/agent layer references workflow files and CLI commands
+# by name. If the bundled CLI changes underneath the plugin (rename, removal,
+# new dependency), the markdown silently no-ops on that branch. Cross-check
+# the registered command set against the pinned contract and warn if anything
+# is missing. Skips silently when jq is unavailable; the cli-registry.docs.test
+# pins the contract in CI as a stronger guarantee.
+CONTRACT_FILE="${PLUGIN_ROOT}/.claude-plugin/expected-cli-contract.json"
+CLI_BUNDLE="${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs"
+if [ -f "$CONTRACT_FILE" ] && [ -f "$CLI_BUNDLE" ] && command -v jq &>/dev/null; then
+  manifest_json=$(node "$CLI_BUNDLE" manifest --json 2>/dev/null || echo "")
+  if [ -n "$manifest_json" ]; then
+    # Use `jq -e` so a malformed envelope produces a non-zero exit instead of
+    # an empty string that the drift check would silently treat as "no drift"
+    # — the exact failure mode #1190's review caught.
+    if actual_commands=$(printf '%s' "$manifest_json" | jq -re '.data.commands[].name' 2>/dev/null | sort -u); then
+      expected_commands=$(jq -re '.expectedCommands[]' "$CONTRACT_FILE" 2>/dev/null | sort -u || echo "")
+      missing_commands=""
+      if [ -n "$expected_commands" ]; then
+        missing_commands=$(comm -23 <(printf '%s\n' "$expected_commands") <(printf '%s\n' "$actual_commands") | paste -sd, - | sed 's/,/, /g')
+      fi
+      missing_workflows=""
+      while IFS= read -r wf; do
+        [ -z "$wf" ] && continue
+        [ ! -f "${PLUGIN_ROOT}/${wf}" ] && missing_workflows="${missing_workflows:+${missing_workflows}, }${wf}"
+      done < <(jq -r '.expectedWorkflowFiles[]' "$CONTRACT_FILE" 2>/dev/null)
+      if [ -n "$missing_commands" ] || [ -n "$missing_workflows" ]; then
+        drift_msg="Warning: plugin/CLI contract drift —"
+        [ -n "$missing_commands" ] && drift_msg="${drift_msg} missing CLI commands: ${missing_commands};"
+        [ -n "$missing_workflows" ] && drift_msg="${drift_msg} missing workflow files: ${missing_workflows};"
+        drift_msg="${drift_msg%;}. See .claude-plugin/expected-cli-contract.json."
+        messages="${messages:+${messages}${NL}}${drift_msg}"
+      fi
+    else
+      # Manifest produced output we couldn't parse — that's the contract being
+      # broken rather than no contract drift; surface it.
+      messages="${messages:+${messages}${NL}}Warning: plugin/CLI contract self-check failed — \`manifest --json\` output did not match the expected shape. Run: node ${CLI_BUNDLE} manifest --json"
+    fi
+  fi
+fi
+
 # --- Step 2: Check for updates (every 6 hours) ---
 LAST_CHECK="${HOME}/.oss-autopilot/.last-update-check"
 CURRENT=$(node -e "console.log(require('${PLUGIN_ROOT}/packages/core/package.json').version)" 2>/dev/null || echo "")

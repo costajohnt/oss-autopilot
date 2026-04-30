@@ -104,18 +104,50 @@ export type DailyWarningPhase =
   | 'scout-sync'
   | 'partition'
   | 'dismiss-filter'
-  | 'gist-checkpoint';
+  | 'gist-checkpoint'
+  | 'gist-staleness';
 
 /**
  * A single non-fatal failure surfaced from the `daily` pipeline. Unlike
  * `PRCheckFailure` (which is scoped to per-PR fetch errors), this covers
  * ancillary fetches that previously demoted to a log-only `warn()` — repo
  * metadata, monthly analytics, scout sync, Gist checkpoint, etc.
+ *
+ * `timestamp` and `details` are optional structured extensions added in
+ * #1193 so staleness warnings can carry `lastSuccessfulRefresh` /
+ * `detectedAt` without bespoke schemas. Existing producers don't need to
+ * supply them.
  */
 export interface DailyWarning {
   phase: DailyWarningPhase;
   operation: string;
   message: string;
+  timestamp?: string;
+  details?: Record<string, unknown>;
+}
+
+/**
+ * Build a warning entry from a {@link StalenessInfo} marker (#1193).
+ * Co-located with `DailyWarning` so every command (`daily`, `status`,
+ * `comments`) builds the same shape from the same source.
+ */
+export interface StalenessLike {
+  source: string;
+  reason: string;
+  lastSuccessfulRefresh: string | null;
+  detectedAt: string;
+}
+export function buildStalenessWarning(info: StalenessLike): DailyWarning {
+  return {
+    phase: 'gist-staleness',
+    operation: 'state refresh',
+    message: `Operating on ${info.source} state — Gist refresh failed: ${info.reason}`,
+    timestamp: info.detectedAt,
+    details: {
+      source: info.source,
+      lastSuccessfulRefresh: info.lastSuccessfulRefresh,
+    },
+  };
 }
 
 export interface DailyOutput {
@@ -225,6 +257,29 @@ export function compactRepoGroups(groups: RepoGroup[]): CompactRepoGroup[] {
   }));
 }
 
+// DailyWarning schema lives here (rather than further down with the rest of
+// the daily schemas) so StatusOutputSchema below can reference it directly
+// without `z.lazy()`. The runtime shape is shared across daily / status /
+// comments warnings — see `DailyWarning` interface above.
+const DailyWarningPhaseSchema = z.enum([
+  'fetch',
+  'repo-scores',
+  'analytics',
+  'scout-sync',
+  'partition',
+  'dismiss-filter',
+  'gist-checkpoint',
+  'gist-staleness',
+]);
+
+const DailyWarningSchema = z.object({
+  phase: DailyWarningPhaseSchema,
+  operation: z.string(),
+  message: z.string(),
+  timestamp: z.string().optional(),
+  details: z.record(z.string(), z.unknown()).optional(),
+});
+
 export const StatusOutputSchema = z.object({
   stats: z.object({
     mergedPRs: z.number().int().nonnegative(),
@@ -237,6 +292,7 @@ export const StatusOutputSchema = z.object({
   lastRunAt: z.string(),
   offline: z.boolean().optional(),
   lastUpdated: z.string().optional(),
+  warnings: z.array(DailyWarningSchema).optional(),
 });
 
 export type StatusOutput = z.infer<typeof StatusOutputSchema>;
@@ -342,21 +398,8 @@ const CompactRepoGroupSchema = z.object({
   prUrls: z.array(z.string()),
 });
 
-const DailyWarningPhaseSchema = z.enum([
-  'fetch',
-  'repo-scores',
-  'analytics',
-  'scout-sync',
-  'partition',
-  'dismiss-filter',
-  'gist-checkpoint',
-]);
-
-const DailyWarningSchema = z.object({
-  phase: DailyWarningPhaseSchema,
-  operation: z.string(),
-  message: z.string(),
-});
+// DailyWarning schemas were hoisted above StatusOutputSchema (#1193) so the
+// status output can reference them without `z.lazy()`.
 
 export const DailyOutputSchema = z.object({
   digest: DailyDigestCompactSchema,
@@ -473,6 +516,22 @@ export const ClaimOutputSchema = z.object({
 export const InitOutputSchema = z.object({
   username: z.string(),
   message: z.string(),
+});
+
+// ── #1190: plugin → CLI contract ─────────────────────────────────────
+//
+// Pinned shape lets the plugin's session-start hook verify that the bundled
+// CLI exposes the subcommands the markdown layer expects. Bumping
+// `schemaVersion` is a breaking change to that contract.
+export const ManifestOutputSchema = z.object({
+  schemaVersion: z.literal(1),
+  cliVersion: z.string().regex(/^\d+\.\d+\.\d+/),
+  commands: z.array(
+    z.object({
+      name: z.string(),
+      localOnly: z.boolean(),
+    }),
+  ),
 });
 
 export const CheckSetupOutputSchema = z.object({
@@ -885,6 +944,8 @@ export interface CommentsOutput {
     inlineCommentCount: number;
     discussionCommentCount: number;
   };
+  /** Non-fatal warnings (e.g. stale-cache fallback, #1193). Always present; empty on clean runs. */
+  warnings?: DailyWarning[];
 }
 
 /** Output of the post command */

@@ -132,6 +132,14 @@ export class GistStateStore {
   private readonly octokit: OctokitLike;
   private lastRefreshAt = 0;
   private static readonly REFRESH_THROTTLE_MS = 30_000;
+  /**
+   * Most recent error from a `refreshFromGist()` attempt, or `null` when the
+   * last attempt succeeded or was skipped by the throttle. Lets callers
+   * (StateManager) distinguish "throttled, nothing new to see" from "fetch
+   * failed, you're now operating on stale state" without changing the
+   * existing boolean return contract (#1193).
+   */
+  lastRefreshError: Error | null = null;
 
   constructor(octokit: OctokitLike) {
     this.octokit = octokit;
@@ -461,13 +469,17 @@ export class GistStateStore {
   async refreshFromGist(): Promise<boolean> {
     if (!this.gistId) return false;
     const now = Date.now();
+    // Throttle hits are not failures — preserve any previous lastRefreshError
+    // for the caller to inspect.
     if (now - this.lastRefreshAt < GistStateStore.REFRESH_THROTTLE_MS) return false;
     try {
       await this.fetchAndCache(this.gistId);
       this.lastRefreshAt = now;
+      this.lastRefreshError = null;
       return true;
     } catch (err) {
       warn(MODULE, `refreshFromGist failed: ${err}`);
+      this.lastRefreshError = err instanceof Error ? err : new Error(String(err));
       return false;
     }
   }
