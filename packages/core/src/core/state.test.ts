@@ -954,3 +954,129 @@ describe('StateManager merged PRs', () => {
     });
   });
 });
+
+describe('StateManager Gist staleness marker (#1193)', () => {
+  let manager: StateManager;
+  let mockGistStore: {
+    refreshFromGist: ReturnType<typeof vi.fn>;
+    cachedFiles: Map<string, string>;
+    lastRefreshError: Error | null;
+  };
+
+  beforeEach(() => {
+    manager = new StateManager(true);
+    mockGistStore = {
+      refreshFromGist: vi.fn(),
+      cachedFiles: new Map([
+        [
+          'state.json',
+          JSON.stringify({
+            version: 4,
+            activeIssues: [],
+            repoScores: {},
+            config: {
+              setupComplete: true,
+              githubUsername: 'testuser',
+              maxActivePRs: 10,
+              dormantThresholdDays: 30,
+              approachingDormantDays: 25,
+              maxIssueAgeDays: 90,
+              languages: ['typescript'],
+              labels: ['good first issue'],
+              excludeRepos: [],
+              trustedProjects: [],
+              minRepoScoreThreshold: 4,
+              starredRepos: [],
+              squashByDefault: true,
+              minStars: 50,
+              includeDocIssues: true,
+              aiPolicyBlocklist: [],
+              shelvedPRUrls: [],
+              dismissedIssues: {},
+              projectCategories: [],
+              preferredOrgs: [],
+            },
+            lastRunAt: '2026-04-30T00:00:00.000Z',
+          }),
+        ],
+      ]),
+      lastRefreshError: null,
+    };
+    // Wire the mock gist store onto the manager (protected field).
+    (manager as unknown as { gistStore: unknown }).gistStore = mockGistStore;
+  });
+
+  it('returns null when state is current', () => {
+    expect(manager.getStateStaleness()).toBeNull();
+  });
+
+  it('sets a staleness marker when refreshFromGist fails', async () => {
+    mockGistStore.refreshFromGist.mockResolvedValue(false);
+    mockGistStore.lastRefreshError = new Error('GitHub API: rate limited');
+
+    await manager.refreshFromGist();
+
+    const staleness = manager.getStateStaleness();
+    expect(staleness).not.toBeNull();
+    expect(staleness?.source).toBe('cache');
+    expect(staleness?.reason).toContain('rate limited');
+    expect(staleness?.detectedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(staleness?.lastSuccessfulRefresh).toBeNull();
+  });
+
+  it('clears the marker on a successful refresh', async () => {
+    // Seed with a staleness marker first.
+    mockGistStore.refreshFromGist.mockResolvedValueOnce(false);
+    mockGistStore.lastRefreshError = new Error('boom');
+    await manager.refreshFromGist();
+    expect(manager.getStateStaleness()).not.toBeNull();
+
+    // Now a successful refresh.
+    mockGistStore.refreshFromGist.mockResolvedValueOnce(true);
+    mockGistStore.lastRefreshError = null;
+    await manager.refreshFromGist();
+
+    expect(manager.getStateStaleness()).toBeNull();
+  });
+
+  it('sets a marker when a successful HTTP fetch returns a parse-invalid payload', async () => {
+    mockGistStore.refreshFromGist.mockResolvedValue(true);
+    mockGistStore.cachedFiles.set('state.json', '{ not valid json');
+
+    const refreshed = await manager.refreshFromGist();
+    expect(refreshed).toBe(false);
+
+    const staleness = manager.getStateStaleness();
+    expect(staleness).not.toBeNull();
+    expect(staleness?.reason).toMatch(/payload was invalid/);
+  });
+
+  it('sets a marker when refreshFromGist returns true but state.json is missing', async () => {
+    mockGistStore.refreshFromGist.mockResolvedValue(true);
+    mockGistStore.cachedFiles.delete('state.json');
+
+    const refreshed = await manager.refreshFromGist();
+    expect(refreshed).toBe(false);
+
+    const staleness = manager.getStateStaleness();
+    expect(staleness).not.toBeNull();
+    expect(staleness?.reason).toContain('no state.json');
+  });
+
+  it('preserves an existing marker when the refresh is throttled (no new error)', async () => {
+    // First, seed a marker via a real failure.
+    mockGistStore.refreshFromGist.mockResolvedValueOnce(false);
+    mockGistStore.lastRefreshError = new Error('initial failure');
+    await manager.refreshFromGist();
+    const before = manager.getStateStaleness();
+    expect(before).not.toBeNull();
+
+    // Now simulate a throttled refresh (false return, no error).
+    mockGistStore.refreshFromGist.mockResolvedValueOnce(false);
+    mockGistStore.lastRefreshError = null;
+    await manager.refreshFromGist();
+
+    // Marker should not have been cleared by a throttle.
+    expect(manager.getStateStaleness()).toEqual(before);
+  });
+});
