@@ -1,6 +1,6 @@
 /**
  * State persistence layer for the OSS Contribution Agent.
- * Handles file I/O, locking, backup/restore, and schema migration (v1→v2→v3).
+ * Handles file I/O, locking, backup/restore, and schema migration (v1→v2→v3→v4).
  * No module-level mutable state — functions accept/return AgentState objects.
  */
 
@@ -188,7 +188,7 @@ export function migrateV3ToV4(rawState: Record<string, unknown>): Record<string,
 }
 
 /**
- * Create a fresh state (v3).
+ * Create a fresh state (v4).
  * Leverages Zod schema defaults to produce a complete state.
  */
 export function createFreshState(): AgentState {
@@ -311,7 +311,7 @@ function tryRestoreFromBackup(): AgentState | null {
       const data = fs.readFileSync(backupPath, 'utf8');
       let raw: unknown = JSON.parse(data);
 
-      // Chain migrations: v1 → v2 → v3
+      // Chain migrations: v1 → v2 → v3 → v4
       if (typeof raw === 'object' && raw !== null) {
         const rawObj = raw as Record<string, unknown>;
         if (rawObj.version === 1) {
