@@ -4,8 +4,8 @@
  * No module-level mutable state — functions accept/return AgentState objects.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { AgentState } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
 import { getStatePath, getBackupDir, getDataDir } from './paths.js';
@@ -27,7 +27,7 @@ const LEGACY_BACKUP_DIR = path.join(process.cwd(), 'data', 'backups');
  */
 function isLockStale(lockPath: string): boolean {
   try {
-    const existing = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+    const existing = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
     return Date.now() - existing.timestamp > LOCK_TIMEOUT_MS;
   } catch (err) {
     // Lock file is unreadable or contains invalid JSON — treat as stale
@@ -78,7 +78,7 @@ export function acquireLock(lockPath: string): void {
  */
 export function releaseLock(lockPath: string): void {
   try {
-    const data = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+    const data = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
     if (data.pid === process.pid) {
       fs.unlinkSync(lockPath);
     }
@@ -308,7 +308,7 @@ function tryRestoreFromBackup(): AgentState | null {
   for (const backupFile of backupFiles) {
     const backupPath = path.join(backupDir, backupFile);
     try {
-      const data = fs.readFileSync(backupPath, 'utf-8');
+      const data = fs.readFileSync(backupPath, 'utf8');
       let raw: unknown = JSON.parse(data);
 
       // Chain migrations: v1 → v2 → v3
@@ -369,7 +369,7 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
 
   try {
     if (fs.existsSync(statePath)) {
-      const data = fs.readFileSync(statePath, 'utf-8');
+      const data = fs.readFileSync(statePath, 'utf8');
       let raw: unknown = JSON.parse(data);
 
       // Chain migrations: v1 → v2 → v3 → v4
@@ -546,7 +546,7 @@ export function saveState(state: Readonly<AgentState>, expectedMtimeMs: number |
     // Create backup of existing state (best-effort, non-fatal)
     try {
       if (fs.existsSync(statePath)) {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const timestamp = new Date().toISOString().replace(/[.:]/g, '-');
         const randomSuffix = Math.random().toString(36).slice(2, 8).padEnd(6, '0');
         const backupFile = path.join(backupDir, `state-${timestamp}-${randomSuffix}.json`);
         fs.copyFileSync(statePath, backupFile);

@@ -7,9 +7,9 @@
  * Extracted from utils.ts under #1116.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
 /**
  * Returns the oss-autopilot data directory path, creating it if it does not exist.
@@ -107,7 +107,7 @@ export function stateFileExists(): boolean {
 export function getCLIVersion(): string {
   try {
     const pkgPath = path.join(path.dirname(process.argv[1]), '..', 'package.json');
-    return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
   } catch {
     return '0.0.0';
   }

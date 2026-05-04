@@ -7,7 +7,7 @@
  * Extracted from utils.ts under #1116.
  */
 
-import { execFileSync, execFile } from 'child_process';
+import { execFileSync, execFile } from 'node:child_process';
 import { ConfigurationError } from './errors.js';
 import { debug } from './logger.js';
 
@@ -44,7 +44,7 @@ export function getGitHubToken(): string | null {
 
   try {
     const token = execFileSync('gh', ['auth', 'token'], {
-      encoding: 'utf-8',
+      encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 2000,
     }).trim();
@@ -121,7 +121,7 @@ export async function getGitHubTokenAsync(): Promise<string | null> {
 
   try {
     const token = await new Promise<string>((resolve, reject) => {
-      execFile('gh', ['auth', 'token'], { encoding: 'utf-8', timeout: 2000 }, (error, stdout) => {
+      execFile('gh', ['auth', 'token'], { encoding: 'utf8', timeout: 2000 }, (error, stdout) => {
         if (error) {
           reject(error as Error);
         } else {
@@ -147,7 +147,7 @@ export async function getGitHubTokenAsync(): Promise<string | null> {
  * Usernames must start with an alphanumeric character, can contain hyphens
  * (but not consecutive ones and not at the end), and be 1-39 characters.
  */
-const GITHUB_USERNAME_RE = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/i;
+const GITHUB_USERNAME_RE = /^[\da-z](?:[\da-z]|-(?=[\da-z])){0,38}$/i;
 
 /**
  * Detect the authenticated GitHub username via the `gh` CLI.
@@ -159,7 +159,7 @@ const GITHUB_USERNAME_RE = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/i;
 export async function detectGitHubUsername(): Promise<string | null> {
   try {
     const login = await new Promise<string>((resolve, reject) => {
-      execFile('gh', ['api', 'user', '--jq', '.login'], { encoding: 'utf-8', timeout: 5000 }, (error, stdout) => {
+      execFile('gh', ['api', 'user', '--jq', '.login'], { encoding: 'utf8', timeout: 5000 }, (error, stdout) => {
         if (error) {
           reject(error as Error);
         } else {

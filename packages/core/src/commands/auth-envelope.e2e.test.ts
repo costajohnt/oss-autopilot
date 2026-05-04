@@ -9,10 +9,10 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import * as fs from 'fs';
-import * as path from 'path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const execFileAsync = promisify(execFile);
 
@@ -81,7 +81,7 @@ describe.skipIf(!BUNDLE_EXISTS)('CLI auth-failure envelope (--json)', () => {
     expect(exitCode).not.toBe(0);
     // The interactive path retains the multi-line guidance so `oss-autopilot daily`
     // still tells humans what to do.
-    expect(stderr).toMatch(/GitHub authentication required/i);
+    expect(stderr).toMatch(/github authentication required/i);
     expect(stderr).toMatch(/gh auth login/);
   });
 });

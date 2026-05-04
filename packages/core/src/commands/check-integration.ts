@@ -3,8 +3,8 @@
  * Detects new files in the current branch that aren't referenced elsewhere
  */
 
-import * as path from 'path';
-import { execFileSync } from 'child_process';
+import * as path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import type { CheckIntegrationOutput, NewFileInfo } from '../formatters/json.js';
 import { debug } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
@@ -88,8 +88,8 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
   let newFiles: string[];
   try {
     const output = execFileSync('git', ['diff', '--name-only', '--diff-filter=A', `${base}...HEAD`], {
-      encoding: 'utf-8',
-      timeout: 10000,
+      encoding: 'utf8',
+      timeout: 10_000,
     }).trim();
     newFiles = output ? output.split('\n').filter(Boolean) : [];
   } catch (error) {
@@ -112,8 +112,8 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
   let allFiles: string[];
   try {
     allFiles = execFileSync('git', ['ls-files'], {
-      encoding: 'utf-8',
-      timeout: 10000,
+      encoding: 'utf8',
+      timeout: 10_000,
     })
       .trim()
       .split('\n')
@@ -146,8 +146,8 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
     for (const pattern of patterns) {
       try {
         const grepOutput = execFileSync('git', ['grep', '-l', '--', pattern], {
-          encoding: 'utf-8',
-          timeout: 10000,
+          encoding: 'utf8',
+          timeout: 10_000,
         }).trim();
         if (grepOutput) {
           const matches = grepOutput.split('\n').filter((f) => f !== newFile);

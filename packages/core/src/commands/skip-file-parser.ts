@@ -9,13 +9,13 @@
  * so the search engine filters already-skipped URLs out of results.
  */
 
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import type { SkippedIssue } from '@oss-scout/core';
 import { warn } from '../core/logger.js';
 import { errorMessage } from '../core/errors.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const GITHUB_URL_RE = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/(?:issues|pull)\/(\d+)(?:[/?#].*)?$/;
+const GITHUB_URL_RE = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/(?:issues|pull)\/(\d+)(?:[#/?].*)?$/;
 
 /**
  * Parse the raw text of a skipped-issues file into SkippedIssue entries.
@@ -98,7 +98,7 @@ export function loadSkippedIssues(path: string | undefined): SkippedIssue[] {
 
   let content: string;
   try {
-    content = fs.readFileSync(path, 'utf-8');
+    content = fs.readFileSync(path, 'utf8');
   } catch (err) {
     warn('skip-file-parser', `Failed to read skipped-issues file at ${path}: ${errorMessage(err)}`);
     return [];

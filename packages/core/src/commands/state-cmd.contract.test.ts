@@ -26,8 +26,8 @@ vi.mock('../core/paths.js', async () => {
   };
 });
 
-vi.mock('fs', async () => {
-  const actual = await vi.importActual<typeof import('fs')>('fs');
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
   return { ...actual, existsSync: vi.fn().mockReturnValue(true), unlinkSync: vi.fn() };
 });
 

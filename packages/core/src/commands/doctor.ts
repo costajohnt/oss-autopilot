@@ -10,10 +10,10 @@
  * external dependencies in isolation.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 import { getGitHubTokenAsync, getOctokit, getStatePath } from '../core/index.js';
 import { AgentStateSchema } from '../core/state-schema.js';
@@ -222,7 +222,7 @@ export function checkStateFile(options?: { statePathOverride?: string }): Doctor
     };
   }
   try {
-    const raw = fs.readFileSync(statePath, 'utf-8');
+    const raw = fs.readFileSync(statePath, 'utf8');
     const parsed = JSON.parse(raw);
     const result = AgentStateSchema.safeParse(parsed);
     if (!result.success) {

@@ -8,10 +8,10 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-import * as fs from 'fs';
-import * as path from 'path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const execFileAsync = promisify(execFile);
 
@@ -32,7 +32,7 @@ async function runDaily(
   let signal: string | null = null;
 
   const result = await execFileAsync('node', [BUNDLE_PATH, 'daily', '--json'], {
-    timeout: 30000,
+    timeout: 30_000,
     env: { ...process.env, ...env, HOME: TEST_HOME },
     cwd: TEST_HOME,
   }).catch((err: any) => {
@@ -154,7 +154,7 @@ describe.skipIf(!BUNDLE_EXISTS)('daily --json E2E', () => {
       const start = Date.now();
       await runDaily();
       const duration = Date.now() - start;
-      expect(duration).toBeLessThan(30000);
+      expect(duration).toBeLessThan(30_000);
     });
   });
 });

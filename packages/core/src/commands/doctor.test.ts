@@ -7,13 +7,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 // ── Module-level mocks ──────────────────────────────────────────────────
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
 }));
 
@@ -27,7 +27,7 @@ vi.mock('../core/index.js', async () => {
   };
 });
 
-import { execFile } from 'child_process';
+import { execFile } from 'node:child_process';
 import { getGitHubTokenAsync, getOctokit, getStatePath } from '../core/index.js';
 import {
   checkBundleUpToDate,

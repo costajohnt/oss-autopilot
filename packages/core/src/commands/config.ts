@@ -72,20 +72,23 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
 
   // Handle specific config keys
   switch (options.key) {
-    case 'username':
+    case 'username': {
       stateManager.updateConfig({ githubUsername: validateGitHubUsername(value) });
       break;
-    case 'add-language':
+    }
+    case 'add-language': {
       if (!currentConfig.languages.includes(value)) {
         stateManager.updateConfig({ languages: [...currentConfig.languages, value] });
       }
       break;
-    case 'add-label':
+    }
+    case 'add-label': {
       if (!currentConfig.labels.includes(value)) {
         stateManager.updateConfig({ labels: [...currentConfig.labels, value] });
       }
       break;
-    case 'remove-label':
+    }
+    case 'remove-label': {
       if (!currentConfig.labels.includes(value)) {
         throw new Error(
           `Label "${value}" is not currently configured. Current labels: ${currentConfig.labels.join(', ')}`,
@@ -93,6 +96,7 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
       }
       stateManager.updateConfig({ labels: currentConfig.labels.filter((l) => l !== value) });
       break;
+    }
     case 'add-scope': {
       const scope = validateScope(value);
       const currentScopes = currentConfig.scope ?? [];
@@ -145,9 +149,10 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
       }
       break;
     }
-    case 'issueListPath':
+    case 'issueListPath': {
       stateManager.updateConfig({ issueListPath: value || undefined });
       break;
+    }
     case 'diffTool': {
       if (!(DIFF_TOOLS as readonly string[]).includes(value)) {
         throw new Error(`Invalid diffTool "${value}". Valid options: ${DIFF_TOOLS.join(', ')}`);
@@ -155,13 +160,15 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
       stateManager.updateConfig({ diffTool: value as DiffTool });
       break;
     }
-    case 'diffToolCustomCommand':
+    case 'diffToolCustomCommand': {
       stateManager.updateConfig({
         diffToolCustomCommand: value || undefined,
       });
       break;
-    default:
+    }
+    default: {
       throw new ValidationError(formatUnknownKeyError(options.key, 'config'));
+    }
   }
 
   return { success: true, key: options.key, value };

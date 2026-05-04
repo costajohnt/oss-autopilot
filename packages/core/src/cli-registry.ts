@@ -596,7 +596,7 @@ export const commands: CLICommandDef[] = [
                 for await (const chunk of process.stdin) {
                   chunks.push(chunk);
                 }
-                message = Buffer.concat(chunks).toString('utf-8').trim();
+                message = Buffer.concat(chunks).toString('utf8').trim();
               } else {
                 message = messageParts.join(' ');
               }
@@ -813,7 +813,7 @@ export const commands: CLICommandDef[] = [
         .action(async (options) => {
           try {
             const port = parseInt(options.port, 10);
-            if (isNaN(port) || port < 1 || port > 65535) {
+            if (isNaN(port) || port < 1 || port > 65_535) {
               console.error(`Invalid port number: "${options.port}". Must be an integer between 1 and 65535.`);
               process.exit(1);
             }
@@ -841,7 +841,7 @@ export const commands: CLICommandDef[] = [
             options,
             async () => (await import('./commands/parse-list.js')).runParseList({ filePath }),
             async (data) => {
-              const path = await import('path');
+              const path = await import('node:path');
               const resolvedPath = path.resolve(filePath);
               console.log(`\n\ud83d\udccb Issue List: ${resolvedPath}\n`);
               console.log(`Available: ${data.availableCount} | Completed: ${data.completedCount}\n`);

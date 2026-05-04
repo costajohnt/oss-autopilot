@@ -113,11 +113,12 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
         const value = valueParts.join('=');
 
         switch (key) {
-          case 'username':
+          case 'username': {
             validateGitHubUsername(value);
             stateManager.updateConfig({ githubUsername: value });
             results[key] = value;
             break;
+          }
           case 'maxActivePRs': {
             const maxPRs = parsePositiveInt(value, 'maxActivePRs');
             stateManager.updateConfig({ maxActivePRs: maxPRs });
@@ -136,15 +137,17 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = String(approaching);
             break;
           }
-          case 'languages':
+          case 'languages': {
             stateManager.updateConfig({ languages: value.split(',').map((l) => l.trim()) });
             results[key] = value;
             break;
-          case 'labels':
+          }
+          case 'labels': {
             stateManager.updateConfig({ labels: value.split(',').map((l) => l.trim()) });
             results[key] = value;
             break;
-          case 'squashByDefault':
+          }
+          case 'squashByDefault': {
             if (value === 'ask') {
               stateManager.updateConfig({ squashByDefault: 'ask' });
               results[key] = 'ask';
@@ -153,6 +156,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
               results[key] = value !== 'false' ? 'true' : 'false';
             }
             break;
+          }
           case 'minStars': {
             const stars = Number(value);
             if (!Number.isInteger(stars) || stars < 0) {
@@ -179,10 +183,11 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = String(threshold);
             break;
           }
-          case 'skippedIssuesPath':
+          case 'skippedIssuesPath': {
             stateManager.updateConfig({ skippedIssuesPath: value || undefined });
             results[key] = value || '(cleared)';
             break;
+          }
           case 'autoFormatBeforePush': {
             if (value !== 'true' && value !== 'false') {
               throw new ValidationError(
@@ -194,10 +199,11 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = String(enabled);
             break;
           }
-          case 'includeDocIssues':
+          case 'includeDocIssues': {
             stateManager.updateConfig({ includeDocIssues: value === 'true' });
             results[key] = value === 'true' ? 'true' : 'false';
             break;
+          }
           case 'aiPolicyBlocklist': {
             const entries = value
               .split(',')
@@ -261,7 +267,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
                 warnings.push(
                   `"${org}" looks like a repo path. Use org name only (e.g., "vercel" not "vercel/next.js").`,
                 );
-              } else if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(org)) {
+              } else if (!/^[\da-z](?:[\da-z-]*[\da-z])?$/i.test(org)) {
                 warnings.push(`"${org}" is not a valid GitHub organization name. Skipping.`);
               } else {
                 validOrgs.push(org.toLowerCase());
@@ -294,17 +300,19 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = dedupedScopes.length > 0 ? dedupedScopes.join(', ') : '(empty — using labels only)';
             break;
           }
-          case 'persistence':
+          case 'persistence': {
             if (value !== 'local' && value !== 'gist') {
               throw new ValidationError(`Invalid value for persistence: "${value}". Must be "local" or "gist".`);
             }
             stateManager.updateConfig({ persistence: value as 'local' | 'gist' });
             results[key] = value;
             break;
-          case 'issueListPath':
+          }
+          case 'issueListPath': {
             stateManager.updateConfig({ issueListPath: value || undefined });
             results[key] = value || '(cleared)';
             break;
+          }
           case 'diffTool': {
             if (!(DIFF_TOOLS as readonly string[]).includes(value)) {
               warnings.push(`Invalid diffTool "${value}". Valid: ${DIFF_TOOLS.join(', ')}`);
@@ -314,18 +322,21 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = value;
             break;
           }
-          case 'diffToolCustomCommand':
+          case 'diffToolCustomCommand': {
             stateManager.updateConfig({ diffToolCustomCommand: value || undefined });
             results[key] = value || '(cleared)';
             break;
-          case 'complete':
+          }
+          case 'complete': {
             if (value === 'true') {
               stateManager.markSetupComplete();
               results[key] = 'true';
             }
             break;
-          default:
+          }
+          default: {
             throw new ValidationError(formatUnknownKeyError(key, 'setup'));
+          }
         }
       }
     });

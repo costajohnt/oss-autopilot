@@ -392,7 +392,7 @@ describe('formatJson (#1105)', () => {
       },
       lastRunAt: '2026-04-25T00:00:00.000Z',
     };
-    expect(() => formatJson(StatusOutputSchema, data)).toThrow(/contract drift.*stats\.mergeRate/i);
+    expect(() => formatJson(StatusOutputSchema, data)).toThrow(/contract drift.*stats\.mergerate/i);
   });
 });
 
@@ -442,7 +442,7 @@ describe('DailyOutputSchema (#1146)', () => {
       ...fixture,
       digest: { ...fixture.digest, needsAddressingPRs: [{ url: 'x' }] },
     };
-    expect(() => formatJson(DailyOutputSchema, broken)).toThrow(/contract drift.*needsAddressingPRs/i);
+    expect(() => formatJson(DailyOutputSchema, broken)).toThrow(/contract drift.*needsaddressingprs/i);
   });
 
   it('rejects drift: actionMenu missing context flag', () => {
@@ -460,7 +460,7 @@ describe('DailyOutputSchema (#1146)', () => {
         },
       },
     } as unknown;
-    expect(() => formatJson(DailyOutputSchema, broken)).toThrow(/contract drift.*hasIssueResponses/i);
+    expect(() => formatJson(DailyOutputSchema, broken)).toThrow(/contract drift.*hasissueresponses/i);
   });
 });
 
@@ -474,7 +474,7 @@ describe('CompactDailyOutputSchema (#1146)', () => {
   it('rejects drift: failureCount as a string', () => {
     const compact = toCompactDailyOutput(makeMockDailyOutput());
     const broken = { ...compact, failureCount: '0' } as unknown;
-    expect(() => formatJson(CompactDailyOutputSchema, broken)).toThrow(/contract drift.*failureCount/i);
+    expect(() => formatJson(CompactDailyOutputSchema, broken)).toThrow(/contract drift.*failurecount/i);
   });
 });
 
@@ -530,7 +530,7 @@ describe('SearchOutputSchema (#1147)', () => {
     const candidate = makeSearchCandidate() as unknown as Record<string, unknown>;
     delete candidate.reasonsToApprove;
     const data = { candidates: [candidate], excludedRepos: [], aiPolicyBlocklist: [] };
-    expect(() => formatJson(SearchOutputSchema, data)).toThrow(/contract drift.*reasonsToApprove/i);
+    expect(() => formatJson(SearchOutputSchema, data)).toThrow(/contract drift.*reasonstoapprove/i);
   });
 
   it('accepts a candidate without optional repoScore', () => {
@@ -636,7 +636,7 @@ describe('ListMoveTierOutputSchema (#1148)', () => {
       toTier: 'archive',
       count: 1,
     } as unknown;
-    expect(() => formatJson(ListMoveTierOutputSchema, data)).toThrow(/contract drift.*toTier/i);
+    expect(() => formatJson(ListMoveTierOutputSchema, data)).toThrow(/contract drift.*totier/i);
   });
 });
 
@@ -648,7 +648,7 @@ describe('Misc command schemas (#1155)', () => {
 
   it('ClaimOutputSchema round-trip + drift', () => {
     expect(formatJson(ClaimOutputSchema, { commentUrl: 'a', issueUrl: 'b' }).success).toBe(true);
-    expect(() => formatJson(ClaimOutputSchema, { commentUrl: 'a' })).toThrow(/contract drift.*issueUrl/i);
+    expect(() => formatJson(ClaimOutputSchema, { commentUrl: 'a' })).toThrow(/contract drift.*issueurl/i);
   });
 
   it('InitOutputSchema round-trip + drift', () => {

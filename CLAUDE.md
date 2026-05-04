@@ -51,7 +51,7 @@ The system has three layers:
 
 3. **Core Logic** (`packages/core/src/core/`) — The domain layer. Key modules:
    - `types.ts` — All type definitions. Key PR type: `FetchedPR` (ephemeral, fetched fresh each run in v2). `TrackedPR` was removed in v2.
-   - `state.ts` — `StateManager` singleton. Reads/writes `~/.oss-autopilot/state.json`. Handles v1→v2→v3 migration and auto-backups
+   - `state.ts` — `StateManager` singleton. Reads/writes `~/.oss-autopilot/state.json`. Handles v1→v2→v3→v4 migration and auto-backups
    - `pr-monitor.ts` — `PRMonitor` class. Fetches open PRs from GitHub Search API, enriches each with CI status, review decision, merge conflicts, maintainer comments, and computes `FetchedPRStatus`
    - `github.ts` — Shared Octokit instance with `@octokit/plugin-throttling` for rate limit handling
    - `utils.ts` — GitHub URL parsing, date helpers, token detection (tries `$GITHUB_TOKEN` then `gh auth token`)
@@ -88,7 +88,9 @@ Repo root (also the Claude Code plugin directory):
 │   │   ├── dist/cli.bundle.cjs          # Built bundle (gitignored, auto-generated)
 │   │   ├── package.json                 # Published to npm, has bin + exports
 │   │   └── tsconfig.json
-│   └── dashboard/                       # @oss-autopilot/dashboard (interactive SPA)
+│   ├── dashboard/                       # @oss-autopilot/dashboard (interactive SPA)
+│   │   └── package.json
+│   └── mcp-server/                      # @oss-autopilot/mcp (MCP server bin)
 │       └── package.json
 ├── pnpm-workspace.yaml                  # Workspace definition
 ├── package.json                         # Workspace root (private, not published)

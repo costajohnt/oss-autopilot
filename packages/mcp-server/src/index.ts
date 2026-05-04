@@ -36,7 +36,7 @@ async function readVersion(): Promise<string> {
     const { fileURLToPath } = await import('node:url');
     const { dirname, resolve } = await import('node:path');
     const here = typeof __dirname === 'string' ? __dirname : dirname(fileURLToPath(import.meta.url));
-    const raw = readFileSync(resolve(here, '..', 'package.json'), 'utf-8');
+    const raw = readFileSync(resolve(here, '..', 'package.json'), 'utf8');
     return String(JSON.parse(raw).version ?? 'unknown');
   } catch {
     return 'unknown';
@@ -89,7 +89,7 @@ export async function main() {
       port = parseInt(portRaw, 10);
     }
 
-    if (isNaN(port) || port < 1 || port > 65535) {
+    if (isNaN(port) || port < 1 || port > 65_535) {
       console.error(`Invalid port: ${port}. Must be 1-65535.`);
       process.exit(1);
     }

@@ -90,7 +90,7 @@ describe('validatePRNumber', () => {
   it('should return valid PR numbers unchanged', () => {
     expect(validatePRNumber(1)).toBe(1);
     expect(validatePRNumber(42)).toBe(42);
-    expect(validatePRNumber(999999)).toBe(999999);
+    expect(validatePRNumber(999_999)).toBe(999_999);
   });
 
   it('should throw for zero', () => {
@@ -102,7 +102,7 @@ describe('validatePRNumber', () => {
   });
 
   it('should throw for numbers exceeding maximum', () => {
-    expect(() => validatePRNumber(1000000)).toThrow('PR number must be a positive integer up to 999999');
+    expect(() => validatePRNumber(1_000_000)).toThrow('PR number must be a positive integer up to 999999');
   });
 
   it('should throw for non-integer values', () => {

@@ -1972,7 +1972,7 @@ describe('fetchUserOpenPRs auto-repairs known placeholder usernames', () => {
     // breadcrumb to follow.
     expect(result.prs).toEqual([]);
     expect(result.warnings).toBeDefined();
-    expect(result.warnings!.some((w) => /Could not auto-repair/i.test(w))).toBe(true);
+    expect(result.warnings!.some((w) => /could not auto-repair/i.test(w))).toBe(true);
   });
 
   it('rethrows rate-limit / auth errors from viewer lookup', async () => {

@@ -7,9 +7,9 @@
  * `node cli.bundle.cjs startup --json` call, reducing UI noise in Claude Code.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { execFile } from 'child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { execFile } from 'node:child_process';
 import { getStateManager, getGitHubTokenAsync, getCLIVersion, detectGitHubUsername } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
 import { warn } from '../core/logger.js';
@@ -69,7 +69,7 @@ export function detectIssueList(): IssueListInfo | undefined {
     const configPath = '.claude/oss-autopilot/config.md';
     if (fs.existsSync(configPath)) {
       try {
-        const configContent = fs.readFileSync(configPath, 'utf-8');
+        const configContent = fs.readFileSync(configPath, 'utf8');
         const configuredPath = parseIssueListPathFromConfig(configContent);
         if (configuredPath && fs.existsSync(configuredPath)) {
           issueListPath = configuredPath;
@@ -99,7 +99,7 @@ export function detectIssueList(): IssueListInfo | undefined {
   let availableCount = 0;
   let completedCount = 0;
   try {
-    const content = fs.readFileSync(issueListPath, 'utf-8');
+    const content = fs.readFileSync(issueListPath, 'utf8');
     ({ availableCount, completedCount } = countIssueListItems(content));
   } catch (error) {
     console.error(`[STARTUP] Failed to read issue list at ${issueListPath}:`, errorMessage(error));
@@ -141,18 +141,21 @@ export function openInBrowser(url: string): void {
   let openCmd: string;
   let args: string[];
   switch (process.platform) {
-    case 'darwin':
+    case 'darwin': {
       openCmd = 'open';
       args = [url];
       break;
-    case 'win32':
+    }
+    case 'win32': {
       openCmd = 'cmd';
       args = ['/c', 'start', '', url];
       break;
-    default:
+    }
+    default: {
       openCmd = 'xdg-open';
       args = [url];
       break;
+    }
   }
   execFile(openCmd, args, (error) => {
     if (error) {

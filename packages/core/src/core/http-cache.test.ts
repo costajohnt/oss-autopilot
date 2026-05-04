@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import * as crypto from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import * as crypto from 'node:crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import { HttpCache, cachedRequest, type CacheEntry } from './http-cache.js';
 
 /** Create a temporary directory for cache tests. */
@@ -43,7 +43,7 @@ describe('HttpCache', () => {
     it('returns null for a corrupt cache file', () => {
       // Write garbage to the cache file
       const key = crypto.createHash('sha256').update('/repos/bad/data').digest('hex');
-      fs.writeFileSync(path.join(cacheDir, `${key}.json`), 'not valid json', 'utf-8');
+      fs.writeFileSync(path.join(cacheDir, `${key}.json`), 'not valid json', 'utf8');
 
       expect(cache.get('/repos/bad/data')).toBeNull();
     });
@@ -57,7 +57,7 @@ describe('HttpCache', () => {
         body: {},
         cachedAt: new Date().toISOString(),
       };
-      fs.writeFileSync(path.join(cacheDir, `${key}.json`), JSON.stringify(entry), 'utf-8');
+      fs.writeFileSync(path.join(cacheDir, `${key}.json`), JSON.stringify(entry), 'utf8');
 
       expect(cache.get('/repos/a/b')).toBeNull();
     });
@@ -92,7 +92,7 @@ describe('HttpCache', () => {
         body: { count: 1 },
         cachedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
       };
-      fs.writeFileSync(path.join(cacheDir, `${key}.json`), JSON.stringify(entry), 'utf-8');
+      fs.writeFileSync(path.join(cacheDir, `${key}.json`), JSON.stringify(entry), 'utf8');
 
       expect(cache.getIfFresh('/repos/old', 60 * 60 * 1000)).toBeNull(); // 1 hour TTL
     });
@@ -105,7 +105,7 @@ describe('HttpCache', () => {
         body: { count: 1 },
         cachedAt: 'not-a-valid-date',
       };
-      fs.writeFileSync(path.join(cacheDir, `${key}.json`), JSON.stringify(entry), 'utf-8');
+      fs.writeFileSync(path.join(cacheDir, `${key}.json`), JSON.stringify(entry), 'utf8');
 
       expect(cache.getIfFresh('/repos/bad-date', 60_000)).toBeNull();
     });
@@ -145,7 +145,7 @@ describe('HttpCache', () => {
         body: { stars: 0 },
         cachedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
       };
-      fs.writeFileSync(path.join(cacheDir, `${key}.json`), JSON.stringify(oldEntry), 'utf-8');
+      fs.writeFileSync(path.join(cacheDir, `${key}.json`), JSON.stringify(oldEntry), 'utf8');
 
       // Write a fresh entry
       cache.set('/repos/fresh/entry', '"new"', { stars: 100 });
@@ -159,7 +159,7 @@ describe('HttpCache', () => {
     });
 
     it('removes corrupt cache files during eviction', () => {
-      fs.writeFileSync(path.join(cacheDir, 'corrupt.json'), 'garbage', 'utf-8');
+      fs.writeFileSync(path.join(cacheDir, 'corrupt.json'), 'garbage', 'utf8');
       const evicted = cache.evictStale(0);
       expect(evicted).toBe(1);
     });

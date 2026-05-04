@@ -18,12 +18,12 @@ import {
   detectGitHubUsername,
 } from './auth.js';
 import { getDataDir, getStatePath, getBackupDir, stateFileExists } from './paths.js';
-import { execFileSync, execFile } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import { execFileSync, execFile } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
   execFileSync: vi.fn(),
   execFile: vi.fn(),
 }));
@@ -103,7 +103,7 @@ describe('parseGitHubUrl', () => {
 
   it('should parse large PR numbers', () => {
     const result = parseGitHubUrl('https://github.com/owner/repo/pull/99999');
-    expect(result).toEqual({ owner: 'owner', repo: 'repo', number: 99999, type: 'pull' });
+    expect(result).toEqual({ owner: 'owner', repo: 'repo', number: 99_999, type: 'pull' });
   });
 });
 
@@ -321,7 +321,7 @@ describe('getGitHubToken', () => {
     const token = getGitHubToken();
     expect(token).toBe('ghp_faketoken');
     expect(mockedExecFileSync).toHaveBeenCalledWith('gh', ['auth', 'token'], {
-      encoding: 'utf-8',
+      encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 2000,
     });
@@ -413,7 +413,7 @@ describe('getGitHubTokenAsync', () => {
     expect(mockedExecFile).toHaveBeenCalledWith(
       'gh',
       ['auth', 'token'],
-      { encoding: 'utf-8', timeout: 2000 },
+      { encoding: 'utf8', timeout: 2000 },
       expect.any(Function),
     );
   });
@@ -539,7 +539,7 @@ describe('detectGitHubUsername', () => {
     expect(mockedExecFile).toHaveBeenCalledWith(
       'gh',
       ['api', 'user', '--jq', '.login'],
-      { encoding: 'utf-8', timeout: 5000 },
+      { encoding: 'utf8', timeout: 5000 },
       expect.any(Function),
     );
   });

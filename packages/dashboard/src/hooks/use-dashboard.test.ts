@@ -46,7 +46,7 @@ describe('useDashboard', () => {
   /** Advance past the 5-second auto-refresh delay and flush resulting microtasks. */
   async function triggerAutoRefresh(): Promise<void> {
     await act(async () => {
-      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5000);
     });
   }
 
@@ -279,7 +279,7 @@ describe('useDashboard', () => {
 
     // Advance past the 5s delay to trigger the auto-refresh
     await act(async () => {
-      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5000);
     });
 
     // During auto-refresh: loading=false, refreshing=true
@@ -406,7 +406,7 @@ describe('useDashboard', () => {
       });
 
       expect(result.current.data).toBe(null);
-      expect(result.current.error).toMatch(/Server response did not match expected shape/i);
+      expect(result.current.error).toMatch(/server response did not match expected shape/i);
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('schema validation failed'),
         expect.any(String),
@@ -431,7 +431,7 @@ describe('useDashboard', () => {
         await Promise.resolve();
       });
 
-      expect(result.current.error).toMatch(/Server response did not match expected shape/i);
+      expect(result.current.error).toMatch(/server response did not match expected shape/i);
       consoleSpy.mockRestore();
     });
   });

@@ -3,7 +3,7 @@
  * Re-vets all available issues in a curated issue list file via @oss-scout/core.
  */
 
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import { adaptScoutLinkedPR, createAutopilotScout } from './scout-bridge.js';
 import { type VetListOutput, type VetOutput, type VetListItemStatus } from '../formatters/json.js';
 import { runParseList, pruneIssueList } from './parse-list.js';
@@ -49,16 +49,20 @@ const KNOWN_SKIP_REASONS: ReadonlySet<ScoutSkipReason> = new Set([
 
 function mapSkipReasonToStatus(reason: ScoutSkipReason): VetListItemStatus | null {
   switch (reason) {
-    case 'issue_closed':
+    case 'issue_closed': {
       return 'closed';
-    case 'claimed':
+    }
+    case 'claimed': {
       return 'claimed';
-    case 'has_linked_pr':
+    }
+    case 'has_linked_pr': {
       return 'has_pr';
+    }
     case 'score_too_low':
     case 'anti_llm_policy':
-    case 'other':
-      return null; // fall through to recommendation / default
+    case 'other': {
+      return null;
+    } // fall through to recommendation / default
   }
 }
 
@@ -216,10 +220,10 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   let pruneResult: { removedCount: number } | undefined;
   if (options.prune && issueListPath) {
     try {
-      const content = fs.readFileSync(issueListPath, 'utf-8');
+      const content = fs.readFileSync(issueListPath, 'utf8');
       const { pruned, removedCount } = pruneIssueList(content);
       if (pruned !== content) {
-        fs.writeFileSync(issueListPath, pruned, 'utf-8');
+        fs.writeFileSync(issueListPath, pruned, 'utf8');
       }
       pruneResult = { removedCount };
     } catch (error) {

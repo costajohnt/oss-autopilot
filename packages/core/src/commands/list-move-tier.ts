@@ -11,8 +11,8 @@
  * No GitHub calls — pure read/transform/write of a local file.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { errorMessage } from '../core/errors.js';
 
 export type Tier = 'pursue' | 'maybe' | 'skip';
@@ -83,7 +83,7 @@ function findIssueBlocks(lines: string[], issueUrl: string): IssueBlock[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     // Top-level list item — `- `, `* `, `+ `, or `1.` at the start (with no leading whitespace).
-    const isTopLevelListItem = /^[-*+]\s|^\d+\.\s/.test(line);
+    const isTopLevelListItem = /^[*+-]\s|^\d+\.\s/.test(line);
     if (!isTopLevelListItem || !line.includes(issueUrl)) continue;
 
     // Capture indented sub-bullets that follow this line.
@@ -217,7 +217,7 @@ export async function runListMoveTier(options: ListMoveTierOptions): Promise<Lis
 
   let content: string;
   try {
-    content = fs.readFileSync(filePath, 'utf-8');
+    content = fs.readFileSync(filePath, 'utf8');
   } catch (error) {
     throw new Error(`Failed to read file: ${errorMessage(error)}`, { cause: error });
   }
@@ -226,7 +226,7 @@ export async function runListMoveTier(options: ListMoveTierOptions): Promise<Lis
 
   if (result.moved) {
     try {
-      fs.writeFileSync(filePath, result.content, 'utf-8');
+      fs.writeFileSync(filePath, result.content, 'utf8');
     } catch (error) {
       throw new Error(`Failed to write file: ${errorMessage(error)}`, { cause: error });
     }

@@ -28,9 +28,10 @@ export function MergedPRList({ mergedPRs, repoMetadata, onBack }: MergedPRListPr
     return [...mergedPRs].sort((a, b) => {
       let cmp = 0;
       switch (sortKey) {
-        case 'repo':
+        case 'repo': {
           cmp = a.repo.localeCompare(b.repo);
           break;
+        }
         case 'stars': {
           const sa = repoMetadata?.[a.repo]?.stars ?? 0;
           const sb = repoMetadata?.[b.repo]?.stars ?? 0;
@@ -43,9 +44,10 @@ export function MergedPRList({ mergedPRs, repoMetadata, onBack }: MergedPRListPr
           cmp = la.localeCompare(lb);
           break;
         }
-        case 'date':
+        case 'date': {
           cmp = a.mergedAt.localeCompare(b.mergedAt);
           break;
+        }
       }
       return sortDir === 'asc' ? cmp : -cmp;
     });

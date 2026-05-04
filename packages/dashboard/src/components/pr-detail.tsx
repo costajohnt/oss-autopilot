@@ -11,53 +11,69 @@ interface PRDetailProps {
 
 function reviewLabel(decision: string): string {
   switch (decision) {
-    case 'approved':
+    case 'approved': {
       return 'Approved';
-    case 'changes_requested':
+    }
+    case 'changes_requested': {
       return 'Changes Requested';
-    case 'review_required':
+    }
+    case 'review_required': {
       return 'Review Required';
-    default:
+    }
+    default: {
       return 'Unknown';
+    }
   }
 }
 
 function reviewColor(decision: string): string {
   switch (decision) {
-    case 'approved':
+    case 'approved': {
       return 'var(--green)';
-    case 'changes_requested':
+    }
+    case 'changes_requested': {
       return 'var(--red)';
-    case 'review_required':
+    }
+    case 'review_required': {
       return 'var(--amber)';
-    default:
+    }
+    default: {
       return 'var(--text-muted)';
+    }
   }
 }
 
 function ciDotClass(status: string): string {
   switch (status) {
-    case 'passing':
+    case 'passing': {
       return 'green';
-    case 'failing':
+    }
+    case 'failing': {
       return 'red';
-    case 'pending':
+    }
+    case 'pending': {
       return 'amber';
-    default:
+    }
+    default: {
       return '';
+    }
   }
 }
 
 function reviewDotClass(decision: string): string {
   switch (decision) {
-    case 'approved':
+    case 'approved': {
       return 'green';
-    case 'changes_requested':
+    }
+    case 'changes_requested': {
       return 'red';
-    case 'review_required':
+    }
+    case 'review_required': {
       return 'amber';
-    default:
+    }
+    default: {
       return '';
+    }
   }
 }
 
@@ -69,16 +85,21 @@ function activityDotClass(days: number): string {
 
 function categoryBadge(category: string): string {
   switch (category) {
-    case 'actionable':
+    case 'actionable': {
       return 'Actionable';
-    case 'fork_limitation':
+    }
+    case 'fork_limitation': {
       return 'Fork Limitation';
-    case 'auth_gate':
+    }
+    case 'auth_gate': {
       return 'Auth Gate';
-    case 'infrastructure':
+    }
+    case 'infrastructure': {
       return 'Infrastructure';
-    default:
+    }
+    default: {
       return category;
+    }
   }
 }
 

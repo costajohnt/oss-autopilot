@@ -54,7 +54,7 @@ describe('auth.ensureHttpToken', () => {
     const { token, path: p, freshlyGenerated } = await ensureHttpToken(tokenPath);
     expect(p).toBe(tokenPath);
     expect(freshlyGenerated).toBe(true);
-    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    expect(token).toMatch(/^[\da-f]{64}$/);
   });
 
   it('persists the token between calls', async () => {

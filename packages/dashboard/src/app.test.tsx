@@ -346,7 +346,7 @@ describe('App', () => {
     });
 
     // Advance past the 5s auto-refresh timer so mock #2 is consumed
-    vi.advanceTimersByTime(5_000);
+    vi.advanceTimersByTime(5000);
 
     // Wait for auto-refresh to complete before clicking manual refresh
     await waitFor(() => {
@@ -530,7 +530,7 @@ describe('App', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'C', shiftKey: true }));
 
       await waitFor(() => expect(container.querySelector('.celebration-toast')).toBeTruthy());
-      expect(container.querySelector('.celebration-toast')?.textContent).toMatch(/new PRs? merged/i);
+      expect(container.querySelector('.celebration-toast')?.textContent).toMatch(/new prs? merged/i);
     });
 
     it('does NOT fire Shift+C while the user is typing in an input', async () => {

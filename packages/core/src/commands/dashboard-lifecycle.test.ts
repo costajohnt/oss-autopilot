@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockSpawn = vi.fn();
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
 
@@ -50,7 +50,7 @@ describe('launchDashboardServer', () => {
     // Default: SPA assets available, no existing server
     mockResolveAssetsDir.mockReturnValue('/path/to/dist');
     mockFindRunningDashboardServer.mockResolvedValue(null);
-    mockSpawn.mockReturnValue({ unref: vi.fn(), on: vi.fn(), pid: 99999 });
+    mockSpawn.mockReturnValue({ unref: vi.fn(), on: vi.fn(), pid: 99_999 });
     // Mock process.kill to prevent sending real signals to arbitrary PIDs
     processKillSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
   });
@@ -71,7 +71,7 @@ describe('launchDashboardServer', () => {
   it('should return existing server when already running with same version', async () => {
     mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
     mockReadDashboardServerInfo.mockReturnValue({
-      pid: 12345,
+      pid: 12_345,
       port: 3000,
       startedAt: '2026-01-01T00:00:00Z',
       version: '0.44.6',
@@ -86,7 +86,7 @@ describe('launchDashboardServer', () => {
 
   it('should return existing server when PID file has no version (backward compat)', async () => {
     mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
-    mockReadDashboardServerInfo.mockReturnValue({ pid: 12345, port: 3000, startedAt: '2026-01-01T00:00:00Z' });
+    mockReadDashboardServerInfo.mockReturnValue({ pid: 12_345, port: 3000, startedAt: '2026-01-01T00:00:00Z' });
 
     const result = await launchDashboardServer();
 
@@ -99,8 +99,8 @@ describe('launchDashboardServer', () => {
     mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
     // First call: version check reads old server info; second call: polling reads new server info
     mockReadDashboardServerInfo
-      .mockReturnValueOnce({ pid: 12345, port: 3000, startedAt: '2026-01-01T00:00:00Z', version: '0.44.4' })
-      .mockReturnValueOnce({ pid: 99999, port: 3000, startedAt: '2026-01-01T00:00:01Z', version: '0.44.6' });
+      .mockReturnValueOnce({ pid: 12_345, port: 3000, startedAt: '2026-01-01T00:00:00Z', version: '0.44.4' })
+      .mockReturnValueOnce({ pid: 99_999, port: 3000, startedAt: '2026-01-01T00:00:01Z', version: '0.44.6' });
     mockGetCLIVersion.mockReturnValue('0.44.6');
     mockIsDashboardServerRunning.mockResolvedValueOnce(true);
 
@@ -108,7 +108,7 @@ describe('launchDashboardServer', () => {
     const result = await launchDashboardServer();
     consoleSpy.mockRestore();
 
-    expect(processKillSpy).toHaveBeenCalledWith(12345, 'SIGTERM');
+    expect(processKillSpy).toHaveBeenCalledWith(12_345, 'SIGTERM');
     expect(mockRemoveDashboardServerInfo).toHaveBeenCalled();
     expect(mockSpawn).toHaveBeenCalled();
     expect(result).toEqual({ url: 'http://oss.localhost:3000', port: 3000, alreadyRunning: false });
@@ -117,7 +117,7 @@ describe('launchDashboardServer', () => {
   it('should return existing server when kill fails with EPERM (#548)', async () => {
     mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
     mockReadDashboardServerInfo.mockReturnValueOnce({
-      pid: 12345,
+      pid: 12_345,
       port: 3000,
       startedAt: '2026-01-01T00:00:00Z',
       version: '0.44.4',
@@ -143,7 +143,7 @@ describe('launchDashboardServer', () => {
   it('should not kill server when getCLIVersion returns fallback 0.0.0', async () => {
     mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
     mockReadDashboardServerInfo.mockReturnValueOnce({
-      pid: 12345,
+      pid: 12_345,
       port: 3000,
       startedAt: '2026-01-01T00:00:00Z',
       version: '0.44.4',
@@ -164,7 +164,7 @@ describe('launchDashboardServer', () => {
     // PID file disappeared (race condition)
     mockReadDashboardServerInfo
       .mockReturnValueOnce(null)
-      .mockReturnValueOnce({ pid: 99999, port: 3000, startedAt: '2026-01-01T00:00:01Z', version: '0.44.6' });
+      .mockReturnValueOnce({ pid: 99_999, port: 3000, startedAt: '2026-01-01T00:00:01Z', version: '0.44.6' });
     mockIsDashboardServerRunning.mockResolvedValueOnce(true);
 
     const result = await launchDashboardServer();
@@ -176,7 +176,7 @@ describe('launchDashboardServer', () => {
 
   it('should spawn detached child process when no server running', async () => {
     // PID file appears on first poll, server responds on probe
-    mockReadDashboardServerInfo.mockReturnValueOnce({ pid: 12345, port: 3000, startedAt: '2026-01-01T00:00:00Z' });
+    mockReadDashboardServerInfo.mockReturnValueOnce({ pid: 12_345, port: 3000, startedAt: '2026-01-01T00:00:00Z' });
     mockIsDashboardServerRunning.mockResolvedValueOnce(true);
 
     const result = await launchDashboardServer();
@@ -190,7 +190,7 @@ describe('launchDashboardServer', () => {
   });
 
   it('should use custom port when specified', async () => {
-    mockReadDashboardServerInfo.mockReturnValueOnce({ pid: 12345, port: 8080, startedAt: '2026-01-01T00:00:00Z' });
+    mockReadDashboardServerInfo.mockReturnValueOnce({ pid: 12_345, port: 8080, startedAt: '2026-01-01T00:00:00Z' });
     mockIsDashboardServerRunning.mockResolvedValueOnce(true);
 
     const result = await launchDashboardServer({ port: 8080 });
@@ -201,7 +201,7 @@ describe('launchDashboardServer', () => {
 
   it('should handle port auto-increment by reading actual port from PID file', async () => {
     // Server auto-incremented from 3000 to 3001
-    mockReadDashboardServerInfo.mockReturnValueOnce({ pid: 12345, port: 3001, startedAt: '2026-01-01T00:00:00Z' });
+    mockReadDashboardServerInfo.mockReturnValueOnce({ pid: 12_345, port: 3001, startedAt: '2026-01-01T00:00:00Z' });
     mockIsDashboardServerRunning.mockResolvedValueOnce(true);
 
     const result = await launchDashboardServer({ port: 3000 });
@@ -219,12 +219,12 @@ describe('launchDashboardServer', () => {
 
     expect(result).toBeNull();
     // Verify orphan process is killed
-    expect(processKillSpy).toHaveBeenCalledWith(99999, 'SIGTERM');
-  }, 10000); // Longer timeout since it polls for 5s
+    expect(processKillSpy).toHaveBeenCalledWith(99_999, 'SIGTERM');
+  }, 10_000); // Longer timeout since it polls for 5s
 
   it('should return null when PID file appears but server not responding', async () => {
     // PID file appears but health probe always fails
-    mockReadDashboardServerInfo.mockReturnValue({ pid: 12345, port: 3000, startedAt: '2026-01-01T00:00:00Z' });
+    mockReadDashboardServerInfo.mockReturnValue({ pid: 12_345, port: 3000, startedAt: '2026-01-01T00:00:00Z' });
     mockIsDashboardServerRunning.mockResolvedValue(false);
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -232,12 +232,12 @@ describe('launchDashboardServer', () => {
     consoleSpy.mockRestore();
 
     expect(result).toBeNull();
-  }, 10000);
+  }, 10_000);
 
   it('should unref the child process so parent can exit', async () => {
     const mockUnref = vi.fn();
-    mockSpawn.mockReturnValue({ unref: mockUnref, on: vi.fn(), pid: 99999 });
-    mockReadDashboardServerInfo.mockReturnValueOnce({ pid: 12345, port: 3000, startedAt: '2026-01-01T00:00:00Z' });
+    mockSpawn.mockReturnValue({ unref: mockUnref, on: vi.fn(), pid: 99_999 });
+    mockReadDashboardServerInfo.mockReturnValueOnce({ pid: 12_345, port: 3000, startedAt: '2026-01-01T00:00:00Z' });
     mockIsDashboardServerRunning.mockResolvedValueOnce(true);
 
     await launchDashboardServer();
@@ -248,7 +248,7 @@ describe('launchDashboardServer', () => {
   it('should bail early when spawn emits an error', async () => {
     mockSpawn.mockReturnValue({
       unref: vi.fn(),
-      pid: 99999,
+      pid: 99_999,
       on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
         // queueMicrotask fires on the next microtask — deterministic, no wall-clock
         // dependency, avoids CI-slowness flakes vs a setTimeout (#1004).
@@ -268,7 +268,7 @@ describe('launchDashboardServer', () => {
   it('should bail early when child process exits prematurely', async () => {
     mockSpawn.mockReturnValue({
       unref: vi.fn(),
-      pid: 99999,
+      pid: 99_999,
       on: vi.fn((event: string, cb: (...args: unknown[]) => void) => {
         if (event === 'exit') queueMicrotask(() => cb(1));
       }),

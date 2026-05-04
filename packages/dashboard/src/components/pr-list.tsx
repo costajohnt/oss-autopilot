@@ -26,10 +26,12 @@ interface SectionDef {
 /** Maps PR status to a CSS class for status-aware hover borders. */
 export function statusClass(status: FetchedPRStatus): string {
   switch (status) {
-    case 'needs_addressing':
+    case 'needs_addressing': {
       return 'pr-row--need-attention';
-    case 'waiting_on_maintainer':
+    }
+    case 'waiting_on_maintainer': {
       return 'pr-row--waiting';
+    }
     default: {
       const _exhaustive: never = status;
       void _exhaustive;

@@ -3,10 +3,10 @@
  * Scans configurable directories for local git clones and caches results
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { execFileSync } from 'child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import { execFileSync } from 'node:child_process';
 import { getStateManager, debug } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
 import type { LocalReposOutput, LocalRepoInfo } from '../formatters/json.js';
@@ -32,7 +32,7 @@ const DEFAULT_SCAN_PATHS = [
 function getGitHubRemote(repoPath: string): string | null {
   try {
     const remoteUrl = execFileSync('git', ['-C', repoPath, 'remote', 'get-url', 'origin'], {
-      encoding: 'utf-8',
+      encoding: 'utf8',
       timeout: 5000,
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
@@ -42,7 +42,7 @@ function getGitHubRemote(repoPath: string): string | null {
     if (httpsMatch) return httpsMatch[1];
 
     // Match SSH: git@github.com:owner/repo.git
-    const sshMatch = remoteUrl.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/);
+    const sshMatch = remoteUrl.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/);
     if (sshMatch) return sshMatch[1];
 
     return null;
@@ -58,7 +58,7 @@ function getCurrentBranch(repoPath: string): string | null {
   try {
     return (
       execFileSync('git', ['-C', repoPath, 'branch', '--show-current'], {
-        encoding: 'utf-8',
+        encoding: 'utf8',
         timeout: 5000,
         stdio: ['pipe', 'pipe', 'pipe'],
       }).trim() || null
@@ -81,8 +81,8 @@ export function scanForRepos(scanPaths: string[]): Record<string, LocalRepoInfo>
     let gitDirs: string[];
     try {
       const output = execFileSync('find', [scanPath, '-maxdepth', '4', '-name', '.git', '-type', 'd'], {
-        encoding: 'utf-8',
-        timeout: 30000,
+        encoding: 'utf8',
+        timeout: 30_000,
         stdio: ['pipe', 'pipe', 'pipe'],
       }).trim();
       gitDirs = output ? output.split('\n').filter(Boolean) : [];

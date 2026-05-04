@@ -14,18 +14,22 @@ export function pillColorClass(label: string): string {
     case 'ci failing':
     case 'merge conflict':
     case 'missing files':
-    case 'needs addressing':
+    case 'needs addressing': {
       return 'pill--red';
+    }
     case 'incomplete checklist':
     case 'ci not running':
     case 'needs rebase':
     case 'ci blocked':
-    case 'stale ci failure':
+    case 'stale ci failure': {
       return 'pill--amber';
-    case 'waiting on maintainer':
+    }
+    case 'waiting on maintainer': {
       return 'pill--blue';
-    default:
+    }
+    default: {
       return 'pill--muted';
+    }
   }
 }
 
@@ -49,31 +53,38 @@ export function formatDate(iso: string): string {
 
 export function statusColor(status: FetchedPRStatus | string): string {
   switch (status) {
-    case 'needs_addressing':
+    case 'needs_addressing': {
       return 'var(--red)';
-    case 'waiting_on_maintainer':
+    }
+    case 'waiting_on_maintainer': {
       return 'var(--blue)';
-    default:
+    }
+    default: {
       return 'var(--text-muted)';
+    }
   }
 }
 
 export function ciStatusColor(status: string): string {
   switch (status) {
-    case 'passing':
+    case 'passing': {
       return 'var(--green)';
-    case 'failing':
+    }
+    case 'failing': {
       return 'var(--red)';
-    case 'pending':
+    }
+    case 'pending': {
       return 'var(--amber)';
-    default:
+    }
+    default: {
       return 'var(--text-muted)';
+    }
   }
 }
 
 export function formatStarCount(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
   return String(count);
 }
 

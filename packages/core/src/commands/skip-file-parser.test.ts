@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('fs', async () => {
-  const actual = await vi.importActual<typeof import('fs')>('fs');
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
   return {
     ...actual,
     existsSync: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock('../core/logger.js', () => ({
   warn: vi.fn(),
 }));
 
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import { warn } from '../core/logger.js';
 import { parseSkippedIssuesContent, loadSkippedIssues } from './skip-file-parser.js';
 
@@ -184,7 +184,7 @@ describe('loadSkippedIssues', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].url).toBe('https://github.com/owncast/owncast/issues/4883');
-    expect(mockReadFileSync).toHaveBeenCalledWith('/real/path.md', 'utf-8');
+    expect(mockReadFileSync).toHaveBeenCalledWith('/real/path.md', 'utf8');
   });
 
   it('should return [] and warn if reading the file throws', () => {

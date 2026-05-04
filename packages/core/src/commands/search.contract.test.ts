@@ -116,7 +116,7 @@ describe('search --json contract', () => {
       expect(candidate.viabilityScore).toBeGreaterThanOrEqual(0);
       expect(candidate.viabilityScore).toBeLessThanOrEqual(100);
       expect(candidate.issue.url).toMatch(/^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+$/);
-      expect(candidate.grade.letter).toMatch(/^[ABCF]$/);
+      expect(candidate.grade.letter).toMatch(/^[A-CF]$/);
     }
 
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/search.json');

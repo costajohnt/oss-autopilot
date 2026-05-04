@@ -5,8 +5,8 @@
  * and diagnoses CI formatting failures from log output.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { debug } from './logger.js';
 
 const MODULE = 'formatter-detection';
@@ -88,7 +88,7 @@ const FORMAT_SCRIPT_NAMES = ['lint:fix', 'format', 'fmt', 'lint', 'format:check'
 const CI_PATTERNS: { formatter: FormatterName; patterns: RegExp[] }[] = [
   {
     formatter: 'prettier',
-    patterns: [/Code style issues found/i, /Forgot to run Prettier/i, /prettier --check/i],
+    patterns: [/code style issues found/i, /forgot to run prettier/i, /prettier --check/i],
   },
   {
     formatter: 'ruff',
@@ -96,15 +96,15 @@ const CI_PATTERNS: { formatter: FormatterName; patterns: RegExp[] }[] = [
   },
   {
     formatter: 'black',
-    patterns: [/Oh no! .* files? would be reformatted/i, /black --check/i],
+    patterns: [/oh no! .* files? would be reformatted/i, /black --check/i],
   },
   {
     formatter: 'rustfmt',
-    patterns: [/Diff in .*\.rs/i, /rustfmt --check/i, /cargo fmt.*--check/i],
+    patterns: [/diff in .*\.rs/i, /rustfmt --check/i, /cargo fmt.*--check/i],
   },
   {
     formatter: 'biome',
-    patterns: [/biome check/i, /biome ci/i, /Found \d+ fixable diagnostics?/i],
+    patterns: [/biome check/i, /biome ci/i, /found \d+ fixable diagnostics?/i],
   },
   {
     formatter: 'eslint',
@@ -129,7 +129,7 @@ const CI_PATTERNS: { formatter: FormatterName; patterns: RegExp[] }[] = [
  */
 function readJsonFile(filePath: string): unknown | undefined {
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const content = fs.readFileSync(filePath, 'utf8');
     return JSON.parse(content);
   } catch (err) {
     debug(MODULE, `Failed to parse ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
@@ -142,7 +142,7 @@ function readJsonFile(filePath: string): unknown | undefined {
  */
 function readTextFile(filePath: string): string | undefined {
   try {
-    return fs.readFileSync(filePath, 'utf-8');
+    return fs.readFileSync(filePath, 'utf8');
   } catch (err) {
     debug(MODULE, `Failed to read ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
     return undefined;

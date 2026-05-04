@@ -3,9 +3,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { execFileSync } from 'child_process';
+import { execFileSync } from 'node:child_process';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
   execFileSync: vi.fn(),
 }));
 
@@ -16,9 +16,9 @@ vi.mock('../core/index.js', () => ({
 
 import { scanForRepos, runLocalRepos } from './local-repos.js';
 import { getStateManager } from '../core/index.js';
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 
-vi.mock('fs', async () => {
+vi.mock('node:fs', async () => {
   const actual = await vi.importActual<typeof fs>('fs');
   return {
     ...actual,

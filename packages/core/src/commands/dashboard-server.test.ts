@@ -12,13 +12,13 @@
  */
 
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { EventEmitter } from 'events';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import { EventEmitter } from 'node:events';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import type { DailyDigest } from '../core/types.js';
 import { makeAgentState as makeState } from '../core/test-utils.js';
-import type { IncomingMessage, ServerResponse } from 'http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 // ── Captured request handler ──────────────────────────────────────────
 // We'll capture the handler passed to http.createServer() and test it directly.
@@ -39,8 +39,8 @@ const mockServer = {
   once: vi.fn(),
 };
 
-vi.mock('http', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('http')>();
+vi.mock('node:http', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:http')>();
   return {
     ...actual,
     createServer: vi.fn((handler: RequestHandler) => {
@@ -225,7 +225,7 @@ function createMockRes(): { res: ServerResponse; result: Promise<MockResponseRes
       resolve({
         statusCode,
         headers,
-        body: Buffer.concat(chunks).toString('utf-8'),
+        body: Buffer.concat(chunks).toString('utf8'),
       });
     });
   });
@@ -262,7 +262,7 @@ describe('dashboard-server', () => {
 
     // Start the server (will be intercepted by our http mock)
     await startDashboardServer({
-      port: 19876,
+      port: 19_876,
       assetsDir: tmpDir,
       token: null,
       open: false,
@@ -1143,7 +1143,7 @@ describe('dashboard-server', () => {
 
   describe('body size limit', () => {
     it('should return 413 for oversized POST body', async () => {
-      const largeBody = JSON.stringify({ action: 'move', url: 'x'.repeat(11000), target: 'shelved' });
+      const largeBody = JSON.stringify({ action: 'move', url: 'x'.repeat(11_000), target: 'shelved' });
       const result = await sendRequest('POST', '/api/action', largeBody);
       expect(result.statusCode).toBe(413);
     });
@@ -1195,18 +1195,18 @@ describe('dashboard-server', () => {
     });
 
     it('writeDashboardServerInfo should write valid JSON', () => {
-      const info: DashboardServerInfo = { pid: 12345, port: 3000, startedAt: '2026-01-15T12:00:00Z' };
+      const info: DashboardServerInfo = { pid: 12_345, port: 3000, startedAt: '2026-01-15T12:00:00Z' };
       writeDashboardServerInfo(info);
 
       const pidPath = getDashboardPidPath();
-      const content = fs.readFileSync(pidPath, 'utf-8');
+      const content = fs.readFileSync(pidPath, 'utf8');
       const parsed = JSON.parse(content);
 
       expect(parsed).toEqual(info);
     });
 
     it('readDashboardServerInfo should return the written info', () => {
-      const info: DashboardServerInfo = { pid: 99999, port: 8080, startedAt: '2026-02-01T00:00:00Z' };
+      const info: DashboardServerInfo = { pid: 99_999, port: 8080, startedAt: '2026-02-01T00:00:00Z' };
       writeDashboardServerInfo(info);
 
       const result = readDashboardServerInfo();
@@ -1243,7 +1243,7 @@ describe('dashboard-server', () => {
     });
 
     it('removeDashboardServerInfo should remove the PID file', () => {
-      const info: DashboardServerInfo = { pid: 11111, port: 4000, startedAt: '2026-01-01T00:00:00Z' };
+      const info: DashboardServerInfo = { pid: 11_111, port: 4000, startedAt: '2026-01-01T00:00:00Z' };
       writeDashboardServerInfo(info);
 
       const pidPath = getDashboardPidPath();
@@ -1267,7 +1267,7 @@ describe('dashboard-server', () => {
   describe('health probe', () => {
     it('isDashboardServerRunning should return false for unreachable port', async () => {
       // Use a port that is almost certainly not in use
-      const result = await isDashboardServerRunning(19999);
+      const result = await isDashboardServerRunning(19_999);
       expect(result).toBe(false);
     });
 
@@ -1281,7 +1281,7 @@ describe('dashboard-server', () => {
 
     it('findRunningDashboardServer should clean up stale PID file for dead process', async () => {
       // Write a PID file referencing a PID that almost certainly does not exist
-      const info: DashboardServerInfo = { pid: 2147483647, port: 19998, startedAt: '2026-01-01T00:00:00Z' };
+      const info: DashboardServerInfo = { pid: 2_147_483_647, port: 19_998, startedAt: '2026-01-01T00:00:00Z' };
       writeDashboardServerInfo(info);
 
       const result = await findRunningDashboardServer();

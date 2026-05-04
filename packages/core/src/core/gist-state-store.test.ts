@@ -3,9 +3,9 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import { GistStateStore, GIST_DESCRIPTION, STATE_FILE_NAME, type OctokitLike } from './gist-state-store.js';
 import { AgentStateSchema } from './state-schema.js';
 import { createFreshState } from './state-persistence.js';
@@ -186,7 +186,7 @@ describe('GistStateStore', () => {
       const cachePath = path.join(tmpDir, 'state-cache.json');
       expect(fs.existsSync(cachePath)).toBe(true);
 
-      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
       expect(cached.version).toBe(4);
     });
 
@@ -213,7 +213,7 @@ describe('GistStateStore', () => {
       expect(result.created).toBe(false);
 
       // Local gist-id file should be updated
-      const storedId = fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf-8');
+      const storedId = fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf8');
       expect(storedId).toBe(searchId);
     });
   });
@@ -240,7 +240,7 @@ describe('GistStateStore', () => {
       expect(result.state.version).toBe(4);
 
       // Should have written the local gist-id file
-      const storedId = fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf-8');
+      const storedId = fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf8');
       expect(storedId).toBe(gistId);
 
       // Should have written local state cache
@@ -315,7 +315,7 @@ describe('GistStateStore', () => {
       });
 
       // Should have written local gist-id file
-      const storedId = fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf-8');
+      const storedId = fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf8');
       expect(storedId).toBe(newGistId);
 
       // Should have written local state cache
@@ -415,7 +415,7 @@ describe('GistStateStore', () => {
       // user can recover it.
       const rejectedFiles = fs.readdirSync(tmpDir).filter((f) => f.startsWith('state-cache.json.rejected-'));
       expect(rejectedFiles.length).toBeGreaterThanOrEqual(1);
-      const preservedContent = fs.readFileSync(path.join(tmpDir, rejectedFiles[0]!), 'utf-8');
+      const preservedContent = fs.readFileSync(path.join(tmpDir, rejectedFiles[0]!), 'utf8');
       expect(preservedContent).toBe(corruptContent);
     });
   });
@@ -603,7 +603,7 @@ describe('GistStateStore', () => {
       await store.push();
 
       expect(fs.existsSync(cachePath)).toBe(true);
-      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
       expect(cached.version).toBe(4);
     });
   });
@@ -811,7 +811,7 @@ describe('GistStateStore', () => {
       await store.bootstrap();
 
       const cachePath = path.join(tmpDir, 'state-cache.json');
-      const raw = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+      const raw = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
       const parsed = AgentStateSchema.safeParse(raw);
       expect(parsed.success).toBe(true);
     });
@@ -857,7 +857,7 @@ describe('GistStateStore', () => {
       });
 
       // Local gist-id file should be written
-      const storedId = fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf-8');
+      const storedId = fs.readFileSync(path.join(tmpDir, 'gist-id'), 'utf8');
       expect(storedId).toBe(newGistId);
     });
 
@@ -1160,7 +1160,7 @@ describe('GistStateStore', () => {
       // ── Step 7: Verify local state cache was updated ───────────────
       const cachePath = path.join(tmpDir, 'state-cache.json');
       expect(fs.existsSync(cachePath)).toBe(true);
-      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+      const cached = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
       expect(cached.version).toBe(4);
       expect(cached.lastRunAt).toBe('2026-03-25T12:00:00.000Z');
 

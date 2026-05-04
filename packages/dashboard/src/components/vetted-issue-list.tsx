@@ -25,7 +25,7 @@ function parseTierMeta(tier: string): { stars?: number; language?: string } {
     stars = starsMatch[2] ? Math.round(num * 1000) : num;
   }
   // Language: last parenthesized text in the heading, e.g., (TypeScript), (Rust), (JS)
-  const langMatches = [...tier.matchAll(/\(([^)★\d][^)]*)\)/g)];
+  const langMatches = [...tier.matchAll(/\(([^\d)★][^)]*)\)/g)];
   const lastMatch = langMatches[langMatches.length - 1];
   const language = lastMatch?.[1]?.trim();
   return { stars, language };

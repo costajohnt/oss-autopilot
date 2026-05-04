@@ -2,8 +2,8 @@
  * Dashboard command — serves the interactive Preact SPA dashboard.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { getGitHubToken } from '../core/index.js';
 
 // ── Serve (interactive dashboard) ──────────────────────────────────────────

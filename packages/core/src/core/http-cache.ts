@@ -10,9 +10,9 @@
  * share a single HTTP round-trip.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import * as crypto from 'crypto';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as crypto from 'node:crypto';
 import { getCacheDir } from './paths.js';
 import { debug } from './logger.js';
 import { getHttpStatusCode } from './errors.js';
@@ -93,7 +93,7 @@ export class HttpCache {
   get(url: string): CacheEntry | null {
     const filePath = this.pathFor(url);
     try {
-      const raw = fs.readFileSync(filePath, 'utf-8');
+      const raw = fs.readFileSync(filePath, 'utf8');
       const entry = JSON.parse(raw) as CacheEntry;
       // Sanity-check: the file should contain the URL we asked for
       if (entry.url !== url) {
@@ -117,7 +117,7 @@ export class HttpCache {
       cachedAt: new Date().toISOString(),
     };
     try {
-      fs.writeFileSync(this.pathFor(url), JSON.stringify(entry), { encoding: 'utf-8', mode: 0o600 });
+      fs.writeFileSync(this.pathFor(url), JSON.stringify(entry), { encoding: 'utf8', mode: 0o600 });
       debug(MODULE, `Cached response for ${url}`);
       // Best-effort size cap (#1057 M27). Runs after each write rather than on
       // a schedule so long-lived sessions can't accumulate past the cap.
@@ -208,7 +208,7 @@ export class HttpCache {
         if (!file.endsWith('.json')) continue;
         const filePath = path.join(this.cacheDir, file);
         try {
-          const raw = fs.readFileSync(filePath, 'utf-8');
+          const raw = fs.readFileSync(filePath, 'utf8');
           const entry = JSON.parse(raw) as CacheEntry;
           const age = now - new Date(entry.cachedAt).getTime();
           if (age > maxAgeMs) {

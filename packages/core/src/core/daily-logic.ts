@@ -276,37 +276,41 @@ export function collectActionableIssues(prs: FetchedPR[], lastDigestAt?: string)
       let label: string;
       let type: ActionableIssueType;
       switch (reason) {
-        case 'needs_response':
+        case 'needs_response': {
           label = '[Needs Response]';
           type = 'needs_response';
           break;
-        case 'needs_changes':
+        }
+        case 'needs_changes': {
           label = '[Needs Changes]';
           type = 'needs_changes';
           break;
+        }
         case 'failing_ci': {
           const checkInfo = pr.failingCheckNames.length > 0 ? ` (${pr.failingCheckNames.join(', ')})` : '';
           label = `[CI Failing${checkInfo}]`;
           type = 'ci_failing';
           break;
         }
-        case 'merge_conflict':
+        case 'merge_conflict': {
           label = '[Merge Conflict]';
           type = 'merge_conflict';
           break;
+        }
         case 'incomplete_checklist': {
           const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : '';
           label = `[Incomplete Checklist${stats}]`;
           type = 'incomplete_checklist';
           break;
         }
-        default:
+        default: {
           // Defensive fallback for ActionReason values not explicitly handled
           // above (e.g. ci_not_running, needs_rebase, missing_required_files).
           // These aren't in reasonOrder today but this guards future additions.
           warn('daily-logic', `Unhandled ActionReason "${reason}" for PR ${pr.url} — falling back to needs_response`);
           label = `[${reason}]`;
           type = 'needs_response';
+        }
       }
 
       // A PR is "new" if it was created after the last daily digest (first time seen).
