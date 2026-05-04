@@ -96,6 +96,7 @@ export function makeDashboardData(overrides: Partial<DashboardData> = {}): Dashb
     issueResponses: [],
     allMergedPRs: [],
     allClosedPRs: [],
+    repoMetadata: {},
     ...overrides,
   };
 }

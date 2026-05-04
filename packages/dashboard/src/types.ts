@@ -58,7 +58,9 @@ export interface DashboardData {
   issueResponses: CommentedIssueWithResponse[];
   allMergedPRs: MergedPR[];
   allClosedPRs: ClosedPR[];
-  repoMetadata?: Record<string, RepoMetadataEntry>;
+  // Required (server always populates, even if empty `{}`); aligns with
+  // DashboardJsonData in @oss-autopilot/core/commands. Closes #1208 M6.
+  repoMetadata: Record<string, RepoMetadataEntry>;
   vettedIssues?: ParseIssueListOutput | null;
   /**
    * Labels of non-critical sub-fetches that degraded to empty fallbacks
