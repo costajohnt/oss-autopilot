@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.2.0...core-v3.3.0) (2026-05-04)
+
+
+### Features
+
+* add manifest command + plugin/CLI contract verification ([#1190](https://github.com/costajohnt/oss-autopilot/issues/1190)) ([#1194](https://github.com/costajohnt/oss-autopilot/issues/1194)) ([887d819](https://github.com/costajohnt/oss-autopilot/commit/887d81904cb25a21ee52a546d88969f78e99c7f3))
+* **security:** add wrapUntrustedContent fence + prompt-injection corpus ([#1192](https://github.com/costajohnt/oss-autopilot/issues/1192)) ([#1197](https://github.com/costajohnt/oss-autopilot/issues/1197)) ([e86c8d2](https://github.com/costajohnt/oss-autopilot/commit/e86c8d21d5711717ab68f297bb26954f73354a0c))
+
+
+### Bug Fixes
+
+* 3 critical data-loss bugs from 2026-04-28 audit ([#1200](https://github.com/costajohnt/oss-autopilot/issues/1200), [#1201](https://github.com/costajohnt/oss-autopilot/issues/1201), [#1202](https://github.com/costajohnt/oss-autopilot/issues/1202)) ([#1210](https://github.com/costajohnt/oss-autopilot/issues/1210)) ([8ae74ce](https://github.com/costajohnt/oss-autopilot/commit/8ae74cec0dd9e860b89db95711cd8bdd7884a040))
+* surface stale-cache fallback from refreshFromGist in --json ([#1193](https://github.com/costajohnt/oss-autopilot/issues/1193)) ([#1198](https://github.com/costajohnt/oss-autopilot/issues/1198)) ([c68f130](https://github.com/costajohnt/oss-autopilot/commit/c68f130069052aff3ecaf770708c9e0dffd618da))
+
 ## [3.2.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.1.0...core-v3.2.0) (2026-04-26)
 
 
