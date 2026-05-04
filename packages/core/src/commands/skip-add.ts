@@ -1,4 +1,4 @@
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import { loadSkippedIssues } from './skip-file-parser.js';
 import { getStateManager } from '../core/index.js';
 

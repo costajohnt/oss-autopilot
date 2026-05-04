@@ -7,9 +7,9 @@
  * Extracted from utils.ts under #1116.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
 /**
  * Returns the oss-autopilot data directory path, creating it if it does not exist.

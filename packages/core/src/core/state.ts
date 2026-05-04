@@ -4,7 +4,7 @@
  * and scoring logic to repo-score-manager.ts.
  */
 
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import {
   AgentState,
   TrackedIssue,

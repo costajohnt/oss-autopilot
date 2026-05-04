@@ -3,7 +3,7 @@
  * Re-vets all available issues in a curated issue list file via @oss-scout/core.
  */
 
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import { adaptScoutLinkedPR, createAutopilotScout } from './scout-bridge.js';
 import { type VetListOutput, type VetOutput, type VetListItemStatus } from '../formatters/json.js';
 import { runParseList, pruneIssueList } from './parse-list.js';

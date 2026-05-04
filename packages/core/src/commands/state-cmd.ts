@@ -3,7 +3,7 @@
  * Provides --show, --sync, and --unlink subcommands for the Gist persistence layer.
  */
 
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import { getStateManager, resetStateManager } from '../core/state.js';
 import { atomicWriteFileSync } from '../core/state-persistence.js';
 import { getStatePath, getGistIdPath } from '../core/paths.js';

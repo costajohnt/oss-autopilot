@@ -9,7 +9,7 @@
  * so the search engine filters already-skipped URLs out of results.
  */
 
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import type { SkippedIssue } from '@oss-scout/core';
 import { warn } from '../core/logger.js';
 import { errorMessage } from '../core/errors.js';

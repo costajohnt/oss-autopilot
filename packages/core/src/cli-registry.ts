@@ -841,7 +841,7 @@ export const commands: CLICommandDef[] = [
             options,
             async () => (await import('./commands/parse-list.js')).runParseList({ filePath }),
             async (data) => {
-              const path = await import('path');
+              const path = await import('node:path');
               const resolvedPath = path.resolve(filePath);
               console.log(`\n\ud83d\udccb Issue List: ${resolvedPath}\n`);
               console.log(`Available: ${data.availableCount} | Completed: ${data.completedCount}\n`);

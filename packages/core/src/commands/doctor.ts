@@ -10,10 +10,10 @@
  * external dependencies in isolation.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 import { getGitHubTokenAsync, getOctokit, getStatePath } from '../core/index.js';
 import { AgentStateSchema } from '../core/state-schema.js';

@@ -22,7 +22,7 @@ vi.mock('./daily.js', () => ({
   executeDailyCheck: vi.fn(),
 }));
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
 }));
 
@@ -31,8 +31,8 @@ vi.mock('./dashboard-lifecycle.js', () => ({
 }));
 
 // Mock fs so detectIssueList doesn't hit the real filesystem
-vi.mock('fs', async () => {
-  const actual = await vi.importActual<typeof import('fs')>('fs');
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
   return {
     ...actual,
     existsSync: vi.fn(() => false),
@@ -201,7 +201,7 @@ Just some text, no issue list items.
 
 // --- detectIssueList tests ---
 
-import * as fsImport from 'fs';
+import * as fsImport from 'node:fs';
 
 describe('detectIssueList', () => {
   let detectIssueList: typeof import('./startup.js').detectIssueList;
@@ -212,7 +212,7 @@ describe('detectIssueList', () => {
     vi.clearAllMocks();
     const startupMod = await import('./startup.js');
     detectIssueList = startupMod.detectIssueList;
-    const fsMod = await import('fs');
+    const fsMod = await import('node:fs');
     existsSyncMock = fsMod.existsSync as ReturnType<typeof vi.fn>;
     origReadFileSync = (fsImport as any).readFileSync;
   });
@@ -428,7 +428,7 @@ describe('runStartup behavior', () => {
     const dailyMod = await import('./daily.js');
     executeDailyCheck = dailyMod.executeDailyCheck as ReturnType<typeof vi.fn>;
 
-    const cpMod = await import('child_process');
+    const cpMod = await import('node:child_process');
     execFile = cpMod.execFile as unknown as ReturnType<typeof vi.fn>;
 
     const lifecycleMod = await import('./dashboard-lifecycle.js');
