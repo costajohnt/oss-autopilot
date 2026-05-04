@@ -174,7 +174,11 @@ export async function runFetchCorpus(options: FetchCorpusOptions): Promise<Fetch
 
   const eligible = candidates.filter((c) => {
     if (!c.url.startsWith(repoUrlPrefix)) return false;
-    if (Date.parse(c.timestamp || '') < cutoffMs) return false;
+    // Date.parse('') is NaN, and `NaN < cutoffMs` is false — the previous
+    // form silently passed PRs with empty/malformed timestamps through the
+    // recency cliff (#1204). Number.isFinite filters those out explicitly.
+    const ts = Date.parse(c.timestamp || '');
+    if (!Number.isFinite(ts) || ts < cutoffMs) return false;
     return true;
   });
 
@@ -185,6 +189,8 @@ export async function runFetchCorpus(options: FetchCorpusOptions): Promise<Fetch
 
   const toFetch = (options.forceRefetch ? eligible : eligible.filter((c) => !c.alreadyFetched))
     // Most-recent first so the host always sees the freshest signal in its corpus window.
+    // After the eligibility filter (#1204), every entry has a finite Date.parse,
+    // so the comparator is well-defined.
     .sort((a, b) => Date.parse(b.timestamp || '') - Date.parse(a.timestamp || ''))
     .slice(0, limit);
 

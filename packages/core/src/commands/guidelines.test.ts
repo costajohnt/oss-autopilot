@@ -215,6 +215,23 @@ describe('runFetchCorpus', () => {
     expect(mockFetchPRCommentBundlesBatch).toHaveBeenCalledWith(expect.anything(), [PR_RECENT], 'me');
   });
 
+  it('excludes PRs with empty/malformed timestamps (#1204)', async () => {
+    // Date.parse('') is NaN, and `NaN < cutoffMs` is false — the previous
+    // form silently let these PRs through the recency cliff and they could
+    // displace genuinely-recent PRs from the top-N corpus window.
+    mockGetMergedPRs.mockReturnValue([
+      { url: PR_RECENT, title: 'recent', mergedAt: recentTimestamp() },
+      { url: 'https://github.com/owner/repo/pull/100', title: 'no timestamp', mergedAt: '' },
+      { url: 'https://github.com/owner/repo/pull/101', title: 'malformed', mergedAt: 'not-a-date' },
+    ]);
+    mockFetchPRCommentBundlesBatch.mockResolvedValue([]);
+
+    await runFetchCorpus({ repo: 'owner/repo' });
+
+    // Only the recent one survives; the malformed/empty ones are dropped.
+    expect(mockFetchPRCommentBundlesBatch).toHaveBeenCalledWith(expect.anything(), [PR_RECENT], 'me');
+  });
+
   it('excludes PRs from other repos', async () => {
     mockGetMergedPRs.mockReturnValue([
       { url: PR_OTHER_REPO, title: 'other', mergedAt: recentTimestamp() },
