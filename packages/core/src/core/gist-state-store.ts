@@ -95,6 +95,17 @@ export interface BootstrapResult {
 }
 
 /**
+ * Discriminated outcome of {@link GistStateStore.refreshFromGist} (#1209 L9).
+ * Lets callers distinguish "got fresh data" from "throttled / no-op / failed"
+ * without conflating them as a single boolean.
+ */
+export type RefreshResult =
+  | { status: 'refreshed' }
+  | { status: 'no-gist' }
+  | { status: 'throttled'; sinceLastMs: number }
+  | { status: 'error'; error: Error };
+
+/**
  * Minimal Octokit-shaped interface for the Gist API methods we use.
  * Accepts the real ThrottledOctokit or a plain mock object in tests.
  *
@@ -516,22 +527,33 @@ export class GistStateStore {
   /**
    * Re-fetch the Gist and update the in-memory cache.
    * Throttled to at most once per 30 seconds.
+   *
+   * Returns a discriminated union so callers can tell apart the four
+   * outcomes that previously collapsed into a single boolean (#1209 L9):
+   *   - `{ status: 'refreshed' }` — fresh data loaded successfully.
+   *   - `{ status: 'no-gist' }` — store not in Gist mode (e.g. degraded).
+   *   - `{ status: 'throttled', sinceLastMs }` — within the 30s throttle.
+   *   - `{ status: 'error', error }` — fetch attempt failed.
    */
-  async refreshFromGist(): Promise<boolean> {
-    if (!this.gistId) return false;
+  async refreshFromGist(): Promise<RefreshResult> {
+    if (!this.gistId) return { status: 'no-gist' };
     const now = Date.now();
+    const sinceLastMs = now - this.lastRefreshAt;
     // Throttle hits are not failures — preserve any previous lastRefreshError
     // for the caller to inspect.
-    if (now - this.lastRefreshAt < GistStateStore.REFRESH_THROTTLE_MS) return false;
+    if (sinceLastMs < GistStateStore.REFRESH_THROTTLE_MS) {
+      return { status: 'throttled', sinceLastMs };
+    }
     try {
       await this.fetchAndCache(this.gistId);
       this.lastRefreshAt = now;
       this.lastRefreshError = null;
-      return true;
+      return { status: 'refreshed' };
     } catch (err) {
-      warn(MODULE, `refreshFromGist failed: ${err}`);
-      this.lastRefreshError = err instanceof Error ? err : new Error(String(err));
-      return false;
+      const error = err instanceof Error ? err : new Error(String(err));
+      warn(MODULE, `refreshFromGist failed: ${error.message}`);
+      this.lastRefreshError = error;
+      return { status: 'error', error };
     }
   }
 

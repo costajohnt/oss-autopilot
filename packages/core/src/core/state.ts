@@ -417,7 +417,11 @@ export class StateManager {
    */
   async refreshFromGist(): Promise<boolean> {
     if (!this.gistStore) return false;
-    const refreshed = await this.gistStore.refreshFromGist();
+    const result = await this.gistStore.refreshFromGist();
+    // StateManager keeps its boolean shape (callers rely on truthy-check
+    // semantics) but consults the discriminated union internally to know
+    // whether to reload state.json from the now-fresh cache (#1209 L9).
+    const refreshed = result.status === 'refreshed';
     if (refreshed) {
       const raw = this.gistStore.cachedFiles.get('state.json');
       if (!raw) {
