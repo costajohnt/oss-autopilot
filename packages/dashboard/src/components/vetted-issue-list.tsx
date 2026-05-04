@@ -19,7 +19,7 @@ function scoreColorClass(score: number): string {
 function parseTierMeta(tier: string): { stars?: number; language?: string } {
   // Stars: (17.7k★) or (14k★) or (30k★) or (625★)
   let stars: number | undefined;
-  const starsMatch = tier.match(/\(([\d.]+)([kK])?★\)/);
+  const starsMatch = tier.match(/\(([\d.]+)(k)?★\)/i);
   if (starsMatch && starsMatch[1] !== undefined) {
     const num = parseFloat(starsMatch[1]);
     stars = starsMatch[2] ? Math.round(num * 1000) : num;

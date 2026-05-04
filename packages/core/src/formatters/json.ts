@@ -4,10 +4,13 @@
  */
 
 import { z, type ZodType } from 'zod';
-import type { FetchedPR, DailyDigest, AgentState, RepoGroup, CommentedIssue, ShelvedPRRef } from '../core/types.js';
-import type { ContributionStats } from '../core/stats.js';
-import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type {
+  FetchedPR,
+  DailyDigest,
+  AgentState,
+  RepoGroup,
+  CommentedIssue,
+  ShelvedPRRef,
   SearchPriority,
   CapacityAssessment,
   ActionableIssue,
@@ -16,6 +19,8 @@ import type {
   ActionMenuItem,
   ActionMenu,
 } from '../core/types.js';
+import type { ContributionStats } from '../core/stats.js';
+import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { CIFormatterDiagnosis, FormatterDetectionResult } from '../core/formatter-detection.js';
 
 // Re-export the daily aggregation types from their canonical home in core/types.

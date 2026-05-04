@@ -876,7 +876,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
     // Sleep briefly so the new mtime is meaningfully different from the
     // last write. macOS tmpfs has low mtime resolution; a short sleep +
     // utimesSync forces a detectable new mtime.
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     fs.writeFileSync(statePath, JSON.stringify(otherProcState, null, 2), { mode: 0o600 });
     const future = new Date(Date.now() + 1000);
     fs.utimesSync(statePath, future, future);
@@ -909,7 +909,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
 
     // Force the on-disk mtime forward without going through saveState.
     const statePath = path.join(mockTmpDir, 'state.json');
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     const future = new Date(Date.now() + 2000);
     fs.utimesSync(statePath, future, future);
 
@@ -926,7 +926,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     const other = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
     other.config.githubUsername = 'carol';
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     fs.writeFileSync(statePath, JSON.stringify(other, null, 2), { mode: 0o600 });
     const future = new Date(Date.now() + 1000);
     fs.utimesSync(statePath, future, future);

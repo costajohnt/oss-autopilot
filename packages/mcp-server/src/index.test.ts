@@ -285,7 +285,7 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
     });
     const firstToken = first.token;
     first.proc.kill('SIGTERM');
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
     const port2 = randomPort();
     serverHandle = await spawnHttpServer(['--http', `--port=${port2}`], {

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { PR_URL_PATTERN } from './shelve.js';
+import { PR_URL_PATTERN, runShelve, runUnshelve } from './shelve.js';
 
 describe('PR_URL_PATTERN', () => {
   it.each([
@@ -39,7 +39,6 @@ vi.mock('../core/index.js', () => ({
 }));
 
 import { getStateManager, maybeCheckpoint } from '../core/index.js';
-import { runShelve, runUnshelve } from './shelve.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
 const mockMaybeCheckpoint = vi.mocked(maybeCheckpoint);

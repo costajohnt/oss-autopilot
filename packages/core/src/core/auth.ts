@@ -147,7 +147,7 @@ export async function getGitHubTokenAsync(): Promise<string | null> {
  * Usernames must start with an alphanumeric character, can contain hyphens
  * (but not consecutive ones and not at the end), and be 1-39 characters.
  */
-const GITHUB_USERNAME_RE = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$/;
+const GITHUB_USERNAME_RE = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){0,38}$/i;
 
 /**
  * Detect the authenticated GitHub username via the `gh` CLI.

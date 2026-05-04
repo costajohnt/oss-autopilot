@@ -273,8 +273,7 @@ describe('runStateUnlink', () => {
     const result = await runStateUnlink();
 
     expect(mockRefreshFromGist).toHaveBeenCalledOnce();
-    expect(mockAtomicWriteFileSync).toHaveBeenCalledOnce();
-    expect(mockAtomicWriteFileSync).toHaveBeenCalledWith(STATE_PATH, expect.any(String), 0o600);
+    expect(mockAtomicWriteFileSync).toHaveBeenCalledExactlyOnceWith(STATE_PATH, expect.any(String), 0o600);
     // Written state should not have gistId and should have persistence: 'local'
     const writtenJson = JSON.parse(mockAtomicWriteFileSync.mock.calls[0][1] as string);
     expect(writtenJson.gistId).toBeUndefined();

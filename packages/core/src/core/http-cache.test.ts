@@ -332,7 +332,7 @@ describe('cachedRequest', () => {
     const fetcher = async (_headers: Record<string, string>) => {
       callCount++;
       // Simulate async latency
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((resolve) => setTimeout(resolve, 50));
       return {
         data: { stargazers_count: 99 },
         headers: { etag: '"e1"' } as Record<string, string>,

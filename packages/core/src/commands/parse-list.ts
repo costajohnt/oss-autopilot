@@ -36,7 +36,7 @@ function extractTitle(line: string): string {
   // Remove list markers (-, *, +, numbered)
   cleaned = cleaned.replace(/^\s*[-*+]\s*/, '').replace(/^\s*\d+\.\s*/, '');
   // Remove checkboxes
-  cleaned = cleaned.replace(/\[[ xX]\]\s*/, '');
+  cleaned = cleaned.replace(/\[[ x]\]\s*/i, '');
   // Remove strikethrough markers
   cleaned = cleaned.replace(/~~/g, '');
   // Remove "Done" markers
@@ -51,7 +51,7 @@ function isCompleted(line: string): boolean {
   // Strikethrough: ~~text~~
   if (/~~.+~~/.test(line)) return true;
   // Checked checkbox: [x] or [X]
-  if (/\[[xX]\]/.test(line)) return true;
+  if (/\[x\]/i.test(line)) return true;
   // "Done" marker (standalone word, case insensitive)
   if (/\bdone\b/i.test(line)) return true;
   return false;
@@ -65,12 +65,12 @@ function extractScore(line: string): number | undefined {
 
 /** Check if a sub-bullet indicates the item is terminal (completed/abandoned — safe to prune) */
 function isSubBulletTerminal(line: string): boolean {
-  return /\*\*(Skip|Done|Dropped|Merged|Closed)\*\*/i.test(line);
+  return /\*\*(?:Skip|Done|Dropped|Merged|Closed)\*\*/i.test(line);
 }
 
 /** Check if a sub-bullet indicates the item is in-progress (not available, but NOT safe to prune) */
 function isSubBulletInProgress(line: string): boolean {
-  return /\*\*(In Progress|Wait|Waiting)\*\*/i.test(line);
+  return /\*\*(?:In Progress|Wait|Waiting)\*\*/i.test(line);
 }
 
 /** Parse a markdown string into structured issue items */
@@ -93,7 +93,7 @@ export function parseIssueList(content: string): ParseIssueListOutput {
     }
 
     // Skip empty lines and non-list items
-    if (!line.trim() || !/^\s*[-*+]|\s*\d+\.|\s*\[[ xX]\]/.test(line)) {
+    if (!line.trim() || !/^\s*[-*+]|\s*\d+\.|\s*\[[ x]\]/i.test(line)) {
       continue;
     }
 
@@ -219,7 +219,7 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
     if (/^---\s*$/.test(line)) {
       continue;
     }
-    if (/^\s*(###?\s*)?(Removed|Previously dropped)/i.test(line)) {
+    if (/^\s*(?:###?\s*)?(?:Removed|Previously dropped)/i.test(line)) {
       continue;
     }
     // Skip blockquote metadata lines ("> Sources: ...", "> Prioritized ...")

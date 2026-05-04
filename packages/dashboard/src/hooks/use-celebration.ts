@@ -116,9 +116,15 @@ function playConfettiIfAllowed(): void {
   const reducedMotion =
     typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
   if (reducedMotion) return;
-  loadConfetti().then((fn) => {
-    if (fn) fireConfetti(fn);
-  });
+  loadConfetti()
+    .then((fn) => {
+      if (fn) fireConfetti(fn);
+      return;
+    })
+    .catch(() => {
+      // Animation is decorative; the toast already conveys the celebration.
+      // The canonical signal lives in the toast, not here.
+    });
 }
 
 export function useCelebration(mergedCount: number | undefined): {

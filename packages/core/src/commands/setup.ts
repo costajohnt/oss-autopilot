@@ -207,7 +207,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             const invalid: string[] = [];
             for (const entry of entries) {
               const normalized = entry.replace(/\s+/g, '');
-              if (/^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(normalized)) {
+              if (/^[\w.-]+\/[\w.-]+$/.test(normalized)) {
                 valid.push(normalized);
               } else {
                 invalid.push(entry);
@@ -261,7 +261,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
                 warnings.push(
                   `"${org}" looks like a repo path. Use org name only (e.g., "vercel" not "vercel/next.js").`,
                 );
-              } else if (!/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/.test(org)) {
+              } else if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(org)) {
                 warnings.push(`"${org}" is not a valid GitHub organization name. Skipping.`);
               } else {
                 validOrgs.push(org.toLowerCase());

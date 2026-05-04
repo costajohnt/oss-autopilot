@@ -108,7 +108,7 @@ const CI_PATTERNS: { formatter: FormatterName; patterns: RegExp[] }[] = [
   },
   {
     formatter: 'eslint',
-    patterns: [/eslint.*--fix/i, /eslint.*\d+ problems?/i],
+    patterns: [/eslint.*--fix/i, /eslint\D+\d+ problems?/i],
   },
   {
     formatter: 'gofmt',

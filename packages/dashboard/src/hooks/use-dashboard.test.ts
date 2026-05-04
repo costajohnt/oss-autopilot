@@ -292,7 +292,7 @@ describe('useDashboard', () => {
     await act(async () => {
       resolveRefresh(undefined);
       // Allow microtasks to flush
-      await new Promise((r) => setTimeout(r, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
     });
 
     await vi.waitFor(() => {

@@ -3,12 +3,11 @@
  * Vets a specific issue before working on it via @oss-scout/core
  */
 
-import { createAutopilotScout } from './scout-bridge.js';
+import { createAutopilotScout, adaptScoutLinkedPR } from './scout-bridge.js';
 import { type VetOutput } from '../formatters/json.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 import { gradeFromCandidate } from '../core/issue-grading.js';
 import { getStateManager, classifyLinkedPR } from '../core/index.js';
-import { adaptScoutLinkedPR } from './scout-bridge.js';
 
 export { type VetOutput } from '../formatters/json.js';
 

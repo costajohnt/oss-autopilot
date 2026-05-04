@@ -251,7 +251,7 @@ describe('fetchPRCommentBundlesBatch', () => {
         get: vi.fn(async () => {
           active++;
           maxActive = Math.max(maxActive, active);
-          await new Promise((r) => setTimeout(r, 5));
+          await new Promise((resolve) => setTimeout(resolve, 5));
           active--;
           return { data: makePR() };
         }),
