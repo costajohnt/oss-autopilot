@@ -88,7 +88,7 @@ const FORMAT_SCRIPT_NAMES = ['lint:fix', 'format', 'fmt', 'lint', 'format:check'
 const CI_PATTERNS: { formatter: FormatterName; patterns: RegExp[] }[] = [
   {
     formatter: 'prettier',
-    patterns: [/Code style issues found/i, /Forgot to run Prettier/i, /prettier --check/i],
+    patterns: [/code style issues found/i, /forgot to run prettier/i, /prettier --check/i],
   },
   {
     formatter: 'ruff',
@@ -96,15 +96,15 @@ const CI_PATTERNS: { formatter: FormatterName; patterns: RegExp[] }[] = [
   },
   {
     formatter: 'black',
-    patterns: [/Oh no! .* files? would be reformatted/i, /black --check/i],
+    patterns: [/oh no! .* files? would be reformatted/i, /black --check/i],
   },
   {
     formatter: 'rustfmt',
-    patterns: [/Diff in .*\.rs/i, /rustfmt --check/i, /cargo fmt.*--check/i],
+    patterns: [/diff in .*\.rs/i, /rustfmt --check/i, /cargo fmt.*--check/i],
   },
   {
     formatter: 'biome',
-    patterns: [/biome check/i, /biome ci/i, /Found \d+ fixable diagnostics?/i],
+    patterns: [/biome check/i, /biome ci/i, /found \d+ fixable diagnostics?/i],
   },
   {
     formatter: 'eslint',

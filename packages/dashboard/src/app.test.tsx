@@ -530,7 +530,7 @@ describe('App', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'C', shiftKey: true }));
 
       await waitFor(() => expect(container.querySelector('.celebration-toast')).toBeTruthy());
-      expect(container.querySelector('.celebration-toast')?.textContent).toMatch(/new PRs? merged/i);
+      expect(container.querySelector('.celebration-toast')?.textContent).toMatch(/new prs? merged/i);
     });
 
     it('does NOT fire Shift+C while the user is typing in an input', async () => {

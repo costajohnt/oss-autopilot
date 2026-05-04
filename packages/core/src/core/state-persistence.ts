@@ -546,7 +546,7 @@ export function saveState(state: Readonly<AgentState>, expectedMtimeMs: number |
     // Create backup of existing state (best-effort, non-fatal)
     try {
       if (fs.existsSync(statePath)) {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const timestamp = new Date().toISOString().replace(/[.:]/g, '-');
         const randomSuffix = Math.random().toString(36).slice(2, 8).padEnd(6, '0');
         const backupFile = path.join(backupDir, `state-${timestamp}-${randomSuffix}.json`);
         fs.copyFileSync(statePath, backupFile);

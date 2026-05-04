@@ -42,7 +42,7 @@ function getGitHubRemote(repoPath: string): string | null {
     if (httpsMatch) return httpsMatch[1];
 
     // Match SSH: git@github.com:owner/repo.git
-    const sshMatch = remoteUrl.match(/github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/);
+    const sshMatch = remoteUrl.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/);
     if (sshMatch) return sshMatch[1];
 
     return null;

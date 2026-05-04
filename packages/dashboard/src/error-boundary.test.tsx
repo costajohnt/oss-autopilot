@@ -52,10 +52,10 @@ describe('ErrorBoundary', () => {
         <Thrower shouldThrow={() => true} message="boom: someField is undefined" />
       </ErrorBoundary>,
     );
-    expect(screen.getByText(/Dashboard crashed/i)).toBeTruthy();
+    expect(screen.getByText(/dashboard crashed/i)).toBeTruthy();
     // Error details are in a <details> so expand / search the full text for
     // the embedded message.
-    expect(screen.getByText(/boom: someField is undefined/i)).toBeTruthy();
+    expect(screen.getByText(/boom: somefield is undefined/i)).toBeTruthy();
     // Reload / Retry buttons present.
     expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /reload/i })).toBeTruthy();
@@ -70,7 +70,7 @@ describe('ErrorBoundary', () => {
         <Thrower shouldThrow={check} message="first render crashed" />
       </ErrorBoundary>,
     );
-    expect(screen.getByText(/Dashboard crashed/i)).toBeTruthy();
+    expect(screen.getByText(/dashboard crashed/i)).toBeTruthy();
 
     shouldThrow = false;
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
@@ -95,6 +95,6 @@ describe('ErrorBoundary', () => {
     );
 
     expect(screen.getByTestId('custom-msg').textContent).toContain('custom-path');
-    expect(screen.queryByText(/Dashboard crashed/i)).toBeNull();
+    expect(screen.queryByText(/dashboard crashed/i)).toBeNull();
   });
 });

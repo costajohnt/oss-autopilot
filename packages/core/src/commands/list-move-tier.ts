@@ -83,7 +83,7 @@ function findIssueBlocks(lines: string[], issueUrl: string): IssueBlock[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     // Top-level list item — `- `, `* `, `+ `, or `1.` at the start (with no leading whitespace).
-    const isTopLevelListItem = /^[-*+]\s|^\d+\.\s/.test(line);
+    const isTopLevelListItem = /^[*+-]\s|^\d+\.\s/.test(line);
     if (!isTopLevelListItem || !line.includes(issueUrl)) continue;
 
     // Capture indented sub-bullets that follow this line.

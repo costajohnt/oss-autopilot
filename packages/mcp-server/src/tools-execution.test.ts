@@ -110,7 +110,7 @@ describe('tool execution', () => {
 
       expect(result.isError).toBe(true);
       const content = result.content[0] as { type: string; text: string };
-      expect(content.text).toMatch(/maxResults/i);
+      expect(content.text).toMatch(/maxresults/i);
     });
 
     it('rejects invalid maxResults (-1) at the schema layer', async () => {
@@ -122,7 +122,7 @@ describe('tool execution', () => {
       expect(result.isError).toBe(true);
       const content = result.content[0] as { type: string; text: string };
       // Zod's structured error payload surfaces the field name.
-      expect(content.text).toMatch(/maxResults/i);
+      expect(content.text).toMatch(/maxresults/i);
     });
 
     it('rejects non-integer maxResults (1.5) at the schema layer', async () => {
@@ -133,7 +133,7 @@ describe('tool execution', () => {
 
       expect(result.isError).toBe(true);
       const content = result.content[0] as { type: string; text: string };
-      expect(content.text).toMatch(/maxResults/i);
+      expect(content.text).toMatch(/maxresults/i);
     });
   });
 

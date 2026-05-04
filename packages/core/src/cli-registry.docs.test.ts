@@ -27,7 +27,7 @@ describe('cli-registry ↔ workflows/reference.md parity (#1048)', () => {
       // and `setup` does not match `setupComplete`. Hyphens break \b, so build a
       // pattern that tolerates both hyphen and non-hyphen boundaries.
       const pattern = new RegExp(
-        `(^|[^A-Za-z0-9-])${cmd.name.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}([^A-Za-z0-9-]|$)`,
+        `(^|[^A-Za-z0-9-])${cmd.name.replace(/[$()*+./?[\\\]^{|}-]/g, '\\$&')}([^A-Za-z0-9-]|$)`,
       );
       if (!pattern.test(doc)) {
         missing.push(cmd.name);

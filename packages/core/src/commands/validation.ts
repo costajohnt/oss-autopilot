@@ -83,7 +83,7 @@ export function validateRepoIdentifier(repo: string): string {
 /** Maximum allowed GitHub username length */
 const MAX_USERNAME_LENGTH = 39;
 /** Pattern for valid GitHub username characters (alphanumeric and hyphens) */
-const USERNAME_CHARS_PATTERN = /^[a-z0-9-]+$/i;
+const USERNAME_CHARS_PATTERN = /^[\da-z-]+$/i;
 /** Pattern for consecutive hyphens */
 const CONSECUTIVE_HYPHENS_PATTERN = /--/;
 

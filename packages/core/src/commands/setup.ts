@@ -267,7 +267,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
                 warnings.push(
                   `"${org}" looks like a repo path. Use org name only (e.g., "vercel" not "vercel/next.js").`,
                 );
-              } else if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(org)) {
+              } else if (!/^[\da-z](?:[\da-z-]*[\da-z])?$/i.test(org)) {
                 warnings.push(`"${org}" is not a valid GitHub organization name. Skipping.`);
               } else {
                 validOrgs.push(org.toLowerCase());
