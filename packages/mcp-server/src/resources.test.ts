@@ -258,4 +258,55 @@ describe('MCP resource registrations', () => {
       );
     });
   });
+
+  // ── #1208 M4: repo-guidelines resource read coverage ────────────────────
+  // Previously the test suite only checked that the resource was registered
+  // via the static-resource count assertion. Nothing exercised the actual
+  // template read path, so a regression in `getGuidelines` plumbing or the
+  // template URI parsing would not surface.
+
+  describe('repo-guidelines resource (#1208 M4)', () => {
+    it('returns markdown content when the repo has guidelines', async () => {
+      vi.mocked(getStateManager).mockReturnValueOnce({
+        listGuidelinesRepos: vi.fn().mockReturnValue(['octocat/hello-world']),
+        getGuidelines: vi.fn().mockReturnValue('# Rules\n- be nice'),
+        getState: vi.fn(),
+      } as never);
+
+      const result = await client.readResource({
+        uri: 'oss://repo/octocat/hello-world/guidelines',
+      });
+
+      expect(result.contents).toHaveLength(1);
+      expect(result.contents[0].mimeType).toBe('text/markdown');
+      expect(result.contents[0].text).toBe('# Rules\n- be nice');
+    });
+
+    it('throws when no guidelines are stored for the repo', async () => {
+      vi.mocked(getStateManager).mockReturnValueOnce({
+        listGuidelinesRepos: vi.fn().mockReturnValue([]),
+        getGuidelines: vi.fn().mockReturnValue(null),
+        getState: vi.fn(),
+      } as never);
+
+      await expect(client.readResource({ uri: 'oss://repo/octocat/missing/guidelines' })).rejects.toThrow(
+        /No guidelines stored for octocat\/missing/,
+      );
+    });
+
+    it('lists known repos via the template list callback', async () => {
+      vi.mocked(getStateManager).mockReturnValue({
+        listGuidelinesRepos: vi.fn().mockReturnValue(['octocat/hello-world', 'octocat/spoon-knife']),
+        getGuidelines: vi.fn(),
+        getState: vi.fn().mockReturnValue({
+          lastDigest: { generatedAt: '', openPRs: [], shelvedPRs: [], digestType: 'standard' as const },
+        }),
+      } as never);
+
+      const result = await client.listResources();
+      const guidelinesUris = result.resources.filter((r) => r.uri.startsWith('oss://repo/')).map((r) => r.uri);
+      expect(guidelinesUris).toContain('oss://repo/octocat/hello-world/guidelines');
+      expect(guidelinesUris).toContain('oss://repo/octocat/spoon-knife/guidelines');
+    });
+  });
 });
