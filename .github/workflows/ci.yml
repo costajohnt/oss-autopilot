@@ -35,8 +35,38 @@ env:
   STARTUP_WARN_MS: 500 # Warn if CLI startup exceeds 500ms
 
 jobs:
+  # Fast-feedback lint job. Gates the matrix below so a lint or formatting
+  # regression fails CI in ~2 min instead of waiting for the full 3-way matrix
+  # (Node 22/24 ubuntu + Node 22 macos) to each independently catch the same
+  # error. Runs on a single host because lint output is environment-independent.
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Format check
+        run: pnpm run format:check
+
   ci:
     name: Node ${{ matrix.node-version }} / ${{ matrix.os }}
+    needs: [lint]
     runs-on: ${{ matrix.os }}
     # pull-requests: write is needed for the "Check build metrics" step to post PR
     # comments. GitHub Actions does not support per-matrix-entry permissions, so all
@@ -73,11 +103,8 @@ jobs:
       - name: Security audit
         run: pnpm audit --audit-level=high
 
-      - name: Lint
-        run: pnpm run lint
-
-      - name: Format check
-        run: pnpm run format:check
+      # Lint + format:check are handled by the dedicated `lint` job above
+      # (matrix `needs: [lint]`). Skipped here to avoid 3x duplicate work.
 
       - name: Build core types
         run: pnpm --filter @oss-autopilot/core run build
