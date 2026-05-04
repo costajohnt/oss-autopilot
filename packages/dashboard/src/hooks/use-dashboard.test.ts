@@ -46,7 +46,7 @@ describe('useDashboard', () => {
   /** Advance past the 5-second auto-refresh delay and flush resulting microtasks. */
   async function triggerAutoRefresh(): Promise<void> {
     await act(async () => {
-      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5000);
     });
   }
 
@@ -279,7 +279,7 @@ describe('useDashboard', () => {
 
     // Advance past the 5s delay to trigger the auto-refresh
     await act(async () => {
-      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5000);
     });
 
     // During auto-refresh: loading=false, refreshing=true

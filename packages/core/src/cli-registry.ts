@@ -813,7 +813,7 @@ export const commands: CLICommandDef[] = [
         .action(async (options) => {
           try {
             const port = parseInt(options.port, 10);
-            if (isNaN(port) || port < 1 || port > 65535) {
+            if (isNaN(port) || port < 1 || port > 65_535) {
               console.error(`Invalid port number: "${options.port}". Must be an integer between 1 and 65535.`);
               process.exit(1);
             }

@@ -103,7 +103,7 @@ describe('parseGitHubUrl', () => {
 
   it('should parse large PR numbers', () => {
     const result = parseGitHubUrl('https://github.com/owner/repo/pull/99999');
-    expect(result).toEqual({ owner: 'owner', repo: 'repo', number: 99999, type: 'pull' });
+    expect(result).toEqual({ owner: 'owner', repo: 'repo', number: 99_999, type: 'pull' });
   });
 });
 

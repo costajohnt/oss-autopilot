@@ -34,7 +34,7 @@ async function createStdioClient(): Promise<Client> {
 
 /** Get a random high port to avoid conflicts in parallel test runs. */
 function randomPort(): number {
-  return 10000 + Math.floor(Math.random() * 50000);
+  return 10_000 + Math.floor(Math.random() * 50_000);
 }
 
 /** Spawn an HTTP MCP server and wait for it to be listening. Returns the

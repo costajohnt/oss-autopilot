@@ -89,7 +89,7 @@ export async function main() {
       port = parseInt(portRaw, 10);
     }
 
-    if (isNaN(port) || port < 1 || port > 65535) {
+    if (isNaN(port) || port < 1 || port > 65_535) {
       console.error(`Invalid port: ${port}. Must be 1-65535.`);
       process.exit(1);
     }

@@ -33,7 +33,7 @@ async function runSearch(
   let signal: string | null = null;
 
   const result = await execFileAsync('node', [BUNDLE_PATH, 'search', '--json', ...args], {
-    timeout: 30000,
+    timeout: 30_000,
     env: { ...process.env, ...env, HOME: TEST_HOME },
     cwd: TEST_HOME,
   }).catch((err: any) => {
@@ -135,7 +135,7 @@ describe.skipIf(!BUNDLE_EXISTS)('search --json E2E', () => {
       const start = Date.now();
       await runSearch(['1']);
       const duration = Date.now() - start;
-      expect(duration).toBeLessThan(30000);
+      expect(duration).toBeLessThan(30_000);
     });
   });
 });
