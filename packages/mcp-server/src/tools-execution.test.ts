@@ -3,10 +3,22 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 // Use vi.hoisted() so mock references are available inside the hoisted vi.mock() factory
-const { mockRunDaily, mockRunSearch, mockRunMove } = vi.hoisted(() => ({
+const {
+  mockRunDaily,
+  mockRunSearch,
+  mockRunMove,
+  mockRunGuidelinesView,
+  mockRunGuidelinesStore,
+  mockRunGuidelinesReset,
+  mockRunFetchCorpus,
+} = vi.hoisted(() => ({
   mockRunDaily: vi.fn(),
   mockRunSearch: vi.fn(),
   mockRunMove: vi.fn(),
+  mockRunGuidelinesView: vi.fn(),
+  mockRunGuidelinesStore: vi.fn(),
+  mockRunGuidelinesReset: vi.fn(),
+  mockRunFetchCorpus: vi.fn(),
 }));
 
 vi.mock('@oss-autopilot/core/commands', () => ({
@@ -27,6 +39,10 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runDismiss: vi.fn(),
   runUndismiss: vi.fn(),
   runMove: mockRunMove,
+  runGuidelinesView: mockRunGuidelinesView,
+  runGuidelinesStore: mockRunGuidelinesStore,
+  runGuidelinesReset: mockRunGuidelinesReset,
+  runFetchCorpus: mockRunFetchCorpus,
   MAX_SEARCH_RESULTS: 100,
 }));
 
@@ -164,6 +180,143 @@ describe('tool execution', () => {
         prUrl: 'https://github.com/octocat/hello-world/pull/42',
         target: 'auto',
       });
+    });
+  });
+
+  // ── #1208 M4: MCP execution coverage for the 4 guidelines tools ─────
+  // Previously only `tools.test.ts` checked these were registered; nothing
+  // verified that callTool actually delegates to the right run* function or
+  // that the input schemas reject malformed args at the MCP boundary.
+
+  describe('guidelines-get tool', () => {
+    it('delegates to runGuidelinesView and returns content', async () => {
+      mockRunGuidelinesView.mockResolvedValueOnce({
+        repo: 'owner/repo',
+        content: '# rules',
+        byteSize: 7,
+        exists: true,
+        storageMode: 'gist',
+      });
+
+      const result = await client.callTool({
+        name: 'guidelines-get',
+        arguments: { repo: 'owner/repo' },
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(mockRunGuidelinesView).toHaveBeenCalledWith({ repo: 'owner/repo' });
+    });
+
+    it('rejects malformed repo identifier at the schema layer', async () => {
+      const result = await client.callTool({
+        name: 'guidelines-get',
+        arguments: { repo: 'not-a-repo' },
+      });
+      expect(result.isError).toBe(true);
+      const content = result.content[0] as { type: string; text: string };
+      expect(content.text).toMatch(/owner\/repo/i);
+    });
+  });
+
+  describe('guidelines-store tool', () => {
+    it('delegates to runGuidelinesStore with repo + content', async () => {
+      mockRunGuidelinesStore.mockResolvedValueOnce({ repo: 'owner/repo', byteSize: 5, stored: true });
+
+      await client.callTool({
+        name: 'guidelines-store',
+        arguments: { repo: 'owner/repo', content: 'rules' },
+      });
+
+      expect(mockRunGuidelinesStore).toHaveBeenCalledWith({ repo: 'owner/repo', content: 'rules' });
+    });
+
+    it('rejects empty content at the schema layer (#1208 M4)', async () => {
+      const result = await client.callTool({
+        name: 'guidelines-store',
+        arguments: { repo: 'owner/repo', content: '' },
+      });
+      expect(result.isError).toBe(true);
+      const content = result.content[0] as { type: string; text: string };
+      expect(content.text).toMatch(/content/i);
+    });
+
+    it('rejects content exceeding 8 KB cap at the schema layer', async () => {
+      const oversized = 'a'.repeat(8193);
+      const result = await client.callTool({
+        name: 'guidelines-store',
+        arguments: { repo: 'owner/repo', content: oversized },
+      });
+      expect(result.isError).toBe(true);
+      const content = result.content[0] as { type: string; text: string };
+      expect(content.text).toMatch(/8\s*KB|content/i);
+    });
+  });
+
+  describe('guidelines-reset tool', () => {
+    it('delegates to runGuidelinesReset', async () => {
+      mockRunGuidelinesReset.mockResolvedValueOnce({ repo: 'owner/repo', deleted: true });
+
+      await client.callTool({
+        name: 'guidelines-reset',
+        arguments: { repo: 'owner/repo' },
+      });
+
+      expect(mockRunGuidelinesReset).toHaveBeenCalledWith({ repo: 'owner/repo' });
+    });
+  });
+
+  describe('guidelines-fetch-corpus tool', () => {
+    it('delegates to runFetchCorpus with all optional args', async () => {
+      mockRunFetchCorpus.mockResolvedValueOnce({ repo: 'owner/repo', bundles: [], prCount: 0, skipped: 0 });
+
+      await client.callTool({
+        name: 'guidelines-fetch-corpus',
+        arguments: { repo: 'owner/repo', limit: 3, forceRefetch: true },
+      });
+
+      expect(mockRunFetchCorpus).toHaveBeenCalledWith({
+        repo: 'owner/repo',
+        limit: 3,
+        forceRefetch: true,
+      });
+    });
+
+    it('passes undefined limit/forceRefetch when omitted', async () => {
+      mockRunFetchCorpus.mockResolvedValueOnce({ repo: 'owner/repo', bundles: [], prCount: 0, skipped: 0 });
+
+      await client.callTool({
+        name: 'guidelines-fetch-corpus',
+        arguments: { repo: 'owner/repo' },
+      });
+
+      expect(mockRunFetchCorpus).toHaveBeenCalledWith({
+        repo: 'owner/repo',
+        limit: undefined,
+        forceRefetch: undefined,
+      });
+    });
+
+    it('rejects limit > 10 at the schema layer', async () => {
+      const result = await client.callTool({
+        name: 'guidelines-fetch-corpus',
+        arguments: { repo: 'owner/repo', limit: 50 },
+      });
+      expect(result.isError).toBe(true);
+      const content = result.content[0] as { type: string; text: string };
+      expect(content.text).toMatch(/limit/i);
+    });
+
+    it('surfaces runFetchCorpus errors via wrapTool error envelope', async () => {
+      mockRunFetchCorpus.mockRejectedValueOnce(new Error('GitHub rate limit exceeded'));
+
+      const result = await client.callTool({
+        name: 'guidelines-fetch-corpus',
+        arguments: { repo: 'owner/repo' },
+      });
+
+      expect(result.isError).toBe(true);
+      const content = result.content[0] as { type: string; text: string };
+      expect(content.text).toContain('GitHub rate limit exceeded');
     });
   });
 });
