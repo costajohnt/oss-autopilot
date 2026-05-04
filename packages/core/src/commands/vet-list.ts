@@ -216,10 +216,10 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   let pruneResult: { removedCount: number } | undefined;
   if (options.prune && issueListPath) {
     try {
-      const content = fs.readFileSync(issueListPath, 'utf-8');
+      const content = fs.readFileSync(issueListPath, 'utf8');
       const { pruned, removedCount } = pruneIssueList(content);
       if (pruned !== content) {
-        fs.writeFileSync(issueListPath, pruned, 'utf-8');
+        fs.writeFileSync(issueListPath, pruned, 'utf8');
       }
       pruneResult = { removedCount };
     } catch (error) {

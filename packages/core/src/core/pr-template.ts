@@ -59,7 +59,7 @@ export async function fetchPRTemplate(octokit: Octokit, owner: string, repo: str
         continue;
       }
 
-      const template = Buffer.from(data.content, 'base64').toString('utf-8');
+      const template = Buffer.from(data.content, 'base64').toString('utf8');
       debug(MODULE, `Found PR template at ${path} (${template.length} chars)`);
       return { template, source: path };
     } catch (err: unknown) {

@@ -321,7 +321,7 @@ describe('getGitHubToken', () => {
     const token = getGitHubToken();
     expect(token).toBe('ghp_faketoken');
     expect(mockedExecFileSync).toHaveBeenCalledWith('gh', ['auth', 'token'], {
-      encoding: 'utf-8',
+      encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 2000,
     });
@@ -413,7 +413,7 @@ describe('getGitHubTokenAsync', () => {
     expect(mockedExecFile).toHaveBeenCalledWith(
       'gh',
       ['auth', 'token'],
-      { encoding: 'utf-8', timeout: 2000 },
+      { encoding: 'utf8', timeout: 2000 },
       expect.any(Function),
     );
   });
@@ -539,7 +539,7 @@ describe('detectGitHubUsername', () => {
     expect(mockedExecFile).toHaveBeenCalledWith(
       'gh',
       ['api', 'user', '--jq', '.login'],
-      { encoding: 'utf-8', timeout: 5000 },
+      { encoding: 'utf8', timeout: 5000 },
       expect.any(Function),
     );
   });

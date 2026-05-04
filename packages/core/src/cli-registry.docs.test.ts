@@ -20,7 +20,7 @@ describe('cli-registry ↔ workflows/reference.md parity (#1048)', () => {
   });
 
   it('every registered CLI command appears in workflows/reference.md', () => {
-    const doc = fs.readFileSync(referencePath, 'utf-8');
+    const doc = fs.readFileSync(referencePath, 'utf8');
     const missing: string[] = [];
     for (const cmd of commands) {
       // Use word-boundaries so `state` does not match `statement` or `state-sync`,
@@ -52,7 +52,7 @@ describe('cli-registry ↔ .claude-plugin/expected-cli-contract.json parity (#11
   });
 
   it('every command in expectedCommands is registered (no plugin-side dangling references)', () => {
-    const contract: Contract = JSON.parse(fs.readFileSync(contractPath, 'utf-8'));
+    const contract: Contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
     const registered = new Set(commands.map((c) => c.name));
     const dangling = contract.expectedCommands.filter((name) => !registered.has(name));
     expect(
@@ -63,7 +63,7 @@ describe('cli-registry ↔ .claude-plugin/expected-cli-contract.json parity (#11
   });
 
   it('every registered command appears in expectedCommands (no silent additions)', () => {
-    const contract: Contract = JSON.parse(fs.readFileSync(contractPath, 'utf-8'));
+    const contract: Contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
     const expected = new Set(contract.expectedCommands);
     const unlisted = commands.map((c) => c.name).filter((name) => !expected.has(name));
     expect(
@@ -74,7 +74,7 @@ describe('cli-registry ↔ .claude-plugin/expected-cli-contract.json parity (#11
   });
 
   it('every workflow file referenced by the contract exists on disk', () => {
-    const contract: Contract = JSON.parse(fs.readFileSync(contractPath, 'utf-8'));
+    const contract: Contract = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
     const missing = contract.expectedWorkflowFiles.filter((rel) => !fs.existsSync(path.join(pluginRoot, rel)));
     expect(missing, `Workflow files referenced by the contract are missing: ${missing.join(', ')}`).toEqual([]);
   });

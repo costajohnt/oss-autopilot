@@ -32,7 +32,7 @@ export function writeDashboardServerInfo(info: DashboardServerInfo): void {
 
 export function readDashboardServerInfo(): DashboardServerInfo | null {
   try {
-    const content = fs.readFileSync(getDashboardPidPath(), 'utf-8');
+    const content = fs.readFileSync(getDashboardPidPath(), 'utf8');
     const parsed = JSON.parse(content);
     if (
       typeof parsed !== 'object' ||

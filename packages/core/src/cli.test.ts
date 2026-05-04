@@ -286,7 +286,7 @@ describe('Version detection IIFE', () => {
     let version: string;
     try {
       const pkgPath = join(__dirname, '..', 'package.json');
-      version = JSON.parse(readFileSync(pkgPath, 'utf-8')).version;
+      version = JSON.parse(readFileSync(pkgPath, 'utf8')).version;
     } catch {
       version = '0.0.0';
     }
@@ -302,7 +302,7 @@ describe('Version detection IIFE', () => {
     let version: string;
     try {
       // Attempt to read a path that does not exist
-      version = JSON.parse(readFileSync('/nonexistent/path/package.json', 'utf-8')).version;
+      version = JSON.parse(readFileSync('/nonexistent/path/package.json', 'utf8')).version;
       version = 'should-not-reach';
     } catch {
       version = '0.0.0';
@@ -436,7 +436,7 @@ describe('Search maxResults cap', () => {
   });
 
   it('should warn to console when capping maxResults', () => {
-    const src = readFileSync(join(__dirname, 'cli-registry.ts'), 'utf-8');
+    const src = readFileSync(join(__dirname, 'cli-registry.ts'), 'utf8');
     expect(src).toContain('Capping search to');
   });
 });
@@ -446,7 +446,7 @@ describe('Search maxResults cap', () => {
 describe('Lazy imports', () => {
   it('should use dynamic import() in action handlers instead of static imports', () => {
     // Read cli-registry.ts where command definitions now live
-    const src = readFileSync(join(__dirname, 'cli-registry.ts'), 'utf-8');
+    const src = readFileSync(join(__dirname, 'cli-registry.ts'), 'utf8');
 
     // There should be NO static imports from ./commands/* or ./core/index.js
     const staticCommandImports = src.match(/^import .+ from '\.\/(commands\/[^']+)';$/gm);
@@ -461,7 +461,7 @@ describe('Lazy imports', () => {
   });
 
   it('cli.ts should not have static imports from commands/', () => {
-    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf8');
 
     // cli.ts should import from cli-registry, not from commands/ directly
     const staticCommandImports = src.match(/^import .+ from '\.\/(commands\/[^']+)';$/gm);
@@ -469,12 +469,12 @@ describe('Lazy imports', () => {
   });
 
   it('cli.ts should import from cli-registry', () => {
-    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf8');
     expect(src).toContain("from './cli-registry.js'");
   });
 
   it('should use getGitHubTokenAsync in preAction hook', () => {
-    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf-8');
+    const src = readFileSync(join(__dirname, 'cli.ts'), 'utf8');
 
     // The preAction hook should use the async version
     expect(src).toContain('await getGitHubTokenAsync()');

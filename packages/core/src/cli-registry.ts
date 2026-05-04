@@ -596,7 +596,7 @@ export const commands: CLICommandDef[] = [
                 for await (const chunk of process.stdin) {
                   chunks.push(chunk);
                 }
-                message = Buffer.concat(chunks).toString('utf-8').trim();
+                message = Buffer.concat(chunks).toString('utf8').trim();
               } else {
                 message = messageParts.join(' ');
               }

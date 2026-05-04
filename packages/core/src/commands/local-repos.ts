@@ -32,7 +32,7 @@ const DEFAULT_SCAN_PATHS = [
 function getGitHubRemote(repoPath: string): string | null {
   try {
     const remoteUrl = execFileSync('git', ['-C', repoPath, 'remote', 'get-url', 'origin'], {
-      encoding: 'utf-8',
+      encoding: 'utf8',
       timeout: 5000,
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
@@ -58,7 +58,7 @@ function getCurrentBranch(repoPath: string): string | null {
   try {
     return (
       execFileSync('git', ['-C', repoPath, 'branch', '--show-current'], {
-        encoding: 'utf-8',
+        encoding: 'utf8',
         timeout: 5000,
         stdio: ['pipe', 'pipe', 'pipe'],
       }).trim() || null
@@ -81,7 +81,7 @@ export function scanForRepos(scanPaths: string[]): Record<string, LocalRepoInfo>
     let gitDirs: string[];
     try {
       const output = execFileSync('find', [scanPath, '-maxdepth', '4', '-name', '.git', '-type', 'd'], {
-        encoding: 'utf-8',
+        encoding: 'utf8',
         timeout: 30000,
         stdio: ['pipe', 'pipe', 'pipe'],
       }).trim();

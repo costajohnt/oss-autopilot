@@ -69,7 +69,7 @@ export function detectIssueList(): IssueListInfo | undefined {
     const configPath = '.claude/oss-autopilot/config.md';
     if (fs.existsSync(configPath)) {
       try {
-        const configContent = fs.readFileSync(configPath, 'utf-8');
+        const configContent = fs.readFileSync(configPath, 'utf8');
         const configuredPath = parseIssueListPathFromConfig(configContent);
         if (configuredPath && fs.existsSync(configuredPath)) {
           issueListPath = configuredPath;
@@ -99,7 +99,7 @@ export function detectIssueList(): IssueListInfo | undefined {
   let availableCount = 0;
   let completedCount = 0;
   try {
-    const content = fs.readFileSync(issueListPath, 'utf-8');
+    const content = fs.readFileSync(issueListPath, 'utf8');
     ({ availableCount, completedCount } = countIssueListItems(content));
   } catch (error) {
     console.error(`[STARTUP] Failed to read issue list at ${issueListPath}:`, errorMessage(error));

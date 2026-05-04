@@ -129,7 +129,7 @@ const CI_PATTERNS: { formatter: FormatterName; patterns: RegExp[] }[] = [
  */
 function readJsonFile(filePath: string): unknown | undefined {
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const content = fs.readFileSync(filePath, 'utf8');
     return JSON.parse(content);
   } catch (err) {
     debug(MODULE, `Failed to parse ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
@@ -142,7 +142,7 @@ function readJsonFile(filePath: string): unknown | undefined {
  */
 function readTextFile(filePath: string): string | undefined {
   try {
-    return fs.readFileSync(filePath, 'utf-8');
+    return fs.readFileSync(filePath, 'utf8');
   } catch (err) {
     debug(MODULE, `Failed to read ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
     return undefined;

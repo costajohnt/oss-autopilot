@@ -17,7 +17,7 @@ const version: string = (() => {
     // In CJS bundle: __dirname is defined by esbuild
     // In ESM (dev via tsx): use import.meta.url
     const dir = typeof __dirname !== 'undefined' ? __dirname : dirname(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync(join(dir, '..', 'package.json'), 'utf-8'));
+    const pkg = JSON.parse(readFileSync(join(dir, '..', 'package.json'), 'utf8'));
     return pkg.version;
   } catch (e) {
     console.error('[MCP] Failed to read package version:', e);

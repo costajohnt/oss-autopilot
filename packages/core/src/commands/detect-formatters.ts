@@ -23,7 +23,7 @@ export async function runDetectFormatters(options: {
   if (options.ciLog) {
     let logContent: string;
     try {
-      logContent = fs.readFileSync(path.resolve(options.ciLog), 'utf-8');
+      logContent = fs.readFileSync(path.resolve(options.ciLog), 'utf8');
     } catch (err) {
       throw new Error(`Failed to read CI log file: ${errorMessage(err)}`, { cause: err });
     }

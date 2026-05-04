@@ -36,7 +36,7 @@ export function resolveTokenPath(): string {
  */
 async function loadToken(tokenPath: string): Promise<string | null> {
   try {
-    const raw = await fs.readFile(tokenPath, 'utf-8');
+    const raw = await fs.readFile(tokenPath, 'utf8');
     const token = raw.trim();
     if (token.length === 0) return null;
     return token;
@@ -86,7 +86,7 @@ export async function ensureHttpToken(tokenPath: string = resolveTokenPath()): P
   // separately on the `loadToken` success branch above.
   const handle = await fs.open(tokenPath, 'w', TOKEN_FILE_MODE);
   try {
-    await handle.writeFile(token + '\n', 'utf-8');
+    await handle.writeFile(token + '\n', 'utf8');
     await handle.chmod(TOKEN_FILE_MODE);
   } finally {
     await handle.close();

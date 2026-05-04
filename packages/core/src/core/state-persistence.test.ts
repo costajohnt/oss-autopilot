@@ -107,7 +107,7 @@ describe('Concurrent State Write Protection', () => {
 
       atomicWriteFileSync(filePath, data);
 
-      expect(fs.readFileSync(filePath, 'utf-8')).toBe(data);
+      expect(fs.readFileSync(filePath, 'utf8')).toBe(data);
     });
 
     it('should not leave a .tmp file after successful write', () => {
@@ -126,7 +126,7 @@ describe('Concurrent State Write Protection', () => {
 
       atomicWriteFileSync(filePath, '{"version":3}');
 
-      expect(fs.readFileSync(filePath, 'utf-8')).toBe('{"version":3}');
+      expect(fs.readFileSync(filePath, 'utf8')).toBe('{"version":3}');
     });
 
     it('should apply the specified file mode', () => {
@@ -147,7 +147,7 @@ describe('Concurrent State Write Protection', () => {
       acquireLock(lockPath);
       expect(fs.existsSync(lockPath)).toBe(true);
 
-      const lockData = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+      const lockData = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
       expect(lockData.pid).toBe(process.pid);
       expect(typeof lockData.timestamp).toBe('number');
 
@@ -177,7 +177,7 @@ describe('Concurrent State Write Protection', () => {
       acquireLock(lockPath);
       expect(fs.existsSync(lockPath)).toBe(true);
 
-      const newLockData = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+      const newLockData = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
       expect(newLockData.pid).toBe(process.pid);
 
       releaseLock(lockPath);
@@ -192,7 +192,7 @@ describe('Concurrent State Write Protection', () => {
       acquireLock(lockPath);
       expect(fs.existsSync(lockPath)).toBe(true);
 
-      const newLockData = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+      const newLockData = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
       expect(newLockData.pid).toBe(process.pid);
 
       releaseLock(lockPath);
@@ -237,7 +237,7 @@ describe('StateManager file-system persistence (save / load)', () => {
 
     const statePath = path.join(mockTmpDir, 'state.json');
     expect(fs.existsSync(statePath)).toBe(true);
-    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(written.config.githubUsername).toBe('alice');
   });
 
@@ -257,7 +257,7 @@ describe('StateManager file-system persistence (save / load)', () => {
     const after = new Date().toISOString();
 
     const statePath = path.join(mockTmpDir, 'state.json');
-    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(written.lastRunAt >= before).toBe(true);
     expect(written.lastRunAt <= after).toBe(true);
   });
@@ -397,7 +397,7 @@ describe('StateManager recovery from corrupt state files', () => {
     new StateManager(false);
 
     // state.json should now contain the restored backup data
-    const restoredOnDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const restoredOnDisk = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(restoredOnDisk.config.githubUsername).toBe('from-backup');
   });
 
@@ -566,7 +566,7 @@ describe('batch and auto-save', () => {
     sm.updateConfig({ githubUsername: 'alice' });
 
     // auto-save should have persisted the change
-    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(written.config.githubUsername).toBe('alice');
   });
 
@@ -583,7 +583,7 @@ describe('batch and auto-save', () => {
       // We test the final result after batch
     });
 
-    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(written.config.githubUsername).toBe('bob');
     expect(written.config.maxActivePRs).toBe(3);
     expect(written.config.languages).toEqual(['rust']);
@@ -606,7 +606,7 @@ describe('batch and auto-save', () => {
     // save() should be called exactly once (by the outermost batch)
     expect(saveSpy).toHaveBeenCalledTimes(1);
 
-    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(written.config.githubUsername).toBe('carol');
     expect(written.config.maxActivePRs).toBe(7);
     saveSpy.mockRestore();
@@ -764,7 +764,7 @@ describe('save resilience when backup operations fail', () => {
     expect(fs.existsSync(oldestBackup)).toBe(true);
     expect(fs.statSync(oldestBackup).isDirectory()).toBe(true);
 
-    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(written.version).toBe(4);
   });
 
@@ -781,7 +781,7 @@ describe('save resilience when backup operations fail', () => {
     expect(() => sm.save()).not.toThrow();
 
     fs.chmodSync(backupDir, 0o700);
-    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(written.version).toBe(4);
   });
 
@@ -797,7 +797,7 @@ describe('save resilience when backup operations fail', () => {
 
     sm.save();
 
-    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(written.config.githubUsername).toBe('updated-user');
   });
 });
@@ -858,7 +858,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
     expect(() => sm.save()).not.toThrow();
 
     const statePath = path.join(mockTmpDir, 'state.json');
-    const written = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const written = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(written.config.githubUsername).toBe('bob');
   });
 
@@ -870,7 +870,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
 
     // Simulate another process writing the file.
     const statePath = path.join(mockTmpDir, 'state.json');
-    const raw = fs.readFileSync(statePath, 'utf-8');
+    const raw = fs.readFileSync(statePath, 'utf8');
     const otherProcState = JSON.parse(raw);
     otherProcState.config.githubUsername = 'bob-wrote-this-from-another-process';
     // Sleep briefly so the new mtime is meaningfully different from the
@@ -886,7 +886,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
     expect(() => sm.updateConfig({ githubUsername: 'alice-would-clobber-bob' })).toThrow(ConcurrencyError);
 
     // The on-disk file still has bob's write — alice did NOT clobber it.
-    const final = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const final = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(final.config.githubUsername).toBe('bob-wrote-this-from-another-process');
   });
 
@@ -924,7 +924,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
 
     // External writer races in.
     const statePath = path.join(mockTmpDir, 'state.json');
-    const other = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const other = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     other.config.githubUsername = 'carol';
     await new Promise((resolve) => setTimeout(resolve, 50));
     fs.writeFileSync(statePath, JSON.stringify(other, null, 2), { mode: 0o600 });
@@ -946,7 +946,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
 
     // In-memory state now reflects the external write, NOT our stale mutation.
     expect(sm.getState().config.githubUsername).toBe('carol');
-    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(onDisk.config.githubUsername).toBe('carol');
   });
 });

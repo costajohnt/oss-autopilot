@@ -88,7 +88,7 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
   let newFiles: string[];
   try {
     const output = execFileSync('git', ['diff', '--name-only', '--diff-filter=A', `${base}...HEAD`], {
-      encoding: 'utf-8',
+      encoding: 'utf8',
       timeout: 10000,
     }).trim();
     newFiles = output ? output.split('\n').filter(Boolean) : [];
@@ -112,7 +112,7 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
   let allFiles: string[];
   try {
     allFiles = execFileSync('git', ['ls-files'], {
-      encoding: 'utf-8',
+      encoding: 'utf8',
       timeout: 10000,
     })
       .trim()
@@ -146,7 +146,7 @@ export async function runCheckIntegration(options: CheckIntegrationOptions): Pro
     for (const pattern of patterns) {
       try {
         const grepOutput = execFileSync('git', ['grep', '-l', '--', pattern], {
-          encoding: 'utf-8',
+          encoding: 'utf8',
           timeout: 10000,
         }).trim();
         if (grepOutput) {

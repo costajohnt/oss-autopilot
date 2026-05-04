@@ -27,7 +27,7 @@ const LEGACY_BACKUP_DIR = path.join(process.cwd(), 'data', 'backups');
  */
 function isLockStale(lockPath: string): boolean {
   try {
-    const existing = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+    const existing = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
     return Date.now() - existing.timestamp > LOCK_TIMEOUT_MS;
   } catch (err) {
     // Lock file is unreadable or contains invalid JSON — treat as stale
@@ -78,7 +78,7 @@ export function acquireLock(lockPath: string): void {
  */
 export function releaseLock(lockPath: string): void {
   try {
-    const data = JSON.parse(fs.readFileSync(lockPath, 'utf-8'));
+    const data = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
     if (data.pid === process.pid) {
       fs.unlinkSync(lockPath);
     }
@@ -308,7 +308,7 @@ function tryRestoreFromBackup(): AgentState | null {
   for (const backupFile of backupFiles) {
     const backupPath = path.join(backupDir, backupFile);
     try {
-      const data = fs.readFileSync(backupPath, 'utf-8');
+      const data = fs.readFileSync(backupPath, 'utf8');
       let raw: unknown = JSON.parse(data);
 
       // Chain migrations: v1 → v2 → v3
@@ -369,7 +369,7 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
 
   try {
     if (fs.existsSync(statePath)) {
-      const data = fs.readFileSync(statePath, 'utf-8');
+      const data = fs.readFileSync(statePath, 'utf8');
       let raw: unknown = JSON.parse(data);
 
       // Chain migrations: v1 → v2 → v3 → v4

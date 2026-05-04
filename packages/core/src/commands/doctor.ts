@@ -222,7 +222,7 @@ export function checkStateFile(options?: { statePathOverride?: string }): Doctor
     };
   }
   try {
-    const raw = fs.readFileSync(statePath, 'utf-8');
+    const raw = fs.readFileSync(statePath, 'utf8');
     const parsed = JSON.parse(raw);
     const result = AgentStateSchema.safeParse(parsed);
     if (!result.success) {

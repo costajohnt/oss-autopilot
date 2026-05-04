@@ -276,7 +276,7 @@ export async function runParseList(options: ParseListOptions): Promise<ParseIssu
 
   let content: string;
   try {
-    content = fs.readFileSync(filePath, 'utf-8');
+    content = fs.readFileSync(filePath, 'utf8');
   } catch (error) {
     const msg = errorMessage(error);
     throw new Error(`Failed to read file: ${msg}`, { cause: error });

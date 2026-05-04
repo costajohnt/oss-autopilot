@@ -107,7 +107,7 @@ export function stateFileExists(): boolean {
 export function getCLIVersion(): string {
   try {
     const pkgPath = path.join(path.dirname(process.argv[1]), '..', 'package.json');
-    return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
   } catch {
     return '0.0.0';
   }

@@ -96,7 +96,7 @@ export async function runGuidelinesView(options: RepoOption): Promise<Guidelines
   return {
     repo: options.repo,
     content,
-    byteSize: content === null ? 0 : Buffer.byteLength(content, 'utf-8'),
+    byteSize: content === null ? 0 : Buffer.byteLength(content, 'utf8'),
     exists: content !== null,
     storageMode: sm.isGuidelinesAvailable() ? 'gist' : 'local-unavailable',
   };
@@ -121,7 +121,7 @@ export async function runGuidelinesStore(options: StoreOptions): Promise<Guideli
   await maybeCheckpoint(sm, MODULE);
   return {
     repo: options.repo,
-    byteSize: Buffer.byteLength(options.content, 'utf-8'),
+    byteSize: Buffer.byteLength(options.content, 'utf8'),
     stored: true,
   };
 }

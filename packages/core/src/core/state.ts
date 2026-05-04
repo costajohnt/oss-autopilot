@@ -1050,7 +1050,7 @@ export async function ensureGistPersistence(token: string | null): Promise<void>
 
   let persistence: string | undefined;
   try {
-    const raw = fs.readFileSync(getStatePath(), 'utf-8');
+    const raw = fs.readFileSync(getStatePath(), 'utf8');
     persistence = JSON.parse(raw)?.config?.persistence;
   } catch {
     // No state file or unreadable — stay in local mode

@@ -225,7 +225,7 @@ function createMockRes(): { res: ServerResponse; result: Promise<MockResponseRes
       resolve({
         statusCode,
         headers,
-        body: Buffer.concat(chunks).toString('utf-8'),
+        body: Buffer.concat(chunks).toString('utf8'),
       });
     });
   });
@@ -1199,7 +1199,7 @@ describe('dashboard-server', () => {
       writeDashboardServerInfo(info);
 
       const pidPath = getDashboardPidPath();
-      const content = fs.readFileSync(pidPath, 'utf-8');
+      const content = fs.readFileSync(pidPath, 'utf8');
       const parsed = JSON.parse(content);
 
       expect(parsed).toEqual(info);
