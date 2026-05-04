@@ -40,7 +40,7 @@ function extractTitle(line: string): string {
   // Remove strikethrough markers
   cleaned = cleaned.replace(/~~/g, '');
   // Remove "Done" markers
-  cleaned = cleaned.replace(/\b(Done|DONE|done)\b/g, '');
+  cleaned = cleaned.replace(/\bdone\b/gi, '');
   // Remove leading/trailing punctuation and whitespace
   cleaned = cleaned.replace(/^[\s\-\u2013\u2014:]+/, '').replace(/[\s\-\u2013\u2014:]+$/, '');
   return cleaned.trim();
