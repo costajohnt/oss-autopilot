@@ -23,6 +23,7 @@
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm format:check",
+    "pre-push": "pnpm run lint",
     "commit-msg": "./scripts/commit-msg.sh \"$1\""
   },
   "keywords": [
