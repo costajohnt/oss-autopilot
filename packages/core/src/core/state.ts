@@ -28,7 +28,7 @@ import {
 import * as repoScoring from './repo-score-manager.js';
 import type { Stats } from './repo-score-manager.js';
 import { debug, warn } from './logger.js';
-import { errorMessage, ConfigurationError, ConcurrencyError } from './errors.js';
+import { errorMessage, ConfigurationError, ConcurrencyError, isTransientNetworkError } from './errors.js';
 import { GistStateStore, type OctokitLike } from './gist-state-store.js';
 import * as guidelinesStoreModule from './guidelines-store.js';
 import { getStatePath, getStateCachePath } from './paths.js';
@@ -1008,10 +1008,18 @@ export async function getStateManagerAsync(token?: string): Promise<StateManager
       })
       .catch((err) => {
         asyncManagerPromise = null;
-        // Configuration errors (e.g. GistPermissionError) must surface to the user
+        // Configuration errors (e.g. GistPermissionError, GistCorruptError)
+        // must surface — falling back to local-only would silently split state
+        // across machines (#1202).
         if (err instanceof ConfigurationError) throw err;
-        warn(MODULE, `Gist initialization failed, falling back to local-only mode: ${err}`);
-        return getStateManager(); // fall back to sync/local for transient errors
+        // Only fall back on actual network/server errors. Other failures
+        // (auth, schema, concurrency conflicts) indicate the Gist mode is
+        // broken in a way the user needs to address — silently falling back
+        // would write subsequent mutations to the local file while the Gist
+        // marker stays in config, causing permanent cross-machine divergence.
+        if (!isTransientNetworkError(err)) throw err;
+        warn(MODULE, `Gist initialization failed (transient network error), falling back to local-only mode: ${err}`);
+        return getStateManager();
       });
     return asyncManagerPromise;
   }

@@ -392,17 +392,31 @@ describe('GistStateStore', () => {
       expect(result.state.config.setupComplete).toBe(false);
     });
 
-    it('should return fresh state when state.json contains invalid JSON', async () => {
+    it('should preserve corrupt content and degrade rather than overwrite Gist (#1201)', async () => {
       const gistId = 'corrupt-gist';
+      const corruptContent = 'not valid json';
 
       fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
-      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, 'not valid json'));
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, corruptContent));
+      // Force the search fallback to also fail so the bootstrap enters degraded mode
+      octokit.gists.list.mockResolvedValue({ data: [] });
 
       const store = new GistStateStore(octokit);
       const result = await store.bootstrap();
 
+      // Bootstrap recovers in degraded mode (gistId='') so push() can't run
+      // and silently overwrite the Gist with fresh state — that's the data-
+      // loss scenario #1201 was filed for.
+      expect(result.degraded).toBe(true);
+      expect(result.gistId).toBe('');
       expect(result.state.version).toBe(4);
-      expect(result.state.config.setupComplete).toBe(false);
+
+      // The corrupt content should be preserved as `.rejected-<ts>` so the
+      // user can recover it.
+      const rejectedFiles = fs.readdirSync(tmpDir).filter((f) => f.startsWith('state-cache.json.rejected-'));
+      expect(rejectedFiles.length).toBeGreaterThanOrEqual(1);
+      const preservedContent = fs.readFileSync(path.join(tmpDir, rejectedFiles[0]!), 'utf-8');
+      expect(preservedContent).toBe(corruptContent);
     });
   });
 
