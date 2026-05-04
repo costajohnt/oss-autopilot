@@ -332,6 +332,11 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   // not disappear when /api/data rebuilds after a state change or after a
   // POST /api/action completes.
   let cachedPartialFailures: string[] | undefined = undefined;
+  // Tracks the last background-refresh failure so /api/data can surface
+  // staleness to the SPA via the X-Dashboard-Stale header (#1205). Cleared
+  // when a refresh succeeds. Without this, token expiry / GitHub outage
+  // produces silent stale data hours old with no client-visible signal.
+  let lastBackgroundRefreshError: string | null = null;
 
   if (!cachedDigest) {
     throw new Error(
@@ -415,6 +420,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
             // Signal staleness via response header so clients can detect the degraded mode (#994).
             res.setHeader('X-Dashboard-Stale', '1');
           }
+        }
+        // Surface staleness from a failed background refresh too (#1205) so
+        // token expiry / GitHub outage produces a client-visible signal
+        // rather than silent stale data. Only set the header when a failure
+        // is recorded — successful refreshes clear it.
+        if (lastBackgroundRefreshError !== null) {
+          res.setHeader('X-Dashboard-Stale', '1');
+          res.setHeader('X-Dashboard-Stale-Reason', `background-refresh-failed: ${lastBackgroundRefreshError}`);
         }
         sendJson(res, 200, cachedJsonData);
         return;
@@ -719,11 +732,16 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
           cachedPartialFailures,
         );
         cachedIssueListMtimeMs = getIssueListMtimeMs();
+        // Successful refresh clears any prior failure signal (#1205).
+        lastBackgroundRefreshError = null;
         warn(MODULE, 'Background data refresh complete');
         return;
       })
       .catch((error) => {
-        warn(MODULE, `Background data refresh failed (serving cached data): ${errorMessage(error)}`);
+        // Capture so /api/data can surface staleness via X-Dashboard-Stale
+        // header — previously the catch only logged to stderr (#1205).
+        lastBackgroundRefreshError = errorMessage(error);
+        warn(MODULE, `Background data refresh failed (serving cached data): ${lastBackgroundRefreshError}`);
       });
   }
 
