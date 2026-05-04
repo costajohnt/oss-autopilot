@@ -29,6 +29,8 @@ The plugin layer consists of markdown files that Claude Code discovers and execu
 | `setup-oss.md` | `/setup-oss` | First-run configuration wizard |
 | `oss-search.md` | `/oss-search` | Issue discovery with multi-strategy search |
 | `oss-help.md` | `/oss-help` | Quick reference card for commands, agents, and workflows |
+| `oss-dashboard.md` | `/oss-dashboard` | Open the interactive SPA dashboard in the browser |
+| `pr-ready.md` | `/pr-ready` | Run the pre-commit review loop and signal when the branch is ready to push |
 
 Commands invoke the CLI via bash (`node packages/core/dist/cli.bundle.cjs <subcommand> --json`), parse the JSON response, and present results to the user through Claude Code's conversational interface.
 
@@ -44,6 +46,9 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 | `review-issue-replies.md` | "Review issue replies" action | Review and respond to maintainer replies on claimed issues |
 | `pre-commit-review.md` | Before any commit/push | Multi-agent code review gate (existing PR updates) |
 | `draft-first-workflow.md` | New contributions | Create draft PR → iterative review → squash → mark ready |
+| `dispatch-review.md` | On request | Dispatch a multi-specialist review of the current branch |
+| `dormant-pr-follow-up.md` | Dormant PR detected | Polite, escalating follow-up cadence with maintainers |
+| `extract-learnings.md` | After PR merge | Distill maintainer feedback into per-repo guidelines via `guidelines fetch-corpus` + extract-learnings prompt (#867) |
 | `reference.md` | Always loaded | Shared conventions and formatting rules |
 
 ### Agents (`agents/`)
@@ -104,7 +109,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `startup` | `startup.ts` | Combined auth + setup + daily + dashboard (single CLI call) |
 | `daily` | `daily.ts` | Fetch all open PRs, compute digest, generate dashboard |
 | `search` | `search.ts` | Multi-strategy issue discovery |
-| `track` / `untrack` | `track.ts` | Add or remove a PR from tracking state |
+| `track` | `track.ts` | Fetch PR metadata for inspection (no longer persists; `untrack` removed in v4 / #1133) |
 | `status` | `status.ts` | Show contribution stats from local state |
 | `config` | `config.ts` | Read/write user configuration |
 | `init` | `init.ts` | Initialize with GitHub username and import open PRs |
@@ -118,11 +123,12 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `dismiss` / `undismiss` | `dismiss.ts` | Dismiss issue reply notifications (auto-resurfaces on new activity) |
 | `comments` / `post` / `claim` | `comments.ts` | Track issue conversations, post comments, claim issues |
 | `local-repos` | `local-repos.ts` | Scan for locally cloned repos |
-| `parse-list` | `parse-list.ts` | Parse a curated issue list file |
+| `parse-issue-list` | `parse-list.ts` | Parse a curated issue list file |
 | `orphan-files` (alias: `check-integration`) | `check-integration.ts` | Audit new files on this branch for cross-references |
 | `doctor` | `doctor.ts` | System-health diagnostic — token, bundle, state, scout, rate limit |
-| `read` | `read.ts` | Mark PR comments as read |
 | `stats` | `stats.ts` | Show contribution statistics (merge rate, PR counts) |
+| `guidelines view/store/reset/fetch-corpus` | `guidelines.ts` | Per-repo guidelines persistence + raw PR comment corpus for the host's extract-learnings prompt (#867) |
+| `manifest` | `cli-registry.ts` | Print the registered command list + version (used by plugin contract tests) |
 | `detect-formatters` | `detect-formatters.ts` | Detect formatters and linters configured in a repository |
 | `pr-template` | `pr-template.ts` | Fetch a repository's PR description template |
 
@@ -141,7 +147,7 @@ The bundle is a single CommonJS file (gitignored, auto-generated). The `SessionS
 `StateManager` is a singleton that reads/writes `~/.oss-autopilot/state.json`. Features:
 - **Advisory file locking** (`wx` flag) with stale lock detection (30s timeout)
 - **Auto-backups** before every write (stored in `~/.oss-autopilot/backups/`)
-- **v1 → v2 → v3 migration chain** built into the load path
+- **v1 → v2 → v3 → v4 migration chain** built into the load path (v4 added `commentsFetchedAt` for the #867 corpus pipeline)
 
 ### PR Monitoring (`pr-monitor.ts`)
 
@@ -255,7 +261,7 @@ The root `AgentState` interface (see `packages/core/src/core/state-schema.ts` fo
 
 ```typescript
 interface AgentState {
-  version: number;                   // Currently 3 (v3 with gist persistence)
+  version: number;                   // Currently 4 (v4 added commentsFetchedAt for the #867 corpus pipeline)
   gistId?: string;                   // Gist ID for cross-machine state sync
   repoScores: Record<string, RepoScore>;
   config: AgentConfig;              // User preferences + shelved/dismissed state
