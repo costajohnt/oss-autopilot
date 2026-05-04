@@ -1,0 +1,38 @@
+{
+  "repo": "owner/repo",
+  "bundles": [
+    {
+      "prUrl": "https://github.com/owner/repo/pull/1",
+      "prTitle": "fix: parse edge case",
+      "repo": "owner/repo",
+      "mergedAt": "2026-05-04T00:00:00.000Z",
+      "reviews": [
+        {
+          "author": "maintainer",
+          "authorAssociation": "OWNER",
+          "body": "Looks good but please add a test.",
+          "submittedAt": "2026-05-04T00:00:00.000Z"
+        }
+      ],
+      "reviewComments": [
+        {
+          "author": "maintainer",
+          "authorAssociation": "OWNER",
+          "body": "Use the helper from utils instead.",
+          "path": "src/parse.ts",
+          "createdAt": "2026-05-04T00:00:00.000Z"
+        }
+      ],
+      "issueComments": [
+        {
+          "author": "maintainer",
+          "authorAssociation": "OWNER",
+          "body": "Thanks for the contribution!",
+          "createdAt": "2026-05-04T00:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "prCount": 1,
+  "skipped": 0
+}
