@@ -326,6 +326,149 @@ describe('StateManager v3 → v4 migration', () => {
   });
 });
 
+// ── #1208 M8: state migration test gaps ─────────────────────────────────────
+// The audit flagged 4 missing test cases in state-migration coverage.
+
+describe('state migration: v2 → v4 (chained, file-based) (#1208 M8)', () => {
+  // Existing tests cover v1→v4 (line 137) and v3→v4 (line 294), and the
+  // gist-state-store suite covers v2→v4 indirectly. The local file-load
+  // path was missing a direct v2-start test — users who paused upgrades
+  // from a v0.60-era client would hit this path.
+
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-v2v4-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('chains v2 → v3 → v4 on the local file-load path', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    // Minimal v2 state — no mergedPRs/closedPRs (those are v2-era optional)
+    const v2State = {
+      version: 2,
+      config: makeBaseConfig(),
+      activeIssues: [],
+      shelvedPRs: [],
+      autoUnshelvedPRs: [],
+      mergedPRs: [],
+      closedPRs: [],
+    };
+    fs.writeFileSync(statePath, JSON.stringify(v2State), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    expect(state.version).toBe(4);
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    expect(onDisk.version).toBe(4);
+  });
+});
+
+describe('state migration: v4 idempotency (#1208 M8)', () => {
+  // No test verified that loading an already-v4 state file does NOT trigger
+  // an unnecessary disk rewrite. Without idempotency, the load path would
+  // bump the file's mtime on every run and could thrash backups.
+
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-idem-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('does not rewrite an already-v4 state file on load', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const v4State = {
+      version: 4,
+      config: makeBaseConfig(),
+      activeIssues: [],
+      shelvedPRs: [],
+      autoUnshelvedPRs: [],
+      mergedPRs: [],
+      closedPRs: [],
+    };
+    fs.writeFileSync(statePath, JSON.stringify(v4State, null, 2), { mode: 0o600 });
+    const mtimeBefore = fs.statSync(statePath).mtimeMs;
+
+    // Wait a tick so mtime would visibly change if the file is rewritten
+    const start = Date.now();
+    while (Date.now() - start < 20) {
+      // busy-wait briefly
+    }
+
+    new StateManager(false);
+
+    const mtimeAfter = fs.statSync(statePath).mtimeMs;
+    expect(mtimeAfter).toBe(mtimeBefore);
+  });
+});
+
+describe('migrateV3ToV4 field preservation (#1208 M8)', () => {
+  // migrateV3ToV4 is essentially a no-op except for bumping the version.
+  // A field-preservation test guards against an accidental destructive
+  // rewrite (e.g. someone adding `delete record.someField` later).
+
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-preserve-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('preserves all stored PR fields when migrating v3 → v4', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    // v3 state with rich PR data — every field below should survive
+    const v3State = {
+      version: 3,
+      config: makeBaseConfig(),
+      activeIssues: [],
+      shelvedPRs: [],
+      autoUnshelvedPRs: [],
+      repoScores: {
+        'a/b': {
+          repo: 'a/b',
+          score: 5,
+          mergedPRCount: 3,
+          closedWithoutMergeCount: 1,
+          avgResponseDays: 2,
+          lastEvaluatedAt: '2026-01-01T00:00:00Z',
+          signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
+          stargazersCount: 100,
+          language: 'typescript',
+        },
+      },
+      mergedPRs: [
+        {
+          url: 'https://github.com/a/b/pull/1',
+          title: 'old merged',
+          mergedAt: '2026-01-01T00:00:00Z',
+          learningsExtractedAt: '2026-02-01T00:00:00Z',
+        },
+      ],
+      closedPRs: [],
+      monthlyMergedCounts: { '2026-01': 5 },
+    };
+    fs.writeFileSync(statePath, JSON.stringify(v3State), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const state = sm.getState();
+
+    // Every input field should round-trip
+    expect(state.repoScores['a/b'].score).toBe(5);
+    expect(state.repoScores['a/b'].stargazersCount).toBe(100);
+    expect(state.repoScores['a/b'].language).toBe('typescript');
+    expect(state.mergedPRs?.[0].learningsExtractedAt).toBe('2026-02-01T00:00:00Z');
+    expect(state.monthlyMergedCounts?.['2026-01']).toBe(5);
+  });
+});
+
 // ── Legacy state cleanup on load ────────────────────────────────────────────
 describe('legacy state cleanup on load', () => {
   beforeEach(() => {
