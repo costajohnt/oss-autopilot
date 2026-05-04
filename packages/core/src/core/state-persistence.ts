@@ -346,8 +346,11 @@ function tryRestoreFromBackup(): AgentState | null {
       warn(MODULE, `Backup ${backupFile} failed schema validation: ${summary}`);
       debug(MODULE, `Backup ${backupFile} full validation errors:`, parsed.error.issues);
     } catch (backupErr) {
-      // This backup is also corrupted, try the next one
-      warn(MODULE, `Backup ${backupFile} is corrupted, trying next...`);
+      // This backup is also corrupted, try the next one. Include the error
+      // message in the warn so non-DEBUG users can diagnose without enabling
+      // DEBUG=1 (#1209 L7); the full stack still goes to debug.
+      const msg = backupErr instanceof Error ? backupErr.message : String(backupErr);
+      warn(MODULE, `Backup ${backupFile} is corrupted (${msg}), trying next...`);
       debug(MODULE, `Backup ${backupFile} parse failed`, backupErr);
     }
   }

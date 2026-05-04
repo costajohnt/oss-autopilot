@@ -9,7 +9,7 @@
 
 import { execFileSync, execFile } from 'node:child_process';
 import { ConfigurationError } from './errors.js';
-import { debug } from './logger.js';
+import { debug, warn } from './logger.js';
 
 const MODULE = 'auth';
 
@@ -55,7 +55,13 @@ export function getGitHubToken(): string | null {
       return cachedGitHubToken;
     }
   } catch (err) {
-    debug(MODULE, 'gh auth token failed (CLI unavailable or not authenticated)', err);
+    // Promote to warn-once-per-session so a slow `gh` (2s timeout) or a
+    // misconfigured CLI is visible without DEBUG=1 (#1209 L6). The
+    // tokenFetchAttempted cache means subsequent calls don't re-warn.
+    warn(
+      MODULE,
+      `gh auth token failed (CLI unavailable or not authenticated): ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   return null;
@@ -136,7 +142,11 @@ export async function getGitHubTokenAsync(): Promise<string | null> {
       return cachedGitHubToken;
     }
   } catch (err) {
-    debug(MODULE, 'gh auth token failed (CLI unavailable or not authenticated)', err);
+    // Same warn-once promotion as the sync version (#1209 L6).
+    warn(
+      MODULE,
+      `gh auth token failed (CLI unavailable or not authenticated): ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   return null;
