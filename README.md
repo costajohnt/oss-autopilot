@@ -92,7 +92,7 @@ A Preact SPA that auto-opens when you run `/oss` — PR management, charts, cont
 
 **Three deployment models** — Claude Code plugin with 7 specialized agents, MCP server for Cursor/Claude Desktop/Codex/Windsurf, and a standalone CLI with `--json` structured output. Same core, different interfaces.
 
-**Deterministic core, AI orchestration layer** — Critical logic (PR status classification, CI failure analysis, state management) lives in tested TypeScript, not in prompts. The CLI returns structured JSON that agents consume. CI failures are categorized into a deterministic taxonomy — actionable vs. fork limitation vs. auth gate vs. infrastructure — rather than asking an LLM each time. 2,250+ tests validate the core independently of any LLM.
+**Deterministic core, AI orchestration layer** — Critical logic (PR status classification, CI failure analysis, state management) lives in tested TypeScript, not in prompts. The CLI returns structured JSON that agents consume. CI failures are categorized into a deterministic taxonomy — actionable vs. fork limitation vs. auth gate vs. infrastructure — rather than asking an LLM each time. 2,700+ tests validate the core independently of any LLM.
 
 **Production-grade GitHub API integration** — ETag-based HTTP caching, automatic rate limit backoff with retries, bounded concurrency pools, and paginated fetching. Handles the full complexity of fork-based contribution workflows: correct diff ranges, squash commit counting, and `--head` flag handling for cross-fork PRs. Designed to run daily without hitting API limits.
 
@@ -187,12 +187,12 @@ All commands return `{ success, data, error, timestamp }` with `--json`.
 
 | Metric | Value |
 |--------|-------|
-| Releases | 189+ changelog versions (core v0.1.0 → v3.2.0; mcp through v5.1.0) |
-| Tests | 2,250+ across 105 files |
-| Issues + PRs | 1,000+ |
+| Releases | 189+ changelog versions (spanning core v0.1 through current v3.x; mcp through current v5.x) |
+| Tests | 2,700+ across 120+ files |
+| Issues + PRs | 1,200+ |
 | Time span | Jan 2025 → present |
 | npm packages | 3 |
-| CLI commands | 34 |
+| CLI commands | 35+ |
 | Agents | 7 |
 
 ---
