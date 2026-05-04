@@ -2,14 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Octokit } from '@octokit/rest';
 import { fetchPRCommentBundle, fetchPRCommentBundlesBatch } from './pr-comments-fetcher.js';
 
-// Mock paginateAll so tests don't need to simulate page boundaries; one
-// page is enough to verify the data-shape contract.
-vi.mock('./pagination.js', () => ({
-  paginateAll: async (fetchPage: (page: number) => Promise<{ data: unknown[] }>) => {
-    const r = await fetchPage(1);
-    return r.data;
-  },
-}));
+// Note: paginateAll is NOT mocked — these tests exercise the real pagination
+// loop. Existing tests use small data sets (< 100 items per list) so
+// paginateAll naturally stops after page 1 (data.length < perPage); the
+// '2-page' test below intentionally returns 100 items on page 1 to verify
+// the loop continues to page 2 and concatenates correctly (#1209 L1).
 
 // ── Fixture builders ────────────────────────────────────────────────────────
 
@@ -196,6 +193,50 @@ describe('fetchPRCommentBundle', () => {
     });
     const bundle = await fetchPRCommentBundle(octokit, PR_URL, 'me');
     expect(bundle.mergedAt).toBe('');
+  });
+
+  it('paginates real Octokit list responses across page boundaries (#1209 L1)', async () => {
+    // 100 reviews on page 1 (== per_page → triggers another page fetch),
+    // 1 review on page 2 (< per_page → loop terminates). Verifies the
+    // bundle includes items from both pages, catching regressions in the
+    // pagination contract that the previous paginateAll mock hid.
+    const page1Reviews = Array.from({ length: 100 }, (_, i) => ({
+      user: { login: `m${i + 1}` },
+      author_association: 'OWNER',
+      body: `review ${i + 1}`,
+      submitted_at: `2026-04-${String((i % 28) + 1).padStart(2, '0')}T10:00:00Z`,
+    }));
+    const page2Reviews = [
+      {
+        user: { login: 'm101' },
+        author_association: 'OWNER',
+        body: 'final review',
+        submitted_at: '2026-04-30T10:00:00Z',
+      },
+    ];
+
+    const octokit = {
+      pulls: {
+        get: vi.fn(async () => ({ data: makePR() })),
+        listReviews: vi.fn(async (args: { page?: number }) => {
+          if (args.page === 1) return { data: page1Reviews };
+          if (args.page === 2) return { data: page2Reviews };
+          return { data: [] };
+        }),
+        listReviewComments: vi.fn(async () => ({ data: [] })),
+      },
+      issues: {
+        listComments: vi.fn(async () => ({ data: [] })),
+      },
+    } as unknown as Octokit;
+
+    const bundle = await fetchPRCommentBundle(octokit, PR_URL, 'me');
+    // 101 total reviews — both pages concatenated, none duplicated.
+    expect(bundle.reviews).toHaveLength(101);
+    expect(bundle.reviews[0].body).toBe('review 1');
+    expect(bundle.reviews[100].body).toBe('final review');
+    // listReviews called exactly twice — page 1 (full), page 2 (short → stop).
+    expect((octokit.pulls.listReviews as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
   });
 });
 
