@@ -208,7 +208,9 @@ async function tryWriteDocument(
         (store as unknown as { lastRefreshAt: number }).lastRefreshAt = 0;
       }
       const refreshed = await store.refreshFromGist();
-      if (!refreshed) throw new Error('refreshFromGist returned false during retry loop');
+      if (refreshed.status !== 'refreshed') {
+        throw new Error(`refreshFromGist returned ${refreshed.status} during retry loop`);
+      }
     }
     store.setDocument(filename, content);
     try {
