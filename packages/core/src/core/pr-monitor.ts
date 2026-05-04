@@ -49,38 +49,13 @@ import {
   fetchRecentlyClosedPRs as fetchRecentlyClosedPRsImpl,
   fetchRecentlyMergedPRs as fetchRecentlyMergedPRsImpl,
 } from './github-stats.js';
+import { isPlaceholderUsername } from './placeholder-usernames.js';
 
 // Re-export so existing consumers can still import from pr-monitor
 export { computeDisplayLabel } from './display-utils.js';
 export { classifyCICheck, classifyFailingChecks, getCIStatus } from './ci-analysis.js';
 export { isConditionalChecklistItem } from './checklist-analysis.js';
 export { determineStatus } from './status-determination.js';
-
-/**
- * Known placeholder values that can end up in `config.githubUsername` from
- * doc snippets, example configs, or aborted setup flows. When the configured
- * username matches one of these, the PR fetch silently returns zero results
- * and the dashboard looks like a fresh install. Detecting these lets us
- * auto-repair the config from the authenticated viewer before fetching.
- *
- * Entries must be lowercase — `Lowercase<string>` on the source tuple makes
- * a non-lowercase entry a compile error, keeping the case-insensitive lookup
- * contract type-checked instead of comment-documented.
- */
-const PLACEHOLDER_USERNAMES: readonly Lowercase<string>[] = [
-  'example-user',
-  'your-username',
-  'your-github-username',
-] as const;
-const KNOWN_PLACEHOLDER_USERNAMES: ReadonlySet<string> = new Set(PLACEHOLDER_USERNAMES);
-
-function isPlaceholderUsername(username: string): boolean {
-  return KNOWN_PLACEHOLDER_USERNAMES.has(username.toLowerCase());
-}
-
-// Module-private on purpose: callers should only use the predicate so the
-// `.toLowerCase()` contract can't be bypassed by reading the set directly.
-export { isPlaceholderUsername };
 
 /**
  * Check if a PR has a merge conflict based on GitHub's mergeable flag and mergeable_state.

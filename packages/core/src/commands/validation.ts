@@ -3,6 +3,7 @@
  */
 
 import { ValidationError } from '../core/errors.js';
+import { isPlaceholderUsername } from '../core/placeholder-usernames.js';
 
 /** Matches GitHub PR URLs: https://github.com/owner/repo/pull/123 */
 export const PR_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/;
@@ -125,6 +126,17 @@ export function validateGitHubUsername(username: string): string {
 
   if (CONSECUTIVE_HYPHENS_PATTERN.test(trimmed)) {
     throw new ValidationError('GitHub username cannot contain consecutive hyphens.');
+  }
+
+  // Reject the same placeholder strings that pr-monitor's runtime auto-repair
+  // catches. Without this guard `init`, `setup --set username=`, and the MCP
+  // `config` tool happily persist values like "example-user" copied from
+  // documentation, leaving auto-repair to clean up after the next fetch and
+  // surfacing a "showing partial data" banner on the dashboard in the meantime.
+  if (isPlaceholderUsername(trimmed)) {
+    throw new ValidationError(
+      `"${trimmed}" looks like a placeholder from documentation, not a real GitHub username. Use your actual GitHub login.`,
+    );
   }
 
   return trimmed;

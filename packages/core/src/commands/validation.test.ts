@@ -257,5 +257,13 @@ describe('validateGitHubUsername', () => {
     it('should reject a username with special characters with the right message', () => {
       expect(() => validateGitHubUsername('octo.cat')).toThrow('alphanumeric characters and hyphens');
     });
+
+    it.each(['example-user', 'your-username', 'your-github-username', 'EXAMPLE-USER', 'Your-Username'])(
+      'should reject placeholder username %s (case-insensitive)',
+      (placeholder) => {
+        expect(() => validateGitHubUsername(placeholder)).toThrow(ValidationError);
+        expect(() => validateGitHubUsername(placeholder)).toThrow('looks like a placeholder');
+      },
+    );
   });
 });
