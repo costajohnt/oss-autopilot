@@ -15,7 +15,7 @@ import { warn } from '../core/logger.js';
 import { errorMessage } from '../core/errors.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const GITHUB_URL_RE = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/(?:issues|pull)\/(\d+)(?:[/?#].*)?$/;
+const GITHUB_URL_RE = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/(?:issues|pull)\/(\d+)(?:[#/?].*)?$/;
 
 /**
  * Parse the raw text of a skipped-issues file into SkippedIssue entries.

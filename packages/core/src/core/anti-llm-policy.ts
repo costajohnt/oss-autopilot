@@ -45,7 +45,7 @@ interface Pattern {
 
 const PATTERNS: Pattern[] = [
   // Explicit "no X" bans against AI/LLM nouns.
-  { category: 'explicit_ban', regex: /\bno\s+(ai|llm)[-\s](generated|authored|written|assisted|contributions?)/i },
+  { category: 'explicit_ban', regex: /\bno\s+(ai|llm)[\s-](generated|authored|written|assisted|contributions?)/i },
   { category: 'explicit_ban', regex: /\b(ban|banned|banning)\s+(ai|llm)\b/i },
 
   // Named-tool bans. Optionally match a "-generated/-authored/-…"
@@ -67,7 +67,7 @@ const PATTERNS: Pattern[] = [
   {
     category: 'reject_framing',
     regex:
-      /\b(ai|llm)[-\s](generated|assisted|authored|written)\s+(code|prs?|contributions?)\s+(will\s+be\s+(closed|rejected)|are\s+rejected)/i,
+      /\b(ai|llm)[\s-](generated|assisted|authored|written)\s+(code|prs?|contributions?)\s+(will\s+be\s+(closed|rejected)|are\s+rejected)/i,
   },
   {
     category: 'reject_framing',
@@ -79,7 +79,7 @@ const PATTERNS: Pattern[] = [
   {
     category: 'reject_framing',
     regex:
-      /\b(do|does)(\s+not|n't)\s+accept\s+(ai|llm)[-\s](generated|assisted|authored|written|contributions?|code|prs?)\b/i,
+      /\b(do|does)(\s+not|n't)\s+accept\s+(ai|llm)[\s-](generated|assisted|authored|written|contributions?|code|prs?)\b/i,
   },
   { category: 'reject_framing', regex: /\breject\s+(ai|llm)\s+contributions?\b/i },
 ];
@@ -104,7 +104,7 @@ function normalizeText(text: string): string {
   return text
     .normalize('NFKC')
     .replace(/\u00A0/g, ' ')
-    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015]/g, '-');
+    .replace(/[\u2010-\u2015]/g, '-');
 }
 
 export function scanForAntiLLMPolicy(text: string): AntiLLMScanResult {

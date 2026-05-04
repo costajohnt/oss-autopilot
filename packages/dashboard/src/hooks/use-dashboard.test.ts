@@ -406,7 +406,7 @@ describe('useDashboard', () => {
       });
 
       expect(result.current.data).toBe(null);
-      expect(result.current.error).toMatch(/Server response did not match expected shape/i);
+      expect(result.current.error).toMatch(/server response did not match expected shape/i);
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('schema validation failed'),
         expect.any(String),
@@ -431,7 +431,7 @@ describe('useDashboard', () => {
         await Promise.resolve();
       });
 
-      expect(result.current.error).toMatch(/Server response did not match expected shape/i);
+      expect(result.current.error).toMatch(/server response did not match expected shape/i);
       consoleSpy.mockRestore();
     });
   });

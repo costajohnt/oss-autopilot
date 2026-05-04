@@ -6,7 +6,7 @@ import { getStateManager } from '../core/index.js';
 // (despite being unused here) so the regex stays byte-identical to the parser
 // version where the captures are needed.
 // eslint-disable-next-line regexp/no-unused-capturing-group
-const GITHUB_URL_RE = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/(?:issues|pull)\/(\d+)(?:[/?#].*)?$/;
+const GITHUB_URL_RE = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/(?:issues|pull)\/(\d+)(?:[#/?].*)?$/;
 
 const FILE_HEADER = '# Skipped Issues — auto-culled after 90 days\n# Format: YYYY-MM-DD URL\n\n';
 
