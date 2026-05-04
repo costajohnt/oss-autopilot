@@ -29,16 +29,21 @@ import type {
  */
 export function formatActionHint(hint: MaintainerActionHint): string {
   switch (hint) {
-    case 'demo_requested':
+    case 'demo_requested': {
       return 'demo/screenshot requested';
-    case 'tests_requested':
+    }
+    case 'tests_requested': {
       return 'tests requested';
-    case 'changes_requested':
+    }
+    case 'changes_requested': {
       return 'code changes requested';
-    case 'docs_requested':
+    }
+    case 'docs_requested': {
       return 'documentation requested';
-    case 'rebase_requested':
+    }
+    case 'rebase_requested': {
       return 'rebase requested';
+    }
   }
 }
 

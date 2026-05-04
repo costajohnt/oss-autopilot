@@ -49,16 +49,20 @@ const KNOWN_SKIP_REASONS: ReadonlySet<ScoutSkipReason> = new Set([
 
 function mapSkipReasonToStatus(reason: ScoutSkipReason): VetListItemStatus | null {
   switch (reason) {
-    case 'issue_closed':
+    case 'issue_closed': {
       return 'closed';
-    case 'claimed':
+    }
+    case 'claimed': {
       return 'claimed';
-    case 'has_linked_pr':
+    }
+    case 'has_linked_pr': {
       return 'has_pr';
+    }
     case 'score_too_low':
     case 'anti_llm_policy':
-    case 'other':
-      return null; // fall through to recommendation / default
+    case 'other': {
+      return null;
+    } // fall through to recommendation / default
   }
 }
 
