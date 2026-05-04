@@ -185,47 +185,40 @@ describe('MCP prompt registrations', () => {
     });
   });
 
-  describe('prompt error handling', () => {
-    it('triage returns error message when runDaily rejects', async () => {
+  describe('prompt error handling (#1203)', () => {
+    // Prompts now THROW on internal failure rather than return userMessage,
+    // so the MCP SDK produces a JSON-RPC error and the host LLM sees a failed
+    // prompt invocation rather than treating an error string as user prose.
+    // Mirrors the wrapResource pattern in resources.ts.
+
+    it('triage throws when runDaily rejects', async () => {
       vi.mocked(runDaily).mockRejectedValueOnce(new Error('GitHub API rate limit'));
 
-      const result = await client.getPrompt({ name: 'triage' });
-
-      expect(result.messages).toHaveLength(1);
-      expect(result.messages[0].role).toBe('user');
-      const text = (result.messages[0].content as { type: 'text'; text: string }).text;
-      expect(text).toContain('Failed to fetch triage data');
-      expect(text).toContain('GitHub API rate limit');
+      await expect(client.getPrompt({ name: 'triage' })).rejects.toThrow(
+        /Failed to fetch triage data.*GitHub API rate limit/,
+      );
     });
 
-    it('respond-to-pr returns error message when runComments rejects', async () => {
+    it('respond-to-pr throws when runComments rejects', async () => {
       vi.mocked(runComments).mockRejectedValueOnce(new Error('PR not found'));
 
-      const result = await client.getPrompt({
-        name: 'respond-to-pr',
-        arguments: { prUrl: 'https://github.com/octocat/hello-world/pull/999' },
-      });
-
-      expect(result.messages).toHaveLength(1);
-      expect(result.messages[0].role).toBe('user');
-      const text = (result.messages[0].content as { type: 'text'; text: string }).text;
-      expect(text).toContain('Failed to fetch PR comments');
-      expect(text).toContain('PR not found');
+      await expect(
+        client.getPrompt({
+          name: 'respond-to-pr',
+          arguments: { prUrl: 'https://github.com/octocat/hello-world/pull/999' },
+        }),
+      ).rejects.toThrow(/Failed to fetch PR comments.*PR not found/);
     });
 
-    it('find-issues returns error message when runSearch rejects', async () => {
+    it('find-issues throws when runSearch rejects', async () => {
       vi.mocked(runSearch).mockRejectedValueOnce(new Error('Search quota exceeded'));
 
-      const result = await client.getPrompt({
-        name: 'find-issues',
-        arguments: { maxResults: '5' },
-      });
-
-      expect(result.messages).toHaveLength(1);
-      expect(result.messages[0].role).toBe('user');
-      const text = (result.messages[0].content as { type: 'text'; text: string }).text;
-      expect(text).toContain('Failed to search for issues');
-      expect(text).toContain('Search quota exceeded');
+      await expect(
+        client.getPrompt({
+          name: 'find-issues',
+          arguments: { maxResults: '5' },
+        }),
+      ).rejects.toThrow(/Failed to search for issues.*Search quota exceeded/);
     });
   });
 
@@ -293,22 +286,22 @@ describe('MCP prompt registrations', () => {
       expect(text).toContain('deduplicate');
     });
 
-    it('returns a friendly error when corpus is not valid JSON', async () => {
-      const result = await client.getPrompt({
-        name: 'extract-learnings',
-        arguments: { repo: 'owner/repo', corpus: '{not valid' },
-      });
-
-      expect(getText(result)).toContain('Invalid corpus JSON');
+    it('throws when corpus is not valid JSON (#1203)', async () => {
+      await expect(
+        client.getPrompt({
+          name: 'extract-learnings',
+          arguments: { repo: 'owner/repo', corpus: '{not valid' },
+        }),
+      ).rejects.toThrow(/Invalid corpus JSON/);
     });
 
-    it('returns a friendly error when corpus is JSON but not an array', async () => {
-      const result = await client.getPrompt({
-        name: 'extract-learnings',
-        arguments: { repo: 'owner/repo', corpus: '{"foo":1}' },
-      });
-
-      expect(getText(result)).toContain('expected an array');
+    it('throws when corpus is JSON but not an array (#1203)', async () => {
+      await expect(
+        client.getPrompt({
+          name: 'extract-learnings',
+          arguments: { repo: 'owner/repo', corpus: '{"foo":1}' },
+        }),
+      ).rejects.toThrow(/expected an array/);
     });
 
     it('returns a friendly message when the corpus array is empty', async () => {

@@ -58,8 +58,12 @@ export function registerPrompts(server: McpServer): void {
           `Here is my current OSS contribution status. Help me triage and prioritize:\n\n${data.summary}\n\nActionable issues:\n${JSON.stringify(data.actionableIssues, null, 2)}\n\nFull data:\n${JSON.stringify(data.digest, null, 2)}`,
         );
       } catch (e) {
+        // Throw rather than return userMessage so the MCP SDK produces a
+        // proper JSON-RPC error. Returning userMessage on failure made the
+        // host LLM treat the error as if the user typed it and respond to
+        // it as a request (#1203). Mirrors wrapResource() in resources.ts.
         console.error('[MCP] Prompt error (triage):', e);
-        return userMessage(`Failed to fetch triage data: ${errorMessage(e)}`);
+        throw new Error(`Failed to fetch triage data: ${errorMessage(e)}`, { cause: e });
       }
     },
   );
@@ -82,7 +86,7 @@ export function registerPrompts(server: McpServer): void {
         );
       } catch (e) {
         console.error('[MCP] Prompt error (respond-to-pr):', e);
-        return userMessage(`Failed to fetch PR comments: ${errorMessage(e)}`);
+        throw new Error(`Failed to fetch PR comments: ${errorMessage(e)}`, { cause: e });
       }
     },
   );
@@ -115,7 +119,7 @@ export function registerPrompts(server: McpServer): void {
         );
       } catch (e) {
         console.error('[MCP] Prompt error (find-issues):', e);
-        return userMessage(`Failed to search for issues: ${errorMessage(e)}`);
+        throw new Error(`Failed to search for issues: ${errorMessage(e)}`, { cause: e });
       }
     },
   );
@@ -142,11 +146,13 @@ export function registerPrompts(server: McpServer): void {
       try {
         const parsed = JSON.parse(corpus);
         if (!Array.isArray(parsed)) {
-          return userMessage(`Invalid corpus: expected an array of PRCommentBundle objects, got ${typeof parsed}.`);
+          // Throw rather than return userMessage so input-validation errors
+          // surface as proper JSON-RPC errors to the host (#1203).
+          throw new Error(`Invalid corpus: expected an array of PRCommentBundle objects, got ${typeof parsed}.`);
         }
         bundles = parsed as PRCommentBundleShape[];
       } catch (e) {
-        return userMessage(`Invalid corpus JSON: ${errorMessage(e)}`);
+        throw new Error(`Invalid corpus JSON: ${errorMessage(e)}`, { cause: e });
       }
 
       if (bundles.length === 0) {
