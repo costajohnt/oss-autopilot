@@ -1,0 +1,7 @@
+{
+  "repo": "owner/repo",
+  "content": "# Contribution Guidelines: owner/repo\n\n## Code Style\n- Use 2-space indent.\n",
+  "byteSize": 75,
+  "exists": true,
+  "storageMode": "gist"
+}
