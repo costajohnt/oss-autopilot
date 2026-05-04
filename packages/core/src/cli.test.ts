@@ -55,13 +55,17 @@ function buildTestProgram(localOnlySet: Set<string>) {
   const program = new Command();
   program.name('oss-autopilot').option('--debug', 'Enable debug logging');
 
-  // Register a representative set of commands: two that require a token (daily, search)
-  // and two that are LOCAL_ONLY (status, config). This is sufficient to exercise
-  // preAction hook branching without wiring up all 25 real commands.
+  // Register a representative set of commands: two that require a token (daily, search),
+  // two that are LOCAL_ONLY (status, config), and one subcommand group with
+  // localOnly inheritance (group → leaf) to cover the parent-walk path.
   program.command('daily').description('Run daily check').action(noop);
   program.command('status').description('Show status').action(noop);
   program.command('config').description('Show config').action(noop);
   program.command('search').description('Search').action(noop);
+  // `localGroup view` should inherit `localGroup`'s localOnly flag.
+  const group = program.command('localGroup').description('Group');
+  group.command('view').action(noop);
+  group.command('store').action(noop);
 
   program.hook('preAction', async (thisCommand, actionCommand) => {
     const globalOpts = thisCommand.opts();
@@ -70,8 +74,19 @@ function buildTestProgram(localOnlySet: Set<string>) {
       debug('cli', `Running command: ${actionCommand.name()}`);
     }
 
-    const commandName = actionCommand.name();
-    if (!localOnlySet.has(commandName)) {
+    // Walk parent chain so a localOnly group covers all its leaf subcommands
+    // (#1208 M2). Mirrors the production preAction in cli.ts.
+    let cmd: typeof actionCommand | null = actionCommand;
+    let isLocalOnly = false;
+    while (cmd) {
+      if (localOnlySet.has(cmd.name())) {
+        isLocalOnly = true;
+        break;
+      }
+      cmd = cmd.parent;
+    }
+
+    if (!isLocalOnly) {
       const token = await getGitHubTokenAsync();
       if (!token) {
         console.error('Error: GitHub authentication required.');
@@ -112,6 +127,7 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'skip-add',
     'list-move-tier',
     'manifest',
+    'guidelines',
   ];
 
   const expectedTokenRequired = [
@@ -199,6 +215,30 @@ describe('preAction hook', () => {
     await expect(program.parseAsync(['node', 'cli', 'search'])).rejects.toThrow('process.exit called');
 
     expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("should let a leaf subcommand inherit its parent group's localOnly flag (#1208 M2)", async () => {
+    mockGetGitHubTokenAsync.mockResolvedValue(null);
+    // Mark the group (not the leaf) as localOnly — the parent-walk should
+    // pick it up so `localGroup view` skips the auth gate even though
+    // `view` itself isn't in the localOnlySet.
+    const setWithGroup = new Set([...localOnlySet, 'localGroup']);
+    const program = buildTestProgram(setWithGroup);
+
+    await program.parseAsync(['node', 'cli', 'localGroup', 'view']);
+
+    expect(mockGetGitHubTokenAsync).not.toHaveBeenCalled();
+    expect(processExitSpy).not.toHaveBeenCalled();
+  });
+
+  it('should still gate leaf subcommands when the parent group is NOT localOnly', async () => {
+    mockGetGitHubTokenAsync.mockResolvedValue(null);
+    // Group not in localOnlySet → leaf should still hit the auth gate.
+    const program = buildTestProgram(localOnlySet);
+
+    await expect(program.parseAsync(['node', 'cli', 'localGroup', 'view'])).rejects.toThrow('process.exit called');
+
+    expect(mockGetGitHubTokenAsync).toHaveBeenCalledTimes(1);
   });
 
   it('should print a descriptive error message when authentication is missing', async () => {
