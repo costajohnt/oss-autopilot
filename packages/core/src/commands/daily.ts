@@ -31,8 +31,6 @@ import {
   type CommentedIssueWithResponse,
   type PRCheckFailure,
   type RepoGroup,
-  type AgentState,
-  type StarFilter,
 } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
@@ -105,25 +103,12 @@ export {
   CRITICAL_STATUSES,
 } from '../core/index.js';
 
-/**
- * Build a star filter from state for use in fetchUserPRCounts.
- * Returns undefined if no star data is available (first run).
- *
- * @param state - Current agent state (read-only)
- * @returns Star filter with minimum threshold and known counts, or undefined on first run
- */
-export function buildStarFilter(state: Readonly<AgentState>): StarFilter | undefined {
-  const minStars = state.config.minStars ?? 50;
-  const knownStarCounts = new Map<string, number>();
-  for (const [repo, score] of Object.entries(state.repoScores)) {
-    if (score.stargazersCount !== undefined) {
-      knownStarCounts.set(repo, score.stargazersCount);
-    }
-  }
-  // Only filter if we have some star data to work with
-  if (knownStarCounts.size === 0) return undefined;
-  return { minStars, knownStarCounts };
-}
+// buildStarFilter moved to core/daily-logic.ts so the dashboard layer can
+// reuse it without crossing the commands → sibling-command boundary
+// (#1208 M7). Re-exported here for backward compatibility with anyone
+// importing from this module.
+import { buildStarFilter } from '../core/daily-logic.js';
+export { buildStarFilter };
 
 /**
  * Internal result of the daily check, using full (non-deduplicated) types.

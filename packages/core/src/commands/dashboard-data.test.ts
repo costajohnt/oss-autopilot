@@ -108,6 +108,12 @@ vi.mock('../core/index.js', async (importOriginal) => {
     getOctokit: mockGetOctokit,
     PRMonitor: MockPRMonitor,
     IssueConversationMonitor: MockIssueConversationMonitor,
+    // dashboard-data.ts now imports these from the core barrel directly
+    // (#1208 M7 moved buildStarFilter from daily.ts → daily-logic.ts).
+    // Override here so the existing mockBuildStarFilter / mockToShelvedPRRef
+    // wiring keeps working.
+    buildStarFilter: (...args: unknown[]) => mockBuildStarFilter(...args),
+    toShelvedPRRef: (...args: unknown[]) => mockToShelvedPRRef(...args),
   };
 });
 

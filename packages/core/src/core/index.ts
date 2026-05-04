@@ -74,6 +74,7 @@ export {
   collectActionableIssues,
   computeActionMenu,
   toShelvedPRRef,
+  buildStarFilter,
   formatActionHint,
   formatBriefSummary,
   formatSummary,
