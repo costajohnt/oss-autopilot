@@ -1315,6 +1315,12 @@ export const commands: CLICommandDef[] = [
   // ── Guidelines (#867) ──────────────────────────────────────────────────
   {
     name: 'guidelines',
+    // Skip the preAction auth gate so `guidelines view` works in local mode
+    // (returns storageMode: 'local-unavailable'). Subcommands that DO need
+    // GitHub auth — `store`/`reset` (Gist) and `fetch-corpus` (PR comment
+    // fetch) — call `requireGitHubToken()` themselves and surface a clear
+    // error. Pairs with the parent-chain walk in cli.ts preAction (#1208 M2).
+    localOnly: true,
     register(program) {
       const group = program
         .command('guidelines')

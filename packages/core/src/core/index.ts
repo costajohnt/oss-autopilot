@@ -120,4 +120,15 @@ export {
   validateDashboardData,
   type DashboardDataParsed,
 } from './dashboard-data-schema.js';
+// PR comment bundle types — wire shape consumed by the MCP extract-learnings
+// prompt. Re-exported so MCP doesn't have to redeclare the interface and
+// silently drift (#1208 M5).
+export {
+  fetchPRCommentBundle,
+  fetchPRCommentBundlesBatch,
+  type PRCommentBundle,
+  type PRReviewEntry,
+  type PRReviewCommentEntry,
+  type PRIssueCommentEntry,
+} from './pr-comments-fetcher.js';
 export * from './types.js';

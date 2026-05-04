@@ -40,10 +40,24 @@ program.hook('preAction', async (thisCommand, actionCommand) => {
     debug('cli', `Running command: ${actionCommand.name()}`);
   }
 
-  // actionCommand is the command being executed (e.g., 'status', 'daily')
-  const commandName = actionCommand.name();
+  // actionCommand is the command being executed (e.g., 'status', 'daily').
+  // For subcommand groups (e.g. `guidelines view`), Commander returns the
+  // leaf name `view` — but the registry sets `localOnly` on the parent
+  // entry `guidelines`. Walk the parent chain so a `localOnly` ancestor
+  // covers all its leaves (#1208 M2). Without this, `guidelines view` —
+  // which works fine in local mode (returns storageMode: 'local-unavailable')
+  // — would still hit the auth gate and fail.
+  let cmd: typeof actionCommand | null = actionCommand;
+  let isLocalOnly = false;
+  while (cmd) {
+    if (localOnlySet.has(cmd.name())) {
+      isLocalOnly = true;
+      break;
+    }
+    cmd = cmd.parent;
+  }
 
-  if (!localOnlySet.has(commandName)) {
+  if (!isLocalOnly) {
     const token = await getGitHubTokenAsync();
     if (!token) {
       // Honor --json at the CLI boundary so machine consumers (plugins, MCP
