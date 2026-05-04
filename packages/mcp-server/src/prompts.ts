@@ -11,22 +11,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { runDaily, runComments, runSearch, MAX_SEARCH_RESULTS } from '@oss-autopilot/core/commands';
-import { errorMessage } from '@oss-autopilot/core';
-
-/**
- * Subset of `PRCommentBundle` from `@oss-autopilot/core` that we render in the
- * extract-learnings prompt. Inlined as a structural type to avoid pulling in
- * the full implementation module just for a JSON shape.
- */
-interface PRCommentBundleShape {
-  prUrl: string;
-  prTitle: string;
-  repo: string;
-  mergedAt: string;
-  reviews: { author: string; authorAssociation: string; body: string }[];
-  reviewComments: { author: string; authorAssociation: string; body: string; path: string }[];
-  issueComments: { author: string; authorAssociation: string; body: string }[];
-}
+import { errorMessage, type PRCommentBundle } from '@oss-autopilot/core';
 
 /** Build a single-message prompt result with a user text message. */
 function userMessage(text: string) {
@@ -142,7 +127,7 @@ export function registerPrompts(server: McpServer): void {
       },
     },
     async ({ repo, corpus, existingGuidelines }) => {
-      let bundles: PRCommentBundleShape[];
+      let bundles: PRCommentBundle[];
       try {
         const parsed = JSON.parse(corpus);
         if (!Array.isArray(parsed)) {
@@ -150,7 +135,7 @@ export function registerPrompts(server: McpServer): void {
           // surface as proper JSON-RPC errors to the host (#1203).
           throw new Error(`Invalid corpus: expected an array of PRCommentBundle objects, got ${typeof parsed}.`);
         }
-        bundles = parsed as PRCommentBundleShape[];
+        bundles = parsed as PRCommentBundle[];
       } catch (e) {
         throw new Error(`Invalid corpus JSON: ${errorMessage(e)}`, { cause: e });
       }
