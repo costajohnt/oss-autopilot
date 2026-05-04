@@ -141,18 +141,21 @@ export function openInBrowser(url: string): void {
   let openCmd: string;
   let args: string[];
   switch (process.platform) {
-    case 'darwin':
+    case 'darwin': {
       openCmd = 'open';
       args = [url];
       break;
-    case 'win32':
+    }
+    case 'win32': {
       openCmd = 'cmd';
       args = ['/c', 'start', '', url];
       break;
-    default:
+    }
+    default: {
       openCmd = 'xdg-open';
       args = [url];
       break;
+    }
   }
   execFile(openCmd, args, (error) => {
     if (error) {
