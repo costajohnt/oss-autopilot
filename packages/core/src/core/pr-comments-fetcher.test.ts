@@ -254,7 +254,7 @@ describe('fetchPRCommentBundlesBatch', () => {
       'https://github.com/owner/repo/pull/2',
       'https://github.com/owner/repo/pull/3',
     ];
-    const bundles = await fetchPRCommentBundlesBatch(octokit, urls, 'me');
+    const { bundles } = await fetchPRCommentBundlesBatch(octokit, urls, 'me');
     expect(bundles).toHaveLength(3);
   });
 
@@ -280,7 +280,7 @@ describe('fetchPRCommentBundlesBatch', () => {
       'https://github.com/owner/repo/pull/2',
       'https://github.com/owner/repo/pull/3',
     ];
-    const bundles = await fetchPRCommentBundlesBatch(octokit, urls, 'me', 1);
+    const { bundles } = await fetchPRCommentBundlesBatch(octokit, urls, 'me', 1);
     expect(bundles).toHaveLength(2); // skipped PR 2
   });
 
@@ -322,8 +322,38 @@ describe('fetchPRCommentBundlesBatch', () => {
     expect(maxActive).toBeLessThanOrEqual(2);
   });
 
-  it('returns [] when given an empty URL list', async () => {
+  it('returns empty bundles + failures when given an empty URL list', async () => {
     const octokit = makeOctokit({});
-    expect(await fetchPRCommentBundlesBatch(octokit, [], 'me')).toEqual([]);
+    expect(await fetchPRCommentBundlesBatch(octokit, [], 'me')).toEqual({ bundles: [], failures: [] });
+  });
+
+  it('records per-PR failures alongside successful bundles (#1209 L8)', async () => {
+    // octokit.pulls.get fails for PR 2 only; other PRs succeed.
+    const octokit = {
+      pulls: {
+        get: vi.fn(async ({ pull_number }: { pull_number: number }) => {
+          if (pull_number === 2) throw new Error('Not Found');
+          return { data: makePR() };
+        }),
+        listReviews: vi.fn(async () => ({ data: [] })),
+        listReviewComments: vi.fn(async () => ({ data: [] })),
+      },
+      issues: {
+        listComments: vi.fn(async () => ({ data: [] })),
+      },
+    } as unknown as Octokit;
+
+    const urls = [
+      'https://github.com/owner/repo/pull/1',
+      'https://github.com/owner/repo/pull/2',
+      'https://github.com/owner/repo/pull/3',
+    ];
+    const result = await fetchPRCommentBundlesBatch(octokit, urls, 'me', 1);
+    expect(result.bundles).toHaveLength(2);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]).toEqual({
+      prUrl: 'https://github.com/owner/repo/pull/2',
+      error: expect.stringContaining('Not Found'),
+    });
   });
 });
