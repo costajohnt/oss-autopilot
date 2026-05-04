@@ -105,39 +105,42 @@ describe('guidelines --json contract', () => {
         mergedAt: recentTimestamp,
       },
     ]);
-    mocks.fetchPRCommentBundlesBatch.mockResolvedValue([
-      {
-        prUrl: 'https://github.com/owner/repo/pull/1',
-        prTitle: 'fix: parse edge case',
-        repo: 'owner/repo',
-        mergedAt: recentTimestamp,
-        reviews: [
-          {
-            author: 'maintainer',
-            authorAssociation: 'OWNER',
-            body: 'Looks good but please add a test.',
-            submittedAt: recentTimestamp,
-          },
-        ],
-        reviewComments: [
-          {
-            author: 'maintainer',
-            authorAssociation: 'OWNER',
-            body: 'Use the helper from utils instead.',
-            path: 'src/parse.ts',
-            createdAt: recentTimestamp,
-          },
-        ],
-        issueComments: [
-          {
-            author: 'maintainer',
-            authorAssociation: 'OWNER',
-            body: 'Thanks for the contribution!',
-            createdAt: recentTimestamp,
-          },
-        ],
-      },
-    ]);
+    mocks.fetchPRCommentBundlesBatch.mockResolvedValue({
+      bundles: [
+        {
+          prUrl: 'https://github.com/owner/repo/pull/1',
+          prTitle: 'fix: parse edge case',
+          repo: 'owner/repo',
+          mergedAt: recentTimestamp,
+          reviews: [
+            {
+              author: 'maintainer',
+              authorAssociation: 'OWNER',
+              body: 'Looks good but please add a test.',
+              submittedAt: recentTimestamp,
+            },
+          ],
+          reviewComments: [
+            {
+              author: 'maintainer',
+              authorAssociation: 'OWNER',
+              body: 'Use the helper from utils instead.',
+              path: 'src/parse.ts',
+              createdAt: recentTimestamp,
+            },
+          ],
+          issueComments: [
+            {
+              author: 'maintainer',
+              authorAssociation: 'OWNER',
+              body: 'Thanks for the contribution!',
+              createdAt: recentTimestamp,
+            },
+          ],
+        },
+      ],
+      failures: [],
+    });
 
     const result = await runFetchCorpus({ repo: 'owner/repo', limit: 5 });
     // Replace the dynamic timestamp in the JSON before snapshotting so the

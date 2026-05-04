@@ -34,5 +34,6 @@
     }
   ],
   "prCount": 1,
-  "skipped": 0
+  "skipped": 0,
+  "failures": []
 }

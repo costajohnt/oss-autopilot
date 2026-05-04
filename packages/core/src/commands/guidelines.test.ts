@@ -173,17 +173,20 @@ describe('runFetchCorpus', () => {
 
   it('fetches bundles for unprocessed PRs in the requested repo within the recency cliff', async () => {
     mockGetMergedPRs.mockReturnValue([{ url: PR_RECENT, title: 't', mergedAt: recentTimestamp() }]);
-    mockFetchPRCommentBundlesBatch.mockResolvedValue([
-      {
-        prUrl: PR_RECENT,
-        prTitle: 't',
-        repo: 'owner/repo',
-        mergedAt: recentTimestamp(),
-        reviews: [],
-        reviewComments: [],
-        issueComments: [],
-      },
-    ]);
+    mockFetchPRCommentBundlesBatch.mockResolvedValue({
+      bundles: [
+        {
+          prUrl: PR_RECENT,
+          prTitle: 't',
+          repo: 'owner/repo',
+          mergedAt: recentTimestamp(),
+          reviews: [],
+          reviewComments: [],
+          issueComments: [],
+        },
+      ],
+      failures: [],
+    });
 
     const out = await runFetchCorpus({ repo: 'owner/repo' });
 
@@ -197,8 +200,8 @@ describe('runFetchCorpus', () => {
       { url: PR_RECENT, title: 't', mergedAt: recentTimestamp() },
       { url: PR_OLD, title: 't2', mergedAt: oldTimestamp() },
     ]);
-    mockFetchPRCommentBundlesBatch.mockImplementation(async (_octokit: unknown, urls: string[]) =>
-      urls.map((url) => ({
+    mockFetchPRCommentBundlesBatch.mockImplementation(async (_octokit: unknown, urls: string[]) => ({
+      bundles: urls.map((url) => ({
         prUrl: url,
         prTitle: 't',
         repo: 'owner/repo',
@@ -207,7 +210,8 @@ describe('runFetchCorpus', () => {
         reviewComments: [],
         issueComments: [],
       })),
-    );
+      failures: [],
+    }));
 
     const out = await runFetchCorpus({ repo: 'owner/repo' });
 
@@ -224,7 +228,7 @@ describe('runFetchCorpus', () => {
       { url: 'https://github.com/owner/repo/pull/100', title: 'no timestamp', mergedAt: '' },
       { url: 'https://github.com/owner/repo/pull/101', title: 'malformed', mergedAt: 'not-a-date' },
     ]);
-    mockFetchPRCommentBundlesBatch.mockResolvedValue([]);
+    mockFetchPRCommentBundlesBatch.mockResolvedValue({ bundles: [], failures: [] });
 
     await runFetchCorpus({ repo: 'owner/repo' });
 
@@ -237,7 +241,7 @@ describe('runFetchCorpus', () => {
       { url: PR_OTHER_REPO, title: 'other', mergedAt: recentTimestamp() },
       { url: PR_RECENT, title: 't', mergedAt: recentTimestamp() },
     ]);
-    mockFetchPRCommentBundlesBatch.mockResolvedValue([]);
+    mockFetchPRCommentBundlesBatch.mockResolvedValue({ bundles: [], failures: [] });
 
     await runFetchCorpus({ repo: 'owner/repo' });
 
@@ -249,7 +253,7 @@ describe('runFetchCorpus', () => {
       { url: PR_RECENT, title: 't', mergedAt: recentTimestamp() },
       { url: PR_FETCHED, title: 't3', mergedAt: recentTimestamp(), commentsFetchedAt: '2025-01-01T00:00:00Z' },
     ]);
-    mockFetchPRCommentBundlesBatch.mockResolvedValue([]);
+    mockFetchPRCommentBundlesBatch.mockResolvedValue({ bundles: [], failures: [] });
 
     const out = await runFetchCorpus({ repo: 'owner/repo' });
     expect(out.skipped).toBe(1);
@@ -260,7 +264,7 @@ describe('runFetchCorpus', () => {
     mockGetMergedPRs.mockReturnValue([
       { url: PR_FETCHED, title: 't', mergedAt: recentTimestamp(), commentsFetchedAt: '2025-01-01T00:00:00Z' },
     ]);
-    mockFetchPRCommentBundlesBatch.mockResolvedValue([]);
+    mockFetchPRCommentBundlesBatch.mockResolvedValue({ bundles: [], failures: [] });
 
     const out = await runFetchCorpus({ repo: 'owner/repo', forceRefetch: true });
     expect(out.skipped).toBe(0);
@@ -269,17 +273,20 @@ describe('runFetchCorpus', () => {
 
   it('checkpoints to Gist after stamping commentsFetchedAt (#1200)', async () => {
     mockGetMergedPRs.mockReturnValue([{ url: PR_RECENT, title: 't', mergedAt: recentTimestamp() }]);
-    mockFetchPRCommentBundlesBatch.mockResolvedValue([
-      {
-        prUrl: PR_RECENT,
-        prTitle: 't',
-        repo: 'owner/repo',
-        mergedAt: recentTimestamp(),
-        reviews: [],
-        reviewComments: [],
-        issueComments: [],
-      },
-    ]);
+    mockFetchPRCommentBundlesBatch.mockResolvedValue({
+      bundles: [
+        {
+          prUrl: PR_RECENT,
+          prTitle: 't',
+          repo: 'owner/repo',
+          mergedAt: recentTimestamp(),
+          reviews: [],
+          reviewComments: [],
+          issueComments: [],
+        },
+      ],
+      failures: [],
+    });
 
     await runFetchCorpus({ repo: 'owner/repo' });
 
@@ -300,7 +307,7 @@ describe('runFetchCorpus', () => {
       mergedAt: recentTimestamp(),
     }));
     mockGetMergedPRs.mockReturnValue(many);
-    mockFetchPRCommentBundlesBatch.mockResolvedValue([]);
+    mockFetchPRCommentBundlesBatch.mockResolvedValue({ bundles: [], failures: [] });
 
     await runFetchCorpus({ repo: 'owner/repo', limit: 100 }); // requesting 100 but capped at 10
     const call = mockFetchPRCommentBundlesBatch.mock.calls[0];
@@ -314,7 +321,7 @@ describe('runFetchCorpus', () => {
       mergedAt: recentTimestamp(),
     }));
     mockGetMergedPRs.mockReturnValue(many);
-    mockFetchPRCommentBundlesBatch.mockResolvedValue([]);
+    mockFetchPRCommentBundlesBatch.mockResolvedValue({ bundles: [], failures: [] });
 
     await runFetchCorpus({ repo: 'owner/repo' });
     const call = mockFetchPRCommentBundlesBatch.mock.calls[0];
@@ -334,7 +341,7 @@ describe('runFetchCorpus', () => {
     mockGetClosedPRs.mockReturnValue([
       { url: 'https://github.com/owner/repo/pull/9', title: 'closed', closedAt: recentTimestamp() },
     ]);
-    mockFetchPRCommentBundlesBatch.mockResolvedValue([]);
+    mockFetchPRCommentBundlesBatch.mockResolvedValue({ bundles: [], failures: [] });
 
     await runFetchCorpus({ repo: 'owner/repo' });
     expect(mockFetchPRCommentBundlesBatch).toHaveBeenCalledWith(
