@@ -574,8 +574,6 @@ describe('manifest command (#1190)', () => {
     await program.parseAsync(['node', 'cli', 'manifest']);
 
     expect(mockOutputJsonValidated).not.toHaveBeenCalled();
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      expect.stringMatching(/^oss-autopilot v\d+\.\d+\.\d+.* \(\d+ commands\)$/),
-    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringMatching(/^oss-autopilot v\S+ \(\d+ commands\)$/));
   });
 });

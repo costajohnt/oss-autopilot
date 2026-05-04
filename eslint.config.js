@@ -71,6 +71,10 @@ export default tseslint.config(
       // surface as warn so they're visible but don't gate CI
       'vitest/no-conditional-expect': 'warn',
       'vitest/no-standalone-expect': 'warn',
+      // Vitest accepts a 2nd arg to expect() as a custom error message
+      // (jest does not). The plugin's default of maxArgs=1 mismatches the
+      // actual vitest API; bump to allow the documented form.
+      'vitest/valid-expect': ['error', { maxArgs: 2 }],
     },
   },
 );
