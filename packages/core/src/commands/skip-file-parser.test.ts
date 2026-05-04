@@ -184,7 +184,7 @@ describe('loadSkippedIssues', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].url).toBe('https://github.com/owncast/owncast/issues/4883');
-    expect(mockReadFileSync).toHaveBeenCalledWith('/real/path.md', 'utf-8');
+    expect(mockReadFileSync).toHaveBeenCalledWith('/real/path.md', 'utf8');
   });
 
   it('should return [] and warn if reading the file throws', () => {

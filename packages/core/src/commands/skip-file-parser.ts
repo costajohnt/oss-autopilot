@@ -98,7 +98,7 @@ export function loadSkippedIssues(path: string | undefined): SkippedIssue[] {
 
   let content: string;
   try {
-    content = fs.readFileSync(path, 'utf-8');
+    content = fs.readFileSync(path, 'utf8');
   } catch (err) {
     warn('skip-file-parser', `Failed to read skipped-issues file at ${path}: ${errorMessage(err)}`);
     return [];

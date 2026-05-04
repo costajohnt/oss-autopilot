@@ -68,7 +68,7 @@ function extractEtag(headers: Record<string, string | undefined> | undefined): s
 function preserveRejectedGistContent(raw: string, gistId: string): string | null {
   try {
     const rejectedPath = `${getStateCachePath()}.rejected-${Date.now()}`;
-    fs.writeFileSync(rejectedPath, raw, { encoding: 'utf-8', mode: 0o600 });
+    fs.writeFileSync(rejectedPath, raw, { encoding: 'utf8', mode: 0o600 });
     return rejectedPath;
   } catch (err) {
     warn(
@@ -215,7 +215,7 @@ export class GistStateStore {
       let cacheRaw: string | null = null;
       try {
         if (fs.existsSync(cachePath)) {
-          cacheRaw = fs.readFileSync(cachePath, 'utf-8');
+          cacheRaw = fs.readFileSync(cachePath, 'utf8');
           let obj: unknown = JSON.parse(cacheRaw);
 
           // Chain migrations
@@ -305,7 +305,7 @@ export class GistStateStore {
       let cacheRaw: string | null = null;
       try {
         if (fs.existsSync(cachePath)) {
-          cacheRaw = fs.readFileSync(cachePath, 'utf-8');
+          cacheRaw = fs.readFileSync(cachePath, 'utf8');
           let obj: unknown = JSON.parse(cacheRaw);
 
           // Chain migrations
@@ -713,7 +713,7 @@ export class GistStateStore {
     try {
       const gistIdPath = getGistIdPath();
       if (fs.existsSync(gistIdPath)) {
-        const id = fs.readFileSync(gistIdPath, 'utf-8').trim();
+        const id = fs.readFileSync(gistIdPath, 'utf8').trim();
         return id || null;
       }
     } catch (err) {

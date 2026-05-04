@@ -106,7 +106,7 @@ export function getGuidelines(store: GistStateStore | null, repo: string): strin
  */
 export function setGuidelines(store: GistStateStore | null, repo: string, content: string): void {
   if (!store) throw new GuidelinesNotAvailableError();
-  const byteSize = Buffer.byteLength(content, 'utf-8');
+  const byteSize = Buffer.byteLength(content, 'utf8');
   if (byteSize > GUIDELINES_MAX_BYTES) {
     throw new GuidelinesTooLargeError(byteSize);
   }

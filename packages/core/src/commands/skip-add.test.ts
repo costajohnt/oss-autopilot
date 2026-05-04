@@ -39,7 +39,7 @@ describe('runSkipAdd', () => {
       now: new Date('2026-04-19T12:00:00Z'),
     });
 
-    const contents = fs.readFileSync(skipFile, 'utf-8');
+    const contents = fs.readFileSync(skipFile, 'utf8');
     expect(contents).toContain('# Skipped Issues — auto-culled after 90 days');
     expect(contents).toContain('# Format: YYYY-MM-DD URL');
     expect(contents).toContain('2026-04-19 https://github.com/foo/bar/issues/1');
@@ -64,7 +64,7 @@ describe('runSkipAdd', () => {
       now: new Date('2026-04-19T00:00:00Z'),
     });
 
-    const contents = fs.readFileSync(skipFile, 'utf-8');
+    const contents = fs.readFileSync(skipFile, 'utf8');
     const headerOccurrences = contents.split('# Skipped Issues').length - 1;
     expect(headerOccurrences).toBe(1);
     expect(contents).toContain('2026-04-15 https://github.com/owner/repo/issues/99');
@@ -76,7 +76,7 @@ describe('runSkipAdd', () => {
       skipFile,
       '# Skipped Issues — auto-culled after 90 days\n# Format: YYYY-MM-DD URL\n\n2026-04-15 https://github.com/foo/bar/issues/1\n',
     );
-    const before = fs.readFileSync(skipFile, 'utf-8');
+    const before = fs.readFileSync(skipFile, 'utf8');
 
     const result = runSkipAdd({
       issueUrl: 'https://github.com/foo/bar/issues/1',
@@ -84,7 +84,7 @@ describe('runSkipAdd', () => {
       now: new Date('2026-04-19T00:00:00Z'),
     });
 
-    const after = fs.readFileSync(skipFile, 'utf-8');
+    const after = fs.readFileSync(skipFile, 'utf8');
     expect(after).toBe(before);
     expect(result).toEqual({
       added: false,
@@ -102,7 +102,7 @@ describe('runSkipAdd', () => {
     });
 
     expect(result.added).toBe(true);
-    const contents = fs.readFileSync(skipFile, 'utf-8');
+    const contents = fs.readFileSync(skipFile, 'utf8');
     expect(contents).toContain('2026-04-19 https://github.com/foo/bar/pull/42');
   });
 
@@ -135,7 +135,7 @@ describe('runSkipAdd', () => {
 
     expect(result.added).toBe(true);
     expect(result.path).toBe(skipFile);
-    const contents = fs.readFileSync(skipFile, 'utf-8');
+    const contents = fs.readFileSync(skipFile, 'utf8');
     expect(contents).toContain('2026-04-19 https://github.com/foo/bar/issues/7');
   });
 
@@ -156,7 +156,7 @@ describe('runSkipAdd', () => {
       now: new Date('2026-04-20T01:30:00Z'),
     });
 
-    const contents = fs.readFileSync(skipFile, 'utf-8');
+    const contents = fs.readFileSync(skipFile, 'utf8');
     expect(contents).toContain('2026-04-20 https://github.com/foo/bar/issues/1');
     expect(contents).not.toContain('2026-04-19 https://github.com/foo/bar/issues/1');
   });

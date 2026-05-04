@@ -80,7 +80,7 @@ function spawnHttpServer(args: string[], env: Record<string, string> = {}): Prom
       const port = parseInt(match[1], 10);
       // Token file was written synchronously by ensureHttpToken before
       // httpServer.listen, so it must exist by the time the banner prints.
-      const token = fs.readFileSync(tokenPath, 'utf-8').trim();
+      const token = fs.readFileSync(tokenPath, 'utf8').trim();
       resolve({
         port,
         proc,

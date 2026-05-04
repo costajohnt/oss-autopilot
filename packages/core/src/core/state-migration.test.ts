@@ -143,7 +143,7 @@ describe('StateManager v1 → v2 migration', () => {
     expect(state.version).toBe(4);
 
     // Verify migration was persisted to disk
-    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(onDisk.version).toBe(4);
   });
 
@@ -321,7 +321,7 @@ describe('StateManager v3 → v4 migration', () => {
     expect(state.closedPRs?.[0].url).toBe('https://github.com/a/b/pull/2');
     expect(state.closedPRs?.[0].commentsFetchedAt).toBeUndefined();
 
-    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(onDisk.version).toBe(4);
   });
 });
@@ -354,7 +354,7 @@ describe('legacy state cleanup on load', () => {
 
     // Note: the stale field persists on disk until the next saveState() call.
     // Unlike the old isValidState() cleanup, Zod stripping is in-memory only.
-    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(onDisk.config.snoozedPRs).toBeDefined();
   });
 
@@ -400,7 +400,7 @@ describe('legacy state cleanup on load', () => {
     expect(state.config.dismissedIssues['https://github.com/owner/repo/issues/20']).toBe('2025-02-02T00:00:00Z');
 
     // Verify on disk as well
-    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf8'));
     expect(Object.keys(onDisk.config.dismissedIssues)).toHaveLength(2);
     expect(onDisk.config.dismissedIssues['https://github.com/owner/repo/pull/30']).toBeUndefined();
   });

@@ -36,7 +36,7 @@ async function readVersion(): Promise<string> {
     const { fileURLToPath } = await import('node:url');
     const { dirname, resolve } = await import('node:path');
     const here = typeof __dirname === 'string' ? __dirname : dirname(fileURLToPath(import.meta.url));
-    const raw = readFileSync(resolve(here, '..', 'package.json'), 'utf-8');
+    const raw = readFileSync(resolve(here, '..', 'package.json'), 'utf8');
     return String(JSON.parse(raw).version ?? 'unknown');
   } catch {
     return 'unknown';

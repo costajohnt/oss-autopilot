@@ -153,7 +153,7 @@ describe('runListMoveTier (filesystem)', () => {
     expect(out.url).toBe(URL_A);
     expect(out.count).toBe(1);
 
-    const after = fs.readFileSync(listPath, 'utf-8');
+    const after = fs.readFileSync(listPath, 'utf8');
     expect(after).toContain('## Skip');
     expect(after.indexOf('## Skip')).toBeLessThan(after.indexOf(URL_A));
   });
@@ -173,6 +173,6 @@ describe('runListMoveTier (filesystem)', () => {
     expect(out.count).toBe(0);
     const after = fs.statSync(listPath).mtimeMs;
     expect(after).toBe(before); // no write happened
-    expect(fs.readFileSync(listPath, 'utf-8')).toBe(original);
+    expect(fs.readFileSync(listPath, 'utf8')).toBe(original);
   });
 });

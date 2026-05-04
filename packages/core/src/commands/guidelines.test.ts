@@ -64,7 +64,7 @@ describe('runGuidelinesView', () => {
     mockGetGuidelines.mockReturnValue('# rules\n- be nice');
     const out = await runGuidelinesView({ repo: 'owner/repo' });
     expect(out.content).toBe('# rules\n- be nice');
-    expect(out.byteSize).toBe(Buffer.byteLength('# rules\n- be nice', 'utf-8'));
+    expect(out.byteSize).toBe(Buffer.byteLength('# rules\n- be nice', 'utf8'));
     expect(out.exists).toBe(true);
     expect(out.storageMode).toBe('gist');
   });
@@ -93,7 +93,7 @@ describe('runGuidelinesStore', () => {
   it('persists content and returns byte size', async () => {
     const out = await runGuidelinesStore({ repo: 'owner/repo', content: 'guidelines text' });
     expect(out.stored).toBe(true);
-    expect(out.byteSize).toBe(Buffer.byteLength('guidelines text', 'utf-8'));
+    expect(out.byteSize).toBe(Buffer.byteLength('guidelines text', 'utf8'));
     expect(mockSetGuidelines).toHaveBeenCalledWith('owner/repo', 'guidelines text');
   });
 

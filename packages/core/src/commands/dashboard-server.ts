@@ -90,7 +90,7 @@ function readVettedIssues(): ParseIssueListOutput | null {
   try {
     const info = detectIssueList();
     if (!info) return null;
-    const content = fs.readFileSync(info.path, 'utf-8');
+    const content = fs.readFileSync(info.path, 'utf8');
     return parseIssueList(content);
   } catch (error) {
     warn(MODULE, `Failed to read vetted issue list: ${errorMessage(error)}`);
@@ -205,7 +205,7 @@ function readBody(req: http.IncomingMessage, maxBytes: number = MAX_BODY_BYTES):
       chunks.push(chunk);
     });
     req.on('end', () => {
-      if (!aborted) resolve(Buffer.concat(chunks).toString('utf-8'));
+      if (!aborted) resolve(Buffer.concat(chunks).toString('utf8'));
     });
     req.on('error', (err) => {
       if (!aborted) reject(err);

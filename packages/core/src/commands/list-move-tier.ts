@@ -217,7 +217,7 @@ export async function runListMoveTier(options: ListMoveTierOptions): Promise<Lis
 
   let content: string;
   try {
-    content = fs.readFileSync(filePath, 'utf-8');
+    content = fs.readFileSync(filePath, 'utf8');
   } catch (error) {
     throw new Error(`Failed to read file: ${errorMessage(error)}`, { cause: error });
   }
@@ -226,7 +226,7 @@ export async function runListMoveTier(options: ListMoveTierOptions): Promise<Lis
 
   if (result.moved) {
     try {
-      fs.writeFileSync(filePath, result.content, 'utf-8');
+      fs.writeFileSync(filePath, result.content, 'utf8');
     } catch (error) {
       throw new Error(`Failed to write file: ${errorMessage(error)}`, { cause: error });
     }

@@ -127,10 +127,10 @@ describe('fetchUserPRCounts caching', () => {
     const cacheFiles = fs.readdirSync(testCacheDir).filter((f) => f.endsWith('.json'));
     for (const file of cacheFiles) {
       const filePath = path.join(testCacheDir, file);
-      const entry = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      const entry = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       if (entry.url === 'pr-counts:v3:merged:testuser') {
         entry.cachedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
-        fs.writeFileSync(filePath, JSON.stringify(entry), 'utf-8');
+        fs.writeFileSync(filePath, JSON.stringify(entry), 'utf8');
       }
     }
 
