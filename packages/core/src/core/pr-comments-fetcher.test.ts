@@ -244,14 +244,18 @@ describe('fetchPRCommentBundlesBatch', () => {
   });
 
   it('respects the concurrency cap', async () => {
+    // Manual gate replaces the previous `setTimeout(resolve, 5)` simulated
+    // delay (#1209 L2) — no wallclock wait, but still keeps each call
+    // in-flight long enough for the parallel workers to bump `maxActive`.
     let active = 0;
     let maxActive = 0;
+    const releases: Array<() => void> = [];
     const octokit = {
       pulls: {
         get: vi.fn(async () => {
           active++;
           maxActive = Math.max(maxActive, active);
-          await new Promise((resolve) => setTimeout(resolve, 5));
+          await new Promise<void>((resolve) => releases.push(resolve));
           active--;
           return { data: makePR() };
         }),
@@ -264,7 +268,16 @@ describe('fetchPRCommentBundlesBatch', () => {
     } as unknown as Octokit;
 
     const urls = Array.from({ length: 6 }, (_, i) => `https://github.com/owner/repo/pull/${i + 1}`);
-    await fetchPRCommentBundlesBatch(octokit, urls, 'me', 2);
+    const batchPromise = fetchPRCommentBundlesBatch(octokit, urls, 'me', 2);
+    // Drain all pending workers in lock-step. After each release the freed
+    // worker's microtask schedules the next pulls.get; queueMicrotask gives
+    // it a chance to land before we pop the next release.
+    while (active > 0 || releases.length > 0) {
+      const release = releases.shift();
+      if (release) release();
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+    }
+    await batchPromise;
     expect(maxActive).toBeLessThanOrEqual(2);
   });
 
