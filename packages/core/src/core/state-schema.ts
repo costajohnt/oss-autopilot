@@ -55,9 +55,11 @@ export const StoredMergedPRSchema = z.object({
   title: z.string(),
   mergedAt: z.string(),
   /** When the raw review-comment bundle for this PR was last fetched (#867). */
-  commentsFetchedAt: z.string().optional(),
+  // ISO-8601 datetime guards against `markPRCommentsFetched(url, "garbage")`
+  // poisoning state through the stamping API (#1209 L4).
+  commentsFetchedAt: z.string().datetime().optional(),
   /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
-  learningsExtractedAt: z.string().optional(),
+  learningsExtractedAt: z.string().datetime().optional(),
 });
 
 export const StoredClosedPRSchema = z.object({
@@ -65,9 +67,11 @@ export const StoredClosedPRSchema = z.object({
   title: z.string(),
   closedAt: z.string(),
   /** When the raw review-comment bundle for this PR was last fetched (#867). */
-  commentsFetchedAt: z.string().optional(),
+  // ISO-8601 datetime guards against `markPRCommentsFetched(url, "garbage")`
+  // poisoning state through the stamping API (#1209 L4).
+  commentsFetchedAt: z.string().datetime().optional(),
   /** When the host last ran LLM extraction over this PR's comment bundle (#867). */
-  learningsExtractedAt: z.string().optional(),
+  learningsExtractedAt: z.string().datetime().optional(),
 });
 
 export const AnalyzedIssueConversationSchema = z.object({

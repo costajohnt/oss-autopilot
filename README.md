@@ -356,6 +356,7 @@ The plugin includes a built-in **pre-commit-reviewer** agent that reviews all co
 | `code-simplifier` | Dead code, unnecessary complexity |
 | `pr-test-analyzer` | Test coverage and assertion quality |
 | `comment-analyzer` | Comment accuracy and maintainability |
+| `type-design-analyzer` | TypeScript type design (encapsulation, invariants, enforcement) |
 
 Without pr-review-toolkit, the built-in pre-commit-reviewer handles all review phases as a single agent with the same fix-and-re-review loop.
 

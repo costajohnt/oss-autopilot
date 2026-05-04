@@ -132,11 +132,11 @@ describe('AgentStateSchema', () => {
             url: 'https://github.com/o/r/pull/1',
             title: 'Fix bug',
             mergedAt: '2025-01-01',
-            learningsExtractedAt: '2025-02-01',
+            learningsExtractedAt: '2025-02-01T00:00:00Z',
           },
         ],
       });
-      expect(result.mergedPRs![0].learningsExtractedAt).toBe('2025-02-01');
+      expect(result.mergedPRs![0].learningsExtractedAt).toBe('2025-02-01T00:00:00Z');
     });
 
     it('should accept StoredClosedPR with learningsExtractedAt', () => {
@@ -147,11 +147,11 @@ describe('AgentStateSchema', () => {
             url: 'https://github.com/o/r/pull/2',
             title: 'Try fix',
             closedAt: '2025-01-01',
-            learningsExtractedAt: '2025-02-01',
+            learningsExtractedAt: '2025-02-01T00:00:00Z',
           },
         ],
       });
-      expect(result.closedPRs![0].learningsExtractedAt).toBe('2025-02-01');
+      expect(result.closedPRs![0].learningsExtractedAt).toBe('2025-02-01T00:00:00Z');
     });
 
     it('should accept analyzedIssueConversations', () => {
