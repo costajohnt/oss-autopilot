@@ -393,13 +393,12 @@ describe('state migration: v4 idempotency (#1208 M8)', () => {
       closedPRs: [],
     };
     fs.writeFileSync(statePath, JSON.stringify(v4State, null, 2), { mode: 0o600 });
-    const mtimeBefore = fs.statSync(statePath).mtimeMs;
 
-    // Wait a tick so mtime would visibly change if the file is rewritten
-    const start = Date.now();
-    while (Date.now() - start < 20) {
-      // busy-wait briefly
-    }
+    // Backdate mtime by 1 second so any rewrite during load is visible
+    // (avoids the CPU-hot busy-wait the original pattern used; #1209 L3).
+    const pastSeconds = Math.floor(Date.now() / 1000) - 1;
+    fs.utimesSync(statePath, pastSeconds, pastSeconds);
+    const mtimeBefore = fs.statSync(statePath).mtimeMs;
 
     new StateManager(false);
 
@@ -557,14 +556,11 @@ describe('legacy state cleanup on load', () => {
     };
     fs.writeFileSync(statePath, JSON.stringify(stateData), { mode: 0o600 });
 
-    // Record file modification time before load
+    // Backdate mtime by 1 second so any rewrite during load is visible
+    // (avoids the CPU-hot busy-wait the original pattern used; #1209 L3).
+    const pastSeconds = Math.floor(Date.now() / 1000) - 1;
+    fs.utimesSync(statePath, pastSeconds, pastSeconds);
     const mtimeBefore = fs.statSync(statePath).mtimeMs;
-
-    // Small delay so any write would be distinguishable by mtime
-    const start = Date.now();
-    while (Date.now() - start < 50) {
-      // busy-wait to ensure mtime would differ if file were rewritten
-    }
 
     const sm = new StateManager(false);
     const state = sm.getState();
