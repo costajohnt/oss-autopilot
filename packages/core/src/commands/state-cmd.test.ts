@@ -29,8 +29,8 @@ vi.mock('../core/logger.js', () => ({
   timed: vi.fn(),
 }));
 
-vi.mock('fs', async () => {
-  const actual = await vi.importActual<typeof import('fs')>('fs');
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
   return {
     ...actual,
     existsSync: vi.fn(),
@@ -42,7 +42,7 @@ import { getStateManager, resetStateManager } from '../core/state.js';
 import { atomicWriteFileSync } from '../core/state-persistence.js';
 import { getStatePath, getGistIdPath } from '../core/paths.js';
 import { warn } from '../core/logger.js';
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import { runStateShow, runStateSync, runStateUnlink } from './state-cmd.js';
 import { makeStateManagerMock, makeAgentState } from '../core/test-utils.js';
 

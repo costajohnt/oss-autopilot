@@ -32,7 +32,7 @@
  *  oss-autopilot already assumes for state.json.
  */
 
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 import { AgentState } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
 import {

@@ -6,10 +6,10 @@
  * Uses Node's built-in http module — no Express/Fastify.
  */
 
-import * as http from 'http';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as crypto from 'crypto';
+import * as http from 'node:http';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as crypto from 'node:crypto';
 import { getStateManager, getGitHubToken, getCLIVersion, applyStatusOverrides } from '../core/index.js';
 import { errorMessage, ValidationError } from '../core/errors.js';
 import { warn } from '../core/logger.js';

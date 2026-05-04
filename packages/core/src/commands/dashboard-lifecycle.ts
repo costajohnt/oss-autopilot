@@ -4,7 +4,7 @@
  * and detecting whether a server is already running.
  */
 
-import { spawn } from 'child_process';
+import { spawn } from 'node:child_process';
 import {
   findRunningDashboardServer,
   isDashboardServerRunning,

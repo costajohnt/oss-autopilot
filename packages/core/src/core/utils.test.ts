@@ -18,12 +18,12 @@ import {
   detectGitHubUsername,
 } from './auth.js';
 import { getDataDir, getStatePath, getBackupDir, stateFileExists } from './paths.js';
-import { execFileSync, execFile } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import { execFileSync, execFile } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
   execFileSync: vi.fn(),
   execFile: vi.fn(),
 }));

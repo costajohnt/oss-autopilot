@@ -3,8 +3,8 @@
  * Detects new files in the current branch that aren't referenced elsewhere
  */
 
-import * as path from 'path';
-import { execFileSync } from 'child_process';
+import * as path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import type { CheckIntegrationOutput, NewFileInfo } from '../formatters/json.js';
 import { debug } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';

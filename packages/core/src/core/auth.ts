@@ -7,7 +7,7 @@
  * Extracted from utils.ts under #1116.
  */
 
-import { execFileSync, execFile } from 'child_process';
+import { execFileSync, execFile } from 'node:child_process';
 import { ConfigurationError } from './errors.js';
 import { debug } from './logger.js';
 

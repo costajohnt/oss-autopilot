@@ -3,8 +3,8 @@
  * Parses markdown issue lists into structured JSON with tier classification
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type { ParseIssueListOutput, ParsedIssueItem } from '../formatters/json.js';
 import { errorMessage } from '../core/errors.js';
 

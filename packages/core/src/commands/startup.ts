@@ -7,9 +7,9 @@
  * `node cli.bundle.cjs startup --json` call, reducing UI noise in Claude Code.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { execFile } from 'child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { execFile } from 'node:child_process';
 import { getStateManager, getGitHubTokenAsync, getCLIVersion, detectGitHubUsername } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
 import { warn } from '../core/logger.js';

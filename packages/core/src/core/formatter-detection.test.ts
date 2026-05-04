@@ -9,9 +9,9 @@ import {
   getPreferredFormatter,
   type FormatterDetectionResult,
 } from './formatter-detection.js';
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 
-vi.mock('fs');
+vi.mock('node:fs');
 
 const mockedFs = vi.mocked(fs);
 

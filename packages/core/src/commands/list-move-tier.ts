@@ -11,8 +11,8 @@
  * No GitHub calls — pure read/transform/write of a local file.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { errorMessage } from '../core/errors.js';
 
 export type Tier = 'pursue' | 'maybe' | 'skip';

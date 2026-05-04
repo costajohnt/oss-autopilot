@@ -5,8 +5,8 @@
  * and diagnoses CI formatting failures from log output.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { debug } from './logger.js';
 
 const MODULE = 'formatter-detection';

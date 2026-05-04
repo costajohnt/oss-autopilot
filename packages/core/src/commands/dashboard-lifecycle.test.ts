@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // ── Mocks ────────────────────────────────────────────────────────────
 
 const mockSpawn = vi.fn();
-vi.mock('child_process', () => ({
+vi.mock('node:child_process', () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
 

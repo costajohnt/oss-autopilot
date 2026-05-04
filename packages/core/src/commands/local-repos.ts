@@ -3,10 +3,10 @@
  * Scans configurable directories for local git clones and caches results
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { execFileSync } from 'child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import { execFileSync } from 'node:child_process';
 import { getStateManager, debug } from '../core/index.js';
 import { errorMessage } from '../core/errors.js';
 import type { LocalReposOutput, LocalRepoInfo } from '../formatters/json.js';

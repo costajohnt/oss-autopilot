@@ -12,13 +12,13 @@
  */
 
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { EventEmitter } from 'events';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import { EventEmitter } from 'node:events';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import type { DailyDigest } from '../core/types.js';
 import { makeAgentState as makeState } from '../core/test-utils.js';
-import type { IncomingMessage, ServerResponse } from 'http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 // ── Captured request handler ──────────────────────────────────────────
 // We'll capture the handler passed to http.createServer() and test it directly.
@@ -39,8 +39,8 @@ const mockServer = {
   once: vi.fn(),
 };
 
-vi.mock('http', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('http')>();
+vi.mock('node:http', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:http')>();
   return {
     ...actual,
     createServer: vi.fn((handler: RequestHandler) => {

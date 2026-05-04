@@ -3,9 +3,9 @@
  * PID file operations, health probes, and running server detection.
  */
 
-import * as http from 'http';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as http from 'node:http';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { getDataDir } from '../core/index.js';
 import { warn } from '../core/logger.js';
 
