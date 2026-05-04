@@ -34,6 +34,7 @@ import type {
   ActionableIssueType,
   ActionMenu,
   ActionMenuItem,
+  StarFilter,
 } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -158,6 +159,29 @@ export function toShelvedPRRef(pr: ShelvedPRRef): ShelvedPRRef {
     daysSinceActivity: pr.daysSinceActivity,
     status: pr.status,
   };
+}
+
+/**
+ * Build a star filter from state for use in fetchUserPRCounts.
+ *
+ * Returns undefined if no star data is available (first run). Pure logic
+ * over `Readonly<AgentState>` — lives here in core/daily-logic.ts so the
+ * dashboard layer can reuse it without importing from a sibling command
+ * module (#1208 M7).
+ *
+ * @param state - Current agent state (read-only)
+ * @returns Star filter with minimum threshold and known counts, or undefined on first run
+ */
+export function buildStarFilter(state: Readonly<AgentState>): StarFilter | undefined {
+  const minStars = state.config.minStars ?? 50;
+  const knownStarCounts = new Map<string, number>();
+  for (const [repo, score] of Object.entries(state.repoScores)) {
+    if (score.stargazersCount !== undefined) {
+      knownStarCounts.set(repo, score.stargazersCount);
+    }
+  }
+  if (knownStarCounts.size === 0) return undefined;
+  return { minStars, knownStarCounts };
 }
 
 /**

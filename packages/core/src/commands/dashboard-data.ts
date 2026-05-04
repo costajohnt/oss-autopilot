@@ -24,7 +24,7 @@ import {
   type RepoMetadataEntry,
 } from '../core/types.js';
 import type { ParseIssueListOutput } from '../formatters/json.js';
-import { toShelvedPRRef, buildStarFilter } from './daily.js';
+import { toShelvedPRRef, buildStarFilter } from '../core/index.js';
 
 const MODULE = 'dashboard-data';
 
