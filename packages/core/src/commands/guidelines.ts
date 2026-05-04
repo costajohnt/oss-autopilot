@@ -11,7 +11,13 @@
  * Standalone-mode users see "not available" on store/reset/fetch-corpus
  * because per-repo guidelines require Gist persistence to be useful.
  */
-import { getStateManager, requireGitHubToken, getOctokit, GuidelinesNotAvailableError } from '../core/index.js';
+import {
+  getStateManager,
+  requireGitHubToken,
+  getOctokit,
+  GuidelinesNotAvailableError,
+  maybeCheckpoint,
+} from '../core/index.js';
 import { fetchPRCommentBundlesBatch, type PRCommentBundle } from '../core/pr-comments-fetcher.js';
 import { warn } from '../core/logger.js';
 
@@ -109,6 +115,10 @@ export async function runGuidelinesStore(options: StoreOptions): Promise<Guideli
   const sm = getStateManager();
   // Throws GuidelinesNotAvailableError or GuidelinesTooLargeError on failure.
   sm.setGuidelines(options.repo, options.content);
+  // Push to Gist — autoSave only writes the local state-cache mirror in Gist
+  // mode, so without this checkpoint the change never propagates across
+  // machines (#1200).
+  await maybeCheckpoint(sm, MODULE);
   return {
     repo: options.repo,
     byteSize: Buffer.byteLength(options.content, 'utf-8'),
@@ -126,6 +136,8 @@ export async function runGuidelinesReset(options: RepoOption): Promise<Guideline
   const existed = sm.getGuidelines(options.repo) !== null;
   if (existed) {
     sm.deleteGuidelines(options.repo);
+    // Push to Gist — see runGuidelinesStore note (#1200).
+    await maybeCheckpoint(sm, MODULE);
   }
   return { repo: options.repo, deleted: existed };
 }
@@ -199,6 +211,12 @@ export async function runFetchCorpus(options: FetchCorpusOptions): Promise<Fetch
   const now = new Date().toISOString();
   for (const bundle of bundles) {
     sm.markPRCommentsFetched(bundle.prUrl, now);
+  }
+  // Push commentsFetchedAt stamps to Gist so other machines don't re-fetch
+  // the same PRs forever. autoSave only writes the local mirror in Gist
+  // mode (#1200).
+  if (bundles.length > 0) {
+    await maybeCheckpoint(sm, MODULE);
   }
 
   return {

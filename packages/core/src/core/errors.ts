@@ -59,6 +59,30 @@ export class GistPermissionError extends ConfigurationError {
 }
 
 /**
+ * Thrown when state.json fetched from a Gist is malformed or fails Zod
+ * validation. The Gist content is preserved as a `.rejected-<ts>.json` file
+ * in the local cache directory so the user can inspect or recover from it
+ * before the next push overwrites the Gist with fresh state.
+ *
+ * See issue #1201.
+ */
+export class GistCorruptError extends ConfigurationError {
+  constructor(
+    public readonly gistId: string,
+    public readonly rejectedPath: string | null,
+    public readonly cause: unknown,
+  ) {
+    const causeMsg = cause instanceof Error ? cause.message : String(cause);
+    const recoverHint = rejectedPath
+      ? `\nCorrupt content preserved at: ${rejectedPath}\n` +
+        'Inspect or restore manually, then re-run. Falling back to a fresh state would overwrite your Gist.'
+      : '\nCould not preserve the rejected content; do not push without inspecting the Gist manually.';
+    super(`Gist ${gistId} state.json is corrupt or fails schema validation: ${causeMsg}${recoverHint}`);
+    this.name = 'GistCorruptError';
+  }
+}
+
+/**
  * Thrown when an optimistic compare-and-swap on state.json detects that
  * another process wrote the file between load and save. See issue #1030.
  *
@@ -142,6 +166,44 @@ export function isRateLimitOrAuthError(err: unknown): boolean {
     const msg = errorMessage(err).toLowerCase();
     return msg.includes('rate limit') || msg.includes('abuse detection');
   }
+  return false;
+}
+
+/**
+ * Check if an error is a transient network/server-side failure that's safe
+ * to retry or fall back from (vs. a permanent error that should surface).
+ *
+ * Returns true for:
+ * - Node socket errors: ECONNRESET, ETIMEDOUT, ENETUNREACH, ENOTFOUND, ECONNREFUSED
+ * - HTTP 5xx (server errors)
+ * - AbortError (timeout)
+ *
+ * Returns false for everything else (including 4xx, schema errors, config errors).
+ *
+ * Used by {@link getStateManagerAsync} to decide whether a Gist init failure
+ * is recoverable enough to silently fall back to local-only mode (#1202).
+ */
+export function isTransientNetworkError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const status = getHttpStatusCode(err);
+  if (typeof status === 'number' && status >= 500 && status < 600) return true;
+  // Node socket-level errors expose `code`
+  const code = (err as { code?: unknown }).code;
+  if (typeof code === 'string') {
+    if (
+      code === 'ECONNRESET' ||
+      code === 'ETIMEDOUT' ||
+      code === 'ENETUNREACH' ||
+      code === 'ENOTFOUND' ||
+      code === 'ECONNREFUSED' ||
+      code === 'EAI_AGAIN'
+    ) {
+      return true;
+    }
+  }
+  // Octokit's RequestError surfaces the underlying name; fetch timeout is AbortError
+  const name = (err as { name?: unknown }).name;
+  if (typeof name === 'string' && (name === 'AbortError' || name === 'TimeoutError')) return true;
   return false;
 }
 

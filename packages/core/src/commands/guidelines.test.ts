@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getMergedPRs: vi.fn(),
   getClosedPRs: vi.fn(),
   markPRCommentsFetched: vi.fn(),
+  maybeCheckpoint: vi.fn(),
   username: vi.fn(() => 'me'),
 }));
 
@@ -34,6 +35,7 @@ vi.mock('../core/index.js', async () => {
     }),
     requireGitHubToken: () => 'ghp_test',
     getOctokit: () => ({}) as never,
+    maybeCheckpoint: mocks.maybeCheckpoint,
   };
 });
 
@@ -45,6 +47,7 @@ const mockIsGuidelinesAvailable = mocks.isGuidelinesAvailable;
 const mockGetMergedPRs = mocks.getMergedPRs;
 const mockGetClosedPRs = mocks.getClosedPRs;
 const mockMarkPRCommentsFetched = mocks.markPRCommentsFetched;
+const mockMaybeCheckpoint = mocks.maybeCheckpoint;
 
 import { runGuidelinesView, runGuidelinesStore, runGuidelinesReset, runFetchCorpus } from './guidelines.js';
 import { GuidelinesNotAvailableError } from '../core/index.js';
@@ -94,6 +97,19 @@ describe('runGuidelinesStore', () => {
     expect(mockSetGuidelines).toHaveBeenCalledWith('owner/repo', 'guidelines text');
   });
 
+  it('checkpoints to Gist after a successful store (#1200)', async () => {
+    await runGuidelinesStore({ repo: 'owner/repo', content: 'x' });
+    expect(mockMaybeCheckpoint).toHaveBeenCalledOnce();
+  });
+
+  it('does not checkpoint when setGuidelines throws', async () => {
+    mockSetGuidelines.mockImplementation(() => {
+      throw new GuidelinesNotAvailableError();
+    });
+    await expect(runGuidelinesStore({ repo: 'owner/repo', content: 'x' })).rejects.toThrow();
+    expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+  });
+
   it('throws when content is empty (use reset instead)', async () => {
     await expect(runGuidelinesStore({ repo: 'owner/repo', content: '' })).rejects.toThrow(/Cannot store empty content/);
     expect(mockSetGuidelines).not.toHaveBeenCalled();
@@ -122,6 +138,18 @@ describe('runGuidelinesReset', () => {
     const out = await runGuidelinesReset({ repo: 'owner/repo' });
     expect(out.deleted).toBe(false);
     expect(mockDeleteGuidelines).not.toHaveBeenCalled();
+  });
+
+  it('checkpoints to Gist after a successful reset (#1200)', async () => {
+    mockGetGuidelines.mockReturnValue('existing content');
+    await runGuidelinesReset({ repo: 'owner/repo' });
+    expect(mockMaybeCheckpoint).toHaveBeenCalledOnce();
+  });
+
+  it('does not checkpoint when no file existed', async () => {
+    mockGetGuidelines.mockReturnValue(null);
+    await runGuidelinesReset({ repo: 'owner/repo' });
+    expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
   });
 
   it('throws GuidelinesNotAvailableError in local mode', async () => {
@@ -220,6 +248,32 @@ describe('runFetchCorpus', () => {
     const out = await runFetchCorpus({ repo: 'owner/repo', forceRefetch: true });
     expect(out.skipped).toBe(0);
     expect(mockFetchPRCommentBundlesBatch).toHaveBeenCalledWith(expect.anything(), [PR_FETCHED], 'me');
+  });
+
+  it('checkpoints to Gist after stamping commentsFetchedAt (#1200)', async () => {
+    mockGetMergedPRs.mockReturnValue([{ url: PR_RECENT, title: 't', mergedAt: recentTimestamp() }]);
+    mockFetchPRCommentBundlesBatch.mockResolvedValue([
+      {
+        prUrl: PR_RECENT,
+        prTitle: 't',
+        repo: 'owner/repo',
+        mergedAt: recentTimestamp(),
+        reviews: [],
+        reviewComments: [],
+        issueComments: [],
+      },
+    ]);
+
+    await runFetchCorpus({ repo: 'owner/repo' });
+
+    expect(mockMarkPRCommentsFetched).toHaveBeenCalledWith(PR_RECENT, expect.any(String));
+    expect(mockMaybeCheckpoint).toHaveBeenCalledOnce();
+  });
+
+  it('does not checkpoint when no PRs were fetched', async () => {
+    mockGetMergedPRs.mockReturnValue([]);
+    await runFetchCorpus({ repo: 'owner/repo' });
+    expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
   });
 
   it('respects the `limit` parameter and caps it at 10', async () => {

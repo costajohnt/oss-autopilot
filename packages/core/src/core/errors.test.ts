@@ -3,9 +3,11 @@ import {
   OssAutopilotError,
   ConfigurationError,
   ValidationError,
+  GistCorruptError,
   errorMessage,
   getHttpStatusCode,
   resolveErrorCode,
+  isTransientNetworkError,
 } from './errors.js';
 
 describe('Custom Error Hierarchy', () => {
@@ -195,5 +197,71 @@ describe('resolveErrorCode', () => {
     expect(resolveErrorCode('string error')).toBe('UNKNOWN');
     expect(resolveErrorCode(42)).toBe('UNKNOWN');
     expect(resolveErrorCode(null)).toBe('UNKNOWN');
+  });
+});
+
+describe('GistCorruptError (#1201)', () => {
+  it('extends ConfigurationError so callers using existing config-error checks surface it', () => {
+    const err = new GistCorruptError('abc123', '/tmp/state-cache.json.rejected-1', new Error('bad json'));
+    expect(err).toBeInstanceOf(ConfigurationError);
+    expect(err).toBeInstanceOf(OssAutopilotError);
+    expect(err.name).toBe('GistCorruptError');
+  });
+
+  it('embeds the gist id, rejected path, and underlying cause in the message', () => {
+    const cause = new Error('Unexpected token');
+    const err = new GistCorruptError('gist-xyz', '/tmp/cache.rejected-123', cause);
+    expect(err.message).toContain('gist-xyz');
+    expect(err.message).toContain('/tmp/cache.rejected-123');
+    expect(err.message).toContain('Unexpected token');
+    expect(err.cause).toBe(cause);
+  });
+
+  it('warns when content could not be preserved (rejectedPath null)', () => {
+    const err = new GistCorruptError('gist-xyz', null, new Error('bad'));
+    expect(err.message).toContain('Could not preserve');
+  });
+});
+
+describe('isTransientNetworkError (#1202)', () => {
+  it('returns true for Node socket errors', () => {
+    for (const code of ['ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'ENOTFOUND', 'ECONNREFUSED', 'EAI_AGAIN']) {
+      const err = Object.assign(new Error('socket'), { code });
+      expect(isTransientNetworkError(err)).toBe(true);
+    }
+  });
+
+  it('returns true for HTTP 5xx errors', () => {
+    for (const status of [500, 502, 503, 504, 599]) {
+      const err = Object.assign(new Error('server'), { status });
+      expect(isTransientNetworkError(err)).toBe(true);
+    }
+  });
+
+  it('returns true for AbortError and TimeoutError', () => {
+    const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    const timeout = Object.assign(new Error('timed out'), { name: 'TimeoutError' });
+    expect(isTransientNetworkError(abort)).toBe(true);
+    expect(isTransientNetworkError(timeout)).toBe(true);
+  });
+
+  it('returns false for HTTP 4xx errors (auth, permission, not-found)', () => {
+    for (const status of [400, 401, 403, 404, 422, 429]) {
+      const err = Object.assign(new Error('client'), { status });
+      expect(isTransientNetworkError(err)).toBe(false);
+    }
+  });
+
+  it('returns false for plain errors and non-error inputs', () => {
+    expect(isTransientNetworkError(new Error('boom'))).toBe(false);
+    expect(isTransientNetworkError(null)).toBe(false);
+    expect(isTransientNetworkError(undefined)).toBe(false);
+    expect(isTransientNetworkError('string')).toBe(false);
+    expect(isTransientNetworkError(42)).toBe(false);
+  });
+
+  it('returns false for our own custom errors (config, validation)', () => {
+    expect(isTransientNetworkError(new ConfigurationError('bad config'))).toBe(false);
+    expect(isTransientNetworkError(new ValidationError('bad input'))).toBe(false);
   });
 });

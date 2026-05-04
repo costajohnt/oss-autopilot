@@ -44,7 +44,7 @@ import {
 } from './state-persistence.js';
 import { getGistIdPath, getStateCachePath } from './paths.js';
 import { debug, warn } from './logger.js';
-import { GistPermissionError, GistConcurrencyError, isRateLimitError } from './errors.js';
+import { GistPermissionError, GistConcurrencyError, GistCorruptError, isRateLimitError } from './errors.js';
 
 const MODULE = 'gist-store';
 
@@ -56,6 +56,27 @@ const MODULE = 'gist-store';
 function extractEtag(headers: Record<string, string | undefined> | undefined): string | null {
   if (!headers) return null;
   return headers.etag ?? headers.ETag ?? null;
+}
+
+/**
+ * Preserve corrupt Gist content for user recovery. Returns the path written,
+ * or null if the preservation itself failed (logged at warn). Mirrors the
+ * pattern in state-persistence.ts:401-407 for the local-state path.
+ *
+ * See {@link GistCorruptError} and issue #1201.
+ */
+function preserveRejectedGistContent(raw: string, gistId: string): string | null {
+  try {
+    const rejectedPath = `${getStateCachePath()}.rejected-${Date.now()}`;
+    fs.writeFileSync(rejectedPath, raw, { encoding: 'utf-8', mode: 0o600 });
+    return rejectedPath;
+  } catch (err) {
+    warn(
+      MODULE,
+      `Could not preserve rejected Gist content for ${gistId}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
 }
 
 /** Well-known Gist description used for search-based discovery. */
@@ -190,10 +211,12 @@ export class GistStateStore {
       warn(MODULE, 'All Gist API paths failed, entering degraded mode', err);
 
       // Try reading from local cache file
+      const cachePath = getStateCachePath();
+      let cacheRaw: string | null = null;
       try {
-        const cachePath = getStateCachePath();
         if (fs.existsSync(cachePath)) {
-          let obj: unknown = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+          cacheRaw = fs.readFileSync(cachePath, 'utf-8');
+          let obj: unknown = JSON.parse(cacheRaw);
 
           // Chain migrations
           if (typeof obj === 'object' && obj !== null) {
@@ -208,7 +231,21 @@ export class GistStateStore {
           return { gistId: '', state: cachedState, created: false, degraded: true };
         }
       } catch (cacheErr) {
-        debug(MODULE, `Failed to read local cache in degraded mode: ${cacheErr}`);
+        // Promote to warn (#1201) and preserve corrupt cache so fresh-state
+        // fallback doesn't silently destroy recoverable data on next push.
+        if (cacheRaw) {
+          const rejectedPath = preserveRejectedGistContent(cacheRaw, 'local-cache');
+          warn(
+            MODULE,
+            `Local state cache failed to parse in degraded mode: ${cacheErr instanceof Error ? cacheErr.message : String(cacheErr)}. ` +
+              `Corrupt cache preserved at: ${rejectedPath ?? '(could not preserve)'}`,
+          );
+        } else {
+          warn(
+            MODULE,
+            `Failed to read local cache in degraded mode: ${cacheErr instanceof Error ? cacheErr.message : String(cacheErr)}`,
+          );
+        }
       }
 
       // No cache either — return fresh state in degraded mode
@@ -264,10 +301,12 @@ export class GistStateStore {
       warn(MODULE, 'bootstrapWithMigration: all Gist API paths failed, entering degraded mode', err);
 
       // Try reading from local cache file
+      const cachePath = getStateCachePath();
+      let cacheRaw: string | null = null;
       try {
-        const cachePath = getStateCachePath();
         if (fs.existsSync(cachePath)) {
-          let obj: unknown = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+          cacheRaw = fs.readFileSync(cachePath, 'utf-8');
+          let obj: unknown = JSON.parse(cacheRaw);
 
           // Chain migrations
           if (typeof obj === 'object' && obj !== null) {
@@ -282,7 +321,19 @@ export class GistStateStore {
           return { gistId: '', state: cachedState, created: false, degraded: true, migrated: false };
         }
       } catch (cacheErr) {
-        debug(MODULE, `bootstrapWithMigration: failed to read local cache in degraded mode: ${cacheErr}`);
+        if (cacheRaw) {
+          const rejectedPath = preserveRejectedGistContent(cacheRaw, 'local-cache');
+          warn(
+            MODULE,
+            `bootstrapWithMigration: local cache failed to parse: ${cacheErr instanceof Error ? cacheErr.message : String(cacheErr)}. ` +
+              `Corrupt cache preserved at: ${rejectedPath ?? '(could not preserve)'}`,
+          );
+        } else {
+          warn(
+            MODULE,
+            `bootstrapWithMigration: failed to read local cache: ${cacheErr instanceof Error ? cacheErr.message : String(cacheErr)}`,
+          );
+        }
       }
 
       // No cache either — use the provided existingState in degraded mode
@@ -532,9 +583,17 @@ export class GistStateStore {
   }
 
   /**
-   * Parse `state.json` from the in-memory cache. Handles v2 migration
+   * Parse `state.json` from the in-memory cache. Handles v1→v4 migration
    * by running through the Zod schema (which requires version: 4).
-   * Falls back to fresh state if the file is missing or unparseable.
+   *
+   * Throws {@link GistCorruptError} on parse or schema-validation failure.
+   * The corrupt raw content is preserved as `<state-cache-path>.rejected-<ts>`
+   * so the caller can recover (#1201).
+   *
+   * Returning fresh state on failure (the previous behavior) is unsafe in
+   * Gist mode because the next `push()` would overwrite the Gist with the
+   * empty fallback, silently destroying repoScores, dismissedIssues,
+   * guidelines pointers, and digest history.
    */
   private parseStateFromCache(): AgentState {
     const raw = this.cachedFiles.get(STATE_FILE_NAME);
@@ -556,8 +615,13 @@ export class GistStateStore {
 
       return AgentStateSchema.parse(obj);
     } catch (err) {
-      warn(MODULE, `Failed to parse state.json from Gist: ${err}`);
-      return createFreshState();
+      const rejectedPath = preserveRejectedGistContent(raw, this.gistId ?? 'unknown');
+      warn(
+        MODULE,
+        `Gist state.json failed to parse — refusing to overwrite with fresh state. ` +
+          `Corrupt content preserved at: ${rejectedPath ?? '(could not preserve)'}`,
+      );
+      throw new GistCorruptError(this.gistId ?? 'unknown', rejectedPath, err);
     }
   }
 
