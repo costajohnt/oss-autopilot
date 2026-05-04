@@ -28,8 +28,8 @@ function makeOutput(available: ParsedIssueItem[] = [], completed: ParsedIssueIte
 }
 
 const testMeta: Record<string, RepoMetadataEntry> = {
-  'facebook/react': { stars: 230000, language: 'JavaScript' },
-  'vercel/next.js': { stars: 128000, language: 'TypeScript' },
+  'facebook/react': { stars: 230_000, language: 'JavaScript' },
+  'vercel/next.js': { stars: 128_000, language: 'TypeScript' },
 };
 
 describe('VettedIssueList', () => {

@@ -16,7 +16,7 @@ export const ISSUE_OR_PR_URL_PATTERN = /^https:\/\/github\.com\/[^/]+\/[^/]+\/(i
 /** Maximum allowed URL length */
 const MAX_URL_LENGTH = 2048;
 /** Maximum allowed PR/issue number */
-const MAX_PR_NUMBER = 999999;
+const MAX_PR_NUMBER = 999_999;
 /** Maximum allowed message string length */
 const MAX_MESSAGE_LENGTH = 1000;
 /** Pattern for valid GitHub repository identifiers */

@@ -346,7 +346,7 @@ describe('App', () => {
     });
 
     // Advance past the 5s auto-refresh timer so mock #2 is consumed
-    vi.advanceTimersByTime(5_000);
+    vi.advanceTimersByTime(5000);
 
     // Wait for auto-refresh to complete before clicking manual refresh
     await waitFor(() => {

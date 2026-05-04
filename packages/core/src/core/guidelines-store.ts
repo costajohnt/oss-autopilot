@@ -19,7 +19,7 @@ import { OssAutopilotError } from './errors.js';
 export const GUIDELINES_FILE_PREFIX = 'guidelines--';
 
 /** Hard byte budget for a single guidelines file (#867 design log §1). */
-export const GUIDELINES_MAX_BYTES = 8_192;
+export const GUIDELINES_MAX_BYTES = 8192;
 
 /** Suffix appended to the filename so it renders as markdown in Gist. */
 const GUIDELINES_FILE_SUFFIX = '.md';

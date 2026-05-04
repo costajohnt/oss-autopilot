@@ -67,15 +67,15 @@ describe('RateLimiter', () => {
     expect(limiter.check().allowed).toBe(true);
 
     // Request at t=5s
-    vi.advanceTimersByTime(5_000);
+    vi.advanceTimersByTime(5000);
     expect(limiter.check().allowed).toBe(true);
 
     // Request at t=6s — should be rejected (2 in window)
-    vi.advanceTimersByTime(1_000);
+    vi.advanceTimersByTime(1000);
     expect(limiter.check().allowed).toBe(false);
 
     // Advance to t=10.001s — first request falls out of window
-    vi.advanceTimersByTime(4_001);
+    vi.advanceTimersByTime(4001);
     expect(limiter.check().allowed).toBe(true);
   });
 });

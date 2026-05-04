@@ -82,7 +82,7 @@ export function scanForRepos(scanPaths: string[]): Record<string, LocalRepoInfo>
     try {
       const output = execFileSync('find', [scanPath, '-maxdepth', '4', '-name', '.git', '-type', 'd'], {
         encoding: 'utf8',
-        timeout: 30000,
+        timeout: 30_000,
         stdio: ['pipe', 'pipe', 'pipe'],
       }).trim();
       gitDirs = output ? output.split('\n').filter(Boolean) : [];

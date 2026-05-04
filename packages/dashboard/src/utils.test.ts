@@ -134,8 +134,8 @@ describe('formatStarCount', () => {
   it('formats thousands with k suffix', () => {
     expect(formatStarCount(1000)).toBe('1.0k');
     expect(formatStarCount(1200)).toBe('1.2k');
-    expect(formatStarCount(42100)).toBe('42.1k');
-    expect(formatStarCount(999999)).toBe('1000.0k');
+    expect(formatStarCount(42_100)).toBe('42.1k');
+    expect(formatStarCount(999_999)).toBe('1000.0k');
   });
 
   it('formats millions with M suffix', () => {

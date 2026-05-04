@@ -155,7 +155,7 @@ export function useDashboard() {
     void fetchData();
     const timer = setTimeout(() => {
       void silentRefresh();
-    }, 5_000);
+    }, 5000);
     return () => clearTimeout(timer);
   }, [fetchData, silentRefresh]);
 

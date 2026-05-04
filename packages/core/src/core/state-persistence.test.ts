@@ -158,7 +158,7 @@ describe('Concurrent State Write Protection', () => {
     it('should throw when lock is held by another process', () => {
       const lockPath = path.join(tmpDir, 'state.json.lock');
       // Simulate a lock from another process that is NOT stale
-      const lockData = JSON.stringify({ pid: 999999, timestamp: Date.now() });
+      const lockData = JSON.stringify({ pid: 999_999, timestamp: Date.now() });
       fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
 
       expect(() => acquireLock(lockPath)).toThrow('State file is locked by another process');
@@ -170,7 +170,7 @@ describe('Concurrent State Write Protection', () => {
     it('should recover from stale locks', () => {
       const lockPath = path.join(tmpDir, 'state.json.lock');
       // Simulate a stale lock (timestamp 60 seconds ago, well past the 30s timeout)
-      const staleLockData = JSON.stringify({ pid: 999999, timestamp: Date.now() - 60_000 });
+      const staleLockData = JSON.stringify({ pid: 999_999, timestamp: Date.now() - 60_000 });
       fs.writeFileSync(lockPath, staleLockData, { flag: 'wx' });
 
       // Should succeed because the lock is stale
@@ -201,7 +201,7 @@ describe('Concurrent State Write Protection', () => {
     it('should not release a lock owned by another process', () => {
       const lockPath = path.join(tmpDir, 'state.json.lock');
       // Simulate a lock from another process
-      const lockData = JSON.stringify({ pid: 999999, timestamp: Date.now() });
+      const lockData = JSON.stringify({ pid: 999_999, timestamp: Date.now() });
       fs.writeFileSync(lockPath, lockData, { flag: 'wx' });
 
       // releaseLock should not remove it because PID doesn't match
