@@ -6,7 +6,6 @@
 ### Bug Fixes
 
 * **mcp:** throw on prompt failures instead of returning userMessage ([#1203](https://github.com/costajohnt/oss-autopilot/issues/1203)) ([#1217](https://github.com/costajohnt/oss-autopilot/issues/1217)) ([85a20bc](https://github.com/costajohnt/oss-autopilot/commit/85a20bcfa115feae1834e15c058d5c358aa4c60e))
-* **validation:** reject placeholder GitHub usernames at write side ([#1226](https://github.com/costajohnt/oss-autopilot/issues/1226)) ([24a85db](https://github.com/costajohnt/oss-autopilot/commit/24a85db20255939e44b80a82112cf652b01dd231))
 
 ## [5.1.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.0.1...mcp-v5.1.0) (2026-04-26)
 
