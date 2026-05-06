@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.1.0...mcp-v5.1.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* **mcp:** throw on prompt failures instead of returning userMessage ([#1203](https://github.com/costajohnt/oss-autopilot/issues/1203)) ([#1217](https://github.com/costajohnt/oss-autopilot/issues/1217)) ([85a20bc](https://github.com/costajohnt/oss-autopilot/commit/85a20bcfa115feae1834e15c058d5c358aa4c60e))
+
 ## [5.1.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.0.1...mcp-v5.1.0) (2026-04-26)
 
 

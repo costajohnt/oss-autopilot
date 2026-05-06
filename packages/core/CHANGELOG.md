@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.3.0...core-v3.4.0) (2026-05-06)
+
+
+### Features
+
+* **pr-comments-fetcher:** return failures list alongside bundles ([#1209](https://github.com/costajohnt/oss-autopilot/issues/1209) L8) ([#1233](https://github.com/costajohnt/oss-autopilot/issues/1233)) ([1d48d37](https://github.com/costajohnt/oss-autopilot/commit/1d48d37e20465b38ff6cbed32cdca37247009995))
+
+
+### Bug Fixes
+
+* **cli:** let leaf subcommands inherit parent group's localOnly flag ([#1208](https://github.com/costajohnt/oss-autopilot/issues/1208) M2) ([#1221](https://github.com/costajohnt/oss-autopilot/issues/1221)) ([d2095f8](https://github.com/costajohnt/oss-autopilot/commit/d2095f8eec75cef4c130c74cf0e3a6842548c42d))
+* **dashboard:** surface background-refresh failure via X-Dashboard-Stale header ([#1205](https://github.com/costajohnt/oss-autopilot/issues/1205)) ([#1231](https://github.com/costajohnt/oss-autopilot/issues/1231)) ([21e8560](https://github.com/costajohnt/oss-autopilot/commit/21e8560383de214c3454fbb5531fff2e8f7a1a42))
+* **guidelines:** drop PRs with empty/malformed timestamps from recency cliff ([#1204](https://github.com/costajohnt/oss-autopilot/issues/1204)) ([#1230](https://github.com/costajohnt/oss-autopilot/issues/1230)) ([7621adb](https://github.com/costajohnt/oss-autopilot/commit/7621adb5fb2ff097864f0c331992372896ed1fa6))
+* **validation:** reject placeholder GitHub usernames at write side ([#1226](https://github.com/costajohnt/oss-autopilot/issues/1226)) ([24a85db](https://github.com/costajohnt/oss-autopilot/commit/24a85db20255939e44b80a82112cf652b01dd231))
+
 ## [3.3.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.2.0...core-v3.3.0) (2026-05-04)
 
 
