@@ -186,7 +186,7 @@ describe('validateGitHubUrl', () => {
 describe('validateGitHubUsername', () => {
   describe('valid usernames', () => {
     it('should accept a normal username', () => {
-      expect(validateGitHubUsername('octocat')).toBe('octocat');
+      expect(validateGitHubUsername('alice-dev')).toBe('alice-dev');
     });
 
     it('should accept a username with hyphens', () => {
@@ -211,7 +211,7 @@ describe('validateGitHubUsername', () => {
     });
 
     it('should trim whitespace from the username', () => {
-      expect(validateGitHubUsername('  octocat  ')).toBe('octocat');
+      expect(validateGitHubUsername('  alice-dev  ')).toBe('alice-dev');
     });
   });
 
@@ -258,12 +258,19 @@ describe('validateGitHubUsername', () => {
       expect(() => validateGitHubUsername('octo.cat')).toThrow('alphanumeric characters and hyphens');
     });
 
-    it.each(['example-user', 'your-username', 'your-github-username', 'EXAMPLE-USER', 'Your-Username'])(
-      'should reject placeholder username %s (case-insensitive)',
-      (placeholder) => {
-        expect(() => validateGitHubUsername(placeholder)).toThrow(ValidationError);
-        expect(() => validateGitHubUsername(placeholder)).toThrow('looks like a placeholder');
-      },
-    );
+    it.each([
+      'example-user',
+      'your-username',
+      'your-github-username',
+      'octocat',
+      'monalisa',
+      'EXAMPLE-USER',
+      'Your-Username',
+      'Octocat',
+      'MONALISA',
+    ])('should reject placeholder username %s (case-insensitive)', (placeholder) => {
+      expect(() => validateGitHubUsername(placeholder)).toThrow(ValidationError);
+      expect(() => validateGitHubUsername(placeholder)).toThrow('looks like a placeholder');
+    });
   });
 });

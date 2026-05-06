@@ -20,6 +20,13 @@ const PLACEHOLDER_USERNAMES: readonly Lowercase<string>[] = [
   'example-user',
   'your-username',
   'your-github-username',
+  // GitHub's mascot accounts. Real users on github.com but seeded into countless
+  // example configs, READMEs, and SDK docs (Octokit's quickstarts use `octocat`
+  // as the canonical login). Treating them as placeholders keeps a stale example
+  // value from silently swapping a real user's PR feed with the mascot's open
+  // PRs in violet-org/boysenberry-repo (octocat's public test fixtures).
+  'octocat',
+  'monalisa',
 ] as const;
 
 const KNOWN_PLACEHOLDER_USERNAMES: ReadonlySet<string> = new Set(PLACEHOLDER_USERNAMES);
