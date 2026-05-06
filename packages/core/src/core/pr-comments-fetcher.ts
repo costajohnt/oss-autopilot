@@ -168,19 +168,26 @@ export async function fetchPRCommentBundle(
 /**
  * Fetch comment bundles for many PRs with a small concurrency cap (default 3).
  *
- * Failures on individual PRs are logged and skipped — the batch returns a
- * shorter array rather than aborting. Rationale: extraction quality is
- * already a partial-information problem (users contribute to many repos and
- * many PRs), so a single 404 / rate limit on one PR should not deny the
- * host the corpus from the other 4.
+ * Failures on individual PRs are logged and recorded — the batch returns
+ * `{ bundles, failures }` so the caller can decide whether to retry, surface
+ * a partial-data banner, or proceed. Rationale: extraction quality is already
+ * a partial-information problem (users contribute to many repos and many PRs),
+ * so a single 404 / rate limit on one PR should not deny the host the corpus
+ * from the other 4 — but the failure should still be visible (#1209 L8).
  */
+export interface PRCommentBundlesBatchResult {
+  bundles: PRCommentBundle[];
+  failures: Array<{ prUrl: string; error: string }>;
+}
+
 export async function fetchPRCommentBundlesBatch(
   octokit: Octokit,
   prUrls: string[],
   githubUsername: string,
   concurrency: number = DEFAULT_BATCH_CONCURRENCY,
-): Promise<PRCommentBundle[]> {
-  const results: PRCommentBundle[] = [];
+): Promise<PRCommentBundlesBatchResult> {
+  const bundles: PRCommentBundle[] = [];
+  const failures: Array<{ prUrl: string; error: string }> = [];
   const queue = [...prUrls];
 
   async function worker(): Promise<void> {
@@ -189,9 +196,11 @@ export async function fetchPRCommentBundlesBatch(
       if (!url) return;
       try {
         const bundle = await fetchPRCommentBundle(octokit, url, githubUsername);
-        results.push(bundle);
+        bundles.push(bundle);
       } catch (err) {
-        warn(MODULE, `Skipping ${url}: ${errorMessage(err)}`);
+        const errorMsg = errorMessage(err);
+        failures.push({ prUrl: url, error: errorMsg });
+        warn(MODULE, `Skipping ${url}: ${errorMsg}`);
       }
     }
   }
@@ -199,6 +208,6 @@ export async function fetchPRCommentBundlesBatch(
   const workers = Array.from({ length: Math.min(concurrency, prUrls.length) }, worker);
   await Promise.all(workers);
 
-  debug(MODULE, `Fetched ${results.length}/${prUrls.length} comment bundles`);
-  return results;
+  debug(MODULE, `Fetched ${bundles.length}/${prUrls.length} comment bundles (${failures.length} failed)`);
+  return { bundles, failures };
 }

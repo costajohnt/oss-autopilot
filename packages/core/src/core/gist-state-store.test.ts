@@ -455,6 +455,65 @@ describe('GistStateStore', () => {
     });
   });
 
+  describe('refreshFromGist (#1209 L9)', () => {
+    it('returns { status: "no-gist" } before bootstrap (no gistId)', async () => {
+      const store = new GistStateStore(octokit);
+      const result = await store.refreshFromGist();
+      expect(result).toEqual({ status: 'no-gist' });
+    });
+
+    it('returns { status: "refreshed" } on a successful re-fetch', async () => {
+      const gistId = 'refresh-success';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, makeStateJson()));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      // Reset the throttle so the refresh isn't blocked.
+      (store as unknown as { lastRefreshAt: number }).lastRefreshAt = 0;
+      const result = await store.refreshFromGist();
+      expect(result).toEqual({ status: 'refreshed' });
+    });
+
+    it('returns { status: "throttled", sinceLastMs } when called within 30s of the previous refresh', async () => {
+      const gistId = 'refresh-throttled';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, makeStateJson()));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      // Reset throttle and do a first refresh to stamp lastRefreshAt.
+      (store as unknown as { lastRefreshAt: number }).lastRefreshAt = 0;
+      const first = await store.refreshFromGist();
+      expect(first.status).toBe('refreshed');
+      // Immediate next call is within the 30s throttle window.
+      const result = await store.refreshFromGist();
+      expect(result.status).toBe('throttled');
+      if (result.status === 'throttled') {
+        expect(result.sinceLastMs).toBeGreaterThanOrEqual(0);
+        expect(result.sinceLastMs).toBeLessThan(30_000);
+      }
+    });
+
+    it('returns { status: "error", error } when the API call fails', async () => {
+      const gistId = 'refresh-error';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValueOnce(makeGistResponse(gistId, makeStateJson()));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      (store as unknown as { lastRefreshAt: number }).lastRefreshAt = 0;
+      // Subsequent fetch fails.
+      octokit.gists.get.mockRejectedValueOnce(new Error('Gist API 500'));
+
+      const result = await store.refreshFromGist();
+      expect(result.status).toBe('error');
+      if (result.status === 'error') {
+        expect(result.error.message).toContain('Gist API 500');
+      }
+    });
+  });
+
   describe('getGistId', () => {
     it('should return null before bootstrap', () => {
       const store = new GistStateStore(octokit);

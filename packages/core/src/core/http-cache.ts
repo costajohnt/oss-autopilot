@@ -101,7 +101,16 @@ export class HttpCache {
         return null;
       }
       return entry;
-    } catch {
+    } catch (err) {
+      // ENOENT (cache miss) is the common case and not worth logging — but
+      // EISDIR / JSON parse / disk corruption all looked identical to a miss
+      // before, hiding repeated cache misses caused by a corrupt entry. Log
+      // anything that's not "file not found" so the cause becomes
+      // diagnosable in DEBUG mode (#1209 L5).
+      if (err && typeof err === 'object' && (err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        const msg = err instanceof Error ? err.message : 'unknown error';
+        debug(MODULE, `Cache read failed for ${url} (treating as miss): ${msg}`);
+      }
       return null;
     }
   }

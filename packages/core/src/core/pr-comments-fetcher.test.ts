@@ -2,14 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Octokit } from '@octokit/rest';
 import { fetchPRCommentBundle, fetchPRCommentBundlesBatch } from './pr-comments-fetcher.js';
 
-// Mock paginateAll so tests don't need to simulate page boundaries; one
-// page is enough to verify the data-shape contract.
-vi.mock('./pagination.js', () => ({
-  paginateAll: async (fetchPage: (page: number) => Promise<{ data: unknown[] }>) => {
-    const r = await fetchPage(1);
-    return r.data;
-  },
-}));
+// Note: paginateAll is NOT mocked — these tests exercise the real pagination
+// loop. Existing tests use small data sets (< 100 items per list) so
+// paginateAll naturally stops after page 1 (data.length < perPage); the
+// '2-page' test below intentionally returns 100 items on page 1 to verify
+// the loop continues to page 2 and concatenates correctly (#1209 L1).
 
 // ── Fixture builders ────────────────────────────────────────────────────────
 
@@ -197,6 +194,50 @@ describe('fetchPRCommentBundle', () => {
     const bundle = await fetchPRCommentBundle(octokit, PR_URL, 'me');
     expect(bundle.mergedAt).toBe('');
   });
+
+  it('paginates real Octokit list responses across page boundaries (#1209 L1)', async () => {
+    // 100 reviews on page 1 (== per_page → triggers another page fetch),
+    // 1 review on page 2 (< per_page → loop terminates). Verifies the
+    // bundle includes items from both pages, catching regressions in the
+    // pagination contract that the previous paginateAll mock hid.
+    const page1Reviews = Array.from({ length: 100 }, (_, i) => ({
+      user: { login: `m${i + 1}` },
+      author_association: 'OWNER',
+      body: `review ${i + 1}`,
+      submitted_at: `2026-04-${String((i % 28) + 1).padStart(2, '0')}T10:00:00Z`,
+    }));
+    const page2Reviews = [
+      {
+        user: { login: 'm101' },
+        author_association: 'OWNER',
+        body: 'final review',
+        submitted_at: '2026-04-30T10:00:00Z',
+      },
+    ];
+
+    const octokit = {
+      pulls: {
+        get: vi.fn(async () => ({ data: makePR() })),
+        listReviews: vi.fn(async (args: { page?: number }) => {
+          if (args.page === 1) return { data: page1Reviews };
+          if (args.page === 2) return { data: page2Reviews };
+          return { data: [] };
+        }),
+        listReviewComments: vi.fn(async () => ({ data: [] })),
+      },
+      issues: {
+        listComments: vi.fn(async () => ({ data: [] })),
+      },
+    } as unknown as Octokit;
+
+    const bundle = await fetchPRCommentBundle(octokit, PR_URL, 'me');
+    // 101 total reviews — both pages concatenated, none duplicated.
+    expect(bundle.reviews).toHaveLength(101);
+    expect(bundle.reviews[0].body).toBe('review 1');
+    expect(bundle.reviews[100].body).toBe('final review');
+    // listReviews called exactly twice — page 1 (full), page 2 (short → stop).
+    expect((octokit.pulls.listReviews as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
+  });
 });
 
 describe('fetchPRCommentBundlesBatch', () => {
@@ -213,7 +254,7 @@ describe('fetchPRCommentBundlesBatch', () => {
       'https://github.com/owner/repo/pull/2',
       'https://github.com/owner/repo/pull/3',
     ];
-    const bundles = await fetchPRCommentBundlesBatch(octokit, urls, 'me');
+    const { bundles } = await fetchPRCommentBundlesBatch(octokit, urls, 'me');
     expect(bundles).toHaveLength(3);
   });
 
@@ -239,19 +280,23 @@ describe('fetchPRCommentBundlesBatch', () => {
       'https://github.com/owner/repo/pull/2',
       'https://github.com/owner/repo/pull/3',
     ];
-    const bundles = await fetchPRCommentBundlesBatch(octokit, urls, 'me', 1);
+    const { bundles } = await fetchPRCommentBundlesBatch(octokit, urls, 'me', 1);
     expect(bundles).toHaveLength(2); // skipped PR 2
   });
 
   it('respects the concurrency cap', async () => {
+    // Manual gate replaces the previous `setTimeout(resolve, 5)` simulated
+    // delay (#1209 L2) — no wallclock wait, but still keeps each call
+    // in-flight long enough for the parallel workers to bump `maxActive`.
     let active = 0;
     let maxActive = 0;
+    const releases: Array<() => void> = [];
     const octokit = {
       pulls: {
         get: vi.fn(async () => {
           active++;
           maxActive = Math.max(maxActive, active);
-          await new Promise((resolve) => setTimeout(resolve, 5));
+          await new Promise<void>((resolve) => releases.push(resolve));
           active--;
           return { data: makePR() };
         }),
@@ -264,12 +309,51 @@ describe('fetchPRCommentBundlesBatch', () => {
     } as unknown as Octokit;
 
     const urls = Array.from({ length: 6 }, (_, i) => `https://github.com/owner/repo/pull/${i + 1}`);
-    await fetchPRCommentBundlesBatch(octokit, urls, 'me', 2);
+    const batchPromise = fetchPRCommentBundlesBatch(octokit, urls, 'me', 2);
+    // Drain all pending workers in lock-step. After each release the freed
+    // worker's microtask schedules the next pulls.get; queueMicrotask gives
+    // it a chance to land before we pop the next release.
+    while (active > 0 || releases.length > 0) {
+      const release = releases.shift();
+      if (release) release();
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+    }
+    await batchPromise;
     expect(maxActive).toBeLessThanOrEqual(2);
   });
 
-  it('returns [] when given an empty URL list', async () => {
+  it('returns empty bundles + failures when given an empty URL list', async () => {
     const octokit = makeOctokit({});
-    expect(await fetchPRCommentBundlesBatch(octokit, [], 'me')).toEqual([]);
+    expect(await fetchPRCommentBundlesBatch(octokit, [], 'me')).toEqual({ bundles: [], failures: [] });
+  });
+
+  it('records per-PR failures alongside successful bundles (#1209 L8)', async () => {
+    // octokit.pulls.get fails for PR 2 only; other PRs succeed.
+    const octokit = {
+      pulls: {
+        get: vi.fn(async ({ pull_number }: { pull_number: number }) => {
+          if (pull_number === 2) throw new Error('Not Found');
+          return { data: makePR() };
+        }),
+        listReviews: vi.fn(async () => ({ data: [] })),
+        listReviewComments: vi.fn(async () => ({ data: [] })),
+      },
+      issues: {
+        listComments: vi.fn(async () => ({ data: [] })),
+      },
+    } as unknown as Octokit;
+
+    const urls = [
+      'https://github.com/owner/repo/pull/1',
+      'https://github.com/owner/repo/pull/2',
+      'https://github.com/owner/repo/pull/3',
+    ];
+    const result = await fetchPRCommentBundlesBatch(octokit, urls, 'me', 1);
+    expect(result.bundles).toHaveLength(2);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]).toEqual({
+      prUrl: 'https://github.com/owner/repo/pull/2',
+      error: expect.stringContaining('Not Found'),
+    });
   });
 });
