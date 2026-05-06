@@ -66,14 +66,14 @@ importers:
         specifier: ^22.0.1
         version: 22.0.1
       '@oss-scout/core':
-        specifier: ^0.7.1
-        version: 0.7.1(@octokit/core@7.0.6)
+        specifier: ^0.8.0
+        version: 0.8.0(@octokit/core@7.0.6)
       commander:
         specifier: ^14.0.3
         version: 14.0.3
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
@@ -112,8 +112,8 @@ importers:
         specifier: ^10.29.1
         version: 10.29.1
       preact-iso:
-        specifier: ^2.11.1
-        version: 2.11.1(preact-render-to-string@6.6.6(preact@10.29.1))(preact@10.29.1)
+        specifier: ^2.12.0
+        version: 2.12.0(preact-render-to-string@6.6.6(preact@10.29.1))(preact@10.29.1)
     devDependencies:
       '@fontsource/jetbrains-mono':
         specifier: ^5.2.8
@@ -147,13 +147,13 @@ importers:
     dependencies:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
-        version: 1.29.0(zod@4.3.6)
+        version: 1.29.0(zod@4.4.3)
       '@oss-autopilot/core':
         specifier: workspace:^
         version: link:../core
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
@@ -840,8 +840,8 @@ packages:
   '@octokit/types@16.0.0':
     resolution: {integrity: sha512-sKq+9r1Mm4efXW1FCk7hFSeJo4QKreL/tTbR0rz/qx/r1Oa2VV83LTA/H/MuCOX7uCIJmQVRKBcbmWoySjAnSg==}
 
-  '@oss-scout/core@0.7.1':
-    resolution: {integrity: sha512-3a3uQTsJVd6Lsf7q6rxrOwC7JFE3kkdI3Ok+UH1n7S/RHcWNOUUQm+Jh5+FC4dI/b8j1Q912xFOPnbfbQTbR8Q==}
+  '@oss-scout/core@0.8.0':
+    resolution: {integrity: sha512-9iZ150t6Ud1LkWwxRayDzs69LcIf9EJi/1tjOMoqjmydgBLVgIwEUXhMxdbZ6kfYonz0DOLrxgUpIqF9WMR50A==}
     engines: {node: '>=20.0.0'}
     hasBin: true
 
@@ -2449,8 +2449,8 @@ packages:
     resolution: {integrity: sha512-pMMHxBOZKFU6HgAZ4eyGnwXF/EvPGGqUr0MnZ5+99485wwW41kW91A4LOGxSHhgugZmSChL5AlElNdwlNgcnLQ==}
     engines: {node: ^10 || ^12 || >=14}
 
-  preact-iso@2.11.1:
-    resolution: {integrity: sha512-rLy0RmzP/hrDjnFdnEblxFgKtzUj4njkHrpGJBGS7S4QuYw1zv0lA38qsWpeAAB10JAz/hF2CsHrLen9ufCtbw==}
+  preact-iso@2.12.0:
+    resolution: {integrity: sha512-k0Y44UONBJ1zBXXCBhJRAa5O4ww8a5FHdLD6l21IxcnsTmDBto4n7KPQAH6xqegsKDMX4SuJ02qItiUlciIlZQ==}
     peerDependencies:
       preact: '>=10 || >= 11.0.0-0'
       preact-render-to-string: '>=6.4.0'
@@ -2940,8 +2940,8 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@4.3.6:
-    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
 snapshots:
 
@@ -3395,7 +3395,7 @@ snapshots:
 
   '@kurkle/color@0.3.4': {}
 
-  '@modelcontextprotocol/sdk@1.29.0(zod@4.3.6)':
+  '@modelcontextprotocol/sdk@1.29.0(zod@4.4.3)':
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.14)
       ajv: 8.18.0
@@ -3412,8 +3412,8 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 4.3.6
-      zod-to-json-schema: 3.25.2(zod@4.3.6)
+      zod: 4.4.3
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
     transitivePeerDependencies:
       - supports-color
 
@@ -3500,12 +3500,12 @@ snapshots:
     dependencies:
       '@octokit/openapi-types': 27.0.0
 
-  '@oss-scout/core@0.7.1(@octokit/core@7.0.6)':
+  '@oss-scout/core@0.8.0(@octokit/core@7.0.6)':
     dependencies:
       '@octokit/plugin-throttling': 11.0.3(@octokit/core@7.0.6)
       '@octokit/rest': 22.0.1
       commander: 14.0.3
-      zod: 4.3.6
+      zod: 4.4.3
     transitivePeerDependencies:
       - '@octokit/core'
 
@@ -5114,7 +5114,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  preact-iso@2.11.1(preact-render-to-string@6.6.6(preact@10.29.1))(preact@10.29.1):
+  preact-iso@2.12.0(preact-render-to-string@6.6.6(preact@10.29.1))(preact@10.29.1):
     dependencies:
       preact: 10.29.1
       preact-render-to-string: 6.6.6(preact@10.29.1)
@@ -5630,8 +5630,8 @@ snapshots:
 
   zimmerframe@1.1.4: {}
 
-  zod-to-json-schema@3.25.2(zod@4.3.6):
+  zod-to-json-schema@3.25.2(zod@4.4.3):
     dependencies:
-      zod: 4.3.6
+      zod: 4.4.3
 
-  zod@4.3.6: {}
+  zod@4.4.3: {}
