@@ -15,6 +15,7 @@ import {
   runVet,
   runVetList,
   runTrack,
+  runComplianceScore,
   runComments,
   runPost,
   runClaim,
@@ -227,6 +228,22 @@ export function registerTools(server: McpServer): void {
   // The v1→v2 `untrack` and `read` stubs were removed in v4 (#1133). Use
   // `shelve`/`unshelve` to hide PRs from the daily digest. MCP clients that
   // hard-coded these tool names will get a "tool not found" error.
+
+  // 5b. compliance-score — Run the typed compliance scoring function
+  // against a PR (#1245). Used by `pr-compliance-checker` instead of
+  // re-implementing the weights inside the agent prompt.
+  server.registerTool(
+    'compliance-score',
+    {
+      description:
+        'Score a pull request against opensource.guide best practices. Returns a structured result with the overall score (0-100), rating, and per-check status (issue reference, description, focused changes, tests, title, branch). Read-only; no state mutation.',
+      inputSchema: {
+        prUrl: githubPrUrlSchema.describe('Full GitHub PR URL to score (e.g. https://github.com/owner/repo/pull/123)'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    wrapTool(runComplianceScore),
+  );
 
   // 6. comments — Show PR comments
   server.registerTool(

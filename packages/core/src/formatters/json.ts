@@ -616,6 +616,33 @@ export const PRTemplateOutputSchema = z.object({
   error: z.string().optional(),
 });
 
+const ComplianceCheckSchema = z.object({
+  status: z.enum(['pass', 'warn', 'fail']),
+  weight: z.number(),
+  detail: z.string(),
+});
+
+export const ComplianceScoreOutputSchema = z.object({
+  pr: z.object({
+    repo: z.string(),
+    number: z.number().int().nonnegative(),
+    title: z.string(),
+    url: z.string(),
+  }),
+  score: z.number().int().min(0).max(100),
+  rating: z.enum(['ready', 'minor', 'fix_first', 'significant_work']),
+  emoji: z.enum(['🌟', '✅', '⚠️', '❌']),
+  checks: z.object({
+    issueReference: ComplianceCheckSchema,
+    description: ComplianceCheckSchema,
+    focusedChanges: ComplianceCheckSchema,
+    tests: ComplianceCheckSchema,
+    title: ComplianceCheckSchema,
+    branch: ComplianceCheckSchema,
+  }),
+});
+export type ComplianceScoreOutput = z.infer<typeof ComplianceScoreOutputSchema>;
+
 const ParsedIssueItemSchema = z.object({
   repo: z.string(),
   number: z.number(),

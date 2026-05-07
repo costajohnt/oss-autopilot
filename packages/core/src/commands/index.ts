@@ -35,6 +35,8 @@ export { runVetList } from './vet-list.js';
 
 /** Fetch PR metadata from GitHub (informational; nothing is persisted). */
 export { runTrack } from './track.js';
+/** Score a PR against opensource.guide best practices via the typed core function (#1245). */
+export { runComplianceScore } from './compliance-score.js';
 /** Temporarily hide a PR from the daily digest. */
 export { runShelve } from './shelve.js';
 /** Restore a shelved PR to the daily digest. */

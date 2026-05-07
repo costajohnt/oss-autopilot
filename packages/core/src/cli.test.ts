@@ -389,6 +389,7 @@ describe('Command registration', () => {
       'vet',
       'vet-list',
       'track',
+      'compliance-score',
       'comments',
       'post',
       'claim',

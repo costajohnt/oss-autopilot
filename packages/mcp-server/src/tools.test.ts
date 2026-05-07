@@ -3,7 +3,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from './server.js';
 
-/** All 22 tool names that must be registered (untrack and read removed in v4 — #1133). */
+/** All registered tool names (untrack and read removed in v4 — #1133;
+ * compliance-score added in #1245). */
 const EXPECTED_TOOLS = [
   'daily',
   'status',
@@ -11,6 +12,7 @@ const EXPECTED_TOOLS = [
   'vet',
   'vet-list',
   'track',
+  'compliance-score',
   'comments',
   'post',
   'claim',
@@ -59,8 +61,8 @@ describe('MCP tool registrations', () => {
     await client.close();
   });
 
-  it('registers exactly 26 tools', () => {
-    expect(tools).toHaveLength(26);
+  it('registers exactly 27 tools', () => {
+    expect(tools).toHaveLength(27);
   });
 
   it('registers all expected tool names', () => {
@@ -144,7 +146,7 @@ describe('MCP tool registrations', () => {
   describe('annotations', () => {
     // track is read-only in v2: fetches metadata from GitHub, does not persist (#1001).
     // untrack and read v1→v2 stubs were removed in v4 (#1133).
-    const readOnlyTools = ['status', 'search', 'vet', 'comments', 'check-setup', 'track'];
+    const readOnlyTools = ['status', 'search', 'vet', 'comments', 'check-setup', 'track', 'compliance-score'];
     const mutatingTools = [
       'daily',
       'startup',

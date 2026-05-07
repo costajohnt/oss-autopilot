@@ -22,7 +22,7 @@ User explicitly wants a PR compliance check.
 
 model: haiku
 color: orange
-tools: ["Bash", "Read", "Glob", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__read", "mcp__plugin_oss-autopilot_oss-autopilot__comments"]
+tools: ["Bash", "Read", "Glob", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments", "mcp__plugin_oss-autopilot_oss-autopilot__compliance-score", "mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
@@ -35,18 +35,23 @@ Evaluate PRs against established OSS contribution standards and provide actionab
 
 ## Data Access
 
-**Prefer MCP tools:**
-- `mcp__plugin_oss-autopilot_oss-autopilot__read` — read-only PR data (title, body, file changes, metadata).
-- `mcp__plugin_oss-autopilot_oss-autopilot__comments` — review comments + discussion thread.
+**Prefer MCP tools** (in this order):
+
+1. `mcp__plugin_oss-autopilot_oss-autopilot__compliance-score` — full structured compliance evaluation. Returns `{ score, rating, emoji, checks }` computed by the typed core function. Renders the table without you re-implementing the weights.
+2. `mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get` — per-repo guidelines learned from prior PR feedback (#867). If guidelines exist for the target repo, weave them into your interpretive recommendations as additional repo-specific requirements.
+3. `mcp__plugin_oss-autopilot_oss-autopilot__track` — read-only PR metadata fallback when `compliance-score` is unavailable. (`track` is informational in v2; it does not mutate state.)
+4. `mcp__plugin_oss-autopilot_oss-autopilot__comments` — review comments + discussion thread.
+
+For the repo's PR template (`.github/pull_request_template.md`), use the CLI command listed below — it is not exposed as an MCP tool. Validate the PR description against THAT, not just the generic ideal template below.
 
 **CLI fallback** (only when MCP is unavailable):
 
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" read <pr-url> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" compliance-score <pr-url> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" track <pr-url> --json
 GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" comments <pr-url> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" pr-template OWNER/REPO --json
 ```
-
-Use `read` (not `track`) — this agent is read-only and `track` mutates state.
 
 **On failure:** If both MCP and CLI fail, use `gh pr view OWNER/REPO#NUMBER --json ...` as the final fallback. If all fail, report the errors and stop — do not improvise a different check.
 

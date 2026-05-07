@@ -22,7 +22,7 @@ Rebase checking and execution is a core health check responsibility.
 
 model: sonnet
 color: yellow
-tools: ["Bash", "Read", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__read", "mcp__plugin_oss-autopilot_oss-autopilot__comments"]
+tools: ["Bash", "Read", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
@@ -53,12 +53,12 @@ Reviewers rely on incremental commits to see what changed since their last revie
 ## Data Access
 
 **Prefer MCP tools:**
-- `mcp__plugin_oss-autopilot_oss-autopilot__read` — PR snapshot (state, CI checks, reviewDecision, reviews, mergeable).
+- `mcp__plugin_oss-autopilot_oss-autopilot__track` — PR snapshot (informational; v2 does not mutate state).
 - `mcp__plugin_oss-autopilot_oss-autopilot__comments` — discussion thread for bot / maintainer comments.
 
 **CLI fallback** (only when MCP is unavailable):
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" read <pr-url> --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" track <pr-url> --json
 GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" comments <pr-url> --json
 ```
 

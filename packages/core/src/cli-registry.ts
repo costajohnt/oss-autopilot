@@ -506,6 +506,34 @@ export const commands: CLICommandDef[] = [
   // `shelve`/`unshelve` to hide PRs from the daily digest. Scripts that hard-
   // coded these commands now get an "unknown command" error from commander.
 
+  // ── Compliance Score ───────────────────────────────────────────────────
+  {
+    name: 'compliance-score',
+    register(program) {
+      program
+        .command('compliance-score <pr-url>')
+        .description('Score a PR against opensource.guide best practices (#1245)')
+        .option('--json', 'Output as JSON')
+        .action(async (prUrl, options) => {
+          const { ComplianceScoreOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
+            options,
+            async () => (await import('./commands/compliance-score.js')).runComplianceScore({ prUrl }),
+            (data) => {
+              console.log(`\n${data.emoji} PR ${data.pr.repo}#${data.pr.number}: ${data.pr.title}`);
+              console.log(`Score: ${data.score}/100 — ${data.rating.replace(/_/g, ' ')}\n`);
+              console.log('Checks:');
+              for (const [name, check] of Object.entries(data.checks)) {
+                const icon = check.status === 'pass' ? 'OK ' : check.status === 'warn' ? 'WARN' : 'FAIL';
+                console.log(`  [${icon}] ${name} (${check.weight}%) — ${check.detail}`);
+              }
+            },
+            ComplianceScoreOutputSchema,
+          );
+        });
+    },
+  },
+
   // ── Comments ───────────────────────────────────────────────────────────
   {
     name: 'comments',
