@@ -22,7 +22,7 @@ Post-conflict resolution is a critical moment where bugs can be introduced. Revi
 
 model: sonnet
 color: red
-tools: ["Bash", "Read", "Glob", "Grep"]
+tools: ["Bash", "Read", "Glob", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
@@ -59,7 +59,9 @@ If this shows commits, save the working range as `diffRange` (the first of the t
 
 ## Phase 2: Convention Detection
 
-Read the target repo's contribution guidelines and style configuration. Skip missing, track found: `CONTRIBUTING.md`, `.editorconfig`, `.eslintrc*`, `.prettierrc*`, `biome.json*`, `.clang-format`, `.rustfmt.toml`, `pyproject.toml` (check for `[tool.ruff]` / `[tool.black]` / `[tool.isort]`). If nothing found, note in the final report that convention checks are inference-only.
+**First**, call `mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get` with the target repo (#1250 Improvement 1). If per-repo guidelines exist (extracted via #867 from prior PR feedback history), they are AUTHORITATIVE — they override anything inferred from configs or sample files. The Phase 3 finding tiers (Critical / Recommended / Minor) consume the guidelines as project-specific rules: a violation of a documented "this repo wants tests in `__tests__/` not `test/`" rule is Recommended at minimum, even if the agent would otherwise call it Minor.
+
+**Then**, read the target repo's contribution guidelines and style configuration. Skip missing, track found: `CONTRIBUTING.md`, `.editorconfig`, `.eslintrc*`, `.prettierrc*`, `biome.json*`, `.clang-format`, `.rustfmt.toml`, `pyproject.toml` (check for `[tool.ruff]` / `[tool.black]` / `[tool.isort]`). If nothing found AND no per-repo guidelines exist, note in the final report that convention checks are inference-only.
 
 Also look at 2–3 existing files in the same directories as changed files to infer naming, import ordering, comment style, and test file location.
 
