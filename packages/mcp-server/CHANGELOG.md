@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1.2](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.1.1...mcp-v5.1.2) (2026-05-07)
+
+
+### Bug Fixes
+
+* **validation:** reject octocat and monalisa as placeholder usernames ([#1240](https://github.com/costajohnt/oss-autopilot/issues/1240)) ([14f9d98](https://github.com/costajohnt/oss-autopilot/commit/14f9d98efdd774ce186e1c9d2f6e6095bbc206a8))
+
 ## [5.1.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.1.0...mcp-v5.1.1) (2026-05-06)
 
 

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.4.0...core-v3.4.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* **validation:** reject octocat and monalisa as placeholder usernames ([#1240](https://github.com/costajohnt/oss-autopilot/issues/1240)) ([14f9d98](https://github.com/costajohnt/oss-autopilot/commit/14f9d98efdd774ce186e1c9d2f6e6095bbc206a8))
+
 ## [3.4.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.3.0...core-v3.4.0) (2026-05-06)
 
 
