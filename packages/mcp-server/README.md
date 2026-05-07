@@ -119,6 +119,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `vet` | Analyze an issue for contribution suitability | Yes |
 | `vet-list` | Re-vet all available issues in the curated issue list | No |
 | `track` | Fetch metadata for a pull request (informational; nothing persists) | No |
+| `compliance-score` | Score a PR against opensource.guide best practices (#1245) | Yes |
 | `comments` | Fetch and display PR comments | Yes |
 | `post` | Post a comment on an issue or PR | No |
 | `claim` | Claim an issue by posting a comment | No |
