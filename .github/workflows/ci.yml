@@ -30,7 +30,7 @@ env:
   #   - **Don't bump for a flaky measurement:** esbuild output is
   #     deterministic. If the threshold trips on a no-op rebuild, it's a
   #     real increase somewhere upstream — not noise.
-  BUNDLE_MAX_CORE: 800000 # ~781 KB (increased for guidelines CLI commands, #867 PR 4)
+  BUNDLE_MAX_CORE: 820000 # ~801 KB (increased for compliance-score command + linked-issue verification, #1245/#1246)
   BUNDLE_MAX_MCP: 2000000 # ~1953 KB
   STARTUP_WARN_MS: 500 # Warn if CLI startup exceeds 500ms
 
