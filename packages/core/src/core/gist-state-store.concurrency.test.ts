@@ -367,14 +367,14 @@ describe('GistStateStore concurrency (#1191)', () => {
     }
   });
 
-  // Pins the current byte-overwrite-per-file behavior: two writers that
-  // both modify state.json with disjoint fields clobber each other rather
-  // than merge. This is the documented last-write-wins-by-intent model
-  // (gist-state-store.ts:17-32). If a future change introduces field-level
-  // merging on state.json, this test flips green-to-red and the assertion
-  // should become `expect(...).toEqual(expect.arrayContaining(['url-a','url-b']))`
-  // to pin the new (better) behavior.
-  it('two writers modifying state.json with disjoint fields clobber each other (byte-overwrite limit)', async () => {
+  // Pins the per-file conflict policy from #1235: state.json fails loud
+  // when its remote copy moved under the writer (preserving the
+  // StateManager optimistic-concurrency contract documented in
+  // state.ts:285-296). Two writers each modifying state.json on the same
+  // base no longer clobber silently — the second writer's push throws
+  // GistConcurrencyError and leaves the canonical state holding the first
+  // writer's edit.
+  it('two writers modifying state.json on the same base — second push fails loud (#1235)', async () => {
     const mock = makeStatefulGistMock(GIST_ID, makeInitialStateJson());
     const a = new GistStateStore(mock.octokit);
     const b = new GistStateStore(mock.octokit);
@@ -390,11 +390,80 @@ describe('GistStateStore concurrency (#1191)', () => {
     const stateB = JSON.parse(b.cachedFiles.get(STATE_FILE_NAME)!) as Record<string, unknown>;
     (stateB.config as { shelvedPRUrls: string[] }).shelvedPRUrls.push('url-b');
     b.setState(JSON.stringify(stateB, null, 2));
-    // b's first push 412s; the inner retry's "merge" reapplies b's staged
-    // bytes verbatim, dropping url-a.
+    // b's first push 412s. The merge re-fetches and finds the remote
+    // state.json has changed since b's baseline (a's url-a edit), so the
+    // store surfaces GistConcurrencyError instead of clobbering.
+    await expect(b.push()).rejects.toBeInstanceOf(GistConcurrencyError);
+
+    // Canonical state retains a's write.
+    const finalState = mock.readState() as { config: { shelvedPRUrls: string[] } };
+    expect(finalState.config.shelvedPRUrls).toEqual(['url-a']);
+
+    // b's local mutation is preserved in memory so the caller can refresh
+    // and reapply manually if desired.
+    expect(b.dirtyFiles.has(STATE_FILE_NAME)).toBe(true);
+    const bStaged = JSON.parse(b.cachedFiles.get(STATE_FILE_NAME)!) as {
+      config: { shelvedPRUrls: string[] };
+    };
+    expect(bStaged.config.shelvedPRUrls).toEqual(['url-b']);
+  });
+
+  // Companion to the test above: per-file policy means freeform documents
+  // (guidelines, etc.) keep last-write-wins on the same merge re-apply
+  // path (#1235). A writer racing on a guidelines file with no concurrent
+  // state.json change still succeeds via the existing merge-and-retry.
+  it('guidelines writes keep last-write-wins even when a state.json baseline changed (#1235)', async () => {
+    const mock = makeStatefulGistMock(GIST_ID, makeInitialStateJson());
+    const a = new GistStateStore(mock.octokit);
+    const b = new GistStateStore(mock.octokit);
+    await Promise.all([a.bootstrap(), b.bootstrap()]);
+
+    // a writes a guidelines file. Bumps mock ETag so b's lastFetchedEtag
+    // is now stale, but state.json has not changed remotely.
+    await tryWriteDocument(a, 'guidelines--writer-a.md', 'a content');
+
+    // b stages a different guidelines file. Its first push 412s; the
+    // merge refresh sees state.json baseline unchanged (a only touched
+    // a guidelines file), so b's push succeeds on the inner retry.
+    b.setDocument('guidelines--writer-b.md', 'b content');
     await b.push();
 
+    const finalFiles = mock.readAllFiles();
+    expect(finalFiles['guidelines--writer-a.md']).toBe('a content');
+    expect(finalFiles['guidelines--writer-b.md']).toBe('b content');
+  });
+
+  // Concurrent state.json + guidelines writes from a single store: when a
+  // peer writes state.json between the writer's last fetch and its push,
+  // the writer's state.json edit must fail loud even though guidelines
+  // would otherwise be safe to reapply. This pins that the per-file check
+  // gates the whole push, not just the state.json file (#1235).
+  it('mixed dirty set surfaces GistConcurrencyError when state.json conflicted (#1235)', async () => {
+    const mock = makeStatefulGistMock(GIST_ID, makeInitialStateJson());
+    const peer = new GistStateStore(mock.octokit);
+    const writer = new GistStateStore(mock.octokit);
+    await Promise.all([peer.bootstrap(), writer.bootstrap()]);
+
+    // Peer pushes a state.json change, bumping the canonical ETag and
+    // moving state.json off the writer's baseline.
+    const peerState = JSON.parse(peer.cachedFiles.get(STATE_FILE_NAME)!) as Record<string, unknown>;
+    (peerState.config as { shelvedPRUrls: string[] }).shelvedPRUrls.push('peer-url');
+    peer.setState(JSON.stringify(peerState, null, 2));
+    await peer.push();
+
+    // Writer stages BOTH a guidelines file and a state.json edit on the
+    // pre-peer base. The 412 merge refresh sees state.json moved under
+    // it; per #1235 the whole push fails loud.
+    const writerState = JSON.parse(writer.cachedFiles.get(STATE_FILE_NAME)!) as Record<string, unknown>;
+    (writerState.config as { shelvedPRUrls: string[] }).shelvedPRUrls.push('writer-url');
+    writer.setDocument('guidelines--writer.md', 'writer content');
+    writer.setState(JSON.stringify(writerState, null, 2));
+    await expect(writer.push()).rejects.toBeInstanceOf(GistConcurrencyError);
+
+    // Canonical state retains peer's write; writer's guidelines did NOT
+    // land (the failed push aborted the whole batch).
     const finalState = mock.readState() as { config: { shelvedPRUrls: string[] } };
-    expect(finalState.config.shelvedPRUrls).toEqual(['url-b']);
+    expect(finalState.config.shelvedPRUrls).toEqual(['peer-url']);
+    expect(mock.readAllFiles()['guidelines--writer.md']).toBeUndefined();
   });
 });

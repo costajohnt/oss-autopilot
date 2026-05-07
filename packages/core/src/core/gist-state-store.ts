@@ -14,7 +14,7 @@
  *  6. Cache all Gist file contents in memory for session-scoped reads
  *  7. Write state to a local cache file for fallback
  *
- * Concurrency model (#1115):
+ * Concurrency model (#1115, #1235):
  *
  *  Each fetch captures the response's `ETag` and stores it as
  *  `lastFetchedEtag`. The next `push()` sends that ETag back as
@@ -24,12 +24,25 @@
  *  On 412, the store attempts a single merge: it re-fetches the Gist
  *  (refreshing the ETag), re-applies the in-memory dirty content on top of
  *  the now-current remote state, and pushes once more. If that second push
- *  also returns 412, `push()` throws {@link GistConcurrencyError} — local
- *  mutations stay in memory so the caller can decide whether to refresh and
- *  retry. The merge step is intentionally cheap (state is a single JSON
- *  blob) and treats local dirty changes as authoritative for conflict
- *  cells, which matches the "last-write-wins by intent" model the rest of
- *  oss-autopilot already assumes for state.json.
+ *  also returns 412, `push()` throws {@link GistConcurrencyError}.
+ *
+ *  Per-file conflict policy on the merge re-apply step:
+ *
+ *   - `state.json` is fail-loud. The `StateManager` contract advertises
+ *     optimistic compare-and-swap (state.ts:285-296), so silently clobbering
+ *     a concurrent remote write would violate it. To detect concurrent
+ *     writes without per-file ETags (the Gist API only exposes one ETag for
+ *     the whole gist), we snapshot each file's content at fetch time. If
+ *     the post-refresh `state.json` differs from the snapshot we held
+ *     before the refresh, another machine wrote it: `push()` throws
+ *     `GistConcurrencyError` instead of overwriting.
+ *   - Freeform documents (e.g. per-repo guidelines) keep last-write-wins.
+ *     The `setDocument` / `setGuidelines` callers' intent on a manual write
+ *     is "overwrite". Local dirty content is reapplied on top of the
+ *     refreshed remote.
+ *
+ *  In both cases, when the second push also 412s, local mutations stay in
+ *  memory so the caller can decide whether to refresh and retry.
  */
 
 import * as fs from 'node:fs';
@@ -153,6 +166,16 @@ export class GistStateStore {
   private gistId: string | null = null;
   readonly cachedFiles: Map<string, string> = new Map();
   readonly dirtyFiles: Set<string> = new Set();
+  /**
+   * Per-file content snapshot captured at fetch time (#1235). The Gist API
+   * exposes a single ETag for the whole gist, so we cannot use `If-Match`
+   * to detect a per-file conflict on the 412 merge re-apply. Holding the
+   * baseline content lets us compare it against the freshly-fetched remote
+   * and decide whether `state.json` changed under us. Updated only by
+   * `fetchAndCache` and successful `push()`; not mutated by `setState` /
+   * `setDocument` so the baseline reflects the remote, not local edits.
+   */
+  private baselineFiles: Map<string, string> = new Map();
   /**
    * ETag captured from the most recent successful Gist fetch (#1115).
    * Sent back as `If-Match` on `update` so concurrent writes from another
@@ -481,16 +504,62 @@ export class GistStateStore {
         const content = this.cachedFiles.get(filename);
         if (content !== undefined) stagedContents[filename] = content;
       }
+      // Snapshot the full cache and baseline before refresh so a partial
+      // failure inside fetchAndCache (e.g. parse throws after the cache
+      // was already cleared and repopulated) can be rolled back without
+      // leaving the store with a stale ETag pointing at corrupt or
+      // half-populated state (#1235).
+      const preRefreshCache = new Map(this.cachedFiles);
+      const preRefreshBaseline = new Map(this.baselineFiles);
+      const preRefreshEtag = this.lastFetchedEtag;
+      const reapplyStaged = (): void => {
+        for (const [filename, content] of Object.entries(stagedContents)) {
+          this.cachedFiles.set(filename, content);
+        }
+      };
       try {
         await this.fetchAndCache(this.gistId);
       } catch (refreshErr) {
         warn(MODULE, `Merge refresh after 412 failed: ${refreshErr}`);
+        // Roll back any partial mutation from fetchAndCache so the
+        // caller's retry path sees the prior state (with local
+        // mutations re-applied on top).
+        this.cachedFiles.clear();
+        for (const [filename, content] of preRefreshCache) {
+          this.cachedFiles.set(filename, content);
+        }
+        this.baselineFiles = preRefreshBaseline;
+        this.lastFetchedEtag = preRefreshEtag;
+        reapplyStaged();
+        // Preserve the GistCorruptError type so callers don't retry
+        // against a corrupt remote (which a CONCURRENCY_ERROR would
+        // invite). Other failure types continue to surface as a
+        // concurrency error — the gist content is still likely fine.
+        if (refreshErr instanceof GistCorruptError) throw refreshErr;
         throw new GistConcurrencyError(expectedEtag, null);
       }
-      // Re-apply our staged dirty contents on top of the refreshed remote.
-      for (const [filename, content] of Object.entries(stagedContents)) {
-        this.cachedFiles.set(filename, content);
+      // Per-file conflict policy (#1235):
+      //  - state.json must fail loud when its remote copy moved under us;
+      //    silently overwriting would violate the StateManager
+      //    optimistic-concurrency contract (state.ts:285-296).
+      //  - Freeform documents (guidelines, etc.) keep last-write-wins —
+      //    `setDocument` callers' intent on a manual write is "overwrite".
+      if (stagedContents[STATE_FILE_NAME] !== undefined) {
+        const baselineBeforeRefresh = preRefreshBaseline.get(STATE_FILE_NAME);
+        const remoteAfterRefresh = this.cachedFiles.get(STATE_FILE_NAME);
+        if (baselineBeforeRefresh !== remoteAfterRefresh) {
+          warn(
+            MODULE,
+            'state.json changed remotely while a push was in flight; surfacing GistConcurrencyError instead of clobbering (#1235)',
+          );
+          // Preserve local state.json (and other staged dirty files) in
+          // memory so the caller can refresh and reapply if appropriate.
+          reapplyStaged();
+          throw new GistConcurrencyError(expectedEtag, this.lastFetchedEtag);
+        }
       }
+      // Re-apply our staged dirty contents on top of the refreshed remote.
+      reapplyStaged();
       result = await attempt(this.lastFetchedEtag);
       if (!result.ok && result.status === 412) {
         warn(MODULE, 'Second push after merge also returned 412; surfacing GistConcurrencyError');
@@ -508,8 +577,11 @@ export class GistStateStore {
       }
     }
 
-    // Success: flush dirty set and write local cache
+    // Success: flush dirty set and write local cache. Refresh the
+    // per-file baseline to reflect what we just wrote — the next 412
+    // merge re-apply check compares against this.
     this.dirtyFiles.clear();
+    this.baselineFiles = new Map(this.cachedFiles);
 
     const raw = this.cachedFiles.get(STATE_FILE_NAME);
     if (raw) {
@@ -594,6 +666,10 @@ export class GistStateStore {
         this.cachedFiles.set(filename, file.content);
       }
     }
+    // Snapshot the just-fetched contents as the per-file baseline (#1235).
+    // The 412 merge path uses this to detect whether a concurrent write
+    // changed `state.json` between this fetch and the next push attempt.
+    this.baselineFiles = new Map(this.cachedFiles);
 
     // Parse state.json
     const state = this.parseStateFromCache();
@@ -693,6 +769,7 @@ export class GistStateStore {
         this.cachedFiles.set(filename, file.content);
       }
     }
+    this.baselineFiles = new Map(this.cachedFiles);
 
     // Write-through to local cache
     this.writeLocalStateCache(freshState);
@@ -723,6 +800,7 @@ export class GistStateStore {
         this.cachedFiles.set(filename, file.content);
       }
     }
+    this.baselineFiles = new Map(this.cachedFiles);
 
     // Write-through to local cache
     this.writeLocalStateCache(seedState);

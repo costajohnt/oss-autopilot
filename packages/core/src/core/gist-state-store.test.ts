@@ -1063,28 +1063,32 @@ describe('GistStateStore', () => {
       });
     });
 
-    it('refreshes and retries once on 412, succeeding after merge', async () => {
+    it('refreshes and retries once on 412 when state.json baseline is unchanged', async () => {
+      // The 412 may be triggered by a peer writing a guidelines file (or
+      // any non-state.json file) — state.json's content is byte-identical
+      // before and after the refresh. Per #1235 the per-file fail-loud
+      // check passes and the inner retry proceeds normally.
       const gistId = 'etag-merge';
-      const initialStateJson = makeStateJson({ lastRunAt: '2025-01-01T00:00:00.000Z' });
-      const remoteStateJson = makeStateJson({ lastRunAt: '2025-06-01T00:00:00.000Z' });
+      const stateJson = makeStateJson({ lastRunAt: '2025-01-01T00:00:00.000Z' });
       fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
 
-      // Bootstrap fetch returns the initial state with ETag #1.
+      // Bootstrap fetch returns the state with ETag #1.
       octokit.gists.get.mockResolvedValueOnce({
-        ...makeGistResponse(gistId, initialStateJson),
+        ...makeGistResponse(gistId, stateJson),
         headers: { etag: 'W/"v1"' },
       });
-      // First update: 412 (another machine pushed in between).
+      // First update: 412 (another machine pushed something else).
       const conflictErr = Object.assign(new Error('Precondition failed'), { status: 412 });
       octokit.gists.update.mockRejectedValueOnce(conflictErr);
-      // Refresh fetch returns the remote state with a new ETag.
+      // Refresh fetch returns identical state.json content with a new
+      // ETag — modeling a peer write that didn't touch state.json.
       octokit.gists.get.mockResolvedValueOnce({
-        ...makeGistResponse(gistId, remoteStateJson),
+        ...makeGistResponse(gistId, stateJson),
         headers: { etag: 'W/"v2"' },
       });
       // Second update: succeeds with the new ETag.
       octokit.gists.update.mockResolvedValueOnce({
-        ...makeGistResponse(gistId, initialStateJson),
+        ...makeGistResponse(gistId, stateJson),
         headers: { etag: 'W/"v3"' },
       });
 
@@ -1098,14 +1102,51 @@ describe('GistStateStore', () => {
       expect(octokit.gists.update).toHaveBeenCalledTimes(2);
       expect(octokit.gists.update).toHaveBeenNthCalledWith(1, {
         gist_id: gistId,
-        files: { [STATE_FILE_NAME]: { content: initialStateJson } },
+        files: { [STATE_FILE_NAME]: { content: stateJson } },
         headers: { 'if-match': 'W/"v1"' },
       });
       expect(octokit.gists.update).toHaveBeenNthCalledWith(2, {
         gist_id: gistId,
-        files: { [STATE_FILE_NAME]: { content: initialStateJson } },
+        files: { [STATE_FILE_NAME]: { content: stateJson } },
         headers: { 'if-match': 'W/"v2"' },
       });
+    });
+
+    it('throws GistConcurrencyError when state.json moved remotely (#1235)', async () => {
+      // Same shape as the test above, except the refresh returns a
+      // CHANGED state.json. Per #1235 the per-file fail-loud check fires
+      // before the inner retry, so the writer sees GistConcurrencyError
+      // instead of clobbering the remote edit.
+      const gistId = 'etag-state-changed';
+      const initialStateJson = makeStateJson({ lastRunAt: '2025-01-01T00:00:00.000Z' });
+      const remoteStateJson = makeStateJson({ lastRunAt: '2025-06-01T00:00:00.000Z' });
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+
+      octokit.gists.get.mockResolvedValueOnce({
+        ...makeGistResponse(gistId, initialStateJson),
+        headers: { etag: 'W/"v1"' },
+      });
+      const conflictErr = Object.assign(new Error('Precondition failed'), { status: 412 });
+      octokit.gists.update.mockRejectedValueOnce(conflictErr);
+      octokit.gists.get.mockResolvedValueOnce({
+        ...makeGistResponse(gistId, remoteStateJson),
+        headers: { etag: 'W/"v2"' },
+      });
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      store.markDirty(STATE_FILE_NAME);
+
+      const { GistConcurrencyError } = await import('./errors.js');
+      await expect(store.push()).rejects.toThrow(GistConcurrencyError);
+
+      // The store made exactly one update attempt — the second never
+      // fired because the per-file check threw first.
+      expect(octokit.gists.update).toHaveBeenCalledTimes(1);
+      // Local state.json mutation is preserved in cachedFiles for the
+      // caller to retry against the refreshed baseline.
+      expect(store.dirtyFiles.has(STATE_FILE_NAME)).toBe(true);
+      expect(store.cachedFiles.get(STATE_FILE_NAME)).toBe(initialStateJson);
     });
 
     it('throws GistConcurrencyError when the merged push also returns 412', async () => {
@@ -1152,6 +1193,49 @@ describe('GistStateStore', () => {
 
       const { GistConcurrencyError } = await import('./errors.js');
       await expect(store.push()).rejects.toThrow(GistConcurrencyError);
+    });
+
+    it('on corrupt remote during 412 merge, rolls back ETag/baseline and propagates GistCorruptError (#1235)', async () => {
+      // Models the failure mode where a peer pushes between our last
+      // fetch and our push, AND that peer's state.json fails schema
+      // validation. The merge fetch's parse step throws GistCorruptError
+      // after `cachedFiles`/`lastFetchedEtag` were already mutated
+      // mid-fetchAndCache. The rollback in push() restores the prior
+      // values and re-throws the corrupt error so callers don't retry
+      // against a corrupt remote.
+      const gistId = 'etag-corrupt-mid-merge';
+      const initialStateJson = makeStateJson({ lastRunAt: '2025-01-01T00:00:00.000Z' });
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+
+      // Bootstrap fetch returns valid state with ETag v1.
+      octokit.gists.get.mockResolvedValueOnce({
+        ...makeGistResponse(gistId, initialStateJson),
+        headers: { etag: 'W/"v1"' },
+      });
+      // First update: 412.
+      const conflictErr = Object.assign(new Error('Precondition failed'), { status: 412 });
+      octokit.gists.update.mockRejectedValueOnce(conflictErr);
+      // Refresh fetch returns corrupt state.json (unparseable JSON) so
+      // parseStateFromCache throws GistCorruptError mid-fetchAndCache,
+      // after the cache and ETag have already been mutated.
+      const corruptStateRaw = '{"unterminated json';
+      octokit.gists.get.mockResolvedValueOnce({
+        ...makeGistResponse(gistId, corruptStateRaw),
+        headers: { etag: 'W/"v2"' },
+      });
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      store.markDirty(STATE_FILE_NAME);
+
+      const { GistCorruptError } = await import('./errors.js');
+      await expect(store.push()).rejects.toThrow(GistCorruptError);
+
+      // Rollback invariants: lastFetchedEtag and cached state.json must
+      // be restored to their pre-refresh values so a follow-up push
+      // does not blindly succeed against the corrupt remote.
+      expect((store as unknown as { lastFetchedEtag: string | null }).lastFetchedEtag).toBe('W/"v1"');
+      expect(store.cachedFiles.get(STATE_FILE_NAME)).toBe(initialStateJson);
     });
   });
 
