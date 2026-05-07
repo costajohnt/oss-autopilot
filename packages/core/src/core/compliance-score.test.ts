@@ -41,6 +41,75 @@ describe('computeComplianceScore — happy path', () => {
   });
 });
 
+describe('issueReference check — verified linked issues (#1246 B)', () => {
+  it('passes when the linked issue is open in the same repo', () => {
+    const ctx: RepoContext = {
+      linkedIssues: [{ number: 42, repo: 'owner/repo', crossRepo: false, state: 'open' }],
+    };
+    const result = computeComplianceScore(meta({ body: 'Closes #42' }), ctx);
+    expect(result.checks.issueReference.status).toBe('pass');
+  });
+
+  it('warns on a recently-closed linked issue', () => {
+    const ctx: RepoContext = {
+      linkedIssues: [{ number: 42, repo: 'owner/repo', crossRepo: false, state: 'closed', closedDaysAgo: 7 }],
+    };
+    const result = computeComplianceScore(meta({ body: 'Closes #42' }), ctx);
+    expect(result.checks.issueReference.status).toBe('warn');
+    expect(result.checks.issueReference.detail).toMatch(/7 days ago/);
+  });
+
+  it('fails on a long-stale closed linked issue', () => {
+    const ctx: RepoContext = {
+      linkedIssues: [{ number: 42, repo: 'owner/repo', crossRepo: false, state: 'closed', closedDaysAgo: 365 }],
+    };
+    const result = computeComplianceScore(meta({ body: 'Closes #42' }), ctx);
+    expect(result.checks.issueReference.status).toBe('fail');
+    expect(result.checks.issueReference.detail).toMatch(/stale/);
+  });
+
+  it('fails when the linked issue does not exist', () => {
+    const ctx: RepoContext = {
+      linkedIssues: [{ number: 999, repo: 'owner/repo', crossRepo: false, state: 'not_found' }],
+    };
+    const result = computeComplianceScore(meta({ body: 'Closes #999' }), ctx);
+    expect(result.checks.issueReference.status).toBe('fail');
+    expect(result.checks.issueReference.detail).toMatch(/does not exist/);
+  });
+
+  it('warns on a cross-repo open reference', () => {
+    const ctx: RepoContext = {
+      linkedIssues: [{ number: 5, repo: 'other/repo', crossRepo: true, state: 'open' }],
+    };
+    const result = computeComplianceScore(meta({ body: 'See other/repo#5' }), ctx);
+    expect(result.checks.issueReference.status).toBe('warn');
+    expect(result.checks.issueReference.detail).toMatch(/cross-repo/);
+  });
+
+  it('takes the worst single result when multiple references are listed', () => {
+    const ctx: RepoContext = {
+      linkedIssues: [
+        { number: 1, repo: 'owner/repo', crossRepo: false, state: 'open' },
+        { number: 2, repo: 'owner/repo', crossRepo: false, state: 'not_found' },
+      ],
+    };
+    const result = computeComplianceScore(meta({ body: 'Closes #1, fixes #2' }), ctx);
+    expect(result.checks.issueReference.status).toBe('fail');
+    expect(result.checks.issueReference.detail).toMatch(/#2/);
+  });
+
+  it('falls back to regex-only when no verification data is supplied', () => {
+    const result = computeComplianceScore(meta({ body: 'Closes #999' }));
+    expect(result.checks.issueReference.status).toBe('pass');
+  });
+
+  it('still fails when the body has no reference at all, even with verification context', () => {
+    const ctx: RepoContext = { linkedIssues: [] };
+    const result = computeComplianceScore(meta({ body: 'No reference here.' }), ctx);
+    expect(result.checks.issueReference.status).toBe('fail');
+  });
+});
+
 describe('issueReference check', () => {
   it('passes on a closing keyword', () => {
     expect(computeComplianceScore(meta({ body: 'Closes #42' })).checks.issueReference.status).toBe('pass');

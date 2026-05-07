@@ -57,6 +57,29 @@ export interface PRMetadata {
 }
 
 /**
+ * Verified state of an issue referenced from a PR body. Populated by
+ * the compliance-score command (which calls the Issues API per
+ * reference) and consumed by `checkIssueReference` to fail loud on
+ * broken links (#1246 Improvement B).
+ */
+export interface LinkedIssueInfo {
+  /** Issue number parsed from the PR body. */
+  number: number;
+  /** Owner/repo where the issue lives — may differ from the PR's repo
+   * when a cross-repo reference like `owner/other#42` is used. */
+  repo: string;
+  /** True when the reference targeted a different repo than the PR. */
+  crossRepo: boolean;
+  /** Result of the verification API call. `not_found` covers HTTP 404
+   * and missing-repo cases alike. */
+  state: 'open' | 'closed' | 'not_found';
+  /** Whole days since the issue was closed, when state === 'closed'.
+   * Used to distinguish "recently closed, may still apply" from "long
+   * stale, almost certainly the wrong reference." */
+  closedDaysAgo?: number;
+}
+
+/**
  * Optional repo context used to fine-tune individual check thresholds
  * (#1245). All fields are optional; absent fields use safe defaults that
  * match the original in-prompt rules.
@@ -69,7 +92,22 @@ export interface RepoContext {
    * required by the project.
    */
   hasTestInfrastructure?: boolean;
+  /**
+   * Verified state of every issue/PR reference found in the PR body
+   * (#1246 Improvement B). When provided, `checkIssueReference` will
+   * fail-loud on broken or stale references rather than passing on the
+   * regex match alone. Absent / empty array preserves original
+   * regex-only behavior.
+   */
+  linkedIssues?: LinkedIssueInfo[];
 }
+
+/**
+ * After how many days a closed-issue reference flips from "warn"
+ * (probably still relevant) to "fail" (probably stale). Exported so
+ * callers can document the cutoff (#1246).
+ */
+export const CLOSED_ISSUE_RECENT_DAYS = 30;
 
 const WEIGHTS = {
   issueReference: 25,
@@ -113,19 +151,97 @@ const CLOSING_KEYWORDS = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#\d+/i;
 const REFERENCE_KEYWORDS = /\b(?:relates?\s+to|see|refs?|references?)\s+#\d+/i;
 const ISSUE_URL = /https?:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+/i;
 
-function checkIssueReference(meta: PRMetadata): ComplianceCheckResult {
-  const weight = WEIGHTS.issueReference;
-  if (CLOSING_KEYWORDS.test(meta.body)) {
-    return { status: 'pass', weight, detail: 'closing keyword present' };
+/**
+ * If verified linked-issue state is available, derive a status from
+ * the worst single reference (#1246 Improvement B). Returns `null` when
+ * no validation data is supplied — the caller falls back to the
+ * regex-only result.
+ *
+ * Failure modes the precedence ranks (worst first):
+ *   1. `not_found` — referenced issue doesn't exist (typo, wrong repo)
+ *   2. `closed` more than {@link CLOSED_ISSUE_RECENT_DAYS} days ago
+ *   3. `closed` recently — probably still relevant but worth confirming
+ *   4. `open` cross-repo — caller should sanity-check the link applies
+ *   5. `open` same-repo — canonical pass.
+ */
+function evaluateLinkedIssues(weight: number, linkedIssues: LinkedIssueInfo[]): ComplianceCheckResult | null {
+  if (linkedIssues.length === 0) return null;
+  const notFound = linkedIssues.find((li) => li.state === 'not_found');
+  if (notFound) {
+    const tag = notFound.crossRepo ? `${notFound.repo}#${notFound.number}` : `#${notFound.number}`;
+    return {
+      status: 'fail',
+      weight,
+      detail: `linked issue ${tag} does not exist — typo or wrong repo?`,
+    };
   }
-  if (REFERENCE_KEYWORDS.test(meta.body) || ISSUE_URL.test(meta.body)) {
+  const staleClosed = linkedIssues.find(
+    (li) => li.state === 'closed' && (li.closedDaysAgo ?? 0) > CLOSED_ISSUE_RECENT_DAYS,
+  );
+  if (staleClosed) {
+    return {
+      status: 'fail',
+      weight,
+      detail:
+        `linked issue #${staleClosed.number} has been closed for ` +
+        `${staleClosed.closedDaysAgo} days — reference is probably stale`,
+    };
+  }
+  const recentClosed = linkedIssues.find((li) => li.state === 'closed');
+  if (recentClosed) {
     return {
       status: 'warn',
       weight,
-      detail: 'issue referenced without a closing keyword',
+      detail:
+        `linked issue #${recentClosed.number} was closed ` +
+        `${recentClosed.closedDaysAgo ?? '?'} days ago — confirm this PR is still relevant`,
     };
   }
-  return { status: 'fail', weight, detail: 'no issue reference' };
+  const crossRepo = linkedIssues.find((li) => li.crossRepo);
+  if (crossRepo) {
+    return {
+      status: 'warn',
+      weight,
+      detail:
+        `cross-repo reference ${crossRepo.repo}#${crossRepo.number} — ` +
+        `verify the linked issue applies to changes in this repo`,
+    };
+  }
+  return {
+    status: 'pass',
+    weight,
+    detail: `linked issue${linkedIssues.length > 1 ? 's' : ''} verified open`,
+  };
+}
+
+function checkIssueReference(meta: PRMetadata, repoContext?: RepoContext): ComplianceCheckResult {
+  const weight = WEIGHTS.issueReference;
+  const hasClosing = CLOSING_KEYWORDS.test(meta.body);
+  // The parser's `linkedIssues` already captures cross-repo (`owner/repo#N`)
+  // and direct-URL references that the same-repo regex misses. Treat any
+  // parsed reference as "a reference exists" so cross-repo links don't
+  // collapse to a fail just because they didn't match the bare-ref regex.
+  const hasReference =
+    hasClosing ||
+    REFERENCE_KEYWORDS.test(meta.body) ||
+    ISSUE_URL.test(meta.body) ||
+    (repoContext?.linkedIssues?.length ?? 0) > 0;
+  if (!hasReference) {
+    return { status: 'fail', weight, detail: 'no issue reference' };
+  }
+  // When the caller pre-fetched the linked issues' state, that
+  // verification supersedes the regex-only signal — a `Closes #999`
+  // pointing at a non-existent issue must not score as pass.
+  const verified = repoContext?.linkedIssues ? evaluateLinkedIssues(weight, repoContext.linkedIssues) : null;
+  if (verified) return verified;
+  if (hasClosing) {
+    return { status: 'pass', weight, detail: 'closing keyword present' };
+  }
+  return {
+    status: 'warn',
+    weight,
+    detail: 'issue referenced without a closing keyword',
+  };
 }
 
 const SECTION_WHAT = /(?:^|\n)#{1,3}\s*(?:summary|overview|what(?:\s+changed)?)\b/i;
@@ -242,7 +358,7 @@ function ratingFor(score: number): { rating: ComplianceRating; emoji: Compliance
  */
 export function computeComplianceScore(meta: PRMetadata, repoContext?: RepoContext): ComplianceScoreResult {
   const checks = {
-    issueReference: checkIssueReference(meta),
+    issueReference: checkIssueReference(meta, repoContext),
     description: checkDescription(meta),
     focusedChanges: checkFocusedChanges(meta),
     tests: checkTests(meta, repoContext),
