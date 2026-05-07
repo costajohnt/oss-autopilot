@@ -238,12 +238,12 @@ describe('MCP tool registrations', () => {
     it('accepts a known config key (via registry)', async () => {
       // We don't actually care about the result — just that the schema
       // doesn't reject. The mocked runConfig is fine with anything.
-      // Use a real-looking login (not a placeholder like "example-user")
-      // so this test stays orthogonal to the write-side placeholder rejection
-      // in `validateGitHubUsername`.
+      // Use a real-looking login (not a placeholder like "example-user" or
+      // a mascot login like "octocat") so this test stays orthogonal to the
+      // write-side placeholder rejection in `validateGitHubUsername`.
       const result = await client.callTool({
         name: 'config',
-        arguments: { key: 'username', value: 'octocat' },
+        arguments: { key: 'username', value: 'alice-dev' },
       });
       expect(result.isError).not.toBe(true);
     });
