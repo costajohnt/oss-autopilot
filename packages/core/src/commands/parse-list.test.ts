@@ -269,6 +269,154 @@ describe('parseIssueList — sub-bullet status detection', () => {
     expect(result.available).toHaveLength(1);
     expect(result.completed).toHaveLength(0);
   });
+
+  // Freshness-sweep vocabulary recognized as terminal (#1179). Curators
+  // use these annotations on a later occurrence of an issue to override
+  // an earlier "pursue" line; the dedupe pass then drops the URL from
+  // `available[]`.
+  it('moves Hold items to completed', () => {
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Hold** — Score 6/10. Author has 2 PRs in flight.`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(0);
+    expect(result.completed).toHaveLength(1);
+    expect(result.completed[0].number).toBe(1);
+  });
+
+  it('moves Continue watch items to completed', () => {
+    const content = `- [#2](https://github.com/owner/repo/issues/2) — Watchlist
+  - **Continue watch** — Maintainer absent for 30d.`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(0);
+    expect(result.completed).toHaveLength(1);
+  });
+
+  it('moves Downgrade items to completed', () => {
+    const content = `- [#3](https://github.com/owner/repo/issues/3) — Lower priority now
+  - **Downgrade** — 7 → 5/10 after re-vet.`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(0);
+    expect(result.completed).toHaveLength(1);
+  });
+});
+
+describe('parseIssueList — URL deduplication (#1179)', () => {
+  it('dedupes the same URL appearing in two sections to one available entry', () => {
+    const content = `## Pursue
+- [#123](https://github.com/example/repo/issues/123) — Some bug
+  - **Score 7/10** — Vetted Apr 1.
+
+## Pending Vet
+- [#123](https://github.com/example/repo/issues/123) — Re-checked, still relevant.
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(1);
+    expect(result.completedCount).toBe(0);
+    // First occurrence wins — preserves the original tier ("Pursue").
+    expect(result.available[0].tier).toBe('Pursue');
+  });
+
+  it('terminal classification on second occurrence wins over available on first', () => {
+    const content = `## Pursue
+- [#123](https://github.com/example/repo/issues/123) — Some bug
+  - **Score 7/10** — Vetted Apr 1.
+
+## Pending Vet
+### Freshness sweep
+- [#123](https://github.com/example/repo/issues/123) — re-vetted
+  - **Hold** (7 → 6/10). Author has 2 PRs in this repo already waiting.
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(0);
+    expect(result.completedCount).toBe(1);
+    expect(result.completed[0].url).toBe('https://github.com/example/repo/issues/123');
+  });
+
+  it('dedupes the same URL appearing twice in completed[]', () => {
+    const content = `## Done
+- ~~[#1](https://github.com/owner/repo/issues/1)~~ Fixed in PR #2.
+
+## Archive
+- [#1](https://github.com/owner/repo/issues/1) — Done. Notes preserved.
+`;
+    const result = parseIssueList(content);
+    expect(result.completedCount).toBe(1);
+  });
+});
+
+describe('parseIssueList — first-bold anchoring (#1179)', () => {
+  // The terminal vocabulary now includes common English verbs ("Hold",
+  // "Downgrade"), which means a regex matching anywhere on the line would
+  // mis-classify any sub-bullet whose explanatory tail happens to bold one
+  // of those words. Anchoring to the first bold span on the line keeps the
+  // curator's "first **bold** = the status tag" convention intact.
+  it('does not move items based on bolded keywords in the explanatory tail', () => {
+    const content = `- [#7](https://github.com/owner/repo/issues/7) — Trace bug
+  - **Maybe** — yesterday's **Done** sweep recommended a retry.`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(1);
+    expect(result.completed).toHaveLength(0);
+  });
+
+  it('does not move items when "hold" appears as bold prose, not as the status tag', () => {
+    const content = `- [#8](https://github.com/owner/repo/issues/8) — Resilience work
+  - **Score 8/10** — author asked us to **hold** off until v3 lands.`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(1);
+    expect(result.available[0].score).toBe(8);
+  });
+});
+
+describe('pruneIssueList — preserves parked entries (#1179)', () => {
+  // pruneIssueList mutates the markdown file in place. The new
+  // freshness-sweep vocabulary (`**Hold**`, `**Continue watch**`,
+  // `**Downgrade**`) parks issues — the curator's intent is "don't pursue
+  // right now", not "delete from disk". The narrower
+  // `isSubBulletDeletable` predicate keeps these on disk while
+  // parseIssueList's broader `isSubBulletTerminal` still excludes them
+  // from the in-memory `available[]` count.
+  it('preserves Hold items (parked, not deleted)', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Held back
+  - **Hold** — Score 8/10. Author has 2 PRs in flight.
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('https://github.com/owner/repo/issues/1');
+  });
+
+  it('preserves Continue watch items', () => {
+    const content = `### Repo
+- [#2](https://github.com/owner/repo/issues/2) — Watchlist
+  - **Continue watch** — Score 7/10. Maintainer absent for 30d.
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('https://github.com/owner/repo/issues/2');
+  });
+
+  it('preserves Downgrade items', () => {
+    const content = `### Repo
+- [#3](https://github.com/owner/repo/issues/3) — Lower priority now
+  - **Downgrade** — Score 6/10. 7 → 6 after re-vet.
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('https://github.com/owner/repo/issues/3');
+  });
+
+  it('still deletes Skip / Done / Dropped / Merged / Closed items', () => {
+    const content = `### Repo
+- [#4](https://github.com/owner/repo/issues/4) — Skipped
+  - **Skip** — Score 3/10. Existing PR.
+- [#5](https://github.com/owner/repo/issues/5) — Done
+  - **Done** — Merged.
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(2);
+    expect(pruned).not.toContain('issues/4');
+    expect(pruned).not.toContain('issues/5');
+  });
 });
 
 describe('pruneIssueList', () => {
