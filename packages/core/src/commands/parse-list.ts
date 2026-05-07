@@ -63,14 +63,61 @@ function extractScore(line: string): number | undefined {
   return match ? parseFloat(match[1]) : undefined;
 }
 
-/** Check if a sub-bullet indicates the item is terminal (completed/abandoned — safe to prune) */
-function isSubBulletTerminal(line: string): boolean {
-  return /\*\*(?:Skip|Done|Dropped|Merged|Closed)\*\*/i.test(line);
+/**
+ * Extract the first bold span (`**...**`) from a line, trimmed.
+ * Anchoring status detection to the first bold span avoids false positives
+ * from explanatory tails that happen to bold an English verb (`...we should
+ * **hold** off until next quarter...`). Returns null when the line has no
+ * bold markup.
+ */
+function firstBoldSpan(line: string): string | null {
+  const m = line.match(/\*\*([^*]+)\*\*/);
+  return m ? m[1].trim() : null;
 }
 
-/** Check if a sub-bullet indicates the item is in-progress (not available, but NOT safe to prune) */
+/**
+ * Check if a sub-bullet's first bold span is a terminal status — completed,
+ * abandoned, or being held back from pursuit (#1179). Used by
+ * `parseIssueList` for in-memory bucketing.
+ *
+ * Curators' freshness-sweep vocabulary has grown beyond the original five
+ * keywords. `hold`, `continue watch`, and `downgrade` all mean "this is no
+ * longer in the actionable bucket" — different from "completed", but
+ * equivalent for the question `parseIssueList` answers
+ * ("which URLs are still pursuable?").
+ *
+ * `pruneIssueList` uses the stricter {@link isSubBulletDeletable} instead,
+ * since on-disk deletion must not silently remove items the curator
+ * explicitly parked.
+ */
+function isSubBulletTerminal(line: string): boolean {
+  const kw = firstBoldSpan(line);
+  if (!kw) return false;
+  return /^(?:Skip|Done|Dropped|Merged|Closed|Hold|Continue watch|Downgrade)$/i.test(kw);
+}
+
+/**
+ * Check if a sub-bullet's first bold span is a "delete-from-disk" status.
+ * Strictly the original five keywords — `pruneIssueList` mutates the
+ * markdown file in place, and a curator's `**Hold**` annotation means
+ * "park", not "delete" (#1179).
+ */
+function isSubBulletDeletable(line: string): boolean {
+  const kw = firstBoldSpan(line);
+  if (!kw) return false;
+  return /^(?:Skip|Done|Dropped|Merged|Closed)$/i.test(kw);
+}
+
+/**
+ * Check if a sub-bullet's first bold span is in-progress (not available,
+ * but NOT safe to prune). Includes the "decision pending" vocabulary
+ * curators use when an issue is being investigated but not yet bucketed
+ * (#1179).
+ */
 function isSubBulletInProgress(line: string): boolean {
-  return /\*\*(?:In Progress|Wait|Waiting)\*\*/i.test(line);
+  const kw = firstBoldSpan(line);
+  if (!kw) return false;
+  return /^(?:In Progress|Wait|Waiting|Post findings first|Ship now|Viable not urgent)$/i.test(kw);
 }
 
 /** Parse a markdown string into structured issue items */
@@ -139,11 +186,38 @@ export function parseIssueList(content: string): ParseIssueListOutput {
     lastItem = item;
   }
 
+  // Dedupe by URL across both buckets (#1179). Curated lists routinely
+  // mention the same issue in multiple sections (e.g. an item under
+  // "Pursue" plus a freshness-sweep entry under "Pending Vet"), and the
+  // raw per-line counts overstate availability. Rules:
+  //   - If a URL appears in `completed[]` at all, it is filtered out of
+  //     `available[]`. Curators add a terminal annotation (`**hold**`,
+  //     `Done`, etc.) on a later occurrence precisely to override an
+  //     earlier "pursue" line; the terminal classification wins.
+  //   - Within each bucket, the first occurrence is kept (preserves the
+  //     parse order and the tier of the original entry).
+  const completedUrls = new Set(completed.map((item) => item.url));
+  const dedupedAvailable: ParsedIssueItem[] = [];
+  const seenAvailable = new Set<string>();
+  for (const item of available) {
+    if (completedUrls.has(item.url)) continue;
+    if (seenAvailable.has(item.url)) continue;
+    seenAvailable.add(item.url);
+    dedupedAvailable.push(item);
+  }
+  const dedupedCompleted: ParsedIssueItem[] = [];
+  const seenCompleted = new Set<string>();
+  for (const item of completed) {
+    if (seenCompleted.has(item.url)) continue;
+    seenCompleted.add(item.url);
+    dedupedCompleted.push(item);
+  }
+
   return {
-    available,
-    completed,
-    availableCount: available.length,
-    completedCount: completed.length,
+    available: dedupedAvailable,
+    completed: dedupedCompleted,
+    availableCount: dedupedAvailable.length,
+    completedCount: dedupedCompleted.length,
   };
 }
 
@@ -195,7 +269,7 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
       let shouldRemove = false;
       let j = i + 1;
       while (j < lines.length && /^\s{2,}/.test(lines[j])) {
-        if (isSubBulletTerminal(lines[j])) {
+        if (isSubBulletDeletable(lines[j])) {
           shouldRemove = true;
         }
         const score = extractScore(lines[j]);
