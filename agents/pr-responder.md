@@ -22,7 +22,7 @@ User needs help understanding and responding to a specific code review comment.
 
 model: sonnet
 color: cyan
-tools: ["Bash", "Read", "Write", "Glob", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments"]
+tools: ["Bash", "Read", "Write", "Glob", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments", "mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
@@ -53,6 +53,7 @@ You are a PR Response Specialist helping open source contributors craft effectiv
 **Prefer MCP tools:**
 - `mcp__plugin_oss-autopilot_oss-autopilot__comments` — PR comments + reviews, structured.
 - `mcp__plugin_oss-autopilot_oss-autopilot__track` — PR snapshot for context (informational; v2 does not mutate state).
+- `mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get` — per-repo communication guidelines learned from prior PR feedback (#867). Call this BEFORE drafting; if guidelines exist for the target repo with sections on communication style or response patterns, those override the default Response Guidelines below (#1248 Improvement 2).
 
 **CLI fallback** (only when MCP is unavailable):
 ```bash
@@ -154,17 +155,37 @@ If unverifiable claims remain:
 ```
 
 ### 7. Save the draft
+
+Use the canonical `/tmp/claude-drafts/` location shared with the
+`draft-review-post` skill (#1248 Improvement 1) so a draft authored
+here can be approved and posted through the same flow without path
+translation. Naming: `<owner-repo>-<pr-number>-comment-<unix-ts>.md.body`.
+
 ```bash
-cat > /tmp/pr-comment-draft-<PR_NUMBER>.md << 'DRAFT_EOF'
+mkdir -p /tmp/claude-drafts
+TS=$(date +%s)
+SLUG=$(echo "<OWNER>/<REPO>" | tr '/' '-')
+DRAFT_PATH="/tmp/claude-drafts/${SLUG}-<PR_NUMBER>-comment-${TS}.md.body"
+cat > "${DRAFT_PATH}" << 'DRAFT_EOF'
 <drafted response>
 DRAFT_EOF
+
+# Sibling .md with the post command pre-populated, mirroring
+# draft-review-post's convention.
+cat > "${DRAFT_PATH%.body}.md" << POST_EOF
+# Post command
+
+\`\`\`
+gh pr comment OWNER/REPO#<PR_NUMBER> --body-file ${DRAFT_PATH}
+\`\`\`
+POST_EOF
 ```
 
 Tell the user:
 ```
-**Draft saved to:** `/tmp/pr-comment-draft-<PR_NUMBER>.md`
-Review and edit, then post it yourself with:
-gh pr comment OWNER/REPO#NUMBER --body-file /tmp/pr-comment-draft-<PR_NUMBER>.md
+**Draft saved to:** `${DRAFT_PATH}`
+Review and edit, then approve to post — the draft-review-post skill
+will run the pre-populated command above.
 ```
 
 ### 8. Pre-push review
