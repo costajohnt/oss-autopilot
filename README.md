@@ -74,7 +74,7 @@ A Preact SPA that auto-opens when you run `/oss` — PR management, charts, cont
 │  │ @oss-auto-   │  │ @oss-autopilot/dashboard │  │
 │  │ pilot/mcp    │  │ Preact + Vite             │  │
 │  │              │  │ PR management, charts,    │  │
-│  │ 26 tools     │  │ actions                   │  │
+│  │ 27 tools     │  │ actions                   │  │
 │  │ 6 resources  │  │                           │  │
 │  │ 4 prompts    │  │                           │  │
 │  └──────┬───────┘  └────────────┬─────────────┘  │
@@ -143,7 +143,7 @@ Then add to your MCP client config:
 }
 ```
 
-The MCP server exposes 26 tools, 6 resources, and 4 prompts — the full OSS Autopilot feature set.
+The MCP server exposes 27 tools, 6 resources, and 4 prompts — the full OSS Autopilot feature set.
 
 </details>
 

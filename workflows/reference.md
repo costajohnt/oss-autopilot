@@ -72,6 +72,9 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 # Track a PR (informational lookup; nothing persists)
 <prefix> track <pr-url> --json
 
+# Score a PR against opensource.guide best practices
+<prefix> compliance-score <pr-url> --json
+
 # View comments on a PR
 <prefix> comments <pr-url> --json [--show-bots]
 

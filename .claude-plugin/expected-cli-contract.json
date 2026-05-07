@@ -6,6 +6,7 @@
     "claim",
     "clear-override",
     "comments",
+    "compliance-score",
     "config",
     "daily",
     "detect-formatters",
