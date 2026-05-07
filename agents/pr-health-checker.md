@@ -76,7 +76,15 @@ Use the MCP / CLI / gh path above.
 
 ### 2. Check Branch Freshness
 
-Locate the local clone (`~/Documents/oss/<repo>`, `~/dev/<repo>`). Check upstream divergence:
+**Locate the local clone** by reading the user's configured scan paths. The default (`~/Documents/oss/<repo>`, `~/dev/<repo>`) is a fallback, NOT a fixed assumption. Check `config.localRepoScanPaths` first via `mcp__plugin_oss-autopilot_oss-autopilot__config` (or `cli.bundle.cjs config --json`); a user with clones in `~/code/` or `~/projects/` configures those paths once and avoids the silent-fallback footgun (#1247 Improvement 1).
+
+```bash
+# Read configured scan paths (run once per session):
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --json
+# → look at .data.config.localRepoScanPaths; fall back to ~/Documents/oss + ~/dev when unset
+```
+
+Once the clone is located:
 
 ```bash
 cd /path/to/repo
@@ -91,7 +99,7 @@ If behind, check review state first via `gh pr view NUMBER --repo OWNER/REPO --j
 - **Active review:** do NOT auto-rebase. Recommend new commits on top; rebase only on explicit user request.
 - **No active review (Tier 1):** `git rebase upstream/<main>`. If clean: `git branch --set-upstream-to=origin/<branch>`, `git fetch origin <branch>`, `git push --force-with-lease`. If `--force-with-lease` fails, STOP — do NOT fall back to `--force`. If conflicts, `git rebase --abort` and escalate to Tier 2.
 
-If not cloned: `git clone https://github.com/<fork>/<repo>.git ~/Documents/oss/<repo>` then add the upstream remote. For very large repos (bun, chromium), use `--filter=blob:none` partial clone.
+If not cloned: clone into the FIRST configured scan path (or `~/Documents/oss/<repo>` when none configured) — `git clone https://github.com/<fork>/<repo>.git <scan-path>/<repo>` then add the upstream remote. For very large repos (bun, chromium), use `--filter=blob:none` partial clone.
 
 ### 3. Categorize CI Status
 
