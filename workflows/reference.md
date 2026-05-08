@@ -198,6 +198,11 @@ rejected with a did-you-mean suggestion.
 
 ## Workflow Index
 
+<!-- The table below is generated from workflows/manifest.json by
+     scripts/generate-reference.mjs (#1289). To change a row, edit the
+     manifest and run `pnpm run generate:reference`. CI fails if this
+     section is out of sync. -->
+<!-- BEGIN AUTO:workflow-index -->
 | Workflow | Purpose |
 |---|---|
 | `workflows/startup-and-build.md` | CLI build, startup command, output parsing, error recovery |
@@ -208,6 +213,7 @@ rejected with a did-you-mean suggestion.
 | `workflows/dispatch-review.md` | Shared multi-agent review-dispatch template (consumed by both review workflows) |
 | `workflows/review-issue-replies.md` | Issue reply triage and dismiss handler |
 | `workflows/dormant-pr-follow-up.md` | Operationalizes the 7/14/30-day follow-up cadence for waiting-on-maintainer PRs |
+<!-- END AUTO:workflow-index -->
 
 ---
 

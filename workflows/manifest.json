@@ -1,0 +1,37 @@
+{
+  "_comment": "Source-of-truth for the auto-generated Workflow Index table in reference.md (#1289). Order = display order. Each entry must reference a real file under workflows/. New workflow files are silently omitted from the table until added here — that's intentional, the table is a curated list of the workflows users typically need to look up, not an exhaustive directory listing.",
+  "workflows": [
+    {
+      "file": "workflows/startup-and-build.md",
+      "purpose": "CLI build, startup command, output parsing, error recovery"
+    },
+    {
+      "file": "workflows/action-menu.md",
+      "purpose": "PR display, menu rendering, input parsing, informational questions"
+    },
+    {
+      "file": "workflows/work-through-issues.md",
+      "purpose": "Orchestrate actionable PR resolution and issue list browsing"
+    },
+    {
+      "file": "workflows/draft-first-workflow.md",
+      "purpose": "Full new contribution pipeline (10 steps)"
+    },
+    {
+      "file": "workflows/pre-commit-review.md",
+      "purpose": "Code review gate for existing PR updates"
+    },
+    {
+      "file": "workflows/dispatch-review.md",
+      "purpose": "Shared multi-agent review-dispatch template (consumed by both review workflows)"
+    },
+    {
+      "file": "workflows/review-issue-replies.md",
+      "purpose": "Issue reply triage and dismiss handler"
+    },
+    {
+      "file": "workflows/dormant-pr-follow-up.md",
+      "purpose": "Operationalizes the 7/14/30-day follow-up cadence for waiting-on-maintainer PRs"
+    }
+  ]
+}
