@@ -1,31 +1,36 @@
 #!/usr/bin/env node
 /**
- * Auto-generate the agent integration table in workflows/reference.md (#1289).
+ * Auto-generate the agent integration table and the workflow index in
+ * workflows/reference.md (#1289).
  *
- * Reads each agents/*.md frontmatter (skipping README) for `name` and
- * `purpose`, and writes the result between
- *   <!-- BEGIN AUTO:agent-table -->
- *   <!-- END AUTO:agent-table -->
- * markers in workflows/reference.md.
+ * Sources of truth:
+ *   - Agent table: each agents/*.md frontmatter (`name`, `purpose`).
+ *   - Workflow index: workflows/manifest.json (explicit curated list).
+ *
+ * The result is spliced between marker comments in reference.md:
+ *   <!-- BEGIN AUTO:agent-table --> ... <!-- END AUTO:agent-table -->
+ *   <!-- BEGIN AUTO:workflow-index --> ... <!-- END AUTO:workflow-index -->
  *
  * Run via: pnpm run generate:reference
  *
  * In CI, the same script runs followed by `git diff --exit-code workflows/reference.md`
- * — which fails if you changed an agent without regenerating the table.
+ * — which fails if you changed an agent or the manifest without regenerating.
  *
- * Future-scope (separate PRs):
- *   - Auto-generate the workflow index (workflows/*.md headers).
- *   - Auto-generate the CLI command reference (cli-registry.ts).
+ * Future scope (separate PR):
+ *   - Auto-generate the CLI command reference (the much larger CLI Commands
+ *     section, which would parse cli-registry.ts or consume `manifest --json`).
  */
 
-import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
 const AGENTS_DIR = join(REPO_ROOT, 'agents');
-const REFERENCE_PATH = join(REPO_ROOT, 'workflows', 'reference.md');
+const WORKFLOWS_DIR = join(REPO_ROOT, 'workflows');
+const REFERENCE_PATH = join(WORKFLOWS_DIR, 'reference.md');
+const WORKFLOW_MANIFEST_PATH = join(WORKFLOWS_DIR, 'manifest.json');
 
 /**
  * Explicit ordering preserves the semantic grouping of the table (PR
@@ -108,6 +113,36 @@ function buildAgentTable() {
   return rows.join('\n');
 }
 
+function buildWorkflowIndex() {
+  const raw = readFileSync(WORKFLOW_MANIFEST_PATH, 'utf8');
+  let manifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`workflows/manifest.json is not valid JSON: ${err.message}`);
+  }
+  if (!Array.isArray(manifest.workflows)) {
+    throw new Error(`workflows/manifest.json must have a "workflows" array`);
+  }
+
+  const rows = ['| Workflow | Purpose |', '|---|---|'];
+  for (const entry of manifest.workflows) {
+    if (!entry.file || !entry.purpose) {
+      throw new Error(
+        `workflows/manifest.json: every entry needs both "file" and "purpose" keys (got ${JSON.stringify(entry)})`,
+      );
+    }
+    const absPath = join(REPO_ROOT, entry.file);
+    if (!existsSync(absPath)) {
+      throw new Error(
+        `workflows/manifest.json references "${entry.file}" but that file doesn't exist — remove the manifest entry or fix the path`,
+      );
+    }
+    rows.push(`| \`${entry.file}\` | ${entry.purpose} |`);
+  }
+  return rows.join('\n');
+}
+
 function spliceBetweenMarkers(content, beginMarker, endMarker, replacement) {
   const beginIdx = content.indexOf(beginMarker);
   const endIdx = content.indexOf(endMarker);
@@ -123,11 +158,18 @@ function spliceBetweenMarkers(content, beginMarker, endMarker, replacement) {
 }
 
 function main() {
-  const reference = readFileSync(REFERENCE_PATH, 'utf8');
-  const table = buildAgentTable();
-  const next = spliceBetweenMarkers(reference, BEGIN_MARKER, END_MARKER, table);
+  const original = readFileSync(REFERENCE_PATH, 'utf8');
+  let next = original;
 
-  if (next === reference) {
+  next = spliceBetweenMarkers(next, BEGIN_MARKER, END_MARKER, buildAgentTable());
+  next = spliceBetweenMarkers(
+    next,
+    '<!-- BEGIN AUTO:workflow-index -->',
+    '<!-- END AUTO:workflow-index -->',
+    buildWorkflowIndex(),
+  );
+
+  if (next === original) {
     process.stdout.write('reference.md is already up to date.\n');
     return;
   }
