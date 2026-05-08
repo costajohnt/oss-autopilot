@@ -57,7 +57,8 @@
       "flatted": ">=3.4.2",
       "picomatch": ">=4.0.4",
       "path-to-regexp": ">=8.4.0",
-      "yaml": ">=2.8.3"
+      "yaml": ">=2.8.3",
+      "fast-uri": ">=3.1.1"
     }
   },
   "_pnpmOverridesRationale": {
@@ -68,7 +69,8 @@
     "flatted": "Dev-only, transitive via eslint -> flat-cache. Pin >=3.4.2 for ReDoS advisory. Confirmed still in tree.",
     "picomatch": "Dev-only, transitive via typescript-eslint -> tinyglobby. Pin >=4.0.4 for ReDoS advisory. Confirmed still in tree.",
     "path-to-regexp": "Transitive via @modelcontextprotocol/sdk -> express/router. Pin >=8.4.0 for ReDoS advisory. Confirmed still in tree.",
-    "yaml": "Dev-only, transitive via vitest -> vite. Pin >=2.8.3 for code-execution advisory. Confirmed still in tree."
+    "yaml": "Dev-only, transitive via vitest -> vite. Pin >=2.8.3 for code-execution advisory. Confirmed still in tree.",
+    "fast-uri": "Transitive via @modelcontextprotocol/sdk -> ajv. Pin >=3.1.1 for path-traversal advisory GHSA-q3j6-qgpj-74h6. Confirmed still in tree."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
