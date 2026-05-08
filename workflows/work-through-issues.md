@@ -100,17 +100,11 @@ After a successful rebase, you MUST follow these steps in order:
      the error to the user. The --force-with-lease safety check exists to prevent
      overwriting commits pushed by others. Falling back to --force defeats this protection.
 
-**Code Verification Rules (MANDATORY):**
-- Verify every claim by reading the actual current code. Do NOT say "already addressed"
-  or "this is handled" without reading the current file to confirm.
-- When claiming a tool, check, or test passes or fails, run the actual command. Do not
-  assume based on PR descriptions or comment threads alone.
-- Distinguish between what the LATEST review round asks for vs what earlier rounds asked
-  for. Only report items that are outstanding in the latest round.
-- If you cannot verify a claim (file not found, command fails), say so explicitly rather
-  than guessing.
-- Report ONLY what the maintainer asked for in the latest review round. Do not suggest
-  additional improvements, extra test cases, or code cleanup beyond what was requested.
+**Code Verification Rules (MANDATORY):** follow the **Claim Verification Protocol** in
+`workflows/reference.md` (rules 1-5). In particular, verify every "already addressed"
+claim by reading the current file, run commands rather than inferring their outputs,
+distinguish what the LATEST review round asks for from earlier rounds, state explicitly
+when you cannot verify a claim, and stay in scope (only what the maintainer asked for).
 
 Report back:
 (a) Commits behind / rebase result
