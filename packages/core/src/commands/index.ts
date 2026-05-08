@@ -37,6 +37,8 @@ export { runVetList } from './vet-list.js';
 export { runTrack } from './track.js';
 /** Score a PR against opensource.guide best practices via the typed core function (#1245). */
 export { runComplianceScore } from './compliance-score.js';
+/** Compute repo health rubric (1–10 score + verdict) via the typed core function (#1271, follow-up to #1242). */
+export { runRepoVet } from './repo-vet.js';
 /** Temporarily hide a PR from the daily digest. */
 export { runShelve } from './shelve.js';
 /** Restore a shelved PR to the daily digest. */
