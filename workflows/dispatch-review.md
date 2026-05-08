@@ -9,14 +9,30 @@ convergence loop, or fallback goes here — not in the calling workflows.
 
 Before dispatching agents, the caller must provide:
 
-- `mergeBase` — the merge base commit for the full branch diff.
-  (Callers typically compute `mergeBase=$(git merge-base "$remote/$baseBranch" HEAD)` and use `git diff $mergeBase..HEAD`.)
-- `reviewDiff` — the full diff string (for inclusion in every agent prompt).
-- `changedFiles` — list of changed file paths.
+- `mode` (#1275) — `'diff'` (default) or `'plan'`. Determines the
+  agent roster, the prompt-template family, and the default
+  convergence cap. The convergence loop, dedup policy, and fallback
+  chain are mode-agnostic.
+- `mergeBase` — the merge base commit for the full branch diff
+  (`mode: 'diff'` only).
+  Callers typically compute `mergeBase=$(git merge-base "$remote/$baseBranch" HEAD)` and use `git diff $mergeBase..HEAD`.
+- `artifact` — the thing being reviewed. For `mode: 'diff'` this is
+  the full diff string (formerly `reviewDiff`). For `mode: 'plan'`
+  this is the plan markdown text. The variable name `reviewDiff`
+  remains a backwards-compat alias for `mode: 'diff'` callers.
+- `artifactPath` — optional. Path on disk for the artifact (plan
+  file path, or repo working directory for diff mode).
+- `changedFiles` — list of changed file paths (`mode: 'diff'` only).
 - `workingDir` — absolute path of the local repository.
-- `issueContext` — `{ title, url }` when this review is scoped to a specific issue. Used for the SCOPE block. Omit when running a generic pre-commit review.
+- `issueContext` — `{ title, url }` when this review is scoped to a
+  specific issue. Used for the SCOPE block. Omit when running a
+  generic pre-commit review.
 - `reviewPass` — integer, initialized to 1 by the caller.
-- `agentsWithFindings` — empty array, initialized by the caller. Used for targeted re-dispatch on pass 2+.
+- `agentsWithFindings` — empty array, initialized by the caller.
+  Used for targeted re-dispatch on pass 2+.
+- `maxPasses` (#1275) — optional override. Defaults to
+  `config.reviewMaxPasses` when set, otherwise to a per-mode
+  default (`5` for diff, `3` for plan).
 
 ## SCOPE Block
 
@@ -41,7 +57,12 @@ Omit the SCOPE block for generic pre-commit reviews (`pre-commit-review.md` sub-
 
 ## Base Agents (always dispatched)
 
-`code-reviewer`, `silent-failure-hunter`, `code-simplifier`, `pr-test-analyzer`, `comment-analyzer`.
+The roster depends on `mode`:
+
+- **`mode: 'diff'` (default)** — `code-reviewer`, `silent-failure-hunter`, `code-simplifier`, `pr-test-analyzer`, `comment-analyzer`. Conditional: `type-design-analyzer` when the diff includes `.ts`/`.tsx` files (existing rule).
+- **`mode: 'plan'`** — `code-reviewer` (design-level critique against the plan), `silent-failure-hunter` (edge-case coverage in the plan), `code-simplifier` (scope-shrink opportunities), `devils-advocate` (adversarial scenarios). The plan-mode roster intentionally omits `pr-test-analyzer` and `comment-analyzer` — both are diff-shaped.
+
+The prompt templates below are the diff-mode defaults. Plan-mode dispatch swaps in plan-shaped prompts (see `workflows/plan-review.md` for the per-agent plan-mode prompt text).
 
 ```
 Task(pr-review-toolkit:code-reviewer,
@@ -207,7 +228,7 @@ All agents passed. No issues found — changes are clean and ready to commit.
 
 After consolidating findings, automatically fix and re-review until convergence. **Do not prompt the user during this loop** — it runs fully autonomously.
 
-**Loop bound:** maximum 5 passes total (including the initial pass). If convergence is not reached after 5, present remaining findings and proceed to the caller's user-decision step.
+**Loop bound:** maximum `maxPasses` total (including the initial pass). The default resolves from `config.reviewMaxPasses` first, then to a per-mode default of `5` for `mode: 'diff'` or `3` for `mode: 'plan'`. Plan-mode converges faster than diff-mode (text-only, no code-recheck loop) so it ships with a tighter cap. If convergence is not reached, present remaining findings and proceed to the caller's user-decision step.
 
 **Convergence criteria:** zero Critical AND zero Recommended findings in the latest pass. Minor findings do not block convergence.
 
