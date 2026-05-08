@@ -16,6 +16,7 @@ import {
   runVetList,
   runTrack,
   runComplianceScore,
+  runRepoVet,
   runComments,
   runPost,
   runClaim,
@@ -243,6 +244,25 @@ export function registerTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     wrapTool(runComplianceScore),
+  );
+
+  // 5c. repo-vet — Run the typed repo-vet rubric against an `owner/repo`
+  // slug (#1271, follow-up to #1242). Replaces the in-prompt `gh` plumbing
+  // that lived in the `repo-evaluator` agent with deterministic scoring.
+  server.registerTool(
+    'repo-vet',
+    {
+      description:
+        'Compute the repo health rubric (1–10 weighted score + verdict) for an `owner/repo` slug. Returns repo metadata, PR merge times + merge rate over the trailing 90 days, maintainer activity, community-health flags, and the rubric verdict (recommended / proceed_with_caution / avoid). Read-only; no state mutation.',
+      inputSchema: {
+        repo: z
+          .string()
+          .regex(/^[\w.-]+\/[\w.-]+$/, 'Repository must be in `owner/repo` format')
+          .describe('Repository slug, e.g. `facebook/react` or `vercel/next.js`'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    wrapTool(runRepoVet),
   );
 
   // 6. comments — Show PR comments

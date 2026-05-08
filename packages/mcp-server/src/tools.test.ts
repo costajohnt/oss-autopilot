@@ -13,6 +13,7 @@ const EXPECTED_TOOLS = [
   'vet-list',
   'track',
   'compliance-score',
+  'repo-vet',
   'comments',
   'post',
   'claim',
@@ -61,8 +62,8 @@ describe('MCP tool registrations', () => {
     await client.close();
   });
 
-  it('registers exactly 27 tools', () => {
-    expect(tools).toHaveLength(27);
+  it('registers exactly 28 tools', () => {
+    expect(tools).toHaveLength(28);
   });
 
   it('registers all expected tool names', () => {
@@ -146,7 +147,16 @@ describe('MCP tool registrations', () => {
   describe('annotations', () => {
     // track is read-only in v2: fetches metadata from GitHub, does not persist (#1001).
     // untrack and read v1→v2 stubs were removed in v4 (#1133).
-    const readOnlyTools = ['status', 'search', 'vet', 'comments', 'check-setup', 'track', 'compliance-score'];
+    const readOnlyTools = [
+      'status',
+      'search',
+      'vet',
+      'comments',
+      'check-setup',
+      'track',
+      'compliance-score',
+      'repo-vet',
+    ];
     const mutatingTools = [
       'daily',
       'startup',

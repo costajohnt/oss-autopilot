@@ -161,9 +161,10 @@ describe('MCP server stdio transport', { timeout: 30_000 }, () => {
   it('lists tools via stdio', async () => {
     client = await createStdioClient();
     const { tools } = await client.listTools();
-    expect(tools.length).toBe(27);
+    expect(tools.length).toBe(28);
     expect(tools.some((t) => t.name === 'daily')).toBe(true);
     expect(tools.some((t) => t.name === 'compliance-score')).toBe(true);
+    expect(tools.some((t) => t.name === 'repo-vet')).toBe(true);
   });
 
   it('lists resources via stdio', async () => {

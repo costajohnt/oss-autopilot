@@ -29,6 +29,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runVetList: vi.fn(),
   runTrack: vi.fn(),
   runComplianceScore: vi.fn(),
+  runRepoVet: vi.fn(),
   runComments: vi.fn(),
   runPost: vi.fn(),
   runClaim: vi.fn(),
