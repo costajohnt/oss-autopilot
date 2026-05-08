@@ -43,6 +43,7 @@
     "workflows/dispatch-review.md",
     "workflows/dormant-pr-follow-up.md",
     "workflows/draft-first-workflow.md",
+    "workflows/edit-guidelines.md",
     "workflows/extract-learnings.md",
     "workflows/plan-review.md",
     "workflows/pre-commit-review.md",
