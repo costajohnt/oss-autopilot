@@ -94,6 +94,35 @@ export const FollowUpEntrySchema = z.object({
 });
 export type FollowUpEntry = z.infer<typeof FollowUpEntrySchema>;
 
+/**
+ * Pause-point snapshot for resumable workflows (#1280). When the user
+ * picks "Done for now" inside `draft-first-workflow.md`,
+ * `work-through-issues.md`, or `pre-commit-review.md`, the workflow
+ * records its position here. The next `/oss` run consults this state
+ * and offers "Resume / Restart / Discard" instead of restarting from
+ * the beginning.
+ *
+ * `stepData` is intentionally typed as `Record<string, unknown>` so
+ * each workflow can persist whatever per-step context it needs to
+ * resume cleanly (compliance-gap skip list, last review pass count,
+ * etc.) without forcing a tagged-union schema in shared state.
+ */
+export const WorkflowStateSchema = z.object({
+  workflowName: z.enum(['draft-first', 'work-through-issues', 'pre-commit-review']),
+  currentStep: z.string(),
+  branchName: z.string().optional(),
+  issueContext: z
+    .object({
+      title: z.string(),
+      url: z.string(),
+    })
+    .optional(),
+  completedSteps: z.array(z.string()).default([]),
+  stepData: z.record(z.string(), z.unknown()).default({}),
+  lastUpdatedAt: z.string().datetime(),
+});
+export type WorkflowState = z.infer<typeof WorkflowStateSchema>;
+
 // ── 3. Contribution schemas ──────────────────────────────────────────
 
 export const ContributionGuidelinesSchema = z.object({
@@ -358,6 +387,15 @@ export const AgentStateSchema = z.object({
    * `skills/pr-etiquette/SKILL.md`.
    */
   prFollowUpHistory: z.record(z.string(), z.array(FollowUpEntrySchema)).optional(),
+
+  /**
+   * Pause-point snapshot for resumable workflows (#1280). Set when
+   * the user picks "Done for now" mid-workflow; cleared when the
+   * workflow completes or the user explicitly discards. The router
+   * reads this on every `/oss` invocation and offers Resume /
+   * Restart / Discard when present.
+   */
+  workflowState: WorkflowStateSchema.optional(),
 });
 
 // ── Inferred types ───────────────────────────────────────────────────
