@@ -60,6 +60,16 @@ This flow uses a three-phase approach: parallel investigation, consolidated pres
 
 **CRITICAL: Dispatch ALL agents in a SINGLE message for true parallelism.**
 
+**Per-repo guidelines pre-fetch (#867, #1294 step 3).** Before assembling the dispatch, identify the set of repos with at least one **Tier 2** issue type (`Needs Response`, `Changes Requested`, `CI Failing`, `Merge Conflict`, `Missing Required Files`). For each such repo, fetch any stored guidelines once:
+
+```bash
+GUIDELINES_OUT=$(GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" guidelines view --repo {owner}/{repo} --json 2>/dev/null)
+```
+
+Cache the parsed `data.content` per repo. Routine-maintenance-only repos (Tier 1: rebase, CI status check, "no action needed" report) do NOT load guidelines — maintainer preferences don't change a clean rebase.
+
+If a fetch fails or `data.exists === false`, skip that repo silently (the dispatch proceeds without guidelines).
+
 For each issue in `actionableIssues`, include a Task tool call grouped by repo:
 
 | Issue Type | Tier | Agent Action |
@@ -105,6 +115,18 @@ After a successful rebase, you MUST follow these steps in order:
 claim by reading the current file, run commands rather than inferring their outputs,
 distinguish what the LATEST review round asks for from earlier rounds, state explicitly
 when you cannot verify a claim, and stay in scope (only what the maintainer asked for).
+
+**Per-repo guidelines (#867, when present):** if guidelines were pre-fetched for this
+repo (Tier 2 dispatch), include them verbatim in the agent's working context as
+authoritative repo-specific rules. They take precedence over CONTRIBUTING.md when
+they conflict. Flag any case where the agent's proposed approach contradicts a
+stated preference so the user can confirm. Omit this section entirely when no
+guidelines were fetched.
+
+```
+Maintainer preferences for {owner}/{repo} (from past PR feedback):
+{repo_guidelines}
+```
 
 Report back:
 (a) Commits behind / rebase result
