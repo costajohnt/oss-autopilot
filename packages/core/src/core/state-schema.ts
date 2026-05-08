@@ -222,6 +222,17 @@ export const AgentConfigSchema = z.object({
   healthCheckFreshnessMinutes: z.number().int().positive().default(30),
 
   /**
+   * Convergence cap for the multi-agent review loop in
+   * `workflows/dispatch-review.md` (#1275). When unset, the workflow
+   * falls back to per-mode defaults (5 for diff, 3 for plan). Lower
+   * values shorten the loop at the cost of skipping later iterations
+   * if findings persist; higher values give the loop more chances to
+   * converge before bailing. Optional — leave unset to use the
+   * defaults.
+   */
+  reviewMaxPasses: z.number().int().positive().optional(),
+
+  /**
    * Optional Ollama model for SLM pre-triage during issue vetting (#1122).
    * Empty disables the feature. Recommended: `gemma4:e4b` (default for
    * capable hardware), `gemma4:e2b` or `qwen3:1.7b` for low-RAM machines.

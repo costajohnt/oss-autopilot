@@ -218,6 +218,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     settableVia: 'setup',
     valueHint: 'positive integer',
   },
+  {
+    key: 'reviewMaxPasses',
+    description:
+      'Convergence cap for the multi-agent review loop in workflows/dispatch-review.md. Optional; falls back to per-mode defaults (5 for diff, 3 for plan) when unset (#1275).',
+    settableVia: 'setup',
+    valueHint: 'positive integer',
+  },
 
   // ── Setup-only completion flag ──────────────────────────────────────
   {
