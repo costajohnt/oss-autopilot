@@ -88,23 +88,36 @@ if [ -z "$tracking_branch" ]; then
   exit 0
 fi
 
-# ── OSS-contribution branch skip (#1045) ─────────────────────────────
-# If the branch tracks a remote whose URL owner doesn't match the user's
-# configured GitHub username, we're pushing to a fork's upstream — don't
-# append a style commit to that PR.
+# ── OSS-contribution branch skip (#1045, broadened in #1257) ──────────
+# If ANY remote on the branch has a URL owner that doesn't match the
+# user's configured GitHub username, we're working in a fork-and-PR
+# flow — `origin` is the user's fork, but `upstream` belongs to the
+# project being contributed to. Don't append a style commit to that
+# branch; the maintainer will see it in the PR diff.
+#
+# Previously this only checked the *tracking* remote, which in the
+# common fork flow points at the user's own fork, so the skip never
+# fired for OSS contributions.
 current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 github_user=$(read_config githubUsername "")
 if [ -n "$current_branch" ] && [ -n "$github_user" ]; then
-  remote_name=$(git config "branch.${current_branch}.remote" 2>/dev/null || echo "")
-  if [ -n "$remote_name" ]; then
+  github_user_lc=$(to_lower "$github_user")
+  non_user_remote=""
+  non_user_owner=""
+  while IFS= read -r remote_name; do
+    [ -z "$remote_name" ] && continue
     remote_url=$(git remote get-url "$remote_name" 2>/dev/null || echo "")
     # Match both https://github.com/OWNER/ and git@github.com:OWNER/
     remote_owner=$(printf '%s' "$remote_url" | sed -nE 's#.*github\.com[:/]+([^/]+)/.*#\1#p')
-    if [ -n "$remote_owner" ]; then
-      if [ "$(to_lower "$remote_owner")" != "$(to_lower "$github_user")" ]; then
-        warn_and_exit "Skipped: branch '${current_branch}' tracks remote owner '${remote_owner}' (not '${github_user}'). Auto-format is disabled on OSS contribution branches."
-      fi
+    [ -z "$remote_owner" ] && continue
+    if [ "$(to_lower "$remote_owner")" != "$github_user_lc" ]; then
+      non_user_remote="$remote_name"
+      non_user_owner="$remote_owner"
+      break
     fi
+  done < <(git remote 2>/dev/null)
+  if [ -n "$non_user_remote" ]; then
+    warn_and_exit "Skipped: branch '${current_branch}' has remote '${non_user_remote}' owned by '${non_user_owner}' (not '${github_user}'). Auto-format is disabled on OSS contribution branches."
   fi
 fi
 
