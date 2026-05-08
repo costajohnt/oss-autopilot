@@ -19,6 +19,7 @@
     "docs:check": "pnpm --filter @oss-autopilot/core run docs:check",
     "dashboard:dev": "pnpm --filter @oss-autopilot/dashboard run dev",
     "dashboard:build": "pnpm --filter @oss-autopilot/dashboard run build",
+    "generate:reference": "node scripts/generate-reference.mjs",
     "prepare": "[ -n \"$CI\" ] || simple-git-hooks"
   },
   "simple-git-hooks": {

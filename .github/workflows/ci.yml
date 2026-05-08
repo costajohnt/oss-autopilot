@@ -124,6 +124,18 @@ jobs:
       - name: Test build-dashboard-if-stale helper (#1292)
         run: bash scripts/build-dashboard-if-stale.test.sh
 
+      - name: Verify generated reference.md is up to date (#1289)
+        # Regenerates the auto-managed sections of workflows/reference.md from
+        # source (agents/*.md frontmatter today; cli-registry + workflow index
+        # later). Fails when an agent was added/edited without running
+        # `pnpm run generate:reference`.
+        run: |
+          pnpm run generate:reference
+          if ! git diff --exit-code workflows/reference.md; then
+            echo "::error::workflows/reference.md is out of sync. Run 'pnpm run generate:reference' and commit the result."
+            exit 1
+          fi
+
       - name: Test guard-public-posts hook
         run: bash hooks/guard-public-posts.test.sh
 

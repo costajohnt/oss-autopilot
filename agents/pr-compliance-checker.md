@@ -20,6 +20,7 @@ User explicitly wants a PR compliance check.
 </commentary>
 </example>
 
+purpose: Validate PRs against opensource.guide
 model: haiku
 color: orange
 tools: ["Bash", "Read", "Glob", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments", "mcp__plugin_oss-autopilot_oss-autopilot__compliance-score", "mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get"]

@@ -20,6 +20,7 @@ Rebase checking and execution is a core health check responsibility.
 </commentary>
 </example>
 
+purpose: Diagnose CI failures, merge conflicts, rebase status
 model: sonnet
 color: yellow
 tools: ["Bash", "Read", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments"]
