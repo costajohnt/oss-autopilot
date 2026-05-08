@@ -12,9 +12,13 @@
  */
 
 import { getOctokit, requireGitHubToken } from '../core/index.js';
+import { errorMessage } from '../core/errors.js';
+import { warn } from '../core/logger.js';
 import { validateRepoIdentifier } from './validation.js';
 import { computeRepoVet, type RepoVetInput, type RepoVetResult } from '../core/repo-vet.js';
 import type { RepoVetOutput } from '../formatters/json.js';
+
+const MODULE = 'repo-vet';
 
 const DAY_MS = 86400000;
 const COMMUNITY_HEALTH_PATHS = [
@@ -30,6 +34,14 @@ const COMMUNITY_HEALTH_PATHS = [
   { key: 'hasCodeOfConduct', candidates: ['CODE_OF_CONDUCT.md', '.github/CODE_OF_CONDUCT.md'] },
 ] as const;
 
+/**
+ * Returns true when the path exists. Treats 404 as "absent" (the only
+ * shape we care about for community-health flags). Re-throws everything
+ * else — auth/rate-limit failures must not silently scrub the
+ * `hasContributing` etc. flags to `false`, which would understate a
+ * repo's community health on a token that lacks scope or has been
+ * throttled mid-sequence.
+ */
 async function probePath(
   octokit: ReturnType<typeof getOctokit>,
   owner: string,
@@ -39,11 +51,23 @@ async function probePath(
   try {
     await octokit.repos.getContent({ owner, repo, path });
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status === 404) return false;
+    throw err;
   }
 }
 
+/**
+ * Probe each community-health path. Treats 404 as "absent" (a definitive
+ * signal). On any other error (auth, rate-limit, 5xx) the per-key result
+ * stays `false` AND the whole-function `incomplete` flag is set so the
+ * caller knows community-health was unverified rather than confirmed-absent.
+ *
+ * This is the per-key analogue of the call-level catch: instead of either
+ * silently misclassifying 403 → absent OR aborting the entire repo-vet
+ * call, we degrade gracefully and surface the gap.
+ */
 async function checkCommunityHealth(
   octokit: ReturnType<typeof getOctokit>,
   owner: string,
@@ -53,6 +77,7 @@ async function checkCommunityHealth(
   hasIssueTemplates: boolean;
   hasPRTemplate: boolean;
   hasCodeOfConduct: boolean;
+  incomplete: boolean;
 }> {
   const out: Record<string, boolean> = {
     hasContributing: false,
@@ -60,21 +85,40 @@ async function checkCommunityHealth(
     hasPRTemplate: false,
     hasCodeOfConduct: false,
   };
+  let incomplete = false;
   await Promise.all(
     COMMUNITY_HEALTH_PATHS.map(async ({ key, candidates }) => {
+      let sawError = false;
       for (const path of candidates) {
-        if (await probePath(octokit, owner, repo, path)) {
-          out[key] = true;
-          return;
+        try {
+          if (await probePath(octokit, owner, repo, path)) {
+            out[key] = true;
+            return;
+          }
+        } catch (err) {
+          // probePath only throws on non-404 errors. Don't abandon
+          // remaining candidates — `CONTRIBUTING.md` failing with 403
+          // does NOT imply `.github/CONTRIBUTING.md` will fail too. Mark
+          // the per-key probe as incomplete only if every candidate
+          // either errored or returned absent.
+          warn(MODULE, `community-health probe for ${owner}/${repo}/${path} failed: ${errorMessage(err)}`);
+          sawError = true;
+          continue;
         }
       }
+      // Reached only when no candidate hit. If any candidate errored,
+      // the absent flag is unreliable — surface that to the caller so
+      // the agent prompt distinguishes "probed all candidates and
+      // absent" from "couldn't tell".
+      if (sawError) incomplete = true;
     }),
   );
-  return out as {
-    hasContributing: boolean;
-    hasIssueTemplates: boolean;
-    hasPRTemplate: boolean;
-    hasCodeOfConduct: boolean;
+  return {
+    hasContributing: out.hasContributing,
+    hasIssueTemplates: out.hasIssueTemplates,
+    hasPRTemplate: out.hasPRTemplate,
+    hasCodeOfConduct: out.hasCodeOfConduct,
+    incomplete,
   };
 }
 
@@ -156,7 +200,7 @@ export async function runRepoVet(options: { repo: string }): Promise<RepoVetOutp
   const octokit = getOctokit(token);
   const now = new Date();
 
-  const [repoMetaResp, closedPRsResp, commitsResp, releasesResp, communityHealth] = await Promise.all([
+  const [repoMetaResp, closedPRsResp, commitsResp, releasesResp, communityHealthSummary] = await Promise.all([
     octokit.repos.get({ owner, repo }),
     octokit.pulls.list({ owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 100 }),
     octokit.repos.listCommits({ owner, repo, per_page: 100 }),
@@ -192,21 +236,25 @@ export async function runRepoVet(options: { repo: string }): Promise<RepoVetOutp
     lastCommitISO: commitSummary.lastCommitISO,
     contributorsLast90d: commitSummary.contributorsLast90d,
     lastReleaseISO,
-    hasContributing: communityHealth.hasContributing,
-    hasIssueTemplates: communityHealth.hasIssueTemplates,
-    hasPRTemplate: communityHealth.hasPRTemplate,
-    hasCodeOfConduct: communityHealth.hasCodeOfConduct,
+    hasContributing: communityHealthSummary.hasContributing,
+    hasIssueTemplates: communityHealthSummary.hasIssueTemplates,
+    hasPRTemplate: communityHealthSummary.hasPRTemplate,
+    hasCodeOfConduct: communityHealthSummary.hasCodeOfConduct,
   };
 
   const result: RepoVetResult = computeRepoVet(input);
 
   // The core function names its metadata object `repo`. Rename to `repoMeta`
   // at the CLI boundary so the top-level slug doesn't collide with it.
-  const { repo: repoMeta, ...rest } = result;
+  // Also overlay the community-health `incomplete` flag the wrapper
+  // tracks (the core type doesn't carry it because computeRepoVet is
+  // pure — only the wrapper makes the API calls that can fail mid-probe).
+  const { repo: repoMeta, communityHealth, ...rest } = result;
   return {
     repoSlug: options.repo,
     fetchedAt: now.toISOString(),
     repoMeta,
+    communityHealth: { ...communityHealth, incomplete: communityHealthSummary.incomplete },
     ...rest,
   };
 }

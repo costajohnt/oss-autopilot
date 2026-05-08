@@ -70,9 +70,15 @@ export interface LinkedIssueInfo {
   repo: string;
   /** True when the reference targeted a different repo than the PR. */
   crossRepo: boolean;
-  /** Result of the verification API call. `not_found` covers HTTP 404
-   * and missing-repo cases alike. */
-  state: 'open' | 'closed' | 'not_found';
+  /**
+   * Result of the verification API call.
+   *  - `open` / `closed`: confirmed live state.
+   *  - `not_found`: HTTP 404 — the referenced issue does not exist.
+   *  - `unverifiable`: a non-404 failure (rate-limit, 5xx, network).
+   *    The check treats this neutrally rather than as a broken link, so a
+   *    GitHub API hiccup doesn't downgrade a valid PR's compliance score.
+   */
+  state: 'open' | 'closed' | 'not_found' | 'unverifiable';
   /** Whole days since the issue was closed, when state === 'closed'.
    * Used to distinguish "recently closed, may still apply" from "long
    * stale, almost certainly the wrong reference." */
@@ -175,7 +181,21 @@ function evaluateLinkedIssues(weight: number, linkedIssues: LinkedIssueInfo[]): 
       detail: `linked issue ${tag} does not exist — typo or wrong repo?`,
     };
   }
-  const staleClosed = linkedIssues.find(
+  // If every entry is unverifiable (and none were found-and-known-bad),
+  // neither pass nor fail — return a `warn` so the caller surfaces the
+  // gap without downgrading a valid PR's score. A rate-limit on a single
+  // reference shouldn't make a perfectly good PR look broken. Mixed sets
+  // fall through to the verifiable-state checks below; unverifiable
+  // entries are silently dropped from the worst-of-precedence ranking.
+  const verifiable = linkedIssues.filter((li) => li.state !== 'unverifiable');
+  if (verifiable.length === 0) {
+    return {
+      status: 'warn',
+      weight,
+      detail: `linked issue${linkedIssues.length > 1 ? 's' : ''} could not be verified (rate limit or network) — confirm manually`,
+    };
+  }
+  const staleClosed = verifiable.find(
     (li) => li.state === 'closed' && (li.closedDaysAgo ?? 0) > CLOSED_ISSUE_RECENT_DAYS,
   );
   if (staleClosed) {
@@ -187,7 +207,7 @@ function evaluateLinkedIssues(weight: number, linkedIssues: LinkedIssueInfo[]): 
         `${staleClosed.closedDaysAgo} days — reference is probably stale`,
     };
   }
-  const recentClosed = linkedIssues.find((li) => li.state === 'closed');
+  const recentClosed = verifiable.find((li) => li.state === 'closed');
   if (recentClosed) {
     return {
       status: 'warn',
@@ -197,7 +217,7 @@ function evaluateLinkedIssues(weight: number, linkedIssues: LinkedIssueInfo[]): 
         `${recentClosed.closedDaysAgo ?? '?'} days ago — confirm this PR is still relevant`,
     };
   }
-  const crossRepo = linkedIssues.find((li) => li.crossRepo);
+  const crossRepo = verifiable.find((li) => li.crossRepo);
   if (crossRepo) {
     return {
       status: 'warn',
@@ -210,7 +230,7 @@ function evaluateLinkedIssues(weight: number, linkedIssues: LinkedIssueInfo[]): 
   return {
     status: 'pass',
     weight,
-    detail: `linked issue${linkedIssues.length > 1 ? 's' : ''} verified open`,
+    detail: `linked issue${verifiable.length > 1 ? 's' : ''} verified open`,
   };
 }
 

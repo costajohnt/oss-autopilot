@@ -209,8 +209,13 @@ export function computeRepoVet(input: RepoVetInput): RepoVetResult {
   const avgDays = sampleSize === 0 ? null : input.prMergeTimesDays.reduce((s, d) => s + d, 0) / sampleSize;
   const medianDays = sampleSize === 0 ? null : median(input.prMergeTimesDays);
 
+  // Cap at 100. A repo clearing a backlog can have mergedCount > openedCount
+  // because PRs opened before the window can merge inside it — without the
+  // cap, the surfaced text would read "Merge rate (90d): 160% (8/5)" which
+  // looks like a tool bug. The score itself is fine (mergeRateSubScore
+  // clamps separately); this just keeps the display sensible.
   const mergeRatePercent =
-    input.openedCount90Days === 0 ? null : (input.mergedCount90Days / input.openedCount90Days) * 100;
+    input.openedCount90Days === 0 ? null : Math.min(100, (input.mergedCount90Days / input.openedCount90Days) * 100);
 
   const verdict = deriveVerdict(rubricScore, hasRedFlags(input));
 
