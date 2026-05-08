@@ -113,19 +113,9 @@ Read ONLY files explicitly mentioned. Use targeted line-range reads. Don't read 
 git diff HEAD~1..HEAD   # or the appropriate range
 ```
 
-Draft only from verified facts. **Zero-assumption policy:** common traps:
-- "This should fix the issue" — only if you've verified the fix addresses the reported problem.
-- "I've updated the tests" — only if the diff shows test changes.
-- "The function now handles X" — only if the diff shows the handling code.
-
-**Verify each claim against the diff:**
-- "Updated function X" → X appears in diff.
-- "Changed X to Y" → old was X, new is Y.
-- "Added a check for Z" → the check exists in new code.
-
-**Handle unverifiable or incorrect claims:**
-- Unverifiable (runtime behavior) → rephrase to something verifiable ("Added handling for X").
-- Incorrect (contradicted by diff) → auto-correct (wrong function name, wrong file path, "added" when actually "modified").
+Draft only from verified facts. Apply the **Claim Verification Protocol** in
+`workflows/reference.md` to every factual claim — the common drafting traps,
+verification mapping, and handling rules for unverifiable/incorrect claims live there.
 
 ### 6. Present the verified draft
 

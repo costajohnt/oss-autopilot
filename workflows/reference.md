@@ -307,3 +307,31 @@ When working on contributions to external repositories, the maintainer's judgmen
 - **Never substitute TODOs for requested changes.** If a maintainer asks for a change in this PR, make the change. Do not propose deferring to a follow-up unless the maintainer suggested it.
 
 This principle applies across all agents (`pr-responder`, `pre-commit-reviewer`, etc.) and all workflows (`pre-commit-review`, `draft-first-workflow`, etc.).
+
+---
+
+## Claim Verification Protocol
+
+Before reporting that a maintainer ask was addressed, that a tool passed, or that code behaves a certain way, verify the claim against actual evidence. The applicable rules:
+
+1. **Read the current code, not just diffs or descriptions.** "Already addressed" means you opened the file and confirmed. PR descriptions and comment threads are not authoritative.
+2. **Run commands instead of inferring outputs.** When claiming a check, lint, test, or build passes or fails, run it. Do not assume from the prior round's status.
+3. **Distinguish review rounds.** Only report what the LATEST review round asks for. Earlier rounds may have been resolved already.
+4. **State what you can't verify.** If a file is missing, a command fails, or the diff doesn't include the relevant range, say so explicitly. Do not guess.
+5. **Stay in scope.** Report only what the maintainer asked for. Do not propose extra improvements, test cases, or cleanup beyond the request.
+
+**Common drafting traps** when responding to maintainer comments:
+- "This should fix the issue" — only if you verified the fix addresses the reported problem.
+- "I've updated the tests" — only if the diff shows test changes.
+- "The function now handles X" — only if the diff shows the handling code.
+
+**Verification mapping** for every factual claim in a draft:
+- "Updated function X" → X appears in diff.
+- "Changed X to Y" → old was X, new is Y.
+- "Added a check for Z" → the check exists in new code.
+
+**Handling unverifiable or incorrect claims:**
+- Unverifiable (runtime behavior) → rephrase to something verifiable ("Added handling for X").
+- Incorrect (contradicted by diff) → auto-correct (wrong function name, wrong file path, "added" when actually "modified").
+
+This protocol applies to all agents that report findings (`pr-responder`, `pre-commit-reviewer`, `pr-health-checker`, etc.), all workflows that prompt agents to verify state (`work-through-issues`, `pre-commit-review`, `draft-first-workflow`, etc.), and all draft generation that includes factual claims about the code.
