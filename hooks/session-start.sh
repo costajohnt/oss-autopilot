@@ -28,27 +28,31 @@ MARKETPLACE_DIR="$HOME/.claude/plugins/marketplaces/oss-autopilot"
 MARKETPLACE_LOCK="${HOME}/.oss-autopilot/.marketplace-refresh.lock"
 
 # --- Step 1: Rebuild stale CLI bundle (if needed) ---
-# Use pnpm if available (this is a pnpm workspace; running `npm install` from
-# packages/core/ would generate a stray package-lock.json next to pnpm-lock.yaml
-# and confuse pnpm on the next install). Fall back to npm for end users that
-# only have npm — works today because @oss-autopilot/core has no workspace:*
-# deps. Mirrors the Step 1.5 dashboard pattern.
-if [ -f "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ] && [ "${PLUGIN_ROOT}/packages/core/package.json" -nt "${PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ]; then
-  if command -v pnpm &>/dev/null; then
-    cli_build() { cd "${PLUGIN_ROOT}" && pnpm install --silent 2>/dev/null && pnpm --silent --filter @oss-autopilot/core run bundle 2>/dev/null; }
-  else
-    cli_build() { cd "${PLUGIN_ROOT}/packages/core" && npm install --silent 2>/dev/null && npm run bundle --silent 2>/dev/null; }
-  fi
-  if (cli_build); then
-    rebuilt_cli=true
-  else
-    if command -v pnpm &>/dev/null; then
-      cli_rebuild_error="cd ${PLUGIN_ROOT} && pnpm install && pnpm --filter @oss-autopilot/core run bundle"
-    else
-      cli_rebuild_error="cd ${PLUGIN_ROOT}/packages/core && npm install && npm run bundle"
+# Delegate the staleness + build to scripts/build-cli-if-stale.sh (#1292).
+# That helper checks src/, package.json, AND tsconfig.json against the bundle
+# (the previous inline check only watched package.json, missing the common
+# `git pull` case where only src/ changed). Exit codes:
+#   0 → not stale; 1 → rebuilt OK; 2 → build attempted and failed.
+# `set -e` would short-circuit before the case below, since the helper
+# uses non-zero exits as signals (1 = rebuilt, 2 = build failed). Capture
+# the exit code without tripping `set -e`.
+cli_helper_rc=0
+"${PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${PLUGIN_ROOT}" >/tmp/oss-autopilot-cli-build.log 2>&1 || cli_helper_rc=$?
+case $cli_helper_rc in
+  0) ;;  # bundle is current
+  1) rebuilt_cli=true ;;
+  2)
+    cli_rebuild_error="$(grep '^BUILD_FAILED' /tmp/oss-autopilot-cli-build.log | sed 's/^BUILD_FAILED: //')"
+    if [ -z "$cli_rebuild_error" ]; then
+      if command -v pnpm &>/dev/null; then
+        cli_rebuild_error="cd ${PLUGIN_ROOT} && pnpm install && pnpm --filter @oss-autopilot/core run bundle"
+      else
+        cli_rebuild_error="cd ${PLUGIN_ROOT}/packages/core && npm install && npm run bundle"
+      fi
     fi
-  fi
-fi
+    ;;
+  *) ;;  # exit 3 (invocation error) — leave both rebuilt_cli=false and cli_rebuild_error empty
+esac
 
 # --- Step 1.5: Build dashboard SPA if missing or stale ---
 # Stale check scans src/, vite.config.ts, tsconfig.json, and package.json
