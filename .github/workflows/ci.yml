@@ -126,10 +126,12 @@ jobs:
 
       - name: Verify generated reference.md is up to date (#1289)
         # Regenerates the auto-managed sections of workflows/reference.md from
-        # source (agents/*.md frontmatter today; cli-registry + workflow index
-        # later). Fails when an agent was added/edited without running
-        # `pnpm run generate:reference`.
+        # source (agents/*.md frontmatter, workflows/manifest.json, and the
+        # bundled CLI's `manifest --json` output for the localOnly command list).
+        # The build-cli-if-stale helper is reused so the regen step can rely on
+        # a fresh bundle without rebuilding from scratch.
         run: |
+          bash scripts/build-cli-if-stale.sh "$PWD"
           pnpm run generate:reference
           if ! git diff --exit-code workflows/reference.md; then
             echo "::error::workflows/reference.md is out of sync. Run 'pnpm run generate:reference' and commit the result."

@@ -8,7 +8,14 @@ All commands support `--json` flag for structured output.
 
 **Prefix:** `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs"`
 
-Local-only commands (no GitHub token needed): `status`, `setup`, `checkSetup`, `config`, `local-repos`, `parse-issue-list`, `serve`, `manifest`.
+<!-- The line below is generated from the bundled CLI's `manifest --json`
+     output by scripts/generate-reference.mjs (#1289). To change the list,
+     toggle the `localOnly` flag on a command in cli-registry.ts and run
+     `bash scripts/build-cli-if-stale.sh "$PWD" && pnpm run generate:reference`.
+     CI fails if this line is out of sync with the registry. -->
+<!-- BEGIN AUTO:local-only-commands -->
+Local-only commands (no GitHub token needed): `checkSetup`, `clear-override`, `config`, `detect-formatters`, `dismiss`, `doctor`, `guidelines`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `override`, `parse-issue-list`, `serve`, `setup`, `shelve`, `skip-add`, `startup`, `stats`, `status`, `undismiss`, `unshelve`.
+<!-- END AUTO:local-only-commands -->
 
 ### Core Workflow
 
