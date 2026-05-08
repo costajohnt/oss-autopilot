@@ -178,6 +178,11 @@ rejected with a did-you-mean suggestion.
 
 ## Agent Integration
 
+<!-- The table below is generated from each agent's `purpose:` frontmatter
+     by scripts/generate-reference.mjs (#1289). To change a row, edit the
+     agent file and run `pnpm run generate:reference`. CI fails if this
+     section is out of sync. -->
+<!-- BEGIN AUTO:agent-table -->
 | Agent | Purpose |
 |-------|---------|
 | `pr-responder` | Draft responses to maintainer feedback |
@@ -187,6 +192,7 @@ rejected with a did-you-mean suggestion.
 | `issue-scout` | Find and vet new issues |
 | `repo-evaluator` | Analyze repository health |
 | `contribution-strategist` | Strategic OSS advice |
+<!-- END AUTO:agent-table -->
 
 ---
 

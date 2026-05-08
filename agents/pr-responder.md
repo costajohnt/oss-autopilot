@@ -20,6 +20,7 @@ User needs help understanding and responding to a specific code review comment.
 </commentary>
 </example>
 
+purpose: Draft responses to maintainer feedback
 model: sonnet
 color: cyan
 tools: ["Bash", "Read", "Write", "Glob", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments", "mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get"]

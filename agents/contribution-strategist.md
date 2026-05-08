@@ -20,6 +20,7 @@ User wants strategic guidance on where to contribute.
 </commentary>
 </example>
 
+purpose: Strategic OSS advice
 model: haiku
 color: magenta
 tools: ["Bash", "Read"]
