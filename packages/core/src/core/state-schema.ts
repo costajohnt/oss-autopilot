@@ -80,6 +80,20 @@ export const AnalyzedIssueConversationSchema = z.object({
   analyzedAt: z.string(),
 });
 
+/**
+ * One entry in a PR's follow-up history (#1277). Tier matches the
+ * cadence labels in `skills/pr-etiquette/SKILL.md` (light_check_in
+ * for 7-13 days, direct_check_in for 14-29 days, final_check_in for
+ * 30+ days). The `draftPath` is optional so an entry recorded from a
+ * direct `gh pr comment` (no draft) still validates.
+ */
+export const FollowUpEntrySchema = z.object({
+  tier: z.enum(['light_check_in', 'direct_check_in', 'final_check_in']),
+  timestamp: z.string().datetime(),
+  draftPath: z.string().optional(),
+});
+export type FollowUpEntry = z.infer<typeof FollowUpEntrySchema>;
+
 // ── 3. Contribution schemas ──────────────────────────────────────────
 
 export const ContributionGuidelinesSchema = z.object({
@@ -334,6 +348,16 @@ export const AgentStateSchema = z.object({
   analyzedIssueConversations: z.array(AnalyzedIssueConversationSchema).optional(),
 
   activeIssues: z.array(TrackedIssueSchema).default([]),
+
+  /**
+   * Per-PR follow-up history (#1277). Keyed by PR URL. Each entry
+   * records a tier-bucketed follow-up that the user drafted (and
+   * presumably posted via `draft-review-post`). The dormant-pr
+   * workflow reads this before drafting to enforce the
+   * one-follow-up-per-timeframe rule documented in
+   * `skills/pr-etiquette/SKILL.md`.
+   */
+  prFollowUpHistory: z.record(z.string(), z.array(FollowUpEntrySchema)).optional(),
 });
 
 // ── Inferred types ───────────────────────────────────────────────────
