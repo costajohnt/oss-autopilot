@@ -55,29 +55,25 @@ case $cli_helper_rc in
 esac
 
 # --- Step 1.5: Build dashboard SPA if missing or stale ---
-# Stale check scans src/, vite.config.ts, tsconfig.json, and package.json
-# against dist/index.html. Must match the check in commands/oss-dashboard.md —
-# checking package.json alone misses the common case where only src/ changes
-# (package.json is private, pinned at 0.1.0, and rarely touched).
-DASHBOARD_INDEX="${PLUGIN_ROOT}/packages/dashboard/dist/index.html"
-DASHBOARD_PKG="${PLUGIN_ROOT}/packages/dashboard/package.json"
-# Exclude junk (DS_Store, editor swap files, backups, .git, node_modules) so
-# the stale-check doesn't rebuild on every session over an editor-touched
-# swap file (#1059 L3).
-if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ -n "$(find "${PLUGIN_ROOT}/packages/dashboard/src" "${DASHBOARD_PKG}" "${PLUGIN_ROOT}/packages/dashboard/vite.config.ts" "${PLUGIN_ROOT}/packages/dashboard/tsconfig.json" -type f ! -path '*/node_modules/*' ! -path '*/.git/*' ! -name '.DS_Store' ! -name '*~' ! -name '*.swp' ! -name '*.swo' ! -name '.#*' -newer "${DASHBOARD_INDEX}" -print -quit 2>/dev/null)" ]; }; then
-  # Dashboard depends on @oss-autopilot/core types via workspace:* protocol.
-  # Use pnpm if available (required for workspace: resolution), fall back to npm.
-  if command -v pnpm &>/dev/null; then
-    dashboard_build() { cd "${PLUGIN_ROOT}" && pnpm install --silent 2>/dev/null && pnpm --silent --filter @oss-autopilot/core run build 2>/dev/null && pnpm --silent --filter @oss-autopilot/dashboard run build 2>/dev/null; }
-  else
-    dashboard_build() { cd "${PLUGIN_ROOT}/packages/dashboard" && npm install --silent 2>/dev/null && npm run build 2>/dev/null; }
-  fi
-  if (dashboard_build); then
-    rebuilt_dashboard=true
-  else
-    dashboard_rebuild_error="cd ${PLUGIN_ROOT} && pnpm install && pnpm run build"
-  fi
-fi
+# Delegate to scripts/build-dashboard-if-stale.sh (#1292). That helper scans
+# src/, vite.config.ts, tsconfig.json, and package.json against dist/index.html,
+# excludes editor swap files, and handles the missing-pnpm case explicitly
+# (the dashboard depends on @oss-autopilot/core via workspace:* — npm cannot
+# resolve that protocol). Exit codes:
+#   0 → not stale; 1 → rebuilt OK; 2 → build attempted and failed.
+dashboard_helper_rc=0
+"${PLUGIN_ROOT}/scripts/build-dashboard-if-stale.sh" "${PLUGIN_ROOT}" >/tmp/oss-autopilot-dashboard-build.log 2>&1 || dashboard_helper_rc=$?
+case $dashboard_helper_rc in
+  0) ;;  # bundle is current
+  1) rebuilt_dashboard=true ;;
+  2)
+    dashboard_rebuild_error="$(grep '^BUILD_FAILED' /tmp/oss-autopilot-dashboard-build.log | sed 's/^BUILD_FAILED: //')"
+    if [ -z "$dashboard_rebuild_error" ]; then
+      dashboard_rebuild_error="cd ${PLUGIN_ROOT} && pnpm install && pnpm run build"
+    fi
+    ;;
+  *) ;;  # exit 3 (invocation error) — leave defaults
+esac
 
 # Emit a single consolidated line for successful rebuilds, and separate warning
 # lines for any rebuild failures (errors are rarer and benefit from being

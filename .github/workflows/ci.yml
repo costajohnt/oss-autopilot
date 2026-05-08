@@ -121,6 +121,9 @@ jobs:
       - name: Test build-cli-if-stale helper (#1292)
         run: bash scripts/build-cli-if-stale.test.sh
 
+      - name: Test build-dashboard-if-stale helper (#1292)
+        run: bash scripts/build-dashboard-if-stale.test.sh
+
       - name: Test guard-public-posts hook
         run: bash hooks/guard-public-posts.test.sh
 
