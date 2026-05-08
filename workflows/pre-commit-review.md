@@ -82,10 +82,11 @@ Before dispatching review agents, run the repo's lint and test commands to catch
 
 1. **Detect and run linter/type checker**: Check for `package.json` scripts (`lint`, `typecheck`, `tsc`), `Makefile` targets, or language-specific tooling. Run the detected command(s). If no linter is detected, skip and note: "No linter detected — skipping pre-review lint."
 
-2. **Verify tools against CI configuration (CI-enforcement check):** Before treating any linter, formatter, or type checker output as authoritative, confirm the tool is actually enforced by the project's CI. Check these sources in order:
+2. **Verify tools against CI configuration (CI-enforcement check):** Before treating any linter, formatter, or type checker output as authoritative, confirm the tool is actually enforced by the project's CI. The structured detection lives at `packages/core/src/core/ci-enforced-tools.ts` (`getCIEnforcedTools`) — call it with the well-known config snippets to get back a typed `CIEnforcedTool[]` instead of stitching `cat`/`grep` output in markdown (#1286). The function reads:
    - `.pre-commit-config.yaml` — lists hooks that run on every commit/PR. Save the list of repo URLs and hook IDs as `enforcedTools`.
    - `.github/workflows/*.yml` (or `.gitlab-ci.yml`, `Jenkinsfile`, etc.) — look for tool invocations in CI job steps.
    - `Makefile` targets referenced by CI — if CI runs `make lint`, check what `make lint` actually invokes.
+   - `package.json` scripts — `scripts.lint`, `scripts.test`, etc. Each script-named tool is surfaced as a CI-enforced source.
 
    **Rules:**
    - If a tool is NOT in CI, its output is **informational only** — report findings but do not auto-apply fixes or block on its output.
@@ -335,6 +336,8 @@ On "Done for now":
 **7a. Classify the feedback — does a comment add value, or does the diff speak for itself? (#904)**
 
 Before drafting, decide whether a comment is actually needed. When the fix is self-evident from the diff, a comment that restates it wastes the maintainer's attention. Err on the side of skipping — the push is already a response.
+
+> **Source of truth (#1286):** the skip-vs-draft rule lives at `packages/core/src/core/comment-decision.ts` (`shouldDraftResponse`). The same function is consumed by the `pr-responder` agent. The bullets below are the human-facing render of that rule — edit the function first if the rule changes.
 
 **Skip the comment entirely if ALL of these are true:**
 - Every piece of maintainer feedback addressed in this push maps to a concrete code change (e.g. "avoid `T.untyped` here", "add a nil check", "rename this variable")
