@@ -116,10 +116,11 @@ async function verifyLinkedIssues(
         if (status === 404) {
           return { number, repo: fullRepo, crossRepo, state: 'not_found' as const };
         }
-        // Rate limit / network — surface as not_found so the agent does
-        // not silently pass on an unverified reference. The agent's
-        // recommendation text already tells the user to confirm.
-        return { number, repo: fullRepo, crossRepo, state: 'not_found' as const };
+        // Rate limit, 5xx, network — distinct from "not found" so the
+        // score function treats it neutrally. Mapping a 429 on a valid
+        // open issue to `not_found` would falsely fail the
+        // issue-reference check on a perfectly good PR.
+        return { number, repo: fullRepo, crossRepo, state: 'unverifiable' as const };
       }
     }),
   );

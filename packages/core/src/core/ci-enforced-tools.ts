@@ -79,9 +79,14 @@ function detectFromHaystack(haystack: string, source: CIEnforcedTool['source'], 
       evidenceFor: ['vitest', 'jest', 'pytest', 'rspec', 'go test', 'cargo test', 'mocha'],
     },
     {
+      // `tsc` alone (or `tsc --noEmit`) is a typecheck, not a build artifact
+      // step — keep it out of this pattern so a workflow with only
+      // `tsc --noEmit` doesn't fire BOTH `typecheck` and `build`. Real
+      // build steps that do produce artifacts (tsup, esbuild, webpack,
+      // cargo build, go build) stay here.
       tool: 'build',
-      pattern: /\b(?:tsc --noemit|tsup|esbuild|webpack|cargo build|go build)\b/i,
-      evidenceFor: ['tsc --noemit', 'tsup', 'esbuild', 'webpack', 'cargo build', 'go build'],
+      pattern: /\b(?:tsup|esbuild|webpack|cargo build|go build)\b/i,
+      evidenceFor: ['tsup', 'esbuild', 'webpack', 'cargo build', 'go build'],
     },
     {
       tool: 'commit-format',

@@ -616,23 +616,68 @@ export const PRTemplateOutputSchema = z.object({
   error: z.string().optional(),
 });
 
-/** Output of the `repo-vet` CLI command (#1271, follow-up to #1242). */
-export const RepoVetOutputSchema = z
-  .object({
-    repoSlug: z.string(),
-    fetchedAt: z.string(),
-  })
-  .passthrough();
+/**
+ * Output of the `repo-vet` CLI command (#1271, follow-up to #1242).
+ *
+ * Validates the full nested shape so a refactor that drops or
+ * mis-types one of these fields trips `outputJsonValidated` rather
+ * than silently shipping a broken envelope (#1245 contract pattern,
+ * matching `ComplianceScoreOutputSchema` below).
+ */
+const RepoVetMetaSchema = z.object({
+  stars: z.number(),
+  forks: z.number(),
+  openIssues: z.number(),
+  watchers: z.number(),
+  isArchived: z.boolean(),
+  lastPushed: z.string(),
+  createdAt: z.string(),
+});
+export const RepoVetOutputSchema = z.object({
+  repoSlug: z.string(),
+  fetchedAt: z.string(),
+  repoMeta: RepoVetMetaSchema,
+  prMergeTime: z.object({
+    avgDays: z.number().nullable(),
+    medianDays: z.number().nullable(),
+    sampleSize: z.number().int().nonnegative(),
+    sourceWindowDays: z.literal(90),
+  }),
+  mergeRate: z.object({
+    merged: z.number().int().nonnegative(),
+    opened: z.number().int().nonnegative(),
+    percent: z.number().nullable(),
+    windowDays: z.literal(90),
+  }),
+  maintainerActivity: z.object({
+    lastCommitISO: z.string().nullable(),
+    contributorsLast90d: z.number().int().nonnegative(),
+    lastReleaseISO: z.string().nullable(),
+  }),
+  communityHealth: z.object({
+    contributing: z.boolean(),
+    issueTemplates: z.boolean(),
+    prTemplate: z.boolean(),
+    codeOfConduct: z.boolean(),
+    /**
+     * True when at least one community-health probe failed for a non-404
+     * reason (auth, rate-limit, 5xx). The boolean flags above stay
+     * `false` for unprobed paths in that case, so consumers should treat
+     * the false flags as "could not determine" rather than "confirmed
+     * absent" when this is set.
+     */
+    incomplete: z.boolean().optional(),
+  }),
+  rubricScore: z.number(),
+  rubricVerdict: z.enum(['recommended', 'proceed_with_caution', 'avoid']),
+});
 /**
  * The CLI wrapper renames the core function's `repo` metadata object to
- * `repoMeta` so the top-level slug doesn't collide with it. Everything
- * else mirrors `RepoVetResult` verbatim.
+ * `repoMeta` so the top-level slug doesn't collide with it. The TS type
+ * is derived from the Zod schema so any drift between schema and type
+ * fails at compile time.
  */
-export type RepoVetOutput = {
-  repoSlug: string;
-  fetchedAt: string;
-  repoMeta: import('../core/repo-vet.js').RepoVetResult['repo'];
-} & Omit<import('../core/repo-vet.js').RepoVetResult, 'repo'>;
+export type RepoVetOutput = z.infer<typeof RepoVetOutputSchema>;
 
 const ComplianceCheckSchema = z.object({
   status: z.enum(['pass', 'warn', 'fail']),

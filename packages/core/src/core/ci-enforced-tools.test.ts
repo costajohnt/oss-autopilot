@@ -46,6 +46,10 @@ jobs:
     });
     expect(out.find((e) => e.tool === 'test')?.source).toBe('github-workflow');
     expect(out.find((e) => e.tool === 'typecheck')?.source).toBe('github-workflow');
+    // Negative: `tsc --noEmit` is a typecheck, not a build step. Earlier
+    // versions of the build pattern caught it and emitted both, which
+    // mis-categorized the workflow.
+    expect(out.find((e) => e.tool === 'build')).toBeUndefined();
   });
 
   it('detects security scanners', () => {

@@ -111,6 +111,16 @@ describe('computeRepoVet — merge rate', () => {
     // opened>0 AND merged=0).
     expect(result.mergeRate.percent).toBeNull();
   });
+
+  it('caps percent at 100 when mergedCount > openedCount (backlog clearance)', () => {
+    // PRs opened before the window can merge inside it, producing
+    // mergedCount > openedCount. Without the cap, the displayed value
+    // would be 160%, which looks like a tool bug to readers.
+    const result = computeRepoVet(input({ mergedCount90Days: 8, openedCount90Days: 5 }));
+    expect(result.mergeRate.percent).toBe(100);
+    expect(result.mergeRate.merged).toBe(8);
+    expect(result.mergeRate.opened).toBe(5);
+  });
 });
 
 describe('computeRepoVet — community health', () => {

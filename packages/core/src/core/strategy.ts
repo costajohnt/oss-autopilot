@@ -118,8 +118,11 @@ function topNByCount(counts: Record<string, number>, n: number): string[] {
     .map(([name]) => name);
 }
 
-function determineStyle(totalPRs: number, primaryLanguages: string[], favoriteRepos: string[]): ContributorStyle {
-  if (totalPRs < 5) return 'explorer';
+function determineStyle(_totalPRs: number, primaryLanguages: string[], favoriteRepos: string[]): ContributorStyle {
+  // `totalPRs` is reserved for future "explorer" classification (low-volume
+  // contributors). Today the function is only reachable from `computeStrategy`
+  // which gates at `merged.length >= STRATEGY_MIN_PRS` (10), so a `totalPRs < 5`
+  // branch could never fire — removed to avoid misleading future readers.
   // Heavy concentration in 1-2 repos → maintainer; spread across many → generalist.
   if (favoriteRepos.length === 1) return 'maintainer';
   if (primaryLanguages.length === 1 && favoriteRepos.length >= 2 && favoriteRepos.length <= 3) {

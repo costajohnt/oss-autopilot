@@ -78,12 +78,27 @@ function strikeLine(line: string): { line: string; alreadyStruck: boolean } {
   return { line: `${prefix}${STRIKE}${body}${STRIKE}`, alreadyStruck: false };
 }
 
+/**
+ * Match the URL only when followed by a non-digit, non-word character (or
+ * end of line). A bare `includes(issueUrl)` would match `issues/1` against
+ * a line containing `issues/10`, so finding/marking issue 1 would mark
+ * whichever number-prefix line appears first.
+ */
+function lineMentionsUrl(line: string, issueUrl: string): boolean {
+  const idx = line.indexOf(issueUrl);
+  if (idx === -1) return false;
+  const next = line.charCodeAt(idx + issueUrl.length);
+  // NaN (end of string) → digit boundary OK. Otherwise reject any digit
+  // immediately after the URL so 'issues/1' doesn't match 'issues/10'.
+  return Number.isNaN(next) || next < 48 /* '0' */ || next > 57; /* '9' */
+}
+
 /** Find the issue block (issue line plus any indented sub-bullets) that mentions the URL. */
 function findIssueBlock(lines: string[], issueUrl: string): IssueBlock | undefined {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!ISSUE_LINE_RE.test(line)) continue;
-    if (!line.includes(issueUrl)) continue;
+    if (!lineMentionsUrl(line, issueUrl)) continue;
     let end = i + 1;
     while (end < lines.length && /^\s{2,}/.test(lines[end])) end++;
     return { start: i, end };

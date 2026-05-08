@@ -125,6 +125,21 @@ describe('markIssueAsDone (pure transform)', () => {
     expect(result.content).toContain(`### ~~baz/qux~~`);
   });
 
+  it('does not match a URL whose number is a prefix of another listed URL (substring guard)', () => {
+    // `issues/1` is a substring of `issues/10`. Without the digit-boundary
+    // guard, marking issue 1 would clobber whichever appears first.
+    const URL_1 = 'https://github.com/foo/bar/issues/1';
+    const URL_10 = 'https://github.com/foo/bar/issues/10';
+    const content = [`### foo/bar`, `- [#10](${URL_10}) — ten`, `- [#1](${URL_1}) — one`, ''].join('\n');
+    const result = markIssueAsDone(content, { issueUrl: URL_1, prUrl: PR_A, prStatus: 'merged' });
+    expect(result.marked).toBe(true);
+    // Issue 10 must remain untouched.
+    expect(result.content).toContain(`- [#10](${URL_10}) — ten`);
+    expect(result.content).toContain(`- ~~[#1](${URL_1}) — one~~`);
+    // The Done sub-bullet should reference issue 1, not issue 10.
+    expect(result.content).toContain(`- **Done** — PR [#123](${PR_A}) submitted, merged.`);
+  });
+
   it('preserves the trailing newline shape of the source', () => {
     const withNewline = `### foo/bar\n- [#1](${ISSUE_A}) — x\n`;
     const withoutNewline = `### foo/bar\n- [#1](${ISSUE_A}) — x`;

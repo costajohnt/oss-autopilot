@@ -108,6 +108,32 @@ describe('issueReference check — verified linked issues (#1246 B)', () => {
     const result = computeComplianceScore(meta({ body: 'No reference here.' }), ctx);
     expect(result.checks.issueReference.status).toBe('fail');
   });
+
+  it('warns (not fails) when every linked issue is unverifiable (rate limit / 5xx)', () => {
+    // A 429 on a perfectly valid open issue must NOT downgrade the
+    // PR's compliance check to "fail" — that would false-positive on
+    // every PR during a rate-limit window.
+    const ctx: RepoContext = {
+      linkedIssues: [{ number: 1, repo: 'owner/repo', crossRepo: false, state: 'unverifiable' }],
+    };
+    const result = computeComplianceScore(meta({ body: 'Closes #1' }), ctx);
+    expect(result.checks.issueReference.status).toBe('warn');
+    expect(result.checks.issueReference.detail).toMatch(/could not be verified/);
+  });
+
+  it('passes when one issue is unverifiable but another is open (mixed set)', () => {
+    // The score function ignores unverifiable entries when computing
+    // the worst-of-precedence ranking, so a single rate-limited entry
+    // alongside a verified-open one does not pull the score down.
+    const ctx: RepoContext = {
+      linkedIssues: [
+        { number: 1, repo: 'owner/repo', crossRepo: false, state: 'open' },
+        { number: 2, repo: 'owner/repo', crossRepo: false, state: 'unverifiable' },
+      ],
+    };
+    const result = computeComplianceScore(meta({ body: 'Closes #1, see #2' }), ctx);
+    expect(result.checks.issueReference.status).toBe('pass');
+  });
 });
 
 describe('issueReference check', () => {
