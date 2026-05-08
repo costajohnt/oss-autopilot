@@ -308,6 +308,8 @@ interface CommentedIssueBase {
   title: string;
   url: string;
   userLastCommentedAt: string;
+  /** User's most recent comment body, truncated to 200 chars (+ "..." suffix when truncated). #1290 */
+  userLastCommentBody: string;
   labels: string[];
   daysSinceUserComment: number;
 }

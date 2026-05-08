@@ -265,6 +265,7 @@ export class IssueConversationMonitor {
       title: item.title,
       url: item.html_url,
       userLastCommentedAt: userLastComment.createdAt,
+      userLastCommentBody: userLastComment.body.slice(0, 200) + (userLastComment.body.length > 200 ? '...' : ''),
       labels,
       daysSinceUserComment: daysBetween(userLastCommentTime, new Date()),
     };
