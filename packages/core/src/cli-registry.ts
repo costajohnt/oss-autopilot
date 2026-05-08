@@ -1244,6 +1244,47 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── Repo Vet (#1271) ────────────────────────────────────────────────
+  {
+    name: 'repo-vet',
+    register(program) {
+      program
+        .command('repo-vet <repo>')
+        .description('Compute repo health rubric (1–10 score + verdict) for `owner/repo`')
+        .option('--json', 'Output as JSON')
+        .action(async (repo, options) => {
+          const { RepoVetOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
+            options,
+            async () => (await import('./commands/repo-vet.js')).runRepoVet({ repo }),
+            (data) => {
+              const verdictEmoji =
+                data.rubricVerdict === 'recommended'
+                  ? '✅'
+                  : data.rubricVerdict === 'proceed_with_caution'
+                    ? '⚠️'
+                    : '❌';
+              console.log(
+                `\n${verdictEmoji} ${data.repoSlug}: ${data.rubricScore.toFixed(1)}/10 — ${data.rubricVerdict}`,
+              );
+              console.log(`  Stars: ${data.repoMeta.stars}  Last push: ${data.repoMeta.lastPushed}`);
+              if (data.prMergeTime.medianDays !== null) {
+                console.log(
+                  `  Median merge time (90d): ${data.prMergeTime.medianDays.toFixed(1)} days (${data.prMergeTime.sampleSize} samples)`,
+                );
+              }
+              if (data.mergeRate.percent !== null) {
+                console.log(
+                  `  Merge rate (90d): ${data.mergeRate.percent.toFixed(0)}% (${data.mergeRate.merged}/${data.mergeRate.opened})`,
+                );
+              }
+            },
+            RepoVetOutputSchema,
+          );
+        });
+    },
+  },
+
   // ── Detect Formatters ────────────────────────────────────────────────
   {
     name: 'detect-formatters',

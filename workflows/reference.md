@@ -105,6 +105,9 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 
 # Fetch the target repo's PR description template (used by the draft-first workflow)
 <prefix> pr-template <pr-url> --json
+
+# Compute repo health rubric (1–10 score + verdict) for owner/repo (#1271)
+<prefix> repo-vet <owner/repo> --json
 ```
 
 ### Dashboard

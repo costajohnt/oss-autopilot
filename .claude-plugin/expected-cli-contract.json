@@ -23,6 +23,7 @@
     "parse-issue-list",
     "post",
     "pr-template",
+    "repo-vet",
     "search",
     "serve",
     "setup",

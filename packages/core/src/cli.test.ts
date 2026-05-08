@@ -410,6 +410,7 @@ describe('Command registration', () => {
       'dismiss',
       'undismiss',
       'pr-template',
+      'repo-vet',
       'override',
       'clear-override',
       'stats',

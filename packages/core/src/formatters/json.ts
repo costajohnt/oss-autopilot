@@ -616,6 +616,24 @@ export const PRTemplateOutputSchema = z.object({
   error: z.string().optional(),
 });
 
+/** Output of the `repo-vet` CLI command (#1271, follow-up to #1242). */
+export const RepoVetOutputSchema = z
+  .object({
+    repoSlug: z.string(),
+    fetchedAt: z.string(),
+  })
+  .passthrough();
+/**
+ * The CLI wrapper renames the core function's `repo` metadata object to
+ * `repoMeta` so the top-level slug doesn't collide with it. Everything
+ * else mirrors `RepoVetResult` verbatim.
+ */
+export type RepoVetOutput = {
+  repoSlug: string;
+  fetchedAt: string;
+  repoMeta: import('../core/repo-vet.js').RepoVetResult['repo'];
+} & Omit<import('../core/repo-vet.js').RepoVetResult, 'repo'>;
+
 const ComplianceCheckSchema = z.object({
   status: z.enum(['pass', 'warn', 'fail']),
   weight: z.number(),
