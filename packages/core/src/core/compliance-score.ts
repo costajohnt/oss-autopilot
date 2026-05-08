@@ -124,16 +124,16 @@ const STATUS_TO_FRACTION: Record<ComplianceCheckStatus, number> = {
   fail: 0,
 };
 
-/** Title byte budget — Conventional Commits style fits comfortably under 72. */
-export const TITLE_LENGTH_BUDGET = 72;
+// Pull canonical rubric thresholds from the single source of truth
+// (#1252). Re-exported so existing consumers of compliance-score
+// (tests, agent prompts) keep working without touching their imports.
+import { TITLE_LENGTH_BUDGET, FOCUSED_CHANGES_THRESHOLDS } from './pr-quality-rubric.js';
 
-/** "Focused changes" thresholds, exported for documentation/testing. */
-export const FOCUSED_CHANGES = {
-  passFiles: 10,
-  passLines: 400,
-  warnFiles: 20,
-  warnLines: 800,
-} as const;
+/** Title byte budget — Conventional Commits style fits comfortably under 72. */
+export { TITLE_LENGTH_BUDGET } from './pr-quality-rubric.js';
+
+/** "Focused changes" thresholds. Source of truth lives in pr-quality-rubric.ts. */
+export const FOCUSED_CHANGES = FOCUSED_CHANGES_THRESHOLDS;
 
 /** Score → rating cutoffs. */
 export const RATING_CUTOFFS = {
