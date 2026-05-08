@@ -116,6 +116,28 @@ Bad: `Update file.js`, `WIP`, `asdfasdf`, titles > 72 chars.
 Good: `feature/add-user-auth`, `fix/login-timeout`, `123-fix-bug`.
 Bad: `patch-1` (GitHub default), `main`/`master` as source, random strings.
 
+### 7. Template Preservation — Sanity Check (#1252 Item 2)
+
+Wiping the upstream PR template is the most common reason a maintainer flags a contribution as careless. This check runs BEFORE the weighted scoring above. It does not contribute to the percentage but a Critical failure here should be surfaced prominently in the output (and typically downgrades the overall rating regardless of score).
+
+**1.** Fetch the repo's template via the `pr-template` CLI (the call is already listed in the Data Access section above). The response shape is `{ template, source, error? }`.
+
+**2.** If `template` is `null` or empty, skip this check (✅ Pass / Not Applicable — the repo has no template, so there's nothing to preserve).
+
+**3.** If a template exists, compare the PR description against it:
+
+- **Headings:** every level-1, level-2, and level-3 heading from the template must appear (verbatim) in the PR description. Reordering is OK; renaming or removal is not.
+- **HTML comments:** any `<!-- ... -->` blocks in the template (often used by maintainer bots to look up metadata) must be preserved verbatim in the description.
+- **Checklist items:** every `- [ ]` line from the template must appear in the PR description AS UNCHECKED (`- [ ]`, not `- [x]`). Maintainers' bots (DCO, changesets, license headers, etc.) rely on those items being actively ticked when the work meets each criterion. Pre-checking them defeats the bot.
+
+**4.** Classify the result:
+
+- ✅ **Pass:** all template headings + comments + checklist items are present, and no checklist items were pre-checked. The contributor's summary is added under an existing summary/description heading or prepended to the body.
+- ⚠️ **Warning (partial preservation):** template was used but at least one heading is missing, or a maintainer-bot HTML comment was removed, or the contributor pre-checked a checklist item the bot expects to manage. List the specific deviations.
+- ❌ **Critical (template wiped):** none of the template headings appear in the PR description (the contributor replaced the template entirely with a freeform body).
+
+**5.** Surface in the output. A Critical here downgrades the overall rating to ⚠️ at most, even when the weighted score would otherwise reach 🌟. Maintainer-perceived carelessness outweighs a strong checkbox score.
+
 ## Scoring
 
 | Check | Weight |
@@ -144,6 +166,7 @@ Bad: `patch-1` (GitHub default), `main`/`master` as source, random strings.
 ### Checks
 | Check | Status | Notes |
 |---|---|---|
+| Template preservation | ✅/⚠️/❌ | [headings present? comments preserved? checklist intact?] |
 | Issue reference | ✅/⚠️/❌ | [details] |
 | Description | ✅/⚠️/❌ | [details] |
 | Focused changes | ✅/⚠️/❌ | [X files, Y lines] |
