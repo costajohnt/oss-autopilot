@@ -10,7 +10,7 @@ MCP server for [OSS Autopilot](https://github.com/costajohnt/oss-autopilot) — 
 
 | Feature | Count | Description |
 |---------|-------|-------------|
-| **Tools** | 27 | `daily`, `status`, `search`, `vet`, `vet-list`, `track`, `compliance-score`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus` |
+| **Tools** | 28 | `daily`, `status`, `search`, `vet`, `vet-list`, `track`, `compliance-score`, `repo-vet`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus` |
 | **Resources** | 6 | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}`, `oss://repo/{owner}/{repo}/guidelines` |
 | **Prompts** | 4 | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues), `extract-learnings` (distill per-repo guidance from past PR feedback) |
 
@@ -120,6 +120,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `vet-list` | Re-vet all available issues in the curated issue list | No |
 | `track` | Fetch metadata for a pull request (informational; nothing persists) | No |
 | `compliance-score` | Score a PR against opensource.guide best practices (#1245) | Yes |
+| `repo-vet` | Compute the repo health rubric (1–10 + verdict) for `owner/repo` (#1271) | Yes |
 | `comments` | Fetch and display PR comments | Yes |
 | `post` | Post a comment on an issue or PR | No |
 | `claim` | Claim an issue by posting a comment | No |
