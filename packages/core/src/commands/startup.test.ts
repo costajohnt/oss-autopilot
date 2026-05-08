@@ -481,6 +481,54 @@ describe('runStartup behavior', () => {
     consoleSpy.mockRestore();
   });
 
+  it('passes through OSS_DASHBOARD_BUILD_STATUS=failed and the error tail (#1293)', async () => {
+    const daily = makeDailyOutput(0);
+    executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({ url: 'http://localhost:3000', port: 3000, alreadyRunning: false });
+    process.env.OSS_DASHBOARD_BUILD_STATUS = 'failed';
+    process.env.OSS_DASHBOARD_BUILD_ERROR_TAIL = 'tsc: error TS2322 in src/index.tsx:42';
+
+    try {
+      const result = await runStartup();
+      expect(result.dashboardBuildStatus).toBe('failed');
+      expect(result.dashboardBuildErrorTail).toBe('tsc: error TS2322 in src/index.tsx:42');
+    } finally {
+      delete process.env.OSS_DASHBOARD_BUILD_STATUS;
+      delete process.env.OSS_DASHBOARD_BUILD_ERROR_TAIL;
+    }
+  });
+
+  it('drops dashboardBuildErrorTail when status is fresh (no failure to surface)', async () => {
+    const daily = makeDailyOutput(0);
+    executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({ url: 'http://localhost:3000', port: 3000, alreadyRunning: false });
+    process.env.OSS_DASHBOARD_BUILD_STATUS = 'fresh';
+    process.env.OSS_DASHBOARD_BUILD_ERROR_TAIL = 'leftover from a prior session';
+
+    try {
+      const result = await runStartup();
+      expect(result.dashboardBuildStatus).toBe('fresh');
+      expect(result.dashboardBuildErrorTail).toBeUndefined();
+    } finally {
+      delete process.env.OSS_DASHBOARD_BUILD_STATUS;
+      delete process.env.OSS_DASHBOARD_BUILD_ERROR_TAIL;
+    }
+  });
+
+  it('rejects malformed OSS_DASHBOARD_BUILD_STATUS values (typed enum guard)', async () => {
+    const daily = makeDailyOutput(0);
+    executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({ url: 'http://localhost:3000', port: 3000, alreadyRunning: false });
+    process.env.OSS_DASHBOARD_BUILD_STATUS = 'arbitrary-injection';
+
+    try {
+      const result = await runStartup();
+      expect(result.dashboardBuildStatus).toBeUndefined();
+    } finally {
+      delete process.env.OSS_DASHBOARD_BUILD_STATUS;
+    }
+  });
+
   it('should return setup incomplete when setup is not done', async () => {
     const { getStateManager } = await import('../core/index.js');
     const mockGetStateManager = getStateManager as ReturnType<typeof vi.fn>;

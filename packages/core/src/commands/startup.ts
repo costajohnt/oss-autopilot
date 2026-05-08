@@ -292,6 +292,25 @@ export async function runStartup(): Promise<StartupOutput> {
   // 5. Detect issue list
   const issueList = detectIssueList();
 
+  // 6. Pass through dashboard-build status set by the workflow shell (#1293).
+  // The workflow runs the SPA build BEFORE invoking startup, so the status
+  // arrives here via env vars rather than being something runStartup itself
+  // computes. Validate the env value so a malformed export can't sneak an
+  // arbitrary string into a typed enum.
+  const rawBuildStatus = process.env.OSS_DASHBOARD_BUILD_STATUS;
+  const dashboardBuildStatus: StartupOutput['dashboardBuildStatus'] =
+    rawBuildStatus === 'fresh' ||
+    rawBuildStatus === 'rebuilt' ||
+    rawBuildStatus === 'failed' ||
+    rawBuildStatus === 'missing-pnpm'
+      ? rawBuildStatus
+      : undefined;
+  const rawBuildErrorTail = process.env.OSS_DASHBOARD_BUILD_ERROR_TAIL;
+  const dashboardBuildErrorTail =
+    (dashboardBuildStatus === 'failed' || dashboardBuildStatus === 'missing-pnpm') && rawBuildErrorTail
+      ? rawBuildErrorTail
+      : undefined;
+
   return {
     version,
     setupComplete: true,
@@ -299,6 +318,8 @@ export async function runStartup(): Promise<StartupOutput> {
     daily,
     dashboardUrl,
     dashboardError,
+    dashboardBuildStatus,
+    dashboardBuildErrorTail,
     issueList,
   };
 }
