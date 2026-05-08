@@ -83,7 +83,7 @@ case "$tool_name" in
         #     The sub-pattern (^|[[:space:]]) ... ([[:space:]]|$) avoids
         #     false-positives on names like `oss-autopilot-post-processor`.
         if printf '%s' "$normalized" | grep -qE \
-            '(gh[[:space:]]+api[^|&;]*(-X[[:space:]]*(POST|PATCH|PUT|DELETE)|--method[[:space:]]+(POST|PATCH|PUT|DELETE)|-XPOST|-XPATCH|-XPUT|-XDELETE))|(gh[[:space:]]+api[^|&;]*([[:space:]]|^)(-f|-F|--field|--raw-field)[[:space:]])|(gh[[:space:]]+pr[[:space:]]+(comment|review|create|close|reopen|ready|merge))|(gh[[:space:]]+issue[[:space:]]+(create|comment|close|reopen))|(gh[[:space:]]+release[[:space:]]+(create|edit|delete))|(hub[[:space:]]+(pull-request|issue|release|api))|(curl[[:space:]][^|&;]*-X[[:space:]]*(POST|PATCH|PUT|DELETE)[^|&;]*api\.github\.com/[^[:space:]|&;]*(comments|issues|pulls|releases|reviews))|((^|[[:space:]])(oss-autopilot|cli\.bundle\.cjs)[[:space:]][^|&;]*[[:space:]](post|claim)([[:space:]]|$))|((^|[[:space:]])(oss-autopilot|cli\.bundle\.cjs)[[:space:]](post|claim)([[:space:]]|$))'; then
+            '(gh[[:space:]]+api[^|&;]*(-X[[:space:]]*(POST|PATCH|PUT|DELETE)|--method[[:space:]]+(POST|PATCH|PUT|DELETE)|-XPOST|-XPATCH|-XPUT|-XDELETE))|(gh[[:space:]]+api[^|&;]*([[:space:]]|^)(-f|-F|--field|--raw-field)[[:space:]])|(gh[[:space:]]+pr[[:space:]]+(comment|review|create|close|reopen|ready|merge|edit))|(gh[[:space:]]+issue[[:space:]]+(create|comment|close|reopen))|(gh[[:space:]]+release[[:space:]]+(create|edit|delete))|(gh[[:space:]]+repo[[:space:]]+(create|delete|fork|edit|transfer))|(gh[[:space:]]+gist[[:space:]]+(create|edit|delete))|(hub[[:space:]]+(pull-request|issue|release|api))|(curl[[:space:]][^|&;]*-X[[:space:]]*(POST|PATCH|PUT|DELETE)[^|&;]*api\.github\.com/[^[:space:]|&;]*(comments|issues|pulls|releases|reviews))|((^|[[:space:]])(oss-autopilot|cli\.bundle\.cjs)[[:space:]][^|&;]*[[:space:]](post|claim)([[:space:]]|$))|((^|[[:space:]])(oss-autopilot|cli\.bundle\.cjs)[[:space:]](post|claim)([[:space:]]|$))'; then
             emit_ask "This command produces a public GitHub event (post / merge / close / create / release). Draft the content and present it to the user before running. The user must explicitly approve each external post per the global CLAUDE.md rule."
             exit 0
         fi
@@ -92,6 +92,16 @@ case "$tool_name" in
     mcp__plugin_oss-autopilot_oss-autopilot__post|mcp__plugin_oss-autopilot_oss-autopilot__claim)
         # These MCP tools always post a public comment — ask unconditionally.
         emit_ask "The '${tool_name}' MCP tool writes a public GitHub comment under the user's identity. Show the user the exact body via the draft-review-post skill and wait for explicit approval before invoking."
+        exit 0
+        ;;
+
+    mcp__github__*)
+        # GitHub MCP server family (#1260). The matcher in hooks.json is an
+        # explicit alternation of mutating tools — every entry here produces
+        # an externally-visible event. Read-only tools (list_issues,
+        # get_pull_request, search_*, etc.) are intentionally NOT in the
+        # matcher and never reach this branch.
+        emit_ask "The '${tool_name}' MCP tool produces a public GitHub event (post / merge / close / create / push / fork / delete) under the user's identity. Show the user what will happen and wait for explicit approval before invoking. See draft-review-post for the canonical approval flow."
         exit 0
         ;;
 

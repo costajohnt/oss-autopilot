@@ -96,6 +96,33 @@ expect_ask  "gh release edit is guarded"      "$(bash_payload 'gh release edit v
 expect_ask  "oss-autopilot post is guarded"   "$(bash_payload 'oss-autopilot post https://github.com/o/r/issues/1 hi')"
 expect_ask  "oss-autopilot claim is guarded"  "$(bash_payload 'oss-autopilot claim https://github.com/o/r/issues/1')"
 
+# ── New `gh` subcommand coverage (#1260) ──────────────────────────────
+expect_ask  "gh pr edit is guarded"           "$(bash_payload 'gh pr edit 123 --body new-body')"
+expect_ask  "gh repo create is guarded"       "$(bash_payload 'gh repo create newrepo --public')"
+expect_ask  "gh repo delete is guarded"       "$(bash_payload 'gh repo delete owner/repo --yes')"
+expect_ask  "gh repo fork is guarded"         "$(bash_payload 'gh repo fork owner/repo')"
+expect_ask  "gh repo edit is guarded"         "$(bash_payload 'gh repo edit owner/repo --description X')"
+expect_ask  "gh gist create is guarded"       "$(bash_payload 'gh gist create file.txt --public')"
+expect_ask  "gh gist edit is guarded"         "$(bash_payload 'gh gist edit abc123')"
+expect_ask  "gh gist delete is guarded"       "$(bash_payload 'gh gist delete abc123 --yes')"
+
+expect_allow "gh repo view is not guarded"    "$(bash_payload 'gh repo view owner/repo')"
+expect_allow "gh repo list is not guarded"    "$(bash_payload 'gh repo list owner')"
+expect_allow "gh gist list is not guarded"    "$(bash_payload 'gh gist list')"
+expect_allow "gh gist view is not guarded"    "$(bash_payload 'gh gist view abc123')"
+
+# ── GitHub MCP family (#1260) ─────────────────────────────────────────
+# The matcher in hooks.json filters which mcp__github__* tools reach this
+# script — only mutating ones do. The script's `mcp__github__*` case
+# emits the unconditional ASK as defense-in-depth.
+expect_ask  "MCP github add_issue_comment is guarded"          "$(mcp_payload 'mcp__github__add_issue_comment')"
+expect_ask  "MCP github create_pull_request is guarded"        "$(mcp_payload 'mcp__github__create_pull_request')"
+expect_ask  "MCP github merge_pull_request is guarded"         "$(mcp_payload 'mcp__github__merge_pull_request')"
+expect_ask  "MCP github issue_write is guarded"                "$(mcp_payload 'mcp__github__issue_write')"
+expect_ask  "MCP github push_files is guarded"                 "$(mcp_payload 'mcp__github__push_files')"
+expect_ask  "MCP github fork_repository is guarded"            "$(mcp_payload 'mcp__github__fork_repository')"
+expect_ask  "MCP github delete_file is guarded"                "$(mcp_payload 'mcp__github__delete_file')"
+
 # Silent-failure hunter regression tests — real bypasses addressed in this PR.
 expect_ask  "hub pull-request is guarded"     "$(bash_payload 'hub pull-request -m title')"
 expect_ask  "hub issue is guarded"            "$(bash_payload 'hub issue create -m title')"
