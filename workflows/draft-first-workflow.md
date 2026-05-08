@@ -93,9 +93,9 @@ DEVELOPMENT.md
 docs/DEVELOPMENT.md
 ```
 
-**If no guidelines file found:** Note "No CONTRIBUTING.md found — skipping compliance check." and proceed to Step 2.
+**If no guidelines file found:** Note "No CONTRIBUTING.md found — skipping compliance check." and proceed to Step 1e.
 
-**If a file is found but cannot be read** (permission error, encoding issue, excessively large): Note "Found {path} but could not read it: {reason}. Skipping compliance check." and proceed to Step 2.
+**If a file is found but cannot be read** (permission error, encoding issue, excessively large): Note "Found {path} but could not read it: {reason}. Skipping compliance check." and proceed to Step 1e.
 
 Store the file content in session context as `contributingGuidelines` for reuse in later steps (PR body generation in Step 8, review context in Step 3).
 
@@ -145,7 +145,7 @@ Source: {path to guidelines file}
 
 #### 5. Handle gaps
 
-**If all requirements met:** Note "All CONTRIBUTING.md requirements satisfied." and proceed to Step 2.
+**If all requirements met:** Note "All CONTRIBUTING.md requirements satisfied." and proceed to Step 1e.
 
 **If gaps found:**
 
@@ -161,9 +161,33 @@ Options:
 
 **"Address the gaps":** For each gap, attempt to resolve it (add changelog entry, update docs, run formatter, etc.). If resolution fails for a gap (tool not installed, requires manual web interaction like CLA signing, introduces new errors), report: "Could not automatically resolve: {requirement}. Reason: {error}." Mark it as requiring manual attention and continue to the next gap. After all gaps have been attempted, re-verify and present the updated checklist. If unresolvable gaps remain, re-present the 3-option prompt. **Soft limit after 3 resolution cycles:** if gaps remain after 3 attempts, note "Some requirements could not be automatically resolved after 3 attempts" and present the proceed/done options.
 
-**"Proceed anyway":** Store skipped requirements in session context as `skippedComplianceRequirements` (list of `{requirement, reason}`). Display to the user: "Proceeding with {count} skipped requirements: {list}." When generating the PR description in Step 8, include a "Compliance Notes" section listing any consciously skipped requirements. Proceed to Step 2.
+**"Proceed anyway":** Store skipped requirements in session context as `skippedComplianceRequirements` (list of `{requirement, reason}`). Display to the user: "Proceeding with {count} skipped requirements: {list}." When generating the PR description in Step 8, include a "Compliance Notes" section listing any consciously skipped requirements. Proceed to Step 1e.
 
 **"Done for now":** Report: "Compliance check paused — {resolvedCount} requirements met, {gapCount} remaining. Run `/oss` to resume." Return to the core router.
+
+### 1e. Per-Repo Guidelines Injection (#867)
+
+Fetch any stored guidelines for the target repo. These encode durable maintainer preferences extracted from past PR feedback (#867). Loading them once at the implementation entry point covers every path that lands here — curated-list flow, `review-issue-replies.md` "Start working on this issue", `action-menu.md` "Other" issue selection, and direct invocation.
+
+```bash
+GUIDELINES_OUT=$(GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" guidelines view --repo {owner}/{repo} --json 2>/dev/null)
+```
+
+Parse `data.exists` and `data.content`:
+
+- **If `data.exists === true` and `data.content` is non-empty:** Store as `repoGuidelines` in session context for downstream use (review dispatches in Step 3, PR description generation in Step 8). Display to the user once before continuing:
+
+  > **Maintainer preferences for {owner}/{repo}** (from past PR feedback):
+  >
+  > {data.content}
+  >
+  > These take precedence over CONTRIBUTING.md when they conflict. When implementing, flag any case where your proposed approach contradicts a stated preference so the user can confirm.
+
+- **If `data.exists === false`** or `data.storageMode === 'local-unavailable'`: skip silently. Per-repo guidelines are opt-in and only available in Gist mode.
+
+- **If the command fails** (network error, malformed output): skip silently. Never block implementation on guidelines unavailability — the flow must work even when the guidelines layer is offline.
+
+Proceed to Step 2.
 
 ---
 

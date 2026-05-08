@@ -130,7 +130,7 @@ Never make a recommendation that contradicts the SLM call without saying so expl
 
 ### Per-repo learning guidelines (#867)
 
-After feasibility analysis but before claiming, the work-through-issues workflow injects any stored per-repo guidelines via `oss-autopilot guidelines view --repo OWNER/REPO --json`. These are extracted from past PR feedback in the user's Gist and encode durable maintainer preferences (code style, process, architecture, testing rules).
+At the implementation entry point (`draft-first-workflow.md` Step 1e), any stored per-repo guidelines are loaded via `oss-autopilot guidelines view --repo OWNER/REPO --json` and made available to the agent. These are extracted from past PR feedback in the user's Gist and encode durable maintainer preferences (code style, process, architecture, testing rules).
 
 When implementing, treat injected guidelines as **strong preferences**, not absolute rules:
 
