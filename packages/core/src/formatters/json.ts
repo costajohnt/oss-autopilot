@@ -805,6 +805,25 @@ export interface StartupOutput {
    * a structured signal to surface or recover from the failure.
    */
   dashboardError?: string;
+  /**
+   * Status of the dashboard SPA build that ran (or didn't) before this
+   * startup invocation (#1293). Populated by the workflow shell via
+   * `OSS_DASHBOARD_BUILD_STATUS`; absent when the CLI is invoked outside
+   * the plugin workflow:
+   * - `'fresh'` — built artifact was up-to-date, no rebuild attempted.
+   * - `'rebuilt'` — rebuild ran and succeeded.
+   * - `'failed'` — rebuild ran and failed; `dashboardUrl` may serve stale
+   *    or missing assets until the build is fixed.
+   * - `'missing-pnpm'` — rebuild was needed but pnpm (required for the
+   *    workspace dependency) was unavailable.
+   */
+  dashboardBuildStatus?: 'fresh' | 'rebuilt' | 'failed' | 'missing-pnpm';
+  /**
+   * Last few lines of the dashboard build log when `dashboardBuildStatus`
+   * is `'failed'` or `'missing-pnpm'`. Surfaced by the workflow as a
+   * one-line warning so the user sees what broke without leaving `/oss`.
+   */
+  dashboardBuildErrorTail?: string;
   issueList?: IssueListInfo;
 }
 

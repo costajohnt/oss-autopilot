@@ -43,15 +43,30 @@ if [ ! -f "${CLI_BUNDLE}" ] || [ -n "$(find "${CLAUDE_PLUGIN_ROOT}/packages/core
 fi
 # Build dashboard SPA if missing or stale (source files newer than built output) (#567)
 # Dashboard's tsc needs core's .d.ts types (the CLI bundle step above runs esbuild, not tsc).
+# Capture the exit code in OSS_DASHBOARD_BUILD_STATUS so the CLI can include it
+# in the startup output and the workflow can surface a warning when the build
+# failed (#1293). The dashboard build is non-blocking — startup proceeds either
+# way — but a silent failure leaves /oss-dashboard showing stale assets.
 DASHBOARD_INDEX="${CLAUDE_PLUGIN_ROOT}/packages/dashboard/dist/index.html"
 DASHBOARD_PKG="${CLAUDE_PLUGIN_ROOT}/packages/dashboard/package.json"
+OSS_DASHBOARD_BUILD_STATUS=fresh
+OSS_DASHBOARD_BUILD_ERROR_TAIL=""
 if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ -n "$(find "${CLAUDE_PLUGIN_ROOT}/packages/dashboard/src" "${DASHBOARD_PKG}" "${CLAUDE_PLUGIN_ROOT}/packages/dashboard/vite.config.ts" "${CLAUDE_PLUGIN_ROOT}/packages/dashboard/tsconfig.json" -newer "${DASHBOARD_INDEX}" -print -quit 2>/dev/null)" ]; }; then
   if command -v pnpm &>/dev/null; then
-    (cd "${CLAUDE_PLUGIN_ROOT}" && pnpm install --silent && pnpm --silent --filter @oss-autopilot/core run build && pnpm --silent --filter @oss-autopilot/dashboard run build) >/tmp/oss-dashboard-build.log 2>&1 || true
+    if (cd "${CLAUDE_PLUGIN_ROOT}" && pnpm install --silent && pnpm --silent --filter @oss-autopilot/core run build && pnpm --silent --filter @oss-autopilot/dashboard run build) >/tmp/oss-dashboard-build.log 2>&1; then
+      OSS_DASHBOARD_BUILD_STATUS=rebuilt
+    else
+      OSS_DASHBOARD_BUILD_STATUS=failed
+      OSS_DASHBOARD_BUILD_ERROR_TAIL=$(tail -5 /tmp/oss-dashboard-build.log 2>/dev/null | tr '\n' ' ' | tr -s ' ')
+    fi
   else
-    (cd "${CLAUDE_PLUGIN_ROOT}/packages/dashboard" && npm install --silent && npm run build) >/tmp/oss-dashboard-build.log 2>&1 || true
+    # The dashboard depends on @oss-autopilot/core via workspace:* — npm cannot
+    # resolve that protocol, so without pnpm the build can't run.
+    OSS_DASHBOARD_BUILD_STATUS=missing-pnpm
+    OSS_DASHBOARD_BUILD_ERROR_TAIL="pnpm not on PATH; install with: npm install -g pnpm"
   fi
 fi
+export OSS_DASHBOARD_BUILD_STATUS OSS_DASHBOARD_BUILD_ERROR_TAIL
 GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN")
 export GITHUB_TOKEN
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json --compact 2>/tmp/oss-startup-stderr.log
@@ -77,12 +92,24 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 | `data.authError` | Set when no GitHub token | If present, show auth instructions |
 | `data.daily` | DailyOutput (same shape as before) | Extract `briefSummary`, `actionableIssues`, `actionMenu`, etc. |
 | `data.dashboardUrl` | URL of interactive dashboard SPA (e.g., `http://localhost:3000`) | Show `Dashboard: <url>` so user can re-open it |
+| `data.dashboardBuildStatus` | `'fresh' \| 'rebuilt' \| 'failed' \| 'missing-pnpm'` (when set by the workflow) | If `'failed'` or `'missing-pnpm'`, render the warning below before the action menu |
+| `data.dashboardBuildErrorTail` | Last few lines of the dashboard build log when `dashboardBuildStatus` is a failure | Quote in the warning so the user sees what broke |
 | `data.issueList` | Issue list info (if detected) | `hasIssueList` = present; extract `path`, `source`, `availableCount`, `completedCount` |
 
 **Routing based on parsed data:**
 - `data.authError` is present → Tell the user: show `data.authError` message. Then offer recovery: "Run `gh auth login` to authenticate, then run `/oss` again." End the session — do not continue to Summary or Action Menu without valid auth.
 - `data.setupComplete === false` → Auto-detection failed (gh CLI not available or not authenticated). Tell the user: "I couldn't auto-detect your GitHub username. You'll need to set up first." Use AskUserQuestion to let them choose "Run setup (Recommended)" (launch `/setup-oss`) or "Continue with defaults". If they choose "Continue with defaults", re-run the daily check directly (`GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN") node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" daily --json 2>/tmp/oss-startup-stderr.log`), use `data.version` from the startup output already received, and return to the core router (`commands/oss.md`) **Summary** section with the daily result as `data.daily`.
 - `data.daily` is present → Return to the core router (`commands/oss.md`) **Summary** section.
+
+**Dashboard build warning (#1293):** When `data.dashboardBuildStatus === 'failed'` or `'missing-pnpm'`, render this one-time line above the action menu (after `briefSummary`, before the menu itself):
+
+```
+Warning: Dashboard build {failed|requires pnpm} — `/oss-dashboard` may show stale data until rebuilt.
+  {data.dashboardBuildErrorTail}
+  Rebuild: cd ${CLAUDE_PLUGIN_ROOT} && pnpm install && pnpm --filter @oss-autopilot/dashboard run build
+```
+
+Skip the warning when `data.dashboardBuildStatus` is `'fresh'`, `'rebuilt'`, or absent (CLI invoked outside the plugin workflow).
 
 **If output is empty or not valid JSON**: Tell the user "Something went wrong running the startup check." Suggest running manually: `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" startup --json`. Then show error recovery steps (see **Error Recovery** below).
 
