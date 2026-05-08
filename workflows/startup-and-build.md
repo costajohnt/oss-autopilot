@@ -34,38 +34,37 @@ After the bash call completes, jump straight to displaying the brief summary and
 Run **everything** in a single bash call. The CLI's `startup` command handles auth, setup, daily fetch, interactive dashboard launch, version detection, and issue list detection internally. The output is a single JSON envelope.
 
 ```bash
-# Rebuild CLI if needed (check source files, not just package.json)
-CLI_BUNDLE="${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs"
-if [ ! -f "${CLI_BUNDLE}" ] || [ -n "$(find "${CLAUDE_PLUGIN_ROOT}/packages/core/src" "${CLAUDE_PLUGIN_ROOT}/packages/core/package.json" "${CLAUDE_PLUGIN_ROOT}/packages/core/tsconfig.json" -newer "${CLI_BUNDLE}" -print -quit 2>/dev/null)" ]; then
-  if ! BUILD_LOG=$(cd "${CLAUDE_PLUGIN_ROOT}/packages/core" && npm install --silent 2>&1 && npm run bundle --silent 2>&1); then
-    echo "BUILD_FAILED"; echo "$BUILD_LOG" | tail -5; exit 1
-  fi
+# Rebuild CLI bundle if stale (#1292). Helper checks src/, package.json, and
+# tsconfig.json against dist/cli.bundle.cjs and exits 0/1/2/3.
+CLI_HELPER_RC=0
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-startup-cli-build.log 2>&1 || CLI_HELPER_RC=$?
+if [ "$CLI_HELPER_RC" = "2" ]; then
+  echo "BUILD_FAILED"; tail -5 /tmp/oss-startup-cli-build.log; exit 1
 fi
-# Build dashboard SPA if missing or stale (source files newer than built output) (#567)
-# Dashboard's tsc needs core's .d.ts types (the CLI bundle step above runs esbuild, not tsc).
-# Capture the exit code in OSS_DASHBOARD_BUILD_STATUS so the CLI can include it
-# in the startup output and the workflow can surface a warning when the build
-# failed (#1293). The dashboard build is non-blocking — startup proceeds either
-# way — but a silent failure leaves /oss-dashboard showing stale assets.
-DASHBOARD_INDEX="${CLAUDE_PLUGIN_ROOT}/packages/dashboard/dist/index.html"
-DASHBOARD_PKG="${CLAUDE_PLUGIN_ROOT}/packages/dashboard/package.json"
+
+# Build dashboard SPA if stale (#1292). Helper handles workspace:* / pnpm
+# requirement explicitly. Map the exit code to the typed status enum in
+# OSS_DASHBOARD_BUILD_STATUS so /oss can render a warning when the build
+# failed (#1293). The dashboard build is non-blocking — startup proceeds
+# either way — but silent failure leaves /oss-dashboard with stale assets.
 OSS_DASHBOARD_BUILD_STATUS=fresh
 OSS_DASHBOARD_BUILD_ERROR_TAIL=""
-if [ -f "${DASHBOARD_PKG}" ] && { [ ! -f "${DASHBOARD_INDEX}" ] || [ -n "$(find "${CLAUDE_PLUGIN_ROOT}/packages/dashboard/src" "${DASHBOARD_PKG}" "${CLAUDE_PLUGIN_ROOT}/packages/dashboard/vite.config.ts" "${CLAUDE_PLUGIN_ROOT}/packages/dashboard/tsconfig.json" -newer "${DASHBOARD_INDEX}" -print -quit 2>/dev/null)" ]; }; then
-  if command -v pnpm &>/dev/null; then
-    if (cd "${CLAUDE_PLUGIN_ROOT}" && pnpm install --silent && pnpm --silent --filter @oss-autopilot/core run build && pnpm --silent --filter @oss-autopilot/dashboard run build) >/tmp/oss-dashboard-build.log 2>&1; then
-      OSS_DASHBOARD_BUILD_STATUS=rebuilt
+DASHBOARD_HELPER_RC=0
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-dashboard-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-dashboard-build.log 2>&1 || DASHBOARD_HELPER_RC=$?
+case $DASHBOARD_HELPER_RC in
+  0) OSS_DASHBOARD_BUILD_STATUS=fresh ;;
+  1) OSS_DASHBOARD_BUILD_STATUS=rebuilt ;;
+  2)
+    if grep -q "pnpm is required" /tmp/oss-dashboard-build.log; then
+      OSS_DASHBOARD_BUILD_STATUS=missing-pnpm
+      OSS_DASHBOARD_BUILD_ERROR_TAIL="pnpm not on PATH; install with: npm install -g pnpm"
     else
       OSS_DASHBOARD_BUILD_STATUS=failed
       OSS_DASHBOARD_BUILD_ERROR_TAIL=$(tail -5 /tmp/oss-dashboard-build.log 2>/dev/null | tr '\n' ' ' | tr -s ' ')
     fi
-  else
-    # The dashboard depends on @oss-autopilot/core via workspace:* — npm cannot
-    # resolve that protocol, so without pnpm the build can't run.
-    OSS_DASHBOARD_BUILD_STATUS=missing-pnpm
-    OSS_DASHBOARD_BUILD_ERROR_TAIL="pnpm not on PATH; install with: npm install -g pnpm"
-  fi
-fi
+    ;;
+  *) ;;  # exit 3 (invocation error) — leave status=fresh, no warning surfaced
+esac
 export OSS_DASHBOARD_BUILD_STATUS OSS_DASHBOARD_BUILD_ERROR_TAIL
 GITHUB_TOKEN=$(gh auth token 2>/dev/null || echo "$GITHUB_TOKEN")
 export GITHUB_TOKEN

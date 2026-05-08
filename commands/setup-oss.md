@@ -14,13 +14,13 @@ Customize your OSS Autopilot preferences. This is **optional** — the tool work
 
 This flow delegates entirely to the CLI. There is no markdown-only fallback — if the CLI cannot be built, ask the user to install Node 22+ and re-run.
 
-Build the CLI on first run (auto-installs deps):
+Build the CLI on first run (auto-installs deps). Delegates to `scripts/build-cli-if-stale.sh` (#1292), which detects an existing-but-stale bundle as well as a missing one — the prior existence-only check would happily reuse a bundle from a stale checkout:
 
 ```bash
-if [ ! -f "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" ]; then
-  if ! BUILD_LOG=$(cd "${CLAUDE_PLUGIN_ROOT}/packages/core" && npm install --silent 2>&1 && npm run bundle --silent 2>&1); then
-    echo "BUILD_FAILED"; echo "$BUILD_LOG" | tail -5; exit 1
-  fi
+CLI_HELPER_RC=0
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-setup-cli-build.log 2>&1 || CLI_HELPER_RC=$?
+if [ "$CLI_HELPER_RC" = "2" ]; then
+  echo "BUILD_FAILED"; tail -5 /tmp/oss-setup-cli-build.log; exit 1
 fi
 ```
 
