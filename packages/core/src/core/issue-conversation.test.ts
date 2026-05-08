@@ -126,10 +126,31 @@ describe('IssueConversationMonitor', () => {
     expect(issues[0].status).toBe('new_response');
     expect(issues[0].lastResponseAuthor).toBe('maintainer');
     expect(issues[0].lastResponseBody).toContain('Yes, go for it!');
+    expect(issues[0].userLastCommentBody).toBe('Is this still relevant?');
     if (issues[0].status === 'new_response') {
       expect(issues[0].isFromMaintainer).toBe(true);
     }
     expect(failures).toHaveLength(0);
+  });
+
+  it('truncates the user comment body to 200 chars with ... suffix', async () => {
+    const longBody = 'a'.repeat(250);
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: { items: [makeSearchItem()], total_count: 1 },
+    });
+    mockOctokitInstance.issues.listComments.mockResolvedValue({
+      data: [
+        makeComment('testuser', longBody, '2026-02-01T10:00:00Z'),
+        makeComment('maintainer', 'Sure!', '2026-02-02T10:00:00Z', 'MEMBER'),
+      ],
+    });
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    const { issues } = await monitor.fetchCommentedIssues();
+    expect(issues).toHaveLength(1);
+    expect(issues[0].userLastCommentBody).toHaveLength(203);
+    expect(issues[0].userLastCommentBody.endsWith('...')).toBe(true);
+    expect(issues[0].userLastCommentBody.startsWith('a'.repeat(200))).toBe(true);
   });
 
   it('should set isFromMaintainer=true for OWNER association', async () => {

@@ -9,7 +9,7 @@
 
 First, filter `data.daily.commentedIssues` to entries with `status === 'new_response'`. **If the filtered list is empty** (no issues, undefined, or all already reviewed), inform the user: "No new issue replies to review." Then return to the core router (`commands/oss.md`) — **After Each Action** section.
 
-When there are issues to review, display each one:
+When there are issues to review, display each one with the user's original comment alongside the maintainer's reply so the thread stays readable in context (#1290). Both bodies are pre-truncated to 200 chars by the data layer.
 
 ```
 ## Issue Replies
@@ -18,14 +18,24 @@ Maintainers responded to your comments on these issues:
 
 1. **owner/repo#123** — Issue title
    https://github.com/owner/repo/issues/123
-   └─ @maintainer: "Go for it! Feel free to submit a PR..."
-   └─ Your comment: 5 days ago
+
+   You commented 5 days ago:
+   > {data.userLastCommentBody}
+
+   @{data.lastResponseAuthor} replied:
+   > {data.lastResponseBody}
 
 2. **owner/repo#456** — Another issue title
    https://github.com/owner/repo/issues/456
-   └─ @maintainer: "Thanks for the interest. Here's what..."
-   └─ Your comment: 2 days ago
+
+   You commented 2 days ago:
+   > {data.userLastCommentBody}
+
+   @{data.lastResponseAuthor} replied:
+   > {data.lastResponseBody}
 ```
+
+Both `userLastCommentBody` and `lastResponseBody` are present on every `new_response` entry. If a body is empty (rare; e.g. a comment that was edited to blank), render `> _(no text)_` instead of an empty quote line.
 
 For each issue, use AskUserQuestion to offer actions:
 - "Start working on this issue" — Dismiss the issue reply by running `GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" dismiss ISSUE_URL --json`. Then set `isNewContribution = true` and `issueContext = { title, url, description }` from the issue data, and return to the core router (`commands/oss.md`) — the Pre-Commit Review routing will direct to the draft-first workflow. Do NOT post a claim comment on the issue; the PR will be the first interaction. If the dismiss fails, show the error but still proceed to the implementation flow.

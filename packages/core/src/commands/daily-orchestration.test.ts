@@ -773,6 +773,7 @@ describe('executeDailyCheck() — issue conversation', () => {
     url: overrides.url ?? 'https://github.com/owner/repo/issues/10',
     status: overrides.status ?? 'waiting',
     userLastCommentedAt: '2026-01-10T00:00:00Z',
+    userLastCommentBody: '',
     labels: [],
     daysSinceUserComment: 5,
   });
@@ -807,6 +808,7 @@ describe('executeDailyCheck() — issue conversation', () => {
       url: 'https://github.com/owner/repo/issues/12',
       status: 'new_response',
       userLastCommentedAt: '2026-01-10T00:00:00Z',
+      userLastCommentBody: '',
       lastResponseAuthor: 'maintainer',
       lastResponseBody: 'LGTM!',
       lastResponseAt: '2026-02-01T00:00:00Z', // After the dismiss timestamp

@@ -208,6 +208,7 @@ function makeMockDailyOutput(): DailyOutput {
         title: 'Issue',
         url: 'https://github.com/org/repo/issues/1',
         userLastCommentedAt: '2026-03-17T00:00:00Z',
+        userLastCommentBody: '',
         labels: [],
         daysSinceUserComment: 1,
         status: 'waiting',
