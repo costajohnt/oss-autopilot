@@ -54,9 +54,9 @@ Then show the enriched format using the resolved PR's fields:
 ---
 ```
 
-**Maintainer hints line**: Only show if `pr.lastMaintainerComment` exists. Format each hint from `pr.maintainerActionHints` using these labels: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
+**Maintainer hints line**: Only show if `pr.lastMaintainerComment` exists. The label mapping for `pr.maintainerActionHints` lives at `packages/core/src/core/maintainer-hints.ts` (`MAINTAINER_HINT_LABELS` + `formatMaintainerHints`) — that file is the source of truth (#1264). Documented mappings: `demo_requested` → "demo/screenshot requested", `tests_requested` → "tests requested", `changes_requested` → "code changes requested", `docs_requested` → "documentation requested", `rebase_requested` → "rebase requested". If no hints, show just the maintainer name.
 
-**Effort estimate**: Compute at display time from issue type + hint count:
+**Effort estimate**: The truth table lives at `packages/core/src/core/issue-effort.ts` (`computeIssueEffort`) — that function is the source of truth (#1264). Reproduced here for the workflow's render template; edit the source first if the rules change.
 
 | Effort | Condition |
 |--------|-----------|
@@ -64,7 +64,7 @@ Then show the enriched format using the resolved PR's fields:
 | **Medium** | `needs_response` with 2+ hints (reply + code changes), `needs_changes` with 0-2 hints, `ci_failing` |
 | **Large** | `merge_conflict`, `needs_changes` with 3+ hints |
 
-If an issue type doesn't match any row above, default to **Medium**.
+If an issue type doesn't match any row above, default to **Medium** (matches the function's fallback).
 
 **Action summary**: Brief description based on type (e.g., "respond + code changes", "rebase + push", "investigate CI logs").
 
