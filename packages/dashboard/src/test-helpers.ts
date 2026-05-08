@@ -68,6 +68,7 @@ export function makeIssueResponse(overrides: Partial<CommentedIssueWithResponse>
     title: 'Test Issue',
     url: 'https://github.com/owner/repo/issues/100',
     userLastCommentedAt: '2025-06-01T00:00:00Z',
+    userLastCommentBody: 'Is this still relevant?',
     labels: ['bug'],
     daysSinceUserComment: 3,
     status: 'new_response',
