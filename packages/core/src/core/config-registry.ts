@@ -211,6 +211,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     settableVia: 'setup',
     valueHint: 'true|false',
   },
+  {
+    key: 'healthCheckFreshnessMinutes',
+    description:
+      'Suppress the SessionStart PR health one-liner when the cached digest is older than this many minutes. The line silently disappears between /oss runs, so what remains is always current. Defaults to 30 minutes (#1255).',
+    settableVia: 'setup',
+    valueHint: 'positive integer',
+  },
 
   // ── Setup-only completion flag ──────────────────────────────────────
   {

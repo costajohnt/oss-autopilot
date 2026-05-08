@@ -212,6 +212,16 @@ export const AgentConfigSchema = z.object({
   autoFormatBeforePush: z.boolean().default(false),
 
   /**
+   * Threshold (in minutes) for the SessionStart PR health one-liner (#1255).
+   * The cached digest only refreshes when the user runs `/oss`; SessionStart
+   * fires every session. Without a freshness gate the line drifts arbitrarily
+   * stale between runs. When the cache is older than this many minutes (and
+   * not yet 7 days old, which keeps the existing catch-up nudge), the line is
+   * suppressed entirely. Default 30 minutes.
+   */
+  healthCheckFreshnessMinutes: z.number().int().positive().default(30),
+
+  /**
    * Optional Ollama model for SLM pre-triage during issue vetting (#1122).
    * Empty disables the feature. Recommended: `gemma4:e4b` (default for
    * capable hardware), `gemma4:e2b` or `qwen3:1.7b` for low-RAM machines.

@@ -8,6 +8,9 @@
  * - Reads ~/.oss-autopilot/state.json (cached from last /oss run)
  * - If no state exists, shows a first-run hint to run /oss
  * - If last digest is >7 days old, nudges the user to catch up
+ * - If the cached digest is older than the freshness threshold (default
+ *   30 minutes, configurable via `config.healthCheckFreshnessMinutes`),
+ *   suppress the line entirely so the user only sees it when current (#1255)
  * - Otherwise, outputs a compact one-liner: "OSS: 15 active PRs — 3 need addressing, 12 waiting on maintainer (2h ago)"
  *
  * Error handling: Errors are logged to stderr (visible in debug) but never
@@ -34,6 +37,18 @@ try {
   const ageHours = Math.floor(ageMs / 3600000);
   const ageMinutes = Math.floor(ageMs / 60000);
   const ageLabel = ageDays >= 1 ? ageDays + 'd ago' : ageHours >= 1 ? ageHours + 'h ago' : ageMinutes + 'm ago';
+  // Freshness gate (#1255). The cached digest only refreshes on `/oss`;
+  // SessionStart fires every session, so without this gate the line drifts
+  // arbitrarily stale. Suppress when older than the configured minute
+  // budget (default 30) but younger than the 7-day catch-up nudge.
+  const freshnessMinutes =
+    typeof state.config === 'object' && state.config !== null && Number.isInteger(state.config.healthCheckFreshnessMinutes)
+      ? state.config.healthCheckFreshnessMinutes
+      : 30;
+  const freshThresholdMs = freshnessMinutes * 60 * 1000;
+  if (ageMs > freshThresholdMs && ageDays <= 7) {
+    process.exit(0);
+  }
   if (ageDays > 7) {
     console.log("OSS: Haven't checked your PRs in " + ageDays + ' days. Run /oss to catch up.');
   } else {
