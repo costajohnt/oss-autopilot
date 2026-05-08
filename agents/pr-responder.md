@@ -99,13 +99,41 @@ When `formatting_complaint` is detected: identify formatting-only hunks via `git
 
 **Test:** "Does this comment tell the maintainer something they can't see in the diff?" If not, skip.
 
-Skip (default) when the feedback is `code_request` / `style_request` / `approval_with_nit` and the diff addresses it; any request where the diff directly shows compliance; formatting-revert requests (short ack only if maintainer was frustrated).
+**Temporal sanity check first (#1273 Improvement 3).** Before applying the "Code Over Comments" default, confirm the user actually pushed in response to the maintainer's comment. The default only makes sense when there's NEW code for the maintainer to read — if the head ref hasn't moved since the comment landed, the diff carries no answer.
+
+```bash
+# Compare maintainer comment created_at against the PR head ref pushed_at.
+gh api repos/OWNER/REPO/pulls/N --jq '.head.sha,.head.repo.pushed_at,.updated_at'
+gh api repos/OWNER/REPO/issues/N/comments --jq 'last(.[] | select(.user.login == "MAINTAINER")) | .created_at'
+```
+
+If `pushed_at <= maintainer_comment.created_at`, the user has not pushed in response. Code-Over-Comments default does NOT apply — surface to the user that no code change has happened yet, and either draft a response (acknowledging the feedback in words rather than code) or wait for code changes before responding. If `pushed_at > maintainer_comment.created_at`, proceed with the normal logic below.
+
+When the temporal check is inconclusive (API call fails, ambiguous timestamps), default to drafting — better to present a verified draft for review than to skip silently on a stale assumption.
+
+Skip (default, when push WAS made in response) when the feedback is `code_request` / `style_request` / `approval_with_nit` and the diff addresses it; any request where the diff directly shows compliance; formatting-revert requests (short ack only if maintainer was frustrated).
 
 Draft when: they asked a question code can't answer, your approach meaningfully differs from what was requested, there's a real design tradeoff, something was intentionally left unchanged, or multiple rounds of feedback suggest they want communication.
 
 ### 4. Gather context (smart minimal)
 
 Read ONLY files explicitly mentioned. Use targeted line-range reads. Don't read the codebase.
+
+**Maintainer-relationship signal (#1273 Improvement 4).** Before drafting, weave one line of relationship context into your working memory. The user's history with the maintainer/repo changes the appropriate verbosity:
+
+- **Repeat collaborator:** repo where the user has merged 5+ PRs and the maintainer has reviewed them before → high trust, terser response is fine. Skip preamble; assume shared context.
+- **First PR with this maintainer:** richer context wins. Show your reasoning. Acknowledge the suggestion explicitly. Don't assume the maintainer remembers prior interactions.
+- **Mid-relationship (1–4 merged PRs):** default tone — concise but with enough context that the maintainer doesn't have to scroll back.
+
+```bash
+# Read repo-level merged-PR count from local state (no network call).
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" status --json
+# Look up data.repoScores[OWNER/REPO].mergedPRCount.
+```
+
+Optional: scan the user's prior PR history in this repo to count how many of those merged PRs the same maintainer reviewed. The MCP `comments` tool over each merged PR exposes the reviewer set; treat this as a soft signal — if the API is rate-limited or the bookkeeping is too costly, fall back to repo-level merged count alone.
+
+Surface the inferred level (`repeat_collaborator` / `mid_relationship` / `first_pr`) as one line in the agent's drafting context, not in the user-facing draft itself. The signal calibrates tone; it doesn't appear in the response.
 
 ### 5. Draft — but verify first
 
