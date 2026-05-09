@@ -74,6 +74,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       setMonthlyClosedCounts: mockSetMonthlyClosedCounts,
       setMonthlyOpenedCounts: mockSetMonthlyOpenedCounts,
       setLastDigest: mockSetLastDigest,
+      setLastStrategyAt: vi.fn(),
       save: mockSave,
       isPRShelved: mockIsPRShelved,
       unshelvePR: mockUnshelvePR,

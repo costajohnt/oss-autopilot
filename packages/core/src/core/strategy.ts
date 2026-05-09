@@ -36,9 +36,15 @@ export interface StrategyProfile {
 export interface StrategyCapacity {
   openPRCount: number;
   dormantPRCount: number;
+  /** Distinct repos hosting at least one dormant PR. Surfaces alongside
+   * `dormantPRCount` so consumers can render "N PRs across M repos"
+   * without re-deriving from `openPRs` themselves. */
+  dormantRepoCount: number;
   /** True when dormant PRs span >=2 distinct repos (a signal that the
    * contributor is awaiting reviews from multiple maintainers, not just
-   * one slow project). */
+   * one slow project). Equivalent to `dormantPRCount >= 2 &&
+   * dormantRepoCount >= 2` — exposed as a separate boolean so callers
+   * with a strict yes/no presentation don't have to recompute. */
   overExtended: boolean;
   /** The single highest-priority next action — null when state is too
    * thin to recommend anything. */
@@ -236,6 +242,7 @@ export function computeStrategy(state: AgentState): StrategyResult | null {
   const capacity: StrategyCapacity = {
     openPRCount,
     dormantPRCount,
+    dormantRepoCount: dormantRepos.size,
     overExtended,
     suggestedAction: recommendForOverExtension(openPRCount, dormantPRCount, overExtended),
   };
@@ -260,6 +267,50 @@ export function computeStrategy(state: AgentState): StrategyResult | null {
   };
 
   return { profile, capacity, patterns, recommendations };
+}
+
+/** Cadence trigger thresholds for the auto-display in `/oss` (#1270). */
+export const STRATEGY_CADENCE_DAYS = 30;
+export const STRATEGY_CADENCE_MERGED_DELTA = 5;
+
+/**
+ * Decide whether a strategy snapshot should be embedded in this daily run.
+ * Returns true when EITHER 30 days have elapsed since the last snapshot OR
+ * 5+ PRs have merged since then, AND the merge floor in
+ * {@link STRATEGY_MIN_PRS} is met. The caller is responsible for calling
+ * {@link computeStrategy} when this returns true and for persisting
+ * `state.lastStrategyAt` after a successful compute.
+ *
+ * `nowIso` is injected so tests can pin time without mocking `Date`.
+ */
+export function shouldComputeStrategy(state: AgentState, nowIso: string): boolean {
+  const merged = state.mergedPRs ?? [];
+  if (merged.length < STRATEGY_MIN_PRS) return false;
+
+  const lastIso = state.lastStrategyAt;
+  if (!lastIso) return true;
+
+  // Time-based trigger: 30+ days since last snapshot.
+  const lastMs = Date.parse(lastIso);
+  const nowMs = Date.parse(nowIso);
+  if (Number.isFinite(lastMs) && Number.isFinite(nowMs)) {
+    const daysSince = (nowMs - lastMs) / (1000 * 60 * 60 * 24);
+    if (daysSince >= STRATEGY_CADENCE_DAYS) return true;
+  } else {
+    // Unparseable timestamps — fail open and recompute rather than
+    // silently never re-firing. The lastStrategyAt write below will
+    // refresh to a valid ISO string.
+    return true;
+  }
+
+  // Merge-count trigger: count PRs merged after `lastStrategyAt`.
+  // `mergedAt` is required on StoredMergedPRSchema; `Date.parse` returns
+  // NaN for malformed-but-stored data and Number.isFinite excludes those.
+  const mergedSince = merged.filter((pr) => {
+    const mergedMs = Date.parse(pr.mergedAt);
+    return Number.isFinite(mergedMs) && mergedMs > lastMs;
+  }).length;
+  return mergedSince >= STRATEGY_CADENCE_MERGED_DELTA;
 }
 
 function deriveIssueTypePreferences(distribution: StrategyPatterns['prTypeDistribution']): string[] {

@@ -8,7 +8,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeStrategy, STRATEGY_MIN_PRS } from './strategy.js';
+import {
+  computeStrategy,
+  shouldComputeStrategy,
+  STRATEGY_CADENCE_DAYS,
+  STRATEGY_CADENCE_MERGED_DELTA,
+  STRATEGY_MIN_PRS,
+} from './strategy.js';
 import { AgentStateSchema } from './state-schema.js';
 import type { AgentState } from './state-schema.js';
 
@@ -257,5 +263,88 @@ describe('computeStrategy — trajectory', () => {
       },
     });
     expect(computeStrategy(state)?.patterns.trajectoryDirection).toBe('declining');
+  });
+});
+
+describe('shouldComputeStrategy — cadence gate (#1270 Step 2)', () => {
+  const NOW = '2026-05-09T12:00:00.000Z';
+  const NOW_MS = Date.parse(NOW);
+  const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+  function isoDaysAgo(days: number): string {
+    return new Date(NOW_MS - days * ONE_DAY_MS).toISOString();
+  }
+
+  it('returns false below the merge floor regardless of timestamps', () => {
+    const state = makeState({
+      mergedPRs: Array.from({ length: STRATEGY_MIN_PRS - 1 }, (_, i) =>
+        makeMergedPR('a/r', i + 1, { mergedAt: isoDaysAgo(60) }),
+      ),
+    });
+    expect(shouldComputeStrategy(state, NOW)).toBe(false);
+  });
+
+  it('returns true on the first run (lastStrategyAt absent) above the merge floor', () => {
+    const state = makeState({
+      mergedPRs: Array.from({ length: STRATEGY_MIN_PRS }, (_, i) =>
+        makeMergedPR('a/r', i + 1, { mergedAt: isoDaysAgo(60) }),
+      ),
+    });
+    expect(shouldComputeStrategy(state, NOW)).toBe(true);
+  });
+
+  it('returns false when last snapshot is recent and merge delta is below the threshold', () => {
+    // 5 days ago, with 2 PRs merged since — both gates should be silent.
+    const state = makeState({
+      mergedPRs: [
+        ...Array.from({ length: STRATEGY_MIN_PRS }, (_, i) => makeMergedPR('a/r', i + 1, { mergedAt: isoDaysAgo(60) })),
+        makeMergedPR('a/r', 99, { mergedAt: isoDaysAgo(2) }),
+        makeMergedPR('a/r', 100, { mergedAt: isoDaysAgo(1) }),
+      ],
+      lastStrategyAt: isoDaysAgo(5),
+    });
+    expect(shouldComputeStrategy(state, NOW)).toBe(false);
+  });
+
+  it(`returns true when ${STRATEGY_CADENCE_DAYS}+ days have elapsed since the last snapshot`, () => {
+    const state = makeState({
+      mergedPRs: Array.from({ length: STRATEGY_MIN_PRS }, (_, i) =>
+        makeMergedPR('a/r', i + 1, { mergedAt: isoDaysAgo(120) }),
+      ),
+      lastStrategyAt: isoDaysAgo(STRATEGY_CADENCE_DAYS + 1),
+    });
+    expect(shouldComputeStrategy(state, NOW)).toBe(true);
+  });
+
+  it(`returns true when ${STRATEGY_CADENCE_MERGED_DELTA}+ PRs merged since the last snapshot`, () => {
+    const state = makeState({
+      mergedPRs: [
+        ...Array.from({ length: STRATEGY_MIN_PRS }, (_, i) => makeMergedPR('a/r', i + 1, { mergedAt: isoDaysAgo(60) })),
+        ...Array.from({ length: STRATEGY_CADENCE_MERGED_DELTA }, (_, i) =>
+          makeMergedPR('a/r', 100 + i, { mergedAt: isoDaysAgo(1) }),
+        ),
+      ],
+      lastStrategyAt: isoDaysAgo(3),
+    });
+    expect(shouldComputeStrategy(state, NOW)).toBe(true);
+  });
+
+  it('does not double-count PRs merged before the last snapshot', () => {
+    // 6 PRs merged 60 days ago, snapshot taken 10 days ago, no PRs since.
+    const state = makeState({
+      mergedPRs: Array.from({ length: STRATEGY_MIN_PRS + 6 }, (_, i) =>
+        makeMergedPR('a/r', i + 1, { mergedAt: isoDaysAgo(60) }),
+      ),
+      lastStrategyAt: isoDaysAgo(10),
+    });
+    expect(shouldComputeStrategy(state, NOW)).toBe(false);
+  });
+
+  it('fails open and returns true when timestamps are unparseable rather than silently never re-firing', () => {
+    const state = makeState({
+      mergedPRs: Array.from({ length: STRATEGY_MIN_PRS }, (_, i) => makeMergedPR('a/r', i + 1)),
+      lastStrategyAt: 'not-an-iso-string',
+    });
+    expect(shouldComputeStrategy(state, NOW)).toBe(true);
   });
 });
