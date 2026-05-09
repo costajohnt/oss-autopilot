@@ -26,6 +26,7 @@ import {
   ValidationError,
   errorMessage,
   getHttpStatusCode,
+  isInvalidUserSearchError,
   isRateLimitOrAuthError,
 } from './errors.js';
 import { paginateAll } from './pagination.js';
@@ -193,18 +194,34 @@ export class PRMonitor {
     debug('pr-monitor', `Fetching open PRs for @${searchUsername}...`);
 
     // Search for all open PRs authored by the user with pagination
-    const allItems: typeof firstPage.data.items = [];
     let page = 1;
     const perPage = 100;
 
-    const firstPage = await this.octokit.search.issuesAndPullRequests({
-      q: `is:pr is:open is:public author:${searchUsername}`,
-      sort: 'updated',
-      order: 'desc',
-      per_page: perPage,
-      page: 1,
-    });
+    let firstPage: Awaited<ReturnType<typeof this.octokit.search.issuesAndPullRequests>>;
+    try {
+      firstPage = await this.octokit.search.issuesAndPullRequests({
+        q: `is:pr is:open is:public author:${searchUsername}`,
+        sort: 'updated',
+        order: 'desc',
+        per_page: perPage,
+        page: 1,
+      });
+    } catch (err) {
+      // Rewrite the Search API's "users do not exist" 422 into an actionable
+      // ConfigurationError naming the configured username (#1323). The raw
+      // Octokit message ("Validation Failed: ...") gives the user no signal
+      // that the cause is local config rather than a transient GitHub issue.
+      if (isInvalidUserSearchError(err)) {
+        throw new ConfigurationError(
+          `Configured GitHub username "${searchUsername}" was not found on GitHub. ` +
+            `Run \`/setup-oss\` to reconfigure, or edit \`config.githubUsername\` in ` +
+            `\`~/.oss-autopilot/state.json\` directly.`,
+        );
+      }
+      throw err;
+    }
 
+    const allItems: typeof firstPage.data.items = [];
     allItems.push(...firstPage.data.items);
     const totalCount = firstPage.data.total_count;
     debug(MODULE, `Found ${totalCount} open PRs`);

@@ -158,6 +158,59 @@ export function isRateLimitError(error: unknown): boolean {
   return false;
 }
 
+/**
+ * Match-text used to discriminate the user-resolution failure from sibling
+ * `resource: 'Search', code: 'invalid'` 422s (query-too-long,
+ * too-many-OR-operators, malformed qualifier). Both the structured and the
+ * fallback paths gate on this pattern so the matcher's name remains accurate
+ * if a future caller uses a different Search query.
+ */
+const USER_NOT_FOUND_SEARCH_MESSAGE = /users.*do not exist|cannot be searched/i;
+
+/**
+ * Check if an error is GitHub's "users do not exist" Search-API validation
+ * failure (HTTP 422 with `resource: 'Search', code: 'invalid'` and a message
+ * indicating the user couldn't be resolved). Returned when the Search API
+ * can't resolve the user named in an `author:`/`user:` qualifier — the
+ * typical cause is a stale or mis-typed `githubUsername` in
+ * `~/.oss-autopilot/state.json`.
+ *
+ * Surfaced as a generic "Validation Failed" string by Octokit, which gives
+ * the user no actionable signal. Callers wrap the search and rethrow this
+ * as a {@link ConfigurationError} so the CLI prints the configured username
+ * and points at `/setup-oss`.
+ *
+ * The message-text gate is load-bearing: GitHub returns the same
+ * `resource`/`code` pair for other Search 422s (query too long, too many
+ * ORs). Without the gate, those would silently rewrite to "your configured
+ * username is wrong," which is actively misleading.
+ */
+export function isInvalidUserSearchError(err: unknown): boolean {
+  if (getHttpStatusCode(err) !== 422) return false;
+  const data = (err as { response?: { data?: unknown } })?.response?.data;
+  const errors = data && typeof data === 'object' ? (data as { errors?: unknown }).errors : undefined;
+  if (Array.isArray(errors)) {
+    return errors.some((e) => {
+      if (!e || typeof e !== 'object') return false;
+      const entry = e as { resource?: unknown; code?: unknown; message?: unknown };
+      if (entry.resource !== 'Search' || entry.code !== 'invalid') return false;
+      // The Search API includes a per-error `message` for this case. When
+      // present, gate on it to avoid matching sibling validation failures
+      // that share the resource/code pair. When absent, fall back to the
+      // top-level message check below — some serializations drop the
+      // per-entry message but keep it on the response.
+      if (typeof entry.message === 'string') {
+        return USER_NOT_FOUND_SEARCH_MESSAGE.test(entry.message);
+      }
+      return USER_NOT_FOUND_SEARCH_MESSAGE.test(errorMessage(err));
+    });
+  }
+  // Fallback for serialized errors that lost the structured `response.data`
+  // (e.g. messages re-thrown across boundaries). The Search API's own copy
+  // is stable enough to match against.
+  return USER_NOT_FOUND_SEARCH_MESSAGE.test(errorMessage(err));
+}
+
 /** Return true for errors that should propagate (not degrade gracefully): rate limits, auth failures, abuse detection. */
 export function isRateLimitOrAuthError(err: unknown): boolean {
   const status = getHttpStatusCode(err);
