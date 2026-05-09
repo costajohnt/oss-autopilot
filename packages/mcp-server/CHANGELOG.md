@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.2.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.1.2...mcp-v5.2.0) (2026-05-08)
+
+
+### Features
+
+* add repo-vet MCP tool ([#1271](https://github.com/costajohnt/oss-autopilot/issues/1271) step 2) ([#1319](https://github.com/costajohnt/oss-autopilot/issues/1319)) ([4b80529](https://github.com/costajohnt/oss-autopilot/commit/4b80529c9f99ea1e0bd8cba9acc016a5dc91e36a))
+
+
+### Bug Fixes
+
+* pr-compliance-checker `read` ref + extract-to-core ([#1245](https://github.com/costajohnt/oss-autopilot/issues/1245)) ([#1258](https://github.com/costajohnt/oss-autopilot/issues/1258)) ([7d4337c](https://github.com/costajohnt/oss-autopilot/commit/7d4337c34fd7d42e6c336fb40d1fed6b76ceb3c9))
+
 ## [5.1.2](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.1.1...mcp-v5.1.2) (2026-05-07)
 
 

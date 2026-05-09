@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.4.1...core-v3.5.0) (2026-05-08)
+
+
+### Features
+
+* /oss-guidelines slash command + edit-guidelines workflow ([#1283](https://github.com/costajohnt/oss-autopilot/issues/1283)) ([#1298](https://github.com/costajohnt/oss-autopilot/issues/1298)) ([7530edb](https://github.com/costajohnt/oss-autopilot/commit/7530edb34321f65d1befa92c8632037585b84bf7))
+* add Reply with a question action to review-issue-replies ([#1290](https://github.com/costajohnt/oss-autopilot/issues/1290) step 3) ([#1312](https://github.com/costajohnt/oss-autopilot/issues/1312)) ([89d34ab](https://github.com/costajohnt/oss-autopilot/commit/89d34abb7dd0961ab2aee34dd1c714dfa4425c0a))
+* add repo-vet CLI command ([#1271](https://github.com/costajohnt/oss-autopilot/issues/1271) step 1) ([#1318](https://github.com/costajohnt/oss-autopilot/issues/1318)) ([59e4a2e](https://github.com/costajohnt/oss-autopilot/commit/59e4a2e61705c252672f74c7604f09b538777bf9))
+* auto-generate agent integration table in reference.md ([#1289](https://github.com/costajohnt/oss-autopilot/issues/1289) step 1+2) ([#1313](https://github.com/costajohnt/oss-autopilot/issues/1313)) ([f8b02b1](https://github.com/costajohnt/oss-autopilot/commit/f8b02b159c56cfd284989db9bedcc0f71581fb9c))
+* auto-generate Local-only commands list from manifest --json ([#1289](https://github.com/costajohnt/oss-autopilot/issues/1289) step 4) ([#1315](https://github.com/costajohnt/oss-autopilot/issues/1315)) ([9f05e55](https://github.com/costajohnt/oss-autopilot/commit/9f05e559ffb37254b7ab6811d57d05e3b704911c))
+* auto-generate workflow index in reference.md ([#1289](https://github.com/costajohnt/oss-autopilot/issues/1289) step 3) ([#1314](https://github.com/costajohnt/oss-autopilot/issues/1314)) ([b107700](https://github.com/costajohnt/oss-autopilot/commit/b10770097c6b08c91bf499c464b6bc3a9c23332d))
+* configurable per-repo extraction categories ([#1284](https://github.com/costajohnt/oss-autopilot/issues/1284) minimum scope) ([#1300](https://github.com/costajohnt/oss-autopilot/issues/1300)) ([5d36668](https://github.com/costajohnt/oss-autopilot/commit/5d36668efd2218cea09ee01f89fdb3feb8323bac))
+* extract markIssueListItemDone() to typed core ([#1299](https://github.com/costajohnt/oss-autopilot/issues/1299) part 2) ([#1303](https://github.com/costajohnt/oss-autopilot/issues/1303)) ([651e1d4](https://github.com/costajohnt/oss-autopilot/commit/651e1d4d873619c71bec8a361af06e629ad39642))
+* guard-git-operations covers `pull --rebase` and `reset --hard` ([#1259](https://github.com/costajohnt/oss-autopilot/issues/1259)) ([#1281](https://github.com/costajohnt/oss-autopilot/issues/1281)) ([a655b02](https://github.com/costajohnt/oss-autopilot/commit/a655b028a7043ddaf29c7ff9c3159ae2e48745f9))
+* guard-public-posts covers GitHub MCP family + gh subcommands ([#1260](https://github.com/costajohnt/oss-autopilot/issues/1260)) ([#1282](https://github.com/costajohnt/oss-autopilot/issues/1282)) ([b8a4964](https://github.com/costajohnt/oss-autopilot/commit/b8a49647f6601a88c32adcac11bd64d2720c919c))
+* inject per-repo guidelines ([#867](https://github.com/costajohnt/oss-autopilot/issues/867)) at draft-first Step 1e ([#1294](https://github.com/costajohnt/oss-autopilot/issues/1294) steps 1-2) ([#1305](https://github.com/costajohnt/oss-autopilot/issues/1305)) ([4e287c1](https://github.com/costajohnt/oss-autopilot/commit/4e287c1e50f3d30f25e225b775c7a625e3c3c7e2))
+* persist PR follow-up history in state.json ([#1277](https://github.com/costajohnt/oss-autopilot/issues/1277) Change 2) ([#1297](https://github.com/costajohnt/oss-autopilot/issues/1297)) ([a5f7e2f](https://github.com/costajohnt/oss-autopilot/commit/a5f7e2fc2935affa97cb7f4e9498479e9c3879d1))
+* plan-review convergence loop and /plan-ready ([#1249](https://github.com/costajohnt/oss-autopilot/issues/1249)) ([#1267](https://github.com/costajohnt/oss-autopilot/issues/1267)) ([e84ba82](https://github.com/costajohnt/oss-autopilot/commit/e84ba82c20b9bfa7fb139df9f6ba62900650379a))
+* pr-compliance-checker linked-issue verification ([#1246](https://github.com/costajohnt/oss-autopilot/issues/1246) B) ([#1261](https://github.com/costajohnt/oss-autopilot/issues/1261)) ([6694039](https://github.com/costajohnt/oss-autopilot/commit/66940393e44de482a228097ab7a2fe1dcb81beec))
+* pr-compliance-checker template preservation check ([#1252](https://github.com/costajohnt/oss-autopilot/issues/1252) item 2) ([#1317](https://github.com/costajohnt/oss-autopilot/issues/1317)) ([3b211d5](https://github.com/costajohnt/oss-autopilot/commit/3b211d592e77b517c2f487d6113f27e17f5388fc))
+* pr-responder temporal + relationship signals ([#1273](https://github.com/costajohnt/oss-autopilot/issues/1273)) ([#1321](https://github.com/costajohnt/oss-autopilot/issues/1321)) ([eb3f7c8](https://github.com/costajohnt/oss-autopilot/commit/eb3f7c8e4021004b964c6d162f222b7c202f05ca))
+* pre-fetch per-repo guidelines for Phase A Tier 2 dispatches ([#1294](https://github.com/costajohnt/oss-autopilot/issues/1294) step 3) ([#1309](https://github.com/costajohnt/oss-autopilot/issues/1309)) ([8f10243](https://github.com/costajohnt/oss-autopilot/commit/8f10243047a3ae624a4bae86ac0e0c6e21a2176e))
+* route repo-evaluator through repo-vet MCP tool ([#1271](https://github.com/costajohnt/oss-autopilot/issues/1271) step 3) ([#1320](https://github.com/costajohnt/oss-autopilot/issues/1320)) ([0c22ac3](https://github.com/costajohnt/oss-autopilot/commit/0c22ac3a8b8648769b3ed913bebc19d613434206))
+* surface dashboard build status in /oss startup output ([#1293](https://github.com/costajohnt/oss-autopilot/issues/1293)) ([#1308](https://github.com/costajohnt/oss-autopilot/issues/1308)) ([5c0f3f5](https://github.com/costajohnt/oss-autopilot/commit/5c0f3f5f414d06398ba880cb1fef0d3db1a52713))
+* surface user comment body alongside maintainer reply ([#1290](https://github.com/costajohnt/oss-autopilot/issues/1290) step 2) ([#1306](https://github.com/costajohnt/oss-autopilot/issues/1306)) ([492239a](https://github.com/costajohnt/oss-autopilot/commit/492239a94527382cdf10df35aab9070d9eaec6e3))
+* workflow-step state tracking core ([#1280](https://github.com/costajohnt/oss-autopilot/issues/1280) minimum scope) ([#1301](https://github.com/costajohnt/oss-autopilot/issues/1301)) ([63a5c75](https://github.com/costajohnt/oss-autopilot/commit/63a5c75c020873481748e6403835b67132a36c38))
+
+
+### Bug Fixes
+
+* auto-format hook skips when ANY branch remote is non-personal ([#1257](https://github.com/costajohnt/oss-autopilot/issues/1257)) ([#1278](https://github.com/costajohnt/oss-autopilot/issues/1278)) ([5046743](https://github.com/costajohnt/oss-autopilot/commit/5046743ca73bdc29ecd3ee0a549fd0dead421bf9))
+* gate SessionStart PR health summary on cache freshness ([#1255](https://github.com/costajohnt/oss-autopilot/issues/1255)) ([#1276](https://github.com/costajohnt/oss-autopilot/issues/1276)) ([54fad9f](https://github.com/costajohnt/oss-autopilot/commit/54fad9ff4115770cc2a51245be0cd45bcadc7704))
+* parseIssueList dedupe + recognize Hold/Continue watch ([#1179](https://github.com/costajohnt/oss-autopilot/issues/1179)) ([#1256](https://github.com/costajohnt/oss-autopilot/issues/1256)) ([2630849](https://github.com/costajohnt/oss-autopilot/commit/26308494b678fbb95fe414aa057dfc2072a3c030))
+* pr-compliance-checker `read` ref + extract-to-core ([#1245](https://github.com/costajohnt/oss-autopilot/issues/1245)) ([#1258](https://github.com/costajohnt/oss-autopilot/issues/1258)) ([7d4337c](https://github.com/costajohnt/oss-autopilot/commit/7d4337c34fd7d42e6c336fb40d1fed6b76ceb3c9))
+* pre-3.5.0 release blockers (review-loop convergence) ([#1322](https://github.com/costajohnt/oss-autopilot/issues/1322)) ([9508fdf](https://github.com/costajohnt/oss-autopilot/commit/9508fdf392691cf66b319fcd7b892e40f1416630))
+* state.json fail-loud on 412-conflict merge re-apply ([#1235](https://github.com/costajohnt/oss-autopilot/issues/1235)) ([#1253](https://github.com/costajohnt/oss-autopilot/issues/1253)) ([5b1f1ad](https://github.com/costajohnt/oss-autopilot/commit/5b1f1ad2514166a65465dc80bc9f937b244d2502))
+
 ## [3.4.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.4.0...core-v3.4.1) (2026-05-07)
 
 
