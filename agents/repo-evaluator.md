@@ -21,7 +21,7 @@ User wants to predict maintainer engagement before contributing.
 </example>
 
 purpose: Analyze repository health
-model: haiku
+model: sonnet
 color: blue
 tools: ["Bash", "Read", "Glob", "mcp__plugin_oss-autopilot_oss-autopilot__vet", "mcp__plugin_oss-autopilot_oss-autopilot__repo-vet"]
 ---
