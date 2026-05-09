@@ -126,6 +126,7 @@ describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
     'stats',
     'skip-add',
     'list-move-tier',
+    'list-mark-done',
     'manifest',
     'guidelines',
   ];
@@ -417,6 +418,7 @@ describe('Command registration', () => {
       'state',
       'skip-add',
       'list-move-tier',
+      'list-mark-done',
       'guidelines',
       'manifest',
     ];

@@ -506,6 +506,19 @@ export const ListMoveTierOutputSchema = z.object({
   reason: z.string().optional(),
 });
 
+// list-mark-done (#1299): mirrors {@link MarkDoneOutput} from the command
+// module. Strict shape — additional keys must be added here AND in the
+// command output, otherwise the validator's `parse()` rejects the response
+// before it reaches consumers.
+export const ListMarkDoneOutputSchema = z.object({
+  marked: z.boolean(),
+  filePath: z.string(),
+  url: z.string(),
+  repoHeadingStruck: z.boolean(),
+  remainingUnderRepo: z.number().int().nonnegative(),
+  reason: z.string().optional(),
+});
+
 // ── #1155: Zod coverage for remaining CLI commands ───────────────────
 
 export const PostOutputSchema = z.object({

@@ -644,24 +644,28 @@ Options:
 2. "No, I'll update it manually"
 ```
 
-If yes, use the Edit tool to update the list file:
-- Wrap the repo heading and issue line in `~~strikethrough~~`
-- Change or add the status to: `**Done** — PR [#NUMBER](URL) submitted, {brief status}.`
+If yes, run the deterministic `list-mark-done` CLI command (#1299) — it strikes through the issue line, appends the `**Done**` sub-bullet, and strikes through the repo heading if all issues under it are now done. Idempotent on a re-run.
 
-Example transformation:
-```markdown
-# Before:
-### suitenumerique/meet (1.6k★) — Open-source video conferencing (LiveKit)
-- [#804](https://github.com/suitenumerique/meet/issues/804) — Test mic while "muted"
-  - **Low complexity** — Help wanted, unassigned, no PRs, active repo.
-
-# After:
-### ~~suitenumerique/meet (1.6k★) — Open-source video conferencing (LiveKit)~~
-- ~~[#804](https://github.com/suitenumerique/meet/issues/804) — Test mic while "muted"~~
-  - **Done** — PR [#42](https://github.com/suitenumerique/meet/pull/42) submitted, CI passing.
+```bash
+<prefix> list-mark-done <issue-url> --pr-url <pr-url> --pr-status "<brief-status>" --list-path <issueListPath> --json
 ```
 
-**Important:** Only strike through the specific repo heading if ALL issues under it are now done. If other issues remain under the same repo heading, only strike through the individual issue lines.
+Example invocation:
+
+```bash
+<prefix> list-mark-done https://github.com/suitenumerique/meet/issues/804 \
+  --pr-url https://github.com/suitenumerique/meet/pull/42 \
+  --pr-status "CI passing" \
+  --list-path /Users/me/issues.md --json
+```
+
+Inspect the JSON output before announcing anything:
+
+- `success: true` with `data.marked: true` → the file was updated. Continue to step 2. Note that `data.remainingUnderRepo` reports issues left under THIS repo's heading only — for the whole-list `remainingCount` in step 2, use `availableCount - 1` from the session-start `data.issueList`.
+- `success: true` with `data.marked: false` and `data.reason: "already marked done"` → idempotent re-run. Tell the user the line was already struck. Use the same whole-list `remainingCount` calculation (don't double-decrement).
+- `success: false` with the error mentioning "Issue URL not found" → STOP. Do NOT announce the list was updated and do NOT advance to step 2. Surface the error to the user with the URL and `--list-path` you used; ask whether to retry with a different path/URL or fall back to a manual edit.
+
+Do NOT hand-edit the list file with the Edit tool; the deterministic command avoids drift between this prose and the marker logic.
 
 ### 2. Show remaining count
 

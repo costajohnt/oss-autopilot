@@ -42,6 +42,7 @@ vi.mock('./formatters/json.js', () => ({
   DoctorOutputSchema: {},
   SkipAddOutputSchema: {},
   ListMoveTierOutputSchema: {},
+  ListMarkDoneOutputSchema: {},
   PostOutputSchema: {},
   ClaimOutputSchema: {},
   InitOutputSchema: {},
