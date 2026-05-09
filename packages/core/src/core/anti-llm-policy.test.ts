@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scanForAntiLLMPolicy } from './anti-llm-policy.js';
+import { scanForAntiLLMPolicy, scanAIDisclosureRequirement } from './anti-llm-policy.js';
 
 describe('scanForAntiLLMPolicy', () => {
   it('returns matched=false for empty text', () => {
@@ -160,6 +160,142 @@ describe('scanForAntiLLMPolicy', () => {
       expect(() => scanForAntiLLMPolicy(undefined)).toThrow(TypeError);
       // @ts-expect-error — runtime contract check
       expect(() => scanForAntiLLMPolicy(Buffer.from('hello'))).toThrow(TypeError);
+    });
+  });
+});
+
+describe('scanAIDisclosureRequirement (#1269)', () => {
+  it('returns matched=false for empty text', () => {
+    const result = scanAIDisclosureRequirement('');
+    expect(result.matched).toBe(false);
+    expect(result.matches).toEqual([]);
+  });
+
+  it('returns matched=false for ordinary contributing prose', () => {
+    const result = scanAIDisclosureRequirement(
+      'Welcome! Please read the contributing guide. Open a PR with tests and a clear description.',
+    );
+    expect(result.matched).toBe(false);
+  });
+
+  describe('mandatory disclosure signals', () => {
+    it('matches "must disclose AI use"', () => {
+      const result = scanAIDisclosureRequirement('Contributors must disclose AI use in the PR description.');
+      expect(result.matched).toBe(true);
+      expect(result.matches.some((m) => m.category === 'mandatory')).toBe(true);
+    });
+
+    it('matches "required to indicate AI assistance"', () => {
+      const result = scanAIDisclosureRequirement('You are required to indicate AI assistance when submitting a PR.');
+      expect(result.matched).toBe(true);
+      expect(result.matches.some((m) => m.category === 'mandatory')).toBe(true);
+    });
+
+    it('matches "PRs using AI must be labeled"', () => {
+      const result = scanAIDisclosureRequirement('PRs using AI tools must be labeled with [ai].');
+      expect(result.matched).toBe(true);
+      expect(result.matches.some((m) => m.category === 'mandatory')).toBe(true);
+    });
+
+    it('matches passive form "disclosure of AI is required"', () => {
+      const result = scanAIDisclosureRequirement('Disclosure of AI use is required in commit messages.');
+      expect(result.matched).toBe(true);
+      expect(result.matches.some((m) => m.category === 'mandatory')).toBe(true);
+    });
+
+    it('matches "must credit Copilot" (named tool)', () => {
+      const result = scanAIDisclosureRequirement('All contributors must credit Copilot when used.');
+      expect(result.matched).toBe(true);
+      expect(result.matches.some((m) => m.category === 'mandatory')).toBe(true);
+    });
+  });
+
+  describe('recommended disclosure signals', () => {
+    it('matches "should disclose AI"', () => {
+      const result = scanAIDisclosureRequirement('You should disclose AI use in your PR.');
+      expect(result.matched).toBe(true);
+      expect(result.matches.some((m) => m.category === 'recommended')).toBe(true);
+    });
+
+    it('matches "we ask you to indicate AI"', () => {
+      const result = scanAIDisclosureRequirement('We ask you to indicate AI assistance for transparency.');
+      expect(result.matched).toBe(true);
+      expect(result.matches.some((m) => m.category === 'recommended')).toBe(true);
+    });
+
+    it('matches "we strongly encourage acknowledging AI"', () => {
+      const result = scanAIDisclosureRequirement('We strongly encourage acknowledging AI tools.');
+      expect(result.matched).toBe(true);
+      expect(result.matches.some((m) => m.category === 'recommended')).toBe(true);
+    });
+
+    it('matches imperative "credit AI tools you used"', () => {
+      const result = scanAIDisclosureRequirement('Credit AI tools you used.');
+      expect(result.matched).toBe(true);
+      expect(result.matches.some((m) => m.category === 'recommended')).toBe(true);
+    });
+  });
+
+  describe('invited disclosure signals', () => {
+    it('matches "feel free to mention AI"', () => {
+      const result = scanAIDisclosureRequirement('Feel free to mention AI tools you used in the PR description.');
+      expect(result.matched).toBe(true);
+      expect(result.matches.some((m) => m.category === 'invited')).toBe(true);
+    });
+
+    it('matches "you are welcome to disclose AI"', () => {
+      const result = scanAIDisclosureRequirement(
+        'You are welcome to disclose AI assistance, though it is not required.',
+      );
+      expect(result.matched).toBe(true);
+      expect(result.matches.some((m) => m.category === 'invited')).toBe(true);
+    });
+  });
+
+  describe('false-positive resistance', () => {
+    it('does not match anti-AI policy as disclosure', () => {
+      // The text bans AI; it should not also register as inviting AI disclosure.
+      const result = scanAIDisclosureRequirement('We do not accept AI-generated code.');
+      expect(result.matched).toBe(false);
+    });
+
+    it('does not match incidental "AI" mentions without a disclosure verb', () => {
+      const result = scanAIDisclosureRequirement(
+        'Our team uses AI tools internally. The release process is documented in RELEASING.md.',
+      );
+      expect(result.matched).toBe(false);
+    });
+
+    it('does not match a feature description with "credit" in unrelated context', () => {
+      // "credit" appears, but not paired with an AI-tool noun.
+      const result = scanAIDisclosureRequirement('See the CREDITS file for our list of contributors.');
+      expect(result.matched).toBe(false);
+    });
+
+    it('does not match "we use AI to label issues" (workflow description, not policy)', () => {
+      const result = scanAIDisclosureRequirement('Our triage bot uses AI to label issues automatically.');
+      expect(result.matched).toBe(false);
+    });
+  });
+
+  describe('input validation', () => {
+    it('throws on non-string input rather than silently returning matched=false', () => {
+      // @ts-expect-error — runtime contract check
+      expect(() => scanAIDisclosureRequirement(null)).toThrow(TypeError);
+      // @ts-expect-error — runtime contract check
+      expect(() => scanAIDisclosureRequirement(undefined)).toThrow(TypeError);
+    });
+  });
+
+  describe('excerpt extraction', () => {
+    it('returns the matched phrase and a windowed excerpt', () => {
+      const text =
+        'Lots of preamble here describing the project. Contributors must disclose AI use in the PR. Then more text follows.';
+      const result = scanAIDisclosureRequirement(text);
+      expect(result.matched).toBe(true);
+      const match = result.matches[0];
+      expect(match.excerpt).toContain('disclose');
+      expect(match.excerpt.length).toBeLessThan(text.length);
     });
   });
 });
