@@ -19,6 +19,7 @@ import {
   DoctorOutputSchema,
   SkipAddOutputSchema,
   ListMoveTierOutputSchema,
+  ListMarkDoneOutputSchema,
   PostOutputSchema,
   ClaimOutputSchema,
   InitOutputSchema,
@@ -638,6 +639,52 @@ describe('ListMoveTierOutputSchema (#1148)', () => {
       count: 1,
     } as unknown;
     expect(() => formatJson(ListMoveTierOutputSchema, data)).toThrow(/contract drift.*totier/i);
+  });
+});
+
+describe('ListMarkDoneOutputSchema (#1299)', () => {
+  it('round-trips a successful mark', () => {
+    const data = {
+      marked: true,
+      filePath: '/tmp/list.md',
+      url: 'https://github.com/foo/bar/issues/1',
+      repoHeadingStruck: false,
+      remainingUnderRepo: 2,
+    };
+    expect(formatJson(ListMarkDoneOutputSchema, data).success).toBe(true);
+  });
+
+  it('round-trips a no-op mark with reason', () => {
+    const data = {
+      marked: false,
+      filePath: '/tmp/list.md',
+      url: 'https://github.com/foo/bar/issues/1',
+      repoHeadingStruck: false,
+      remainingUnderRepo: 0,
+      reason: 'already marked done',
+    };
+    expect(formatJson(ListMarkDoneOutputSchema, data).success).toBe(true);
+  });
+
+  it('rejects drift: missing repoHeadingStruck', () => {
+    const data = {
+      marked: true,
+      filePath: '/tmp/list.md',
+      url: 'https://github.com/foo/bar/issues/1',
+      remainingUnderRepo: 2,
+    } as unknown;
+    expect(() => formatJson(ListMarkDoneOutputSchema, data)).toThrow(/contract drift.*repoheadingstruck/i);
+  });
+
+  it('rejects drift: negative remainingUnderRepo', () => {
+    const data = {
+      marked: true,
+      filePath: '/tmp/list.md',
+      url: 'https://github.com/foo/bar/issues/1',
+      repoHeadingStruck: false,
+      remainingUnderRepo: -1,
+    } as unknown;
+    expect(() => formatJson(ListMarkDoneOutputSchema, data)).toThrow(/contract drift.*remainingunderrepo/i);
   });
 });
 

@@ -480,6 +480,64 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── List Mark Done ─────────────────────────────────────────────────────
+  {
+    name: 'list-mark-done',
+    localOnly: true,
+    register(program) {
+      program
+        .command('list-mark-done <issue-url>')
+        .description('Mark an issue line in a curated list as done with strikethrough + Done sub-bullet (#1299)')
+        .requiredOption('--pr-url <url>', 'PR URL to record on the Done sub-bullet')
+        .requiredOption('--pr-status <text>', 'Trailing status, e.g. "merged" or "CI passing"')
+        .requiredOption('--list-path <file>', 'Path to the markdown issue list')
+        .option('--json', 'Output as JSON')
+        .action(async (issueUrl, options) => {
+          const { ListMarkDoneOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
+            options,
+            async () => {
+              const result = await (
+                await import('./commands/list-mark-done.js')
+              ).runMarkIssueListItemDone({
+                issueUrl,
+                prUrl: options.prUrl,
+                prStatus: options.prStatus,
+                listPath: options.listPath,
+              });
+              // Convert "URL not in list" into a real CLI error so the JSON
+              // envelope reports `success: false` and the process exits non-zero.
+              // The pure transform's success-shaped not-found return is fine for
+              // library consumers, but as a CLI command "I asked you to mark X
+              // and you couldn't find X" is a failure the caller must see.
+              // The "already marked done" case stays as a success-shape return
+              // (it's idempotent — the caller's intent was achieved).
+              if (!result.marked && result.reason === 'issue URL not found in the list') {
+                throw new Error(
+                  `Issue URL not found in ${result.filePath}: ${result.url}. ` +
+                    `Verify --list-path and the issue URL.`,
+                );
+              }
+              return result;
+            },
+            (data) => {
+              if (data.marked) {
+                const headingNote = data.repoHeadingStruck ? ' (repo heading also struck)' : '';
+                console.log(`Marked ${data.url} done${headingNote}`);
+                console.log(`  File: ${data.filePath}`);
+                console.log(`  Remaining under repo: ${data.remainingUnderRepo}`);
+              } else {
+                // Reach here only on the idempotent "already marked done" path.
+                console.log(`No mark: ${data.url} — ${data.reason ?? 'unchanged'}`);
+                console.log(`  File: ${data.filePath}`);
+              }
+            },
+            ListMarkDoneOutputSchema,
+          );
+        });
+    },
+  },
+
   // ── Track ──────────────────────────────────────────────────────────────
   {
     name: 'track',

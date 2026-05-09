@@ -14,7 +14,7 @@ All commands support `--json` flag for structured output.
      `bash scripts/build-cli-if-stale.sh "$PWD" && pnpm run generate:reference`.
      CI fails if this line is out of sync with the registry. -->
 <!-- BEGIN AUTO:local-only-commands -->
-Local-only commands (no GitHub token needed): `checkSetup`, `clear-override`, `config`, `detect-formatters`, `dismiss`, `doctor`, `guidelines`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `override`, `parse-issue-list`, `serve`, `setup`, `shelve`, `skip-add`, `startup`, `stats`, `status`, `undismiss`, `unshelve`.
+Local-only commands (no GitHub token needed): `checkSetup`, `clear-override`, `config`, `detect-formatters`, `dismiss`, `doctor`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `override`, `parse-issue-list`, `serve`, `setup`, `shelve`, `skip-add`, `startup`, `stats`, `status`, `undismiss`, `unshelve`.
 <!-- END AUTO:local-only-commands -->
 
 ### Core Workflow
@@ -53,6 +53,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `clear-override`, `c
 
 # Move an issue between Pursue / Maybe / Skip sections of a curated list (#1107)
 <prefix> list-move-tier <issue-url> --tier <pursue|maybe|skip> --list-path <file> --json
+
+# Mark an issue done with strikethrough + Done sub-bullet (#1299)
+<prefix> list-mark-done <issue-url> --pr-url <pr-url> --pr-status "<status>" --list-path <file> --json
 ```
 
 ### Per-Repo Guidelines (#867)

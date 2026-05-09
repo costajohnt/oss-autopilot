@@ -101,6 +101,13 @@ export {
   type ListMoveTierOptions,
   type ListMoveTierOutput,
 } from './list-move-tier.js';
+/** Mark an issue line in a curated list as done with strikethrough + Done sub-bullet (#1299). */
+export {
+  runMarkIssueListItemDone,
+  markIssueAsDone,
+  type MarkDoneOptions,
+  type MarkDoneOutput,
+} from './list-mark-done.js';
 /** Check if new files are properly referenced/integrated. */
 export { runCheckIntegration } from './check-integration.js';
 /** System-health diagnostic — verifies tokens, bundle, state, scout, rate limit. */
