@@ -1997,6 +1997,75 @@ describe('fetchUserOpenPRs auto-repairs known placeholder usernames', () => {
   });
 });
 
+// When the configured githubUsername is set to a value GitHub can't resolve
+// (a stale handle, a typo, an aborted-setup leftover that isn't on the
+// known-placeholder list), the Search API returns 422 "Validation Failed:
+// users do not exist." Without the rewrite, that opaque string was the
+// top-level error a /oss run surfaced — no mention of the configured
+// username, state.json, or /setup-oss (#1323).
+describe('fetchUserOpenPRs rewrites Search-API "users do not exist" errors (#1323)', () => {
+  it('throws ConfigurationError naming the configured username and pointing at /setup-oss', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'stale-handle', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+
+    const validationError = Object.assign(new Error('Validation Failed'), {
+      status: 422,
+      response: {
+        data: {
+          message: 'Validation Failed',
+          errors: [
+            {
+              resource: 'Search',
+              field: 'q',
+              code: 'invalid',
+              message:
+                'The listed users cannot be searched either because the users do not exist or you do not have permission to view the users.',
+            },
+          ],
+        },
+      },
+    });
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockRejectedValue(validationError),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    await expect(monitor.fetchUserOpenPRs()).rejects.toThrow(/stale-handle/);
+    await expect(monitor.fetchUserOpenPRs()).rejects.toThrow(/setup-oss/);
+  });
+
+  it('does not rewrite unrelated 422 validation errors', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'real-user', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+
+    // Different validation failure shape (e.g. malformed query) must propagate
+    // unchanged — only the user-not-found case maps to the actionable rewrite.
+    const otherError = Object.assign(new Error('Validation Failed'), {
+      status: 422,
+      response: {
+        data: { errors: [{ resource: 'Issue', field: 'title', code: 'missing' }] },
+      },
+    });
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockRejectedValue(otherError),
+      },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    await expect(monitor.fetchUserOpenPRs()).rejects.toThrow('Validation Failed');
+    await expect(monitor.fetchUserOpenPRs()).rejects.not.toThrow(/setup-oss/);
+  });
+});
+
 describe('isBotAuthor (#143)', () => {
   it('should identify [bot] suffix accounts', () => {
     expect(isBotAuthor('dependabot[bot]')).toBe(true);

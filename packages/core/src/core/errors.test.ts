@@ -6,6 +6,7 @@ import {
   GistCorruptError,
   errorMessage,
   getHttpStatusCode,
+  isInvalidUserSearchError,
   resolveErrorCode,
   isTransientNetworkError,
 } from './errors.js';
@@ -135,6 +136,120 @@ describe('getHttpStatusCode', () => {
   it('returns undefined for primitives', () => {
     expect(getHttpStatusCode('string')).toBeUndefined();
     expect(getHttpStatusCode(42)).toBeUndefined();
+  });
+});
+
+describe('isInvalidUserSearchError (#1323)', () => {
+  it('matches a 422 Search/invalid error whose entry message indicates user-resolution failure', () => {
+    const err = Object.assign(new Error('Validation Failed'), {
+      status: 422,
+      response: {
+        data: {
+          message: 'Validation Failed',
+          errors: [
+            {
+              resource: 'Search',
+              field: 'q',
+              code: 'invalid',
+              message:
+                'The listed users cannot be searched either because the users do not exist or you do not have permission to view the users.',
+            },
+          ],
+        },
+      },
+    });
+    expect(isInvalidUserSearchError(err)).toBe(true);
+  });
+
+  it('matches when entry message is missing but the top-level error message carries the signal', () => {
+    // Some Octokit serializations drop the per-entry message but keep it
+    // assembled in the Error's top-level message. The matcher falls back to
+    // checking the top-level message in that case.
+    const err = Object.assign(
+      new Error(
+        'Validation Failed: The listed users cannot be searched either because the users do not exist or you do not have permission to view the users.',
+      ),
+      {
+        status: 422,
+        response: {
+          data: { errors: [{ resource: 'Search', field: 'q', code: 'invalid' }] },
+        },
+      },
+    );
+    expect(isInvalidUserSearchError(err)).toBe(true);
+  });
+
+  it('matches via the message fallback when response.data is missing', () => {
+    // Octokit errors can lose the structured `response.data` after a rethrow
+    // boundary. The message string copies the API "users do not exist" line,
+    // so we keep that path as a substring fallback.
+    const err = Object.assign(
+      new Error(
+        'Validation Failed: The listed users cannot be searched either because the users do not exist or you do not have permission to view the users.',
+      ),
+      { status: 422 },
+    );
+    expect(isInvalidUserSearchError(err)).toBe(true);
+  });
+
+  it('does not match Search/invalid 422s for unrelated reasons (query too long, too many ORs)', () => {
+    // GitHub returns the same resource/code pair for other Search validation
+    // failures. Without the message-text gate, those would silently rewrite
+    // to "your configured username is wrong" which is actively misleading.
+    const queryTooLong = Object.assign(new Error('Validation Failed'), {
+      status: 422,
+      response: {
+        data: {
+          errors: [
+            {
+              resource: 'Search',
+              field: 'q',
+              code: 'invalid',
+              message: 'The search is longer than 256 characters.',
+            },
+          ],
+        },
+      },
+    });
+    expect(isInvalidUserSearchError(queryTooLong)).toBe(false);
+
+    const tooManyOperators = Object.assign(new Error('Validation Failed'), {
+      status: 422,
+      response: {
+        data: {
+          errors: [
+            {
+              resource: 'Search',
+              field: 'q',
+              code: 'invalid',
+              message: 'The search contains only logical operators (AND / OR / NOT) without any search terms.',
+            },
+          ],
+        },
+      },
+    });
+    expect(isInvalidUserSearchError(tooManyOperators)).toBe(false);
+  });
+
+  it('does not match unrelated 422 validation errors with a different resource', () => {
+    const err = Object.assign(new Error('Validation Failed'), {
+      status: 422,
+      response: {
+        data: { errors: [{ resource: 'Issue', field: 'title', code: 'missing' }] },
+      },
+    });
+    expect(isInvalidUserSearchError(err)).toBe(false);
+  });
+
+  it('does not match non-422 errors', () => {
+    expect(isInvalidUserSearchError(Object.assign(new Error('Not Found'), { status: 404 }))).toBe(false);
+    expect(isInvalidUserSearchError(Object.assign(new Error('Unauthorized'), { status: 401 }))).toBe(false);
+  });
+
+  it('returns false for null/undefined/primitives', () => {
+    expect(isInvalidUserSearchError(null)).toBe(false);
+    expect(isInvalidUserSearchError(undefined)).toBe(false);
+    expect(isInvalidUserSearchError('Validation Failed')).toBe(false);
   });
 });
 
