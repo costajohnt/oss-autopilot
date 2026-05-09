@@ -9,6 +9,13 @@
 #   - Bash — inspects `tool_input.command` against a regex of gh/CLI patterns
 #   - mcp__plugin_oss-autopilot_oss-autopilot__(post|claim) — always asks
 #
+# Drift-resistance: `packages/mcp-server/src/tools.test.ts`
+# (`describe('hooks.json guard-public-posts matcher (#1302 item 2)')`)
+# pins the matcher's plugin-tool list to the tool registry's
+# `destructiveHint` annotations. Adding a new tool with `destructiveHint:
+# true` that posts publicly without updating the matcher fails CI; an
+# explicit exclusion list covers the LOCAL_ONLY_DESTRUCTIVE case.
+#
 # Known static-analysis limits (regressions here are intentional gaps, not
 # silent failures — they're called out with explicit test assertions in
 # guard-public-posts.test.sh):
