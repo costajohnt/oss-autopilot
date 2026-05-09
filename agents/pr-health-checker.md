@@ -104,15 +104,17 @@ If not cloned: clone into the FIRST configured scan path (or `~/Documents/oss/<r
 
 ### 3. Categorize CI Status
 
-| CI state | Meaning | Action |
-|---|---|---|
-| All passing | Green | None |
-| Failing (tests/lint/build) | Code issue | Tier 2: investigate + recommend |
-| Blocked (pending) | Needs maintainer trigger | Suggest asking for rerun |
-| Not running | No checks reported | Investigate workflows / fork-actions |
-| Fork limitation | Vercel auth, internal CI | Informational, not actionable |
+Read `pr.ciCategorization.category` (#1272) — five mutually-exclusive states produced by the typed `categorizeCIStatus()` core function. Map directly to action:
 
-Distinguish fork limitations from real failures: Vercel preview "Authorization required" and internal-CI-only checks are fork limitations.
+| `category` | Meaning | Action |
+|---|---|---|
+| `all_passing` | Every reported check is green | None |
+| `failing` | At least one actionable failure (tests/lint/build) | Tier 2: investigate + recommend |
+| `blocked` | Checks pending; often awaiting maintainer trigger | Suggest asking for rerun |
+| `not_running` | No checks reported | Investigate workflows / fork-actions |
+| `fork_limitation` | Failures exist but ALL are fork-perm / auth-gate | Informational, not actionable |
+
+`pr.ciCategorization.summary` is a short pre-rendered description; render it verbatim if displaying inline. Do NOT re-derive the category from `failingCheckNames` + `classifiedChecks` — the typed function is the canonical source.
 
 ### 4. Check Reviews
 ```bash

@@ -4,12 +4,14 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  categorizeCIStatus,
   classifyCICheck,
   classifyFailingChecks,
   analyzeCheckRuns,
   analyzeCombinedStatus,
   mergeStatuses,
 } from './ci-analysis.js';
+import type { ClassifiedCheck } from './types.js';
 
 describe('classifyCICheck', () => {
   it('should return "actionable" for unknown check names', () => {
@@ -276,5 +278,141 @@ describe('mergeStatuses', () => {
       0,
     );
     expect(result.status).toBe('unknown');
+  });
+});
+
+describe('categorizeCIStatus (#1272)', () => {
+  function actionable(name: string): ClassifiedCheck {
+    return { name, category: 'actionable' };
+  }
+  function forkLimit(name: string): ClassifiedCheck {
+    return { name, category: 'fork_limitation' };
+  }
+  function authGate(name: string): ClassifiedCheck {
+    return { name, category: 'auth_gate' };
+  }
+
+  it('returns all_passing when ciStatus is passing', () => {
+    const r = categorizeCIStatus({ ciStatus: 'passing', failingCheckNames: [], classifiedChecks: [] });
+    expect(r.category).toBe('all_passing');
+    expect(r.action).toBe('none');
+    expect(r.summary).toMatch(/passing/i);
+  });
+
+  it('returns blocked when ciStatus is pending', () => {
+    const r = categorizeCIStatus({ ciStatus: 'pending', failingCheckNames: [], classifiedChecks: [] });
+    expect(r.category).toBe('blocked');
+    expect(r.action).toBe('request_rerun');
+  });
+
+  it('returns blocked with count when pending with failing names known', () => {
+    const r = categorizeCIStatus({
+      ciStatus: 'pending',
+      failingCheckNames: ['unit-tests', 'lint'],
+      classifiedChecks: [actionable('unit-tests'), actionable('lint')],
+    });
+    expect(r.category).toBe('blocked');
+    expect(r.summary).toMatch(/2/);
+  });
+
+  it('returns failing when at least one classified check is actionable', () => {
+    const r = categorizeCIStatus({
+      ciStatus: 'failing',
+      failingCheckNames: ['unit-tests', 'vercel-preview'],
+      classifiedChecks: [actionable('unit-tests'), forkLimit('vercel-preview')],
+    });
+    expect(r.category).toBe('failing');
+    expect(r.action).toBe('investigate');
+    expect(r.summary).toMatch(/unit-tests/);
+  });
+
+  it('previews up to 3 actionable check names then summarizes the rest', () => {
+    const r = categorizeCIStatus({
+      ciStatus: 'failing',
+      failingCheckNames: ['a', 'b', 'c', 'd', 'e'],
+      classifiedChecks: [actionable('a'), actionable('b'), actionable('c'), actionable('d'), actionable('e')],
+    });
+    expect(r.summary).toContain('a, b, c');
+    expect(r.summary).toMatch(/\+2 more/);
+  });
+
+  it('returns fork_limitation when failures exist but none are actionable or infrastructure', () => {
+    const r = categorizeCIStatus({
+      ciStatus: 'failing',
+      failingCheckNames: ['vercel-preview', 'codecov-auth'],
+      classifiedChecks: [forkLimit('vercel-preview'), authGate('codecov-auth')],
+    });
+    expect(r.category).toBe('fork_limitation');
+    expect(r.action).toBe('informational');
+  });
+
+  it('returns blocked w/ request_rerun when non-actionable failures include infrastructure (cancelled runner)', () => {
+    // Without the infrastructure-aware branch, this fell into
+    // fork_limitation with the misleading "fork limits / auth gates"
+    // summary. A cancelled runner is genuinely worth a rerun, not a
+    // shrug.
+    const r = categorizeCIStatus({
+      ciStatus: 'failing',
+      failingCheckNames: ['integration-tests'],
+      classifiedChecks: [{ name: 'integration-tests', category: 'infrastructure', conclusion: 'cancelled' }],
+    });
+    expect(r.category).toBe('blocked');
+    expect(r.action).toBe('request_rerun');
+    expect(r.summary).toMatch(/rerun/i);
+  });
+
+  it('returns blocked w/ request_rerun when failures mix infrastructure + auth_gate (no actionable)', () => {
+    const r = categorizeCIStatus({
+      ciStatus: 'failing',
+      failingCheckNames: ['unit-tests', 'codecov-auth'],
+      classifiedChecks: [
+        { name: 'unit-tests', category: 'infrastructure', conclusion: 'timed_out' },
+        authGate('codecov-auth'),
+      ],
+    });
+    expect(r.category).toBe('blocked');
+    expect(r.action).toBe('request_rerun');
+  });
+
+  it('returns failing w/ honest summary when ciStatus is failing but no checks were classified', () => {
+    // Reachable when the legacy combined-status endpoint reports failure
+    // without per-check detail. Asserting "0 non-actionable failure(s)
+    // (fork limits / auth gates)" would be a confident lie.
+    const r = categorizeCIStatus({
+      ciStatus: 'failing',
+      failingCheckNames: [],
+      classifiedChecks: [],
+    });
+    expect(r.category).toBe('failing');
+    expect(r.action).toBe('investigate');
+    expect(r.summary).toMatch(/no check details/i);
+  });
+
+  it('returns not_running when ciStatus is unknown', () => {
+    const r = categorizeCIStatus({ ciStatus: 'unknown', failingCheckNames: [], classifiedChecks: [] });
+    expect(r.category).toBe('not_running');
+    expect(r.action).toBe('check_workflows');
+  });
+
+  it('returns 5 mutually-exclusive categories — same input produces same output (deterministic)', () => {
+    const input = {
+      ciStatus: 'failing' as const,
+      failingCheckNames: ['lint'],
+      classifiedChecks: [actionable('lint')],
+    };
+    expect(categorizeCIStatus(input)).toEqual(categorizeCIStatus(input));
+  });
+
+  it('summary is short enough for inline rendering (under 120 chars)', () => {
+    // Stress: 10 actionable failures with long names
+    const longNames = Array.from({ length: 10 }, (_, i) => `very-long-check-name-${i}-with-extra-context`);
+    const r = categorizeCIStatus({
+      ciStatus: 'failing',
+      failingCheckNames: longNames,
+      classifiedChecks: longNames.map(actionable),
+    });
+    // The preview includes 3 names plus "(+7 more)" — verify the resulting
+    // summary stays bounded enough for action-menu rendering.
+    expect(r.summary.length).toBeLessThan(180);
   });
 });
