@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.6.0...core-v3.7.0) (2026-05-10)
+
+
+### Features
+
+* integrate @oss-scout/core 0.9.0 (features command + stalled-PR detection) ([#1338](https://github.com/costajohnt/oss-autopilot/issues/1338)) ([4af41fc](https://github.com/costajohnt/oss-autopilot/commit/4af41fcde9acc545aa62f63c5b0255480e393ea8))
+
+
+### Bug Fixes
+
+* **startup:** throttle dashboard browser re-open to avoid duplicate tabs ([#1341](https://github.com/costajohnt/oss-autopilot/issues/1341)) ([89463b8](https://github.com/costajohnt/oss-autopilot/commit/89463b8710a7dc9f2d3444f5d6daef5306f22895))
+
 ## [3.6.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.5.0...core-v3.6.0) (2026-05-10)
 
 
