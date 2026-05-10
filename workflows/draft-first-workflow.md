@@ -480,7 +480,54 @@ Options:
 
 **CRITICAL: This step must NOT be reached without completing Steps 3 (review cycle), 4 (integration check), 5 (manual testing), 6 (human review), and 7 (squash, or explicitly skipped). If a PR is created before these steps, the workflow has been bypassed — this is a bug.**
 
-### 1. Show PR Summary
+### 1. Upstream Drift Check (Mandatory)
+
+The fix could have been merged upstream while this session was active. The CONTRIBUTING-style "no other open PRs" check that ran earlier passes vacuously when the duplicate has merged, so re-check the upstream history right before the irreversible push.
+
+```bash
+upstreamRepo=$(echo "{issueContext.url}" | sed -n 's|https://github.com/\([^/]*/[^/]*\)/.*|\1|p')
+upstreamDefault="${upstreamDefault:-$(gh repo view "$upstreamRepo" --json defaultBranchRef --jq '.defaultBranchRef.name')}"
+remote="${upstreamRemote:-upstream}"
+git remote get-url "$remote" >/dev/null 2>&1 || remote="origin"
+
+git fetch "$remote" "$upstreamDefault" 2>/dev/null
+
+mergeBase=$(git merge-base "$remote/$upstreamDefault" HEAD 2>/dev/null)
+touchedFiles=$(git diff --name-only "$mergeBase" HEAD 2>/dev/null)
+
+# Find commits on upstream main since mergeBase that touch any file we changed.
+overlappingCommits=""
+if [ -n "$touchedFiles" ]; then
+  overlappingCommits=$(git log "$mergeBase..$remote/$upstreamDefault" --oneline -- $touchedFiles 2>/dev/null)
+fi
+```
+
+**If `$overlappingCommits` is empty:** Proceed to "2. Show PR Summary".
+
+**If `$overlappingCommits` is non-empty:** Surface the commits inline:
+
+```
+## ⚠ Upstream drift detected
+
+`{remote}/{upstreamDefault}` has commits since this branch diverged that touch the same files as your diff:
+
+{overlappingCommits}
+
+The same fix may have already merged. Before pushing, re-vet the issue:
+  - Open the issue URL: {issueContext.url}
+  - Check the issue's state and any "Closed by" link
+  - Inspect the listed commits with `git show <sha>` to compare scope
+```
+
+Use AskUserQuestion:
+1. "Re-vet the issue" — run the issue-scout vet again on `{issueContext.url}`. If the vet returns "already fixed" / "closed", route to "Abandon this branch" below.
+2. "Show diff vs upstream" — `git diff $remote/$upstreamDefault..HEAD -- $touchedFiles`. Present and re-prompt with the same options.
+3. "Proceed anyway" — "I've verified the listed commits don't conflict with my fix or are unrelated." Continue to "2. Show PR Summary".
+4. "Abandon this branch" — Report: "Skipping PR creation. Branch `{branchName}` stays local; you can delete it with `git branch -D {branchName}` once you've confirmed the fix is duplicate." Return to the core router. Do NOT push or create a PR.
+
+**If the fetch fails** (no network, gh CLI error): Note "Could not verify upstream drift — proceeding with caution." Continue to "2. Show PR Summary".
+
+### 2. Show PR Summary
 
 ```
 ## Ready to create PR?
@@ -492,7 +539,7 @@ Files changed: {count}
 Issue: {issueContext.url}
 ```
 
-### 2. Confirm Push
+### 3. Confirm Push
 
 Push (remote, visible) is confirmed separately from PR creation so the user can verify exactly what is about to leave their machine before any irreversible action.
 
@@ -510,7 +557,7 @@ Options:
 
 **"Done for now":** Report: "Your changes are saved locally on branch `{branchName}`. Run `/oss` later to push and create the PR." Return to the core router.
 
-### 3. Push
+### 4. Push
 
 ```bash
 git push -u origin HEAD
@@ -518,7 +565,7 @@ git push -u origin HEAD
 
 **If push fails**, report the error and offer: "Retry" / "Done for now" — "Your changes are saved locally on branch `{branchName}`. You can push and create the PR later with `/oss`." Do NOT proceed to PR creation without a successful push.
 
-### 4. Confirm PR State and Create PR
+### 5. Confirm PR State and Create PR
 
 After the push succeeds, confirm the PR state separately:
 
