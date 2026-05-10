@@ -69,6 +69,49 @@ export interface ClassifiedCheck {
   conclusion?: string;
 }
 
+/**
+ * Mutually exclusive overall-CI categories produced by
+ * {@link categorizeCIStatus} (#1272). The 5-row truth table that lived
+ * as prose in `agents/pr-health-checker.md` — extracted so any consumer
+ * (the agent, the dashboard, future MCP surfaces) reads one typed field
+ * instead of re-deriving the table.
+ *
+ * - `all_passing` — every reported check is green
+ * - `failing` — at least one actionable failure (real test/lint/build
+ *   issue), OR ciStatus reported failing without per-check detail (the
+ *   honest answer when the legacy combined-status endpoint can't tell
+ *   us what failed)
+ * - `fork_limitation` — failures exist but ALL of them are
+ *   `fork_limitation` / `auth_gate` (Vercel preview, internal CI) — purely
+ *   informational
+ * - `blocked` — checks are pending (awaiting trigger / completion), OR
+ *   non-actionable failures include `infrastructure` (cancelled /
+ *   timed-out runner — re-running often resolves)
+ * - `not_running` — no checks reported
+ */
+export type CIStatusCategory = 'all_passing' | 'failing' | 'fork_limitation' | 'blocked' | 'not_running';
+
+/**
+ * Suggested action for the {@link CIStatusCategorization}. Hint, not
+ * enforcement — the consuming agent may still escalate or skip based on
+ * other PR context.
+ */
+export type CIStatusAction = 'none' | 'investigate' | 'request_rerun' | 'check_workflows' | 'informational';
+
+/**
+ * Aggregate CI status produced by {@link categorizeCIStatus} (#1272).
+ * Derived from `ciStatus + failingCheckNames + classifiedChecks` —
+ * exposed on {@link FetchedPR} so agents read a single field instead
+ * of re-implementing the truth table.
+ */
+export interface CIStatusCategorization {
+  category: CIStatusCategory;
+  /** Short human-readable summary suitable for inline display. */
+  summary: string;
+  /** Suggested next action (hint, not enforcement). */
+  action: CIStatusAction;
+}
+
 /** CI status result returned by getCIStatus(). */
 export interface CIStatusResult {
   status: CIStatus;
@@ -195,6 +238,15 @@ export interface FetchedPR {
   failingCheckNames: string[];
   /** Failing checks with category classification (#81). Separates actionable failures from fork limitations and auth gates. */
   classifiedChecks: ClassifiedCheck[];
+  /**
+   * Aggregate 5-state CI categorization (#1272). Derived from `ciStatus`,
+   * `failingCheckNames`, and `classifiedChecks` via `categorizeCIStatus()`
+   * — agents read this directly instead of re-deriving the truth table.
+   * Always populated on a fresh fetch (v2 architecture has no cached
+   * `FetchedPR` to migrate); pr-monitor's `fetchPRDetails` sets it on
+   * every PR before construction.
+   */
+  ciCategorization: CIStatusCategorization;
   hasMergeConflict: boolean;
   reviewDecision: ReviewDecision;
 

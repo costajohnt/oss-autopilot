@@ -44,6 +44,7 @@ export function makeFetchedPR(overrides: Partial<FetchedPR> = {}): FetchedPR {
     ciStatus: 'passing',
     failingCheckNames: [],
     classifiedChecks: [],
+    ciCategorization: { category: 'all_passing', summary: 'All checks passing', action: 'none' },
     hasMergeConflict: false,
     reviewDecision: 'approved',
     hasUnrespondedComment: false,
