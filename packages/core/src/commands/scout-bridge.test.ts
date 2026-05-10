@@ -4,10 +4,14 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../core/index.js', () => ({
-  getStateManager: vi.fn(),
-  requireGitHubToken: vi.fn(),
-}));
+vi.mock('../core/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
+  return {
+    ...actual,
+    getStateManager: vi.fn(),
+    requireGitHubToken: vi.fn(),
+  };
+});
 
 vi.mock('@oss-scout/core', () => ({
   createScout: vi.fn(),
@@ -18,7 +22,7 @@ vi.mock('./skip-file-parser.js', () => ({
 }));
 
 import { getStateManager } from '../core/index.js';
-import { buildScoutState, adaptScoutLinkedPR } from './scout-bridge.js';
+import { adaptScoutLinkedPR, buildCandidateLinkedPR, buildScoutState } from './scout-bridge.js';
 import { loadSkippedIssues } from './skip-file-parser.js';
 import { makeAgentState, makeDailyDigest, makeFetchedPR, makeStateManagerMock } from '../core/test-utils.js';
 
@@ -308,5 +312,71 @@ describe('adaptScoutLinkedPR', () => {
     // since downstream JSON serializers strip explicit `undefined` values
     // and we want the absence to be a structural property of the object.
     expect('updatedAt' in (result as object)).toBe(false);
+  });
+});
+
+describe('buildCandidateLinkedPR', () => {
+  it('returns undefined when scout has no linked PR', () => {
+    expect(buildCandidateLinkedPR(null)).toBeUndefined();
+    expect(buildCandidateLinkedPR(undefined)).toBeUndefined();
+  });
+
+  it('returns the autopilot-shaped linkedPR slice with isStalled=false for a fresh open PR', () => {
+    // Use a far-future "now" to keep this stable; updatedAt set to ~today.
+    const recent = new Date().toISOString();
+    const result = buildCandidateLinkedPR({
+      number: 42,
+      author: 'octocat',
+      state: 'open',
+      merged: false,
+      url: 'https://github.com/owner/repo/pull/42',
+      updatedAt: recent,
+    });
+    expect(result).toEqual({
+      number: 42,
+      state: 'open',
+      url: 'https://github.com/owner/repo/pull/42',
+      updatedAt: recent,
+      isStalled: false,
+    });
+  });
+
+  it('flags isStalled=true for an open PR with updatedAt > 30 days ago', () => {
+    const result = buildCandidateLinkedPR({
+      number: 7,
+      author: 'octocat',
+      state: 'open',
+      merged: false,
+      url: 'https://github.com/owner/repo/pull/7',
+      updatedAt: '2020-01-01T00:00:00Z',
+    });
+    expect(result?.isStalled).toBe(true);
+  });
+
+  it('folds merged=true into state="merged" and never marks merged PRs as stalled', () => {
+    const result = buildCandidateLinkedPR({
+      number: 9,
+      author: 'octocat',
+      state: 'closed',
+      merged: true,
+      url: 'https://github.com/owner/repo/pull/9',
+      updatedAt: '2020-01-01T00:00:00Z',
+    });
+    expect(result?.state).toBe('merged');
+    expect(result?.isStalled).toBe(false);
+  });
+
+  it('omits updatedAt entirely when scout did not provide one', () => {
+    const result = buildCandidateLinkedPR({
+      number: 5,
+      author: 'octocat',
+      state: 'open',
+      merged: false,
+      url: 'https://github.com/owner/repo/pull/5',
+    });
+    expect(result).toBeDefined();
+    expect('updatedAt' in (result as object)).toBe(false);
+    // Without updatedAt, isStalled cannot be proved — defaults to false.
+    expect(result?.isStalled).toBe(false);
   });
 });

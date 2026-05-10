@@ -506,6 +506,18 @@ export const CompactDailyOutputSchema = z.object({
 
 const SearchPrioritySchema = z.enum(['merged_pr', 'preferred_org', 'starred', 'normal']);
 
+/**
+ * Schema for the compact linked-PR annotation surfaced on candidate
+ * outputs (#97 / scout 0.9.0). Mirrors {@link CandidateLinkedPR}.
+ */
+const CandidateLinkedPRSchema = z.object({
+  number: z.number().int().positive(),
+  state: z.enum(['open', 'closed', 'merged']),
+  url: z.string(),
+  updatedAt: z.string().optional(),
+  isStalled: z.boolean(),
+});
+
 const SearchCandidateSchema = z.object({
   issue: z.object({
     repo: z.string(),
@@ -533,6 +545,7 @@ const SearchCandidateSchema = z.object({
       lastMergedAt: z.string().optional(),
     })
     .optional(),
+  linkedPR: CandidateLinkedPRSchema.optional(),
 });
 
 export const SearchOutputSchema = z.object({
@@ -885,6 +898,25 @@ export const LocalReposOutputSchema = z.object({
 });
 
 /**
+ * Compact summary of an issue's first linked PR, surfaced on candidate
+ * outputs (#97 / scout 0.9.0). `isStalled` is `true` when the PR is open
+ * and has not been updated for `STALLED_PR_THRESHOLD_DAYS` (default 30) —
+ * a revive-opportunity signal callers can render or filter on.
+ *
+ * `state` mirrors autopilot's existing tri-state classifier (`'merged'` is
+ * folded in from scout's `merged: true` boolean), not scout's raw enum.
+ */
+export interface CandidateLinkedPR {
+  number: number;
+  state: 'open' | 'closed' | 'merged';
+  url: string;
+  /** ISO timestamp of the PR's last update (when scout surfaces it). */
+  updatedAt?: string;
+  /** True when the PR is open AND `updatedAt` is more than 30 days old. */
+  isStalled: boolean;
+}
+
+/**
  * One candidate row in `SearchOutput`/`FeaturesOutput`. Extracted so the
  * features command can reuse the exact contract `runSearch` already
  * publishes — keeping the two outputs structurally identical for everything
@@ -922,6 +954,12 @@ export interface SearchCandidate {
     isResponsive: boolean;
     lastMergedAt?: string;
   };
+  /**
+   * First linked PR on the issue, when scout surfaced one. Optional —
+   * absent when no linked PR exists. `isStalled` flags revive
+   * opportunities (open PR + no updates for 30+ days, scout 0.9.0 #97).
+   */
+  linkedPR?: CandidateLinkedPR;
 }
 
 export interface SearchOutput {
@@ -1140,6 +1178,12 @@ export interface VetOutput {
     | 'other_open'
     | 'other_closed'
     | 'other_merged';
+  /**
+   * Compact linked-PR summary (#97 / scout 0.9.0). Present when the issue
+   * has a linked PR; absent otherwise. `isStalled` flags open PRs that
+   * haven't been touched in 30+ days as revive opportunities.
+   */
+  linkedPR?: CandidateLinkedPR;
   /**
    * Optional SLM pre-triage classification (#1122). Populated when the
    * user has set `slmTriageModel` and a local Ollama instance answered

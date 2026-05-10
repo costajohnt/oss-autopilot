@@ -3,7 +3,7 @@
  * Vets a specific issue before working on it via @oss-scout/core
  */
 
-import { createAutopilotScout, adaptScoutLinkedPR } from './scout-bridge.js';
+import { adaptScoutLinkedPR, buildCandidateLinkedPR, createAutopilotScout } from './scout-bridge.js';
 import { type VetOutput } from '../formatters/json.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
 import { gradeFromCandidate } from '../core/issue-grading.js';
@@ -42,6 +42,7 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     userLogin,
   });
 
+  const linkedPR = buildCandidateLinkedPR(candidate.vettingResult.linkedPR);
   return {
     issue: {
       repo: candidate.issue.repo,
@@ -57,6 +58,7 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     vettingResult: candidate.vettingResult,
     antiLLMPolicy: candidate.antiLLMPolicy,
     linkedPRClassification,
+    ...(linkedPR ? { linkedPR } : {}),
     slmTriage: candidate.slmTriage ?? null,
     grade,
   };

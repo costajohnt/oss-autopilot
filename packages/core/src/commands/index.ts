@@ -133,6 +133,7 @@ export type {
   DailyOutput,
   SearchOutput,
   SearchCandidate,
+  CandidateLinkedPR,
   FeaturesOutput,
   FeaturesCandidate,
   FeaturesHorizon,

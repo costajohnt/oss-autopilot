@@ -13,7 +13,8 @@
  * formatter.
  */
 
-import { createAutopilotScout } from './scout-bridge.js';
+import type { LinkedPR as ScoutLinkedPR } from '@oss-scout/core';
+import { buildCandidateLinkedPR, createAutopilotScout } from './scout-bridge.js';
 import { getStateManager } from '../core/index.js';
 import { type FeaturesOutput, type FeaturesCandidate, type SearchCandidate } from '../formatters/json.js';
 import { gradeFromCandidate } from '../core/issue-grading.js';
@@ -66,6 +67,8 @@ function toFeaturesCandidate(
     searchPriority: SearchCandidate['searchPriority'];
     viabilityScore: unknown;
     horizon: FeaturesCandidate['horizon'];
+    /** Optional — present on real scout candidates, omitted in some test fixtures. */
+    vettingResult?: { linkedPR?: ScoutLinkedPR | null };
   },
   getState: ReturnType<typeof getStateManager>,
 ): FeaturesCandidate {
@@ -91,6 +94,7 @@ function toFeaturesCandidate(
         : undefined;
     },
   });
+  const linkedPR = buildCandidateLinkedPR(scoutCandidate.vettingResult?.linkedPR);
   return {
     issue: {
       repo: scoutCandidate.issue.repo,
@@ -115,6 +119,7 @@ function toFeaturesCandidate(
           lastMergedAt: repoScoreRecord.lastMergedAt,
         }
       : undefined,
+    ...(linkedPR ? { linkedPR } : {}),
     horizon: scoutCandidate.horizon,
   };
 }

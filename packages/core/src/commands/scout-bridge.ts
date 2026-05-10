@@ -4,8 +4,9 @@
  */
 
 import { createScout, type LinkedPR as ScoutLinkedPR, type OssScout, type ScoutState } from '@oss-scout/core';
-import { getStateManager, requireGitHubToken } from '../core/index.js';
+import { getStateManager, isLinkedPRStalled, requireGitHubToken } from '../core/index.js';
 import type { LinkedPR } from '../core/linked-pr-classification.js';
+import type { CandidateLinkedPR } from '../formatters/json.js';
 import { loadSkippedIssues } from './skip-file-parser.js';
 
 /**
@@ -30,6 +31,29 @@ export function adaptScoutLinkedPR(scoutLinkedPR: ScoutLinkedPR | null | undefin
     adapted.updatedAt = scoutLinkedPR.updatedAt;
   }
   return adapted;
+}
+
+/**
+ * Build the autopilot-shaped `linkedPR` slice consumed by `SearchOutput`,
+ * `VetOutput`, and `FeaturesOutput` from scout's raw `LinkedPR`
+ * (#97 / scout 0.9.0). Returns `undefined` when scout reported no linked
+ * PR. Computes `isStalled` from the adapted (autopilot-shape) PR so the
+ * rule stays consistent with `classifyLinkedPR` and downstream consumers.
+ */
+export function buildCandidateLinkedPR(scoutLinkedPR: ScoutLinkedPR | null | undefined): CandidateLinkedPR | undefined {
+  if (!scoutLinkedPR) return undefined;
+  const adapted = adaptScoutLinkedPR(scoutLinkedPR);
+  if (!adapted) return undefined;
+  const linkedPR: CandidateLinkedPR = {
+    number: scoutLinkedPR.number,
+    state: adapted.state,
+    url: scoutLinkedPR.url,
+    isStalled: isLinkedPRStalled(adapted),
+  };
+  if (scoutLinkedPR.updatedAt !== undefined) {
+    linkedPR.updatedAt = scoutLinkedPR.updatedAt;
+  }
+  return linkedPR;
 }
 
 /**

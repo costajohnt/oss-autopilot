@@ -3,7 +3,7 @@
  * Searches for new issues to work on via @oss-scout/core
  */
 
-import { createAutopilotScout } from './scout-bridge.js';
+import { buildCandidateLinkedPR, createAutopilotScout } from './scout-bridge.js';
 import { getStateManager } from '../core/index.js';
 import { type SearchOutput } from '../formatters/json.js';
 import { gradeFromCandidate } from '../core/issue-grading.js';
@@ -85,6 +85,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
             : undefined;
         },
       });
+      const linkedPR = buildCandidateLinkedPR(c.vettingResult?.linkedPR);
       return {
         issue: {
           repo: c.issue.repo,
@@ -109,6 +110,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
               lastMergedAt: repoScoreRecord.lastMergedAt,
             }
           : undefined,
+        ...(linkedPR ? { linkedPR } : {}),
       };
     }),
     excludedRepos: result.excludedRepos,

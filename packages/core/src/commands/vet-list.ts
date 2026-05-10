@@ -4,7 +4,7 @@
  */
 
 import * as fs from 'node:fs';
-import { adaptScoutLinkedPR, createAutopilotScout } from './scout-bridge.js';
+import { adaptScoutLinkedPR, buildCandidateLinkedPR, createAutopilotScout } from './scout-bridge.js';
 import { type VetListOutput, type VetOutput, type VetListItemStatus } from '../formatters/json.js';
 import { runParseList, pruneIssueList } from './parse-list.js';
 import { detectIssueList } from './startup.js';
@@ -162,6 +162,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
           linkedPR: adaptScoutLinkedPR(candidate.vettingResult.linkedPR),
           userLogin,
         });
+        const linkedPR = buildCandidateLinkedPR(candidate.vettingResult.linkedPR);
         const vetResult: VetOutput = {
           issue: {
             repo: candidate.issue.repo,
@@ -177,6 +178,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
           vettingResult: candidate.vettingResult,
           antiLLMPolicy: candidate.antiLLMPolicy,
           linkedPRClassification,
+          ...(linkedPR ? { linkedPR } : {}),
           slmTriage: candidate.slmTriage ?? null,
           grade,
         };

@@ -6,15 +6,23 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockFeatures = vi.fn();
 
-vi.mock('./scout-bridge.js', () => ({
-  createAutopilotScout: vi.fn(async () => ({
-    features: mockFeatures,
-  })),
-}));
+vi.mock('./scout-bridge.js', async () => {
+  const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
+  return {
+    ...actual,
+    createAutopilotScout: vi.fn(async () => ({
+      features: mockFeatures,
+    })),
+  };
+});
 
-vi.mock('../core/index.js', () => ({
-  getStateManager: vi.fn(),
-}));
+vi.mock('../core/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
+  return {
+    ...actual,
+    getStateManager: vi.fn(),
+  };
+});
 
 import { getStateManager } from '../core/index.js';
 import { runFeatures } from './features.js';
