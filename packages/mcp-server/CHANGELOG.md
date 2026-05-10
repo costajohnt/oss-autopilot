@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.3.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.2.0...mcp-v5.3.0) (2026-05-10)
+
+
+### Features
+
+* integrate @oss-scout/core 0.9.0 (features command + stalled-PR detection) ([#1338](https://github.com/costajohnt/oss-autopilot/issues/1338)) ([4af41fc](https://github.com/costajohnt/oss-autopilot/commit/4af41fcde9acc545aa62f63c5b0255480e393ea8))
+
 ## [5.2.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.1.2...mcp-v5.2.0) (2026-05-08)
 
 
