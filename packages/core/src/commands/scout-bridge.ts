@@ -61,6 +61,15 @@ export function buildScoutState(): ScoutState {
       persistence: config.persistence as 'local' | 'gist',
       slmTriageModel: config.slmTriageModel,
       slmTriageHost: config.slmTriageHost,
+      // Scout 0.9.0 made these required on `ScoutPreferences` (their schema
+      // ZodDefaults still apply at parse time, but the inferred TS type now
+      // demands the fields). We pass scout's documented defaults here so
+      // autopilot doesn't have to introduce a new pair of user-visible
+      // settings just to satisfy the type. The features CLI command
+      // (#runFeatures) accepts per-call `--anchor-threshold` and
+      // `--split-ratio` flags for overrides.
+      featuresAnchorThreshold: 3,
+      featuresSplitRatio: 0.6,
     },
     repoScores: state.repoScores,
     starredRepos: config.starredRepos,

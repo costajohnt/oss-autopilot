@@ -26,6 +26,8 @@ export { runStartup } from './startup.js';
 export { runStatus } from './status.js';
 /** Search GitHub for contributable issues using multi-strategy discovery. */
 export { runSearch, MAX_SEARCH_RESULTS } from './search.js';
+/** Surface feature-scoped opportunities in repos with 3+ merged PRs (scout 0.9.0). */
+export { runFeatures, MAX_FEATURES_RESULTS } from './features.js';
 /** Vet a single GitHub issue for claimability (open, unassigned, no linked PRs, repo health). */
 export { runVet } from './vet.js';
 /** Re-vet all available issues in a curated issue list for freshness. */
@@ -127,7 +129,17 @@ export type { DashboardJsonData, DashboardStats, DashboardActionType, ActionRequ
 // All commands return JsonOutput<T> where T is the command-specific type below.
 
 export type { ErrorCode } from '../formatters/json.js';
-export type { DailyOutput, SearchOutput, StartupOutput, StatusOutput, TrackOutput } from '../formatters/json.js';
+export type {
+  DailyOutput,
+  SearchOutput,
+  SearchCandidate,
+  FeaturesOutput,
+  FeaturesCandidate,
+  FeaturesHorizon,
+  StartupOutput,
+  StatusOutput,
+  TrackOutput,
+} from '../formatters/json.js';
 export type {
   VetOutput,
   CommentsOutput,

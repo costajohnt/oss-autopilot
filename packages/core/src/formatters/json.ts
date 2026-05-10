@@ -542,6 +542,24 @@ export const SearchOutputSchema = z.object({
   rateLimitWarning: z.string().optional(),
 });
 
+// ── Features output schema (scout 0.9.0 #97/#98/#99) ─────────────────
+//
+// `SearchCandidateSchema` augmented with the horizon literal that scout
+// stamps in features mode. Reusing the search candidate keeps the two
+// envelopes structurally identical apart from the bucket annotation.
+const FeaturesHorizonSchema = z.enum(['quick-win', 'bigger-bet']);
+const FeaturesCandidateSchema = SearchCandidateSchema.extend({
+  horizon: FeaturesHorizonSchema,
+});
+
+export const FeaturesOutputSchema = z.object({
+  quickWins: z.array(FeaturesCandidateSchema),
+  biggerBets: z.array(FeaturesCandidateSchema),
+  anchorRepos: z.array(z.string()),
+  message: z.string().nullable(),
+  rateLimitWarning: z.string().optional(),
+});
+
 // ── Doctor / skip-add / list-move-tier output schemas (#1148) ────────
 
 const DoctorCheckSchema = z.object({
@@ -866,44 +884,73 @@ export const LocalReposOutputSchema = z.object({
   fromCache: z.boolean(),
 });
 
+/**
+ * One candidate row in `SearchOutput`/`FeaturesOutput`. Extracted so the
+ * features command can reuse the exact contract `runSearch` already
+ * publishes — keeping the two outputs structurally identical for everything
+ * except the bucket-specific `horizon` annotation.
+ */
+export interface SearchCandidate {
+  issue: {
+    repo: string;
+    repoUrl: string;
+    number: number;
+    title: string;
+    url: string;
+    labels: string[];
+  };
+  recommendation: 'approve' | 'skip' | 'needs_review';
+  reasonsToApprove: string[];
+  reasonsToSkip: string[];
+  searchPriority: SearchPriority;
+  /** 0-100 scale composite viability score. Sanitized on the boundary (#1043): out-of-contract values are coerced to 0 and logged. */
+  viabilityScore: number;
+  /**
+   * Letter grade (A/B/C/F) computed from the autopilot-tracked repoScore.
+   * Scout's `search` does not emit per-candidate projectHealth, so scout-side
+   * signals are treated as unknown; unscored repos grade 'F'. See #1043.
+   */
+  grade: {
+    letter: 'A' | 'B' | 'C' | 'F';
+    reason: string;
+  };
+  repoScore?: {
+    /** 1-10 scale repository quality score */
+    score: number;
+    mergedPRCount: number;
+    closedWithoutMergeCount: number;
+    isResponsive: boolean;
+    lastMergedAt?: string;
+  };
+}
+
 export interface SearchOutput {
-  candidates: Array<{
-    issue: {
-      repo: string;
-      repoUrl: string;
-      number: number;
-      title: string;
-      url: string;
-      labels: string[];
-    };
-    recommendation: 'approve' | 'skip' | 'needs_review';
-    reasonsToApprove: string[];
-    reasonsToSkip: string[];
-    searchPriority: SearchPriority;
-    /** 0-100 scale composite viability score. Sanitized on the boundary (#1043): out-of-contract values are coerced to 0 and logged. */
-    viabilityScore: number;
-    /**
-     * Letter grade (A/B/C/F) computed from the autopilot-tracked repoScore.
-     * Scout's `search` does not emit per-candidate projectHealth, so scout-side
-     * signals are treated as unknown; unscored repos grade 'F'. See #1043.
-     */
-    grade: {
-      letter: 'A' | 'B' | 'C' | 'F';
-      reason: string;
-    };
-    repoScore?: {
-      /** 1-10 scale repository quality score */
-      score: number;
-      mergedPRCount: number;
-      closedWithoutMergeCount: number;
-      isResponsive: boolean;
-      lastMergedAt?: string;
-    };
-  }>;
+  candidates: SearchCandidate[];
   excludedRepos: string[];
   /** Repos with known anti-AI contribution policies, filtered from search results (#108). */
   aiPolicyBlocklist: string[];
   /** Present when rate limits affected the search — either low pre-flight quota or mid-search rate limit hits (#100). */
+  rateLimitWarning?: string;
+}
+
+/** Horizon classification stamped on each features-mode candidate. */
+export type FeaturesHorizon = 'quick-win' | 'bigger-bet';
+
+/** A `SearchCandidate` augmented with its features-mode horizon. */
+export type FeaturesCandidate = SearchCandidate & {
+  horizon: FeaturesHorizon;
+};
+
+export interface FeaturesOutput {
+  /** "Quick-win" bucket: feature-scoped issues without strong commitment markers (no milestone, no roadmap, no bigger-bet labels). */
+  quickWins: FeaturesCandidate[];
+  /** "Bigger-bet" bucket: feature-scoped issues that carry maintainer-commitment signals (milestone, roadmap, bigger-bet label). */
+  biggerBets: FeaturesCandidate[];
+  /** Repos that qualified as anchors for this run (3+ merged PRs, configurable). Empty when the user has no anchor repos yet. */
+  anchorRepos: string[];
+  /** Human-friendly explainer shown when neither bucket has results (no anchors, or anchors but no open feature opportunities). `null` on success. */
+  message: string | null;
+  /** Present when rate limits affected the search. Mirrors `SearchOutput.rateLimitWarning`. */
   rateLimitWarning?: string;
 }
 
