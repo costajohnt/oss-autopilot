@@ -36,6 +36,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `clear-override`, `c
 # Search for issues (n = number of results, default 5)
 <prefix> search [n] --json
 
+# Surface feature-scoped opportunities in repos with 3+ merged PRs (n = total, default 10)
+<prefix> features [n] --json [--anchor-threshold <1-50>] [--split-ratio <0-1>]
+
 # Deep-vet a specific issue
 <prefix> vet <issue-url> --json
 
