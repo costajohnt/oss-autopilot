@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.5.0...core-v3.6.0) (2026-05-10)
+
+
+### Features
+
+* scanAIDisclosureRequirement + tri-modal AI-attribution rule ([#1269](https://github.com/costajohnt/oss-autopilot/issues/1269) Improvement C) ([#1327](https://github.com/costajohnt/oss-autopilot/issues/1327)) ([143df30](https://github.com/costajohnt/oss-autopilot/commit/143df302740eb8e0004c9323b9dcf93948e2f2a4))
+* surface periodic strategy snapshot in /oss action menu ([#1270](https://github.com/costajohnt/oss-autopilot/issues/1270) Steps 2+3) ([#1332](https://github.com/costajohnt/oss-autopilot/issues/1332)) ([8e46106](https://github.com/costajohnt/oss-autopilot/commit/8e4610649970c6b17fd42fcc3103b873d073a6e9))
+
+
+### Bug Fixes
+
+* persist auto-detected skippedIssuesPath to state.config ([#1330](https://github.com/costajohnt/oss-autopilot/issues/1330)) ([#1337](https://github.com/costajohnt/oss-autopilot/issues/1337)) ([8352012](https://github.com/costajohnt/oss-autopilot/commit/8352012cf536d3c67d05d35e61eb060c87f576d5))
+* rewrite Search-API "users do not exist" 422 to actionable ConfigurationError ([#1323](https://github.com/costajohnt/oss-autopilot/issues/1323)) ([#1324](https://github.com/costajohnt/oss-autopilot/issues/1324)) ([101de69](https://github.com/costajohnt/oss-autopilot/commit/101de697a36e671e348708ed45954bf3d30e78ca))
+
 ## [3.5.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.4.1...core-v3.5.0) (2026-05-08)
 
 
