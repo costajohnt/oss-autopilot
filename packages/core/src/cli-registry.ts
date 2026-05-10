@@ -328,6 +328,100 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── Features ───────────────────────────────────────────────────────────
+  // scout 0.9.0 (#97/#98/#99): feature-scoped opportunities in repos with
+  // 3+ merged PRs, split into quick-wins / bigger-bets buckets.
+  {
+    name: 'features',
+    register(program) {
+      program
+        .command('features [count]')
+        .description('Find feature-scoped opportunities in repos with 3+ merged PRs')
+        .option('--json', 'Output as JSON')
+        .option('--anchor-threshold <n>', 'Override featuresAnchorThreshold (1-50)')
+        .option('--split-ratio <r>', 'Override featuresSplitRatio (0-1)')
+        .action(async (count, options) => {
+          const { FeaturesOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
+            options,
+            async () => {
+              const { runFeatures, MAX_FEATURES_RESULTS } = await import('./commands/features.js');
+              let maxResults = 10;
+              if (count !== undefined) {
+                const parsed = Number(count);
+                if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {
+                  throw new Error(`Invalid count "${count}". Must be a positive integer.`);
+                }
+                maxResults = parsed;
+              }
+              if (maxResults > MAX_FEATURES_RESULTS) {
+                console.warn(`Capping features to ${MAX_FEATURES_RESULTS} results (requested: ${maxResults})`);
+                maxResults = MAX_FEATURES_RESULTS;
+              }
+              let anchorThreshold: number | undefined;
+              if (options.anchorThreshold !== undefined) {
+                const parsed = Number(options.anchorThreshold);
+                if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1 || parsed > 50) {
+                  throw new Error(
+                    `Invalid --anchor-threshold "${options.anchorThreshold}". Must be an integer in [1, 50].`,
+                  );
+                }
+                anchorThreshold = parsed;
+              }
+              let splitRatio: number | undefined;
+              if (options.splitRatio !== undefined) {
+                const parsed = Number(options.splitRatio);
+                if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+                  throw new Error(`Invalid --split-ratio "${options.splitRatio}". Must be a number in [0, 1].`);
+                }
+                splitRatio = parsed;
+              }
+              if (!options.json) {
+                console.log(`\nSearching for feature opportunities (max ${maxResults})...\n`);
+              }
+              return runFeatures({ maxResults, anchorThreshold, splitRatio });
+            },
+            (data) => {
+              if (data.anchorRepos.length > 0) {
+                console.log(`Anchor repos (${data.anchorRepos.length}): ${data.anchorRepos.join(', ')}`);
+                console.log('');
+              }
+              if (data.quickWins.length === 0 && data.biggerBets.length === 0) {
+                if (data.rateLimitWarning) {
+                  console.warn(`\n${data.rateLimitWarning}\n`);
+                } else if (data.message) {
+                  console.log(data.message);
+                } else {
+                  console.log('No feature opportunities found.');
+                }
+                return;
+              }
+              if (data.rateLimitWarning) {
+                console.warn(`\n${data.rateLimitWarning}\n`);
+              }
+              const printBucket = (heading: string, candidates: typeof data.quickWins) => {
+                if (candidates.length === 0) return;
+                console.log(`${heading} (${candidates.length}):\n`);
+                for (const candidate of candidates) {
+                  const { issue, recommendation, reasonsToApprove, reasonsToSkip, viabilityScore } = candidate;
+                  console.log(`[${recommendation.toUpperCase()}] ${issue.repo}#${issue.number}: ${issue.title}`);
+                  console.log(`  URL: ${issue.url}`);
+                  console.log(`  Viability: ${viabilityScore}/100`);
+                  if (reasonsToApprove.length > 0) console.log(`  Approve: ${reasonsToApprove.join(', ')}`);
+                  if (reasonsToSkip.length > 0) console.log(`  Skip: ${reasonsToSkip.join(', ')}`);
+                  console.log('---');
+                }
+                console.log('');
+              };
+              printBucket('Quick wins', data.quickWins);
+              printBucket('Bigger bets', data.biggerBets);
+            },
+            FeaturesOutputSchema,
+          );
+        });
+    },
+  },
+
   // ── Vet ────────────────────────────────────────────────────────────────
   {
     name: 'vet',
@@ -382,6 +476,7 @@ export const commands: CLICommandDef[] = [
               console.log(`  Claimed:         ${data.summary.claimed}`);
               console.log(`  Closed:          ${data.summary.closed}`);
               console.log(`  Has PR:          ${data.summary.hasPR}`);
+              console.log(`  Stalled PR:      ${data.summary.hasStalledPR}`);
               console.log(`  Errors:          ${data.summary.errors}`);
               console.log('');
               for (const result of data.results) {
@@ -391,8 +486,9 @@ export const commands: CLICommandDef[] = [
                     : result.listStatus === 'error'
                       ? '\u274c'
                       : '\u26a0\ufe0f';
+                const annotation = result.listStatus === 'has_stalled_pr' ? ' (stalled PR, revive opportunity)' : '';
                 console.log(
-                  `${status} [${result.listStatus}] ${result.issue.repo}#${result.issue.number}: ${result.issue.title}`,
+                  `${status} [${result.listStatus}] ${result.issue.repo}#${result.issue.number}: ${result.issue.title}${annotation}`,
                 );
                 if (result.errorMessage) {
                   console.log(`   Error: ${result.errorMessage}`);

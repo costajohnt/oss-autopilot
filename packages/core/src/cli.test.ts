@@ -387,6 +387,7 @@ describe('Command registration', () => {
       'daily',
       'status',
       'search',
+      'features',
       'vet',
       'vet-list',
       'track',

@@ -15,6 +15,7 @@ const EXPECTED_TOOLS = [
   'daily',
   'status',
   'search',
+  'features',
   'vet',
   'vet-list',
   'track',
@@ -68,8 +69,8 @@ describe('MCP tool registrations', () => {
     await client.close();
   });
 
-  it('registers exactly 28 tools', () => {
-    expect(tools).toHaveLength(28);
+  it('registers exactly 29 tools', () => {
+    expect(tools).toHaveLength(29);
   });
 
   it('registers all expected tool names', () => {

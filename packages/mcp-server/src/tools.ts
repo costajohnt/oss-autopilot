@@ -12,6 +12,7 @@ import {
   runDaily,
   runStatus,
   runSearch,
+  runFeatures,
   runVet,
   runVetList,
   runTrack,
@@ -33,6 +34,7 @@ import {
   runGuidelinesReset,
   runFetchCorpus,
   MAX_SEARCH_RESULTS,
+  MAX_FEATURES_RESULTS,
 } from '@oss-autopilot/core/commands';
 import { errorMessage, getSetupKeys, getConfigKeys } from '@oss-autopilot/core';
 
@@ -175,6 +177,52 @@ export function registerTools(server: McpServer): void {
     wrapTool((args: { maxResults?: number }) => {
       const maxResults = args.maxResults ?? 5;
       return runSearch({ maxResults });
+    }),
+  );
+
+  // 3b. features — Surface feature-scoped opportunities in repos with 3+
+  // merged PRs. Sibling to `search` but ranks issues by maintainer-
+  // commitment signal (milestone, roadmap, label set). Returns two
+  // ranked buckets — quick wins and bigger bets. See scout 0.9.0
+  // #97/#98/#99 and oss-autopilot's runFeatures.
+  server.registerTool(
+    'features',
+    {
+      description:
+        'Surface feature-scoped contribution opportunities in repos where you already have 3+ merged PRs. Returns two ranked buckets: "quick wins" (low maintainer-commitment) and "bigger bets" (milestone / roadmap / accepted-RFC labels). Read-only.',
+      inputSchema: {
+        maxResults: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_FEATURES_RESULTS)
+          .optional()
+          .describe(
+            `Total number of opportunities to return across both buckets (default: 10, max: ${MAX_FEATURES_RESULTS}).`,
+          ),
+        anchorThreshold: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe('Per-call override for the merged-PR threshold that qualifies a repo as an anchor (default 3).'),
+        splitRatio: z
+          .number()
+          .min(0)
+          .max(1)
+          .optional()
+          .describe('Per-call override for the quick-win share of results (default 0.6 = 60%).'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    wrapTool((args: { maxResults?: number; anchorThreshold?: number; splitRatio?: number }) => {
+      const maxResults = args.maxResults ?? 10;
+      return runFeatures({
+        maxResults,
+        anchorThreshold: args.anchorThreshold,
+        splitRatio: args.splitRatio,
+      });
     }),
   );
 

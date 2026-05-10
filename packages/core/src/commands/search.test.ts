@@ -6,15 +6,23 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockSearch = vi.fn();
 
-vi.mock('./scout-bridge.js', () => ({
-  createAutopilotScout: vi.fn(async () => ({
-    search: mockSearch,
-  })),
-}));
+vi.mock('./scout-bridge.js', async () => {
+  const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
+  return {
+    ...actual,
+    createAutopilotScout: vi.fn(async () => ({
+      search: mockSearch,
+    })),
+  };
+});
 
-vi.mock('../core/index.js', () => ({
-  getStateManager: vi.fn(),
-}));
+vi.mock('../core/index.js', async () => {
+  const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
+  return {
+    ...actual,
+    getStateManager: vi.fn(),
+  };
+});
 
 import { getStateManager } from '../core/index.js';
 import { runSearch } from './search.js';
@@ -260,6 +268,79 @@ describe('runSearch', () => {
     // High merge rate (20/23 ≈ 87%) + fast response → at worst C after the
     // one-step degrade for unknown commit activity. Assert it beat F.
     expect(result.candidates[0].grade.letter).not.toBe('F');
+  });
+
+  it('surfaces a linkedPR slice with isStalled=true for an open PR last updated >30 days ago', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [
+        {
+          issue: {
+            repo: 'foo/bar',
+            number: 1,
+            title: 'Issue with stalled linked PR',
+            url: 'https://github.com/foo/bar/issues/1',
+            labels: [],
+          },
+          recommendation: 'needs_review',
+          reasonsToApprove: [],
+          reasonsToSkip: [],
+          searchPriority: 'normal',
+          viabilityScore: 50,
+          vettingResult: {
+            linkedPR: {
+              number: 88,
+              author: 'someone',
+              state: 'open',
+              merged: false,
+              url: 'https://github.com/foo/bar/pull/88',
+              updatedAt: '2020-01-01T00:00:00Z',
+            },
+          },
+        },
+      ],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+
+    const result = await runSearch({ maxResults: 5 });
+
+    expect(result.candidates[0].linkedPR).toEqual({
+      number: 88,
+      state: 'open',
+      url: 'https://github.com/foo/bar/pull/88',
+      updatedAt: '2020-01-01T00:00:00Z',
+      isStalled: true,
+    });
+  });
+
+  it('omits linkedPR from output when scout reported no linked PR', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [
+        {
+          issue: {
+            repo: 'foo/bar',
+            number: 1,
+            title: 'Plain issue',
+            url: 'https://github.com/foo/bar/issues/1',
+            labels: [],
+          },
+          recommendation: 'approve',
+          reasonsToApprove: [],
+          reasonsToSkip: [],
+          searchPriority: 'normal',
+          viabilityScore: 70,
+          vettingResult: { linkedPR: null },
+        },
+      ],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+
+    const result = await runSearch({ maxResults: 5 });
+
+    expect('linkedPR' in result.candidates[0]).toBe(false);
   });
 
   it('sanitizes an out-of-contract viabilityScore from scout (#1043)', async () => {
