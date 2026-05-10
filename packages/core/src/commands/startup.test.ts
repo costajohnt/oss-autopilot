@@ -30,6 +30,10 @@ vi.mock('./dashboard-lifecycle.js', () => ({
   launchDashboardServer: vi.fn(),
 }));
 
+vi.mock('./dashboard-process.js', () => ({
+  recordBrowserOpened: vi.fn(),
+}));
+
 // Mock fs so detectIssueList doesn't hit the real filesystem
 vi.mock('node:fs', async () => {
   const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
@@ -683,9 +687,9 @@ describe('runStartup behavior', () => {
       'http://127.0.0.1:3001/api/refresh',
       expect.objectContaining({ method: 'POST' }),
     );
-    // Should always call the OS browser-opener: native `open`/`xdg-open`/`start`
-    // focus an existing tab matching the URL instead of duplicating it, so
-    // surfacing the dashboard after /oss is safe here.
+    // No `lastBrowserOpenedAt` recorded yet → falls outside throttle window,
+    // so the OS browser-opener still runs to surface the dashboard for users
+    // who closed the tab between runs (#1100).
     expectBrowserOpenedWith('http://oss.localhost:3001');
     expect(result.daily?.briefSummary).toContain('Dashboard refreshed');
     expect(result.daily?.briefSummary).not.toContain('Dashboard opened in browser');
@@ -733,6 +737,123 @@ describe('runStartup behavior', () => {
     expect(result.daily?.briefSummary).toContain('Dashboard running');
     fetchSpy.mockRestore();
     consoleSpy.mockRestore();
+  });
+
+  it('skips browser-open when running server was opened within the throttle window (#1339)', async () => {
+    // Within the default 30-minute throttle: don't pile up duplicate tabs on
+    // back-to-back /oss runs. The SPA's existing /api/refresh keeps the
+    // already-open tab fresh; opening the URL again would surface a duplicate
+    // on browsers/setups where the OS-level "focus existing tab" doesn't fire.
+    const daily = makeDailyOutput(3);
+    executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({
+      url: 'http://oss.localhost:3001',
+      port: 3001,
+      alreadyRunning: true,
+      lastBrowserOpenedAt: new Date(Date.now() - 60_000).toISOString(), // 1 minute ago
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+
+    const result = await runStartup();
+
+    expect(result.dashboardUrl).toBe('http://oss.localhost:3001');
+    expect(execFile).not.toHaveBeenCalled();
+    // The data refresh still fires — the SPA tab gets fresh data.
+    expect(fetchSpy).toHaveBeenCalledWith(
+      'http://127.0.0.1:3001/api/refresh',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    fetchSpy.mockRestore();
+  });
+
+  it('opens browser when last open is older than the throttle window (#1339)', async () => {
+    // Beyond the throttle: assume the user has closed the tab or moved on, so
+    // re-surface the dashboard.
+    const daily = makeDailyOutput(3);
+    executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({
+      url: 'http://oss.localhost:3001',
+      port: 3001,
+      alreadyRunning: true,
+      lastBrowserOpenedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+
+    await runStartup();
+
+    expect(execFile).toHaveBeenCalled();
+    expectBrowserOpenedWith('http://oss.localhost:3001');
+    fetchSpy.mockRestore();
+  });
+
+  it('honors OSS_NO_BROWSER=1 by skipping the browser open entirely (#1339)', async () => {
+    const daily = makeDailyOutput(3);
+    executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({ url: 'http://oss.localhost:3000', port: 3000, alreadyRunning: false });
+    process.env.OSS_NO_BROWSER = '1';
+
+    try {
+      const result = await runStartup();
+      expect(result.dashboardUrl).toBe('http://oss.localhost:3000');
+      expect(execFile).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.OSS_NO_BROWSER;
+    }
+  });
+
+  it('honors OSS_DASHBOARD_REOPEN_THROTTLE_MS=0 by always re-opening (#1339)', async () => {
+    const daily = makeDailyOutput(3);
+    executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({
+      url: 'http://oss.localhost:3001',
+      port: 3001,
+      alreadyRunning: true,
+      lastBrowserOpenedAt: new Date(Date.now() - 5_000).toISOString(), // 5s ago — well within default
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    process.env.OSS_DASHBOARD_REOPEN_THROTTLE_MS = '0';
+
+    try {
+      await runStartup();
+      expect(execFile).toHaveBeenCalled();
+      expectBrowserOpenedWith('http://oss.localhost:3001');
+    } finally {
+      delete process.env.OSS_DASHBOARD_REOPEN_THROTTLE_MS;
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('records browser-opened timestamp after opening (#1339)', async () => {
+    const { recordBrowserOpened } = await import('./dashboard-process.js');
+    (recordBrowserOpened as ReturnType<typeof vi.fn>).mockClear();
+
+    const daily = makeDailyOutput(3);
+    executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({ url: 'http://oss.localhost:3000', port: 3000, alreadyRunning: false });
+
+    await runStartup();
+
+    expect(recordBrowserOpened).toHaveBeenCalledWith(3000);
+  });
+
+  it('does not record browser-opened timestamp when open is throttled (#1339)', async () => {
+    const { recordBrowserOpened } = await import('./dashboard-process.js');
+    (recordBrowserOpened as ReturnType<typeof vi.fn>).mockClear();
+
+    const daily = makeDailyOutput(3);
+    executeDailyCheck.mockResolvedValue(daily);
+    launchDashboardServer.mockResolvedValue({
+      url: 'http://oss.localhost:3001',
+      port: 3001,
+      alreadyRunning: true,
+      lastBrowserOpenedAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+
+    await runStartup();
+
+    expect(recordBrowserOpened).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 
   it('launches SPA even when totalActivePRs is 0 (covers misconfig + transient + between-PRs)', async () => {

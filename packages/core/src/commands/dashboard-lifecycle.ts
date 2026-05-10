@@ -22,6 +22,13 @@ export interface LaunchResult {
   url: string;
   port: number;
   alreadyRunning: boolean;
+  /**
+   * When `alreadyRunning` is true, the timestamp the running server most
+   * recently recorded a browser-open at (or undefined if never recorded).
+   * Used by startup to throttle duplicate browser tabs across `/oss` runs.
+   * Always undefined for fresh launches.
+   */
+  lastBrowserOpenedAt?: string;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -75,11 +82,21 @@ export async function launchDashboardServer(options?: { port?: number }): Promis
       } else {
         // Could not kill old server (e.g. EPERM); return it rather than
         // attempting a doomed spawn on the same port.
-        return { url: existing.url, port: existing.port, alreadyRunning: true };
+        return {
+          url: existing.url,
+          port: existing.port,
+          alreadyRunning: true,
+          lastBrowserOpenedAt: info?.lastBrowserOpenedAt,
+        };
       }
       // Fall through to launch a new server
     } else {
-      return { url: existing.url, port: existing.port, alreadyRunning: true };
+      return {
+        url: existing.url,
+        port: existing.port,
+        alreadyRunning: true,
+        lastBrowserOpenedAt: info.lastBrowserOpenedAt,
+      };
     }
   }
 

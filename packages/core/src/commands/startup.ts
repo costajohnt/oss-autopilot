@@ -15,7 +15,8 @@ import { errorMessage } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { type StartupOutput, type IssueListInfo } from '../formatters/json.js';
 import { executeDailyCheck } from './daily.js';
-import { launchDashboardServer } from './dashboard-lifecycle.js';
+import { launchDashboardServer, type LaunchResult } from './dashboard-lifecycle.js';
+import { recordBrowserOpened } from './dashboard-process.js';
 import { parseIssueList } from './parse-list.js';
 
 /**
@@ -190,6 +191,44 @@ export function openInBrowser(url: string): void {
  * Hits POST /api/refresh so the SPA picks up fresh data on its next poll.
  * Non-fatal: errors are logged but don't propagate (#830).
  */
+const DEFAULT_REOPEN_THROTTLE_MS = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Resolve the browser-reopen throttle window from `OSS_DASHBOARD_REOPEN_THROTTLE_MS`,
+ * falling back to {@link DEFAULT_REOPEN_THROTTLE_MS}. A value of `0` disables the
+ * throttle entirely, restoring the pre-#1339 behavior of always re-opening.
+ */
+function getReopenThrottleMs(): number {
+  const raw = process.env.OSS_DASHBOARD_REOPEN_THROTTLE_MS;
+  if (!raw) return DEFAULT_REOPEN_THROTTLE_MS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_REOPEN_THROTTLE_MS;
+}
+
+/**
+ * Decide whether `openInBrowser` should run. Throttles re-opens against an
+ * already-running server's `lastBrowserOpenedAt` timestamp so back-to-back
+ * `/oss` runs don't pile up duplicate tabs (#1339), while still re-surfacing
+ * the dashboard for users who closed the tab and came back later (#1100).
+ *
+ * Fresh launches (`alreadyRunning === false`) always open; the new server has
+ * no recorded open yet by definition.
+ *
+ * Set `OSS_NO_BROWSER=1` to skip opening unconditionally (e.g., headless / CI).
+ */
+function shouldOpenBrowser(spaResult: LaunchResult, throttleMs: number): boolean {
+  if (process.env.OSS_NO_BROWSER === '1') return false;
+  if (!spaResult.alreadyRunning) return true;
+  if (throttleMs === 0) return true;
+  const last = spaResult.lastBrowserOpenedAt;
+  if (!last) return true;
+  const lastMs = Date.parse(last);
+  if (!Number.isFinite(lastMs)) return true;
+  const elapsed = Date.now() - lastMs;
+  if (elapsed < 0) return true; // clock skew or future timestamp; treat as stale
+  return elapsed >= throttleMs;
+}
+
 async function triggerDashboardRefresh(port: number): Promise<boolean> {
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/refresh`, {
@@ -286,12 +325,15 @@ export async function runStartup(): Promise<StartupOutput> {
       } else {
         dashboardStatus = 'opened';
       }
-      // `open`/`xdg-open`/`start` focus an existing tab matching the URL
-      // instead of duplicating it, so this is safe whether the server was
-      // just started or was already running. Closes #830 properly — a user
-      // can close the dashboard tab while the daemon keeps running, leaving
-      // subsequent /oss runs with no visible dashboard if we didn't re-open.
-      openInBrowser(spaResult.url);
+      // Throttle re-opens against the running server's last-opened timestamp
+      // so back-to-back /oss runs don't pile up duplicate tabs (#1339), while
+      // still re-surfacing the dashboard for users who closed the tab and
+      // came back later (#1100). `OSS_NO_BROWSER=1` skips entirely;
+      // `OSS_DASHBOARD_REOPEN_THROTTLE_MS=0` restores always-open behavior.
+      if (shouldOpenBrowser(spaResult, getReopenThrottleMs())) {
+        openInBrowser(spaResult.url);
+        recordBrowserOpened(spaResult.port);
+      }
     } else {
       dashboardError = 'Dashboard SPA assets not found. Build with: cd packages/dashboard && pnpm run build';
       console.error(`[STARTUP] ${dashboardError}`);

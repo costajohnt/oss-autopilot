@@ -18,6 +18,7 @@ export interface DashboardServerInfo {
   port: number;
   startedAt: string;
   version?: string;
+  lastBrowserOpenedAt?: string;
 }
 
 // ── PID File Management ────────────────────────────────────────────────────────
@@ -46,6 +47,9 @@ export function readDashboardServerInfo(): DashboardServerInfo | null {
       warn(MODULE, 'PID file has invalid structure, ignoring');
       return null;
     }
+    if (parsed.lastBrowserOpenedAt !== undefined && typeof parsed.lastBrowserOpenedAt !== 'string') {
+      delete parsed.lastBrowserOpenedAt;
+    }
     return parsed as DashboardServerInfo;
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
@@ -53,6 +57,22 @@ export function readDashboardServerInfo(): DashboardServerInfo | null {
       warn(MODULE, `Failed to read PID file: ${(err as Error).message}`);
     }
     return null;
+  }
+}
+
+/**
+ * Stamp the PID file with the current time as `lastBrowserOpenedAt`. Used by
+ * startup to throttle re-opening the dashboard tab — see the `shouldOpenBrowser`
+ * helper in `startup.ts`. No-ops if the PID file is missing or the recorded
+ * port doesn't match (server may have restarted between read and write).
+ */
+export function recordBrowserOpened(port: number): void {
+  const info = readDashboardServerInfo();
+  if (!info || info.port !== port) return;
+  try {
+    writeDashboardServerInfo({ ...info, lastBrowserOpenedAt: new Date().toISOString() });
+  } catch (err) {
+    warn(MODULE, `Failed to record browser-opened timestamp: ${(err as Error).message}`);
   }
 }
 
