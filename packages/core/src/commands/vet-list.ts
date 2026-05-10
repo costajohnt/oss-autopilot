@@ -47,7 +47,7 @@ const KNOWN_SKIP_REASONS: ReadonlySet<ScoutSkipReason> = new Set([
   'other',
 ]);
 
-function mapSkipReasonToStatus(reason: ScoutSkipReason): VetListItemStatus | null {
+function mapSkipReasonToStatus(reason: ScoutSkipReason, vetResult: VetOutput): VetListItemStatus | null {
   switch (reason) {
     case 'issue_closed': {
       return 'closed';
@@ -56,6 +56,12 @@ function mapSkipReasonToStatus(reason: ScoutSkipReason): VetListItemStatus | nul
       return 'claimed';
     }
     case 'has_linked_pr': {
+      // Open linked PRs that have been idle for 30+ days are revive
+      // opportunities (#97 / scout 0.9.0) — surface them with a distinct
+      // status rather than auto-dropping as `has_pr`.
+      if (vetResult.linkedPR?.state === 'open' && vetResult.linkedPR.isStalled) {
+        return 'has_stalled_pr';
+      }
       return 'has_pr';
     }
     case 'score_too_low':
@@ -87,7 +93,7 @@ export function extractSkipReason(candidate: unknown): ScoutSkipReason | undefin
  */
 export function classifyListStatus(vetResult: VetOutput, skipReason?: ScoutSkipReason): VetListItemStatus {
   if (skipReason) {
-    const fromEnum = mapSkipReasonToStatus(skipReason);
+    const fromEnum = mapSkipReasonToStatus(skipReason, vetResult);
     if (fromEnum) return fromEnum;
     // skipReason was set but maps to 'other' / low-score / policy — let the
     // recommendation-based branches below decide final status.
@@ -96,8 +102,15 @@ export function classifyListStatus(vetResult: VetOutput, skipReason?: ScoutSkipR
 
     if (skipReasons.some((r) => r.includes('closed'))) return 'closed';
     if (skipReasons.some((r) => r.includes('claimed') || r.includes('assigned'))) return 'claimed';
-    if (skipReasons.some((r) => r.includes('existing pr') || r.includes('linked pr') || r.includes('pull request')))
+    if (skipReasons.some((r) => r.includes('existing pr') || r.includes('linked pr') || r.includes('pull request'))) {
+      // Same revive-opportunity branch as the enum path above — when scout
+      // hasn't yet emitted skipReason but we can see a stalled open PR on
+      // the candidate, prefer the dedicated status (#97 / scout 0.9.0).
+      if (vetResult.linkedPR?.state === 'open' && vetResult.linkedPR.isStalled) {
+        return 'has_stalled_pr';
+      }
       return 'has_pr';
+    }
   }
 
   if (vetResult.recommendation === 'approve' || vetResult.recommendation === 'needs_review') {
@@ -135,7 +148,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   if (parsed.available.length === 0) {
     return {
       results: [],
-      summary: { total: 0, stillAvailable: 0, claimed: 0, closed: 0, hasPR: 0, errors: 0 },
+      summary: { total: 0, stillAvailable: 0, claimed: 0, closed: 0, hasPR: 0, hasStalledPR: 0, errors: 0 },
     };
   }
 
@@ -215,6 +228,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     claimed: results.filter((r) => r.listStatus === 'claimed').length,
     closed: results.filter((r) => r.listStatus === 'closed').length,
     hasPR: results.filter((r) => r.listStatus === 'has_pr').length,
+    hasStalledPR: results.filter((r) => r.listStatus === 'has_stalled_pr').length,
     errors: results.filter((r) => r.listStatus === 'error').length,
   };
 

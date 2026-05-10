@@ -101,6 +101,7 @@
     "claimed": 1,
     "closed": 0,
     "hasPR": 0,
+    "hasStalledPR": 0,
     "errors": 1
   }
 }

@@ -1116,8 +1116,14 @@ export interface CheckIntegrationOutput {
   unreferencedCount: number;
 }
 
-/** Status of a re-vetted issue from the curated list (#764). */
-export type VetListItemStatus = 'still_available' | 'claimed' | 'closed' | 'has_pr' | 'error';
+/**
+ * Status of a re-vetted issue from the curated list (#764).
+ *
+ * `has_stalled_pr` (scout 0.9.0 #97) distinguishes open-but-stalled linked
+ * PRs from cleanly-claimed `has_pr` issues — the issue is still actionable
+ * as a revive opportunity rather than something to drop.
+ */
+export type VetListItemStatus = 'still_available' | 'claimed' | 'closed' | 'has_pr' | 'has_stalled_pr' | 'error';
 
 /** Output of the vet-list command (#764). */
 export interface VetListOutput {
@@ -1133,6 +1139,8 @@ export interface VetListOutput {
     claimed: number;
     closed: number;
     hasPR: number;
+    /** Open linked PRs that haven't been touched in 30+ days (scout 0.9.0 #97). Surfaced as revive opportunities, not auto-dropped. */
+    hasStalledPR: number;
     errors: number;
   };
   pruneResult?: {

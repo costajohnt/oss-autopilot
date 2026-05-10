@@ -476,6 +476,7 @@ export const commands: CLICommandDef[] = [
               console.log(`  Claimed:         ${data.summary.claimed}`);
               console.log(`  Closed:          ${data.summary.closed}`);
               console.log(`  Has PR:          ${data.summary.hasPR}`);
+              console.log(`  Stalled PR:      ${data.summary.hasStalledPR}`);
               console.log(`  Errors:          ${data.summary.errors}`);
               console.log('');
               for (const result of data.results) {
@@ -485,8 +486,9 @@ export const commands: CLICommandDef[] = [
                     : result.listStatus === 'error'
                       ? '\u274c'
                       : '\u26a0\ufe0f';
+                const annotation = result.listStatus === 'has_stalled_pr' ? ' (stalled PR, revive opportunity)' : '';
                 console.log(
-                  `${status} [${result.listStatus}] ${result.issue.repo}#${result.issue.number}: ${result.issue.title}`,
+                  `${status} [${result.listStatus}] ${result.issue.repo}#${result.issue.number}: ${result.issue.title}${annotation}`,
                 );
                 if (result.errorMessage) {
                   console.log(`   Error: ${result.errorMessage}`);
