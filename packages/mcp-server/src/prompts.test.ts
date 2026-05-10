@@ -62,7 +62,9 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runGuidelinesStore: vi.fn(),
   runGuidelinesReset: vi.fn(),
   runFetchCorpus: vi.fn(),
+  runFeatures: vi.fn(),
   MAX_SEARCH_RESULTS: 100,
+  MAX_FEATURES_RESULTS: 100,
 }));
 
 vi.mock('@oss-autopilot/core', () => ({
