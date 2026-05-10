@@ -14,6 +14,17 @@ For the diff currently uncommitted-and-staged or already on the local branch (wh
 
 1. **Verify branch hygiene** — confirm we're not on `main`, the working tree has work to evaluate, and main has been pulled recently. If the working tree is clean and the branch matches main, abort with "nothing to review".
 
+   **Upstream drift check (mandatory).** Re-fetch the upstream default branch and detect any commits since this branch diverged that touch files in this branch's diff:
+
+   ```bash
+   git fetch <remote> <default> 2>/dev/null
+   mergeBase=$(git merge-base <remote>/<default> HEAD)
+   touchedFiles=$(git diff --name-only "$mergeBase" HEAD)
+   overlappingCommits=$(git log "$mergeBase..<remote>/<default>" --oneline -- $touchedFiles)
+   ```
+
+   If `$overlappingCommits` is non-empty, surface the list and recommend re-vetting the issue before declaring READY. The same fix may have already merged; the CONTRIBUTING-style "no other open PRs" check passes vacuously when the duplicate has merged, so this drift check is the only safety net. Report as a Critical finding if any overlapping commits are found and the user hasn't acknowledged them.
+
 2. **Run the project's lint+format checks**:
    - `pnpm run lint`
    - `pnpm run format:check` (if the project's `package.json` defines it)
