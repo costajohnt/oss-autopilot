@@ -506,6 +506,18 @@ export const CompactDailyOutputSchema = z.object({
 
 const SearchPrioritySchema = z.enum(['merged_pr', 'preferred_org', 'starred', 'normal']);
 
+/**
+ * Schema for the compact linked-PR annotation surfaced on candidate
+ * outputs (#97 / scout 0.9.0). Mirrors {@link CandidateLinkedPR}.
+ */
+const CandidateLinkedPRSchema = z.object({
+  number: z.number().int().positive(),
+  state: z.enum(['open', 'closed', 'merged']),
+  url: z.string(),
+  updatedAt: z.string().optional(),
+  isStalled: z.boolean(),
+});
+
 const SearchCandidateSchema = z.object({
   issue: z.object({
     repo: z.string(),
@@ -533,12 +545,31 @@ const SearchCandidateSchema = z.object({
       lastMergedAt: z.string().optional(),
     })
     .optional(),
+  linkedPR: CandidateLinkedPRSchema.optional(),
 });
 
 export const SearchOutputSchema = z.object({
   candidates: z.array(SearchCandidateSchema),
   excludedRepos: z.array(z.string()),
   aiPolicyBlocklist: z.array(z.string()),
+  rateLimitWarning: z.string().optional(),
+});
+
+// ── Features output schema (scout 0.9.0 #97/#98/#99) ─────────────────
+//
+// `SearchCandidateSchema` augmented with the horizon literal that scout
+// stamps in features mode. Reusing the search candidate keeps the two
+// envelopes structurally identical apart from the bucket annotation.
+const FeaturesHorizonSchema = z.enum(['quick-win', 'bigger-bet']);
+const FeaturesCandidateSchema = SearchCandidateSchema.extend({
+  horizon: FeaturesHorizonSchema,
+});
+
+export const FeaturesOutputSchema = z.object({
+  quickWins: z.array(FeaturesCandidateSchema),
+  biggerBets: z.array(FeaturesCandidateSchema),
+  anchorRepos: z.array(z.string()),
+  message: z.string().nullable(),
   rateLimitWarning: z.string().optional(),
 });
 
@@ -866,44 +897,98 @@ export const LocalReposOutputSchema = z.object({
   fromCache: z.boolean(),
 });
 
+/**
+ * Compact summary of an issue's first linked PR, surfaced on candidate
+ * outputs (#97 / scout 0.9.0). `isStalled` is `true` when the PR is open
+ * and has not been updated for `STALLED_PR_THRESHOLD_DAYS` (default 30) —
+ * a revive-opportunity signal callers can render or filter on.
+ *
+ * `state` mirrors autopilot's existing tri-state classifier (`'merged'` is
+ * folded in from scout's `merged: true` boolean), not scout's raw enum.
+ */
+export interface CandidateLinkedPR {
+  number: number;
+  state: 'open' | 'closed' | 'merged';
+  url: string;
+  /** ISO timestamp of the PR's last update (when scout surfaces it). */
+  updatedAt?: string;
+  /** True when the PR is open AND `updatedAt` is more than 30 days old. */
+  isStalled: boolean;
+}
+
+/**
+ * One candidate row in `SearchOutput`/`FeaturesOutput`. Extracted so the
+ * features command can reuse the exact contract `runSearch` already
+ * publishes — keeping the two outputs structurally identical for everything
+ * except the bucket-specific `horizon` annotation.
+ */
+export interface SearchCandidate {
+  issue: {
+    repo: string;
+    repoUrl: string;
+    number: number;
+    title: string;
+    url: string;
+    labels: string[];
+  };
+  recommendation: 'approve' | 'skip' | 'needs_review';
+  reasonsToApprove: string[];
+  reasonsToSkip: string[];
+  searchPriority: SearchPriority;
+  /** 0-100 scale composite viability score. Sanitized on the boundary (#1043): out-of-contract values are coerced to 0 and logged. */
+  viabilityScore: number;
+  /**
+   * Letter grade (A/B/C/F) computed from the autopilot-tracked repoScore.
+   * Scout's `search` does not emit per-candidate projectHealth, so scout-side
+   * signals are treated as unknown; unscored repos grade 'F'. See #1043.
+   */
+  grade: {
+    letter: 'A' | 'B' | 'C' | 'F';
+    reason: string;
+  };
+  repoScore?: {
+    /** 1-10 scale repository quality score */
+    score: number;
+    mergedPRCount: number;
+    closedWithoutMergeCount: number;
+    isResponsive: boolean;
+    lastMergedAt?: string;
+  };
+  /**
+   * First linked PR on the issue, when scout surfaced one. Optional —
+   * absent when no linked PR exists. `isStalled` flags revive
+   * opportunities (open PR + no updates for 30+ days, scout 0.9.0 #97).
+   */
+  linkedPR?: CandidateLinkedPR;
+}
+
 export interface SearchOutput {
-  candidates: Array<{
-    issue: {
-      repo: string;
-      repoUrl: string;
-      number: number;
-      title: string;
-      url: string;
-      labels: string[];
-    };
-    recommendation: 'approve' | 'skip' | 'needs_review';
-    reasonsToApprove: string[];
-    reasonsToSkip: string[];
-    searchPriority: SearchPriority;
-    /** 0-100 scale composite viability score. Sanitized on the boundary (#1043): out-of-contract values are coerced to 0 and logged. */
-    viabilityScore: number;
-    /**
-     * Letter grade (A/B/C/F) computed from the autopilot-tracked repoScore.
-     * Scout's `search` does not emit per-candidate projectHealth, so scout-side
-     * signals are treated as unknown; unscored repos grade 'F'. See #1043.
-     */
-    grade: {
-      letter: 'A' | 'B' | 'C' | 'F';
-      reason: string;
-    };
-    repoScore?: {
-      /** 1-10 scale repository quality score */
-      score: number;
-      mergedPRCount: number;
-      closedWithoutMergeCount: number;
-      isResponsive: boolean;
-      lastMergedAt?: string;
-    };
-  }>;
+  candidates: SearchCandidate[];
   excludedRepos: string[];
   /** Repos with known anti-AI contribution policies, filtered from search results (#108). */
   aiPolicyBlocklist: string[];
   /** Present when rate limits affected the search — either low pre-flight quota or mid-search rate limit hits (#100). */
+  rateLimitWarning?: string;
+}
+
+/** Horizon classification stamped on each features-mode candidate. */
+export type FeaturesHorizon = 'quick-win' | 'bigger-bet';
+
+/** A `SearchCandidate` augmented with its features-mode horizon. */
+export type FeaturesCandidate = SearchCandidate & {
+  horizon: FeaturesHorizon;
+};
+
+export interface FeaturesOutput {
+  /** "Quick-win" bucket: feature-scoped issues without strong commitment markers (no milestone, no roadmap, no bigger-bet labels). */
+  quickWins: FeaturesCandidate[];
+  /** "Bigger-bet" bucket: feature-scoped issues that carry maintainer-commitment signals (milestone, roadmap, bigger-bet label). */
+  biggerBets: FeaturesCandidate[];
+  /** Repos that qualified as anchors for this run (3+ merged PRs, configurable). Empty when the user has no anchor repos yet. */
+  anchorRepos: string[];
+  /** Human-friendly explainer shown when neither bucket has results (no anchors, or anchors but no open feature opportunities). `null` on success. */
+  message: string | null;
+  /** Present when rate limits affected the search. Mirrors `SearchOutput.rateLimitWarning`. */
   rateLimitWarning?: string;
 }
 
@@ -1031,8 +1116,14 @@ export interface CheckIntegrationOutput {
   unreferencedCount: number;
 }
 
-/** Status of a re-vetted issue from the curated list (#764). */
-export type VetListItemStatus = 'still_available' | 'claimed' | 'closed' | 'has_pr' | 'error';
+/**
+ * Status of a re-vetted issue from the curated list (#764).
+ *
+ * `has_stalled_pr` (scout 0.9.0 #97) distinguishes open-but-stalled linked
+ * PRs from cleanly-claimed `has_pr` issues — the issue is still actionable
+ * as a revive opportunity rather than something to drop.
+ */
+export type VetListItemStatus = 'still_available' | 'claimed' | 'closed' | 'has_pr' | 'has_stalled_pr' | 'error';
 
 /** Output of the vet-list command (#764). */
 export interface VetListOutput {
@@ -1048,6 +1139,8 @@ export interface VetListOutput {
     claimed: number;
     closed: number;
     hasPR: number;
+    /** Open linked PRs that haven't been touched in 30+ days (scout 0.9.0 #97). Surfaced as revive opportunities, not auto-dropped. */
+    hasStalledPR: number;
     errors: number;
   };
   pruneResult?: {
@@ -1093,6 +1186,12 @@ export interface VetOutput {
     | 'other_open'
     | 'other_closed'
     | 'other_merged';
+  /**
+   * Compact linked-PR summary (#97 / scout 0.9.0). Present when the issue
+   * has a linked PR; absent otherwise. `isStalled` flags open PRs that
+   * haven't been touched in 30+ days as revive opportunities.
+   */
+  linkedPR?: CandidateLinkedPR;
   /**
    * Optional SLM pre-triage classification (#1122). Populated when the
    * user has set `slmTriageModel` and a local Ollama instance answered

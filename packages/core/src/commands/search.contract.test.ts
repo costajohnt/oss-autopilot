@@ -20,9 +20,13 @@ const mocks = vi.hoisted(() => ({
   getRepoScore: vi.fn(),
 }));
 
-vi.mock('./scout-bridge.js', () => ({
-  createAutopilotScout: vi.fn(async () => ({ search: mocks.search })),
-}));
+vi.mock('./scout-bridge.js', async () => {
+  const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
+  return {
+    ...actual,
+    createAutopilotScout: vi.fn(async () => ({ search: mocks.search })),
+  };
+});
 
 vi.mock('../core/index.js', async () => {
   const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');

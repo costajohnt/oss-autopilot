@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyLinkedPR } from './linked-pr-classification.js';
+import { classifyLinkedPR, isLinkedPRStalled, STALLED_PR_THRESHOLD_DAYS } from './linked-pr-classification.js';
 
 describe('classifyLinkedPR', () => {
   it('returns none when there is no linked PR', () => {
@@ -119,5 +119,60 @@ describe('classifyLinkedPR', () => {
       });
       expect(result).toBe('other_open');
     });
+  });
+});
+
+describe('isLinkedPRStalled', () => {
+  // Fixed clock so the test is deterministic regardless of when it runs.
+  const now = new Date('2026-05-09T00:00:00Z');
+
+  it('exposes a 30-day threshold constant matching scout', () => {
+    expect(STALLED_PR_THRESHOLD_DAYS).toBe(30);
+  });
+
+  it('returns false when linkedPR is null or undefined', () => {
+    expect(isLinkedPRStalled(null, now)).toBe(false);
+    expect(isLinkedPRStalled(undefined, now)).toBe(false);
+  });
+
+  it('returns false when the PR is closed even if updatedAt is ancient', () => {
+    expect(isLinkedPRStalled({ author: { login: 'a' }, state: 'closed', updatedAt: '2020-01-01T00:00:00Z' }, now)).toBe(
+      false,
+    );
+  });
+
+  it('returns false when the PR is merged even if updatedAt is ancient', () => {
+    expect(isLinkedPRStalled({ author: { login: 'a' }, state: 'merged', updatedAt: '2020-01-01T00:00:00Z' }, now)).toBe(
+      false,
+    );
+  });
+
+  it('returns false when updatedAt is missing on an open PR (unknown age)', () => {
+    expect(isLinkedPRStalled({ author: { login: 'a' }, state: 'open' }, now)).toBe(false);
+  });
+
+  it('returns false for an open PR updated within the threshold', () => {
+    // 29 days before `now` — still fresh.
+    expect(isLinkedPRStalled({ author: { login: 'a' }, state: 'open', updatedAt: '2026-04-10T00:00:00Z' }, now)).toBe(
+      false,
+    );
+  });
+
+  it('returns true for an open PR last updated more than 30 days ago', () => {
+    // ~60 days before `now`.
+    expect(isLinkedPRStalled({ author: { login: 'a' }, state: 'open', updatedAt: '2026-03-09T00:00:00Z' }, now)).toBe(
+      true,
+    );
+  });
+
+  it('respects a custom thresholdDays override', () => {
+    // 10 days old: stalled at threshold=7 but not at threshold=30.
+    const linkedPR = { author: { login: 'a' }, state: 'open' as const, updatedAt: '2026-04-29T00:00:00Z' };
+    expect(isLinkedPRStalled(linkedPR, now, 7)).toBe(true);
+    expect(isLinkedPRStalled(linkedPR, now, 30)).toBe(false);
+  });
+
+  it('returns false when updatedAt is an unparseable string', () => {
+    expect(isLinkedPRStalled({ author: { login: 'a' }, state: 'open', updatedAt: 'not-a-date' }, now)).toBe(false);
   });
 });

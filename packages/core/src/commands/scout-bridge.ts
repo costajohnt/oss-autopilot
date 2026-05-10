@@ -4,8 +4,9 @@
  */
 
 import { createScout, type LinkedPR as ScoutLinkedPR, type OssScout, type ScoutState } from '@oss-scout/core';
-import { getStateManager, requireGitHubToken } from '../core/index.js';
+import { getStateManager, isLinkedPRStalled, requireGitHubToken } from '../core/index.js';
 import type { LinkedPR } from '../core/linked-pr-classification.js';
+import type { CandidateLinkedPR } from '../formatters/json.js';
 import { loadSkippedIssues } from './skip-file-parser.js';
 
 /**
@@ -16,13 +17,43 @@ import { loadSkippedIssues } from './skip-file-parser.js';
  * written before scout surfaced this data and uses a tri-state
  * `'open' | 'closed' | 'merged'` enum. Folding `merged` into the state
  * preserves the function's existing contract + tests.
+ *
+ * `updatedAt` (added in scout 0.9.0) flows through unchanged so consumers
+ * can hand the result to `isLinkedPRStalled` without re-fetching.
  */
 export function adaptScoutLinkedPR(scoutLinkedPR: ScoutLinkedPR | null | undefined): LinkedPR | null {
   if (!scoutLinkedPR) return null;
-  return {
+  const adapted: LinkedPR = {
     author: { login: scoutLinkedPR.author },
     state: scoutLinkedPR.merged ? 'merged' : scoutLinkedPR.state,
   };
+  if (scoutLinkedPR.updatedAt !== undefined) {
+    adapted.updatedAt = scoutLinkedPR.updatedAt;
+  }
+  return adapted;
+}
+
+/**
+ * Build the autopilot-shaped `linkedPR` slice consumed by `SearchOutput`,
+ * `VetOutput`, and `FeaturesOutput` from scout's raw `LinkedPR`
+ * (#97 / scout 0.9.0). Returns `undefined` when scout reported no linked
+ * PR. Computes `isStalled` from the adapted (autopilot-shape) PR so the
+ * rule stays consistent with `classifyLinkedPR` and downstream consumers.
+ */
+export function buildCandidateLinkedPR(scoutLinkedPR: ScoutLinkedPR | null | undefined): CandidateLinkedPR | undefined {
+  if (!scoutLinkedPR) return undefined;
+  const adapted = adaptScoutLinkedPR(scoutLinkedPR);
+  if (!adapted) return undefined;
+  const linkedPR: CandidateLinkedPR = {
+    number: scoutLinkedPR.number,
+    state: adapted.state,
+    url: scoutLinkedPR.url,
+    isStalled: isLinkedPRStalled(adapted),
+  };
+  if (scoutLinkedPR.updatedAt !== undefined) {
+    linkedPR.updatedAt = scoutLinkedPR.updatedAt;
+  }
+  return linkedPR;
 }
 
 /**
@@ -54,6 +85,15 @@ export function buildScoutState(): ScoutState {
       persistence: config.persistence as 'local' | 'gist',
       slmTriageModel: config.slmTriageModel,
       slmTriageHost: config.slmTriageHost,
+      // Scout 0.9.0 made these required on `ScoutPreferences` (their schema
+      // ZodDefaults still apply at parse time, but the inferred TS type now
+      // demands the fields). We pass scout's documented defaults here so
+      // autopilot doesn't have to introduce a new pair of user-visible
+      // settings just to satisfy the type. The features CLI command
+      // (#runFeatures) accepts per-call `--anchor-threshold` and
+      // `--split-ratio` flags for overrides.
+      featuresAnchorThreshold: 3,
+      featuresSplitRatio: 0.6,
     },
     repoScores: state.repoScores,
     starredRepos: config.starredRepos,

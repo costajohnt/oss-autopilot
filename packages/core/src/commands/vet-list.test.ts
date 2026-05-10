@@ -133,6 +133,81 @@ describe('classifyListStatus', () => {
     expect(result).toBe('has_pr');
   });
 
+  // ── has_stalled_pr revive opportunity (#97 / scout 0.9.0) ──────────────
+
+  it('returns has_stalled_pr via skipReason when linked PR is open AND stalled', () => {
+    const result = classifyListStatus(
+      makeVetOutput({
+        recommendation: 'skip',
+        reasonsToSkip: ['Has linked PR #42'],
+        linkedPR: {
+          number: 42,
+          state: 'open',
+          url: 'https://github.com/owner/repo/pull/42',
+          updatedAt: '2020-01-01T00:00:00Z',
+          isStalled: true,
+        },
+      }),
+      'has_linked_pr',
+    );
+    expect(result).toBe('has_stalled_pr');
+  });
+
+  it('returns has_pr via skipReason when linked PR is open but fresh', () => {
+    const result = classifyListStatus(
+      makeVetOutput({
+        recommendation: 'skip',
+        reasonsToSkip: ['Has linked PR #42'],
+        linkedPR: {
+          number: 42,
+          state: 'open',
+          url: 'https://github.com/owner/repo/pull/42',
+          updatedAt: new Date().toISOString(),
+          isStalled: false,
+        },
+      }),
+      'has_linked_pr',
+    );
+    expect(result).toBe('has_pr');
+  });
+
+  it('routes stalled-PR substring fallback to has_stalled_pr when isStalled=true', () => {
+    const result = classifyListStatus(
+      makeVetOutput({
+        recommendation: 'skip',
+        reasonsToSkip: ['Has linked PR #42'],
+        linkedPR: {
+          number: 42,
+          state: 'open',
+          url: 'https://github.com/owner/repo/pull/42',
+          updatedAt: '2020-01-01T00:00:00Z',
+          isStalled: true,
+        },
+      }),
+    );
+    expect(result).toBe('has_stalled_pr');
+  });
+
+  it('does NOT route closed/merged linked PRs to has_stalled_pr even with stale updatedAt', () => {
+    // Defensive — buildCandidateLinkedPR should already set isStalled=false
+    // for non-open states, but the classifier also checks state explicitly.
+    const result = classifyListStatus(
+      makeVetOutput({
+        recommendation: 'skip',
+        reasonsToSkip: ['Has linked PR #42'],
+        linkedPR: {
+          number: 42,
+          state: 'merged',
+          url: 'https://github.com/owner/repo/pull/42',
+          updatedAt: '2020-01-01T00:00:00Z',
+          isStalled: false,
+        },
+      }),
+      'has_linked_pr',
+    );
+    expect(result).toBe('has_pr');
+  });
+
   it('should return still_available for skipped issues with other reasons', () => {
     const result = classifyListStatus(
       makeVetOutput({
@@ -231,7 +306,15 @@ describe('runVetList', () => {
     const result = await runVetList();
 
     expect(result.results).toEqual([]);
-    expect(result.summary).toEqual({ total: 0, stillAvailable: 0, claimed: 0, closed: 0, hasPR: 0, errors: 0 });
+    expect(result.summary).toEqual({
+      total: 0,
+      stillAvailable: 0,
+      claimed: 0,
+      closed: 0,
+      hasPR: 0,
+      hasStalledPR: 0,
+      errors: 0,
+    });
   });
 
   it('should vet available issues and return results', async () => {
