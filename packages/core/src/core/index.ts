@@ -84,6 +84,8 @@ export { computeContributionStats, type ContributionStats, type ComputeStatsInpu
 export { fetchPRTemplate, type PRTemplateResult } from './pr-template.js';
 export {
   classifyLinkedPR,
+  isLinkedPRStalled,
+  STALLED_PR_THRESHOLD_DAYS,
   type LinkedPR,
   type LinkedPRClassification,
   type LinkedPRState,

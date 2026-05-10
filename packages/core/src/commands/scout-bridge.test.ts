@@ -18,7 +18,7 @@ vi.mock('./skip-file-parser.js', () => ({
 }));
 
 import { getStateManager } from '../core/index.js';
-import { buildScoutState } from './scout-bridge.js';
+import { buildScoutState, adaptScoutLinkedPR } from './scout-bridge.js';
 import { loadSkippedIssues } from './skip-file-parser.js';
 import { makeAgentState, makeDailyDigest, makeFetchedPR, makeStateManagerMock } from '../core/test-utils.js';
 
@@ -248,5 +248,65 @@ describe('buildScoutState', () => {
     const result = buildScoutState();
 
     expect(result.skippedIssues).toEqual([]);
+  });
+});
+
+describe('adaptScoutLinkedPR', () => {
+  it('returns null for null/undefined input', () => {
+    expect(adaptScoutLinkedPR(null)).toBeNull();
+    expect(adaptScoutLinkedPR(undefined)).toBeNull();
+  });
+
+  it('folds merged=true into state="merged"', () => {
+    const result = adaptScoutLinkedPR({
+      number: 1,
+      author: 'octocat',
+      state: 'closed',
+      merged: true,
+      url: 'https://github.com/owner/repo/pull/1',
+    });
+    expect(result).toEqual({ author: { login: 'octocat' }, state: 'merged' });
+  });
+
+  it('preserves "open" state when merged=false', () => {
+    const result = adaptScoutLinkedPR({
+      number: 1,
+      author: 'octocat',
+      state: 'open',
+      merged: false,
+      url: 'https://github.com/owner/repo/pull/1',
+    });
+    expect(result).toEqual({ author: { login: 'octocat' }, state: 'open' });
+  });
+
+  it('propagates updatedAt when present (scout 0.9.0)', () => {
+    const result = adaptScoutLinkedPR({
+      number: 1,
+      author: 'octocat',
+      state: 'open',
+      merged: false,
+      url: 'https://github.com/owner/repo/pull/1',
+      updatedAt: '2026-04-01T12:34:56Z',
+    });
+    expect(result).toEqual({
+      author: { login: 'octocat' },
+      state: 'open',
+      updatedAt: '2026-04-01T12:34:56Z',
+    });
+  });
+
+  it('omits updatedAt entirely when scout did not provide one', () => {
+    const result = adaptScoutLinkedPR({
+      number: 1,
+      author: 'octocat',
+      state: 'open',
+      merged: false,
+      url: 'https://github.com/owner/repo/pull/1',
+    });
+    expect(result).not.toBeNull();
+    // Use `in` to assert the field is absent rather than just undefined,
+    // since downstream JSON serializers strip explicit `undefined` values
+    // and we want the absence to be a structural property of the object.
+    expect('updatedAt' in (result as object)).toBe(false);
   });
 });

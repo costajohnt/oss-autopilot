@@ -31,6 +31,48 @@ export interface LinkedPR {
    */
   author: { login: string } | null;
   state: LinkedPRState;
+  /**
+   * ISO timestamp of the linked PR's last update, surfaced from scout's
+   * timeline-event metadata when available (#97). Optional so existing
+   * callers and fixtures that don't carry the field continue to type-check.
+   * Used by `isLinkedPRStalled` to flag open PRs that haven't been touched
+   * in the last `STALLED_PR_THRESHOLD_DAYS` days.
+   */
+  updatedAt?: string;
+}
+
+/**
+ * Days of inactivity that classify an open linked PR as "stalled" — kept
+ * in sync with scout's `STALLED_PR_THRESHOLD_DAYS` so the autopilot helper
+ * and scout's own annotation use the same boundary.
+ */
+export const STALLED_PR_THRESHOLD_DAYS = 30;
+
+/**
+ * Determine whether an autopilot-shaped `LinkedPR` is stalled.
+ *
+ * True when:
+ *   - the PR is open, AND
+ *   - `updatedAt` is set, AND
+ *   - the elapsed time since `updatedAt` is at least `thresholdDays`.
+ *
+ * Returns false for closed/merged PRs, missing `updatedAt`, or invalid
+ * timestamps. Reimplemented locally rather than delegating to scout's
+ * helper so this module owns autopilot's `LinkedPR` shape contract end
+ * to end (avoids a runtime import dependency on scout's internal type).
+ */
+export function isLinkedPRStalled(
+  linkedPR: LinkedPR | null | undefined,
+  now: Date = new Date(),
+  thresholdDays: number = STALLED_PR_THRESHOLD_DAYS,
+): boolean {
+  if (!linkedPR) return false;
+  if (linkedPR.state !== 'open') return false;
+  if (!linkedPR.updatedAt) return false;
+  const updatedMs = Date.parse(linkedPR.updatedAt);
+  if (!Number.isFinite(updatedMs)) return false;
+  const ageDays = (now.getTime() - updatedMs) / (1000 * 60 * 60 * 24);
+  return ageDays >= thresholdDays;
 }
 
 /**

@@ -16,13 +16,20 @@ import { loadSkippedIssues } from './skip-file-parser.js';
  * written before scout surfaced this data and uses a tri-state
  * `'open' | 'closed' | 'merged'` enum. Folding `merged` into the state
  * preserves the function's existing contract + tests.
+ *
+ * `updatedAt` (added in scout 0.9.0) flows through unchanged so consumers
+ * can hand the result to `isLinkedPRStalled` without re-fetching.
  */
 export function adaptScoutLinkedPR(scoutLinkedPR: ScoutLinkedPR | null | undefined): LinkedPR | null {
   if (!scoutLinkedPR) return null;
-  return {
+  const adapted: LinkedPR = {
     author: { login: scoutLinkedPR.author },
     state: scoutLinkedPR.merged ? 'merged' : scoutLinkedPR.state,
   };
+  if (scoutLinkedPR.updatedAt !== undefined) {
+    adapted.updatedAt = scoutLinkedPR.updatedAt;
+  }
+  return adapted;
 }
 
 /**
