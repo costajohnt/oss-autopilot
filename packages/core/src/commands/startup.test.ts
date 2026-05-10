@@ -342,6 +342,7 @@ describe('detectIssueList', () => {
     vi.mocked(getStateManager).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
       getState: vi.fn(() => ({ config: { issueListPath: 'open-source/issues.md' } })),
+      updateConfig: vi.fn(),
     } as any);
 
     const result = detectIssueList();
@@ -361,6 +362,63 @@ describe('detectIssueList', () => {
 
     expect(result).toBeDefined();
     expect(result?.skippedIssuesPath).toBeUndefined();
+  });
+
+  it('persists auto-detected skippedIssuesPath to state.config when not already set (#1330)', async () => {
+    // Repro: startup detects the file via the default-path probe but
+    // returns it only in the run output. Without persistence, every
+    // downstream `skip-add` and scout search reads `config.skippedIssuesPath`
+    // (undefined) and silently no-ops the skip filter.
+    existsSyncMock.mockImplementation((p: string) => {
+      if (typeof p === 'string' && p === 'open-source/issues.md') return true;
+      if (typeof p === 'string' && p === 'open-source/skipped-issues.md') return true;
+      return false;
+    });
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
+
+    const updateConfigSpy = vi.fn();
+    const { getStateManager } = await import('../core/index.js');
+    vi.mocked(getStateManager).mockReturnValue({
+      isSetupComplete: vi.fn(() => true),
+      // No skippedIssuesPath in config yet — the auto-detect must persist it.
+      getState: vi.fn(() => ({ config: { issueListPath: 'open-source/issues.md' } })),
+      updateConfig: updateConfigSpy,
+    } as any);
+
+    const result = detectIssueList();
+
+    expect(result?.skippedIssuesPath).toBe('open-source/skipped-issues.md');
+    expect(updateConfigSpy).toHaveBeenCalledWith({ skippedIssuesPath: 'open-source/skipped-issues.md' });
+  });
+
+  it('does NOT re-persist skippedIssuesPath when already set in config (#1330)', async () => {
+    // Re-running startup on a state that already has the path persisted
+    // shouldn't trigger an autoSave every run. The first conditional path
+    // (`config first`) takes the value, the default-path probe never
+    // runs, and updateConfig stays untouched.
+    existsSyncMock.mockImplementation((p: string) => {
+      if (typeof p === 'string' && p === 'open-source/issues.md') return true;
+      if (typeof p === 'string' && p === 'open-source/skipped-issues.md') return true;
+      return false;
+    });
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
+
+    const updateConfigSpy = vi.fn();
+    const { getStateManager } = await import('../core/index.js');
+    vi.mocked(getStateManager).mockReturnValue({
+      isSetupComplete: vi.fn(() => true),
+      getState: vi.fn(() => ({
+        config: {
+          issueListPath: 'open-source/issues.md',
+          skippedIssuesPath: 'open-source/skipped-issues.md',
+        },
+      })),
+      updateConfig: updateConfigSpy,
+    } as any);
+
+    detectIssueList();
+
+    expect(updateConfigSpy).not.toHaveBeenCalled();
   });
 });
 
