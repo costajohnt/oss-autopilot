@@ -363,6 +363,16 @@ export const AgentStateSchema = z.object({
 
   lastDigestAt: z.string().optional(),
 
+  /**
+   * ISO timestamp of the most recent {@link computeStrategy} invocation
+   * embedded in a daily run output (#1270). The cadence gate in
+   * `daily.ts` consults this — strategy snapshots fire every 30 days OR
+   * when 5+ PRs have merged since the last snapshot, whichever comes
+   * first. Below {@link STRATEGY_MIN_PRS} merged PRs the gate stays
+   * silent regardless of cadence.
+   */
+  lastStrategyAt: z.string().optional(),
+
   lastDigest: DailyDigestSchema.optional(),
 
   monthlyMergedCounts: z.record(z.string(), z.number()).optional(),

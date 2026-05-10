@@ -491,6 +491,17 @@ export class StateManager {
   }
 
   /**
+   * Persist the timestamp of the most recent strategy snapshot embedded
+   * in a daily run output (#1270). Called from the daily pipeline after
+   * `computeStrategy()` succeeds; the cadence gate in
+   * {@link shouldComputeStrategy} reads this on the next run.
+   */
+  setLastStrategyAt(iso: string): void {
+    this.state.lastStrategyAt = iso;
+    this.autoSave();
+  }
+
+  /**
    * Update monthly merged PR counts for dashboard display.
    * @param counts - Monthly merged PR counts keyed by YYYY-MM
    */

@@ -185,7 +185,32 @@ Use AskUserQuestion with these options:
 
 ## Action Menu
 
-Read `${CLAUDE_PLUGIN_ROOT}/workflows/action-menu.md` and follow the instructions to display PRs and present the action menu. After the user selects an action, continue to **Execute** below.
+**If `data.daily.strategySummary` is present and non-null** (#1270), render a brief snapshot inline ahead of the action options. The cadence gate fires every 30 days OR after 5+ PRs merge since the last snapshot, whichever comes first; below the merge floor (`STRATEGY_MIN_PRS = 10`) the field is omitted.
+
+Format:
+
+```
+## Strategy snapshot
+- {profile.totalPRs} PRs tracked, {profile.mergedCount} merged ({Math.round(profile.mergeRate × 100)}% merge rate). Profile: {profile.style}.
+- {capacity.dormantPRCount} dormant PR(s) across {capacity.dormantRepoCount} repo(s). {SUGGESTED_ACTION_PROSE}
+- Top languages: {profile.primaryLanguages.join(', ')}. Top repos: {profile.favoriteRepos.join(', ')}.
+- Pattern: {patterns.trajectoryDirection}.
+
+For a deeper dive, ask the contribution-strategist agent.
+```
+
+`SUGGESTED_ACTION_PROSE` is a fixed mapping from `capacity.suggestedAction` — render exactly the matching string, do NOT paraphrase:
+
+| `suggestedAction` | Prose |
+|---|---|
+| `'open_more'` | "Capacity to open more PRs." |
+| `'follow_up_dormant'` | "Follow up on dormant PRs before opening more." |
+| `'wait_on_maintainers'` | "Wait on maintainers; don't open new PRs yet." |
+| `null` | omit the sentence (and the trailing period after `repo(s)`) |
+
+If `recommendations.avoidPatterns` is non-empty, append a fifth bullet `- Watch for: {recommendations.avoidPatterns[0]}` — those strings come from `computeStrategy()` pre-formatted, render verbatim.
+
+Then read `${CLAUDE_PLUGIN_ROOT}/workflows/action-menu.md` and follow the instructions to display PRs and present the action menu. After the user selects an action, continue to **Execute** below.
 
 ---
 

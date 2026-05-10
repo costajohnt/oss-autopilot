@@ -171,6 +171,13 @@ export interface DailyOutput {
    * on clean runs. See #1042.
    */
   warnings: DailyWarning[];
+  /**
+   * Periodic contribution-strategy snapshot (#1270). Populated when the
+   * cadence trigger fires AND the user has crossed the merge floor. The
+   * `/oss` action menu renders this inline ahead of the action options;
+   * absent or null on runs where the gate stays silent.
+   */
+  strategySummary?: import('../core/strategy.js').StrategyResult | null;
 }
 
 /**
@@ -197,6 +204,8 @@ export interface CompactDailyOutput {
    * the `--compact` payload. See #1042.
    */
   warnings: DailyWarning[];
+  /** Periodic strategy snapshot, threaded through compact mode for parity. See {@link DailyOutput.strategySummary}. */
+  strategySummary?: import('../core/strategy.js').StrategyResult | null;
 }
 
 /**
@@ -214,6 +223,7 @@ export function toCompactDailyOutput(output: DailyOutput): CompactDailyOutput {
     commentedIssues: output.commentedIssues,
     failureCount: output.failures.length,
     warnings: output.warnings,
+    strategySummary: output.strategySummary,
   };
 }
 
@@ -406,6 +416,66 @@ const CompactRepoGroupSchema = z.object({
 // DailyWarning schemas were hoisted above StatusOutputSchema (#1193) so the
 // status output can reference them without `z.lazy()`.
 
+// Mirrors {@link StrategyResult} in core/strategy.ts. Kept passthrough on the
+// inner objects so additive shape changes there don't break Zod validation
+// before the schema catches up — drift on required keys still fails.
+const StrategyResultSchema = z
+  .object({
+    profile: z
+      .object({
+        style: z.enum(['maintainer', 'explorer', 'specialist', 'generalist']),
+        totalPRs: z.number().int().nonnegative(),
+        mergedCount: z.number().int().nonnegative(),
+        mergeRate: z.number(),
+        primaryLanguages: z.array(z.string()),
+        favoriteRepos: z.array(z.string()),
+      })
+      .passthrough(),
+    capacity: z
+      .object({
+        openPRCount: z.number().int().nonnegative(),
+        dormantPRCount: z.number().int().nonnegative(),
+        dormantRepoCount: z.number().int().nonnegative(),
+        overExtended: z.boolean(),
+        suggestedAction: z.union([
+          z.literal('open_more'),
+          z.literal('follow_up_dormant'),
+          z.literal('wait_on_maintainers'),
+          z.null(),
+        ]),
+      })
+      .passthrough(),
+    patterns: z
+      .object({
+        // Closed set on the six required PR-type buckets — drift on any
+        // of these breaks the snapshot rendering. `.passthrough()` allows
+        // additive growth (e.g., a future 'security' bucket) without a
+        // schema bump, but a typo on `features` → `feauters` fails here.
+        prTypeDistribution: z
+          .object({
+            docs: z.number(),
+            fixes: z.number(),
+            features: z.number(),
+            refactors: z.number(),
+            tests: z.number(),
+            other: z.number(),
+          })
+          .passthrough(),
+        trajectoryDirection: z.enum(['growing', 'steady', 'declining']),
+        averagePRSize: z.number(),
+      })
+      .passthrough(),
+    recommendations: z
+      .object({
+        languages: z.array(z.string()),
+        repos: z.array(z.string()),
+        issueTypes: z.array(z.string()),
+        avoidPatterns: z.array(z.string()),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
 export const DailyOutputSchema = z.object({
   digest: DailyDigestCompactSchema,
   capacity: CapacityAssessmentSchema,
@@ -417,6 +487,7 @@ export const DailyOutputSchema = z.object({
   repoGroups: z.array(CompactRepoGroupSchema),
   failures: z.array(PRCheckFailurePassthroughSchema),
   warnings: z.array(DailyWarningSchema),
+  strategySummary: StrategyResultSchema.nullable().optional(),
 });
 
 export const CompactDailyOutputSchema = z.object({
@@ -428,6 +499,7 @@ export const CompactDailyOutputSchema = z.object({
   commentedIssues: z.array(CommentedIssuePassthroughSchema),
   failureCount: z.number().int().nonnegative(),
   warnings: z.array(DailyWarningSchema),
+  strategySummary: StrategyResultSchema.nullable().optional(),
 });
 
 // ── Search output schema (#1147) ─────────────────────────────────────

@@ -33,6 +33,7 @@ import {
   type RepoGroup,
 } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
+import { computeStrategy, shouldComputeStrategy, type StrategyResult } from '../core/strategy.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
 import { createAutopilotScout } from './scout-bridge.js';
@@ -127,6 +128,13 @@ export interface DailyCheckResult {
   failures: PRCheckFailure[];
   /** Non-fatal warnings from ancillary pipeline phases — see #1042. */
   warnings: DailyWarning[];
+  /**
+   * Periodic strategy snapshot (#1270). Set when the cadence trigger
+   * fires AND the user has crossed `STRATEGY_MIN_PRS`. The action-menu
+   * renderer in `commands/oss.md` reads this; absent or null on runs
+   * where the gate stays silent.
+   */
+  strategySummary?: StrategyResult | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -600,6 +608,24 @@ function generateDigestOutput(
   const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues);
   const repoGroups = groupPRsByRepo(activePRs);
 
+  // Periodic strategy snapshot (#1270 Step 2). Cadence-gated to fire every
+  // 30 days OR after 5+ PRs merge since the last snapshot, whichever comes
+  // first. Below STRATEGY_MIN_PRS the gate stays silent. Compute failures
+  // are non-fatal — the daily run continues and the snapshot is omitted.
+  let strategySummary: StrategyResult | null | undefined;
+  try {
+    const state = stateManager.getState();
+    const nowIso = new Date().toISOString();
+    if (shouldComputeStrategy(state, nowIso)) {
+      strategySummary = computeStrategy(state);
+      if (strategySummary) {
+        stateManager.setLastStrategyAt(nowIso);
+      }
+    }
+  } catch (error) {
+    recordWarning(warnings, 'analytics', 'compute strategy snapshot', error);
+  }
+
   return {
     digest,
     capacity,
@@ -611,6 +637,7 @@ function generateDigestOutput(
     repoGroups,
     failures,
     warnings,
+    strategySummary,
   };
 }
 
@@ -638,6 +665,7 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
     repoGroups: compactRepoGroups(result.repoGroups),
     failures: result.failures,
     warnings: result.warnings,
+    strategySummary: result.strategySummary,
   };
 }
 
