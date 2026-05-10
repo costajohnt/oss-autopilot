@@ -122,11 +122,32 @@ export function detectIssueList(): IssueListInfo | undefined {
     warn('startup', `Could not read skippedIssuesPath from state: ${errorMessage(err)}`);
   }
 
-  // Probe default path: same directory as issue list, named skipped-issues.md
+  // Probe default path: same directory as issue list, named skipped-issues.md.
+  // When found, also persist to state.config so downstream commands
+  // (`skip-add`, `scout search`'s skip-list filter) read the same path
+  // instead of silently no-opping with "No skipped-issues path configured"
+  // (#1330). Without persistence, the auto-detect printed the path on
+  // every startup but nothing else honored it — search would re-surface
+  // already-skipped candidates round after round.
   if (!skippedIssuesPath && issueListPath) {
     const defaultSkipPath = path.join(path.dirname(issueListPath), 'skipped-issues.md');
     if (fs.existsSync(defaultSkipPath)) {
       skippedIssuesPath = defaultSkipPath;
+      try {
+        const stateManager = getStateManager();
+        // Only write when config actually doesn't have one — re-running
+        // startup shouldn't trigger an autoSave on every run if the
+        // value is already there.
+        const current = stateManager.getState().config.skippedIssuesPath;
+        if (!current) {
+          stateManager.updateConfig({ skippedIssuesPath: defaultSkipPath });
+        }
+      } catch (err) {
+        // Persistence is best-effort — startup still surfaces the path
+        // in its return value so the current run benefits, but the next
+        // run won't. Log so the failure is debuggable.
+        warn('startup', `Could not persist auto-detected skippedIssuesPath: ${errorMessage(err)}`);
+      }
     }
   }
 
