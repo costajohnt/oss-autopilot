@@ -104,15 +104,17 @@ If not cloned: clone into the FIRST configured scan path (or `~/Documents/oss/<r
 
 ### 3. Categorize CI Status
 
-| CI state | Meaning | Action |
-|---|---|---|
-| All passing | Green | None |
-| Failing (tests/lint/build) | Code issue | Tier 2: investigate + recommend |
-| Blocked (pending) | Needs maintainer trigger | Suggest asking for rerun |
-| Not running | No checks reported | Investigate workflows / fork-actions |
-| Fork limitation | Vercel auth, internal CI | Informational, not actionable |
+Read `pr.ciCategorization.category` (#1272) — five mutually-exclusive states produced by the typed `categorizeCIStatus()` core function. Map directly to action:
 
-Distinguish fork limitations from real failures: Vercel preview "Authorization required" and internal-CI-only checks are fork limitations.
+| `category` | Meaning | Action |
+|---|---|---|
+| `all_passing` | Every reported check is green | None |
+| `failing` | At least one actionable failure (tests/lint/build) | Tier 2: investigate + recommend |
+| `blocked` | Checks pending; often awaiting maintainer trigger | Suggest asking for rerun |
+| `not_running` | No checks reported | Investigate workflows / fork-actions |
+| `fork_limitation` | Failures exist but ALL are fork-perm / auth-gate | Informational, not actionable |
+
+`pr.ciCategorization.summary` is a short pre-rendered description; render it verbatim if displaying inline. Do NOT re-derive the category from `failingCheckNames` + `classifiedChecks` — the typed function is the canonical source.
 
 ### 4. Check Reviews
 ```bash
@@ -126,9 +128,16 @@ gh pr view NUMBER --repo OWNER/REPO --json reviews,reviewDecision
 
 `gh api repos/OWNER/REPO/issues/NUMBER/comments --jq '.[] | select(.user.login | endswith("[bot]")) | {author: .user.login, body: .body}'` — look for `changeset-bot` (missing changeset), `CLAassistant` (unsigned CLA), `codecov` (informational), `copilot` (automated suggestions).
 
-### 6. Same-Repo Coordination
+### 6. Cross-Repo Fan-Out and Same-Repo Coordination
 
-When checking multiple PRs in the same repo, handle them **sequentially** within a single agent invocation. Never try to check multiple branches in the same repo simultaneously.
+PRs in **different repos** are independent — git working directories don't overlap, no shared lock state. When the caller hands you multiple PRs to check, group them by repo and **dispatch one parallel sub-agent per repo** (`Task` tool with this same agent-name, one call per repo, sent in a single message so they run concurrently). Wait for all to complete, then merge their reports for the user (#1272 Improvement 4).
+
+Within a **single repo**, handle multiple PRs **sequentially** in the same sub-agent — branches share the working tree, so checking two PR branches concurrently corrupts git state.
+
+The split:
+- N PRs across M repos → M parallel sub-agents, each handling its repo's PRs sequentially.
+- Best speedup when PRs are spread across many repos (the common case for active contributors).
+- No speedup when all PRs are in one repo — the sequential rule still applies.
 
 ## Output Format
 

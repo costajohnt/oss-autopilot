@@ -4,7 +4,7 @@
  */
 
 import type { Octokit } from '@octokit/rest';
-import { CIFailureCategory, ClassifiedCheck, CIStatusResult } from './types.js';
+import { CIFailureCategory, ClassifiedCheck, CIStatusResult, CIStatus, CIStatusCategorization } from './types.js';
 import { getHttpStatusCode, errorMessage } from './errors.js';
 import { debug, warn } from './logger.js';
 
@@ -100,6 +100,110 @@ export function classifyFailingChecks(
       conclusion,
     };
   });
+}
+
+/**
+ * Map an aggregate `ciStatus + failingCheckNames + classifiedChecks` triple
+ * into one of five mutually exclusive overall states (#1272). The 5-row
+ * truth table previously lived as prose in `agents/pr-health-checker.md`;
+ * extracting it lets that agent (and any future consumer — dashboard,
+ * MCP, sibling agents that adopt the field) read a single typed value
+ * instead of re-deriving from `ciStatus + failingCheckNames + classifiedChecks`.
+ *
+ * Decision order (each branch is exclusive):
+ *   1. `passing`                      → `all_passing`
+ *   2. `pending`                      → `blocked` (awaiting trigger / completion)
+ *   3. `failing` + actionable         → `failing` (real test/lint/build issue)
+ *   4. `failing` + only infrastructure → `blocked` (cancelled/timed-out runner — needs rerun)
+ *   5. `failing` + only fork/auth     → `fork_limitation` (informational)
+ *   6. `failing` + zero classified    → `failing` w/ "details unavailable" summary
+ *   7. `unknown`                      → `not_running`
+ *
+ * Why infrastructure routes to `blocked` and not `fork_limitation`:
+ * a cancelled or timed-out runner is genuinely worth re-running; calling
+ * it "informational" would tell the agent to ignore something the user
+ * can fix with a rerun-request.
+ *
+ * The `summary` is short (≤180 char even for 10+ failing checks) and
+ * suitable for inline display. `action` is a hint, not enforcement —
+ * agents may still escalate based on other PR context.
+ */
+export function categorizeCIStatus(input: {
+  ciStatus: CIStatus;
+  failingCheckNames: string[];
+  classifiedChecks: ClassifiedCheck[];
+}): CIStatusCategorization {
+  const { ciStatus, failingCheckNames, classifiedChecks } = input;
+
+  if (ciStatus === 'passing') {
+    return { category: 'all_passing', summary: 'All checks passing', action: 'none' };
+  }
+
+  if (ciStatus === 'pending') {
+    // `mergeStatuses` currently sets `failingCheckNames: []` on pending,
+    // so the count branch is defensive — kept so a future caller that
+    // forwards pending names doesn't silently drop them.
+    const count = failingCheckNames.length;
+    const summary = count > 0 ? `${count} pending check(s); CI run incomplete` : 'CI checks pending';
+    return { category: 'blocked', summary, action: 'request_rerun' };
+  }
+
+  if (ciStatus === 'failing') {
+    const actionable = classifiedChecks.filter((c) => c.category === 'actionable');
+    if (actionable.length > 0) {
+      const preview = actionable
+        .slice(0, 3)
+        .map((c) => c.name)
+        .join(', ');
+      const more = actionable.length > 3 ? ` (+${actionable.length - 3} more)` : '';
+      return {
+        category: 'failing',
+        summary: `${actionable.length} actionable failure(s): ${preview}${more}`,
+        action: 'investigate',
+      };
+    }
+
+    // No actionable failures. Distinguish three sub-cases:
+    // (a) failing with zero classified checks: status came from the
+    //     legacy combined-status endpoint without per-check detail. Be
+    //     honest about the missing detail rather than asserting "fork
+    //     limitations" the caller can't verify.
+    if (classifiedChecks.length === 0) {
+      return {
+        category: 'failing',
+        summary: 'CI reported failure but no check details available',
+        action: 'investigate',
+      };
+    }
+
+    // (b) at least one infrastructure failure (cancelled / timed-out /
+    //     dependency-install). Re-running often fixes the issue, so
+    //     surface as `blocked` with `request_rerun` rather than
+    //     mislabeling as "fork limits / auth gates."
+    const hasInfrastructure = classifiedChecks.some((c) => c.category === 'infrastructure');
+    if (hasInfrastructure) {
+      const total = classifiedChecks.length;
+      return {
+        category: 'blocked',
+        summary: `${total} non-actionable failure(s) including infrastructure issues; rerun may resolve`,
+        action: 'request_rerun',
+      };
+    }
+
+    // (c) only fork-limitation / auth-gate failures — purely informational.
+    const total = classifiedChecks.length;
+    return {
+      category: 'fork_limitation',
+      summary: `${total} non-actionable failure(s) (fork limits / auth gates)`,
+      action: 'informational',
+    };
+  }
+
+  // ciStatus === 'unknown' — no checks reported, or status couldn't be
+  // determined. Treat both as not_running so callers don't have to
+  // distinguish the rare indeterminate case from the common "no CI
+  // configured" case.
+  return { category: 'not_running', summary: 'No CI checks reported', action: 'check_workflows' };
 }
 
 /**
