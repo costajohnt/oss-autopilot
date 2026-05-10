@@ -137,9 +137,16 @@ gh pr view NUMBER --repo OWNER/REPO --json reviews,reviewDecision
 
 `gh api repos/OWNER/REPO/issues/NUMBER/comments --jq '.[] | select(.user.login | endswith("[bot]")) | {author: .user.login, body: .body}'` — look for `changeset-bot` (missing changeset), `CLAassistant` (unsigned CLA), `codecov` (informational), `copilot` (automated suggestions).
 
-### 6. Same-Repo Coordination
+### 6. Cross-Repo Fan-Out and Same-Repo Coordination
 
-When checking multiple PRs in the same repo, handle them **sequentially** within a single agent invocation. Never try to check multiple branches in the same repo simultaneously.
+PRs in **different repos** are independent — git working directories don't overlap, no shared lock state. When the caller hands you multiple PRs to check, group them by repo and **dispatch one parallel sub-agent per repo** (`Task` tool with this same agent-name, one call per repo, sent in a single message so they run concurrently). Wait for all to complete, then merge their reports for the user (#1272 Improvement 4).
+
+Within a **single repo**, handle multiple PRs **sequentially** in the same sub-agent — branches share the working tree, so checking two PR branches concurrently corrupts git state.
+
+The split:
+- N PRs across M repos → M parallel sub-agents, each handling its repo's PRs sequentially.
+- Best speedup when PRs are spread across many repos (the common case for active contributors).
+- No speedup when all PRs are in one repo — the sequential rule still applies.
 
 ## Output Format
 
