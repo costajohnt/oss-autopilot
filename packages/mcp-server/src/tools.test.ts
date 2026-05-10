@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { getStatePath } from '@oss-autopilot/core';
 import { createServer } from './server.js';
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -52,7 +53,23 @@ describe('MCP tool registrations', () => {
     annotations?: Record<string, unknown>;
   }>;
 
+  // Snapshot state.json bytes before any test runs so the regression guard
+  // below can prove no test in this file mutated the user's real state file
+  // (#1342). Stored as { exists, bytes } so we cover both "fresh install
+  // (no state file yet)" and "existing user with config".
+  let stateSnapshot: { exists: boolean; bytes: Buffer | null } = { exists: false, bytes: null };
+
   beforeAll(async () => {
+    try {
+      const statePath = getStatePath();
+      stateSnapshot = fs.existsSync(statePath)
+        ? { exists: true, bytes: fs.readFileSync(statePath) }
+        : { exists: false, bytes: null };
+    } catch {
+      // getStatePath() can throw before setup; treat as absent.
+      stateSnapshot = { exists: false, bytes: null };
+    }
+
     const server = createServer();
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
@@ -342,17 +359,35 @@ describe('MCP tool registrations', () => {
       expect(result.isError).toBe(true);
     });
 
-    it('accepts a known config key (via registry)', async () => {
-      // We don't actually care about the result — just that the schema
-      // doesn't reject. The mocked runConfig is fine with anything.
-      // Use a real-looking login (not a placeholder like "example-user" or
-      // a mascot login like "octocat") so this test stays orthogonal to the
-      // write-side placeholder rejection in `validateGitHubUsername`.
-      const result = await client.callTool({
-        name: 'config',
-        arguments: { key: 'username', value: 'alice-dev' },
-      });
-      expect(result.isError).not.toBe(true);
+    it('accepts a known config key (via registry)', () => {
+      // Inspect the registered schema rather than invoking the tool. The
+      // earlier version of this test called `client.callTool` with
+      // `key: 'username', value: 'alice-dev'` and a comment claiming the
+      // runConfig was "mocked" — but it never was, so the call reached the
+      // real `runConfig` and wrote `githubUsername: alice-dev` to the user's
+      // actual `~/.oss-autopilot/state.json` every time the suite ran (#1342).
+      // The intent — "the registry-derived enum admits a known key" — is
+      // fully served by reading the published schema.
+      const tool = tools.find((t) => t.name === 'config')!;
+      const schema = tool.inputSchema as { properties?: { key?: { enum?: string[] } } };
+      const allowedKeys = schema.properties?.key?.enum;
+      expect(allowedKeys).toBeDefined();
+      expect(allowedKeys).toContain('username');
+    });
+  });
+
+  // Declared last so it runs after every other test in this file. Catches
+  // future regressions where a test in this file invokes a tool that ends up
+  // mutating the user's real state.json (#1342).
+  describe('regression guard', () => {
+    it("does not mutate the user's ~/.oss-autopilot/state.json", () => {
+      const statePath = getStatePath();
+      const stillExists = fs.existsSync(statePath);
+      expect(stillExists).toBe(stateSnapshot.exists);
+      if (stateSnapshot.exists && stillExists) {
+        const after = fs.readFileSync(statePath);
+        expect(after.equals(stateSnapshot.bytes!)).toBe(true);
+      }
     });
   });
 });
