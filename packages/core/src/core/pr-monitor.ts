@@ -33,7 +33,7 @@ import { paginateAll } from './pagination.js';
 import { debug, warn, timed } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 
-import { classifyFailingChecks, getCIStatus } from './ci-analysis.js';
+import { categorizeCIStatus, classifyFailingChecks, getCIStatus } from './ci-analysis.js';
 import {
   type ReviewComment,
   determineReviewDecision,
@@ -54,7 +54,7 @@ import { isPlaceholderUsername } from './placeholder-usernames.js';
 
 // Re-export so existing consumers can still import from pr-monitor
 export { computeDisplayLabel } from './display-utils.js';
-export { classifyCICheck, classifyFailingChecks, getCIStatus } from './ci-analysis.js';
+export { categorizeCIStatus, classifyCICheck, classifyFailingChecks, getCIStatus } from './ci-analysis.js';
 export { isConditionalChecklistItem } from './checklist-analysis.js';
 export { determineStatus } from './status-determination.js';
 
@@ -453,6 +453,11 @@ export class PRMonitor {
     // Classify failing checks (delegated to ci-analysis module)
     const classifiedChecks = classifyFailingChecks(failingCheckNames, failingCheckConclusions);
 
+    // Aggregate 5-state CI categorization (#1272). Computed once here so
+    // agents read pr.ciCategorization rather than re-deriving the truth
+    // table in three separate prose forms.
+    const ciCategorization = categorizeCIStatus({ ciStatus, failingCheckNames, classifiedChecks });
+
     // Determine status
     const hasActionableCIFailure = ciStatus === 'failing' && classifiedChecks.some((c) => c.category === 'actionable');
     const { status, actionReason, waitReason, stalenessTier, actionReasons } = determineStatus({
@@ -489,6 +494,7 @@ export class PRMonitor {
       ciStatus,
       failingCheckNames,
       classifiedChecks,
+      ciCategorization,
       hasMergeConflict: mergeConflict,
       reviewDecision,
       hasUnrespondedComment,
