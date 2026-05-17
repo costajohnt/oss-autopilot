@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.3.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.3.0...mcp-v5.3.1) (2026-05-10)
+
+
+### Bug Fixes
+
+* **test:** stop mcp-server tools test from writing to real state.json ([#1343](https://github.com/costajohnt/oss-autopilot/issues/1343)) ([f0d284c](https://github.com/costajohnt/oss-autopilot/commit/f0d284c8e6212328d98a06621321af4a174e428d))
+
 ## [5.3.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.2.0...mcp-v5.3.0) (2026-05-10)
 
 

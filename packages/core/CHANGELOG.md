@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.7.0...core-v3.8.0) (2026-05-10)
+
+
+### Features
+
+* **workflow:** add upstream-drift check before push ([#1346](https://github.com/costajohnt/oss-autopilot/issues/1346)) ([1a3026b](https://github.com/costajohnt/oss-autopilot/commit/1a3026b2cc4a1ef176e2d30bae3686a9aca03555))
+
 ## [3.7.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.6.0...core-v3.7.0) (2026-05-10)
 
 
