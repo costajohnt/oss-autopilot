@@ -32,7 +32,13 @@ vi.mock('../core/index.js', async () => {
   const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
   return {
     ...actual,
-    getStateManager: () => ({ getRepoScore: mocks.getRepoScore }),
+    getStateManager: () => ({
+      getRepoScore: mocks.getRepoScore,
+      // computeStrategy reads `mergedPRs`/`closedPRs`/`repoScores`/`lastDigest`.
+      // A minimal-merged-PR state ensures computeStrategy returns null and the
+      // search behaves exactly as before personalization (#1244).
+      getState: () => ({ mergedPRs: [], closedPRs: [], repoScores: {}, lastDigest: null }),
+    }),
   };
 });
 

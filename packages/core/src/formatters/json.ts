@@ -560,6 +560,14 @@ const SearchCandidateSchema = z.object({
     })
     .optional(),
   linkedPR: CandidateLinkedPRSchema.optional(),
+  /**
+   * Personalization sort-tier signal threaded up from oss-scout (#1244).
+   * Present only when local strategy data biased the search and this
+   * candidate matched. `boostReasons` is the human-readable explanation
+   * (e.g. `"repo affinity: vercel/next.js"`, `"language match: TypeScript"`).
+   */
+  boostScore: z.number().optional(),
+  boostReasons: z.array(z.string()).optional(),
 });
 
 export const SearchOutputSchema = z.object({
