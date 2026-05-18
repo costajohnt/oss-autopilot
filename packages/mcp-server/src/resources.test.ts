@@ -14,6 +14,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   }),
   // Stubs for tools.ts imports (not used by resources but loaded via server.ts)
   runDaily: vi.fn(),
+  runStrategy: vi.fn(),
   runSearch: vi.fn(),
   runVet: vi.fn(),
   runVetList: vi.fn(),

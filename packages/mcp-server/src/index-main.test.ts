@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } 
 vi.mock('@oss-autopilot/core/commands', () => ({
   runDaily: vi.fn(),
   runStatus: vi.fn(),
+  runStrategy: vi.fn(),
   runSearch: vi.fn(),
   runVet: vi.fn(),
   runVetList: vi.fn(),

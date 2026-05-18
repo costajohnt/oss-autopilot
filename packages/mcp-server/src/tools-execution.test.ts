@@ -24,6 +24,7 @@ const {
 vi.mock('@oss-autopilot/core/commands', () => ({
   runDaily: mockRunDaily,
   runStatus: vi.fn(),
+  runStrategy: vi.fn(),
   runSearch: mockRunSearch,
   runVet: vi.fn(),
   runVetList: vi.fn(),

@@ -11,6 +11,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import {
   runDaily,
   runStatus,
+  runStrategy,
   runSearch,
   runFeatures,
   runVet,
@@ -292,6 +293,23 @@ export function registerTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     wrapTool(runComplianceScore),
+  );
+
+  // 5d. strategy — On-demand contribution strategy snapshot (#1243 step 4).
+  // Used by `contribution-strategist` to consume the typed `computeStrategy`
+  // output instead of doing its own categorization in the agent prompt.
+  server.registerTool(
+    'strategy',
+    {
+      description:
+        'Return the on-demand contribution strategy snapshot via the typed `computeStrategy` function. ' +
+        'Always runs against local state regardless of the auto-display cadence gate. ' +
+        'Returns `strategy: null` with a human-readable `message` when the merged-PR floor is not met. ' +
+        'Read-only; no API calls, no state mutation.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    wrapTool(runStrategy),
   );
 
   // 5c. repo-vet — Run the typed repo-vet rubric against an `owner/repo`

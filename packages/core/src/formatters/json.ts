@@ -419,7 +419,7 @@ const CompactRepoGroupSchema = z.object({
 // Mirrors {@link StrategyResult} in core/strategy.ts. Kept passthrough on the
 // inner objects so additive shape changes there don't break Zod validation
 // before the schema catches up — drift on required keys still fails.
-const StrategyResultSchema = z
+export const StrategyResultSchema = z
   .object({
     profile: z
       .object({
@@ -475,6 +475,20 @@ const StrategyResultSchema = z
       .passthrough(),
   })
   .passthrough();
+
+/**
+ * On-demand strategy snapshot output (#1243 step 4). Wraps the same
+ * `StrategyResult` shape consumed by the daily auto-display, but is
+ * always available — the cadence gate only governs the auto-display,
+ * not direct CLI/MCP calls. `strategy` is null when the minimum-data
+ * gate fails (fewer than `STRATEGY_MIN_PRS` merged PRs); `message`
+ * carries the human-readable explanation in that case.
+ */
+export const StrategyOutputSchema = z.object({
+  strategy: StrategyResultSchema.nullable(),
+  message: z.string().optional(),
+});
+export type StrategyCommandOutput = z.infer<typeof StrategyOutputSchema>;
 
 export const DailyOutputSchema = z.object({
   digest: DailyDigestCompactSchema,
