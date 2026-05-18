@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.9.0...core-v3.10.0) (2026-05-18)
+
+
+### Features
+
+* **search:** bias scout searches with computeStrategy() recommendations ([#1350](https://github.com/costajohnt/oss-autopilot/issues/1350)) ([8309fa1](https://github.com/costajohnt/oss-autopilot/commit/8309fa10e90de2da59e28f0ebc8f21488340bb77))
+
 ## [3.9.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.8.0...core-v3.9.0) (2026-05-18)
 
 
