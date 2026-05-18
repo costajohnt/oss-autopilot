@@ -106,6 +106,7 @@ const localOnlySet = new Set(LOCAL_ONLY_COMMANDS);
 describe('LOCAL_ONLY_COMMANDS (derived from registry)', () => {
   const expectedLocalOnly = [
     'status',
+    'strategy',
     'config',
     'setup',
     'checkSetup',
@@ -386,6 +387,7 @@ describe('Command registration', () => {
     const expectedCommands = [
       'daily',
       'status',
+      'strategy',
       'search',
       'features',
       'vet',

@@ -196,6 +196,67 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── Strategy ───────────────────────────────────────────────────────────
+  {
+    name: 'strategy',
+    localOnly: true,
+    register(program) {
+      program
+        .command('strategy')
+        .description(
+          'On-demand contribution-strategy snapshot via the typed `computeStrategy` function (#1243). ' +
+            'Always runs against local state regardless of the auto-display cadence gate; returns ' +
+            'null + message when fewer than the minimum tracked PRs are available.',
+        )
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          const { StrategyOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
+            options,
+            async () => (await import('./commands/strategy.js')).runStrategy(),
+            (data) => {
+              if (!data.strategy) {
+                console.log(`\n${data.message ?? 'Strategy unavailable.'}\n`);
+                return;
+              }
+              const { profile, capacity, patterns, recommendations } = data.strategy;
+              const mergeRatePct = Math.round(profile.mergeRate * 100);
+              console.log(`\nProfile: ${profile.style}`);
+              console.log(
+                `${profile.totalPRs} PRs tracked, ${profile.mergedCount} merged (${mergeRatePct}% merge rate).`,
+              );
+              if (profile.primaryLanguages.length > 0) {
+                console.log(`Top languages: ${profile.primaryLanguages.join(', ')}`);
+              }
+              if (profile.favoriteRepos.length > 0) {
+                console.log(`Top repos: ${profile.favoriteRepos.join(', ')}`);
+              }
+              console.log(
+                `\nCapacity: ${capacity.openPRCount} open, ${capacity.dormantPRCount} dormant across ${capacity.dormantRepoCount} repo(s).`,
+              );
+              if (capacity.overExtended) {
+                console.log(`Overextended — suggested action: ${capacity.suggestedAction ?? 'review dormant PRs'}.`);
+              }
+              console.log(`\nTrajectory: ${patterns.trajectoryDirection}`);
+              const dist = patterns.prTypeDistribution;
+              const parts: Array<[string, number]> = [];
+              for (const [k, v] of Object.entries(dist)) {
+                if (typeof v === 'number' && v > 0) parts.push([k, v]);
+              }
+              if (parts.length > 0) {
+                console.log(`PR types (recent): ${parts.map(([k, v]) => `${k}=${v}`).join(', ')}`);
+              }
+              if (recommendations.avoidPatterns.length > 0) {
+                console.log(`\nWatch for: ${recommendations.avoidPatterns.join('; ')}`);
+              }
+              console.log('\nRun with --json for structured output');
+            },
+            StrategyOutputSchema,
+          );
+        });
+    },
+  },
+
   // ── State ──────────────────────────────────────────────────────────────
   {
     name: 'state',

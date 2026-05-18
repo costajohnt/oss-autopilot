@@ -45,6 +45,7 @@ const REGISTERED_MCP_TOOLS = new Set([
   'track',
   'compliance-score',
   'repo-vet',
+  'strategy',
   'comments',
   'post',
   'claim',

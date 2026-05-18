@@ -24,6 +24,8 @@ export { executeDailyCheck } from './daily.js';
 export { runStartup } from './startup.js';
 /** Return contribution statistics (merge rate, PR counts, repo breakdown) from local state. */
 export { runStatus } from './status.js';
+/** On-demand strategy snapshot via the typed `computeStrategy` core function (#1243 step 4). */
+export { runStrategy } from './strategy.js';
 /** Search GitHub for contributable issues using multi-strategy discovery. */
 export { runSearch, MAX_SEARCH_RESULTS } from './search.js';
 /** Surface feature-scoped opportunities in repos with 3+ merged PRs (scout 0.9.0). */

@@ -14,7 +14,7 @@ All commands support `--json` flag for structured output.
      `bash scripts/build-cli-if-stale.sh "$PWD" && pnpm run generate:reference`.
      CI fails if this line is out of sync with the registry. -->
 <!-- BEGIN AUTO:local-only-commands -->
-Local-only commands (no GitHub token needed): `checkSetup`, `clear-override`, `config`, `detect-formatters`, `dismiss`, `doctor`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `override`, `parse-issue-list`, `serve`, `setup`, `shelve`, `skip-add`, `startup`, `stats`, `status`, `undismiss`, `unshelve`.
+Local-only commands (no GitHub token needed): `checkSetup`, `clear-override`, `config`, `detect-formatters`, `dismiss`, `doctor`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `override`, `parse-issue-list`, `serve`, `setup`, `shelve`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`, `unshelve`.
 <!-- END AUTO:local-only-commands -->
 
 ### Core Workflow
@@ -28,6 +28,11 @@ Local-only commands (no GitHub token needed): `checkSetup`, `clear-override`, `c
 
 # Status overview (local-only)
 <prefix> status --json
+
+# On-demand contribution strategy snapshot (#1243). Always runs against local
+# state; returns null + message when fewer than the minimum tracked PRs are
+# available.
+<prefix> strategy --json
 ```
 
 ### Issue Discovery
