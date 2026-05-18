@@ -7,7 +7,8 @@ import { buildCandidateLinkedPR, createAutopilotScout } from './scout-bridge.js'
 import { getStateManager } from '../core/index.js';
 import { type SearchOutput } from '../formatters/json.js';
 import { gradeFromCandidate } from '../core/issue-grading.js';
-import { warn } from '../core/logger.js';
+import { computeStrategy } from '../core/strategy.js';
+import { debug, warn } from '../core/logger.js';
 
 export { type SearchOutput } from '../formatters/json.js';
 
@@ -58,9 +59,28 @@ function sanitizeViabilityScore(raw: unknown): number {
 
 export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
   const scout = await createAutopilotScout();
-  const result = await scout.search({ maxResults: options.maxResults });
-
   const stateManager = getStateManager();
+
+  // Derive personalization from local history (#1244). `computeStrategy`
+  // returns null below the merged-PR floor — in that case we pass nothing
+  // and scout's sort behaves exactly as before. Once strategy data is
+  // available, scout boosts language/repo matches into a separate sort
+  // tier (still no filtering).
+  const strategy = computeStrategy(stateManager.getState());
+  const preferLanguages = strategy?.recommendations.languages ?? undefined;
+  const preferRepos = strategy?.recommendations.repos ?? undefined;
+  if (preferLanguages?.length || preferRepos?.length) {
+    debug(
+      MODULE,
+      `Applying strategy bias to search: preferLanguages=${JSON.stringify(preferLanguages ?? [])}, preferRepos=${JSON.stringify(preferRepos ?? [])}`,
+    );
+  }
+
+  const result = await scout.search({
+    maxResults: options.maxResults,
+    preferLanguages,
+    preferRepos,
+  });
 
   const searchOutput: SearchOutput = {
     candidates: result.candidates.map((c) => {
@@ -111,6 +131,8 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
             }
           : undefined,
         ...(linkedPR ? { linkedPR } : {}),
+        ...(typeof c.boostScore === 'number' ? { boostScore: c.boostScore } : {}),
+        ...(c.boostReasons && c.boostReasons.length > 0 ? { boostReasons: c.boostReasons } : {}),
       };
     }),
     excludedRepos: result.excludedRepos,
