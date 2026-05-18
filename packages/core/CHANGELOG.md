@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.8.0...core-v3.9.0) (2026-05-18)
+
+
+### Features
+
+* **strategy:** expose on-demand snapshot via CLI/MCP, rewire agent ([#1243](https://github.com/costajohnt/oss-autopilot/issues/1243) step 4) ([#1348](https://github.com/costajohnt/oss-autopilot/issues/1348)) ([912c0b4](https://github.com/costajohnt/oss-autopilot/commit/912c0b4a7eae7324a0270003d4f7634eaaf5d9b2))
+
 ## [3.8.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.7.0...core-v3.8.0) (2026-05-10)
 
 

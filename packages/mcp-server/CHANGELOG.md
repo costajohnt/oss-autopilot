@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.4.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.3.1...mcp-v5.4.0) (2026-05-18)
+
+
+### Features
+
+* **strategy:** expose on-demand snapshot via CLI/MCP, rewire agent ([#1243](https://github.com/costajohnt/oss-autopilot/issues/1243) step 4) ([#1348](https://github.com/costajohnt/oss-autopilot/issues/1348)) ([912c0b4](https://github.com/costajohnt/oss-autopilot/commit/912c0b4a7eae7324a0270003d4f7634eaaf5d9b2))
+
 ## [5.3.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.3.0...mcp-v5.3.1) (2026-05-10)
 
 
