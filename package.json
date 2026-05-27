@@ -74,8 +74,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@vitest/eslint-plugin": "^1.6.17",
-    "eslint": "^10.3.0",
+    "@vitest/eslint-plugin": "^1.6.18",
+    "eslint": "^10.4.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import-x": "^4.16.2",
     "eslint-plugin-n": "^18.0.1",
@@ -85,6 +85,6 @@
     "eslint-plugin-unicorn": "^64.0.0",
     "prettier": "^3.8.3",
     "simple-git-hooks": "^2.13.1",
-    "typescript-eslint": "^8.59.3"
+    "typescript-eslint": "^8.60.0"
   }
 }
