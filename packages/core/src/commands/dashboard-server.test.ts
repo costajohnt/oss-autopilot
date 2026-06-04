@@ -79,30 +79,38 @@ vi.mock('../core/index.js', () => ({
   getDataDir: vi.fn(() => pidTestDir),
   getCLIVersion: vi.fn(() => '0.44.6'),
   applyStatusOverrides: vi.fn((prs: unknown[]) => prs),
+  // Used by the real reconcileShelvePartition (imported via importActual below).
+  toShelvedPRRef: vi.fn((pr: unknown) => pr),
 }));
 
-// Mock fetchDashboardData so we never call GitHub
-vi.mock('./dashboard-data.js', () => ({
-  fetchDashboardData: vi.fn(),
-  computePRsByRepo: vi.fn(() => ({
-    'owner/repo': { active: 2, merged: 5, closed: 1 },
-  })),
-  computeTopRepos: vi.fn(() => [['owner/repo', { active: 2, merged: 5, closed: 1 }]]),
-  getMonthlyData: vi.fn(() => ({
-    monthlyMerged: { '2026-01': 3 },
-    monthlyClosed: {},
-    monthlyOpened: {},
-  })),
-  buildDashboardStats: vi.fn(() => ({
-    activePRs: 2,
-    shelvedPRs: 0,
-    mergedPRs: 5,
-    closedPRs: 1,
-    mergeRate: '83.3%',
-  })),
-  storedToMergedPRs: vi.fn(() => []),
-  storedToClosedPRs: vi.fn(() => []),
-}));
+// Mock fetchDashboardData so we never call GitHub. reconcileShelvePartition is
+// the real implementation so the shelve/unshelve reconciliation is exercised;
+// everything else is stubbed to keep buildDashboardJson hermetic.
+vi.mock('./dashboard-data.js', async (importActual) => {
+  const actual = await importActual<typeof import('./dashboard-data.js')>();
+  return {
+    fetchDashboardData: vi.fn(),
+    computePRsByRepo: vi.fn(() => ({
+      'owner/repo': { active: 2, merged: 5, closed: 1 },
+    })),
+    computeTopRepos: vi.fn(() => [['owner/repo', { active: 2, merged: 5, closed: 1 }]]),
+    getMonthlyData: vi.fn(() => ({
+      monthlyMerged: { '2026-01': 3 },
+      monthlyClosed: {},
+      monthlyOpened: {},
+    })),
+    buildDashboardStats: vi.fn(() => ({
+      activePRs: 2,
+      shelvedPRs: 0,
+      mergedPRs: 5,
+      closedPRs: 1,
+      mergeRate: '83.3%',
+    })),
+    storedToMergedPRs: vi.fn(() => []),
+    storedToClosedPRs: vi.fn(() => []),
+    reconcileShelvePartition: actual.reconcileShelvePartition,
+  };
+});
 
 // Mock move command so dashboard-server's dynamic import resolves without side effects
 const mockRunMove = vi.fn().mockResolvedValue({ url: '', target: 'shelved', description: 'done' });
@@ -499,6 +507,97 @@ describe('dashboard-server', () => {
       const data = buildDashboardJson(digest, state, []);
 
       expect(data.shelvedPRUrls).toEqual(['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/2']);
+    });
+
+    it('reflects a live shelve: an open PR added to config.shelvedPRUrls appears in shelvedPRUrls', () => {
+      // Repro of the dashboard "shelve does nothing" bug. POST /api/action →
+      // runMove updates state.config.shelvedPRUrls but never the cached digest,
+      // and buildDashboardJson derived shelvedPRUrls purely from the stale
+      // digest.shelvedPRs — so a freshly-shelved PR never reached the SPA and
+      // stayed in the active list.
+      const pr = {
+        url: 'https://github.com/o/r/pull/7',
+        number: 7,
+        repo: 'o/r',
+        title: 'Active PR shelved via SPA',
+        status: 'waiting_on_maintainer',
+        stalenessTier: 'active',
+        daysSinceActivity: 2,
+      };
+      const digest = makeDigest({ openPRs: [pr], shelvedPRs: [] });
+      const state = makeState({
+        config: { shelvedPRUrls: [pr.url] },
+        lastDigest: digest,
+      });
+
+      const data = buildDashboardJson(digest, state, []);
+
+      expect(data.shelvedPRUrls).toContain(pr.url);
+    });
+
+    it('reflects a live unshelve: a baked shelved open PR dropped from config disappears from shelvedPRUrls', () => {
+      // The mirror bug: a PR shelved earlier (baked into digest.shelvedPRs) that
+      // the user unshelves via the SPA. runMove clears it from
+      // state.config.shelvedPRUrls, but the stale baked entry kept it shelved.
+      const pr = {
+        url: 'https://github.com/o/r/pull/8',
+        number: 8,
+        repo: 'o/r',
+        title: 'PR unshelved via SPA',
+        status: 'waiting_on_maintainer',
+        stalenessTier: 'active',
+        daysSinceActivity: 2,
+      };
+      const digest = makeDigest({
+        openPRs: [pr],
+        shelvedPRs: [
+          {
+            number: 8,
+            url: pr.url,
+            title: pr.title,
+            repo: 'o/r',
+            daysSinceActivity: 2,
+            status: 'waiting_on_maintainer',
+          },
+        ],
+      });
+      const state = makeState({ config: { shelvedPRUrls: [] }, lastDigest: digest });
+
+      const data = buildDashboardJson(digest, state, []);
+
+      expect(data.shelvedPRUrls).not.toContain(pr.url);
+    });
+
+    it('keeps a dormant-auto-shelved open PR shelved even when not in config', () => {
+      // Reconciliation must not undo the dormant-auto-shelve rule: a dormant,
+      // non-addressing PR stays shelved for display regardless of config.
+      const pr = {
+        url: 'https://github.com/o/r/pull/9',
+        number: 9,
+        repo: 'o/r',
+        title: 'Dormant auto-shelf',
+        status: 'waiting_on_maintainer',
+        stalenessTier: 'dormant',
+        daysSinceActivity: 60,
+      };
+      const digest = makeDigest({
+        openPRs: [pr],
+        shelvedPRs: [
+          {
+            number: 9,
+            url: pr.url,
+            title: pr.title,
+            repo: 'o/r',
+            daysSinceActivity: 60,
+            status: 'waiting_on_maintainer',
+          },
+        ],
+      });
+      const state = makeState({ config: { shelvedPRUrls: [] }, lastDigest: digest });
+
+      const data = buildDashboardJson(digest, state, []);
+
+      expect(data.shelvedPRUrls).toContain(pr.url);
     });
 
     it('should include repos with metadata and exclude repos without in repoMetadata (#677)', async () => {
