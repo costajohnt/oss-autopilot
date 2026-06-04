@@ -120,6 +120,62 @@ export function buildDashboardStats(
 }
 
 /**
+ * A PR is shelved for display when the user explicitly shelved it, or the
+ * dormant-auto-shelve rule applies (dormant + not needing attention). Mirrors
+ * the partition built in fetchDashboardData (see the `freshShelved` filter).
+ */
+function isShelvedForDisplay(
+  pr: { url: string; stalenessTier?: string; status?: string },
+  explicitlyShelved: Set<string>,
+): boolean {
+  return explicitlyShelved.has(pr.url) || (pr.stalenessTier === 'dormant' && pr.status !== 'needs_addressing');
+}
+
+/**
+ * Re-derive `digest.shelvedPRs` and `summary.totalActivePRs` from the CURRENT
+ * `state.config.shelvedPRUrls` so a shelve/unshelve issued from the dashboard
+ * SPA is reflected immediately.
+ *
+ * Why this exists: POST /api/action → runMove only mutates
+ * `state.config.shelvedPRUrls`; it never touches the cached digest.
+ * buildDashboardJson derives both `shelvedPRUrls` and `stats.shelvedPRs` from
+ * `digest.shelvedPRs`, so without this reconciliation a dashboard shelve/unshelve
+ * appears to do nothing until the next full /api/refresh rebuilds the digest.
+ *
+ * Baked shelved entries that are NOT among the current open PRs (the daily-check
+ * dormant partition, #981) are preserved as-is — the SPA cannot act on those —
+ * while explicit shelve/unshelve of open PRs and the dormant-auto-shelve rule
+ * are honored.
+ */
+export function reconcileShelvePartition(digest: DailyDigest, state: Readonly<AgentState>): void {
+  const openPRs = (digest.openPRs || []) as Array<{ url: string; stalenessTier?: string; status?: string }>;
+  const openByUrl = new Map(openPRs.map((pr) => [pr.url, pr]));
+  const explicitlyShelved = new Set(state.config.shelvedPRUrls || []);
+
+  // Keep baked entries that are either off the open-PR list (daily dormant
+  // partition we can't recompute here) or still shelved under current state.
+  const reconciled = (digest.shelvedPRs || []).filter((ref) => {
+    const pr = openByUrl.get(ref.url);
+    return !pr || isShelvedForDisplay(pr, explicitlyShelved);
+  });
+  // Add open PRs that became shelved but aren't represented in the baked list yet.
+  const present = new Set(reconciled.map((ref) => ref.url));
+  for (const pr of openPRs) {
+    if (!present.has(pr.url) && isShelvedForDisplay(pr, explicitlyShelved)) {
+      reconciled.push(toShelvedPRRef(pr as Parameters<typeof toShelvedPRRef>[0]));
+    }
+  }
+
+  digest.shelvedPRs = reconciled;
+  // Only re-derive the active count when we actually have the open-PR list;
+  // some digests carry an authoritative summary with an empty openPRs fixture.
+  if (openPRs.length > 0) {
+    const shelvedOpen = reconciled.filter((ref) => openByUrl.has(ref.url)).length;
+    digest.summary.totalActivePRs = openPRs.length - shelvedOpen;
+  }
+}
+
+/**
  * Merge fresh API counts into existing stored counts.
  * Months present in the fresh data are updated; months only in the existing data are preserved.
  *

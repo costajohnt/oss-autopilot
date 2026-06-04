@@ -21,6 +21,7 @@ import {
   computeTopRepos,
   getMonthlyData,
   buildDashboardStats,
+  reconcileShelvePartition,
   storedToMergedPRs,
   storedToClosedPRs,
   type DashboardJsonData,
@@ -127,6 +128,11 @@ export function buildDashboardJson(
   allClosedPRs?: ClosedPR[],
   partialFailures?: string[],
 ): DashboardJsonData {
+  // Re-derive the shelve partition from the CURRENT state before reading it.
+  // The POST /api/action path rebuilds with a cached digest whose shelvedPRs
+  // predates the shelve/unshelve, so without this the SPA action appears to do
+  // nothing until the next full /api/refresh.
+  reconcileShelvePartition(digest, state);
   const prsByRepo = computePRsByRepo(digest, state);
   const topRepos = computeTopRepos(prsByRepo);
   const { monthlyMerged, monthlyOpened, monthlyClosed } = getMonthlyData(state);
