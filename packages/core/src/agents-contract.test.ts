@@ -34,6 +34,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Command, type Option } from 'commander';
 import { commands } from './cli-registry.js';
+import { parseRegisteredTools } from './test-lib/registered-mcp-tools.js';
 
 const REPO_ROOT = path.resolve(__dirname, '../../..');
 
@@ -84,8 +85,8 @@ const REGISTERED_MCP_TOOLS = new Set([
   'guidelines-fetch-corpus',
 ]);
 
-const MCP_TOOLS_SOURCE = path.join(REPO_ROOT, 'packages/mcp-server/src/tools.ts');
-const REGISTER_TOOL_PATTERN = /registerTool\(\s*'([a-z][a-z0-9-]*)'/g;
+// Shared with docs-contract.test.ts via test-lib so the two parsers cannot
+// drift apart (#1374 mirror-drift class).
 
 // ── Markdown corpus ──────────────────────────────────────────────────────
 
@@ -449,8 +450,7 @@ describe('REGISTERED_MCP_TOOLS mirror ↔ tools.ts source parity (#1374)', () =>
     // false-failed the parity tests below. Parse the registrations out of
     // the source file (a file read, not a cross-package import) so drift
     // in either direction fails CI.
-    const source = fs.readFileSync(MCP_TOOLS_SOURCE, 'utf8');
-    const registered = [...source.matchAll(REGISTER_TOOL_PATTERN)].map((m) => m[1]).toSorted();
+    const registered = parseRegisteredTools().toSorted();
     expect(registered.length).toBeGreaterThan(0);
     expect([...REGISTERED_MCP_TOOLS].toSorted()).toEqual(registered);
   });

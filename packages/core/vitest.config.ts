@@ -7,7 +7,14 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'text-summary'],
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/**/*.e2e.test.ts', 'src/cli.ts', 'src/cli-registry.ts', 'src/**/index.ts'],
+      exclude: [
+        'src/**/*.test.ts',
+        'src/**/*.e2e.test.ts',
+        'src/cli.ts',
+        'src/cli-registry.ts',
+        'src/**/index.ts',
+        'src/test-lib/**',
+      ],
       thresholds: {
         statements: 80,
         branches: 80,

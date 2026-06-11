@@ -65,7 +65,7 @@ A Preact SPA that auto-opens when you run `/oss` — PR management, charts, cont
 ```
 ┌──────────────────────────────────────────────────┐
 │  Claude Code Plugin Layer                        │
-│  /oss, /oss-search, /setup-oss, /oss-help        │
+│  8 slash commands (/oss, /oss-search, …)         │
 │  7 specialized agents, contribution skills       │
 ├──────────────────────────────────────────────────┤
 │                                                  │
@@ -74,7 +74,7 @@ A Preact SPA that auto-opens when you run `/oss` — PR management, charts, cont
 │  │ @oss-auto-   │  │ @oss-autopilot/dashboard │  │
 │  │ pilot/mcp    │  │ Preact + Vite             │  │
 │  │              │  │ PR management, charts,    │  │
-│  │ 27 tools     │  │ actions                   │  │
+│  │ 30 tools     │  │ actions                   │  │
 │  │ 6 resources  │  │                           │  │
 │  │ 4 prompts    │  │                           │  │
 │  └──────┬───────┘  └────────────┬─────────────┘  │
@@ -92,7 +92,7 @@ A Preact SPA that auto-opens when you run `/oss` — PR management, charts, cont
 
 **Three deployment models** — Claude Code plugin with 7 specialized agents, MCP server for Cursor/Claude Desktop/Codex/Windsurf, and a standalone CLI with `--json` structured output. Same core, different interfaces.
 
-**Deterministic core, AI orchestration layer** — Critical logic (PR status classification, CI failure analysis, state management) lives in tested TypeScript, not in prompts. The CLI returns structured JSON that agents consume. CI failures are categorized into a deterministic taxonomy — actionable vs. fork limitation vs. auth gate vs. infrastructure — rather than asking an LLM each time. 2,700+ tests validate the core independently of any LLM.
+**Deterministic core, AI orchestration layer** — Critical logic (PR status classification, CI failure analysis, state management) lives in tested TypeScript, not in prompts. The CLI returns structured JSON that agents consume. CI failures are categorized into a deterministic taxonomy — actionable vs. fork limitation vs. auth gate vs. infrastructure — rather than asking an LLM each time. 2,600+ tests validate the core independently of any LLM.
 
 **Production-grade GitHub API integration** — ETag-based HTTP caching, automatic rate limit backoff with retries, bounded concurrency pools, and paginated fetching. Handles the full complexity of fork-based contribution workflows: correct diff ranges, squash commit counting, and `--head` flag handling for cross-fork PRs. Designed to run daily without hitting API limits.
 
@@ -104,7 +104,7 @@ A Preact SPA that auto-opens when you run `/oss` — PR management, charts, cont
 
 **Security discipline** — State files written with `0o600` permissions, data directory created with `0o700`. Concurrent state write protection prevents corruption from parallel runs. Runtime schema validation via Zod on every state file read. XSS prevention tested. Input validation hardened across CLI arguments and API responses.
 
-**Automated release pipeline** — Conventional commits feed into release-please for automatic versioning and changelogs, with CI/CD publishing to npm on merge. 189+ changelog versions across both packages (core v0.1.0 → v3.2.0, mcp through v5.1.0) since the first release in January 2025.
+**Automated release pipeline** — Conventional commits feed into release-please for automatic versioning and changelogs, with CI/CD publishing to npm on merge. 200+ changelog versions across both packages (core v0.1.0 through v3.x, mcp through v5.x) since the first release in January 2025.
 
 Every feature in the list above was driven by real usage — capacity warnings came from overcommitting, "skip comment when code speaks for itself" came from over-commenting, diminishing returns detection came from spending too long searching. The tool is shaped by the contributions it manages.
 
@@ -143,7 +143,7 @@ Then add to your MCP client config:
 }
 ```
 
-The MCP server exposes 27 tools, 6 resources, and 4 prompts — the full OSS Autopilot feature set.
+The MCP server exposes 30 tools, 6 resources, and 4 prompts — the full OSS Autopilot feature set.
 
 </details>
 
@@ -179,7 +179,7 @@ All commands return `{ success, data, error, timestamp }` with `--json`.
 2. Work through critical issues (CI failures, maintainer comments, conflicts)
 3. Done for now
 
-**Commands:** `/oss` (daily check), `/oss-search` (find issues), `/setup-oss` (configure), `/oss-help` (reference)
+**Commands:** `/oss` (daily check), `/oss-search` (find issues), `/oss-dashboard` (interactive dashboard), `/oss-guidelines` (per-repo guidelines), `/pr-ready` (pre-push review loop), `/plan-ready` (plan review loop), `/setup-oss` (configure), `/oss-help` (reference)
 
 ---
 
@@ -187,8 +187,8 @@ All commands return `{ success, data, error, timestamp }` with `--json`.
 
 | Metric | Value |
 |--------|-------|
-| Releases | 189+ changelog versions (spanning core v0.1 through current v3.x; mcp through current v5.x) |
-| Tests | 2,700+ across 120+ files |
+| Releases | 200+ changelog versions (spanning core v0.1 through current v3.x; mcp through current v5.x) |
+| Tests | 3,000+ across 120+ files |
 | Issues + PRs | 1,200+ |
 | Time span | Jan 2025 → present |
 | npm packages | 3 |
@@ -320,7 +320,7 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 **Project structure:**
 
 ```
-├── commands/                    # Plugin slash commands (/oss, /oss-search, /setup-oss, /oss-help)
+├── commands/                    # 8 plugin slash commands (/oss, /oss-search, /pr-ready, …)
 ├── agents/                      # 7 specialized agents (PR responder, issue scout, etc.)
 ├── skills/                      # Contribution best practices
 ├── workflows/                   # Delegated logic loaded by commands on demand
