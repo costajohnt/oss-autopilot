@@ -17,7 +17,7 @@ import { SkeletonLoader } from './components/skeleton-loader';
 import { ThemeToggle } from './components/theme-toggle';
 import { CelebrationToast } from './components/celebration-toast';
 import { formatRelativeTime, refreshLabel } from './utils';
-import type { DashboardStats } from './types';
+import type { DashboardStats, FetchedPR } from './types';
 
 interface DashboardHeaderProps {
   stats: DashboardStats;
@@ -98,6 +98,10 @@ function DashboardHeader({
 // rather than silently falling through to the dashboard home.
 const KNOWN_ROUTES = new Set(['/', '/merged', '/closed', '/issues']);
 
+// Stable fallback for the pre-data render states so the hoisted memos below
+// keep referentially-equal deps while `data` is null (#1369).
+const EMPTY_ACTIVE_PRS: FetchedPR[] = [];
+
 function AppContent() {
   const { data, loading, refreshing, error, clearError, refresh, performAction, lastUpdated } = useDashboard();
   const { theme, toggleTheme } = useTheme();
@@ -147,6 +151,32 @@ function AppContent() {
   }, [triggerCelebration]);
 
   const shelvedUrls = useMemo(() => new Set(data?.shelvedPRUrls ?? []), [data?.shelvedPRUrls]);
+
+  // All hooks must run on every render path: preact/hooks is positional,
+  // so a hook below the early returns shifts slots whenever the component
+  // transitions between the loading/error states and the loaded tree, which
+  // silently corrupts memo state (#1369). These derivations therefore live
+  // above the guards and read from a stable empty fallback while `data` is
+  // null. Memoized so `filter` over hundreds of PRs doesn't rerun on
+  // unrelated state changes (#1058 M37).
+  const activePRList = data?.activePRs ?? EMPTY_ACTIVE_PRS;
+  const repos = useMemo(() => [...new Set(activePRList.map((pr) => pr.repo))].sort(), [activePRList]);
+  const statuses = useMemo(() => [...new Set(activePRList.map((pr) => pr.status))].sort(), [activePRList]);
+
+  const filteredPRs = useMemo(() => {
+    return activePRList.filter((pr) => {
+      if (filters.status !== 'all' && pr.status !== filters.status) return false;
+      if (filters.repo !== 'all' && pr.repo !== filters.repo) return false;
+      if (filters.search) {
+        const term = filters.search.toLowerCase();
+        const searchable = `${pr.title} ${pr.repo} ${pr.number}`.toLowerCase();
+        if (!searchable.includes(term)) return false;
+      }
+      return true;
+    });
+  }, [activePRList, filters.status, filters.repo, filters.search]);
+
+  const activePRs = useMemo(() => activePRList.filter((pr) => !shelvedUrls.has(pr.url)), [activePRList, shelvedUrls]);
 
   if (loading && !data) {
     return (
@@ -304,34 +334,10 @@ function AppContent() {
     );
   }
 
-  // Default route: dashboard home.
-  //
-  // These derivations were previously recomputed on every render — including
-  // every keystroke in the search input — even though they only depend on
-  // the stable PR list. Memoize so `filter` over hundreds of PRs doesn't
-  // rerun on unrelated state changes (#1058 M37).
-  const repos = useMemo(() => [...new Set(data.activePRs.map((pr) => pr.repo))].sort(), [data.activePRs]);
-  const statuses = useMemo(() => [...new Set(data.activePRs.map((pr) => pr.status))].sort(), [data.activePRs]);
-
-  const filteredPRs = useMemo(() => {
-    return data.activePRs.filter((pr) => {
-      if (filters.status !== 'all' && pr.status !== filters.status) return false;
-      if (filters.repo !== 'all' && pr.repo !== filters.repo) return false;
-      if (filters.search) {
-        const term = filters.search.toLowerCase();
-        const searchable = `${pr.title} ${pr.repo} ${pr.number}`.toLowerCase();
-        if (!searchable.includes(term)) return false;
-      }
-      return true;
-    });
-  }, [data.activePRs, filters.status, filters.repo, filters.search]);
-
+  // Default route: dashboard home. The PR-list derivations (repos, statuses,
+  // filteredPRs, activePRs) are memoized above the early returns (#1369).
   const selectedPR = selectedUrl ? (data.activePRs.find((pr) => pr.url === selectedUrl) ?? null) : null;
 
-  const activePRs = useMemo(
-    () => data.activePRs.filter((pr) => !shelvedUrls.has(pr.url)),
-    [data.activePRs, shelvedUrls],
-  );
   const needAttentionCount = activePRs.filter((pr) => pr.status === 'needs_addressing').length;
   const waitingCount = activePRs.filter((pr) => pr.status === 'waiting_on_maintainer').length;
 

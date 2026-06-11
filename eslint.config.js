@@ -8,6 +8,7 @@ import * as regexp from 'eslint-plugin-regexp';
 import vitest from '@vitest/eslint-plugin';
 import unicorn from 'eslint-plugin-unicorn';
 import sonarjs from 'eslint-plugin-sonarjs';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 // Helper: take a flat-config preset and downgrade every rule it sets to 'warn'.
 // Used to onboard opinionated plugins (unicorn, sonarjs) without gating CI
@@ -42,13 +43,7 @@ export default tseslint.config(
   downgradeToWarn(sonarjs.configs.recommended),
   eslintConfigPrettier,
   {
-    ignores: [
-      'packages/*/dist/**',
-      'packages/*/docs/**',
-      'packages/*/coverage/**',
-      'node_modules/**',
-      '*.cjs',
-    ],
+    ignores: ['packages/*/dist/**', 'packages/*/docs/**', 'packages/*/coverage/**', 'node_modules/**', '*.cjs'],
   },
   {
     languageOptions: {
@@ -146,6 +141,20 @@ export default tseslint.config(
       // false positive on Node globals (`process`, `Buffer`) — sonarjs
       // doesn't load @types/node
       'sonarjs/no-reference-error': 'off',
+    },
+  },
+  {
+    // Rules of Hooks for the Preact SPA (#1369). preact/hooks is positional
+    // (slot-indexed by call order), so a hook placed below a conditional
+    // return silently corrupts hook state on render paths that change the
+    // call count — that exact bug shipped in app.tsx. The plugin detects
+    // any `use*` call regardless of import source, so it works for
+    // preact/hooks without React. `exhaustive-deps` is intentionally not
+    // enabled: deps in this codebase are hand-tuned (see #1058 M37).
+    files: ['packages/dashboard/src/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
     },
   },
   {
