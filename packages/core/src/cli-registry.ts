@@ -363,6 +363,9 @@ export const commands: CLICommandDef[] = [
               return runSearch({ maxResults });
             },
             (data) => {
+              if (data.hiddenOwnPRCount > 0) {
+                console.log(`Hidden: ${data.hiddenOwnPRCount} candidate(s) were issues you already have open PRs for.`);
+              }
               if (data.candidates.length === 0) {
                 if (data.rateLimitWarning) {
                   console.warn(`\n${data.rateLimitWarning}\n`);
@@ -511,6 +514,39 @@ export const commands: CLICommandDef[] = [
             },
           ),
         );
+    },
+  },
+
+  // ── Verify Issue ───────────────────────────────────────────────────────
+  {
+    name: 'verify-issue',
+    register(program) {
+      program
+        .command('verify-issue <issue-url>')
+        .description('Deterministically verify issue state and linked-PR claims before vetting (#1353, #1354)')
+        .option('--json', 'Output as JSON')
+        .action(async (issueUrl, options) => {
+          const { VerifyIssueOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
+            options,
+            async () => (await import('./commands/verify-issue.js')).runVerifyIssue({ issueUrl }),
+            (data) => {
+              console.log(`\n${data.owner}/${data.repo}#${data.number}: ${data.title}`);
+              const reasonLabel = data.stateReason ? ` (${data.stateReason})` : '';
+              console.log(`  State: ${data.state}${reasonLabel}${data.closedAt ? ` — closed ${data.closedAt}` : ''}`);
+              console.log(`  Verdict: ${data.verdict} — ${data.verdictReason}`);
+              if (data.assignees.length > 0) console.log(`  Assignees: ${data.assignees.join(', ')}`);
+              for (const pr of data.linkedPRs) {
+                const own = pr.isOwn ? ' (yours)' : '';
+                const draft = pr.isDraft ? ' [draft]' : '';
+                console.log(
+                  `  PR #${pr.number} [${pr.state}]${draft} ${pr.linkType} by ${pr.author ?? 'ghost'}${own}: ${pr.url}`,
+                );
+              }
+            },
+            VerifyIssueOutputSchema,
+          );
+        });
     },
   },
 

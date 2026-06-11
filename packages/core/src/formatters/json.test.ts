@@ -512,12 +512,13 @@ describe('SearchOutputSchema (#1147)', () => {
       candidates: [makeSearchCandidate()],
       excludedRepos: ['stale/abandoned'],
       aiPolicyBlocklist: ['anti-ai/repo'],
+      hiddenOwnPRCount: 1,
     };
     expect(formatJson(SearchOutputSchema, data).success).toBe(true);
   });
 
   it('round-trips an empty result', () => {
-    const data = { candidates: [], excludedRepos: [], aiPolicyBlocklist: [] };
+    const data = { candidates: [], excludedRepos: [], aiPolicyBlocklist: [], hiddenOwnPRCount: 0 };
     expect(formatJson(SearchOutputSchema, data).success).toBe(true);
   });
 
@@ -538,7 +539,7 @@ describe('SearchOutputSchema (#1147)', () => {
   it('accepts a candidate without optional repoScore', () => {
     const candidate = makeSearchCandidate() as unknown as Record<string, unknown>;
     delete candidate.repoScore;
-    const data = { candidates: [candidate], excludedRepos: [], aiPolicyBlocklist: [] };
+    const data = { candidates: [candidate], excludedRepos: [], aiPolicyBlocklist: [], hiddenOwnPRCount: 0 };
     expect(formatJson(SearchOutputSchema, data).success).toBe(true);
   });
 });

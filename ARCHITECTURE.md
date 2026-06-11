@@ -122,6 +122,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `init` | `init.ts` | Initialize with GitHub username and import open PRs |
 | `setup` / `checkSetup` | `setup.ts` | First-run setup and setup verification |
 | `vet` | `vet.ts` | Vet a single issue for claimability |
+| `verify-issue` | `verify-issue.ts` | Deterministic issue state + linked-PR claim verification via GraphQL (#1353, #1354) |
 | `vet-list` | `vet-list.ts` | Re-vet all issues in a curated issue list |
 | `repo-vet` | `repo-vet.ts` | Compute repo health rubric (1–10 score + verdict) for `owner/repo` (#1271) |
 | `compliance-score` | `compliance-score.ts` | Score a PR against opensource.guide best practices (#1245) |

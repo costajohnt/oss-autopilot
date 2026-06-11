@@ -1,0 +1,44 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`verify-issue --json contract > a fully populated verification round-trips through VerifyIssueOutputSchema unchanged 1`] = `
+{
+  "assignees": [
+    "maintainer",
+  ],
+  "closedAt": "2026-06-01T00:00:00Z",
+  "linkedPRs": [
+    {
+      "author": "TestUser",
+      "isDraft": false,
+      "isOwn": true,
+      "linkType": "closing",
+      "number": 7,
+      "state": "merged",
+      "title": "fixes the widget",
+      "updatedAt": "2026-05-30T00:00:00Z",
+      "url": "https://github.com/foo/bar/pull/7",
+    },
+    {
+      "author": null,
+      "isDraft": true,
+      "isOwn": false,
+      "linkType": "cross-referenced",
+      "number": 9,
+      "state": "open",
+      "title": "broader refactor",
+      "updatedAt": null,
+      "url": "https://github.com/foo/bar/pull/9",
+    },
+  ],
+  "number": 42,
+  "owner": "foo",
+  "repo": "bar",
+  "state": "closed",
+  "stateReason": "completed",
+  "title": "Fix the widget",
+  "url": "https://github.com/foo/bar/issues/42",
+  "userLogin": "testuser",
+  "verdict": "closed",
+  "verdictReason": "issue closed (completed) — mark it done upstream",
+}
+`;

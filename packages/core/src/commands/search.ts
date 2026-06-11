@@ -3,8 +3,8 @@
  * Searches for new issues to work on via @oss-scout/core
  */
 
-import { buildCandidateLinkedPR, createAutopilotScout } from './scout-bridge.js';
-import { getStateManager } from '../core/index.js';
+import { adaptScoutLinkedPR, buildCandidateLinkedPR, createAutopilotScout } from './scout-bridge.js';
+import { classifyLinkedPR, getStateManager } from '../core/index.js';
 import { type SearchOutput } from '../formatters/json.js';
 import { gradeFromCandidate } from '../core/issue-grading.js';
 import { computeStrategy } from '../core/strategy.js';
@@ -82,8 +82,24 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
     preferRepos,
   });
 
+  // #1354: never surface issues the user already has an open PR for. Uses
+  // scout's structured linked-PR metadata when present; candidates without it
+  // pass through (the issue-scout agent re-checks via verify-issue anyway).
+  // Empty login means "can't prove any PR is the user's own" — nothing hidden.
+  const userLogin = stateManager.getState().config?.githubUsername ?? '';
+  if (userLogin === '') {
+    warn(MODULE, 'githubUsername not configured — the own-PR filter (#1354) cannot run; hiddenOwnPRCount will be 0');
+  }
+  const visibleCandidates = result.candidates.filter(
+    (c) => classifyLinkedPR({ linkedPR: adaptScoutLinkedPR(c.vettingResult?.linkedPR), userLogin }) !== 'user_open',
+  );
+  const hiddenOwnPRCount = result.candidates.length - visibleCandidates.length;
+  if (hiddenOwnPRCount > 0) {
+    debug(MODULE, `Hid ${hiddenOwnPRCount} candidate(s) with the user's own open PR (#1354)`);
+  }
+
   const searchOutput: SearchOutput = {
-    candidates: result.candidates.map((c) => {
+    candidates: visibleCandidates.map((c) => {
       const repoScoreRecord = stateManager.getRepoScore(c.issue.repo);
       // Scout's `search` does not emit per-candidate projectHealth (only
       // `vetIssue` does). Pass a sentinel `checkFailed: true` so the grader
@@ -137,6 +153,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
     }),
     excludedRepos: result.excludedRepos,
     aiPolicyBlocklist: result.aiPolicyBlocklist,
+    hiddenOwnPRCount,
   };
   if (result.rateLimitWarning) {
     searchOutput.rateLimitWarning = result.rateLimitWarning;

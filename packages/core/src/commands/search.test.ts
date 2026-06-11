@@ -373,4 +373,106 @@ describe('runSearch', () => {
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('out-of-contract viabilityScore'));
     errSpy.mockRestore();
   });
+
+  describe('own-PR filtering (#1354)', () => {
+    function candidateWithLinkedPR(number: number, author: string | null, state: string, merged = false) {
+      return {
+        issue: {
+          repo: 'foo/bar',
+          number,
+          title: `Issue ${number}`,
+          url: `https://github.com/foo/bar/issues/${number}`,
+          labels: [],
+        },
+        recommendation: 'approve',
+        reasonsToApprove: [],
+        reasonsToSkip: [],
+        searchPriority: 'normal',
+        viabilityScore: 50,
+        vettingResult: {
+          linkedPR: {
+            number: number * 10,
+            author,
+            state,
+            merged,
+            url: `https://github.com/foo/bar/pull/${number * 10}`,
+            updatedAt: '2026-06-01T00:00:00Z',
+          },
+        },
+      };
+    }
+
+    function stateWithUsername(githubUsername?: string) {
+      mockGetStateManager.mockReturnValue({
+        getState: vi.fn().mockReturnValue({
+          config: { excludeRepos: [], aiPolicyBlocklist: [], ...(githubUsername ? { githubUsername } : {}) },
+        }),
+        getRepoScore: vi.fn().mockReturnValue(null),
+      } as any);
+    }
+
+    it("drops candidates linked to the user's own open PR and reports the count", async () => {
+      stateWithUsername('OctoCat');
+      mockSearch.mockResolvedValue({
+        candidates: [
+          candidateWithLinkedPR(1, 'octocat', 'open'), // own (case-insensitive) → hidden
+          candidateWithLinkedPR(2, 'rival', 'open'), // someone else's → visible
+          candidateWithLinkedPR(3, 'octocat', 'closed'), // own but closed → visible
+        ],
+        excludedRepos: [],
+        aiPolicyBlocklist: [],
+        strategiesUsed: ['broad'],
+      });
+
+      const result = await runSearch({ maxResults: 5 });
+
+      expect(result.hiddenOwnPRCount).toBe(1);
+      expect(result.candidates.map((c) => c.issue.number)).toEqual([2, 3]);
+    });
+
+    it('hides nothing when githubUsername is not configured', async () => {
+      stateWithUsername(undefined);
+      mockSearch.mockResolvedValue({
+        candidates: [candidateWithLinkedPR(1, 'octocat', 'open')],
+        excludedRepos: [],
+        aiPolicyBlocklist: [],
+        strategiesUsed: ['broad'],
+      });
+
+      const result = await runSearch({ maxResults: 5 });
+
+      expect(result.hiddenOwnPRCount).toBe(0);
+      expect(result.candidates).toHaveLength(1);
+    });
+
+    it('reports hiddenOwnPRCount: 0 when no candidate has a linked PR', async () => {
+      stateWithUsername('octocat');
+      mockSearch.mockResolvedValue({
+        candidates: [
+          {
+            issue: {
+              repo: 'foo/bar',
+              number: 1,
+              title: 'Plain issue',
+              url: 'https://github.com/foo/bar/issues/1',
+              labels: [],
+            },
+            recommendation: 'approve',
+            reasonsToApprove: [],
+            reasonsToSkip: [],
+            searchPriority: 'normal',
+            viabilityScore: 50,
+          },
+        ],
+        excludedRepos: [],
+        aiPolicyBlocklist: [],
+        strategiesUsed: ['broad'],
+      });
+
+      const result = await runSearch({ maxResults: 5 });
+
+      expect(result.hiddenOwnPRCount).toBe(0);
+      expect(result.candidates).toHaveLength(1);
+    });
+  });
 });

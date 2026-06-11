@@ -32,6 +32,8 @@ export { runSearch, MAX_SEARCH_RESULTS } from './search.js';
 export { runFeatures, MAX_FEATURES_RESULTS } from './features.js';
 /** Vet a single GitHub issue for claimability (open, unassigned, no linked PRs, repo health). */
 export { runVet } from './vet.js';
+/** Deterministic availability check: state/stateReason + linked-PR classification (#1353, #1354). */
+export { runVerifyIssue, type VerifyIssueOptions } from './verify-issue.js';
 /** Re-vet all available issues in a curated issue list for freshness. */
 export { runVetList } from './vet-list.js';
 
