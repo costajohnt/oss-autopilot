@@ -8,6 +8,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { GistStateStore, GIST_DESCRIPTION, STATE_FILE_NAME, type OctokitLike } from './gist-state-store.js';
 import { AgentStateSchema } from './state-schema.js';
+import { GistCorruptError } from './errors.js';
 import { createFreshState } from './state-persistence.js';
 
 // ── Mock utils.js to redirect path helpers to temp directories ────────────────
@@ -392,31 +393,62 @@ describe('GistStateStore', () => {
       expect(result.state.config.setupComplete).toBe(false);
     });
 
-    it('should preserve corrupt content and degrade rather than overwrite Gist (#1201)', async () => {
+    it('should preserve corrupt content and rethrow GistCorruptError rather than degrade (#1201, #1367)', async () => {
       const gistId = 'corrupt-gist';
       const corruptContent = 'not valid json';
 
       fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
       octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, corruptContent));
-      // Force the search fallback to also fail so the bootstrap enters degraded mode
       octokit.gists.list.mockResolvedValue({ data: [] });
 
       const store = new GistStateStore(octokit);
-      const result = await store.bootstrap();
 
-      // Bootstrap recovers in degraded mode (gistId='') so push() can't run
-      // and silently overwrite the Gist with fresh state — that's the data-
-      // loss scenario #1201 was filed for.
-      expect(result.degraded).toBe(true);
-      expect(result.gistId).toBe('');
-      expect(result.state.version).toBe(4);
+      // A corrupt Gist must SURFACE, not degrade (#1367): by the time the
+      // parse throws, fetchAndCache has armed gistId + the ETag, so a
+      // degraded store could push() fresh state over the corrupt remote —
+      // the data-loss scenario #1201 was filed for. Degrading also risks
+      // silently abandoning the Gist and creating a fresh one via step 3.
+      await expect(store.bootstrap()).rejects.toThrow(GistCorruptError);
 
-      // The corrupt content should be preserved as `.rejected-<ts>` so the
+      // The corrupt content is still preserved as `.rejected-<ts>` so the
       // user can recover it.
       const rejectedFiles = fs.readdirSync(tmpDir).filter((f) => f.startsWith('state-cache.json.rejected-'));
       expect(rejectedFiles.length).toBeGreaterThanOrEqual(1);
       const preservedContent = fs.readFileSync(path.join(tmpDir, rejectedFiles[0]!), 'utf8');
       expect(preservedContent).toBe(corruptContent);
+    });
+
+    it('rethrows rate-limit errors instead of degrading (#1367)', async () => {
+      // The first gists.list call is checkGistScope's probe — let it succeed
+      // so the 429 hits the SEARCH step inside the outer try, exercising the
+      // new outer-catch rate-limit rethrow (checkGistScope has its own,
+      // pre-existing rethrow). errors.ts's contract is that rate-limit errors
+      // always propagate; degrading would present "you are rate-limited" as
+      // a stale local cache.
+      octokit.gists.list.mockResolvedValueOnce({ data: [] });
+      octokit.gists.list.mockRejectedValueOnce(Object.assign(new Error('API rate limit exceeded'), { status: 429 }));
+
+      const store = new GistStateStore(octokit);
+      await expect(store.bootstrap()).rejects.toThrow('API rate limit exceeded');
+    });
+
+    it('degraded bootstrap disarms the push path (#1367)', async () => {
+      // Genuine API unavailability still degrades — but the degraded store
+      // never verified its Gist, so it must not be able to push to one.
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), 'unreachable-gist');
+      octokit.gists.get.mockRejectedValue(new Error('Network error'));
+      octokit.gists.list.mockRejectedValue(new Error('Network error'));
+      octokit.gists.create.mockRejectedValue(new Error('Network error'));
+
+      const store = new GistStateStore(octokit);
+      const result = await store.bootstrap();
+
+      expect(result.degraded).toBe(true);
+      expect(store.getGistId()).toBeNull();
+
+      store.setState(createFreshState());
+      await expect(store.push()).rejects.toThrow(/cannot push before bootstrap/);
+      expect(octokit.gists.update).not.toHaveBeenCalled();
     });
   });
 

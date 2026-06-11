@@ -57,7 +57,13 @@ import {
 } from './state-persistence.js';
 import { getGistIdPath, getStateCachePath } from './paths.js';
 import { debug, warn } from './logger.js';
-import { GistPermissionError, GistConcurrencyError, GistCorruptError, isRateLimitError } from './errors.js';
+import {
+  ConfigurationError,
+  GistPermissionError,
+  GistConcurrencyError,
+  GistCorruptError,
+  isRateLimitError,
+} from './errors.js';
 
 const MODULE = 'gist-store';
 
@@ -217,6 +223,11 @@ export class GistStateStore {
           const state = await this.fetchAndCache(localId);
           return { gistId: localId, state, created: false };
         } catch (err) {
+          // A corrupt or permission-broken Gist must surface immediately
+          // (#1367): falling through to search would either re-find the same
+          // corrupt Gist or silently abandon it and create a fresh one.
+          if (err instanceof ConfigurationError) throw err;
+          if (isRateLimitError(err)) throw err;
           warn(MODULE, `Failed to fetch Gist ${localId}, will search/create`, err);
           // Fall through to search
         }
@@ -238,10 +249,21 @@ export class GistStateStore {
       this.writeLocalGistId(id);
       return { gistId: id, state, created: true };
     } catch (err) {
-      // Configuration errors (e.g. GistPermissionError) must surface, not degrade
-      if (err instanceof GistPermissionError) throw err;
+      // Configuration errors (GistPermissionError, GistCorruptError) and rate
+      // limits must surface, not degrade (#1367). A corrupt Gist especially:
+      // fetchAndCache arms this.gistId/lastFetchedEtag before the parse
+      // throws, so a degraded store could push() local or fresh state over
+      // the corrupt remote — the exact data loss #1201 exists to prevent.
+      // Rate limits propagate per the errors.ts contract; degrading would
+      // present "you are rate-limited" as a stale local cache.
+      if (err instanceof ConfigurationError) throw err;
+      if (isRateLimitError(err)) throw err;
 
-      // All API paths failed — enter degraded mode
+      // All API paths failed — enter degraded mode. Disarm the remote write
+      // path first: a degraded store never verified its Gist, so it must
+      // never be able to push to one (#1367).
+      this.gistId = null;
+      this.lastFetchedEtag = null;
       warn(MODULE, 'All Gist API paths failed, entering degraded mode', err);
 
       // Try reading from local cache file
@@ -307,6 +329,10 @@ export class GistStateStore {
           const state = await this.fetchAndCache(localId);
           return { gistId: localId, state, created: false, migrated: false };
         } catch (err) {
+          // See bootstrap(): corrupt/permission/rate-limit errors surface
+          // immediately rather than falling through (#1367).
+          if (err instanceof ConfigurationError) throw err;
+          if (isRateLimitError(err)) throw err;
           warn(MODULE, `bootstrapWithMigration: failed to fetch Gist ${localId}, will search/create`, err);
           // Fall through to search
         }
@@ -328,10 +354,15 @@ export class GistStateStore {
       this.writeLocalGistId(id);
       return { gistId: id, state, created: true, migrated: true };
     } catch (err) {
-      // Configuration errors (e.g. GistPermissionError) must surface, not degrade
-      if (err instanceof GistPermissionError) throw err;
+      // Same surfacing contract as bootstrap() (#1367): configuration errors
+      // and rate limits rethrow; only genuine API unavailability degrades.
+      if (err instanceof ConfigurationError) throw err;
+      if (isRateLimitError(err)) throw err;
 
-      // All API paths failed — enter degraded mode
+      // All API paths failed — enter degraded mode with the push path
+      // disarmed (see bootstrap()).
+      this.gistId = null;
+      this.lastFetchedEtag = null;
       warn(MODULE, 'bootstrapWithMigration: all Gist API paths failed, entering degraded mode', err);
 
       // Try reading from local cache file
@@ -740,6 +771,9 @@ export class GistStateStore {
         }
       }
     } catch (err) {
+      // A rate-limited search must not read as "no Gist found" — bootstrap
+      // would proceed to create a duplicate Gist while throttled (#1367).
+      if (isRateLimitError(err)) throw err;
       warn(MODULE, 'Failed to search Gists by description', err);
     }
     return null;
