@@ -112,6 +112,13 @@ jobs:
       - name: Type check
         run: pnpm run typecheck
 
+      # The CLI e2e suites (*.e2e.test.ts) execute dist/cli.bundle.cjs and
+      # skip when it is absent. The bundle must exist BEFORE tests run or
+      # all six suites silently skip — which is exactly what happened until
+      # #1366. The e2e-bundle-gate test enforces this ordering.
+      - name: Build CLI bundle (required by e2e suites, #1366)
+        run: pnpm --filter @oss-autopilot/core run bundle
+
       - name: Run tests
         run: pnpm run test
 
@@ -452,6 +459,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # The e2e suites and the e2e-bundle-gate test (#1366) require the CLI
+      # bundle; without it the gate test fails (red noise behind the || true
+      # below) and the badge count silently excludes the e2e tests.
+      - name: Build CLI bundle (required by e2e suites, #1366)
+        run: pnpm --filter @oss-autopilot/core run bundle
 
       - name: Run tests and update badge
         run: |
