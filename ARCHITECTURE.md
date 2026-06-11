@@ -30,7 +30,9 @@ The plugin layer consists of markdown files that Claude Code discovers and execu
 | `oss-search.md` | `/oss-search` | Issue discovery with multi-strategy search |
 | `oss-help.md` | `/oss-help` | Quick reference card for commands, agents, and workflows |
 | `oss-dashboard.md` | `/oss-dashboard` | Open the interactive SPA dashboard in the browser |
+| `oss-guidelines.md` | `/oss-guidelines` | View / edit / reset per-repo contribution guidelines stored by extract-learnings |
 | `pr-ready.md` | `/pr-ready` | Run the pre-commit review loop and signal when the branch is ready to push |
+| `plan-ready.md` | `/plan-ready` | Run a review-and-critique convergence loop on an implementation plan before code is written |
 
 Commands invoke the CLI via bash (`node packages/core/dist/cli.bundle.cjs <subcommand> --json`), parse the JSON response, and present results to the user through Claude Code's conversational interface.
 
@@ -49,6 +51,8 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 | `dispatch-review.md` | On request | Dispatch a multi-specialist review of the current branch |
 | `dormant-pr-follow-up.md` | Dormant PR detected | Polite, escalating follow-up cadence with maintainers |
 | `extract-learnings.md` | After PR merge | Distill maintainer feedback into per-repo guidelines via `guidelines fetch-corpus` + extract-learnings prompt (#867) |
+| `edit-guidelines.md` | `/oss-guidelines` edit action | Manual edit path for stored per-repo guidelines (no corpus fetch or extraction) (#1283) |
+| `plan-review.md` | `/plan-ready` | Plan-phase review convergence loop — catches design problems before code exists (#1249) |
 | `reference.md` | Always loaded | Shared conventions and formatting rules |
 
 ### Agents (`agents/`)
@@ -85,7 +89,7 @@ A Commander program that loads command definitions from `cli-registry.ts`. Each 
 Key design:
 - **Lazy loading** — only the invoked command's module is evaluated (dynamic `import()` inside action handlers).
 - **Async token fetch** — the `preAction` hook fetches the GitHub token without blocking.
-- **`localOnly` registry flag** — 20 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
+- **`localOnly` registry flag** — 25 commands that skip the `preAction` GitHub token check. Note: some (like `startup`) still make GitHub API calls but handle auth internally, returning structured errors instead of calling `process.exit`.
 
 ### JSON Contract
 
@@ -109,6 +113,9 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `startup` | `startup.ts` | Combined auth + setup + daily + dashboard (single CLI call) |
 | `daily` | `daily.ts` | Fetch all open PRs, compute digest, generate dashboard |
 | `search` | `search.ts` | Multi-strategy issue discovery |
+| `features` | `features.ts` | Feature-scoped opportunities in repos with 3+ merged PRs, split into quick-wins / bigger-bets |
+| `strategy` | `strategy.ts` | On-demand contribution-strategy snapshot from local state (#1243) |
+| `state` | `state-cmd.ts` | Manage state persistence: `--show`, `--sync`, `--unlink` (local/Gist) |
 | `track` | `track.ts` | Fetch PR metadata for inspection (no longer persists; `untrack` removed in v4 / #1133) |
 | `status` | `status.ts` | Show contribution stats from local state |
 | `config` | `config.ts` | Read/write user configuration |
@@ -116,10 +123,15 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `setup` / `checkSetup` | `setup.ts` | First-run setup and setup verification |
 | `vet` | `vet.ts` | Vet a single issue for claimability |
 | `vet-list` | `vet-list.ts` | Re-vet all issues in a curated issue list |
+| `repo-vet` | `repo-vet.ts` | Compute repo health rubric (1–10 score + verdict) for `owner/repo` (#1271) |
+| `compliance-score` | `compliance-score.ts` | Score a PR against opensource.guide best practices (#1245) |
+| `skip-add` | `skip-add.ts` | Append an issue URL to the skipped-issues file (idempotent) |
+| `list-move-tier` | `list-move-tier.ts` | Move an issue between Pursue / Maybe / Skip sections of a curated list (#1107) |
+| `list-mark-done` | `list-mark-done.ts` | Mark a curated-list issue line done with strikethrough + Done sub-bullet (#1299) |
 | `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-lifecycle.ts`, `dashboard-process.ts`, `dashboard-server.ts`) |
 | `move` | `move.ts` | Transition a PR between states: attention, waiting, shelved, auto |
-| `shelve` / `unshelve` | `move.ts` (aliases) | Exclude PRs from capacity and actionable items |
-| `override` / `clear-override` | `move.ts` (aliases) | Backward-compatible status override commands |
+| `shelve` / `unshelve` | `shelve.ts` | Exclude/re-include PRs from capacity and actionable items (independent commands emitting `ShelveOutput`, see #1037) |
+| `override` / `clear-override` | `move.ts` (wrappers around `runMove`) | Backward-compatible status override commands |
 | `dismiss` / `undismiss` | `dismiss.ts` | Dismiss issue reply notifications (auto-resurfaces on new activity) |
 | `comments` / `post` / `claim` | `comments.ts` | Track issue conversations, post comments, claim issues |
 | `local-repos` | `local-repos.ts` | Scan for locally cloned repos |

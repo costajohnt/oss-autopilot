@@ -18,6 +18,9 @@ Print this reference card for the user. Do NOT run any commands — just display
 | `/oss-search` | **Find issues** — multi-strategy search across GitHub for contributable issues matching your language/label preferences |
 | `/setup-oss` | **Configure** — set GitHub username, languages, labels, PR limits, and other preferences |
 | `/oss-dashboard` | **Dashboard** — open the interactive SPA dashboard in your browser |
+| `/oss-guidelines` | **Guidelines** — view, edit, or reset per-repo contribution guidelines learned from past PRs |
+| `/pr-ready` | **Pre-push gate** — run the lint/test/review convergence loop to decide whether the current branch is ready to push |
+| `/plan-ready` | **Plan gate** — run the same review-and-critique convergence loop on an implementation plan before code is written |
 | `/oss-help` | **This card** — quick reference for all plugin capabilities |
 
 ## Agents

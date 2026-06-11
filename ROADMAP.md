@@ -1,30 +1,44 @@
 # Roadmap
 
+> **Maintenance note:** This file is hand-maintained. When an item under Now/Next closes on GitHub, move it to the Shipped section and pull the next item up from the open backlog.
+
 This roadmap reflects the current development priorities for oss-autopilot. Items are derived from [open issues](https://github.com/costajohnt/oss-autopilot/issues) and may shift as the project evolves.
 
 Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/discussions) or file an issue.
 
 ## Now (next 1-2 weeks)
 
-- [ ] Unify skip-list persistence — the `.md` file and `state.skippedIssues` currently drift ([#992](https://github.com/costajohnt/oss-autopilot/issues/992))
-- [ ] Audit-v2 follow-up sprint — close the 15 issues filed by the 2026-04-19 audit ([#993](https://github.com/costajohnt/oss-autopilot/issues/993)–[#1007](https://github.com/costajohnt/oss-autopilot/issues/1007))
+- [ ] Fix preAction bootstrap errors surfacing as unhandled rejections (`parse` vs `parseAsync`) ([#1386](https://github.com/costajohnt/oss-autopilot/issues/1386))
+- [ ] Stop three more catch sites from swallowing rate-limit errors into degraded results ([#1391](https://github.com/costajohnt/oss-autopilot/issues/1391))
+- [ ] Reconcile dashboard `needs_addressing` count with CLI `actionableIssues` — two independent classifiers diverge ([#1352](https://github.com/costajohnt/oss-autopilot/issues/1352))
+- [ ] Fix issue-scout hallucinating `Open` state and conflating cross-referenced PRs with closing PRs ([#1353](https://github.com/costajohnt/oss-autopilot/issues/1353))
+- [ ] Exclude issues the user already has open PRs for from search results ([#1354](https://github.com/costajohnt/oss-autopilot/issues/1354))
+- [ ] Fix `list-move-tier` silently no-opping on missing entries ([#1355](https://github.com/costajohnt/oss-autopilot/issues/1355))
+- [ ] Bring README/ARCHITECTURE/ROADMAP counts and status back in sync with the code ([#1379](https://github.com/costajohnt/oss-autopilot/issues/1379))
 
 ## Next (next 1-2 months)
 
-- [ ] Runtime `--json` contract enforcement — golden-file tests cover the happy path but nothing validates output shape at runtime ([#965](https://github.com/costajohnt/oss-autopilot/issues/965))
-- [ ] Per-repo learning from merged PR review feedback — adapt pursue-order signals based on what actually gets merged ([#867](https://github.com/costajohnt/oss-autopilot/issues/867))
-- [ ] Contract tests for mutating CLI commands (`track`, `dismiss`, `shelve`, `move`) ([#997](https://github.com/costajohnt/oss-autopilot/issues/997))
+- [ ] Move canonical issue-scout and repo-evaluator agents into oss-scout ([#1241](https://github.com/costajohnt/oss-autopilot/issues/1241))
+- [ ] Bias `oss-scout:issue-scout` searches with `strategy().recommendations`, with a diversity counterweight ([#1244](https://github.com/costajohnt/oss-autopilot/issues/1244))
+- [ ] Add a `guidelines list` subcommand backed by `listGuidelinesRepos()` ([#1393](https://github.com/costajohnt/oss-autopilot/issues/1393))
+- [ ] Surface `ConcurrencyError` in the dashboard as retryable instead of a generic 500 ([#1397](https://github.com/costajohnt/oss-autopilot/issues/1397))
 
 ## Later (no fixed timeline)
 
 - [ ] 1.0 launch content — blog post, social posts, competitive positioning ([#731](https://github.com/costajohnt/oss-autopilot/issues/731))
-- [ ] Dashboard live demo for non-dev audiences — 30-min visual walkthrough ([#940](https://github.com/costajohnt/oss-autopilot/issues/940))
+- [ ] Marketing video with Remotion ([#698](https://github.com/costajohnt/oss-autopilot/issues/698))
 - [ ] Co-maintainer recruitment — the project is currently solo-maintained (bus factor of 1)
 
 Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/discussions) or file an issue.
 
-## Completed (Recent)
+## Shipped
 
+- [x] Unify skip-list persistence — the `.md` file and `state.skippedIssues` no longer drift ([#992](https://github.com/costajohnt/oss-autopilot/issues/992))
+- [x] Audit-v2 follow-up sprint — closed the 15 issues filed by the 2026-04-19 audit ([#993](https://github.com/costajohnt/oss-autopilot/issues/993)–[#1007](https://github.com/costajohnt/oss-autopilot/issues/1007))
+- [x] Runtime `--json` contract enforcement — output shapes validated against Zod schemas at runtime ([#965](https://github.com/costajohnt/oss-autopilot/issues/965))
+- [x] Per-repo learning from merged PR review feedback ([#867](https://github.com/costajohnt/oss-autopilot/issues/867))
+- [x] Contract tests for mutating CLI commands (`track`, `dismiss`, `shelve`, `move`) ([#997](https://github.com/costajohnt/oss-autopilot/issues/997))
+- [x] Dashboard live demo for non-dev audiences — 30-min visual walkthrough ([#940](https://github.com/costajohnt/oss-autopilot/issues/940))
 - [x] Decompose `issue-discovery.ts` into focused modules ([#356](https://github.com/costajohnt/oss-autopilot/issues/356))
 - [x] Add SBOM generation to release workflow ([#359](https://github.com/costajohnt/oss-autopilot/issues/359))
 - [x] Add `/oss-help` quick reference command ([#360](https://github.com/costajohnt/oss-autopilot/issues/360))
