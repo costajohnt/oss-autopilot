@@ -145,7 +145,8 @@ The bundle is a single CommonJS file (gitignored, auto-generated). The `SessionS
 ### State Management (`state.ts`)
 
 `StateManager` is a singleton that reads/writes `~/.oss-autopilot/state.json`. Features:
-- **Advisory file locking** (`wx` flag) with stale lock detection (30s timeout)
+- **Optimistic concurrency (mtime compare-and-swap)** — `save()` throws `ConcurrencyError` if the file's mtime changed since this instance last loaded/saved; recovery is reload-reapply (`reloadIfChanged()` + re-apply the mutation). No lock is held across the load → mutate → save window.
+- **Advisory file locking** (`wx` flag, stale lock detection at 30s) held only during the physical write — the CAS check runs inside it
 - **Auto-backups** before every write (stored in `~/.oss-autopilot/backups/`)
 - **v1 → v2 → v3 → v4 migration chain** built into the load path (v4 added `commentsFetchedAt` for the #867 corpus pipeline)
 
@@ -303,5 +304,5 @@ PRs are **not** stored in state. On every `daily` run, all open PRs are fetched 
 ## Security Model
 
 - **Token resolution**: `$GITHUB_TOKEN` env var is checked first; `gh auth token` is the fallback. Token is cached in-memory per session, never written to disk.
-- **File permissions**: Data directory created with mode `0o700` (owner-only access). State file uses advisory locking to prevent concurrent corruption.
+- **File permissions**: Data directory created with mode `0o700` (owner-only access). State writes are atomic (temp file + rename) and serialized by an advisory lock; cross-process lost updates are caught by the mtime compare-and-swap in `save()`.
 - **Output isolation**: Debug/warning logs go to stderr; JSON output goes to stdout. This prevents log noise from corrupting the structured JSON contract.
