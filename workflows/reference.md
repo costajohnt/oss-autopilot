@@ -94,7 +94,7 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 <prefix> compliance-score <pr-url> --json
 
 # View comments on a PR
-<prefix> comments <pr-url> --json [--show-bots]
+<prefix> comments <pr-url> --json [--bots]
 
 # Post a comment to an issue or PR
 <prefix> post <url> "message" --json
@@ -115,7 +115,7 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 <prefix> clear-override <pr-url> --json
 
 # Fetch the target repo's PR description template (used by the draft-first workflow)
-<prefix> pr-template <pr-url> --json
+<prefix> pr-template <owner/repo> --json
 
 # Compute repo health rubric (1–10 score + verdict) for owner/repo (#1271)
 <prefix> repo-vet <owner/repo> --json
@@ -125,7 +125,7 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 
 ```bash
 # Serve interactive dashboard SPA
-<prefix> dashboard serve --port 3000 [--open]
+<prefix> dashboard serve --port 3000 [--no-open]
 ```
 
 ### Configuration
@@ -161,7 +161,7 @@ rejected with a did-you-mean suggestion.
 
 ```bash
 # Scan for local git repos
-<prefix> local-repos --json [--scan] [--clear-cache]
+<prefix> local-repos --json [--scan] [--paths <dirs...>]
 
 # System-health diagnostic (token, bundle, state, scout, rate limit)
 <prefix> doctor --json
@@ -184,10 +184,10 @@ rejected with a did-you-mean suggestion.
 | Flag | Commands | Purpose |
 |---|---|---|
 | `--json` | all | Emit a structured `{success, data?, error?, timestamp}` envelope. Preferred for agent / programmatic consumption. |
-| `--compact` | `daily` | Reduce payload size by omitting `summary`, `repoGroups`, and full `failures` details. Retains `failureCount` + `warnings`. |
+| `--compact` | `daily`, `startup` | Reduce payload size by omitting `summary`, `repoGroups`, and full `failures` details. Retains `failureCount` + `warnings`. |
 | `--port <n>` | `dashboard serve` | TCP port for the interactive SPA (default 3000). |
-| `--open` | `dashboard serve` | Auto-open the dashboard in the default browser after starting. |
-| `--show-bots` | `comments` | Include bot authors in the comment listing (default filters them out). |
+| `--no-open` | `dashboard serve` | Skip auto-opening the dashboard in the default browser (auto-open is the default). |
+| `--bots` | `comments` | Include bot authors in the comment listing (default filters them out). |
 | `--base <branch>` | `orphan-files` | Base branch to diff against for new-file detection (default `main`). |
 | `--reset` | `setup` | Re-run the setup wizard even if already complete. |
 | `--set key=value` | `setup` | Apply settings non-interactively. Repeatable. Unknown keys are rejected with a did-you-mean suggestion. |
