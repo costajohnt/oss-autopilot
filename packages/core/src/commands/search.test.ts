@@ -43,6 +43,53 @@ describe('runSearch', () => {
     } as any);
   });
 
+  it('passes the diversity counterweight ratio to scout (#1244)', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+
+    await runSearch({ maxResults: 5 });
+
+    expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({ diversityRatio: 0.2 }));
+  });
+
+  it('surfaces diversitySlot on candidates and omits it when absent (#1244)', async () => {
+    const base = {
+      recommendation: 'approve',
+      reasonsToApprove: [],
+      reasonsToSkip: [],
+      searchPriority: 'normal',
+      viabilityScore: 50,
+    };
+    mockSearch.mockResolvedValue({
+      candidates: [
+        {
+          ...base,
+          issue: { repo: 'a/b', number: 1, title: 'slot', url: 'https://github.com/a/b/issues/1', labels: [] },
+          diversitySlot: true,
+        },
+        {
+          ...base,
+          issue: { repo: 'a/b', number: 2, title: 'boosted', url: 'https://github.com/a/b/issues/2', labels: [] },
+          boostScore: 3,
+          boostReasons: ['language match: TypeScript'],
+        },
+      ],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+
+    const result = await runSearch({ maxResults: 5 });
+
+    expect(result.candidates[0].diversitySlot).toBe(true);
+    expect('diversitySlot' in result.candidates[1]).toBe(false);
+    expect(result.candidates[1].boostReasons).toEqual(['language match: TypeScript']);
+  });
+
   it('should search and return candidates', async () => {
     mockSearch.mockResolvedValue({
       candidates: [
@@ -68,7 +115,7 @@ describe('runSearch', () => {
 
     const result = await runSearch({ maxResults: 10 });
 
-    expect(mockSearch).toHaveBeenCalledWith({ maxResults: 10 });
+    expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({ maxResults: 10, diversityRatio: 0.2 }));
     expect(result).toEqual(
       expect.objectContaining({
         candidates: expect.arrayContaining([

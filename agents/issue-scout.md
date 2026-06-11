@@ -89,7 +89,7 @@ Hidden signals (policy PRs, hidden comments) aren't document-scannable — note 
 ## Search Process
 
 1. **Run `search`** (MCP tool or CLI) — it automatically loads user preferences, applies multi-strategy search (merged repos, orgs, starred, broad, maintained), scores by viability (0–100), filters to active/available, and returns structured candidates.
-2. **Parse results.** Each candidate has `issue`, `recommendation`, `reasonsToApprove`, `reasonsToSkip`, `viabilityScore`, `grade`, `searchPriority`, optional `repoScore`.
+2. **Parse results.** Each candidate has `issue`, `recommendation`, `reasonsToApprove`, `reasonsToSkip`, `viabilityScore`, `grade`, `searchPriority`, optional `repoScore`. Strategy-biased searches (#1244) also carry optional `boostReasons` (why this result was boosted, e.g. repo affinity or language match) and `diversitySlot: true` (deliberately outside the user's usual languages/repos — the echo-chamber counterweight). Quote these in your summary so the user sees why each result surfaced; do not treat a diversity slot as a lower-quality result.
 3. **Manual context** via `status --json`: preferences, open PRs with health, history, cached repo scores.
 
 ### gh fallback

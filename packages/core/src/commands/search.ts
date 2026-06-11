@@ -21,6 +21,15 @@ const MODULE = 'search';
  */
 export const MAX_SEARCH_RESULTS = 100;
 
+/**
+ * Fraction of search slots reserved for candidates that matched neither
+ * strategy-preferred languages nor repos (#1244). Counterweight against
+ * echo-chamber bias: without it, strategy-boosted searches return more of
+ * what already merged, which merges more of the same, and the profile
+ * narrows over time. Scout clamps to [0, 1]; 0.2 is the issue's proposal.
+ */
+export const SEARCH_DIVERSITY_RATIO = 0.2;
+
 interface SearchOptions {
   maxResults: number;
 }
@@ -80,6 +89,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
     maxResults: options.maxResults,
     preferLanguages,
     preferRepos,
+    diversityRatio: SEARCH_DIVERSITY_RATIO,
   });
 
   // #1354: never surface issues the user already has an open PR for. Uses
@@ -149,6 +159,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
         ...(linkedPR ? { linkedPR } : {}),
         ...(typeof c.boostScore === 'number' ? { boostScore: c.boostScore } : {}),
         ...(c.boostReasons && c.boostReasons.length > 0 ? { boostReasons: c.boostReasons } : {}),
+        ...(c.diversitySlot === true ? { diversitySlot: true } : {}),
       };
     }),
     excludedRepos: result.excludedRepos,
