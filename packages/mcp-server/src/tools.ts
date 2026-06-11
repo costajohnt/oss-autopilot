@@ -72,18 +72,29 @@ const githubIssueOrPrUrlSchema = z
 const KNOWN_CONFIG_KEYS = Array.from(new Set([...getSetupKeys(), ...getConfigKeys()]));
 const configKeySchema = KNOWN_CONFIG_KEYS.length > 0 ? z.enum(KNOWN_CONFIG_KEYS as [string, ...string[]]) : z.string(); // defensive: if the registry is empty, fall back to the old shape
 
-/** One-shot Gist persistence activation (checked once per process). */
-let gistInitDone = false;
+/** One-shot Gist persistence activation (memoized per process, #1368). */
+let gistInitPromise: Promise<void> | null = null;
 async function ensureGistInit(): Promise<void> {
-  if (gistInitDone) return;
-  gistInitDone = true;
-
-  // Gist init errors (GistPermissionError, network) propagate to wrapTool's catch.
-  // Shared helper in core unifies the "peek at state file, check persistence mode,
-  // pre-set singleton" logic that was previously duplicated with cli.ts (#1000).
-  const { ensureGistPersistence, getGitHubTokenAsync } = await import('@oss-autopilot/core');
-  const token = await getGitHubTokenAsync();
-  await ensureGistPersistence(token);
+  // Memoize the in-flight promise instead of flipping a boolean up front:
+  // the old flag was set before the awaits, so one transient failure (token
+  // fetch, network) permanently skipped Gist init for the process and
+  // gist-mode mutations silently landed in local state only (#1368).
+  // Failure clears the memo so the next tool call retries; success stays
+  // memoized; concurrent first calls share the same promise.
+  if (!gistInitPromise) {
+    gistInitPromise = (async () => {
+      // Gist init errors (GistPermissionError, network) propagate to wrapTool's catch.
+      // Shared helper in core unifies the "peek at state file, check persistence mode,
+      // pre-set singleton" logic that was previously duplicated with cli.ts (#1000).
+      const { ensureGistPersistence, getGitHubTokenAsync } = await import('@oss-autopilot/core');
+      const token = await getGitHubTokenAsync();
+      await ensureGistPersistence(token);
+    })();
+    gistInitPromise.catch(() => {
+      gistInitPromise = null;
+    });
+  }
+  return gistInitPromise;
 }
 
 /** Standard MCP text content result. */
