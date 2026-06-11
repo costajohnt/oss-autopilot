@@ -585,6 +585,9 @@ const SearchCandidateSchema = z.object({
    */
   boostScore: z.number().optional(),
   boostReasons: z.array(z.string()).optional(),
+  /** True when this candidate filled a diversity slot (#1244) — surfaced so
+   * the user can see the counterweight working, not just its absence. */
+  diversitySlot: z.boolean().optional(),
 });
 
 export const SearchOutputSchema = z.object({
@@ -1049,6 +1052,12 @@ export interface SearchCandidate {
    * opportunities (open PR + no updates for 30+ days, scout 0.9.0 #97).
    */
   linkedPR?: CandidateLinkedPR;
+  /** Strategy-bias sort boost from scout (#1244); absent when unboosted. */
+  boostScore?: number;
+  /** Human-readable boost explanations, e.g. "repo affinity: vercel/next.js". */
+  boostReasons?: string[];
+  /** True when this candidate filled a diversity slot (#1244). */
+  diversitySlot?: boolean;
 }
 
 export interface SearchOutput {

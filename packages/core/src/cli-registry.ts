@@ -386,6 +386,14 @@ export const commands: CLICommandDef[] = [
                 console.log(`[${recommendation.toUpperCase()}] ${issue.repo}#${issue.number}: ${issue.title}`);
                 console.log(`  URL: ${issue.url}`);
                 console.log(`  Viability: ${viabilityScore}/100`);
+                // #1244: say WHY a result surfaced so the user can calibrate
+                // trust in the strategy bias — and see the counterweight work.
+                if (candidate.boostReasons && candidate.boostReasons.length > 0) {
+                  console.log(`  Why surfaced: ${candidate.boostReasons.join(', ')}`);
+                }
+                if (candidate.diversitySlot) {
+                  console.log('  Diversity slot: outside your usual languages/repos');
+                }
                 if (reasonsToApprove.length > 0) console.log(`  Approve: ${reasonsToApprove.join(', ')}`);
                 if (reasonsToSkip.length > 0) console.log(`  Skip: ${reasonsToSkip.join(', ')}`);
                 console.log('---');
