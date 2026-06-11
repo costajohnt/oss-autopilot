@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { StateManager, acquireLock, releaseLock, atomicWriteFileSync, resetStateManager } from './state.js';
-import { saveState, createFreshState } from './state-persistence.js';
+import { saveState, createFreshState, loadState } from './state-persistence.js';
 import { ConcurrencyError } from './errors.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -703,6 +703,26 @@ describe('state recovery and backup edge cases', () => {
     expect(sm.getState().config.githubUsername).toBe('');
   });
 
+  it('should report recovery details when state has invalid structure (Zod path)', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify({ version: 4, config: null, repoScores: {} }), { mode: 0o600 });
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'),
+      JSON.stringify(makeCurrentState({ config: { ...makeBaseConfig(), githubUsername: 'backup-user' } })),
+      { mode: 0o600 },
+    );
+
+    const result = loadState();
+    expect(result.state.config.githubUsername).toBe('backup-user');
+    expect(result.recovery).toBeDefined();
+    expect(result.recovery?.source).toBe('backup');
+    expect(result.recovery?.rejectedPath).toMatch(/state\.json\.rejected-\d+$/);
+    expect(result.recovery?.reason).toContain('Invalid state file structure');
+  });
+
   it('should handle backup containing non-object JSON', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     fs.writeFileSync(statePath, 'CORRUPT', { mode: 0o600 });
@@ -715,6 +735,160 @@ describe('state recovery and backup edge cases', () => {
     const sm = new StateManager(false);
     expect(sm.getState().version).toBe(4);
     expect(sm.getState().config.githubUsername).toBe('');
+  });
+});
+
+// ── Rejected-file preservation and recovery metadata (#1371) ────────────────
+describe('loadState rejected-file preservation and recovery metadata (#1371)', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-rejected-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  function listRejectedFiles(): string[] {
+    return fs.readdirSync(mockTmpDir).filter((f) => f.startsWith('state.json.rejected-'));
+  }
+
+  it('preserves a .rejected copy with the corrupt content when restoring from backup', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, '{ this is not valid json }', { mode: 0o600 });
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc123.json'),
+      JSON.stringify(makeCurrentState({ config: { ...makeBaseConfig(), githubUsername: 'rescued' } })),
+      { mode: 0o600 },
+    );
+
+    const result = loadState();
+
+    // Restored from backup
+    expect(result.state.config.githubUsername).toBe('rescued');
+    expect(result.recovery?.source).toBe('backup');
+
+    // The corrupt original is preserved verbatim before the overwrite
+    const rejected = listRejectedFiles();
+    expect(rejected.length).toBe(1);
+    expect(fs.readFileSync(path.join(mockTmpDir, rejected[0]), 'utf8')).toBe('{ this is not valid json }');
+    expect(result.recovery?.rejectedPath).toBe(path.join(mockTmpDir, rejected[0]));
+    expect(result.recovery?.reason).toContain('Error loading state');
+  });
+
+  it('preserves a .rejected copy and reports fresh recovery when no valid backup exists', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, 'CORRUPT', { mode: 0o600 });
+
+    const backupDir = path.join(mockTmpDir, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    fs.writeFileSync(path.join(backupDir, 'state-2024-01-01T00-00-00-000Z-abc000.json'), 'ALSO CORRUPT', {
+      mode: 0o600,
+    });
+
+    const result = loadState();
+
+    expect(result.state.version).toBe(4);
+    expect(result.recovery?.source).toBe('fresh');
+
+    const rejected = listRejectedFiles();
+    expect(rejected.length).toBe(1);
+    expect(fs.readFileSync(path.join(mockTmpDir, rejected[0]), 'utf8')).toBe('CORRUPT');
+    expect(result.recovery?.rejectedPath).toBe(path.join(mockTmpDir, rejected[0]));
+  });
+
+  it('returns no recovery metadata for a healthy state file', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(makeCurrentState()), { mode: 0o600 });
+
+    const result = loadState();
+
+    expect(result.recovery).toBeUndefined();
+    expect(listRejectedFiles().length).toBe(0);
+  });
+
+  it('returns no recovery metadata when no state file exists (fresh start is not a recovery)', () => {
+    const result = loadState();
+
+    expect(result.state.version).toBe(4);
+    expect(result.recovery).toBeUndefined();
+    expect(listRejectedFiles().length).toBe(0);
+  });
+
+  // Root ignores file modes, so the chmod-000 setup cannot produce EACCES there.
+  const isRoot = process.getuid?.() === 0;
+
+  it.skipIf(isRoot)('throws an actionable error on EACCES instead of treating it as corruption', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const original = JSON.stringify(makeCurrentState({ config: { ...makeBaseConfig(), githubUsername: 'keep-me' } }));
+    fs.writeFileSync(statePath, original, { mode: 0o600 });
+    fs.chmodSync(statePath, 0o000);
+
+    try {
+      expect(() => loadState()).toThrow(/permission/i);
+      expect(() => loadState()).toThrow(/state\.json/);
+
+      // No forensic copy, no clobbering — the file is untouched.
+      expect(listRejectedFiles().length).toBe(0);
+    } finally {
+      fs.chmodSync(statePath, 0o600);
+    }
+
+    // After restoring permissions the original content is intact.
+    expect(fs.readFileSync(statePath, 'utf8')).toBe(original);
+  });
+
+  it.skipIf(isRoot)('StateManager construction propagates the permission error', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(makeCurrentState()), { mode: 0o600 });
+    fs.chmodSync(statePath, 0o000);
+
+    try {
+      expect(() => new StateManager(false)).toThrow(/permission/i);
+    } finally {
+      fs.chmodSync(statePath, 0o600);
+    }
+  });
+});
+
+// ── StateManager.getLoadRecovery (#1371) ────────────────────────────────────
+describe('StateManager.getLoadRecovery', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-loadrecovery-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('returns recovery info after constructing against a corrupt state file', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, 'CORRUPT', { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    const recovery = sm.getLoadRecovery();
+
+    expect(recovery).not.toBeNull();
+    expect(recovery?.source).toBe('fresh');
+    expect(recovery?.rejectedPath).toMatch(/state\.json\.rejected-\d+$/);
+    expect(recovery?.reason).toContain('Error loading state');
+  });
+
+  it('returns null against a healthy state file', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    fs.writeFileSync(statePath, JSON.stringify(makeCurrentState()), { mode: 0o600 });
+
+    const sm = new StateManager(false);
+    expect(sm.getLoadRecovery()).toBeNull();
+  });
+
+  it('returns null in in-memory mode', () => {
+    const sm = new StateManager(true);
+    expect(sm.getLoadRecovery()).toBeNull();
   });
 });
 

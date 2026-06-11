@@ -83,6 +83,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       undismissIssue: mockUndismissIssue,
       getStatusOverride: mockGetStatusOverride,
       getStateStaleness: vi.fn(() => null),
+      getLoadRecovery: vi.fn(() => null),
       batch: (fn: () => void) => fn(),
     })),
     requireGitHubToken: vi.fn(() => 'test-token'),

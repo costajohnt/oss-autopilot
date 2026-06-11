@@ -24,6 +24,7 @@ import {
   reloadStateIfChanged,
   createFreshState,
   atomicWriteFileSync,
+  type LoadRecoveryInfo,
 } from './state-persistence.js';
 import * as repoScoring from './repo-score-manager.js';
 import type { Stats } from './repo-score-manager.js';
@@ -35,6 +36,7 @@ import { getStatePath, getStateCachePath } from './paths.js';
 import { parseGitHubUrl } from './urls.js';
 
 export { acquireLock, releaseLock, atomicWriteFileSync } from './state-persistence.js';
+export type { LoadRecoveryInfo } from './state-persistence.js';
 export type { Stats } from './repo-score-manager.js';
 
 const MODULE = 'state';
@@ -132,6 +134,7 @@ export class StateManager {
   protected gistDegraded = false;
   private staleness: StalenessInfo | null = null;
   private lastSuccessfulRefreshAt: string | null = null;
+  private loadRecovery: LoadRecoveryInfo | null = null;
 
   /**
    * Create a new StateManager instance.
@@ -147,6 +150,7 @@ export class StateManager {
       const result = loadState();
       this.state = result.state;
       this.lastLoadedMtimeMs = result.mtimeMs;
+      this.loadRecovery = result.recovery ?? null;
       this.tryReconcilePRCounts();
     }
   }
@@ -169,9 +173,11 @@ export class StateManager {
     // Check if local state exists for migration
     const statePath = getStatePath();
     let result;
+    let localRecovery: LoadRecoveryInfo | null = null;
     if (fs.existsSync(statePath)) {
       // Existing user: load local state and migrate it into the Gist if no Gist exists yet.
       const localStateResult = loadState();
+      localRecovery = localStateResult.recovery ?? null;
       const migrationResult = await gistStore.bootstrapWithMigration(localStateResult.state);
       result = migrationResult;
 
@@ -198,6 +204,9 @@ export class StateManager {
     manager.gistStore = gistStore;
     manager.gistDegraded = result.degraded ?? false;
     manager.inMemoryOnly = false; // re-enable persistence
+    // Surface a recovery that happened while loading the local file for Gist
+    // migration — the recovered (or fresh) state is what got migrated.
+    manager.loadRecovery = localRecovery;
 
     // Seed the staleness marker if bootstrap fell back to the local cache —
     // a `daily` running on a cron right after this start needs to know.
@@ -420,8 +429,19 @@ export class StateManager {
     if (!result) return false;
     this.state = result.state;
     this.lastLoadedMtimeMs = result.mtimeMs;
+    this.loadRecovery = result.recovery ?? null;
     this.tryReconcilePRCounts();
     return true;
+  }
+
+  /**
+   * Recovery details from the most recent state load, or null when the last
+   * load read the state file cleanly (or no load from disk has happened,
+   * e.g. in-memory mode). Set when loadState() fell back to a backup or
+   * fresh state because the main file was corrupt or invalid (#1371).
+   */
+  getLoadRecovery(): LoadRecoveryInfo | null {
+    return this.loadRecovery;
   }
 
   /**

@@ -708,6 +708,21 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     warnings.push(buildStalenessWarning(staleness));
   }
 
+  // Surface a state-load recovery (corrupt state.json restored from backup or
+  // replaced with fresh state) so it's machine-visible, not just stderr (#1371).
+  const loadRecovery = getStateManager().getLoadRecovery();
+  if (loadRecovery) {
+    recordWarning(
+      warnings,
+      'state-load',
+      'State file recovery',
+      new Error(
+        `${loadRecovery.reason}; recovered from ${loadRecovery.source}` +
+          (loadRecovery.rejectedPath ? `; rejected file preserved at ${loadRecovery.rejectedPath}` : ''),
+      ),
+    );
+  }
+
   // Phase 1: Fetch all PR data from GitHub
   const {
     prs,
