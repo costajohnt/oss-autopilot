@@ -45,3 +45,4 @@ packages/core/docs/
 # Worktrees
 .worktrees/
 .vercel
+package-lock.json
