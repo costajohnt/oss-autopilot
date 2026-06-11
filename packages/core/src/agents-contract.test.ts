@@ -79,6 +79,7 @@ const REGISTERED_MCP_TOOLS = new Set([
   'state-show',
   'state-sync',
   'state-unlink',
+  'guidelines-list',
   'guidelines-get',
   'guidelines-store',
   'guidelines-reset',

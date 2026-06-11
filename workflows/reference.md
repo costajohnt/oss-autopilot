@@ -69,6 +69,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `clear-override`, `c
 ### Per-Repo Guidelines (#867)
 
 ```bash
+# List repos with stored guidelines
+<prefix> guidelines list --json
+
 # Read stored guidelines for a repo
 <prefix> guidelines view --repo <owner/repo> --json
 

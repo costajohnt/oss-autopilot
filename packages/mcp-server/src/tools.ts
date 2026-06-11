@@ -30,6 +30,7 @@ import {
   runDismiss,
   runUndismiss,
   runMove,
+  runGuidelinesList,
   runGuidelinesView,
   runGuidelinesStore,
   runGuidelinesReset,
@@ -572,6 +573,18 @@ export function registerTools(server: McpServer): void {
   );
 
   // ── Per-Repo Guidelines (#867) ──────────────────────────────────────
+  // guidelines-list
+  server.registerTool(
+    'guidelines-list',
+    {
+      description:
+        'List repos that have stored per-repo learning guidelines. Returns an empty list when nothing is stored or when running in local mode without Gist persistence (storageMode distinguishes the two).',
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    wrapTool(() => runGuidelinesList()),
+  );
+
   // 23. guidelines-get
   server.registerTool(
     'guidelines-get',
