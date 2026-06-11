@@ -8,7 +8,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { AgentState } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
-import { getStatePath, getBackupDir, getDataDir } from './paths.js';
+import { getStatePath, getBackupDir, getDataDir, getLegacyStatePath, getLegacyBackupDir } from './paths.js';
 import { errorMessage, ConcurrencyError } from './errors.js';
 import { debug, warn } from './logger.js';
 
@@ -16,10 +16,6 @@ const MODULE = 'state';
 
 // Lock file timeout: if a lock is older than this, it is considered stale
 const LOCK_TIMEOUT_MS = 30_000; // 30 seconds
-
-// Legacy path for migration
-const LEGACY_STATE_FILE = path.join(process.cwd(), 'data', 'state.json');
-const LEGACY_BACKUP_DIR = path.join(process.cwd(), 'data', 'backups');
 
 /**
  * Check whether an existing lock file is stale (expired or corrupt).
@@ -201,6 +197,10 @@ export function createFreshState(): AgentState {
  */
 function migrateFromLegacyLocation(): boolean {
   const newStatePath = getStatePath();
+  // Resolved via paths.js (not module constants) so tests can mock the
+  // legacy location into per-test temp dirs — see #1382.
+  const LEGACY_STATE_FILE = getLegacyStatePath();
+  const LEGACY_BACKUP_DIR = getLegacyBackupDir();
 
   // If new state already exists, no migration needed
   if (fs.existsSync(newStatePath)) {

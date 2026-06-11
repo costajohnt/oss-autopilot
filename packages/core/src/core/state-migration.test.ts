@@ -45,6 +45,19 @@ vi.mock('./paths.js', async (importOriginal) => {
       }
       return backupDir;
     },
+    // Legacy migration source, redirected into the per-test dir. The real
+    // implementation resolves to ./data under process.cwd(), which is one
+    // shared directory for every parallel vitest worker — tests that create
+    // real files there race against any concurrent StateManager load that
+    // migrates-and-unlinks them (#1382).
+    getLegacyStatePath: () => {
+      if (!mockTmpDir) throw new Error('mockTmpDir not set');
+      return path.join(mockTmpDir, 'legacy-data', 'state.json');
+    },
+    getLegacyBackupDir: () => {
+      if (!mockTmpDir) throw new Error('mockTmpDir not set');
+      return path.join(mockTmpDir, 'legacy-data', 'backups');
+    },
   };
 });
 
@@ -590,36 +603,33 @@ describe('issueListPath in config', () => {
 });
 
 // ── migrateFromLegacyLocation ───────────────────────────────────────────────
-// Legacy paths resolve to packages/core/data/ during vitest (process.cwd()).
-// Tests must create/cleanup this directory.
+// Legacy paths are mocked (getLegacyStatePath / getLegacyBackupDir in the
+// paths.js mock above) into a per-test directory under mockTmpDir. They used
+// to resolve to the real shared packages/core/data/ (process.cwd()), which
+// raced against every parallel vitest worker whose StateManager load ran
+// migration concurrently — the #1382 CI flake.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('migrateFromLegacyLocation', () => {
-  const legacyDataDir = path.join(process.cwd(), 'data');
-  const legacyStatePath = path.join(legacyDataDir, 'state.json');
-  const legacyBackupDir = path.join(legacyDataDir, 'backups');
+  const legacyDataDir = () => path.join(mockTmpDir, 'legacy-data');
+  const legacyStatePath = () => path.join(legacyDataDir(), 'state.json');
+  const legacyBackupDir = () => path.join(legacyDataDir(), 'backups');
 
   function createLegacyState(data: Record<string, unknown>): void {
-    fs.mkdirSync(legacyDataDir, { recursive: true });
-    fs.writeFileSync(legacyStatePath, JSON.stringify(data), { mode: 0o600 });
+    fs.mkdirSync(legacyDataDir(), { recursive: true });
+    fs.writeFileSync(legacyStatePath(), JSON.stringify(data), { mode: 0o600 });
   }
 
   function createLegacyBackup(name: string, data: Record<string, unknown>): void {
-    fs.mkdirSync(legacyBackupDir, { recursive: true });
-    fs.writeFileSync(path.join(legacyBackupDir, name), JSON.stringify(data), { mode: 0o600 });
-  }
-
-  function cleanupLegacyDir(): void {
-    fs.rmSync(legacyDataDir, { recursive: true, force: true });
+    fs.mkdirSync(legacyBackupDir(), { recursive: true });
+    fs.writeFileSync(path.join(legacyBackupDir(), name), JSON.stringify(data), { mode: 0o600 });
   }
 
   beforeEach(() => {
     mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oss-state-legacy-'));
-    cleanupLegacyDir(); // ensure clean slate
   });
 
   afterEach(() => {
-    cleanupLegacyDir();
     fs.rmSync(mockTmpDir, { recursive: true, force: true });
     mockTmpDir = '';
   });
@@ -631,8 +641,8 @@ describe('migrateFromLegacyLocation', () => {
     expect(sm.getState().config.githubUsername).toBe('legacy-user');
 
     expect(fs.existsSync(path.join(mockTmpDir, 'state.json'))).toBe(true);
-    expect(fs.existsSync(legacyStatePath)).toBe(false);
-    expect(fs.existsSync(legacyDataDir)).toBe(false);
+    expect(fs.existsSync(legacyStatePath())).toBe(false);
+    expect(fs.existsSync(legacyDataDir())).toBe(false);
   });
 
   it('should migrate backup files from legacy location', () => {
@@ -650,18 +660,18 @@ describe('migrateFromLegacyLocation', () => {
     expect(backups).toContain('state-2024-01-02T00-00-00-000Z-def456.json');
 
     // Legacy backup dir should be removed
-    expect(fs.existsSync(legacyBackupDir)).toBe(false);
+    expect(fs.existsSync(legacyBackupDir())).toBe(false);
   });
 
   it('should not remove legacy data dir if other files remain', () => {
     createLegacyState(makeCurrentState());
-    fs.writeFileSync(path.join(legacyDataDir, 'other.txt'), 'keep me');
+    fs.writeFileSync(path.join(legacyDataDir(), 'other.txt'), 'keep me');
 
     new StateManager(false);
 
-    expect(fs.existsSync(legacyStatePath)).toBe(false);
-    expect(fs.existsSync(legacyDataDir)).toBe(true);
-    expect(fs.existsSync(path.join(legacyDataDir, 'other.txt'))).toBe(true);
+    expect(fs.existsSync(legacyStatePath())).toBe(false);
+    expect(fs.existsSync(legacyDataDir())).toBe(true);
+    expect(fs.existsSync(path.join(legacyDataDir(), 'other.txt'))).toBe(true);
   });
 
   it('should skip migration when new state already exists', () => {
@@ -676,19 +686,19 @@ describe('migrateFromLegacyLocation', () => {
     const sm = new StateManager(false);
 
     expect(sm.getState().config.githubUsername).toBe('new-user');
-    expect(fs.existsSync(legacyStatePath)).toBe(true);
+    expect(fs.existsSync(legacyStatePath())).toBe(true);
   });
 
   it('should handle migration failure gracefully', () => {
     createLegacyState(makeCurrentState());
-    fs.chmodSync(legacyStatePath, 0o000);
+    fs.chmodSync(legacyStatePath(), 0o000);
 
     const sm = new StateManager(false);
     expect(sm.getState().version).toBe(4);
 
     // Restore permissions so afterEach cleanup works
-    fs.chmodSync(legacyStatePath, 0o600);
-    expect(fs.existsSync(legacyStatePath)).toBe(true);
+    fs.chmodSync(legacyStatePath(), 0o600);
+    expect(fs.existsSync(legacyStatePath())).toBe(true);
   });
 });
 
