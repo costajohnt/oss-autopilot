@@ -110,7 +110,8 @@ export type DailyWarningPhase =
   | 'partition'
   | 'dismiss-filter'
   | 'gist-checkpoint'
-  | 'gist-staleness';
+  | 'gist-staleness'
+  | 'state-load';
 
 /**
  * A single non-fatal failure surfaced from the `daily` pipeline. Unlike
@@ -285,6 +286,7 @@ const DailyWarningPhaseSchema = z.enum([
   'dismiss-filter',
   'gist-checkpoint',
   'gist-staleness',
+  'state-load',
 ]);
 
 const DailyWarningSchema = z.object({

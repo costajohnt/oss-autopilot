@@ -359,12 +359,60 @@ function tryRestoreFromBackup(): AgentState | null {
 }
 
 /**
+ * Details about a recovery that happened during {@link loadState} — set when
+ * the main state file was unreadable (JSON parse error) or structurally
+ * invalid (Zod rejection) and the loader fell back to a backup or fresh state.
+ * Surfaced through StateManager.getLoadRecovery() so commands can include the
+ * event in structured output instead of only stderr warn() lines (#1371).
+ */
+export interface LoadRecoveryInfo {
+  /** Where the loaded state came from after the original file was rejected. */
+  source: 'backup' | 'fresh';
+  /** Path of the preserved `.rejected-<ts>` copy, or null if preservation failed. */
+  rejectedPath: string | null;
+  /** Short summary of why the original state file was rejected. */
+  reason: string;
+}
+
+/**
+ * Result of {@link loadState}: the loaded state, the file's mtime for change
+ * detection, and (only when the main file was rejected) recovery details.
+ */
+export interface LoadStateResult {
+  state: AgentState;
+  mtimeMs: number;
+  recovery?: LoadRecoveryInfo;
+}
+
+/**
+ * Copy a rejected state file to `<statePath>.rejected-<timestamp>` so the
+ * user can recover data manually before the file is overwritten by a backup
+ * restore or fresh state. Returns the preserved path, or null if the copy
+ * failed (preservation is best-effort and never throws).
+ */
+function preserveRejectedStateFile(statePath: string): string | null {
+  try {
+    const rejectedPath = statePath + '.rejected-' + Date.now();
+    fs.copyFileSync(statePath, rejectedPath);
+    warn(MODULE, `Previous state preserved at: ${rejectedPath}`);
+    return rejectedPath;
+  } catch (preserveErr) {
+    warn(MODULE, `Could not preserve rejected state file: ${errorMessage(preserveErr)}`);
+    return null;
+  }
+}
+
+/**
  * Load state from file, or create initial state if none exists.
  * If the main state file is corrupted, attempts to restore from the most recent backup.
  * Performs migration from legacy ./data/ location if needed.
- * @returns Object with the loaded state and the file's mtime (for change detection).
+ * @returns Object with the loaded state, the file's mtime (for change detection),
+ *   and recovery details when the main file was rejected.
+ * @throws Error when the state file exists but cannot be read due to a
+ *   permission error (EACCES/EPERM) — that is an environment problem, not
+ *   corruption, so restore-or-fresh would mask it and risk clobbering data.
  */
-export function loadState(): { state: AgentState; mtimeMs: number } {
+export function loadState(): LoadStateResult {
   // Try to migrate from legacy location first
   migrateFromLegacyLocation();
 
@@ -402,21 +450,17 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
         debug(MODULE, 'Full validation errors:', parsed.error.issues);
 
         // Preserve the rejected state file so the user can recover
-        try {
-          const rejectedPath = statePath + '.rejected-' + Date.now();
-          fs.copyFileSync(statePath, rejectedPath);
-          warn(MODULE, `Previous state preserved at: ${rejectedPath}`);
-        } catch (preserveErr) {
-          warn(MODULE, `Could not preserve rejected state file: ${errorMessage(preserveErr)}`);
-        }
+        const rejectedPath = preserveRejectedStateFile(statePath);
+        const reason = `Invalid state file structure: ${summary}`;
 
         const restoredState = tryRestoreFromBackup();
         if (restoredState) {
           const mtimeMs = safeGetMtimeMs(statePath);
-          return { state: restoredState, mtimeMs };
+          const recovery: LoadRecoveryInfo = { source: 'backup', rejectedPath, reason };
+          return { state: restoredState, mtimeMs, recovery };
         }
         warn(MODULE, 'No valid backup found, starting fresh');
-        return { state: createFreshState(), mtimeMs: 0 };
+        return { state: createFreshState(), mtimeMs: 0, recovery: { source: 'fresh', rejectedPath, reason } };
       }
 
       // Save migrated state only after validation succeeds
@@ -458,14 +502,37 @@ export function loadState(): { state: AgentState; mtimeMs: number } {
       return { state, mtimeMs };
     }
   } catch (error) {
+    // Permission errors are environmental, not corruption — restoring a
+    // backup or starting fresh here would mask the real problem and risk
+    // clobbering a perfectly valid state file. Rethrow with guidance (#1371).
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    if (code === 'EACCES' || code === 'EPERM') {
+      throw new Error(
+        `Permission denied reading state file (${code}): ${errorMessage(error)}. ` +
+          'This is an environment problem, not state corruption. Check the ownership and ' +
+          'permissions of ~/.oss-autopilot/state.json (e.g. run `ls -l ~/.oss-autopilot/state.json` ' +
+          'and fix with chown/chmod), then retry.',
+        { cause: error },
+      );
+    }
+
     warn(MODULE, 'Error loading state:', error);
     warn(MODULE, 'Attempting to restore from backup...');
+
+    // Preserve the unparseable file before tryRestoreFromBackup() overwrites
+    // it with restored backup contents (#1371). Only attempt when the file
+    // actually exists — the error may have come from elsewhere in the block.
+    const rejectedPath = fs.existsSync(statePath) ? preserveRejectedStateFile(statePath) : null;
+    const reason = `Error loading state: ${errorMessage(error)}`;
+
     const restoredState = tryRestoreFromBackup();
     if (restoredState) {
       const mtimeMs = safeGetMtimeMs(statePath);
-      return { state: restoredState, mtimeMs };
+      const recovery: LoadRecoveryInfo = { source: 'backup', rejectedPath, reason };
+      return { state: restoredState, mtimeMs, recovery };
     }
     warn(MODULE, 'No valid backup found, starting fresh');
+    return { state: createFreshState(), mtimeMs: 0, recovery: { source: 'fresh', rejectedPath, reason } };
   }
 
   debug(MODULE, 'No existing state found, initializing...');
@@ -578,7 +645,7 @@ export function saveState(state: Readonly<AgentState>, expectedMtimeMs: number |
  * Uses mtime comparison (single statSync call) to avoid unnecessary JSON parsing.
  * @returns The new state and mtime if reloaded, or null if no change detected.
  */
-export function reloadStateIfChanged(lastLoadedMtimeMs: number): { state: AgentState; mtimeMs: number } | null {
+export function reloadStateIfChanged(lastLoadedMtimeMs: number): LoadStateResult | null {
   try {
     const statePath = getStatePath();
     const currentMtimeMs = fs.statSync(statePath).mtimeMs;
