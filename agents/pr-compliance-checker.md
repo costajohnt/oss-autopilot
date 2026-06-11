@@ -23,7 +23,7 @@ User explicitly wants a PR compliance check.
 purpose: Validate PRs against opensource.guide
 model: haiku
 color: orange
-tools: ["Bash", "Read", "Glob", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments", "mcp__plugin_oss-autopilot_oss-autopilot__compliance-score", "mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get"]
+tools: ["Bash", "Read", "Glob", "Grep", "AskUserQuestion", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments", "mcp__plugin_oss-autopilot_oss-autopilot__compliance-score", "mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.

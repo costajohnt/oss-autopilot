@@ -23,7 +23,7 @@ User wants to evaluate a specific issue before investing time.
 purpose: Find and vet new issues
 model: sonnet
 color: green
-tools: ["Bash", "Read", "mcp__plugin_oss-autopilot_oss-autopilot__search", "mcp__plugin_oss-autopilot_oss-autopilot__vet", "mcp__plugin_oss-autopilot_oss-autopilot__vet-list"]
+tools: ["Bash", "Read", "AskUserQuestion", "mcp__plugin_oss-autopilot_oss-autopilot__search", "mcp__plugin_oss-autopilot_oss-autopilot__vet", "mcp__plugin_oss-autopilot_oss-autopilot__vet-list", "mcp__plugin_oss-autopilot_oss-autopilot__status"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.

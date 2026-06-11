@@ -23,7 +23,7 @@ User needs help understanding and responding to a specific code review comment.
 purpose: Draft responses to maintainer feedback
 model: sonnet
 color: cyan
-tools: ["Bash", "Read", "Write", "Glob", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments", "mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get"]
+tools: ["Bash", "Read", "Edit", "Write", "Glob", "Grep", "AskUserQuestion", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments", "mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
@@ -93,7 +93,7 @@ When `daily --json` data is available, use the `isFromMaintainer` boolean on `ne
 | `approval_with_nit` | "LGTM, just fix X" | NO — fix and push |
 | `formatting_complaint` | "revert the formatting", "keep the diff focused" | NO — revert + brief ack only if they sound frustrated |
 
-When `formatting_complaint` is detected: identify formatting-only hunks via `git diff`, revert via `git checkout -- {file}` (for files where all changes are formatting) or the Edit tool (for mixed files), verify only functional changes remain, push.
+When `formatting_complaint` is detected: identify formatting-only hunks via `git diff`, revert via `git checkout -- {file}` (for files where all changes are formatting) or the `Edit` tool (for mixed files), verify only functional changes remain, push.
 
 ### 3. Comment Decision Logic (post-push)
 

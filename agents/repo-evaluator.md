@@ -23,7 +23,7 @@ User wants to predict maintainer engagement before contributing.
 purpose: Analyze repository health
 model: sonnet
 color: blue
-tools: ["Bash", "Read", "Glob", "mcp__plugin_oss-autopilot_oss-autopilot__vet", "mcp__plugin_oss-autopilot_oss-autopilot__repo-vet"]
+tools: ["Bash", "Read", "Glob", "AskUserQuestion", "mcp__plugin_oss-autopilot_oss-autopilot__vet", "mcp__plugin_oss-autopilot_oss-autopilot__repo-vet", "mcp__plugin_oss-autopilot_oss-autopilot__status"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.

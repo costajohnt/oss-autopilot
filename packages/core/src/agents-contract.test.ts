@@ -378,6 +378,68 @@ function validateInvocation(inv: CliInvocation, topLevel: Map<string, CommandInf
   return errors;
 }
 
+// ── Agent frontmatter tool grants ────────────────────────────────────────
+
+interface AgentDoc {
+  /** Path relative to the repo root. */
+  file: string;
+  /** Parsed frontmatter `tools:` allowlist; null when the agent declares no
+   * `tools:` key (unrestricted — every tool is implicitly granted). */
+  tools: Set<string> | null;
+  /** Markdown body (everything after the closing frontmatter fence). */
+  body: string;
+}
+
+function listAgentFiles(): string[] {
+  const abs = path.join(REPO_ROOT, 'agents');
+  return fs
+    .readdirSync(abs)
+    .filter((name) => name.endsWith('.md') && name !== 'README.md')
+    .map((name) => path.join(abs, name));
+}
+
+function parseAgentDoc(file: string): AgentDoc {
+  const rel = path.relative(REPO_ROOT, file);
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  if (lines[0] !== '---') throw new Error(`${rel}: expected frontmatter to open on line 1`);
+  const end = lines.indexOf('---', 1);
+  if (end === -1) throw new Error(`${rel}: unterminated frontmatter`);
+  const toolsLine = lines.slice(1, end).find((l) => l.startsWith('tools:'));
+  let tools: Set<string> | null = null;
+  if (toolsLine) {
+    // Every agent declares tools as an inline JSON-style array of strings.
+    const parsed: unknown = JSON.parse(toolsLine.slice('tools:'.length).trim());
+    if (!Array.isArray(parsed) || !parsed.every((t): t is string => typeof t === 'string')) {
+      throw new Error(`${rel}: \`tools:\` frontmatter is not an array of strings`);
+    }
+    tools = new Set(parsed);
+  }
+  return { file: rel, tools, body: lines.slice(end + 1).join('\n') };
+}
+
+/**
+ * Built-in (non-MCP) tools detectable in agent bodies with near-zero
+ * false-positive risk (#1377):
+ *
+ *   - `AskUserQuestion` is a globally unique tool name; a word-boundary match
+ *     is always an instruction to use the tool.
+ *   - The phrase "Task tool" (name optionally backticked) only appears when
+ *     instructing sub-agent dispatch. Note: Claude Code subagents cannot nest
+ *     Task dispatch, so the usual fix is rewriting the instruction, not
+ *     granting the tool.
+ *   - `Edit` / `Write` are matched ONLY backtick-delimited; the bare words are
+ *     everyday English in review/drafting prose ("write a comment").
+ *
+ * If a pattern proves noisy on a future corpus, narrow the pattern — do not
+ * add a per-agent allowlist.
+ */
+const BUILTIN_TOOL_PATTERNS: ReadonlyArray<{ tool: string; pattern: RegExp }> = [
+  { tool: 'AskUserQuestion', pattern: /\bAskUserQuestion\b/ },
+  { tool: 'Task', pattern: /(?:`Task`|\bTask) tool\b/ },
+  { tool: 'Edit', pattern: /`Edit`/ },
+  { tool: 'Write', pattern: /`Write`/ },
+];
+
 // ── Tests ────────────────────────────────────────────────────────────────
 
 describe('REGISTERED_MCP_TOOLS mirror ↔ tools.ts source parity (#1374)', () => {
@@ -443,6 +505,60 @@ describe('prompt markdown ↔ CLI registry parity (#1245, #1376)', () => {
       offenders,
       `Prompt files invoke unregistered CLI commands/subcommands/flags — fix the ` +
         `markdown or register them in packages/core/src/cli-registry.ts:\n  ` +
+        offenders.join('\n  '),
+    ).toEqual([]);
+  });
+});
+
+describe('agent body tool references ↔ frontmatter tool grants (#1377)', () => {
+  const agents = listAgentFiles().map(parseAgentDoc);
+
+  it('sanity: the agent corpus parsed and carries restricted tool lists', () => {
+    expect(agents.length).toBeGreaterThan(5);
+    // Agents without a `tools:` key are unrestricted and skipped below by
+    // design; today every agent restricts its toolset, so a count of 0 here
+    // would mean the frontmatter parser broke.
+    expect(agents.filter((a) => a.tools !== null).length).toBeGreaterThan(5);
+  });
+
+  it('every MCP tool referenced in an agent body is granted in that agent frontmatter', () => {
+    const offenders: string[] = [];
+    for (const agent of agents) {
+      if (!agent.tools) continue; // unrestricted: everything is granted
+      const referenced = new Set([...agent.body.matchAll(MCP_TOOL_PATTERN)].map((m) => m[0]));
+      for (const tool of referenced) {
+        if (!agent.tools.has(tool)) {
+          offenders.push(`${agent.file} → body references ${tool} but frontmatter \`tools:\` does not grant it`);
+        }
+      }
+    }
+    expect(
+      offenders,
+      `Agent bodies instruct workflows with MCP tools their frontmatter never grants — ` +
+        `the instruction silently cannot execute. Add the tool to the agent's \`tools:\` ` +
+        `list or rewrite the instruction:\n  ` +
+        offenders.join('\n  '),
+    ).toEqual([]);
+  });
+
+  it('every built-in tool an agent body instructs with is granted in that agent frontmatter', () => {
+    const offenders: string[] = [];
+    for (const agent of agents) {
+      if (!agent.tools) continue; // unrestricted: everything is granted
+      for (const { tool, pattern } of BUILTIN_TOOL_PATTERNS) {
+        if (pattern.test(agent.body) && !agent.tools.has(tool)) {
+          offenders.push(
+            `${agent.file} → body instructs with ${tool} (matched ${String(pattern)}) ` +
+              `but frontmatter \`tools:\` does not grant it`,
+          );
+        }
+      }
+    }
+    expect(
+      offenders,
+      `Agent bodies instruct workflows with built-in tools their frontmatter never grants — ` +
+        `grant the tool or rewrite the instruction (for Task: subagents cannot nest Task ` +
+        `dispatch, so rewrite to sequential processing instead of granting):\n  ` +
         offenders.join('\n  '),
     ).toEqual([]);
   });

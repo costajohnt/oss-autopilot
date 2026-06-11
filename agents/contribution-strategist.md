@@ -23,7 +23,7 @@ User wants strategic guidance on where to contribute.
 purpose: Strategic OSS advice
 model: haiku
 color: magenta
-tools: ["Bash", "Read"]
+tools: ["Bash", "Read", "AskUserQuestion", "mcp__plugin_oss-autopilot_oss-autopilot__strategy"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
