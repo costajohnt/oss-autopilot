@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  attentionBucketOf,
   stripBrackets,
   pillColorClass,
   truncate,
@@ -11,6 +12,17 @@ import {
   formatRelativeTime,
   refreshLabel,
 } from './utils';
+
+describe('attentionBucketOf (#1352)', () => {
+  it('prefers the server-stamped bucket', () => {
+    expect(attentionBucketOf({ status: 'waiting_on_maintainer', attentionBucket: 'stuck_ci' })).toBe('stuck_ci');
+  });
+
+  it('falls back to the coarse status split for older payloads', () => {
+    expect(attentionBucketOf({ status: 'needs_addressing' })).toBe('needs_attention');
+    expect(attentionBucketOf({ status: 'waiting_on_maintainer' })).toBe('waiting');
+  });
+});
 
 describe('stripBrackets', () => {
   it('removes surrounding brackets from a label', () => {

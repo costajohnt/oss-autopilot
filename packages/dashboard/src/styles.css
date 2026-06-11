@@ -769,6 +769,10 @@ a:hover {
   background: var(--text-muted);
 }
 
+.pr-section-dot.amber {
+  background: var(--amber, #d97706);
+}
+
 .pr-section-count {
   font-size: 0.6875rem;
   font-weight: 600;

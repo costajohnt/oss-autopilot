@@ -73,15 +73,22 @@ const mockStateManager = {
 // Create a temp dir for PID file tests (needs to exist before mock is evaluated)
 const pidTestDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-pid-test-'));
 
-vi.mock('../core/index.js', () => ({
-  getStateManager: vi.fn(() => mockStateManager),
-  getGitHubToken: vi.fn(() => null),
-  getDataDir: vi.fn(() => pidTestDir),
-  getCLIVersion: vi.fn(() => '0.44.6'),
-  applyStatusOverrides: vi.fn((prs: unknown[]) => prs),
-  // Used by the real reconcileShelvePartition (imported via importActual below).
-  toShelvedPRRef: vi.fn((pr: unknown) => pr),
-}));
+vi.mock('../core/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../core/index.js')>();
+  return {
+    getStateManager: vi.fn(() => mockStateManager),
+    getGitHubToken: vi.fn(() => null),
+    getDataDir: vi.fn(() => pidTestDir),
+    getCLIVersion: vi.fn(() => '0.44.6'),
+    applyStatusOverrides: vi.fn((prs: unknown[]) => prs),
+    // Real pure classifier + status set (#1352) so /api/data responses carry
+    // genuine buckets and the shelve partition mirrors the daily check.
+    classifyAttentionBucket: actual.classifyAttentionBucket,
+    CRITICAL_STATUSES: actual.CRITICAL_STATUSES,
+    // Used by the real reconcileShelvePartition (imported via importActual below).
+    toShelvedPRRef: vi.fn((pr: unknown) => pr),
+  };
+});
 
 // Mock fetchDashboardData so we never call GitHub. reconcileShelvePartition is
 // the real implementation so the shelve/unshelve reconciliation is exercised;
@@ -567,6 +574,32 @@ describe('dashboard-server', () => {
       const data = buildDashboardJson(digest, state, []);
 
       expect(data.shelvedPRUrls).not.toContain(pr.url);
+    });
+
+    it('never display-shelves a critical PR, even when explicitly shelved (#1352)', () => {
+      // The daily check auto-unshelves a shelved PR the moment it turns
+      // needs_addressing (CRITICAL_STATUSES). The dashboard partition must
+      // agree immediately, or its headline count diverges from the CLI brief
+      // until the next daily run — the exact class #1352 closes.
+      const pr = {
+        url: 'https://github.com/o/r/pull/12',
+        number: 12,
+        repo: 'o/r',
+        title: 'Shelved PR that turned critical',
+        status: 'needs_addressing',
+        stalenessTier: 'dormant',
+        daysSinceActivity: 40,
+      };
+      const digest = makeDigest({ openPRs: [pr], shelvedPRs: [] });
+      const state = makeState({
+        config: { shelvedPRUrls: [pr.url] },
+        lastDigest: digest,
+      });
+
+      const data = buildDashboardJson(digest, state, []);
+
+      expect(data.shelvedPRUrls).not.toContain(pr.url);
+      expect(data.activePRs.map((p) => p.url)).toContain(pr.url);
     });
 
     it('keeps a dormant-auto-shelved open PR shelved even when not in config', () => {

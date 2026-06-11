@@ -21,6 +21,7 @@ import {
   CRITICAL_STATUSES,
   STALE_STATUSES,
 } from './daily-logic.js';
+import { summarizeAttentionBuckets } from './pr-attention.js';
 import type { FetchedPR, MaintainerActionHint, AgentState } from './types.js';
 import {
   makeFetchedPR,
@@ -178,6 +179,26 @@ describe('assessCapacity', () => {
 // ---------------------------------------------------------------------------
 
 describe('collectActionableIssues', () => {
+  it('covers every needs_addressing PR — count matches the needs_attention bucket by construction (#1352)', () => {
+    const prs = [
+      makePR({ repo: 'o/r', number: 1, status: 'needs_addressing', actionReason: 'needs_changes' }),
+      // Unmapped reason (not in reasonOrder) must still produce an entry, sorted last.
+      makePR({ repo: 'o/r', number: 2, status: 'needs_addressing', actionReason: 'needs_rebase' }),
+      // Missing actionReason (e.g. a hand-rolled override payload) falls back to needs_response.
+      makePR({ repo: 'o/r', number: 3, status: 'needs_addressing', actionReason: undefined }),
+      makePR({ repo: 'o/r', number: 4, status: 'waiting_on_maintainer' }),
+    ];
+
+    const result = collectActionableIssues(prs);
+
+    expect(result).toHaveLength(3);
+    // Known reasons sort by priority; unmapped/missing reasons sort last in stable order.
+    expect(result.map((i) => i.pr.number)).toEqual([1, 2, 3]);
+    expect(result[1].label).toBe('[needs_rebase]');
+    expect(result[2].label).toBe('[Needs Response]'); // missing reason falls back
+    expect(result).toHaveLength(summarizeAttentionBuckets(prs).needsAttention);
+  });
+
   it('should return empty array for empty PR list', () => {
     const result = collectActionableIssues([]);
     expect(result).toEqual([]);
@@ -401,6 +422,22 @@ describe('formatBriefSummary', () => {
     const digest = makeDigest();
     const result = formatBriefSummary(digest, 0, 1);
     expect(result).toContain('1 issue reply');
+  });
+
+  it('appends stuck CI and dormant follow-up counts when non-zero (#1352)', () => {
+    const digest = makeDigest();
+    const result = formatBriefSummary(digest, 2, 0, { stuckCI: 1, dormantFollowup: 2 });
+    expect(result).toContain('2 need attention');
+    expect(result).toContain('1 stuck CI');
+    expect(result).toContain('2 dormant follow-ups');
+  });
+
+  it('uses singular dormant follow-up for count of 1 and omits zero buckets', () => {
+    const digest = makeDigest();
+    const result = formatBriefSummary(digest, 0, 0, { stuckCI: 0, dormantFollowup: 1 });
+    expect(result).not.toContain('stuck CI');
+    expect(result).toContain('1 dormant follow-up');
+    expect(result).toContain('all on track');
   });
 
   it('should omit issue reply text when count is 0', () => {

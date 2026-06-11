@@ -201,6 +201,9 @@ export type MaintainerActionHint =
  * This is never persisted in local state — it represents a point-in-time snapshot
  * of a PR's current condition.
  */
+/** Unified attention bucket (#1352) — see core/pr-attention.ts for the classifier. */
+export type AttentionBucket = 'needs_attention' | 'stuck_ci' | 'dormant_followup' | 'waiting';
+
 export interface FetchedPR {
   // Identity
   id: number;
@@ -219,6 +222,11 @@ export interface FetchedPR {
   actionReasons?: ActionReason[];
   /** How stale the PR is based on activity age. Independent of status — a PR can be both needs_addressing and dormant. */
   stalenessTier: StalenessTier;
+  /** Unified attention bucket (#1352), computed by `classifyAttentionBucket()`
+   * from status/ciStatus/reviewDecision/daysSinceActivity. Stamped by the
+   * dashboard data path so the SPA renders the same taxonomy the CLI brief
+   * counts. Optional: absent on payloads from older producers. */
+  attentionBucket?: AttentionBucket;
 
   /** Human-readable status label for consistent display (#79). E.g., "[CI Failing]", "[Needs Response]". */
   displayLabel: string;

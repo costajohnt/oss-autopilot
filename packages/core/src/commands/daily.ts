@@ -22,6 +22,8 @@ import {
   toShelvedPRRef,
   formatBriefSummary,
   formatSummary,
+  summarizeAttentionBuckets,
+  type AttentionSummary,
   type DailyDigest,
   type FetchedPR,
   type ShelvedPRRef,
@@ -123,6 +125,8 @@ export interface DailyCheckResult {
   summary: string;
   briefSummary: string;
   actionableIssues: ActionableIssue[];
+  /** Unified attention-bucket counts over active PRs (#1352). */
+  attention: AttentionSummary;
   actionMenu: ActionMenu;
   commentedIssues: CommentedIssue[];
   repoGroups: RepoGroup[];
@@ -605,7 +609,10 @@ function generateDigestOutput(
   // Auto-undismiss mutations are auto-saved by undismissIssue()
   const actionableIssues = collectActionableIssues(activePRs, previousLastDigestAt);
   digest.summary.totalNeedingAttention = actionableIssues.length;
-  const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length);
+  // #1352: one classifier for all attention surfaces — the dashboard stamps
+  // the same buckets per-PR, so the headline counts cannot diverge.
+  const attention = summarizeAttentionBuckets(activePRs);
+  const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length, attention);
   const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues);
   const repoGroups = groupPRsByRepo(activePRs);
 
@@ -633,6 +640,7 @@ function generateDigestOutput(
     summary,
     briefSummary,
     actionableIssues,
+    attention,
     actionMenu,
     commentedIssues: filteredCommentedIssues,
     repoGroups,
@@ -691,6 +699,7 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
     summary: result.summary,
     briefSummary: result.briefSummary,
     actionableIssues: compactActionableIssues(result.actionableIssues),
+    attention: result.attention,
     actionMenu: result.actionMenu,
     commentedIssues: result.commentedIssues.map(fenceCommentedIssue),
     repoGroups: compactRepoGroups(result.repoGroups),

@@ -293,63 +293,78 @@ export function collectActionableIssues(prs: FetchedPR[], lastDigestAt?: string)
     'incomplete_checklist',
   ];
 
-  for (const reason of reasonOrder) {
-    for (const pr of actionPRs) {
-      if (pr.actionReason !== reason) continue;
+  // #1352: every needs_addressing PR produces exactly one entry, including
+  // PRs whose actionReason is missing or outside reasonOrder (the defensive
+  // default below). This keeps the CLI brief's count equal to the dashboard's
+  // needs_attention bucket by construction — previously an unmapped reason
+  // silently dropped the PR from the brief while the dashboard still counted
+  // it. Unmapped reasons sort last.
+  const sortedPRs = [...actionPRs].sort((a, b) => {
+    const rank = (pr: FetchedPR) => {
+      const i = reasonOrder.indexOf(pr.actionReason as ActionReason);
+      return i === -1 ? reasonOrder.length : i;
+    };
+    return rank(a) - rank(b);
+  });
 
-      let label: string;
-      let type: ActionableIssueType;
-      switch (reason) {
-        case 'needs_response': {
-          label = '[Needs Response]';
-          type = 'needs_response';
-          break;
-        }
-        case 'needs_changes': {
-          label = '[Needs Changes]';
-          type = 'needs_changes';
-          break;
-        }
-        case 'failing_ci': {
-          const checkInfo = pr.failingCheckNames.length > 0 ? ` (${pr.failingCheckNames.join(', ')})` : '';
-          label = `[CI Failing${checkInfo}]`;
-          type = 'ci_failing';
-          break;
-        }
-        case 'merge_conflict': {
-          label = '[Merge Conflict]';
-          type = 'merge_conflict';
-          break;
-        }
-        case 'incomplete_checklist': {
-          const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : '';
-          label = `[Incomplete Checklist${stats}]`;
-          type = 'incomplete_checklist';
-          break;
-        }
-        default: {
-          // Defensive fallback for ActionReason values not explicitly handled
-          // above (e.g. ci_not_running, needs_rebase, missing_required_files).
-          // These aren't in reasonOrder today but this guards future additions.
-          warn('daily-logic', `Unhandled ActionReason "${reason}" for PR ${pr.url} — falling back to needs_response`);
-          label = `[${reason}]`;
-          type = 'needs_response';
-        }
-      }
-
-      // A PR is "new" if it was created after the last daily digest (first time seen).
-      // If there's no previous digest (first run) or createdAt is invalid, assume new.
-      const createdTime = new Date(pr.createdAt).getTime();
-      let isNewContribution: boolean;
-      if (isNaN(createdTime)) {
-        warn('daily-logic', `Invalid createdAt "${pr.createdAt}" for PR ${pr.url}, assuming new contribution`);
-        isNewContribution = true;
-      } else {
-        isNewContribution = isNaN(lastDigestTime) || createdTime > lastDigestTime;
-      }
-
-      issues.push({ type, pr, label, isNewContribution });
+  for (const pr of sortedPRs) {
+    if (pr.actionReason === undefined) {
+      warn('daily-logic', `needs_addressing PR ${pr.url} has no actionReason — defaulting to needs_response`);
     }
+    const reason: ActionReason = pr.actionReason ?? 'needs_response';
+
+    let label: string;
+    let type: ActionableIssueType;
+    switch (reason) {
+      case 'needs_response': {
+        label = '[Needs Response]';
+        type = 'needs_response';
+        break;
+      }
+      case 'needs_changes': {
+        label = '[Needs Changes]';
+        type = 'needs_changes';
+        break;
+      }
+      case 'failing_ci': {
+        const checkInfo = pr.failingCheckNames.length > 0 ? ` (${pr.failingCheckNames.join(', ')})` : '';
+        label = `[CI Failing${checkInfo}]`;
+        type = 'ci_failing';
+        break;
+      }
+      case 'merge_conflict': {
+        label = '[Merge Conflict]';
+        type = 'merge_conflict';
+        break;
+      }
+      case 'incomplete_checklist': {
+        const stats = pr.checklistStats ? ` (${pr.checklistStats.checked}/${pr.checklistStats.total})` : '';
+        label = `[Incomplete Checklist${stats}]`;
+        type = 'incomplete_checklist';
+        break;
+      }
+      default: {
+        // Defensive fallback for ActionReason values not explicitly handled
+        // above (e.g. ci_not_running, needs_rebase, missing_required_files).
+        // These aren't in reasonOrder today but this guards future additions.
+        warn('daily-logic', `Unhandled ActionReason "${reason}" for PR ${pr.url} — falling back to needs_response`);
+        label = `[${reason}]`;
+        type = 'needs_response';
+      }
+    }
+
+    // A PR is "new" if it was created after the last daily digest (first time seen).
+    // If there's no previous digest (first run) or createdAt is invalid, assume new.
+    const createdTime = new Date(pr.createdAt).getTime();
+    let isNewContribution: boolean;
+    if (isNaN(createdTime)) {
+      warn('daily-logic', `Invalid createdAt "${pr.createdAt}" for PR ${pr.url}, assuming new contribution`);
+      isNewContribution = true;
+    } else {
+      isNewContribution = isNaN(lastDigestTime) || createdTime > lastDigestTime;
+    }
+
+    issues.push({ type, pr, label, isNewContribution });
   }
 
   return issues;

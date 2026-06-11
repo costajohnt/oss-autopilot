@@ -101,6 +101,15 @@ export {
   type VerifyIssueParams,
 } from './issue-verification.js';
 export {
+  classifyAttentionBucket,
+  summarizeAttentionBuckets,
+  STUCK_CI_THRESHOLD_DAYS,
+  DORMANT_FOLLOWUP_THRESHOLD_DAYS,
+  type AttentionBucket,
+  type AttentionInput,
+  type AttentionSummary,
+} from './pr-attention.js';
+export {
   scanForAntiLLMPolicy,
   type AntiLLMCategory,
   type AntiLLMMatch,

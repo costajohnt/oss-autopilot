@@ -10,7 +10,13 @@ import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
-import { getStateManager, getGitHubToken, getCLIVersion, applyStatusOverrides } from '../core/index.js';
+import {
+  getStateManager,
+  getGitHubToken,
+  getCLIVersion,
+  applyStatusOverrides,
+  classifyAttentionBucket,
+} from '../core/index.js';
 import { errorMessage, ValidationError, ConcurrencyError, GistConcurrencyError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { validateUrl, validateGitHubUrl, PR_URL_PATTERN, ISSUE_URL_PATTERN } from './validation.js';
@@ -172,7 +178,12 @@ export function buildDashboardJson(
     monthlyMerged,
     monthlyOpened,
     monthlyClosed,
-    activePRs: applyStatusOverrides(digest.openPRs || [], state),
+    // #1352: stamp the unified attention bucket so the SPA renders the same
+    // taxonomy the CLI brief counts (single classifier, no second opinion).
+    activePRs: applyStatusOverrides(digest.openPRs || [], state).map((pr) => ({
+      ...pr,
+      attentionBucket: classifyAttentionBucket(pr),
+    })),
     // Source of truth is digest.shelvedPRs (union of explicitly-shelved URLs
     // and dormant-non-addressing PRs auto-shelved for display). Returning
     // only state.config.shelvedPRUrls would under-count and desync from

@@ -201,3 +201,64 @@ describe('statusClass', () => {
     expect(statusClass('unknown_status' as FetchedPRStatus)).toBe('');
   });
 });
+
+describe('attention bucket sections (#1352)', () => {
+  const noop = () => {};
+  it('renders Stuck CI and Dormant Follow-up sections from server-stamped buckets', () => {
+    const prs = [
+      makePR({ url: 'https://github.com/o/r/pull/1', number: 1, status: 'needs_addressing' }),
+      makePR({
+        url: 'https://github.com/o/r/pull/2',
+        number: 2,
+        status: 'waiting_on_maintainer',
+        attentionBucket: 'stuck_ci',
+      }),
+      makePR({
+        url: 'https://github.com/o/r/pull/3',
+        number: 3,
+        status: 'waiting_on_maintainer',
+        attentionBucket: 'dormant_followup',
+      }),
+      makePR({
+        url: 'https://github.com/o/r/pull/4',
+        number: 4,
+        status: 'waiting_on_maintainer',
+        attentionBucket: 'waiting',
+      }),
+    ];
+    const { container, getByText } = render(
+      <PRList
+        prs={prs}
+        selectedUrl={null}
+        onSelect={noop}
+        shelvedUrls={new Set()}
+        shelvedOpen={false}
+        onShelvedToggle={noop}
+      />,
+    );
+    expect(getByText('Stuck CI')).toBeTruthy();
+    expect(getByText('Dormant Follow-up')).toBeTruthy();
+    expect(container.querySelector('#section-stuck')).toBeTruthy();
+    expect(container.querySelector('#section-dormant')).toBeTruthy();
+    // Each section holds exactly one PR
+    expect(container.querySelector('#section-stuck')?.querySelectorAll('.pr-row')).toHaveLength(1);
+    expect(container.querySelector('#section-dormant')?.querySelectorAll('.pr-row')).toHaveLength(1);
+  });
+
+  it('omits bucket sections that are empty and falls back by status for unstamped PRs', () => {
+    const prs = [makePR({ url: 'https://github.com/o/r/pull/1', number: 1, status: 'waiting_on_maintainer' })];
+    const { container, queryByText } = render(
+      <PRList
+        prs={prs}
+        selectedUrl={null}
+        onSelect={noop}
+        shelvedUrls={new Set()}
+        shelvedOpen={false}
+        onShelvedToggle={noop}
+      />,
+    );
+    expect(queryByText('Stuck CI')).toBeNull();
+    expect(queryByText('Dormant Follow-up')).toBeNull();
+    expect(container.querySelector('#section-waiting')?.querySelectorAll('.pr-row')).toHaveLength(1);
+  });
+});
