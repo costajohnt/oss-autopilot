@@ -21,10 +21,14 @@ the full extraction.
 
 1. **Resolve the target repo.**
    - If an argument was passed, use it verbatim.
-   - Otherwise, run `cli.bundle.cjs guidelines list --json` (or the
-     equivalent `mcp__plugin_oss-autopilot_oss-autopilot__guidelines-get`
-     enumeration path) and present the list of repos with stored
-     guidelines via `AskUserQuestion`.
+   - Otherwise, enumerate repos with stored guidelines by listing the
+     MCP `repo-guidelines` resources (`ListMcpResourcesTool` on the
+     oss-autopilot server; each stored repo appears as an
+     `oss://repo/{owner}/{repo}/guidelines` resource) and present the
+     list via `AskUserQuestion`. The CLI has no enumeration subcommand
+     (`guidelines` only supports `view`/`store`/`reset`/`fetch-corpus`,
+     all repo-scoped), so when MCP resources are unavailable, ask the
+     user for the `owner/repo` directly.
    - If no guidelines exist for any repo, surface a one-line nudge
      toward `extract-learnings` and exit.
 

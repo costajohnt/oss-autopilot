@@ -1,33 +1,48 @@
 /**
- * CI gate: every MCP tool name and CLI command name referenced in
- * `agents/*.md` must exist in the registry (#1245).
+ * CI gate: every MCP tool name and CLI invocation referenced in the plugin's
+ * prompt markdown must exist in the registry (#1245, #1376).
  *
  * The pr-compliance-checker agent shipped two consecutive bugs where its
  * frontmatter referenced `mcp__plugin_oss-autopilot_oss-autopilot__read`
  * (a tool that has never existed) and its prompt body invoked
  * `cli.bundle.cjs read <pr-url>` (a command that has never existed).
- * Both went undiscovered for months because nothing validated agent
- * markdown against the actual registry. This test does that validation
- * at CI time.
+ * Later, #1376 found six more references that error as written
+ * (`guidelines list`, `config --set`, `--show-bots`, …) because the original
+ * test only validated the FIRST token after `cli.bundle.cjs` and only
+ * scanned `agents/*.md`. This test now:
  *
- * Scope:
- *   - Frontmatter `tools:` array entries matching
- *     `mcp__plugin_oss-autopilot_oss-autopilot__<name>` are stripped to
- *     `<name>` and asserted against the live MCP tool list.
- *   - Bash blocks invoking `cli.bundle.cjs <command>` are scanned and
- *     `<command>` is asserted against the live CLI registry.
+ *   - Scans `agents/*.md`, `commands/*.md`, `skills/` (recursively), and
+ *     `workflows/*.md` (excluding README.md files).
+ *   - Asserts frontmatter/prose MCP tool names
+ *     (`mcp__plugin_oss-autopilot_oss-autopilot__<name>`) against the live
+ *     MCP tool list.
+ *   - Builds the REAL Commander program from `cli-registry.ts` (the same
+ *     register() loop `cli.ts` runs), walks it recursively, and validates
+ *     every `cli.bundle.cjs …` invocation found in fenced code blocks and
+ *     inline code spans: the command + subcommand path must resolve, and
+ *     every `--flag` must be a registered option of that command.
+ *     Positional arguments are NOT validated (placeholders like `<repo>`,
+ *     `{path}`, `$VAR`, and free-form values make counts too brittle).
+ *
+ * `<prefix>` is treated as an invocation marker too: `workflows/reference.md`
+ * defines it as shorthand for the full `node ".../cli.bundle.cjs"` prefix and
+ * uses it throughout its command listings.
  */
 
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { Command, type Option } from 'commander';
 import { commands } from './cli-registry.js';
 
 const REPO_ROOT = path.resolve(__dirname, '../../..');
-const AGENTS_DIR = path.join(REPO_ROOT, 'agents');
+
+/** Directories whose top-level *.md files carry CLI/MCP references. */
+const FLAT_PROMPT_DIRS = ['agents', 'commands', 'workflows'];
+/** Directory scanned recursively (skills/<name>/SKILL.md + supporting md). */
+const SKILLS_DIR = 'skills';
 
 const MCP_TOOL_PATTERN = /mcp__plugin_oss-autopilot_oss-autopilot__([a-z][a-z0-9-]*)/g;
-const CLI_BUNDLE_PATTERN = /cli\.bundle\.cjs"?\s+([a-z][a-z0-9-]*)/g;
 
 /**
  * Mirror of `EXPECTED_TOOLS` in
@@ -72,34 +87,298 @@ const REGISTERED_MCP_TOOLS = new Set([
 const MCP_TOOLS_SOURCE = path.join(REPO_ROOT, 'packages/mcp-server/src/tools.ts');
 const REGISTER_TOOL_PATTERN = /registerTool\(\s*'([a-z][a-z0-9-]*)'/g;
 
-interface AgentReference {
-  agent: string;
-  reference: string;
-  kind: 'mcp' | 'cli';
-}
+// ── Markdown corpus ──────────────────────────────────────────────────────
 
-function listAgentFiles(): string[] {
-  if (!fs.existsSync(AGENTS_DIR)) return [];
-  return fs
-    .readdirSync(AGENTS_DIR)
-    .filter((name) => name.endsWith('.md') && name !== 'README.md')
-    .map((name) => path.join(AGENTS_DIR, name));
-}
-
-function collectReferences(): AgentReference[] {
-  const refs: AgentReference[] = [];
-  for (const file of listAgentFiles()) {
-    const content = fs.readFileSync(file, 'utf8');
-    const agent = path.basename(file);
-    for (const match of content.matchAll(MCP_TOOL_PATTERN)) {
-      refs.push({ agent, reference: match[1], kind: 'mcp' });
-    }
-    for (const match of content.matchAll(CLI_BUNDLE_PATTERN)) {
-      refs.push({ agent, reference: match[1], kind: 'cli' });
+function listMarkdownFiles(): string[] {
+  const files: string[] = [];
+  for (const dir of FLAT_PROMPT_DIRS) {
+    const abs = path.join(REPO_ROOT, dir);
+    if (!fs.existsSync(abs)) continue;
+    for (const name of fs.readdirSync(abs)) {
+      if (name.endsWith('.md') && name !== 'README.md') files.push(path.join(abs, name));
     }
   }
-  return refs;
+  const skillsAbs = path.join(REPO_ROOT, SKILLS_DIR);
+  if (fs.existsSync(skillsAbs)) {
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name.endsWith('.md') && entry.name !== 'README.md') files.push(full);
+      }
+    };
+    walk(skillsAbs);
+  }
+  return files;
 }
+
+// ── Commander program introspection ──────────────────────────────────────
+
+interface CommandInfo {
+  /** Full command path, e.g. "guidelines view". */
+  path: string;
+  /** Known option flags (long and short) for this command. */
+  flags: Set<string>;
+  subcommands: Map<string, CommandInfo>;
+  /** True when this command is a pure subcommand group (e.g. `guidelines`,
+   * `dashboard`): it has subcommands and declares no positionals of its own,
+   * so a following word token MUST be one of its subcommands. */
+  isGroup: boolean;
+}
+
+/** Flags valid on every command: program-level options + commander built-ins. */
+const GLOBAL_FLAGS = new Set(['--debug', '--help', '-h', '--version', '-V']);
+
+/**
+ * Build the real CLI program exactly like `cli.ts` does (registry register()
+ * loop). Action handlers lazy-import their modules, so registration alone is
+ * side-effect free.
+ */
+function buildProgram(): Command {
+  const program = new Command();
+  program.name('oss-autopilot').description('test introspection instance').option('--debug', 'Enable debug logging');
+  for (const def of commands) def.register(program);
+  return program;
+}
+
+function describeCommand(cmd: Command, parentPath: string): CommandInfo {
+  const cmdPath = parentPath ? `${parentPath} ${cmd.name()}` : cmd.name();
+  const flags = new Set<string>(GLOBAL_FLAGS);
+  for (const opt of cmd.options as readonly Option[]) {
+    if (opt.long) flags.add(opt.long);
+    if (opt.short) flags.add(opt.short);
+  }
+  const subcommands = new Map<string, CommandInfo>();
+  for (const sub of cmd.commands as readonly Command[]) {
+    const info = describeCommand(sub, cmdPath);
+    subcommands.set(sub.name(), info);
+    for (const alias of sub.aliases()) subcommands.set(alias, info);
+  }
+  return {
+    path: cmdPath,
+    flags,
+    subcommands,
+    isGroup: subcommands.size > 0 && cmd.registeredArguments.length === 0,
+  };
+}
+
+/** Top-level command name → info (aliases included as extra keys). */
+function buildCommandMap(): Map<string, CommandInfo> {
+  const program = buildProgram();
+  const map = new Map<string, CommandInfo>();
+  for (const cmd of program.commands as readonly Command[]) {
+    const info = describeCommand(cmd, '');
+    map.set(cmd.name(), info);
+    for (const alias of cmd.aliases()) map.set(alias, info);
+  }
+  return map;
+}
+
+// ── Invocation extraction ────────────────────────────────────────────────
+
+interface CliInvocation {
+  file: string;
+  lineNo: number;
+  raw: string;
+  argv: string[];
+}
+
+const FENCE = /^\s*(?:```|~~~)/;
+/** Inline code span (backtick-delimited, may wrap across lines in prose). */
+const INLINE_SPAN = /`([^`]+)`/g;
+const MARKER = 'cli.bundle.cjs';
+
+function isInvocationMarker(token: string): boolean {
+  return token.includes(MARKER) || token === '<prefix>';
+}
+
+/**
+ * Extract the argv tokens following the cli.bundle.cjs / <prefix> marker.
+ * Returns null when the text has no marker or nothing follows it (bare
+ * mentions of the bundle path).
+ */
+function parseArgv(text: string): string[] | null {
+  const tokens = text.split(/\s+/).filter(Boolean);
+  const idx = tokens.findIndex(isInvocationMarker);
+  if (idx === -1) return null;
+  const argv: string[] = [];
+  let substitutionDepth = 0; // inside `$( … )` used as an argument value
+  for (let i = idx + 1; i < tokens.length; i++) {
+    let t = tokens[i];
+    if (t === '\\') continue; // shell line continuation
+    // Tokens inside a `$( … )` command substitution belong to ANOTHER binary
+    // (e.g. `init "$(gh api user --jq '.login')"`) — skip them entirely.
+    const opens = t.split('$(').length - 1;
+    const closes = t.split(')').length - 1;
+    if (substitutionDepth > 0 || opens > 0) {
+      substitutionDepth = Math.max(0, substitutionDepth + opens - closes);
+      continue;
+    }
+    if (t === '|' || t === '||' || t === '&&' || t === ';' || t === ')') break; // pipeline / compound boundary
+    if (t.startsWith('#')) break; // trailing shell comment
+    if (/^\d*>>?/.test(t)) continue; // redirects: >out, 2>/dev/null, &>>…
+    // Strip optional-syntax brackets, quotes, and trailing prose punctuation:
+    // `[--scan]` → `--scan`, `"{path}"` → `{path}`, `--json)` → `--json`.
+    t = t.replace(/^[[("'`]+/, '').replace(/[\])"'`,.;:]+$/, '');
+    if (!t) continue;
+    argv.push(t);
+  }
+  return argv.length > 0 ? argv : null;
+}
+
+/**
+ * Collect every cli.bundle.cjs / <prefix> invocation in a markdown file:
+ * fenced code block lines (with `\` continuations joined) plus inline code
+ * spans in the surrounding prose.
+ */
+function extractInvocations(file: string): CliInvocation[] {
+  const content = fs.readFileSync(file, 'utf8');
+  const rel = path.relative(REPO_ROOT, file);
+  const lines = content.split('\n');
+  const invocations: CliInvocation[] = [];
+  const proseLines: string[] = []; // fenced lines blanked, for inline-span scanning
+
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (FENCE.test(lines[i])) {
+      inFence = !inFence;
+      proseLines.push('');
+      continue;
+    }
+    if (!inFence) {
+      proseLines.push(lines[i]);
+      continue;
+    }
+    proseLines.push('');
+    if (lines[i].trimStart().startsWith('#')) continue; // full-line shell comment, not an invocation
+    if (!lines[i].split(/\s+/).some(isInvocationMarker)) continue;
+    // Join shell `\` continuations into one logical line.
+    let logical = lines[i];
+    let j = i;
+    while (logical.trimEnd().endsWith('\\') && j + 1 < lines.length && !FENCE.test(lines[j + 1])) {
+      j++;
+      logical = `${logical.trimEnd().replace(/\\$/, '')} ${lines[j].trim()}`;
+    }
+    const argv = parseArgv(logical);
+    if (argv) invocations.push({ file: rel, lineNo: i + 1, raw: lines[i].trim(), argv });
+    i = j;
+  }
+
+  // Inline code spans (single-backtick, may wrap lines) in prose.
+  const prose = proseLines.join('\n');
+  for (const match of prose.matchAll(INLINE_SPAN)) {
+    const span = match[1];
+    if (!span.includes(MARKER)) continue;
+    const argv = parseArgv(span.replace(/\s+/g, ' ').trim());
+    if (!argv) continue;
+    const lineNo = prose.slice(0, match.index).split('\n').length;
+    invocations.push({ file: rel, lineNo, raw: span.replace(/\s+/g, ' ').trim(), argv });
+  }
+
+  return invocations;
+}
+
+// ── Invocation validation ────────────────────────────────────────────────
+
+function isFlag(token: string): boolean {
+  return token.startsWith('-') && token !== '-' && token !== '--';
+}
+
+/** Placeholder tokens (`<repo>`, `{path}`, `$VAR`) — never validated. */
+function isPlaceholder(token: string): boolean {
+  return token.startsWith('<') || token.startsWith('{') || token.startsWith('$');
+}
+
+function levenshtein(a: string, b: string): number {
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => i);
+  for (let j = 1; j <= b.length; j++) {
+    let prev = dp[0];
+    dp[0] = j;
+    for (let i = 1; i <= a.length; i++) {
+      const tmp = dp[i];
+      dp[i] = a[i - 1] === b[j - 1] ? prev : Math.min(prev, dp[i - 1], dp[i]) + 1;
+      prev = tmp;
+    }
+  }
+  return dp[a.length];
+}
+
+function nearest(input: string, candidates: Iterable<string>): string | null {
+  let best: string | null = null;
+  let bestDist = 4; // only suggest close matches
+  for (const c of candidates) {
+    const d = levenshtein(input, c);
+    if (d < bestDist) {
+      bestDist = d;
+      best = c;
+    }
+  }
+  return best;
+}
+
+function formatOffender(inv: CliInvocation, problem: string): string {
+  return `${inv.file}:${inv.lineNo}: ${problem}\n      ${inv.raw}`;
+}
+
+/**
+ * Validate one invocation against the introspected program: resolve the
+ * command + subcommand path, then check every `--flag` token against that
+ * command's registered options. Positionals are intentionally not validated.
+ */
+function validateInvocation(inv: CliInvocation, topLevel: Map<string, CommandInfo>): string[] {
+  const { argv } = inv;
+  let i = 0;
+  // Allow global flags before the command name (e.g. `--debug daily`).
+  while (i < argv.length && isFlag(argv[i]) && GLOBAL_FLAGS.has(argv[i].split('=')[0])) i++;
+  if (i >= argv.length) return [];
+  if (isPlaceholder(argv[i])) return []; // `<prefix> <command> …` — unresolvable, skip
+  const top = argv[i];
+  let cur = topLevel.get(top);
+  if (!cur) {
+    const hint = nearest(top, topLevel.keys());
+    return [formatOffender(inv, `unknown command '${top}'${hint ? ` (did you mean '${hint}'?)` : ''}`)];
+  }
+  i++;
+  // Descend through subcommands while the immediately following word matches.
+  while (i < argv.length && cur.subcommands.size > 0) {
+    const t = argv[i];
+    if (isFlag(t) || t === '--') break;
+    if (isPlaceholder(t)) return []; // placeholder subcommand — can't resolve the leaf, skip
+    const sub = cur.subcommands.get(t);
+    if (sub) {
+      cur = sub;
+      i++;
+      continue;
+    }
+    if (cur.isGroup) {
+      const hint = nearest(t, cur.subcommands.keys());
+      return [
+        formatOffender(
+          inv,
+          `unknown subcommand '${cur.path} ${t}'${hint ? ` (did you mean '${cur.path} ${hint}'?)` : ''} — ` +
+            `registered: ${[...cur.subcommands.keys()].join(', ')}`,
+        ),
+      ];
+    }
+    break; // command takes positionals; the word is a positional, not a subcommand
+  }
+  // Flag validation over the whole remaining invocation.
+  const errors: string[] = [];
+  for (let k = i; k < argv.length; k++) {
+    const t = argv[k];
+    if (t === '--') break; // end-of-options marker: everything after is positional
+    if (!isFlag(t)) continue;
+    const flag = t.split('=')[0];
+    if (cur.flags.has(flag)) continue;
+    const hint = nearest(flag, cur.flags);
+    errors.push(
+      formatOffender(inv, `unknown flag '${flag}' for '${cur.path}'${hint ? ` (did you mean '${hint}'?)` : ''}`),
+    );
+  }
+  return errors;
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────
 
 describe('REGISTERED_MCP_TOOLS mirror ↔ tools.ts source parity (#1374)', () => {
   it('the mirror set matches the registerTool() calls in packages/mcp-server/src/tools.ts', () => {
@@ -115,52 +394,55 @@ describe('REGISTERED_MCP_TOOLS mirror ↔ tools.ts source parity (#1374)', () =>
   });
 });
 
-describe('agents/*.md ↔ MCP tool registry parity (#1245)', () => {
-  it('every MCP tool name in agent frontmatter exists in the registry', () => {
+describe('prompt markdown ↔ MCP tool registry parity (#1245)', () => {
+  it('every referenced MCP tool name exists in the registry', () => {
     const offenders: string[] = [];
-    for (const ref of collectReferences()) {
-      if (ref.kind !== 'mcp') continue;
-      if (!REGISTERED_MCP_TOOLS.has(ref.reference)) {
-        offenders.push(`${ref.agent} → mcp__plugin_oss-autopilot_oss-autopilot__${ref.reference}`);
+    for (const file of listMarkdownFiles()) {
+      const content = fs.readFileSync(file, 'utf8');
+      const rel = path.relative(REPO_ROOT, file);
+      for (const match of content.matchAll(MCP_TOOL_PATTERN)) {
+        if (!REGISTERED_MCP_TOOLS.has(match[1])) {
+          offenders.push(`${rel} → mcp__plugin_oss-autopilot_oss-autopilot__${match[1]}`);
+        }
       }
     }
     expect(
       offenders,
-      `Agents reference unregistered MCP tools — register them in ` +
-        `packages/mcp-server/src/tools.ts or fix the agent frontmatter:\n  ` +
+      `Prompt files reference unregistered MCP tools — register them in ` +
+        `packages/mcp-server/src/tools.ts or fix the markdown:\n  ` +
         offenders.join('\n  '),
     ).toEqual([]);
   });
 });
 
-describe('agents/*.md ↔ CLI registry parity (#1245)', () => {
-  it('every cli.bundle.cjs <command> reference in agent prompts exists in the registry', () => {
-    const cliCommandNames = new Set(commands.map((c) => c.name));
-    // Plus a few aliases the registry exposes via separate command()
-    // declarations: `state` is registered as `state` but exposes `state-show`,
-    // `state-sync`, `state-unlink` subcommands; and `parse-issue-list` is the
-    // canonical name for the agents' `parse-list` shorthand. Allowlist these.
-    cliCommandNames.add('state-show');
-    cliCommandNames.add('state-sync');
-    cliCommandNames.add('state-unlink');
-    cliCommandNames.add('check-setup');
-    cliCommandNames.add('parse-list');
-    cliCommandNames.add('guidelines-get');
-    cliCommandNames.add('guidelines-store');
-    cliCommandNames.add('guidelines-reset');
-    cliCommandNames.add('guidelines-fetch-corpus');
+describe('prompt markdown ↔ CLI registry parity (#1245, #1376)', () => {
+  it('every cli.bundle.cjs invocation resolves to a registered command path with registered flags', () => {
+    const topLevel = buildCommandMap();
+    // Sanity: introspection actually saw the registry (guards against a
+    // commander API change silently emptying the map and passing vacuously).
+    expect(topLevel.size).toBeGreaterThan(20);
+    expect(topLevel.get('guidelines')?.subcommands.has('view')).toBe(true);
+    expect(topLevel.get('dashboard')?.subcommands.get('serve')?.flags.has('--no-open')).toBe(true);
+
+    const files = listMarkdownFiles();
+    expect(files.length).toBeGreaterThan(10);
 
     const offenders: string[] = [];
-    for (const ref of collectReferences()) {
-      if (ref.kind !== 'cli') continue;
-      if (!cliCommandNames.has(ref.reference)) {
-        offenders.push(`${ref.agent} → cli.bundle.cjs ${ref.reference}`);
+    let invocationCount = 0;
+    for (const file of files) {
+      for (const inv of extractInvocations(file)) {
+        invocationCount++;
+        offenders.push(...validateInvocation(inv, topLevel));
       }
     }
+    // Sanity: the extractor found the corpus (agents + commands + workflows
+    // all carry invocations today; 0 would mean the parser broke).
+    expect(invocationCount).toBeGreaterThan(60);
+
     expect(
       offenders,
-      `Agents invoke unregistered CLI commands — add them to ` +
-        `packages/core/src/cli-registry.ts or fix the agent prompt:\n  ` +
+      `Prompt files invoke unregistered CLI commands/subcommands/flags — fix the ` +
+        `markdown or register them in packages/core/src/cli-registry.ts:\n  ` +
         offenders.join('\n  '),
     ).toEqual([]);
   });

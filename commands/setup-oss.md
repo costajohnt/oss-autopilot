@@ -181,7 +181,7 @@ Options:
 Save the chosen path:
 
 ```bash
-GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" config --set skippedIssuesPath="{path}" --json
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" setup --set skippedIssuesPath="{path}" --json
 ```
 
 If "Don't track", skip — no config change needed (the search flow handles missing skip files gracefully).
