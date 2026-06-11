@@ -41,6 +41,24 @@ export function getStatePath(): string {
 }
 
 /**
+ * Returns the legacy (pre-`~/.oss-autopilot`) state file path: `./data/state.json`
+ * relative to the working directory.
+ *
+ * Functions rather than module constants so tests can mock them per-file:
+ * as constants in state-persistence.ts they resolved to the one shared
+ * `packages/core/data/` during vitest, and the migration tests racing
+ * parallel workers on that real directory caused CI flakes (#1382).
+ */
+export function getLegacyStatePath(): string {
+  return path.join(process.cwd(), 'data', 'state.json');
+}
+
+/** Legacy backup directory (`./data/backups`); see {@link getLegacyStatePath}. */
+export function getLegacyBackupDir(): string {
+  return path.join(process.cwd(), 'data', 'backups');
+}
+
+/**
  * Returns the backup directory path, creating it if it does not exist.
  *
  * Located at `~/.oss-autopilot/backups/`. Used for automatic state backups
