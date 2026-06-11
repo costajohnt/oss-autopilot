@@ -10,7 +10,7 @@ vi.mock('../core/index.js', () => ({
   parseGitHubUrl: vi.fn(),
   formatRelativeTime: vi.fn(),
   requireGitHubToken: vi.fn(),
-  maybeCheckpoint: vi.fn().mockResolvedValue(undefined),
+  maybeCheckpoint: vi.fn().mockResolvedValue(null),
 }));
 
 import { getStateManager, getOctokit, parseGitHubUrl, requireGitHubToken } from '../core/index.js';

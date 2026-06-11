@@ -654,6 +654,8 @@ export const PostOutputSchema = z.object({
 export const ClaimOutputSchema = z.object({
   commentUrl: z.string(),
   issueUrl: z.string(),
+  // Post-mutation Gist checkpoint failure (#1370). Optional: absent on clean runs.
+  gistSyncWarning: z.string().optional(),
 });
 
 export const InitOutputSchema = z.object({
@@ -746,6 +748,8 @@ export const MoveOutputSchema = z.object({
   url: z.string(),
   target: z.enum(['attention', 'waiting', 'shelved', 'auto']),
   description: z.string(),
+  // Post-mutation Gist checkpoint failure (#1370). Optional: absent on clean runs.
+  gistSyncWarning: z.string().optional(),
 });
 
 export const PRTemplateOutputSchema = z.object({
@@ -1278,6 +1282,8 @@ export interface PostOutput {
 export interface ClaimOutput {
   commentUrl: string;
   issueUrl: string;
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
+  gistSyncWarning?: string;
 }
 
 /** Info about a local git clone (#84) */

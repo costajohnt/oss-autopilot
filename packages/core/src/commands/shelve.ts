@@ -16,11 +16,15 @@ const MODULE = 'shelve';
 export interface ShelveOutput {
   shelved: boolean;
   url: string;
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
+  gistSyncWarning?: string;
 }
 
 export interface UnshelveOutput {
   unshelved: boolean;
   url: string;
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
+  gistSyncWarning?: string;
 }
 
 // Re-export for backward compatibility with tests
@@ -44,9 +48,9 @@ export async function runShelve(options: { prUrl: string }): Promise<ShelveOutpu
     added = stateManager.shelvePR(options.prUrl);
     stateManager.clearStatusOverride(options.prUrl);
   });
-  await maybeCheckpoint(stateManager, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
 
-  return { shelved: added, url: options.prUrl };
+  return { shelved: added, url: options.prUrl, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
 }
 
 /**
@@ -67,7 +71,7 @@ export async function runUnshelve(options: { prUrl: string }): Promise<UnshelveO
     removed = stateManager.unshelvePR(options.prUrl);
     stateManager.clearStatusOverride(options.prUrl);
   });
-  await maybeCheckpoint(stateManager, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
 
-  return { unshelved: removed, url: options.prUrl };
+  return { unshelved: removed, url: options.prUrl, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
 }

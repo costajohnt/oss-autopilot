@@ -12,11 +12,15 @@ const MODULE = 'dismiss';
 export interface DismissOutput {
   dismissed: boolean;
   url: string;
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
+  gistSyncWarning?: string;
 }
 
 export interface UndismissOutput {
   undismissed: boolean;
   url: string;
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
+  gistSyncWarning?: string;
 }
 
 /**
@@ -34,9 +38,9 @@ export async function runDismiss(options: { url: string }): Promise<DismissOutpu
 
   const stateManager = getStateManager();
   const added = stateManager.dismissIssue(options.url, new Date().toISOString());
-  await maybeCheckpoint(stateManager, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
 
-  return { dismissed: added, url: options.url };
+  return { dismissed: added, url: options.url, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
 }
 
 /**
@@ -53,7 +57,7 @@ export async function runUndismiss(options: { url: string }): Promise<UndismissO
 
   const stateManager = getStateManager();
   const removed = stateManager.undismissIssue(options.url);
-  await maybeCheckpoint(stateManager, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
 
-  return { undismissed: removed, url: options.url };
+  return { undismissed: removed, url: options.url, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
 }

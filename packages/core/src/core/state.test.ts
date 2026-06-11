@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { StateManager, getStateManager, resetStateManager } from './state.js';
+import { StateManager, getStateManager, resetStateManager, maybeCheckpoint } from './state.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -1087,5 +1087,45 @@ describe('StateManager Gist staleness marker (#1193)', () => {
 
     // Marker should not have been cleared by a throttle.
     expect(manager.getStateStaleness()).toEqual(before);
+  });
+});
+
+// StateManager-shaped stub for maybeCheckpoint tests (#1370). Outer scope to
+// satisfy unicorn/consistent-function-scoping.
+const makeCheckpointStub = (overrides: { isGistMode?: () => boolean; checkpoint?: ReturnType<typeof vi.fn> }) =>
+  ({
+    isGistMode: overrides.isGistMode ?? (() => true),
+    checkpoint: overrides.checkpoint ?? vi.fn(),
+  }) as unknown as StateManager;
+
+describe('maybeCheckpoint (#1370)', () => {
+  it('returns null without calling checkpoint when not in Gist mode', async () => {
+    const checkpoint = vi.fn();
+    const stub = makeCheckpointStub({ isGistMode: () => false, checkpoint });
+
+    await expect(maybeCheckpoint(stub, 'test')).resolves.toBeNull();
+    expect(checkpoint).not.toHaveBeenCalled();
+  });
+
+  it('returns the push-failed warning when checkpoint resolves false', async () => {
+    const stub = makeCheckpointStub({ checkpoint: vi.fn().mockResolvedValue(false) });
+
+    const warning = await maybeCheckpoint(stub, 'test');
+    expect(warning).toMatch(/push failed after retry/);
+    expect(warning).toMatch(/local mutation is saved/);
+  });
+
+  it('returns null when checkpoint resolves true', async () => {
+    const stub = makeCheckpointStub({ checkpoint: vi.fn().mockResolvedValue(true) });
+
+    await expect(maybeCheckpoint(stub, 'test')).resolves.toBeNull();
+  });
+
+  it('returns the failure warning (with the error message) when checkpoint throws', async () => {
+    const stub = makeCheckpointStub({ checkpoint: vi.fn().mockRejectedValue(new Error('socket hang up')) });
+
+    const warning = await maybeCheckpoint(stub, 'test');
+    expect(warning).toMatch(/Gist checkpoint failed/);
+    expect(warning).toMatch(/socket hang up/);
   });
 });
