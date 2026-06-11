@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Octokit } from '@octokit/rest';
 import { fetchPRCommentBundle, fetchPRCommentBundlesBatch } from './pr-comments-fetcher.js';
+import { extractFromFence } from './untrusted-content.js';
 
 // Note: paginateAll is NOT mocked — these tests exercise the real pagination
 // loop. Existing tests use small data sets (< 100 items per list) so
@@ -93,8 +94,12 @@ describe('fetchPRCommentBundle', () => {
     expect(bundle.reviews[0]).toMatchObject({
       author: 'maintainer1',
       authorAssociation: 'OWNER',
-      body: 'Looks good with one nit.',
     });
+    // Bodies are emitted `<github-content>`-fenced with provenance (#1372).
+    expect(bundle.reviews[0].body).toBe(
+      '<github-content label="owner/repo#42" author="maintainer1" association="OWNER" source="pr-review">' +
+        'Looks good with one nit.</github-content>',
+    );
     expect(bundle.reviewComments[0].path).toBe('src/x.ts');
     expect(bundle.issueComments[0].author).toBe('maintainer2');
   });
@@ -233,8 +238,8 @@ describe('fetchPRCommentBundle', () => {
     const bundle = await fetchPRCommentBundle(octokit, PR_URL, 'me');
     // 101 total reviews — both pages concatenated, none duplicated.
     expect(bundle.reviews).toHaveLength(101);
-    expect(bundle.reviews[0].body).toBe('review 1');
-    expect(bundle.reviews[100].body).toBe('final review');
+    expect(extractFromFence(bundle.reviews[0].body)).toBe('review 1');
+    expect(extractFromFence(bundle.reviews[100].body)).toBe('final review');
     // listReviews called exactly twice — page 1 (full), page 2 (short → stop).
     expect((octokit.pulls.listReviews as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
   });

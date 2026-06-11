@@ -77,7 +77,15 @@ describe('runComments', () => {
     expect(result).toEqual(
       expect.objectContaining({
         pr: expect.objectContaining({ title: 'Test PR', state: 'open' }),
-        reviews: [{ user: 'reviewer', state: 'APPROVED', body: 'LGTM', submittedAt: '2026-01-15T10:00:00Z' }],
+        reviews: [
+          {
+            user: 'reviewer',
+            state: 'APPROVED',
+            // Bodies are emitted `<github-content>`-fenced (#1372).
+            body: '<github-content label="owner/repo#42" author="reviewer" source="pr-review">LGTM</github-content>',
+            submittedAt: '2026-01-15T10:00:00Z',
+          },
+        ],
         summary: { reviewCount: 1, inlineCommentCount: 0, discussionCommentCount: 0 },
       }),
     );

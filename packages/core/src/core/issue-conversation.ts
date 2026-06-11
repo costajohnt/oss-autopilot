@@ -259,6 +259,11 @@ export class IssueConversationMonitor {
 
     const labels = (item.labels || []).map((l) => l.name || '').filter(Boolean);
 
+    // Body excerpts stay RAW here on purpose (#1372): these objects feed the
+    // dashboard SPA and the CLI text renderers directly, and the matching
+    // above (acknowledgment / @mention) operates on raw text. The
+    // `<github-content>` fence is applied at the agent-facing serialization
+    // boundary in `toDailyOutput()` (commands/daily.ts).
     const base = {
       repo: repoFullName,
       number: item.number,
