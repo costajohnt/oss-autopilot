@@ -50,12 +50,16 @@ export interface GuidelinesStoreOutput {
   repo: string;
   byteSize: number;
   stored: boolean;
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
+  gistSyncWarning?: string;
 }
 
 export interface GuidelinesResetOutput {
   repo: string;
   /** True when an existing file was tombstoned, false when no file existed. */
   deleted: boolean;
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
+  gistSyncWarning?: string;
 }
 
 export interface FetchCorpusOutput {
@@ -72,6 +76,8 @@ export interface FetchCorpusOutput {
    * succeeded. (#1209 L8)
    */
   failures: Array<{ prUrl: string; error: string }>;
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
+  gistSyncWarning?: string;
 }
 
 interface RepoOption {
@@ -125,11 +131,12 @@ export async function runGuidelinesStore(options: StoreOptions): Promise<Guideli
   // Push to Gist — autoSave only writes the local state-cache mirror in Gist
   // mode, so without this checkpoint the change never propagates across
   // machines (#1200).
-  await maybeCheckpoint(sm, MODULE);
+  const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
   return {
     repo: options.repo,
     byteSize: Buffer.byteLength(options.content, 'utf8'),
     stored: true,
+    ...(gistSyncWarning ? { gistSyncWarning } : {}),
   };
 }
 
@@ -141,12 +148,13 @@ export async function runGuidelinesReset(options: RepoOption): Promise<Guideline
     throw new GuidelinesNotAvailableError();
   }
   const existed = sm.getGuidelines(options.repo) !== null;
+  let gistSyncWarning: string | null = null;
   if (existed) {
     sm.deleteGuidelines(options.repo);
     // Push to Gist — see runGuidelinesStore note (#1200).
-    await maybeCheckpoint(sm, MODULE);
+    gistSyncWarning = await maybeCheckpoint(sm, MODULE);
   }
-  return { repo: options.repo, deleted: existed };
+  return { repo: options.repo, deleted: existed, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
 }
 
 /**
@@ -228,8 +236,9 @@ export async function runFetchCorpus(options: FetchCorpusOptions): Promise<Fetch
   // Push commentsFetchedAt stamps to Gist so other machines don't re-fetch
   // the same PRs forever. autoSave only writes the local mirror in Gist
   // mode (#1200).
+  let gistSyncWarning: string | null = null;
   if (bundles.length > 0) {
-    await maybeCheckpoint(sm, MODULE);
+    gistSyncWarning = await maybeCheckpoint(sm, MODULE);
   }
 
   return {
@@ -238,6 +247,7 @@ export async function runFetchCorpus(options: FetchCorpusOptions): Promise<Fetch
     prCount: bundles.length,
     skipped,
     failures,
+    ...(gistSyncWarning ? { gistSyncWarning } : {}),
   };
 }
 

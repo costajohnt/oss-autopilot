@@ -18,6 +18,13 @@ export interface MoveOutput {
   target: MoveTarget;
   /** Human-readable description of what happened. */
   description: string;
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
+  gistSyncWarning?: string;
+}
+
+/** Attach the checkpoint warning only when present, keeping the key off the wire on clean runs (#1370). */
+function withGistSyncWarning(output: MoveOutput, gistSyncWarning: string | null): MoveOutput {
+  return gistSyncWarning ? { ...output, gistSyncWarning } : output;
 }
 
 /**
@@ -52,32 +59,38 @@ export async function runMove(options: { prUrl: string; target: string }): Promi
         stateManager.setStatusOverride(options.prUrl, status, lastActivityAt);
         stateManager.unshelvePR(options.prUrl);
       });
-      await maybeCheckpoint(stateManager, MODULE);
-      return { url: options.prUrl, target, description: `Moved to ${label}` };
+      const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+      return withGistSyncWarning({ url: options.prUrl, target, description: `Moved to ${label}` }, gistSyncWarning);
     }
     case 'shelved': {
       stateManager.batch(() => {
         stateManager.shelvePR(options.prUrl);
         stateManager.clearStatusOverride(options.prUrl);
       });
-      await maybeCheckpoint(stateManager, MODULE);
-      return {
-        url: options.prUrl,
-        target,
-        description: 'Shelved — excluded from capacity and actionable items',
-      };
+      const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+      return withGistSyncWarning(
+        {
+          url: options.prUrl,
+          target,
+          description: 'Shelved — excluded from capacity and actionable items',
+        },
+        gistSyncWarning,
+      );
     }
     case 'auto': {
       stateManager.batch(() => {
         stateManager.clearStatusOverride(options.prUrl);
         stateManager.unshelvePR(options.prUrl);
       });
-      await maybeCheckpoint(stateManager, MODULE);
-      return {
-        url: options.prUrl,
-        target,
-        description: 'Reset to computed status',
-      };
+      const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+      return withGistSyncWarning(
+        {
+          url: options.prUrl,
+          target,
+          description: 'Reset to computed status',
+        },
+        gistSyncWarning,
+      );
     }
     default: {
       const _exhaustive: never = target;

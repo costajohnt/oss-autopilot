@@ -794,10 +794,23 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // Checkpoint: push state to Gist if in Gist mode.
   // If getStateManagerAsync was not called before this command ran,
   // isGistMode() will be false and checkpoint is correctly skipped.
+  // `warnings` is the same array referenced by `result`, so warnings
+  // recorded here still reach the structured output.
   try {
     const sm = getStateManager();
     if (sm.isGistMode()) {
-      await sm.checkpoint();
+      // checkpoint() resolves false (no throw) when the push failed after
+      // its retry — previously discarded, reporting clean success while
+      // cross-machine state silently drifted (#1370).
+      const pushed = await sm.checkpoint();
+      if (!pushed) {
+        recordWarning(
+          warnings,
+          'gist-checkpoint',
+          'Gist checkpoint',
+          new Error('push failed after retry; state not synced to Gist this run'),
+        );
+      }
     }
   } catch (err) {
     recordWarning(warnings, 'gist-checkpoint', 'Gist checkpoint', err);

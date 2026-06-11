@@ -35,7 +35,7 @@ describe('PR_URL_PATTERN', () => {
 // Mock getStateManager for command-level tests
 vi.mock('../core/index.js', () => ({
   getStateManager: vi.fn(),
-  maybeCheckpoint: vi.fn().mockResolvedValue(undefined),
+  maybeCheckpoint: vi.fn().mockResolvedValue(null),
 }));
 
 import { getStateManager, maybeCheckpoint } from '../core/index.js';
@@ -84,7 +84,27 @@ describe('runShelve', () => {
     // runShelve should still fail loud. Keep the assertion explicit.
     await expect(runShelve({ prUrl: TEST_PR_URL })).rejects.toThrow('network down');
     // Restore default for subsequent tests in this describe block.
-    mockMaybeCheckpoint.mockResolvedValue(undefined);
+    mockMaybeCheckpoint.mockResolvedValue(null);
+  });
+
+  it('threads the checkpoint warning into gistSyncWarning when the Gist push fails (#1370)', async () => {
+    mockShelvePR.mockReturnValue(true);
+    const warning = 'Gist checkpoint push failed after retry; the local mutation is saved';
+    mockMaybeCheckpoint.mockResolvedValueOnce(warning);
+
+    const result = await runShelve({ prUrl: TEST_PR_URL });
+
+    expect(result).toEqual({ shelved: true, url: TEST_PR_URL, gistSyncWarning: warning });
+  });
+
+  it('omits gistSyncWarning entirely when the checkpoint succeeds (#1370)', async () => {
+    mockShelvePR.mockReturnValue(true);
+    mockMaybeCheckpoint.mockResolvedValueOnce(null);
+
+    const result = await runShelve({ prUrl: TEST_PR_URL });
+
+    expect(result).not.toHaveProperty('gistSyncWarning');
+    expect(result).toEqual({ shelved: true, url: TEST_PR_URL });
   });
 
   it('should report not shelved when PR is already shelved', async () => {

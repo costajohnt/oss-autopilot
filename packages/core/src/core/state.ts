@@ -70,16 +70,29 @@ function filterValidUrlEntries<T extends { url: string }>(
  * Intended for state-mutating PR-flow commands (shelve / unshelve / move /
  * dismiss / undismiss / claim) so Gist-sync users don't see day-long drift
  * between machines waiting for the next `daily` checkpoint. See issue #1036.
+ *
+ * @returns `null` when the push succeeded (or Gist mode is off); otherwise a
+ * human-readable warning the caller should surface in its structured output.
+ * `checkpoint()` resolves `false` without throwing when the push failed
+ * after its retry — previously that was discarded everywhere except
+ * `state --sync`, so a failed cross-machine sync reported clean success
+ * (#1370). stderr `warn()` alone is invisible to MCP/dashboard consumers.
  */
-export async function maybeCheckpoint(stateManager: StateManager, callerModule: string): Promise<void> {
-  if (!stateManager.isGistMode()) return;
+export async function maybeCheckpoint(stateManager: StateManager, callerModule: string): Promise<string | null> {
+  if (!stateManager.isGistMode()) return null;
   try {
-    await stateManager.checkpoint();
+    const pushed = await stateManager.checkpoint();
+    if (!pushed) {
+      const msg =
+        'Gist checkpoint push failed after retry; the local mutation is saved and will sync on the next successful push';
+      warn(callerModule, msg);
+      return msg;
+    }
+    return null;
   } catch (err) {
-    warn(
-      callerModule,
-      `Gist checkpoint failed (local mutation succeeded, will retry on next push): ${errorMessage(err)}`,
-    );
+    const msg = `Gist checkpoint failed (local mutation succeeded, will retry on next push): ${errorMessage(err)}`;
+    warn(callerModule, msg);
+    return msg;
   }
 }
 

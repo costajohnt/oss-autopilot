@@ -256,6 +256,7 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
   }
 
   // Add to tracked issues — non-fatal if state save fails (comment already posted)
+  let gistSyncWarning: string | null = null;
   try {
     const stateManager = getStateManager();
     stateManager.addIssue({
@@ -270,10 +271,10 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
       updatedAt: new Date().toISOString(),
       vetted: false,
     });
-    // Push state to Gist if in Gist mode. Best-effort — logs on failure
-    // rather than silently swallowing, so operators see the degraded-sync
-    // signal (#1036 audit H1).
-    await maybeCheckpoint(stateManager, MODULE);
+    // Push state to Gist if in Gist mode. Best-effort — the warning is
+    // threaded into the structured output so MCP/dashboard consumers see
+    // the degraded-sync signal, not just the stderr log (#1036 audit H1, #1370).
+    gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
   } catch (error) {
     // Structured warning instead of bare console.error so the breadcrumb shows
     // up in the plugin's log pipeline (#1056 M24).
@@ -286,5 +287,6 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
   return {
     commentUrl: comment.html_url,
     issueUrl: options.issueUrl,
+    ...(gistSyncWarning ? { gistSyncWarning } : {}),
   };
 }
