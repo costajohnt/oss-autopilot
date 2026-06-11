@@ -219,11 +219,29 @@ describe('runMarkIssueListItemDone (filesystem)', () => {
     ).rejects.toThrow(/File not found/);
   });
 
-  it('does not write when the URL is not present', async () => {
+  it('throws ValidationError and does not write when the URL is not present (#1406)', async () => {
     const original = `### foo/bar\n- [#9](https://github.com/foo/bar/issues/9) — other\n`;
     fs.writeFileSync(listPath, original);
     const before = fs.statSync(listPath).mtimeMs;
     await new Promise((resolve) => setTimeout(resolve, 10));
+    const promise = runMarkIssueListItemDone({
+      issueUrl: ISSUE_A,
+      prUrl: PR_A,
+      prStatus: 'merged',
+      listPath,
+    });
+    // The exact phrase "Issue URL not found" is load-bearing: the consumer
+    // branch in workflows/draft-first-workflow.md matches on it.
+    await expect(promise).rejects.toThrow(/Issue URL not found in the list/);
+    await expect(promise).rejects.toMatchObject({ name: 'ValidationError', code: 'VALIDATION_ERROR' });
+    const after = fs.statSync(listPath).mtimeMs;
+    expect(after).toBe(before);
+    expect(fs.readFileSync(listPath, 'utf8')).toBe(original);
+  });
+
+  it('still resolves (no error) when the entry is already marked done', async () => {
+    const original = `### foo/bar\n- ~~[#1](${ISSUE_A}) — x~~\n  - **Done** — PR [#2](${PR_A}) submitted, merged.\n`;
+    fs.writeFileSync(listPath, original);
     const out = await runMarkIssueListItemDone({
       issueUrl: ISSUE_A,
       prUrl: PR_A,
@@ -231,8 +249,7 @@ describe('runMarkIssueListItemDone (filesystem)', () => {
       listPath,
     });
     expect(out.marked).toBe(false);
-    const after = fs.statSync(listPath).mtimeMs;
-    expect(after).toBe(before);
+    expect(out.reason).toMatch(/already/);
     expect(fs.readFileSync(listPath, 'utf8')).toBe(original);
   });
 
