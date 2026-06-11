@@ -647,7 +647,7 @@ describe('IssueConversationMonitor', () => {
     mockOctokitInstance.issues.listComments.mockImplementation(() => {
       callCount++;
       if (callCount === 1) {
-        return Promise.reject(new Error('API rate limit exceeded'));
+        return Promise.reject(Object.assign(new Error('Internal Server Error'), { status: 500 }));
       }
       return Promise.resolve({
         data: [
@@ -664,7 +664,39 @@ describe('IssueConversationMonitor', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0].status).toBe('new_response');
     expect(failures).toHaveLength(1);
-    expect(failures[0].error).toContain('rate limit');
+    expect(failures[0].error).toContain('Internal Server Error');
+  });
+
+  it('should reject when a per-issue analysis hits a rate limit instead of degrading to fewer results (#1391)', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: {
+        items: [
+          makeSearchItem({ html_url: 'https://github.com/owner/repo/issues/1', number: 1 }),
+          makeSearchItem({ html_url: 'https://github.com/owner/repo/issues/2', number: 2 }),
+        ],
+        total_count: 2,
+      },
+    });
+
+    mockOctokitInstance.issues.listComments.mockRejectedValue(
+      Object.assign(new Error('API rate limit exceeded'), { status: 429 }),
+    );
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    await expect(monitor.fetchCommentedIssues()).rejects.toThrow('API rate limit exceeded');
+  });
+
+  it('should reject when a per-issue analysis hits an auth error (401) (#1391)', async () => {
+    mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+      data: { items: [makeSearchItem()], total_count: 1 },
+    });
+
+    mockOctokitInstance.issues.listComments.mockRejectedValue(
+      Object.assign(new Error('Bad credentials'), { status: 401 }),
+    );
+
+    const monitor = new IssueConversationMonitor('fake-token');
+    await expect(monitor.fetchCommentedIssues()).rejects.toThrow('Bad credentials');
   });
 
   it('should filter out excludeRepos', async () => {

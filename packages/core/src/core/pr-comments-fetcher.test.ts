@@ -263,7 +263,7 @@ describe('fetchPRCommentBundlesBatch', () => {
     expect(bundles).toHaveLength(3);
   });
 
-  it('skips PRs that fail to fetch (404, rate limit) without aborting', async () => {
+  it('skips PRs that fail to fetch (404, transient errors) without aborting', async () => {
     let call = 0;
     const octokit = {
       pulls: {
@@ -360,5 +360,83 @@ describe('fetchPRCommentBundlesBatch', () => {
       prUrl: 'https://github.com/owner/repo/pull/2',
       error: expect.stringContaining('Not Found'),
     });
+  });
+
+  it('rejects the whole batch on a rate-limit error instead of degrading to a skip (#1391)', async () => {
+    const rateLimitError = Object.assign(new Error('API rate limit exceeded'), { status: 429 });
+    const octokit = {
+      pulls: {
+        get: vi.fn(async ({ pull_number }: { pull_number: number }) => {
+          if (pull_number === 2) throw rateLimitError;
+          return { data: makePR() };
+        }),
+        listReviews: vi.fn(async () => ({ data: [] })),
+        listReviewComments: vi.fn(async () => ({ data: [] })),
+      },
+      issues: {
+        listComments: vi.fn(async () => ({ data: [] })),
+      },
+    } as unknown as Octokit;
+
+    const urls = [
+      'https://github.com/owner/repo/pull/1',
+      'https://github.com/owner/repo/pull/2',
+      'https://github.com/owner/repo/pull/3',
+    ];
+    await expect(fetchPRCommentBundlesBatch(octokit, urls, 'me', 1)).rejects.toThrow('API rate limit exceeded');
+    // Abort flag stops the queue: PR 3 is never attempted after the 429.
+    const getCalls = (octokit.pulls.get as ReturnType<typeof vi.fn>).mock.calls as Array<[{ pull_number: number }]>;
+    expect(getCalls.map(([args]) => args.pull_number)).toEqual([1, 2]);
+  });
+
+  it('rejects the whole batch on an auth error (401) instead of degrading to a skip (#1391)', async () => {
+    const authError = Object.assign(new Error('Bad credentials'), { status: 401 });
+    const octokit = {
+      pulls: {
+        get: vi.fn(async () => {
+          throw authError;
+        }),
+        listReviews: vi.fn(async () => ({ data: [] })),
+        listReviewComments: vi.fn(async () => ({ data: [] })),
+      },
+      issues: {
+        listComments: vi.fn(async () => ({ data: [] })),
+      },
+    } as unknown as Octokit;
+
+    await expect(
+      fetchPRCommentBundlesBatch(octokit, ['https://github.com/owner/repo/pull/1'], 'me', 1),
+    ).rejects.toThrow('Bad credentials');
+  });
+
+  it('keeps the degrade-to-failures behavior for a 500 server error (#1391)', async () => {
+    const serverError = Object.assign(new Error('Internal Server Error'), { status: 500 });
+    const octokit = {
+      pulls: {
+        get: vi.fn(async ({ pull_number }: { pull_number: number }) => {
+          if (pull_number === 2) throw serverError;
+          return { data: makePR() };
+        }),
+        listReviews: vi.fn(async () => ({ data: [] })),
+        listReviewComments: vi.fn(async () => ({ data: [] })),
+      },
+      issues: {
+        listComments: vi.fn(async () => ({ data: [] })),
+      },
+    } as unknown as Octokit;
+
+    const urls = [
+      'https://github.com/owner/repo/pull/1',
+      'https://github.com/owner/repo/pull/2',
+      'https://github.com/owner/repo/pull/3',
+    ];
+    const result = await fetchPRCommentBundlesBatch(octokit, urls, 'me', 1);
+    expect(result.bundles).toHaveLength(2);
+    expect(result.failures).toEqual([
+      {
+        prUrl: 'https://github.com/owner/repo/pull/2',
+        error: expect.stringContaining('Internal Server Error'),
+      },
+    ]);
   });
 });

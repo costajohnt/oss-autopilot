@@ -15,7 +15,7 @@ import { daysBetween } from './dates.js';
 import { splitRepo, extractOwnerRepo, isOwnRepo } from './urls.js';
 import { runWorkerPool, DEFAULT_CONCURRENCY } from './concurrency.js';
 import type { CommentedIssue, IssueConversationStatus } from './types.js';
-import { ConfigurationError, errorMessage } from './errors.js';
+import { ConfigurationError, errorMessage, isRateLimitOrAuthError } from './errors.js';
 import { debug, warn } from './logger.js';
 
 const MODULE = 'issue-conversation';
@@ -136,6 +136,13 @@ export class IssueConversationMonitor {
             });
           }
         } catch (error) {
+          // Rate-limit / auth failures must propagate, not degrade to "fewer
+          // results" — under throttling every sibling analysis fails the same
+          // way and the partial result silently looks like a quiet day (#1391).
+          // runWorkerPool aborts remaining workers and rejects; daily.ts and
+          // dashboard-data.ts rethrow rate-limit/auth from their phase catches,
+          // aborting the run just like PRMonitor's 429s do.
+          if (isRateLimitOrAuthError(error)) throw error;
           const msg = errorMessage(error);
           failures.push({ issueUrl: item.html_url, error: msg });
           warn(MODULE, `Error analyzing issue ${item.html_url}: ${msg}`);
@@ -150,7 +157,7 @@ export class IssueConversationMonitor {
     if (failures.length === candidates.length && candidates.length > 0) {
       warn(
         MODULE,
-        `All ${candidates.length} issue analysis call(s) failed. Possible systemic issue (rate limit, auth, network).`,
+        `All ${candidates.length} issue analysis call(s) failed. Possible systemic issue (network, GitHub availability).`,
       );
     }
 

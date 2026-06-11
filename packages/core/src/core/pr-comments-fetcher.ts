@@ -16,7 +16,7 @@ import { paginateAll } from './pagination.js';
 import { wrapUntrustedContent } from './untrusted-content.js';
 import { isBotAuthor } from './comment-utils.js';
 import { parseGitHubUrl } from './urls.js';
-import { ValidationError, errorMessage } from './errors.js';
+import { ValidationError, errorMessage, isRateLimitOrAuthError } from './errors.js';
 import { debug, warn } from './logger.js';
 
 const MODULE = 'pr-comments-fetcher';
@@ -184,8 +184,13 @@ export async function fetchPRCommentBundle(
  * `{ bundles, failures }` so the caller can decide whether to retry, surface
  * a partial-data banner, or proceed. Rationale: extraction quality is already
  * a partial-information problem (users contribute to many repos and many PRs),
- * so a single 404 / rate limit on one PR should not deny the host the corpus
- * from the other 4 — but the failure should still be visible (#1209 L8).
+ * so a single 404 / transient failure on one PR should not deny the host the
+ * corpus from the other 4 — but the failure should still be visible (#1209 L8).
+ *
+ * Rate-limit / auth errors are the exception: they reject the whole batch
+ * (#1391). Under throttling every remaining PR would fail the same way, so
+ * degrading to "skipped N PRs" silently masks a systemic failure the caller
+ * needs to surface (the CLI/MCP error envelope on `guidelines fetch-corpus`).
  */
 export interface PRCommentBundlesBatchResult {
   bundles: PRCommentBundle[];
@@ -201,15 +206,25 @@ export async function fetchPRCommentBundlesBatch(
   const bundles: PRCommentBundle[] = [];
   const failures: Array<{ prUrl: string; error: string }> = [];
   const queue = [...prUrls];
+  let aborted = false;
 
   async function worker(): Promise<void> {
     while (queue.length > 0) {
+      if (aborted) return;
       const url = queue.shift();
       if (!url) return;
       try {
         const bundle = await fetchPRCommentBundle(octokit, url, githubUsername);
         bundles.push(bundle);
       } catch (err) {
+        // Rate-limit / auth failures abort the batch instead of degrading to
+        // a per-PR skip — see the doc comment above (#1391). The abort flag
+        // stops sibling workers from burning more rate-limited requests on
+        // results that will be discarded when Promise.all rejects.
+        if (isRateLimitOrAuthError(err)) {
+          aborted = true;
+          throw err;
+        }
         const errorMsg = errorMessage(err);
         failures.push({ prUrl: url, error: errorMsg });
         warn(MODULE, `Skipping ${url}: ${errorMsg}`);
