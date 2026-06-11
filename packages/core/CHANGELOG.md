@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.10.0...core-v3.11.0) (2026-06-11)
+
+
+### Features
+
+* **dashboard:** retry once then return 409 on state-write conflicts ([#1403](https://github.com/costajohnt/oss-autopilot/issues/1403)) ([ac72ed3](https://github.com/costajohnt/oss-autopilot/commit/ac72ed32920259a53c0263588770e823be1af8f8)), closes [#1397](https://github.com/costajohnt/oss-autopilot/issues/1397)
+* **guidelines:** add guidelines list subcommand and MCP tool ([#1400](https://github.com/costajohnt/oss-autopilot/issues/1400)) ([085e127](https://github.com/costajohnt/oss-autopilot/commit/085e127f9b7c6e07bab814aad10b4a97eb5def99)), closes [#1393](https://github.com/costajohnt/oss-autopilot/issues/1393)
+* **security:** wire the untrusted-content fence into agent-facing output ([#1396](https://github.com/costajohnt/oss-autopilot/issues/1396)) ([e1599a0](https://github.com/costajohnt/oss-autopilot/commit/e1599a0018f82282620130402829686d775a125a)), closes [#1372](https://github.com/costajohnt/oss-autopilot/issues/1372)
+
+
+### Bug Fixes
+
+* **agents:** align frontmatter tool grants with body instructions ([#1395](https://github.com/costajohnt/oss-autopilot/issues/1395)) ([47d5ed2](https://github.com/costajohnt/oss-autopilot/commit/47d5ed2d8557378e43e9550c171c81dbbac26282)), closes [#1377](https://github.com/costajohnt/oss-autopilot/issues/1377)
+* **cli:** parse asynchronously so bootstrap errors surface actionably ([#1401](https://github.com/costajohnt/oss-autopilot/issues/1401)) ([4364c61](https://github.com/costajohnt/oss-autopilot/commit/4364c6115e9b984b39dc322fe3dc8a05bdd8280f)), closes [#1386](https://github.com/costajohnt/oss-autopilot/issues/1386)
+* **core:** stop three per-item catches from swallowing rate-limit errors ([#1404](https://github.com/costajohnt/oss-autopilot/issues/1404)) ([867610c](https://github.com/costajohnt/oss-autopilot/commit/867610cc4be41585d8c31fddd5ecd2f2a1c059e9)), closes [#1391](https://github.com/costajohnt/oss-autopilot/issues/1391)
+* **dashboard:** hoist PR-list memos above early returns (Rules of Hooks) ([#1384](https://github.com/costajohnt/oss-autopilot/issues/1384)) ([d03a30c](https://github.com/costajohnt/oss-autopilot/commit/d03a30c51723d97638490c977542f5b050391409)), closes [#1369](https://github.com/costajohnt/oss-autopilot/issues/1369)
+* **dashboard:** reflect SPA shelve/unshelve immediately ([#1362](https://github.com/costajohnt/oss-autopilot/issues/1362)) ([37d1dc6](https://github.com/costajohnt/oss-autopilot/commit/37d1dc6f9688f325fb01c6bdbb156e401ea8c68e))
+* **gist:** surface corrupt-Gist, permission, and rate-limit errors from bootstrap ([#1387](https://github.com/costajohnt/oss-autopilot/issues/1387)) ([2c6d2cd](https://github.com/costajohnt/oss-autopilot/commit/2c6d2cd59f6d0064c9a3cef82aea45b711ea54b2)), closes [#1367](https://github.com/costajohnt/oss-autopilot/issues/1367)
+* **repo-vet:** stop reporting rate-limited release fetches as no releases ([#1390](https://github.com/costajohnt/oss-autopilot/issues/1390)) ([5939a1d](https://github.com/costajohnt/oss-autopilot/commit/5939a1da3edfb205a9cfade430a1c047031f95d9)), closes [#1373](https://github.com/costajohnt/oss-autopilot/issues/1373)
+* **state:** preserve forensics and surface recovery when state.json is unparseable ([#1389](https://github.com/costajohnt/oss-autopilot/issues/1389)) ([d4beadb](https://github.com/costajohnt/oss-autopilot/commit/d4beadb74c8364ee507576e44ba315cbf1d93652)), closes [#1371](https://github.com/costajohnt/oss-autopilot/issues/1371)
+* **state:** surface Gist checkpoint push failures in structured output ([#1388](https://github.com/costajohnt/oss-autopilot/issues/1388)) ([e4766f4](https://github.com/costajohnt/oss-autopilot/commit/e4766f447d2c961fb4e6d0328ee15f98c80f4279)), closes [#1370](https://github.com/costajohnt/oss-autopilot/issues/1370)
+
 ## [3.10.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.9.0...core-v3.10.0) (2026-05-18)
 
 
