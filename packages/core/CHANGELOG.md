@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.12.0...core-v3.13.0) (2026-06-11)
+
+
+### Features
+
+* **core:** diversity counterweight + surfaced bias annotations for strategy-biased search ([#1244](https://github.com/costajohnt/oss-autopilot/issues/1244)) ([#1413](https://github.com/costajohnt/oss-autopilot/issues/1413)) ([7a0d10f](https://github.com/costajohnt/oss-autopilot/commit/7a0d10fcc2300d1f65a75b90b87528fedf7a8635))
+
+
+### Bug Fixes
+
+* **core:** list-mark-done errors on URL not found instead of quiet success ([#1406](https://github.com/costajohnt/oss-autopilot/issues/1406)) ([#1411](https://github.com/costajohnt/oss-autopilot/issues/1411)) ([d892676](https://github.com/costajohnt/oss-autopilot/commit/d892676da0da445c824ddac7311551f074838f7e))
+
 ## [3.12.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.11.0...core-v3.12.0) (2026-06-11)
 
 
