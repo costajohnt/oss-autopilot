@@ -6,6 +6,7 @@
  */
 
 import type {
+  AttentionBucket,
   FetchedPRStatus,
   ShelvedPRRef,
   FetchedPR,
@@ -26,6 +27,7 @@ import type {
 
 // Re-export shared types so consumers keep using `import { X } from '../types'`
 export type {
+  AttentionBucket,
   FetchedPRStatus,
   ShelvedPRRef,
   FetchedPR,

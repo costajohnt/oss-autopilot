@@ -184,6 +184,7 @@ function makeMockDailyOutput(): DailyOutput {
     },
     summary: 'This is a long markdown summary that takes up ~8KB...',
     briefSummary: '5 Active PRs | 2 need attention',
+    attention: { needsAttention: 2, stuckCI: 1, dormantFollowup: 0, waiting: 2 },
     actionableIssues: [
       {
         type: 'ci_failing',

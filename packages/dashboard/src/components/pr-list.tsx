@@ -1,5 +1,5 @@
-import type { FetchedPR, FetchedPRStatus } from '../types';
-import { truncate, statusColor, stripBrackets, pillColorClass } from '../utils';
+import type { AttentionBucket, FetchedPR, FetchedPRStatus } from '../types';
+import { truncate, statusColor, stripBrackets, pillColorClass, attentionBucketOf } from '../utils';
 
 interface PRListProps {
   prs: FetchedPR[];
@@ -10,11 +10,17 @@ interface PRListProps {
   onShelvedToggle: () => void;
 }
 
-/** Statuses that belong in the "Need Attention" section. */
-const NEED_ATTENTION: Set<FetchedPRStatus> = new Set(['needs_addressing']);
-
-/** Statuses that belong in the "Waiting on Others" section. */
-const WAITING: Set<FetchedPRStatus> = new Set(['waiting_on_maintainer']);
+/**
+ * Section order for the unified attention taxonomy (#1352). Buckets are
+ * stamped server-side by the shared core classifier; `attentionBucketOf`
+ * falls back to the coarse status split for older payloads.
+ */
+const SECTION_ORDER: Array<{ bucket: AttentionBucket; id: string; title: string; dotClass: string }> = [
+  { bucket: 'needs_attention', id: 'action', title: 'Need Attention', dotClass: 'red' },
+  { bucket: 'stuck_ci', id: 'stuck', title: 'Stuck CI', dotClass: 'amber' },
+  { bucket: 'dormant_followup', id: 'dormant', title: 'Dormant Follow-up', dotClass: 'amber' },
+  { bucket: 'waiting', id: 'waiting', title: 'Waiting on Others', dotClass: 'blue' },
+];
 
 interface SectionDef {
   id: string;
@@ -94,20 +100,12 @@ export function PRList({ prs, selectedUrl, onSelect, shelvedUrls, shelvedOpen, o
   const activePRs = prs.filter((pr) => !shelvedUrls.has(pr.url));
   const shelvedPRs = prs.filter((pr) => shelvedUrls.has(pr.url));
 
-  const sections: SectionDef[] = [
-    {
-      id: 'action',
-      title: 'Need Attention',
-      dotClass: 'red',
-      prs: activePRs.filter((pr) => NEED_ATTENTION.has(pr.status)),
-    },
-    {
-      id: 'waiting',
-      title: 'Waiting on Others',
-      dotClass: 'blue',
-      prs: activePRs.filter((pr) => WAITING.has(pr.status)),
-    },
-  ].filter((s) => s.prs.length > 0);
+  const sections: SectionDef[] = SECTION_ORDER.map(({ bucket, id, title, dotClass }) => ({
+    id,
+    title,
+    dotClass,
+    prs: activePRs.filter((pr) => attentionBucketOf(pr) === bucket),
+  })).filter((s) => s.prs.length > 0);
 
   return (
     <div class="pr-list">

@@ -4,8 +4,13 @@ import { AnimatedValue } from './animated-value';
 interface StatsBarProps {
   stats: DashboardStats;
   needAttentionCount: number;
+  /** Unified attention buckets (#1352); the cards render only when non-zero. */
+  stuckCICount?: number;
+  dormantFollowupCount?: number;
   waitingCount: number;
   onNeedAttentionClick?: () => void;
+  onStuckCIClick?: () => void;
+  onDormantFollowupClick?: () => void;
   onWaitingClick?: () => void;
   onShelvedClick?: () => void;
   onMergedClick?: () => void;
@@ -23,8 +28,12 @@ interface StatCardDef {
 export function StatsBar({
   stats,
   needAttentionCount,
+  stuckCICount = 0,
+  dormantFollowupCount = 0,
   waitingCount,
   onNeedAttentionClick,
+  onStuckCIClick,
+  onDormantFollowupClick,
   onWaitingClick,
   onShelvedClick,
   onMergedClick,
@@ -33,6 +42,20 @@ export function StatsBar({
 }: StatsBarProps) {
   const cards: StatCardDef[] = [
     { label: 'Need Attention', value: needAttentionCount, colorClass: 'red', onClick: onNeedAttentionClick },
+    // #1352 watch buckets — shown only when non-zero so the bar stays compact.
+    ...(stuckCICount > 0
+      ? [{ label: 'Stuck CI', value: stuckCICount, colorClass: 'amber', onClick: onStuckCIClick }]
+      : []),
+    ...(dormantFollowupCount > 0
+      ? [
+          {
+            label: 'Dormant Follow-up',
+            value: dormantFollowupCount,
+            colorClass: 'amber',
+            onClick: onDormantFollowupClick,
+          },
+        ]
+      : []),
     { label: 'Waiting on Others', value: waitingCount, colorClass: 'blue', onClick: onWaitingClick },
     { label: 'Shelved', value: stats.shelvedPRs, colorClass: 'muted', onClick: onShelvedClick },
     { label: 'Merged PRs', value: stats.mergedPRs, colorClass: 'purple', onClick: onMergedClick },

@@ -4,7 +4,7 @@
  * Consumed by the dashboard HTTP server (dashboard-server.ts) for the SPA API.
  */
 
-import { getStateManager, PRMonitor, IssueConversationMonitor, getOctokit } from '../core/index.js';
+import { getStateManager, PRMonitor, IssueConversationMonitor, getOctokit, CRITICAL_STATUSES } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult, fetchMergedPRsSince, fetchClosedPRsSince } from '../core/github-stats.js';
@@ -123,12 +123,18 @@ export function buildDashboardStats(
  * A PR is shelved for display when the user explicitly shelved it, or the
  * dormant-auto-shelve rule applies (dormant + not needing attention). Mirrors
  * the partition built in fetchDashboardData (see the `freshShelved` filter).
+ *
+ * #1352: an explicitly shelved PR that turns critical is NOT shelved for
+ * display — the daily check auto-unshelves it (`CRITICAL_STATUSES`), so the
+ * dashboard must agree immediately rather than diverging from the CLI's
+ * headline count until the next daily run.
  */
 function isShelvedForDisplay(
   pr: { url: string; stalenessTier?: string; status?: string },
   explicitlyShelved: Set<string>,
 ): boolean {
-  return explicitlyShelved.has(pr.url) || (pr.stalenessTier === 'dormant' && pr.status !== 'needs_addressing');
+  if (CRITICAL_STATUSES.has(pr.status as FetchedPR['status'])) return false;
+  return explicitlyShelved.has(pr.url) || pr.stalenessTier === 'dormant';
 }
 
 /**
@@ -390,11 +396,13 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
 
       const digest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);
 
-      // Apply shelve partitioning for display (auto-unshelve only runs in daily check)
-      // Dormant PRs are treated as shelved unless they need addressing
+      // Apply shelve partitioning for display (auto-unshelve only runs in daily check).
+      // Dormant PRs are treated as shelved unless they need addressing, and a
+      // critical PR is never display-shelved (#1352) — mirrors the daily
+      // check's CRITICAL_STATUSES auto-unshelve so headline counts agree.
       const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
       const freshShelved = prs.filter(
-        (pr) => shelvedUrls.has(pr.url) || (pr.stalenessTier === 'dormant' && pr.status !== 'needs_addressing'),
+        (pr) => !CRITICAL_STATUSES.has(pr.status) && (shelvedUrls.has(pr.url) || pr.stalenessTier === 'dormant'),
       );
       digest.shelvedPRs = freshShelved.map(toShelvedPRRef);
       digest.autoUnshelvedPRs = [];

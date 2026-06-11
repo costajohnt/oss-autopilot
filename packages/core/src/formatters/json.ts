@@ -4,6 +4,7 @@
  */
 
 import { z, type ZodType } from 'zod';
+import type { AttentionSummary } from '../core/pr-attention.js';
 import type {
   FetchedPR,
   DailyDigest,
@@ -162,6 +163,8 @@ export interface DailyOutput {
   summary: string; // Pre-formatted markdown for Claude to display verbatim
   briefSummary: string; // One-liner for action-first flow
   actionableIssues: CompactActionableIssue[]; // Structured list referencing PRs by URL
+  /** Unified attention-bucket counts (#1352) — same classifier the dashboard stamps per-PR. */
+  attention: AttentionSummary;
   actionMenu: ActionMenu; // Pre-computed action menu for Action Menu section
   commentedIssues: CommentedIssue[]; // Issues user commented on with conversation state
   repoGroups: CompactRepoGroup[]; // PRs grouped by repo for safe parallel dispatch (#80)
@@ -195,6 +198,8 @@ export interface CompactDailyOutput {
   capacity: CapacityAssessment;
   briefSummary: string;
   actionableIssues: CompactActionableIssue[];
+  /** Unified attention-bucket counts (#1352), retained under --compact. */
+  attention: AttentionSummary;
   actionMenu: ActionMenu;
   commentedIssues: CommentedIssue[];
   /** Number of PRs that failed to fetch. Non-zero indicates partial results. */
@@ -220,6 +225,7 @@ export function toCompactDailyOutput(output: DailyOutput): CompactDailyOutput {
     capacity: output.capacity,
     briefSummary: output.briefSummary,
     actionableIssues: output.actionableIssues,
+    attention: output.attention,
     actionMenu: output.actionMenu,
     commentedIssues: output.commentedIssues,
     failureCount: output.failures.length,
@@ -492,12 +498,20 @@ export const StrategyOutputSchema = z.object({
 });
 export type StrategyCommandOutput = z.infer<typeof StrategyOutputSchema>;
 
+export const AttentionSummarySchema = z.object({
+  needsAttention: z.number().int().nonnegative(),
+  stuckCI: z.number().int().nonnegative(),
+  dormantFollowup: z.number().int().nonnegative(),
+  waiting: z.number().int().nonnegative(),
+});
+
 export const DailyOutputSchema = z.object({
   digest: DailyDigestCompactSchema,
   capacity: CapacityAssessmentSchema,
   summary: z.string(),
   briefSummary: z.string(),
   actionableIssues: z.array(CompactActionableIssueSchema),
+  attention: AttentionSummarySchema,
   actionMenu: ActionMenuSchema,
   commentedIssues: z.array(CommentedIssuePassthroughSchema),
   repoGroups: z.array(CompactRepoGroupSchema),
@@ -511,6 +525,7 @@ export const CompactDailyOutputSchema = z.object({
   capacity: CapacityAssessmentSchema,
   briefSummary: z.string(),
   actionableIssues: z.array(CompactActionableIssueSchema),
+  attention: AttentionSummarySchema,
   actionMenu: ActionMenuSchema,
   commentedIssues: z.array(CommentedIssuePassthroughSchema),
   failureCount: z.number().int().nonnegative(),

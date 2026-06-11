@@ -8,14 +8,10 @@ Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/di
 
 ## Now (next 1-2 weeks)
 
-- [ ] Reconcile dashboard `needs_addressing` count with CLI `actionableIssues` — two independent classifiers diverge ([#1352](https://github.com/costajohnt/oss-autopilot/issues/1352))
-- [ ] Fix issue-scout hallucinating `Open` state and conflating cross-referenced PRs with closing PRs ([#1353](https://github.com/costajohnt/oss-autopilot/issues/1353))
-- [ ] Exclude issues the user already has open PRs for from search results ([#1354](https://github.com/costajohnt/oss-autopilot/issues/1354))
-
-## Next (next 1-2 months)
-
 - [ ] Move canonical issue-scout and repo-evaluator agents into oss-scout ([#1241](https://github.com/costajohnt/oss-autopilot/issues/1241))
 - [ ] Bias `oss-scout:issue-scout` searches with `strategy().recommendations`, with a diversity counterweight ([#1244](https://github.com/costajohnt/oss-autopilot/issues/1244))
+
+## Next (next 1-2 months)
 
 ## Later (no fixed timeline)
 
@@ -27,6 +23,8 @@ Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/di
 
 ## Shipped
 
+- [x] Unify the attention taxonomy — one classifier for CLI brief and dashboard, with `stuck_ci` / `dormant_followup` buckets ([#1352](https://github.com/costajohnt/oss-autopilot/issues/1352))
+- [x] Deterministic `verify-issue` — real open/closed state and closing-vs-mention PR classification, wired into issue-scout ([#1353](https://github.com/costajohnt/oss-autopilot/issues/1353), [#1354](https://github.com/costajohnt/oss-autopilot/issues/1354))
 - [x] Fix `list-move-tier` silently no-opping on missing entries — a URL absent from the list is now an explicit error ([#1355](https://github.com/costajohnt/oss-autopilot/issues/1355))
 - [x] Fix preAction bootstrap errors surfacing as unhandled rejections (`parse` vs `parseAsync`) ([#1386](https://github.com/costajohnt/oss-autopilot/issues/1386))
 - [x] Stop three more catch sites from swallowing rate-limit errors into degraded results ([#1391](https://github.com/costajohnt/oss-autopilot/issues/1391))

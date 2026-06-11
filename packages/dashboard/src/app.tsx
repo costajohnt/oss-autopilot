@@ -16,7 +16,7 @@ import { VettedIssueList } from './components/vetted-issue-list';
 import { SkeletonLoader } from './components/skeleton-loader';
 import { ThemeToggle } from './components/theme-toggle';
 import { CelebrationToast } from './components/celebration-toast';
-import { formatRelativeTime, refreshLabel } from './utils';
+import { attentionBucketOf, formatRelativeTime, refreshLabel } from './utils';
 import type { DashboardStats, FetchedPR } from './types';
 
 interface DashboardHeaderProps {
@@ -128,9 +128,16 @@ function AppContent() {
   // users with a backgrounded tab can see "(2) OSS Autopilot" and react.
   // Counting here instead of memoing because the dep list is already minimal.
   useEffect(() => {
-    const needCount = data?.activePRs?.filter((pr) => pr.status === 'needs_addressing').length ?? 0;
+    // Counts the shelved-filtered set so the tab prefix matches the StatsBar
+    // headline (#1352) — digest.openPRs deliberately includes shelved PRs.
+    // Derived inline (not from the activePRs memo) because this effect sits
+    // above the memo declarations and hook order must stay stable (#1369).
+    const shelved = new Set(data?.shelvedPRUrls ?? []);
+    const needCount = (data?.activePRs ?? []).filter(
+      (pr) => !shelved.has(pr.url) && attentionBucketOf(pr) === 'needs_attention',
+    ).length;
     document.title = needCount > 0 ? `(${needCount}) OSS Autopilot` : 'OSS Autopilot Dashboard';
-  }, [data?.activePRs]);
+  }, [data?.activePRs, data?.shelvedPRUrls]);
 
   // Global Shift+C fires a celebration (#940). Ignored when the user is
   // typing into an input/textarea/contenteditable so the shortcut doesn't
@@ -338,8 +345,12 @@ function AppContent() {
   // filteredPRs, activePRs) are memoized above the early returns (#1369).
   const selectedPR = selectedUrl ? (data.activePRs.find((pr) => pr.url === selectedUrl) ?? null) : null;
 
-  const needAttentionCount = activePRs.filter((pr) => pr.status === 'needs_addressing').length;
-  const waitingCount = activePRs.filter((pr) => pr.status === 'waiting_on_maintainer').length;
+  // #1352: counts come from the same attention-bucket classifier the CLI
+  // brief uses, so the headline number matches `N need attention` exactly.
+  const needAttentionCount = activePRs.filter((pr) => attentionBucketOf(pr) === 'needs_attention').length;
+  const stuckCICount = activePRs.filter((pr) => attentionBucketOf(pr) === 'stuck_ci').length;
+  const dormantFollowupCount = activePRs.filter((pr) => attentionBucketOf(pr) === 'dormant_followup').length;
+  const waitingCount = activePRs.filter((pr) => attentionBucketOf(pr) === 'waiting').length;
 
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
@@ -369,8 +380,12 @@ function AppContent() {
           <StatsBar
             stats={data.stats}
             needAttentionCount={needAttentionCount}
+            stuckCICount={stuckCICount}
+            dormantFollowupCount={dormantFollowupCount}
             waitingCount={waitingCount}
             onNeedAttentionClick={() => scrollTo('section-action')}
+            onStuckCIClick={() => scrollTo('section-stuck')}
+            onDormantFollowupClick={() => scrollTo('section-dormant')}
             onWaitingClick={() => scrollTo('section-waiting')}
             onShelvedClick={() => {
               setShelvedOpen(true);

@@ -20,6 +20,34 @@ describe('StatsBar', () => {
     expect(cards).toHaveLength(5);
   });
 
+  it('renders Stuck CI and Dormant Follow-up cards only when non-zero (#1352)', () => {
+    const { container } = render(<StatsBar {...baseProps} stuckCICount={2} dormantFollowupCount={1} />);
+    const labels = [...container.querySelectorAll('.stat-label')].map((el) => el.textContent);
+    expect(labels).toContain('Stuck CI');
+    expect(labels).toContain('Dormant Follow-up');
+    // Inserted between Need Attention and Waiting on Others
+    expect(labels.indexOf('Stuck CI')).toBeGreaterThan(labels.indexOf('Need Attention'));
+    expect(labels.indexOf('Dormant Follow-up')).toBeLessThan(labels.indexOf('Waiting on Others'));
+  });
+
+  it('fires the bucket click handlers (#1352)', () => {
+    const onStuckCIClick = vi.fn();
+    const onDormantFollowupClick = vi.fn();
+    const { getByText } = render(
+      <StatsBar
+        {...baseProps}
+        stuckCICount={1}
+        dormantFollowupCount={1}
+        onStuckCIClick={onStuckCIClick}
+        onDormantFollowupClick={onDormantFollowupClick}
+      />,
+    );
+    fireEvent.click(getByText('Stuck CI'));
+    fireEvent.click(getByText('Dormant Follow-up'));
+    expect(onStuckCIClick).toHaveBeenCalledOnce();
+    expect(onDormantFollowupClick).toHaveBeenCalledOnce();
+  });
+
   it('displays correct values after animation', () => {
     const { container } = render(<StatsBar {...baseProps} />);
     act(() => {

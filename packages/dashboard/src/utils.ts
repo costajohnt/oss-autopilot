@@ -1,4 +1,4 @@
-import type { FetchedPRStatus } from './types';
+import type { AttentionBucket, FetchedPR, FetchedPRStatus } from './types';
 
 /** Strip brackets from core display labels, e.g. "[CI Failing]" → "CI Failing". */
 export function stripBrackets(label: string): string {
@@ -49,6 +49,15 @@ export function formatDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/**
+ * Resolve a PR's unified attention bucket (#1352). The server stamps
+ * `attentionBucket` via the shared core classifier; payloads from older
+ * servers fall back to the coarse status split so the SPA stays usable.
+ */
+export function attentionBucketOf(pr: Pick<FetchedPR, 'status' | 'attentionBucket'>): AttentionBucket {
+  return pr.attentionBucket ?? (pr.status === 'needs_addressing' ? 'needs_attention' : 'waiting');
 }
 
 export function statusColor(status: FetchedPRStatus | string): string {

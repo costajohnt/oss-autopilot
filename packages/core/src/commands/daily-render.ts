@@ -23,6 +23,7 @@ import type {
   DailyDigest,
   MaintainerActionHint,
 } from '../core/types.js';
+import type { AttentionSummary } from '../core/pr-attention.js';
 
 /**
  * Format a maintainer action hint as a human-readable label.
@@ -52,11 +53,23 @@ export function formatActionHint(hint: MaintainerActionHint): string {
  *
  * @returns One-line status string (e.g., "3 Active PRs | 1 needs attention | 2 issue replies")
  */
-export function formatBriefSummary(digest: DailyDigest, issueCount: number, issueResponseCount: number = 0): string {
+export function formatBriefSummary(
+  digest: DailyDigest,
+  issueCount: number,
+  issueResponseCount: number = 0,
+  attention?: Pick<AttentionSummary, 'stuckCI' | 'dormantFollowup'>,
+): string {
   const attentionText = issueCount > 0 ? `${issueCount} need${issueCount === 1 ? 's' : ''} attention` : 'all on track';
   const issueReplyText =
     issueResponseCount > 0 ? ` | ${issueResponseCount} issue repl${issueResponseCount === 1 ? 'y' : 'ies'}` : '';
-  return `\u{1F4CA} ${digest.summary.totalActivePRs} Active PRs | ${attentionText}${issueReplyText}`;
+  // #1352: the watch-style buckets are appended only when non-zero — they're
+  // ping/nudge workflows, not part of the headline "need attention" count.
+  const stuckText = attention && attention.stuckCI > 0 ? ` | ${attention.stuckCI} stuck CI` : '';
+  const dormantText =
+    attention && attention.dormantFollowup > 0
+      ? ` | ${attention.dormantFollowup} dormant follow-up${attention.dormantFollowup === 1 ? '' : 's'}`
+      : '';
+  return `\u{1F4CA} ${digest.summary.totalActivePRs} Active PRs | ${attentionText}${issueReplyText}${stuckText}${dormantText}`;
 }
 
 /**
