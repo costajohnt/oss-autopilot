@@ -167,8 +167,9 @@ describe('local state contention: CLI + dashboard on one state.json (#1378)', ()
   // (c) The dashboard action-handler pattern (dashboard-server.ts
   //     handleAction): reloadIfChanged() → mutate → save(), with an external
   //     CLI write landing inside the window. The conflict must surface as
-  //     ConcurrencyError (handleAction's catch turns it into a 500 to the
-  //     SPA) — never silent loss of the CLI's write.
+  //     ConcurrencyError (handleAction retries once via reload-reapply, then
+  //     returns a retryable 409 to the SPA, #1397) — never silent loss of
+  //     the CLI's write.
   it('surfaces ConcurrencyError when an external write lands between the dashboard’s reload and save', () => {
     seedStateFile();
 

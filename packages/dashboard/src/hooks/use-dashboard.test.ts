@@ -383,6 +383,103 @@ describe('useDashboard', () => {
     });
   });
 
+  // ── 409 concurrency conflict retry (#1397) ────────────────────────────
+
+  describe('409 conflict handling', () => {
+    // Real timers, same as the CSRF retry tests — the auto-refresh cascade
+    // under fake timers consumed mocks unpredictably.
+    beforeEach(() => {
+      vi.useRealTimers();
+    });
+
+    const conflictBody = {
+      error: 'Another process wrote state concurrently — retry the request',
+      code: 'CONCURRENCY_ERROR',
+      retryable: true,
+    };
+
+    function mockFetchConflict() {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        headers: new Headers(),
+        json: () => Promise.resolve(conflictBody),
+      });
+    }
+
+    it('recovers from a 409 by re-priming via /api/data and retrying the POST once', async () => {
+      // Scenario: an external CLI write collided with the action server-side
+      // (twice, since the server itself retries once). The hook re-fetches
+      // /api/data to pick up the fresh state baseline and retries the POST,
+      // which now succeeds.
+      const data = makeDashboardData();
+      const updated = makeDashboardData({ shelvedPRUrls: ['https://github.com/o/r/pull/1'] });
+
+      // Mock 1: mount GET /api/data
+      mockFetchOk(data, 'test-token');
+      // Mock 2: first POST /api/action → 409 conflict
+      mockFetchConflict();
+      // Mock 3: re-prime GET /api/data
+      mockFetchOk(data, 'test-token');
+      // Mock 4: retry POST /api/action → success
+      mockFetchOk(updated, 'test-token');
+
+      const { result } = renderHook(() => useDashboard());
+      await vi.waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.performAction({
+          action: 'move',
+          url: 'https://github.com/o/r/pull/1',
+          target: 'shelved',
+        });
+      });
+
+      const calls = mockFetch.mock.calls as Array<[string, RequestInit?]>;
+      const actionPosts = calls.filter((c) => c[0] === '/api/action');
+      expect(actionPosts).toHaveLength(2);
+
+      // Retry's response wins — data state reflects the successful POST.
+      expect(result.current.data?.shelvedPRUrls).toEqual(['https://github.com/o/r/pull/1']);
+      expect(result.current.error).toBe(null);
+    });
+
+    it('surfaces the conflict error when the retried POST 409s again', async () => {
+      const data = makeDashboardData();
+
+      // Mock 1: mount GET /api/data
+      mockFetchOk(data, 'test-token');
+      // Mock 2: first POST /api/action → 409
+      mockFetchConflict();
+      // Mock 3: re-prime GET /api/data
+      mockFetchOk(data, 'test-token');
+      // Mock 4: retry POST /api/action → 409 again (sustained contention)
+      mockFetchConflict();
+      // Mock 5: performAction's post-failure re-sync GET /api/data
+      mockFetchOk(data, 'test-token');
+
+      const { result } = renderHook(() => useDashboard());
+      await vi.waitFor(() => expect(result.current.loading).toBe(false));
+
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await expect(
+        act(async () => {
+          await result.current.performAction({
+            action: 'move',
+            url: 'https://github.com/o/r/pull/1',
+            target: 'shelved',
+          });
+        }),
+      ).rejects.toThrow(conflictBody.error);
+      errorSpy.mockRestore();
+
+      const calls = mockFetch.mock.calls as Array<[string, RequestInit?]>;
+      const actionPosts = calls.filter((c) => c[0] === '/api/action');
+      // Exactly one retry — no infinite loop on sustained contention.
+      expect(actionPosts).toHaveLength(2);
+    });
+  });
+
   // ── #1050 runtime schema validation ───────────────────────────────────
 
   describe('schema validation (#1050)', () => {

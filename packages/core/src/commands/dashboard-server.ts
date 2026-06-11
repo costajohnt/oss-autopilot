@@ -11,7 +11,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { getStateManager, getGitHubToken, getCLIVersion, applyStatusOverrides } from '../core/index.js';
-import { errorMessage, ValidationError } from '../core/errors.js';
+import { errorMessage, ValidationError, ConcurrencyError, GistConcurrencyError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { validateUrl, validateGitHubUrl, PR_URL_PATTERN, ISSUE_URL_PATTERN } from './validation.js';
 import type { MoveTarget } from './move.js';
@@ -309,6 +309,29 @@ function sendError(res: http.ServerResponse, statusCode: number, message: string
   sendJson(res, statusCode, { error: message });
 }
 
+/**
+ * True when an error is an optimistic-concurrency conflict on state.json
+ * (local mtime CAS) or the state Gist (ETag CAS). Both carry the
+ * CONCURRENCY_ERROR code and the same recovery contract: reload, re-apply,
+ * save. See state-concurrency.test.ts (#1378) and errors.ts.
+ */
+function isConcurrencyConflict(error: unknown): boolean {
+  return error instanceof ConcurrencyError || error instanceof GistConcurrencyError;
+}
+
+/**
+ * Send the machine-readable 409 for a concurrency conflict (#1397).
+ * `retryable: true` tells the SPA it can re-prime via GET /api/data and
+ * retry the POST; `code` matches the structured code on ConcurrencyError.
+ */
+function sendConflict(res: http.ServerResponse): void {
+  sendJson(res, 409, {
+    error: 'Another process wrote state concurrently — retry the request',
+    code: 'CONCURRENCY_ERROR',
+    retryable: true,
+  });
+}
+
 // ── Server ─────────────────────────────────────────────────────────────────────
 
 export async function startDashboardServer(options: DashboardServerOptions): Promise<void> {
@@ -498,14 +521,17 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   server.requestTimeout = REQUEST_TIMEOUT_MS;
 
   // ── POST /api/action handler ─────────────────────────────────────────────
-  async function handleAction(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    // Reload state before mutating to avoid overwriting external CLI changes
+
+  /** Re-read state written by external processes (CLI) before mutating. */
+  async function reloadState(): Promise<void> {
     if (stateManager.isGistMode()) {
       await stateManager.refreshFromGist();
     } else {
       stateManager.reloadIfChanged();
     }
+  }
 
+  async function handleAction(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     let body: ActionRequest;
     try {
       const raw = await readBody(req);
@@ -541,22 +567,61 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       return;
     }
 
+    // Resolve the mutation up-front so target validation happens before the
+    // state reload — keeps the reload-to-save freshness window minimal.
+    let applyMutation: () => Promise<void> | void;
+    if (body.action === 'move') {
+      const { VALID_TARGETS, runMove } = await import('./move.js');
+      if (!body.target || !VALID_TARGETS.includes(body.target as MoveTarget)) {
+        sendError(res, 400, `move requires a valid "target" field (${VALID_TARGETS.join(', ')})`);
+        return;
+      }
+      const target = body.target;
+      applyMutation = async () => {
+        await runMove({ prUrl: body.url, target });
+      };
+    } else {
+      // dismiss_issue_response
+      applyMutation = () => {
+        stateManager.dismissIssue(body.url, new Date().toISOString());
+      };
+    }
+
+    // Reload state before mutating to avoid overwriting external CLI changes.
+    // Runs AFTER body parsing/validation (which only inspects the request,
+    // never the loaded state) so the read-modify-write window excludes the
+    // body-streaming time (#1397).
+    await reloadState();
+
     try {
-      if (body.action === 'move') {
-        const { VALID_TARGETS, runMove } = await import('./move.js');
-        if (!body.target || !VALID_TARGETS.includes(body.target as MoveTarget)) {
-          sendError(res, 400, `move requires a valid "target" field (${VALID_TARGETS.join(', ')})`);
+      await applyMutation();
+    } catch (error) {
+      if (!isConcurrencyConflict(error)) {
+        warn(MODULE, `Action failed: ${body.action} ${body.url} ${errorMessage(error)}`);
+        sendError(res, 500, 'Action failed');
+        return;
+      }
+      // Concurrency conflict: an external write landed between our reload and
+      // save. Decision (#1397): retry ONCE server-side instead of bouncing the
+      // first conflict to the client. Both mutations (move targets, dismiss)
+      // are absolute set operations, so re-applying them on a freshly reloaded
+      // baseline is safe — exactly the reload-reapply recovery contract pinned
+      // in state-concurrency.test.ts. A second consecutive conflict means
+      // sustained contention; surface it as a retryable 409 and let the SPA
+      // re-prime and retry.
+      try {
+        await reloadState();
+        await applyMutation();
+      } catch (retryError) {
+        if (isConcurrencyConflict(retryError)) {
+          warn(MODULE, `Action conflicted twice: ${body.action} ${body.url} ${errorMessage(retryError)}`);
+          sendConflict(res);
           return;
         }
-        await runMove({ prUrl: body.url, target: body.target });
-      } else {
-        // dismiss_issue_response
-        stateManager.dismissIssue(body.url, new Date().toISOString());
+        warn(MODULE, `Action failed on conflict retry: ${body.action} ${body.url} ${errorMessage(retryError)}`);
+        sendError(res, 500, 'Action failed');
+        return;
       }
-    } catch (error) {
-      warn(MODULE, `Action failed: ${body.action} ${body.url} ${errorMessage(error)}`);
-      sendError(res, 500, 'Action failed');
-      return;
     }
 
     // Rebuild dashboard data from cached digest + updated state. Persist
@@ -585,11 +650,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     }
 
     try {
-      if (stateManager.isGistMode()) {
-        await stateManager.refreshFromGist();
-      } else {
-        stateManager.reloadIfChanged();
-      }
+      await reloadState();
       warn(MODULE, 'Refreshing dashboard data from GitHub...');
       const result = await fetchDashboardData(currentToken);
       cachedDigest = result.digest;
@@ -608,6 +669,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       cachedIssueListMtimeMs = getIssueListMtimeMs();
       sendJson(res, 200, cachedJsonData);
     } catch (error) {
+      // No server-side retry here (unlike handleAction): a refresh re-run is a
+      // full GitHub fetch — expensive and rate-limited. The 409 is retryable
+      // by the client, which re-POSTs /api/refresh on its own schedule (#1397).
+      if (isConcurrencyConflict(error)) {
+        warn(MODULE, `Dashboard refresh hit a concurrent state write: ${errorMessage(error)}`);
+        sendConflict(res);
+        return;
+      }
       warn(MODULE, `Dashboard refresh failed: ${errorMessage(error)}`);
       sendError(res, 500, 'Refresh failed');
     }
