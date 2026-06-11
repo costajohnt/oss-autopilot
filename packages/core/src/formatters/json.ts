@@ -797,6 +797,13 @@ export const RepoVetOutputSchema = z.object({
     lastCommitISO: z.string().nullable(),
     contributorsLast90d: z.number().int().nonnegative(),
     lastReleaseISO: z.string().nullable(),
+    /**
+     * True when the release listing failed for a non-404 reason (5xx,
+     * network), so a `null` lastReleaseISO means "could not determine"
+     * rather than "confirmed no releases". The release-list analogue of
+     * `communityHealth.incomplete` (#1373).
+     */
+    releasesIncomplete: z.boolean().optional(),
   }),
   communityHealth: z.object({
     contributing: z.boolean(),

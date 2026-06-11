@@ -12,7 +12,8 @@
  */
 
 import { getOctokit, requireGitHubToken } from '../core/index.js';
-import { ValidationError } from '../core/errors.js';
+import { ValidationError, errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
+import { warn } from '../core/logger.js';
 import { validateUrl, PR_URL_PATTERN, validateGitHubUrl } from './validation.js';
 import { parseGitHubUrl } from '../core/urls.js';
 import {
@@ -23,11 +24,16 @@ import {
 } from '../core/compliance-score.js';
 import type { ComplianceScoreOutput } from '../formatters/json.js';
 
+const MODULE = 'compliance-score';
+
 /**
  * Detect whether the target repo has visible test infrastructure. Looks
  * for the well-known directories at the repo root in a single contents
- * call. Failures (missing repo, rate limit, network) surface as
- * `undefined` so the score function falls back to its strict default.
+ * call. Non-fatal failures (missing repo, 5xx, network) surface as
+ * `undefined` so the score function falls back to its strict default,
+ * with a warning so "couldn't look" is distinguishable from "no test
+ * dir" in logs. Rate-limit / auth errors propagate — swallowing them
+ * here would mask a systemic problem affecting the whole run (#1373).
  */
 async function detectTestInfrastructure(
   octokit: ReturnType<typeof getOctokit>,
@@ -39,7 +45,9 @@ async function detectTestInfrastructure(
     if (!Array.isArray(data)) return undefined;
     const TEST_DIR = /^(?:tests?|__tests__|spec)$/i;
     return data.some((entry) => entry.type === 'dir' && TEST_DIR.test(entry.name));
-  } catch {
+  } catch (err) {
+    if (isRateLimitOrAuthError(err)) throw err;
+    warn(MODULE, `test-infrastructure probe for ${owner}/${repo} failed: ${errorMessage(err)}`);
     return undefined;
   }
 }
