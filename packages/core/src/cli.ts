@@ -11,7 +11,7 @@
 
 import { Command } from 'commander';
 import { getGitHubTokenAsync, enableDebug, debug, getCLIVersion, stateFileExists } from './core/index.js';
-import { commands } from './cli-registry.js';
+import { commands, handleCommandError } from './cli-registry.js';
 
 const VERSION = getCLIVersion();
 
@@ -115,5 +115,13 @@ Run oss-autopilot --help for all commands.
   process.exit(0);
 }
 
-// Parse and execute
-program.parse();
+// Parse and execute. parseAsync, not parse: the preAction hook is async, so
+// with synchronous parse() a rejected hook promise (corrupt Gist, missing
+// gist scope, rate limit during bootstrap — all of which ensureGistPersistence
+// now propagates) became an UnhandledPromiseRejection and the user saw a raw
+// stack instead of the actionable message (#1386). Command actions already
+// route their errors through executeAction/handleCommandError, so this catch
+// covers exactly the hook path (plus any handler that escapes the wrapper).
+program.parseAsync().catch((err: unknown) => {
+  handleCommandError(err, process.argv.includes('--json'));
+});

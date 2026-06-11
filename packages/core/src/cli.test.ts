@@ -25,6 +25,7 @@ vi.mock('./core/index.js', () => ({
 
 vi.mock('./core/errors.js', () => ({
   errorMessage: vi.fn((err: unknown) => String(err)),
+  resolveErrorCode: vi.fn(() => 'UNKNOWN'),
 }));
 
 vi.mock('./formatters/json.js', () => ({
@@ -669,5 +670,57 @@ describe('CLI argument parsing', () => {
     const baseOpt = cmd!.options.find((o) => o.long === '--base');
     expect(baseOpt).toBeDefined();
     expect(baseOpt!.defaultValue).toBe('main');
+  });
+});
+
+// ─── handleCommandError + parseAsync wiring (#1386) ──────────────────────────
+
+describe('handleCommandError (#1386)', () => {
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(async () => {
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never) as unknown as ReturnType<typeof vi.spyOn>;
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {}) as unknown as ReturnType<typeof vi.spyOn>;
+    const { outputJsonError } = await import('./formatters/json.js');
+    vi.mocked(outputJsonError).mockClear();
+  });
+
+  afterEach(() => {
+    exitSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it('json mode: emits the error envelope with the resolved code and exits 1', async () => {
+    const { handleCommandError } = await import('./cli-registry.js');
+    const { outputJsonError } = await import('./formatters/json.js');
+
+    expect(() => handleCommandError(new Error('gist corrupt'), true)).toThrow('process.exit called');
+    expect(vi.mocked(outputJsonError)).toHaveBeenCalledWith('Error: gist corrupt', 'UNKNOWN');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('text mode: prints the message to stderr and exits 1', async () => {
+    const { handleCommandError } = await import('./cli-registry.js');
+
+    expect(() => handleCommandError(new Error('gist corrupt'), false)).toThrow('process.exit called');
+    expect(errorSpy).toHaveBeenCalledWith('Error: Error: gist corrupt');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('cli.ts parses asynchronously (#1386)', () => {
+  it('uses program.parseAsync() with a handleCommandError catch, not bare parse()', () => {
+    // Source pin in the style of the lazy-import checks above: the preAction
+    // hook is async, so a synchronous parse() turns hook rejections (corrupt
+    // Gist, missing scope, rate limit during bootstrap) into raw
+    // UnhandledPromiseRejection stacks instead of actionable messages.
+    const source = readFileSync(join(__dirname, 'cli.ts'), 'utf8');
+    expect(source).toContain('program.parseAsync()');
+    expect(source).toMatch(/parseAsync\(\)\s*\.catch\(/s);
+    expect(source).toContain('handleCommandError(err');
+    expect(source).not.toMatch(/^program\.parse\(\);/m);
   });
 });
