@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.6.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.5.0...mcp-v5.6.0) (2026-06-11)
+
+
+### Features
+
+* **core,mcp:** deterministic verify-issue — state, stateReason, and linked-PR claim classification ([#1409](https://github.com/costajohnt/oss-autopilot/issues/1409)) ([107150b](https://github.com/costajohnt/oss-autopilot/commit/107150b72fe68a1ec865578b660a1694111dc231))
+
 ## [5.5.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.4.0...mcp-v5.5.0) (2026-06-11)
 
 

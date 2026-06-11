@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.11.0...core-v3.12.0) (2026-06-11)
+
+
+### Features
+
+* **core,dashboard:** unified attention taxonomy shared by CLI brief and dashboard ([#1352](https://github.com/costajohnt/oss-autopilot/issues/1352)) ([#1410](https://github.com/costajohnt/oss-autopilot/issues/1410)) ([a365a32](https://github.com/costajohnt/oss-autopilot/commit/a365a328c55aa1a8029c46767a4ea53fe99823d4))
+* **core,mcp:** deterministic verify-issue — state, stateReason, and linked-PR claim classification ([#1409](https://github.com/costajohnt/oss-autopilot/issues/1409)) ([107150b](https://github.com/costajohnt/oss-autopilot/commit/107150b72fe68a1ec865578b660a1694111dc231))
+
+
+### Bug Fixes
+
+* **core:** list-move-tier errors on URL not found instead of quiet success ([#1355](https://github.com/costajohnt/oss-autopilot/issues/1355)) ([#1407](https://github.com/costajohnt/oss-autopilot/issues/1407)) ([5b046ff](https://github.com/costajohnt/oss-autopilot/commit/5b046ffb6e63a8c387a6cac54c91db84d94c6e92))
+
 ## [3.11.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.10.0...core-v3.11.0) (2026-06-11)
 
 
