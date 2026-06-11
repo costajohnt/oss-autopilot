@@ -9,7 +9,6 @@ Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/di
 ## Now (next 1-2 weeks)
 
 - [ ] Move canonical issue-scout and repo-evaluator agents into oss-scout ([#1241](https://github.com/costajohnt/oss-autopilot/issues/1241))
-- [ ] Bias `oss-scout:issue-scout` searches with `strategy().recommendations`, with a diversity counterweight ([#1244](https://github.com/costajohnt/oss-autopilot/issues/1244))
 
 ## Next (next 1-2 months)
 
@@ -23,6 +22,8 @@ Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/di
 
 ## Shipped
 
+- [x] Strategy-biased search with a 20% diversity counterweight and surfaced boost/diversity annotations ([#1244](https://github.com/costajohnt/oss-autopilot/issues/1244))
+- [x] Fix `list-mark-done` silently no-opping on missing entries — mirrors the list-move-tier contract ([#1406](https://github.com/costajohnt/oss-autopilot/issues/1406))
 - [x] Unify the attention taxonomy — one classifier for CLI brief and dashboard, with `stuck_ci` / `dormant_followup` buckets ([#1352](https://github.com/costajohnt/oss-autopilot/issues/1352))
 - [x] Deterministic `verify-issue` — real open/closed state and closing-vs-mention PR classification, wired into issue-scout ([#1353](https://github.com/costajohnt/oss-autopilot/issues/1353), [#1354](https://github.com/costajohnt/oss-autopilot/issues/1354))
 - [x] Fix `list-move-tier` silently no-opping on missing entries — a URL absent from the list is now an explicit error ([#1355](https://github.com/costajohnt/oss-autopilot/issues/1355))
