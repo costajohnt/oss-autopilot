@@ -167,6 +167,10 @@ export default tseslint.config(
       '**/*.test.ts',
       '**/*.test.tsx',
       '**/*.e2e.test.ts',
+      // Test-support helpers shared between test files; excluded from the
+      // package tsconfig (they don't ship), so the type-aware projectService
+      // can't see them — disable type-checked rules like the tests they serve.
+      '**/src/test-lib/**/*.ts',
       '**/vitest.config.ts',
       '**/vitest.setup.ts',
       '**/vite.config.ts',
