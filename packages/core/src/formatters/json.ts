@@ -630,7 +630,10 @@ export const ListMoveTierOutputSchema = z.object({
   toTier: z.enum(['pursue', 'maybe', 'skip']),
   fromTier: z.string().optional(),
   count: z.number().int().nonnegative(),
-  reason: z.string().optional(),
+  // #1355: not-found now throws before reaching the success envelope, so the
+  // only reachable no-op reason is the idempotent one. Pinned so a new quiet
+  // no-op path trips the #1105 runtime validator instead of shipping silently.
+  reason: z.literal('already in target tier').optional(),
 });
 
 // list-mark-done (#1299): mirrors {@link MarkDoneOutput} from the command

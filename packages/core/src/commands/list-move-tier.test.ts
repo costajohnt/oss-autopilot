@@ -162,17 +162,27 @@ describe('runListMoveTier (filesystem)', () => {
     await expect(runListMoveTier({ issueUrl: URL_A, tier: 'skip', listPath })).rejects.toThrow(/File not found/);
   });
 
-  it('does not touch the file when the URL is not present', async () => {
+  it('throws ValidationError and does not touch the file when the URL is not present (#1355)', async () => {
     const original = '## Pursue\n\n- [Other](https://github.com/x/y/issues/9)\n';
     fs.writeFileSync(listPath, original);
     const before = fs.statSync(listPath).mtimeMs;
     // small delay to allow mtime resolution
     await new Promise((resolve) => setTimeout(resolve, 10));
-    const out = await runListMoveTier({ issueUrl: URL_A, tier: 'pursue', listPath });
-    expect(out.moved).toBe(false);
-    expect(out.count).toBe(0);
+    const promise = runListMoveTier({ issueUrl: URL_A, tier: 'pursue', listPath });
+    await expect(promise).rejects.toThrow(/not found in the list/);
+    await expect(promise).rejects.toMatchObject({ name: 'ValidationError', code: 'VALIDATION_ERROR' });
     const after = fs.statSync(listPath).mtimeMs;
     expect(after).toBe(before); // no write happened
+    expect(fs.readFileSync(listPath, 'utf8')).toBe(original);
+  });
+
+  it('still resolves (no error) when the entry is already in the target tier', async () => {
+    const original = ['## Pursue', '', `- [A](${URL_A})`, ''].join('\n');
+    fs.writeFileSync(listPath, original);
+    const out = await runListMoveTier({ issueUrl: URL_A, tier: 'pursue', listPath });
+    expect(out.moved).toBe(false);
+    expect(out.count).toBe(1);
+    expect(out.reason).toMatch(/already/);
     expect(fs.readFileSync(listPath, 'utf8')).toBe(original);
   });
 });

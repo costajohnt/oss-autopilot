@@ -165,7 +165,7 @@ Use AskUserQuestion:
      --json
    ```
 
-   The command preserves blank lines and sub-bullets between entries, is idempotent (re-running with the same tier is a no-op), and creates the target tier section if it doesn't already exist.
+   The command preserves blank lines and sub-bullets between entries, is idempotent (re-running with the same tier is a no-op), and creates the target tier section if it doesn't already exist. It does NOT create list entries: if the issue URL is missing from the list (e.g. step 1 was skipped or wrote a different URL), the command exits non-zero with `success: false` (#1355) — add the entry under `## Pending Vet` first, then re-run the move.
 
 5. Track round scores: `searchRoundScores.push(mean of all scores)` (unfiltered — includes scores below threshold)
 

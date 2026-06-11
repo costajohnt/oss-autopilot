@@ -6,14 +6,16 @@
  * issue-list markdown file. Replaces the model-driven prose rewrite that
  * lived in /oss-search with a deterministic file manipulation.
  *
- * Idempotent: re-running with the same target tier is a no-op.
+ * Idempotent: re-running with the same target tier is a no-op. A URL that is
+ * not in the list at all is an error (#1355) — the command does not create
+ * entries, and callers must add the entry before moving it.
  *
  * No GitHub calls — pure read/transform/write of a local file.
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { errorMessage } from '../core/errors.js';
+import { errorMessage, ValidationError } from '../core/errors.js';
 
 export type Tier = 'pursue' | 'maybe' | 'skip';
 
@@ -30,7 +32,8 @@ export interface ListMoveTierOptions {
 }
 
 export interface ListMoveTierOutput {
-  /** Whether anything moved (false when the URL isn't in the list, or it was already in the target tier). */
+  /** Whether anything moved (false only when the entry was already in the
+   * target tier — a URL missing from the list entirely throws instead, #1355). */
   moved: boolean;
   /** Fully-resolved file path that was inspected. */
   filePath: string;
@@ -38,7 +41,8 @@ export interface ListMoveTierOutput {
   url: string;
   /** The target tier (always normalized to one of pursue/maybe/skip). */
   toTier: Tier;
-  /** The tier the issue was moved out of, if it had one. Absent when not found or already in target. */
+  /** The tier the issue was moved out of, if it had one. Also populated on the
+   * already-in-target no-op; absent when the source block sat under no tier header. */
   fromTier?: string;
   /** Number of matching entries moved. Should normally be 1; >1 means the list contained duplicate entries (all moved). */
   count: number;
@@ -124,18 +128,35 @@ function findTierInsertionIndex(lines: string[], headerIndex: number): number {
  * Pure transform — accepts the file content and returns the rewritten content
  * plus a summary of what changed. Exported for unit testing.
  */
+/** Discriminates the two `moved: false` outcomes of {@link moveIssueToTier}. */
+export type MoveNoOpReason = 'not-found' | 'already-in-target';
+
 export function moveIssueToTier(
   content: string,
   issueUrl: string,
   targetTier: Tier,
-): { content: string; moved: boolean; fromTier?: string; count: number; reason?: string } {
+): {
+  content: string;
+  moved: boolean;
+  fromTier?: string;
+  count: number;
+  reason?: string;
+  /** Set only when `moved` is false — why nothing changed. */
+  reasonCode?: MoveNoOpReason;
+} {
   // Preserve the trailing newline if present so we don't accidentally strip it.
   const hadTrailingNewline = content.endsWith('\n');
   const lines = (hadTrailingNewline ? content.slice(0, -1) : content).split('\n');
 
   const blocks = findIssueBlocks(lines, issueUrl);
   if (blocks.length === 0) {
-    return { content, moved: false, count: 0, reason: 'issue URL not found in the list' };
+    return {
+      content,
+      moved: false,
+      count: 0,
+      reason: 'issue URL not found in the list',
+      reasonCode: 'not-found',
+    };
   }
 
   const targetHeader = TIER_HEADERS[targetTier];
@@ -147,6 +168,7 @@ export function moveIssueToTier(
       fromTier: blocks[0].tier,
       count: blocks.length,
       reason: 'already in target tier',
+      reasonCode: 'already-in-target',
     };
   }
 
@@ -223,6 +245,15 @@ export async function runListMoveTier(options: ListMoveTierOptions): Promise<Lis
   }
 
   const result = moveIssueToTier(content, options.issueUrl, options.tier);
+
+  // #1355: a missing entry is a caller error, not a quiet success. Idempotent
+  // re-runs (already-in-target) still resolve normally.
+  if (result.reasonCode === 'not-found') {
+    throw new ValidationError(
+      `Issue URL not found in the list: ${options.issueUrl} (${filePath}). ` +
+        'Add the entry to the list first, then re-run list-move-tier.',
+    );
+  }
 
   if (result.moved) {
     try {
