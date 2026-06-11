@@ -703,19 +703,9 @@ export const commands: CLICommandDef[] = [
                 prStatus: options.prStatus,
                 listPath: options.listPath,
               });
-              // Convert "URL not in list" into a real CLI error so the JSON
-              // envelope reports `success: false` and the process exits non-zero.
-              // The pure transform's success-shaped not-found return is fine for
-              // library consumers, but as a CLI command "I asked you to mark X
-              // and you couldn't find X" is a failure the caller must see.
-              // The "already marked done" case stays as a success-shape return
-              // (it's idempotent — the caller's intent was achieved).
-              if (!result.marked && result.reason === 'issue URL not found in the list') {
-                throw new Error(
-                  `Issue URL not found in ${result.filePath}: ${result.url}. ` +
-                    `Verify --list-path and the issue URL.`,
-                );
-              }
+              // Not-found now throws ValidationError inside the command (#1406),
+              // so library and CLI consumers see the same failure — no CLI-layer
+              // re-throw needed (mirrors list-move-tier after #1355).
               return result;
             },
             (data) => {

@@ -662,7 +662,10 @@ export const ListMarkDoneOutputSchema = z.object({
   url: z.string(),
   repoHeadingStruck: z.boolean(),
   remainingUnderRepo: z.number().int().nonnegative(),
-  reason: z.string().optional(),
+  // #1406: not-found now throws before the success envelope, so the only
+  // reachable no-op reason is the idempotent one. Pinned so a new quiet
+  // no-op path trips the #1105 runtime validator instead of shipping silently.
+  reason: z.literal('already marked done').optional(),
 });
 
 // verify-issue (#1353, #1354): mirrors {@link IssueVerification} from

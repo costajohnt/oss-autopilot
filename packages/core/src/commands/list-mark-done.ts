@@ -1,6 +1,9 @@
 /**
  * list-mark-done command (#1299).
  *
+ * A URL that is not in the list at all is an error (#1406) — marking done
+ * requires an existing entry; only the already-marked re-run is a quiet no-op.
+ *
  * Mark an issue line in a curated list as done by wrapping it in
  * `~~strikethrough~~` and appending a `**Done** — PR [#N](url) ...` sub-bullet.
  * If every issue under the same `### repo/name` heading is now struck through,
@@ -14,7 +17,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { errorMessage } from '../core/errors.js';
+import { errorMessage, ValidationError } from '../core/errors.js';
 
 export interface MarkDoneOptions {
   issueUrl: string;
@@ -25,7 +28,8 @@ export interface MarkDoneOptions {
 }
 
 export interface MarkDoneOutput {
-  /** True if the line was found and updated. False on already-marked or not-found. */
+  /** True if the line was found and updated. False only when already marked
+   * done — a URL missing from the list entirely throws instead (#1406). */
   marked: boolean;
   /** Fully-resolved file path that was inspected. */
   filePath: string;
@@ -139,6 +143,9 @@ function countOpenIssues(lines: string[], section: RepoSection): number {
   return open;
 }
 
+/** Discriminates the two `marked: false` outcomes of {@link markIssueAsDone}. */
+export type MarkDoneNoOpReason = 'not-found' | 'already-marked';
+
 /** Pure transform — exposed for unit testing. */
 export function markIssueAsDone(
   content: string,
@@ -149,6 +156,8 @@ export function markIssueAsDone(
   repoHeadingStruck: boolean;
   remainingUnderRepo: number;
   reason?: string;
+  /** Set only when `marked` is false — why nothing changed. */
+  reasonCode?: MarkDoneNoOpReason;
 } {
   const hadTrailingNewline = content.endsWith('\n');
   const lines = (hadTrailingNewline ? content.slice(0, -1) : content).split('\n');
@@ -161,6 +170,7 @@ export function markIssueAsDone(
       repoHeadingStruck: false,
       remainingUnderRepo: 0,
       reason: 'issue URL not found in the list',
+      reasonCode: 'not-found',
     };
   }
 
@@ -176,6 +186,7 @@ export function markIssueAsDone(
       repoHeadingStruck: false,
       remainingUnderRepo: section ? countOpenIssues(lines, section) : 0,
       reason: 'already marked done',
+      reasonCode: 'already-marked',
     };
   }
 
@@ -243,6 +254,17 @@ export async function runMarkIssueListItemDone(options: MarkDoneOptions): Promis
     prUrl: options.prUrl,
     prStatus: options.prStatus,
   });
+
+  // #1406: a missing entry is a caller error, not a quiet success — the
+  // consumer branch in workflows/draft-first-workflow.md already documents
+  // this contract (STOP on success:false mentioning "Issue URL not found").
+  // Idempotent re-runs (already marked done) still resolve normally.
+  if (result.reasonCode === 'not-found') {
+    throw new ValidationError(
+      `Issue URL not found in the list: ${options.issueUrl} (${filePath}). ` +
+        'Check the URL and --list-path; the entry must exist before it can be marked done.',
+    );
+  }
 
   if (result.marked) {
     const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
