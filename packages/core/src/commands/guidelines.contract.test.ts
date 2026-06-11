@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   setGuidelines: vi.fn(),
   deleteGuidelines: vi.fn(),
   isGuidelinesAvailable: vi.fn(),
+  listGuidelinesRepos: vi.fn(),
   getMergedPRs: vi.fn(),
   getClosedPRs: vi.fn(),
   markPRCommentsFetched: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock('../core/index.js', async () => {
       setGuidelines: mocks.setGuidelines,
       deleteGuidelines: mocks.deleteGuidelines,
       isGuidelinesAvailable: mocks.isGuidelinesAvailable,
+      listGuidelinesRepos: mocks.listGuidelinesRepos,
       getMergedPRs: mocks.getMergedPRs,
       getClosedPRs: mocks.getClosedPRs,
       markPRCommentsFetched: mocks.markPRCommentsFetched,
@@ -48,7 +50,13 @@ vi.mock('../core/index.js', async () => {
   };
 });
 
-import { runGuidelinesView, runGuidelinesStore, runGuidelinesReset, runFetchCorpus } from './guidelines.js';
+import {
+  runGuidelinesList,
+  runGuidelinesView,
+  runGuidelinesStore,
+  runGuidelinesReset,
+  runFetchCorpus,
+} from './guidelines.js';
 
 describe('guidelines --json contract', () => {
   beforeEach(() => {
@@ -56,6 +64,19 @@ describe('guidelines --json contract', () => {
     mocks.isGuidelinesAvailable.mockReturnValue(true);
     mocks.getMergedPRs.mockReturnValue([]);
     mocks.getClosedPRs.mockReturnValue([]);
+  });
+
+  it('list: stored repos matches the golden shape', async () => {
+    mocks.listGuidelinesRepos.mockReturnValue(['owner/repo-a', 'owner/repo-b']);
+    const result = await runGuidelinesList();
+    await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/guidelines.list.json');
+  });
+
+  it('list: empty in local-unavailable mode matches the golden shape', async () => {
+    mocks.listGuidelinesRepos.mockReturnValue([]);
+    mocks.isGuidelinesAvailable.mockReturnValue(false);
+    const result = await runGuidelinesList();
+    await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/guidelines.list-local.json');
   });
 
   it('view: existing guidelines matches the golden shape', async () => {

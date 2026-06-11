@@ -10,7 +10,7 @@ MCP server for [OSS Autopilot](https://github.com/costajohnt/oss-autopilot) — 
 
 | Feature | Count | Description |
 |---------|-------|-------------|
-| **Tools** | 30 | `daily`, `status`, `search`, `features`, `vet`, `vet-list`, `track`, `compliance-score`, `repo-vet`, `strategy`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus` |
+| **Tools** | 31 | `daily`, `status`, `search`, `features`, `vet`, `vet-list`, `track`, `compliance-score`, `repo-vet`, `strategy`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-list`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus` |
 | **Resources** | 6 | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}`, `oss://repo/{owner}/{repo}/guidelines` |
 | **Prompts** | 4 | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues), `extract-learnings` (distill per-repo guidance from past PR feedback) |
 
@@ -139,6 +139,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `state-show` | Show current state persistence mode (local or Gist) and sync status | Yes |
 | `state-sync` | Force push current state to the backing Gist | No |
 | `state-unlink` | Disconnect from Gist persistence and switch to local-only mode | No |
+| `guidelines-list` | List repos that have stored guidelines (always empty in local mode) | Yes |
 | `guidelines-get` | Read per-repo learning guidelines extracted from past PR feedback | Yes |
 | `guidelines-store` | Persist per-repo guidelines (8 KB cap; requires Gist mode) | No |
 | `guidelines-reset` | Tombstone the guidelines file for a repo | No |

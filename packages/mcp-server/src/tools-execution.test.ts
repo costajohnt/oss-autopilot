@@ -7,6 +7,7 @@ const {
   mockRunDaily,
   mockRunSearch,
   mockRunMove,
+  mockRunGuidelinesList,
   mockRunGuidelinesView,
   mockRunGuidelinesStore,
   mockRunGuidelinesReset,
@@ -15,6 +16,7 @@ const {
   mockRunDaily: vi.fn(),
   mockRunSearch: vi.fn(),
   mockRunMove: vi.fn(),
+  mockRunGuidelinesList: vi.fn(),
   mockRunGuidelinesView: vi.fn(),
   mockRunGuidelinesStore: vi.fn(),
   mockRunGuidelinesReset: vi.fn(),
@@ -42,6 +44,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runDismiss: vi.fn(),
   runUndismiss: vi.fn(),
   runMove: mockRunMove,
+  runGuidelinesList: mockRunGuidelinesList,
   runGuidelinesView: mockRunGuidelinesView,
   runGuidelinesStore: mockRunGuidelinesStore,
   runGuidelinesReset: mockRunGuidelinesReset,
@@ -192,6 +195,25 @@ describe('tool execution', () => {
   // Previously only `tools.test.ts` checked these were registered; nothing
   // verified that callTool actually delegates to the right run* function or
   // that the input schemas reject malformed args at the MCP boundary.
+
+  describe('guidelines-list tool', () => {
+    it('delegates to runGuidelinesList and returns the repo list', async () => {
+      mockRunGuidelinesList.mockResolvedValueOnce({
+        repos: ['owner/repo-a', 'owner/repo-b'],
+        count: 2,
+        storageMode: 'gist',
+      });
+
+      const result = await client.callTool({ name: 'guidelines-list', arguments: {} });
+
+      expect(result.isError).toBeFalsy();
+      expect(mockRunGuidelinesList).toHaveBeenCalledOnce();
+      const content = result.content[0] as { type: string; text: string };
+      const parsed = JSON.parse(content.text);
+      expect(parsed.repos).toEqual(['owner/repo-a', 'owner/repo-b']);
+      expect(parsed.count).toBe(2);
+    });
+  });
 
   describe('guidelines-get tool', () => {
     it('delegates to runGuidelinesView and returns content', async () => {

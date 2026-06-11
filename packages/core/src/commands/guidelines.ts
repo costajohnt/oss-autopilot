@@ -1,6 +1,7 @@
 /**
  * Guidelines CLI commands (#867 PR 4).
  *
+ * `guidelines list`        — list repos with stored guidelines.
  * `guidelines view`        — read the per-repo guidelines file from the Gist.
  * `guidelines store`       — overwrite the per-repo guidelines file.
  * `guidelines reset`       — tombstone the file so subsequent reads return null.
@@ -43,6 +44,14 @@ export interface GuidelinesViewOutput {
   /** Whether a guidelines file exists for this repo. */
   exists: boolean;
   /** Where the guidelines would be persisted if a write happened now. */
+  storageMode: 'gist' | 'local-unavailable';
+}
+
+export interface GuidelinesListOutput {
+  /** Repos with non-empty guidelines stored, sorted alphabetically. Always empty in local mode. */
+  repos: string[];
+  count: number;
+  /** Where guidelines are persisted. `local-unavailable` always yields an empty list. */
   storageMode: 'gist' | 'local-unavailable';
 }
 
@@ -111,6 +120,21 @@ export async function runGuidelinesView(options: RepoOption): Promise<Guidelines
     content,
     byteSize: content === null ? 0 : Buffer.byteLength(content, 'utf8'),
     exists: content !== null,
+    storageMode: sm.isGuidelinesAvailable() ? 'gist' : 'local-unavailable',
+  };
+}
+
+/**
+ * List every repo with non-empty stored guidelines. Never throws in local
+ * mode — returns an empty list with `storageMode: 'local-unavailable'` so
+ * hosts can distinguish "nothing stored" from "storage not configured".
+ */
+export async function runGuidelinesList(): Promise<GuidelinesListOutput> {
+  const sm = getStateManager();
+  const repos = sm.listGuidelinesRepos();
+  return {
+    repos,
+    count: repos.length,
     storageMode: sm.isGuidelinesAvailable() ? 'gist' : 'local-unavailable',
   };
 }

@@ -39,6 +39,7 @@ const EXPECTED_TOOLS = [
   'state-show',
   'state-sync',
   'state-unlink',
+  'guidelines-list',
   'guidelines-get',
   'guidelines-store',
   'guidelines-reset',
@@ -87,8 +88,8 @@ describe('MCP tool registrations', () => {
     await client.close();
   });
 
-  it('registers exactly 30 tools', () => {
-    expect(tools).toHaveLength(30);
+  it('registers exactly 31 tools', () => {
+    expect(tools).toHaveLength(31);
   });
 
   it('registers all expected tool names', () => {

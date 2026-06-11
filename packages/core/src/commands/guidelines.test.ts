@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   setGuidelines: vi.fn(),
   deleteGuidelines: vi.fn(),
   isGuidelinesAvailable: vi.fn(),
+  listGuidelinesRepos: vi.fn(),
   getMergedPRs: vi.fn(),
   getClosedPRs: vi.fn(),
   markPRCommentsFetched: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock('../core/index.js', async () => {
       setGuidelines: mocks.setGuidelines,
       deleteGuidelines: mocks.deleteGuidelines,
       isGuidelinesAvailable: mocks.isGuidelinesAvailable,
+      listGuidelinesRepos: mocks.listGuidelinesRepos,
       getMergedPRs: mocks.getMergedPRs,
       getClosedPRs: mocks.getClosedPRs,
       markPRCommentsFetched: mocks.markPRCommentsFetched,
@@ -44,12 +46,19 @@ const mockGetGuidelines = mocks.getGuidelines;
 const mockSetGuidelines = mocks.setGuidelines;
 const mockDeleteGuidelines = mocks.deleteGuidelines;
 const mockIsGuidelinesAvailable = mocks.isGuidelinesAvailable;
+const mockListGuidelinesRepos = mocks.listGuidelinesRepos;
 const mockGetMergedPRs = mocks.getMergedPRs;
 const mockGetClosedPRs = mocks.getClosedPRs;
 const mockMarkPRCommentsFetched = mocks.markPRCommentsFetched;
 const mockMaybeCheckpoint = mocks.maybeCheckpoint;
 
-import { runGuidelinesView, runGuidelinesStore, runGuidelinesReset, runFetchCorpus } from './guidelines.js';
+import {
+  runGuidelinesList,
+  runGuidelinesView,
+  runGuidelinesStore,
+  runGuidelinesReset,
+  runFetchCorpus,
+} from './guidelines.js';
 import { GuidelinesNotAvailableError } from '../core/index.js';
 
 beforeEach(() => {
@@ -57,6 +66,34 @@ beforeEach(() => {
   mockGetMergedPRs.mockReturnValue([]);
   mockGetClosedPRs.mockReturnValue([]);
   mockIsGuidelinesAvailable.mockReturnValue(true);
+});
+
+describe('runGuidelinesList', () => {
+  it('returns an empty list when no guidelines are stored', async () => {
+    mockListGuidelinesRepos.mockReturnValue([]);
+    const out = await runGuidelinesList();
+    expect(out.repos).toEqual([]);
+    expect(out.count).toBe(0);
+    expect(out.storageMode).toBe('gist');
+  });
+
+  it('returns the sorted repo list with a count', async () => {
+    // StateManager.listGuidelinesRepos() returns alphabetically sorted repos
+    // (sorting is owned by guidelines-store and covered there).
+    mockListGuidelinesRepos.mockReturnValue(['apple-org/repo-b', 'zebra-org/repo-a']);
+    const out = await runGuidelinesList();
+    expect(out.repos).toEqual(['apple-org/repo-b', 'zebra-org/repo-a']);
+    expect(out.count).toBe(2);
+    expect(out.storageMode).toBe('gist');
+  });
+
+  it("reports 'local-unavailable' with an empty list when not in Gist mode", async () => {
+    mockListGuidelinesRepos.mockReturnValue([]);
+    mockIsGuidelinesAvailable.mockReturnValue(false);
+    const out = await runGuidelinesList();
+    expect(out.repos).toEqual([]);
+    expect(out.storageMode).toBe('local-unavailable');
+  });
 });
 
 describe('runGuidelinesView', () => {

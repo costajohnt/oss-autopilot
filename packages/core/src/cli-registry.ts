@@ -1616,6 +1616,25 @@ export const commands: CLICommandDef[] = [
         .description('Manage per-repo learning guidelines extracted from PR feedback (#867)');
 
       group
+        .command('list')
+        .description('List repos with stored guidelines (always empty in local mode)')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () => (await import('./commands/guidelines.js')).runGuidelinesList(),
+            (data) => {
+              if (data.count === 0) {
+                console.log(`No guidelines stored for any repo (storage: ${data.storageMode}).`);
+              } else {
+                console.log(`${data.count} repo(s) with stored guidelines:`);
+                for (const repo of data.repos) console.log(`  ${repo}`);
+              }
+            },
+          );
+        });
+
+      group
         .command('view')
         .description('Read the per-repo guidelines file (returns null when none exists or in local mode)')
         .requiredOption('--repo <owner/repo>', 'Repository identifier')

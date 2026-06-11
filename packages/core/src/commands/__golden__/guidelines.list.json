@@ -1,0 +1,8 @@
+{
+  "repos": [
+    "owner/repo-a",
+    "owner/repo-b"
+  ],
+  "count": 2,
+  "storageMode": "gist"
+}

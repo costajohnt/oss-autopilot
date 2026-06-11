@@ -75,6 +75,8 @@ export { runCheckSetup } from './setup.js';
 
 // ── Per-Repo Guidelines (#867) ──────────────────────────────────────────────
 
+/** List repos with stored guidelines (empty in local mode). */
+export { runGuidelinesList } from './guidelines.js';
 /** Read the guidelines file for a repo. */
 export { runGuidelinesView } from './guidelines.js';
 /** Persist a guidelines file for a repo (overwrites on subsequent calls). */
@@ -162,6 +164,7 @@ export type {
 export type { ShelveOutput, UnshelveOutput } from './shelve.js';
 export type { MoveOutput, MoveTarget } from './move.js';
 export type {
+  GuidelinesListOutput,
   GuidelinesViewOutput,
   GuidelinesStoreOutput,
   GuidelinesResetOutput,
