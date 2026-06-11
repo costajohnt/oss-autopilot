@@ -92,6 +92,15 @@ export {
   type LinkedPRState,
 } from './linked-pr-classification.js';
 export {
+  classifyIssueAvailability,
+  fetchIssueVerification,
+  type IssueAvailabilityVerdict,
+  type IssueVerification,
+  type LinkedPRLinkType,
+  type VerifiedLinkedPR,
+  type VerifyIssueParams,
+} from './issue-verification.js';
+export {
   scanForAntiLLMPolicy,
   type AntiLLMCategory,
   type AntiLLMMatch,

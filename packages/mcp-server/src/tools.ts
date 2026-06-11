@@ -15,6 +15,7 @@ import {
   runSearch,
   runFeatures,
   runVet,
+  runVerifyIssue,
   runVetList,
   runTrack,
   runComplianceScore,
@@ -253,6 +254,22 @@ export function registerTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     wrapTool(runVet),
+  );
+
+  // 4a. verify-issue — Deterministic issue state + linked-PR verification
+  server.registerTool(
+    'verify-issue',
+    {
+      description:
+        'Deterministically verify a GitHub issue before vetting: real open/closed state with stateReason, assignees, and every linked PR classified as closing (a real claim) vs cross-referenced (a mention), with your own PRs flagged. Returns a short-circuit verdict: closed, own-open-pr, taken, at-risk, or available. Run this FIRST and trust its fields over any prose inference.',
+      inputSchema: {
+        issueUrl: githubIssueUrlSchema.describe(
+          'Full GitHub issue URL to verify (e.g. https://github.com/owner/repo/issues/123)',
+        ),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    wrapTool(runVerifyIssue),
   );
 
   // 4b. vet-list — Re-vet all saved issues

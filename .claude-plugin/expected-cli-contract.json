@@ -39,6 +39,7 @@
     "track",
     "undismiss",
     "unshelve",
+    "verify-issue",
     "vet",
     "vet-list"
   ],

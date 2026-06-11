@@ -576,6 +576,7 @@ export const SearchOutputSchema = z.object({
   candidates: z.array(SearchCandidateSchema),
   excludedRepos: z.array(z.string()),
   aiPolicyBlocklist: z.array(z.string()),
+  hiddenOwnPRCount: z.number().int().nonnegative(),
   rateLimitWarning: z.string().optional(),
 });
 
@@ -647,6 +648,38 @@ export const ListMarkDoneOutputSchema = z.object({
   repoHeadingStruck: z.boolean(),
   remainingUnderRepo: z.number().int().nonnegative(),
   reason: z.string().optional(),
+});
+
+// verify-issue (#1353, #1354): mirrors {@link IssueVerification} from
+// core/issue-verification.ts. Strict shape — additional keys must be added
+// here AND in the module output, otherwise the validator rejects the
+// response before it reaches consumers.
+export const VerifyIssueOutputSchema = z.object({
+  url: z.string(),
+  owner: z.string(),
+  repo: z.string(),
+  number: z.number().int().positive(),
+  title: z.string(),
+  state: z.enum(['open', 'closed']),
+  stateReason: z.enum(['completed', 'not_planned', 'reopened', 'duplicate']).nullable(),
+  closedAt: z.string().nullable(),
+  assignees: z.array(z.string()),
+  linkedPRs: z.array(
+    z.object({
+      number: z.number().int().positive(),
+      url: z.string(),
+      title: z.string(),
+      state: z.enum(['open', 'closed', 'merged']),
+      isDraft: z.boolean(),
+      author: z.string().nullable(),
+      isOwn: z.boolean(),
+      linkType: z.enum(['closing', 'cross-referenced']),
+      updatedAt: z.string().nullable(),
+    }),
+  ),
+  verdict: z.enum(['closed', 'own-open-pr', 'taken', 'at-risk', 'available']),
+  verdictReason: z.string(),
+  userLogin: z.string(),
 });
 
 // ── #1155: Zod coverage for remaining CLI commands ───────────────────
@@ -1005,6 +1038,9 @@ export interface SearchOutput {
   excludedRepos: string[];
   /** Repos with known anti-AI contribution policies, filtered from search results (#108). */
   aiPolicyBlocklist: string[];
+  /** Candidates dropped because the authenticated user already has an open PR
+   * linked to the issue (#1354). Surfaced as a count so the filter is visible. */
+  hiddenOwnPRCount: number;
   /** Present when rate limits affected the search — either low pre-flight quota or mid-search rate limit hits (#100). */
   rateLimitWarning?: string;
 }

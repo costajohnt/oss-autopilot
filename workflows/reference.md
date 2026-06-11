@@ -44,6 +44,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `clear-override`, `c
 # Surface feature-scoped opportunities in repos with 3+ merged PRs (n = total, default 10)
 <prefix> features [n] --json [--anchor-threshold <1-50>] [--split-ratio <0-1>]
 
+# Deterministically verify issue state + linked-PR claims (run BEFORE vet; #1353, #1354)
+<prefix> verify-issue <issue-url> --json
+
 # Deep-vet a specific issue
 <prefix> vet <issue-url> --json
 
