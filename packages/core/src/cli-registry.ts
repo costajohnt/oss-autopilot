@@ -764,6 +764,9 @@ export const commands: CLICommandDef[] = [
             async () => (await import('./commands/comments.js')).runComments({ prUrl, showBots: options.bots }),
             async (data) => {
               const { formatRelativeTime } = await import('./core/dates.js');
+              // Bodies arrive `<github-content>`-fenced for agent consumers
+              // (#1372); unwrap for human terminal display.
+              const { safeExtractFromFence } = await import('./core/untrusted-content.js');
               console.log(`\nFetching comments for: ${prUrl}\n`);
               console.log(`## ${data.pr.title}\n`);
               console.log(`**Status:** ${data.pr.state} | **Mergeable:** ${data.pr.mergeable ?? 'checking...'}`);
@@ -781,7 +784,7 @@ export const commands: CLICommandDef[] = [
                   const time = review.submittedAt ? formatRelativeTime(review.submittedAt) : '';
                   console.log(`${state} **@${review.user}** (${review.state}) - ${time}`);
                   if (review.body) {
-                    console.log(`> ${review.body.split('\n').join('\n> ')}\n`);
+                    console.log(`> ${safeExtractFromFence(review.body).split('\n').join('\n> ')}\n`);
                   }
                 }
               }
@@ -791,7 +794,7 @@ export const commands: CLICommandDef[] = [
                 for (const comment of data.reviewComments) {
                   const time = formatRelativeTime(comment.createdAt);
                   console.log(`**@${comment.user}** on \`${comment.path}\` - ${time}`);
-                  console.log(`> ${comment.body.split('\n').join('\n> ')}`);
+                  console.log(`> ${safeExtractFromFence(comment.body).split('\n').join('\n> ')}`);
                   console.log('');
                 }
               }
@@ -801,7 +804,9 @@ export const commands: CLICommandDef[] = [
                 for (const comment of data.issueComments) {
                   const time = formatRelativeTime(comment.createdAt);
                   console.log(`**@${comment.user}** - ${time}`);
-                  console.log(`> ${comment.body?.split('\n').join('\n> ')}\n`);
+                  console.log(
+                    `> ${comment.body == null ? '' : safeExtractFromFence(comment.body).split('\n').join('\n> ')}\n`,
+                  );
                 }
               }
 

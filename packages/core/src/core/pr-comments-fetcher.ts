@@ -13,6 +13,7 @@
  */
 import type { Octokit } from '@octokit/rest';
 import { paginateAll } from './pagination.js';
+import { wrapUntrustedContent } from './untrusted-content.js';
 import { isBotAuthor } from './comment-utils.js';
 import { parseGitHubUrl } from './urls.js';
 import { ValidationError, errorMessage } from './errors.js';
@@ -27,6 +28,7 @@ const DEFAULT_BATCH_CONCURRENCY = 3;
 export interface PRReviewEntry {
   author: string;
   authorAssociation: string;
+  /** `<github-content>`-fenced review body (#1372). */
   body: string;
   submittedAt: string;
 }
@@ -35,6 +37,7 @@ export interface PRReviewEntry {
 export interface PRReviewCommentEntry {
   author: string;
   authorAssociation: string;
+  /** `<github-content>`-fenced comment body (#1372). */
   body: string;
   path: string;
   createdAt: string;
@@ -44,6 +47,7 @@ export interface PRReviewCommentEntry {
 export interface PRIssueCommentEntry {
   author: string;
   authorAssociation: string;
+  /** `<github-content>`-fenced comment body (#1372). */
   body: string;
   createdAt: string;
 }
@@ -132,6 +136,14 @@ export async function fetchPRCommentBundle(
 
   const mergedAt = pr.merged_at ?? pr.closed_at ?? '';
 
+  // Fence every body at fetch time (#1372): the bundle's only consumer is
+  // `guidelines fetch-corpus`, whose output goes straight into the host's
+  // extract-learnings prompt — there is no human-display or string-matching
+  // consumer downstream, so fetch-time wrapping is safe here.
+  const fenceLabel = `${repoFull}#${pull_number}`;
+  const fence = (body: string, source: string, author: string, association: string) =>
+    wrapUntrustedContent(body, fenceLabel, { author, association, source });
+
   return {
     prUrl,
     prTitle: pr.title,
@@ -142,7 +154,7 @@ export async function fetchPRCommentBundle(
       .map((r) => ({
         author: r.user?.login ?? '',
         authorAssociation: r.author_association ?? 'NONE',
-        body: r.body ?? '',
+        body: fence(r.body ?? '', 'pr-review', r.user?.login ?? '', r.author_association ?? 'NONE'),
         submittedAt: r.submitted_at ?? '',
       })),
     reviewComments: reviewComments
@@ -150,7 +162,7 @@ export async function fetchPRCommentBundle(
       .map((c) => ({
         author: c.user?.login ?? '',
         authorAssociation: c.author_association ?? 'NONE',
-        body: c.body ?? '',
+        body: fence(c.body ?? '', 'pr-review-comment', c.user?.login ?? '', c.author_association ?? 'NONE'),
         path: c.path ?? '',
         createdAt: c.created_at ?? '',
       })),
@@ -159,7 +171,7 @@ export async function fetchPRCommentBundle(
       .map((c) => ({
         author: c.user?.login ?? '',
         authorAssociation: c.author_association ?? 'NONE',
-        body: c.body ?? '',
+        body: fence(c.body ?? '', 'pr-issue-comment', c.user?.login ?? '', c.author_association ?? 'NONE'),
         createdAt: c.created_at ?? '',
       })),
   };

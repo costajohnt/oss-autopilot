@@ -4,6 +4,7 @@
  */
 
 import { getStateManager, getOctokit, parseGitHubUrl, requireGitHubToken, maybeCheckpoint } from '../core/index.js';
+import { wrapUntrustedContent } from '../core/untrusted-content.js';
 import { ValidationError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 
@@ -118,6 +119,14 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
     .filter((r) => filterComment(r) && r.body && r.body.trim())
     .sort((a, b) => new Date(b.submitted_at || 0).getTime() - new Date(a.submitted_at || 0).getTime());
 
+  // Fence every third-party body at this boundary: the output feeds agents
+  // directly (CLI --json, the MCP `comments` tool, and the `respond-to-pr`
+  // MCP prompt), so raw GitHub text must never reach a prompt unfenced
+  // (#1372). The CLI text display unwraps via safeExtractFromFence.
+  const fenceLabel = `${owner}/${repo}#${pull_number}`;
+  const fence = (body: string, source: string, author: string | undefined, association: string | undefined) =>
+    wrapUntrustedContent(body, fenceLabel, { author, association, source });
+
   const staleness = stateManager.getStateStaleness();
   return {
     pr: {
@@ -131,18 +140,18 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
     reviews: relevantReviews.map((r) => ({
       user: r.user?.login,
       state: r.state,
-      body: r.body ?? null,
+      body: r.body == null ? null : fence(r.body, 'pr-review', r.user?.login, r.author_association),
       submittedAt: r.submitted_at ?? null,
     })),
     reviewComments: relevantReviewComments.map((c) => ({
       user: c.user?.login,
-      body: c.body,
+      body: fence(c.body, 'pr-review-comment', c.user?.login, c.author_association),
       path: c.path,
       createdAt: c.created_at,
     })),
     issueComments: relevantIssueComments.map((c) => ({
       user: c.user?.login,
-      body: c.body,
+      body: c.body == null ? c.body : fence(c.body, 'pr-issue-comment', c.user?.login, c.author_association),
       createdAt: c.created_at,
     })),
     summary: {

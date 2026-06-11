@@ -13,9 +13,22 @@
  *  3. `extractFromFence(wrapUntrustedContent(x, label))` returns `x`
  *     unchanged for any input — the wrapping is lossless.
  *
- * Consumers should pair this with the agent-side guidance in
- * `workflows/reference.md` ("Prompt Injection Awareness"), which tells
- * the LLM to ignore instructions inside `<github-content>` blocks.
+ * Runtime wiring (#1372) — body fields are fenced at the last serialization
+ * boundary into agent-facing output:
+ *
+ *  - `runComments` (commands/comments.ts): review / inline / discussion
+ *    comment bodies in the `comments` CLI `--json` + MCP tool output.
+ *  - `fetchPRCommentBundle` (core/pr-comments-fetcher.ts): bundle bodies
+ *    feeding `guidelines fetch-corpus` (agent-only consumer).
+ *  - `toDailyOutput` (commands/daily.ts): `commentedIssues[].lastResponseBody`
+ *    / `userLastCommentBody` in the daily/startup JSON. The producer
+ *    (`issue-conversation.ts`) stays raw because the dashboard SPA and the
+ *    CLI text renderers consume the same objects.
+ *
+ * Human-facing display paths unwrap with {@link safeExtractFromFence}.
+ * This pairs with the agent-side guidance in `workflows/reference.md`
+ * ("Prompt Injection Awareness"), which tells the LLM to treat anything
+ * inside `<github-content>` blocks as data, not instructions.
  *
  * Non-goals:
  *  - This is NOT a content filter. We do not detect or strip prompt-
@@ -114,4 +127,19 @@ export function extractFromFence(fenced: string): string {
     .join(`<${UNTRUSTED_OPEN_TAG_NAME}`)
     .split(AMP_ESCAPE)
     .join('&');
+}
+
+/**
+ * Tolerant unwrap for human-facing display paths (CLI text mode). Returns
+ * the original body when `text` is a well-formed fence, and `text` unchanged
+ * otherwise. Display code must not crash on unfenced input (older state,
+ * fields that were never wrapped), so unlike {@link extractFromFence} this
+ * never throws.
+ */
+export function safeExtractFromFence(text: string): string {
+  try {
+    return extractFromFence(text);
+  } catch {
+    return text;
+  }
 }

@@ -33,6 +33,7 @@ import {
   type RepoGroup,
 } from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
+import { wrapUntrustedContent } from '../core/untrusted-content.js';
 import { computeStrategy, shouldComputeStrategy, type StrategyResult } from '../core/strategy.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
@@ -646,6 +647,36 @@ function generateDigestOutput(
 // ---------------------------------------------------------------------------
 
 /**
+ * Fence the GitHub-sourced comment excerpts in a CommentedIssue for
+ * agent-facing JSON (#1372). This happens HERE — not in
+ * `issue-conversation.ts` — because the producer's objects also feed the
+ * dashboard SPA and the CLI text renderers (`daily-render.ts`), which must
+ * not display raw fence tags, and the producer's internal classification
+ * (acknowledgment / @mention matching) string-matches on raw bodies.
+ *
+ * `userLastCommentBody` is fenced too: it is the user's own comment, but
+ * repo maintainers can edit any comment in their repos, so it is still
+ * GitHub-controlled text by the time we re-fetch it.
+ */
+function fenceCommentedIssue(issue: CommentedIssue): CommentedIssue {
+  const label = `${issue.repo}#${issue.number}`;
+  if (issue.status === 'new_response') {
+    return {
+      ...issue,
+      userLastCommentBody: wrapUntrustedContent(issue.userLastCommentBody, label, { source: 'issue-comment' }),
+      lastResponseBody: wrapUntrustedContent(issue.lastResponseBody, label, {
+        author: issue.lastResponseAuthor,
+        source: 'issue-comment',
+      }),
+    };
+  }
+  return {
+    ...issue,
+    userLastCommentBody: wrapUntrustedContent(issue.userLastCommentBody, label, { source: 'issue-comment' }),
+  };
+}
+
+/**
  * Convert a full DailyCheckResult to the compact DailyOutput for JSON serialization (#287).
  * Deduplicates PR objects: category arrays become PR URL references,
  * full objects live only in digest.openPRs. Reduces JSON payload size ~60-70%.
@@ -661,7 +692,7 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
     briefSummary: result.briefSummary,
     actionableIssues: compactActionableIssues(result.actionableIssues),
     actionMenu: result.actionMenu,
-    commentedIssues: result.commentedIssues,
+    commentedIssues: result.commentedIssues.map(fenceCommentedIssue),
     repoGroups: compactRepoGroups(result.repoGroups),
     failures: result.failures,
     warnings: result.warnings,

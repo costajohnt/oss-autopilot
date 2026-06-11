@@ -105,6 +105,8 @@ describe('guidelines --json contract', () => {
         mergedAt: recentTimestamp,
       },
     ]);
+    // Bundle bodies mirror the real fetcher output, which emits them
+    // `<github-content>`-fenced (#1372).
     mocks.fetchPRCommentBundlesBatch.mockResolvedValue({
       bundles: [
         {
@@ -116,7 +118,7 @@ describe('guidelines --json contract', () => {
             {
               author: 'maintainer',
               authorAssociation: 'OWNER',
-              body: 'Looks good but please add a test.',
+              body: '<github-content label="owner/repo#1" author="maintainer" association="OWNER" source="pr-review">Looks good but please add a test.</github-content>',
               submittedAt: recentTimestamp,
             },
           ],
@@ -124,7 +126,7 @@ describe('guidelines --json contract', () => {
             {
               author: 'maintainer',
               authorAssociation: 'OWNER',
-              body: 'Use the helper from utils instead.',
+              body: '<github-content label="owner/repo#1" author="maintainer" association="OWNER" source="pr-review-comment">Use the helper from utils instead.</github-content>',
               path: 'src/parse.ts',
               createdAt: recentTimestamp,
             },
@@ -133,7 +135,7 @@ describe('guidelines --json contract', () => {
             {
               author: 'maintainer',
               authorAssociation: 'OWNER',
-              body: 'Thanks for the contribution!',
+              body: '<github-content label="owner/repo#1" author="maintainer" association="OWNER" source="pr-issue-comment">Thanks for the contribution!</github-content>',
               createdAt: recentTimestamp,
             },
           ],

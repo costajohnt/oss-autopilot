@@ -10,7 +10,7 @@
         {
           "author": "maintainer",
           "authorAssociation": "OWNER",
-          "body": "Looks good but please add a test.",
+          "body": "<github-content label=\"owner/repo#1\" author=\"maintainer\" association=\"OWNER\" source=\"pr-review\">Looks good but please add a test.</github-content>",
           "submittedAt": "2026-05-04T00:00:00.000Z"
         }
       ],
@@ -18,7 +18,7 @@
         {
           "author": "maintainer",
           "authorAssociation": "OWNER",
-          "body": "Use the helper from utils instead.",
+          "body": "<github-content label=\"owner/repo#1\" author=\"maintainer\" association=\"OWNER\" source=\"pr-review-comment\">Use the helper from utils instead.</github-content>",
           "path": "src/parse.ts",
           "createdAt": "2026-05-04T00:00:00.000Z"
         }
@@ -27,7 +27,7 @@
         {
           "author": "maintainer",
           "authorAssociation": "OWNER",
-          "body": "Thanks for the contribution!",
+          "body": "<github-content label=\"owner/repo#1\" author=\"maintainer\" association=\"OWNER\" source=\"pr-issue-comment\">Thanks for the contribution!</github-content>",
           "createdAt": "2026-05-04T00:00:00.000Z"
         }
       ]
