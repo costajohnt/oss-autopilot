@@ -391,4 +391,15 @@ describe('runFetchCorpus', () => {
   it('throws on a malformed repo identifier', async () => {
     await expect(runFetchCorpus({ repo: 'just-a-name' })).rejects.toThrow(/Invalid repo identifier/);
   });
+
+  it('rejects when the batch fetch aborts on a rate limit, without stamping or checkpointing (#1391)', async () => {
+    mockGetMergedPRs.mockReturnValue([{ url: PR_RECENT, title: 't', mergedAt: recentTimestamp() }]);
+    mockFetchPRCommentBundlesBatch.mockRejectedValue(
+      Object.assign(new Error('API rate limit exceeded'), { status: 429 }),
+    );
+
+    await expect(runFetchCorpus({ repo: 'owner/repo' })).rejects.toThrow('API rate limit exceeded');
+    expect(mockMarkPRCommentsFetched).not.toHaveBeenCalled();
+    expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+  });
 });

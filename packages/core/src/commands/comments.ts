@@ -5,7 +5,7 @@
 
 import { getStateManager, getOctokit, parseGitHubUrl, requireGitHubToken, maybeCheckpoint } from '../core/index.js';
 import { wrapUntrustedContent } from '../core/untrusted-content.js';
-import { ValidationError } from '../core/errors.js';
+import { ValidationError, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 
 const MODULE = 'comments';
@@ -236,17 +236,15 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
 
   const octokit = getOctokit(token);
 
-  const { data: comment } = await octokit.issues.createComment({
-    owner,
-    repo,
-    issue_number: number,
-    body: message,
-  });
-
   // Fetch the real issue title + labels so the tracked entry has useful metadata
   // rather than a permanent "(claimed)" placeholder that never gets backfilled
   // (#1056 M24). Best-effort: if the fetch fails, fall back to the placeholder
   // so state still records the claim.
+  //
+  // Ordering matters: enrichment runs BEFORE the claim comment is posted
+  // (#1391). Rate-limit / auth failures rethrow here, and aborting after the
+  // comment landed would leave an orphaned claim on GitHub that local state
+  // never tracked — aborting before it means a clean no-op the user can retry.
   let issueTitle = '(claimed)';
   let issueLabels: string[] = [];
   let issueCreatedAt = new Date().toISOString();
@@ -258,11 +256,19 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
       .filter((name): name is string => Boolean(name));
     if (issue.created_at) issueCreatedAt = issue.created_at;
   } catch (error) {
+    if (isRateLimitOrAuthError(error)) throw error;
     warn(
       MODULE,
-      `Claimed ${options.issueUrl} but failed to enrich issue metadata (title/labels): ${error instanceof Error ? error.message : error}`,
+      `Failed to enrich issue metadata (title/labels) for ${options.issueUrl}; claiming with placeholder: ${error instanceof Error ? error.message : error}`,
     );
   }
+
+  const { data: comment } = await octokit.issues.createComment({
+    owner,
+    repo,
+    issue_number: number,
+    body: message,
+  });
 
   // Add to tracked issues — non-fatal if state save fails (comment already posted)
   let gistSyncWarning: string | null = null;

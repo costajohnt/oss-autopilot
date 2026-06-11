@@ -292,7 +292,7 @@ describe('runClaim', () => {
     const mockCreateComment = vi.fn().mockResolvedValue({
       data: { html_url: 'https://github.com/owner/repo/issues/10#issuecomment-1' },
     });
-    const mockIssuesGet = vi.fn().mockRejectedValue(new Error('403 from GitHub'));
+    const mockIssuesGet = vi.fn().mockRejectedValue(new Error('Server Error'));
     mockGetOctokit.mockReturnValue({
       issues: { createComment: mockCreateComment, get: mockIssuesGet },
     } as any);
@@ -306,9 +306,54 @@ describe('runClaim', () => {
     const result = await runClaim({ issueUrl: TEST_ISSUE_URL });
 
     expect(result.commentUrl).toBe('https://github.com/owner/repo/issues/10#issuecomment-1');
+    expect(mockCreateComment).toHaveBeenCalled();
     expect(mockAddIssue).toHaveBeenCalledWith(expect.objectContaining({ title: '(claimed)', labels: [] }));
-    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[WARN] [comments] Claimed'));
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[WARN] [comments] Failed to enrich issue metadata'),
+    );
     consoleSpy.mockRestore();
+  });
+
+  it('should abort before posting the claim comment when enrichment hits a rate limit (#1391)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 10, type: 'issues' });
+
+    const mockCreateComment = vi.fn();
+    const mockIssuesGet = vi
+      .fn()
+      .mockRejectedValue(Object.assign(new Error('API rate limit exceeded'), { status: 429 }));
+    mockGetOctokit.mockReturnValue({
+      issues: { createComment: mockCreateComment, get: mockIssuesGet },
+    } as any);
+    const mockAddIssue = vi.fn();
+    mockGetStateManager.mockReturnValue({
+      addIssue: mockAddIssue,
+    } as any);
+
+    await expect(runClaim({ issueUrl: TEST_ISSUE_URL })).rejects.toThrow('API rate limit exceeded');
+    // Enrichment runs before the comment post, so a rate-limit abort leaves
+    // no orphaned claim comment and no half-saved state.
+    expect(mockCreateComment).not.toHaveBeenCalled();
+    expect(mockAddIssue).not.toHaveBeenCalled();
+  });
+
+  it('should abort before posting the claim comment when enrichment hits an auth error (401) (#1391)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 10, type: 'issues' });
+
+    const mockCreateComment = vi.fn();
+    const mockIssuesGet = vi.fn().mockRejectedValue(Object.assign(new Error('Bad credentials'), { status: 401 }));
+    mockGetOctokit.mockReturnValue({
+      issues: { createComment: mockCreateComment, get: mockIssuesGet },
+    } as any);
+    const mockAddIssue = vi.fn();
+    mockGetStateManager.mockReturnValue({
+      addIssue: mockAddIssue,
+    } as any);
+
+    await expect(runClaim({ issueUrl: TEST_ISSUE_URL })).rejects.toThrow('Bad credentials');
+    expect(mockCreateComment).not.toHaveBeenCalled();
+    expect(mockAddIssue).not.toHaveBeenCalled();
   });
 
   it('should still return success when state save fails (comment already posted)', async () => {
@@ -347,8 +392,11 @@ describe('runClaim', () => {
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 10, type: 'issues' });
 
     const mockCreateComment = vi.fn().mockRejectedValue(new Error('Permission denied'));
+    const mockIssuesGet = vi.fn().mockResolvedValue({
+      data: { title: 'x', labels: [], created_at: '2026-04-20T10:00:00Z' },
+    });
     mockGetOctokit.mockReturnValue({
-      issues: { createComment: mockCreateComment },
+      issues: { createComment: mockCreateComment, get: mockIssuesGet },
     } as any);
 
     await expect(runClaim({ issueUrl: TEST_ISSUE_URL })).rejects.toThrow('Permission denied');
