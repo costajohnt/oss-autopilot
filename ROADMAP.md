@@ -8,20 +8,14 @@ Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/di
 
 ## Now (next 1-2 weeks)
 
-- [ ] Fix preAction bootstrap errors surfacing as unhandled rejections (`parse` vs `parseAsync`) ([#1386](https://github.com/costajohnt/oss-autopilot/issues/1386))
-- [ ] Stop three more catch sites from swallowing rate-limit errors into degraded results ([#1391](https://github.com/costajohnt/oss-autopilot/issues/1391))
 - [ ] Reconcile dashboard `needs_addressing` count with CLI `actionableIssues` — two independent classifiers diverge ([#1352](https://github.com/costajohnt/oss-autopilot/issues/1352))
 - [ ] Fix issue-scout hallucinating `Open` state and conflating cross-referenced PRs with closing PRs ([#1353](https://github.com/costajohnt/oss-autopilot/issues/1353))
 - [ ] Exclude issues the user already has open PRs for from search results ([#1354](https://github.com/costajohnt/oss-autopilot/issues/1354))
-- [ ] Fix `list-move-tier` silently no-opping on missing entries ([#1355](https://github.com/costajohnt/oss-autopilot/issues/1355))
-- [ ] Bring README/ARCHITECTURE/ROADMAP counts and status back in sync with the code ([#1379](https://github.com/costajohnt/oss-autopilot/issues/1379))
 
 ## Next (next 1-2 months)
 
 - [ ] Move canonical issue-scout and repo-evaluator agents into oss-scout ([#1241](https://github.com/costajohnt/oss-autopilot/issues/1241))
 - [ ] Bias `oss-scout:issue-scout` searches with `strategy().recommendations`, with a diversity counterweight ([#1244](https://github.com/costajohnt/oss-autopilot/issues/1244))
-- [ ] Add a `guidelines list` subcommand backed by `listGuidelinesRepos()` ([#1393](https://github.com/costajohnt/oss-autopilot/issues/1393))
-- [ ] Surface `ConcurrencyError` in the dashboard as retryable instead of a generic 500 ([#1397](https://github.com/costajohnt/oss-autopilot/issues/1397))
 
 ## Later (no fixed timeline)
 
@@ -33,6 +27,12 @@ Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/di
 
 ## Shipped
 
+- [x] Fix `list-move-tier` silently no-opping on missing entries — a URL absent from the list is now an explicit error ([#1355](https://github.com/costajohnt/oss-autopilot/issues/1355))
+- [x] Fix preAction bootstrap errors surfacing as unhandled rejections (`parse` vs `parseAsync`) ([#1386](https://github.com/costajohnt/oss-autopilot/issues/1386))
+- [x] Stop three more catch sites from swallowing rate-limit errors into degraded results ([#1391](https://github.com/costajohnt/oss-autopilot/issues/1391))
+- [x] Add a `guidelines list` subcommand backed by `listGuidelinesRepos()` ([#1393](https://github.com/costajohnt/oss-autopilot/issues/1393))
+- [x] Surface `ConcurrencyError` in the dashboard as retryable instead of a generic 500 ([#1397](https://github.com/costajohnt/oss-autopilot/issues/1397))
+- [x] Bring README/ARCHITECTURE/ROADMAP counts and status back in sync with the code ([#1379](https://github.com/costajohnt/oss-autopilot/issues/1379))
 - [x] Unify skip-list persistence — the `.md` file and `state.skippedIssues` no longer drift ([#992](https://github.com/costajohnt/oss-autopilot/issues/992))
 - [x] Audit-v2 follow-up sprint — closed the 15 issues filed by the 2026-04-19 audit ([#993](https://github.com/costajohnt/oss-autopilot/issues/993)–[#1007](https://github.com/costajohnt/oss-autopilot/issues/1007))
 - [x] Runtime `--json` contract enforcement — output shapes validated against Zod schemas at runtime ([#965](https://github.com/costajohnt/oss-autopilot/issues/965))
