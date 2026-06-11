@@ -23,8 +23,13 @@ interface CLICommandDef {
   register(program: Command): void;
 }
 
-/** Shared error handler for CLI action catch blocks. */
-function handleCommandError(err: unknown, json?: boolean): never {
+/**
+ * Shared error handler for CLI action catch blocks. Exported so cli.ts can
+ * route preAction-hook rejections (corrupt Gist, missing gist scope, rate
+ * limit during bootstrap) through the same formatting instead of letting
+ * them surface as raw unhandled rejections (#1386).
+ */
+export function handleCommandError(err: unknown, json?: boolean): never {
   const msg = errorMessage(err);
   if (json) {
     outputJsonError(msg, resolveErrorCode(err));
