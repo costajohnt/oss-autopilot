@@ -25,6 +25,17 @@ class CsrfRejectedError extends Error {
   }
 }
 
+/** Sentinel thrown from fetchJsonWithToken on a 409 concurrency conflict
+ * (#1397) — the server lost an optimistic compare-and-swap on state.json to
+ * an external writer. Retryable: re-prime via /api/data and retry once. */
+const CONFLICT = Symbol('conflict');
+class ConflictError extends Error {
+  readonly kind = CONFLICT;
+  constructor(message: string) {
+    super(message);
+  }
+}
+
 async function fetchJsonWithToken(url: string, init?: RequestInit): Promise<JsonResult> {
   const res = await fetch(url, init);
   if (!res.ok) {
@@ -34,6 +45,12 @@ async function fetchJsonWithToken(url: string, init?: RequestInit): Promise<Json
     // re-fetch /api/data to pick up the current token and retry once.
     if (res.status === 403 && typeof message === 'string' && /csrf token/i.test(message)) {
       throw new CsrfRejectedError(message);
+    }
+    // 409 means a concurrent state write — the server already retried once
+    // (#1397). Recoverable the same way as a stale CSRF token: re-fetch
+    // /api/data for a fresh baseline and retry the POST once.
+    if (res.status === 409) {
+      throw new ConflictError(typeof message === 'string' ? message : `HTTP ${res.status}`);
     }
     throw new Error(message);
   }
@@ -83,11 +100,15 @@ export function useDashboard() {
       try {
         return await fetchJsonWithToken(url, buildPostInit(body));
       } catch (err) {
-        if (!(err instanceof CsrfRejectedError)) throw err;
-        // Stale-tab recovery: the server rotated tokens (e.g. after upgrade)
-        // or the client never captured one. Re-prime via /api/data, then
-        // retry the POST exactly once. If the retry also fails we surface
-        // the original server message so the user sees "please refresh".
+        if (!(err instanceof CsrfRejectedError) && !(err instanceof ConflictError)) throw err;
+        // Recoverable rejections, both retried the same way:
+        // - CsrfRejectedError: stale-tab recovery — the server rotated tokens
+        //   (e.g. after upgrade) or the client never captured one.
+        // - ConflictError (409, #1397): a concurrent state write beat us;
+        //   re-priming picks up the fresh state baseline.
+        // Re-prime via /api/data, then retry the POST exactly once. If the
+        // retry also fails we surface the server's message via the normal
+        // error path (a second 409 propagates from fetchJsonWithToken).
         try {
           const primed = await fetchJsonWithToken('/api/data');
           if (primed.csrfToken) csrfTokenRef.current = primed.csrfToken;

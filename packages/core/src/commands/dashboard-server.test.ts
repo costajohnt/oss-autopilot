@@ -143,6 +143,7 @@ import {
 } from './dashboard-server.js';
 import { fetchDashboardData, storedToMergedPRs } from './dashboard-data.js';
 import { getGitHubToken } from '../core/index.js';
+import { ConcurrencyError } from '../core/errors.js';
 
 // ── Test Data ────────────────────────────────────────────────────────
 
@@ -883,6 +884,92 @@ describe('dashboard-server', () => {
       expect(data.error).toBe('Action failed');
     });
 
+    // ── Concurrency conflicts (#1397) ───────────────────────────────
+    // An external CLI write landing between the handler's reload and save
+    // surfaces as ConcurrencyError from the mutation (see
+    // state-concurrency.test.ts). The handler retries once via
+    // reload-reapply; a second conflict becomes a retryable 409.
+
+    it('retries once on ConcurrencyError and returns 200 when the retry succeeds (move)', async () => {
+      mockStateManager.reloadIfChanged.mockClear();
+      mockRunMove.mockClear();
+      mockRunMove.mockRejectedValueOnce(new ConcurrencyError(1000, 2000));
+
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+
+      expect(result.statusCode).toBe(200);
+      const data = JSON.parse(result.body);
+      expect(data).toHaveProperty('stats');
+      // Mutation re-applied once after a fresh reload: two reloads, two attempts.
+      expect(mockRunMove).toHaveBeenCalledTimes(2);
+      expect(mockStateManager.reloadIfChanged).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries once on ConcurrencyError and returns 200 when the retry succeeds (dismiss)', async () => {
+      mockStateManager.dismissIssue.mockImplementationOnce(() => {
+        throw new ConcurrencyError(1000, 2000);
+      });
+
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'dismiss_issue_response', url: 'https://github.com/owner/repo/issues/42' }),
+      );
+
+      expect(result.statusCode).toBe(200);
+      expect(mockStateManager.dismissIssue).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns a machine-readable 409 when the retry also hits ConcurrencyError', async () => {
+      mockRunMove
+        .mockRejectedValueOnce(new ConcurrencyError(1000, 2000))
+        .mockRejectedValueOnce(new ConcurrencyError(2000, 3000));
+
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+
+      expect(result.statusCode).toBe(409);
+      const data = JSON.parse(result.body);
+      expect(data.code).toBe('CONCURRENCY_ERROR');
+      expect(data.retryable).toBe(true);
+      expect(typeof data.error).toBe('string');
+    });
+
+    it('returns 500 (not 409) when the retry fails with a non-concurrency error', async () => {
+      mockRunMove.mockRejectedValueOnce(new ConcurrencyError(1000, 2000)).mockRejectedValueOnce(new Error('disk full'));
+
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/1', target: 'shelved' }),
+      );
+
+      expect(result.statusCode).toBe(500);
+      expect(JSON.parse(result.body).error).toBe('Action failed');
+    });
+
+    it('does not reload state for a request that fails validation (#1397)', async () => {
+      // The reload was moved AFTER body parsing/validation to shrink the
+      // read-modify-write window — invalid requests must not touch state.
+      mockStateManager.reloadIfChanged.mockClear();
+
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'invalid_action', url: 'https://github.com/owner/repo/pull/1' }),
+      );
+
+      expect(result.statusCode).toBe(400);
+      expect(mockStateManager.reloadIfChanged).not.toHaveBeenCalled();
+    });
+
     it('should accept a valid dismiss_issue_response action', async () => {
       const result = await sendRequest(
         'POST',
@@ -1205,6 +1292,18 @@ describe('dashboard-server', () => {
       expect(result.statusCode).toBe(500);
       const data = JSON.parse(result.body);
       expect(data.error).toContain('Refresh failed');
+    });
+
+    it('returns a machine-readable 409 on ConcurrencyError (#1397)', async () => {
+      vi.mocked(getGitHubToken).mockReturnValue('test-token');
+      vi.mocked(fetchDashboardData).mockRejectedValueOnce(new ConcurrencyError(1000, 2000));
+
+      const result = await sendRequest('POST', '/api/refresh');
+      expect(result.statusCode).toBe(409);
+      const data = JSON.parse(result.body);
+      expect(data.code).toBe('CONCURRENCY_ERROR');
+      expect(data.retryable).toBe(true);
+      expect(typeof data.error).toBe('string');
     });
 
     it('should reject refresh with invalid origin', async () => {
