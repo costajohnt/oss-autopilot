@@ -19,18 +19,30 @@ advisory; both hard gates must be kept narrow.
 |---|---|
 | `mcp__plugin_oss-autopilot_oss-autopilot__post` | Writes a public GitHub comment. All posting goes through the `draft-review-post` skill so the user reviews the exact body before it ships. |
 | `mcp__plugin_oss-autopilot_oss-autopilot__claim` | Posts a claim comment on an issue. Same reason as `post`. |
-| `mcp__plugin_oss-autopilot_oss-autopilot__move`, `__track`, `__dismiss`, `__shelve` (and their inverses) | Mutate `~/.oss-autopilot/state.json`. Agents that need to influence state should produce a recommendation for the parent workflow to act on, not mutate directly. |
+| `mcp__plugin_oss-autopilot_oss-autopilot__move`, `__dismiss`, `__shelve` (and their inverses) | Mutate `~/.oss-autopilot/state.json`. Agents that need to influence state should produce a recommendation for the parent workflow to act on, not mutate directly. |
 | `mcp__linkedin__*`, `mcp__claude_ai_Gmail__*`, `mcp__puppeteer__*`, `mcp__plugin_serena_serena__execute_shell_command` | Out of scope — OSS Autopilot agents should never need cross-channel messaging, arbitrary web control, or sandbox escape. |
 
 ## Per-agent allowlists
 
-- `contribution-strategist` — `Bash`, `Read` (read-only analyzer; emits a markdown report in chat).
-- `issue-scout` — `Bash`, `Read`, `mcp__...__search`, `mcp__...__vet`, `mcp__...__vet-list`.
-- `pr-compliance-checker` — `Bash`, `Read`, `Glob`, `Grep`, `mcp__...__read`, `mcp__...__comments`.
-- `pr-health-checker` — `Bash`, `Read`, `Grep`, `mcp__...__read`, `mcp__...__comments`.
-- `pr-responder` — `Bash`, `Read`, `Write`, `Glob`, `Grep`, `mcp__...__read`, `mcp__...__comments` (keeps `Write` for drafting response files under `/tmp`; posting still routes through `draft-review-post`).
-- `pre-commit-reviewer` — `Bash`, `Read`, `Glob`, `Grep` (local git/diff review only).
-- `repo-evaluator` — `Bash`, `Read`, `Glob`, `mcp__...__vet`.
+Every agent additionally grants `AskUserQuestion` — each one runs a mandatory
+user-confirmation gate (see "AskUserQuestion Validation Protocol" in
+`workflows/reference.md`), so the tool is part of the design, not a
+convenience. The frontmatter `tools:` line in each agent file is the source of
+truth; `packages/core/src/agents-contract.test.ts` enforces that every tool an
+agent's body instructs with is actually granted (#1377).
+
+- `contribution-strategist` — `Bash`, `Read`, `mcp__...__strategy` (read-only analyzer; emits a markdown report in chat).
+- `issue-scout` — `Bash`, `Read`, `mcp__...__search`, `mcp__...__vet`, `mcp__...__vet-list`, `mcp__...__status`.
+- `pr-compliance-checker` — `Bash`, `Read`, `Glob`, `Grep`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__compliance-score`, `mcp__...__guidelines-get`.
+- `pr-health-checker` — `Bash`, `Read`, `Grep`, `mcp__...__track`, `mcp__...__comments`. (Reads config via the CLI `config --json`; the MCP config tool is a get-or-set mutator and is deliberately not granted.)
+- `pr-responder` — `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__guidelines-get` (keeps `Write` for drafting response files under `/tmp` and `Edit` for formatting reverts; posting still routes through `draft-review-post`).
+- `pre-commit-reviewer` — `Bash`, `Read`, `Glob`, `Grep`, `mcp__...__guidelines-get` (local git/diff review).
+- `repo-evaluator` — `Bash`, `Read`, `Glob`, `mcp__...__vet`, `mcp__...__repo-vet`, `mcp__...__status`.
+
+`track` here is the v2 read-only snapshot tool — it no longer mutates
+`~/.oss-autopilot/state.json`, which is why it can be granted despite the
+state-mutation exclusion above (the mutating tools — `move`, `dismiss`,
+`shelve` and inverses — remain excluded).
 
 ## Adding a tool
 

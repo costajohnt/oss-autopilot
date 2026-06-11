@@ -23,7 +23,7 @@ Rebase checking and execution is a core health check responsibility.
 purpose: Diagnose CI failures, merge conflicts, rebase status
 model: sonnet
 color: yellow
-tools: ["Bash", "Read", "Grep", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments"]
+tools: ["Bash", "Read", "Grep", "AskUserQuestion", "mcp__plugin_oss-autopilot_oss-autopilot__track", "mcp__plugin_oss-autopilot_oss-autopilot__comments"]
 ---
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
@@ -86,7 +86,7 @@ Use the MCP / CLI / gh path above.
 
 ### 2. Check Branch Freshness
 
-**Locate the local clone** by reading the user's configured scan paths. The default (`~/Documents/oss/<repo>`, `~/dev/<repo>`) is a fallback, NOT a fixed assumption. Check `config.localRepoScanPaths` first via `mcp__plugin_oss-autopilot_oss-autopilot__config` (or `cli.bundle.cjs config --json`); a user with clones in `~/code/` or `~/projects/` configures those paths once and avoids the silent-fallback footgun (#1247 Improvement 1).
+**Locate the local clone** by reading the user's configured scan paths. The default (`~/Documents/oss/<repo>`, `~/dev/<repo>`) is a fallback, NOT a fixed assumption. Check `config.localRepoScanPaths` first via `cli.bundle.cjs config --json` (the read-only CLI path below; the MCP config tool is a get-or-set mutator and is deliberately not granted to this agent); a user with clones in `~/code/` or `~/projects/` configures those paths once and avoids the silent-fallback footgun (#1247 Improvement 1).
 
 ```bash
 # Read configured scan paths (run once per session):
@@ -137,16 +137,15 @@ gh pr view NUMBER --repo OWNER/REPO --json reviews,reviewDecision
 
 `gh api repos/OWNER/REPO/issues/NUMBER/comments --jq '.[] | select(.user.login | endswith("[bot]")) | {author: .user.login, body: .body}'` — look for `changeset-bot` (missing changeset), `CLAassistant` (unsigned CLA), `codecov` (informational), `copilot` (automated suggestions).
 
-### 6. Cross-Repo Fan-Out and Same-Repo Coordination
+### 6. Multi-Repo Batches and Same-Repo Coordination
 
-PRs in **different repos** are independent — git working directories don't overlap, no shared lock state. When the caller hands you multiple PRs to check, group them by repo and **dispatch one parallel sub-agent per repo** (`Task` tool with this same agent-name, one call per repo, sent in a single message so they run concurrently). Wait for all to complete, then merge their reports for the user (#1272 Improvement 4).
+When the caller hands you multiple PRs to check, group them by repo and process the repos **one at a time** — run the full per-repo procedure (freshness, CI categorization, reviews, required files) for every PR in one repo before moving to the next, then merge the per-repo findings into a single report for the user. PRs in **different repos** are independent (git working directories don't overlap, no shared lock state), so the per-repo grouping is about keeping each repo's git operations coherent, not about shared state across repos.
 
-Within a **single repo**, handle multiple PRs **sequentially** in the same sub-agent — branches share the working tree, so checking two PR branches concurrently corrupts git state.
+Within a **single repo**, handle multiple PRs **sequentially** — branches share the working tree, so checking two PR branches concurrently corrupts git state.
 
 The split:
-- N PRs across M repos → M parallel sub-agents, each handling its repo's PRs sequentially.
-- Best speedup when PRs are spread across many repos (the common case for active contributors).
-- No speedup when all PRs are in one repo — the sequential rule still applies.
+- N PRs across M repos → process repo by repo, each repo's PRs handled sequentially.
+- Never interleave git operations for two PRs in the same repo.
 
 ## Output Format
 
