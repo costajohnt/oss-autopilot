@@ -40,6 +40,7 @@ const REGISTERED_MCP_TOOLS = new Set([
   'daily',
   'status',
   'search',
+  'features',
   'vet',
   'vet-list',
   'track',
@@ -67,6 +68,9 @@ const REGISTERED_MCP_TOOLS = new Set([
   'guidelines-reset',
   'guidelines-fetch-corpus',
 ]);
+
+const MCP_TOOLS_SOURCE = path.join(REPO_ROOT, 'packages/mcp-server/src/tools.ts');
+const REGISTER_TOOL_PATTERN = /registerTool\(\s*'([a-z][a-z0-9-]*)'/g;
 
 interface AgentReference {
   agent: string;
@@ -96,6 +100,20 @@ function collectReferences(): AgentReference[] {
   }
   return refs;
 }
+
+describe('REGISTERED_MCP_TOOLS mirror ↔ tools.ts source parity (#1374)', () => {
+  it('the mirror set matches the registerTool() calls in packages/mcp-server/src/tools.ts', () => {
+    // The mirror went stale once already: `features` was registered in
+    // tools.ts but missing here, so any agent referencing it would have
+    // false-failed the parity tests below. Parse the registrations out of
+    // the source file (a file read, not a cross-package import) so drift
+    // in either direction fails CI.
+    const source = fs.readFileSync(MCP_TOOLS_SOURCE, 'utf8');
+    const registered = [...source.matchAll(REGISTER_TOOL_PATTERN)].map((m) => m[1]).toSorted();
+    expect(registered.length).toBeGreaterThan(0);
+    expect([...REGISTERED_MCP_TOOLS].toSorted()).toEqual(registered);
+  });
+});
 
 describe('agents/*.md ↔ MCP tool registry parity (#1245)', () => {
   it('every MCP tool name in agent frontmatter exists in the registry', () => {
