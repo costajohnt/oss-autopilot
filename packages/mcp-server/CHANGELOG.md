@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.5.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.4.0...mcp-v5.5.0) (2026-06-11)
+
+
+### Features
+
+* **guidelines:** add guidelines list subcommand and MCP tool ([#1400](https://github.com/costajohnt/oss-autopilot/issues/1400)) ([085e127](https://github.com/costajohnt/oss-autopilot/commit/085e127f9b7c6e07bab814aad10b4a97eb5def99)), closes [#1393](https://github.com/costajohnt/oss-autopilot/issues/1393)
+* **security:** wire the untrusted-content fence into agent-facing output ([#1396](https://github.com/costajohnt/oss-autopilot/issues/1396)) ([e1599a0](https://github.com/costajohnt/oss-autopilot/commit/e1599a0018f82282620130402829686d775a125a)), closes [#1372](https://github.com/costajohnt/oss-autopilot/issues/1372)
+
+
+### Bug Fixes
+
+* **mcp:** retry Gist init after transient failure instead of latching done ([#1383](https://github.com/costajohnt/oss-autopilot/issues/1383)) ([924aff0](https://github.com/costajohnt/oss-autopilot/commit/924aff0a245b8ef43bd48efbabf5142c26b7c385)), closes [#1368](https://github.com/costajohnt/oss-autopilot/issues/1368)
+
 ## [5.4.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.3.1...mcp-v5.4.0) (2026-05-18)
 
 
