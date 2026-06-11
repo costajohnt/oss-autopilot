@@ -107,6 +107,31 @@ function spawnHttpServer(args: string[], env: Record<string, string> = {}): Prom
   });
 }
 
+/**
+ * Spawn the HTTP server on a random port, retrying with a fresh port when
+ * the spawn dies with EADDRINUSE. randomPort()'s 10k-60k range overlaps the
+ * OS ephemeral range (Linux: 32768-60999), so on a busy CI runner a
+ * collision with an OS-assigned socket kills the spawned server (#1402).
+ * Three attempts make a repeat collision negligible; any other failure
+ * rethrows immediately.
+ */
+async function spawnHttpServerOnFreePort(
+  env: Record<string, string> = {},
+  argsForPort: (port: number) => string[] = (p) => ['--http', `--port=${p}`],
+): Promise<HttpServerHandle> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const port = randomPort();
+    try {
+      return await spawnHttpServer(argsForPort(port), env);
+    } catch (err) {
+      if (!(err instanceof Error) || !err.message.includes('EADDRINUSE')) throw err;
+      lastErr = err;
+    }
+  }
+  throw lastErr;
+}
+
 /** Make an HTTP request and return the response status + body. */
 function httpRequest(
   port: number,
@@ -198,8 +223,7 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
   }
 
   it('POST /mcp with JSON-RPC initialize returns valid response', async () => {
-    const port = randomPort();
-    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+    serverHandle = await spawnHttpServerOnFreePort();
 
     const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, authHeader());
 
@@ -218,8 +242,7 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
   });
 
   it('GET / returns 404', async () => {
-    const port = randomPort();
-    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+    serverHandle = await spawnHttpServerOnFreePort();
 
     const res = await httpRequest(serverHandle.port, 'GET', '/');
 
@@ -228,8 +251,7 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
   });
 
   it('GET /mcp returns 405', async () => {
-    const port = randomPort();
-    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+    serverHandle = await spawnHttpServerOnFreePort();
 
     const res = await httpRequest(serverHandle.port, 'GET', '/mcp');
 
@@ -238,8 +260,7 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
   });
 
   it('--port N (space form) works', async () => {
-    const port = randomPort();
-    serverHandle = await spawnHttpServer(['--http', '--port', String(port)]);
+    serverHandle = await spawnHttpServerOnFreePort({}, (p) => ['--http', '--port', String(p)]);
 
     const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, authHeader());
 
@@ -249,8 +270,7 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
   // ── Bearer-token auth (#1028) ───────────────────────────────────
 
   it('rejects POST /mcp with no Authorization header (401)', async () => {
-    const port = randomPort();
-    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+    serverHandle = await spawnHttpServerOnFreePort();
 
     const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY);
 
@@ -260,8 +280,7 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
   });
 
   it('rejects POST /mcp with a malformed Authorization header (401)', async () => {
-    const port = randomPort();
-    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+    serverHandle = await spawnHttpServerOnFreePort();
 
     const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, {
       Authorization: 'Basic user:pass',
@@ -271,8 +290,7 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
   });
 
   it('rejects POST /mcp with a wrong bearer token (401)', async () => {
-    const port = randomPort();
-    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+    serverHandle = await spawnHttpServerOnFreePort();
 
     const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, {
       Authorization: `Bearer ${'0'.repeat(64)}`,
@@ -283,16 +301,14 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
 
   it('persists the token across server restarts', async () => {
     const tokenPath = path.join(os.tmpdir(), `oss-autopilot-mcp-test-persist-${Date.now()}.token`);
-    const port1 = randomPort();
-    const first = await spawnHttpServer(['--http', `--port=${port1}`], {
+    const first = await spawnHttpServerOnFreePort({
       OSS_AUTOPILOT_MCP_TOKEN_PATH: tokenPath,
     });
     const firstToken = first.token;
     first.proc.kill('SIGTERM');
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    const port2 = randomPort();
-    serverHandle = await spawnHttpServer(['--http', `--port=${port2}`], {
+    serverHandle = await spawnHttpServerOnFreePort({
       OSS_AUTOPILOT_MCP_TOKEN_PATH: tokenPath,
     });
     expect(serverHandle.token).toBe(firstToken);
@@ -301,8 +317,7 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
   // ── Host-header validation ──────────────────────────────────────
 
   it('rejects requests with a non-loopback Host header (403)', async () => {
-    const port = randomPort();
-    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+    serverHandle = await spawnHttpServerOnFreePort();
 
     const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, {
       ...authHeader(),
@@ -316,8 +331,7 @@ describe('MCP server HTTP transport', { timeout: 30_000 }, () => {
   // ── Body-size cap ───────────────────────────────────────────────
 
   it('rejects requests whose Content-Length exceeds 1 MiB (413)', async () => {
-    const port = randomPort();
-    serverHandle = await spawnHttpServer(['--http', `--port=${port}`]);
+    serverHandle = await spawnHttpServerOnFreePort();
 
     // Lie about Content-Length — server should reject before reading the body.
     const res = await httpRequest(serverHandle.port, 'POST', '/mcp', INITIALIZE_BODY, {
