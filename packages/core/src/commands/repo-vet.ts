@@ -12,7 +12,7 @@
  */
 
 import { getOctokit, requireGitHubToken } from '../core/index.js';
-import { errorMessage } from '../core/errors.js';
+import { errorMessage, getHttpStatusCode, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { validateRepoIdentifier } from './validation.js';
 import { computeRepoVet, type RepoVetInput, type RepoVetResult } from '../core/repo-vet.js';
@@ -200,13 +200,32 @@ export async function runRepoVet(options: { repo: string }): Promise<RepoVetOutp
   const octokit = getOctokit(token);
   const now = new Date();
 
+  // Tracks the release-list analogue of communityHealth's `incomplete`:
+  // set when the listReleases call failed for a reason that does NOT
+  // prove absence (5xx, network), so the caller can distinguish "repo
+  // has no releases" from "couldn't check releases" (#1373).
+  let releasesIncomplete = false;
+
   const [repoMetaResp, closedPRsResp, commitsResp, releasesResp, communityHealthSummary] = await Promise.all([
     octokit.repos.get({ owner, repo }),
     octokit.pulls.list({ owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 100 }),
     octokit.repos.listCommits({ owner, repo, per_page: 100 }),
-    octokit.repos
-      .listReleases({ owner, repo, per_page: 1 })
-      .catch(() => ({ data: [] as Array<{ published_at: string | null; created_at: string }> })),
+    octokit.repos.listReleases({ owner, repo, per_page: 1 }).catch((err: unknown) => {
+      // Rate-limit / auth failures must abort the run, same as every
+      // sibling fetch — under throttling, a blanket catch here would
+      // silently report "no releases" for the whole vet batch (#1373).
+      if (isRateLimitOrAuthError(err)) throw err;
+      const empty = { data: [] as Array<{ published_at: string | null; created_at: string }> };
+      // 404 is a definitive "nothing there" — genuine absence, not a gap.
+      if (getHttpStatusCode(err) === 404) return empty;
+      // 5xx / network: absence is unproven. Degrade gracefully but flag it.
+      releasesIncomplete = true;
+      warn(
+        MODULE,
+        `release listing for ${owner}/${repo} failed: ${errorMessage(err)} — release-recency signal is incomplete`,
+      );
+      return empty;
+    }),
     checkCommunityHealth(octokit, owner, repo),
   ]);
 
@@ -246,15 +265,20 @@ export async function runRepoVet(options: { repo: string }): Promise<RepoVetOutp
 
   // The core function names its metadata object `repo`. Rename to `repoMeta`
   // at the CLI boundary so the top-level slug doesn't collide with it.
-  // Also overlay the community-health `incomplete` flag the wrapper
-  // tracks (the core type doesn't carry it because computeRepoVet is
-  // pure — only the wrapper makes the API calls that can fail mid-probe).
-  const { repo: repoMeta, communityHealth, ...rest } = result;
+  // Also overlay the community-health `incomplete` and the
+  // `releasesIncomplete` flags the wrapper tracks (the core type doesn't
+  // carry them because computeRepoVet is pure — only the wrapper makes
+  // the API calls that can fail mid-probe). Like communityHealth's
+  // incomplete flag, releasesIncomplete deliberately does NOT alter the
+  // rubric score — the score reflects the fetched signals as-is and the
+  // flag tells consumers which signal was unverified.
+  const { repo: repoMeta, communityHealth, maintainerActivity, ...rest } = result;
   return {
     repoSlug: options.repo,
     fetchedAt: now.toISOString(),
     repoMeta,
     communityHealth: { ...communityHealth, incomplete: communityHealthSummary.incomplete },
+    maintainerActivity: { ...maintainerActivity, releasesIncomplete },
     ...rest,
   };
 }
