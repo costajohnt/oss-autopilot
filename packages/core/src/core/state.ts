@@ -32,7 +32,7 @@ import { debug, warn } from './logger.js';
 import { errorMessage, ConfigurationError, ConcurrencyError, isTransientNetworkError } from './errors.js';
 import { GistStateStore, type OctokitLike } from './gist-state-store.js';
 import * as guidelinesStoreModule from './guidelines-store.js';
-import { getStatePath, getStateCachePath } from './paths.js';
+import { getStatePath, getStateCachePath, getGistIdPath } from './paths.js';
 import { parseGitHubUrl } from './urls.js';
 
 export { acquireLock, releaseLock, atomicWriteFileSync } from './state-persistence.js';
@@ -1131,13 +1131,24 @@ export async function ensureGistPersistence(token: string | null): Promise<GistP
     const raw = fs.readFileSync(getStatePath(), 'utf8');
     persistence = JSON.parse(raw)?.config?.persistence;
   } catch (err) {
-    // A missing file is the genuine "fresh local-mode user" case. Anything
-    // else (EACCES, EMFILE, corrupt JSON) must not be silently classified
-    // as a local-mode CHOICE — that would re-create the #1415 latch through
-    // a third door when the caller memoizes the answer.
-    if ((err as { code?: unknown }).code === 'ENOENT') return 'local-mode';
-    warn(MODULE, `State file unreadable during gist-persistence check (will retry): ${errorMessage(err)}`);
-    return 'state-unreadable';
+    // Anything other than a missing file (EACCES, EMFILE, corrupt JSON) must
+    // not be silently classified as a local-mode CHOICE — that would
+    // re-create the #1415 latch through a third door when the caller
+    // memoizes the answer.
+    if ((err as { code?: unknown }).code !== 'ENOENT') {
+      warn(MODULE, `State file unreadable during gist-persistence check (will retry): ${errorMessage(err)}`);
+      return 'state-unreadable';
+    }
+    // A missing state.json is NOT proof of local mode either (#1438): the
+    // first-time Gist migration renames state.json away, and gist-mode
+    // saves only ever write state-cache.json — so on the machine that
+    // created the Gist this peek is all that stands between the user and a
+    // silent fall back to fresh local state. Consult the gist-side
+    // artifacts before concluding "fresh local-mode user".
+    const fallback = peekGistArtifacts();
+    if (fallback === 'local') return 'local-mode';
+    if (fallback === 'unreadable') return 'state-unreadable';
+    persistence = 'gist';
   }
 
   if (persistence !== 'gist') return 'local-mode';
@@ -1148,6 +1159,35 @@ export async function ensureGistPersistence(token: string | null): Promise<GistP
   if (!token) return 'no-token';
   const mgr = await getStateManagerAsync(token);
   return mgr.isGistMode() ? 'gist' : 'degraded';
+}
+
+/**
+ * Decide persistence mode when `state.json` is absent (#1438).
+ *
+ * The local state cache is written by every successful Gist fetch and by
+ * first-time Gist creation, and carries the synced config; the gist-id file
+ * is written whenever a Gist is created or discovered. Either one identifies
+ * a gist-configured machine whose `state.json` was renamed away by the
+ * first-time migration — NOT a fresh local-mode install. A cache whose
+ * config explicitly says non-gist wins over the gist-id file: it reflects
+ * the most recent synced choice.
+ */
+function peekGistArtifacts(): 'gist' | 'local' | 'unreadable' {
+  try {
+    const raw = fs.readFileSync(getStateCachePath(), 'utf8');
+    return JSON.parse(raw)?.config?.persistence === 'gist' ? 'gist' : 'local';
+  } catch (err) {
+    if ((err as { code?: unknown }).code !== 'ENOENT') {
+      warn(MODULE, `State cache unreadable during gist-persistence check (will retry): ${errorMessage(err)}`);
+      return 'unreadable';
+    }
+  }
+  try {
+    return fs.existsSync(getGistIdPath()) ? 'gist' : 'local';
+  } catch (err) {
+    warn(MODULE, `Gist ID check failed during gist-persistence check (will retry): ${errorMessage(err)}`);
+    return 'unreadable';
+  }
 }
 
 /**
