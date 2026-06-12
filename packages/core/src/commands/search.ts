@@ -164,9 +164,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
         // Scout 1.0 folded the boostScore/boostReasons/diversitySlot trio into a
         // single `personalization` field (#158). Derive the flat output fields
         // from it so this command's JSON shape is unchanged.
-        ...(c.personalization?.kind === 'boosted'
-          ? { boostScore: c.personalization.score }
-          : {}),
+        ...(c.personalization?.kind === 'boosted' ? { boostScore: c.personalization.score } : {}),
         ...(c.personalization?.kind === 'boosted' && c.personalization.reasons.length > 0
           ? { boostReasons: c.personalization.reasons }
           : {}),
