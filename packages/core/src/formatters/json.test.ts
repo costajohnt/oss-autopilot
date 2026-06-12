@@ -705,6 +705,9 @@ describe('Misc command schemas (#1155)', () => {
   it('InitOutputSchema round-trip + drift', () => {
     expect(formatJson(InitOutputSchema, { username: 'foo', message: 'ok' }).success).toBe(true);
     expect(() => formatJson(InitOutputSchema, { username: 'foo' })).toThrow(/contract drift.*message/i);
+    // gistSyncWarning must survive validation, not get stripped (#1440)
+    const withWarning = formatJson(InitOutputSchema, { username: 'foo', message: 'ok', gistSyncWarning: 'w' });
+    expect(withWarning.data).toHaveProperty('gistSyncWarning', 'w');
   });
 
   it('CheckSetupOutputSchema accepts both setupComplete states', () => {
@@ -717,6 +720,10 @@ describe('Misc command schemas (#1155)', () => {
 
   it('SetupOutputSchema accepts all three union variants', () => {
     expect(formatJson(SetupOutputSchema, { success: true, settings: { a: 'b' } }).success).toBe(true);
+    // gistSyncWarning must survive validation, not get stripped (#1440)
+    expect(
+      formatJson(SetupOutputSchema, { success: true, settings: { a: 'b' }, gistSyncWarning: 'w' }).data,
+    ).toHaveProperty('gistSyncWarning', 'w');
     expect(
       formatJson(SetupOutputSchema, {
         setupComplete: true,
@@ -741,6 +748,10 @@ describe('Misc command schemas (#1155)', () => {
     expect(formatJson(ConfigCommandOutputSchema, { config: { foo: 'bar' } }).success).toBe(true);
     expect(formatJson(ConfigCommandOutputSchema, { success: true, key: 'k', value: 'v' }).success).toBe(true);
     expect(formatJson(ConfigCommandOutputSchema, { keys: [{ key: 'a' }] }).success).toBe(true);
+    // gistSyncWarning must survive validation, not get stripped (#1440)
+    expect(
+      formatJson(ConfigCommandOutputSchema, { success: true, key: 'k', value: 'v', gistSyncWarning: 'w' }).data,
+    ).toHaveProperty('gistSyncWarning', 'w');
   });
 
   it('MoveOutputSchema round-trip + drift on target enum', () => {

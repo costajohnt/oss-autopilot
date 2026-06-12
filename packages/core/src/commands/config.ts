@@ -3,11 +3,19 @@
  * Shows or updates configuration
  */
 
-import { CONFIG_KEY_REGISTRY, type ConfigKeyDef, formatUnknownKeyError, getStateManager } from '../core/index.js';
+import {
+  CONFIG_KEY_REGISTRY,
+  type ConfigKeyDef,
+  formatUnknownKeyError,
+  getStateManager,
+  maybeCheckpoint,
+} from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { ISSUE_SCOPES, type IssueScope, DIFF_TOOLS, type DiffTool } from '../core/types.js';
 import type { ConfigOutput } from '../formatters/json.js';
 import { validateGitHubUsername } from './validation.js';
+
+const MODULE = 'config';
 
 interface ConfigOptions {
   key?: string;
@@ -19,6 +27,8 @@ export interface ConfigSetOutput {
   success: true;
   key: string;
   value: string;
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1440). */
+  gistSyncWarning?: string;
 }
 
 export interface ConfigListKeysOutput {
@@ -218,5 +228,9 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
     }
   }
 
-  return { success: true, key: options.key, value };
+  // Push the config mutation to the Gist in gist mode (no-op locally).
+  // Without this the change only hits the local cache and the next
+  // bootstrap reverts it from the Gist (#1440).
+  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+  return { success: true, key: options.key, value, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
 }

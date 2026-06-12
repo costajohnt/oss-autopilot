@@ -6,12 +6,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../core/index.js', () => ({
   getStateManager: vi.fn(),
+  maybeCheckpoint: vi.fn().mockResolvedValue(null),
 }));
 
-import { getStateManager } from '../core/index.js';
+import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { runInit } from './init.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
+const mockMaybeCheckpoint = vi.mocked(maybeCheckpoint);
 
 describe('runInit', () => {
   const mockUpdateConfig = vi.fn();
@@ -66,5 +68,41 @@ describe('runInit', () => {
 
     expect(mockUpdateConfig).toHaveBeenCalledWith({ githubUsername: 'valid-user-name' });
     expect(result.username).toBe('valid-user-name');
+  });
+
+  describe('gist checkpoint (#1440)', () => {
+    it('calls maybeCheckpoint exactly once per successful init', async () => {
+      await runInit({ username: 'testuser' });
+
+      expect(mockMaybeCheckpoint).toHaveBeenCalledTimes(1);
+      expect(mockMaybeCheckpoint).toHaveBeenCalledWith(expect.anything(), 'init');
+    });
+
+    it('threads the checkpoint warning into gistSyncWarning when the Gist push fails', async () => {
+      const warning = 'Gist checkpoint push failed after retry; the local mutation is saved';
+      mockMaybeCheckpoint.mockResolvedValueOnce(warning);
+
+      const result = await runInit({ username: 'testuser' });
+
+      expect(result).toEqual({
+        username: 'testuser',
+        message: 'Username saved. Run `daily` to fetch your open PRs from GitHub.',
+        gistSyncWarning: warning,
+      });
+    });
+
+    it('omits gistSyncWarning entirely when the checkpoint succeeds', async () => {
+      mockMaybeCheckpoint.mockResolvedValueOnce(null);
+
+      const result = await runInit({ username: 'testuser' });
+
+      expect(result).not.toHaveProperty('gistSyncWarning');
+    });
+
+    it('does not checkpoint when username validation throws', async () => {
+      await expect(runInit({ username: '-invalid' })).rejects.toThrow();
+
+      expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+    });
   });
 });
