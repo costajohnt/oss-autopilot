@@ -30,10 +30,10 @@ oss-autopilot daily --json
 # Check PR status
 oss-autopilot status --json
 
-# Search for contributable issues
-oss-autopilot search "react" --json
+# Search for contributable issues (positional arg = max result count)
+oss-autopilot search 10 --json
 
-# Track a new PR
+# Fetch PR metadata (informational only — nothing persists)
 oss-autopilot track https://github.com/owner/repo/pull/123
 
 # View help

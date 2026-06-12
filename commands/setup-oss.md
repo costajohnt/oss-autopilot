@@ -1,7 +1,7 @@
 ---
 name: setup-oss
 description: Configure OSS autopilot preferences
-allowed-tools: Bash, Write, Read, Glob, mcp__plugin_oss-autopilot_*
+allowed-tools: Bash, Write, Read, Glob, AskUserQuestion, mcp__plugin_oss-autopilot_*
 ---
 
 # OSS Autopilot Setup
@@ -277,7 +277,7 @@ Show summary:
 - Run `/oss-help` for a full reference card of commands and agents
 
 ### Optional Enhancement
-- **Enhanced code review**: Install the `pr-review-toolkit` plugin for parallel specialized code review (5 agents instead of 1). Search for it in the plugin marketplace. The built-in pre-commit reviewer works without it.
+- **Enhanced code review**: Install the `pr-review-toolkit` plugin for parallel specialized code review (5 agents instead of 1, plus a conditional type-design-analyzer for TypeScript diffs). Search for it in the plugin marketplace. The built-in pre-commit reviewer works without it.
 ```
 
 **Note:** The `squashByDefault` setting is stored in `~/.oss-autopilot/state.json` config and can be changed via `config squashByDefault VALUE` or `setup --set squashByDefault=VALUE`.
