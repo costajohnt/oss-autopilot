@@ -11,6 +11,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { runDaily, runComments, runSearch, MAX_SEARCH_RESULTS } from '@oss-autopilot/core/commands';
+import { ensureGistInit } from './tools.js';
 import { errorMessage, type PRCommentBundle } from '@oss-autopilot/core';
 
 /** Build a single-message prompt result with a user text message. */
@@ -38,6 +39,10 @@ export function registerPrompts(server: McpServer): void {
     },
     async () => {
       try {
+        // #1415: runDaily mutates state (digest, scores, checkpoint) — if a
+        // prompt is the FIRST interaction in a gist-configured process, the
+        // writes must not silently land in a lazily created local manager.
+        await ensureGistInit();
         const data = await runDaily();
         return userMessage(
           `Here is my current OSS contribution status. Help me triage and prioritize:\n\n${data.summary}\n\nActionable issues:\n${JSON.stringify(data.actionableIssues, null, 2)}\n\nFull data:\n${JSON.stringify(data.digest, null, 2)}`,
@@ -65,6 +70,7 @@ export function registerPrompts(server: McpServer): void {
     },
     async ({ prUrl }) => {
       try {
+        await ensureGistInit();
         const data = await runComments({ prUrl });
         return userMessage(
           `Help me respond to this pull request:\n\nPR: ${data.pr.title} (${data.pr.url})\nState: ${data.pr.state}\n\nReviews:\n${JSON.stringify(data.reviews, null, 2)}\n\nInline comments:\n${JSON.stringify(data.reviewComments, null, 2)}\n\nDiscussion:\n${JSON.stringify(data.issueComments, null, 2)}\n\nPlease help me draft a thoughtful response addressing the feedback.`,
@@ -91,6 +97,7 @@ export function registerPrompts(server: McpServer): void {
         let capped = maxResults ?? 5;
         if (!Number.isInteger(capped) || capped < 1) capped = 5;
         if (capped > MAX_SEARCH_RESULTS) capped = MAX_SEARCH_RESULTS;
+        await ensureGistInit();
         const data = await runSearch({ maxResults: capped });
         const candidateList = data.candidates
           .map(

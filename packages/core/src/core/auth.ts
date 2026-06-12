@@ -18,6 +18,22 @@ let cachedGitHubToken: string | null = null;
 let tokenFetchAttempted = false;
 
 /**
+ * A `gh auth token` spawn that timed out is transient (#1415): the CLI is
+ * installed and may answer on the next call (slow disk, machine waking,
+ * momentary load). Everything else is definitive for the process lifetime —
+ * ENOENT (gh not installed) and a non-zero exit (not authenticated) will not
+ * change without user action, so those still latch `tokenFetchAttempted`.
+ * The async execFile timeout surfaces as `killed: true` (signal SIGTERM);
+ * the sync execFileSync timeout surfaces as `code: 'ETIMEDOUT'` (no
+ * `killed` property) — both arms are load-bearing, one per path.
+ */
+function isTransientTokenFetchError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { killed?: unknown; code?: unknown };
+  return e.killed === true || e.code === 'ETIMEDOUT';
+}
+
+/**
  * Retrieves a GitHub authentication token, checking sources in priority order.
  *
  * Checks `GITHUB_TOKEN` environment variable first, then falls back to `gh auth token`
@@ -35,8 +51,6 @@ export function getGitHubToken(): string | null {
     return null;
   }
 
-  tokenFetchAttempted = true;
-
   if (process.env.GITHUB_TOKEN) {
     cachedGitHubToken = process.env.GITHUB_TOKEN;
     return cachedGitHubToken;
@@ -49,15 +63,22 @@ export function getGitHubToken(): string | null {
       timeout: 2000,
     }).trim();
 
+    // Definitive outcome (a token, or authoritatively none) — latch.
+    tokenFetchAttempted = true;
     if (token && token.length > 0) {
       cachedGitHubToken = token;
       debug(MODULE, 'Using GitHub token from gh CLI');
       return cachedGitHubToken;
     }
   } catch (err) {
-    // Promote to warn-once-per-session so a slow `gh` (2s timeout) or a
-    // misconfigured CLI is visible without DEBUG=1 (#1209 L6). The
-    // tokenFetchAttempted cache means subsequent calls don't re-warn.
+    // Latch only on definitive failures (#1415): a timeout must not
+    // permanently disable token fetch for a long-lived process (the MCP
+    // server), or gist-mode mutations silently degrade to local-only for
+    // the process lifetime. Promote to warn so a slow `gh` (2s timeout) or
+    // a misconfigured CLI is visible without DEBUG=1 (#1209 L6).
+    if (!isTransientTokenFetchError(err)) {
+      tokenFetchAttempted = true;
+    }
     warn(
       MODULE,
       `gh auth token failed (CLI unavailable or not authenticated): ${err instanceof Error ? err.message : String(err)}`,
@@ -118,8 +139,6 @@ export async function getGitHubTokenAsync(): Promise<string | null> {
     return null;
   }
 
-  tokenFetchAttempted = true;
-
   if (process.env.GITHUB_TOKEN) {
     cachedGitHubToken = process.env.GITHUB_TOKEN;
     return cachedGitHubToken;
@@ -136,13 +155,19 @@ export async function getGitHubTokenAsync(): Promise<string | null> {
       });
     });
 
+    // Definitive outcome (a token, or authoritatively none) — latch.
+    tokenFetchAttempted = true;
     if (token && token.length > 0) {
       cachedGitHubToken = token;
       debug(MODULE, 'Using GitHub token from gh CLI (async)');
       return cachedGitHubToken;
     }
   } catch (err) {
-    // Same warn-once promotion as the sync version (#1209 L6).
+    // Same transient/definitive split and warn promotion as the sync
+    // version (#1415, #1209 L6).
+    if (!isTransientTokenFetchError(err)) {
+      tokenFetchAttempted = true;
+    }
     warn(
       MODULE,
       `gh auth token failed (CLI unavailable or not authenticated): ${err instanceof Error ? err.message : String(err)}`,

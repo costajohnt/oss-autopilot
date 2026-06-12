@@ -1044,12 +1044,26 @@ export function getStateManager(): StateManager {
  * StateManager and Gist checkpoints will be no-ops.
  */
 export async function getStateManagerAsync(token?: string): Promise<StateManager> {
-  if (stateManager) return stateManager;
+  // #1415: a LOCAL-mode singleton does not short-circuit when a token is
+  // provided. The only token-bearing caller is ensureGistPersistence, which
+  // already verified the config says `persistence: gist` — so a local
+  // singleton here means a previous transient init failure fell back (or a
+  // tool body lazily created the local manager before auth resolved), and
+  // this call is the retry that must be allowed to upgrade it. The old
+  // unconditional early return made every retry a dead no-op, permanently
+  // latching gist-configured processes into silent local-only writes.
+  if (stateManager && (!token || stateManager.isGistMode())) return stateManager;
   if (asyncManagerPromise) return asyncManagerPromise;
 
   if (token) {
     asyncManagerPromise = StateManager.createWithGist(token)
       .then((mgr) => {
+        // Upgrade note: replacing a transient-fallback local singleton fixes
+        // FUTURE operations. Mutations made during the degraded window stay
+        // in the local state.json only — when a Gist already exists they are
+        // NOT merged into it by this upgrade (bootstrapWithMigration seeds a
+        // Gist from local state only on first creation). The per-call MCP
+        // warning is the signal that those writes were at risk.
         stateManager = mgr;
         asyncManagerPromise = null;
         return mgr;
@@ -1066,6 +1080,9 @@ export async function getStateManagerAsync(token?: string): Promise<StateManager
         // would write subsequent mutations to the local file while the Gist
         // marker stays in config, causing permanent cross-machine divergence.
         if (!isTransientNetworkError(err)) throw err;
+        // Intentional CLI semantics: a one-shot process warns and proceeds
+        // local-only. Long-lived callers (MCP) detect this via the
+        // ensureGistPersistence return status and retry on later calls.
         warn(MODULE, `Gist initialization failed (transient network error), falling back to local-only mode: ${err}`);
         return getStateManager();
       });
@@ -1093,21 +1110,44 @@ export async function getStateManagerAsync(token?: string): Promise<StateManager
  * // CLI bootstrap
  * await ensureGistPersistence(token);
  */
-export async function ensureGistPersistence(token: string | null): Promise<void> {
-  if (!token) return;
+export type GistPersistenceStatus =
+  /** No state file yet, or config does not request gist mode. */
+  | 'local-mode'
+  /** The state file exists but could not be read/parsed for this attempt
+   * (permissions, transient FS error, corrupt JSON). Callers must NOT
+   * memoize this as "local mode chosen" — a later attempt may succeed. */
+  | 'state-unreadable'
+  /** Gist mode is configured but no token was available for this attempt. */
+  | 'no-token'
+  /** Gist mode active: the singleton is gist-backed. */
+  | 'gist'
+  /** Gist mode is configured and a token was available, but init fell back
+   * to local-only (transient network failure). A later call may recover. */
+  | 'degraded';
 
+export async function ensureGistPersistence(token: string | null): Promise<GistPersistenceStatus> {
   let persistence: string | undefined;
   try {
     const raw = fs.readFileSync(getStatePath(), 'utf8');
     persistence = JSON.parse(raw)?.config?.persistence;
-  } catch {
-    // No state file or unreadable — stay in local mode
-    return;
+  } catch (err) {
+    // A missing file is the genuine "fresh local-mode user" case. Anything
+    // else (EACCES, EMFILE, corrupt JSON) must not be silently classified
+    // as a local-mode CHOICE — that would re-create the #1415 latch through
+    // a third door when the caller memoizes the answer.
+    if ((err as { code?: unknown }).code === 'ENOENT') return 'local-mode';
+    warn(MODULE, `State file unreadable during gist-persistence check (will retry): ${errorMessage(err)}`);
+    return 'state-unreadable';
   }
 
-  if (persistence === 'gist') {
-    await getStateManagerAsync(token);
-  }
+  if (persistence !== 'gist') return 'local-mode';
+  // #1415: report the distinction the MCP layer needs — "gist configured but
+  // token missing" and "init fell back to local" both mean the process is
+  // NOT writing to the Gist despite the config saying it should, and a
+  // long-lived caller must keep retrying instead of memoizing the outcome.
+  if (!token) return 'no-token';
+  const mgr = await getStateManagerAsync(token);
+  return mgr.isGistMode() ? 'gist' : 'degraded';
 }
 
 /**

@@ -76,27 +76,63 @@ const configKeySchema = KNOWN_CONFIG_KEYS.length > 0 ? z.enum(KNOWN_CONFIG_KEYS 
 
 /** One-shot Gist persistence activation (memoized per process, #1368). */
 let gistInitPromise: Promise<void> | null = null;
-async function ensureGistInit(): Promise<void> {
+/** Non-null while the process is in gist-configured-but-local-only mode
+ * (#1415). The CAUSE is stored; the warning prose is rendered at the edge. */
+type GistDegradedCause = 'no-token' | 'degraded' | 'state-unreadable';
+let gistDegradedCause: GistDegradedCause | null = null;
+
+function gistWarningText(cause: GistDegradedCause): string {
+  const reason =
+    cause === 'no-token'
+      ? 'no GitHub token was available'
+      : cause === 'state-unreadable'
+        ? 'the state file was unreadable'
+        : 'initialization hit a transient network failure';
+  return (
+    `Gist persistence is configured but ${reason}; writes are LOCAL-ONLY and may be ` +
+    'overwritten by the next successful Gist read. Will retry on the next tool call.'
+  );
+}
+
+export async function ensureGistInit(): Promise<GistDegradedCause | null> {
   // Memoize the in-flight promise instead of flipping a boolean up front:
   // the old flag was set before the awaits, so one transient failure (token
   // fetch, network) permanently skipped Gist init for the process and
   // gist-mode mutations silently landed in local state only (#1368).
-  // Failure clears the memo so the next tool call retries; success stays
-  // memoized; concurrent first calls share the same promise.
+  // Rejection clears the memo so the next tool call retries; so does a
+  // DEGRADED resolution (#1415) — both cited transient modes (token-fetch
+  // timeout, network blip during Gist bootstrap) RESOLVE rather than reject
+  // (auth returns null, getStateManagerAsync warn-and-falls-back), so
+  // rejection-only retry was dead code. Success stays memoized; concurrent
+  // first calls share the same promise.
   if (!gistInitPromise) {
     gistInitPromise = (async () => {
-      // Gist init errors (GistPermissionError, network) propagate to wrapTool's catch.
+      // Hard Gist init errors (GistPermissionError etc.) propagate to wrapTool's catch.
       // Shared helper in core unifies the "peek at state file, check persistence mode,
       // pre-set singleton" logic that was previously duplicated with cli.ts (#1000).
       const { ensureGistPersistence, getGitHubTokenAsync } = await import('@oss-autopilot/core');
       const token = await getGitHubTokenAsync();
-      await ensureGistPersistence(token);
+      const status = await ensureGistPersistence(token);
+      if (status === 'degraded' || status === 'no-token' || status === 'state-unreadable') {
+        gistDegradedCause = status;
+        console.error(`[MCP] ${gistWarningText(status)}`);
+        // Clear the memo so the NEXT tool call re-runs init end to end —
+        // a process that COULD reach the Gist after a blip must eventually
+        // do so (getStateManagerAsync allows the singleton upgrade).
+        gistInitPromise = null;
+      } else {
+        gistDegradedCause = null;
+      }
     })();
     gistInitPromise.catch(() => {
       gistInitPromise = null;
     });
   }
-  return gistInitPromise;
+  // Callers receive the cause OBSERVED BY THIS CALL'S init resolution —
+  // reading the module variable later would race a concurrent call's
+  // recovery and silently drop the warning from the one response whose
+  // mutation actually ran degraded (#1415).
+  return gistInitPromise.then(() => gistDegradedCause);
 }
 
 /** Standard MCP text content result. */
@@ -124,8 +160,19 @@ function err(e: unknown) {
 function wrapTool<A>(fn: (args: A) => Promise<unknown>): (args: A) => Promise<ReturnType<typeof ok | typeof err>> {
   return async (args: A) => {
     try {
-      await ensureGistInit();
-      return ok(await fn(args));
+      const degradedCause = await ensureGistInit();
+      const data = await fn(args);
+      // Degraded gist mode is surfaced IN the response (#1415), not just on
+      // stderr — the consuming agent must see that this mutation/read ran
+      // against local-only state. The cause snapshot from THIS call's init
+      // is used (not the module variable, which a concurrent recovery may
+      // have cleared by now). Object payloads get a warning field;
+      // non-object payloads pass through (every current tool returns an
+      // object or undefined).
+      if (degradedCause && data && typeof data === 'object' && !Array.isArray(data)) {
+        return ok({ ...(data as Record<string, unknown>), gistInitWarning: gistWarningText(degradedCause) });
+      }
+      return ok(data);
     } catch (e) {
       console.error('[MCP] Tool error:', e);
       return err(e);
