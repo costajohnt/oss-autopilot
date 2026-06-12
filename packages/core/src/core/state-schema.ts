@@ -55,6 +55,20 @@ export const StoredMergedPRSchema = z.object({
   url: z.string(),
   title: z.string(),
   mergedAt: z.string(),
+  /**
+   * When the PR was opened (#1461). Optional: entries persisted before the
+   * outcome ledger existed don't carry it. Sourced from the Search API's
+   * `created_at` at merge-detection time — zero extra API calls.
+   */
+  openedAt: z.string().optional(),
+  /**
+   * Earliest maintainer (non-bot, non-contributor) comment or review on the
+   * PR (#1461). Best-effort: only derivable when the PR was enriched while
+   * open (looked up from the previous run's persisted digest at detection
+   * time), so it is absent for PRs that merged before ever appearing in an
+   * enriched run.
+   */
+  firstMaintainerResponseAt: z.string().optional(),
   /** When the raw review-comment bundle for this PR was last fetched (#867). */
   // ISO-8601 datetime guards against `markPRCommentsFetched(url, "garbage")`
   // poisoning state through the stamping API (#1209 L4).
@@ -67,6 +81,13 @@ export const StoredClosedPRSchema = z.object({
   url: z.string(),
   title: z.string(),
   closedAt: z.string(),
+  /** When the PR was opened (#1461). See StoredMergedPRSchema.openedAt. */
+  openedAt: z.string().optional(),
+  /**
+   * Earliest maintainer response (#1461). See
+   * StoredMergedPRSchema.firstMaintainerResponseAt.
+   */
+  firstMaintainerResponseAt: z.string().optional(),
   /** When the raw review-comment bundle for this PR was last fetched (#867). */
   // ISO-8601 datetime guards against `markPRCommentsFetched(url, "garbage")`
   // poisoning state through the stamping API (#1209 L4).
@@ -316,6 +337,12 @@ export const ClosedPRSchema = z.object({
   title: z.string(),
   closedAt: z.string(),
   closedBy: z.string().optional(),
+  /**
+   * When the PR was opened (#1461). Carried from the Search API's
+   * `created_at` so close detection can persist it into the outcome ledger.
+   * Optional: digests persisted by older producers don't have it.
+   */
+  openedAt: z.string().optional(),
 });
 
 export const MergedPRSchema = z.object({
@@ -324,6 +351,12 @@ export const MergedPRSchema = z.object({
   number: z.number(),
   title: z.string(),
   mergedAt: z.string(),
+  /**
+   * When the PR was opened (#1461). Carried from the Search API's
+   * `created_at` so merge detection can persist it into the outcome ledger.
+   * Optional: digests persisted by older producers don't have it.
+   */
+  openedAt: z.string().optional(),
 });
 
 export const DailyDigestSummarySchema = z.object({
