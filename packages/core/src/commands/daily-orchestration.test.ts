@@ -946,6 +946,48 @@ describe('executeDailyCheck() — status overrides (#644)', () => {
     expect(result.capacity.criticalIssueCount).toBe(1); // only normalPR
   });
 
+  it('persists the RAW status in lastDigest while the categorized output reflects the override (#1445)', async () => {
+    const overriddenPR = makePR({
+      repo: 'owner/repo',
+      number: 1,
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+    });
+    mockFetchUserOpenPRs.mockResolvedValue({ prs: [overriddenPR], failures: [] });
+    mockIsPRShelved.mockReturnValue(false);
+
+    const override = {
+      status: 'waiting_on_maintainer',
+      setAt: '2026-01-20T00:00:00Z',
+      lastActivityAt: overriddenPR.updatedAt,
+    };
+    mockGetState.mockReturnValue(stateWithOverrides({ [overriddenPR.url]: override }));
+    setupOverrideMock(overriddenPR.url, override);
+    mockGenerateDigest.mockImplementation((prs: FetchedPR[]) => makeDigest(prs));
+
+    const result = await executeDailyCheck('test-token');
+
+    // The persisted digest carries the RAW status: applyStatusOverrides can
+    // apply overrides but never un-apply baked ones, so persisting the
+    // override-applied digest would make clearing an override a silent no-op
+    // on dashboard rebuilds (#1445).
+    expect(mockSetLastDigest).toHaveBeenCalledOnce();
+    const persisted = mockSetLastDigest.mock.calls[0][0] as DailyDigest;
+    const persistedPR = persisted.openPRs.find((p) => p.url === overriddenPR.url);
+    expect(persistedPR?.status).toBe('needs_addressing');
+    expect(persisted.needsAddressingPRs.map((p) => p.url)).toContain(overriddenPR.url);
+    expect(persisted.waitingOnMaintainerPRs).toHaveLength(0);
+
+    // The returned (categorized) output still reflects the override — daily's
+    // own view stays override-applied (#644). Category arrays are compact
+    // URL references after toDailyOutput (#287).
+    const outputPR = result.digest.openPRs.find((p) => p.url === overriddenPR.url);
+    expect(outputPR?.status).toBe('waiting_on_maintainer');
+    expect(result.digest.waitingOnMaintainerPRs).toContain(overriddenPR.url);
+    expect(result.digest.needsAddressingPRs).toHaveLength(0);
+    expect(result.actionableIssues.map((i) => i.prUrl)).not.toContain(overriddenPR.url);
+  });
+
   it('PR overridden to needs_addressing appears in actionable issues', async () => {
     const overriddenPR = makePR({
       repo: 'owner/repo',

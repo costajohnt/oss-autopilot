@@ -84,6 +84,14 @@ vi.mock('@oss-autopilot/core', () => ({
 
 import { createServer } from './server.js';
 
+// callTool's return type is a union whose legacy CompatibilityCallToolResult
+// arm types `content` as `unknown`; every tool in this suite returns text content.
+type ToolCallResult = Awaited<ReturnType<Client['callTool']>>;
+
+function firstTextContent(result: ToolCallResult): { type: string; text: string } {
+  return (result.content as Array<{ type: string; text: string }>)[0];
+}
+
 describe('tool execution', () => {
   let client: Client;
 
@@ -108,7 +116,7 @@ describe('tool execution', () => {
 
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
-      const content = result.content[0] as { type: string; text: string };
+      const content = firstTextContent(result);
       expect(content.type).toBe('text');
       const parsed = JSON.parse(content.text);
       expect(parsed.summary).toBe('All clear');
@@ -121,7 +129,7 @@ describe('tool execution', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content).toHaveLength(1);
-      const content = result.content[0] as { type: string; text: string };
+      const content = firstTextContent(result);
       expect(content.text).toContain('GitHub API rate limit');
     });
   });
@@ -146,7 +154,7 @@ describe('tool execution', () => {
       });
 
       expect(result.isError).toBe(true);
-      const content = result.content[0] as { type: string; text: string };
+      const content = firstTextContent(result);
       expect(content.text).toMatch(/maxresults/i);
     });
 
@@ -157,7 +165,7 @@ describe('tool execution', () => {
       });
 
       expect(result.isError).toBe(true);
-      const content = result.content[0] as { type: string; text: string };
+      const content = firstTextContent(result);
       // Zod's structured error payload surfaces the field name.
       expect(content.text).toMatch(/maxresults/i);
     });
@@ -169,7 +177,7 @@ describe('tool execution', () => {
       });
 
       expect(result.isError).toBe(true);
-      const content = result.content[0] as { type: string; text: string };
+      const content = firstTextContent(result);
       expect(content.text).toMatch(/maxresults/i);
     });
   });
@@ -219,7 +227,7 @@ describe('tool execution', () => {
         issueUrl: 'https://github.com/octocat/hello-world/issues/7',
       });
       expect(result.isError).toBeFalsy();
-      const content = result.content[0] as { type: string; text: string };
+      const content = firstTextContent(result);
       expect(JSON.parse(content.text)).toEqual({ verdict: 'available' });
     });
 
@@ -252,7 +260,7 @@ describe('tool execution', () => {
 
       expect(result.isError).toBeFalsy();
       expect(mockRunGuidelinesList).toHaveBeenCalledOnce();
-      const content = result.content[0] as { type: string; text: string };
+      const content = firstTextContent(result);
       const parsed = JSON.parse(content.text);
       expect(parsed.repos).toEqual(['owner/repo-a', 'owner/repo-b']);
       expect(parsed.count).toBe(2);
@@ -284,7 +292,7 @@ describe('tool execution', () => {
         arguments: { repo: 'not-a-repo' },
       });
       expect(result.isError).toBe(true);
-      const content = result.content[0] as { type: string; text: string };
+      const content = firstTextContent(result);
       expect(content.text).toMatch(/owner\/repo/i);
     });
   });
@@ -307,7 +315,7 @@ describe('tool execution', () => {
         arguments: { repo: 'owner/repo', content: '' },
       });
       expect(result.isError).toBe(true);
-      const content = result.content[0] as { type: string; text: string };
+      const content = firstTextContent(result);
       expect(content.text).toMatch(/content/i);
     });
 
@@ -318,7 +326,7 @@ describe('tool execution', () => {
         arguments: { repo: 'owner/repo', content: oversized },
       });
       expect(result.isError).toBe(true);
-      const content = result.content[0] as { type: string; text: string };
+      const content = firstTextContent(result);
       expect(content.text).toMatch(/8\s*KB|content/i);
     });
   });
@@ -373,7 +381,7 @@ describe('tool execution', () => {
         arguments: { repo: 'owner/repo', limit: 50 },
       });
       expect(result.isError).toBe(true);
-      const content = result.content[0] as { type: string; text: string };
+      const content = firstTextContent(result);
       expect(content.text).toMatch(/limit/i);
     });
 
@@ -386,7 +394,7 @@ describe('tool execution', () => {
       });
 
       expect(result.isError).toBe(true);
-      const content = result.content[0] as { type: string; text: string };
+      const content = firstTextContent(result);
       expect(content.text).toContain('GitHub rate limit exceeded');
     });
   });
