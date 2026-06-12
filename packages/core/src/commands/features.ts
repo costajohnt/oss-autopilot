@@ -82,7 +82,11 @@ function toFeaturesCandidate(
   // this repo" rather than a fabricated score.
   const grade = gradeFromCandidate({
     repo: scoutCandidate.issue.repo,
-    projectHealth: { avgIssueResponseDays: null, daysSinceLastCommit: null, checkFailed: true },
+    projectHealth: {
+      repo: scoutCandidate.issue.repo,
+      checkFailed: true,
+      failureReason: 'health not fetched on the multi-issue feature surface',
+    },
     getRepoScore: (repo) => {
       const score = getState.getRepoScore(repo);
       return score
