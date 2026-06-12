@@ -500,6 +500,7 @@ function partitionPRs(
 
   // Wrap mutations in batch: unshelvePR calls + setLastDigest produce a single save.
   // Outer try-catch: save failure should not crash the daily check (in-memory mutations still apply).
+  let digest: DailyDigest | undefined;
   try {
     stateManager.batch(() => {
       for (const pr of overriddenPRs) {
@@ -520,27 +521,38 @@ function partitionPRs(
         }
       }
 
-      // Generate digest from override-applied PRs so status categories are correct.
+      // Generate the in-memory digest from override-applied PRs so daily's own
+      // status categories (needsAddressing/waiting partitions, counts, JSON
+      // output) reflect dashboard/CLI reclassifications.
       // Note: digest.openPRs contains ALL fetched PRs (including shelved).
       // We override summary fields below to reflect active-only counts.
-      const digest = prMonitor.generateDigest(overriddenPRs, recentlyClosedPRs, recentlyMergedPRs);
+      digest = prMonitor.generateDigest(overriddenPRs, recentlyClosedPRs, recentlyMergedPRs);
 
       // Attach shelve info to digest
       digest.shelvedPRs = shelvedPRs;
       digest.autoUnshelvedPRs = autoUnshelvedPRs;
       digest.summary.totalActivePRs = activePRs.length;
 
-      // Store digest in state so dashboard can render it
-      stateManager.setLastDigest(digest);
+      // The PERSISTED digest keeps RAW statuses (#1445): it seeds the
+      // dashboard server's cached rebuild source, and applyStatusOverrides
+      // can only apply overrides, never un-apply baked ones — persisting the
+      // override-applied digest would make CLEARING an override (move
+      // target=auto) a silent no-op whenever the dashboard's background
+      // refresh fails. Mirrors the raw-digest contract in dashboard-data.ts
+      // (which also attaches override-derived shelve info to a raw digest).
+      const rawDigest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);
+      rawDigest.shelvedPRs = shelvedPRs;
+      rawDigest.autoUnshelvedPRs = autoUnshelvedPRs;
+      rawDigest.summary.totalActivePRs = activePRs.length;
+      stateManager.setLastDigest(rawDigest);
     });
   } catch (error) {
     recordWarning(warnings, 'partition', 'persist partition state', error);
   }
 
-  // Digest was created inside batch — reconstruct from state
-  const digest = stateManager.getState().lastDigest!;
-
-  return { activePRs, shelvedPRs, autoUnshelvedPRs, digest };
+  // If digest generation threw inside the batch, fall back to the persisted
+  // digest (mirrors the previous read-back-from-state behavior).
+  return { activePRs, shelvedPRs, autoUnshelvedPRs, digest: digest ?? stateManager.getState().lastDigest! };
 }
 
 /**

@@ -232,12 +232,13 @@ export function computeStrategy(state: AgentState): StrategyResult | null {
   // digest). The DailyDigest schema does not store a `dormantCount`
   // directly — derive it from the "awaiting maintainer review" bucket.
   //
-  // Status-basis reconciliation (#1416): dashboard-written digests keep RAW
+  // Status-basis reconciliation (#1416): persisted digests keep RAW
   // statuses in `openPRs` (so override CLEARS stay visible on rebuild) while
-  // `summary.totalActivePRs` is override-basis. Re-derive the waiting bucket
-  // from `openPRs` through the override map so both capacity inputs share
-  // one basis; fall back to the stored array for digests without `openPRs`
-  // (which daily.ts builds post-override anyway).
+  // `summary.totalActivePRs` is override-basis. Daily-written digests honor
+  // the same raw-status contract as dashboard-written ones (#1445).
+  // Re-derive the waiting bucket from `openPRs` through the override map so
+  // both capacity inputs share one basis; fall back to the stored array for
+  // digests without `openPRs` (legacy persisted states only).
   const summary = state.lastDigest?.summary;
   const openPRCount = summary?.totalActivePRs ?? 0;
   const openPRs = (state.lastDigest?.openPRs ?? []) as Array<{ url?: unknown; status?: unknown; updatedAt?: unknown }>;
