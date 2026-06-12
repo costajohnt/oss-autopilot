@@ -9,6 +9,7 @@ vi.mock('../core/index.js', async () => {
   return {
     ...actual,
     getStateManager: vi.fn(),
+    maybeCheckpoint: vi.fn().mockResolvedValue(null),
     DEFAULT_CONFIG: {
       aiPolicyBlocklist: ['matplotlib/matplotlib'],
     },
@@ -19,11 +20,12 @@ vi.mock('./validation.js', () => ({
   validateGitHubUsername: vi.fn(),
 }));
 
-import { getStateManager } from '../core/index.js';
+import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { runSetup, runCheckSetup } from './setup.js';
 import type { SetupSetOutput, SetupRequiredOutput } from './setup.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
+const mockMaybeCheckpoint = vi.mocked(maybeCheckpoint);
 
 const DEFAULT_CONFIG = {
   githubUsername: 'testuser',
@@ -439,6 +441,57 @@ describe('runSetup', () => {
   });
 
   // scoreThreshold tests removed — field dropped in v3 schema
+
+  describe('gist checkpoint (#1440)', () => {
+    it('calls maybeCheckpoint exactly once per successful --set', async () => {
+      await runSetup({ set: ['username=newuser', 'maxActivePRs=5'] });
+
+      expect(mockMaybeCheckpoint).toHaveBeenCalledTimes(1);
+      expect(mockMaybeCheckpoint).toHaveBeenCalledWith(expect.anything(), 'setup');
+    });
+
+    it('threads the checkpoint warning into gistSyncWarning when the Gist push fails', async () => {
+      const warning = 'Gist checkpoint push failed after retry; the local mutation is saved';
+      mockMaybeCheckpoint.mockResolvedValueOnce(warning);
+
+      const result = (await runSetup({ set: ['username=newuser'] })) as SetupSetOutput;
+
+      expect(result.success).toBe(true);
+      expect(result.gistSyncWarning).toBe(warning);
+    });
+
+    it('omits gistSyncWarning entirely when the checkpoint succeeds', async () => {
+      mockMaybeCheckpoint.mockResolvedValueOnce(null);
+
+      const result = await runSetup({ set: ['username=newuser'] });
+
+      expect(result).not.toHaveProperty('gistSyncWarning');
+    });
+
+    it('does not checkpoint when showing setup status (no --set)', async () => {
+      await runSetup({});
+
+      expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+    });
+
+    it('does not checkpoint when returning setup prompts', async () => {
+      mockGetStateManager.mockReturnValue({
+        getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, setupComplete: false } }),
+        updateConfig: mockUpdateConfig,
+        batch: (fn: () => void) => fn(),
+      } as any);
+
+      await runSetup({});
+
+      expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+    });
+
+    it('does not checkpoint when --set validation throws', async () => {
+      await expect(runSetup({ set: ['unknownKey=value'] })).rejects.toThrow();
+
+      expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('runCheckSetup', () => {
