@@ -664,6 +664,41 @@ describe('executeDailyCheck() — repo score updates', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeDailyCheck() — error resilience', () => {
+  it('fails with a clear error (not a TypeError) when digest generation throws on a first-ever run (#1456)', async () => {
+    // No persisted lastDigest (first-ever run) and generateDigest throws:
+    // previously this fell through to `getState().lastDigest!` and died with
+    // an unrelated TypeError at `digest.summary` in Phase 5.
+    mockGenerateDigest.mockImplementation(() => {
+      throw new Error('digest exploded');
+    });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(executeDailyCheck('test-token')).rejects.toThrow(
+      /Daily digest generation failed and no previously persisted digest exists.*digest exploded/,
+    );
+    await expect(executeDailyCheck('test-token')).rejects.not.toBeInstanceOf(TypeError);
+    consoleSpy.mockRestore();
+  });
+
+  it('falls back to the persisted digest and records a partition warning when digest generation throws on a later run', async () => {
+    const persisted = makeDigest();
+    mockGetState.mockReturnValue(makeDefaultState({ lastDigest: persisted }));
+    mockGenerateDigest.mockImplementation(() => {
+      throw new Error('digest exploded');
+    });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.digest.generatedAt).toBe(persisted.generatedAt);
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ phase: 'partition', message: expect.stringContaining('digest exploded') }),
+      ]),
+    );
+    consoleSpy.mockRestore();
+  });
+
   it('surfaces gist-mode degradation in the warnings envelope (#1431)', async () => {
     // Config says gist, but this process's manager is local-only (transient
     // init fallback or a localOnly entry point). Previously the only signal

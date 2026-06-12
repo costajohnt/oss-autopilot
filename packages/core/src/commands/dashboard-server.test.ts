@@ -17,7 +17,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { DailyDigest } from '../core/types.js';
-import { makeAgentState as makeState, makeRepoScore } from '../core/test-utils.js';
+import { makeAgentState as makeState, makeFetchedPR, makeRepoScore } from '../core/test-utils.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 // ── Captured request handler ──────────────────────────────────────────
@@ -564,7 +564,7 @@ describe('dashboard-server', () => {
       // and buildDashboardJson derived shelvedPRUrls purely from the stale
       // digest.shelvedPRs — so a freshly-shelved PR never reached the SPA and
       // stayed in the active list.
-      const pr = {
+      const pr = makeFetchedPR({
         url: 'https://github.com/o/r/pull/7',
         number: 7,
         repo: 'o/r',
@@ -572,7 +572,7 @@ describe('dashboard-server', () => {
         status: 'waiting_on_maintainer',
         stalenessTier: 'active',
         daysSinceActivity: 2,
-      };
+      });
       const digest = makeDigest({ openPRs: [pr], shelvedPRs: [] });
       const state = makeState({
         config: { shelvedPRUrls: [pr.url] },
@@ -588,7 +588,7 @@ describe('dashboard-server', () => {
       // The mirror bug: a PR shelved earlier (baked into digest.shelvedPRs) that
       // the user unshelves via the SPA. runMove clears it from
       // state.config.shelvedPRUrls, but the stale baked entry kept it shelved.
-      const pr = {
+      const pr = makeFetchedPR({
         url: 'https://github.com/o/r/pull/8',
         number: 8,
         repo: 'o/r',
@@ -596,7 +596,7 @@ describe('dashboard-server', () => {
         status: 'waiting_on_maintainer',
         stalenessTier: 'active',
         daysSinceActivity: 2,
-      };
+      });
       const digest = makeDigest({
         openPRs: [pr],
         shelvedPRs: [
@@ -622,7 +622,7 @@ describe('dashboard-server', () => {
       // needs_addressing (CRITICAL_STATUSES). The dashboard partition must
       // agree immediately, or its headline count diverges from the CLI brief
       // until the next daily run — the exact class #1352 closes.
-      const pr = {
+      const pr = makeFetchedPR({
         url: 'https://github.com/o/r/pull/12',
         number: 12,
         repo: 'o/r',
@@ -630,7 +630,7 @@ describe('dashboard-server', () => {
         status: 'needs_addressing',
         stalenessTier: 'dormant',
         daysSinceActivity: 40,
-      };
+      });
       const digest = makeDigest({ openPRs: [pr], shelvedPRs: [] });
       const state = makeState({
         config: { shelvedPRUrls: [pr.url] },
@@ -646,7 +646,7 @@ describe('dashboard-server', () => {
     it('keeps a dormant-auto-shelved open PR shelved even when not in config', () => {
       // Reconciliation must not undo the dormant-auto-shelve rule: a dormant,
       // non-addressing PR stays shelved for display regardless of config.
-      const pr = {
+      const pr = makeFetchedPR({
         url: 'https://github.com/o/r/pull/9',
         number: 9,
         repo: 'o/r',
@@ -654,7 +654,7 @@ describe('dashboard-server', () => {
         status: 'waiting_on_maintainer',
         stalenessTier: 'dormant',
         daysSinceActivity: 60,
-      };
+      });
       const digest = makeDigest({
         openPRs: [pr],
         shelvedPRs: [

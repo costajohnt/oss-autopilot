@@ -12,7 +12,7 @@
  * extraction is the host's responsibility.
  */
 import type { Octokit } from '@octokit/rest';
-import { paginateAll } from './pagination.js';
+import { paginateAllDetailed } from './pagination.js';
 import { wrapUntrustedContent } from './untrusted-content.js';
 import { isBotAuthor } from './comment-utils.js';
 import { parseGitHubUrl } from './urls.js';
@@ -67,6 +67,13 @@ export interface PRCommentBundle {
   reviews: PRReviewEntry[];
   reviewComments: PRReviewCommentEntry[];
   issueComments: PRIssueCommentEntry[];
+  /**
+   * Set to true when any of the three comment streams hit the pagination
+   * cap (#1456). These endpoints return oldest-first, so a truncated bundle
+   * is missing the NEWEST reviewer voices — corpus consumers should treat
+   * the bundle as partial. Omitted when every stream fetched completely.
+   */
+  truncated?: boolean;
 }
 
 /**
@@ -86,12 +93,15 @@ export async function fetchPRCommentBundle(
   const { owner, repo, number: pull_number } = parsed;
   const repoFull = `${owner}/${repo}`;
 
-  // Fetch the PR + all three comment streams in parallel. We always fetch
-  // every page — corpus quality depends on having every reviewer voice, not
-  // just the first 100 comments.
-  const [{ data: pr }, reviews, reviewComments, issueComments] = await Promise.all([
+  // Fetch the PR + all three comment streams in parallel. We fetch every
+  // page up to the pagination cap — corpus quality depends on having every
+  // reviewer voice, not just the first 100 comments. When a stream still
+  // truncates (1000+ entries), the bundle is flagged `truncated` so callers
+  // can surface the partial-corpus signal instead of silently dropping the
+  // newest comments (#1456).
+  const [{ data: pr }, reviewsResult, reviewCommentsResult, issueCommentsResult] = await Promise.all([
     octokit.pulls.get({ owner, repo, pull_number }),
-    paginateAll((page) =>
+    paginateAllDetailed((page) =>
       octokit.pulls.listReviews({
         owner,
         repo,
@@ -100,7 +110,7 @@ export async function fetchPRCommentBundle(
         page,
       }),
     ),
-    paginateAll((page) =>
+    paginateAllDetailed((page) =>
       octokit.pulls.listReviewComments({
         owner,
         repo,
@@ -109,7 +119,7 @@ export async function fetchPRCommentBundle(
         page,
       }),
     ),
-    paginateAll((page) =>
+    paginateAllDetailed((page) =>
       octokit.issues.listComments({
         owner,
         repo,
@@ -119,6 +129,13 @@ export async function fetchPRCommentBundle(
       }),
     ),
   ]);
+  const { items: reviews } = reviewsResult;
+  const { items: reviewComments } = reviewCommentsResult;
+  const { items: issueComments } = issueCommentsResult;
+  const truncated = reviewsResult.truncated || reviewCommentsResult.truncated || issueCommentsResult.truncated;
+  if (truncated) {
+    warn(MODULE, `Comment streams truncated at pagination cap for ${repoFull}#${pull_number}; bundle is partial`);
+  }
 
   const ownLogin = githubUsername.toLowerCase();
 
@@ -174,6 +191,7 @@ export async function fetchPRCommentBundle(
         body: fence(c.body ?? '', 'pr-issue-comment', c.user?.login ?? '', c.author_association ?? 'NONE'),
         createdAt: c.created_at ?? '',
       })),
+    ...(truncated ? { truncated: true } : {}),
   };
 }
 
