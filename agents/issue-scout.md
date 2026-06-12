@@ -185,10 +185,12 @@ If `gh` also fails, STOP and report.
 The composite score is **issue quality + repo quality + relationship modifiers**.
 
 - **Issue quality (0–5):** clarity + scope + competition.
-- **Repo quality (0–5):** condensed projection of the canonical health rubric in [`docs/repo-rubric.md`](../docs/repo-rubric.md) — activity, PR speed/merge rate, responsiveness, guidelines, stability. (Same rubric `repo-evaluator` uses, so two agents looking at the same repo produce comparable numbers.)
+- **Repo quality (0–5):** condensed projection of the canonical health rubric in [`docs/repo-scores.md` §Health score](../docs/repo-scores.md#health-score-theirs) — activity, PR speed/merge rate, responsiveness, guidelines, stability.
 - **Relationship modifiers:** merged PR here **+3**; starred **+2**; healthy open PR **+1**; dormant PR (20+ days) **−3**; PR closed without merge **−1**. A repo with a dormant PR should almost never be recommended unless the issue is exceptional.
 
-**Success likelihood grade (#858):** CLI returns `grade: {letter: 'A'|'B'|'C'|'F', reason}` in `vet --json`. Display verbatim — e.g. `A (~2-day avg response)`, `F (unresponsive maintainers)`. Algorithm and source: [`docs/repo-rubric.md` §Success Likelihood Grade](../docs/repo-rubric.md#success-likelihood-grade).
+**Two different 1–10 "repo scores" exist — do not present them as the same number.** The cached `repoScore` you surface from `search` / `status` is the **history score**: the user's own merge outcomes in that repo (`docs/repo-scores.md` §History score). `repo-evaluator`'s `repo-vet` computes the **health score**: the fresh weighted rubric over the repo's current public signals (`rubricScore` in its output). They diverge whenever repo health changed since the user's last merge there — a 9 history score does not imply a healthy repo today. When quoting a number, name which one it is. See [`docs/repo-scores.md`](../docs/repo-scores.md).
+
+**Success likelihood grade (#858):** CLI returns `grade: {letter: 'A'|'B'|'C'|'F', reason}` in `vet --json`. Display verbatim — e.g. `A (~2-day avg response)`, `F (unresponsive maintainers)`. Algorithm and source: [`docs/repo-scores.md` §Success Likelihood Grade](../docs/repo-scores.md#success-likelihood-grade).
 
 ## Output Format
 

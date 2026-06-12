@@ -135,6 +135,15 @@ export function deriveGradeSignals(params: {
  * End-to-end helper for vet callers: reads the repo score, derives
  * signals from a scout candidate, and returns the grade. Callers pass
  * the `projectHealth` straight through from `scout.vetIssue()`.
+ *
+ * Which "repo score" this grades from (#1465): the `getRepoScore` input is
+ * the cached HISTORY record (the user's own merge outcomes, see
+ * docs/repo-scores.md §History score) — NOT `repo-vet`'s fresh health
+ * rubric. The fresh side only enters through `projectHealth`, and only when
+ * scout actually fetched it: the `search` surface passes a `checkFailed`
+ * sentinel (health not fetched per candidate), so search grades purely from
+ * history-side signals, while `vet` re-grades with fresh health. Same letter
+ * scale, different inputs — the two surfaces can legitimately disagree.
  */
 export function gradeFromCandidate(params: {
   repo: string;

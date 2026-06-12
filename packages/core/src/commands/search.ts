@@ -117,6 +117,11 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
       // the autopilot-tracked repoScore. Candidates without a repoScore
       // receive 'F' — that's an honest signal for "we haven't seen this repo
       // before" rather than a fabricated score.
+      //
+      // Note (#1465): repoScore here is the cached HISTORY score (the user's
+      // own merge outcomes — docs/repo-scores.md §History score), so this
+      // grade reflects history only; `vet` later re-grades the same issue
+      // with freshly fetched repo health and can legitimately disagree.
       const grade = gradeFromCandidate({
         repo: c.issue.repo,
         projectHealth: {
