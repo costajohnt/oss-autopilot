@@ -82,6 +82,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
     getCLIVersion: vi.fn(() => '0.44.6'),
     applyStatusOverrides: vi.fn((prs: unknown[]) => prs),
     maybeCheckpoint: (...args: unknown[]) => mockMaybeCheckpoint(...args),
+    ensureGistPersistence: (...args: unknown[]) => mockEnsureGistPersistence(...args),
     // Real pure classifier + status set (#1352) so /api/data responses carry
     // genuine buckets and the shelve partition mirrors the daily check.
     classifyAttentionBucket: actual.classifyAttentionBucket,
@@ -124,6 +125,8 @@ vi.mock('./dashboard-data.js', async (importActual) => {
 const mockRunMove = vi.fn().mockResolvedValue({ url: '', target: 'shelved', description: 'done' });
 // Resolves null (no warning) by default; #1417 tests resolve a warning string.
 const mockMaybeCheckpoint = vi.fn().mockResolvedValue(null);
+// #1433 degraded-recovery tests resolve a status; default mirrors local mode.
+const mockEnsureGistPersistence = vi.fn().mockResolvedValue('local-mode');
 vi.mock('./move.js', () => ({
   VALID_TARGETS: ['attention', 'waiting', 'shelved', 'auto'],
   runMove: (...args: unknown[]) => mockRunMove(...args),
@@ -1218,6 +1221,103 @@ describe('dashboard-server', () => {
         vi.mocked(getGitHubToken).mockReturnValue(null as never);
         mockMaybeCheckpoint.mockResolvedValue(null);
         await resetPendingWarnings();
+      });
+
+      it('degraded gist mode: the LOCAL-ONLY banner rides partialFailures and recovery is attempted (#1433)', async () => {
+        // Config says gist, manager is local — the window where dashboard
+        // mutations are acknowledged then clobbered by the next pull.
+        const digest = makeDigest();
+        const degradedState = makeState({ config: { persistence: 'gist' }, lastDigest: digest });
+        mockStateManager.getState.mockReturnValue(degradedState);
+        try {
+          // No token: recovery cannot run, the banner must still show.
+          mockStateManager.reloadIfChanged.mockReturnValueOnce(true);
+          const result = await sendRequest('GET', '/api/data');
+          const body = JSON.parse(result.body);
+          expect(body.partialFailures?.some((m: string) => m.includes('LOCAL-ONLY'))).toBe(true);
+          expect(mockEnsureGistPersistence).not.toHaveBeenCalled();
+
+          // Token available: the request retries gist init; on success the
+          // banner clears in the same response.
+          vi.mocked(getGitHubToken).mockReturnValue('test-token');
+          mockEnsureGistPersistence.mockResolvedValueOnce('gist');
+          mockStateManager.isGistMode
+            .mockReturnValueOnce(false) // handler branch
+            .mockReturnValueOnce(false) // gistConfiguredButLocal pre-recovery
+            .mockReturnValue(true); // post-recovery
+          const recovered = await sendRequest('GET', '/api/data');
+          expect(mockEnsureGistPersistence).toHaveBeenCalledWith('test-token');
+          const recoveredBody = JSON.parse(recovered.body);
+          expect(recoveredBody.partialFailures?.some((m: string) => m.includes('LOCAL-ONLY'))).toBeFalsy();
+        } finally {
+          vi.mocked(getGitHubToken).mockReturnValue(null as never);
+          mockStateManager.isGistMode.mockReset();
+          mockStateManager.isGistMode.mockReturnValue(false);
+          mockEnsureGistPersistence.mockClear();
+          mockEnsureGistPersistence.mockResolvedValue('local-mode');
+          // Restore the default state and rebuild the cached payload so later
+          // tests don't see the degraded banner.
+          const cleanState = makeState({ lastDigest: makeDigest() });
+          mockStateManager.getState.mockReturnValue(cleanState);
+          mockStateManager.reloadIfChanged.mockReturnValueOnce(true);
+          await sendRequest('GET', '/api/data');
+        }
+      });
+
+      it('a refresh whose OWN recovery reverts degraded mutations still shows the loss notice (#1433 pass-2)', async () => {
+        const digest = makeDigest();
+        const degradedState = makeState({ config: { persistence: 'gist' }, lastDigest: digest });
+        mockStateManager.getState.mockReturnValue(degradedState);
+        // The recovery throttle is shared server state and an earlier test's
+        // attempt may have stamped it — jump past the 30s window.
+        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date('2030-01-01T00:00:00Z').getTime());
+        try {
+          // A mutation lands while degraded (no token, recovery impossible).
+          await sendRequest(
+            'POST',
+            '/api/action',
+            JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/77', target: 'shelved' }),
+          );
+
+          // Token appears; the user clicks Refresh. Recovery happens INSIDE
+          // this handler and bootstraps from the existing Gist, reverting the
+          // mutation — the retrospective notice must reach this response.
+          vi.mocked(getGitHubToken).mockReturnValue('test-token');
+          vi.mocked(fetchDashboardData).mockResolvedValue({
+            digest: makeDigest(),
+            commentedIssues: [],
+            allMergedPRs: [],
+            allClosedPRs: [],
+            partialFailures: [],
+          });
+          mockEnsureGistPersistence.mockResolvedValueOnce('gist');
+          mockStateManager.isGistMode
+            .mockReturnValueOnce(false) // reloadState branch
+            .mockReturnValueOnce(false) // gistConfiguredButLocal pre-recovery
+            .mockReturnValue(true); // post-recovery
+
+          const result = await sendRequest('POST', '/api/refresh');
+          expect(result.statusCode).toBe(200);
+          const body = JSON.parse(result.body);
+          expect(body.partialFailures?.some((m: string) => m.includes('NOT merged'))).toBe(true);
+
+          // The next successful refresh retires the notice — it has now been
+          // visible across the window.
+          const second = await sendRequest('POST', '/api/refresh');
+          const secondBody = JSON.parse(second.body);
+          expect(secondBody.partialFailures?.some((m: string) => m.includes('NOT merged'))).toBeFalsy();
+        } finally {
+          nowSpy.mockRestore();
+          vi.mocked(getGitHubToken).mockReturnValue(null as never);
+          mockStateManager.isGistMode.mockReset();
+          mockStateManager.isGistMode.mockReturnValue(false);
+          mockEnsureGistPersistence.mockClear();
+          mockEnsureGistPersistence.mockResolvedValue('local-mode');
+          const cleanState = makeState({ lastDigest: makeDigest() });
+          mockStateManager.getState.mockReturnValue(cleanState);
+          mockStateManager.reloadIfChanged.mockReturnValueOnce(true);
+          await sendRequest('GET', '/api/data');
+        }
       });
 
       it('gist mode: refresh re-pushes BEFORE pulling and clears the warning on success', async () => {

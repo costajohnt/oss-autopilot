@@ -55,6 +55,23 @@ export interface JsonOutput<T = unknown> {
   error?: string;
   errorCode?: ErrorCode;
   timestamp: string;
+  /** Present when the process is gist-configured but running local-only
+   * (#1433): machine consumers of mutating --json commands must see that
+   * the mutation will not sync. Set once per process from the CLI bootstrap
+   * via {@link setEnvelopeGistWarning}; envelope-level (not data-level) so
+   * per-command output schemas are untouched. */
+  gistInitWarning?: string;
+}
+
+// Process-level gist degradation warning threaded into every JSON envelope
+// (#1433). The CLI preAction bootstrap sets it; one-shot processes never
+// clear it (the whole invocation runs degraded or it doesn't).
+let envelopeGistWarning: string | null = null;
+
+/** Set (or clear) the gist degradation warning carried by every subsequent
+ * JSON envelope. Exported for the CLI bootstrap and for test isolation. */
+export function setEnvelopeGistWarning(warning: string | null): void {
+  envelopeGistWarning = warning;
 }
 
 // CapacityAssessment, ActionableIssue, ActionableIssueType,
@@ -1401,6 +1418,7 @@ export function jsonSuccess<T>(data: T): JsonOutput<T> {
     success: true,
     data,
     timestamp: new Date().toISOString(),
+    ...(envelopeGistWarning ? { gistInitWarning: envelopeGistWarning } : {}),
   };
 }
 
@@ -1413,6 +1431,7 @@ export function jsonError(message: string, errorCode?: ErrorCode): JsonOutput<ne
     error: message,
     errorCode,
     timestamp: new Date().toISOString(),
+    ...(envelopeGistWarning ? { gistInitWarning: envelopeGistWarning } : {}),
   };
 }
 
