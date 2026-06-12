@@ -63,6 +63,10 @@ vi.mock('@oss-autopilot/core', () => ({
     getState: vi.fn().mockReturnValue({
       lastDigest: { openPRs: [], shelvedPRs: [] },
     }),
+    // Per-call state reload (#1439) runs before every tool body.
+    isGistMode: vi.fn().mockReturnValue(false),
+    reloadIfChanged: vi.fn().mockReturnValue(false),
+    refreshFromGist: vi.fn().mockResolvedValue(false),
   }),
   getGitHubTokenAsync: vi.fn().mockResolvedValue(null),
   ensureGistPersistence: vi.fn().mockResolvedValue(undefined),
@@ -70,6 +74,12 @@ vi.mock('@oss-autopilot/core', () => ({
   // Return a small known-set so the MCP schema validates against real keys.
   getSetupKeys: () => ['username', 'languages', 'minStars'],
   getConfigKeys: () => ['username', 'add-label', 'remove-label'],
+  // Error classes referenced by wrapTool's concurrency/config carve-outs
+  // (#1439/#1441) — the whole module is mocked, so instanceof checks in
+  // tools.ts run against these.
+  ConfigurationError: class ConfigurationError extends Error {},
+  ConcurrencyError: class ConcurrencyError extends Error {},
+  GistConcurrencyError: class GistConcurrencyError extends Error {},
 }));
 
 import { createServer } from './server.js';

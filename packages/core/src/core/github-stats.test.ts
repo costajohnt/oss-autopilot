@@ -416,6 +416,39 @@ describe('fetchMergedPRsSince', () => {
     expect(result).toHaveLength(1);
     expect(result[0].mergedAt).toBe('2025-06-15T12:00:00Z');
   });
+
+  it('should persist openedAt from the search result created_at (#1461)', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/1',
+        title: 'Ledger PR',
+        created_at: '2025-06-01T08:00:00Z',
+        pull_request: { merged_at: '2025-06-15T12:00:00Z' },
+        closed_at: '2025-06-15T12:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
+
+    expect(result[0].openedAt).toBe('2025-06-01T08:00:00Z');
+  });
+
+  it('should leave openedAt undefined when created_at is absent (#1461)', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/1',
+        title: 'Legacy-shaped item',
+        pull_request: { merged_at: '2025-06-15T12:00:00Z' },
+        closed_at: '2025-06-15T12:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchMergedPRsSince(octokit, { githubUsername: 'testuser' });
+
+    expect(result[0].openedAt).toBeUndefined();
+  });
 });
 
 describe('fetchClosedPRsSince', () => {
@@ -480,6 +513,22 @@ describe('fetchClosedPRsSince', () => {
     const query = octokit.search.issuesAndPullRequests.mock.calls[0][0].q;
     expect(query).toContain('closed:>2025-07-01T00:00:00Z');
   });
+
+  it('should persist openedAt from the search result created_at (#1461)', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/9',
+        title: 'Ledger closed PR',
+        created_at: '2025-06-20T08:00:00Z',
+        closed_at: '2025-07-01T10:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchClosedPRsSince(octokit, { githubUsername: 'testuser' });
+
+    expect(result[0].openedAt).toBe('2025-06-20T08:00:00Z');
+  });
 });
 
 describe('fetchRecentlyMergedPRs', () => {
@@ -516,6 +565,23 @@ describe('fetchRecentlyMergedPRs', () => {
     const result = await fetchRecentlyMergedPRs(octokit, { githubUsername: '' });
     expect(result).toEqual([]);
   });
+
+  it('should carry openedAt from the search result created_at (#1461)', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/7',
+        title: 'Recent merge',
+        created_at: '2025-06-01T08:00:00Z',
+        pull_request: { merged_at: '2025-06-15T12:00:00Z' },
+        closed_at: '2025-06-15T12:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchRecentlyMergedPRs(octokit, { githubUsername: 'testuser' }, 7);
+
+    expect(result[0].openedAt).toBe('2025-06-01T08:00:00Z');
+  });
 });
 
 describe('fetchRecentlyClosedPRs', () => {
@@ -544,6 +610,22 @@ describe('fetchRecentlyClosedPRs', () => {
     expect(result[0].repo).toBe('org/repo');
     expect(result[0].number).toBe(3);
     expect(result[0].closedAt).toBe('2025-07-01T10:00:00Z');
+  });
+
+  it('should carry openedAt from the search result created_at (#1461)', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/3',
+        title: 'Closed without merge',
+        created_at: '2025-06-20T08:00:00Z',
+        closed_at: '2025-07-01T10:00:00Z',
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchRecentlyClosedPRs(octokit, { githubUsername: 'testuser' }, 7);
+
+    expect(result[0].openedAt).toBe('2025-06-20T08:00:00Z');
   });
 });
 

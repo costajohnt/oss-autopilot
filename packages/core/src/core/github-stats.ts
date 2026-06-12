@@ -267,7 +267,13 @@ async function fetchRecentPRs<T>(
   label: string,
   days: number,
   mapItem: (
-    item: { html_url: string; title: string; closed_at: string | null; pull_request?: { merged_at?: string | null } },
+    item: {
+      html_url: string;
+      title: string;
+      created_at?: string | null;
+      closed_at: string | null;
+      pull_request?: { merged_at?: string | null };
+    },
     parsed: { owner: string; repo: string; number: number },
   ) => T,
 ): Promise<T[]> {
@@ -330,6 +336,8 @@ export async function fetchRecentlyClosedPRs(
       number,
       title: item.title,
       closedAt: item.closed_at || '',
+      // Free on the search result — feeds the outcome ledger (#1461).
+      openedAt: item.created_at || undefined,
     }),
   );
 }
@@ -363,6 +371,8 @@ export async function fetchRecentlyMergedPRs(
         number,
         title: item.title,
         mergedAt: mergedAt || item.closed_at || '',
+        // Free on the search result — feeds the outcome ledger (#1461).
+        openedAt: item.created_at || undefined,
       };
     },
   );
@@ -392,6 +402,7 @@ interface PRFetchAdapter<T> {
 type SearchItemForPRs = {
   html_url: string;
   title: string;
+  created_at?: string | null;
   closed_at?: string | null;
   pull_request?: { merged_at?: string | null } | null;
 };
@@ -465,7 +476,7 @@ async function fetchPRsSince<T>(
 /**
  * Fetch merged PRs since a watermark date for incremental storage.
  * If no watermark is provided (first-ever fetch), fetches all merged PRs (up to pagination cap).
- * Returns StoredMergedPR[] (minimal: url, title, mergedAt) for state persistence.
+ * Returns StoredMergedPR[] (url, title, mergedAt, openedAt) for state persistence.
  */
 export async function fetchMergedPRsSince(
   octokit: Octokit,
@@ -480,7 +491,13 @@ export async function fetchMergedPRsSince(
       dateNoun: 'merge',
       buildQuery: (u, s) => `is:pr is:merged author:${u} -user:${u}${s ? ` merged:>${s}` : ''}`,
       extractDate: (item) => item.pull_request?.merged_at || item.closed_at || '',
-      buildRecord: (item, date) => ({ url: item.html_url, title: item.title, mergedAt: date }),
+      buildRecord: (item, date) => ({
+        url: item.html_url,
+        title: item.title,
+        mergedAt: date,
+        // Free on the search result — feeds the outcome ledger (#1461).
+        openedAt: item.created_at || undefined,
+      }),
     },
     since,
   );
@@ -489,7 +506,7 @@ export async function fetchMergedPRsSince(
 /**
  * Fetch closed-without-merge PRs since a watermark date for incremental storage.
  * If no watermark is provided (first-ever fetch), fetches all closed PRs (up to pagination cap).
- * Returns StoredClosedPR[] (minimal: url, title, closedAt) for state persistence.
+ * Returns StoredClosedPR[] (url, title, closedAt, openedAt) for state persistence.
  * Uses `is:unmerged` to exclude merged PRs (which are also "closed" in GitHub's model).
  */
 export async function fetchClosedPRsSince(
@@ -505,7 +522,13 @@ export async function fetchClosedPRsSince(
       dateNoun: 'close',
       buildQuery: (u, s) => `is:pr is:closed is:unmerged author:${u} -user:${u}${s ? ` closed:>${s}` : ''}`,
       extractDate: (item) => item.closed_at || '',
-      buildRecord: (item, date) => ({ url: item.html_url, title: item.title, closedAt: date }),
+      buildRecord: (item, date) => ({
+        url: item.html_url,
+        title: item.title,
+        closedAt: date,
+        // Free on the search result — feeds the outcome ledger (#1461).
+        openedAt: item.created_at || undefined,
+      }),
     },
     since,
   );

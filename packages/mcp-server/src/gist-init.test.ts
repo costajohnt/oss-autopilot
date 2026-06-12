@@ -16,11 +16,22 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
-const { mockGetGitHubTokenAsync, mockEnsureGistPersistence, mockRunStatus } = vi.hoisted(() => ({
-  mockGetGitHubTokenAsync: vi.fn(),
-  mockEnsureGistPersistence: vi.fn(),
-  mockRunStatus: vi.fn(),
-}));
+const { mockGetGitHubTokenAsync, mockEnsureGistPersistence, mockRunStatus, MockConfigurationError } = vi.hoisted(() => {
+  // Stand-ins for the core error classes (the whole module is mocked, so
+  // tools.ts's instanceof checks run against THESE classes).
+  class MockConfigurationError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'ConfigurationError';
+    }
+  }
+  return {
+    mockGetGitHubTokenAsync: vi.fn(),
+    mockEnsureGistPersistence: vi.fn(),
+    mockRunStatus: vi.fn(),
+    MockConfigurationError,
+  };
+});
 
 vi.mock('@oss-autopilot/core/commands', () => ({
   runDaily: vi.fn(),
@@ -66,11 +77,18 @@ vi.mock('@oss-autopilot/core', () => ({
     getState: vi.fn().mockReturnValue({
       lastDigest: { openPRs: [], shelvedPRs: [] },
     }),
+    // Per-call state reload (#1439) runs before every tool body.
+    isGistMode: vi.fn().mockReturnValue(false),
+    reloadIfChanged: vi.fn().mockReturnValue(false),
+    refreshFromGist: vi.fn().mockResolvedValue(false),
   }),
   getGitHubTokenAsync: mockGetGitHubTokenAsync,
   ensureGistPersistence: mockEnsureGistPersistence,
   getSetupKeys: () => ['username'],
   getConfigKeys: () => ['username'],
+  ConfigurationError: MockConfigurationError,
+  ConcurrencyError: class ConcurrencyError extends Error {},
+  GistConcurrencyError: class GistConcurrencyError extends Error {},
 }));
 
 /**
@@ -274,6 +292,64 @@ describe('ensureGistInit retry semantics (#1368)', () => {
 
     expect(mockGetGitHubTokenAsync).toHaveBeenCalledTimes(1);
     expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(1);
+  });
+
+  describe('repair tools survive hard gist-init errors (#1441)', () => {
+    // Hard ConfigurationError (GistPermissionError/GistCorruptError) used to
+    // reject in wrapTool BEFORE the body ran — bricking config/init/setup/
+    // state-unlink, the very tools that exist to repair a broken gist setup.
+    // Mirrors the CLI's bootstrapGistBestEffort carve-out.
+    it.each([
+      ['config', {}, 'runConfig'],
+      ['setup', {}, 'runSetup'],
+      ['init', { username: 'testuser' }, 'runInit'],
+      ['state-unlink', {}, 'runStateUnlink'],
+    ] as const)(
+      'repair tool %s runs locally with a gistInitWarning when init throws ConfigurationError',
+      async (toolName, toolArgs, commandName) => {
+        const commands = await import('@oss-autopilot/core/commands');
+        const command = vi.mocked(commands[commandName] as (args?: unknown) => Promise<unknown>);
+        command.mockClear();
+        command.mockResolvedValueOnce({ ok: true });
+        mockEnsureGistPersistence.mockRejectedValueOnce(new MockConfigurationError('Gist token lacks the gist scope'));
+
+        const result = await client.callTool({ name: toolName, arguments: toolArgs as Record<string, unknown> });
+
+        expect(result.isError).toBeFalsy();
+        expect(command).toHaveBeenCalled();
+        const payload = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+        expect(payload.ok).toBe(true);
+        expect(payload.gistInitWarning).toMatch(/LOCAL-ONLY/);
+        expect(payload.gistInitWarning).toContain('Gist token lacks the gist scope');
+
+        // The hard rejection cleared the init memo — the next call retries
+        // init end to end, so an external fix (or the repair itself) heals
+        // the process without a restart.
+        await client.callTool({ name: 'status', arguments: {} });
+        expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it('a non-repair tool still fails hard on the same ConfigurationError (#1202)', async () => {
+      mockEnsureGistPersistence.mockRejectedValueOnce(new MockConfigurationError('Gist token lacks the gist scope'));
+
+      const result = await client.callTool({ name: 'status', arguments: {} });
+
+      expect(result.isError).toBe(true);
+      expect((result.content as Array<{ text: string }>)[0].text).toContain('Gist token lacks the gist scope');
+      expect(mockRunStatus).not.toHaveBeenCalled();
+    });
+
+    it('a repair tool still fails hard on a NON-configuration init error', async () => {
+      const commands = await import('@oss-autopilot/core/commands');
+      vi.mocked(commands.runConfig).mockClear();
+      mockEnsureGistPersistence.mockRejectedValueOnce(new Error('unexpected init explosion'));
+
+      const result = await client.callTool({ name: 'config', arguments: {} });
+
+      expect(result.isError).toBe(true);
+      expect(vi.mocked(commands.runConfig)).not.toHaveBeenCalled();
+    });
   });
 
   it('concurrent first calls share a single init', async () => {

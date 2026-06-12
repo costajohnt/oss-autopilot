@@ -1240,6 +1240,67 @@ describe('fetchDashboardData', () => {
     expect(result.partialFailures).not.toContain('store merged PRs');
   });
 
+  // ── outcome ledger threading (#1461) ─────────────────────────────────
+
+  it('passes openedAt through to addMergedPRs/addClosedPRs (#1461)', async () => {
+    mockFetchMergedPRsSince.mockResolvedValue([
+      {
+        url: 'https://github.com/a/b/pull/1',
+        title: 'New merged',
+        mergedAt: '2026-01-10T00:00:00Z',
+        openedAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+    mockFetchClosedPRsSince.mockResolvedValue([
+      {
+        url: 'https://github.com/a/b/pull/2',
+        title: 'New closed',
+        closedAt: '2026-01-11T00:00:00Z',
+        openedAt: '2026-01-02T00:00:00Z',
+      },
+    ]);
+
+    await fetchDashboardData('test-token');
+
+    expect(mockAddMergedPRs).toHaveBeenCalledWith([
+      expect.objectContaining({ url: 'https://github.com/a/b/pull/1', openedAt: '2026-01-01T00:00:00Z' }),
+    ]);
+    expect(mockAddClosedPRs).toHaveBeenCalledWith([
+      expect.objectContaining({ url: 'https://github.com/a/b/pull/2', openedAt: '2026-01-02T00:00:00Z' }),
+    ]);
+  });
+
+  it('recovers firstMaintainerResponseAt from the previous persisted digest (#1461)', async () => {
+    const prUrl = 'https://github.com/a/b/pull/1';
+    const previouslyOpen = makeFetchedPR({
+      repo: 'a/b',
+      number: 1,
+      url: prUrl,
+      firstMaintainerResponseAt: '2026-01-03T09:00:00Z',
+    });
+    mockGetState.mockReturnValue(makeDefaultState({ lastDigest: makeMockDigest([previouslyOpen]) }));
+    mockFetchMergedPRsSince.mockResolvedValue([
+      { url: prUrl, title: 'New merged', mergedAt: '2026-01-10T00:00:00Z', openedAt: '2026-01-01T00:00:00Z' },
+    ]);
+
+    await fetchDashboardData('test-token');
+
+    expect(mockAddMergedPRs).toHaveBeenCalledWith([
+      expect.objectContaining({ url: prUrl, firstMaintainerResponseAt: '2026-01-03T09:00:00Z' }),
+    ]);
+  });
+
+  it('leaves firstMaintainerResponseAt undefined when the PR never appeared in a digest (#1461)', async () => {
+    mockFetchMergedPRsSince.mockResolvedValue([
+      { url: 'https://github.com/a/b/pull/1', title: 'New merged', mergedAt: '2026-01-10T00:00:00Z' },
+    ]);
+
+    await fetchDashboardData('test-token');
+
+    const [persisted] = mockAddMergedPRs.mock.calls[0] as unknown as [Array<Record<string, unknown>>];
+    expect(persisted[0].firstMaintainerResponseAt).toBeUndefined();
+  });
+
   // ── partialFailures surfacing (#1035) ────────────────────────────────
 
   it('returns empty partialFailures when all sub-fetches succeed', async () => {
