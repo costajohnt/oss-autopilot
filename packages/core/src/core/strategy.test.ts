@@ -175,8 +175,8 @@ describe('computeStrategy — capacity', () => {
         openPRs: [],
         needsAddressingPRs: [],
         waitingOnMaintainerPRs: [
-          { url: 'https://github.com/x/y/pull/1' },
-          { url: 'https://github.com/m/n/pull/2' },
+          { url: 'https://github.com/x/y/pull/1', repo: 'x/y', number: 1, status: 'waiting_on_maintainer' },
+          { url: 'https://github.com/m/n/pull/2', repo: 'm/n', number: 2, status: 'waiting_on_maintainer' },
         ] as any,
         recentlyClosedPRs: [],
         recentlyMergedPRs: [],
@@ -198,8 +198,8 @@ describe('computeStrategy — capacity', () => {
         openPRs: [],
         needsAddressingPRs: [],
         waitingOnMaintainerPRs: [
-          { url: 'https://github.com/x/y/pull/1' },
-          { url: 'https://github.com/x/y/pull/2' },
+          { url: 'https://github.com/x/y/pull/1', repo: 'x/y', number: 1, status: 'waiting_on_maintainer' },
+          { url: 'https://github.com/x/y/pull/2', repo: 'x/y', number: 2, status: 'waiting_on_maintainer' },
         ] as any,
         recentlyClosedPRs: [],
         recentlyMergedPRs: [],
@@ -229,13 +229,27 @@ describe('computeStrategy — capacity', () => {
       lastDigest: {
         generatedAt: new Date().toISOString(),
         openPRs: [
-          { url: 'https://github.com/x/y/pull/1', status: 'needs_addressing', updatedAt: '2026-05-01T00:00:00Z' },
-          { url: 'https://github.com/m/n/pull/2', status: 'waiting_on_maintainer', updatedAt: '2026-05-01T00:00:00Z' },
+          {
+            url: 'https://github.com/x/y/pull/1',
+            repo: 'x/y',
+            number: 1,
+            status: 'needs_addressing',
+            updatedAt: '2026-05-01T00:00:00Z',
+          },
+          {
+            url: 'https://github.com/m/n/pull/2',
+            repo: 'm/n',
+            number: 2,
+            status: 'waiting_on_maintainer',
+            updatedAt: '2026-05-01T00:00:00Z',
+          },
         ] as any,
         needsAddressingPRs: [],
         // Stored raw-basis array deliberately disagrees — it must be ignored
         // when openPRs is available.
-        waitingOnMaintainerPRs: [{ url: 'https://github.com/m/n/pull/2' }] as any,
+        waitingOnMaintainerPRs: [
+          { url: 'https://github.com/m/n/pull/2', repo: 'm/n', number: 2, status: 'waiting_on_maintainer' },
+        ] as any,
         recentlyClosedPRs: [],
         recentlyMergedPRs: [],
         shelvedPRs: [],
@@ -266,7 +280,13 @@ describe('computeStrategy — capacity', () => {
         openPRs: [
           // Activity is NEWER than the override's lastActivityAt: same rule
           // as getStatusOverride, the override no longer applies.
-          { url: 'https://github.com/x/y/pull/1', status: 'needs_addressing', updatedAt: '2026-05-01T00:00:00Z' },
+          {
+            url: 'https://github.com/x/y/pull/1',
+            repo: 'x/y',
+            number: 1,
+            status: 'needs_addressing',
+            updatedAt: '2026-05-01T00:00:00Z',
+          },
         ] as any,
         needsAddressingPRs: [],
         waitingOnMaintainerPRs: [] as any,

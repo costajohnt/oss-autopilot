@@ -10,7 +10,7 @@ Surfaces PRs that are waiting on maintainer response and offers the user a chanc
 
 Reachable via:
 1. The `/oss` router (see `commands/oss.md`).
-2. An optional "Follow up on dormant PRs (N)" entry in the action menu when the dormant count is > 0 (see `workflows/action-menu.md`).
+2. The `follow_up` action-menu item the CLI emits when the stuck-CI or dormant-followup attention buckets are non-zero (label like "Follow up on 1 stuck-CI and 2 dormant PRs"; see `workflows/action-menu.md`).
 
 ## 1. Filter Dormant PRs
 

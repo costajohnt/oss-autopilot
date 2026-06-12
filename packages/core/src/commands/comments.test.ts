@@ -125,6 +125,116 @@ describe('runComments', () => {
     expect(result.issueComments[0].user).toBe('other');
   });
 
+  it('should filter own comments case-insensitively (#1456)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
+    // Configured username uses non-canonical case relative to the GitHub login.
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { githubUsername: 'TestUser' } }),
+      getStateStaleness: vi.fn().mockReturnValue(null),
+    } as any);
+
+    const mockPullsGet = vi.fn().mockResolvedValue({
+      data: {
+        title: 'Test PR',
+        state: 'open',
+        mergeable: true,
+        head: { ref: 'feature' },
+        base: { ref: 'main' },
+        html_url: TEST_PR_URL,
+      },
+    });
+    const mockListReviewComments = vi.fn().mockResolvedValue({ data: [] });
+    const mockListComments = vi.fn().mockResolvedValue({
+      data: [
+        { user: { login: 'testuser', type: 'User' }, body: 'My own comment', created_at: '2026-01-15T10:00:00Z' },
+        { user: { login: 'other', type: 'User' }, body: 'Other comment', created_at: '2026-01-15T11:00:00Z' },
+      ],
+    });
+    const mockListReviews = vi.fn().mockResolvedValue({ data: [] });
+
+    mockGetOctokit.mockReturnValue({
+      pulls: { get: mockPullsGet, listReviewComments: mockListReviewComments, listReviews: mockListReviews },
+      issues: { listComments: mockListComments },
+    } as any);
+
+    const result = await runComments({ prUrl: TEST_PR_URL });
+
+    expect(result.issueComments).toHaveLength(1);
+    expect(result.issueComments[0].user).toBe('other');
+  });
+
+  it('should surface a warning when comment pagination truncates (#1456)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
+
+    const mockPullsGet = vi.fn().mockResolvedValue({
+      data: {
+        title: 'Huge PR',
+        state: 'open',
+        mergeable: true,
+        head: { ref: 'feature' },
+        base: { ref: 'main' },
+        html_url: TEST_PR_URL,
+      },
+    });
+    // Every page returns a full 100 entries, so paginateAllDetailed hits the
+    // 10-page cap and flags truncation.
+    const fullPage = Array.from({ length: 100 }, (_, i) => ({
+      user: { login: 'other', type: 'User' },
+      body: `comment ${i}`,
+      created_at: '2026-01-15T10:00:00Z',
+    }));
+    const mockListReviewComments = vi.fn().mockResolvedValue({ data: [] });
+    const mockListComments = vi.fn().mockResolvedValue({ data: fullPage });
+    const mockListReviews = vi.fn().mockResolvedValue({ data: [] });
+
+    mockGetOctokit.mockReturnValue({
+      pulls: { get: mockPullsGet, listReviewComments: mockListReviewComments, listReviews: mockListReviews },
+      issues: { listComments: mockListComments },
+    } as any);
+
+    const result = await runComments({ prUrl: TEST_PR_URL });
+
+    expect(result.issueComments).toHaveLength(1000);
+    expect(result.warnings).toBeDefined();
+    const truncation = result.warnings!.find((w) => w.operation === 'fetch PR comments (truncated)');
+    expect(truncation).toBeDefined();
+    expect(truncation!.phase).toBe('fetch');
+    expect(truncation!.message).toContain('discussion comments');
+    expect(truncation!.message).toContain('owner/repo#42');
+  });
+
+  it('should not emit a truncation warning when all pages fit (#1456)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
+
+    const mockPullsGet = vi.fn().mockResolvedValue({
+      data: {
+        title: 'Small PR',
+        state: 'open',
+        mergeable: true,
+        head: { ref: 'feature' },
+        base: { ref: 'main' },
+        html_url: TEST_PR_URL,
+      },
+    });
+    const mockListReviewComments = vi.fn().mockResolvedValue({ data: [] });
+    const mockListComments = vi.fn().mockResolvedValue({
+      data: [{ user: { login: 'other', type: 'User' }, body: 'hi', created_at: '2026-01-15T10:00:00Z' }],
+    });
+    const mockListReviews = vi.fn().mockResolvedValue({ data: [] });
+
+    mockGetOctokit.mockReturnValue({
+      pulls: { get: mockPullsGet, listReviewComments: mockListReviewComments, listReviews: mockListReviews },
+      issues: { listComments: mockListComments },
+    } as any);
+
+    const result = await runComments({ prUrl: TEST_PR_URL });
+
+    expect(result.warnings).toBeUndefined();
+  });
+
   it('should return empty arrays when no comments', async () => {
     mockRequireGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });

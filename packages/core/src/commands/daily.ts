@@ -567,8 +567,24 @@ function partitionPRs(
   }
 
   // If digest generation threw inside the batch, fall back to the persisted
-  // digest (mirrors the previous read-back-from-state behavior).
-  return { activePRs, shelvedPRs, autoUnshelvedPRs, digest: digest ?? stateManager.getState().lastDigest! };
+  // digest (mirrors the previous read-back-from-state behavior). The
+  // recordWarning call above already flagged the run as degraded.
+  if (digest === undefined) {
+    const persisted = stateManager.getState().lastDigest;
+    if (!persisted) {
+      // First-ever run with no persisted digest to fall back to: fail loudly
+      // with the recorded reason instead of letting Phase 5 die on an
+      // unrelated TypeError at `digest.summary` (#1456). Fabricating an
+      // empty digest here would silently report "no PRs" — dishonest.
+      const recorded = warnings.find((w) => w.phase === 'partition');
+      throw new Error(
+        `Daily digest generation failed and no previously persisted digest exists to fall back to` +
+          (recorded ? `: ${recorded.message}` : '.'),
+      );
+    }
+    return { activePRs, shelvedPRs, autoUnshelvedPRs, digest: persisted };
+  }
+  return { activePRs, shelvedPRs, autoUnshelvedPRs, digest };
 }
 
 /**
@@ -641,7 +657,7 @@ function generateDigestOutput(
   // the same buckets per-PR, so the headline counts cannot diverge.
   const attention = summarizeAttentionBuckets(activePRs);
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length, attention);
-  const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues);
+  const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues, attention);
   const repoGroups = groupPRsByRepo(activePRs);
 
   // Periodic strategy snapshot (#1270 Step 2). Cadence-gated to fire every

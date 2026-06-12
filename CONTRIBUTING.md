@@ -129,7 +129,7 @@ This section documents infrastructure settings that are not codified in the repo
 The `main` branch should have these protection rules enabled (Settings → Branches → Branch protection rules):
 
 - **Require a pull request before merging** — at least 1 approval
-- **Require status checks to pass before merging** — the `test` CI job must pass
+- **Require status checks to pass before merging** — the `ci` matrix jobs must pass (`Node 22 / ubuntu-latest`, `Node 24 / ubuntu-latest`, `Node 22 / macos-latest`)
 - **Require branches to be up to date before merging**
 - **Do not allow bypassing the above settings** (optional, recommended for teams)
 

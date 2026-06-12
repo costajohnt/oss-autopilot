@@ -9,8 +9,8 @@ import { ValidationError, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 
 const MODULE = 'comments';
-import { paginateAll } from '../core/pagination.js';
-import { type CommentsOutput, type PostOutput, type ClaimOutput } from '../formatters/json.js';
+import { paginateAllDetailed } from '../core/pagination.js';
+import { type CommentsOutput, type DailyWarning, type PostOutput, type ClaimOutput } from '../formatters/json.js';
 import { buildStalenessWarning } from '../formatters/json.js';
 import {
   validateUrl,
@@ -69,8 +69,8 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
   const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number });
 
   // Fetch review comments, issue comments, and reviews in parallel
-  const [reviewComments, issueComments, reviews] = await Promise.all([
-    paginateAll((page) =>
+  const [reviewCommentsResult, issueCommentsResult, reviewsResult] = await Promise.all([
+    paginateAllDetailed((page) =>
       octokit.pulls.listReviewComments({
         owner,
         repo,
@@ -79,7 +79,7 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
         page,
       }),
     ),
-    paginateAll((page) =>
+    paginateAllDetailed((page) =>
       octokit.issues.listComments({
         owner,
         repo,
@@ -88,7 +88,7 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
         page,
       }),
     ),
-    paginateAll((page) =>
+    paginateAllDetailed((page) =>
       octokit.pulls.listReviews({
         owner,
         repo,
@@ -98,13 +98,30 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
       }),
     ),
   ]);
+  const { items: reviewComments } = reviewCommentsResult;
+  const { items: issueComments } = issueCommentsResult;
+  const { items: reviews } = reviewsResult;
+
+  // Pagination truncation is a data-quality signal, not a failure: these
+  // endpoints return oldest-first, so hitting the page cap drops the NEWEST
+  // comments — exactly the ones a "what needs response" consumer cares
+  // about. Thread it into the structured warnings channel (#1456).
+  const truncatedStreams = [
+    ...(reviewsResult.truncated ? ['reviews'] : []),
+    ...(reviewCommentsResult.truncated ? ['inline review comments'] : []),
+    ...(issueCommentsResult.truncated ? ['discussion comments'] : []),
+  ];
 
   // Filter out own comments, optionally show bots
   const username = stateManager.getState().config.githubUsername;
 
   const filterComment = (c: { user?: { login?: string; type?: string } | null }) => {
     if (!c.user) return false;
-    if (c.user.login === username) return false;
+    // Lowercase both sides: GitHub logins are case-insensitive, and a
+    // non-canonical-case configured username must not leak the user's own
+    // comments into "needs response" (#1456). Mirrors review-analysis.ts
+    // and issue-conversation.ts.
+    if (c.user.login?.toLowerCase() === username?.toLowerCase()) return false;
     if (c.user.type === 'Bot' && !options.showBots) return false;
     return true;
   };
@@ -128,6 +145,19 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
     wrapUntrustedContent(body, fenceLabel, { author, association, source });
 
   const staleness = stateManager.getStateStaleness();
+  const warnings: DailyWarning[] = [];
+  if (truncatedStreams.length > 0) {
+    warnings.push({
+      phase: 'fetch',
+      operation: 'fetch PR comments (truncated)',
+      message:
+        `Pagination cap reached fetching ${truncatedStreams.join(', ')} for ${owner}/${repo}#${pull_number}; ` +
+        `the newest entries in those streams may be missing.`,
+    });
+  }
+  if (staleness) {
+    warnings.push(buildStalenessWarning(staleness));
+  }
   return {
     pr: {
       title: pr.title,
@@ -159,7 +189,7 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
       inlineCommentCount: relevantReviewComments.length,
       discussionCommentCount: relevantIssueComments.length,
     },
-    ...(staleness ? { warnings: [buildStalenessWarning(staleness)] } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 
