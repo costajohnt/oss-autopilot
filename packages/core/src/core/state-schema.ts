@@ -62,7 +62,7 @@ export const StoredMergedPRSchema = z.object({
    */
   openedAt: z.string().optional(),
   /**
-   * Earliest maintainer (non-bot, non-contributor) comment or review on the
+   * Earliest maintainer (non-bot, non-author) comment or review on the
    * PR (#1461). Best-effort: only derivable when the PR was enriched while
    * open (looked up from the previous run's persisted digest at detection
    * time), so it is absent for PRs that merged before ever appearing in an
