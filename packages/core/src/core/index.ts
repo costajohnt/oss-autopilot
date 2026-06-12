@@ -34,6 +34,7 @@ export { IssueConversationMonitor } from './issue-conversation.js';
 export { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 export {
   wrapUntrustedContent,
+  fenceFetchedPR,
   extractFromFence,
   safeExtractFromFence,
   UNTRUSTED_OPEN_TAG_NAME,

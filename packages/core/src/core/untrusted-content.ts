@@ -18,6 +18,9 @@
  *
  *  - `runComments` (commands/comments.ts): review / inline / discussion
  *    comment bodies in the `comments` CLI `--json` + MCP tool output.
+ *  - `deduplicateDigest` (formatters/json.ts) and the MCP PR resources:
+ *    `openPRs[].lastMaintainerComment.body` via {@link fenceFetchedPR}
+ *    (#1420).
  *  - `fetchPRCommentBundle` (core/pr-comments-fetcher.ts): bundle bodies
  *    feeding `guidelines fetch-corpus` (agent-only consumer).
  *  - `toDailyOutput` (commands/daily.ts): `commentedIssues[].lastResponseBody`
@@ -142,4 +145,38 @@ export function safeExtractFromFence(text: string): string {
   } catch {
     return text;
   }
+}
+
+/**
+ * Fence the attacker-controllable maintainer-comment excerpt on a FetchedPR
+ * for agent-facing serialization (#1420). Applied at the serialization
+ * boundary (daily/startup --json via deduplicateDigest, MCP PR resources)
+ * rather than at fetch time: extractMaintainerActionHints parses the RAW
+ * body inside the pipeline, and human surfaces (dashboard SPA, CLI text
+ * mode) must not render fence markup. Returns a copy; never mutates.
+ */
+export function fenceFetchedPR<T extends FenceablePR>(pr: T): T {
+  if (!pr.lastMaintainerComment) return pr;
+  return {
+    ...pr,
+    lastMaintainerComment: {
+      ...pr.lastMaintainerComment,
+      body: wrapUntrustedContent(pr.lastMaintainerComment.body, `${pr.repo}#${pr.number}`, {
+        author: pr.lastMaintainerComment.author,
+        source: 'pr-comment',
+      }),
+    },
+  };
+}
+
+/** Structural slice of FetchedPR that {@link fenceFetchedPR} needs — kept
+ * structural to avoid an import cycle with types.ts consumers. */
+interface FenceablePR {
+  repo: string;
+  number: number;
+  lastMaintainerComment?: {
+    author: string;
+    body: string;
+    createdAt: string;
+  };
 }

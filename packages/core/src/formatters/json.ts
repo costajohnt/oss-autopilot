@@ -4,6 +4,7 @@
  */
 
 import { z, type ZodType } from 'zod';
+import { fenceFetchedPR } from '../core/untrusted-content.js';
 import type { AttentionSummary } from '../core/pr-attention.js';
 import type {
   FetchedPR,
@@ -244,7 +245,10 @@ export function deduplicateDigest(digest: DailyDigest): DailyDigestCompact {
 
   return {
     generatedAt: digest.generatedAt,
-    openPRs: digest.openPRs,
+    // lastMaintainerComment.body is attacker-controllable on any public PR;
+    // fence it at this agent-facing serialization boundary (#1420). The
+    // digest itself keeps the raw body for pipeline parsing and human UIs.
+    openPRs: digest.openPRs.map(fenceFetchedPR),
     needsAddressingPRs: toUrls(digest.needsAddressingPRs),
     waitingOnMaintainerPRs: toUrls(digest.waitingOnMaintainerPRs),
     recentlyClosedPRs: digest.recentlyClosedPRs,
