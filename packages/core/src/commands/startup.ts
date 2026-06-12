@@ -99,11 +99,16 @@ export function detectIssueList(): IssueListInfo | undefined {
   // 4. Count available/completed items
   let availableCount = 0;
   let completedCount = 0;
+  let readError: string | undefined;
   try {
     const content = fs.readFileSync(issueListPath, 'utf8');
     ({ availableCount, completedCount } = countIssueListItems(content));
   } catch (error) {
-    console.error(`[STARTUP] Failed to read issue list at ${issueListPath}:`, errorMessage(error));
+    // Surface the failure in the envelope (#1448): a 0/0 count from an
+    // unreadable list is indistinguishable from a genuinely empty list, and
+    // an agent seeing 0 available may trigger a redundant fresh search.
+    readError = errorMessage(error);
+    console.error(`[STARTUP] Failed to read issue list at ${issueListPath}:`, readError);
   }
 
   // 5. Detect skipped issues file
@@ -152,7 +157,14 @@ export function detectIssueList(): IssueListInfo | undefined {
     }
   }
 
-  return { path: issueListPath, source, availableCount, completedCount, skippedIssuesPath };
+  return {
+    path: issueListPath,
+    source,
+    availableCount,
+    completedCount,
+    skippedIssuesPath,
+    ...(readError !== undefined ? { readError } : {}),
+  };
 }
 
 /**
