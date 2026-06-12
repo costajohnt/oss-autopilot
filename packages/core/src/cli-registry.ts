@@ -47,6 +47,35 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  * duplicated in every command action. Commands with non-standard output
  * modes (e.g. `--compact`, `--markdown`, `--badge`) inline their own
  * branching rather than squeezing through this helper.
+ *
+ * ── `--json` output validation tiers (#1453) ──────────────────────────────
+ *
+ * Two tiers gate the shape of `--json` output. When adding a command, pick
+ * a tier consciously:
+ *
+ * 1. **Runtime-validated**: the registration passes an exported Zod schema
+ *    (from `formatters/json.ts`) as `executeAction`'s 4th argument — or
+ *    calls `outputJsonValidated` directly — so a drifted shape throws at
+ *    the `--json` boundary instead of silently shipping (#1105).
+ *    Commands: manifest, daily, status, strategy, search, features,
+ *    verify-issue, skip-add, list-move-tier, list-mark-done,
+ *    compliance-score, post, claim, config, init, setup, checkSetup,
+ *    parse-issue-list, orphan-files, doctor, local-repos, move, override,
+ *    clear-override, pr-template, repo-vet, detect-formatters.
+ *
+ * 2. **Goldens-only**: no Zod schema exists; the command returns a TS
+ *    interface and its `*.contract.test.ts` golden snapshot is the only
+ *    shape gate. Nothing fires at runtime if the producer drifts after
+ *    the goldens were last updated.
+ *    Commands: state (show/sync/unlink), vet, vet-list, track, comments,
+ *    startup, shelve, unshelve, dismiss, undismiss, stats, and the five
+ *    guidelines subcommands (list/view/store/reset/fetch-corpus).
+ *
+ * (`dashboard serve` is exempt: it has no `--json` mode.)
+ *
+ * To promote a command to tier 1: export a Zod schema from
+ * `formatters/json.ts`, assert it in the command's contract test alongside
+ * the goldens, and pass it to `executeAction` here.
  */
 async function executeAction<T>(
   options: { json?: boolean },
@@ -1355,15 +1384,17 @@ export const commands: CLICommandDef[] = [
         .command('move <pr-url> <target>')
         .description('Move a PR between states: attention, waiting, shelved, or auto (reset to computed)')
         .option('--json', 'Output as JSON')
-        .action((prUrl, target, options) =>
-          executeAction(
+        .action(async (prUrl, target, options) => {
+          const { MoveOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
             options,
             async () => (await import('./commands/move.js')).runMove({ prUrl, target }),
             (data) => {
               console.log(data.description);
             },
-          ),
-        );
+            MoveOutputSchema,
+          );
+        });
     },
   },
 
