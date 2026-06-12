@@ -28,11 +28,21 @@ const REPO_ROOT = path.resolve(__dirname, '../../..');
 const README = path.join(REPO_ROOT, 'README.md');
 const ARCHITECTURE = path.join(REPO_ROOT, 'ARCHITECTURE.md');
 const COMMANDS_DIR = path.join(REPO_ROOT, 'commands');
+const AGENTS_DIR = path.join(REPO_ROOT, 'agents');
 
 /** Slash-command files shipped by the plugin (the source of truth). */
 function listCommandNames(): string[] {
   return fs
     .readdirSync(COMMANDS_DIR)
+    .filter((name) => name.endsWith('.md') && name !== 'README.md')
+    .map((name) => name.replace(/\.md$/, ''))
+    .toSorted();
+}
+
+/** Agent definition files shipped by the plugin (the source of truth). */
+function listAgentNames(): string[] {
+  return fs
+    .readdirSync(AGENTS_DIR)
     .filter((name) => name.endsWith('.md') && name !== 'README.md')
     .map((name) => name.replace(/\.md$/, ''))
     .toSorted();
@@ -65,6 +75,33 @@ describe('README.md ↔ commands/ parity (#1379)', () => {
       expect(claim, `README claims ${claim} slash commands but commands/ has ${commandNames.length}`).toBe(
         commandNames.length,
       );
+    }
+  });
+});
+
+describe('README.md / ARCHITECTURE.md ↔ agents/ parity (#1454)', () => {
+  const agentNames = listAgentNames();
+
+  it('sanity: the agents directory is non-trivial', () => {
+    expect(agentNames.length).toBeGreaterThan(3);
+  });
+
+  it('every "N specialized agents" count in README and ARCHITECTURE matches the number of agents/*.md files', () => {
+    for (const [label, file] of [
+      ['README', README],
+      ['ARCHITECTURE', ARCHITECTURE],
+    ] as const) {
+      const doc = fs.readFileSync(file, 'utf8');
+      const claims = [...doc.matchAll(/(\d+)\s+specialized agents/gi)].map((m) => Number(m[1]));
+      expect(
+        claims.length,
+        `${label} no longer claims a specialized-agent count — update this test to parse its replacement`,
+      ).toBeGreaterThan(0);
+      for (const claim of claims) {
+        expect(claim, `${label} claims ${claim} specialized agents but agents/ has ${agentNames.length}`).toBe(
+          agentNames.length,
+        );
+      }
     }
   });
 });
