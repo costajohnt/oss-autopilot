@@ -55,6 +55,10 @@ vi.mock('@oss-autopilot/core', async (importOriginal) => ({
   getStateManager: vi.fn().mockReturnValue({
     listGuidelinesRepos: vi.fn().mockReturnValue([]),
     getGuidelines: vi.fn().mockReturnValue(null),
+    // Per-call state reload (#1439) runs before every resource read.
+    isGistMode: vi.fn().mockReturnValue(false),
+    reloadIfChanged: vi.fn().mockReturnValue(false),
+    refreshFromGist: vi.fn().mockResolvedValue(false),
     getState: vi.fn().mockReturnValue({
       lastDigest: {
         generatedAt: '2026-02-28T12:00:00Z',
@@ -302,8 +306,19 @@ describe('MCP resource registrations', () => {
   // template URI parsing would not surface.
 
   describe('repo-guidelines resource (#1208 M4)', () => {
+    // Reload-method stubs for the per-call state reload (#1439): every
+    // resource read calls getStateManager() once for the reload and once in
+    // the body, so these tests pin a persistent mockReturnValue instead of
+    // the old single-shot mockReturnValueOnce (which the reload consumed).
+    const reloadStubs = () => ({
+      isGistMode: vi.fn().mockReturnValue(false),
+      reloadIfChanged: vi.fn().mockReturnValue(false),
+      refreshFromGist: vi.fn().mockResolvedValue(false),
+    });
+
     it('returns markdown content when the repo has guidelines', async () => {
-      vi.mocked(getStateManager).mockReturnValueOnce({
+      vi.mocked(getStateManager).mockReturnValue({
+        ...reloadStubs(),
         listGuidelinesRepos: vi.fn().mockReturnValue(['octocat/hello-world']),
         getGuidelines: vi.fn().mockReturnValue('# Rules\n- be nice'),
         getState: vi.fn(),
@@ -319,7 +334,8 @@ describe('MCP resource registrations', () => {
     });
 
     it('throws when no guidelines are stored for the repo', async () => {
-      vi.mocked(getStateManager).mockReturnValueOnce({
+      vi.mocked(getStateManager).mockReturnValue({
+        ...reloadStubs(),
         listGuidelinesRepos: vi.fn().mockReturnValue([]),
         getGuidelines: vi.fn().mockReturnValue(null),
         getState: vi.fn(),
@@ -332,6 +348,7 @@ describe('MCP resource registrations', () => {
 
     it('lists known repos via the template list callback', async () => {
       vi.mocked(getStateManager).mockReturnValue({
+        ...reloadStubs(),
         listGuidelinesRepos: vi.fn().mockReturnValue(['octocat/hello-world', 'octocat/spoon-knife']),
         getGuidelines: vi.fn(),
         getState: vi.fn().mockReturnValue({
