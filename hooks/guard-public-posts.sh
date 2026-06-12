@@ -7,14 +7,20 @@
 #
 # This hook is wired to two PreToolUse matchers in hooks.json:
 #   - Bash — inspects `tool_input.command` against a regex of gh/CLI patterns
-#   - mcp__plugin_oss-autopilot_oss-autopilot__(post|claim) — always asks
+#   - mcp__plugin_oss-autopilot_oss-autopilot__(post|claim) and
+#     mcp__github__.* — the github MCP family is matched BROADLY (#1455) so
+#     this script sees every github tool call; the read-only exclusion list
+#     below decides which ones pass silently. A new mutating github-MCP
+#     tool therefore defaults to the ask gate (fail-closed) instead of
+#     silently bypassing a hand-maintained enumeration.
 #
 # Drift-resistance: `packages/mcp-server/src/tools.test.ts`
 # (`describe('hooks.json guard-public-posts matcher (#1302 item 2)')`)
 # pins the matcher's plugin-tool list to the tool registry's
 # `destructiveHint` annotations. Adding a new tool with `destructiveHint:
 # true` that posts publicly without updating the matcher fails CI; an
-# explicit exclusion list covers the LOCAL_ONLY_DESTRUCTIVE case.
+# explicit exclusion list covers the LOCAL_ONLY_DESTRUCTIVE case. The same
+# suite pins the broad `mcp__github__.*` matcher entry (#1455).
 #
 # Known static-analysis limits (regressions here are intentional gaps, not
 # silent failures — they're called out with explicit test assertions in
@@ -102,12 +108,19 @@ case "$tool_name" in
         exit 0
         ;;
 
+    mcp__github__get_*|mcp__github__list_*|mcp__github__search_*|mcp__github__issue_read|mcp__github__pull_request_read)
+        # Read-only github MCP tools — they produce no externally-visible
+        # event. This exclusion list is the ONLY way a github MCP tool gets
+        # through without an ask (#1455); keep it strictly read-only.
+        exit 0
+        ;;
+
     mcp__github__*)
-        # GitHub MCP server family (#1260). The matcher in hooks.json is an
-        # explicit alternation of mutating tools — every entry here produces
-        # an externally-visible event. Read-only tools (list_issues,
-        # get_pull_request, search_*, etc.) are intentionally NOT in the
-        # matcher and never reach this branch.
+        # GitHub MCP server family (#1260, #1455). The matcher in hooks.json
+        # is the broad `mcp__github__.*`, so every github tool call reaches
+        # this script. Anything not in the read-only exclusion list above is
+        # treated as mutating — including tools that did not exist when this
+        # guard was written (fail-closed).
         emit_ask "The '${tool_name}' MCP tool produces a public GitHub event (post / merge / close / create / push / fork / delete) under the user's identity. Show the user what will happen and wait for explicit approval before invoking. See draft-review-post for the canonical approval flow."
         exit 0
         ;;
