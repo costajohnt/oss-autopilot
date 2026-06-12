@@ -89,7 +89,7 @@ vi.mock('./commands/verify-issue.js', () => ({ runVerifyIssue: mockRunVerifyIssu
 // ─── Import after mocks ────────────────────────────────────────────────────
 
 import { commands } from './cli-registry.js';
-import { outputJson, outputJsonError, outputJsonValidated } from './formatters/json.js';
+import { outputJson, outputJsonError, outputJsonValidated, MoveOutputSchema } from './formatters/json.js';
 
 const mockOutputJson = vi.mocked(outputJson);
 const mockOutputJsonError = vi.mocked(outputJsonError);
@@ -409,6 +409,47 @@ describe('override status validation', () => {
       'UNKNOWN',
     );
     expect(mockRunMove).not.toHaveBeenCalled();
+  });
+});
+
+// ─── move schema wiring (#1453) ─────────────────────────────────────────────
+
+describe('move schema wiring (#1453)', () => {
+  it('move --json routes through outputJsonValidated with MoveOutputSchema', async () => {
+    const payload = {
+      url: PR_URL,
+      target: 'shelved',
+      description: 'Shelved — excluded from capacity and actionable items',
+    };
+    mockRunMove.mockResolvedValue(payload);
+    const program = buildProgram('move');
+
+    await program.parseAsync(['node', 'cli', 'move', PR_URL, 'shelved', '--json']);
+
+    expect(mockRunMove).toHaveBeenCalledWith({ prUrl: PR_URL, target: 'shelved' });
+    expect(mockOutputJsonValidated).toHaveBeenCalledTimes(1);
+    const [schemaArg, dataArg] = mockOutputJsonValidated.mock.calls[0];
+    // Identity check: the registration must pass the exported MoveOutputSchema
+    // itself, not just any schema — otherwise the runtime --json validation
+    // path (#1105) can never fire for move.
+    expect(schemaArg).toBe(MoveOutputSchema);
+    expect(dataArg).toEqual(payload);
+    expect(mockOutputJson).not.toHaveBeenCalled();
+  });
+
+  it('move display mode prints the description without JSON output', async () => {
+    mockRunMove.mockResolvedValue({
+      url: PR_URL,
+      target: 'waiting',
+      description: 'Moved to Waiting on Maintainer',
+    });
+    const program = buildProgram('move');
+
+    await program.parseAsync(['node', 'cli', 'move', PR_URL, 'waiting']);
+
+    expect(consoleLogSpy).toHaveBeenCalledWith('Moved to Waiting on Maintainer');
+    expect(mockOutputJson).not.toHaveBeenCalled();
+    expect(mockOutputJsonValidated).not.toHaveBeenCalled();
   });
 });
 
