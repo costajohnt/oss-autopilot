@@ -61,13 +61,15 @@ GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli
 
 `repo-vet` is the source of truth for the rubric. Your job is to render its output and add interpretive context, not to recompute the numbers in markdown:
 
-- **Use the structured fields directly:** `repoMeta.{stars,forks,...}`, `prMergeTime.{avgDays,medianDays,sampleSize}`, `mergeRate.{merged,opened,percent}`, `maintainerActivity.{lastCommitISO,contributorsLast90d,lastReleaseISO}`, `communityHealth.{contributing,issueTemplates,prTemplate,codeOfConduct}`, `rubricScore`, `rubricVerdict`.
+- **Use the structured fields directly:** `repoMeta.{stars,forks,...}`, `prMergeTime.{avgDays,medianDays,sampleSize}`, `mergeRate.{merged,opened,percent}`, `maintainerActivity.{lastCommitISO,contributorsLast90d,lastReleaseISO}`, `communityHealth.{contributing,issueTemplates,prTemplate,codeOfConduct}`, `rubricScore`, `rubricVerdict`, and the optional `historyScore` (the user's cached relationship score for this repo — absent when there is none).
 - **Do not estimate "time to first review."** That metric is intentionally absent from `repo-vet` (the underlying API doesn't expose review timestamps without a per-PR fetch). If the user explicitly asks for it, do `gh api repos/OWNER/REPO/pulls/PULL_NUMBER/reviews` for the PRs they care about. Otherwise omit it — never fabricate from list metadata.
 - **Add interpretive context** the typed function can't produce: how the score compares against repos the user already contributes to (via `status`), what the maintainer's response cadence implies for an actual PR, where the contributor is most likely to get traction.
 
 ## Scoring Rubric
 
-Use the canonical 1–10 rubric in [`docs/repo-rubric.md`](../docs/repo-rubric.md). It is the same rubric `repo-vet` implements and `issue-scout` references for the repo-health portion of its score, so all three surfaces produce comparable numbers.
+Use the canonical 1–10 health rubric in [`docs/repo-scores.md` §Health score](../docs/repo-scores.md#health-score-theirs). It is the same rubric `repo-vet` implements and `issue-scout` references for the repo-quality portion of its issue score.
+
+**It is NOT the same number as the cached `repoScore` that `status` and issue-scout surface.** That one is the **history score** — the user's own merge outcomes in the repo (`docs/repo-scores.md` §History score). The two diverge whenever repo health changed since the user's last merge there. `repo-vet --json` returns both: `rubricScore` (fresh health) and, when the user has a cached relationship, `historyScore`. Name which score you are quoting.
 
 ## Output Format
 
@@ -104,11 +106,11 @@ Use the canonical 1–10 rubric in [`docs/repo-rubric.md`](../docs/repo-rubric.m
 
 ## Caching
 
-Repository scores are cached in `~/.oss-autopilot/state.json` and updated automatically when PRs are merged or closed. The `status` tool returns current cached values.
+The cached scores in `~/.oss-autopilot/state.json` (returned by the `status` tool, updated automatically when the user's PRs are merged or closed) are **history scores**, not the rubric score this agent computes. Use them for relationship context, never as a stand-in for fresh health. `repo-vet --json` surfaces the cached value as `historyScore` alongside `rubricScore` when one exists.
 
 ## Red Flags & Green Flags
 
-See [`docs/repo-rubric.md`](../docs/repo-rubric.md) §Red Flags / §Green Flags — same canonical lists `issue-scout` uses.
+See [`docs/repo-scores.md`](../docs/repo-scores.md#red-flags) §Red Flags / §Green Flags — same canonical lists `issue-scout` uses.
 
 ## Related Agents
 - **issue-scout** — find specific issues after deciding a repo is healthy.

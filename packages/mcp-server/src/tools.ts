@@ -519,7 +519,7 @@ export function registerTools(server: McpServer): void {
     'repo-vet',
     {
       description:
-        'Compute the repo health rubric (1–10 weighted score + verdict) for an `owner/repo` slug. Returns repo metadata, PR merge times + merge rate over the trailing 90 days, maintainer activity, community-health flags, and the rubric verdict (recommended / proceed_with_caution / avoid). Read-only; no state mutation.',
+        'Compute the fresh repo health rubric (1–10 weighted score + verdict) for an `owner/repo` slug. Returns repo metadata, PR merge times + merge rate over the trailing 90 days, maintainer activity, community-health flags, the rubric verdict (recommended / proceed_with_caution / avoid), and — when the user has a cached relationship with the repo — `historyScore`, the distinct 1–10 history score from their own merge outcomes (see docs/repo-scores.md). Read-only; no state mutation.',
       inputSchema: {
         repo: z
           .string()

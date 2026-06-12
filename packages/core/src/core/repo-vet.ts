@@ -11,7 +11,7 @@
  * supply pre-fetched repo signals so the score is reproducible
  * against fixture data and offline replays.
  *
- * Rubric reference: docs/repo-rubric.md.
+ * Rubric reference: docs/repo-scores.md.
  */
 
 export interface RepoVetInput {
@@ -81,7 +81,7 @@ export interface RepoVetResult {
     prTemplate: boolean;
     codeOfConduct: boolean;
   };
-  /** Weighted 1-10 score per docs/repo-rubric.md. */
+  /** Weighted 1-10 score per docs/repo-scores.md. */
   rubricScore: number;
   /** Top-line verdict derived from the score and red-flag overrides. */
   rubricVerdict: RepoVetVerdict;
