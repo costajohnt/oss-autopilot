@@ -18,6 +18,7 @@ import {
   groupPRsByRepo,
   computeActionMenu,
   applyStatusOverrides,
+  firstMaintainerResponseFromDigest,
   CRITICAL_STATUSES,
   STALE_STATUSES,
 } from './daily-logic.js';
@@ -962,5 +963,38 @@ describe('applyStatusOverrides', () => {
     applyStatusOverrides(prs, state, failures);
 
     expect(failures).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// firstMaintainerResponseFromDigest (#1461)
+// ---------------------------------------------------------------------------
+
+describe('firstMaintainerResponseFromDigest (#1461)', () => {
+  const url = 'https://github.com/owner/repo/pull/1';
+
+  it('returns undefined when there is no previous digest', () => {
+    expect(firstMaintainerResponseFromDigest(undefined, url)).toBeUndefined();
+  });
+
+  it('returns undefined when the PR is not in the digest openPRs', () => {
+    const digest = { openPRs: [makePR({ repo: 'owner/repo', number: 2 })] };
+    expect(firstMaintainerResponseFromDigest(digest, url)).toBeUndefined();
+  });
+
+  it('returns undefined when the digest entry predates the field', () => {
+    const pr = makePR({ repo: 'owner/repo', number: 1, url });
+    delete pr.firstMaintainerResponseAt;
+    expect(firstMaintainerResponseFromDigest({ openPRs: [pr] }, url)).toBeUndefined();
+  });
+
+  it('returns the timestamp recorded while the PR was open', () => {
+    const pr = makePR({
+      repo: 'owner/repo',
+      number: 1,
+      url,
+      firstMaintainerResponseAt: '2025-06-03T00:00:00Z',
+    });
+    expect(firstMaintainerResponseFromDigest({ openPRs: [pr] }, url)).toBe('2025-06-03T00:00:00Z');
   });
 });

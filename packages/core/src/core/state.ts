@@ -64,6 +64,29 @@ function filterValidUrlEntries<T extends { url: string }>(
 }
 
 /**
+ * Fill outcome-ledger timestamps (#1461) missing on an existing stored PR
+ * from a richer re-seen entry. Only fills absent fields — never overwrites —
+ * so an earlier enriched write (and stamps like commentsFetchedAt that live
+ * solely on the stored entry) cannot be clobbered by a later minimal one.
+ * @returns true when at least one field was filled
+ */
+function upgradeLedgerFields(
+  existing: { openedAt?: string; firstMaintainerResponseAt?: string },
+  incoming: { openedAt?: string; firstMaintainerResponseAt?: string },
+): boolean {
+  let changed = false;
+  if (incoming.openedAt && !existing.openedAt) {
+    existing.openedAt = incoming.openedAt;
+    changed = true;
+  }
+  if (incoming.firstMaintainerResponseAt && !existing.firstMaintainerResponseAt) {
+    existing.firstMaintainerResponseAt = incoming.firstMaintainerResponseAt;
+    changed = true;
+  }
+  return changed;
+}
+
+/**
  * Push state to the backing Gist when Gist mode is active. Best-effort:
  * network/auth failures are logged via `warn()` but never propagated —
  * the caller's primary mutation has already succeeded locally and the
@@ -582,7 +605,15 @@ export class StateManager {
    * Entries with URLs that fail {@link parseGitHubUrl} are dropped before
    * persistence (read-side filters in dashboard-data already skip them, but
    * this prevents the bad data from reaching disk in the first place).
-   * @param prs - Merged PRs to add (duplicates by URL are ignored)
+   *
+   * Re-seen URLs are not re-added, but upgrade the stored entry in place
+   * (#1461): outcome-ledger fields (`openedAt`, `firstMaintainerResponseAt`)
+   * missing on the stored entry are filled from the richer incoming one.
+   * Existing values are never overwritten, so stamps that live only on the
+   * stored entry (commentsFetchedAt, learningsExtractedAt) and earlier
+   * enriched writes stay intact.
+   *
+   * @param prs - Merged PRs to add (duplicates by URL upgrade in place)
    * @returns count of entries added vs. dropped (invalid URL)
    */
   addMergedPRs(prs: StoredMergedPR[]): { added: number; dropped: number } {
@@ -590,9 +621,19 @@ export class StateManager {
     const { valid, dropped } = filterValidUrlEntries(prs, 'merged');
     if (valid.length === 0) return { added: 0, dropped };
     if (!this.state.mergedPRs) this.state.mergedPRs = [];
-    const existingUrls = new Set(this.state.mergedPRs.map((pr) => pr.url));
-    const newPRs = valid.filter((pr) => !existingUrls.has(pr.url));
-    if (newPRs.length === 0) return { added: 0, dropped };
+    const byUrl = new Map(this.state.mergedPRs.map((pr) => [pr.url, pr]));
+    const newPRs: StoredMergedPR[] = [];
+    let upgraded = false;
+    for (const pr of valid) {
+      const existing = byUrl.get(pr.url);
+      if (existing) {
+        upgraded = upgradeLedgerFields(existing, pr) || upgraded;
+      } else {
+        newPRs.push(pr);
+        byUrl.set(pr.url, pr);
+      }
+    }
+    if (newPRs.length === 0 && !upgraded) return { added: 0, dropped };
     this.state.mergedPRs.push(...newPRs);
     this.state.mergedPRs.sort((a, b) => b.mergedAt.localeCompare(a.mergedAt));
     debug(MODULE, `Added ${newPRs.length} merged PRs (total: ${this.state.mergedPRs.length})`);
@@ -617,7 +658,11 @@ export class StateManager {
    * Entries with URLs that fail {@link parseGitHubUrl} are dropped before
    * persistence (read-side filters in dashboard-data already skip them, but
    * this prevents the bad data from reaching disk in the first place).
-   * @param prs - Closed PRs to add (duplicates by URL are ignored)
+   *
+   * Re-seen URLs upgrade the stored entry's missing ledger fields in place
+   * (#1461) — see {@link addMergedPRs} for the full semantics.
+   *
+   * @param prs - Closed PRs to add (duplicates by URL upgrade in place)
    * @returns count of entries added vs. dropped (invalid URL)
    */
   addClosedPRs(prs: StoredClosedPR[]): { added: number; dropped: number } {
@@ -625,9 +670,19 @@ export class StateManager {
     const { valid, dropped } = filterValidUrlEntries(prs, 'closed');
     if (valid.length === 0) return { added: 0, dropped };
     if (!this.state.closedPRs) this.state.closedPRs = [];
-    const existingUrls = new Set(this.state.closedPRs.map((pr) => pr.url));
-    const newPRs = valid.filter((pr) => !existingUrls.has(pr.url));
-    if (newPRs.length === 0) return { added: 0, dropped };
+    const byUrl = new Map(this.state.closedPRs.map((pr) => [pr.url, pr]));
+    const newPRs: StoredClosedPR[] = [];
+    let upgraded = false;
+    for (const pr of valid) {
+      const existing = byUrl.get(pr.url);
+      if (existing) {
+        upgraded = upgradeLedgerFields(existing, pr) || upgraded;
+      } else {
+        newPRs.push(pr);
+        byUrl.set(pr.url, pr);
+      }
+    }
+    if (newPRs.length === 0 && !upgraded) return { added: 0, dropped };
     this.state.closedPRs.push(...newPRs);
     this.state.closedPRs.sort((a, b) => b.closedAt.localeCompare(a.closedAt));
     debug(MODULE, `Added ${newPRs.length} closed PRs (total: ${this.state.closedPRs.length})`);
