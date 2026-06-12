@@ -7,6 +7,7 @@ const {
   mockRunDaily,
   mockRunSearch,
   mockRunMove,
+  mockRunVerifyIssue,
   mockRunGuidelinesList,
   mockRunGuidelinesView,
   mockRunGuidelinesStore,
@@ -16,6 +17,7 @@ const {
   mockRunDaily: vi.fn(),
   mockRunSearch: vi.fn(),
   mockRunMove: vi.fn(),
+  mockRunVerifyIssue: vi.fn(),
   mockRunGuidelinesList: vi.fn(),
   mockRunGuidelinesView: vi.fn(),
   mockRunGuidelinesStore: vi.fn(),
@@ -29,7 +31,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runStrategy: vi.fn(),
   runSearch: mockRunSearch,
   runVet: vi.fn(),
-  runVerifyIssue: vi.fn(),
+  runVerifyIssue: mockRunVerifyIssue,
   runVetList: vi.fn(),
   runTrack: vi.fn(),
   runComplianceScore: vi.fn(),
@@ -189,6 +191,37 @@ describe('tool execution', () => {
         prUrl: 'https://github.com/octocat/hello-world/pull/42',
         target: 'auto',
       });
+    });
+  });
+
+  // #1421: nothing executed the verify-issue handler — a miswired
+  // wrapTool(runVet) would have passed the whole suite.
+  describe('verify-issue delegation', () => {
+    it('verify-issue delegates to runVerifyIssue with the issueUrl', async () => {
+      mockRunVerifyIssue.mockResolvedValueOnce({ verdict: 'available' });
+
+      const result = await client.callTool({
+        name: 'verify-issue',
+        arguments: { issueUrl: 'https://github.com/octocat/hello-world/issues/7' },
+      });
+
+      expect(mockRunVerifyIssue).toHaveBeenCalledWith({
+        issueUrl: 'https://github.com/octocat/hello-world/issues/7',
+      });
+      expect(result.isError).toBeFalsy();
+      const content = result.content[0] as { type: string; text: string };
+      expect(JSON.parse(content.text)).toEqual({ verdict: 'available' });
+    });
+
+    it('rejects a non-issue URL at the schema layer', async () => {
+      mockRunVerifyIssue.mockClear();
+      const result = await client.callTool({
+        name: 'verify-issue',
+        arguments: { issueUrl: 'https://github.com/octocat/hello-world/pull/7' },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(mockRunVerifyIssue).not.toHaveBeenCalled();
     });
   });
 
