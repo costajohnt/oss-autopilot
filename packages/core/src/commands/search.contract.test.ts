@@ -43,6 +43,8 @@ vi.mock('../core/index.js', async () => {
 });
 
 import { runSearch } from './search.js';
+import { SearchOutputSchema } from '../formatters/json.js';
+import { schemaIssues } from '../core/test-utils.js';
 
 describe('search --json contract', () => {
   beforeEach(() => {
@@ -129,6 +131,7 @@ describe('search --json contract', () => {
       expect(candidate.grade.letter).toMatch(/^[A-CF]$/);
     }
 
+    expect(schemaIssues(SearchOutputSchema, result)).toEqual([]);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/search.json');
   });
 
@@ -141,6 +144,7 @@ describe('search --json contract', () => {
     });
 
     const result = await runSearch({ maxResults: 5 });
+    expect(schemaIssues(SearchOutputSchema, result)).toEqual([]);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/search.rate-limited.json');
   });
 });

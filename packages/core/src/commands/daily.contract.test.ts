@@ -18,7 +18,25 @@
 
 import { describe, it, expect } from 'vitest';
 import { toDailyOutput, type DailyCheckResult } from './daily.js';
-import { makeFetchedPR, makeDailyDigest, makeCapacityAssessment } from '../core/test-utils.js';
+import { summarizeAttentionBuckets } from '../core/pr-attention.js';
+import {
+  DailyOutputSchema,
+  CompactDailyOutputSchema,
+  toCompactDailyOutput,
+  type DailyOutput,
+} from '../formatters/json.js';
+import { makeFetchedPR, makeDailyDigest, makeCapacityAssessment, schemaIssues } from '../core/test-utils.js';
+
+/**
+ * Goldens pin the serialized shape; this pins the goldens to the exported
+ * schemas. Without it a fixture missing a required field (tests are excluded
+ * from tsc) produces goldens that match yet fail `DailyOutputSchema` for
+ * every real consumer (#1418).
+ */
+function expectSchemaValid(result: DailyOutput): void {
+  expect(schemaIssues(DailyOutputSchema, result)).toEqual([]);
+  expect(schemaIssues(CompactDailyOutputSchema, toCompactDailyOutput(result))).toEqual([]);
+}
 
 function makeFixture(overrides: Partial<DailyCheckResult> = {}): DailyCheckResult {
   const pr1 = makeFetchedPR({
@@ -46,6 +64,9 @@ function makeFixture(overrides: Partial<DailyCheckResult> = {}): DailyCheckResul
     summary: 'One PR needs attention; one waiting on review.',
     briefSummary: '2 active PRs: 1 needs attention',
     actionableIssues: [{ type: 'ci_failing', pr: pr1, label: '[CI Failing]', isNewContribution: false }],
+    // Mirrors production wiring: executeDailyCheckInternal computes
+    // `attention` with this same classifier over the active PRs (#1352).
+    attention: summarizeAttentionBuckets([pr1, pr2]),
     actionMenu: {
       items: [
         {
@@ -75,6 +96,7 @@ function makeFixture(overrides: Partial<DailyCheckResult> = {}): DailyCheckResul
 describe('daily --json contract', () => {
   it('typical-day output matches the golden shape', async () => {
     const result = toDailyOutput(makeFixture());
+    expectSchemaValid(result);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/daily.typical.json');
   });
 
@@ -86,6 +108,7 @@ describe('daily --json contract', () => {
         summary: 'No open PRs.',
         briefSummary: 'No open PRs',
         actionableIssues: [],
+        attention: summarizeAttentionBuckets([]),
         actionMenu: {
           items: [
             { key: 'search', label: 'Search for new issues', description: 'Find a new contribution' },
@@ -102,6 +125,7 @@ describe('daily --json contract', () => {
         repoGroups: [],
       }),
     );
+    expectSchemaValid(result);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/daily.empty.json');
   });
 
@@ -115,6 +139,7 @@ describe('daily --json contract', () => {
         ],
       }),
     );
+    expectSchemaValid(result);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/daily.degraded.json');
   });
 });

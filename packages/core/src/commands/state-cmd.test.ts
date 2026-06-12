@@ -119,9 +119,9 @@ describe('runStateShow', () => {
     const sm = {
       ...makeStateManagerMock({ state: { lastRunAt: undefined } }),
       isGistDegraded: vi.fn().mockReturnValue(false),
+      // Patch getState to return a state with no lastRunAt
+      getState: () => ({ ...makeAgentState(), lastRunAt: undefined }),
     };
-    // Patch getState to return a state with no lastRunAt
-    sm.getState = () => ({ ...makeAgentState(), lastRunAt: undefined }) as any;
     mockGetStateManager.mockReturnValue(sm as any);
 
     const result = await runStateShow();

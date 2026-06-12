@@ -141,22 +141,32 @@ function makeStatefulGistMock(gistId: string, initialStateJson: string): Statefu
         getCalls++;
         return buildResponse();
       }),
-      update: vi.fn(async ({ gist_id, files: incoming, headers }) => {
-        if (gist_id !== gistId) {
-          throw new Error(`gist mock received unexpected gist_id: got ${gist_id}, expected ${gistId}`);
-        }
-        updateCalls++;
-        const ifMatch = headers?.['if-match'];
-        if (ifMatch !== undefined && ifMatch !== currentEtag) {
-          throw Object.assign(new Error('Precondition failed'), { status: 412 });
-        }
-        for (const [filename, file] of Object.entries(incoming)) {
-          files[filename] = file.content;
-        }
-        etagCounter++;
-        currentEtag = `W/"e${etagCounter}"`;
-        return buildResponse();
-      }),
+      update: vi.fn(
+        async ({
+          gist_id,
+          files: incoming,
+          headers,
+        }: {
+          gist_id: string;
+          files: Record<string, { content: string }>;
+          headers?: Record<string, string>;
+        }) => {
+          if (gist_id !== gistId) {
+            throw new Error(`gist mock received unexpected gist_id: got ${gist_id}, expected ${gistId}`);
+          }
+          updateCalls++;
+          const ifMatch = headers?.['if-match'];
+          if (ifMatch !== undefined && ifMatch !== currentEtag) {
+            throw Object.assign(new Error('Precondition failed'), { status: 412 });
+          }
+          for (const [filename, file] of Object.entries(incoming)) {
+            files[filename] = file.content;
+          }
+          etagCounter++;
+          currentEtag = `W/"e${etagCounter}"`;
+          return buildResponse();
+        },
+      ),
       create: vi.fn(),
     },
   };

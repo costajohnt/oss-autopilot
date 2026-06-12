@@ -95,14 +95,18 @@ function makeGistResponse(gistId: string, stateJson?: string) {
 }
 
 /** Create a mock Octokit with gists methods as vi.fn(). */
-function makeMockOctokit(): OctokitLike & {
+type MockOctokit = OctokitLike & {
   gists: {
     get: ReturnType<typeof vi.fn>;
     list: ReturnType<typeof vi.fn>;
     create: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
   };
-} {
+};
+
+function makeMockOctokit(): MockOctokit {
+  // The cast is load-bearing: a bare vi.fn() satisfies the Mock side of the
+  // intersection but not OctokitLike's concrete call signatures.
   return {
     gists: {
       get: vi.fn(),
@@ -110,7 +114,7 @@ function makeMockOctokit(): OctokitLike & {
       create: vi.fn(),
       update: vi.fn(),
     },
-  };
+  } as unknown as MockOctokit;
 }
 
 // ── Test suite ───────────────────────────────────────────────────────────────
@@ -446,7 +450,7 @@ describe('GistStateStore', () => {
       expect(result.degraded).toBe(true);
       expect(store.getGistId()).toBeNull();
 
-      store.setState(createFreshState());
+      store.setState(JSON.stringify(createFreshState()));
       await expect(store.push()).rejects.toThrow(/cannot push before bootstrap/);
       expect(octokit.gists.update).not.toHaveBeenCalled();
     });

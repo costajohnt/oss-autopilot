@@ -96,6 +96,12 @@
       "isNewContribution": false
     }
   ],
+  "attention": {
+    "needsAttention": 1,
+    "stuckCI": 0,
+    "dormantFollowup": 0,
+    "waiting": 1
+  },
   "actionMenu": {
     "items": [
       {

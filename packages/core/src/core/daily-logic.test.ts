@@ -607,7 +607,7 @@ describe('computeActionMenu (core)', () => {
         isNewContribution: false,
       },
       {
-        type: 'changes_requested' as const,
+        type: 'needs_changes' as const,
         pr: makePR({ repo: 'owner/repo-b' }),
         label: '[Changes Requested]',
         isNewContribution: false,
@@ -685,7 +685,10 @@ describe('applyStatusOverrides', () => {
   });
 
   function makeState(
-    statusOverrides: Record<string, { status: string; setAt: string; lastActivityAt: string }> = {},
+    statusOverrides: Record<
+      string,
+      { status: 'needs_addressing' | 'waiting_on_maintainer'; setAt: string; lastActivityAt: string }
+    > = {},
   ): Readonly<AgentState> {
     return makeAgentState({ config: { statusOverrides } });
   }

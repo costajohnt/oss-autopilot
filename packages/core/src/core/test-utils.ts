@@ -6,6 +6,7 @@
  * callers only specify the fields relevant to their test.
  */
 
+import type { z } from 'zod';
 import type {
   FetchedPR,
   DailyDigest,
@@ -98,7 +99,9 @@ export function makeCapacityAssessment(overrides: Partial<CapacityAssessment> = 
 // RepoScore
 // ---------------------------------------------------------------------------
 
-export function makeRepoScore(overrides: Partial<RepoScore> = {}): RepoScore {
+export function makeRepoScore(
+  overrides: Partial<Omit<RepoScore, 'signals'>> & { signals?: Partial<RepoScore['signals']> } = {},
+): RepoScore {
   const { signals: signalOverrides, ...rest } = overrides;
   return {
     repo: 'owner/repo',
@@ -280,4 +283,19 @@ export function makeIssueCandidate(overrides: Partial<IssueCandidate> = {}): Iss
     searchPriority: 'normal',
     ...overrides,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Schema validation (contract tests)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the Zod issues from validating `value` against `schema` — empty
+ * when it parses. Contract tests assert this equals `[]` so a golden that
+ * drifts from its exported output schema fails loudly with the exact paths,
+ * instead of passing on golden equality alone (#1418).
+ */
+export function schemaIssues(schema: z.ZodTypeAny, value: unknown): z.ZodIssue[] {
+  const result = schema.safeParse(value);
+  return result.success ? [] : result.error.issues;
 }

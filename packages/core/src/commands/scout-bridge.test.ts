@@ -40,12 +40,12 @@ describe('buildScoutState', () => {
         githubUsername: 'octocat',
         languages: ['TypeScript', 'Rust'],
         labels: ['good first issue', 'help wanted'],
-        scope: ['all'],
+        scope: ['beginner'],
         excludeRepos: ['owner/excluded'],
         excludeOrgs: ['bad-org'],
         aiPolicyBlocklist: ['matplotlib/matplotlib'],
         preferredOrgs: ['microsoft', 'vercel'],
-        projectCategories: ['web', 'cli'],
+        projectCategories: ['devtools', 'infrastructure'],
         minStars: 100,
         maxIssueAgeDays: 30,
         includeDocIssues: false,
@@ -75,11 +75,11 @@ describe('buildScoutState', () => {
     expect(result.preferences.githubUsername).toBe('octocat');
     expect(result.preferences.languages).toEqual(['TypeScript', 'Rust']);
     expect(result.preferences.labels).toEqual(['good first issue', 'help wanted']);
-    expect(result.preferences.scope).toEqual(['all']);
+    expect(result.preferences.scope).toEqual(['beginner']);
     expect(result.preferences.excludeRepos).toEqual(['owner/excluded']);
     expect(result.preferences.excludeOrgs).toEqual(['bad-org']);
     expect(result.preferences.aiPolicyBlocklist).toEqual(['matplotlib/matplotlib']);
-    expect(result.preferences.projectCategories).toEqual(['web', 'cli']);
+    expect(result.preferences.projectCategories).toEqual(['devtools', 'infrastructure']);
     expect(result.preferences.minStars).toBe(100);
     expect(result.preferences.maxIssueAgeDays).toBe(30);
     expect(result.preferences.includeDocIssues).toBe(false);
@@ -92,17 +92,17 @@ describe('buildScoutState', () => {
     expect(result.savedResults).toEqual([]);
   });
 
-  it.each([
-    ['excludeOrgs', 'excludeOrgs'],
-    ['projectCategories', 'projectCategories'],
-  ] as const)('should default %s to [] when undefined in config', (field) => {
-    const state = makeAgentState({ config: { [field]: undefined } });
-    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+  it.each(['excludeOrgs', 'projectCategories'] as const)(
+    'should default %s to [] when undefined in config',
+    (field) => {
+      const state = makeAgentState({ config: { [field]: undefined } });
+      mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
 
-    const result = buildScoutState();
+      const result = buildScoutState();
 
-    expect(result.preferences[field]).toEqual([]);
-  });
+      expect(result.preferences[field]).toEqual([]);
+    },
+  );
 
   it('should correctly project mergedPRs to url, title, mergedAt', () => {
     const state = makeAgentState({

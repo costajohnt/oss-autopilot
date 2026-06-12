@@ -288,6 +288,7 @@ describe('end-to-end: toDailyOutput emits fenced commentedIssues bodies (#1372)'
       summary: '',
       briefSummary: '',
       actionableIssues: [],
+      attention: { needsAttention: 0, stuckCI: 0, dormantFollowup: 0, waiting: 0 },
       actionMenu: {
         items: [],
         context: {

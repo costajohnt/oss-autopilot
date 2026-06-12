@@ -83,8 +83,8 @@ describe('classifyLinkedPR', () => {
 
   describe('state casing and normalization', () => {
     it('accepts uppercase state values (GraphQL PullRequestState enum)', () => {
-      // @ts-expect-error — runtime test for uppercase input
       const result = classifyLinkedPR({
+        // @ts-expect-error — runtime test for uppercase input
         linkedPR: { author: { login: 'contributor' }, state: 'OPEN' },
         userLogin: 'costajohnt',
       });
@@ -92,8 +92,8 @@ describe('classifyLinkedPR', () => {
     });
 
     it('accepts uppercase MERGED from GraphQL', () => {
-      // @ts-expect-error — runtime test for uppercase input
       const result = classifyLinkedPR({
+        // @ts-expect-error — runtime test for uppercase input
         linkedPR: { author: { login: 'costajohnt' }, state: 'MERGED' },
         userLogin: 'costajohnt',
       });
@@ -104,7 +104,6 @@ describe('classifyLinkedPR', () => {
   describe('ghost author handling', () => {
     it('treats a null author (deleted GitHub account) as other_X', () => {
       const result = classifyLinkedPR({
-        // @ts-expect-error — runtime test: GitHub returns null author for deleted accounts
         linkedPR: { author: null, state: 'closed' },
         userLogin: 'costajohnt',
       });
