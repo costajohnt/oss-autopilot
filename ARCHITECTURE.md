@@ -57,7 +57,7 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 
 ### Agents (`agents/`)
 
-Seven specialized agents handle specific tasks autonomously:
+7 specialized agents handle specific tasks autonomously:
 
 | Agent | Role |
 |-------|------|
