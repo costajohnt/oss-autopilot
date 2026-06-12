@@ -233,7 +233,10 @@ export function buildDashboardJson(
     allClosedPRs: filteredClosedPRs,
     repoMetadata,
     vettedIssues,
-    partialFailures: buildFailures.length > 0 ? buildFailures : undefined,
+    // Dedup: the fetch path already applies status overrides into the cached
+    // partialFailures, and the rebuild applies them again above — the same
+    // failing override must not appear (and be counted) twice (#1448).
+    partialFailures: buildFailures.length > 0 ? [...new Set(buildFailures)] : undefined,
   };
 }
 
