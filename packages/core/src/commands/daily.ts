@@ -792,7 +792,10 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // never bootstrapped) writes mutations that will not sync. Previously the
   // only signal was a stderr warn, invisible to --json consumers.
   const smForGistCheck = getStateManager();
-  if (smForGistCheck.getState().config.persistence === 'gist' && !smForGistCheck.isGistMode()) {
+  if (
+    smForGistCheck.getState().config.persistence === 'gist' &&
+    (!smForGistCheck.isGistMode() || smForGistCheck.isGistDegraded())
+  ) {
     recordWarning(
       warnings,
       'gist-init',
