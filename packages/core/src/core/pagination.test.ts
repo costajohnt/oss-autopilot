@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { paginateAll } from './pagination.js';
+import { paginateAll, paginateAllDetailed } from './pagination.js';
 
 describe('paginateAll', () => {
   it('should fetch single page when results < perPage', async () => {
@@ -64,5 +64,40 @@ describe('paginateAll', () => {
 
     expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }]);
     expect(fetchPage).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('paginateAllDetailed', () => {
+  it('sets truncated when every page up to maxPages is full (#1456)', async () => {
+    const fullPage = Array.from({ length: 10 }, (_, i) => i);
+    const fetchPage = vi.fn().mockResolvedValue({ data: fullPage });
+
+    const result = await paginateAllDetailed(fetchPage, 10, 3);
+
+    expect(result.items).toHaveLength(30);
+    expect(result.truncated).toBe(true);
+    expect(fetchPage).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not set truncated when a short page ends pagination naturally', async () => {
+    const page1 = Array.from({ length: 10 }, (_, i) => i);
+    const page2 = Array.from({ length: 4 }, (_, i) => i + 10);
+    const fetchPage = vi.fn().mockResolvedValueOnce({ data: page1 }).mockResolvedValueOnce({ data: page2 });
+
+    const result = await paginateAllDetailed(fetchPage, 10, 3);
+
+    expect(result.items).toHaveLength(14);
+    expect(result.truncated).toBe(false);
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not set truncated on an empty first page', async () => {
+    const fetchPage = vi.fn().mockResolvedValueOnce({ data: [] });
+
+    const result = await paginateAllDetailed(fetchPage, 100);
+
+    expect(result.items).toEqual([]);
+    expect(result.truncated).toBe(false);
+    expect(fetchPage).toHaveBeenCalledTimes(1);
   });
 });

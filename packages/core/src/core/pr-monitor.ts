@@ -29,7 +29,7 @@ import {
   isInvalidUserSearchError,
   isRateLimitOrAuthError,
 } from './errors.js';
-import { paginateAll } from './pagination.js';
+import { paginateAllDetailed, type PaginateAllResult } from './pagination.js';
 import { debug, warn, timed } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 
@@ -88,6 +88,8 @@ export interface FetchPRsResult {
    * - Post-fetch viewer-mismatch guardrail (configured username differs
    *   from the authenticated viewer when the search returned zero PRs).
    * - Search API 1000-result truncation (#1057 M25).
+   * - Per-PR comment pagination truncation (#1456) — newest comments
+   *   dropped, so unresponded-comment detection may be incomplete.
    * Callers (daily, dashboard) surface these so users see the signal.
    */
   warnings?: string[];
@@ -305,7 +307,7 @@ export class PRMonitor {
         async (item) => {
           try {
             debug('pr-monitor', `Fetching details for ${item.html_url}`);
-            const pr = await this.fetchPRDetails(item.html_url);
+            const pr = await this.fetchPRDetails(item.html_url, warnings);
             if (pr) prs.push(pr);
           } catch (error) {
             const errMsg = errorMessage(error);
@@ -329,7 +331,7 @@ export class PRMonitor {
   /**
    * Fetch detailed information for a single PR
    */
-  private async fetchPRDetails(prUrl: string): Promise<FetchedPR | null> {
+  private async fetchPRDetails(prUrl: string, warnings?: string[]): Promise<FetchedPR | null> {
     const parsed = parseGitHubUrl(prUrl);
     if (!parsed || parsed.type !== 'pull') {
       throw new ValidationError(`Invalid PR URL format: ${prUrl}`);
@@ -341,13 +343,13 @@ export class PRMonitor {
     // Fetch PR data, comments, reviews, and inline review comments in parallel.
     // listReviewComments is non-critical (used for self-reply detection), so degrade
     // gracefully on failure rather than dropping the entire PR (#199).
-    const [prResponse, comments, reviewsResponse, reviewComments] = await Promise.all([
+    const [prResponse, commentsResult, reviewsResponse, reviewCommentsResult] = await Promise.all([
       this.octokit.pulls.get({ owner, repo, pull_number: number }),
-      paginateAll((page) =>
+      paginateAllDetailed((page) =>
         this.octokit.issues.listComments({ owner, repo, issue_number: number, per_page: 100, page }),
       ),
       this.octokit.pulls.listReviews({ owner, repo, pull_number: number }),
-      paginateAll((page) =>
+      paginateAllDetailed((page) =>
         this.octokit.pulls.listReviewComments({ owner, repo, pull_number: number, per_page: 100, page }),
       ).catch((err: unknown) => {
         const status = getHttpStatusCode(err);
@@ -363,7 +365,7 @@ export class PRMonitor {
           }
           // Non-rate-limit 403 (DMCA, private repo, SSO) — degrade gracefully
           warn('pr-monitor', `403 fetching review comments for ${owner}/${repo}#${number}: ${msg}`);
-          return [] as ReviewComment[];
+          return { items: [], truncated: false } as PaginateAllResult<ReviewComment>;
         }
         if (status === 404) {
           debug('pr-monitor', `Review comments 404 for ${owner}/${repo}#${number} (likely no inline comments)`);
@@ -373,9 +375,23 @@ export class PRMonitor {
             `Failed to fetch review comments for ${owner}/${repo}#${number} (status ${status ?? 'unknown'}): self-reply detection will be skipped`,
           );
         }
-        return [] as ReviewComment[];
+        return { items: [], truncated: false } as PaginateAllResult<ReviewComment>;
       }),
     ]);
+    const { items: comments } = commentsResult;
+    const { items: reviewComments } = reviewCommentsResult;
+
+    // Surface pagination truncation through the caller's warnings channel
+    // (#1456): comments arrive oldest-first, so hitting the cap drops the
+    // NEWEST maintainer feedback — status determination (unresponded-comment
+    // detection) may be wrong for this PR.
+    if (commentsResult.truncated || reviewCommentsResult.truncated) {
+      const message =
+        `Comment pagination cap reached for ${owner}/${repo}#${number}; the newest comments were not ` +
+        `fetched and unresponded-comment detection may be incomplete.`;
+      warnings?.push(message);
+      warn(MODULE, message);
+    }
 
     const ghPR = prResponse.data;
     const reviews = reviewsResponse.data;
