@@ -14,7 +14,7 @@ All commands support `--json` flag for structured output.
      `bash scripts/build-cli-if-stale.sh "$PWD" && pnpm run generate:reference`.
      CI fails if this line is out of sync with the registry. -->
 <!-- BEGIN AUTO:local-only-commands -->
-Local-only commands (no GitHub token needed): `checkSetup`, `clear-override`, `config`, `detect-formatters`, `dismiss`, `doctor`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `override`, `parse-issue-list`, `serve`, `setup`, `shelve`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`, `unshelve`.
+Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-formatters`, `dismiss`, `doctor`, `guidelines`, `list-mark-done`, `list-move-tier`, `local-repos`, `manifest`, `move`, `orphan-files`, `parse-issue-list`, `serve`, `setup`, `skip-add`, `startup`, `stats`, `status`, `strategy`, `undismiss`.
 <!-- END AUTO:local-only-commands -->
 
 ### Core Workflow
@@ -93,7 +93,7 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 ### PR Management
 
 ```bash
-# Track a PR (informational lookup; nothing persists)
+# Inspect a PR (read-only metadata lookup; nothing is tracked or persisted)
 <prefix> track <pr-url> --json
 
 # Score a PR against opensource.guide best practices
@@ -105,20 +105,13 @@ The full extraction workflow lives at [`workflows/extract-learnings.md`](extract
 # Post a comment to an issue or PR
 <prefix> post <url> "message" --json
 
-# Move a PR between states
+# Move a PR between states (attention/waiting set a status override until
+# cleared; shelved hides it from the digest; auto clears back to computed)
 <prefix> move <pr-url> <attention|waiting|shelved|auto> --json
-
-# Shelve/unshelve a PR (aliases for move)
-<prefix> shelve <pr-url> --json
-<prefix> unshelve <pr-url> --json
 
 # Dismiss/undismiss an issue
 <prefix> dismiss <issue-url> --json
 <prefix> undismiss <issue-url> --json
-
-# Override a PR's computed status until cleared
-<prefix> override <pr-url> <attention|waiting> --json
-<prefix> clear-override <pr-url> --json
 
 # Fetch the target repo's PR description template (used by the draft-first workflow)
 <prefix> pr-template <owner/repo> --json
@@ -241,6 +234,9 @@ rejected with a did-you-mean suggestion.
 | `workflows/dispatch-review.md` | Shared multi-agent review-dispatch template (consumed by both review workflows) |
 | `workflows/review-issue-replies.md` | Issue reply triage and dismiss handler |
 | `workflows/dormant-pr-follow-up.md` | Operationalizes the 7/14/30-day follow-up cadence for waiting-on-maintainer PRs |
+| `workflows/plan-review.md` | Plan-phase review convergence loop — design critique before any code is written (companion to pre-commit-review) |
+| `workflows/extract-learnings.md` | Distill per-repo contribution guidelines from merged/closed PR feedback (#867) |
+| `workflows/edit-guidelines.md` | Manual edit path for stored per-repo guidelines (load → edit → store, no extraction) |
 <!-- END AUTO:workflow-index -->
 
 ---

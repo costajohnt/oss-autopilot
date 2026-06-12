@@ -370,12 +370,12 @@ export function registerTools(server: McpServer): void {
     wrapTool(runVetList),
   );
 
-  // 5. track — Fetch PR metadata (informational; v2 does not persist a tracking list)
+  // 5. track — Inspect PR metadata (read-only; v2 does not persist a tracking list)
   server.registerTool(
     'track',
     {
       description:
-        'Fetch metadata for a pull request (repo, number, title). Informational only — in v2, PRs are discovered automatically on each daily run and nothing is persisted locally. Use `daily` or `status` for ongoing monitoring.',
+        'Inspect a pull request: read-only metadata lookup (repo, number, title). Despite the name, nothing is tracked or persisted — in v2, PRs are discovered automatically on each daily run. Use `daily` or `status` for ongoing monitoring.',
       inputSchema: {
         prUrl: githubPrUrlSchema.describe(
           'Full GitHub PR URL to fetch metadata for (e.g. https://github.com/owner/repo/pull/123)',
@@ -387,8 +387,9 @@ export function registerTools(server: McpServer): void {
   );
 
   // The v1→v2 `untrack` and `read` stubs were removed in v4 (#1133). Use
-  // `shelve`/`unshelve` to hide PRs from the daily digest. MCP clients that
-  // hard-coded these tool names will get a "tool not found" error.
+  // `move` with target `shelved`/`auto` to hide/restore PRs in the daily
+  // digest. MCP clients that hard-coded these tool names will get a "tool
+  // not found" error.
 
   // 5b. compliance-score — Run the typed compliance scoring function
   // against a PR (#1245). Used by `pr-compliance-checker` instead of
@@ -591,31 +592,8 @@ export function registerTools(server: McpServer): void {
     wrapTool(runStartup),
   );
 
-  // 16. shelve — Shelve a PR
-  server.registerTool(
-    'shelve',
-    {
-      description: 'Shelve a PR to temporarily hide it from daily checks and status reports without untracking it.',
-      inputSchema: {
-        prUrl: githubPrUrlSchema.describe('Full GitHub PR URL to shelve'),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false },
-    },
-    wrapTool((args: { prUrl: string }) => runMove({ prUrl: args.prUrl, target: 'shelved' })),
-  );
-
-  // 17. unshelve — Unshelve a PR
-  server.registerTool(
-    'unshelve',
-    {
-      description: 'Unshelve a previously shelved PR, returning it to active monitoring.',
-      inputSchema: {
-        prUrl: githubPrUrlSchema.describe('Full GitHub PR URL to unshelve'),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false },
-    },
-    wrapTool((args: { prUrl: string }) => runMove({ prUrl: args.prUrl, target: 'auto' })),
-  );
+  // The `shelve`/`unshelve` tool aliases were retired in #1466 — they
+  // delegated to `move` with targets `shelved`/`auto`. Use `move` directly.
 
   // 18. dismiss — Dismiss an issue
   server.registerTool(

@@ -22,7 +22,7 @@ Prose in the agent body is advisory; both hard gates must be kept narrow.
 |---|---|
 | `mcp__plugin_oss-autopilot_oss-autopilot__post` | Writes a public GitHub comment. All posting goes through the `draft-review-post` skill so the user reviews the exact body before it ships. |
 | `mcp__plugin_oss-autopilot_oss-autopilot__claim` | Posts a claim comment on an issue. Same reason as `post`. |
-| `mcp__plugin_oss-autopilot_oss-autopilot__move`, `__dismiss`, `__shelve` (and their inverses) | Mutate `~/.oss-autopilot/state.json`. Agents that need to influence state should produce a recommendation for the parent workflow to act on, not mutate directly. |
+| `mcp__plugin_oss-autopilot_oss-autopilot__move`, `__dismiss` / `__undismiss` | Mutate `~/.oss-autopilot/state.json`. Agents that need to influence state should produce a recommendation for the parent workflow to act on, not mutate directly. |
 | `mcp__linkedin__*`, `mcp__claude_ai_Gmail__*`, `mcp__puppeteer__*`, `mcp__plugin_serena_serena__execute_shell_command` | Out of scope — OSS Autopilot agents should never need cross-channel messaging, arbitrary web control, or sandbox escape. |
 
 ## Per-agent allowlists
@@ -44,8 +44,8 @@ agent's body instructs with is actually granted (#1377).
 
 `track` here is the v2 read-only snapshot tool — it no longer mutates
 `~/.oss-autopilot/state.json`, which is why it can be granted despite the
-state-mutation exclusion above (the mutating tools — `move`, `dismiss`,
-`shelve` and inverses — remain excluded).
+state-mutation exclusion above (the mutating tools — `move`, `dismiss` /
+`undismiss` — remain excluded).
 
 ## Adding a tool
 

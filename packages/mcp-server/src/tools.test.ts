@@ -32,8 +32,6 @@ const EXPECTED_TOOLS = [
   'setup',
   'check-setup',
   'startup',
-  'shelve',
-  'unshelve',
   'dismiss',
   'undismiss',
   'move',
@@ -89,8 +87,8 @@ describe('MCP tool registrations', () => {
     await client.close();
   });
 
-  it('registers exactly 32 tools', () => {
-    expect(tools).toHaveLength(32);
+  it('registers exactly 30 tools', () => {
+    expect(tools).toHaveLength(30);
   });
 
   it('registers all expected tool names', () => {
@@ -192,8 +190,6 @@ describe('MCP tool registrations', () => {
       'config',
       'init',
       'setup',
-      'shelve',
-      'unshelve',
       'dismiss',
       'undismiss',
       'move',
@@ -341,11 +337,11 @@ describe('MCP tool registrations', () => {
     });
 
     it('rejects an issue URL where the tool expects a PR URL', async () => {
-      // `shelve` requires a PR URL; passing an issue URL should fail schema
+      // `move` requires a PR URL; passing an issue URL should fail schema
       // validation before the tool handler runs.
       const result = await client.callTool({
-        name: 'shelve',
-        arguments: { prUrl: 'https://github.com/owner/repo/issues/1' },
+        name: 'move',
+        arguments: { prUrl: 'https://github.com/owner/repo/issues/1', target: 'shelved' },
       });
       expect(result.isError).toBe(true);
       const text = (result.content as Array<{ text: string }>)[0]?.text ?? '';

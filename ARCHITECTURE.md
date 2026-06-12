@@ -120,7 +120,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `features` | `features.ts` | Feature-scoped opportunities in repos with 3+ merged PRs, split into quick-wins / bigger-bets |
 | `strategy` | `strategy.ts` | On-demand contribution-strategy snapshot from local state (#1243) |
 | `state` | `state-cmd.ts` | Manage state persistence: `--show`, `--sync`, `--unlink` (local/Gist) |
-| `track` | `track.ts` | Fetch PR metadata for inspection (no longer persists; `untrack` removed in v4 / #1133) |
+| `track` | `track.ts` | Inspect a PR: read-only metadata lookup (despite the name, nothing is tracked or persisted; `untrack` removed in v4 / #1133) |
 | `status` | `status.ts` | Show contribution stats from local state |
 | `config` | `config.ts` | Read/write user configuration |
 | `init` | `init.ts` | Initialize with GitHub username and import open PRs |
@@ -134,9 +134,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `list-move-tier` | `list-move-tier.ts` | Move an issue between Pursue / Maybe / Skip sections of a curated list (#1107) |
 | `list-mark-done` | `list-mark-done.ts` | Mark a curated-list issue line done with strikethrough + Done sub-bullet (#1299) |
 | `dashboard serve` | `dashboard.ts` | Launch interactive SPA dashboard (with `dashboard-data.ts`, `dashboard-lifecycle.ts`, `dashboard-process.ts`, `dashboard-server.ts`) |
-| `move` | `move.ts` | Transition a PR between states: attention, waiting, shelved, auto |
-| `shelve` / `unshelve` | `shelve.ts` | Exclude/re-include PRs from capacity and actionable items (independent commands emitting `ShelveOutput`, see #1037) |
-| `override` / `clear-override` | `move.ts` (wrappers around `runMove`) | Backward-compatible status override commands |
+| `move` | `move.ts` | Transition a PR between states: attention, waiting, shelved, auto (the `shelve`/`unshelve` and `override`/`clear-override` aliases were retired in #1466) |
 | `dismiss` / `undismiss` | `dismiss.ts` | Dismiss issue reply notifications (auto-resurfaces on new activity) |
 | `comments` / `post` / `claim` | `comments.ts` | Track issue conversations, post comments, claim issues |
 | `local-repos` | `local-repos.ts` | Scan for locally cloned repos |
