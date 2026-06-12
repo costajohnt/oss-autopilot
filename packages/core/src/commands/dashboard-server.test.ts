@@ -81,6 +81,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
     getDataDir: vi.fn(() => pidTestDir),
     getCLIVersion: vi.fn(() => '0.44.6'),
     applyStatusOverrides: vi.fn((prs: unknown[]) => prs),
+    maybeCheckpoint: (...args: unknown[]) => mockMaybeCheckpoint(...args),
     // Real pure classifier + status set (#1352) so /api/data responses carry
     // genuine buckets and the shelve partition mirrors the daily check.
     classifyAttentionBucket: actual.classifyAttentionBucket,
@@ -121,6 +122,8 @@ vi.mock('./dashboard-data.js', async (importActual) => {
 
 // Mock move command so dashboard-server's dynamic import resolves without side effects
 const mockRunMove = vi.fn().mockResolvedValue({ url: '', target: 'shelved', description: 'done' });
+// Resolves null (no warning) by default; #1417 tests resolve a warning string.
+const mockMaybeCheckpoint = vi.fn().mockResolvedValue(null);
 vi.mock('./move.js', () => ({
   VALID_TARGETS: ['attention', 'waiting', 'shelved', 'auto'],
   runMove: (...args: unknown[]) => mockRunMove(...args),
@@ -997,6 +1000,231 @@ describe('dashboard-server', () => {
         'https://github.com/owner/repo/issues/42',
         expect.any(String),
       );
+    });
+
+    describe('gist sync warnings (#1417)', () => {
+      // The server instance is shared across the whole file, and pending
+      // gist-sync warnings clear only on a successful checkpoint PUSH — so
+      // every warning-producing test ends with a clean action to reset the
+      // banner for later tests (recordGistSyncOutcome(null) clears pending).
+      async function resetPendingWarnings(): Promise<void> {
+        const result = await sendRequest(
+          'POST',
+          '/api/action',
+          JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/99', target: 'shelved' }),
+        );
+        expect(JSON.parse(result.body).partialFailures).toBeUndefined();
+      }
+
+      it('a successful checkpoint adds nothing to partialFailures', async () => {
+        const result = await sendRequest(
+          'POST',
+          '/api/action',
+          JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/10', target: 'shelved' }),
+        );
+
+        expect(result.statusCode).toBe(200);
+        expect(JSON.parse(result.body).partialFailures).toBeUndefined();
+      });
+
+      it('dismiss checkpoints to Gist after the mutation', async () => {
+        mockMaybeCheckpoint.mockClear();
+
+        const result = await sendRequest(
+          'POST',
+          '/api/action',
+          JSON.stringify({
+            action: 'dismiss_issue_response',
+            url: 'https://github.com/owner/repo/issues/43',
+          }),
+        );
+
+        expect(result.statusCode).toBe(200);
+        // Checkpoint runs against the live state manager, after dismissIssue.
+        expect(mockMaybeCheckpoint).toHaveBeenCalledWith(mockStateManager, expect.any(String));
+        expect(mockMaybeCheckpoint.mock.invocationCallOrder[0]).toBeGreaterThan(
+          mockStateManager.dismissIssue.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('surfaces a failed dismiss checkpoint in partialFailures', async () => {
+        const warning = 'Gist checkpoint push failed after retry; the local mutation is saved';
+        mockMaybeCheckpoint.mockResolvedValueOnce(warning);
+
+        const result = await sendRequest(
+          'POST',
+          '/api/action',
+          JSON.stringify({
+            action: 'dismiss_issue_response',
+            url: 'https://github.com/owner/repo/issues/44',
+          }),
+        );
+
+        expect(result.statusCode).toBe(200);
+        expect(JSON.parse(result.body).partialFailures).toContain(warning);
+
+        await resetPendingWarnings();
+      });
+
+      it('surfaces a move gistSyncWarning in partialFailures instead of discarding it', async () => {
+        const warning = 'Gist checkpoint failed (local mutation succeeded, will retry on next push): boom';
+        mockRunMove.mockResolvedValueOnce({
+          url: 'https://github.com/owner/repo/pull/9',
+          target: 'shelved',
+          description: 'done',
+          gistSyncWarning: warning,
+        });
+
+        const result = await sendRequest(
+          'POST',
+          '/api/action',
+          JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/9', target: 'shelved' }),
+        );
+
+        expect(result.statusCode).toBe(200);
+        const body = JSON.parse(result.body);
+        expect(body.partialFailures).toContain(warning);
+
+        // The warning persists across the NEXT action rebuild and is not
+        // duplicated when the same warning fires again.
+        mockRunMove.mockResolvedValueOnce({
+          url: 'https://github.com/owner/repo/pull/9',
+          target: 'waiting',
+          description: 'done',
+          gistSyncWarning: warning,
+        });
+        const second = await sendRequest(
+          'POST',
+          '/api/action',
+          JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/9', target: 'waiting' }),
+        );
+        const secondBody = JSON.parse(second.body);
+        expect(secondBody.partialFailures.filter((m: string) => m === warning)).toHaveLength(1);
+
+        await resetPendingWarnings();
+      });
+
+      it('surfaces the warning produced on the conflict-retry attempt', async () => {
+        const warning = 'Gist checkpoint push failed after retry; the local mutation is saved';
+        // First dismiss attempt conflicts; the server-side retry (#1397)
+        // succeeds but its checkpoint fails — the retry's warning must
+        // reach the response, not be lost with the failed first attempt.
+        mockStateManager.dismissIssue.mockImplementationOnce(() => {
+          throw new ConcurrencyError(1000, 2000);
+        });
+        mockMaybeCheckpoint.mockResolvedValueOnce(warning);
+
+        const result = await sendRequest(
+          'POST',
+          '/api/action',
+          JSON.stringify({
+            action: 'dismiss_issue_response',
+            url: 'https://github.com/owner/repo/issues/45',
+          }),
+        );
+
+        expect(result.statusCode).toBe(200);
+        expect(JSON.parse(result.body).partialFailures).toContain(warning);
+
+        await resetPendingWarnings();
+      });
+
+      it('a pending warning survives a GET /api/data rebuild', async () => {
+        const warning = 'Gist checkpoint failed (local mutation succeeded, will retry on next push): poll';
+        mockRunMove.mockResolvedValueOnce({
+          url: 'https://github.com/owner/repo/pull/11',
+          target: 'shelved',
+          description: 'done',
+          gistSyncWarning: warning,
+        });
+        await sendRequest(
+          'POST',
+          '/api/action',
+          JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/11', target: 'shelved' }),
+        );
+
+        // Force the GET handler down its rebuild branch — the warning must be
+        // re-merged there, not only in the action response.
+        mockStateManager.reloadIfChanged.mockReturnValueOnce(true);
+        const result = await sendRequest('GET', '/api/data');
+
+        expect(result.statusCode).toBe(200);
+        expect(JSON.parse(result.body).partialFailures).toContain(warning);
+
+        await resetPendingWarnings();
+      });
+
+      it('a successful refresh does NOT clear a still-unpushed gist warning', async () => {
+        // Regression test for the lifecycle split: fetch partialFailures
+        // clear on a successful PULL, but a gist-sync warning means an
+        // un-pushed mutation — clearing it on pull is exactly when the
+        // mutation is at risk of silent revert.
+        const warning = 'Gist checkpoint push failed after retry; the local mutation is saved';
+        mockMaybeCheckpoint.mockResolvedValue(warning);
+        await sendRequest(
+          'POST',
+          '/api/action',
+          JSON.stringify({ action: 'dismiss_issue_response', url: 'https://github.com/owner/repo/issues/46' }),
+        );
+
+        vi.mocked(getGitHubToken).mockReturnValue('test-token');
+        vi.mocked(fetchDashboardData).mockResolvedValue({
+          digest: makeDigest(),
+          commentedIssues: [],
+          allMergedPRs: [],
+          allClosedPRs: [],
+          partialFailures: [],
+        });
+
+        const result = await sendRequest('POST', '/api/refresh');
+        expect(result.statusCode).toBe(200);
+        expect(JSON.parse(result.body).partialFailures).toContain(warning);
+
+        vi.mocked(getGitHubToken).mockReturnValue(null as never);
+        mockMaybeCheckpoint.mockResolvedValue(null);
+        await resetPendingWarnings();
+      });
+
+      it('gist mode: refresh re-pushes BEFORE pulling and clears the warning on success', async () => {
+        const warning = 'Gist checkpoint push failed after retry; the local mutation is saved';
+        mockStateManager.isGistMode.mockReturnValue(true);
+        try {
+          // Action fails its push -> warning pending. (reloadState's flush
+          // never calls maybeCheckpoint here: nothing pending pre-action.)
+          mockMaybeCheckpoint.mockResolvedValueOnce(warning);
+          await sendRequest(
+            'POST',
+            '/api/action',
+            JSON.stringify({ action: 'dismiss_issue_response', url: 'https://github.com/owner/repo/issues/47' }),
+          );
+
+          // Refresh: the network recovered, so the push-before-pull flush
+          // succeeds and the warning lifecycle ends with the push.
+          vi.mocked(getGitHubToken).mockReturnValue('test-token');
+          vi.mocked(fetchDashboardData).mockResolvedValue({
+            digest: makeDigest(),
+            commentedIssues: [],
+            allMergedPRs: [],
+            allClosedPRs: [],
+            partialFailures: [],
+          });
+          mockMaybeCheckpoint.mockClear();
+          mockStateManager.refreshFromGist.mockClear();
+          mockMaybeCheckpoint.mockResolvedValueOnce(null);
+
+          const result = await sendRequest('POST', '/api/refresh');
+          expect(result.statusCode).toBe(200);
+          expect(JSON.parse(result.body).partialFailures).toBeUndefined();
+          // Push-before-pull ordering: the flush ran before refreshFromGist.
+          expect(mockMaybeCheckpoint.mock.invocationCallOrder[0]).toBeLessThan(
+            mockStateManager.refreshFromGist.mock.invocationCallOrder[0],
+          );
+        } finally {
+          mockStateManager.isGistMode.mockReturnValue(false);
+          vi.mocked(getGitHubToken).mockReturnValue(null as never);
+          mockMaybeCheckpoint.mockResolvedValue(null);
+        }
+      });
     });
   });
 
