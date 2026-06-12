@@ -266,3 +266,31 @@ describe('runMarkIssueListItemDone (filesystem)', () => {
     expect(siblings).toEqual(['list.md']);
   });
 });
+
+describe('entry-line parity with list-move-tier (#1442)', () => {
+  it('marks a numbered-list entry, striking the content not the marker', () => {
+    const content = ['### foo/bar', '', `1. [Issue one](${ISSUE_A}) — desc`, ''].join('\n');
+    const result = markIssueAsDone(content, { issueUrl: ISSUE_A, prUrl: PR_A, prStatus: 'merged' });
+    expect(result.marked).toBe(true);
+    expect(result.content).toContain(`1. ~~[Issue one](${ISSUE_A}) — desc~~`);
+  });
+
+  it('counts numbered entries when deciding whether the repo heading is done', () => {
+    const content = ['### foo/bar', '', `1. [One](${ISSUE_A})`, `2. [Two](${ISSUE_B})`, ''].join('\n');
+    const result = markIssueAsDone(content, { issueUrl: ISSUE_A, prUrl: PR_A, prStatus: 'merged' });
+    expect(result.marked).toBe(true);
+    // ISSUE_B is still open, so the repo heading must NOT be struck.
+    expect(result.repoHeadingStruck).toBe(false);
+    expect(result.remainingUnderRepo).toBe(1);
+  });
+});
+
+describe('numbered-entry idempotency (#1442 review)', () => {
+  it('returns already-marked on a re-run against a struck numbered entry', () => {
+    const content = ['### foo/bar', '', `1. ~~[Issue one](${ISSUE_A})~~`, ''].join('\n');
+    const result = markIssueAsDone(content, { issueUrl: ISSUE_A, prUrl: PR_A, prStatus: 'merged' });
+    expect(result.marked).toBe(false);
+    expect(result.reasonCode).toBe('already-marked');
+    expect(result.content).toBe(content);
+  });
+});
