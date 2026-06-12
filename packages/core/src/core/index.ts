@@ -60,6 +60,8 @@ export {
   ConfigurationError,
   ValidationError,
   GistPermissionError,
+  ConcurrencyError,
+  GistConcurrencyError,
   errorMessage,
   getHttpStatusCode,
   isRateLimitError,
