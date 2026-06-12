@@ -18,6 +18,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { errorMessage, ValidationError } from '../core/errors.js';
+import { ENTRY_LINE_RE, ENTRY_MARKER_RE, lineMentionsUrl } from './curated-list.js';
 
 export interface MarkDoneOptions {
   issueUrl: string;
@@ -59,7 +60,6 @@ interface RepoSection {
 
 const STRIKE = '~~';
 const DONE_PREFIX = '  - **Done**';
-const ISSUE_LINE_RE = /^[*+-]\s/;
 const REPO_HEADING_RE = /^###\s/;
 const SECTION_BREAK_RE = /^#{1,3}\s/;
 const PR_NUMBER_RE = /\/(?:pull|issues)\/(\d+)(?:[/?#]|$)/;
@@ -73,7 +73,7 @@ function prNumberLabel(prUrl: string): string {
 /** Wrap a line in `~~...~~` if it isn't already. Returns the input unchanged when already wrapped. */
 function strikeLine(line: string): { line: string; alreadyStruck: boolean } {
   // Strip the leading list marker so we wrap the content, not the bullet.
-  const markerMatch = line.match(/^(?:[*+-]\s+|#{1,6}\s+)/);
+  const markerMatch = line.match(/^(?:[*+-]\s+|\d+\.\s+|#{1,6}\s+)/);
   const prefix = markerMatch ? markerMatch[0] : '';
   const body = line.slice(prefix.length);
   if (body.startsWith(STRIKE) && body.endsWith(STRIKE) && body.length >= 4) {
@@ -82,26 +82,11 @@ function strikeLine(line: string): { line: string; alreadyStruck: boolean } {
   return { line: `${prefix}${STRIKE}${body}${STRIKE}`, alreadyStruck: false };
 }
 
-/**
- * Match the URL only when followed by a non-digit, non-word character (or
- * end of line). A bare `includes(issueUrl)` would match `issues/1` against
- * a line containing `issues/10`, so finding/marking issue 1 would mark
- * whichever number-prefix line appears first.
- */
-function lineMentionsUrl(line: string, issueUrl: string): boolean {
-  const idx = line.indexOf(issueUrl);
-  if (idx === -1) return false;
-  const next = line.charCodeAt(idx + issueUrl.length);
-  // NaN (end of string) → digit boundary OK. Otherwise reject any digit
-  // immediately after the URL so 'issues/1' doesn't match 'issues/10'.
-  return Number.isNaN(next) || next < 48 /* '0' */ || next > 57; /* '9' */
-}
-
 /** Find the issue block (issue line plus any indented sub-bullets) that mentions the URL. */
 function findIssueBlock(lines: string[], issueUrl: string): IssueBlock | undefined {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (!ISSUE_LINE_RE.test(line)) continue;
+    if (!ENTRY_LINE_RE.test(line)) continue;
     if (!lineMentionsUrl(line, issueUrl)) continue;
     let end = i + 1;
     while (end < lines.length && /^\s{2,}/.test(lines[end])) end++;
@@ -136,8 +121,8 @@ function countOpenIssues(lines: string[], section: RepoSection): number {
   let open = 0;
   for (let i = section.headingIndex + 1; i < section.end; i++) {
     const line = lines[i];
-    if (!ISSUE_LINE_RE.test(line)) continue;
-    const body = line.replace(/^[*+-]\s+/, '');
+    if (!ENTRY_LINE_RE.test(line)) continue;
+    const body = line.replace(ENTRY_MARKER_RE, '');
     if (!(body.startsWith(STRIKE) && body.endsWith(STRIKE))) open++;
   }
   return open;
@@ -175,7 +160,7 @@ export function markIssueAsDone(
   }
 
   const issueLine = lines[block.start];
-  const issueBody = issueLine.replace(/^[*+-]\s+/, '');
+  const issueBody = issueLine.replace(ENTRY_MARKER_RE, '');
   const alreadyMarked = issueBody.startsWith(STRIKE) && issueBody.endsWith(STRIKE);
 
   if (alreadyMarked) {
