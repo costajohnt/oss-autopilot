@@ -115,6 +115,15 @@ import { createServer } from './server.js';
 import { runStatus } from '@oss-autopilot/core/commands';
 import { getStateManager } from '@oss-autopilot/core';
 
+type ResourceContent = Awaited<ReturnType<Client['readResource']>>['contents'][number];
+
+// readResource contents are a text | blob union; every resource in this suite
+// returns text content, so narrow before reading `.text`.
+function contentText(content: ResourceContent): string {
+  if (!('text' in content)) throw new Error('expected text resource content, got blob');
+  return content.text;
+}
+
 describe('MCP resource registrations', () => {
   let client: Client;
 
@@ -175,7 +184,7 @@ describe('MCP resource registrations', () => {
       expect(result.contents).toHaveLength(1);
       expect(result.contents[0].uri).toBe('oss://status');
       expect(result.contents[0].mimeType).toBe('application/json');
-      const data = JSON.parse(result.contents[0].text as string);
+      const data = JSON.parse(contentText(result.contents[0]));
       expect(data.success).toBe(true);
     });
 
@@ -184,7 +193,7 @@ describe('MCP resource registrations', () => {
       expect(result.contents).toHaveLength(1);
       expect(result.contents[0].uri).toBe('oss://config');
       expect(result.contents[0].mimeType).toBe('application/json');
-      const data = JSON.parse(result.contents[0].text as string);
+      const data = JSON.parse(contentText(result.contents[0]));
       expect(data.success).toBe(true);
     });
 
@@ -192,7 +201,7 @@ describe('MCP resource registrations', () => {
       const result = await client.readResource({ uri: 'oss://prs' });
       expect(result.contents).toHaveLength(1);
       expect(result.contents[0].uri).toBe('oss://prs');
-      const data = JSON.parse(result.contents[0].text as string);
+      const data = JSON.parse(contentText(result.contents[0]));
       expect(Array.isArray(data)).toBe(true);
       expect(data).toHaveLength(2);
       expect(data[0].repo).toBe('octocat/hello-world');
@@ -210,7 +219,7 @@ describe('MCP resource registrations', () => {
       const result = await client.readResource({ uri: 'oss://prs/shelved' });
       expect(result.contents).toHaveLength(1);
       expect(result.contents[0].uri).toBe('oss://prs/shelved');
-      const data = JSON.parse(result.contents[0].text as string);
+      const data = JSON.parse(contentText(result.contents[0]));
       expect(Array.isArray(data)).toBe(true);
       expect(data).toHaveLength(1);
       expect(data[0].number).toBe(99);
@@ -225,7 +234,7 @@ describe('MCP resource registrations', () => {
       });
       expect(result.contents).toHaveLength(1);
       expect(result.contents[0].uri).toBe('oss://pr/octocat/hello-world/42');
-      const data = JSON.parse(result.contents[0].text as string);
+      const data = JSON.parse(contentText(result.contents[0]));
       expect(data.repo).toBe('octocat/hello-world');
       expect(data.number).toBe(42);
       expect(data.title).toBe('Fix typo in README');
@@ -306,7 +315,7 @@ describe('MCP resource registrations', () => {
 
       expect(result.contents).toHaveLength(1);
       expect(result.contents[0].mimeType).toBe('text/markdown');
-      expect(result.contents[0].text).toBe('# Rules\n- be nice');
+      expect(contentText(result.contents[0])).toBe('# Rules\n- be nice');
     });
 
     it('throws when no guidelines are stored for the repo', async () => {
