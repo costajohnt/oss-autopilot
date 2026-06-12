@@ -7,7 +7,22 @@ import { createScout, type LinkedPR as ScoutLinkedPR, type OssScout, type ScoutS
 import { getStateManager, isLinkedPRStalled, requireGitHubToken } from '../core/index.js';
 import type { LinkedPR } from '../core/linked-pr-classification.js';
 import type { CandidateLinkedPR } from '../formatters/json.js';
-import { loadSkippedIssues } from './skip-file-parser.js';
+import { loadSkippedIssuesDetailed } from './skip-file-parser.js';
+
+/**
+ * Degradation signals collected while building a scout state (#1448).
+ * Callers pass an empty object and inspect it after the build — threading an
+ * out-param keeps `buildScoutState`/`createAutopilotScout` return types
+ * unchanged for the five command call sites.
+ */
+export interface ScoutBridgeDiagnostics {
+  /**
+   * Set when a configured skipped-issues file exists but could not be read.
+   * The scout state was built with an EMPTY skip list, so explicitly-skipped
+   * issues may resurface in results.
+   */
+  skipListUnavailable?: boolean;
+}
 
 /**
  * Convert scout 0.6.0's `LinkedPR` (separate `state` + `merged`) into the
@@ -59,10 +74,22 @@ export function buildCandidateLinkedPR(scoutLinkedPR: ScoutLinkedPR | null | und
 /**
  * Build a ScoutState from the current AgentState.
  * Maps oss-autopilot's config and state fields to oss-scout's state format.
+ *
+ * @param diagnostics - Optional collector for degradation signals (#1448);
+ *   `skipListUnavailable` is set when the skipped-issues file exists but
+ *   could not be read.
  */
-export function buildScoutState(): ScoutState {
+export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutState {
   const state = getStateManager().getState();
   const { config } = state;
+
+  // Read failure (not absence) of the skip file means scout will see an empty
+  // skip list and may resurface explicitly-skipped issues — flag it so the
+  // search envelope can carry the signal instead of only stderr (#1448).
+  const skippedIssuesLoad = loadSkippedIssuesDetailed(config.skippedIssuesPath);
+  if (skippedIssuesLoad.readError !== undefined && diagnostics) {
+    diagnostics.skipListUnavailable = true;
+  }
 
   return {
     version: 1,
@@ -128,7 +155,7 @@ export function buildScoutState(): ScoutState {
       openedAt: pr.createdAt,
     })),
     savedResults: [],
-    skippedIssues: loadSkippedIssues(config.skippedIssuesPath),
+    skippedIssues: skippedIssuesLoad.issues,
     lastRunAt: state.lastRunAt,
   };
 }
@@ -136,12 +163,15 @@ export function buildScoutState(): ScoutState {
 /**
  * Create an OssScout instance backed by the current AgentState.
  * Uses 'provided' persistence so scout reads from oss-autopilot's state.
+ *
+ * @param diagnostics - Optional collector for degradation signals (#1448),
+ *   forwarded to {@link buildScoutState}.
  */
-export async function createAutopilotScout(): Promise<OssScout> {
+export async function createAutopilotScout(diagnostics?: ScoutBridgeDiagnostics): Promise<OssScout> {
   const token = requireGitHubToken();
   return createScout({
     githubToken: token,
     persistence: 'provided',
-    initialState: buildScoutState(),
+    initialState: buildScoutState(diagnostics),
   });
 }

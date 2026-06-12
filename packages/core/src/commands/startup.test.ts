@@ -287,6 +287,38 @@ describe('detectIssueList', () => {
     expect(result?.completedCount).toBe(1);
   });
 
+  it('should surface readError when the issue list file cannot be read (#1448)', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    existsSyncMock.mockImplementation((path: string) => {
+      return typeof path === 'string' && path === 'issues.md';
+    });
+    (fsImport as any).readFileSync = vi.fn().mockImplementation(() => {
+      throw new Error('EACCES: permission denied');
+    });
+
+    const result = detectIssueList();
+
+    // The 0/0 counts are a read failure, not an empty list — readError says so.
+    expect(result).toBeDefined();
+    expect(result?.path).toBe('issues.md');
+    expect(result?.availableCount).toBe(0);
+    expect(result?.completedCount).toBe(0);
+    expect(result?.readError).toContain('EACCES');
+    consoleSpy.mockRestore();
+  });
+
+  it('should not set readError on a successful read (#1448)', () => {
+    existsSyncMock.mockImplementation((path: string) => {
+      return typeof path === 'string' && path === 'issues.md';
+    });
+    (fsImport as any).readFileSync = vi.fn().mockReturnValue('- [#1](https://github.com/o/r/issues/1) — Issue\n');
+
+    const result = detectIssueList();
+
+    expect(result).toBeDefined();
+    expect('readError' in (result ?? {})).toBe(false);
+  });
+
   it('should detect issue list from state.json config (primary)', async () => {
     const { getStateManager } = await import('../core/index.js');
     vi.mocked(getStateManager).mockReturnValue({

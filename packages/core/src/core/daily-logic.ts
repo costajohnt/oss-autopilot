@@ -78,9 +78,13 @@ const VALID_OVERRIDE_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_ad
  *
  * @param prs - The fetched PR list to apply overrides to
  * @param state - Current agent state containing status overrides
+ * @param failures - Optional collector (#1448): a message is pushed for each
+ *   PR whose override lookup threw (that PR keeps its un-overridden status).
+ *   Call sites surface these in warnings[]/partialFailures so the silently
+ *   wrong status is visible in the envelope, not just stderr.
  * @returns New PR array with overrides applied (original array is not mutated)
  */
-export function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentState>): FetchedPR[] {
+export function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentState>, failures?: string[]): FetchedPR[] {
   const overrides = state.config.statusOverrides;
   if (!overrides || Object.keys(overrides).length === 0) return prs;
 
@@ -108,7 +112,9 @@ export function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentStat
         }
         return { ...pr, status: override.status, waitReason: undefined, actionReason: 'needs_response' as const };
       } catch (err) {
-        warn('daily-logic', `Failed to apply status override for ${pr.url}: ${errorMessage(err)}`);
+        const message = `Failed to apply status override for ${pr.url}: ${errorMessage(err)}`;
+        warn('daily-logic', message);
+        failures?.push(message);
         return pr;
       }
     });

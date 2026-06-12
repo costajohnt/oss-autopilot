@@ -25,6 +25,7 @@ vi.mock('../core/index.js', async () => {
 });
 
 import { getStateManager } from '../core/index.js';
+import { createAutopilotScout, type ScoutBridgeDiagnostics } from './scout-bridge.js';
 import { runSearch } from './search.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
@@ -208,6 +209,27 @@ describe('runSearch', () => {
     const result = await runSearch({ maxResults: 10 });
 
     expect(result.candidates).toEqual([]);
+  });
+
+  it('surfaces skipListUnavailable when the bridge reports an unreadable skip file, and omits it otherwise (#1448)', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: [],
+    });
+
+    // Clean run: flag must be absent, not false (contract goldens stay byte-identical).
+    const cleanResult = await runSearch({ maxResults: 10 });
+    expect('skipListUnavailable' in cleanResult).toBe(false);
+
+    // Degraded run: bridge flags the unreadable skip file via the diagnostics out-param.
+    vi.mocked(createAutopilotScout).mockImplementationOnce(async (diagnostics?: ScoutBridgeDiagnostics) => {
+      if (diagnostics) diagnostics.skipListUnavailable = true;
+      return { search: mockSearch } as any;
+    });
+    const degradedResult = await runSearch({ maxResults: 10 });
+    expect(degradedResult.skipListUnavailable).toBe(true);
   });
 
   it('should include repoUrl derived from repo name (#789)', async () => {
