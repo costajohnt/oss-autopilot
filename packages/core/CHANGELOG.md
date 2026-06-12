@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.4](https://github.com/costajohnt/oss-autopilot/compare/core-v3.13.3...core-v3.13.4) (2026-06-12)
+
+
+### Bug Fixes
+
+* **core:** dashboard gist recovery lifecycle + gist warning in CLI JSON envelopes ([#1436](https://github.com/costajohnt/oss-autopilot/issues/1436)) ([60c2d29](https://github.com/costajohnt/oss-autopilot/commit/60c2d290217853a7c412b51056d4135340e56f00)), closes [#1433](https://github.com/costajohnt/oss-autopilot/issues/1433)
+
 ## [3.13.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.13.2...core-v3.13.3) (2026-06-12)
 
 
