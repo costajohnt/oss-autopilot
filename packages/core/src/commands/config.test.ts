@@ -170,6 +170,84 @@ describe('runConfig', () => {
     expect(mockUpdateConfig).not.toHaveBeenCalled();
   });
 
+  it('should add an avoid-repo with valid format (#1464)', async () => {
+    await runConfig({ key: 'add-avoid-repo', value: 'owner/repo' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ avoidRepos: ['owner/repo'] });
+    // Soft penalty, not a hard exclusion — tracked data must stay intact.
+    expect(mockCleanupExcludedData).not.toHaveBeenCalled();
+  });
+
+  it('should throw error for invalid repo format in add-avoid-repo (#1464)', async () => {
+    await expect(runConfig({ key: 'add-avoid-repo', value: 'invalid' })).rejects.toThrow('Invalid repo format');
+  });
+
+  it('should not add duplicate avoid-repo (case-insensitive) (#1464)', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, avoidRepos: ['Owner/Repo'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      batch: (fn: () => void) => fn(),
+    } as any);
+
+    await runConfig({ key: 'add-avoid-repo', value: 'owner/repo' });
+
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+  });
+
+  it('should remove an avoid-repo case-insensitively (#1464)', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, avoidRepos: ['Owner/Repo', 'other/repo'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      batch: (fn: () => void) => fn(),
+    } as any);
+
+    await runConfig({ key: 'remove-avoid-repo', value: 'owner/repo' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ avoidRepos: ['other/repo'] });
+  });
+
+  it('should throw when removing an avoid-repo that is not on the list (#1464)', async () => {
+    await expect(runConfig({ key: 'remove-avoid-repo', value: 'owner/repo' })).rejects.toThrow('not on the avoid list');
+  });
+
+  it('should add a boost issue type (#1464)', async () => {
+    await runConfig({ key: 'add-boost-issue-type', value: 'good first issue' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ boostIssueTypes: ['good first issue'] });
+  });
+
+  it('should not add duplicate boost issue type (case-insensitive) (#1464)', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, boostIssueTypes: ['Bug'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      batch: (fn: () => void) => fn(),
+    } as any);
+
+    await runConfig({ key: 'add-boost-issue-type', value: 'bug' });
+
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+  });
+
+  it('should remove a boost issue type case-insensitively (#1464)', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, boostIssueTypes: ['Bug', 'enhancement'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      batch: (fn: () => void) => fn(),
+    } as any);
+
+    await runConfig({ key: 'remove-boost-issue-type', value: 'bug' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ boostIssueTypes: ['enhancement'] });
+  });
+
+  it('should throw when removing a boost issue type that is not on the list (#1464)', async () => {
+    await expect(runConfig({ key: 'remove-boost-issue-type', value: 'bug' })).rejects.toThrow('not on the boost list');
+  });
+
   it('should remove a label', async () => {
     await runConfig({ key: 'remove-label', value: 'good first issue' });
 

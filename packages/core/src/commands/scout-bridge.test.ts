@@ -97,6 +97,76 @@ describe('buildScoutState', () => {
     expect(result.savedResults).toEqual([]);
   });
 
+  it('reads avoidRepos and boostIssueTypes from config into ScoutPreferences (#1464)', () => {
+    const state = makeAgentState({
+      config: {
+        avoidRepos: ['owner/meh', 'other/noisy'],
+        boostIssueTypes: ['bug', 'good first issue'],
+      },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const result = buildScoutState();
+
+    expect(result.preferences.avoidRepos).toEqual(['owner/meh', 'other/noisy']);
+    expect(result.preferences.boostIssueTypes).toEqual(['bug', 'good first issue']);
+  });
+
+  it.each(['avoidRepos', 'boostIssueTypes'] as const)('should default %s to [] when undefined in config', (field) => {
+    const state = makeAgentState({ config: { [field]: undefined } });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const result = buildScoutState();
+
+    expect(result.preferences[field]).toEqual([]);
+  });
+
+  it('threads strategy-derived bias into ScoutPreferences once the merged-PR floor is met (#1464)', () => {
+    // 10 merged PRs in one repo crosses STRATEGY_MIN_PRS, so computeStrategy
+    // recommends that repo and its language — the same derivation runSearch
+    // passes per-call (#1244) must land in the bridge-built preferences so
+    // surfaces without per-call knobs (features) share the bias.
+    const mergedPRs = Array.from({ length: 10 }, (_, i) => ({
+      url: `https://github.com/owner/fav/pull/${i + 1}`,
+      title: `fix: thing ${i + 1}`,
+      mergedAt: '2026-02-01T00:00:00Z',
+    }));
+    const state = makeAgentState({
+      mergedPRs,
+      repoScores: {
+        'owner/fav': {
+          repo: 'owner/fav',
+          score: 8,
+          mergedPRCount: 10,
+          closedWithoutMergeCount: 0,
+          avgResponseDays: null,
+          lastEvaluatedAt: '2026-02-01T00:00:00Z',
+          language: 'TypeScript',
+          signals: { hasActiveMaintainers: true, isResponsive: true, hasHostileComments: false },
+        },
+      },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const result = buildScoutState();
+
+    expect(result.preferences.preferRepos).toEqual(['owner/fav']);
+    expect(result.preferences.preferLanguages).toEqual(['TypeScript']);
+    expect(result.preferences.diversityRatio).toBe(0.2);
+  });
+
+  it('falls back to no-bias preferences below the strategy merged-PR floor (#1464)', () => {
+    const state = makeAgentState();
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const result = buildScoutState();
+
+    expect(result.preferences.preferRepos).toEqual([]);
+    expect(result.preferences.preferLanguages).toEqual([]);
+    expect(result.preferences.avoidRepos).toEqual([]);
+    expect(result.preferences.boostIssueTypes).toEqual([]);
+  });
+
   it.each(['excludeOrgs', 'projectCategories'] as const)(
     'should default %s to [] when undefined in config',
     (field) => {
