@@ -910,9 +910,12 @@ export const RepoVetOutputSchema = z.object({
    * `state.repoScores` (repo-score-manager.ts). Absent when the user has no
    * cached score for the repo. They diverge whenever repo health changed
    * since the user's last merge there — consumers must never present one as
-   * the other.
+   * the other. Deliberately unbounded like the persisted RepoScore.score
+   * source (state-schema validates plain z.number(); v1-era state was
+   * migrated verbatim) — bounds here would turn a legacy out-of-range
+   * stored score into a hard --json contract throw (#1465 review).
    */
-  historyScore: z.number().min(1).max(10).optional(),
+  historyScore: z.number().optional(),
 });
 /**
  * The CLI wrapper renames the core function's `repo` metadata object to

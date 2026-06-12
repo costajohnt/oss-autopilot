@@ -168,6 +168,17 @@ describe('runRepoVet history score (#1465)', () => {
     expect(typeof result.rubricScore).toBe('number');
   });
 
+  it('degrades to no history (not a throw) when state is unreadable (#1465 review)', async () => {
+    mockGetStateManager.mockImplementation(() => {
+      throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+    });
+
+    const result = await runRepoVet({ repo: 'owner/repo' });
+
+    expect(result.historyScore).toBeUndefined();
+    expect(typeof result.rubricScore).toBe('number');
+  });
+
   it('omits historyScore entirely when the user has no cached score (back-compat)', async () => {
     mockGetStateManager.mockReturnValue(stubStateManager({}));
 

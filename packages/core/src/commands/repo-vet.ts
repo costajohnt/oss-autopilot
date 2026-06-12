@@ -138,12 +138,20 @@ async function checkCommunityHealth(
  * cached score for the repo.
  */
 function lookupHistoryScore(repoSlug: string): number | undefined {
-  const stateManager = getStateManager();
-  const exact = stateManager.getRepoScore(repoSlug);
-  if (exact) return exact.score;
-  const lower = repoSlug.toLowerCase();
-  const match = Object.values(stateManager.getState().repoScores).find((rs) => rs.repo.toLowerCase() === lower);
-  return match?.score;
+  // Best-effort by design: repo-vet ran for years without touching local
+  // state, and an unreadable state file (EACCES rethrows from loadState)
+  // must degrade to "no history", not abort the vet (#1465 review).
+  try {
+    const stateManager = getStateManager();
+    const exact = stateManager.getRepoScore(repoSlug);
+    if (exact) return exact.score;
+    const lower = repoSlug.toLowerCase();
+    const match = Object.values(stateManager.getState().repoScores).find((rs) => rs.repo.toLowerCase() === lower);
+    return match?.score;
+  } catch (error) {
+    warn(MODULE, `History-score lookup skipped (state unavailable): ${errorMessage(error)}`);
+    return undefined;
+  }
 }
 
 interface ClosedPR {
