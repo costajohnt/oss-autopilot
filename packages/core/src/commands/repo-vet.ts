@@ -11,7 +11,7 @@
  * no state mutation, runs against a public `owner/repo` slug.
  */
 
-import { getOctokit, requireGitHubToken } from '../core/index.js';
+import { getOctokit, getStateManager, requireGitHubToken } from '../core/index.js';
 import { errorMessage, getHttpStatusCode, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { validateRepoIdentifier } from './validation.js';
@@ -120,6 +120,38 @@ async function checkCommunityHealth(
     hasCodeOfConduct: out.hasCodeOfConduct,
     incomplete,
   };
+}
+
+/**
+ * Look up the user's cached HISTORY score for a repo slug (#1465).
+ *
+ * This is the relationship score from `state.repoScores` (the user's own
+ * merge outcomes, computed by `repo-score-manager.ts`) — a different number
+ * from the fresh `rubricScore` this command computes. Surfacing both in one
+ * envelope, under distinct names, is the point: agents must never quote one
+ * as the other. See docs/repo-scores.md.
+ *
+ * State keys come from parsed GitHub URLs and preserve their original case,
+ * while the user types the slug by hand — GitHub slugs are case-insensitive,
+ * so fall back to a case-insensitive scan before reporting "no history".
+ * Returns `undefined` (field omitted from output) when the user has no
+ * cached score for the repo.
+ */
+function lookupHistoryScore(repoSlug: string): number | undefined {
+  // Best-effort by design: repo-vet ran for years without touching local
+  // state, and an unreadable state file (EACCES rethrows from loadState)
+  // must degrade to "no history", not abort the vet (#1465 review).
+  try {
+    const stateManager = getStateManager();
+    const exact = stateManager.getRepoScore(repoSlug);
+    if (exact) return exact.score;
+    const lower = repoSlug.toLowerCase();
+    const match = Object.values(stateManager.getState().repoScores).find((rs) => rs.repo.toLowerCase() === lower);
+    return match?.score;
+  } catch (error) {
+    warn(MODULE, `History-score lookup skipped (state unavailable): ${errorMessage(error)}`);
+    return undefined;
+  }
 }
 
 interface ClosedPR {
@@ -273,6 +305,13 @@ export async function runRepoVet(options: { repo: string }): Promise<RepoVetOutp
   // rubric score — the score reflects the fetched signals as-is and the
   // flag tells consumers which signal was unverified.
   const { repo: repoMeta, communityHealth, maintainerActivity, ...rest } = result;
+
+  // #1465: name both repo scores in one envelope. `rubricScore` is the fresh
+  // health score computed above; `historyScore` is the user's cached
+  // relationship score when one exists. Optional so the output is unchanged
+  // for repos the user has no history with (back-compat).
+  const historyScore = lookupHistoryScore(options.repo);
+
   return {
     repoSlug: options.repo,
     fetchedAt: now.toISOString(),
@@ -280,5 +319,6 @@ export async function runRepoVet(options: { repo: string }): Promise<RepoVetOutp
     communityHealth: { ...communityHealth, incomplete: communityHealthSummary.incomplete },
     maintainerActivity: { ...maintainerActivity, releasesIncomplete },
     ...rest,
+    ...(historyScore !== undefined ? { historyScore } : {}),
   };
 }
