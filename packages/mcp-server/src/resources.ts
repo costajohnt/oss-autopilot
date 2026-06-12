@@ -151,7 +151,9 @@ export function registerResources(server: McpServer): void {
               return {
                 uri: `oss://pr/${owner}/${repo}/${pr.number}`,
                 name: `${pr.repo}#${pr.number}`,
-                description: pr.title,
+                // The listing description reaches the host LLM as metadata —
+                // same untrusted-title surface as the resource body (#1455).
+                description: fenceFetchedPRTitles(pr).title,
                 mimeType: 'application/json' as const,
               };
             }),

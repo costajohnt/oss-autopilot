@@ -842,6 +842,8 @@ export function registerTools(server: McpServer): void {
     wrapTool(async (args: { repo: string }) => {
       const result = await runGuidelinesView({ repo: args.repo });
       if (typeof result.content !== 'string') return result;
+      // byteSize stays the STORED size — the provenance preamble is a read-time
+      // label, not stored content, so it is excluded on purpose (#1455 review).
       return { ...result, content: labelGuidelinesContent(result.content) };
     }),
   );
