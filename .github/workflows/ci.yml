@@ -36,7 +36,7 @@ env:
   #   - **Don't bump for a flaky measurement:** esbuild output is
   #     deterministic. If the threshold trips on a no-op rebuild, it's a
   #     real increase somewhere upstream — not noise.
-  BUNDLE_MAX_CORE: 880000 # ~860 KB (increased for scout 0.9.0 integration: features command + isLinkedPRStalled plumbing; current ~816 KB)
+  BUNDLE_MAX_CORE: 920000 # ~898 KB (increased for the June-12 audit batch: per-call MCP state reload, envelope warning fields, outcome-ledger plumbing; current ~859 KB)
   BUNDLE_MAX_MCP: 2000000 # ~1953 KB
   STARTUP_WARN_MS: 500 # Warn if CLI startup exceeds 500ms
 
