@@ -4,3 +4,29 @@ packages:
 onlyBuiltDependencies:
   - esbuild
   - simple-git-hooks
+
+# Security overrides for transitive CVEs. Moved here from package.json
+# `pnpm.overrides` (#1454): pnpm v10 no longer reads the `pnpm` field
+# ("The 'pnpm' field in package.json is no longer read by pnpm... keys
+# ignored: pnpm.overrides"), so the pins had gone inactive for any new
+# resolution. Revisit periodically with `pnpm why <pkg>` to confirm each
+# override is still hit by the dep graph (#963).
+overrides:
+  # Transitive via @modelcontextprotocol/sdk. Pin to avoid the pre-4.12.7
+  # security advisory family.
+  hono: '>=4.12.7'
+  # Transitive via @modelcontextprotocol/sdk. Pinned alongside hono.
+  '@hono/node-server': '>=1.19.10'
+  # Transitive via @modelcontextprotocol/sdk. Known advisory.
+  express-rate-limit: '>=8.2.2'
+  # Dev-only, transitive via eslint -> flat-cache. ReDoS advisory.
+  flatted: '>=3.4.2'
+  # Dev-only, transitive via typescript-eslint -> tinyglobby. ReDoS advisory.
+  picomatch: '>=4.0.4'
+  # Transitive via @modelcontextprotocol/sdk -> express/router. ReDoS advisory.
+  path-to-regexp: '>=8.4.0'
+  # Dev-only, transitive via vitest -> vite. Code-execution advisory.
+  yaml: '>=2.8.3'
+  # Transitive via @modelcontextprotocol/sdk -> ajv. Path-traversal advisory
+  # GHSA-q3j6-qgpj-74h6.
+  fast-uri: '>=3.1.1'

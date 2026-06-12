@@ -1,9 +1,15 @@
 name: CI
 
+# push is restricted to main so PR commits run CI once (via pull_request);
+# the concurrency group keys on ref, so the old '**' push trigger meant every
+# PR commit ran the full matrix twice with neither run cancelling the other
+# (#1454). Required status checks are job names ("Node 22 / ubuntu-latest",
+# etc.) and are reported by the pull_request run, so merges stay gated.
+# The push-to-main run feeds the update-badge job below.
 on:
   push:
     branches:
-      - '**'
+      - main
   pull_request:
     branches:
       - main
@@ -64,6 +70,13 @@ jobs:
       - name: Format check
         run: pnpm run format:check
 
+      # Runs once here instead of inside the 3-way matrix (#1454): a new
+      # transitive advisory used to red all three required jobs at once.
+      # Still blocking — the matrix `needs: [lint]`, and needs-skipped matrix
+      # jobs never report their required contexts, so merge stays blocked.
+      - name: Security audit
+        run: pnpm audit --audit-level=high
+
   ci:
     name: Node ${{ matrix.node-version }} / ${{ matrix.os }}
     needs: [lint]
@@ -100,11 +113,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Security audit
-        run: pnpm audit --audit-level=high
-
-      # Lint + format:check are handled by the dedicated `lint` job above
-      # (matrix `needs: [lint]`). Skipped here to avoid 3x duplicate work.
+      # Lint + format:check + security audit are handled by the dedicated
+      # `lint` job above (matrix `needs: [lint]`). Skipped here to avoid
+      # 3x duplicate work (#1454).
 
       - name: Build core types
         run: pnpm --filter @oss-autopilot/core run build
@@ -224,7 +235,9 @@ jobs:
           fi
 
       - name: Coverage report
-        if: matrix.node-version == 22
+        # Pin os like docs:check below — node-version alone matched both
+        # Node 22 legs, running the slowest suite twice (#1454).
+        if: matrix.node-version == 22 && matrix.os == 'ubuntu-latest'
         run: pnpm run test:coverage
 
       - name: Validate API docs
