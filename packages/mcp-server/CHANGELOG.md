@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.6.2](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.6.1...mcp-v5.6.2) (2026-06-12)
+
+
+### Bug Fixes
+
+* **core,mcp:** transient gist-init failures retry instead of silently latching local-only ([#1430](https://github.com/costajohnt/oss-autopilot/issues/1430)) ([9e6c5c9](https://github.com/costajohnt/oss-autopilot/commit/9e6c5c98785fe4d103abd12c4a97bd6b3e2de6af)), closes [#1415](https://github.com/costajohnt/oss-autopilot/issues/1415)
+
 ## [5.6.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.6.0...mcp-v5.6.1) (2026-06-12)
 
 
