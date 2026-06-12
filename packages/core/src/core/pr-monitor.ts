@@ -39,6 +39,7 @@ import {
   determineReviewDecision,
   getLatestChangesRequestedDate,
   checkUnrespondedComments,
+  getFirstMaintainerResponseAt,
 } from './review-analysis.js';
 import { analyzeChecklist } from './checklist-analysis.js';
 import { extractMaintainerActionHints } from './maintainer-analysis.js';
@@ -410,6 +411,11 @@ export class PRMonitor {
       config.githubUsername,
     );
 
+    // Earliest maintainer response, computed from the comment/review timeline
+    // already in memory (#1461). Rides into the persisted digest so the
+    // outcome ledger can recover it after the PR merges or closes.
+    const firstMaintainerResponseAt = getFirstMaintainerResponseAt(comments, reviews, config.githubUsername);
+
     // Fetch CI status and (conditionally) latest commit date in parallel
     // We need the commit date when hasUnrespondedComment is true (to distinguish
     // "needs_response" from "waiting_on_maintainer") OR when reviewDecision is "changes_requested"
@@ -506,6 +512,7 @@ export class PRMonitor {
       actionReasons,
       createdAt: ghPR.created_at,
       updatedAt: ghPR.updated_at,
+      firstMaintainerResponseAt,
       daysSinceActivity,
       ciStatus,
       failingCheckNames,

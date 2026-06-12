@@ -81,6 +81,7 @@ export {
   computeActionMenu,
   toShelvedPRRef,
   buildStarFilter,
+  firstMaintainerResponseFromDigest,
   formatActionHint,
   formatBriefSummary,
   formatSummary,
