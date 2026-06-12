@@ -4,7 +4,14 @@
  * Consumed by the dashboard HTTP server (dashboard-server.ts) for the SPA API.
  */
 
-import { getStateManager, PRMonitor, IssueConversationMonitor, getOctokit, CRITICAL_STATUSES } from '../core/index.js';
+import {
+  getStateManager,
+  PRMonitor,
+  IssueConversationMonitor,
+  getOctokit,
+  CRITICAL_STATUSES,
+  applyStatusOverrides,
+} from '../core/index.js';
 import { errorMessage, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult, fetchMergedPRsSince, fetchClosedPRsSince } from '../core/github-stats.js';
@@ -369,6 +376,13 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   // try-catch: save errors should not crash the dashboard data fetch.
   try {
     stateManager.batch(() => {
+      // Apply status overrides BEFORE partitioning, mirroring the daily check
+      // (daily.ts partitions overriddenPRs). Partitioning on raw status let a
+      // dormant PR with a criticality-flipping override land in a different
+      // partition here than on the CLI surface (#1416). Inside the batch
+      // because getStatusOverride may auto-clear stale overrides with a save,
+      // which must defer to this guarded boundary rather than throw here.
+      const overriddenPRs = applyStatusOverrides(prs, stateManager.getState());
       // Store new merged PRs incrementally (dedupes by URL)
       try {
         const { dropped } = stateManager.addMergedPRs(newMergedPRs);
@@ -389,24 +403,34 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
         warn(MODULE, `Failed to store closed PRs: ${errorMessage(error)}`);
       }
 
-      // Store monthly chart data (opened/merged/closed) so charts have data
+      // Store monthly chart data (opened/merged/closed) so charts have data.
+      // Analytics intentionally consume RAW prs: overrides only change status,
+      // never the createdAt/mergedAt dates the monthly counts key off.
       const { monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
       const { monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
       updateMonthlyAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
 
+      // The digest keeps RAW statuses in openPRs: this digest becomes the
+      // server's cached/persisted rebuild source, and baking overridden
+      // statuses into it would make CLEARING an override (move target=auto) a
+      // silent no-op until the next full refresh — buildDashboardJson can
+      // only apply overrides that still exist, never un-apply baked ones. It
+      // re-applies live overrides per request before partitioning.
       const digest = prMonitor.generateDigest(prs, recentlyClosedPRs, recentlyMergedPRs);
 
       // Apply shelve partitioning for display (auto-unshelve only runs in daily check).
       // Dormant PRs are treated as shelved unless they need addressing, and a
       // critical PR is never display-shelved (#1352) — mirrors the daily
       // check's CRITICAL_STATUSES auto-unshelve so headline counts agree.
+      // Partitioned over overriddenPRs (#1416): the shelve decision must use
+      // the same post-override status the CLI partitions on.
       const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
-      const freshShelved = prs.filter(
+      const freshShelved = overriddenPRs.filter(
         (pr) => !CRITICAL_STATUSES.has(pr.status) && (shelvedUrls.has(pr.url) || pr.stalenessTier === 'dormant'),
       );
       digest.shelvedPRs = freshShelved.map(toShelvedPRRef);
       digest.autoUnshelvedPRs = [];
-      digest.summary.totalActivePRs = prs.length - freshShelved.length;
+      digest.summary.totalActivePRs = overriddenPRs.length - freshShelved.length;
 
       stateManager.setLastDigest(digest);
     });
