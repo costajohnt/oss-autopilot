@@ -39,7 +39,6 @@ import { wrapUntrustedContent } from '../core/untrusted-content.js';
 import { computeStrategy, shouldComputeStrategy, type StrategyResult } from '../core/strategy.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
-import { createAutopilotScout } from './scout-bridge.js';
 import { updateMonthlyAnalytics } from './dashboard-data.js';
 import {
   deduplicateDigest,
@@ -901,21 +900,14 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     recordWarning(warnings, 'analytics', 'persist monthly analytics', error);
   }
 
-  // Phase 3.5: Feed merged/closed PRs to oss-scout for cross-tool state sync.
-  if (recentlyMergedPRs.length > 0 || recentlyClosedPRs.length > 0) {
-    try {
-      const scout = await createAutopilotScout();
-      for (const pr of recentlyMergedPRs) {
-        scout.recordMergedPR({ url: pr.url, title: pr.title, mergedAt: pr.mergedAt, repo: pr.repo });
-      }
-      for (const pr of recentlyClosedPRs) {
-        scout.recordClosedPR({ url: pr.url, title: pr.title, closedAt: pr.closedAt, repo: pr.repo });
-      }
-      await scout.checkpoint();
-    } catch (error) {
-      recordWarning(warnings, 'scout-sync', 'sync PR data to oss-scout', error);
-    }
-  }
+  // No scout pass here (#1458): the former Phase 3.5 fed recentlyMerged/ClosedPRs
+  // to an oss-scout instance and called scout.checkpoint(). Both halves were dead:
+  // scout's recordMergedPR/recordClosedPR deduplicate by URL against the ledger
+  // that Phase 3 just wrote (buildScoutState maps state.mergedPRs/closedPRs into
+  // the scout state), so they returned before touching any repo score; and under
+  // persistence:'provided' checkpoint() has no gist store and no local store, so
+  // it persisted nothing. Cross-tool sharing happens through buildScoutState
+  // reading AgentState, not through pushing events at scout.
 
   // Capture lastDigestAt BEFORE Phase 4 overwrites it with the current run's timestamp.
   // Used by collectActionableIssues to determine which PRs are "new" (created since last digest).

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, fireEvent, waitFor } from '@testing-library/preact';
+import { render, fireEvent, waitFor, act } from '@testing-library/preact';
 
 // The lazy chart panel uses dynamic import('./chart-panel') which pulls in
 // Chart.js — its browser-only canvas init can throw in jsdom and bubble into
@@ -550,6 +550,112 @@ describe('App', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(container.querySelector('.celebration-toast')).toBeFalsy();
+    });
+  });
+
+  // ── Staleness + error visibility (#1446) ──────────────────────────
+
+  describe('staleness and error visibility (#1446)', () => {
+    it('renders a staleness banner when the server flags X-Dashboard-Stale', async () => {
+      const headers = new Headers({
+        'X-CSRF-Token': 'test-token',
+        'X-Dashboard-Stale': '1',
+        'X-Dashboard-Stale-Reason': 'state-stale: GitHub API error: 503',
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: true, headers, json: () => Promise.resolve(makeDashboardData()) }),
+      );
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+
+      const banner = container.querySelector('.stale-banner');
+      expect(banner).toBeTruthy();
+      expect(banner?.getAttribute('role')).toBe('status');
+      expect(banner?.textContent).toContain('state-stale: GitHub API error: 503');
+    });
+
+    it('shows the error banner on /merged when a refresh fails (item 3)', async () => {
+      const data = makeDashboardData();
+      const hdr = new Headers({ 'X-CSRF-Token': 'test-token' });
+      const fetchMock = vi
+        .fn()
+        // Mount GET /api/data — success.
+        .mockResolvedValueOnce({ ok: true, headers: hdr, json: () => Promise.resolve(data) })
+        // Manual refresh — failure (persists for any later background calls).
+        .mockResolvedValue({
+          ok: false,
+          status: 500,
+          headers: new Headers(),
+          json: () => Promise.resolve({ error: 'Refresh failed' }),
+        });
+      vi.stubGlobal('fetch', fetchMock);
+
+      // Mount directly on a non-home route — the error banner used to render
+      // only in the default-route return, so this click produced zero feedback.
+      window.history.replaceState(null, '', '/merged');
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+
+      fireEvent.click(container.querySelector('.refresh-btn') as HTMLButtonElement);
+
+      await waitFor(() => expect(container.querySelector('.error-banner')).toBeTruthy());
+      expect(container.querySelector('.error-banner')?.textContent).toContain('Refresh failed');
+      expect(container.querySelector('.error-banner-dismiss')).toBeTruthy();
+    });
+
+    it('shows a staleness indicator after two consecutive auto-refresh failures (item 4)', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const data = makeDashboardData();
+      const hdr = new Headers({ 'X-CSRF-Token': 'test-token' });
+      const fetchMock = vi
+        .fn()
+        // Mount GET /api/data — success.
+        .mockResolvedValueOnce({ ok: true, headers: hdr, json: () => Promise.resolve(data) })
+        // Every background refresh after that fails.
+        .mockResolvedValue({
+          ok: false,
+          status: 500,
+          headers: new Headers(),
+          json: () => Promise.resolve({ error: 'token expired' }),
+        });
+      vi.stubGlobal('fetch', fetchMock);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+
+      // First auto-refresh failure at 5s — below the threshold, no banner.
+      // act-wrapped advances: the retry timer is scheduled by an effect on
+      // the render AFTER the failure commits, and preact only flushes that
+      // effect deterministically inside act.
+      await act(async () => {
+        vi.advanceTimersByTime(5000);
+      });
+      await waitFor(() => expect(fetchMock.mock.calls.filter((c) => c[0] === '/api/refresh')).toHaveLength(1));
+      expect(container.querySelector('.stale-banner')).toBeFalsy();
+
+      // The bounded retry at +15s fails too — threshold crossed, banner shows.
+      await act(async () => {
+        vi.advanceTimersByTime(15_000);
+      });
+      await waitFor(() => expect(container.querySelector('.stale-banner')).toBeTruthy());
+      expect(container.querySelector('.stale-banner')?.textContent).toContain('Background refresh failed 2 times');
+
+      warnSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it('describes partial failures as background operations, not fetches', async () => {
+      mockFetchOk(makeDashboardData({ partialFailures: ['gist checkpoint push'] }));
+
+      const { container } = render(<App />);
+      await waitFor(() => expect(container.querySelector('.partial-banner')).toBeTruthy());
+
+      const banner = container.querySelector('.partial-banner');
+      expect(banner?.textContent).toContain('1 background operation failed');
+      expect(banner?.textContent).toContain('gist checkpoint push');
     });
   });
 

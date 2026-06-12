@@ -155,6 +155,21 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       avoidRepos: config.avoidRepos ?? [],
       boostIssueTypes: config.boostIssueTypes ?? [],
     },
+    // CONTRACT (#1458): repoScores is passed BY REFERENCE, not copied. Scout's
+    // updateRepoScore mutates entries of this shared object in place, so scout
+    // calls that touch scores (e.g. search's hasActiveMaintainers feedback,
+    // scout #167) write straight into the in-memory AgentState. Those writes
+    // reach disk only if a later StateManager mutation triggers a save —
+    // scout's own checkpoint() persists nothing under persistence:'provided'.
+    // Nothing may RELY on this alias for persistence: daily's former Phase 3.5
+    // did, and was deleted in #1458 (its record* calls were also dedup no-ops
+    // against the ledger Phase 3 had just written; see
+    // scout-bridge.repo-scores.test.ts for the pinning tests). Also note scout
+    // recalculates `score` with its own formula (linear merge bonus, no
+    // recency term), which differs from autopilot's repo-score-manager
+    // formula; daily Phase 2 recomputes every repo it touches with the
+    // autopilot formula each run, so the persisted history scores reflect
+    // autopilot's model.
     repoScores: state.repoScores,
     // Scout #117 added tombstones (deletion records for gist merge). Autopilot
     // synthesizes a fresh ScoutState per operation and tracks no deletions, so

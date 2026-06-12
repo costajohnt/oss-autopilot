@@ -77,6 +77,8 @@ vi.mock('../core/index.js', async (importOriginal) => {
       setMonthlyClosedCounts: mockSetMonthlyClosedCounts,
       setMonthlyOpenedCounts: mockSetMonthlyOpenedCounts,
       setLastDigest: mockSetLastDigest,
+      addMergedPRs: mockAddMergedPRs,
+      addClosedPRs: mockAddClosedPRs,
       setLastStrategyAt: vi.fn(),
       save: mockSave,
       isPRShelved: mockIsPRShelved,
@@ -85,8 +87,6 @@ vi.mock('../core/index.js', async (importOriginal) => {
       getIssueDismissedAt: mockGetIssueDismissedAt,
       undismissIssue: mockUndismissIssue,
       getStatusOverride: mockGetStatusOverride,
-      addMergedPRs: mockAddMergedPRs,
-      addClosedPRs: mockAddClosedPRs,
       getStateStaleness: vi.fn(() => null),
       getLoadRecovery: vi.fn(() => null),
       isGistMode: mockIsGistMode,
@@ -97,6 +97,19 @@ vi.mock('../core/index.js', async (importOriginal) => {
     formatRelativeTime: vi.fn(() => '2 days ago'),
     PRMonitor: MockPRMonitor,
     IssueConversationMonitor: MockIssueConversationMonitor,
+  };
+});
+
+// Pin the #1458 deletion of daily's scout pass: if anything in the daily
+// pipeline ever constructs a scout again (the deleted Phase 3.5 called
+// createAutopilotScout → createScout, then a dead checkpoint()), the spy
+// below catches it. The actual module is kept for everything else.
+const mockCreateScout = vi.fn();
+vi.mock('@oss-scout/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@oss-scout/core')>();
+  return {
+    ...actual,
+    createScout: mockCreateScout,
   };
 });
 
@@ -846,6 +859,52 @@ describe('executeDailyCheck() — error resilience', () => {
     );
     expect(zeroCalls).toHaveLength(0);
     consoleSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// executeDailyCheck() — scout pass removal (#1458)
+// ---------------------------------------------------------------------------
+
+describe('executeDailyCheck() — scout pass removal (#1458)', () => {
+  const recentlyMerged = [
+    {
+      url: 'https://github.com/owner/repo/pull/1',
+      repo: 'owner/repo',
+      number: 1,
+      title: 'Fix the thing',
+      mergedAt: '2026-06-01T00:00:00Z',
+    },
+  ];
+  const recentlyClosed = [
+    {
+      url: 'https://github.com/owner/repo/pull/2',
+      repo: 'owner/repo',
+      number: 2,
+      title: 'Abandoned attempt',
+      closedAt: '2026-06-02T00:00:00Z',
+    },
+  ];
+
+  it('records recently merged/closed PRs in the ledger without ever constructing a scout', async () => {
+    mockFetchRecentlyMergedPRs.mockResolvedValue(recentlyMerged);
+    mockFetchRecentlyClosedPRs.mockResolvedValue(recentlyClosed);
+    // mockReturnValue survives clearAllMocks; earlier gist tests set true.
+    mockIsGistMode.mockReturnValue(false);
+
+    const result = await executeDailyCheck('test-token');
+
+    // Phase 3 still owns the ledger write...
+    expect(mockAddMergedPRs).toHaveBeenCalledWith([
+      { url: recentlyMerged[0].url, title: recentlyMerged[0].title, mergedAt: recentlyMerged[0].mergedAt },
+    ]);
+    expect(mockAddClosedPRs).toHaveBeenCalledWith([
+      { url: recentlyClosed[0].url, title: recentlyClosed[0].title, closedAt: recentlyClosed[0].closedAt },
+    ]);
+    // ...and no scout is built (so its dead checkpoint() can't be called either).
+    // The deleted Phase 3.5 only ran on this nonempty-recent-PRs path.
+    expect(mockCreateScout).not.toHaveBeenCalled();
+    expect(result.warnings).toEqual([]);
   });
 });
 
