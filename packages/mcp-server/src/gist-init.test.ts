@@ -93,7 +93,7 @@ describe('ensureGistInit retry semantics (#1368)', () => {
   beforeEach(async () => {
     vi.resetModules();
     mockGetGitHubTokenAsync.mockReset().mockResolvedValue('test-token');
-    mockEnsureGistPersistence.mockReset().mockResolvedValue();
+    mockEnsureGistPersistence.mockReset().mockResolvedValue('gist');
     mockRunStatus.mockReset().mockResolvedValue({ ok: true });
     client = await freshClient();
   });
@@ -102,17 +102,94 @@ describe('ensureGistInit retry semantics (#1368)', () => {
     await client.close();
   });
 
-  it('a transient init failure surfaces as a tool error and the next call retries init', async () => {
-    mockGetGitHubTokenAsync.mockRejectedValueOnce(new Error('transient token failure'));
+  it('a hard init rejection surfaces as a tool error and the next call retries init', async () => {
+    // Reachable rejection mode: ensureGistPersistence CAN reject (e.g.
+    // GistPermissionError propagates). The previous version of this test
+    // pinned a getGitHubTokenAsync rejection, which the real function can
+    // never produce — it catches everything and resolves null (#1415).
+    mockEnsureGistPersistence.mockRejectedValueOnce(new Error('Gist scope missing'));
 
     const first = await client.callTool({ name: 'status', arguments: {} });
     expect(first.isError).toBe(true);
-    expect(mockEnsureGistPersistence).not.toHaveBeenCalled();
 
     const second = await client.callTool({ name: 'status', arguments: {} });
     expect(second.isError).toBeFalsy();
-    expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(1);
+    expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
     expect(mockEnsureGistPersistence).toHaveBeenCalledWith('test-token');
+  });
+
+  it('a DEGRADED resolution succeeds with a warning and the next call retries init (#1415)', async () => {
+    // The real transient mode: getStateManagerAsync warn-and-falls-back, so
+    // ensureGistPersistence RESOLVES 'degraded' instead of rejecting. The
+    // tool must still work (warn-and-proceed), the degradation must be
+    // visible in the response, and init must NOT be memoized as success.
+    mockEnsureGistPersistence.mockResolvedValueOnce('degraded');
+
+    const first = await client.callTool({ name: 'status', arguments: {} });
+    expect(first.isError).toBeFalsy();
+    const firstPayload = JSON.parse((first.content as Array<{ text: string }>)[0].text);
+    expect(firstPayload.gistInitWarning).toMatch(/LOCAL-ONLY/);
+    expect(firstPayload.ok).toBe(true);
+
+    // Recovery: the next call re-runs init end to end and the warning clears.
+    const second = await client.callTool({ name: 'status', arguments: {} });
+    expect(second.isError).toBeFalsy();
+    const secondPayload = JSON.parse((second.content as Array<{ text: string }>)[0].text);
+    expect(secondPayload.gistInitWarning).toBeUndefined();
+    expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
+  });
+
+  it('a transient token-fetch failure (null token in gist mode) warns and retries (#1415)', async () => {
+    // getGitHubTokenAsync resolves null on a transient gh timeout (it no
+    // longer latches) — ensureGistPersistence reports 'no-token'.
+    mockGetGitHubTokenAsync.mockResolvedValueOnce(null);
+    mockEnsureGistPersistence.mockResolvedValueOnce('no-token');
+
+    const first = await client.callTool({ name: 'status', arguments: {} });
+    expect(first.isError).toBeFalsy();
+    const firstPayload = JSON.parse((first.content as Array<{ text: string }>)[0].text);
+    expect(firstPayload.gistInitWarning).toMatch(/no GitHub token/);
+
+    // Token fetch recovers on the next call; init re-runs with the token.
+    const second = await client.callTool({ name: 'status', arguments: {} });
+    expect(second.isError).toBeFalsy();
+    const secondPayload = JSON.parse((second.content as Array<{ text: string }>)[0].text);
+    expect(secondPayload.gistInitWarning).toBeUndefined();
+    expect(mockEnsureGistPersistence).toHaveBeenLastCalledWith('test-token');
+    expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
+  });
+
+  it('concurrent calls during a degraded init both carry the warning, then one retry', async () => {
+    let release!: (status: string) => void;
+    mockEnsureGistPersistence.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    const a = client.callTool({ name: 'status', arguments: {} });
+    const b = client.callTool({ name: 'status', arguments: {} });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    release('degraded');
+
+    const [resultA, resultB] = await Promise.all([a, b]);
+    for (const result of [resultA, resultB]) {
+      const payload = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+      expect(payload.gistInitWarning).toMatch(/LOCAL-ONLY/);
+    }
+    // Both shared one init; the NEXT call re-runs it (memo cleared once).
+    await client.callTool({ name: 'status', arguments: {} });
+    expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
+  });
+
+  it('local-mode resolution memoizes like success: no per-call re-init for local users', async () => {
+    mockEnsureGistPersistence.mockResolvedValue('local-mode');
+
+    const first = await client.callTool({ name: 'status', arguments: {} });
+    expect(JSON.parse((first.content as Array<{ text: string }>)[0].text).gistInitWarning).toBeUndefined();
+    await client.callTool({ name: 'status', arguments: {} });
+    expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(1);
   });
 
   it('successful init is memoized: later calls do not re-run it', async () => {

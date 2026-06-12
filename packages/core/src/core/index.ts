@@ -8,6 +8,7 @@ export {
   getStateManager,
   getStateManagerAsync,
   ensureGistPersistence,
+  type GistPersistenceStatus,
   maybeCheckpoint,
   resetStateManager,
   type Stats,
