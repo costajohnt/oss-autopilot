@@ -9,13 +9,15 @@ vi.mock('../core/index.js', async () => {
   return {
     ...actual,
     getStateManager: vi.fn(),
+    maybeCheckpoint: vi.fn().mockResolvedValue(null),
   };
 });
 
-import { getStateManager } from '../core/index.js';
+import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { runConfig } from './config.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
+const mockMaybeCheckpoint = vi.mocked(maybeCheckpoint);
 
 const DEFAULT_CONFIG = {
   githubUsername: 'testuser',
@@ -251,4 +253,49 @@ describe('runConfig', () => {
   });
 
   // scoreThreshold tests removed — field dropped in v3 schema
+
+  describe('gist checkpoint (#1440)', () => {
+    it('calls maybeCheckpoint exactly once per successful set', async () => {
+      await runConfig({ key: 'username', value: 'newuser' });
+
+      expect(mockMaybeCheckpoint).toHaveBeenCalledTimes(1);
+      expect(mockMaybeCheckpoint).toHaveBeenCalledWith(expect.anything(), 'config');
+    });
+
+    it('threads the checkpoint warning into gistSyncWarning when the Gist push fails', async () => {
+      const warning = 'Gist checkpoint push failed after retry; the local mutation is saved';
+      mockMaybeCheckpoint.mockResolvedValueOnce(warning);
+
+      const result = await runConfig({ key: 'username', value: 'newuser' });
+
+      expect(result).toEqual({ success: true, key: 'username', value: 'newuser', gistSyncWarning: warning });
+    });
+
+    it('omits gistSyncWarning entirely when the checkpoint succeeds', async () => {
+      mockMaybeCheckpoint.mockResolvedValueOnce(null);
+
+      const result = await runConfig({ key: 'username', value: 'newuser' });
+
+      expect(result).not.toHaveProperty('gistSyncWarning');
+      expect(result).toEqual({ success: true, key: 'username', value: 'newuser' });
+    });
+
+    it('does not checkpoint when showing the current config', async () => {
+      await runConfig({});
+
+      expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+    });
+
+    it('does not checkpoint when listing keys', async () => {
+      await runConfig({ listKeys: true });
+
+      expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+    });
+
+    it('does not checkpoint when the mutation throws', async () => {
+      await expect(runConfig({ key: 'remove-label', value: 'nonexistent' })).rejects.toThrow();
+
+      expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+    });
+  });
 });

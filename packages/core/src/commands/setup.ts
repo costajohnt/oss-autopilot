@@ -3,7 +3,13 @@
  * Interactive setup / configuration
  */
 
-import { getStateManager, DEFAULT_CONFIG, formatUnknownKeyError, getSetupKeys } from '../core/index.js';
+import {
+  getStateManager,
+  DEFAULT_CONFIG,
+  formatUnknownKeyError,
+  getSetupKeys,
+  maybeCheckpoint,
+} from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { validateGitHubUsername } from './validation.js';
 import {
@@ -14,6 +20,8 @@ import {
   DIFF_TOOLS,
   type DiffTool,
 } from '../core/types.js';
+
+const MODULE = 'setup';
 
 /** Parse and validate a positive integer setting value. */
 function parsePositiveInt(value: string, settingName: string): number {
@@ -33,6 +41,8 @@ export interface SetupSetOutput {
   success: true;
   settings: Record<string, string>;
   warnings?: string[];
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1440). */
+  gistSyncWarning?: string;
 }
 
 export interface SetupCompleteOutput {
@@ -341,7 +351,16 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
       }
     });
 
-    return { success: true, settings: results, warnings: warnings.length > 0 ? warnings : undefined };
+    // Push the settings mutation to the Gist in gist mode (no-op locally).
+    // Without this the change only hits the local cache and the next
+    // bootstrap reverts it from the Gist (#1440).
+    const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+    return {
+      success: true,
+      settings: results,
+      warnings: warnings.length > 0 ? warnings : undefined,
+      ...(gistSyncWarning ? { gistSyncWarning } : {}),
+    };
   }
 
   // Show setup status
