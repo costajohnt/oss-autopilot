@@ -256,9 +256,18 @@ export async function runListMoveTier(options: ListMoveTierOptions): Promise<Lis
   }
 
   if (result.moved) {
+    // tmp+rename so a crash mid-write can't truncate the curated list —
+    // same atomic pattern as list-mark-done (#1421).
+    const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
     try {
-      fs.writeFileSync(filePath, result.content, 'utf8');
+      fs.writeFileSync(tmp, result.content, 'utf8');
+      fs.renameSync(tmp, filePath);
     } catch (error) {
+      try {
+        fs.unlinkSync(tmp);
+      } catch {
+        // best-effort cleanup
+      }
       throw new Error(`Failed to write file: ${errorMessage(error)}`, { cause: error });
     }
   }

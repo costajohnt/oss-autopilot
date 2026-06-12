@@ -425,9 +425,10 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       // Partitioned over overriddenPRs (#1416): the shelve decision must use
       // the same post-override status the CLI partitions on.
       const shelvedUrls = new Set(stateManager.getState().config.shelvedPRUrls || []);
-      const freshShelved = overriddenPRs.filter(
-        (pr) => !CRITICAL_STATUSES.has(pr.status) && (shelvedUrls.has(pr.url) || pr.stalenessTier === 'dormant'),
-      );
+      // Single copy of the shelve predicate (#1421): isShelvedForDisplay is
+      // the same rule reconcileShelvePartition applies on rebuilds, so its
+      // regression tests now guard this line too.
+      const freshShelved = overriddenPRs.filter((pr) => isShelvedForDisplay(pr, shelvedUrls));
       digest.shelvedPRs = freshShelved.map(toShelvedPRRef);
       digest.autoUnshelvedPRs = [];
       digest.summary.totalActivePRs = overriddenPRs.length - freshShelved.length;
