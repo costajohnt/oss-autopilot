@@ -149,6 +149,53 @@ export async function runConfig(options: ConfigOptions): Promise<ConfigCommandOu
       }
       break;
     }
+    case 'add-avoid-repo': {
+      // Same owner/repo shape as exclude-repo, but no cleanupExcludedData
+      // call: avoidRepos is a soft ranking penalty, not a hard exclusion,
+      // so tracked data for the repo stays intact (#1464).
+      const parts = value.split('/');
+      if (parts.length !== 2 || !parts[0] || !parts[1]) {
+        throw new Error(`Invalid repo format "${value}". Use "owner/repo" format.`);
+      }
+      const currentAvoid = currentConfig.avoidRepos ?? [];
+      const valueLower = value.toLowerCase();
+      if (!currentAvoid.some((r) => r.toLowerCase() === valueLower)) {
+        stateManager.updateConfig({ avoidRepos: [...currentAvoid, value] });
+      }
+      break;
+    }
+    case 'remove-avoid-repo': {
+      const currentAvoid = currentConfig.avoidRepos ?? [];
+      const valueLower = value.toLowerCase();
+      if (!currentAvoid.some((r) => r.toLowerCase() === valueLower)) {
+        throw new Error(
+          `Repo "${value}" is not on the avoid list. Current avoid list: ${currentAvoid.join(', ') || '(empty)'}`,
+        );
+      }
+      stateManager.updateConfig({ avoidRepos: currentAvoid.filter((r) => r.toLowerCase() !== valueLower) });
+      break;
+    }
+    case 'add-boost-issue-type': {
+      // Scout matches boostIssueTypes against issue labels case-insensitively,
+      // so the duplicate check is case-insensitive too (#1464).
+      const currentTypes = currentConfig.boostIssueTypes ?? [];
+      const valueLower = value.toLowerCase();
+      if (!currentTypes.some((t) => t.toLowerCase() === valueLower)) {
+        stateManager.updateConfig({ boostIssueTypes: [...currentTypes, value] });
+      }
+      break;
+    }
+    case 'remove-boost-issue-type': {
+      const currentTypes = currentConfig.boostIssueTypes ?? [];
+      const valueLower = value.toLowerCase();
+      if (!currentTypes.some((t) => t.toLowerCase() === valueLower)) {
+        throw new Error(
+          `Issue type "${value}" is not on the boost list. Current boost list: ${currentTypes.join(', ') || '(empty)'}`,
+        );
+      }
+      stateManager.updateConfig({ boostIssueTypes: currentTypes.filter((t) => t.toLowerCase() !== valueLower) });
+      break;
+    }
     case 'issueListPath': {
       stateManager.updateConfig({ issueListPath: value || undefined });
       break;

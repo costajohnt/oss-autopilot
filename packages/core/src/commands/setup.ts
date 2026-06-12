@@ -232,6 +232,51 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = valid.length > 0 ? valid.join(', ') : '(empty)';
             break;
           }
+          case 'avoidRepos': {
+            // Same owner/repo validation as aiPolicyBlocklist: skip (and warn
+            // about) malformed entries instead of failing the whole set.
+            const entries = value
+              .split(',')
+              .map((r) => r.trim())
+              .filter(Boolean);
+            const valid: string[] = [];
+            const invalid: string[] = [];
+            for (const entry of entries) {
+              const normalized = entry.replace(/\s+/g, '');
+              if (/^[\w.-]+\/[\w.-]+$/.test(normalized)) {
+                valid.push(normalized);
+              } else {
+                invalid.push(entry);
+              }
+            }
+            if (invalid.length > 0) {
+              warnings.push(`Warning: Skipping invalid entries (expected "owner/repo" format): ${invalid.join(', ')}`);
+            }
+            if (valid.length === 0 && entries.length > 0) {
+              warnings.push('Warning: All entries were invalid. avoidRepos not updated.');
+              results[key] = '(all entries invalid)';
+              break;
+            }
+            const dedupedRepos = [...new Set(valid)];
+            stateManager.updateConfig({ avoidRepos: dedupedRepos });
+            results[key] = dedupedRepos.length > 0 ? dedupedRepos.join(', ') : '(empty)';
+            break;
+          }
+          case 'boostIssueTypes': {
+            // Free-form issue labels (scout matches them case-insensitively);
+            // an empty value clears the list.
+            const types = [
+              ...new Set(
+                value
+                  .split(',')
+                  .map((t) => t.trim())
+                  .filter(Boolean),
+              ),
+            ];
+            stateManager.updateConfig({ boostIssueTypes: types });
+            results[key] = types.length > 0 ? types.join(', ') : '(empty)';
+            break;
+          }
           case 'projectCategories': {
             const categories = value
               .split(',')

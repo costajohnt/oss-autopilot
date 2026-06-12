@@ -213,6 +213,23 @@ export const AgentConfigSchema = z.object({
   excludeRepos: z.array(z.string()).default([]),
   excludeOrgs: z.array(z.string()).optional(),
 
+  /**
+   * Repos (owner/repo) to softly downrank in discovery results (#1464).
+   * Milder than `excludeRepos`' hard filter: scout pushes matches below
+   * equally-recommended candidates but does not remove them, and a strong
+   * affinity boost can still outweigh the penalty (scout #168).
+   * Threaded to scout via `scout-bridge.ts`.
+   */
+  avoidRepos: z.array(z.string()).default([]),
+
+  /**
+   * Issue label types (e.g. "bug", "good first issue") to softly boost in
+   * discovery ranking, matched case-insensitively against issue labels
+   * (scout #168 / #1464). Does not filter results or change viability
+   * scores. Threaded to scout via `scout-bridge.ts`.
+   */
+  boostIssueTypes: z.array(z.string()).default([]),
+
   trustedProjects: z.array(z.string()).default([]),
 
   githubUsername: z.string().default(''),

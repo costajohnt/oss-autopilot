@@ -137,6 +137,40 @@ describe('runSetup', () => {
     consoleSpy.mockRestore();
   });
 
+  it('should set avoidRepos as a whole-list replace, filtering invalid entries (#1464)', async () => {
+    const result = (await runSetup({ set: ['avoidRepos=owner/repo,other/repo,not-a-repo'] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ avoidRepos: ['owner/repo', 'other/repo'] });
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('not-a-repo')]));
+  });
+
+  it('should warn and not update avoidRepos when all entries are invalid (#1464)', async () => {
+    const result = (await runSetup({ set: ['avoidRepos=not-a-repo'] })) as SetupSetOutput;
+
+    expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('All entries were invalid')]));
+    expect(mockUpdateConfig).not.toHaveBeenCalledWith(expect.objectContaining({ avoidRepos: expect.anything() }));
+  });
+
+  it('should clear avoidRepos when set to an empty value (#1464)', async () => {
+    const result = (await runSetup({ set: ['avoidRepos='] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ avoidRepos: [] });
+    expect(result.settings.avoidRepos).toBe('(empty)');
+  });
+
+  it('should set boostIssueTypes as a deduped whole-list replace (#1464)', async () => {
+    await runSetup({ set: ['boostIssueTypes=bug,good first issue,bug'] });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ boostIssueTypes: ['bug', 'good first issue'] });
+  });
+
+  it('should clear boostIssueTypes when set to an empty value (#1464)', async () => {
+    const result = (await runSetup({ set: ['boostIssueTypes='] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ boostIssueTypes: [] });
+    expect(result.settings.boostIssueTypes).toBe('(empty)');
+  });
+
   it('should handle dormantDays setting', async () => {
     await runSetup({ set: ['dormantDays=14'] });
     expect(mockUpdateConfig).toHaveBeenCalledWith({ dormantThresholdDays: 14 });

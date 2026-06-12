@@ -38,9 +38,19 @@ describe('CONFIG_KEY_REGISTRY', () => {
       'starredRepos',
       'starredReposLastFetched',
       'skippedIssuesPath',
+      'avoidRepos',
+      'boostIssueTypes',
     ];
     for (const key of scoutBridgeReads) {
       expect(isKnownKey(key), `scout-bridge read "${key}" not in registry`).toBe(true);
+    }
+  });
+
+  it('registers the personalization bias keys on the expected surfaces (#1464)', () => {
+    expect(getKeyDef('avoidRepos')?.settableVia).toBe('setup');
+    expect(getKeyDef('boostIssueTypes')?.settableVia).toBe('setup');
+    for (const key of ['add-avoid-repo', 'remove-avoid-repo', 'add-boost-issue-type', 'remove-boost-issue-type']) {
+      expect(getKeyDef(key)?.settableVia, `${key} should be config-settable`).toBe('config');
     }
   });
 
