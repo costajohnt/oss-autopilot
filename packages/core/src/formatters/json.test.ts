@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
 import {
   jsonSuccess,
+  setEnvelopeGistWarning,
   jsonError,
   outputJson,
   outputJsonError,
@@ -794,5 +795,24 @@ describe('Misc command schemas (#1155)', () => {
       fromCache: false,
     };
     expect(formatJson(LocalReposOutputSchema, data).success).toBe(true);
+  });
+});
+
+// ── Envelope-level gist degradation warning (#1433) ───────────────────────
+
+describe('setEnvelopeGistWarning', () => {
+  afterEach(() => {
+    setEnvelopeGistWarning(null);
+  });
+
+  it('threads the warning into success AND error envelopes once set', () => {
+    setEnvelopeGistWarning('Gist persistence is configured but this run is LOCAL-ONLY');
+    expect(jsonSuccess({ ok: true }).gistInitWarning).toMatch(/LOCAL-ONLY/);
+    expect(jsonError('boom').gistInitWarning).toMatch(/LOCAL-ONLY/);
+  });
+
+  it('is absent (not null) when unset, keeping the wire format minimal', () => {
+    expect('gistInitWarning' in jsonSuccess({ ok: true })).toBe(false);
+    expect('gistInitWarning' in jsonError('boom')).toBe(false);
   });
 });

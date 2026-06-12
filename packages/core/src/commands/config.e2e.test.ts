@@ -92,9 +92,11 @@ describe.skipIf(!BUNDLE_EXISTS)('localOnly gist bootstrap warning E2E (#1431)', 
     const { stdout, stderr } = await runConfigIn(GIST_HOME);
 
     expect(stderr).toContain('LOCAL-ONLY');
-    // The command itself still completes with a success envelope.
+    // The command itself still completes with a success envelope, and the
+    // degradation also rides the envelope so --json consumers see it (#1433).
     const json = JSON.parse(stdout);
     expect(json).toHaveProperty('success', true);
+    expect(json.gistInitWarning).toContain('LOCAL-ONLY');
   });
 
   it('emits no gist warning for a local-mode state file', async () => {
@@ -109,6 +111,7 @@ describe.skipIf(!BUNDLE_EXISTS)('localOnly gist bootstrap warning E2E (#1431)', 
     expect(stderr).not.toContain('LOCAL-ONLY');
     const json = JSON.parse(stdout);
     expect(json).toHaveProperty('success', true);
+    expect(json).not.toHaveProperty('gistInitWarning');
   });
 });
 
