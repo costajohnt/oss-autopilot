@@ -9,6 +9,7 @@
  * Unknown keys are stripped by default (Zod 4 behavior).
  */
 import { z } from 'zod';
+import type { FetchedPR } from './types.js';
 
 // ── 1. Enum / union schemas ───────────────────────────────────────────
 
@@ -332,13 +333,44 @@ export const DailyDigestSummarySchema = z.object({
   mergeRate: z.number(),
 });
 
+/**
+ * Minimal FetchedPR validation for persisted digest arrays (#1456). The
+ * persisted digest is rendered by the dashboard from cold start (before any
+ * refresh), so the fields it dereferences must be guaranteed present. Only
+ * the identity/status core is pinned — required on every real `FetchedPR`
+ * since the type's introduction — and `.passthrough()` keeps the dozens of
+ * volatile enrichment fields (CI, review, staleness) from rejecting digests
+ * persisted by older or newer producers.
+ */
+export const FetchedPRSchema = z
+  .object({
+    url: z.string(),
+    repo: z.string(),
+    number: z.number(),
+    status: FetchedPRStatusSchema,
+  })
+  .passthrough();
+
+/**
+ * The digest arrays hold full `FetchedPR` objects at runtime; validation is
+ * intentionally limited to the identity/status core above (everything else
+ * is ephemeral enrichment that older/newer producers legitimately differ
+ * on), so the inferred type is widened back to `FetchedPR[]` for consumers.
+ * The cast is sound in both directions: every real `FetchedPR` satisfies the
+ * core schema, and `.passthrough()` preserves the enrichment fields on parse
+ * output. This mirrors the pre-#1456 `z.array(z.any())` static contract
+ * while actually validating the fields the dashboard dereferences.
+ */
+const FetchedPRArraySchema = z.array(FetchedPRSchema) as unknown as z.ZodType<FetchedPR[]>;
+
 export const DailyDigestSchema = z.object({
   generatedAt: z.string(),
 
-  // FetchedPR arrays — ephemeral, regenerated each run. Validated loosely.
-  openPRs: z.array(z.any()),
-  needsAddressingPRs: z.array(z.any()),
-  waitingOnMaintainerPRs: z.array(z.any()),
+  // FetchedPR arrays — ephemeral, regenerated each run. Validated for the
+  // identity/status core the dashboard dereferences; loose on the rest.
+  openPRs: FetchedPRArraySchema,
+  needsAddressingPRs: FetchedPRArraySchema,
+  waitingOnMaintainerPRs: FetchedPRArraySchema,
 
   recentlyClosedPRs: z.array(ClosedPRSchema),
   recentlyMergedPRs: z.array(MergedPRSchema),
