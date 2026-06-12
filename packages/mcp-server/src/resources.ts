@@ -7,7 +7,7 @@
 import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { runStatus, runConfig } from '@oss-autopilot/core/commands';
-import { getStateManager, splitRepo } from '@oss-autopilot/core';
+import { getStateManager, splitRepo, fenceFetchedPR } from '@oss-autopilot/core';
 
 /** Build a standard MCP resource response with a single JSON content entry. */
 function resourceContent(uri: URL, data: unknown) {
@@ -85,7 +85,9 @@ export function registerResources(server: McpServer): void {
         'All open pull requests from the last daily digest, including CI status, review state, and priority information.',
       mimeType: 'application/json',
     },
-    wrapResource(async () => getStateManager().getState().lastDigest?.openPRs ?? []),
+    // lastMaintainerComment.body is attacker-controllable; fence it at this
+    // agent-facing boundary (#1420) — the persisted digest keeps raw bodies.
+    wrapResource(async () => (getStateManager().getState().lastDigest?.openPRs ?? []).map(fenceFetchedPR)),
   );
 
   // 4. shelved-prs — Shelved PRs from the last daily digest
@@ -149,7 +151,8 @@ export function registerResources(server: McpServer): void {
         if (!pr) {
           throw new Error(`PR ${fullRepo}#${prNumber} not found in last daily digest`);
         }
-        return resourceContent(uri, pr);
+        // Same fencing as oss://prs (#1420).
+        return resourceContent(uri, fenceFetchedPR(pr));
       } catch (e) {
         console.error('[MCP] PR detail error:', e);
         throw e;

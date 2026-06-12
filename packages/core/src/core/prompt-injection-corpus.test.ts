@@ -313,3 +313,67 @@ describe('end-to-end: toDailyOutput emits fenced commentedIssues bodies (#1372)'
     }
   });
 });
+
+describe('end-to-end: toDailyOutput fences openPRs lastMaintainerComment bodies (#1420)', () => {
+  it('the maintainer-comment excerpt is fenced in digest.openPRs of the agent-facing daily JSON', async () => {
+    const { toDailyOutput } = await import('../commands/daily.js');
+    const { makeDailyDigest, makeCapacityAssessment, makeFetchedPR } = await import('./test-utils.js');
+
+    const prs = PAYLOADS.map((payload, i) =>
+      makeFetchedPR({
+        repo: 'owner/repo',
+        number: i + 1,
+        hasUnrespondedComment: true,
+        lastMaintainerComment: {
+          author: `attacker${i}`,
+          body: payload,
+          createdAt: '2026-01-02T00:00:00Z',
+        },
+      }),
+    );
+
+    const output = toDailyOutput({
+      digest: makeDailyDigest({ openPRs: prs }),
+      capacity: makeCapacityAssessment(),
+      summary: '',
+      briefSummary: '',
+      actionableIssues: [],
+      attention: { needsAttention: 0, stuckCI: 0, dormantFollowup: 0, waiting: PAYLOADS.length },
+      actionMenu: {
+        items: [],
+        context: {
+          hasActionableIssues: false,
+          actionableCount: 0,
+          hasCapacity: true,
+          hasIssueResponses: false,
+          issueResponseCount: 0,
+        },
+      },
+      commentedIssues: [],
+      repoGroups: [],
+      failures: [],
+      warnings: [],
+    });
+
+    expect(output.digest.openPRs).toHaveLength(PAYLOADS.length);
+    for (const [i, pr] of output.digest.openPRs.entries()) {
+      const body = pr.lastMaintainerComment?.body;
+      expect(body).toBeDefined();
+      expectFenced(body as string, PAYLOADS[i]);
+      expect(body).toContain(`author="attacker${i}"`);
+      expect(body).toContain(`label="owner/repo#${i + 1}"`);
+      // No-mutation contract: the INPUT PR objects (shared by reference with
+      // the persisted digest) must keep their raw bodies — the MCP resource
+      // path re-fences state on every read, and wrapUntrustedContent is not
+      // idempotent, so an in-place mutation would compound escapes silently.
+      expect(prs[i].lastMaintainerComment?.body).toBe(PAYLOADS[i]);
+    }
+  });
+
+  it('a PR without a maintainer comment passes through unchanged', async () => {
+    const { fenceFetchedPR } = await import('./untrusted-content.js');
+    const { makeFetchedPR } = await import('./test-utils.js');
+    const pr = makeFetchedPR({ repo: 'owner/repo', number: 1 });
+    expect(fenceFetchedPR(pr)).toBe(pr);
+  });
+});

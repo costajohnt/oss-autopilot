@@ -305,7 +305,10 @@ their body fields, so the fence arrives in the payload itself:
 - `comments` (MCP tool + CLI `--json`): review, inline-comment, and
   discussion `body` fields.
 - `daily` / `startup` (MCP tool + CLI `--json`): `commentedIssues[]`
-  comment excerpts (`lastResponseBody`, `userLastCommentBody`).
+  comment excerpts (`lastResponseBody`, `userLastCommentBody`), and
+  `digest.openPRs[].lastMaintainerComment.body` (#1420).
+- MCP resources `oss://prs` and `oss://pr/{owner}/{repo}/{number}`:
+  `lastMaintainerComment.body` on every PR (#1420).
 - `guidelines-fetch-corpus` (MCP tool + CLI `--json`): every bundle body.
 
 **NOT pre-fenced** — titles everywhere (PR/issue titles, repo names,
