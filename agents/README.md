@@ -31,13 +31,13 @@ convenience. The frontmatter `tools:` line in each agent file is the source of
 truth; `packages/core/src/agents-contract.test.ts` enforces that every tool an
 agent's body instructs with is actually granted (#1377).
 
-- `contribution-strategist` — `Bash`, `Read`, `mcp__...__strategy` (read-only analyzer; emits a markdown report in chat).
-- `issue-scout` — `Bash`, `Read`, `mcp__...__search`, `mcp__...__vet`, `mcp__...__vet-list`, `mcp__...__status`.
-- `pr-compliance-checker` — `Bash`, `Read`, `Glob`, `Grep`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__compliance-score`, `mcp__...__guidelines-get`.
-- `pr-health-checker` — `Bash`, `Read`, `Grep`, `mcp__...__track`, `mcp__...__comments`. (Reads config via the CLI `config --json`; the MCP config tool is a get-or-set mutator and is deliberately not granted.)
-- `pr-responder` — `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__guidelines-get` (keeps `Write` for drafting response files under `/tmp` and `Edit` for formatting reverts; posting still routes through `draft-review-post`).
-- `pre-commit-reviewer` — `Bash`, `Read`, `Glob`, `Grep`, `mcp__...__guidelines-get` (local git/diff review).
-- `repo-evaluator` — `Bash`, `Read`, `Glob`, `mcp__...__vet`, `mcp__...__repo-vet`, `mcp__...__status`.
+- `contribution-strategist` — `Bash`, `Read`, `AskUserQuestion`, `mcp__...__strategy` (read-only analyzer; emits a markdown report in chat).
+- `issue-scout` — `Bash`, `Read`, `AskUserQuestion`, `mcp__...__search`, `mcp__...__verify-issue`, `mcp__...__vet`, `mcp__...__vet-list`, `mcp__...__status`.
+- `pr-compliance-checker` — `Bash`, `Read`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__compliance-score`, `mcp__...__guidelines-get`.
+- `pr-health-checker` — `Bash`, `Read`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`. (Reads config via the CLI `config --json`; the MCP config tool is a get-or-set mutator and is deliberately not granted.)
+- `pr-responder` — `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__guidelines-get` (keeps `Write` for drafting response files under `/tmp` and `Edit` for formatting reverts; posting still routes through `draft-review-post`).
+- `pre-commit-reviewer` — `Bash`, `Read`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__guidelines-get` (local git/diff review).
+- `repo-evaluator` — `Bash`, `Read`, `Glob`, `AskUserQuestion`, `mcp__...__vet`, `mcp__...__repo-vet`, `mcp__...__status`.
 
 `track` here is the v2 read-only snapshot tool — it no longer mutates
 `~/.oss-autopilot/state.json`, which is why it can be granted despite the
@@ -70,7 +70,7 @@ Opus should not burn tokens on `pr-compliance-checker`'s deterministic rubric.
 | `pr-health-checker` | `sonnet` | Git rebase flow + CI log diagnosis; needs to reason about error messages and suggest fixes. |
 | `pr-responder` | `sonnet` | Claim verification + tone calibration + multi-step draft-accuracy procedure. Heavy reasoning. |
 | `pre-commit-reviewer` | `sonnet` | Five-phase diff review including security scan. Heavy reasoning. |
-| `repo-evaluator` | `haiku` | Aggregates cached repo scores into a verdict. Bounded scope. |
+| `repo-evaluator` | `sonnet` | Weighs repo-health and history signals into a recommendation; needs judgment beyond bounded aggregation. |
 
 Policy: **no agent uses `model: inherit`.** CI enforces this via the "Guard
 against `model: inherit` in agent frontmatter" step. If a future agent

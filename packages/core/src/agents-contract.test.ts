@@ -565,3 +565,91 @@ describe('agent body tool references ↔ frontmatter tool grants (#1377)', () =>
     ).toEqual([]);
   });
 });
+
+// ── agents/README.md ↔ frontmatter parity (#1419) ─────────────────────────
+//
+// The README's allowlist bullets and model-tier table are hand-maintained
+// prose duplicating each agent's frontmatter. They drifted (issue-scout's
+// row omitted verify-issue; repo-evaluator's tier row said haiku while the
+// frontmatter says sonnet) because nothing gated README files. This gate
+// parses both surfaces and pins set equality.
+
+const MCP_TOOL_PREFIX = 'mcp__plugin_oss-autopilot_oss-autopilot__';
+
+function parseAgentFrontmatterField(file: string, field: string): string | null {
+  const lines = fs.readFileSync(file, 'utf8').split('\n');
+  const end = lines.indexOf('---', 1);
+  const line = lines.slice(1, end).find((l) => l.startsWith(`${field}:`));
+  return line ? line.slice(field.length + 1).trim() : null;
+}
+
+describe('agents/README.md ↔ agent frontmatter parity (#1419)', () => {
+  const readme = fs.readFileSync(path.join(REPO_ROOT, 'agents', 'README.md'), 'utf8');
+  const agents = listAgentFiles().map((file) => ({
+    name: path.basename(file, '.md'),
+    file,
+    doc: parseAgentDoc(file),
+  }));
+
+  it('every allowlist bullet matches the agent frontmatter tools exactly', () => {
+    const offenders: string[] = [];
+    for (const agent of agents) {
+      if (!agent.doc.tools) continue;
+      // The bullet form is: - `name` — `Tool`, `Tool`, `mcp__...__x`, ... (prose)
+      const bullet = readme.split('\n').find((line) => line.startsWith(`- \`${agent.name}\``));
+      if (!bullet) {
+        offenders.push(`${agent.name}: no allowlist bullet in agents/README.md`);
+        continue;
+      }
+      const listed = new Set(
+        [...bullet.matchAll(/`([^`]+)`/g)]
+          .map((m) => m[1])
+          .filter((token) => token !== agent.name && !token.includes(' '))
+          // README rows abbreviate the MCP prefix as `mcp__...__x`.
+          .map((token) => token.replace(/^mcp__\.\.\.__/u, MCP_TOOL_PREFIX))
+          // Drop tokens that are prose snippets, not tool names: a CLI
+          // example like `config --json` fails the space check above, and
+          // hyphenated prose like `draft-review-post` fails the
+          // letters-and-underscores regex below.
+          .filter((token) => /^[A-Za-z_]+$/u.test(token.replace(MCP_TOOL_PREFIX, '')) || token.startsWith('mcp__')),
+      );
+      const granted = agent.doc.tools;
+      const missing = [...granted].filter((t) => !listed.has(t));
+      const extra = [...listed].filter((t) => !granted.has(t) && (t.startsWith('mcp__') || /^[A-Z]/.test(t)));
+      if (missing.length > 0 || extra.length > 0) {
+        offenders.push(
+          `${agent.name}: README bullet drifted from frontmatter` +
+            (missing.length > 0 ? ` — missing ${missing.join(', ')}` : '') +
+            (extra.length > 0 ? ` — lists ungranted ${extra.join(', ')}` : ''),
+        );
+      }
+    }
+    expect(
+      offenders,
+      `agents/README.md allowlist bullets drifted from frontmatter \`tools:\` — update the README row:\n  ` +
+        offenders.join('\n  '),
+    ).toEqual([]);
+  });
+
+  it('every model-tier table row matches the agent frontmatter model', () => {
+    const offenders: string[] = [];
+    for (const agent of agents) {
+      const model = parseAgentFrontmatterField(agent.file, 'model');
+      if (!model) continue;
+      const row = readme.split('\n').find((line) => line.startsWith(`| \`${agent.name}\` |`));
+      if (!row) {
+        offenders.push(`${agent.name}: no model-tier table row in agents/README.md`);
+        continue;
+      }
+      const cell = row.split('|')[2]?.trim().replace(/`/g, '');
+      if (cell !== model) {
+        offenders.push(`${agent.name}: README tier table says "${cell}" but frontmatter model is "${model}"`);
+      }
+    }
+    expect(
+      offenders,
+      `agents/README.md model-tier table drifted from frontmatter \`model:\` — update the table row:\n  ` +
+        offenders.join('\n  '),
+    ).toEqual([]);
+  });
+});

@@ -14,8 +14,6 @@ Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/di
 
 ## Later (no fixed timeline)
 
-- [ ] 1.0 launch content — blog post, social posts, competitive positioning ([#731](https://github.com/costajohnt/oss-autopilot/issues/731))
-- [ ] Marketing video with Remotion ([#698](https://github.com/costajohnt/oss-autopilot/issues/698))
 - [ ] Co-maintainer recruitment — the project is currently solo-maintained (bus factor of 1)
 
 Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/discussions) or file an issue.

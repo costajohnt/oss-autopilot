@@ -50,7 +50,7 @@ Local-only commands (no GitHub token needed): `checkSetup`, `clear-override`, `c
 # Deep-vet a specific issue
 <prefix> vet <issue-url> --json
 
-# Re-vet every available issue in the curated list (use --prune to drop unavailable items)
+# Re-vet every available issue in the curated list (--prune drops completed, terminal-status (Done/Skip/Dropped/Merged/Closed), and low-score (<6) items)
 <prefix> vet-list --json [--prune]
 
 # Claim an issue with optional message
@@ -198,7 +198,7 @@ rejected with a did-you-mean suggestion.
 | `--reset` | `setup` | Re-run the setup wizard even if already complete. |
 | `--set key=value` | `setup` | Apply settings non-interactively. Repeatable. Unknown keys are rejected with a did-you-mean suggestion. |
 | `--list-keys` | `config` | Dump every known config key with descriptions (alternative to `--json`). |
-| `--prune` | `vet-list` | Remove unavailable items from the curated list file after re-vetting. |
+| `--prune` | `vet-list` | Remove completed, terminal-status (Done/Skip/Dropped/Merged/Closed), and low-score (<6) items from the curated list file after re-vetting. |
 | `--path <file>` | `skip-add` | Override the configured `skippedIssuesPath` for a single invocation. |
 
 ---

@@ -593,7 +593,7 @@ branch=$(git branch --show-current)
 **Before generating the PR body**, fetch the target repo's PR template:
 
 ```bash
-oss-autopilot pr-template {upstream-owner}/{upstream-repo} --json
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" pr-template {upstream-owner}/{upstream-repo} --json
 ```
 
 If a template is returned (`data.template` is non-null), the template body is the **baseline** for your PR description. You are merging your generated summary INTO it, not replacing it. Specifically:
