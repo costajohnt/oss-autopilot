@@ -235,6 +235,7 @@ When the user selects an action from the menu above, **read the relevant workflo
 | "Pick from your issue list" | `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` | "Handle Pick Issue From List" |
 | Specific PR selection (via "Other") | `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` | "Handle Specific PR Selection" |
 | "Review issue replies" | `${CLAUDE_PLUGIN_ROOT}/workflows/review-issue-replies.md` | "Handle Review Issue Replies" |
+| "Follow up on stuck-CI / dormant PRs" (`follow_up`) | `${CLAUDE_PLUGIN_ROOT}/workflows/dormant-pr-follow-up.md` | "Trigger" |
 | "Search for new issues" | Handled in core (below) | "Handle Find New Issues" |
 | "Done for now" | Handled in core (below) | "Session End" |
 
