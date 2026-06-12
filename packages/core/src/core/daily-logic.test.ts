@@ -22,7 +22,7 @@ import {
   STALE_STATUSES,
 } from './daily-logic.js';
 import { summarizeAttentionBuckets } from './pr-attention.js';
-import type { FetchedPR, MaintainerActionHint, AgentState } from './types.js';
+import type { FetchedPR, MaintainerActionHint, AgentState, CommentedIssue } from './types.js';
 import {
   makeFetchedPR,
   makeDailyDigest,
@@ -660,6 +660,90 @@ describe('computeActionMenu (core)', () => {
 
     expect(searchItem).toBeDefined();
     expect(searchItem!.capacityWarning).toBeUndefined();
+  });
+
+  it('should include follow_up with the stuck-CI count when only stuck_ci is non-zero', () => {
+    const menu = computeActionMenu([], makeCapacity(), [], { stuckCI: 2, dormantFollowup: 0 });
+    const followUp = menu.items.find((i) => i.key === 'follow_up');
+
+    expect(followUp).toBeDefined();
+    expect(followUp!.label).toBe('Follow up on 2 stuck-CI PRs');
+  });
+
+  it('should include follow_up with the dormant count when only dormant_followup is non-zero', () => {
+    const menu = computeActionMenu([], makeCapacity(), [], { stuckCI: 0, dormantFollowup: 1 });
+    const followUp = menu.items.find((i) => i.key === 'follow_up');
+
+    expect(followUp).toBeDefined();
+    expect(followUp!.label).toBe('Follow up on 1 dormant PR');
+  });
+
+  it('should include follow_up with both counts when both buckets are non-zero', () => {
+    const menu = computeActionMenu([], makeCapacity(), [], { stuckCI: 1, dormantFollowup: 2 });
+    const followUp = menu.items.find((i) => i.key === 'follow_up');
+
+    expect(followUp).toBeDefined();
+    expect(followUp!.label).toBe('Follow up on 1 stuck-CI and 2 dormant PRs');
+  });
+
+  it('should omit follow_up when both buckets are zero', () => {
+    const menu = computeActionMenu([], makeCapacity(), [], { stuckCI: 0, dormantFollowup: 0 });
+    expect(menu.items.find((i) => i.key === 'follow_up')).toBeUndefined();
+    expect(menu.items.map((i) => i.key)).toEqual(['search', 'done']);
+  });
+
+  it('should omit follow_up when attention is not provided', () => {
+    const menu = computeActionMenu([], makeCapacity());
+    expect(menu.items.find((i) => i.key === 'follow_up')).toBeUndefined();
+  });
+
+  it('should order follow_up after address_all and issue_replies, before search', () => {
+    const issues = [
+      {
+        type: 'ci_failing' as const,
+        pr: makePR({ repo: 'owner/repo' }),
+        label: '[CI Failing]',
+        isNewContribution: false,
+      },
+    ];
+    const issueResponses: CommentedIssue[] = [
+      {
+        repo: 'a/b',
+        number: 1,
+        title: 'T',
+        url: 'u',
+        status: 'new_response',
+        userLastCommentedAt: '',
+        userLastCommentBody: '',
+        lastResponseAuthor: 'm',
+        lastResponseBody: 'x',
+        lastResponseAt: '',
+        labels: [],
+        daysSinceUserComment: 0,
+        isFromMaintainer: true,
+      },
+    ];
+    const menu = computeActionMenu(issues, makeCapacity(), issueResponses, { stuckCI: 1, dormantFollowup: 0 });
+    expect(menu.items.map((i) => i.key)).toEqual(['address_all', 'issue_replies', 'follow_up', 'search', 'done']);
+  });
+
+  it('should accept counts straight from summarizeAttentionBuckets', () => {
+    const prs = [
+      // stuck_ci: waiting + pending CI past the 3-day threshold
+      makePR({ repo: 'owner/repo', status: 'waiting_on_maintainer', ciStatus: 'pending', daysSinceActivity: 4 }),
+      // dormant_followup: waiting + review_required past the 14-day threshold
+      makePR({
+        repo: 'owner/repo',
+        status: 'waiting_on_maintainer',
+        reviewDecision: 'review_required',
+        daysSinceActivity: 20,
+      }),
+    ];
+    const menu = computeActionMenu([], makeCapacity(), [], summarizeAttentionBuckets(prs));
+    const followUp = menu.items.find((i) => i.key === 'follow_up');
+
+    expect(followUp).toBeDefined();
+    expect(followUp!.label).toBe('Follow up on 1 stuck-CI and 1 dormant PRs');
   });
 });
 
