@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.13.0...core-v3.13.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* **core:** dashboard mutations surface and retry failed Gist checkpoints ([#1426](https://github.com/costajohnt/oss-autopilot/issues/1426)) ([4b7dc3f](https://github.com/costajohnt/oss-autopilot/commit/4b7dc3ffe9aef7aa8d0c6cc91f1e7af52d7bc482)), closes [#1417](https://github.com/costajohnt/oss-autopilot/issues/1417)
+* **core:** dashboard partitions on post-override status, matching the CLI ([#1424](https://github.com/costajohnt/oss-autopilot/issues/1424)) ([e720ec4](https://github.com/costajohnt/oss-autopilot/commit/e720ec48d35864ba81690f8174d9e09f1a10644b)), closes [#1416](https://github.com/costajohnt/oss-autopilot/issues/1416)
+* **core:** pin contract goldens to their output schemas and typecheck tests ([#1422](https://github.com/costajohnt/oss-autopilot/issues/1422)) ([d6ac828](https://github.com/costajohnt/oss-autopilot/commit/d6ac8285f2130fa42b7c529d0d7ed2fe37d1bcb9)), closes [#1418](https://github.com/costajohnt/oss-autopilot/issues/1418)
+* **security:** fence lastMaintainerComment.body at agent-facing boundaries ([#1427](https://github.com/costajohnt/oss-autopilot/issues/1427)) ([6707ecf](https://github.com/costajohnt/oss-autopilot/commit/6707ecf046ae1e347ca3b857fcaf9223e76a37b5)), closes [#1420](https://github.com/costajohnt/oss-autopilot/issues/1420)
+
 ## [3.13.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.12.0...core-v3.13.0) (2026-06-11)
 
 

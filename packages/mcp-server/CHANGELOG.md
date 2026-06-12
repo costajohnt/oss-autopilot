@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.6.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.6.0...mcp-v5.6.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* **security:** fence lastMaintainerComment.body at agent-facing boundaries ([#1427](https://github.com/costajohnt/oss-autopilot/issues/1427)) ([6707ecf](https://github.com/costajohnt/oss-autopilot/commit/6707ecf046ae1e347ca3b857fcaf9223e76a37b5)), closes [#1420](https://github.com/costajohnt/oss-autopilot/issues/1420)
+
 ## [5.6.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.5.0...mcp-v5.6.0) (2026-06-11)
 
 
