@@ -66,4 +66,16 @@ describe('move --json contract', () => {
     expect(schemaIssues(MoveOutputSchema, result)).toEqual([]);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/move.auto.json');
   });
+
+  // The registry now passes MoveOutputSchema to executeAction (#1453), which
+  // prints the Zod-parsed data rather than the raw runMove result. Pin that
+  // the parse round-trips byte-identically for every target, so wiring the
+  // schema cannot change happy-path --json output.
+  it.each(['attention', 'waiting', 'shelved', 'auto'] as const)(
+    'schema validation preserves the serialized bytes for target=%s (#1453)',
+    async (target) => {
+      const result = await runMove({ prUrl: TEST_PR_URL, target });
+      expect(JSON.stringify(MoveOutputSchema.parse(result), null, 2)).toBe(JSON.stringify(result, null, 2));
+    },
+  );
 });
