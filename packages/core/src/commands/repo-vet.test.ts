@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../core/index.js', () => ({
   getOctokit: vi.fn(),
   requireGitHubToken: vi.fn(),
+  getStateManager: vi.fn(),
 }));
 
 vi.mock('../core/logger.js', () => ({
@@ -20,14 +21,26 @@ vi.mock('../core/logger.js', () => ({
   info: vi.fn(),
 }));
 
-import { requireGitHubToken, getOctokit } from '../core/index.js';
+import { requireGitHubToken, getOctokit, getStateManager } from '../core/index.js';
 import { warn } from '../core/logger.js';
 import { runRepoVet } from './repo-vet.js';
 import { RepoVetOutputSchema } from '../formatters/json.js';
 
 const mockRequireGitHubToken = vi.mocked(requireGitHubToken);
 const mockGetOctokit = vi.mocked(getOctokit);
+const mockGetStateManager = vi.mocked(getStateManager);
 const mockWarn = vi.mocked(warn);
+
+/**
+ * Stub StateManager carrying only the repoScores surface runRepoVet reads.
+ * Keyed records mimic `state.repoScores` (#1465).
+ */
+function stubStateManager(repoScores: Record<string, { repo: string; score: number }>) {
+  return {
+    getRepoScore: (repo: string) => repoScores[repo],
+    getState: () => ({ repoScores }),
+  } as unknown as ReturnType<typeof getStateManager>;
+}
 
 function httpError(status: number, message: string): Error {
   return Object.assign(new Error(message), { status });
@@ -66,6 +79,7 @@ describe('runRepoVet release handling (#1373)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockGetStateManager.mockReturnValue(stubStateManager({}));
   });
 
   it('rethrows a 429 rate-limit error from listReleases', async () => {
@@ -135,5 +149,67 @@ describe('runRepoVet release handling (#1373)', () => {
     // keys — guard against the flag silently vanishing from --json output.
     const parsed = RepoVetOutputSchema.parse(result);
     expect(parsed.maintainerActivity.releasesIncomplete).toBe(false);
+  });
+});
+
+describe('runRepoVet history score (#1465)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockGetOctokit.mockReturnValue(buildOctokit(vi.fn().mockRejectedValue(NOT_FOUND)));
+  });
+
+  it('includes historyScore alongside rubricScore when a cached score exists for the slug', async () => {
+    mockGetStateManager.mockReturnValue(stubStateManager({ 'owner/repo': { repo: 'owner/repo', score: 8 } }));
+
+    const result = await runRepoVet({ repo: 'owner/repo' });
+
+    expect(result.historyScore).toBe(8);
+    expect(typeof result.rubricScore).toBe('number');
+  });
+
+  it('degrades to no history (not a throw) when state is unreadable (#1465 review)', async () => {
+    mockGetStateManager.mockImplementation(() => {
+      throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+    });
+
+    const result = await runRepoVet({ repo: 'owner/repo' });
+
+    expect(result.historyScore).toBeUndefined();
+    expect(typeof result.rubricScore).toBe('number');
+  });
+
+  it('omits historyScore entirely when the user has no cached score (back-compat)', async () => {
+    mockGetStateManager.mockReturnValue(stubStateManager({}));
+
+    const result = await runRepoVet({ repo: 'owner/repo' });
+
+    expect('historyScore' in result).toBe(false);
+  });
+
+  it('matches the cached score case-insensitively (state keys preserve URL casing)', async () => {
+    mockGetStateManager.mockReturnValue(stubStateManager({ 'Owner/Repo': { repo: 'Owner/Repo', score: 6 } }));
+
+    const result = await runRepoVet({ repo: 'owner/repo' });
+
+    expect(result.historyScore).toBe(6);
+  });
+
+  it('does not attribute a different repo cached score to the vetted slug', async () => {
+    mockGetStateManager.mockReturnValue(stubStateManager({ 'other/repo': { repo: 'other/repo', score: 9 } }));
+
+    const result = await runRepoVet({ repo: 'owner/repo' });
+
+    expect('historyScore' in result).toBe(false);
+  });
+
+  it('historyScore survives the --json schema validation (and stays absent when absent)', async () => {
+    mockGetStateManager.mockReturnValue(stubStateManager({ 'owner/repo': { repo: 'owner/repo', score: 8 } }));
+    const withHistory = RepoVetOutputSchema.parse(await runRepoVet({ repo: 'owner/repo' }));
+    expect(withHistory.historyScore).toBe(8);
+
+    mockGetStateManager.mockReturnValue(stubStateManager({}));
+    const withoutHistory = RepoVetOutputSchema.parse(await runRepoVet({ repo: 'owner/repo' }));
+    expect(withoutHistory.historyScore).toBeUndefined();
   });
 });

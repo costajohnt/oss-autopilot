@@ -1540,7 +1540,9 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('repo-vet <repo>')
-        .description('Compute repo health rubric (1–10 score + verdict) for `owner/repo`')
+        .description(
+          'Compute the fresh repo health rubric (1–10 score + verdict) for `owner/repo`; includes the cached history score when one exists',
+        )
         .option('--json', 'Output as JSON')
         .action(async (repo, options) => {
           const { RepoVetOutputSchema } = await import('./formatters/json.js');
@@ -1555,8 +1557,15 @@ export const commands: CLICommandDef[] = [
                     ? '⚠️'
                     : '❌';
               console.log(
-                `\n${verdictEmoji} ${data.repoSlug}: ${data.rubricScore.toFixed(1)}/10 — ${data.rubricVerdict}`,
+                `\n${verdictEmoji} ${data.repoSlug}: health ${data.rubricScore.toFixed(1)}/10 — ${data.rubricVerdict}`,
               );
+              if (data.historyScore !== undefined) {
+                // Two different 1–10 scores (#1465) — label both so neither
+                // reads as "the" repo score. See docs/repo-scores.md.
+                console.log(
+                  `  History score (your past PRs here): ${data.historyScore}/10 — cached, distinct from the fresh health score above`,
+                );
+              }
               console.log(`  Stars: ${data.repoMeta.stars}  Last push: ${data.repoMeta.lastPushed}`);
               if (data.prMergeTime.medianDays !== null) {
                 console.log(
