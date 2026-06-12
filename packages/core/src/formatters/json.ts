@@ -619,6 +619,9 @@ export const SearchOutputSchema = z.object({
   aiPolicyBlocklist: z.array(z.string()),
   hiddenOwnPRCount: z.number().int().nonnegative(),
   rateLimitWarning: z.string().optional(),
+  // Skip file unreadable — search ran with an empty skip list (#1448).
+  // Optional: absent on clean runs.
+  skipListUnavailable: z.boolean().optional(),
 });
 
 // ── Features output schema (scout 0.9.0 #97/#98/#99) ─────────────────
@@ -738,6 +741,9 @@ export const ClaimOutputSchema = z.object({
   issueUrl: z.string(),
   // Post-mutation Gist checkpoint failure (#1370). Optional: absent on clean runs.
   gistSyncWarning: z.string().optional(),
+  // Claim comment posted but local state save threw — claim is live but
+  // untracked (#1448). Optional: absent on clean runs.
+  stateSaveWarning: z.string().optional(),
 });
 
 export const InitOutputSchema = z.object({
@@ -1099,6 +1105,12 @@ export interface SearchOutput {
   hiddenOwnPRCount: number;
   /** Present when rate limits affected the search — either low pre-flight quota or mid-search rate limit hits (#100). */
   rateLimitWarning?: string;
+  /**
+   * Set when the configured skipped-issues file exists but could not be read
+   * (#1448). The search ran with an EMPTY skip list, so explicitly-skipped
+   * issues may appear in `candidates`. Absent on success.
+   */
+  skipListUnavailable?: boolean;
 }
 
 /** Horizon classification stamped on each features-mode candidate. */
@@ -1142,6 +1154,13 @@ export interface IssueListInfo {
   availableCount: number;
   completedCount: number;
   skippedIssuesPath?: string;
+  /**
+   * Set when the issue list file was detected but could not be read (#1448).
+   * In that case `availableCount`/`completedCount` are 0 because the content
+   * was unreadable, NOT because the list is empty — consumers should not
+   * treat the counts as authoritative. Absent on success.
+   */
+  readError?: string;
 }
 
 /**
@@ -1275,6 +1294,11 @@ export interface VetListOutput {
   };
   pruneResult?: {
     removedCount: number;
+    /**
+     * Set when the prune read/write failed (#1448); `removedCount` is 0 in
+     * that case and the list file is unchanged. Absent on a successful prune.
+     */
+    error?: string;
   };
 }
 
@@ -1388,6 +1412,12 @@ export interface ClaimOutput {
   issueUrl: string;
   /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
   gistSyncWarning?: string;
+  /**
+   * Set when the claim comment posted to GitHub but saving the tracked issue
+   * to local state threw (#1448) — the claim is live but UNTRACKED, so daily
+   * runs will not monitor it. Absent on success.
+   */
+  stateSaveWarning?: string;
 }
 
 /** Info about a local git clone (#84) */

@@ -272,6 +272,7 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
 
   // Add to tracked issues — non-fatal if state save fails (comment already posted)
   let gistSyncWarning: string | null = null;
+  let stateSaveWarning: string | undefined;
   try {
     const stateManager = getStateManager();
     stateManager.addIssue({
@@ -291,17 +292,19 @@ export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
     // the degraded-sync signal, not just the stderr log (#1036 audit H1, #1370).
     gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
   } catch (error) {
-    // Structured warning instead of bare console.error so the breadcrumb shows
-    // up in the plugin's log pipeline (#1056 M24).
-    warn(
-      MODULE,
-      `Comment posted on ${options.issueUrl} but failed to save to local state: ${error instanceof Error ? error.message : error}`,
-    );
+    // The claim comment is live on GitHub but local state never tracked it —
+    // an otherwise-clean envelope would hide an invisible untracked claim, so
+    // thread the failure into the output (#1448). Structured warning instead
+    // of bare console.error so the breadcrumb shows up in the plugin's log
+    // pipeline (#1056 M24).
+    stateSaveWarning = `Comment posted on ${options.issueUrl} but failed to save to local state: ${error instanceof Error ? error.message : error}`;
+    warn(MODULE, stateSaveWarning);
   }
 
   return {
     commentUrl: comment.html_url,
     issueUrl: options.issueUrl,
     ...(gistSyncWarning ? { gistSyncWarning } : {}),
+    ...(stateSaveWarning ? { stateSaveWarning } : {}),
   };
 }

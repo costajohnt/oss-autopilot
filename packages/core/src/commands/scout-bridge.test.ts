@@ -18,16 +18,21 @@ vi.mock('@oss-scout/core', () => ({
 }));
 
 vi.mock('./skip-file-parser.js', () => ({
-  loadSkippedIssues: vi.fn(() => []),
+  loadSkippedIssuesDetailed: vi.fn(() => ({ issues: [] })),
 }));
 
 import { getStateManager } from '../core/index.js';
-import { adaptScoutLinkedPR, buildCandidateLinkedPR, buildScoutState } from './scout-bridge.js';
-import { loadSkippedIssues } from './skip-file-parser.js';
+import {
+  adaptScoutLinkedPR,
+  buildCandidateLinkedPR,
+  buildScoutState,
+  type ScoutBridgeDiagnostics,
+} from './scout-bridge.js';
+import { loadSkippedIssuesDetailed } from './skip-file-parser.js';
 import { makeAgentState, makeDailyDigest, makeFetchedPR, makeStateManagerMock } from '../core/test-utils.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
-const mockLoadSkippedIssues = vi.mocked(loadSkippedIssues);
+const mockLoadSkippedIssuesDetailed = vi.mocked(loadSkippedIssuesDetailed);
 
 describe('buildScoutState', () => {
   beforeEach(() => {
@@ -236,22 +241,49 @@ describe('buildScoutState', () => {
         skippedAt: '2026-04-15T00:00:00.000Z',
       },
     ];
-    mockLoadSkippedIssues.mockReturnValueOnce(skipped);
+    mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: skipped });
 
     const result = buildScoutState();
 
-    expect(mockLoadSkippedIssues).toHaveBeenCalledWith('/vault/open-source/skipped-issues.md');
+    expect(mockLoadSkippedIssuesDetailed).toHaveBeenCalledWith('/vault/open-source/skipped-issues.md');
     expect(result.skippedIssues).toEqual(skipped);
   });
 
   it('should default skippedIssues to [] when parser returns empty', () => {
     const state = makeAgentState({ config: { skippedIssuesPath: undefined } });
     mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
-    mockLoadSkippedIssues.mockReturnValueOnce([]);
+    mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: [] });
 
     const result = buildScoutState();
 
     expect(result.skippedIssues).toEqual([]);
+  });
+
+  it('sets diagnostics.skipListUnavailable when the skip file read fails (#1448)', () => {
+    const state = makeAgentState({
+      config: { skippedIssuesPath: '/vault/open-source/skipped-issues.md' },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+    mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: [], readError: 'EACCES: permission denied' });
+
+    const diagnostics: ScoutBridgeDiagnostics = {};
+    const result = buildScoutState(diagnostics);
+
+    expect(diagnostics.skipListUnavailable).toBe(true);
+    expect(result.skippedIssues).toEqual([]);
+  });
+
+  it('leaves diagnostics.skipListUnavailable unset when the skip file loads cleanly (#1448)', () => {
+    const state = makeAgentState({
+      config: { skippedIssuesPath: '/vault/open-source/skipped-issues.md' },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+    mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: [] });
+
+    const diagnostics: ScoutBridgeDiagnostics = {};
+    buildScoutState(diagnostics);
+
+    expect(diagnostics.skipListUnavailable).toBeUndefined();
   });
 });
 

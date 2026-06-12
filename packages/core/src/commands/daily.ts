@@ -345,16 +345,20 @@ async function updateRepoScores(
           warn(MODULE, `Failed to update merged count for ${repo}: ${errorMessage(error)}`);
         }
       }
-      if (mergedCountFailures === mergedCounts.size && mergedCounts.size > 0) {
-        // Total failure: batch outer-catch sees nothing because the batch itself
-        // succeeded, but every individual mutation inside threw. State may be
-        // silently stale — surface it as a warning distinct from the outer catch.
+      if (mergedCountFailures > 0) {
+        // Partial or total failure (#1448): the batch outer-catch sees nothing
+        // because the batch itself succeeded, but individual mutations inside
+        // threw. The affected repos' scores are silently stale — surface it as
+        // a warning distinct from the outer catch.
         warnings.push({
           phase: 'repo-scores',
           operation: 'update merged counts',
-          message: `All ${mergedCounts.size} merged count update(s) failed. This may indicate corrupted state.`,
+          message: `${mergedCountFailures} of ${mergedCounts.size} merged count update(s) failed. This may indicate corrupted state.`,
         });
-        warn(MODULE, `[ALL_MERGED_COUNT_UPDATES_FAILED] All ${mergedCounts.size} merged count update(s) failed.`);
+        warn(
+          MODULE,
+          `[MERGED_COUNT_UPDATES_FAILED] ${mergedCountFailures} of ${mergedCounts.size} merged count update(s) failed.`,
+        );
       }
 
       // Populate closedWithoutMergeCount in repo scores.
@@ -376,13 +380,16 @@ async function updateRepoScores(
           warn(MODULE, `Failed to update closed count for ${repo}: ${errorMessage(error)}`);
         }
       }
-      if (closedCountFailures === closedCounts.size && closedCounts.size > 0) {
+      if (closedCountFailures > 0) {
         warnings.push({
           phase: 'repo-scores',
           operation: 'update closed counts',
-          message: `All ${closedCounts.size} closed count update(s) failed. This may indicate corrupted state.`,
+          message: `${closedCountFailures} of ${closedCounts.size} closed count update(s) failed. This may indicate corrupted state.`,
         });
-        warn(MODULE, `[ALL_CLOSED_COUNT_UPDATES_FAILED] All ${closedCounts.size} closed count update(s) failed.`);
+        warn(
+          MODULE,
+          `[CLOSED_COUNT_UPDATES_FAILED] ${closedCountFailures} of ${closedCounts.size} closed count update(s) failed.`,
+        );
       }
 
       // Update repo signals from observed open PR data
@@ -396,15 +403,15 @@ async function updateRepoScores(
           warn(MODULE, `Failed to update signals for ${repo}: ${errorMessage(error)}`);
         }
       }
-      if (signalUpdateFailures === repoSignals.size && repoSignals.size > 0) {
+      if (signalUpdateFailures > 0) {
         warnings.push({
           phase: 'repo-scores',
           operation: 'update repo signals',
-          message: `All ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`,
+          message: `${signalUpdateFailures} of ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`,
         });
         warn(
           MODULE,
-          `[ALL_SIGNAL_UPDATES_FAILED] All ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`,
+          `[SIGNAL_UPDATES_FAILED] ${signalUpdateFailures} of ${repoSignals.size} signal update(s) failed. This may indicate corrupted state.`,
         );
       }
     });
@@ -438,13 +445,16 @@ async function updateRepoScores(
           warn(MODULE, `Failed to update metadata for ${repo}: ${errorMessage(error)}`);
         }
       }
-      if (metadataUpdateFailures === repoMetadata.size && repoMetadata.size > 0) {
+      if (metadataUpdateFailures > 0) {
         warnings.push({
           phase: 'repo-scores',
           operation: 'update repo metadata',
-          message: `All ${repoMetadata.size} metadata update(s) failed. This may indicate corrupted state.`,
+          message: `${metadataUpdateFailures} of ${repoMetadata.size} metadata update(s) failed. This may indicate corrupted state.`,
         });
-        warn(MODULE, `[ALL_METADATA_UPDATES_FAILED] All ${repoMetadata.size} metadata update(s) failed.`);
+        warn(
+          MODULE,
+          `[METADATA_UPDATES_FAILED] ${metadataUpdateFailures} of ${repoMetadata.size} metadata update(s) failed.`,
+        );
       }
 
       // Auto-sync trustedProjects from repos with merged PRs
@@ -457,15 +467,15 @@ async function updateRepoScores(
           warn(MODULE, `Failed to sync trusted project ${repo}: ${errorMessage(error)}`);
         }
       }
-      if (trustSyncFailures === mergedCounts.size && mergedCounts.size > 0) {
+      if (trustSyncFailures > 0) {
         warnings.push({
           phase: 'repo-scores',
           operation: 'sync trusted projects',
-          message: `All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`,
+          message: `${trustSyncFailures} of ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`,
         });
         warn(
           MODULE,
-          `[ALL_TRUST_SYNCS_FAILED] All ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`,
+          `[TRUST_SYNCS_FAILED] ${trustSyncFailures} of ${mergedCounts.size} trusted project sync(s) failed. This may indicate corrupted state.`,
         );
       }
     });
@@ -491,7 +501,13 @@ function partitionPRs(
   // Apply dashboard/CLI status overrides before partitioning.
   // This ensures PRs reclassified in the dashboard (e.g., "Need Attention" → "Waiting")
   // are respected by the CLI pipeline.
-  const overriddenPRs = applyStatusOverrides(prs, stateManager.getState());
+  // Override-application failures (#1448) mean a PR silently shows its
+  // un-overridden status — record each into the run's warnings[].
+  const overrideFailures: string[] = [];
+  const overriddenPRs = applyStatusOverrides(prs, stateManager.getState(), overrideFailures);
+  for (const failure of overrideFailures) {
+    recordWarning(warnings, 'partition', 'apply status override', null, failure);
+  }
 
   // Partition PRs into active vs shelved, auto-unshelving when maintainers engage
   const shelvedPRs: ShelvedPRRef[] = [];

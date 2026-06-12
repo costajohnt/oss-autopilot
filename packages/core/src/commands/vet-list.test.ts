@@ -34,14 +34,27 @@ vi.mock('./startup.js', () => ({
 
 vi.mock('./parse-list.js', () => ({
   runParseList: vi.fn(),
+  pruneIssueList: vi.fn(),
 }));
 
+// Mock fs so the prune path doesn't hit the real filesystem
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+  return {
+    ...actual,
+    readFileSync: vi.fn(),
+    writeFileSync: vi.fn(),
+  };
+});
+
+import * as fs from 'node:fs';
 import { detectIssueList } from './startup.js';
 import { runParseList } from './parse-list.js';
 import { runVetList, classifyListStatus } from './vet-list.js';
 
 const mockDetectIssueList = vi.mocked(detectIssueList);
 const mockRunParseList = vi.mocked(runParseList);
+const mockReadFileSync = vi.mocked(fs.readFileSync);
 
 function makeVetOutput(overrides: Partial<VetOutput> = {}): VetOutput {
   return {
@@ -536,5 +549,53 @@ describe('runVetList', () => {
     expect(result.results).toHaveLength(1);
     expect(result.results[0].listStatus).toBe('error');
     expect(result.results[0].errorMessage).toBe('string error');
+  });
+
+  it('returns pruneResult with removedCount 0 and the error when the prune fails (#1448)', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockDetectIssueList.mockReturnValue({
+      path: '/tmp/issues.md',
+      source: 'configured',
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockRunParseList.mockResolvedValue({
+      available: [
+        {
+          repo: 'owner/repo',
+          number: 1,
+          title: 'Fix bug',
+          tier: 'Pursue',
+          url: 'https://github.com/owner/repo/issues/1',
+        },
+      ],
+      completed: [],
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockVetIssue.mockResolvedValueOnce({
+      issue: {
+        repo: 'owner/repo',
+        number: 1,
+        title: 'Fix bug',
+        url: 'https://github.com/owner/repo/issues/1',
+        labels: [],
+      },
+      recommendation: 'approve' as const,
+      reasonsToApprove: ['OK'],
+      reasonsToSkip: [],
+      projectHealth: {},
+      vettingResult: {},
+    });
+    mockReadFileSync.mockImplementation(() => {
+      throw new Error('EACCES: permission denied');
+    });
+
+    const result = await runVetList({ prune: true });
+
+    // Previously a failed prune returned a plain success with pruneResult
+    // absent — the same shape as "prune not requested".
+    expect(result.pruneResult).toEqual({ removedCount: 0, error: 'EACCES: permission denied' });
+    consoleSpy.mockRestore();
   });
 });
