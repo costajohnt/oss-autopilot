@@ -387,6 +387,39 @@ describe('runClaim', () => {
     consoleSpy.mockRestore();
   });
 
+  it('threads stateSaveWarning into the envelope when addIssue throws after the comment posted (#1448)', async () => {
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 10, type: 'issues' });
+
+    const mockCreateComment = vi.fn().mockResolvedValue({
+      data: { html_url: 'https://github.com/owner/repo/issues/10#issuecomment-1' },
+    });
+    const mockIssuesGet = vi.fn().mockResolvedValue({
+      data: { title: 'x', labels: [], created_at: '2026-04-20T10:00:00Z' },
+    });
+    mockGetOctokit.mockReturnValue({
+      issues: { createComment: mockCreateComment, get: mockIssuesGet },
+    } as any);
+
+    mockGetStateManager.mockReturnValue({
+      addIssue: vi.fn().mockImplementation(() => {
+        throw new Error('CAS contention');
+      }),
+      save: vi.fn(),
+    } as any);
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await runClaim({ issueUrl: TEST_ISSUE_URL });
+
+    // The claim is live on GitHub but untracked locally — the envelope says so.
+    expect(result.stateSaveWarning).toContain('failed to save to local state');
+    expect(result.stateSaveWarning).toContain('CAS contention');
+    // The gist checkpoint never ran (addIssue threw first), so its warning is absent.
+    expect('gistSyncWarning' in result).toBe(false);
+    consoleSpy.mockRestore();
+  });
+
   it('should propagate API errors', async () => {
     mockRequireGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 10, type: 'issues' });
