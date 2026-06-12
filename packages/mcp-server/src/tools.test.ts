@@ -298,6 +298,20 @@ describe('MCP tool registrations', () => {
       }
     });
 
+    it('matches the github MCP family broadly so new mutating tools fail closed (#1455)', () => {
+      // The github MCP server is an external dependency that grows tools we
+      // don't control. A hand-enumerated alternation silently misses new
+      // mutating tools, so the matcher must stay the broad family pattern —
+      // guard-public-posts.sh holds the read-only exclusion list and asks
+      // for everything else (see hooks/guard-public-posts.test.sh).
+      const matcher = loadGuardMatcher();
+      const entries = matcher.split('|').map((m) => m.trim());
+      expect(entries).toContain('mcp__github__.*');
+      // No stale per-tool github entries left behind — the broad pattern is
+      // the single source of github coverage.
+      expect(entries.filter((e) => e.startsWith('mcp__github__'))).toEqual(['mcp__github__.*']);
+    });
+
     it('LOCAL_ONLY_DESTRUCTIVE entries actually exist as registered tools with destructiveHint:true', () => {
       // Guard against the exclusion list going stale (a tool gets renamed
       // or de-flagged but still appears here).

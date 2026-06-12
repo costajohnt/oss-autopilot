@@ -37,6 +37,9 @@ export { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 export {
   wrapUntrustedContent,
   fenceFetchedPR,
+  fenceFetchedPRTitles,
+  labelGuidelinesContent,
+  GUIDELINES_PROVENANCE_NOTE,
   extractFromFence,
   safeExtractFromFence,
   UNTRUSTED_OPEN_TAG_NAME,
