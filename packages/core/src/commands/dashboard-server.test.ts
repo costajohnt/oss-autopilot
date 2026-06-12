@@ -483,6 +483,41 @@ describe('dashboard-server', () => {
       expect(some.partialFailures).toEqual(['fetch recently merged PRs']);
     });
 
+    it('buildDashboardJson stamps attentionBucket on every served PR (#1421)', () => {
+      // The SPA falls back to 'waiting' when the stamp is absent, so dropping
+      // it would silently collapse stuck_ci / dormant_followup into waiting
+      // with every other test still green. classifyAttentionBucket is the
+      // REAL classifier here (see the core mock at the top of this file).
+      const stuckCI = {
+        url: 'https://github.com/owner/repo/pull/61',
+        repo: 'owner/repo',
+        number: 61,
+        status: 'waiting_on_maintainer',
+        ciStatus: 'pending',
+        reviewDecision: 'approved',
+        daysSinceActivity: 5,
+        stalenessTier: 'active',
+      };
+      const needsAttention = {
+        url: 'https://github.com/owner/repo/pull/62',
+        repo: 'owner/repo',
+        number: 62,
+        status: 'needs_addressing',
+        ciStatus: 'failing',
+        reviewDecision: 'approved',
+        daysSinceActivity: 1,
+        stalenessTier: 'active',
+      };
+      const digest = makeDigest({ openPRs: [stuckCI, needsAttention] as never[] });
+      const state = makeState({ lastDigest: digest });
+
+      const data = buildDashboardJson(digest, state, []);
+
+      const byUrl = new Map(data.activePRs.map((pr) => [pr.url, pr.attentionBucket]));
+      expect(byUrl.get(stuckCI.url)).toBe('stuck_ci');
+      expect(byUrl.get(needsAttention.url)).toBe('needs_attention');
+    });
+
     it('should derive shelvedPRUrls from digest.shelvedPRs, not config.shelvedPRUrls (#981)', () => {
       // Dashboard card shows `stats.shelvedPRs`, which counts digest.shelvedPRs.
       // The response's shelvedPRUrls must use the same source so the PR list

@@ -45,6 +45,13 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runDismiss: vi.fn(),
   runUndismiss: vi.fn(),
   runMove: vi.fn(),
+  // #1421 top-up: registration touches these (guidelines list + the
+  // dynamically imported state commands) — without them a tool call in this
+  // suite would land on undefined instead of a mock.
+  runGuidelinesList: vi.fn(),
+  runStateShow: vi.fn(),
+  runStateSync: vi.fn(),
+  runStateUnlink: vi.fn(),
   runGuidelinesView: vi.fn(),
   runGuidelinesStore: vi.fn(),
   runGuidelinesReset: vi.fn(),

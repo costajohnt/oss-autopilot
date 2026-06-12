@@ -50,6 +50,7 @@ vi.mock('./formatters/json.js', () => ({
   SetupOutputSchema: {},
   ConfigCommandOutputSchema: {},
   MoveOutputSchema: {},
+  VerifyIssueOutputSchema: {},
   PRTemplateOutputSchema: {},
   ParseIssueListOutputSchema: {},
   CheckIntegrationOutputSchema: {},
@@ -81,6 +82,9 @@ vi.mock('./commands/dashboard.js', () => ({ serveDashboard: mockServeDashboard }
 
 const mockRunSkipAdd = vi.fn();
 vi.mock('./commands/skip-add.js', () => ({ runSkipAdd: mockRunSkipAdd }));
+
+const mockRunVerifyIssue = vi.fn();
+vi.mock('./commands/verify-issue.js', () => ({ runVerifyIssue: mockRunVerifyIssue }));
 
 // ─── Import after mocks ────────────────────────────────────────────────────
 
@@ -217,6 +221,111 @@ describe('search count validation', () => {
     expect(consoleWarnSpy).toHaveBeenCalledWith('Capping search to 100 results (requested: 150)');
     expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 100 });
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), emptySearchResult);
+  });
+});
+
+// ─── Search text-mode display (#1421) ───────────────────────────────────────
+
+describe('search text-mode display', () => {
+  it('renders hiddenOwnPRCount, boost reasons, and the diversity-slot annotation', async () => {
+    mockRunSearch.mockResolvedValue({
+      candidates: [
+        {
+          issue: {
+            repo: 'octo/alpha',
+            number: 1,
+            title: 'Boosted pick',
+            url: 'https://github.com/octo/alpha/issues/1',
+            labels: [],
+          },
+          recommendation: 'approve',
+          reasonsToApprove: ['Active maintainers'],
+          reasonsToSkip: [],
+          viabilityScore: 88,
+          boostReasons: ['merged PR history', 'preferred org'],
+        },
+        {
+          issue: {
+            repo: 'octo/beta',
+            number: 2,
+            title: 'Diversity pick',
+            url: 'https://github.com/octo/beta/issues/2',
+            labels: [],
+          },
+          recommendation: 'needs_review',
+          reasonsToApprove: [],
+          reasonsToSkip: ['No prior relationship'],
+          viabilityScore: 60,
+          diversitySlot: true,
+        },
+      ],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      hiddenOwnPRCount: 2,
+    });
+    const program = buildProgram('search');
+
+    await program.parseAsync(['node', 'cli', 'search']);
+
+    const lines = consoleLogSpy.mock.calls.map((c: unknown[]) => c[0]);
+    expect(lines).toContain('Hidden: 2 candidate(s) were issues you already have open PRs for.');
+    expect(lines).toContain('  Why surfaced: merged PR history, preferred org');
+    expect(lines).toContain('  Diversity slot: outside your usual languages/repos');
+    expect(lines).toContain('Found 2 candidates:\n');
+  });
+});
+
+// ─── verify-issue text-mode display (#1421) ─────────────────────────────────
+
+describe('verify-issue text-mode display', () => {
+  it('renders state, verdict, assignees, and linked-PR annotations', async () => {
+    mockRunVerifyIssue.mockResolvedValue({
+      owner: 'octo',
+      repo: 'hello',
+      number: 7,
+      title: 'Fix the widget',
+      url: 'https://github.com/octo/hello/issues/7',
+      state: 'closed',
+      stateReason: 'completed',
+      closedAt: '2026-06-01T00:00:00Z',
+      verdict: 'closed',
+      verdictReason: 'Issue is closed (completed)',
+      assignees: ['alice'],
+      linkedPRs: [
+        {
+          number: 9,
+          state: 'merged',
+          isDraft: false,
+          linkType: 'closing',
+          author: 'bob',
+          isOwn: false,
+          url: 'https://github.com/octo/hello/pull/9',
+        },
+        {
+          number: 10,
+          state: 'open',
+          isDraft: true,
+          linkType: 'cross-referenced',
+          author: null,
+          isOwn: true,
+          url: 'https://github.com/octo/hello/pull/10',
+        },
+      ],
+    });
+    const program = buildProgram('verify-issue');
+
+    await program.parseAsync(['node', 'cli', 'verify-issue', 'https://github.com/octo/hello/issues/7']);
+
+    expect(mockRunVerifyIssue).toHaveBeenCalledWith({ issueUrl: 'https://github.com/octo/hello/issues/7' });
+    const lines = consoleLogSpy.mock.calls.map((c: unknown[]) => c[0]);
+    expect(lines).toContain('\nocto/hello#7: Fix the widget');
+    expect(lines).toContain('  State: closed (completed) — closed 2026-06-01T00:00:00Z');
+    expect(lines).toContain('  Verdict: closed — Issue is closed (completed)');
+    expect(lines).toContain('  Assignees: alice');
+    expect(lines).toContain('  PR #9 [merged] closing by bob: https://github.com/octo/hello/pull/9');
+    expect(lines).toContain(
+      '  PR #10 [open] [draft] cross-referenced by ghost (yours): https://github.com/octo/hello/pull/10',
+    );
   });
 });
 
