@@ -87,6 +87,12 @@ export interface FetchCorpusOutput {
   failures: Array<{ prUrl: string; error: string }>;
   /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
   gistSyncWarning?: string;
+  /**
+   * Non-fatal data-quality warnings (#1456). Currently produced when a
+   * bundle's comment streams hit the pagination cap, meaning the newest
+   * comments on that PR are missing from the corpus. Omitted on clean runs.
+   */
+  warnings?: string[];
 }
 
 interface RepoOption {
@@ -265,6 +271,13 @@ export async function runFetchCorpus(options: FetchCorpusOptions): Promise<Fetch
     gistSyncWarning = await maybeCheckpoint(sm, MODULE);
   }
 
+  // Surface pagination truncation per bundle (#1456): a truncated bundle is
+  // missing its newest comments, so the host should know the corpus for that
+  // PR is partial rather than assuming every reviewer voice is present.
+  const warnings = bundles
+    .filter((b) => b.truncated)
+    .map((b) => `${b.prUrl}: comment streams hit the pagination cap; newest comments are missing from the corpus`);
+
   return {
     repo: options.repo,
     bundles,
@@ -272,6 +285,7 @@ export async function runFetchCorpus(options: FetchCorpusOptions): Promise<Fetch
     skipped,
     failures,
     ...(gistSyncWarning ? { gistSyncWarning } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }
 

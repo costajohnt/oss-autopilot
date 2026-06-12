@@ -907,6 +907,21 @@ export const RepoVetOutputSchema = z.object({
   }),
   rubricScore: z.number(),
   rubricVerdict: z.enum(['recommended', 'proceed_with_caution', 'avoid']),
+  /**
+   * Score components (#1465): two distinct 1–10 numbers share this envelope.
+   * `rubricScore` above is the fresh HEALTH score (the repo's current public
+   * signals, weighted per docs/repo-scores.md §Health score — the name
+   * predates the split and is kept for back-compat). `historyScore` is the
+   * cached HISTORY score: the user's own merge outcomes in this repo, from
+   * `state.repoScores` (repo-score-manager.ts). Absent when the user has no
+   * cached score for the repo. They diverge whenever repo health changed
+   * since the user's last merge there — consumers must never present one as
+   * the other. Deliberately unbounded like the persisted RepoScore.score
+   * source (state-schema validates plain z.number(); v1-era state was
+   * migrated verbatim) — bounds here would turn a legacy out-of-range
+   * stored score into a hard --json contract throw (#1465 review).
+   */
+  historyScore: z.number().optional(),
 });
 /**
  * The CLI wrapper renames the core function's `repo` metadata object to

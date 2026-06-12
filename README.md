@@ -324,7 +324,7 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 ├── agents/                      # 7 specialized agents (PR responder, issue scout, etc.)
 ├── skills/                      # Contribution best practices
 ├── workflows/                   # Delegated logic loaded by commands on demand
-├── hooks/                       # Plugin hooks (session-start)
+├── hooks/                       # Plugin hooks (session-start + PreToolUse guards)
 ├── packages/
 │   ├── core/                    # @oss-autopilot/core — CLI + core library
 │   │   ├── src/commands/        # CLI subcommands
@@ -347,7 +347,7 @@ claude --plugin-dir ./oss-autopilot
 <details>
 <summary><strong>Enhanced Code Review (optional)</strong></summary>
 
-The plugin includes a built-in **pre-commit-reviewer** agent that reviews all code changes before committing. For enhanced parallel review, install the **pr-review-toolkit** plugin (search for it in the Claude Code plugin marketplace) — it adds 5 specialized reviewers that run simultaneously:
+The plugin includes a built-in **pre-commit-reviewer** agent that reviews all code changes before committing. For enhanced parallel review, install the **pr-review-toolkit** plugin (search for it in the Claude Code plugin marketplace) — it adds 5 reviewers that run simultaneously, plus a conditional type-design-analyzer for TypeScript diffs:
 
 | Agent | Focus |
 |-------|-------|
@@ -356,7 +356,7 @@ The plugin includes a built-in **pre-commit-reviewer** agent that reviews all co
 | `code-simplifier` | Dead code, unnecessary complexity |
 | `pr-test-analyzer` | Test coverage and assertion quality |
 | `comment-analyzer` | Comment accuracy and maintainability |
-| `type-design-analyzer` | TypeScript type design (encapsulation, invariants, enforcement) |
+| `type-design-analyzer` | TypeScript type design (encapsulation, invariants, enforcement) — dispatched only when the diff includes `.ts`/`.tsx` files |
 
 Without pr-review-toolkit, the built-in pre-commit-reviewer handles all review phases as a single agent with the same fix-and-re-review loop.
 
@@ -372,9 +372,9 @@ Without pr-review-toolkit, the built-in pre-commit-reviewer handles all review p
 
 ## How It Decides
 
-Two heuristics directly shape which repos surface in discovery:
+Two docs explain the heuristics that shape which repos surface in discovery and how they're evaluated:
 
-- **[Repo scoring](docs/repo-scoring.md)** — 1–10 score per repo, factoring merged/closed PR history, recency, maintainer responsiveness, and hostility signals. The default `minRepoScoreThreshold` (4) excludes repos below the cutoff from search results.
+- **[Repo scores](docs/repo-scores.md)** — two distinct 1–10 numbers per repo: the cached **history score** (your own merged/closed PR outcomes, recency, responsiveness, hostility signals; the default `minRepoScoreThreshold` of 4 excludes repos below the cutoff from search results) and the fresh **health score** (`repo-vet`'s weighted rubric over the repo's current activity, PR speed, merge rate, guidelines, and stability).
 - **[Anti-LLM policy detection](docs/anti-llm-policy.md)** — scans CONTRIBUTING / CODE_OF_CONDUCT / README for language indicating the project doesn't accept AI-assisted contributions. Hard skip when matched.
 
 Both docs explain the exact rules so you can understand why a given repo did or didn't surface.

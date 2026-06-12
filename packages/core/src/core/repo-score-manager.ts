@@ -4,7 +4,7 @@
  * and computing aggregate statistics. Mutation functions modify
  * the passed state object in place; query functions are pure.
  *
- * **User-facing reference:** `docs/repo-scoring.md` — plain-language
+ * **User-facing reference:** `docs/repo-scores.md` — plain-language
  * explanation of the formula and what a given score means.
  */
 
@@ -17,7 +17,7 @@ const MODULE = 'scoring';
 // ── Scoring constants (#1054) ─────────────────────────────────────────
 // Previously inlined as magic numbers in `calculateScore`. Extracted with
 // rationale comments so the formula is auditable without source spelunking.
-// Changing any of these is a behavior change — update docs/repo-scoring.md
+// Changing any of these is a behavior change — update docs/repo-scores.md
 // and the tests below in lockstep.
 
 /** Starting point before any signals are applied. Deliberately optimistic so first-time repos aren't punished. */
@@ -79,7 +79,7 @@ function createDefaultRepoScore(repo: string): RepoScore {
  *     − (hasHostileComments ? HOSTILITY_PENALTY : 0)
  *   clamped to [SCORE_MIN, SCORE_MAX].
  *
- * See `docs/repo-scoring.md` for user-facing intent and what a given
+ * See `docs/repo-scores.md` for user-facing intent and what a given
  * score means in practice.
  */
 export function calculateScore(repoScore: RepoScore): number {

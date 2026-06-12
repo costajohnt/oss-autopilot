@@ -8,8 +8,6 @@ Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/di
 
 ## Now (next 1-2 weeks)
 
-- [ ] Move canonical issue-scout and repo-evaluator agents into oss-scout ([#1241](https://github.com/costajohnt/oss-autopilot/issues/1241))
-
 ## Next (next 1-2 months)
 
 ## Later (no fixed timeline)
@@ -20,6 +18,7 @@ Have an idea? Open a [Discussion](https://github.com/costajohnt/oss-autopilot/di
 
 ## Shipped
 
+- [x] Move canonical issue-scout and repo-evaluator agents into oss-scout — closed as not planned; both agent files remain in this repo ([#1241](https://github.com/costajohnt/oss-autopilot/issues/1241))
 - [x] Strategy-biased search with a 20% diversity counterweight and surfaced boost/diversity annotations ([#1244](https://github.com/costajohnt/oss-autopilot/issues/1244))
 - [x] Fix `list-mark-done` silently no-opping on missing entries — mirrors the list-move-tier contract ([#1406](https://github.com/costajohnt/oss-autopilot/issues/1406))
 - [x] Unify the attention taxonomy — one classifier for CLI brief and dashboard, with `stuck_ci` / `dormant_followup` buckets ([#1352](https://github.com/costajohnt/oss-autopilot/issues/1352))

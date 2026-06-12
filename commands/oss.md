@@ -1,7 +1,7 @@
 ---
 name: oss
 description: "Daily OSS contribution check - uses CLI with --json for structured data"
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, mcp__plugin_oss-autopilot_*
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, AskUserQuestion, mcp__plugin_oss-autopilot_*
 ---
 
 # OSS Autopilot Daily Check
@@ -235,6 +235,7 @@ When the user selects an action from the menu above, **read the relevant workflo
 | "Pick from your issue list" | `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` | "Handle Pick Issue From List" |
 | Specific PR selection (via "Other") | `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` | "Handle Specific PR Selection" |
 | "Review issue replies" | `${CLAUDE_PLUGIN_ROOT}/workflows/review-issue-replies.md` | "Handle Review Issue Replies" |
+| "Follow up on stuck-CI / dormant PRs" (`follow_up`) | `${CLAUDE_PLUGIN_ROOT}/workflows/dormant-pr-follow-up.md` | "Trigger" |
 | "Search for new issues" | Handled in core (below) | "Handle Find New Issues" |
 | "Done for now" | Handled in core (below) | "Session End" |
 
@@ -287,7 +288,7 @@ When the user selects any issue found through search and starts implementing, se
 2. **If ONLY Tier 2 actions were taken** (comment responses, code fixes, missing file additions) with no Tier 1 actions in this round:
    - Skip the daily re-run — the existing data is still valid
    - Remove completed items from the current action list
-   - Inform the user: "Skipping full refresh — showing locally updated action list. Select 'Check for more PR updates' for a fresh check."
+   - Inform the user: "Skipping full refresh — showing locally updated action list."
    - Return to **Action Menu** with current action choices
    - **Exception:** If any completed action involved merge conflict resolution (issue type `merge_conflict` from the actionableIssues list), treat the entire batch as Tier 1 and re-run the daily check
 3. If `hasIssueList`, re-read the list file to get updated available/completed counts

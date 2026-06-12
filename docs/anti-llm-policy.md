@@ -93,4 +93,4 @@ Not every anti-LLM stance is scannable from document text. Maintainers sometimes
 
 - [`packages/core/src/core/anti-llm-policy.ts`](../packages/core/src/core/anti-llm-policy.ts) — implementation with inline regex comments.
 - [`packages/core/src/core/anti-llm-policy.test.ts`](../packages/core/src/core/anti-llm-policy.test.ts) — pinned-behavior tests for each category.
-- [`docs/repo-scoring.md`](./repo-scoring.md) — the other user-visible heuristic that shapes discovery outcomes.
+- [`docs/repo-scores.md`](./repo-scores.md) — the other user-visible heuristics that shape discovery outcomes.

@@ -242,6 +242,37 @@ describe('fetchPRCommentBundle', () => {
     expect(extractFromFence(bundle.reviews[100].body)).toBe('final review');
     // listReviews called exactly twice — page 1 (full), page 2 (short → stop).
     expect((octokit.pulls.listReviews as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
+    // Pagination terminated naturally — no truncation flag on the bundle.
+    expect(bundle.truncated).toBeUndefined();
+  });
+
+  it('flags the bundle as truncated when a comment stream hits the pagination cap (#1456)', async () => {
+    // Every page of issue comments is full (100 == per_page), so the
+    // 10-page cap fires and the newest comments are missing. The bundle
+    // must say so instead of silently presenting a partial corpus.
+    const fullPage = Array.from({ length: 100 }, (_, i) => ({
+      user: { login: 'maintainer1' },
+      author_association: 'OWNER',
+      body: `comment ${i}`,
+      created_at: '2026-04-20T11:00:00Z',
+    }));
+    const octokit = {
+      pulls: {
+        get: vi.fn(async () => ({ data: makePR() })),
+        listReviews: vi.fn(async () => ({ data: [] })),
+        listReviewComments: vi.fn(async () => ({ data: [] })),
+      },
+      issues: {
+        listComments: vi.fn(async () => ({ data: fullPage })),
+      },
+    } as unknown as Octokit;
+
+    const bundle = await fetchPRCommentBundle(octokit, PR_URL, 'me');
+
+    expect(bundle.truncated).toBe(true);
+    expect(bundle.issueComments).toHaveLength(1000);
+    // Cap is 10 pages.
+    expect((octokit.issues.listComments as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(10);
   });
 });
 
