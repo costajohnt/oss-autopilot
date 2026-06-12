@@ -16,6 +16,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { errorMessage, ValidationError } from '../core/errors.js';
+import { ENTRY_LINE_RE, lineMentionsUrl } from './curated-list.js';
 
 export type Tier = 'pursue' | 'maybe' | 'skip';
 
@@ -82,13 +83,10 @@ function tierForLine(lines: string[], lineIndex: number): string | undefined {
 /** Locate every issue block (issue line + any sub-bullets) that mentions the URL. */
 function findIssueBlocks(lines: string[], issueUrl: string): IssueBlock[] {
   const blocks: IssueBlock[] = [];
-  // Use exact substring match on the URL — no regex escaping pitfalls and
-  // the URL itself contains no markdown delimiters that would split a line.
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    // Top-level list item — `- `, `* `, `+ `, or `1.` at the start (with no leading whitespace).
-    const isTopLevelListItem = /^[*+-]\s|^\d+\.\s/.test(line);
-    if (!isTopLevelListItem || !line.includes(issueUrl)) continue;
+    // lineMentionsUrl (not a bare includes) so issues/1 can't match issues/10 (#1442).
+    if (!ENTRY_LINE_RE.test(line) || !lineMentionsUrl(line, issueUrl)) continue;
 
     // Capture indented sub-bullets that follow this line.
     let end = i + 1;
