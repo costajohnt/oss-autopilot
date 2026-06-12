@@ -194,16 +194,19 @@ describe('main() in-process', () => {
   });
 
   describe('HTTP mode - request handling', () => {
-    async function setupHttpHandler(): Promise<
-      (req: { url?: string; method?: string }, res: Record<string, unknown>) => Promise<void>
-    > {
+    // Structural stand-in for http.IncomingMessage; the handler only reads
+    // url, method, and headers.
+    type FakeRequest = { url?: string; method?: string; headers?: Record<string, string | undefined> };
+
+    async function setupHttpHandler(): Promise<(req: FakeRequest, res: Record<string, unknown>) => Promise<void>> {
       process.argv = ['node', 'test', '--http', '--port=3001'];
 
       const { createServer: mockCreateServer } = await import('node:http');
-      let requestHandler!: (req: { url?: string; method?: string }, res: Record<string, unknown>) => Promise<void>;
+      let requestHandler!: (req: FakeRequest, res: Record<string, unknown>) => Promise<void>;
       vi.mocked(mockCreateServer).mockImplementationOnce((handler: unknown) => {
         requestHandler = handler as typeof requestHandler;
-        return mockHttpServer as ReturnType<typeof mockCreateServer>;
+        // Partial mock: main() only calls listen/close on the server.
+        return mockHttpServer as unknown as ReturnType<typeof mockCreateServer>;
       });
 
       await main();
