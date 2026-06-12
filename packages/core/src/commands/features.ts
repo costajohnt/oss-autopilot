@@ -150,6 +150,12 @@ function toFeaturesCandidate(
  */
 export async function runFeatures(options: FeaturesOptions): Promise<FeaturesOutput> {
   const scout = await createAutopilotScout();
+  // Strategy bias (preferLanguages/preferRepos/avoidRepos/boostIssueTypes/
+  // diversityRatio) reaches this path through the bridge-built
+  // ScoutPreferences (#1464) — the same derivation `runSearch` uses per-call.
+  // scout.features() in scout 1.1.0 accepts only count/anchorThreshold/
+  // splitRatio/broad — do NOT pass bias knobs here; unsupported options
+  // would be silently ignored. Preferences are the supported channel.
   const result = await scout.features({
     count: options.maxResults,
     anchorThreshold: options.anchorThreshold,
