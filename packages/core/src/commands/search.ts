@@ -119,7 +119,11 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
       // before" rather than a fabricated score.
       const grade = gradeFromCandidate({
         repo: c.issue.repo,
-        projectHealth: { avgIssueResponseDays: null, daysSinceLastCommit: null, checkFailed: true },
+        projectHealth: {
+          repo: c.issue.repo,
+          checkFailed: true,
+          failureReason: 'health not fetched on the multi-issue search surface',
+        },
         getRepoScore: (repo) => {
           const score = stateManager.getRepoScore(repo);
           return score
@@ -157,9 +161,14 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
             }
           : undefined,
         ...(linkedPR ? { linkedPR } : {}),
-        ...(typeof c.boostScore === 'number' ? { boostScore: c.boostScore } : {}),
-        ...(c.boostReasons && c.boostReasons.length > 0 ? { boostReasons: c.boostReasons } : {}),
-        ...(c.diversitySlot === true ? { diversitySlot: true } : {}),
+        // Scout 1.0 folded the boostScore/boostReasons/diversitySlot trio into a
+        // single `personalization` field (#158). Derive the flat output fields
+        // from it so this command's JSON shape is unchanged.
+        ...(c.personalization?.kind === 'boosted' ? { boostScore: c.personalization.score } : {}),
+        ...(c.personalization?.kind === 'boosted' && c.personalization.reasons.length > 0
+          ? { boostReasons: c.personalization.reasons }
+          : {}),
+        ...(c.personalization?.kind === 'diversity' ? { diversitySlot: true } : {}),
       };
     }),
     excludedRepos: result.excludedRepos,

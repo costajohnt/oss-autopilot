@@ -69,13 +69,13 @@ describe('runSearch', () => {
         {
           ...base,
           issue: { repo: 'a/b', number: 1, title: 'slot', url: 'https://github.com/a/b/issues/1', labels: [] },
-          diversitySlot: true,
+          // Scout 1.0 folded the flat boost/diversity fields into `personalization` (#158).
+          personalization: { kind: 'diversity' },
         },
         {
           ...base,
           issue: { repo: 'a/b', number: 2, title: 'boosted', url: 'https://github.com/a/b/issues/2', labels: [] },
-          boostScore: 3,
-          boostReasons: ['language match: TypeScript'],
+          personalization: { kind: 'boosted', score: 3, reasons: ['language match: TypeScript'] },
         },
       ],
       excludedRepos: [],
