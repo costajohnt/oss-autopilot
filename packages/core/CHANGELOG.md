@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.13.1...core-v3.13.2) (2026-06-12)
+
+
+### Bug Fixes
+
+* **core,mcp:** transient gist-init failures retry instead of silently latching local-only ([#1430](https://github.com/costajohnt/oss-autopilot/issues/1430)) ([9e6c5c9](https://github.com/costajohnt/oss-autopilot/commit/9e6c5c98785fe4d103abd12c4a97bd6b3e2de6af)), closes [#1415](https://github.com/costajohnt/oss-autopilot/issues/1415)
+
 ## [3.13.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.13.0...core-v3.13.1) (2026-06-12)
 
 
