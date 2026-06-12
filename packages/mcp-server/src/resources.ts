@@ -8,6 +8,7 @@ import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { runStatus, runConfig } from '@oss-autopilot/core/commands';
 import { getStateManager, splitRepo, fenceFetchedPR } from '@oss-autopilot/core';
+import { ensureGistInit } from './tools.js';
 
 /** Build a standard MCP resource response with a single JSON content entry. */
 function resourceContent(uri: URL, data: unknown) {
@@ -28,12 +29,29 @@ function resourceContent(uri: URL, data: unknown) {
 function wrapResource(fn: () => Promise<unknown>): (uri: URL) => Promise<ReturnType<typeof resourceContent>> {
   return async (uri: URL) => {
     try {
+      await resourceGistInit();
       return resourceContent(uri, await fn());
     } catch (e) {
       console.error('[MCP] Resource error:', e);
       throw e;
     }
   };
+}
+
+/**
+ * Gist init for resource READS (#1431): before the first tool call in a
+ * gist-configured process the lazily created LOCAL manager would silently
+ * serve stale local state. Reads are non-destructive, so degraded init
+ * proceeds, and — unlike the tool path — HARD init errors also proceed on
+ * local state (stderr-logged): a broken Gist setup must not make the
+ * status/config resources unreadable, they are diagnostic surfaces.
+ */
+async function resourceGistInit(): Promise<void> {
+  try {
+    await ensureGistInit();
+  } catch (e) {
+    console.error('[MCP] Resource read proceeding on local state; gist init failed:', e);
+  }
 }
 
 /**
@@ -109,6 +127,7 @@ export function registerResources(server: McpServer): void {
     new ResourceTemplate('oss://pr/{owner}/{repo}/{number}', {
       list: async () => {
         try {
+          await resourceGistInit();
           const openPRs = getStateManager().getState().lastDigest?.openPRs ?? [];
           return {
             resources: openPRs.map((pr) => {
@@ -145,6 +164,7 @@ export function registerResources(server: McpServer): void {
         throw new Error(`Invalid PR number: ${String(number)}`);
       }
       try {
+        await resourceGistInit();
         const openPRs = getStateManager().getState().lastDigest?.openPRs ?? [];
         const fullRepo = `${String(owner)}/${String(repo)}`;
         const pr = openPRs.find((p) => p.repo === fullRepo && p.number === prNumber);
@@ -168,6 +188,7 @@ export function registerResources(server: McpServer): void {
     new ResourceTemplate('oss://repo/{owner}/{repo}/guidelines', {
       list: async () => {
         try {
+          await resourceGistInit();
           const repos = getStateManager().listGuidelinesRepos();
           return {
             resources: repos.map((fullRepo) => {
@@ -194,6 +215,7 @@ export function registerResources(server: McpServer): void {
     async (uri, { owner, repo }) => {
       try {
         const fullRepo = `${String(owner)}/${String(repo)}`;
+        await resourceGistInit();
         const content = getStateManager().getGuidelines(fullRepo);
         if (!content) {
           throw new Error(`No guidelines stored for ${fullRepo}`);

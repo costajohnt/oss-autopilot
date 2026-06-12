@@ -111,6 +111,7 @@ export type DailyWarningPhase =
   | 'scout-sync'
   | 'partition'
   | 'dismiss-filter'
+  | 'gist-init'
   | 'gist-checkpoint'
   | 'gist-staleness'
   | 'state-load';
@@ -294,6 +295,7 @@ const DailyWarningPhaseSchema = z.enum([
   'scout-sync',
   'partition',
   'dismiss-filter',
+  'gist-init',
   'gist-checkpoint',
   'gist-staleness',
   'state-load',

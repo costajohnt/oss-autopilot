@@ -29,6 +29,7 @@ const mockFetchCommentedIssues = vi.fn();
 
 // StateManager method mocks
 const mockGetState = vi.fn();
+const mockIsGistMode = vi.fn(() => false);
 const mockUpdateRepoScore = vi.fn();
 const mockAddTrustedProject = vi.fn();
 const mockSetMonthlyMergedCounts = vi.fn();
@@ -84,6 +85,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       getStatusOverride: mockGetStatusOverride,
       getStateStaleness: vi.fn(() => null),
       getLoadRecovery: vi.fn(() => null),
+      isGistMode: mockIsGistMode,
       batch: (fn: () => void) => fn(),
     })),
     requireGitHubToken: vi.fn(() => 'test-token'),
@@ -662,6 +664,31 @@ describe('executeDailyCheck() — repo score updates', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeDailyCheck() — error resilience', () => {
+  it('surfaces gist-mode degradation in the warnings envelope (#1431)', async () => {
+    // Config says gist, but this process's manager is local-only (transient
+    // init fallback or a localOnly entry point). Previously the only signal
+    // was stderr — invisible to --json/cron consumers.
+    mockGetState.mockReturnValue(makeDefaultState({ config: { ...makeDefaultState().config, persistence: 'gist' } }));
+    mockIsGistMode.mockReturnValue(false);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([expect.objectContaining({ phase: 'gist-init', operation: 'Gist persistence degraded' })]),
+    );
+  });
+
+  it('does not warn when gist mode is active or local mode is configured', async () => {
+    mockGetState.mockReturnValue(makeDefaultState({ config: { ...makeDefaultState().config, persistence: 'gist' } }));
+    mockIsGistMode.mockReturnValue(true);
+    const gistResult = await executeDailyCheck('test-token');
+    expect(gistResult.warnings.filter((w) => w.phase === 'gist-init')).toEqual([]);
+
+    mockGetState.mockReturnValue(makeDefaultState());
+    const localResult = await executeDailyCheck('test-token');
+    expect(localResult.warnings.filter((w) => w.phase === 'gist-init')).toEqual([]);
+  });
+
   it('continues if fetchRecentlyClosedPRs fails', async () => {
     mockFetchRecentlyClosedPRs.mockRejectedValue(new Error('Network error'));
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

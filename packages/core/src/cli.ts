@@ -92,6 +92,19 @@ program.hook('preAction', async (thisCommand, actionCommand) => {
     // when Gist mode is the configured persistence (#1000).
     const { ensureGistPersistence } = await import('./core/index.js');
     await ensureGistPersistence(token);
+  } else {
+    // #1431: localOnly skips the AUTH GATE, not gist persistence. Mutating
+    // localOnly commands (shelve/move/dismiss/override/...) already call
+    // maybeCheckpoint, which silently no-ops when the singleton never
+    // bootstrapped — so a gist-configured user's CLI mutations were written
+    // local-only with no warning and never reached the Gist. Best-effort
+    // bootstrap; the warning semantics live (and are unit-tested) in
+    // bootstrapGistBestEffort.
+    const { bootstrapGistBestEffort } = await import('./core/index.js');
+    const localOnlyWarning = await bootstrapGistBestEffort(getGitHubTokenAsync);
+    if (localOnlyWarning) {
+      console.error(`Warning: ${localOnlyWarning}`);
+    }
   }
 });
 

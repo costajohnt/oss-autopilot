@@ -8,6 +8,7 @@ export {
   getStateManager,
   getStateManagerAsync,
   ensureGistPersistence,
+  bootstrapGistBestEffort,
   type GistPersistenceStatus,
   maybeCheckpoint,
   resetStateManager,

@@ -742,6 +742,23 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // callgraph documents which phases can produce non-fatal warnings. See #1042.
   const warnings: DailyWarning[] = [];
 
+  // Surface gist-mode degradation in the machine-readable envelope (#1431):
+  // a process whose config says `persistence: gist` but whose manager is
+  // local-only (transient init fallback, or a localOnly entry point that
+  // never bootstrapped) writes mutations that will not sync. Previously the
+  // only signal was a stderr warn, invisible to --json consumers.
+  const smForGistCheck = getStateManager();
+  if (smForGistCheck.getState().config.persistence === 'gist' && !smForGistCheck.isGistMode()) {
+    recordWarning(
+      warnings,
+      'gist-init',
+      'Gist persistence degraded',
+      new Error(
+        'configured for Gist but running local-only in this process; mutations will not sync until Gist init succeeds',
+      ),
+    );
+  }
+
   // Surface Gist staleness up-front so consumers see it even if Phase 1 fails (#1193).
   const staleness = getStateManager().getStateStaleness();
   if (staleness) {
