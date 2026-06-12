@@ -13,7 +13,21 @@ import type { DashboardData, ActionRequest } from '../types';
 interface JsonResult {
   data: DashboardData;
   csrfToken: string | null;
+  /** True when the server flagged the payload as stale via X-Dashboard-Stale
+   * (#1446 item 1) — it served cached data because a refresh/rebuild failed. */
+  stale: boolean;
+  /** Human-readable reason from X-Dashboard-Stale-Reason, when provided. */
+  staleReason: string | null;
 }
+
+/** Consecutive background auto-refresh failures before the SPA surfaces a
+ * non-blocking staleness indicator (#1446 item 4). */
+export const AUTO_REFRESH_FAILURE_THRESHOLD = 2;
+
+/** Delay before the single bounded auto-refresh retry. Without a retry the
+ * one-shot auto-refresh could never produce "consecutive" failures, so the
+ * threshold above would be unreachable. */
+const AUTO_REFRESH_RETRY_DELAY_MS = 15_000;
 
 /** Sentinel thrown from fetchJsonWithToken on a CSRF-related 403 so callers
  * can distinguish it from other errors and retry with a freshly-primed token. */
@@ -55,6 +69,12 @@ async function fetchJsonWithToken(url: string, init?: RequestInit): Promise<Json
     throw new Error(message);
   }
   const csrfToken = res.headers.get('X-CSRF-Token');
+  // Staleness signal (#1446 item 1): the server sets X-Dashboard-Stale when
+  // it served cached data because a gist pull / rebuild / background refresh
+  // failed. Previously the SPA read only X-CSRF-Token, so the signal existed
+  // for curl users only.
+  const stale = res.headers.get('X-Dashboard-Stale') === '1';
+  const staleReason = res.headers.get('X-Dashboard-Stale-Reason');
   const rawJson = await res.json();
 
   // Runtime schema validation (#1050). TypeScript can't reach across the
@@ -67,7 +87,7 @@ async function fetchJsonWithToken(url: string, init?: RequestInit): Promise<Json
     console.error('[dashboard] /api/data schema validation failed:', validation.message, rawJson);
     throw new Error(validation.message);
   }
-  return { data: validation.data as unknown as DashboardData, csrfToken };
+  return { data: validation.data as unknown as DashboardData, csrfToken, stale, staleReason };
 }
 
 export function useDashboard() {
@@ -76,11 +96,21 @@ export function useDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const [stale, setStale] = useState(false);
+  const [staleReason, setStaleReason] = useState<string | null>(null);
+  const [autoRefreshFailures, setAutoRefreshFailures] = useState(0);
   const csrfTokenRef = useRef<string | null>(null);
 
   const applyResult = useCallback((result: JsonResult) => {
     if (result.csrfToken) csrfTokenRef.current = result.csrfToken;
     setData(result.data);
+    // Track the per-response staleness signal (#1446 item 1). A response
+    // without the header clears it — fresh data means the stale window ended.
+    setStale(result.stale);
+    setStaleReason(result.staleReason);
+    // Any successfully-applied response resets the consecutive auto-refresh
+    // failure counter (#1446 item 4) — "cleared on success".
+    setAutoRefreshFailures(0);
   }, []);
 
   const buildPostInit = useCallback((body?: string): RequestInit => {
@@ -147,7 +177,12 @@ export function useDashboard() {
       setLastUpdated(Date.now());
       setError(null);
     } catch (e) {
+      // Background failure stays non-blocking (cached data is still shown),
+      // but it must not be console-only (#1446 item 4): count consecutive
+      // failures so the UI can surface a staleness indicator at the
+      // threshold — a token expiring mid-session previously showed nothing.
       console.warn('Auto-refresh failed:', e instanceof Error ? e.message : String(e));
+      setAutoRefreshFailures((n) => n + 1);
     } finally {
       setRefreshing(false);
     }
@@ -180,7 +215,32 @@ export function useDashboard() {
     return () => clearTimeout(timer);
   }, [fetchData, silentRefresh]);
 
+  // Bounded background retry (#1446 item 4): the auto-refresh above is
+  // one-shot, so a single failure would otherwise be the end of the story
+  // and "consecutive" failures could never reach the indicator threshold.
+  // Each failure below the threshold schedules exactly one more attempt;
+  // at the threshold the indicator shows and probing stops.
+  useEffect(() => {
+    if (autoRefreshFailures < 1 || autoRefreshFailures >= AUTO_REFRESH_FAILURE_THRESHOLD) return;
+    const timer = setTimeout(() => {
+      void silentRefresh();
+    }, AUTO_REFRESH_RETRY_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [autoRefreshFailures, silentRefresh]);
+
   const clearError = useCallback(() => setError(null), []);
 
-  return { data, loading, refreshing, error, clearError, refresh, performAction, lastUpdated };
+  return {
+    data,
+    loading,
+    refreshing,
+    error,
+    clearError,
+    refresh,
+    performAction,
+    lastUpdated,
+    stale,
+    staleReason,
+    autoRefreshFailures,
+  };
 }

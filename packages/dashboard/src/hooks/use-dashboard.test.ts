@@ -24,9 +24,14 @@ describe('useDashboard', () => {
   // prime (needed when csrfTokenRef is null on POST) does not require every
   // test to double-mock. Tests that specifically exercise the no-token path
   // pass `null` or a different value.
-  function mockFetchOk(data: DashboardData, csrfToken: string | null = 'test-token') {
+  function mockFetchOk(
+    data: DashboardData,
+    csrfToken: string | null = 'test-token',
+    extraHeaders: Record<string, string> = {},
+  ) {
     const headers = new Headers();
     if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
+    for (const [name, value] of Object.entries(extraHeaders)) headers.set(name, value);
     mockFetch.mockResolvedValueOnce({
       ok: true,
       headers,
@@ -297,6 +302,98 @@ describe('useDashboard', () => {
 
     await vi.waitFor(() => {
       expect(result.current.refreshing).toBe(false);
+    });
+  });
+
+  // ── Staleness signal + auto-refresh failure counter (#1446) ─────────────
+
+  describe('staleness signal (#1446)', () => {
+    it('threads X-Dashboard-Stale / X-Dashboard-Stale-Reason into stale state', async () => {
+      const data = makeDashboardData();
+      mockFetchOk(data, 'test-token', {
+        'X-Dashboard-Stale': '1',
+        'X-Dashboard-Stale-Reason': 'state-stale: gist refresh failed',
+      });
+
+      const { result } = renderHook(() => useDashboard());
+      await vi.waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.stale).toBe(true);
+      expect(result.current.staleReason).toBe('state-stale: gist refresh failed');
+    });
+
+    it('clears stale when a subsequent response carries no stale header', async () => {
+      const data = makeDashboardData();
+      mockFetchOk(data, 'test-token', {
+        'X-Dashboard-Stale': '1',
+        'X-Dashboard-Stale-Reason': 'state-stale: gist refresh failed',
+      });
+
+      const { result } = renderHook(() => useDashboard());
+      await vi.waitFor(() => expect(result.current.stale).toBe(true));
+
+      // Manual refresh succeeds without the header — the stale window ended.
+      mockFetchOk(data);
+      await act(async () => {
+        await result.current.refresh();
+      });
+
+      expect(result.current.stale).toBe(false);
+      expect(result.current.staleReason).toBe(null);
+    });
+  });
+
+  describe('auto-refresh failure counter (#1446)', () => {
+    it('counts consecutive failures and stops probing at the threshold', async () => {
+      const data = makeDashboardData();
+      mockFetchOk(data); // mount GET /api/data
+      mockFetchError(500, { error: 'token expired' }); // 5s auto-refresh
+      mockFetchError(500, { error: 'token expired' }); // bounded retry
+
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { result } = renderHook(() => useDashboard());
+      await vi.waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.autoRefreshFailures).toBe(0);
+
+      await triggerAutoRefresh();
+      await vi.waitFor(() => expect(result.current.autoRefreshFailures).toBe(1));
+      // Failure stays non-blocking: no error, cached data preserved.
+      expect(result.current.error).toBeNull();
+      expect(result.current.data).toEqual(data);
+
+      // The single bounded retry fires after 15s and also fails.
+      await act(async () => {
+        vi.advanceTimersByTime(15_000);
+      });
+      await vi.waitFor(() => expect(result.current.autoRefreshFailures).toBe(2));
+
+      // At the threshold the hook stops probing — no further fetches.
+      const callsAtThreshold = mockFetch.mock.calls.length;
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(mockFetch.mock.calls.length).toBe(callsAtThreshold);
+      warnSpy.mockRestore();
+    });
+
+    it('clears the counter when the retry succeeds', async () => {
+      const data = makeDashboardData();
+      mockFetchOk(data); // mount GET /api/data
+      mockFetchError(500, { error: 'blip' }); // 5s auto-refresh fails
+      mockFetchOk(data); // bounded retry succeeds
+
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { result } = renderHook(() => useDashboard());
+      await vi.waitFor(() => expect(result.current.loading).toBe(false));
+
+      await triggerAutoRefresh();
+      await vi.waitFor(() => expect(result.current.autoRefreshFailures).toBe(1));
+
+      await act(async () => {
+        vi.advanceTimersByTime(15_000);
+      });
+      await vi.waitFor(() => expect(result.current.autoRefreshFailures).toBe(0));
+      warnSpy.mockRestore();
     });
   });
 
