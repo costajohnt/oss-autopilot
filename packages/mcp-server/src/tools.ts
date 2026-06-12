@@ -144,7 +144,11 @@ export async function ensureGistInit(): Promise<GistDegradedCause | null> {
       } else {
         // Recovery edge (#1431): if the previous resolution was degraded,
         // the next response carries a one-shot notice instead of silently
-        // presenting a pristine run.
+        // presenting a pristine run. 'gist' means a genuinely ARMED store:
+        // since #1443, ensureGistPersistence reports a degraded bootstrap
+        // (gist-backed but disarmed, pushes failing) as 'degraded' — so a
+        // retry that resolves via a degraded bootstrap lands in the branch
+        // above and can no longer emit a false "recovered" notice here.
         if (gistDegradedCause !== null && status === 'gist') {
           gistRecoveryNoticePending = true;
         }

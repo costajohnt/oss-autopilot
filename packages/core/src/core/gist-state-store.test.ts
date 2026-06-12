@@ -548,6 +548,27 @@ describe('GistStateStore', () => {
         expect(result.error.message).toContain('Gist API 500');
       }
     });
+
+    it('a FAILED refresh stamps the throttle too — the next call within 30s is throttled (#1443)', async () => {
+      const gistId = 'refresh-error-throttle';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValueOnce(makeGistResponse(gistId, makeStateJson()));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      (store as unknown as { lastRefreshAt: number }).lastRefreshAt = 0;
+      octokit.gists.get.mockRejectedValueOnce(new Error('Gist API 500'));
+
+      const failed = await store.refreshFromGist();
+      expect(failed.status).toBe('error');
+
+      // Pre-fix, failures bypassed the throttle entirely: during an outage
+      // every SPA poll re-attempted a full fetch immediately.
+      const fetchCallsAfterFailure = octokit.gists.get.mock.calls.length;
+      const throttled = await store.refreshFromGist();
+      expect(throttled.status).toBe('throttled');
+      expect(octokit.gists.get.mock.calls.length).toBe(fetchCallsAfterFailure);
+    });
   });
 
   describe('getGistId', () => {
