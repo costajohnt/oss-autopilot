@@ -57,7 +57,7 @@ Three sibling skills cover OSS contribution best practices:
 
 ## Optional: Enhanced Code Review
 
-The pre-commit review workflow supports the **pr-review-toolkit** plugin for parallel specialized review (5 agents). Without it, the built-in `pre-commit-reviewer` handles all reviews. Both paths include iterative fix-and-re-review loops.
+The pre-commit review workflow supports the **pr-review-toolkit** plugin for parallel specialized review (5 agents, plus a conditional type-design-analyzer for TypeScript diffs). Without it, the built-in `pre-commit-reviewer` handles all reviews. Both paths include iterative fix-and-re-review loops.
 
 To install: search for `pr-review-toolkit` in the Claude Code plugin marketplace.
 
