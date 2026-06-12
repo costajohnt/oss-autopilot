@@ -17,7 +17,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { DailyDigest } from '../core/types.js';
-import { makeAgentState as makeState } from '../core/test-utils.js';
+import { makeAgentState as makeState, makeRepoScore } from '../core/test-utils.js';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 // ── Captured request handler ──────────────────────────────────────────
@@ -226,7 +226,7 @@ function createMockRes(): { res: ServerResponse; result: Promise<MockResponseRes
     statusCode = code;
     if (hdrs) Object.assign(headers, hdrs);
     return res;
-  });
+  }) as unknown as ServerResponse['writeHead'];
 
   res.end = vi.fn((data?: string | Buffer) => {
     if (data) {
@@ -638,30 +638,10 @@ describe('dashboard-server', () => {
       const state = makeState({
         lastDigest: makeDigest(),
         repoScores: {
-          'has/both': {
-            score: 5,
-            mergedPRCount: 1,
-            closedWithoutMergeCount: 0,
-            signals: {},
-            stargazersCount: 500,
-            language: 'TypeScript',
-          },
-          'has/stars-only': {
-            score: 5,
-            mergedPRCount: 1,
-            closedWithoutMergeCount: 0,
-            signals: {},
-            stargazersCount: 100,
-          },
-          'has/null-language': {
-            score: 5,
-            mergedPRCount: 1,
-            closedWithoutMergeCount: 0,
-            signals: {},
-            stargazersCount: 200,
-            language: null,
-          },
-          'no/metadata': { score: 5, mergedPRCount: 2, closedWithoutMergeCount: 0, signals: {} },
+          'has/both': makeRepoScore({ repo: 'has/both', stargazersCount: 500, language: 'TypeScript' }),
+          'has/stars-only': makeRepoScore({ repo: 'has/stars-only', stargazersCount: 100 }),
+          'has/null-language': makeRepoScore({ repo: 'has/null-language', stargazersCount: 200, language: null }),
+          'no/metadata': makeRepoScore({ repo: 'no/metadata', mergedPRCount: 2 }),
         },
       });
       mockStateManager.getState.mockReturnValue(state);

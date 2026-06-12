@@ -241,7 +241,7 @@ describe('fetchPRCommentBundle', () => {
     expect(extractFromFence(bundle.reviews[0].body)).toBe('review 1');
     expect(extractFromFence(bundle.reviews[100].body)).toBe('final review');
     // listReviews called exactly twice — page 1 (full), page 2 (short → stop).
-    expect((octokit.pulls.listReviews as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
+    expect((octokit.pulls.listReviews as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
   });
 });
 
@@ -385,7 +385,9 @@ describe('fetchPRCommentBundlesBatch', () => {
     ];
     await expect(fetchPRCommentBundlesBatch(octokit, urls, 'me', 1)).rejects.toThrow('API rate limit exceeded');
     // Abort flag stops the queue: PR 3 is never attempted after the 429.
-    const getCalls = (octokit.pulls.get as ReturnType<typeof vi.fn>).mock.calls as Array<[{ pull_number: number }]>;
+    const getCalls = (octokit.pulls.get as unknown as ReturnType<typeof vi.fn>).mock.calls as Array<
+      [{ pull_number: number }]
+    >;
     expect(getCalls.map(([args]) => args.pull_number)).toEqual([1, 2]);
   });
 

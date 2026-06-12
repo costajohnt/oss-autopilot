@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { computeRepoSignals, computeActionMenu, groupPRsByRepo, toShelvedPRRef } from './daily.js';
 import { deduplicateDigest, compactActionableIssues, compactRepoGroups } from '../formatters/json.js';
-import type { DailyDigest, CommentedIssue } from '../core/types.js';
+import type { DailyDigest, CommentedIssue, FetchedPR } from '../core/types.js';
 import type { ActionableIssue } from '../formatters/json.js';
 import { makeFetchedPR, makeCapacityAssessment as makeCapacity } from '../core/test-utils.js';
 

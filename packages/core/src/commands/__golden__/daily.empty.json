@@ -26,6 +26,12 @@
   "summary": "No open PRs.",
   "briefSummary": "No open PRs",
   "actionableIssues": [],
+  "attention": {
+    "needsAttention": 0,
+    "stuckCI": 0,
+    "dormantFollowup": 0,
+    "waiting": 0
+  },
   "actionMenu": {
     "items": [
       {

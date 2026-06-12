@@ -54,7 +54,9 @@ const mockGetStatePath = vi.mocked(getStatePath);
  * single `{stdout, stderr}` object, matching what the real Node child
  * process helper yields when promisified.
  */
-function stubExecFile(responses: Array<{ stdout?: string; stderr?: string; error?: Error & { code?: number } }>): void {
+function stubExecFile(
+  responses: Array<{ stdout?: string; stderr?: string; error?: Error & { code?: string | number } }>,
+): void {
   let i = 0;
   mockExecFile.mockImplementation(((_cmd: string, _args: string[], _opts: unknown, cb: unknown) => {
     const callback = cb as (err: Error | null, value?: { stdout: string; stderr: string }) => void;

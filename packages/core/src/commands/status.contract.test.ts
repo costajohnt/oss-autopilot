@@ -20,6 +20,8 @@ vi.mock('../core/index.js', () => ({
 
 import { getStateManager } from '../core/index.js';
 import { runStatus } from './status.js';
+import { StatusOutputSchema } from '../formatters/json.js';
+import { schemaIssues } from '../core/test-utils.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
 
@@ -51,11 +53,13 @@ describe('status --json contract', () => {
 
   it('online mode output matches the golden shape', async () => {
     const result = await runStatus({});
+    expect(schemaIssues(StatusOutputSchema, result)).toEqual([]);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/status.online.json');
   });
 
   it('offline mode output matches the golden shape', async () => {
     const result = await runStatus({ offline: true });
+    expect(schemaIssues(StatusOutputSchema, result)).toEqual([]);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/status.offline.json');
   });
 });

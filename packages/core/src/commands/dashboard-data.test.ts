@@ -113,7 +113,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
     // Override here so the existing mockBuildStarFilter / mockToShelvedPRRef
     // wiring keeps working.
     buildStarFilter: (...args: unknown[]) => mockBuildStarFilter(...args),
-    toShelvedPRRef: (...args: unknown[]) => mockToShelvedPRRef(...args),
+    toShelvedPRRef: (pr: unknown) => mockToShelvedPRRef(pr),
   };
 });
 
@@ -151,7 +151,7 @@ vi.mock('../core/github-stats.js', () => ({
 }));
 
 vi.mock('./daily.js', () => ({
-  toShelvedPRRef: (...args: unknown[]) => mockToShelvedPRRef(...args),
+  toShelvedPRRef: (pr: unknown) => mockToShelvedPRRef(pr),
   buildStarFilter: (...args: unknown[]) => mockBuildStarFilter(...args),
 }));
 

@@ -34,7 +34,7 @@
     "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node22 --format=cjs --minify --sourcemap --outfile=dist/cli.bundle.cjs",
     "start": "tsx src/cli.ts",
     "dev": "tsx watch src/cli.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",

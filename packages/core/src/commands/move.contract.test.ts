@@ -32,6 +32,8 @@ vi.mock('../core/index.js', async () => {
 });
 
 import { runMove } from './move.js';
+import { MoveOutputSchema } from '../formatters/json.js';
+import { schemaIssues } from '../core/test-utils.js';
 
 const TEST_PR_URL = 'https://github.com/owner/repo/pull/42';
 
@@ -43,21 +45,25 @@ describe('move --json contract', () => {
 
   it('target=attention output matches the golden shape', async () => {
     const result = await runMove({ prUrl: TEST_PR_URL, target: 'attention' });
+    expect(schemaIssues(MoveOutputSchema, result)).toEqual([]);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/move.attention.json');
   });
 
   it('target=waiting output matches the golden shape', async () => {
     const result = await runMove({ prUrl: TEST_PR_URL, target: 'waiting' });
+    expect(schemaIssues(MoveOutputSchema, result)).toEqual([]);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/move.waiting.json');
   });
 
   it('target=shelved output matches the golden shape', async () => {
     const result = await runMove({ prUrl: TEST_PR_URL, target: 'shelved' });
+    expect(schemaIssues(MoveOutputSchema, result)).toEqual([]);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/move.shelved.json');
   });
 
   it('target=auto output matches the golden shape', async () => {
     const result = await runMove({ prUrl: TEST_PR_URL, target: 'auto' });
+    expect(schemaIssues(MoveOutputSchema, result)).toEqual([]);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/move.auto.json');
   });
 });
