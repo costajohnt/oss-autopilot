@@ -19,7 +19,7 @@ vi.mock('../core/logger.js', () => ({
 
 import * as fs from 'node:fs';
 import { warn } from '../core/logger.js';
-import { parseSkippedIssuesContent, loadSkippedIssues } from './skip-file-parser.js';
+import { parseSkippedIssuesContent, loadSkippedIssues, loadSkippedIssuesDetailed } from './skip-file-parser.js';
 
 const mockExistsSync = vi.mocked(fs.existsSync);
 const mockReadFileSync = vi.mocked(fs.readFileSync);
@@ -196,5 +196,42 @@ describe('loadSkippedIssues', () => {
     const result = loadSkippedIssues('/restricted/path.md');
     expect(result).toEqual([]);
     expect(mockWarn).toHaveBeenCalled();
+  });
+});
+
+describe('loadSkippedIssuesDetailed', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should set readError when the file exists but reading it throws (#1448)', () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockImplementation(() => {
+      throw new Error('EACCES');
+    });
+
+    const result = loadSkippedIssuesDetailed('/restricted/path.md');
+
+    expect(result.issues).toEqual([]);
+    expect(result.readError).toContain('EACCES');
+    expect(mockWarn).toHaveBeenCalled();
+  });
+
+  it('should NOT set readError when the path is unset or the file does not exist', () => {
+    expect(loadSkippedIssuesDetailed(undefined).readError).toBeUndefined();
+
+    mockExistsSync.mockReturnValue(false);
+    expect(loadSkippedIssuesDetailed('/missing/path.md').readError).toBeUndefined();
+  });
+
+  it('should return parsed issues without readError on a successful read', () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue('2026-04-15 https://github.com/owncast/owncast/issues/4883\n');
+
+    const result = loadSkippedIssuesDetailed('/real/path.md');
+
+    expect(result.readError).toBeUndefined();
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0].url).toBe('https://github.com/owncast/owncast/issues/4883');
   });
 });

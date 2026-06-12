@@ -917,4 +917,50 @@ describe('applyStatusOverrides', () => {
     // No direct save() call — persistence is handled by autoSave() inside mutations
     expect(mockSave).not.toHaveBeenCalled();
   });
+
+  it('collects a failure message when applying an override throws, keeping the PR un-overridden (#1448)', () => {
+    const prUrl = 'https://github.com/owner/repo/pull/1';
+    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing' })];
+    const state = makeState({
+      [prUrl]: {
+        status: 'waiting_on_maintainer',
+        setAt: '2026-01-01T00:00:00Z',
+        lastActivityAt: '2025-06-15T00:00:00Z',
+      },
+    });
+    mockGetStatusOverride.mockImplementation(() => {
+      throw new Error('corrupt override record');
+    });
+
+    const failures: string[] = [];
+    const result = applyStatusOverrides(prs, state, failures);
+
+    // The PR silently shows its un-overridden status — the collector says so.
+    expect(result[0].status).toBe('needs_addressing');
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain(prUrl);
+    expect(failures[0]).toContain('corrupt override record');
+  });
+
+  it('leaves the failures collector empty when overrides apply cleanly (#1448)', () => {
+    const prUrl = 'https://github.com/owner/repo/pull/1';
+    const prs = [makePR({ repo: 'owner/repo', number: 1, status: 'needs_addressing' })];
+    const state = makeState({
+      [prUrl]: {
+        status: 'waiting_on_maintainer',
+        setAt: '2026-01-01T00:00:00Z',
+        lastActivityAt: '2025-06-15T00:00:00Z',
+      },
+    });
+    mockGetStatusOverride.mockReturnValue({
+      status: 'waiting_on_maintainer',
+      setAt: '2026-01-01T00:00:00Z',
+      lastActivityAt: '2025-06-15T00:00:00Z',
+    });
+
+    const failures: string[] = [];
+    applyStatusOverrides(prs, state, failures);
+
+    expect(failures).toEqual([]);
+  });
 });
