@@ -143,6 +143,18 @@ vi.mock('./rate-limiter.js', () => ({
   },
 }));
 
+// Wrap detectIssueList in a spy so readVettedIssues' list detection is
+// overridable per-test (#1448). Default passes through to the real
+// implementation — the #924 cache-invalidation tests depend on it reading
+// their tmp issue-list files.
+vi.mock('./startup.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./startup.js')>();
+  return {
+    ...actual,
+    detectIssueList: vi.fn(actual.detectIssueList),
+  };
+});
+
 import {
   buildDashboardJson,
   startDashboardServer,
@@ -155,6 +167,7 @@ import {
   type DashboardServerInfo,
 } from './dashboard-server.js';
 import { fetchDashboardData, storedToMergedPRs } from './dashboard-data.js';
+import { detectIssueList } from './startup.js';
 import { getGitHubToken } from '../core/index.js';
 import { ConcurrencyError } from '../core/errors.js';
 
@@ -484,6 +497,26 @@ describe('dashboard-server', () => {
 
       const some = buildDashboardJson(digest, state, [], undefined, undefined, ['fetch recently merged PRs']);
       expect(some.partialFailures).toEqual(['fetch recently merged PRs']);
+    });
+
+    it('pushes a partialFailures entry when the vetted-list read fails instead of a silently empty panel (#1448)', () => {
+      const digest = makeDigest();
+      const state = makeState({ lastDigest: digest });
+
+      // detectIssueList reports a list, but reading it throws (ENOENT here;
+      // EACCES/EIO behave the same) — previously the panel just went empty.
+      vi.mocked(detectIssueList).mockReturnValueOnce({
+        path: '/nonexistent-1448/issue-list.md',
+        source: 'configured',
+        availableCount: 0,
+        completedCount: 0,
+      });
+
+      const data = buildDashboardJson(digest, state, [], undefined, undefined, ['fetch recently merged PRs']);
+
+      expect(data.vettedIssues).toBeNull();
+      // Caller-provided failures are preserved; the build-local one is appended.
+      expect(data.partialFailures).toEqual(['fetch recently merged PRs', 'read vetted issue list']);
     });
 
     it('buildDashboardJson stamps attentionBucket on every served PR (#1421)', () => {

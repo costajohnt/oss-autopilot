@@ -600,6 +600,27 @@ describe('executeDailyCheck() — repo score updates', () => {
     });
   });
 
+  it('surfaces a repo-scores warning when only SOME merged count updates fail (#1448)', async () => {
+    const mergedRepos = new Map([
+      ['owner/repo-a', { count: 3, lastMergedAt: '2026-01-10T00:00:00Z' }],
+      ['owner/repo-b', { count: 1, lastMergedAt: '2026-01-05T00:00:00Z' }],
+    ]);
+    mockFetchUserMergedPRCounts.mockResolvedValue(makeMergedResult(mergedRepos));
+    // Only repo-a's merged-count update throws; repo-b succeeds. Previously the
+    // warning fired only when ALL updates failed, leaving 1-of-2 envelope-silent.
+    mockUpdateRepoScore.mockImplementation((repo: string, patch: Record<string, unknown>) => {
+      if (repo === 'owner/repo-a' && 'mergedPRCount' in patch && patch.mergedPRCount === 3) {
+        throw new Error('corrupted repo score');
+      }
+    });
+
+    const result = await executeDailyCheck('test-token');
+
+    const warning = result.warnings.find((w) => w.phase === 'repo-scores' && w.operation === 'update merged counts');
+    expect(warning).toBeDefined();
+    expect(warning?.message).toContain('1 of 2 merged count update(s) failed');
+  });
+
   it('syncs trusted projects for repos with merged PRs', async () => {
     const mergedRepos = new Map([['owner/repo-trusted', { count: 2, lastMergedAt: '2026-01-10T00:00:00Z' }]]);
     mockFetchUserMergedPRCounts.mockResolvedValue(makeMergedResult(mergedRepos));
