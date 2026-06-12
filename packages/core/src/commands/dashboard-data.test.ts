@@ -749,6 +749,12 @@ describe('buildDashboardStats with storedClosedCount', () => {
 describe('updateMonthlyAnalytics', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // mockReset (not just clear): throwing implementations installed by the
+    // failure tests below would otherwise leak into later tests and skew the
+    // returned failure labels (#1447).
+    mockSetMonthlyMergedCounts.mockReset();
+    mockSetMonthlyClosedCounts.mockReset();
+    mockSetMonthlyOpenedCounts.mockReset();
     mockGetState.mockReturnValue({
       monthlyMergedCounts: {},
       monthlyClosedCounts: {},
@@ -757,8 +763,9 @@ describe('updateMonthlyAnalytics', () => {
   });
 
   it('stores monthly merged counts when non-empty', () => {
-    updateMonthlyAnalytics([], { '2026-01': 5 }, {}, {}, {});
+    const failures = updateMonthlyAnalytics([], { '2026-01': 5 }, {}, {}, {});
     expect(mockSetMonthlyMergedCounts).toHaveBeenCalledWith({ '2026-01': 5 });
+    expect(failures).toEqual([]);
   });
 
   it('skips storing merged counts when empty', () => {
@@ -808,7 +815,7 @@ describe('updateMonthlyAnalytics', () => {
     });
 
     // Should not throw
-    updateMonthlyAnalytics([], { '2026-01': 5 }, { '2026-01': 2 }, {}, {});
+    const failures = updateMonthlyAnalytics([], { '2026-01': 5 }, { '2026-01': 2 }, {}, {});
 
     expect(mockWarn).toHaveBeenCalledWith(
       'dashboard-data',
@@ -816,6 +823,8 @@ describe('updateMonthlyAnalytics', () => {
     );
     // Closed counts should still be stored despite merged failure
     expect(mockSetMonthlyClosedCounts).toHaveBeenCalledWith({ '2026-01': 2 });
+    // The failure is reported back so fetchDashboardData can surface it (#1447)
+    expect(failures).toEqual(['store monthly merged counts']);
   });
 
   it('warns and continues when setMonthlyClosedCounts throws', () => {
@@ -823,7 +832,7 @@ describe('updateMonthlyAnalytics', () => {
       throw new Error('permission denied');
     });
 
-    updateMonthlyAnalytics([], { '2026-01': 5 }, { '2026-01': 2 }, { '2026-01': 1 }, {});
+    const failures = updateMonthlyAnalytics([], { '2026-01': 5 }, { '2026-01': 2 }, { '2026-01': 1 }, {});
 
     expect(mockWarn).toHaveBeenCalledWith(
       'dashboard-data',
@@ -832,6 +841,7 @@ describe('updateMonthlyAnalytics', () => {
     // Merged and opened should still be stored
     expect(mockSetMonthlyMergedCounts).toHaveBeenCalled();
     expect(mockSetMonthlyOpenedCounts).toHaveBeenCalled();
+    expect(failures).toEqual(['store monthly closed counts']);
   });
 
   it('warns and continues when setMonthlyOpenedCounts throws', () => {
@@ -839,12 +849,13 @@ describe('updateMonthlyAnalytics', () => {
       throw new Error('io error');
     });
 
-    updateMonthlyAnalytics([], {}, {}, { '2026-01': 1 }, {});
+    const failures = updateMonthlyAnalytics([], {}, {}, { '2026-01': 1 }, {});
 
     expect(mockWarn).toHaveBeenCalledWith(
       'dashboard-data',
       expect.stringContaining('Failed to store monthly opened counts'),
     );
+    expect(failures).toEqual(['store monthly opened counts']);
   });
 });
 
@@ -912,6 +923,17 @@ describe('fetchDashboardData', () => {
     mockGetClosedPRWatermark.mockReturnValue(undefined);
     mockGetMergedPRs.mockReturnValue([]);
     mockGetClosedPRs.mockReturnValue([]);
+    // The real addMergedPRs/addClosedPRs return { dropped }; an undefined
+    // return makes the destructure in fetchDashboardData throw, which now
+    // pollutes partialFailures with phantom persist failures (#1447). Also
+    // resets throwing implementations leaked from earlier tests.
+    mockAddMergedPRs.mockReset().mockReturnValue({ dropped: 0 });
+    mockAddClosedPRs.mockReset().mockReturnValue({ dropped: 0 });
+    // Reset monthly setters so throwing implementations from the
+    // updateMonthlyAnalytics failure tests above don't leak in here.
+    mockSetMonthlyMergedCounts.mockReset();
+    mockSetMonthlyClosedCounts.mockReset();
+    mockSetMonthlyOpenedCounts.mockReset();
 
     // PRMonitor defaults
     mockFetchUserOpenPRs.mockResolvedValue({ prs: [], failures: [] });
@@ -1114,6 +1136,8 @@ describe('fetchDashboardData', () => {
       expect.stringContaining('Failed to persist dashboard state'),
     );
     expect(result.digest).toBeDefined();
+    // The stale cached digest is served, but the banner says why (#1447)
+    expect(result.partialFailures).toContain('persist dashboard state');
   });
 
   it('throws when digest is null after batch', async () => {
@@ -1193,6 +1217,9 @@ describe('fetchDashboardData', () => {
     expect(mockAddClosedPRs).toHaveBeenCalled();
     expect(mockWarn).toHaveBeenCalledWith('dashboard-data', expect.stringContaining('Failed to store merged PRs'));
     expect(result.digest).toBeDefined();
+    // The persist failure is surfaced, not just logged (#1447)
+    expect(result.partialFailures).toContain('store merged PRs');
+    expect(result.partialFailures).not.toContain('store closed PRs');
   });
 
   it('isolates addClosedPRs failure from addMergedPRs', async () => {
@@ -1209,6 +1236,8 @@ describe('fetchDashboardData', () => {
     expect(mockAddClosedPRs).toHaveBeenCalled();
     expect(mockWarn).toHaveBeenCalledWith('dashboard-data', expect.stringContaining('Failed to store closed PRs'));
     expect(result.digest).toBeDefined();
+    expect(result.partialFailures).toContain('store closed PRs');
+    expect(result.partialFailures).not.toContain('store merged PRs');
   });
 
   // ── partialFailures surfacing (#1035) ────────────────────────────────
@@ -1240,5 +1269,36 @@ describe('fetchDashboardData', () => {
     mockFetchRecentlyMergedPRs.mockRejectedValue(rateLimitError);
     mockIsRateLimitOrAuthError.mockImplementation((err: unknown) => err === rateLimitError);
     await expect(fetchDashboardData('test-token')).rejects.toThrow('API rate limit exceeded');
+  });
+
+  // ── persist failures land in partialFailures too (#1447) ─────────────
+
+  it('records a monthly-counts persist failure in partialFailures while still serving data', async () => {
+    mockFetchUserMergedPRCounts.mockResolvedValue({
+      ...makePRCountsResult(),
+      monthlyCounts: { '2026-01': 5 },
+    });
+    mockSetMonthlyMergedCounts.mockImplementation(() => {
+      throw new Error('disk full');
+    });
+
+    const result = await fetchDashboardData('test-token');
+
+    expect(result.partialFailures).toContain('store monthly merged counts');
+    expect(result.digest).toBeDefined();
+  });
+
+  it('records a digest persist failure in partialFailures while serving the cached digest', async () => {
+    const cachedDigest = makeMockDigest();
+    const state = makeDefaultState({ lastDigest: cachedDigest });
+    mockGetState.mockReturnValue(state);
+    mockSetLastDigest.mockImplementation(() => {
+      throw new Error('disk write failed');
+    });
+
+    const result = await fetchDashboardData('test-token');
+
+    expect(result.partialFailures).toContain('persist dashboard state');
+    expect(result.digest).toBe(cachedDigest);
   });
 });
