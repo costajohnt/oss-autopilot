@@ -72,10 +72,11 @@ export interface DashboardJsonData {
   lastUpdated?: string;
   /**
    * Labels of sub-fetches that degraded to empty fallbacks during this data
-   * build. Non-empty means one or more background calls failed and the
-   * corresponding sections of the response are approximations (stale or
-   * zero'd) rather than authoritative. The SPA surfaces this as a banner
-   * so users know the dashboard is showing partial data. See #1035.
+   * build, plus persistence steps that failed to save (#1447). Non-empty
+   * means one or more background calls failed and the corresponding sections
+   * of the response are approximations (stale or zero'd) rather than
+   * authoritative. The SPA surfaces this as a banner so users know the
+   * dashboard is showing partial data. See #1035.
    */
   partialFailures?: string[];
 }
@@ -218,6 +219,11 @@ export function mergeMonthlyCounts(
  * Each metric is isolated so partial failures don't produce inconsistent state.
  * Fresh API results are merged into existing data so historical months are preserved.
  * Skips updating when fresh data is empty to avoid wiping chart data on transient API failures.
+ *
+ * Returns the labels of any metrics that failed to persist (#1447) so callers
+ * with a partialFailures surface (fetchDashboardData) can push them into the
+ * SPA banner instead of the failure living only in stderr. Callers without
+ * that surface (daily.ts) may ignore the return value.
  */
 export function updateMonthlyAnalytics(
   prs: Array<{ createdAt?: string }>,
@@ -225,15 +231,17 @@ export function updateMonthlyAnalytics(
   monthlyClosedCounts: Record<string, number>,
   openedFromMerged: Record<string, number>,
   openedFromClosed: Record<string, number>,
-): void {
+): string[] {
   const stateManager = getStateManager();
   const state = stateManager.getState();
+  const failures: string[] = [];
 
   try {
     if (Object.keys(monthlyCounts).length > 0) {
       stateManager.setMonthlyMergedCounts(mergeMonthlyCounts(state.monthlyMergedCounts || {}, monthlyCounts));
     }
   } catch (error) {
+    failures.push('store monthly merged counts');
     warn(MODULE, `Failed to store monthly merged counts: ${errorMessage(error)}`);
   }
   try {
@@ -241,6 +249,7 @@ export function updateMonthlyAnalytics(
       stateManager.setMonthlyClosedCounts(mergeMonthlyCounts(state.monthlyClosedCounts || {}, monthlyClosedCounts));
     }
   } catch (error) {
+    failures.push('store monthly closed counts');
     warn(MODULE, `Failed to store monthly closed counts: ${errorMessage(error)}`);
   }
   try {
@@ -258,8 +267,10 @@ export function updateMonthlyAnalytics(
       stateManager.setMonthlyOpenedCounts(mergeMonthlyCounts(state.monthlyOpenedCounts || {}, combinedOpenedCounts));
     }
   } catch (error) {
+    failures.push('store monthly opened counts');
     warn(MODULE, `Failed to store monthly opened counts: ${errorMessage(error)}`);
   }
+  return failures;
 }
 
 export interface DashboardFetchResult {
@@ -269,11 +280,13 @@ export interface DashboardFetchResult {
   allClosedPRs: ClosedPR[];
   /**
    * Labels of non-critical sub-fetches that degraded to empty fallbacks
-   * during this run. Empty array means every fetch succeeded. Non-empty
-   * means one or more slices of the returned data are approximations —
-   * callers surface this to the user so "0 recently merged" does not look
-   * authoritative when it is actually "fetch failed, fell back to empty".
-   * See #1035.
+   * during this run, plus persistence steps that failed to save (#1447:
+   * monthly chart analytics, stored merged/closed PRs, the cached digest).
+   * Empty array means every fetch and persist succeeded. Non-empty means
+   * one or more slices of the returned data are approximations — callers
+   * surface this to the user so "0 recently merged" does not look
+   * authoritative when it is actually "fetch failed, fell back to empty",
+   * and so silently-stale charts/digest are flagged. See #1035.
    */
   partialFailures: string[];
 }
@@ -392,6 +405,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
           partialFailures.push(`Dropped ${dropped} merged PR(s) with invalid URLs before persistence`);
         }
       } catch (error) {
+        partialFailures.push('store merged PRs');
         warn(MODULE, `Failed to store merged PRs: ${errorMessage(error)}`);
       }
 
@@ -402,6 +416,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
           partialFailures.push(`Dropped ${dropped} closed PR(s) with invalid URLs before persistence`);
         }
       } catch (error) {
+        partialFailures.push('store closed PRs');
         warn(MODULE, `Failed to store closed PRs: ${errorMessage(error)}`);
       }
 
@@ -410,7 +425,9 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       // never the createdAt/mergedAt dates the monthly counts key off.
       const { monthlyCounts, monthlyOpenedCounts: openedFromMerged } = mergedResult;
       const { monthlyCounts: monthlyClosedCounts, monthlyOpenedCounts: openedFromClosed } = closedResult;
-      updateMonthlyAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
+      partialFailures.push(
+        ...updateMonthlyAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed),
+      );
 
       // The digest keeps RAW statuses in openPRs: this digest becomes the
       // server's cached/persisted rebuild source, and baking overridden
@@ -438,6 +455,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       stateManager.setLastDigest(digest);
     });
   } catch (error) {
+    partialFailures.push('persist dashboard state');
     warn(MODULE, `Failed to persist dashboard state: ${errorMessage(error)}`);
   }
   warn(MODULE, `Refreshed: ${prs.length} PRs fetched`);

@@ -830,7 +830,19 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // try-catch: analytics are supplementary — save failure should not crash the daily check.
   try {
     getStateManager().batch(() => {
-      updateMonthlyAnalytics(prs, monthlyCounts, monthlyClosedCounts, openedFromMerged, openedFromClosed);
+      const analyticsFailures = updateMonthlyAnalytics(
+        prs,
+        monthlyCounts,
+        monthlyClosedCounts,
+        openedFromMerged,
+        openedFromClosed,
+      );
+      // Per-metric setter failures are caught inside updateMonthlyAnalytics
+      // (one bad metric must not sink the others); surface each in the run's
+      // warnings[] instead of dropping the returned labels (#1447).
+      for (const failure of analyticsFailures) {
+        recordWarning(warnings, 'analytics', failure, null, 'persist failed');
+      }
 
       // Store recently merged/closed PRs in the persistent arrays.
       // This ensures the mergedPRs/closedPRs ledger is populated even when
