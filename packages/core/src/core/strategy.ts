@@ -162,6 +162,22 @@ function recommendForOverExtension(openPRCount: number, dormantPRCount: number, 
 }
 
 /**
+ * Read-only mirror of the status-override lookup (#1416): same staleness
+ * rule as `StateManager.getStatusOverride` (an override recorded against
+ * older activity than the PR's `updatedAt` is ignored), but with NO
+ * auto-clear write — this module stays pure/no-I/O, and the daily and
+ * dashboard pipelines own clearing stale overrides.
+ */
+function effectiveStatus(pr: { url?: unknown; status?: unknown; updatedAt?: unknown }, state: AgentState): unknown {
+  if (typeof pr.url !== 'string') return pr.status;
+  const override = state.config.statusOverrides?.[pr.url];
+  if (!override) return pr.status;
+  if (typeof pr.updatedAt === 'string' && pr.updatedAt > override.lastActivityAt) return pr.status;
+  if (override.status !== 'needs_addressing' && override.status !== 'waiting_on_maintainer') return pr.status;
+  return override.status;
+}
+
+/**
  * Compute the deterministic strategy signal from agent state. Returns
  * null when state is thinner than {@link STRATEGY_MIN_PRS} merged PRs —
  * the auto-display surface uses this null sentinel as the
@@ -214,12 +230,21 @@ export function computeStrategy(state: AgentState): StrategyResult | null {
   // Capacity: read from the last digest. When no digest exists yet,
   // default to zero (the agent has nothing to recommend without a
   // digest). The DailyDigest schema does not store a `dormantCount`
-  // directly — derive it from the `waitingOnMaintainerPRs` array,
-  // which is the "PR flagged as awaiting maintainer review" bucket
-  // produced by `pr-monitor`.
+  // directly — derive it from the "awaiting maintainer review" bucket.
+  //
+  // Status-basis reconciliation (#1416): dashboard-written digests keep RAW
+  // statuses in `openPRs` (so override CLEARS stay visible on rebuild) while
+  // `summary.totalActivePRs` is override-basis. Re-derive the waiting bucket
+  // from `openPRs` through the override map so both capacity inputs share
+  // one basis; fall back to the stored array for digests without `openPRs`
+  // (which daily.ts builds post-override anyway).
   const summary = state.lastDigest?.summary;
   const openPRCount = summary?.totalActivePRs ?? 0;
-  const waiting = state.lastDigest?.waitingOnMaintainerPRs ?? [];
+  const openPRs = (state.lastDigest?.openPRs ?? []) as Array<{ url?: unknown; status?: unknown; updatedAt?: unknown }>;
+  const waiting =
+    openPRs.length > 0
+      ? openPRs.filter((pr) => effectiveStatus(pr, state) === 'waiting_on_maintainer')
+      : (state.lastDigest?.waitingOnMaintainerPRs ?? []);
   const dormantPRCount = waiting.length;
   // Overextended: dormant PRs spread across 2+ repos. Same definition
   // the issue body uses.

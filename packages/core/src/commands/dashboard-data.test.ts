@@ -33,6 +33,7 @@ const {
   mockFetchClosedPRsSince,
   mockBuildStarFilter,
   mockToShelvedPRRef,
+  mockApplyStatusOverrides,
   mockIsRateLimitOrAuthError,
   mockWarn,
 } = vi.hoisted(() => ({
@@ -60,6 +61,12 @@ const {
   mockFetchMergedPRsSince: vi.fn().mockResolvedValue([]),
   mockFetchClosedPRsSince: vi.fn().mockResolvedValue([]),
   mockBuildStarFilter: vi.fn().mockReturnValue(undefined),
+  // Identity by default (also re-installed in beforeEach after clearAllMocks);
+  // #1416 ordering tests swap in a status-flipping implementation to prove
+  // overrides are applied before partitioning. An undefined-returning default
+  // would crash fetchDashboardData inside its swallow-and-warn persistence
+  // guard — a false green.
+  mockApplyStatusOverrides: vi.fn((prs: unknown, _state?: unknown) => prs),
   mockToShelvedPRRef: vi.fn((pr: any) => ({
     number: pr.number,
     url: pr.url,
@@ -114,6 +121,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
     // wiring keeps working.
     buildStarFilter: (...args: unknown[]) => mockBuildStarFilter(...args),
     toShelvedPRRef: (pr: unknown) => mockToShelvedPRRef(pr),
+    applyStatusOverrides: (prs: unknown, state: unknown) => mockApplyStatusOverrides(prs, state),
   };
 });
 
@@ -924,6 +932,7 @@ describe('fetchDashboardData', () => {
 
     mockIsRateLimitOrAuthError.mockReturnValue(false);
     mockBuildStarFilter.mockReturnValue(undefined);
+    mockApplyStatusOverrides.mockImplementation((prs: unknown) => prs);
   });
 
   it('fetches and returns dashboard data successfully (happy path)', async () => {
@@ -942,6 +951,64 @@ describe('fetchDashboardData', () => {
     expect(mockFetchUserOpenPRs).toHaveBeenCalled();
     expect(mockGenerateDigest).toHaveBeenCalled();
     expect(mockSetLastDigest).toHaveBeenCalled();
+  });
+
+  describe('partitions on post-override status (#1416)', () => {
+    const PR_URL = 'https://github.com/owner/repo/pull/7';
+
+    /** Dormant PR — the class where overrides survive until new activity. */
+    function makeDormantPR(status: 'needs_addressing' | 'waiting_on_maintainer') {
+      return makeFetchedPR({
+        repo: 'owner/repo',
+        number: 7,
+        status,
+        stalenessTier: 'dormant',
+        daysSinceActivity: 40,
+      });
+    }
+
+    /** Simulate a live override the way the real applyStatusOverrides reports it. */
+    function flipStatusTo(status: 'needs_addressing' | 'waiting_on_maintainer') {
+      mockApplyStatusOverrides.mockImplementation((prs: unknown) =>
+        (prs as Array<{ url: string }>).map((p) => (p.url === PR_URL ? { ...p, status } : p)),
+      );
+    }
+
+    beforeEach(() => {
+      // Build the digest from whatever PR list the partition hands over, so
+      // the test observes which statuses generateDigest actually consumed.
+      mockGenerateDigest.mockImplementation((prs: never[]) => makeMockDigest(prs));
+    });
+
+    it('shelves a dormant PR whose override flips needs_addressing -> waiting_on_maintainer', async () => {
+      mockFetchUserOpenPRs.mockResolvedValue({ prs: [makeDormantPR('needs_addressing')], failures: [] });
+      flipStatusTo('waiting_on_maintainer');
+
+      const result = await fetchDashboardData('test-token');
+
+      // The cached/persisted digest keeps RAW statuses so a later override
+      // CLEAR takes effect on rebuild instead of being baked in…
+      const digestInput = mockGenerateDigest.mock.calls[0][0] as Array<{ status: string }>;
+      expect(digestInput[0].status).toBe('needs_addressing');
+      // …while the shelve partition uses the post-override status, agreeing
+      // with the CLI rule: dormant + non-critical => shelved.
+      expect((result.digest.shelvedPRs ?? []).map((ref) => ref.url)).toContain(PR_URL);
+      expect(result.digest.summary.totalActivePRs).toBe(0);
+    });
+
+    it('keeps active a dormant PR whose override flips waiting_on_maintainer -> needs_addressing', async () => {
+      mockFetchUserOpenPRs.mockResolvedValue({ prs: [makeDormantPR('waiting_on_maintainer')], failures: [] });
+      flipStatusTo('needs_addressing');
+
+      const result = await fetchDashboardData('test-token');
+
+      // Raw status persisted; partition derived from the overridden status.
+      const digestInput = mockGenerateDigest.mock.calls[0][0] as Array<{ status: string }>;
+      expect(digestInput[0].status).toBe('waiting_on_maintainer');
+      // Critical is never display-shelved, matching the daily check's partition.
+      expect(result.digest.shelvedPRs ?? []).toEqual([]);
+      expect(result.digest.summary.totalActivePRs).toBe(1);
+    });
   });
 
   it('re-throws rate limit error from fetchUserOpenPRs', async () => {

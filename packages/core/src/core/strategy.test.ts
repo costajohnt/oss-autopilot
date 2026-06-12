@@ -26,7 +26,11 @@ function makeMergedPR(repo: string, n: number, opts: { title?: string; mergedAt?
   };
 }
 
-function makeState(overrides: Partial<AgentState> = {}): AgentState {
+function makeState(
+  // Same shape as test-utils' makeAgentState: config may be partial because
+  // AgentStateSchema.parse fills the remaining defaults.
+  overrides: Omit<Partial<AgentState>, 'config'> & { config?: Partial<AgentState['config']> } = {},
+): AgentState {
   return AgentStateSchema.parse({ version: 4, ...overrides });
 }
 
@@ -206,6 +210,75 @@ describe('computeStrategy — capacity', () => {
     });
     const cap = computeStrategy(state)?.capacity;
     expect(cap?.overExtended).toBe(false);
+  });
+
+  it('derives the waiting bucket from openPRs through the override map (#1416)', () => {
+    // Dashboard-written digests keep RAW statuses in openPRs; a live
+    // override flipping needs_addressing -> waiting must count as dormant.
+    const state = makeState({
+      mergedPRs: Array.from({ length: 10 }, (_, i) => makeMergedPR('a/r', i + 1)),
+      config: {
+        statusOverrides: {
+          'https://github.com/x/y/pull/1': {
+            status: 'waiting_on_maintainer',
+            setAt: '2026-05-02T00:00:00Z',
+            lastActivityAt: '2026-05-01T00:00:00Z',
+          },
+        },
+      },
+      lastDigest: {
+        generatedAt: new Date().toISOString(),
+        openPRs: [
+          { url: 'https://github.com/x/y/pull/1', status: 'needs_addressing', updatedAt: '2026-05-01T00:00:00Z' },
+          { url: 'https://github.com/m/n/pull/2', status: 'waiting_on_maintainer', updatedAt: '2026-05-01T00:00:00Z' },
+        ] as any,
+        needsAddressingPRs: [],
+        // Stored raw-basis array deliberately disagrees — it must be ignored
+        // when openPRs is available.
+        waitingOnMaintainerPRs: [{ url: 'https://github.com/m/n/pull/2' }] as any,
+        recentlyClosedPRs: [],
+        recentlyMergedPRs: [],
+        shelvedPRs: [],
+        autoUnshelvedPRs: [],
+        summary: { totalActivePRs: 2, totalNeedingAttention: 0, totalMergedAllTime: 10, mergeRate: 1 },
+      },
+    });
+    const cap = computeStrategy(state)?.capacity;
+    // Both PRs are waiting on the override-applied basis, across 2 repos.
+    expect(cap?.dormantPRCount).toBe(2);
+    expect(cap?.overExtended).toBe(true);
+  });
+
+  it('ignores a stale override (newer PR activity) when deriving the waiting bucket', () => {
+    const state = makeState({
+      mergedPRs: Array.from({ length: 10 }, (_, i) => makeMergedPR('a/r', i + 1)),
+      config: {
+        statusOverrides: {
+          'https://github.com/x/y/pull/1': {
+            status: 'waiting_on_maintainer',
+            setAt: '2026-04-02T00:00:00Z',
+            lastActivityAt: '2026-04-01T00:00:00Z',
+          },
+        },
+      },
+      lastDigest: {
+        generatedAt: new Date().toISOString(),
+        openPRs: [
+          // Activity is NEWER than the override's lastActivityAt: same rule
+          // as getStatusOverride, the override no longer applies.
+          { url: 'https://github.com/x/y/pull/1', status: 'needs_addressing', updatedAt: '2026-05-01T00:00:00Z' },
+        ] as any,
+        needsAddressingPRs: [],
+        waitingOnMaintainerPRs: [] as any,
+        recentlyClosedPRs: [],
+        recentlyMergedPRs: [],
+        shelvedPRs: [],
+        autoUnshelvedPRs: [],
+        summary: { totalActivePRs: 1, totalNeedingAttention: 1, totalMergedAllTime: 10, mergeRate: 1 },
+      },
+    });
+    const cap = computeStrategy(state)?.capacity;
+    expect(cap?.dormantPRCount).toBe(0);
   });
 
   it('suggests open_more when no PRs are open and no dormant follow-ups', () => {
