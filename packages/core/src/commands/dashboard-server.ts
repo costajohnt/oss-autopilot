@@ -16,6 +16,7 @@ import {
   getCLIVersion,
   applyStatusOverrides,
   classifyAttentionBucket,
+  maybeCheckpoint,
 } from '../core/index.js';
 import { errorMessage, ValidationError, ConcurrencyError, GistConcurrencyError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
@@ -386,11 +387,47 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   // not disappear when /api/data rebuilds after a state change or after a
   // POST /api/action completes.
   let cachedPartialFailures: string[] | undefined = undefined;
+  // Gist checkpoint warnings from dashboard mutations (#1417). DELIBERATELY
+  // separate from cachedPartialFailures: fetch failures clear on a successful
+  // PULL, but a gist-sync warning means an un-pushed mutation, and a pull is
+  // exactly the event that can destroy it (refreshFromGist wholesale-replaces
+  // state). These clear only when a checkpoint PUSH succeeds.
+  let pendingGistSyncWarnings: string[] = [];
   // Tracks the last background-refresh failure so /api/data can surface
   // staleness to the SPA via the X-Dashboard-Stale header (#1205). Cleared
   // when a refresh succeeds. Without this, token expiry / GitHub outage
   // produces silent stale data hours old with no client-visible signal.
   let lastBackgroundRefreshError: string | null = null;
+
+  /** Record a mutation's checkpoint outcome. `null` means the push succeeded
+   * (or local mode) — and a successful push carries the FULL current state,
+   * so any previously pending warning is resolved with it. */
+  function recordGistSyncOutcome(warning: string | null): void {
+    if (warning === null) {
+      pendingGistSyncWarnings = [];
+      return;
+    }
+    if (!pendingGistSyncWarnings.includes(warning)) {
+      pendingGistSyncWarnings.push(warning);
+    }
+  }
+
+  /** Merge pending gist-sync warnings into a partialFailures payload for the
+   * SPA banner without coupling their lifecycles. */
+  function withPendingGistWarnings(failures: string[] | undefined): string[] | undefined {
+    if (pendingGistSyncWarnings.length === 0) return failures;
+    const base = failures ?? [];
+    return [...base, ...pendingGistSyncWarnings.filter((w) => !base.includes(w))];
+  }
+
+  /** Push-before-pull (#1417): an un-pushed mutation would be silently
+   * reverted by the next Gist pull. Retry the checkpoint first so a recovered
+   * network turns the pending warning into a real push before any pull runs.
+   * No-op when nothing is pending. */
+  async function flushPendingGistSync(): Promise<void> {
+    if (pendingGistSyncWarnings.length === 0) return;
+    recordGistSyncOutcome(await maybeCheckpoint(stateManager, MODULE));
+  }
 
   if (!cachedDigest) {
     throw new Error(
@@ -408,7 +445,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       cachedCommentedIssues,
       undefined,
       undefined,
-      cachedPartialFailures,
+      withPendingGistWarnings(cachedPartialFailures),
     );
   } catch (error) {
     throw new Error(
@@ -450,6 +487,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         // Re-read state if modified externally (file mtime for local, Gist API for Gist mode)
         let stateChanged = false;
         if (stateManager.isGistMode()) {
+          await flushPendingGistSync();
           stateChanged = await stateManager.refreshFromGist();
         } else {
           stateChanged = stateManager.reloadIfChanged();
@@ -465,7 +503,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
               cachedCommentedIssues,
               undefined,
               undefined,
-              cachedPartialFailures,
+              withPendingGistWarnings(cachedPartialFailures),
             );
             cachedIssueListMtimeMs = currentIssueListMtimeMs;
           } catch (error) {
@@ -550,6 +588,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   /** Re-read state written by external processes (CLI) before mutating. */
   async function reloadState(): Promise<void> {
     if (stateManager.isGistMode()) {
+      await flushPendingGistSync();
       await stateManager.refreshFromGist();
     } else {
       stateManager.reloadIfChanged();
@@ -594,6 +633,11 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
     // Resolve the mutation up-front so target validation happens before the
     // state reload — keeps the reload-to-save freshness window minimal.
+    // Each mutation records the Gist checkpoint outcome (#1417): in gist mode
+    // `save()` only writes the local cache, and an un-pushed mutation can be
+    // wholesale-reverted by the next successful refreshFromGist — so a failed
+    // push must reach the SPA, not vanish into a discarded return value.
+    let gistSyncWarning: string | null = null;
     let applyMutation: () => Promise<void> | void;
     if (body.action === 'move') {
       const { VALID_TARGETS, runMove } = await import('./move.js');
@@ -603,12 +647,17 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       }
       const target = body.target;
       applyMutation = async () => {
-        await runMove({ prUrl: body.url, target });
+        const output = await runMove({ prUrl: body.url, target });
+        gistSyncWarning = output.gistSyncWarning ?? null;
       };
     } else {
       // dismiss_issue_response
-      applyMutation = () => {
+      applyMutation = async () => {
         stateManager.dismissIssue(body.url, new Date().toISOString());
+        // Mirror runMove's contract: every mutating surface checkpoints to
+        // Gist and surfaces the warning. Never throws — failures come back
+        // as the warning string.
+        gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
       };
     }
 
@@ -649,6 +698,12 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       }
     }
 
+    // Surface the checkpoint outcome through the partialFailures banner the
+    // SPA already renders (#1417). Tracked in pendingGistSyncWarnings — NOT
+    // cachedPartialFailures — because gist warnings clear on a successful
+    // PUSH, while fetch failures clear on a successful pull/refresh.
+    recordGistSyncOutcome(gistSyncWarning);
+
     // Rebuild dashboard data from cached digest + updated state. Persist
     // the last-known partialFailures across action rebuilds (#1035) so the
     // SPA banner survives user interactions until the next successful
@@ -659,7 +714,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       cachedCommentedIssues,
       undefined,
       undefined,
-      cachedPartialFailures,
+      withPendingGistWarnings(cachedPartialFailures),
     );
     cachedIssueListMtimeMs = getIssueListMtimeMs();
 
@@ -689,7 +744,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         cachedCommentedIssues,
         result.allMergedPRs,
         result.allClosedPRs,
-        cachedPartialFailures,
+        withPendingGistWarnings(cachedPartialFailures),
       );
       cachedIssueListMtimeMs = getIssueListMtimeMs();
       sendJson(res, 200, cachedJsonData);
@@ -816,6 +871,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     fetchDashboardData(token)
       .then(async (result) => {
         if (stateManager.isGistMode()) {
+          await flushPendingGistSync();
           await stateManager.refreshFromGist();
         } else {
           stateManager.reloadIfChanged();
@@ -829,7 +885,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
           cachedCommentedIssues,
           result.allMergedPRs,
           result.allClosedPRs,
-          cachedPartialFailures,
+          withPendingGistWarnings(cachedPartialFailures),
         );
         cachedIssueListMtimeMs = getIssueListMtimeMs();
         // Successful refresh clears any prior failure signal (#1205).
