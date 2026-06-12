@@ -3,7 +3,12 @@
  * Searches for new issues to work on via @oss-scout/core
  */
 
-import { adaptScoutLinkedPR, buildCandidateLinkedPR, createAutopilotScout } from './scout-bridge.js';
+import {
+  adaptScoutLinkedPR,
+  buildCandidateLinkedPR,
+  createAutopilotScout,
+  type ScoutBridgeDiagnostics,
+} from './scout-bridge.js';
 import { classifyLinkedPR, getStateManager } from '../core/index.js';
 import { type SearchOutput } from '../formatters/json.js';
 import { gradeFromCandidate } from '../core/issue-grading.js';
@@ -67,7 +72,11 @@ function sanitizeViabilityScore(raw: unknown): number {
 }
 
 export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
-  const scout = await createAutopilotScout();
+  // Collect bridge-level degradation signals (#1448): an unreadable skip file
+  // means scout searched with an empty skip list, so explicitly-skipped
+  // issues may resurface — the envelope must say so, not just stderr.
+  const bridgeDiagnostics: ScoutBridgeDiagnostics = {};
+  const scout = await createAutopilotScout(bridgeDiagnostics);
   const stateManager = getStateManager();
 
   // Derive personalization from local history (#1244). `computeStrategy`
@@ -177,6 +186,9 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
   };
   if (result.rateLimitWarning) {
     searchOutput.rateLimitWarning = result.rateLimitWarning;
+  }
+  if (bridgeDiagnostics.skipListUnavailable) {
+    searchOutput.skipListUnavailable = true;
   }
   return searchOutput;
 }
