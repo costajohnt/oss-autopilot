@@ -155,6 +155,12 @@ jobs:
       - name: Test guard-public-posts hook
         run: bash hooks/guard-public-posts.test.sh
 
+      - name: Test pre-tool-use dispatcher hook (#1449)
+        # The dispatcher is the fan-out point for every PreToolUse Bash guard
+        # (guard-public-posts, guard-git-operations, auto-format-before-push);
+        # a regression here silently disables all of them.
+        run: bash hooks/pre-tool-use-dispatcher.test.sh
+
       - name: Guard against phantom config field regressions
         # These keys were deleted from the v3 state schema (see
         # state-persistence.ts migrateV2ToV3). They must NOT reappear in
