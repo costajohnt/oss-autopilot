@@ -94,8 +94,20 @@ export function buildScoutState(): ScoutState {
       // `--split-ratio` flags for overrides.
       featuresAnchorThreshold: 3,
       featuresSplitRatio: 0.6,
+      // Personalization-bias prefs, likewise required on the inferred type
+      // (scout #1244 / #168). Autopilot doesn't surface these as settings yet,
+      // so we pass scout's documented "no bias" defaults.
+      preferLanguages: [],
+      preferRepos: [],
+      diversityRatio: 0,
+      avoidRepos: [],
+      boostIssueTypes: [],
     },
     repoScores: state.repoScores,
+    // Scout #117 added tombstones (deletion records for gist merge). Autopilot
+    // synthesizes a fresh ScoutState per operation and tracks no deletions, so
+    // an empty list is correct here.
+    tombstones: [],
     starredRepos: config.starredRepos,
     starredReposLastFetched: config.starredReposLastFetched,
     mergedPRs: (state.mergedPRs ?? []).map((pr) => ({

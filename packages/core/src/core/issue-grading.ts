@@ -11,6 +11,8 @@
  * described as prose in agents/issue-scout.md.
  */
 
+import type { ProjectHealth } from '@oss-scout/core';
+
 export type GradeLetter = 'A' | 'B' | 'C' | 'F';
 
 export interface GradeSignals {
@@ -136,11 +138,10 @@ export function deriveGradeSignals(params: {
  */
 export function gradeFromCandidate(params: {
   repo: string;
-  projectHealth: {
-    avgIssueResponseDays: number | null;
-    daysSinceLastCommit: number | null;
-    checkFailed?: boolean;
-  };
+  // Scout 1.0 made ProjectHealth a discriminated union (success vs check-failed)
+  // (#158). Accept it whole; the failure arm carries no snapshot fields, so we
+  // normalize it to the minimal grade-input shape below.
+  projectHealth: ProjectHealth;
   getRepoScore: (repo: string) =>
     | {
         mergedPRCount: number;
@@ -150,9 +151,20 @@ export function gradeFromCandidate(params: {
     | undefined;
 }): GradeResult {
   const repoScore = params.getRepoScore(params.repo);
+  // Narrow the union into the minimal shape deriveGradeSignals expects. The
+  // check-failed arm has no avgIssueResponseDays/daysSinceLastCommit, and the
+  // grader already treats checkFailed as untrusted (no snapshot signals).
+  const ph = params.projectHealth;
+  const projectHealth = ph.checkFailed
+    ? { avgIssueResponseDays: null, daysSinceLastCommit: null, checkFailed: true }
+    : {
+        avgIssueResponseDays: ph.avgIssueResponseDays,
+        daysSinceLastCommit: ph.daysSinceLastCommit,
+        checkFailed: false,
+      };
   return computeSuccessGrade(
     deriveGradeSignals({
-      projectHealth: params.projectHealth,
+      projectHealth,
       repoScore: repoScore
         ? {
             mergedPRCount: repoScore.mergedPRCount,
