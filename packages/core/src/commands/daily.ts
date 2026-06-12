@@ -110,7 +110,7 @@ export {
 // reuse it without crossing the commands → sibling-command boundary
 // (#1208 M7). Re-exported here for backward compatibility with anyone
 // importing from this module.
-import { buildStarFilter } from '../core/daily-logic.js';
+import { buildStarFilter, firstMaintainerResponseFromDigest } from '../core/daily-logic.js';
 export { buildStarFilter };
 
 /**
@@ -844,6 +844,10 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // Phase 3: Persist monthly analytics and store merged/closed PR history.
   // try-catch: analytics are supplementary — save failure should not crash the daily check.
   try {
+    // Previous run's digest — read BEFORE Phase 4 overwrites it. If a
+    // just-merged/closed PR was open during a prior enriched run, its
+    // openPRs entry carries firstMaintainerResponseAt for the ledger (#1461).
+    const previousDigest = getStateManager().getState().lastDigest;
     getStateManager().batch(() => {
       const analyticsFailures = updateMonthlyAnalytics(
         prs,
@@ -862,15 +866,30 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
       // Store recently merged/closed PRs in the persistent arrays.
       // This ensures the mergedPRs/closedPRs ledger is populated even when
       // the dashboard is never opened (which has its own fetch path).
-      // addMergedPRs/addClosedPRs deduplicate by URL, so overlaps are safe.
+      // addMergedPRs/addClosedPRs deduplicate by URL (re-seen entries upgrade
+      // missing ledger fields in place), so overlaps are safe. openedAt comes
+      // free from the search result; firstMaintainerResponseAt is best-effort
+      // from the previous run's enriched digest — zero new API calls (#1461).
       if (recentlyMergedPRs.length > 0) {
         getStateManager().addMergedPRs(
-          recentlyMergedPRs.map((pr) => ({ url: pr.url, title: pr.title, mergedAt: pr.mergedAt })),
+          recentlyMergedPRs.map((pr) => ({
+            url: pr.url,
+            title: pr.title,
+            mergedAt: pr.mergedAt,
+            openedAt: pr.openedAt,
+            firstMaintainerResponseAt: firstMaintainerResponseFromDigest(previousDigest, pr.url),
+          })),
         );
       }
       if (recentlyClosedPRs.length > 0) {
         getStateManager().addClosedPRs(
-          recentlyClosedPRs.map((pr) => ({ url: pr.url, title: pr.title, closedAt: pr.closedAt })),
+          recentlyClosedPRs.map((pr) => ({
+            url: pr.url,
+            title: pr.title,
+            closedAt: pr.closedAt,
+            openedAt: pr.openedAt,
+            firstMaintainerResponseAt: firstMaintainerResponseFromDigest(previousDigest, pr.url),
+          })),
         );
       }
     });

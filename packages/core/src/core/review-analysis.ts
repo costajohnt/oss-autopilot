@@ -123,6 +123,34 @@ export function reviewHasInlineComments(reviewId: number, reviewComments: Review
 }
 
 /**
+ * Earliest maintainer response timestamp across issue comments and submitted
+ * reviews (#1461). A "response" is any comment or review by a non-bot
+ * account other than the contributor — acknowledgments and approvals count,
+ * since for latency purposes any human maintainer reply is a response.
+ * Computed from data fetchPRDetails already holds in memory (zero extra API
+ * calls). Returns undefined when no maintainer has responded yet.
+ */
+export function getFirstMaintainerResponseAt(
+  comments: Array<{ user?: { login?: string } | null; created_at: string }>,
+  reviews: Array<{ user?: { login?: string } | null; submitted_at?: string | null }>,
+  username: string,
+): string | undefined {
+  const usernameLower = username.toLowerCase();
+  let earliest: string | undefined;
+  const consider = (author: string | undefined | null, createdAt: string | undefined | null) => {
+    if (!author || !createdAt) return;
+    if (author.toLowerCase() === usernameLower) return;
+    if (isBotAuthor(author)) return;
+    if (!earliest || new Date(createdAt).getTime() < new Date(earliest).getTime()) {
+      earliest = createdAt;
+    }
+  };
+  for (const comment of comments) consider(comment.user?.login, comment.created_at);
+  for (const review of reviews) consider(review.user?.login, review.submitted_at);
+  return earliest;
+}
+
+/**
  * Check if there are unresponded comments from maintainers.
  * Combines issue comments and review comments into a timeline,
  * then finds maintainer comments after the user's last comment.

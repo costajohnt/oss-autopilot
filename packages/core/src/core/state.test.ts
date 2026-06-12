@@ -758,6 +758,66 @@ describe('StateManager merged PRs', () => {
       stateManager.addMergedPRs([pr]);
       expect(stateManager.addMergedPRs([pr])).toEqual({ added: 0, dropped: 0 });
     });
+
+    it('upgrades a stored minimal entry with ledger fields when re-seen richer (#1461)', () => {
+      const minimal = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', mergedAt: '2025-06-10T00:00:00Z' };
+      stateManager.addMergedPRs([minimal]);
+
+      const saveSpy = vi.spyOn(stateManager, 'save');
+      const result = stateManager.addMergedPRs([
+        {
+          ...minimal,
+          openedAt: '2025-06-01T00:00:00Z',
+          firstMaintainerResponseAt: '2025-06-03T00:00:00Z',
+        },
+      ]);
+
+      expect(result).toEqual({ added: 0, dropped: 0 });
+      // Upgrade mutates state, so it must persist even with zero new entries
+      expect(saveSpy).toHaveBeenCalled();
+      saveSpy.mockRestore();
+
+      const stored = stateManager.getMergedPRs();
+      expect(stored).toHaveLength(1);
+      expect(stored[0].openedAt).toBe('2025-06-01T00:00:00Z');
+      expect(stored[0].firstMaintainerResponseAt).toBe('2025-06-03T00:00:00Z');
+    });
+
+    it('never overwrites existing ledger fields on a re-seen entry (#1461)', () => {
+      const enriched = {
+        url: 'https://github.com/a/b/pull/1',
+        title: 'PR 1',
+        mergedAt: '2025-06-10T00:00:00Z',
+        openedAt: '2025-06-01T00:00:00Z',
+        firstMaintainerResponseAt: '2025-06-03T00:00:00Z',
+      };
+      stateManager.addMergedPRs([enriched]);
+
+      stateManager.addMergedPRs([
+        {
+          ...enriched,
+          openedAt: '2024-01-01T00:00:00Z',
+          firstMaintainerResponseAt: '2024-01-02T00:00:00Z',
+        },
+      ]);
+
+      const stored = stateManager.getMergedPRs();
+      expect(stored[0].openedAt).toBe('2025-06-01T00:00:00Z');
+      expect(stored[0].firstMaintainerResponseAt).toBe('2025-06-03T00:00:00Z');
+    });
+
+    it('deduplicates by URL within a single input batch (#1461)', () => {
+      const pr = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', mergedAt: '2025-06-10T00:00:00Z' };
+      const richer = { ...pr, openedAt: '2025-06-01T00:00:00Z' };
+
+      const result = stateManager.addMergedPRs([pr, richer]);
+
+      expect(result).toEqual({ added: 1, dropped: 0 });
+      const stored = stateManager.getMergedPRs();
+      expect(stored).toHaveLength(1);
+      // The duplicate in the same batch upgraded the first occurrence
+      expect(stored[0].openedAt).toBe('2025-06-01T00:00:00Z');
+    });
   });
 
   describe('getMergedPRWatermark', () => {
@@ -855,6 +915,44 @@ describe('StateManager merged PRs', () => {
       stateManager.addClosedPRs([pr]);
 
       expect(stateManager.getClosedPRs()).toHaveLength(1);
+    });
+
+    it('upgrades a stored minimal entry with ledger fields when re-seen richer (#1461)', () => {
+      const minimal = { url: 'https://github.com/a/b/pull/1', title: 'PR 1', closedAt: '2025-06-10T00:00:00Z' };
+      stateManager.addClosedPRs([minimal]);
+
+      const result = stateManager.addClosedPRs([
+        {
+          ...minimal,
+          openedAt: '2025-06-01T00:00:00Z',
+          firstMaintainerResponseAt: '2025-06-03T00:00:00Z',
+        },
+      ]);
+
+      expect(result).toEqual({ added: 0, dropped: 0 });
+      const stored = stateManager.getClosedPRs();
+      expect(stored).toHaveLength(1);
+      expect(stored[0].openedAt).toBe('2025-06-01T00:00:00Z');
+      expect(stored[0].firstMaintainerResponseAt).toBe('2025-06-03T00:00:00Z');
+    });
+
+    it('never overwrites existing ledger fields on a re-seen entry (#1461)', () => {
+      const enriched = {
+        url: 'https://github.com/a/b/pull/1',
+        title: 'PR 1',
+        closedAt: '2025-06-10T00:00:00Z',
+        openedAt: '2025-06-01T00:00:00Z',
+        firstMaintainerResponseAt: '2025-06-03T00:00:00Z',
+      };
+      stateManager.addClosedPRs([enriched]);
+
+      stateManager.addClosedPRs([
+        { ...enriched, openedAt: '2024-01-01T00:00:00Z', firstMaintainerResponseAt: '2024-01-02T00:00:00Z' },
+      ]);
+
+      const stored = stateManager.getClosedPRs();
+      expect(stored[0].openedAt).toBe('2025-06-01T00:00:00Z');
+      expect(stored[0].firstMaintainerResponseAt).toBe('2025-06-03T00:00:00Z');
     });
 
     it('drops entries with invalid URLs and reports the count (#1120)', () => {

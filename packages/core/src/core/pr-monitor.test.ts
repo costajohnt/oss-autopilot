@@ -2904,6 +2904,96 @@ describe('review comment fetch error handling (#229)', () => {
   });
 });
 
+describe('fetchPRDetails firstMaintainerResponseAt (#1461)', () => {
+  const prUrl = 'https://github.com/owner/repo/pull/1';
+
+  const makeMocks = (comments: Array<{ user: { login: string }; body: string; created_at: string }>) => ({
+    search: {
+      issuesAndPullRequests: vi.fn().mockResolvedValue({
+        data: {
+          total_count: 1,
+          items: [
+            {
+              html_url: prUrl,
+              title: 'Test PR',
+              pull_request: { html_url: prUrl },
+              created_at: '2026-02-01T00:00:00Z',
+              updated_at: '2026-02-07T00:00:00Z',
+            },
+          ],
+        },
+      }),
+    },
+    pulls: {
+      get: vi.fn().mockResolvedValue({
+        data: {
+          id: 1,
+          title: 'Test PR',
+          created_at: '2026-02-01T00:00:00Z',
+          updated_at: '2026-02-07T00:00:00Z',
+          head: { sha: 'abc123' },
+          mergeable: true,
+          mergeable_state: 'clean',
+          body: '',
+          draft: false,
+          review_comments: 0,
+          commits: 1,
+        },
+      }),
+      listReviews: vi.fn().mockResolvedValue({ data: [] }),
+      listReviewComments: vi.fn().mockResolvedValue({ data: [] }),
+    },
+    issues: {
+      listComments: vi.fn().mockResolvedValue({ data: comments }),
+    },
+    repos: {
+      getCombinedStatusForRef: vi.fn().mockResolvedValue({
+        data: { state: 'success', statuses: [] },
+      }),
+      getCommit: vi.fn().mockResolvedValue({
+        data: { commit: { author: { date: '2026-02-01T00:00:00Z' } }, author: { login: 'testuser' } },
+      }),
+    },
+    checks: {
+      listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [] } }),
+    },
+  });
+
+  beforeEach(() => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'testuser', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+  });
+
+  it('sets firstMaintainerResponseAt from the earliest maintainer comment', async () => {
+    mockOctokitInstance = makeMocks([
+      { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-01T10:00:00Z' },
+      { user: { login: 'maintainer' }, body: 'Thanks, looking', created_at: '2026-02-02T09:00:00Z' },
+      { user: { login: 'maintainer' }, body: 'One more thing', created_at: '2026-02-03T09:00:00Z' },
+    ]);
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
+
+    expect(prs).toHaveLength(1);
+    expect(prs[0].firstMaintainerResponseAt).toBe('2026-02-02T09:00:00Z');
+  });
+
+  it('leaves firstMaintainerResponseAt undefined when no maintainer has responded', async () => {
+    mockOctokitInstance = makeMocks([
+      { user: { login: 'testuser' }, body: 'My PR', created_at: '2026-02-01T10:00:00Z' },
+    ]);
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
+
+    expect(prs).toHaveLength(1);
+    expect(prs[0].firstMaintainerResponseAt).toBeUndefined();
+  });
+});
+
 describe('commitDatePromise error handling (#469)', () => {
   const prUrl = 'https://github.com/owner/repo/pull/1';
 

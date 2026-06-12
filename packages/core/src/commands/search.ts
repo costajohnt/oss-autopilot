@@ -7,6 +7,7 @@ import {
   adaptScoutLinkedPR,
   buildCandidateLinkedPR,
   createAutopilotScout,
+  SEARCH_DIVERSITY_RATIO,
   type ScoutBridgeDiagnostics,
 } from './scout-bridge.js';
 import { classifyLinkedPR, getStateManager } from '../core/index.js';
@@ -27,13 +28,11 @@ const MODULE = 'search';
 export const MAX_SEARCH_RESULTS = 100;
 
 /**
- * Fraction of search slots reserved for candidates that matched neither
- * strategy-preferred languages nor repos (#1244). Counterweight against
- * echo-chamber bias: without it, strategy-boosted searches return more of
- * what already merged, which merges more of the same, and the profile
- * narrows over time. Scout clamps to [0, 1]; 0.2 is the issue's proposal.
+ * Diversity-counterweight ratio (#1244). Moved to `scout-bridge.ts` in #1464
+ * (it is now also baked into the bridge-built `ScoutPreferences`); re-exported
+ * here so existing importers keep working.
  */
-export const SEARCH_DIVERSITY_RATIO = 0.2;
+export { SEARCH_DIVERSITY_RATIO } from './scout-bridge.js';
 
 interface SearchOptions {
   maxResults: number;
@@ -81,9 +80,12 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
 
   // Derive personalization from local history (#1244). `computeStrategy`
   // returns null below the merged-PR floor — in that case we pass nothing
-  // and scout's sort behaves exactly as before. Once strategy data is
-  // available, scout boosts language/repo matches into a separate sort
-  // tier (still no filtering).
+  // and scout falls back to the bridge-built preferences, which derive the
+  // same values from the same state (#1464), so the sort is identical either
+  // way. The explicit per-call pass is kept for self-documentation. Once
+  // strategy data is available, scout boosts language/repo matches into a
+  // separate sort tier (still no filtering). avoidRepos/boostIssueTypes are
+  // not passed per-call: scout reads them from the bridge-built preferences.
   const strategy = computeStrategy(stateManager.getState());
   const preferLanguages = strategy?.recommendations.languages ?? undefined;
   const preferRepos = strategy?.recommendations.repos ?? undefined;

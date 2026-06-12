@@ -237,6 +237,15 @@ export interface FetchedPR {
   createdAt: string;
   updatedAt: string;
 
+  /**
+   * Earliest maintainer (non-bot, non-contributor) comment or review on this
+   * PR (#1461). Computed by fetchPRDetails from the comment/review timeline
+   * it already fetches. Persisted with the digest's openPRs so merge/close
+   * detection can recover it for the outcome ledger after the PR leaves the
+   * open set. Undefined when no maintainer has responded yet.
+   */
+  firstMaintainerResponseAt?: string;
+
   /** Calendar days since the most recent activity (comment, commit, review). */
   daysSinceActivity: number;
 

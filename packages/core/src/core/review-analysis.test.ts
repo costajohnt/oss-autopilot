@@ -10,7 +10,53 @@ import {
   getInlineCommentBody,
   reviewHasInlineComments,
   checkUnrespondedComments,
+  getFirstMaintainerResponseAt,
 } from './review-analysis.js';
+
+describe('getFirstMaintainerResponseAt (#1461)', () => {
+  it('returns undefined when there are no comments or reviews', () => {
+    expect(getFirstMaintainerResponseAt([], [], 'contributor')).toBeUndefined();
+  });
+
+  it('returns undefined when the only activity is from the contributor', () => {
+    const comments = [{ user: { login: 'contributor' }, created_at: '2025-06-02T00:00:00Z' }];
+    expect(getFirstMaintainerResponseAt(comments, [], 'contributor')).toBeUndefined();
+  });
+
+  it('returns the earliest maintainer comment timestamp', () => {
+    const comments = [
+      { user: { login: 'contributor' }, created_at: '2025-06-01T00:00:00Z' },
+      { user: { login: 'maintainer' }, created_at: '2025-06-03T00:00:00Z' },
+      { user: { login: 'maintainer' }, created_at: '2025-06-02T00:00:00Z' },
+    ];
+    expect(getFirstMaintainerResponseAt(comments, [], 'contributor')).toBe('2025-06-02T00:00:00Z');
+  });
+
+  it('considers reviews and picks the earliest across comments and reviews', () => {
+    const comments = [{ user: { login: 'maintainer' }, created_at: '2025-06-05T00:00:00Z' }];
+    const reviews = [{ user: { login: 'reviewer' }, submitted_at: '2025-06-04T00:00:00Z' }];
+    expect(getFirstMaintainerResponseAt(comments, reviews, 'contributor')).toBe('2025-06-04T00:00:00Z');
+  });
+
+  it('skips bot authors', () => {
+    const comments = [
+      { user: { login: 'codecov[bot]' }, created_at: '2025-06-01T00:00:00Z' },
+      { user: { login: 'maintainer' }, created_at: '2025-06-03T00:00:00Z' },
+    ];
+    expect(getFirstMaintainerResponseAt(comments, [], 'contributor')).toBe('2025-06-03T00:00:00Z');
+  });
+
+  it('skips entries with missing authors or timestamps', () => {
+    const comments = [{ user: null, created_at: '2025-06-01T00:00:00Z' }];
+    const reviews = [{ user: { login: 'reviewer' }, submitted_at: null }];
+    expect(getFirstMaintainerResponseAt(comments, reviews, 'contributor')).toBeUndefined();
+  });
+
+  it('matches the contributor username case-insensitively', () => {
+    const comments = [{ user: { login: 'Contributor' }, created_at: '2025-06-01T00:00:00Z' }];
+    expect(getFirstMaintainerResponseAt(comments, [], 'contributor')).toBeUndefined();
+  });
+});
 
 describe('determineReviewDecision', () => {
   it('should return review_required when no reviews exist', () => {

@@ -120,6 +120,19 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     settableVia: 'setup',
     valueHint: 'comma-separated list of owner/repo',
   },
+  {
+    key: 'avoidRepos',
+    description:
+      'Repos (owner/repo) to softly downrank in discovery results — milder than excludeRepos (whole-list replace).',
+    settableVia: 'setup',
+    valueHint: 'comma-separated list of owner/repo',
+  },
+  {
+    key: 'boostIssueTypes',
+    description: 'Issue label types to softly boost in discovery ranking (whole-list replace).',
+    settableVia: 'setup',
+    valueHint: 'comma-separated list (e.g. bug,good first issue)',
+  },
 
   // ── Exclusion list mutators (config-only) ────────────────────────────
   {
@@ -163,6 +176,30 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     description: 'Exclude an entire org from discovery.',
     settableVia: 'config',
     valueHint: 'org name (no slash)',
+  },
+  {
+    key: 'add-avoid-repo',
+    description: 'Append a repo (owner/repo) to the soft-downrank avoid list.',
+    settableVia: 'config',
+    valueHint: 'owner/repo',
+  },
+  {
+    key: 'remove-avoid-repo',
+    description: 'Remove a repo from the soft-downrank avoid list.',
+    settableVia: 'config',
+    valueHint: 'owner/repo (must already be present)',
+  },
+  {
+    key: 'add-boost-issue-type',
+    description: 'Append an issue label type to the discovery ranking boost list.',
+    settableVia: 'config',
+    valueHint: 'issue label (e.g. bug)',
+  },
+  {
+    key: 'remove-boost-issue-type',
+    description: 'Remove an issue label type from the discovery ranking boost list.',
+    settableVia: 'config',
+    valueHint: 'issue label (must already be present)',
   },
 
   // ── Tooling ──────────────────────────────────────────────────────────

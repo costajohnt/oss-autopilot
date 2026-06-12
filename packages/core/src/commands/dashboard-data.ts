@@ -31,7 +31,7 @@ import {
   type RepoMetadataEntry,
 } from '../core/types.js';
 import type { ParseIssueListOutput } from '../formatters/json.js';
-import { toShelvedPRRef, buildStarFilter } from '../core/index.js';
+import { toShelvedPRRef, buildStarFilter, firstMaintainerResponseFromDigest } from '../core/index.js';
 
 const MODULE = 'dashboard-data';
 
@@ -398,9 +398,23 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       // Per-PR override failures (#1448) land in partialFailures so the SPA
       // banner flags PRs silently showing their un-overridden status.
       const overriddenPRs = applyStatusOverrides(prs, stateManager.getState(), partialFailures);
-      // Store new merged PRs incrementally (dedupes by URL)
+
+      // Previous run's digest — read BEFORE setLastDigest below replaces it.
+      // Supplies best-effort firstMaintainerResponseAt for PRs that were
+      // enriched while open, mirroring daily's Phase 3 (#1461). openedAt is
+      // already on the entries (created_at from the search result).
+      const previousDigest = stateManager.getState().lastDigest;
+
+      // Store new merged PRs incrementally (dedupes by URL; re-seen entries
+      // upgrade missing ledger fields in place)
       try {
-        const { dropped } = stateManager.addMergedPRs(newMergedPRs);
+        const { dropped } = stateManager.addMergedPRs(
+          newMergedPRs.map((pr) => ({
+            ...pr,
+            firstMaintainerResponseAt:
+              pr.firstMaintainerResponseAt ?? firstMaintainerResponseFromDigest(previousDigest, pr.url),
+          })),
+        );
         if (dropped > 0) {
           partialFailures.push(`Dropped ${dropped} merged PR(s) with invalid URLs before persistence`);
         }
@@ -409,9 +423,16 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
         warn(MODULE, `Failed to store merged PRs: ${errorMessage(error)}`);
       }
 
-      // Store new closed PRs incrementally (dedupes by URL)
+      // Store new closed PRs incrementally (dedupes by URL; re-seen entries
+      // upgrade missing ledger fields in place)
       try {
-        const { dropped } = stateManager.addClosedPRs(newClosedPRs);
+        const { dropped } = stateManager.addClosedPRs(
+          newClosedPRs.map((pr) => ({
+            ...pr,
+            firstMaintainerResponseAt:
+              pr.firstMaintainerResponseAt ?? firstMaintainerResponseFromDigest(previousDigest, pr.url),
+          })),
+        );
         if (dropped > 0) {
           partialFailures.push(`Dropped ${dropped} closed PR(s) with invalid URLs before persistence`);
         }

@@ -8,7 +8,7 @@ import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { runStatus, runConfig } from '@oss-autopilot/core/commands';
 import { getStateManager, splitRepo, fenceFetchedPR } from '@oss-autopilot/core';
-import { ensureGistInit } from './tools.js';
+import { ensureGistInit, reloadExternalState } from './tools.js';
 
 /** Build a standard MCP resource response with a single JSON content entry. */
 function resourceContent(uri: URL, data: unknown) {
@@ -52,6 +52,11 @@ async function resourceGistInit(): Promise<void> {
   } catch (e) {
     console.error('[MCP] Resource read proceeding on local state; gist init failed:', e);
   }
+  // #1439: reads have the same staleness problem as tool calls — a long-lived
+  // process otherwise serves boot-time state forever after any external CLI
+  // write (local mode) or remote push (gist mode). Reload failures degrade to
+  // cached state inside the helper; they never fail the read.
+  await reloadExternalState();
 }
 
 /**

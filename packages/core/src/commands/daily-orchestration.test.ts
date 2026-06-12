@@ -36,8 +36,6 @@ const mockSetMonthlyMergedCounts = vi.fn();
 const mockSetMonthlyClosedCounts = vi.fn();
 const mockSetMonthlyOpenedCounts = vi.fn();
 const mockSetLastDigest = vi.fn();
-const mockAddMergedPRs = vi.fn();
-const mockAddClosedPRs = vi.fn();
 const mockSave = vi.fn();
 const mockIsPRShelved = vi.fn();
 const mockUnshelvePR = vi.fn();
@@ -45,6 +43,8 @@ const mockGetStats = vi.fn();
 const mockGetIssueDismissedAt = vi.fn();
 const mockUndismissIssue = vi.fn();
 const mockGetStatusOverride = vi.fn();
+const mockAddMergedPRs = vi.fn(() => ({ added: 0, dropped: 0 }));
+const mockAddClosedPRs = vi.fn(() => ({ added: 0, dropped: 0 }));
 
 // daily.ts imports everything from '../core/index.js', so we mock the whole barrel export.
 // PRMonitor and IssueConversationMonitor are used as classes (new PRMonitor(...)),
@@ -904,6 +904,85 @@ describe('executeDailyCheck() — scout pass removal (#1458)', () => {
     // The deleted Phase 3.5 only ran on this nonempty-recent-PRs path.
     expect(mockCreateScout).not.toHaveBeenCalled();
     expect(result.warnings).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// executeDailyCheck() — outcome ledger persistence (#1461)
+// ---------------------------------------------------------------------------
+
+describe('executeDailyCheck() — outcome ledger (#1461)', () => {
+  const mergedPR = {
+    url: 'https://github.com/org/repo/pull/7',
+    repo: 'org/repo',
+    number: 7,
+    title: 'Merged PR',
+    mergedAt: '2026-01-24T12:00:00Z',
+    openedAt: '2026-01-10T00:00:00Z',
+  };
+  const closedPR = {
+    url: 'https://github.com/org/repo/pull/8',
+    repo: 'org/repo',
+    number: 8,
+    title: 'Closed PR',
+    closedAt: '2026-01-24T13:00:00Z',
+    openedAt: '2026-01-11T00:00:00Z',
+  };
+
+  it('persists openedAt from the recently-merged/closed fetch results', async () => {
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
+    mockFetchRecentlyClosedPRs.mockResolvedValue([closedPR]);
+
+    await executeDailyCheck('test-token');
+
+    expect(mockAddMergedPRs).toHaveBeenCalledWith([
+      expect.objectContaining({
+        url: mergedPR.url,
+        title: mergedPR.title,
+        mergedAt: mergedPR.mergedAt,
+        openedAt: '2026-01-10T00:00:00Z',
+      }),
+    ]);
+    expect(mockAddClosedPRs).toHaveBeenCalledWith([
+      expect.objectContaining({
+        url: closedPR.url,
+        title: closedPR.title,
+        closedAt: closedPR.closedAt,
+        openedAt: '2026-01-11T00:00:00Z',
+      }),
+    ]);
+  });
+
+  it('recovers firstMaintainerResponseAt from the previous persisted digest', async () => {
+    // The just-merged PR was open during the previous enriched run, so the
+    // persisted digest's openPRs entry carries its first maintainer response.
+    const previouslyOpen = makePR({
+      repo: 'org/repo',
+      number: 7,
+      url: mergedPR.url,
+      status: 'waiting_on_maintainer',
+      firstMaintainerResponseAt: '2026-01-12T09:00:00Z',
+    });
+    mockGetState.mockReturnValue(makeDefaultState({ lastDigest: makeDigest([previouslyOpen]) }));
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
+
+    await executeDailyCheck('test-token');
+
+    expect(mockAddMergedPRs).toHaveBeenCalledWith([
+      expect.objectContaining({
+        url: mergedPR.url,
+        firstMaintainerResponseAt: '2026-01-12T09:00:00Z',
+      }),
+    ]);
+  });
+
+  it('leaves firstMaintainerResponseAt undefined when the PR never appeared in a digest', async () => {
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
+
+    await executeDailyCheck('test-token');
+
+    const [persisted] = mockAddMergedPRs.mock.calls[0] as unknown as [Array<Record<string, unknown>>];
+    expect(persisted[0].firstMaintainerResponseAt).toBeUndefined();
   });
 });
 

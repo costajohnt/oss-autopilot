@@ -747,6 +747,8 @@ export const ClaimOutputSchema = z.object({
 export const InitOutputSchema = z.object({
   username: z.string(),
   message: z.string(),
+  // Post-mutation Gist checkpoint failure (#1440). Optional: absent on clean runs.
+  gistSyncWarning: z.string().optional(),
 });
 
 // ── #1190: plugin → CLI contract ─────────────────────────────────────
@@ -774,6 +776,8 @@ const SetupSetOutputSchema = z.object({
   success: z.literal(true),
   settings: z.record(z.string(), z.string()),
   warnings: z.array(z.string()).optional(),
+  // Post-mutation Gist checkpoint failure (#1440). Optional: absent on clean runs.
+  gistSyncWarning: z.string().optional(),
 });
 
 const SetupCompleteOutputSchema = z.object({
@@ -818,6 +822,8 @@ const ConfigSetOutputSchema = z.object({
   success: z.literal(true),
   key: z.string(),
   value: z.string(),
+  // Post-mutation Gist checkpoint failure (#1440). Optional: absent on clean runs.
+  gistSyncWarning: z.string().optional(),
 });
 
 const ConfigListKeysOutputSchema = z.object({

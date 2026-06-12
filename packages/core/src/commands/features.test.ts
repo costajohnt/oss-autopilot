@@ -91,6 +91,26 @@ describe('runFeatures', () => {
     });
   });
 
+  it('never passes personalization bias knobs per-call — scout 1.1.0 features() does not accept them (#1464)', async () => {
+    // Strategy bias (preferLanguages/preferRepos/avoidRepos/boostIssueTypes/
+    // diversityRatio) reaches the features path through the bridge-built
+    // ScoutPreferences instead (see scout-bridge buildScoutState). Passing
+    // them here would be silently ignored by scout.
+    mockFeatures.mockResolvedValue({
+      quickWins: [],
+      biggerBets: [],
+      anchorRepos: [],
+      message: null,
+    });
+
+    await runFeatures({ maxResults: 5 });
+
+    const callArg = mockFeatures.mock.calls[0][0];
+    expect(Object.keys(callArg).toSorted()).toEqual(['anchorThreshold', 'count', 'splitRatio']);
+    expect(callArg).not.toHaveProperty('preferLanguages');
+    expect(callArg).not.toHaveProperty('diversityRatio');
+  });
+
   it('returns both buckets, anchorRepos, and a null message when scout reports a clean run', async () => {
     mockFeatures.mockResolvedValue({
       quickWins: [makeScoutFeatureCandidate({ horizon: 'quick-win' })],
