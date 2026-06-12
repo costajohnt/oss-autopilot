@@ -192,6 +192,26 @@ export function buildStarFilter(state: Readonly<AgentState>): StarFilter | undef
 }
 
 /**
+ * Look up a just-merged/closed PR's `firstMaintainerResponseAt` from the
+ * previous run's persisted digest (#1461). At detection time the PR is no
+ * longer open, so it cannot be enriched without new API calls — but if it
+ * was open during a prior enriched run, the persisted digest's openPRs carry
+ * the timestamp. Best-effort: returns undefined when the PR never appeared
+ * in a persisted digest (e.g. opened and merged between runs, or the digest
+ * predates the field).
+ *
+ * Lives in core/daily-logic.ts so both ledger writers (daily Phase 3 and
+ * dashboard-data) share one lookup. Callers must read `state.lastDigest`
+ * BEFORE the current run overwrites it via setLastDigest.
+ */
+export function firstMaintainerResponseFromDigest(
+  digest: { openPRs: FetchedPR[] } | undefined,
+  url: string,
+): string | undefined {
+  return digest?.openPRs.find((pr) => pr.url === url)?.firstMaintainerResponseAt;
+}
+
+/**
  * Group PRs by repository (#80).
  * Ensures one agent per repo during parallel dispatch, preventing branch checkout conflicts.
  *

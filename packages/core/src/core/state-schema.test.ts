@@ -7,6 +7,8 @@ import {
   AgentStateSchema,
   AgentConfigSchema,
   FetchedPRSchema,
+  MergedPRSchema,
+  ClosedPRSchema,
   ShelvedPRRefSchema,
   RepoScoreSchema,
   TrackedIssueSchema,
@@ -154,6 +156,69 @@ describe('AgentStateSchema', () => {
         ],
       });
       expect(result.closedPRs![0].learningsExtractedAt).toBe('2025-02-01T00:00:00Z');
+    });
+
+    it('should accept legacy StoredMergedPR/StoredClosedPR entries without ledger fields (#1461)', () => {
+      const result = AgentStateSchema.parse({
+        version: 4,
+        mergedPRs: [{ url: 'https://github.com/o/r/pull/1', title: 'Fix bug', mergedAt: '2025-01-01' }],
+        closedPRs: [{ url: 'https://github.com/o/r/pull/2', title: 'Try fix', closedAt: '2025-01-01' }],
+      });
+      expect(result.mergedPRs![0].openedAt).toBeUndefined();
+      expect(result.mergedPRs![0].firstMaintainerResponseAt).toBeUndefined();
+      expect(result.closedPRs![0].openedAt).toBeUndefined();
+      expect(result.closedPRs![0].firstMaintainerResponseAt).toBeUndefined();
+    });
+
+    it('should accept StoredMergedPR with openedAt and firstMaintainerResponseAt (#1461)', () => {
+      const result = AgentStateSchema.parse({
+        version: 4,
+        mergedPRs: [
+          {
+            url: 'https://github.com/o/r/pull/1',
+            title: 'Fix bug',
+            mergedAt: '2025-01-10T00:00:00Z',
+            openedAt: '2025-01-01T00:00:00Z',
+            firstMaintainerResponseAt: '2025-01-03T00:00:00Z',
+          },
+        ],
+      });
+      expect(result.mergedPRs![0].openedAt).toBe('2025-01-01T00:00:00Z');
+      expect(result.mergedPRs![0].firstMaintainerResponseAt).toBe('2025-01-03T00:00:00Z');
+    });
+
+    it('should accept StoredClosedPR with openedAt and firstMaintainerResponseAt (#1461)', () => {
+      const result = AgentStateSchema.parse({
+        version: 4,
+        closedPRs: [
+          {
+            url: 'https://github.com/o/r/pull/2',
+            title: 'Try fix',
+            closedAt: '2025-01-10T00:00:00Z',
+            openedAt: '2025-01-01T00:00:00Z',
+            firstMaintainerResponseAt: '2025-01-03T00:00:00Z',
+          },
+        ],
+      });
+      expect(result.closedPRs![0].openedAt).toBe('2025-01-01T00:00:00Z');
+      expect(result.closedPRs![0].firstMaintainerResponseAt).toBe('2025-01-03T00:00:00Z');
+    });
+
+    it('should accept digest MergedPR/ClosedPR entries with and without openedAt (#1461)', () => {
+      const base = {
+        url: 'https://github.com/o/r/pull/3',
+        repo: 'o/r',
+        number: 3,
+        title: 'Feat',
+      };
+      expect(MergedPRSchema.parse({ ...base, mergedAt: '2025-01-10' }).openedAt).toBeUndefined();
+      expect(MergedPRSchema.parse({ ...base, mergedAt: '2025-01-10', openedAt: '2025-01-01' }).openedAt).toBe(
+        '2025-01-01',
+      );
+      expect(ClosedPRSchema.parse({ ...base, closedAt: '2025-01-10' }).openedAt).toBeUndefined();
+      expect(ClosedPRSchema.parse({ ...base, closedAt: '2025-01-10', openedAt: '2025-01-01' }).openedAt).toBe(
+        '2025-01-01',
+      );
     });
 
     it('should accept analyzedIssueConversations', () => {
