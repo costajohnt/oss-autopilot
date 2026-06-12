@@ -37,12 +37,12 @@ vi.mock('../core/index.js', async () => {
   };
 });
 
-// paginateAll iterates pages; in our mocks the first call returns the
-// full list and the function signals "done" by returning an empty page.
+// paginateAllDetailed iterates pages; in our mocks the first call returns
+// the full list and the function signals "done" by returning an empty page.
 vi.mock('../core/pagination.js', () => ({
-  paginateAll: async (fn: (page: number) => Promise<{ data: unknown[] }>) => {
+  paginateAllDetailed: async (fn: (page: number) => Promise<{ data: unknown[] }>) => {
     const { data } = await fn(1);
-    return data;
+    return { items: data, truncated: false };
   },
 }));
 

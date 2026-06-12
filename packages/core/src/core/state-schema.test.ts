@@ -6,10 +6,12 @@ import { describe, it, expect } from 'vitest';
 import {
   AgentStateSchema,
   AgentConfigSchema,
+  FetchedPRSchema,
   ShelvedPRRefSchema,
   RepoScoreSchema,
   TrackedIssueSchema,
 } from './state-schema.js';
+import { makeFetchedPR } from './test-utils.js';
 
 describe('AgentStateSchema', () => {
   describe('missing optional fields get defaults', () => {
@@ -262,6 +264,66 @@ describe('ShelvedPRRefSchema', () => {
     it('should fail for invalid status "dormant"', () => {
       expect(ShelvedPRRefSchema.safeParse({ ...validShelvedPR, status: 'dormant' }).success).toBe(false);
     });
+  });
+});
+
+describe('FetchedPRSchema (#1456)', () => {
+  it('should accept a full real FetchedPR and preserve enrichment fields via passthrough', () => {
+    const pr = makeFetchedPR();
+    const result = FetchedPRSchema.safeParse(pr);
+    expect(result.success).toBe(true);
+    // .passthrough() must keep the fields the schema does not pin, so a
+    // round-tripped digest loses nothing the dashboard renders.
+    expect(result.data).toEqual(pr);
+  });
+
+  it('should accept a legacy minimal entry with only the identity/status core', () => {
+    const legacy = {
+      url: 'https://github.com/owner/repo/pull/7',
+      repo: 'owner/repo',
+      number: 7,
+      status: 'waiting_on_maintainer',
+    };
+    expect(FetchedPRSchema.safeParse(legacy).success).toBe(true);
+  });
+
+  it('should reject an entry missing url', () => {
+    const garbage = { repo: 'owner/repo', number: 7, status: 'waiting_on_maintainer' };
+    expect(FetchedPRSchema.safeParse(garbage).success).toBe(false);
+  });
+
+  it('should reject an entry with an invalid status', () => {
+    const garbage = {
+      url: 'https://github.com/owner/repo/pull/7',
+      repo: 'owner/repo',
+      number: 7,
+      status: 'dormant',
+    };
+    expect(FetchedPRSchema.safeParse(garbage).success).toBe(false);
+  });
+
+  it('should parse a persisted state whose lastDigest carries populated PR arrays', () => {
+    // Regression guard for the load path: tightening the digest arrays from
+    // z.any() must not reject states persisted by real producers, where
+    // every entry is a full FetchedPR.
+    const pr = makeFetchedPR();
+    const state = {
+      version: 4,
+      lastDigest: {
+        generatedAt: '2026-06-01T00:00:00Z',
+        openPRs: [pr],
+        needsAddressingPRs: [],
+        waitingOnMaintainerPRs: [pr],
+        recentlyClosedPRs: [],
+        recentlyMergedPRs: [],
+        shelvedPRs: [],
+        autoUnshelvedPRs: [],
+        summary: { totalActivePRs: 1, totalNeedingAttention: 0, totalMergedAllTime: 5, mergeRate: 83.3 },
+      },
+    };
+    const result = AgentStateSchema.safeParse(state);
+    expect(result.success).toBe(true);
+    expect(result.data?.lastDigest?.openPRs).toEqual([pr]);
   });
 });
 

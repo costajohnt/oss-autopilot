@@ -229,7 +229,33 @@ describe('runFetchCorpus', () => {
 
     expect(out.prCount).toBe(1);
     expect(out.bundles).toHaveLength(1);
+    expect(out.warnings).toBeUndefined();
     expect(mockMarkPRCommentsFetched).toHaveBeenCalledWith(PR_RECENT, expect.any(String));
+  });
+
+  it('surfaces a warning for bundles whose comment streams were truncated (#1456)', async () => {
+    mockGetMergedPRs.mockReturnValue([{ url: PR_RECENT, title: 't', mergedAt: recentTimestamp() }]);
+    mockFetchPRCommentBundlesBatch.mockResolvedValue({
+      bundles: [
+        {
+          prUrl: PR_RECENT,
+          prTitle: 't',
+          repo: 'owner/repo',
+          mergedAt: recentTimestamp(),
+          reviews: [],
+          reviewComments: [],
+          issueComments: [],
+          truncated: true,
+        },
+      ],
+      failures: [],
+    });
+
+    const out = await runFetchCorpus({ repo: 'owner/repo' });
+
+    expect(out.warnings).toHaveLength(1);
+    expect(out.warnings![0]).toContain(PR_RECENT);
+    expect(out.warnings![0]).toContain('pagination cap');
   });
 
   it('excludes PRs older than 12 months (recency cliff)', async () => {

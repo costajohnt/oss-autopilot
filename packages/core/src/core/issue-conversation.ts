@@ -9,7 +9,7 @@
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
-import { paginateAll } from './pagination.js';
+import { paginateAllDetailed } from './pagination.js';
 import { getStateManager } from './state.js';
 import { daysBetween } from './dates.js';
 import { splitRepo, extractOwnerRepo, isOwnRepo } from './urls.js';
@@ -186,7 +186,7 @@ export class IssueConversationMonitor {
   ): Promise<CommentedIssue | null> {
     const { owner, repo } = splitRepo(repoFullName);
 
-    const allComments = await paginateAll((page) =>
+    const { items: allComments, truncated } = await paginateAllDetailed((page) =>
       this.octokit.issues.listComments({
         owner,
         repo,
@@ -195,6 +195,15 @@ export class IssueConversationMonitor {
         page,
       }),
     );
+    if (truncated) {
+      // Comments arrive oldest-first, so hitting the pagination cap drops
+      // the NEWEST responses — conversation status for this issue may be
+      // stale (#1456). Same log-only channel as the search truncation above.
+      warn(
+        MODULE,
+        `Comment pagination cap reached for ${repoFullName}#${item.number}; the newest comments were not fetched and conversation status may be stale.`,
+      );
+    }
 
     const timeline: Array<{
       author: string;
