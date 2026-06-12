@@ -18,6 +18,7 @@
 import { warn } from './logger.js';
 import { errorMessage } from './errors.js';
 import { getStateManager } from './state.js';
+import type { AttentionSummary } from './pr-attention.js';
 import type {
   FetchedPR,
   FetchedPRStatus,
@@ -384,12 +385,14 @@ export function collectActionableIssues(prs: FetchedPR[], lastDigestAt?: string)
  * @param actionableIssues - Issues requiring attention
  * @param capacity - Current capacity assessment
  * @param commentedIssues - Issues with comment activity
+ * @param attention - Attention bucket counts; non-zero stuck-CI / dormant-followup buckets add a follow_up item
  * @returns Action menu with context flags for orchestration
  */
 export function computeActionMenu(
   actionableIssues: ActionableIssue[],
   capacity: CapacityAssessment,
   commentedIssues: CommentedIssue[] = [],
+  attention?: Pick<AttentionSummary, 'stuckCI' | 'dormantFollowup'>,
 ): ActionMenu {
   const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   const items: ActionMenuItem[] = [];
@@ -415,6 +418,24 @@ export function computeActionMenu(
       key: 'issue_replies',
       label: `Review ${issueResponses.length} issue repl${issueResponses.length === 1 ? 'y' : 'ies'}`,
       description: 'Maintainers responded to your comments on issues',
+    });
+  }
+
+  // Follow-up nudges (#1462) — the stuck_ci / dormant_followup buckets from
+  // summarizeAttentionBuckets get a menu path to workflows/dormant-pr-follow-up.md
+  // instead of only a headline count. Emitted only when a bucket is non-zero,
+  // so menus without stuck/dormant PRs are unchanged.
+  const stuckCI = attention?.stuckCI ?? 0;
+  const dormantFollowup = attention?.dormantFollowup ?? 0;
+  if (stuckCI > 0 || dormantFollowup > 0) {
+    const parts: string[] = [];
+    if (stuckCI > 0) parts.push(`${stuckCI} stuck-CI`);
+    if (dormantFollowup > 0) parts.push(`${dormantFollowup} dormant`);
+    const total = stuckCI + dormantFollowup;
+    items.push({
+      key: 'follow_up',
+      label: `Follow up on ${parts.join(' and ')} PR${total === 1 ? '' : 's'}`,
+      description: 'Waiting PRs that may need a nudge (pending CI or no review activity)',
     });
   }
 
