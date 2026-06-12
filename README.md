@@ -372,9 +372,9 @@ Without pr-review-toolkit, the built-in pre-commit-reviewer handles all review p
 
 ## How It Decides
 
-Two heuristics directly shape which repos surface in discovery:
+Two docs explain the heuristics that shape which repos surface in discovery and how they're evaluated:
 
-- **[Repo scoring](docs/repo-scoring.md)** — 1–10 score per repo, factoring merged/closed PR history, recency, maintainer responsiveness, and hostility signals. The default `minRepoScoreThreshold` (4) excludes repos below the cutoff from search results.
+- **[Repo scores](docs/repo-scores.md)** — two distinct 1–10 numbers per repo: the cached **history score** (your own merged/closed PR outcomes, recency, responsiveness, hostility signals; the default `minRepoScoreThreshold` of 4 excludes repos below the cutoff from search results) and the fresh **health score** (`repo-vet`'s weighted rubric over the repo's current activity, PR speed, merge rate, guidelines, and stability).
 - **[Anti-LLM policy detection](docs/anti-llm-policy.md)** — scans CONTRIBUTING / CODE_OF_CONDUCT / README for language indicating the project doesn't accept AI-assisted contributions. Hard skip when matched.
 
 Both docs explain the exact rules so you can understand why a given repo did or didn't surface.
