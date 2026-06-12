@@ -3,7 +3,7 @@
 MCP server for [OSS Autopilot](https://github.com/costajohnt/oss-autopilot) — exposes PR tracking, issue discovery, and contribution management as MCP tools for any MCP-compatible client.
 
 [![npm](https://img.shields.io/npm/v/@oss-autopilot/mcp)](https://www.npmjs.com/package/@oss-autopilot/mcp)
-![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)
+![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## What It Provides
@@ -120,10 +120,10 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `vet` | Analyze an issue for contribution suitability | Yes |
 | `verify-issue` | Deterministically verify issue state and linked-PR claims before vetting | Yes |
 | `vet-list` | Re-vet all available issues in the curated issue list | No |
-| `track` | Fetch metadata for a pull request (informational; nothing persists) | No |
+| `track` | Fetch metadata for a pull request (informational; nothing persists) | Yes |
 | `compliance-score` | Score a PR against opensource.guide best practices (#1245) | Yes |
 | `repo-vet` | Compute the repo health rubric (1–10 + verdict) for `owner/repo` (#1271) | Yes |
-| `strategy` | On-demand contribution strategy snapshot via `computeStrategy()` (#1243) | No |
+| `strategy` | On-demand contribution strategy snapshot via `computeStrategy()` (#1243) | Yes |
 | `comments` | Fetch and display PR comments | Yes |
 | `post` | Post a comment on an issue or PR | No |
 | `claim` | Claim an issue by posting a comment | No |

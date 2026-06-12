@@ -324,7 +324,7 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 ├── agents/                      # 7 specialized agents (PR responder, issue scout, etc.)
 ├── skills/                      # Contribution best practices
 ├── workflows/                   # Delegated logic loaded by commands on demand
-├── hooks/                       # Plugin hooks (session-start)
+├── hooks/                       # Plugin hooks (session-start + PreToolUse guards)
 ├── packages/
 │   ├── core/                    # @oss-autopilot/core — CLI + core library
 │   │   ├── src/commands/        # CLI subcommands
@@ -347,7 +347,7 @@ claude --plugin-dir ./oss-autopilot
 <details>
 <summary><strong>Enhanced Code Review (optional)</strong></summary>
 
-The plugin includes a built-in **pre-commit-reviewer** agent that reviews all code changes before committing. For enhanced parallel review, install the **pr-review-toolkit** plugin (search for it in the Claude Code plugin marketplace) — it adds 5 specialized reviewers that run simultaneously:
+The plugin includes a built-in **pre-commit-reviewer** agent that reviews all code changes before committing. For enhanced parallel review, install the **pr-review-toolkit** plugin (search for it in the Claude Code plugin marketplace) — it adds 5 reviewers that run simultaneously, plus a conditional type-design-analyzer for TypeScript diffs:
 
 | Agent | Focus |
 |-------|-------|
@@ -356,7 +356,7 @@ The plugin includes a built-in **pre-commit-reviewer** agent that reviews all co
 | `code-simplifier` | Dead code, unnecessary complexity |
 | `pr-test-analyzer` | Test coverage and assertion quality |
 | `comment-analyzer` | Comment accuracy and maintainability |
-| `type-design-analyzer` | TypeScript type design (encapsulation, invariants, enforcement) |
+| `type-design-analyzer` | TypeScript type design (encapsulation, invariants, enforcement) — dispatched only when the diff includes `.ts`/`.tsx` files |
 
 Without pr-review-toolkit, the built-in pre-commit-reviewer handles all review phases as a single agent with the same fix-and-re-review loop.
 

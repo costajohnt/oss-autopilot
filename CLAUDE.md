@@ -74,7 +74,7 @@ Repo root (also the Claude Code plugin directory):
 ├── skills/oss-contribution/SKILL.md     # Contribution index (universal rules)
 ├── skills/pr-etiquette/SKILL.md         # Review responses, PR descriptions, dormant follow-up
 ├── skills/contribution-ethics/SKILL.md  # AI attribution, AI-tell avoidance, defer-to-human
-├── hooks/session-start.sh               # Plugin session start hook
+├── hooks/                               # Plugin hooks (session-start + PreToolUse guards)
 ├── workflows/*.md                       # Workflow orchestration files
 ├── .claude-plugin/plugin.json           # Plugin manifest
 ├── .claude-plugin/marketplace.json      # Marketplace catalog
