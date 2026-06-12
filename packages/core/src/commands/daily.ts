@@ -657,7 +657,7 @@ function generateDigestOutput(
   // the same buckets per-PR, so the headline counts cannot diverge.
   const attention = summarizeAttentionBuckets(activePRs);
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length, attention);
-  const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues);
+  const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues, attention);
   const repoGroups = groupPRsByRepo(activePRs);
 
   // Periodic strategy snapshot (#1270 Step 2). Cadence-gated to fire every
