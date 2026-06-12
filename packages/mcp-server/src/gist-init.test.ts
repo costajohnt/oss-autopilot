@@ -131,12 +131,88 @@ describe('ensureGistInit retry semantics (#1368)', () => {
     expect(firstPayload.gistInitWarning).toMatch(/LOCAL-ONLY/);
     expect(firstPayload.ok).toBe(true);
 
-    // Recovery: the next call re-runs init end to end and the warning clears.
+    // Recovery: the next call re-runs init end to end, the warning clears,
+    // and a ONE-SHOT notice flags that degraded-window writes were not
+    // merged into the Gist (#1431) — instead of presenting a pristine run.
     const second = await client.callTool({ name: 'status', arguments: {} });
     expect(second.isError).toBeFalsy();
     const secondPayload = JSON.parse((second.content as Array<{ text: string }>)[0].text);
     expect(secondPayload.gistInitWarning).toBeUndefined();
+    expect(secondPayload.gistRecoveryNotice).toMatch(/recovered/i);
     expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
+
+    // One-shot: the call after recovery is clean.
+    const third = await client.callTool({ name: 'status', arguments: {} });
+    const thirdPayload = JSON.parse((third.content as Array<{ text: string }>)[0].text);
+    expect(thirdPayload.gistRecoveryNotice).toBeUndefined();
+  });
+
+  it.each([
+    ['config', {}],
+    ['setup', {}],
+    ['init', { username: 'testuser' }],
+    ['state-unlink', {}],
+  ] as const)(
+    'persistence-affecting tool %s resets the init memo so a mid-session flip takes effect (#1431)',
+    async (toolName, toolArgs) => {
+      // First call memoizes a local-mode resolution.
+      mockEnsureGistPersistence.mockResolvedValueOnce('local-mode');
+      await client.callTool({ name: 'status', arguments: {} });
+      expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(1);
+
+      // The flip rides the memo itself, but resets it afterwards.
+      const flip = await client.callTool({ name: toolName, arguments: toolArgs as Record<string, unknown> });
+      expect(flip.isError).toBeFalsy();
+      expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(1);
+
+      // Next tool call re-runs init end to end and honors the new mode.
+      await client.callTool({ name: 'status', arguments: {} });
+      expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('the memo resets even when the persistence-affecting tool FAILS (partial setup apply)', async () => {
+    // runSetup applies earlier --set pairs in memory before a later invalid
+    // value throws — the memo must reset either way.
+    mockEnsureGistPersistence.mockResolvedValueOnce('local-mode');
+    await client.callTool({ name: 'status', arguments: {} });
+
+    const { runSetup } = await import('@oss-autopilot/core/commands');
+    vi.mocked(runSetup).mockRejectedValueOnce(new Error('Invalid value for minStars'));
+    const failed = await client.callTool({ name: 'setup', arguments: {} });
+    expect(failed.isError).toBe(true);
+
+    await client.callTool({ name: 'status', arguments: {} });
+    expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
+  });
+
+  it('resource reads run gist init, and proceed on degraded AND hard init errors (#1431)', async () => {
+    // Degraded: read succeeds, init observed.
+    mockEnsureGistPersistence.mockResolvedValueOnce('degraded');
+    const degradedRead = await client.readResource({ uri: 'oss://status' });
+    expect(degradedRead.contents).toHaveLength(1);
+    expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(1);
+
+    // Hard error: resources are diagnostic surfaces — the read still serves
+    // local state instead of bricking (unlike the tool path, which errors).
+    mockEnsureGistPersistence.mockRejectedValueOnce(new Error('Gist scope missing'));
+    const hardErrorRead = await client.readResource({ uri: 'oss://status' });
+    expect(hardErrorRead.contents).toHaveLength(1);
+  });
+
+  it('a recovery notice is dropped (not leaked) when the recovering response has no object payload', async () => {
+    mockEnsureGistPersistence.mockResolvedValueOnce('degraded');
+    await client.callTool({ name: 'status', arguments: {} });
+
+    // Recovery lands on a call whose tool returns undefined: notice dropped.
+    mockRunStatus.mockResolvedValueOnce(undefined);
+    const recovering = await client.callTool({ name: 'status', arguments: {} });
+    expect((recovering.content as Array<{ text: string }>)[0].text).toBe('{}');
+
+    // It must NOT resurface on the next unrelated response.
+    const after = await client.callTool({ name: 'status', arguments: {} });
+    const payload = JSON.parse((after.content as Array<{ text: string }>)[0].text);
+    expect(payload.gistRecoveryNotice).toBeUndefined();
   });
 
   it('a transient token-fetch failure (null token in gist mode) warns and retries (#1415)', async () => {

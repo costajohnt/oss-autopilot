@@ -51,6 +51,67 @@ async function runConfig(
   return { stdout: result.stdout, stderr: result.stderr, json };
 }
 
+// ── #1431: localOnly commands bootstrap gist persistence best-effort ──────
+//
+// `config` is localOnly (no auth gate), but a gist-configured user's
+// mutating localOnly commands must not silently write local-only. The CLI
+// peeks the state file, warns on stderr when gist is configured but
+// unreachable, and still completes the command (warn-and-proceed — these
+// are the repair commands).
+describe.skipIf(!BUNDLE_EXISTS)('localOnly gist bootstrap warning E2E (#1431)', () => {
+  const GIST_HOME = '/tmp/oss-autopilot-e2e-gist-warn-test-' + process.pid;
+  // PATH with only node's own directory: `gh` is deliberately unresolvable,
+  // so the token probe fails deterministically with no network and no
+  // dependence on the runner's gh auth state.
+  const NODE_ONLY_PATH = path.dirname(process.execPath);
+
+  beforeAll(() => {
+    fs.mkdirSync(path.join(GIST_HOME, '.oss-autopilot'), { recursive: true });
+  });
+
+  afterAll(() => {
+    fs.rmSync(GIST_HOME, { recursive: true, force: true });
+  });
+
+  async function runConfigIn(home: string): Promise<{ stdout: string; stderr: string }> {
+    const result = await execFileAsync(process.execPath, [BUNDLE_PATH, 'config', '--json'], {
+      timeout: 10_000,
+      env: { ...process.env, GITHUB_TOKEN: '', PATH: NODE_ONLY_PATH, HOME: home },
+      cwd: home,
+    }).catch((err: any) => ({ stdout: (err.stdout as string) || '', stderr: (err.stderr as string) || '' }));
+    return { stdout: result.stdout, stderr: result.stderr };
+  }
+
+  it('warns LOCAL-ONLY on stderr and still succeeds when gist is configured but no token is available', async () => {
+    fs.writeFileSync(
+      path.join(GIST_HOME, '.oss-autopilot', 'state.json'),
+      JSON.stringify({ version: 4, config: { persistence: 'gist' } }),
+      'utf8',
+    );
+
+    const { stdout, stderr } = await runConfigIn(GIST_HOME);
+
+    expect(stderr).toContain('LOCAL-ONLY');
+    // The command itself still completes with a success envelope.
+    const json = JSON.parse(stdout);
+    expect(json).toHaveProperty('success', true);
+  });
+
+  it('emits no gist warning for a local-mode state file', async () => {
+    fs.writeFileSync(
+      path.join(GIST_HOME, '.oss-autopilot', 'state.json'),
+      JSON.stringify({ version: 4, config: { persistence: 'local' } }),
+      'utf8',
+    );
+
+    const { stdout, stderr } = await runConfigIn(GIST_HOME);
+
+    expect(stderr).not.toContain('LOCAL-ONLY');
+    const json = JSON.parse(stdout);
+    expect(json).toHaveProperty('success', true);
+  });
+});
+
 describe.skipIf(!BUNDLE_EXISTS)('config --json E2E', () => {
   beforeAll(() => {
     fs.mkdirSync(TEST_HOME, { recursive: true });

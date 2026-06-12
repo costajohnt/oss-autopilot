@@ -1151,6 +1151,47 @@ export async function ensureGistPersistence(token: string | null): Promise<GistP
 }
 
 /**
+ * Best-effort gist bootstrap for entry points WITHOUT the auth gate (#1431):
+ * the CLI's localOnly commands (shelve/move/dismiss/override/config/setup/...)
+ * skip token enforcement, but a gist-configured user's mutations must still
+ * reach the Gist — their maybeCheckpoint calls silently no-op when the
+ * singleton never bootstrapped.
+ *
+ * Returns a human-readable LOCAL-ONLY warning when the process will write
+ * local-only despite a gist config, or null when no warning is needed
+ * (local mode, or gist mode successfully activated).
+ *
+ * Ordering: peek first with no token (zero spawn cost for genuinely-local
+ * users), fetch a token only when the config asks for gist. Hard
+ * ConfigurationErrors are converted to a warning instead of thrown — the
+ * localOnly set includes config/setup, the very commands needed to REPAIR a
+ * broken gist setup, so they must not be bricked by it. (The auth-gated
+ * path keeps throwing per #1202.)
+ */
+export async function bootstrapGistBestEffort(fetchToken: () => Promise<string | null>): Promise<string | null> {
+  let reason: string | null = null;
+  try {
+    let status = await ensureGistPersistence(null);
+    if (status === 'no-token') {
+      status = await ensureGistPersistence(await fetchToken());
+    }
+    if (status === 'no-token') reason = 'no GitHub token is available';
+    else if (status === 'state-unreadable') reason = 'the state file could not be read';
+    else if (status === 'degraded') reason = 'Gist initialization hit a transient network failure';
+  } catch (err) {
+    reason =
+      err instanceof ConfigurationError
+        ? `Gist initialization failed (${errorMessage(err)}) — fix the Gist setup (check the token's gist scope, or run state-show / setup) before relying on sync`
+        : `Gist initialization failed: ${errorMessage(err)}`;
+  }
+  if (reason === null) return null;
+  return (
+    `Gist persistence is configured but ${reason} — changes made by this command are ` +
+    'LOCAL-ONLY and may be overwritten by the next successful Gist sync.'
+  );
+}
+
+/**
  * Reset the singleton StateManager instance to null. Intended for test isolation.
  */
 export function resetStateManager(): void {

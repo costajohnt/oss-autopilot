@@ -47,7 +47,13 @@ vi.mock('./paths.js', async (importOriginal) => {
   };
 });
 
-import { StateManager, getStateManager, resetStateManager, ensureGistPersistence } from './state.js';
+import {
+  StateManager,
+  getStateManager,
+  resetStateManager,
+  ensureGistPersistence,
+  bootstrapGistBestEffort,
+} from './state.js';
 import { GistPermissionError } from './errors.js';
 
 function writeGistConfiguredState(): void {
@@ -161,5 +167,72 @@ describe('ensureGistPersistence retry/upgrade semantics (#1415)', () => {
     writeGistConfiguredState();
     createWithGistSpy.mockRejectedValueOnce(new GistPermissionError('token lacks gist scope'));
     await expect(ensureGistPersistence('token')).rejects.toThrow(/gist scope/);
+  });
+});
+
+describe('bootstrapGistBestEffort — localOnly CLI entry points (#1431)', () => {
+  let createWithGistSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gist-besteffort-'));
+    resetStateManager();
+    createWithGistSpy = vi.spyOn(StateManager, 'createWithGist');
+  });
+
+  afterEach(() => {
+    createWithGistSpy.mockRestore();
+    resetStateManager();
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it('local mode: no warning and no token fetch at all', async () => {
+    const fetchToken = vi.fn().mockResolvedValue('token');
+    expect(await bootstrapGistBestEffort(fetchToken)).toBeNull();
+    expect(fetchToken).not.toHaveBeenCalled();
+    expect(createWithGistSpy).not.toHaveBeenCalled();
+  });
+
+  it('gist mode + token: bootstraps the singleton and returns no warning (mutations will checkpoint)', async () => {
+    writeGistConfiguredState();
+    const gistManager = { isGistMode: () => true } as unknown as StateManager;
+    createWithGistSpy.mockResolvedValueOnce(gistManager);
+
+    expect(await bootstrapGistBestEffort(vi.fn().mockResolvedValue('token'))).toBeNull();
+    // The load-bearing positive: the singleton is gist-backed, so the
+    // command's own maybeCheckpoint will actually push instead of no-op.
+    expect(getStateManager().isGistMode()).toBe(true);
+    expect(createWithGistSpy).toHaveBeenCalledWith('token');
+  });
+
+  it('gist mode + no token: LOCAL-ONLY warning, no bootstrap attempt', async () => {
+    writeGistConfiguredState();
+    const warning = await bootstrapGistBestEffort(vi.fn().mockResolvedValue(null));
+    expect(warning).toMatch(/LOCAL-ONLY/);
+    expect(warning).toMatch(/no GitHub token/);
+    expect(createWithGistSpy).not.toHaveBeenCalled();
+  });
+
+  it('transient init failure: degraded warning, command proceeds', async () => {
+    writeGistConfiguredState();
+    createWithGistSpy.mockRejectedValueOnce(transientError());
+    const warning = await bootstrapGistBestEffort(vi.fn().mockResolvedValue('token'));
+    expect(warning).toMatch(/LOCAL-ONLY/);
+    expect(warning).toMatch(/transient network failure/);
+  });
+
+  it('unreadable state file: warning, command proceeds', async () => {
+    fs.writeFileSync(path.join(mockTmpDir, 'state.json'), '{ not json', 'utf8');
+    const warning = await bootstrapGistBestEffort(vi.fn().mockResolvedValue('token'));
+    expect(warning).toMatch(/state file could not be read/);
+  });
+
+  it('hard ConfigurationError: warn-and-proceed with repair guidance, NEVER throws (repair commands must stay usable)', async () => {
+    writeGistConfiguredState();
+    createWithGistSpy.mockRejectedValueOnce(new GistPermissionError('token lacks gist scope'));
+    const warning = await bootstrapGistBestEffort(vi.fn().mockResolvedValue('token'));
+    expect(warning).toMatch(/LOCAL-ONLY/);
+    expect(warning).toMatch(/gist scope/);
+    expect(warning).toMatch(/fix the Gist setup/);
   });
 });

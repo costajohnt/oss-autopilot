@@ -80,6 +80,19 @@ let gistInitPromise: Promise<void> | null = null;
  * (#1415). The CAUSE is stored; the warning prose is rendered at the edge. */
 type GistDegradedCause = 'no-token' | 'degraded' | 'state-unreadable';
 let gistDegradedCause: GistDegradedCause | null = null;
+/** One-shot recovery notice (#1431): after a degraded window ends, the next
+ * response says so instead of presenting a pristine run — mutations made
+ * during the outage were local-only and were not merged into the Gist. */
+let gistRecoveryNoticePending = false;
+
+/** Reset the init memo so the NEXT tool call re-runs gist init (#1431).
+ * Called after tools that can change the persistence config mid-session
+ * (setup/config/init/state-unlink) — without this, flipping
+ * `persistence=gist` after a memoized local-mode init silently stayed
+ * local-only until process restart. */
+function resetGistInitMemo(): void {
+  gistInitPromise = null;
+}
 
 function gistWarningText(cause: GistDegradedCause): string {
   const reason =
@@ -121,6 +134,12 @@ export async function ensureGistInit(): Promise<GistDegradedCause | null> {
         // do so (getStateManagerAsync allows the singleton upgrade).
         gistInitPromise = null;
       } else {
+        // Recovery edge (#1431): if the previous resolution was degraded,
+        // the next response carries a one-shot notice instead of silently
+        // presenting a pristine run.
+        if (gistDegradedCause !== null && status === 'gist') {
+          gistRecoveryNoticePending = true;
+        }
         gistDegradedCause = null;
       }
     })();
@@ -171,6 +190,22 @@ function wrapTool<A>(fn: (args: A) => Promise<unknown>): (args: A) => Promise<Re
       // object or undefined).
       if (degradedCause && data && typeof data === 'object' && !Array.isArray(data)) {
         return ok({ ...(data as Record<string, unknown>), gistInitWarning: gistWarningText(degradedCause) });
+      }
+      if (gistRecoveryNoticePending) {
+        // Consume the one-shot flag unconditionally — a non-object payload
+        // must DROP the notice (stderr already logged the recovery), not
+        // leak it onto an unrelated later response.
+        gistRecoveryNoticePending = false;
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+          return ok({
+            ...(data as Record<string, unknown>),
+            // "may not": reads during the window lost nothing, and a
+            // first-creation migration DOES carry local state into the new
+            // Gist — only an upgrade against an existing Gist strands them.
+            gistRecoveryNotice:
+              'Gist persistence recovered. Changes made while degraded were saved locally and may NOT have been merged into the Gist; review local state if anything looks missing.',
+          });
+        }
       }
       return ok(data);
     } catch (e) {
@@ -468,7 +503,17 @@ export function registerTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: false, idempotentHint: true },
     },
-    wrapTool(runConfig),
+    wrapTool(async (args: Parameters<typeof runConfig>[0]) => {
+      // config can flip persistence-affecting keys — re-run gist init on the
+      // next call rather than trusting a memoized local-mode resolution.
+      // finally: the memo must reset even on failure — a partially applied
+      // call can still have flipped persistence-affecting config (#1431).
+      try {
+        return await runConfig(args);
+      } finally {
+        resetGistInitMemo();
+      }
+    }),
   );
 
   // 12. init — Initialize with GitHub username
@@ -482,7 +527,15 @@ export function registerTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    wrapTool(runInit),
+    wrapTool(async (args: Parameters<typeof runInit>[0]) => {
+      // finally: the memo must reset even on failure — a partially applied
+      // call can still have flipped persistence-affecting config (#1431).
+      try {
+        return await runInit(args);
+      } finally {
+        resetGistInitMemo();
+      }
+    }),
   );
 
   // 13. setup — Interactive setup
@@ -500,7 +553,18 @@ export function registerTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    wrapTool(runSetup),
+    wrapTool(async (args: Parameters<typeof runSetup>[0]) => {
+      // setup --set persistence=gist mid-session must take effect without a
+      // process restart (#1431).
+      // finally: runSetup applies earlier --set pairs in memory BEFORE a later
+      // invalid value throws, so even a FAILED call can have flipped
+      // persistence — the memo must reset either way (#1431).
+      try {
+        return await runSetup(args);
+      } finally {
+        resetGistInitMemo();
+      }
+    }),
   );
 
   // 14. check-setup — Check if setup is complete
@@ -632,7 +696,13 @@ export function registerTools(server: McpServer): void {
     },
     wrapTool(async () => {
       const { runStateUnlink } = await import('@oss-autopilot/core/commands');
-      return runStateUnlink();
+      // Unlink resets the core singleton; the init memo must follow (even on
+      // failure) so a later re-link is honored (#1431).
+      try {
+        return await runStateUnlink();
+      } finally {
+        resetGistInitMemo();
+      }
     }),
   );
 
