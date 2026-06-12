@@ -12,7 +12,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { runDaily, runComments, runSearch, MAX_SEARCH_RESULTS } from '@oss-autopilot/core/commands';
 import { ensureGistInit } from './tools.js';
-import { errorMessage, type PRCommentBundle } from '@oss-autopilot/core';
+import { errorMessage, wrapUntrustedContent, fenceFetchedPRTitles, type PRCommentBundle } from '@oss-autopilot/core';
 
 /** Build a single-message prompt result with a user text message. */
 function userMessage(text: string) {
@@ -44,8 +44,13 @@ export function registerPrompts(server: McpServer): void {
         // writes must not silently land in a lazily created local manager.
         await ensureGistInit();
         const data = await runDaily();
+        // PR titles/refs are attacker-controllable and the MCP host LLM never
+        // sees the agents' injection-awareness blocks — fence them before the
+        // digest is interpolated (#1455). Bodies are already fenced by
+        // deduplicateDigest; fenceFetchedPRTitles touches disjoint fields.
+        const digest = { ...data.digest, openPRs: data.digest.openPRs.map(fenceFetchedPRTitles) };
         return userMessage(
-          `Here is my current OSS contribution status. Help me triage and prioritize:\n\n${data.summary}\n\nActionable issues:\n${JSON.stringify(data.actionableIssues, null, 2)}\n\nFull data:\n${JSON.stringify(data.digest, null, 2)}`,
+          `Here is my current OSS contribution status. Help me triage and prioritize:\n\n${data.summary}\n\nActionable issues:\n${JSON.stringify(data.actionableIssues, null, 2)}\n\nFull data:\n${JSON.stringify(digest, null, 2)}`,
         );
       } catch (e) {
         // Throw rather than return userMessage so the MCP SDK produces a
@@ -72,8 +77,11 @@ export function registerPrompts(server: McpServer): void {
       try {
         await ensureGistInit();
         const data = await runComments({ prUrl });
+        // The title is attacker-controllable; bodies below arrive fenced from
+        // runComments, fence the title at this MCP-host boundary too (#1455).
+        const fencedTitle = wrapUntrustedContent(data.pr.title, prUrl, { source: 'pr-title' });
         return userMessage(
-          `Help me respond to this pull request:\n\nPR: ${data.pr.title} (${data.pr.url})\nState: ${data.pr.state}\n\nReviews:\n${JSON.stringify(data.reviews, null, 2)}\n\nInline comments:\n${JSON.stringify(data.reviewComments, null, 2)}\n\nDiscussion:\n${JSON.stringify(data.issueComments, null, 2)}\n\nPlease help me draft a thoughtful response addressing the feedback.`,
+          `Help me respond to this pull request:\n\nPR: ${fencedTitle} (${data.pr.url})\nState: ${data.pr.state}\n\nReviews:\n${JSON.stringify(data.reviews, null, 2)}\n\nInline comments:\n${JSON.stringify(data.reviewComments, null, 2)}\n\nDiscussion:\n${JSON.stringify(data.issueComments, null, 2)}\n\nPlease help me draft a thoughtful response addressing the feedback.`,
         );
       } catch (e) {
         console.error('[MCP] Prompt error (respond-to-pr):', e);
@@ -165,7 +173,11 @@ export function registerPrompts(server: McpServer): void {
             .map((c) => `[COMMENT by ${c.author} (${c.authorAssociation})]\n${c.body}`)
             .join('\n\n');
           const sections = [reviews, inline, issue].filter((s) => s.length > 0).join('\n\n');
-          return `### ${b.prTitle} (${b.prUrl}, merged/closed: ${b.mergedAt})\n${sections}`;
+          // Bundle bodies arrive fenced from guidelines-fetch-corpus; the PR
+          // title is equally attacker-controllable — fence it here (#1455).
+          // String() guards against malformed host-supplied corpus entries.
+          const fencedTitle = wrapUntrustedContent(String(b.prTitle), String(b.prUrl), { source: 'pr-title' });
+          return `### ${fencedTitle} (${b.prUrl}, merged/closed: ${b.mergedAt})\n${sections}`;
         })
         .join('\n\n---\n\n');
 
