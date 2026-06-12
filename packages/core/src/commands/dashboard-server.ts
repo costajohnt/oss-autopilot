@@ -134,12 +134,23 @@ export function buildDashboardJson(
   allClosedPRs?: ClosedPR[],
   partialFailures?: string[],
 ): DashboardJsonData {
+  // Apply status overrides ONCE, before the shelve partition is derived, so
+  // the dashboard partitions on the same post-override status the CLI
+  // partitions on (#1416). This also covers overrides set AFTER the digest
+  // was cached (a dashboard move stores an override; the action path rebuilds
+  // from the cached digest). Work on a copy — the caller's cached digest must
+  // not accumulate per-request derivations.
+  const overriddenDigest: DailyDigest = {
+    ...digest,
+    openPRs: applyStatusOverrides(digest.openPRs || [], state),
+    summary: { ...digest.summary },
+  };
   // Re-derive the shelve partition from the CURRENT state before reading it.
   // The POST /api/action path rebuilds with a cached digest whose shelvedPRs
   // predates the shelve/unshelve, so without this the SPA action appears to do
   // nothing until the next full /api/refresh.
-  reconcileShelvePartition(digest, state);
-  const prsByRepo = computePRsByRepo(digest, state);
+  reconcileShelvePartition(overriddenDigest, state);
+  const prsByRepo = computePRsByRepo(overriddenDigest, state);
   const topRepos = computeTopRepos(prsByRepo);
   const { monthlyMerged, monthlyOpened, monthlyClosed } = getMonthlyData(state);
   // Derive from state if not provided (e.g. initial load from cached state)
@@ -152,7 +163,7 @@ export function buildDashboardJson(
     !isBelowMinStars(repoScores[pr.repo]?.stargazersCount, minStars);
   const filteredMergedPRs = mergedPRs.filter(isAboveMinStars);
   const filteredClosedPRs = closedPRs.filter(isAboveMinStars);
-  const stats = buildDashboardStats(digest, state, filteredMergedPRs.length, filteredClosedPRs.length);
+  const stats = buildDashboardStats(overriddenDigest, state, filteredMergedPRs.length, filteredClosedPRs.length);
   const dismissedIssues = state.config.dismissedIssues || {};
   const issueResponses = commentedIssues.filter(
     (i): i is CommentedIssueWithResponse => i.status === 'new_response' && !(i.url in dismissedIssues),
@@ -180,7 +191,10 @@ export function buildDashboardJson(
     monthlyClosed,
     // #1352: stamp the unified attention bucket so the SPA renders the same
     // taxonomy the CLI brief counts (single classifier, no second opinion).
-    activePRs: applyStatusOverrides(digest.openPRs || [], state).map((pr) => ({
+    // Overrides were already applied when overriddenDigest was built — a
+    // second application here would be a no-op but obscures the single
+    // apply-then-partition ordering (#1416).
+    activePRs: (overriddenDigest.openPRs || []).map((pr) => ({
       ...pr,
       attentionBucket: classifyAttentionBucket(pr),
     })),
@@ -188,10 +202,10 @@ export function buildDashboardJson(
     // and dormant-non-addressing PRs auto-shelved for display). Returning
     // only state.config.shelvedPRUrls would under-count and desync from
     // stats.shelvedPRs, which is already derived from digest.shelvedPRs. (#981)
-    shelvedPRUrls: (digest.shelvedPRs || []).map((ref) => ref.url),
-    recentlyMergedPRs: digest.recentlyMergedPRs || [],
-    recentlyClosedPRs: digest.recentlyClosedPRs || [],
-    autoUnshelvedPRs: digest.autoUnshelvedPRs || [],
+    shelvedPRUrls: (overriddenDigest.shelvedPRs || []).map((ref) => ref.url),
+    recentlyMergedPRs: overriddenDigest.recentlyMergedPRs || [],
+    recentlyClosedPRs: overriddenDigest.recentlyClosedPRs || [],
+    autoUnshelvedPRs: overriddenDigest.autoUnshelvedPRs || [],
     commentedIssues,
     issueResponses,
     allMergedPRs: filteredMergedPRs,
