@@ -49,29 +49,6 @@
   "engines": {
     "node": ">=22.0.0"
   },
-  "pnpm": {
-    "overrides": {
-      "hono": ">=4.12.7",
-      "@hono/node-server": ">=1.19.10",
-      "express-rate-limit": ">=8.2.2",
-      "flatted": ">=3.4.2",
-      "picomatch": ">=4.0.4",
-      "path-to-regexp": ">=8.4.0",
-      "yaml": ">=2.8.3",
-      "fast-uri": ">=3.1.1"
-    }
-  },
-  "_pnpmOverridesRationale": {
-    "_note": "Rationale for each entry in pnpm.overrides. Inert JSON — pnpm ignores unknown top-level keys. Revisit periodically with `pnpm why <pkg>` to confirm the override is still hit by the dep graph (#963).",
-    "hono": "Transitive via @modelcontextprotocol/sdk. Pin >=4.12.7 to avoid the pre-4.12.7 security advisory family. Confirmed still in tree.",
-    "@hono/node-server": "Transitive via @modelcontextprotocol/sdk. Pin >=1.19.10 alongside hono. Confirmed still in tree.",
-    "express-rate-limit": "Transitive via @modelcontextprotocol/sdk. Pin >=8.2.2 for known advisory. Confirmed still in tree.",
-    "flatted": "Dev-only, transitive via eslint -> flat-cache. Pin >=3.4.2 for ReDoS advisory. Confirmed still in tree.",
-    "picomatch": "Dev-only, transitive via typescript-eslint -> tinyglobby. Pin >=4.0.4 for ReDoS advisory. Confirmed still in tree.",
-    "path-to-regexp": "Transitive via @modelcontextprotocol/sdk -> express/router. Pin >=8.4.0 for ReDoS advisory. Confirmed still in tree.",
-    "yaml": "Dev-only, transitive via vitest -> vite. Pin >=2.8.3 for code-execution advisory. Confirmed still in tree.",
-    "fast-uri": "Transitive via @modelcontextprotocol/sdk -> ajv. Pin >=3.1.1 for path-traversal advisory GHSA-q3j6-qgpj-74h6. Confirmed still in tree."
-  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@vitest/eslint-plugin": "^1.6.20",
