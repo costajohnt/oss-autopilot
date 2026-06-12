@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'preact/hooks';
 import { LocationProvider, useLocation } from 'preact-iso';
-import { useDashboard } from './hooks/use-dashboard';
+import { useDashboard, AUTO_REFRESH_FAILURE_THRESHOLD } from './hooks/use-dashboard';
 import { useTheme, type Theme } from './hooks/use-theme';
 import { useCelebration } from './hooks/use-celebration';
 import { StatsBar } from './components/stats-bar';
@@ -103,7 +103,19 @@ const KNOWN_ROUTES = new Set(['/', '/merged', '/closed', '/issues']);
 const EMPTY_ACTIVE_PRS: FetchedPR[] = [];
 
 function AppContent() {
-  const { data, loading, refreshing, error, clearError, refresh, performAction, lastUpdated } = useDashboard();
+  const {
+    data,
+    loading,
+    refreshing,
+    error,
+    clearError,
+    refresh,
+    performAction,
+    lastUpdated,
+    stale,
+    staleReason,
+    autoRefreshFailures,
+  } = useDashboard();
   const { theme, toggleTheme } = useTheme();
   const {
     celebration,
@@ -224,17 +236,53 @@ function AppContent() {
   // Shared partial-data banner — rendered on every route so users don't
   // lose the "showing partial data" signal when navigating to /merged
   // etc., where the affected arrays (allMergedPRs, allClosedPRs) are the
-  // primary content. See #1035.
+  // primary content. See #1035. "Operations" rather than "fetches": the
+  // list also carries persistence failures since #1447.
   const partialBanner =
     data.partialFailures && data.partialFailures.length > 0 ? (
       <div class="partial-banner" role="status" aria-live="polite">
         <span>
-          Showing partial data — {data.partialFailures.length} background fetch
-          {data.partialFailures.length === 1 ? '' : 'es'} failed ({data.partialFailures.join(', ')}). Some sections may
+          Showing partial data — {data.partialFailures.length} background operation
+          {data.partialFailures.length === 1 ? '' : 's'} failed ({data.partialFailures.join(', ')}). Some sections may
           be incomplete; try refreshing.
         </span>
       </div>
     ) : null;
+
+  // Staleness banner (#1446 items 1 and 4) — the server's X-Dashboard-Stale
+  // header finally gets a consumer, and repeated background auto-refresh
+  // failures stop being console-only. Non-blocking: cached data still renders.
+  const staleMessage = stale
+    ? `Dashboard data may be stale${staleReason ? ` (${staleReason})` : ''} — the server is serving cached data. Try refreshing.`
+    : autoRefreshFailures >= AUTO_REFRESH_FAILURE_THRESHOLD
+      ? `Background refresh failed ${autoRefreshFailures} times in a row — data may be out of date. Try refreshing.`
+      : null;
+  const staleBanner = staleMessage ? (
+    <div class="partial-banner stale-banner" role="status" aria-live="polite">
+      <span>{staleMessage}</span>
+    </div>
+  ) : null;
+
+  // Error banner — hoisted out of the home-route return (#1446 item 3) so a
+  // failed Refresh click on /merged, /closed, /issues or the 404 view gives
+  // feedback instead of nothing.
+  const errorBanner = error ? (
+    <div class="error-banner" role="alert">
+      <span>{error}</span>
+      <button class="error-banner-dismiss" onClick={clearError}>
+        Dismiss
+      </button>
+    </div>
+  ) : null;
+
+  // Every route renders the same banner stack, in severity order.
+  const banners = (
+    <>
+      {errorBanner}
+      {staleBanner}
+      {partialBanner}
+    </>
+  );
 
   // Route: /merged — show all merged PRs
   if (path === '/merged') {
@@ -242,7 +290,7 @@ function AppContent() {
     return (
       <div class="dashboard">
         <DashboardHeader {...headerProps} />
-        {partialBanner}
+        {banners}
         <main id="main-content" class="dashboard-main">
           <h2 ref={routeHeadingRef} tabIndex={-1} class="visually-hidden">
             Merged pull requests
@@ -260,7 +308,7 @@ function AppContent() {
     return (
       <div class="dashboard">
         <DashboardHeader {...headerProps} />
-        {partialBanner}
+        {banners}
         <main id="main-content" class="dashboard-main">
           <h2 ref={routeHeadingRef} tabIndex={-1} class="visually-hidden">
             Closed pull requests
@@ -277,7 +325,7 @@ function AppContent() {
     return (
       <div class="dashboard">
         <DashboardHeader {...headerProps} />
-        {partialBanner}
+        {banners}
         <main id="main-content" class="dashboard-main">
           <h2 ref={routeHeadingRef} tabIndex={-1} class="visually-hidden">
             Vetted issues
@@ -315,7 +363,7 @@ function AppContent() {
     return (
       <div class="dashboard">
         <DashboardHeader {...headerProps} />
-        {partialBanner}
+        {banners}
         <main id="main-content" class="dashboard-main" role="alert">
           <div class="merged-view merged-view--full-width">
             <div class="merged-view-header">
@@ -361,16 +409,7 @@ function AppContent() {
     <div class="dashboard">
       <DashboardHeader {...headerProps} />
 
-      {error && (
-        <div class="error-banner" role="alert">
-          <span>{error}</span>
-          <button class="error-banner-dismiss" onClick={clearError}>
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {partialBanner}
+      {banners}
 
       <main id="main-content" class="dashboard-main">
         <h2 ref={routeHeadingRef} tabIndex={-1} class="visually-hidden">
