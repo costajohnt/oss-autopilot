@@ -100,8 +100,13 @@ const MIME_TYPES: Record<string, string> = {
 
 /**
  * Read and parse the vetted issue list file (non-fatal on failure).
+ *
+ * @param failures - Optional collector (#1448): a read/parse failure pushes a
+ *   label so the SPA's partialFailures banner shows the panel is degraded
+ *   rather than silently empty. "No list detected" is not a failure and
+ *   pushes nothing.
  */
-function readVettedIssues(): ParseIssueListOutput | null {
+function readVettedIssues(failures?: string[]): ParseIssueListOutput | null {
   try {
     const info = detectIssueList();
     if (!info) return null;
@@ -109,6 +114,7 @@ function readVettedIssues(): ParseIssueListOutput | null {
     return parseIssueList(content);
   } catch (error) {
     warn(MODULE, `Failed to read vetted issue list: ${errorMessage(error)}`);
+    failures?.push('read vetted issue list');
     return null;
   }
 }
@@ -142,6 +148,11 @@ export function buildDashboardJson(
   allClosedPRs?: ClosedPR[],
   partialFailures?: string[],
 ): DashboardJsonData {
+  // Collect build-local failures (#1448) alongside the caller-provided ones
+  // so degradations detected during THIS build (vetted-list read failure,
+  // status-override application failure) reach the SPA's partialFailures
+  // banner instead of living only in stderr.
+  const buildFailures: string[] = [...(partialFailures ?? [])];
   // Apply status overrides ONCE, before the shelve partition is derived, so
   // the dashboard partitions on the same post-override status the CLI
   // partitions on (#1416). This also covers overrides set AFTER the digest
@@ -150,7 +161,7 @@ export function buildDashboardJson(
   // not accumulate per-request derivations.
   const overriddenDigest: DailyDigest = {
     ...digest,
-    openPRs: applyStatusOverrides(digest.openPRs || [], state),
+    openPRs: applyStatusOverrides(digest.openPRs || [], state, buildFailures),
     summary: { ...digest.summary },
   };
   // Re-derive the shelve partition from the CURRENT state before reading it.
@@ -185,7 +196,9 @@ export function buildDashboardJson(
     }
   }
 
-  const vettedIssues = readVettedIssues();
+  // A vetted-list read failure reaches the SPA banner via buildFailures
+  // instead of leaving the panel silently empty (#1448).
+  const vettedIssues = readVettedIssues(buildFailures);
   if (vettedIssues) {
     stats.availableIssues = vettedIssues.availableCount;
   }
@@ -220,7 +233,7 @@ export function buildDashboardJson(
     allClosedPRs: filteredClosedPRs,
     repoMetadata,
     vettedIssues,
-    partialFailures: partialFailures && partialFailures.length > 0 ? partialFailures : undefined,
+    partialFailures: buildFailures.length > 0 ? buildFailures : undefined,
   };
 }
 

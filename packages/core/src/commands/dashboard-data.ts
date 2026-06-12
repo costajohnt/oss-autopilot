@@ -382,7 +382,9 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
       // partition here than on the CLI surface (#1416). Inside the batch
       // because getStatusOverride may auto-clear stale overrides with a save,
       // which must defer to this guarded boundary rather than throw here.
-      const overriddenPRs = applyStatusOverrides(prs, stateManager.getState());
+      // Per-PR override failures (#1448) land in partialFailures so the SPA
+      // banner flags PRs silently showing their un-overridden status.
+      const overriddenPRs = applyStatusOverrides(prs, stateManager.getState(), partialFailures);
       // Store new merged PRs incrementally (dedupes by URL)
       try {
         const { dropped } = stateManager.addMergedPRs(newMergedPRs);

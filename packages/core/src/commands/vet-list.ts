@@ -233,7 +233,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   };
 
   // 4. Prune the file if requested — remove completed/skipped/low-score items
-  let pruneResult: { removedCount: number } | undefined;
+  let pruneResult: { removedCount: number; error?: string } | undefined;
   if (options.prune && issueListPath) {
     try {
       const content = fs.readFileSync(issueListPath, 'utf8');
@@ -245,6 +245,10 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error(`Warning: Failed to prune ${issueListPath}: ${msg}`);
+      // Surface the failure in the envelope (#1448): without this, a failed
+      // prune returned a plain success with pruneResult simply absent — the
+      // same shape as "prune not requested".
+      pruneResult = { removedCount: 0, error: msg };
     }
   }
 

@@ -85,24 +85,51 @@ export function parseSkippedIssuesContent(content: string): SkippedIssue[] {
   return results;
 }
 
+/** Result of {@link loadSkippedIssuesDetailed}: parsed entries plus read-failure signal (#1448). */
+export interface SkippedIssuesLoadResult {
+  issues: SkippedIssue[];
+  /**
+   * Set when the file exists but could not be read (`issues` is `[]` in that
+   * case). Distinguishes "no skips configured" from "skip list unavailable" —
+   * without it, a read failure silently resurfaces explicitly-skipped issues
+   * in search results. Absent when the path is unset, the file does not
+   * exist, or the read succeeded.
+   */
+  readError?: string;
+}
+
 /**
- * Read the skipped-issues file from disk and parse it.
- * Returns `[]` when:
- *   - `path` is undefined or empty,
- *   - the file does not exist,
- *   - the file cannot be read (a warning is logged).
+ * Read the skipped-issues file from disk and parse it, surfacing read
+ * failures to the caller (#1448).
+ * Returns `{ issues: [] }` (no `readError`) when `path` is undefined/empty or
+ * the file does not exist; `{ issues: [], readError }` when the read throws
+ * (a warning is also logged).
  */
-export function loadSkippedIssues(path: string | undefined): SkippedIssue[] {
-  if (!path) return [];
-  if (!fs.existsSync(path)) return [];
+export function loadSkippedIssuesDetailed(path: string | undefined): SkippedIssuesLoadResult {
+  if (!path) return { issues: [] };
+  if (!fs.existsSync(path)) return { issues: [] };
 
   let content: string;
   try {
     content = fs.readFileSync(path, 'utf8');
   } catch (err) {
     warn('skip-file-parser', `Failed to read skipped-issues file at ${path}: ${errorMessage(err)}`);
-    return [];
+    return { issues: [], readError: errorMessage(err) };
   }
 
-  return parseSkippedIssuesContent(content);
+  return { issues: parseSkippedIssuesContent(content) };
+}
+
+/**
+ * Read the skipped-issues file from disk and parse it.
+ * Returns `[]` when:
+ *   - `path` is undefined or empty,
+ *   - the file does not exist,
+ *   - the file cannot be read (a warning is logged).
+ *
+ * Callers that need to distinguish "unreadable" from "no skips" should use
+ * {@link loadSkippedIssuesDetailed} instead.
+ */
+export function loadSkippedIssues(path: string | undefined): SkippedIssue[] {
+  return loadSkippedIssuesDetailed(path).issues;
 }
