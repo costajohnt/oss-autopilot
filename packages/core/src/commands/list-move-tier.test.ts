@@ -186,3 +186,32 @@ describe('runListMoveTier (filesystem)', () => {
     expect(fs.readFileSync(listPath, 'utf8')).toBe(original);
   });
 });
+
+describe('URL matching precision (#1442)', () => {
+  it('does not drag issues/10 along when moving issues/1', () => {
+    const urlOne = 'https://github.com/foo/bar/issues/1';
+    const urlTen = 'https://github.com/foo/bar/issues/10';
+    const content = ['## Pursue', '', `- [Issue ten](${urlTen})`, `- [Issue one](${urlOne})`, '', '## Skip', ''].join(
+      '\n',
+    );
+
+    const result = moveIssueToTier(content, urlOne, 'skip');
+
+    expect(result.moved).toBe(true);
+    expect(result.count).toBe(1);
+    const pursueSection = result.content.slice(result.content.indexOf('## Pursue'), result.content.indexOf('## Skip'));
+    expect(pursueSection).toContain(urlTen);
+    expect(pursueSection).not.toContain(`[Issue one](${urlOne})`);
+    const skipSection = result.content.slice(result.content.indexOf('## Skip'));
+    expect(skipSection).toContain(`[Issue one](${urlOne})`);
+    expect(skipSection).not.toContain(urlTen);
+  });
+
+  it('matches a bare URL at end of line', () => {
+    const urlOne = 'https://github.com/foo/bar/issues/1';
+    const content = ['## Pursue', '', `- ${urlOne}`, '', '## Skip', ''].join('\n');
+    const result = moveIssueToTier(content, urlOne, 'skip');
+    expect(result.moved).toBe(true);
+    expect(result.count).toBe(1);
+  });
+});
