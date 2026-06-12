@@ -107,7 +107,9 @@ Remember to filter by `excludedRepos` manually.
 
 ### Step 0: deterministic verification — ALWAYS FIRST (#1353, #1354)
 
-Before ANY other analysis of a specific issue URL (curated-list re-vet, single-issue vet, or a search candidate you are about to recommend), call `verify-issue`. Its fields are ground truth fetched via GraphQL — trust them over anything you infer from comments, timelines, or issue prose. Never report `Open: yes/no` or "taken by PR #N" from your own reading; report what `verify-issue` returned.
+Before ANY other analysis of a specific issue URL (a single-issue vet, or a search candidate you are about to recommend), call `verify-issue`. Its fields are ground truth fetched via GraphQL — trust them over anything you infer from comments, timelines, or issue prose. Never report `Open: yes/no` or "taken by PR #N" from your own reading; report what `verify-issue` returned.
+
+Whole-list re-vets are the one exception by necessity: `vet-list` does NOT run `verify-issue` per entry, so its `listStatus` values are heuristic (REST-level availability checks without closing-vs-mention awareness). Treat a `vet-list` flag as a triage signal, and run `verify-issue` on the flagged entry's URL before acting on it (marking done, dropping, or recommending).
 
 Route on `verdict` with short-circuit semantics:
 
@@ -122,6 +124,8 @@ The `linkedPRs` array distinguishes `closing` (the PR's `closingIssuesReferences
 **Primary:** call `vet` (MCP tool or CLI). It runs the full checklist: availability (assignment, linked PRs, author classification via `linked-pr-classification.ts`), contribution guidelines (CONTRIBUTING.md, CLA, PR templates), existing PR analysis, issue quality, repo health — and returns `grade: {letter, reason}` alongside the score.
 
 ### Linked-PR classification
+
+**Precedence:** when this table and the Step 0 `verify-issue` verdict disagree on whether an issue is open or taken, the `verify-issue` verdict WINS. `vet`'s classifier has no closing-vs-cross-referenced awareness, so e.g. `other_open` here can be a mere mention that Step 0 already classified `at-risk` (still available). Use this table only for the supplementary signals Step 0 does not carry (friction history, maintainer-preference hints), never to overturn an availability verdict.
 
 The `vet` response includes a `linkedPRClassification` when scout exposes the raw linked-PR metadata. Route on the value (not substrings):
 
@@ -147,7 +151,7 @@ Never make a recommendation that contradicts the SLM call without saying so expl
 
 ### Per-repo learning guidelines (#867)
 
-At the implementation entry point (`draft-first-workflow.md` Step 1e), any stored per-repo guidelines are loaded via `oss-autopilot guidelines view --repo OWNER/REPO --json` and made available to the agent. These are extracted from past PR feedback in the user's Gist and encode durable maintainer preferences (code style, process, architecture, testing rules).
+At the implementation entry point (`draft-first-workflow.md` Step 1e), any stored per-repo guidelines are loaded via `node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" guidelines view --repo OWNER/REPO --json` and made available to the agent. These are extracted from past PR feedback in the user's Gist and encode durable maintainer preferences (code style, process, architecture, testing rules).
 
 When implementing, treat injected guidelines as **strong preferences**, not absolute rules:
 
@@ -158,11 +162,12 @@ When implementing, treat injected guidelines as **strong preferences**, not abso
 
 ### gh fallback vetting
 
-If MCP + CLI both fail, collect the vetting data with `gh` (inform the user first):
+If MCP + CLI both fail, collect the vetting data with `gh` (inform the user first). Step 0's verify-issue semantics are NOT satisfiable in this mode: `gh` cannot distinguish a closing PR from a cross-referencing mention, so fetch the real issue state directly and present any linked-PR signal as UNVERIFIED — say so explicitly instead of inferring a taken/available verdict.
 
 ```bash
-# Availability
-gh issue view OWNER/REPO#NUMBER --json assignees,body,comments
+# Availability (state/stateReason replace the verify-issue verdict; note the
+# `NUMBER -R OWNER/REPO` form — `gh issue view OWNER/REPO#NUMBER` is invalid)
+gh issue view NUMBER -R OWNER/REPO --json state,stateReason,closedAt,assignees,body,comments
 gh pr list --repo OWNER/REPO --search "issue:NUMBER" --state all --json number,title,state,author,createdAt
 
 # Guidelines

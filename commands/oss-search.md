@@ -70,18 +70,27 @@ Task(general-purpose, "Run the CLI search command and return the raw JSON output
 2. If `success: true`, each entry in `data.candidates` has this shape:
    ```
    {
-     issue: { repo, number, title, url, labels, createdAt },
+     issue: { repo, repoUrl, number, title, url, labels },
      recommendation: "approve" | "skip" | "needs_review",
      viabilityScore: number,
-     searchPriority: "merged_pr" | "starred" | "normal",
+     grade: { letter: "A" | "B" | "C" | "F", reason: string },
+     searchPriority: "merged_pr" | "preferred_org" | "starred" | "normal",
      reasonsToApprove: string[],
-     reasonsToSkip: string[]
+     reasonsToSkip: string[],
+     repoScore?: { score, mergedPRCount, closedWithoutMergeCount, isResponsive, lastMergedAt? },
+     linkedPR?: { number, state, url, updatedAt?, isStalled },
+     boostScore?: number,        // strategy-biased ranking (#1244)
+     boostReasons?: string[],    // human-readable "why surfaced" lines
+     diversitySlot?: boolean     // filled a diversity slot outside the usual stack
    }
    ```
 3. Normalize to `{ repo, number, title, url, labels, source, metadata }` where `source` is derived from `searchPriority`:
    - `merged_pr` → `"established-repo"` (user has merged or open PRs in this repo)
+   - `preferred_org` → `"preferred-org-repo"` (repo belongs to a configured preferred org)
    - `starred` → `"starred-repo"` (user starred this repo)
    - `normal` → `"trending-repo"` (discovered via broad/maintained phases)
+
+   Present `diversitySlot: true` candidates normally inside their group with a short "(diversity pick — outside your usual languages/repos)" annotation; the standard skip-file threshold applies during tiering. The counterweight operates at selection time, so no special scoring treatment is needed here.
 
 **If `data.candidates` is empty:**
 > "No matching issues found. Scout's search returned zero candidates — the skip list, exclude list, or filters may be too narrow."
@@ -97,6 +106,9 @@ Group candidates by `source` (omit empty groups):
 
 ### From Established Repos ({count})
 {results with source: 'established-repo'}
+
+### From Preferred Orgs ({count})
+{results with source: 'preferred-org-repo'}
 
 ### From Starred Repos ({count})
 {results with source: 'starred-repo'}

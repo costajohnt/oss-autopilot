@@ -170,7 +170,7 @@ export function registerTools(server: McpServer): void {
     'search',
     {
       description:
-        'Search GitHub for beginner-friendly open-source issues to contribute to. Returns issues matching configured languages and interests.',
+        'Search GitHub for beginner-friendly open-source issues to contribute to. Returns issues matching configured languages and interests. Candidates carry a grade and may carry boostScore/boostReasons (strategy-biased ranking) and diversitySlot annotations (#1244); issues you already have an open PR for are filtered out and counted in hiddenOwnPRCount (#1354).',
       inputSchema: {
         // Zod schema replaces the prior manual throw inside the handler
         // (#1058 M41). Invalid values now surface as proper schema

@@ -66,7 +66,7 @@ Seven specialized agents handle specific tasks autonomously:
 | `pr-compliance-checker` | Validate PRs against opensource.guide best practices |
 | `issue-scout` | Vet issues for claimability and fit |
 | `repo-evaluator` | Score repository health and responsiveness |
-| `contribution-strategist` | Plan implementation approach |
+| `contribution-strategist` | Analyze contribution patterns and advise on strategy |
 | `pre-commit-reviewer` | Fallback code review (when toolkit unavailable) |
 
 ### Skills (`skills/`)
@@ -140,7 +140,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 | `orphan-files` (alias: `check-integration`) | `check-integration.ts` | Audit new files on this branch for cross-references |
 | `doctor` | `doctor.ts` | System-health diagnostic — token, bundle, state, scout, rate limit |
 | `stats` | `stats.ts` | Show contribution statistics (merge rate, PR counts) |
-| `guidelines view/store/reset/fetch-corpus` | `guidelines.ts` | Per-repo guidelines persistence + raw PR comment corpus for the host's extract-learnings prompt (#867) |
+| `guidelines list/view/store/reset/fetch-corpus` | `guidelines.ts` | Per-repo guidelines persistence + raw PR comment corpus for the host's extract-learnings prompt (#867) |
 | `manifest` | `cli-registry.ts` | Print the registered command list + version (used by plugin contract tests) |
 | `detect-formatters` | `detect-formatters.ts` | Detect formatters and linters configured in a repository |
 | `pr-template` | `pr-template.ts` | Fetch a repository's PR description template |
