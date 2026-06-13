@@ -34,16 +34,38 @@ interface FakeManager {
   isGistMode: ReturnType<typeof vi.fn>;
   isGistDegraded: ReturnType<typeof vi.fn>;
   refreshFromGist: ReturnType<typeof vi.fn>;
+  getGistHealth: () => unknown;
 }
 
 function makeManager(overrides: Partial<Record<keyof FakeManager, unknown>> = {}): FakeManager {
-  return {
+  const manager: FakeManager = {
     getState: vi.fn(() => ({ config: { persistence: 'local' } })),
     isGistMode: vi.fn(() => false),
     isGistDegraded: vi.fn(() => false),
     refreshFromGist: vi.fn(async () => false),
+    // Derived like the real StateManager.getGistHealth (#1444): one
+    // isGistMode() consumption per probe, then EITHER getState (local arm)
+    // or isGistDegraded (gist arm) — keeps mockReturnValueOnce sequences in
+    // the recovery tests consuming the underlying mocks exactly as the old
+    // two-probe code did.
+    getGistHealth: () => {
+      if ((manager.isGistMode as () => boolean)()) {
+        return {
+          mode: 'gist',
+          degraded: (manager.isGistDegraded as () => boolean)()
+            ? { cause: 'bootstrap-degraded', recoverable: true }
+            : null,
+        };
+      }
+      const state = (manager.getState as () => { config: { persistence: string } })();
+      return {
+        mode: 'local',
+        degraded: state.config.persistence === 'gist' ? { cause: 'configured-but-local', recoverable: true } : null,
+      };
+    },
     ...(overrides as Partial<FakeManager>),
   };
+  return manager;
 }
 
 /** Config asks for gist but the manager is local-only — the #1433 degraded window. */

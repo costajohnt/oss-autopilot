@@ -32,6 +32,7 @@ import { debug, warn } from './logger.js';
 import { errorMessage, ConfigurationError, ConcurrencyError, isTransientNetworkError } from './errors.js';
 import { GistStateStore, type OctokitLike } from './gist-state-store.js';
 import * as guidelinesStoreModule from './guidelines-store.js';
+import { renderGistWarning, type GistHealth, type GistWarningCause } from './gist-health.js';
 import { getStatePath, getStateCachePath, getGistIdPath } from './paths.js';
 import { parseGitHubUrl } from './urls.js';
 
@@ -392,6 +393,40 @@ export class StateManager {
   /** Whether the Gist is in degraded mode (using local cache fallback). */
   isGistDegraded(): boolean {
     return this.gistDegraded;
+  }
+
+  /**
+   * Single source of truth for gist persistence health (#1444). Surfaces
+   * that need "is this process reliably syncing to the Gist?" (daily
+   * warnings, dashboard banners/recovery gates) derive it from here instead
+   * of re-combining `config.persistence` / `isGistMode()` /
+   * `isGistDegraded()` at each call site.
+   *
+   * Composes the same primitive fields those accessors expose:
+   * - no gist store + config asks for gist → `configured-but-local`
+   * - gist store attached but disarmed (#1443) → `bootstrap-degraded`
+   *   (`since` comes from the staleness marker the degraded bootstrap seeds)
+   * - otherwise healthy (`degraded: null`)
+   */
+  getGistHealth(): GistHealth {
+    if (this.gistStore === null) {
+      return {
+        mode: 'local',
+        degraded:
+          this.state.config.persistence === 'gist' ? { cause: 'configured-but-local', recoverable: true } : null,
+      };
+    }
+    if (this.gistDegraded) {
+      return {
+        mode: 'gist',
+        degraded: {
+          cause: 'bootstrap-degraded',
+          ...(this.staleness ? { since: this.staleness.detectedAt } : {}),
+          recoverable: true,
+        },
+      };
+    }
+    return { mode: 'gist', degraded: null };
   }
 
   /**
@@ -1288,26 +1323,27 @@ function peekGistArtifacts(): 'gist' | 'local' | 'unreadable' {
  * path keeps throwing per #1202.)
  */
 export async function bootstrapGistBestEffort(fetchToken: () => Promise<string | null>): Promise<string | null> {
-  let reason: string | null = null;
+  // Prose comes from the shared renderer (#1444) so this surface, the CLI
+  // envelope, and the MCP injection all describe degradation identically.
+  let cause: GistWarningCause | { reason: string } | null = null;
   try {
     let status = await ensureGistPersistence(null);
     if (status === 'no-token') {
       status = await ensureGistPersistence(await fetchToken());
     }
-    if (status === 'no-token') reason = 'no GitHub token is available';
-    else if (status === 'state-unreadable') reason = 'the state file could not be read';
-    else if (status === 'degraded') reason = 'Gist initialization hit a transient network failure';
+    if (status === 'no-token') cause = 'no-token';
+    else if (status === 'state-unreadable') cause = 'state-unreadable';
+    else if (status === 'degraded') cause = 'init-fallback';
   } catch (err) {
-    reason =
-      err instanceof ConfigurationError
-        ? `Gist initialization failed (${errorMessage(err)}) — fix the Gist setup (check the token's gist scope, or run state-show / setup) before relying on sync`
-        : `Gist initialization failed: ${errorMessage(err)}`;
+    cause = {
+      reason:
+        err instanceof ConfigurationError
+          ? `Gist initialization failed (${errorMessage(err)}) — fix the Gist setup (check the token's gist scope, or run state-show / setup) before relying on sync`
+          : `Gist initialization failed: ${errorMessage(err)}`,
+    };
   }
-  if (reason === null) return null;
-  return (
-    `Gist persistence is configured but ${reason} — changes made by this command are ` +
-    'LOCAL-ONLY and may be overwritten by the next successful Gist sync.'
-  );
+  if (cause === null) return null;
+  return renderGistWarning(cause);
 }
 
 /**

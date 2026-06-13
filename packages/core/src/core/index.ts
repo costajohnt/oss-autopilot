@@ -14,6 +14,12 @@ export {
   resetStateManager,
   type Stats,
 } from './state.js';
+export {
+  renderGistWarning,
+  type GistHealth,
+  type GistHealthDegradedCause,
+  type GistWarningCause,
+} from './gist-health.js';
 export { GistStateStore } from './gist-state-store.js';
 export {
   guidelinesFilename,

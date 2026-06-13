@@ -14,6 +14,7 @@ import {
   maybeCheckpoint,
   ensureGistPersistence,
   type StateManager,
+  type GistHealth,
 } from '../core/index.js';
 import { errorMessage, ConfigurationError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
@@ -126,30 +127,33 @@ export class GistSyncCoordinator {
     this.recordGistSyncOutcome(await maybeCheckpoint(this.manager, this.module));
   }
 
+  /** One health snapshot from the one source (#1444). Defensive: this is an
+   * advisory probe that runs on EVERY request path (rebuilds, recovery
+   * gates). A state failure has its own handling wherever state is actually
+   * consumed — the probe must not become a new crash surface in front of it
+   * (#994's stale-serving path). */
+  probeGistHealth(): GistHealth | null {
+    try {
+      return this.manager.getGistHealth();
+    } catch (err) {
+      warn(this.module, `Degraded-gist probe failed (treating as not degraded): ${errorMessage(err)}`);
+      return null;
+    }
+  }
+
   /** True while the config asks for gist but this process's manager is
    * local-only (#1433) — the degraded window in which every dashboard
    * mutation is acknowledged and then clobbered by the next pull. */
   gistConfiguredButLocal(): boolean {
-    // Defensive: this is an advisory check that runs on EVERY request path
-    // (rebuilds, recovery probes). A getState failure has its own handling
-    // wherever state is actually consumed — the degraded probe must not
-    // become a new crash surface in front of it (#994's stale-serving path).
-    try {
-      return this.manager.getState().config.persistence === 'gist' && !this.manager.isGistMode();
-    } catch (err) {
-      warn(this.module, `Degraded-gist probe failed (treating as not degraded): ${errorMessage(err)}`);
-      return false;
-    }
+    const health = this.probeGistHealth();
+    return health !== null && health.mode === 'local' && health.degraded !== null;
   }
 
   /** Gist-backed but the bootstrap itself fell back to the local cache —
    * reads may be stale even though isGistMode() is true (#1433 review). */
   gistBootstrapDegraded(): boolean {
-    try {
-      return this.manager.isGistMode() && this.manager.isGistDegraded();
-    } catch {
-      return false;
-    }
+    const health = this.probeGistHealth();
+    return health !== null && health.mode === 'gist' && health.degraded !== null;
   }
 
   /** A successful PULL (refresh, or a recovery re-bootstrap) wholesale-
@@ -192,7 +196,9 @@ export class GistSyncCoordinator {
    * config, and a gist-backed manager whose bootstrap fell back to the local
    * cache (disarmed store — refreshFromGist can never heal it on its own). */
   async maybeRecoverGist(): Promise<void> {
-    if (!this.gistConfiguredButLocal() && !this.gistBootstrapDegraded()) return;
+    // One probe covers both degraded shapes — health.degraded is non-null
+    // for configured-but-local AND bootstrap-degraded (#1444).
+    if (this.probeGistHealth()?.degraded == null) return;
     if (this.recoveryHaltedReason !== null) return;
     const now = Date.now();
     if (now - this.lastRecoveryAttemptAt < RECOVERY_RETRY_INTERVAL_MS) return;
@@ -206,9 +212,10 @@ export class GistSyncCoordinator {
       // The upgrade replaced the core singleton — re-resolve our reference.
       this.manager = getStateManager();
       // Genuinely armed only: a retry can resolve via ANOTHER degraded
-      // bootstrap (isGistMode() true, store disarmed) — that is not a
-      // recovery and must not produce a recovery notice (#1443).
-      const recovered = this.manager.isGistMode() && !this.manager.isGistDegraded();
+      // bootstrap (gist-backed, store disarmed) — that is not a recovery
+      // and must not produce a recovery notice (#1443).
+      const health = this.manager.getGistHealth();
+      const recovered = health.mode === 'gist' && health.degraded === null;
       if (recovered) {
         // The re-bootstrap pulled the existing Gist: un-pushed mutations
         // from the degraded window are not in the replacement state.
