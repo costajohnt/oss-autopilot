@@ -1107,7 +1107,16 @@ export async function getStateManagerAsync(token?: string): Promise<StateManager
   // this call is the retry that must be allowed to upgrade it. The old
   // unconditional early return made every retry a dead no-op, permanently
   // latching gist-configured processes into silent local-only writes.
-  if (stateManager && (!token || stateManager.isGistMode())) return stateManager;
+  //
+  // #1443: a gist-DEGRADED singleton is the same latch through another door.
+  // A degraded bootstrap disarms the store (null gistId) but still assigns
+  // gistStore, so isGistMode() alone reported it healthy and the early
+  // return made re-bootstrap impossible (refreshFromGist short-circuits
+  // forever on the null gistId). A later token-bearing call must be allowed
+  // to replace it with a freshly bootstrapped manager.
+  if (stateManager && (!token || (stateManager.isGistMode() && !stateManager.isGistDegraded()))) {
+    return stateManager;
+  }
   if (asyncManagerPromise) return asyncManagerPromise;
 
   if (token) {
@@ -1119,6 +1128,13 @@ export async function getStateManagerAsync(token?: string): Promise<StateManager
         // NOT merged into it by this upgrade (bootstrapWithMigration seeds a
         // Gist from local state only on first creation). The per-call MCP
         // warning is the signal that those writes were at risk.
+        //
+        // The same data boundary applies when replacing a gist-DEGRADED
+        // singleton (#1443): its mutations were saved to the local cache
+        // file only (a degraded store never pushes), and a successful
+        // re-bootstrap pulls the existing Gist — those cache-only writes
+        // are NOT merged into it. The degraded-window warnings each
+        // mutation surfaced (maybeCheckpoint) are the honest record.
         stateManager = mgr;
         asyncManagerPromise = null;
         return mgr;
@@ -1174,10 +1190,14 @@ export type GistPersistenceStatus =
   | 'state-unreadable'
   /** Gist mode is configured but no token was available for this attempt. */
   | 'no-token'
-  /** Gist mode active: the singleton is gist-backed. */
+  /** Gist mode active: the singleton is gist-backed AND the store is armed
+   * (the bootstrap actually verified its Gist — not a degraded fallback). */
   | 'gist'
-  /** Gist mode is configured and a token was available, but init fell back
-   * to local-only (transient network failure). A later call may recover. */
+  /** Gist mode is configured and a token was available, but this process is
+   * not writing to the Gist: init either fell back to a local-only manager
+   * (transient network failure) or bootstrapped DEGRADED off the local
+   * cache (#1443 — gist-backed but disarmed, reads stale and pushes fail).
+   * A later call may recover. */
   | 'degraded';
 
 export async function ensureGistPersistence(token: string | null): Promise<GistPersistenceStatus> {
@@ -1213,7 +1233,11 @@ export async function ensureGistPersistence(token: string | null): Promise<GistP
   // long-lived caller must keep retrying instead of memoizing the outcome.
   if (!token) return 'no-token';
   const mgr = await getStateManagerAsync(token);
-  return mgr.isGistMode() ? 'gist' : 'degraded';
+  // #1443: a DEGRADED bootstrap still assigns gistStore (isGistMode() is
+  // true) but the store is disarmed — reads serve the stale cache and
+  // pushes fail. Reporting it 'gist' memoized the failure as success in
+  // every long-lived caller (MCP init memo, dashboard recovery gate).
+  return mgr.isGistMode() && !mgr.isGistDegraded() ? 'gist' : 'degraded';
 }
 
 /**

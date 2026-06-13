@@ -218,6 +218,30 @@ describe('ensureGistInit retry semantics (#1368)', () => {
     expect(hardErrorRead.contents).toHaveLength(1);
   });
 
+  it('a retry that resolves DEGRADED again emits no recovery notice — only on a genuinely armed store (#1443)', async () => {
+    // Since #1443, ensureGistPersistence reports a degraded gist BOOTSTRAP
+    // (store assigned but disarmed) as 'degraded', not 'gist'. A retry that
+    // resolves via another degraded bootstrap therefore must keep the
+    // LOCAL-ONLY warning and must NOT claim "Gist persistence recovered".
+    mockEnsureGistPersistence.mockResolvedValueOnce('degraded').mockResolvedValueOnce('degraded');
+
+    const first = await client.callTool({ name: 'status', arguments: {} });
+    const firstPayload = JSON.parse((first.content as Array<{ text: string }>)[0].text);
+    expect(firstPayload.gistInitWarning).toMatch(/LOCAL-ONLY/);
+
+    const second = await client.callTool({ name: 'status', arguments: {} });
+    const secondPayload = JSON.parse((second.content as Array<{ text: string }>)[0].text);
+    expect(secondPayload.gistInitWarning).toMatch(/LOCAL-ONLY/);
+    expect(secondPayload.gistRecoveryNotice).toBeUndefined();
+
+    // Only the genuinely armed resolution ('gist') carries the notice.
+    const third = await client.callTool({ name: 'status', arguments: {} });
+    const thirdPayload = JSON.parse((third.content as Array<{ text: string }>)[0].text);
+    expect(thirdPayload.gistInitWarning).toBeUndefined();
+    expect(thirdPayload.gistRecoveryNotice).toMatch(/recovered/i);
+    expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(3);
+  });
+
   it('a recovery notice is dropped (not leaked) when the recovering response has no object payload', async () => {
     mockEnsureGistPersistence.mockResolvedValueOnce('degraded');
     await client.callTool({ name: 'status', arguments: {} });
