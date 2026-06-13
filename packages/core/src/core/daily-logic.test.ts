@@ -746,6 +746,38 @@ describe('computeActionMenu (core)', () => {
     expect(followUp).toBeDefined();
     expect(followUp!.label).toBe('Follow up on 1 stuck-CI and 1 dormant PRs');
   });
+
+  it('should include extract_learnings when recently merged PRs lack extracted learnings (#1463)', () => {
+    const menu = computeActionMenu([], makeCapacity(), [], undefined, 2);
+    const item = menu.items.find((i) => i.key === 'extract_learnings');
+
+    expect(item).toBeDefined();
+    expect(item!.label).toBe('Extract learnings from 2 recently merged PRs');
+  });
+
+  it('should use singular phrasing for one unextracted merge', () => {
+    const menu = computeActionMenu([], makeCapacity(), [], undefined, 1);
+    const item = menu.items.find((i) => i.key === 'extract_learnings');
+
+    expect(item).toBeDefined();
+    expect(item!.label).toBe('Extract learnings from 1 recently merged PR');
+  });
+
+  it('should omit extract_learnings when the unextracted count is zero', () => {
+    const menu = computeActionMenu([], makeCapacity(), [], undefined, 0);
+    expect(menu.items.find((i) => i.key === 'extract_learnings')).toBeUndefined();
+    expect(menu.items.map((i) => i.key)).toEqual(['search', 'done']);
+  });
+
+  it('should omit extract_learnings when the count is not provided', () => {
+    const menu = computeActionMenu([], makeCapacity());
+    expect(menu.items.find((i) => i.key === 'extract_learnings')).toBeUndefined();
+  });
+
+  it('should order extract_learnings after follow_up, before search', () => {
+    const menu = computeActionMenu([], makeCapacity(), [], { stuckCI: 1, dormantFollowup: 0 }, 1);
+    expect(menu.items.map((i) => i.key)).toEqual(['follow_up', 'extract_learnings', 'search', 'done']);
+  });
 });
 
 // ---------------------------------------------------------------------------

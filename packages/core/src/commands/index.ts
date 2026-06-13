@@ -112,6 +112,8 @@ export {
   type MarkDoneOptions,
   type MarkDoneOutput,
 } from './list-mark-done.js';
+/** Daily merge-loop reconciliation — auto-mark curated-list entries whose PR merged (#1463). */
+export { reconcileMergedPRsWithList, findListEntryUrlByPrUrl } from './merge-loop.js';
 /** Check if new files are properly referenced/integrated. */
 export { runCheckIntegration } from './check-integration.js';
 /** System-health diagnostic — verifies tokens, bundle, state, scout, rate limit. */
