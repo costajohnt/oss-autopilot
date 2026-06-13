@@ -142,4 +142,28 @@ describe('daily --json contract', () => {
     expectSchemaValid(result);
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/daily.degraded.json');
   });
+
+  it('merge-free output carries no listUpdates key (#1463 — pins golden stability)', () => {
+    const result = toDailyOutput(makeFixture());
+    expect('listUpdates' in result).toBe(false);
+    expect(JSON.stringify(result)).not.toContain('listUpdates');
+  });
+
+  it('auto-marked list entries pass through and validate against the schema (#1463)', () => {
+    const result = toDailyOutput(
+      makeFixture({
+        listUpdates: [
+          {
+            prUrl: 'https://github.com/octocat/spoon-knife/pull/44',
+            issueUrl: 'https://github.com/octocat/spoon-knife/issues/40',
+            listPath: '/home/user/open-source/potential-issue-list.md',
+            repoHeadingStruck: false,
+          },
+        ],
+      }),
+    );
+    expectSchemaValid(result);
+    expect(result.listUpdates).toHaveLength(1);
+    expect(result.listUpdates![0].issueUrl).toBe('https://github.com/octocat/spoon-knife/issues/40');
+  });
 });

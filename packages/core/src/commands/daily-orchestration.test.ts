@@ -7,6 +7,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
 import type { FetchedPR, DailyDigest, CommentedIssue } from '../core/types.js';
 import { makeFetchedPR } from '../core/test-utils.js';
 import type { FetchPRsResult } from '../core/pr-monitor.js';
@@ -1222,5 +1225,114 @@ describe('executeDailyCheck() — status overrides (#644)', () => {
     const actionableUrls = result.actionableIssues.map((i) => i.prUrl);
     expect(actionableUrls).toContain(overriddenPR.url);
     expect(result.capacity.criticalIssueCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// executeDailyCheck() — merge loop (#1463)
+// ---------------------------------------------------------------------------
+
+describe('executeDailyCheck() — merge loop (#1463)', () => {
+  const ISSUE_URL = 'https://github.com/foo/bar/issues/1';
+  const PR_URL = 'https://github.com/foo/bar/pull/123';
+  const mergedPR = {
+    url: PR_URL,
+    repo: 'foo/bar',
+    number: 123,
+    title: 'Fix the thing',
+    mergedAt: '2026-06-10T12:00:00Z',
+  };
+
+  let tmpDir: string;
+  let listPath: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-merge-loop-'));
+    listPath = path.join(tmpDir, 'issue-list.md');
+    fs.writeFileSync(
+      listPath,
+      [
+        '### foo/bar',
+        `- [#1](${ISSUE_URL}) — first issue`,
+        `  - **In Progress** — PR [#123](${PR_URL}) open.`,
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  /** State wired for the merge loop: configured list path + unextracted ledger entry. */
+  function stateWithListAndLedger() {
+    const state = makeDefaultState({
+      mergedPRs: [{ url: PR_URL, title: mergedPR.title, mergedAt: mergedPR.mergedAt }],
+    });
+    (state.config as Record<string, unknown>).issueListPath = listPath;
+    return state;
+  }
+
+  it('auto-marks the matching curated-list entry done and surfaces it in listUpdates', async () => {
+    mockGetState.mockReturnValue(stateWithListAndLedger());
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.listUpdates).toEqual([
+      {
+        prUrl: PR_URL,
+        issueUrl: ISSUE_URL,
+        listPath: path.resolve(listPath),
+        repoHeadingStruck: true,
+      },
+    ]);
+    const written = fs.readFileSync(listPath, 'utf8');
+    expect(written).toContain(`- ~~[#1](${ISSUE_URL}) — first issue~~`);
+    expect(written).toContain(`  - **Done** — PR [#123](${PR_URL}) submitted, merged 2026-06-10.`);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('adds the extract_learnings menu item for recent merges without extracted learnings', async () => {
+    mockGetState.mockReturnValue(stateWithListAndLedger());
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    const item = result.actionMenu.items.find((i) => i.key === 'extract_learnings');
+    expect(item).toBeDefined();
+    expect(item!.label).toBe('Extract learnings from 1 recently merged PR');
+  });
+
+  it('omits extract_learnings when the merge already has learnings extracted', async () => {
+    const state = stateWithListAndLedger();
+    (state.mergedPRs as Array<Record<string, unknown>>)[0].learningsExtractedAt = '2026-06-11T00:00:00.000Z';
+    mockGetState.mockReturnValue(state);
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.actionMenu.items.find((i) => i.key === 'extract_learnings')).toBeUndefined();
+  });
+
+  it('omits listUpdates entirely on a merge-free run', async () => {
+    mockFetchRecentlyMergedPRs.mockResolvedValue([]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect('listUpdates' in result).toBe(false);
+    expect(result.actionMenu.items.find((i) => i.key === 'extract_learnings')).toBeUndefined();
+  });
+
+  it('omits listUpdates when no list entry mentions the merged PR (silent no-op)', async () => {
+    fs.writeFileSync(listPath, '### foo/bar\n- [#9](https://github.com/foo/bar/issues/9) — unrelated\n', 'utf8');
+    mockGetState.mockReturnValue(stateWithListAndLedger());
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.listUpdates).toBeUndefined();
+    expect(result.warnings).toEqual([]);
   });
 });

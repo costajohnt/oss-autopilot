@@ -5,7 +5,8 @@
  *
  * Sources of truth:
  *   - Agent table: each agents/*.md frontmatter (`name`, `purpose`).
- *   - Workflow index: workflows/manifest.json (explicit curated list).
+ *   - Workflow index: workflows/manifest.json (every workflows/*.md except
+ *     reference.md must be listed; enforced below).
  *   - Local-only commands: live `manifest --json` output from the bundled CLI
  *     (filters commands where `localOnly === true`). This requires
  *     packages/core/dist/cli.bundle.cjs to exist — run
@@ -149,6 +150,21 @@ function buildWorkflowIndex() {
     }
     rows.push(`| \`${entry.file}\` | ${entry.purpose} |`);
   }
+
+  // Inclusion criterion (#1466): every workflows/*.md except reference.md
+  // (generated output) must appear in the manifest. Fail loudly so a new
+  // workflow file can't be silently omitted from the index.
+  const listed = new Set(manifest.workflows.map((entry) => entry.file));
+  const onDisk = readdirSync(WORKFLOWS_DIR)
+    .filter((name) => name.endsWith('.md') && name !== 'reference.md')
+    .map((name) => `workflows/${name}`);
+  const missing = onDisk.filter((file) => !listed.has(file));
+  if (missing.length > 0) {
+    throw new Error(
+      `workflows/manifest.json is missing ${missing.join(', ')} — every workflow except reference.md must be listed (see the manifest _comment)`,
+    );
+  }
+
   return rows.join('\n');
 }
 

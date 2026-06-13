@@ -52,7 +52,9 @@ import {
   type CapacityAssessment,
   type ActionableIssue,
   type ActionMenu,
+  type MergedPRListUpdate,
 } from '../formatters/json.js';
+import { reconcileMergedPRsWithList } from './merge-loop.js';
 
 const MODULE = 'daily';
 
@@ -140,6 +142,12 @@ export interface DailyCheckResult {
    * where the gate stays silent.
    */
   strategySummary?: StrategyResult | null;
+  /**
+   * Curated-list entries auto-marked done because their PR merged (#1463).
+   * Set only when at least one entry was struck this run; merge-free runs
+   * omit it so serialized output (and contract goldens) stay unchanged.
+   */
+  listUpdates?: MergedPRListUpdate[];
 }
 
 // ---------------------------------------------------------------------------
@@ -600,6 +608,7 @@ function generateDigestOutput(
   failures: PRCheckFailure[],
   warnings: DailyWarning[],
   previousLastDigestAt?: string,
+  unextractedMergeCount?: number,
 ): DailyCheckResult {
   const stateManager = getStateManager();
 
@@ -657,7 +666,13 @@ function generateDigestOutput(
   // the same buckets per-PR, so the headline counts cannot diverge.
   const attention = summarizeAttentionBuckets(activePRs);
   const briefSummary = formatBriefSummary(digest, actionableIssues.length, issueResponses.length, attention);
-  const actionMenu = computeActionMenu(actionableIssues, capacity, filteredCommentedIssues, attention);
+  const actionMenu = computeActionMenu(
+    actionableIssues,
+    capacity,
+    filteredCommentedIssues,
+    attention,
+    unextractedMergeCount,
+  );
   const repoGroups = groupPRsByRepo(activePRs);
 
   // Periodic strategy snapshot (#1270 Step 2). Cadence-gated to fire every
@@ -750,6 +765,9 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
     failures: result.failures,
     warnings: result.warnings,
     strategySummary: result.strategySummary,
+    // Conditional spread (not a plain assignment) so merge-free runs carry
+    // no `listUpdates` key at all — serialized output and goldens unchanged.
+    ...(result.listUpdates ? { listUpdates: result.listUpdates } : {}),
   };
 }
 
@@ -899,6 +917,27 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     recordWarning(warnings, 'analytics', 'persist monthly analytics', error);
   }
 
+  // Phase 3.5: Close the merge loop (#1463). Join detected merges against
+  // the curated issue list (the PR URL recorded in an entry's sub-bullets
+  // is the only deterministic PR→issue link that exists — see
+  // merge-loop.ts) and auto-mark matching entries done. Safe to auto-run:
+  // the PR is MERGED per GitHub, and already-marked entries are quiet
+  // no-ops. Failures land in warnings[] via the shared collector.
+  const listUpdates = reconcileMergedPRsWithList({ mergedPRs: recentlyMergedPRs, warnings });
+
+  // Count freshly-merged PRs whose ledger entry has no learnings extraction
+  // stamp yet (#867 plumbing). Drives the action menu's extract_learnings
+  // nudge: it stays up for the whole recently-merged window (7 days) until
+  // the user runs the extraction, then self-clears.
+  let unextractedMergeCount = 0;
+  try {
+    const ledger = getStateManager().getState().mergedPRs ?? [];
+    const recentUrls = new Set(recentlyMergedPRs.map((pr) => pr.url));
+    unextractedMergeCount = ledger.filter((pr) => recentUrls.has(pr.url) && !pr.learningsExtractedAt).length;
+  } catch (error) {
+    recordWarning(warnings, 'merge-loop', 'count unextracted merged PRs', error);
+  }
+
   // No scout pass here (#1458): the former Phase 3.5 fed recentlyMerged/ClosedPRs
   // to an oss-scout instance and called scout.checkpoint(). Both halves were dead:
   // scout's recordMergedPR/recordClosedPR deduplicate by URL against the ledger
@@ -930,7 +969,11 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     failures,
     warnings,
     previousLastDigestAt,
+    unextractedMergeCount,
   );
+  if (listUpdates) {
+    result.listUpdates = listUpdates;
+  }
 
   // Checkpoint: push state to Gist if in Gist mode.
   // If getStateManagerAsync was not called before this command ran,

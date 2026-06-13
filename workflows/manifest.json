@@ -1,5 +1,5 @@
 {
-  "_comment": "Source-of-truth for the auto-generated Workflow Index table in reference.md (#1289). Order = display order. Each entry must reference a real file under workflows/. New workflow files are silently omitted from the table until added here — that's intentional, the table is a curated list of the workflows users typically need to look up, not an exhaustive directory listing.",
+  "_comment": "Source-of-truth for the auto-generated Workflow Index table in reference.md (#1289). Inclusion criterion (#1466): every workflow file under workflows/ is listed here, except reference.md (generated output, not a workflow). generate-reference.mjs fails if a workflows/*.md file is missing from this list, so new workflows must be added on creation. Order = display order. Each entry must reference a real file under workflows/.",
   "workflows": [
     {
       "file": "workflows/startup-and-build.md",
@@ -32,6 +32,18 @@
     {
       "file": "workflows/dormant-pr-follow-up.md",
       "purpose": "Operationalizes the 7/14/30-day follow-up cadence for waiting-on-maintainer PRs"
+    },
+    {
+      "file": "workflows/plan-review.md",
+      "purpose": "Plan-phase review convergence loop — design critique before any code is written (companion to pre-commit-review)"
+    },
+    {
+      "file": "workflows/extract-learnings.md",
+      "purpose": "Distill per-repo contribution guidelines from merged/closed PR feedback (#867)"
+    },
+    {
+      "file": "workflows/edit-guidelines.md",
+      "purpose": "Manual edit path for stored per-repo guidelines (load → edit → store, no extraction)"
     }
   ]
 }

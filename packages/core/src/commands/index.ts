@@ -45,10 +45,6 @@ export { runTrack } from './track.js';
 export { runComplianceScore } from './compliance-score.js';
 /** Compute repo health rubric (1–10 score + verdict) via the typed core function (#1271, follow-up to #1242). */
 export { runRepoVet } from './repo-vet.js';
-/** Temporarily hide a PR from the daily digest. */
-export { runShelve } from './shelve.js';
-/** Restore a shelved PR to the daily digest. */
-export { runUnshelve } from './shelve.js';
 /** Move a PR between states: attention, waiting, shelved, auto. */
 export { runMove } from './move.js';
 /** Dismiss issue reply notifications (auto-resurfaces on new activity). */
@@ -116,6 +112,8 @@ export {
   type MarkDoneOptions,
   type MarkDoneOutput,
 } from './list-mark-done.js';
+/** Daily merge-loop reconciliation — auto-mark curated-list entries whose PR merged (#1463). */
+export { reconcileMergedPRsWithList, findListEntryUrlByPrUrl } from './merge-loop.js';
 /** Check if new files are properly referenced/integrated. */
 export { runCheckIntegration } from './check-integration.js';
 /** System-health diagnostic — verifies tokens, bundle, state, scout, rate limit. */
@@ -163,7 +161,6 @@ export type {
   CheckIntegrationOutput,
   LocalReposOutput,
 } from '../formatters/json.js';
-export type { ShelveOutput, UnshelveOutput } from './shelve.js';
 export type { MoveOutput, MoveTarget } from './move.js';
 export type {
   GuidelinesListOutput,

@@ -33,7 +33,7 @@ oss-autopilot status --json
 # Search for contributable issues (positional arg = max result count)
 oss-autopilot search 10 --json
 
-# Fetch PR metadata (informational only — nothing persists)
+# Inspect a PR (read-only metadata lookup — nothing persists)
 oss-autopilot track https://github.com/owner/repo/pull/123
 
 # View help

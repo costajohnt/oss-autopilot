@@ -131,6 +131,7 @@ export type DailyWarningPhase =
   | 'fetch'
   | 'repo-scores'
   | 'analytics'
+  | 'merge-loop'
   | 'partition'
   | 'dismiss-filter'
   | 'gist-init'
@@ -181,6 +182,24 @@ export function buildStalenessWarning(info: StalenessLike): DailyWarning {
   };
 }
 
+/**
+ * One curated-list entry auto-marked done because its PR merged (#1463).
+ * Produced by the daily merge-loop reconciliation (commands/merge-loop.ts):
+ * a recently merged PR's URL was found inside a list entry's block (the
+ * entry line or an indented sub-bullet), and the entry was struck through
+ * via the same transform `list-mark-done` uses.
+ */
+export interface MergedPRListUpdate {
+  /** The merged PR whose detection triggered the auto-mark. */
+  prUrl: string;
+  /** URL on the struck entry line (usually the issue URL the PR resolved). */
+  issueUrl: string;
+  /** Curated-list file that was updated. */
+  listPath: string;
+  /** True if the parent `### repo/name` heading was also struck through. */
+  repoHeadingStruck: boolean;
+}
+
 export interface DailyOutput {
   digest: DailyDigestCompact;
   capacity: CapacityAssessment;
@@ -206,6 +225,13 @@ export interface DailyOutput {
    * absent or null on runs where the gate stays silent.
    */
   strategySummary?: import('../core/strategy.js').StrategyResult | null;
+  /**
+   * Curated-list entries auto-marked done this run because their PR merged
+   * (#1463). Present only when at least one entry was actually struck —
+   * merge-free runs (and runs with no curated list / no matching entry)
+   * omit the field entirely so existing consumers and goldens see no change.
+   */
+  listUpdates?: MergedPRListUpdate[];
 }
 
 /**
@@ -236,6 +262,8 @@ export interface CompactDailyOutput {
   warnings: DailyWarning[];
   /** Periodic strategy snapshot, threaded through compact mode for parity. See {@link DailyOutput.strategySummary}. */
   strategySummary?: import('../core/strategy.js').StrategyResult | null;
+  /** Curated-list entries auto-marked done this run (#1463). See {@link DailyOutput.listUpdates}. */
+  listUpdates?: MergedPRListUpdate[];
 }
 
 /**
@@ -255,6 +283,7 @@ export function toCompactDailyOutput(output: DailyOutput): CompactDailyOutput {
     failureCount: output.failures.length,
     warnings: output.warnings,
     strategySummary: output.strategySummary,
+    listUpdates: output.listUpdates,
   };
 }
 
@@ -314,6 +343,7 @@ const DailyWarningPhaseSchema = z.enum([
   'fetch',
   'repo-scores',
   'analytics',
+  'merge-loop',
   'partition',
   'dismiss-filter',
   'gist-init',
@@ -532,6 +562,14 @@ export const AttentionSummarySchema = z.object({
   waiting: z.number().int().nonnegative(),
 });
 
+/** Mirrors {@link MergedPRListUpdate} (#1463). */
+const MergedPRListUpdateSchema = z.object({
+  prUrl: z.string(),
+  issueUrl: z.string(),
+  listPath: z.string(),
+  repoHeadingStruck: z.boolean(),
+});
+
 export const DailyOutputSchema = z.object({
   digest: DailyDigestCompactSchema,
   capacity: CapacityAssessmentSchema,
@@ -545,6 +583,7 @@ export const DailyOutputSchema = z.object({
   failures: z.array(PRCheckFailurePassthroughSchema),
   warnings: z.array(DailyWarningSchema),
   strategySummary: StrategyResultSchema.nullable().optional(),
+  listUpdates: z.array(MergedPRListUpdateSchema).optional(),
 });
 
 export const CompactDailyOutputSchema = z.object({
@@ -558,6 +597,7 @@ export const CompactDailyOutputSchema = z.object({
   failureCount: z.number().int().nonnegative(),
   warnings: z.array(DailyWarningSchema),
   strategySummary: StrategyResultSchema.nullable().optional(),
+  listUpdates: z.array(MergedPRListUpdateSchema).optional(),
 });
 
 // ── Search output schema (#1147) ─────────────────────────────────────

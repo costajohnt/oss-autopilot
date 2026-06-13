@@ -4,7 +4,6 @@
   "expectedCommands": [
     "checkSetup",
     "claim",
-    "clear-override",
     "comments",
     "compliance-score",
     "config",
@@ -21,7 +20,6 @@
     "manifest",
     "move",
     "orphan-files",
-    "override",
     "parse-issue-list",
     "post",
     "pr-template",
@@ -29,7 +27,6 @@
     "search",
     "serve",
     "setup",
-    "shelve",
     "skip-add",
     "startup",
     "state",
@@ -38,7 +35,6 @@
     "strategy",
     "track",
     "undismiss",
-    "unshelve",
     "verify-issue",
     "vet",
     "vet-list"

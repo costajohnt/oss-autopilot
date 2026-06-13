@@ -7,8 +7,8 @@
  * metadata from GitHub and returns it; useful for inspecting a specific
  * PR's shape without waiting for the next `daily` run. Nothing is persisted.
  *
- * The `runUntrack` v1→v2 stub was removed in v4 (#1133). Use `shelve`/
- * `unshelve` to hide a PR from the daily digest.
+ * The `runUntrack` v1→v2 stub was removed in v4 (#1133). Use `move`
+ * (target `shelved`/`auto`) to hide/restore a PR in the daily digest.
  */
 
 import { getOctokit, requireGitHubToken } from '../core/index.js';

@@ -69,5 +69,5 @@ describe('runTrack', () => {
   });
 });
 
-// runUntrack was removed in v4 (#1133). Use runShelve to hide a PR from the
+// runUntrack was removed in v4 (#1133). Use runMove (target 'shelved') to hide a PR from the
 // daily digest.

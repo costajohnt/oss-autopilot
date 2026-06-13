@@ -185,32 +185,20 @@ describe('tool execution', () => {
     });
   });
 
-  describe('shelve/unshelve delegation', () => {
-    it('shelve delegates to runMove with target=shelved', async () => {
+  // The `shelve`/`unshelve` tool aliases were retired in #1466; `move`
+  // covers both transitions directly.
+  describe('move delegation', () => {
+    it('move delegates to runMove with the given target', async () => {
       mockRunMove.mockResolvedValueOnce({ success: true });
 
       await client.callTool({
-        name: 'shelve',
-        arguments: { prUrl: 'https://github.com/octocat/hello-world/pull/42' },
+        name: 'move',
+        arguments: { prUrl: 'https://github.com/octocat/hello-world/pull/42', target: 'shelved' },
       });
 
       expect(mockRunMove).toHaveBeenCalledWith({
         prUrl: 'https://github.com/octocat/hello-world/pull/42',
         target: 'shelved',
-      });
-    });
-
-    it('unshelve delegates to runMove with target=auto', async () => {
-      mockRunMove.mockResolvedValueOnce({ success: true });
-
-      await client.callTool({
-        name: 'unshelve',
-        arguments: { prUrl: 'https://github.com/octocat/hello-world/pull/42' },
-      });
-
-      expect(mockRunMove).toHaveBeenCalledWith({
-        prUrl: 'https://github.com/octocat/hello-world/pull/42',
-        target: 'auto',
       });
     });
   });
