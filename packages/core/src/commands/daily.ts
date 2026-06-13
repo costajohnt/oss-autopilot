@@ -12,6 +12,7 @@ import {
   PRMonitor,
   IssueConversationMonitor,
   requireGitHubToken,
+  renderGistWarning,
   CRITICAL_STATUSES,
   applyStatusOverrides,
   computeRepoSignals,
@@ -786,22 +787,20 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   const warnings: DailyWarning[] = [];
 
   // Surface gist-mode degradation in the machine-readable envelope (#1431):
-  // a process whose config says `persistence: gist` but whose manager is
-  // local-only (transient init fallback, or a localOnly entry point that
-  // never bootstrapped) writes mutations that will not sync. Previously the
-  // only signal was a stderr warn, invisible to --json consumers.
-  const smForGistCheck = getStateManager();
-  if (
-    smForGistCheck.getState().config.persistence === 'gist' &&
-    (!smForGistCheck.isGistMode() || smForGistCheck.isGistDegraded())
-  ) {
+  // a degraded process (local-only under a gist config, or a #1443 degraded
+  // bootstrap) writes mutations that will not sync. Previously the only
+  // signal was a stderr warn, invisible to --json consumers. Predicate and
+  // prose both come from the one health source (#1444). When this warning
+  // is present, the JSON envelope suppresses its process-level
+  // `gistInitWarning` duplicate — see `jsonSuccess` in formatters/json.ts.
+  const gistHealth = getStateManager().getGistHealth();
+  if (gistHealth.degraded) {
     recordWarning(
       warnings,
       'gist-init',
       'Gist persistence degraded',
-      new Error(
-        'configured for Gist but running local-only in this process; mutations will not sync until Gist init succeeds',
-      ),
+      null,
+      renderGistWarning(gistHealth.degraded.cause),
     );
   }
 

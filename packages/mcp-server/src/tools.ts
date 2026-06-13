@@ -45,6 +45,7 @@ import {
   getConfigKeys,
   getStateManager,
   labelGuidelinesContent,
+  renderGistWarning,
   ConcurrencyError,
   GistConcurrencyError,
   ConfigurationError,
@@ -104,16 +105,13 @@ function resetGistInitMemo(): void {
 }
 
 function gistWarningText(cause: GistDegradedCause): string {
-  const reason =
-    cause === 'no-token'
-      ? 'no GitHub token was available'
-      : cause === 'state-unreadable'
-        ? 'the state file was unreadable'
-        : 'initialization hit a transient network failure';
-  return (
-    `Gist persistence is configured but ${reason}; writes are LOCAL-ONLY and may be ` +
-    'overwritten by the next successful Gist read. Will retry on the next tool call.'
-  );
+  // Prose from the shared core renderer (#1444). The local cause names are
+  // ensureGistPersistence statuses; 'degraded' is that layer's deliberate
+  // conflation of the transient init fallback and a #1443 degraded
+  // bootstrap, rendered as the init-fallback cause as before.
+  return renderGistWarning(cause === 'degraded' ? 'init-fallback' : cause, {
+    retryHint: 'Will retry on the next tool call.',
+  });
 }
 
 export async function ensureGistInit(): Promise<GistDegradedCause | null> {
@@ -251,10 +249,11 @@ function wrapTool<A>(
       } catch (e) {
         if (!(options.gistRepairTool && e instanceof ConfigurationError)) throw e;
         degradedCause = null;
-        hardInitWarning =
-          `Gist persistence is configured but initialization failed (${errorMessage(e)}) — ` +
-          "fix the Gist setup (check the token's gist scope, or run state-show / setup) before relying on sync. " +
-          'This call ran against LOCAL-ONLY state and its changes may be overwritten by the next successful Gist sync.';
+        hardInitWarning = renderGistWarning({
+          reason:
+            `initialization failed (${errorMessage(e)}) — fix the Gist setup ` +
+            "(check the token's gist scope, or run state-show / setup) before relying on sync",
+        });
       }
       // Pick up external writes (CLI in a terminal, another machine via the
       // Gist) before running the body — reads stop serving boot-time state
@@ -281,6 +280,12 @@ function wrapTool<A>(
       // have cleared by now). Object payloads get a warning field;
       // non-object payloads pass through (every current tool returns an
       // object or undefined).
+      //
+      // Deliberately NOT deduped against a payload's own
+      // warnings[{phase:'gist-init'}] entry (#1444, unlike the CLI's JSON
+      // envelope): this snapshot can be MORE specific than the manager-level
+      // health check (e.g. 'no-token'), and both prose variants now come
+      // from the same core renderer.
       const warningText = hardInitWarning ?? (degradedCause ? gistWarningText(degradedCause) : null);
       if (warningText && data && typeof data === 'object' && !Array.isArray(data)) {
         return ok({ ...(data as Record<string, unknown>), gistInitWarning: warningText });

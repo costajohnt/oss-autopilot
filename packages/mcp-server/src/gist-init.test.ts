@@ -71,7 +71,10 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   MAX_FEATURES_RESULTS: 100,
 }));
 
-vi.mock('@oss-autopilot/core', () => ({
+vi.mock('@oss-autopilot/core', async (importOriginal) => ({
+  // Real shared renderer (#1444): the warning-prose assertions below
+  // exercise the actual renderGistWarning, not a passthrough.
+  renderGistWarning: (await importOriginal<typeof import('@oss-autopilot/core')>()).renderGistWarning,
   errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   getStateManager: vi.fn().mockReturnValue({
     getState: vi.fn().mockReturnValue({
