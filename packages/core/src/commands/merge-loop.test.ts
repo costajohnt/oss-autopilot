@@ -223,3 +223,28 @@ describe('reconcileMergedPRsWithList', () => {
     expect(written).toContain(`- ~~[#2](${ISSUE_B}) — second~~`);
   });
 });
+
+describe('status-marker anchoring (#1463 review)', () => {
+  it('does not strike an entry whose sub-bullet merely references the PR without a status marker', () => {
+    const prUrl = 'https://github.com/foo/bar/pull/123';
+    const content = [
+      '### foo/bar',
+      '',
+      `- [Issue one](https://github.com/foo/bar/issues/1)`,
+      `  - **In Progress** — PR [#123](${prUrl})`,
+      `- [Issue two](https://github.com/foo/bar/issues/2)`,
+      `  - note: blocked by ${prUrl}`,
+      '',
+    ].join('\n');
+    // Issue two's bare mention must not win even though both blocks mention the PR.
+    expect(findListEntryUrlByPrUrl(content, prUrl)).toBe('https://github.com/foo/bar/issues/1');
+  });
+
+  it('returns undefined when the only mention is an unmarked sub-bullet note', () => {
+    const prUrl = 'https://github.com/foo/bar/pull/123';
+    const content = [`- [Issue two](https://github.com/foo/bar/issues/2)`, `  - note: blocked by ${prUrl}`, ''].join(
+      '\n',
+    );
+    expect(findListEntryUrlByPrUrl(content, prUrl)).toBeUndefined();
+  });
+});

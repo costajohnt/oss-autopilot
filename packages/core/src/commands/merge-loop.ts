@@ -43,13 +43,23 @@ const MODULE = 'merge-loop';
 const GITHUB_URL_RE = /https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/(?:issues|pull)\/\d+/;
 
 /**
+ * A line counts as a STATUS sub-bullet only when it carries one of the
+ * markers the workflows write next to an entry's own PR (`**Done**`,
+ * `**In Progress**`, or a `PR [#N](...)` reference). A bare URL mention
+ * (e.g. a hand-written "blocked by <pr-url>" note under a DIFFERENT
+ * entry) must not auto-strike that entry (#1463 review).
+ */
+const STATUS_MARKER_RE = /\*\*(?:Done|In Progress)\*\*|PR \[#?\d/;
+
+/**
  * Find the curated-list entry whose block (entry line plus indented
- * sub-bullets) mentions `prUrl`, and return the entry line's own GitHub
- * URL — the URL `markIssueAsDone` needs to locate the block again.
+ * sub-bullets) mentions `prUrl` on a STATUS-marked line, and return the
+ * entry line's own GitHub URL — the URL `markIssueAsDone` needs to locate
+ * the block again.
  *
- * Returns undefined when no entry block mentions the PR URL, or when the
- * mentioning block's entry line carries no GitHub URL (nothing for the
- * mark-done transform to anchor on).
+ * Returns undefined when no entry block mentions the PR URL on a marked
+ * line, or when the mentioning block's entry line carries no GitHub URL
+ * (nothing for the mark-done transform to anchor on).
  */
 export function findListEntryUrlByPrUrl(content: string, prUrl: string): string | undefined {
   const lines = content.split('\n');
@@ -63,7 +73,13 @@ export function findListEntryUrlByPrUrl(content: string, prUrl: string): string 
     // list-mark-done's findIssueBlock).
     let end = i + 1;
     while (end < lines.length && /^\s{2,}/.test(lines[end])) end++;
-    if (lines.slice(i, end).some((line) => lineMentionsUrl(line, prUrl))) {
+    // The entry line mentioning the PR itself is self-anchored (no
+    // cross-entry ambiguity); sub-bullets must carry a status marker.
+    const entryMentions = lineMentionsUrl(lines[i], prUrl);
+    const markedSubBulletMentions = lines
+      .slice(i + 1, end)
+      .some((line) => lineMentionsUrl(line, prUrl) && STATUS_MARKER_RE.test(line));
+    if (entryMentions || markedSubBulletMentions) {
       const match = GITHUB_URL_RE.exec(lines[i]);
       if (match) return match[0];
       // Entry line has no URL to anchor a mark-done on — keep scanning in
