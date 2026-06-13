@@ -39,6 +39,10 @@ function RefreshIcon() {
   );
 }
 
+/** How often the header re-renders so the relative "Updated Xm ago" label
+ * ticks (#1459). Purely cosmetic — no network calls ride this interval. */
+const RELATIVE_TIME_TICK_MS = 30_000;
+
 function DashboardHeader({
   stats,
   loading,
@@ -49,6 +53,15 @@ function DashboardHeader({
   onToggleTheme,
   onCelebrate,
 }: DashboardHeaderProps) {
+  // formatRelativeTime is computed at render only, so without this tick an
+  // overnight tab would say "Updated just now" against 12-hour-old data
+  // (#1459). The state value is unused; bumping it schedules the re-render.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), RELATIVE_TIME_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <header class="dashboard-header">
       <div class="header-brand">

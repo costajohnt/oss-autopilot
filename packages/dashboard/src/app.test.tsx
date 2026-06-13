@@ -368,6 +368,45 @@ describe('App', () => {
     vi.useRealTimers();
   });
 
+  // ── Relative timestamp ticking (#1459) ────────────────────────────
+
+  it('ticks the "Updated Xm ago" label over time without any network calls', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockFetchOk(makeDashboardData());
+
+    const { container } = render(<App />);
+    await waitFor(() => expect(container.querySelector('.dashboard')).toBeTruthy());
+    expect(container.querySelector('.last-updated')?.textContent).toBe('Updated just now');
+
+    // Let the one-shot 5s auto-refresh land first — it bumps lastUpdated, so
+    // the window we measure below starts after it. act-wrapped per #1446's
+    // lesson: preact only flushes timer-scheduled effects deterministically
+    // inside act.
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    await waitFor(() => {
+      const btn = container.querySelector('.refresh-btn') as HTMLButtonElement;
+      expect(btn.disabled).toBe(false);
+    });
+
+    const fetchMock = fetch as ReturnType<typeof vi.fn>;
+    const callsBefore = fetchMock.mock.calls.length;
+
+    // Two minutes pass with zero user interaction. The label used to stay
+    // frozen at "just now" because formatRelativeTime was computed at render
+    // only — the 30s tick interval must re-render the header.
+    await act(async () => {
+      vi.advanceTimersByTime(120_000);
+    });
+
+    expect(container.querySelector('.last-updated')?.textContent).toBe('Updated 2m ago');
+    // The tick is cosmetic: it must not trigger any fetches.
+    expect(fetchMock.mock.calls.length).toBe(callsBefore);
+
+    vi.useRealTimers();
+  });
+
   // ── Action round-trips (#966) ─────────────────────────────────────
   //
   // These tests exercise the wiring between the ActionBar buttons in the
