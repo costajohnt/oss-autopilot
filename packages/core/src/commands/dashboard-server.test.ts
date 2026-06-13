@@ -290,6 +290,10 @@ describe('dashboard-server', () => {
     fs.writeFileSync(path.join(tmpDir, 'test.css'), 'body { color: red; }');
     fs.writeFileSync(path.join(tmpDir, 'app.js'), 'console.log("app");');
     fs.writeFileSync(path.join(tmpDir, 'icon.svg'), '<svg></svg>');
+    // Hashed build outputs live under assets/ (Vite's content-addressed dir);
+    // these get the long cache while everything else revalidates (#1459).
+    fs.mkdirSync(path.join(tmpDir, 'assets'));
+    fs.writeFileSync(path.join(tmpDir, 'assets', 'index-abc123.js'), 'console.log("bundle");');
 
     // Set up state manager mock with a cached digest
     const digest = makeDigest();
@@ -415,6 +419,45 @@ describe('dashboard-server', () => {
       const result = await sendRequest('GET', '/icon.svg');
       expect(result.statusCode).toBe(200);
       expect(result.headers['Content-Type']).toBe('image/svg+xml');
+    });
+
+    // ── Honest caching + asset 404s (#1459) ─────────────────────────
+
+    it('serves index.html with Cache-Control no-cache so upgrades are picked up (direct, #1459)', async () => {
+      const result = await sendRequest('GET', '/');
+      expect(result.statusCode).toBe(200);
+      expect(result.headers['Content-Type']).toBe('text/html');
+      expect(result.headers['Cache-Control']).toBe('no-cache');
+    });
+
+    it('serves the SPA-fallback index.html with Cache-Control no-cache (#1459)', async () => {
+      const result = await sendRequest('GET', '/nonexistent/path');
+      expect(result.statusCode).toBe(200);
+      expect(result.headers['Content-Type']).toBe('text/html');
+      expect(result.headers['Cache-Control']).toBe('no-cache');
+    });
+
+    it('keeps the long cache for hashed files under /assets/ (#1459)', async () => {
+      const result = await sendRequest('GET', '/assets/index-abc123.js');
+      expect(result.statusCode).toBe(200);
+      expect(result.headers['Content-Type']).toBe('application/javascript');
+      expect(result.headers['Cache-Control']).toBe('public, max-age=3600');
+      expect(result.body).toContain('console.log("bundle")');
+    });
+
+    it('returns a real 404 for missing files under /assets/ instead of the SPA fallback (#1459)', async () => {
+      // Falling back to index.html (200 text/html) here made the module
+      // loader reject the response after an upgrade deleted old bundles.
+      const result = await sendRequest('GET', '/assets/index-deadbeef.js');
+      expect(result.statusCode).toBe(404);
+      expect(result.headers['Content-Type']).toBe('application/json');
+      expect(JSON.parse(result.body)).toEqual({ error: 'Not found' });
+    });
+
+    it('serves unhashed non-index files (favicon etc.) with no-cache (#1459)', async () => {
+      const result = await sendRequest('GET', '/icon.svg');
+      expect(result.statusCode).toBe(200);
+      expect(result.headers['Cache-Control']).toBe('no-cache');
     });
   });
 
