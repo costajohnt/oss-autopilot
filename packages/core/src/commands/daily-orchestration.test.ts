@@ -90,6 +90,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
       getStateStaleness: vi.fn(() => null),
       getLoadRecovery: vi.fn(() => null),
       isGistMode: mockIsGistMode,
+      isGistDegraded: vi.fn(() => false),
       batch: (fn: () => void) => fn(),
     })),
     requireGitHubToken: vi.fn(() => 'test-token'),
