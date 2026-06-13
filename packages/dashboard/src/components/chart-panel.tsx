@@ -73,7 +73,10 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
   const lineChartRef = useRef<Chart | null>(null);
   const barChartRef = useRef<Chart | null>(null);
 
-  // Monthly activity line chart
+  // Monthly activity line chart. Created once, then updated in place: every
+  // /api/data|refresh|action response produces fresh array identities, so a
+  // destroy-and-recreate here replayed the 1.5s entrance animation on every
+  // refresh and PR action (#1459).
   useEffect(() => {
     const canvas = lineCanvasRef.current;
     if (!canvas) return;
@@ -116,29 +119,33 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
       });
     }
 
-    lineChartRef.current = new Chart(canvas, {
-      type: 'line',
-      data: { labels: months, datasets },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        // Entrance animation (#940) — visible for demos, tasteful for daily use.
-        animation: { duration: 1500, easing: 'easeOutQuart' },
-        plugins: { legend: legendOpts },
-        scales: {
-          x: scaleOpts,
-          y: { beginAtZero: true, ...scaleOpts },
-        },
+    const data = { labels: months, datasets };
+    const options = {
+      responsive: true,
+      maintainAspectRatio: false,
+      // Entrance animation (#940) — visible for demos, tasteful for daily use.
+      animation: { duration: 1500, easing: 'easeOutQuart' as const },
+      plugins: { legend: legendOpts },
+      scales: {
+        x: scaleOpts,
+        y: { beginAtZero: true, ...scaleOpts },
       },
-    });
-
-    return () => {
-      lineChartRef.current?.destroy();
-      lineChartRef.current = null;
     };
+
+    const existing = lineChartRef.current;
+    if (existing) {
+      existing.data = data;
+      existing.options = options;
+      // 'none' skips the transition — the entrance animation runs only when
+      // the chart is first created (#1459).
+      existing.update('none');
+      return;
+    }
+    lineChartRef.current = new Chart(canvas, { type: 'line', data, options });
   }, [monthlyMerged, monthlyOpened, monthlyClosed, theme]);
 
-  // Top repos bar chart
+  // Top repos bar chart — same create-once-then-update-in-place pattern as
+  // the line chart above (#1459).
   useEffect(() => {
     const canvas = barCanvasRef.current;
     if (!canvas) return;
@@ -149,48 +156,61 @@ export function ChartPanel({ monthlyMerged, monthlyOpened, monthlyClosed, topRep
     const repos = topRepos.slice(0, 10);
     const labels = repos.map((r) => r.repo);
 
-    barChartRef.current = new Chart(canvas, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'Active',
-            data: repos.map((r) => r.active),
-            backgroundColor: colors.green,
-          },
-          {
-            label: 'Merged',
-            data: repos.map((r) => r.merged),
-            backgroundColor: colors.purple,
-          },
-          {
-            label: 'Closed',
-            data: repos.map((r) => r.closed),
-            backgroundColor: colors.red,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        // Entrance animation (#940) matched with the line chart so both charts
-        // "come alive" together when the dashboard loads.
-        animation: { duration: 1500, easing: 'easeOutQuart' },
-        indexAxis: 'y',
-        plugins: { legend: legendOpts },
-        scales: {
-          x: { stacked: true, beginAtZero: true, ...scaleOpts },
-          y: { stacked: true, ...scaleOpts },
+    const data = {
+      labels,
+      datasets: [
+        {
+          label: 'Active',
+          data: repos.map((r) => r.active),
+          backgroundColor: colors.green,
         },
+        {
+          label: 'Merged',
+          data: repos.map((r) => r.merged),
+          backgroundColor: colors.purple,
+        },
+        {
+          label: 'Closed',
+          data: repos.map((r) => r.closed),
+          backgroundColor: colors.red,
+        },
+      ],
+    };
+    const options = {
+      responsive: true,
+      maintainAspectRatio: false,
+      // Entrance animation (#940) matched with the line chart so both charts
+      // "come alive" together when the dashboard loads.
+      animation: { duration: 1500, easing: 'easeOutQuart' as const },
+      indexAxis: 'y' as const,
+      plugins: { legend: legendOpts },
+      scales: {
+        x: { stacked: true, beginAtZero: true, ...scaleOpts },
+        y: { stacked: true, ...scaleOpts },
       },
-    });
+    };
 
-    return () => {
+    const existing = barChartRef.current;
+    if (existing) {
+      existing.data = data;
+      existing.options = options;
+      existing.update('none');
+      return;
+    }
+    barChartRef.current = new Chart(canvas, { type: 'bar', data, options });
+  }, [topRepos, theme]);
+
+  // Destroy chart instances only on unmount — not on every data/theme change
+  // (#1459); the effects above update existing instances in place.
+  useEffect(
+    () => () => {
+      lineChartRef.current?.destroy();
+      lineChartRef.current = null;
       barChartRef.current?.destroy();
       barChartRef.current = null;
-    };
-  }, [topRepos, theme]);
+    },
+    [],
+  );
 
   return (
     <div class="chart-panel">

@@ -1056,16 +1056,28 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       return;
     }
 
+    // Hashed build outputs live under /assets/ (Vite's content-addressed
+    // bundles). A missing file there must be a real 404, not the SPA
+    // fallback: serving index.html as 200 text/html makes the module loader
+    // reject the response, and after a plugin upgrade a cached index.html
+    // referencing deleted bundles would blank the dashboard (#1459).
+    const isAssetPath = urlPath.startsWith('/assets/');
+    const indexPath = path.join(resolvedAssetsDir, 'index.html');
+
     // If file doesn't exist or is a directory, serve index.html for SPA routing
     try {
       const stat = fs.statSync(filePath);
       if (stat.isDirectory()) {
-        filePath = path.join(resolvedAssetsDir, 'index.html');
+        filePath = indexPath;
       }
     } catch (err) {
       const nodeErr = err as NodeJS.ErrnoException;
       if (nodeErr.code === 'ENOENT') {
-        filePath = path.join(resolvedAssetsDir, 'index.html');
+        if (isAssetPath) {
+          sendError(res, 404, 'Not found');
+          return;
+        }
+        filePath = indexPath;
       } else {
         warn(MODULE, `Failed to stat file: ${filePath}`);
         sendError(res, 500, 'Internal server error');
@@ -1076,13 +1088,20 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     const ext = path.extname(filePath).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
+    // Honest caching (#1459): only hashed /assets/* files are safe to cache —
+    // their names change with their content. index.html (direct or SPA
+    // fallback) and other unhashed files (favicon, etc.) must revalidate so a
+    // plugin upgrade is picked up on the next navigation instead of serving a
+    // stale page that references deleted bundles for up to an hour.
+    const cacheControl = isAssetPath && filePath !== indexPath ? 'public, max-age=3600' : 'no-cache';
+
     try {
       const content = fs.readFileSync(filePath);
       setSecurityHeaders(res);
       res.writeHead(200, {
         'Content-Type': contentType,
         'Content-Length': content.length,
-        'Cache-Control': 'public, max-age=3600',
+        'Cache-Control': cacheControl,
       });
       res.end(content);
     } catch (error) {
