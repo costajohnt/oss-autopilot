@@ -66,8 +66,6 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runSetup: vi.fn(),
   runCheckSetup: vi.fn(),
   runStartup: vi.fn(),
-  runShelve: vi.fn(),
-  runUnshelve: vi.fn(),
   runDismiss: vi.fn(),
   runUndismiss: vi.fn(),
   runMove: vi.fn(),

@@ -27,11 +27,13 @@ export default defineConfig({
           functions: 80,
           lines: 80,
         },
+        // Floors re-measured after #1466 retired the override/shelve
+        // registrations and their registry tests (24.49/16.51/41.35/24.51).
         'src/cli-registry.ts': {
-          statements: 25,
-          branches: 17,
+          statements: 24,
+          branches: 16,
           functions: 41,
-          lines: 25,
+          lines: 24,
         },
       },
     },

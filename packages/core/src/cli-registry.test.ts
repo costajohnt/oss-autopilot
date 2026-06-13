@@ -365,53 +365,6 @@ describe('dashboard port validation', () => {
   });
 });
 
-// ─── Override status validation ─────────────────────────────────────────────
-
-describe('override status validation', () => {
-  it.each([
-    ['needs_addressing', 'attention'],
-    ['waiting_on_maintainer', 'waiting'],
-  ] as const)('should map %s to "%s" target', async (status, expectedTarget) => {
-    mockRunMove.mockResolvedValue({ description: `Moved to ${expectedTarget}` });
-    const program = buildProgram('override');
-
-    await program.parseAsync(['node', 'cli', 'override', PR_URL, status, '--json']);
-
-    expect(mockRunMove).toHaveBeenCalledWith({
-      prUrl: PR_URL,
-      target: expectedTarget,
-    });
-    // override now routes through outputJsonValidated (#1155)
-    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), {
-      description: `Moved to ${expectedTarget}`,
-    });
-  });
-
-  it('should display description in non-JSON mode', async () => {
-    mockRunMove.mockResolvedValue({ description: 'Status overridden to needs_addressing' });
-    const program = buildProgram('override');
-
-    await program.parseAsync(['node', 'cli', 'override', PR_URL, 'needs_addressing']);
-
-    expect(consoleLogSpy).toHaveBeenCalledWith('Status overridden to needs_addressing');
-    expect(mockOutputJson).not.toHaveBeenCalled();
-  });
-
-  it('should reject invalid status values', async () => {
-    const program = buildProgram('override');
-
-    await expect(program.parseAsync(['node', 'cli', 'override', PR_URL, 'invalid_status', '--json'])).rejects.toThrow(
-      'process.exit called',
-    );
-
-    expect(mockOutputJsonError).toHaveBeenCalledWith(
-      'Invalid status "invalid_status". Must be one of: needs_addressing, waiting_on_maintainer',
-      'UNKNOWN',
-    );
-    expect(mockRunMove).not.toHaveBeenCalled();
-  });
-});
-
 // ─── move schema wiring (#1453) ─────────────────────────────────────────────
 
 describe('move schema wiring (#1453)', () => {

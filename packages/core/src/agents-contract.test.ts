@@ -72,8 +72,6 @@ const REGISTERED_MCP_TOOLS = new Set([
   'setup',
   'check-setup',
   'startup',
-  'shelve',
-  'unshelve',
   'dismiss',
   'undismiss',
   'move',

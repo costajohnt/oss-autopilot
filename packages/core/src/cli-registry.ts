@@ -60,15 +60,15 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    Commands: manifest, daily, status, strategy, search, features,
  *    verify-issue, skip-add, list-move-tier, list-mark-done,
  *    compliance-score, post, claim, config, init, setup, checkSetup,
- *    parse-issue-list, orphan-files, doctor, local-repos, move, override,
- *    clear-override, pr-template, repo-vet, detect-formatters.
+ *    parse-issue-list, orphan-files, doctor, local-repos, move,
+ *    pr-template, repo-vet, detect-formatters.
  *
  * 2. **Goldens-only**: no Zod schema exists; the command returns a TS
  *    interface and its `*.contract.test.ts` golden snapshot is the only
  *    shape gate. Nothing fires at runtime if the producer drifts after
  *    the goldens were last updated.
  *    Commands: state (show/sync/unlink), vet, vet-list, track, comments,
- *    startup, shelve, unshelve, dismiss, undismiss, stats, and the five
+ *    startup, dismiss, undismiss, stats, and the five
  *    guidelines subcommands (list/view/store/reset/fetch-corpus).
  *
  * (`dashboard serve` is exempt: it has no `--json` mode.)
@@ -769,7 +769,7 @@ export const commands: CLICommandDef[] = [
     register(program) {
       program
         .command('track <pr-url>')
-        .description('Fetch metadata for a PR (informational — v2 does not maintain a local tracking list)')
+        .description('Inspect a PR (read-only metadata lookup — nothing is persisted; v2 has no local tracking list)')
         .option('--json', 'Output as JSON')
         .action((prUrl, options) =>
           executeAction(
@@ -786,8 +786,9 @@ export const commands: CLICommandDef[] = [
   },
 
   // The v1→v2 `untrack` and `read` stubs were removed in v4 (#1133). Use
-  // `shelve`/`unshelve` to hide PRs from the daily digest. Scripts that hard-
-  // coded these commands now get an "unknown command" error from commander.
+  // `move <pr-url> shelved|auto` to hide/restore PRs in the daily digest.
+  // Scripts that hard-coded these commands now get an "unknown command"
+  // error from commander.
 
   // ── Compliance Score ───────────────────────────────────────────────────
   {
@@ -1328,52 +1329,8 @@ export const commands: CLICommandDef[] = [
     },
   },
 
-  // ── Shelve ─────────────────────────────────────────────────────────────
-  // Delegates to runShelve so the CLI emits the same `ShelveOutput`
-  // ({shelved, url}) as the library export + MCP tool. Previously it called
-  // runMove and emitted `MoveOutput` ({url, target, description}), which
-  // drifted from the pinned contract test and broke plugin consumers
-  // reading `data.shelved`. See issue #1037.
-  {
-    name: 'shelve',
-    localOnly: true,
-    register(program) {
-      program
-        .command('shelve <pr-url>')
-        .description('Shelve a PR (exclude from capacity and actionable issues)')
-        .option('--json', 'Output as JSON')
-        .action((prUrl, options) =>
-          executeAction(
-            options,
-            async () => (await import('./commands/shelve.js')).runShelve({ prUrl }),
-            (data) => {
-              console.log(data.shelved ? `Shelved ${data.url}` : `Already shelved: ${data.url}`);
-            },
-          ),
-        );
-    },
-  },
-
-  // ── Unshelve ───────────────────────────────────────────────────────────
-  {
-    name: 'unshelve',
-    localOnly: true,
-    register(program) {
-      program
-        .command('unshelve <pr-url>')
-        .description('Unshelve a PR (include in capacity and actionable issues again)')
-        .option('--json', 'Output as JSON')
-        .action((prUrl, options) =>
-          executeAction(
-            options,
-            async () => (await import('./commands/shelve.js')).runUnshelve({ prUrl }),
-            (data) => {
-              console.log(data.unshelved ? `Unshelved ${data.url}` : `Not currently shelved: ${data.url}`);
-            },
-          ),
-        );
-    },
-  },
+  // The `shelve`/`unshelve` command aliases were retired in #1466 — they
+  // duplicated `move <pr-url> shelved|auto`. Use `move` directly.
 
   // ── Move ───────────────────────────────────────────────────────────
   {
@@ -1451,59 +1408,8 @@ export const commands: CLICommandDef[] = [
     },
   },
 
-  // ── Override Status ────────────────────────────────────────────────────
-  {
-    name: 'override',
-    localOnly: true,
-    register(program) {
-      program
-        .command('override <pr-url> <status>')
-        .description('Manually override PR status (needs_addressing or waiting_on_maintainer)')
-        .option('--json', 'Output as JSON')
-        .action(async (prUrl, status, options) => {
-          const { MoveOutputSchema } = await import('./formatters/json.js');
-          await executeAction(
-            options,
-            async () => {
-              const validStatuses = ['needs_addressing', 'waiting_on_maintainer'];
-              if (!validStatuses.includes(status)) {
-                throw new Error(`Invalid status "${status}". Must be one of: ${validStatuses.join(', ')}`);
-              }
-              const target = status === 'needs_addressing' ? 'attention' : 'waiting';
-              const { runMove } = await import('./commands/move.js');
-              return runMove({ prUrl, target });
-            },
-            (data) => {
-              console.log(data.description);
-            },
-            MoveOutputSchema,
-          );
-        });
-    },
-  },
-
-  // ── Clear Override ────────────────────────────────────────────────────
-  {
-    name: 'clear-override',
-    localOnly: true,
-    register(program) {
-      program
-        .command('clear-override <pr-url>')
-        .description('Clear a manual status override for a PR')
-        .option('--json', 'Output as JSON')
-        .action(async (prUrl, options) => {
-          const { MoveOutputSchema } = await import('./formatters/json.js');
-          await executeAction(
-            options,
-            async () => (await import('./commands/move.js')).runMove({ prUrl, target: 'auto' }),
-            (data) => {
-              console.log(data.description);
-            },
-            MoveOutputSchema,
-          );
-        });
-    },
-  },
+  // The `override`/`clear-override` command aliases were retired in #1466 —
+  // they wrapped `move <pr-url> attention|waiting|auto`. Use `move` directly.
 
   // ── PR Template ──────────────────────────────────────────────────────
   {

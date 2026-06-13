@@ -10,7 +10,7 @@ MCP server for [OSS Autopilot](https://github.com/costajohnt/oss-autopilot) — 
 
 | Feature | Count | Description |
 |---------|-------|-------------|
-| **Tools** | 32 | `daily`, `status`, `search`, `features`, `vet`, `vet-list`, `verify-issue`, `track`, `compliance-score`, `repo-vet`, `strategy`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `shelve`, `unshelve`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-list`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus` |
+| **Tools** | 30 | `daily`, `status`, `search`, `features`, `vet`, `vet-list`, `verify-issue`, `track`, `compliance-score`, `repo-vet`, `strategy`, `comments`, `post`, `claim`, `config`, `init`, `setup`, `check-setup`, `startup`, `dismiss`, `undismiss`, `move`, `state-show`, `state-sync`, `state-unlink`, `guidelines-list`, `guidelines-get`, `guidelines-store`, `guidelines-reset`, `guidelines-fetch-corpus` |
 | **Resources** | 6 | `oss://status`, `oss://config`, `oss://prs`, `oss://prs/shelved`, `oss://pr/{owner}/{repo}/{number}`, `oss://repo/{owner}/{repo}/guidelines` |
 | **Prompts** | 4 | `triage` (PR prioritization), `respond-to-pr` (draft response), `find-issues` (discover issues), `extract-learnings` (distill per-repo guidance from past PR feedback) |
 
@@ -120,7 +120,7 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `vet` | Analyze an issue for contribution suitability | Yes |
 | `verify-issue` | Deterministically verify issue state and linked-PR claims before vetting | Yes |
 | `vet-list` | Re-vet all available issues in the curated issue list | No |
-| `track` | Fetch metadata for a pull request (informational; nothing persists) | Yes |
+| `track` | Inspect a PR: read-only metadata lookup (nothing is tracked or persisted) | Yes |
 | `compliance-score` | Score a PR against opensource.guide best practices (#1245) | Yes |
 | `repo-vet` | Compute the repo health rubric (1–10 + verdict) for `owner/repo` (#1271) | Yes |
 | `strategy` | On-demand contribution strategy snapshot via `computeStrategy()` (#1243) | Yes |
@@ -132,8 +132,6 @@ The token persists across restarts. To rotate, delete the file and restart — a
 | `setup` | Configure preferences (languages, interests) | No |
 | `check-setup` | Check if setup is complete | Yes |
 | `startup` | Run startup checks (auth, state, config) | No |
-| `shelve` | Temporarily hide a PR from daily checks | No |
-| `unshelve` | Return a shelved PR to active monitoring | No |
 | `dismiss` | Dismiss an issue from notifications | No |
 | `undismiss` | Re-enable notifications for a dismissed issue | No |
 | `move` | Move a PR between states (attention, waiting, shelved, auto) | No |
