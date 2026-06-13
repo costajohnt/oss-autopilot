@@ -82,6 +82,19 @@ Recently closed (informational):
 
 These do not require any action. They exist so the user knows what was closed. The Auto-Exclude prompt (in the work-through-issues workflow) may offer to exclude these repos from future searches.
 
+### Auto-Marked List Entries (Informational)
+
+If `data.daily.listUpdates` is present (#1463), the CLI detected merged PRs and automatically marked the matching curated-list entries done (same transform as `list-mark-done`). Display them after the recently-closed section so the user knows their list was updated without being asked:
+
+```
+Issue list updated automatically (PR merged):
+- {issueUrl} marked done — PR {prUrl}
+```
+
+If an entry's `repoHeadingStruck` is `true`, append "(all issues for this repo are now done)". No action needed; the field is absent on runs where nothing was marked. Failures to update the list appear in `data.daily.warnings` under the `merge-loop` phase — surface those like any other warning.
+
+The action menu may also contain an `extract_learnings` item (key: `extract_learnings`) when recently merged PRs have no learnings extracted yet — present it like any other pre-computed item; it routes to `workflows/extract-learnings.md` via the Phase Routing Table in `commands/oss.md`.
+
 ### Ask for Action (Using Pre-Computed Menu)
 
 Use `data.daily.actionMenu.items` directly as AskUserQuestion options. Each item has `key`, `label`, and `description` fields ready for display.

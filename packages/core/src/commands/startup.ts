@@ -18,19 +18,12 @@ import { executeDailyCheck } from './daily.js';
 import { launchDashboardServer, type LaunchResult } from './dashboard-lifecycle.js';
 import { recordBrowserOpened } from './dashboard-process.js';
 import { parseIssueList } from './parse-list.js';
+import { detectIssueListPath } from './locate-issue-list.js';
 
-/**
- * Parse issueListPath from a config file's YAML frontmatter.
- * @param configContent - Raw content of the config.md file
- * @returns The path string or undefined if not found
- */
-export function parseIssueListPathFromConfig(configContent: string): string | undefined {
-  const match = configContent.match(/^---\n([\s\S]*?)\n---/);
-  if (!match) return undefined;
-  const frontmatter = match[1];
-  const pathMatch = frontmatter.match(/issueListPath:\s*["']?([^"'\n]+)["']?/);
-  return pathMatch ? pathMatch[1].trim() : undefined;
-}
+// Path detection moved to locate-issue-list.ts (#1463) so the daily
+// merge-loop can use it without an import cycle through this module.
+// Re-exported here for back-compat with existing consumers/tests.
+export { parseIssueListPathFromConfig } from './locate-issue-list.js';
 
 /**
  * Count available and completed items in an issue list file.
@@ -49,52 +42,12 @@ export function countIssueListItems(content: string): { availableCount: number; 
  * @returns Issue list info with path and item counts, or undefined if not found
  */
 export function detectIssueList(): IssueListInfo | undefined {
-  let issueListPath = '';
-  let source: IssueListInfo['source'] = 'auto-detected';
-
-  // 1. Check state.json config (primary)
-  try {
-    const stateManager = getStateManager();
-    const configuredPath = stateManager.getState().config.issueListPath;
-    if (configuredPath && fs.existsSync(configuredPath)) {
-      issueListPath = configuredPath;
-      source = 'configured';
-    }
-  } catch (error) {
-    // State manager may not be initialized yet — fall through to legacy config.md
-    warn('startup', `Could not read issueListPath from state: ${errorMessage(error)}`);
-  }
-
-  // 2. Fallback: config.md (legacy — will be removed in future)
-  if (!issueListPath) {
-    const configPath = '.claude/oss-autopilot/config.md';
-    if (fs.existsSync(configPath)) {
-      try {
-        const configContent = fs.readFileSync(configPath, 'utf8');
-        const configuredPath = parseIssueListPathFromConfig(configContent);
-        if (configuredPath && fs.existsSync(configuredPath)) {
-          issueListPath = configuredPath;
-          source = 'configured';
-        }
-      } catch (error) {
-        console.error('[STARTUP] Failed to read config:', errorMessage(error));
-      }
-    }
-  }
-
-  // 3. Probe known paths
-  if (!issueListPath) {
-    const probes = ['open-source/potential-issue-list.md', 'oss/issue-list.md', 'issues.md'];
-    for (const probe of probes) {
-      if (fs.existsSync(probe)) {
-        issueListPath = probe;
-        source = 'auto-detected';
-        break;
-      }
-    }
-  }
-
-  if (!issueListPath) return undefined;
+  // Steps 1-3 (state config → legacy config.md → known-path probes) live in
+  // locate-issue-list.ts (#1463), shared with the daily merge-loop.
+  const located = detectIssueListPath();
+  if (!located) return undefined;
+  const issueListPath = located.path;
+  const source: IssueListInfo['source'] = located.source;
 
   // 4. Count available/completed items
   let availableCount = 0;
