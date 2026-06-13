@@ -70,6 +70,22 @@ const mockStateManager = {
   isGistDegraded: vi.fn().mockReturnValue(false),
   refreshFromGist: vi.fn().mockResolvedValue(false),
   getStateStaleness: vi.fn().mockReturnValue(null),
+  // Mirrors the real StateManager.getGistHealth (#1444), derived at call
+  // time from the isGistMode/isGistDegraded/getState mocks so the existing
+  // mockReturnValueOnce sequences keep driving the degraded/recovery
+  // scenarios. Consumption per probe matches the real method: one
+  // isGistMode() always, one isGistDegraded() only in gist mode, getState()
+  // only in local mode.
+  getGistHealth: vi.fn((): { mode: string; degraded: null | Record<string, unknown> } => {
+    if (!mockStateManager.isGistMode()) {
+      return mockStateManager.getState()?.config?.persistence === 'gist'
+        ? { mode: 'local', degraded: { cause: 'configured-but-local', recoverable: true } }
+        : { mode: 'local', degraded: null };
+    }
+    return mockStateManager.isGistDegraded()
+      ? { mode: 'gist', degraded: { cause: 'bootstrap-degraded', recoverable: true } }
+      : { mode: 'gist', degraded: null };
+  }),
 };
 
 // Create a temp dir for PID file tests (needs to exist before mock is evaluated)

@@ -92,15 +92,14 @@ program.hook('preAction', async (thisCommand, actionCommand) => {
     // when Gist mode is the configured persistence (#1000). Hard errors
     // still throw (#1202); the resolving degraded modes are surfaced in the
     // JSON envelope so --json consumers see them too (#1433).
-    const { ensureGistPersistence } = await import('./core/index.js');
+    const { ensureGistPersistence, renderGistWarning } = await import('./core/index.js');
     const status = await ensureGistPersistence(token);
     if (status === 'degraded' || status === 'state-unreadable') {
       const { setEnvelopeGistWarning } = await import('./formatters/json.js');
-      setEnvelopeGistWarning(
-        'Gist persistence is configured but this run is LOCAL-ONLY (' +
-          (status === 'degraded' ? 'transient network failure during init' : 'state file could not be read') +
-          '); changes may be overwritten by the next successful Gist sync.',
-      );
+      // Shared renderer (#1444). 'degraded' is ensureGistPersistence's
+      // deliberate conflation of the transient init fallback and a #1443
+      // degraded bootstrap — rendered as the init-fallback cause, as before.
+      setEnvelopeGistWarning(renderGistWarning(status === 'degraded' ? 'init-fallback' : 'state-unreadable'));
     }
   } else {
     // #1431: localOnly skips the AUTH GATE, not gist persistence. Mutating

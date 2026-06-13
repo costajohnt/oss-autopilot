@@ -18,6 +18,7 @@ import {
   classifyAttentionBucket,
   maybeCheckpoint,
   ensureGistPersistence,
+  type GistHealth,
 } from '../core/index.js';
 import {
   errorMessage,
@@ -483,32 +484,39 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     recordGistSyncOutcome(await maybeCheckpoint(stateManager, MODULE));
   }
 
+  /** One health snapshot from the one source (#1444). Defensive: this is an
+   * advisory probe that runs on EVERY request path (rebuilds, recovery
+   * gates). A state failure has its own handling wherever state is actually
+   * consumed — the probe must not become a new crash surface in front of it
+   * (#994's stale-serving path). */
+  function probeGistHealth(): GistHealth | null {
+    try {
+      return stateManager.getGistHealth();
+    } catch (err) {
+      warn(MODULE, `Degraded-gist probe failed (treating as not degraded): ${errorMessage(err)}`);
+      return null;
+    }
+  }
+
   /** True while the config asks for gist but this process's manager is
    * local-only (#1433) — the degraded window in which every dashboard
    * mutation is acknowledged and then clobbered by the next pull. */
   function gistConfiguredButLocal(): boolean {
-    // Defensive: this is an advisory check that runs on EVERY request path
-    // (rebuilds, recovery probes). A getState failure has its own handling
-    // wherever state is actually consumed — the degraded probe must not
-    // become a new crash surface in front of it (#994's stale-serving path).
-    try {
-      return stateManager.getState().config.persistence === 'gist' && !stateManager.isGistMode();
-    } catch (err) {
-      warn(MODULE, `Degraded-gist probe failed (treating as not degraded): ${errorMessage(err)}`);
-      return false;
-    }
+    const health = probeGistHealth();
+    return health !== null && health.mode === 'local' && health.degraded !== null;
   }
 
   /** Gist-backed but the bootstrap itself fell back to the local cache —
    * reads may be stale even though isGistMode() is true (#1433 review). */
   function gistBootstrapDegraded(): boolean {
-    try {
-      return stateManager.isGistMode() && stateManager.isGistDegraded();
-    } catch {
-      return false;
-    }
+    const health = probeGistHealth();
+    return health !== null && health.mode === 'gist' && health.degraded !== null;
   }
 
+  // Deliberately NOT routed through core's renderGistWarning (#1444): these
+  // banners are user-facing dashboard UI with dashboard-specific retry
+  // semantics ("Recovery is retried automatically" — true only here, where
+  // maybeRecoverGist polls), and their wording is pinned by the SPA tests.
   const GIST_DEGRADED_WARNING =
     'Gist persistence is configured but this dashboard process is running LOCAL-ONLY; ' +
     'changes made here will NOT sync and may be overwritten by the next successful Gist read. ' +
@@ -578,7 +586,9 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
    * config, and a gist-backed manager whose bootstrap fell back to the local
    * cache (disarmed store — refreshFromGist can never heal it on its own). */
   async function maybeRecoverGist(): Promise<void> {
-    if (!gistConfiguredButLocal() && !gistBootstrapDegraded()) return;
+    // One probe covers both degraded shapes — health.degraded is non-null
+    // for configured-but-local AND bootstrap-degraded (#1444).
+    if (probeGistHealth()?.degraded == null) return;
     if (recoveryHaltedReason !== null) return;
     const now = Date.now();
     if (now - lastRecoveryAttemptAt < RECOVERY_RETRY_INTERVAL_MS) return;
@@ -592,9 +602,10 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       // The upgrade replaced the core singleton — re-resolve our reference.
       stateManager = getStateManager();
       // Genuinely armed only: a retry can resolve via ANOTHER degraded
-      // bootstrap (isGistMode() true, store disarmed) — that is not a
-      // recovery and must not produce a recovery notice (#1443).
-      const recovered = stateManager.isGistMode() && !stateManager.isGistDegraded();
+      // bootstrap (gist-backed, store disarmed) — that is not a recovery
+      // and must not produce a recovery notice (#1443).
+      const health = stateManager.getGistHealth();
+      const recovered = health.mode === 'gist' && health.degraded === null;
       if (recovered) {
         // The re-bootstrap pulled the existing Gist: un-pushed mutations
         // from the degraded window are not in the replacement state.

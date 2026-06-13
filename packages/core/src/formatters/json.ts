@@ -59,7 +59,13 @@ export interface JsonOutput<T = unknown> {
    * (#1433): machine consumers of mutating --json commands must see that
    * the mutation will not sync. Set once per process from the CLI bootstrap
    * via {@link setEnvelopeGistWarning}; envelope-level (not data-level) so
-   * per-command output schemas are untouched. */
+   * per-command output schemas are untouched.
+   *
+   * Omitted when the command's own payload already carries the same
+   * condition as a structured `warnings[{phase:'gist-init'}]` entry (#1444):
+   * commands that own a warnings[] array (`daily`) report gist degradation
+   * exactly once, there. Consumers should check `data.warnings` first and
+   * fall back to this field for commands without a warnings array. */
   gistInitWarning?: string;
 }
 
@@ -1500,6 +1506,24 @@ export interface StatsOutput extends ContributionStats {
 }
 
 /**
+ * True when the command's own payload already reports gist-init degradation
+ * as a structured `warnings[{phase:'gist-init'}]` entry (#1444). The same
+ * condition used to be double-reported in a single `daily --json` payload —
+ * `envelope.gistInitWarning` AND `data.warnings` carried it in two prose
+ * variants — so the envelope suppresses its duplicate when the structured
+ * entry is present. Keyed on the warning's phase (not its prose) so the two
+ * surfaces cannot drift apart again.
+ */
+function dataCarriesGistInitWarning(data: unknown): boolean {
+  if (data === null || typeof data !== 'object') return false;
+  const warnings = (data as { warnings?: unknown }).warnings;
+  return (
+    Array.isArray(warnings) &&
+    warnings.some((w) => w !== null && typeof w === 'object' && (w as { phase?: unknown }).phase === 'gist-init')
+  );
+}
+
+/**
  * Wrap data in a standard JSON output envelope
  */
 export function jsonSuccess<T>(data: T): JsonOutput<T> {
@@ -1507,7 +1531,7 @@ export function jsonSuccess<T>(data: T): JsonOutput<T> {
     success: true,
     data,
     timestamp: new Date().toISOString(),
-    ...(envelopeGistWarning ? { gistInitWarning: envelopeGistWarning } : {}),
+    ...(envelopeGistWarning && !dataCarriesGistInitWarning(data) ? { gistInitWarning: envelopeGistWarning } : {}),
   };
 }
 

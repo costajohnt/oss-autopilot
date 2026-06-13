@@ -94,6 +94,17 @@ vi.mock('../core/index.js', async (importOriginal) => {
       getLoadRecovery: vi.fn(() => null),
       isGistMode: mockIsGistMode,
       isGistDegraded: vi.fn(() => false),
+      // Mirrors the real StateManager.getGistHealth (#1444), derived from
+      // the same mocks so existing isGistMode/getState setups keep driving
+      // the degraded scenarios.
+      getGistHealth: vi.fn(() => {
+        if (!mockIsGistMode()) {
+          return mockGetState()?.config?.persistence === 'gist'
+            ? { mode: 'local', degraded: { cause: 'configured-but-local', recoverable: true } }
+            : { mode: 'local', degraded: null };
+        }
+        return { mode: 'gist', degraded: null };
+      }),
       batch: (fn: () => void) => fn(),
     })),
     requireGitHubToken: vi.fn(() => 'test-token'),

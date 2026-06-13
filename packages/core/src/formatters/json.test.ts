@@ -826,4 +826,26 @@ describe('setEnvelopeGistWarning', () => {
     expect('gistInitWarning' in jsonSuccess({ ok: true })).toBe(false);
     expect('gistInitWarning' in jsonError('boom')).toBe(false);
   });
+
+  // ── Dedup (#1444): commands that own a warnings[] array report gist-init
+  // degradation exactly once, there — the envelope must not restate it.
+
+  it('suppresses the envelope duplicate when the payload carries warnings[{phase:"gist-init"}]', () => {
+    setEnvelopeGistWarning('Gist persistence is configured but this run is LOCAL-ONLY');
+    const data = {
+      warnings: [{ phase: 'gist-init', operation: 'Gist persistence degraded', message: 'degraded' }],
+    };
+    expect('gistInitWarning' in jsonSuccess(data)).toBe(false);
+  });
+
+  it('keeps the envelope warning when the payload warnings carry other phases only', () => {
+    setEnvelopeGistWarning('Gist persistence is configured but this run is LOCAL-ONLY');
+    const data = { warnings: [{ phase: 'fetch', operation: 'fetch PRs', message: 'boom' }] };
+    expect(jsonSuccess(data).gistInitWarning).toMatch(/LOCAL-ONLY/);
+  });
+
+  it('keeps the envelope warning on error envelopes (no payload to carry it)', () => {
+    setEnvelopeGistWarning('Gist persistence is configured but this run is LOCAL-ONLY');
+    expect(jsonError('boom').gistInitWarning).toMatch(/LOCAL-ONLY/);
+  });
 });
