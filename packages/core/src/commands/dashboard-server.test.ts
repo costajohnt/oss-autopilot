@@ -67,6 +67,7 @@ const mockStateManager = {
   getClosedPRs: vi.fn().mockReturnValue([]),
   reloadIfChanged: vi.fn().mockReturnValue(false),
   isGistMode: vi.fn().mockReturnValue(false),
+  isGistDegraded: vi.fn().mockReturnValue(false),
   refreshFromGist: vi.fn().mockResolvedValue(false),
   getStateStaleness: vi.fn().mockReturnValue(null),
 };
@@ -1567,6 +1568,122 @@ describe('dashboard-server', () => {
         mockStateManager.getState.mockReturnValue(makeState({ lastDigest: makeDigest() }));
         mockStateManager.reloadIfChanged.mockReturnValueOnce(true);
         await sendRequest('GET', '/api/data');
+      }
+    });
+  });
+
+  // ── Degraded gist bootstrap recovery (#1443) ─────────────────────
+
+  describe('degraded gist bootstrap recovery (#1443)', () => {
+    it('a degraded bootstrap shows the stale banner and a token-bearing poll recovers it', async () => {
+      // Degraded bootstrap: isGistMode() true (gistStore assigned) but the
+      // store is disarmed — pre-fix, maybeRecoverGist was gated on
+      // !isGistMode() and never saw this state, so nothing re-bootstrapped.
+      const digest = makeDigest();
+      const degradedState = makeState({ config: { persistence: 'gist' }, lastDigest: digest });
+      mockStateManager.getState.mockReturnValue(degradedState);
+      mockStateManager.isGistMode.mockReturnValue(true);
+      mockStateManager.isGistDegraded.mockReturnValue(true);
+      // Earlier recovery tests stamp lastRecoveryAttemptAt at mocked clocks
+      // up to 2031-01-01T02:00 (the #1446 un-halt case above) — jump past
+      // them so the shared throttle cannot mask the attempt.
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date('2031-02-01T00:00:00Z').getTime());
+      try {
+        // No token: recovery cannot run, but any rebuild (here: an action)
+        // must carry the stale-bootstrap banner.
+        const acted = await sendRequest(
+          'POST',
+          '/api/action',
+          JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/88', target: 'shelved' }),
+        );
+        expect(acted.statusCode).toBe(200);
+        const actedBody = JSON.parse(acted.body);
+        expect(actedBody.partialFailures?.some((m: string) => m.includes('fell back to the local cache'))).toBe(true);
+        expect(mockEnsureGistPersistence).not.toHaveBeenCalled();
+
+        // Token available: the next /api/data poll re-bootstraps via
+        // ensureGistPersistence and the stale banner clears in the same
+        // response (the singleton is armed afterwards).
+        vi.mocked(getGitHubToken).mockReturnValue('test-token');
+        mockEnsureGistPersistence.mockResolvedValueOnce('gist');
+        mockStateManager.isGistDegraded
+          .mockReturnValueOnce(true) // handler: degraded probe before recovery
+          .mockReturnValueOnce(true) // maybeRecoverGist gate
+          .mockReturnValue(false); // post-recovery: armed
+        const recovered = await sendRequest('GET', '/api/data');
+        expect(recovered.statusCode).toBe(200);
+        expect(mockEnsureGistPersistence).toHaveBeenCalledWith('test-token');
+        const recoveredBody = JSON.parse(recovered.body);
+        expect(
+          recoveredBody.partialFailures?.some((m: string) => m.includes('fell back to the local cache')),
+        ).toBeFalsy();
+      } finally {
+        nowSpy.mockRestore();
+        vi.mocked(getGitHubToken).mockReturnValue(null as never);
+        mockStateManager.isGistMode.mockReset();
+        mockStateManager.isGistMode.mockReturnValue(false);
+        mockStateManager.isGistDegraded.mockReset();
+        mockStateManager.isGistDegraded.mockReturnValue(false);
+        mockEnsureGistPersistence.mockClear();
+        mockEnsureGistPersistence.mockResolvedValue('local-mode');
+        const cleanState = makeState({ lastDigest: makeDigest() });
+        mockStateManager.getState.mockReturnValue(cleanState);
+        mockStateManager.reloadIfChanged.mockReturnValueOnce(true);
+        await sendRequest('GET', '/api/data');
+      }
+    });
+
+    it('a successful pull with warnings still pending converts them into a loss notice (#1443)', async () => {
+      mockStateManager.isGistMode.mockReturnValue(true);
+      const warning = 'Gist checkpoint push failed after retry; the local mutation is saved';
+      try {
+        // Mutation lands, its push fails: warning pending.
+        mockMaybeCheckpoint.mockResolvedValueOnce(warning);
+        const acted = await sendRequest(
+          'POST',
+          '/api/action',
+          JSON.stringify({ action: 'dismiss_issue_response', url: 'https://github.com/owner/repo/issues/52' }),
+        );
+        expect(JSON.parse(acted.body).partialFailures).toContain(warning);
+
+        // Poll: the pre-pull flush fails again, then the pull SUCCEEDS and
+        // wholesale-replaces state — the un-pushed mutation is destroyed.
+        // The prospective warning must become a retrospective loss notice,
+        // not linger to be "resolved" by a later unrelated push.
+        mockMaybeCheckpoint.mockResolvedValueOnce(warning);
+        mockStateManager.refreshFromGist.mockResolvedValueOnce(true);
+        const polled = await sendRequest('GET', '/api/data');
+        const polledBody = JSON.parse(polled.body);
+        expect(polledBody.partialFailures?.some((m: string) => m.includes('NOT synced'))).toBe(true);
+        expect(polledBody.partialFailures).not.toContain(warning);
+
+        // A later mutation's successful push (runMove reports no warning)
+        // must NOT clear the loss notice: that push never contained the
+        // destroyed mutation.
+        const after = await sendRequest(
+          'POST',
+          '/api/action',
+          JSON.stringify({ action: 'move', url: 'https://github.com/owner/repo/pull/53', target: 'shelved' }),
+        );
+        const afterBody = JSON.parse(after.body);
+        expect(afterBody.partialFailures?.some((m: string) => m.includes('NOT synced'))).toBe(true);
+
+        // The next refresh retires the notice — it has been visible across
+        // the window (#1433 lifecycle unchanged).
+        vi.mocked(getGitHubToken).mockReturnValue('test-token');
+        vi.mocked(fetchDashboardData).mockResolvedValue({
+          digest: makeDigest(),
+          commentedIssues: [],
+          allMergedPRs: [],
+          allClosedPRs: [],
+          partialFailures: [],
+        });
+        const refreshed = await sendRequest('POST', '/api/refresh');
+        expect(JSON.parse(refreshed.body).partialFailures).toBeUndefined();
+      } finally {
+        vi.mocked(getGitHubToken).mockReturnValue(null as never);
+        mockStateManager.isGistMode.mockReturnValue(false);
+        mockMaybeCheckpoint.mockResolvedValue(null);
       }
     });
   });

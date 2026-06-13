@@ -629,7 +629,9 @@ export class GistStateStore {
 
   /**
    * Re-fetch the Gist and update the in-memory cache.
-   * Throttled to at most once per 30 seconds.
+   * Throttled to at most once per 30 seconds — ATTEMPTS, not just successes:
+   * a failed fetch stamps the throttle too (#1443), so an outage does not
+   * turn every SPA poll into an immediate full re-fetch.
    *
    * Returns a discriminated union so callers can tell apart the four
    * outcomes that previously collapsed into a single boolean (#1209 L9):
@@ -647,9 +649,12 @@ export class GistStateStore {
     if (sinceLastMs < GistStateStore.REFRESH_THROTTLE_MS) {
       return { status: 'throttled', sinceLastMs };
     }
+    // Stamp the ATTEMPT, success or failure (#1443): the success-only stamp
+    // let failed refreshes bypass the throttle entirely, contradicting the
+    // doc comment and hammering the API during an outage.
+    this.lastRefreshAt = now;
     try {
       await this.fetchAndCache(this.gistId);
-      this.lastRefreshAt = now;
       this.lastRefreshError = null;
       return { status: 'refreshed' };
     } catch (err) {
