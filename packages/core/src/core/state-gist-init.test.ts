@@ -68,6 +68,17 @@ function transientError(): Error {
   return Object.assign(new Error('connect ECONNRESET api.github.com'), { code: 'ECONNRESET' });
 }
 
+/** Armed gist-backed manager: bootstrap verified its Gist (#1443). */
+function armedGistManager(): StateManager {
+  return { isGistMode: () => true, isGistDegraded: () => false } as unknown as StateManager;
+}
+
+/** Degraded gist-backed manager: bootstrap fell back to the local cache —
+ * gistStore is assigned (isGistMode() true) but the store is disarmed. */
+function degradedGistManager(): StateManager {
+  return { isGistMode: () => true, isGistDegraded: () => true } as unknown as StateManager;
+}
+
 describe('ensureGistPersistence retry/upgrade semantics (#1415)', () => {
   let createWithGistSpy: ReturnType<typeof vi.spyOn>;
 
@@ -106,7 +117,7 @@ describe('ensureGistPersistence retry/upgrade semantics (#1415)', () => {
     // The blip clears: the retry must actually reach createWithGist again
     // (pre-fix, the latched local singleton made this a dead no-op) and the
     // singleton upgrades to the gist-backed manager.
-    const gistManager = { isGistMode: () => true } as unknown as StateManager;
+    const gistManager = armedGistManager();
     createWithGistSpy.mockResolvedValueOnce(gistManager);
     expect(await ensureGistPersistence('token')).toBe('gist');
     expect(createWithGistSpy).toHaveBeenCalledTimes(2);
@@ -120,7 +131,7 @@ describe('ensureGistPersistence retry/upgrade semantics (#1415)', () => {
     const lazyLocal = getStateManager();
     expect(lazyLocal.isGistMode()).toBe(false);
 
-    const gistManager = { isGistMode: () => true } as unknown as StateManager;
+    const gistManager = armedGistManager();
     createWithGistSpy.mockResolvedValueOnce(gistManager);
     expect(await ensureGistPersistence('token')).toBe('gist');
     expect(getStateManager()).toBe(gistManager);
@@ -128,7 +139,7 @@ describe('ensureGistPersistence retry/upgrade semantics (#1415)', () => {
 
   it('a gist-backed singleton short-circuits: no second createWithGist', async () => {
     writeGistConfiguredState();
-    const gistManager = { isGistMode: () => true } as unknown as StateManager;
+    const gistManager = armedGistManager();
     createWithGistSpy.mockResolvedValueOnce(gistManager);
 
     expect(await ensureGistPersistence('token')).toBe('gist');
@@ -144,7 +155,7 @@ describe('ensureGistPersistence retry/upgrade semantics (#1415)', () => {
 
   it('concurrent token-bearing calls share one in-flight createWithGist', async () => {
     writeGistConfiguredState();
-    const gistManager = { isGistMode: () => true } as unknown as StateManager;
+    const gistManager = armedGistManager();
     let release!: () => void;
     createWithGistSpy.mockImplementationOnce(
       () =>
@@ -167,6 +178,76 @@ describe('ensureGistPersistence retry/upgrade semantics (#1415)', () => {
     writeGistConfiguredState();
     createWithGistSpy.mockRejectedValueOnce(new GistPermissionError('token lacks gist scope'));
     await expect(ensureGistPersistence('token')).rejects.toThrow(/gist scope/);
+  });
+});
+
+describe('degraded gist bootstrap honesty + retry (#1443)', () => {
+  let createWithGistSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gist-degraded-'));
+    resetStateManager();
+    createWithGistSpy = vi.spyOn(StateManager, 'createWithGist');
+  });
+
+  afterEach(() => {
+    createWithGistSpy.mockRestore();
+    resetStateManager();
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  it("a degraded bootstrap reports 'degraded', not 'gist'", async () => {
+    writeGistConfiguredState();
+    // bootstrap() caught all API failures internally and resolved with a
+    // disarmed store — isGistMode() is true but nothing can read or push.
+    createWithGistSpy.mockResolvedValueOnce(degradedGistManager());
+    expect(await ensureGistPersistence('token')).toBe('degraded');
+  });
+
+  it('a later token-bearing call replaces a gist-degraded singleton and reports gist', async () => {
+    writeGistConfiguredState();
+
+    createWithGistSpy.mockResolvedValueOnce(degradedGistManager());
+    expect(await ensureGistPersistence('token')).toBe('degraded');
+    const degraded = getStateManager();
+    expect(degraded.isGistMode()).toBe(true);
+    expect(degraded.isGistDegraded()).toBe(true);
+
+    // The outage clears: the retry must reach createWithGist again (pre-fix,
+    // isGistMode() alone short-circuited it forever) and the singleton is
+    // replaced by the armed manager.
+    const armed = armedGistManager();
+    createWithGistSpy.mockResolvedValueOnce(armed);
+    expect(await ensureGistPersistence('token')).toBe('gist');
+    expect(createWithGistSpy).toHaveBeenCalledTimes(2);
+    expect(getStateManager()).toBe(armed);
+  });
+
+  it('a retry that resolves via ANOTHER degraded bootstrap stays degraded and keeps retrying', async () => {
+    writeGistConfiguredState();
+
+    createWithGistSpy.mockResolvedValueOnce(degradedGistManager());
+    expect(await ensureGistPersistence('token')).toBe('degraded');
+    createWithGistSpy.mockResolvedValueOnce(degradedGistManager());
+    expect(await ensureGistPersistence('token')).toBe('degraded');
+    // Still not latched: a third call attempts another bootstrap.
+    createWithGistSpy.mockResolvedValueOnce(armedGistManager());
+    expect(await ensureGistPersistence('token')).toBe('gist');
+    expect(createWithGistSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('token-less calls do not disturb a degraded singleton (no thrash without a retry credential)', async () => {
+    writeGistConfiguredState();
+    createWithGistSpy.mockResolvedValueOnce(degradedGistManager());
+    await ensureGistPersistence('token');
+    const degraded = getStateManager();
+
+    // getStateManagerAsync without a token must keep returning the existing
+    // singleton rather than tearing it down.
+    expect(await ensureGistPersistence(null)).toBe('no-token');
+    expect(getStateManager()).toBe(degraded);
+    expect(createWithGistSpy).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -195,7 +276,7 @@ describe('bootstrapGistBestEffort — localOnly CLI entry points (#1431)', () =>
 
   it('gist mode + token: bootstraps the singleton and returns no warning (mutations will checkpoint)', async () => {
     writeGistConfiguredState();
-    const gistManager = { isGistMode: () => true } as unknown as StateManager;
+    const gistManager = armedGistManager();
     createWithGistSpy.mockResolvedValueOnce(gistManager);
 
     expect(await bootstrapGistBestEffort(vi.fn().mockResolvedValue('token'))).toBeNull();
