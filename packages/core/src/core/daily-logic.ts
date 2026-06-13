@@ -406,6 +406,7 @@ export function collectActionableIssues(prs: FetchedPR[], lastDigestAt?: string)
  * @param capacity - Current capacity assessment
  * @param commentedIssues - Issues with comment activity
  * @param attention - Attention bucket counts; non-zero stuck-CI / dormant-followup buckets add a follow_up item
+ * @param unextractedMergeCount - Recently merged PRs whose learnings have not been extracted yet (#1463); non-zero adds an extract_learnings item
  * @returns Action menu with context flags for orchestration
  */
 export function computeActionMenu(
@@ -413,6 +414,7 @@ export function computeActionMenu(
   capacity: CapacityAssessment,
   commentedIssues: CommentedIssue[] = [],
   attention?: Pick<AttentionSummary, 'stuckCI' | 'dormantFollowup'>,
+  unextractedMergeCount?: number,
 ): ActionMenu {
   const issueResponses = commentedIssues.filter((i): i is CommentedIssueWithResponse => i.status === 'new_response');
   const items: ActionMenuItem[] = [];
@@ -456,6 +458,19 @@ export function computeActionMenu(
       key: 'follow_up',
       label: `Follow up on ${parts.join(' and ')} PR${total === 1 ? '' : 's'}`,
       description: 'Waiting PRs that may need a nudge (pending CI or no review activity)',
+    });
+  }
+
+  // Extract-learnings nudge (#1463) — recently merged PRs whose ledger
+  // entries carry no learningsExtractedAt stamp get a menu path to
+  // workflows/extract-learnings.md. The nudge persists across runs for the
+  // recently-merged window until the extraction runs, then self-clears.
+  const unextracted = unextractedMergeCount ?? 0;
+  if (unextracted > 0) {
+    items.push({
+      key: 'extract_learnings',
+      label: `Extract learnings from ${unextracted} recently merged PR${unextracted === 1 ? '' : 's'}`,
+      description: 'Distill maintainer review feedback into per-repo contribution guidelines',
     });
   }
 
