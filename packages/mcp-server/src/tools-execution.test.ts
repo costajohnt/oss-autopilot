@@ -57,12 +57,19 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   MAX_FEATURES_RESULTS: 100,
 }));
 
-vi.mock('@oss-autopilot/core', () => ({
+vi.mock('@oss-autopilot/core', async (importOriginal) => ({
+  // Real provenance labeler (#1455): the guidelines-get assertions below
+  // exercise the actual preamble, not a passthrough.
+  labelGuidelinesContent: (await importOriginal<typeof import('@oss-autopilot/core')>()).labelGuidelinesContent,
   errorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   getStateManager: vi.fn().mockReturnValue({
     getState: vi.fn().mockReturnValue({
       lastDigest: { openPRs: [], shelvedPRs: [] },
     }),
+    // Per-call state reload (#1439) runs before every tool body.
+    isGistMode: vi.fn().mockReturnValue(false),
+    reloadIfChanged: vi.fn().mockReturnValue(false),
+    refreshFromGist: vi.fn().mockResolvedValue(false),
   }),
   getGitHubTokenAsync: vi.fn().mockResolvedValue(null),
   ensureGistPersistence: vi.fn().mockResolvedValue(undefined),
@@ -70,6 +77,12 @@ vi.mock('@oss-autopilot/core', () => ({
   // Return a small known-set so the MCP schema validates against real keys.
   getSetupKeys: () => ['username', 'languages', 'minStars'],
   getConfigKeys: () => ['username', 'add-label', 'remove-label'],
+  // Error classes referenced by wrapTool's concurrency/config carve-outs
+  // (#1439/#1441) — the whole module is mocked, so instanceof checks in
+  // tools.ts run against these.
+  ConfigurationError: class ConfigurationError extends Error {},
+  ConcurrencyError: class ConcurrencyError extends Error {},
+  GistConcurrencyError: class GistConcurrencyError extends Error {},
 }));
 
 import { createServer } from './server.js';
@@ -262,6 +275,30 @@ describe('tool execution', () => {
 
       expect(result.isError).toBeFalsy();
       expect(mockRunGuidelinesView).toHaveBeenCalledWith({ repo: 'owner/repo' });
+      // #1455: stored guidelines are LLM-distilled from an untrusted public
+      // corpus — the MCP read surface prefixes a provenance note.
+      const parsed = JSON.parse(firstTextContent(result).text) as { content: string };
+      expect(parsed.content.startsWith('> Provenance: project-supplied guidelines')).toBe(true);
+      expect(parsed.content.endsWith('# rules')).toBe(true);
+    });
+
+    it('passes null content through without a provenance note (#1455)', async () => {
+      mockRunGuidelinesView.mockResolvedValueOnce({
+        repo: 'owner/repo',
+        content: null,
+        byteSize: 0,
+        exists: false,
+        storageMode: 'gist',
+      });
+
+      const result = await client.callTool({
+        name: 'guidelines-get',
+        arguments: { repo: 'owner/repo' },
+      });
+
+      expect(result.isError).toBeFalsy();
+      const parsed = JSON.parse(firstTextContent(result).text) as { content: string | null };
+      expect(parsed.content).toBeNull();
     });
 
     it('rejects malformed repo identifier at the schema layer', async () => {

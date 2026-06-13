@@ -377,3 +377,64 @@ describe('end-to-end: toDailyOutput fences openPRs lastMaintainerComment bodies 
     expect(fenceFetchedPR(pr)).toBe(pr);
   });
 });
+
+describe('end-to-end: fenceFetchedPRTitles fences titles and branch refs for MCP surfaces (#1455)', () => {
+  it('title, headRefName, and baseRefName are fenced for every corpus payload; the input stays raw', async () => {
+    const { fenceFetchedPRTitles } = await import('./untrusted-content.js');
+    const { makeFetchedPR } = await import('./test-utils.js');
+
+    for (const [i, payload] of PAYLOADS.entries()) {
+      const pr = makeFetchedPR({
+        repo: 'owner/repo',
+        number: i + 1,
+        title: payload,
+        headRefName: payload,
+        baseRefName: payload,
+      });
+      const fenced = fenceFetchedPRTitles(pr);
+      expectFenced(fenced.title, payload);
+      expect(fenced.title).toContain('source="pr-title"');
+      expect(fenced.title).toContain(`label="owner/repo#${i + 1}"`);
+      expectFenced(fenced.headRefName, payload);
+      expect(fenced.headRefName).toContain('source="pr-head-ref"');
+      expectFenced(fenced.baseRefName, payload);
+      expect(fenced.baseRefName).toContain('source="pr-base-ref"');
+      // No-mutation contract — same reasoning as fenceFetchedPR (#1420):
+      // the digest objects are shared by reference with persisted state.
+      expect(pr.title).toBe(payload);
+      expect(pr.headRefName).toBe(payload);
+      expect(pr.baseRefName).toBe(payload);
+    }
+  });
+
+  it('refs absent on the PR stay absent (no fence of undefined)', async () => {
+    const { fenceFetchedPRTitles } = await import('./untrusted-content.js');
+    const { makeFetchedPR } = await import('./test-utils.js');
+    const pr = makeFetchedPR({ repo: 'owner/repo', number: 1, title: 'plain title' });
+    const fenced = fenceFetchedPRTitles(pr);
+    expectFenced(fenced.title, 'plain title');
+    expect(fenced.headRefName).toBeUndefined();
+    expect(fenced.baseRefName).toBeUndefined();
+  });
+
+  it('composes with fenceFetchedPR without double-wrapping either field set (MCP resource order)', async () => {
+    const { fenceFetchedPR, fenceFetchedPRTitles } = await import('./untrusted-content.js');
+    const { makeFetchedPR } = await import('./test-utils.js');
+    const payload = PAYLOADS[0];
+    const pr = makeFetchedPR({
+      repo: 'owner/repo',
+      number: 7,
+      title: payload,
+      hasUnrespondedComment: true,
+      lastMaintainerComment: { author: 'attacker', body: payload, createdAt: '2026-01-02T00:00:00Z' },
+    });
+    // Same composition the MCP resources use: body fence first, titles second.
+    const fenced = fenceFetchedPRTitles(fenceFetchedPR(pr));
+    expectFenced(fenced.title, payload);
+    expectFenced(fenced.lastMaintainerComment?.body, payload);
+    // Exactly one fence per field — composing the two helpers never
+    // double-wraps (wrapUntrustedContent is not idempotent).
+    expect(fenced.title.split(UNTRUSTED_CLOSE_TAG).length - 1).toBe(1);
+    expect((fenced.lastMaintainerComment?.body ?? '').split(UNTRUSTED_CLOSE_TAG).length - 1).toBe(1);
+  });
+});

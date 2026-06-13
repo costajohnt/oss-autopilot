@@ -9,13 +9,15 @@ vi.mock('../core/index.js', async () => {
   return {
     ...actual,
     getStateManager: vi.fn(),
+    maybeCheckpoint: vi.fn().mockResolvedValue(null),
   };
 });
 
-import { getStateManager } from '../core/index.js';
+import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { runConfig } from './config.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
+const mockMaybeCheckpoint = vi.mocked(maybeCheckpoint);
 
 const DEFAULT_CONFIG = {
   githubUsername: 'testuser',
@@ -170,6 +172,84 @@ describe('runConfig', () => {
     expect(mockUpdateConfig).not.toHaveBeenCalled();
   });
 
+  it('should add an avoid-repo with valid format (#1464)', async () => {
+    await runConfig({ key: 'add-avoid-repo', value: 'owner/repo' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ avoidRepos: ['owner/repo'] });
+    // Soft penalty, not a hard exclusion — tracked data must stay intact.
+    expect(mockCleanupExcludedData).not.toHaveBeenCalled();
+  });
+
+  it('should throw error for invalid repo format in add-avoid-repo (#1464)', async () => {
+    await expect(runConfig({ key: 'add-avoid-repo', value: 'invalid' })).rejects.toThrow('Invalid repo format');
+  });
+
+  it('should not add duplicate avoid-repo (case-insensitive) (#1464)', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, avoidRepos: ['Owner/Repo'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      batch: (fn: () => void) => fn(),
+    } as any);
+
+    await runConfig({ key: 'add-avoid-repo', value: 'owner/repo' });
+
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+  });
+
+  it('should remove an avoid-repo case-insensitively (#1464)', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, avoidRepos: ['Owner/Repo', 'other/repo'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      batch: (fn: () => void) => fn(),
+    } as any);
+
+    await runConfig({ key: 'remove-avoid-repo', value: 'owner/repo' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ avoidRepos: ['other/repo'] });
+  });
+
+  it('should throw when removing an avoid-repo that is not on the list (#1464)', async () => {
+    await expect(runConfig({ key: 'remove-avoid-repo', value: 'owner/repo' })).rejects.toThrow('not on the avoid list');
+  });
+
+  it('should add a boost issue type (#1464)', async () => {
+    await runConfig({ key: 'add-boost-issue-type', value: 'good first issue' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ boostIssueTypes: ['good first issue'] });
+  });
+
+  it('should not add duplicate boost issue type (case-insensitive) (#1464)', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, boostIssueTypes: ['Bug'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      batch: (fn: () => void) => fn(),
+    } as any);
+
+    await runConfig({ key: 'add-boost-issue-type', value: 'bug' });
+
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+  });
+
+  it('should remove a boost issue type case-insensitively (#1464)', async () => {
+    mockGetStateManager.mockReturnValue({
+      getState: vi.fn().mockReturnValue({ config: { ...DEFAULT_CONFIG, boostIssueTypes: ['Bug', 'enhancement'] } }),
+      updateConfig: mockUpdateConfig,
+      cleanupExcludedData: mockCleanupExcludedData,
+      batch: (fn: () => void) => fn(),
+    } as any);
+
+    await runConfig({ key: 'remove-boost-issue-type', value: 'bug' });
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ boostIssueTypes: ['enhancement'] });
+  });
+
+  it('should throw when removing a boost issue type that is not on the list (#1464)', async () => {
+    await expect(runConfig({ key: 'remove-boost-issue-type', value: 'bug' })).rejects.toThrow('not on the boost list');
+  });
+
   it('should remove a label', async () => {
     await runConfig({ key: 'remove-label', value: 'good first issue' });
 
@@ -251,4 +331,49 @@ describe('runConfig', () => {
   });
 
   // scoreThreshold tests removed — field dropped in v3 schema
+
+  describe('gist checkpoint (#1440)', () => {
+    it('calls maybeCheckpoint exactly once per successful set', async () => {
+      await runConfig({ key: 'username', value: 'newuser' });
+
+      expect(mockMaybeCheckpoint).toHaveBeenCalledTimes(1);
+      expect(mockMaybeCheckpoint).toHaveBeenCalledWith(expect.anything(), 'config');
+    });
+
+    it('threads the checkpoint warning into gistSyncWarning when the Gist push fails', async () => {
+      const warning = 'Gist checkpoint push failed after retry; the local mutation is saved';
+      mockMaybeCheckpoint.mockResolvedValueOnce(warning);
+
+      const result = await runConfig({ key: 'username', value: 'newuser' });
+
+      expect(result).toEqual({ success: true, key: 'username', value: 'newuser', gistSyncWarning: warning });
+    });
+
+    it('omits gistSyncWarning entirely when the checkpoint succeeds', async () => {
+      mockMaybeCheckpoint.mockResolvedValueOnce(null);
+
+      const result = await runConfig({ key: 'username', value: 'newuser' });
+
+      expect(result).not.toHaveProperty('gistSyncWarning');
+      expect(result).toEqual({ success: true, key: 'username', value: 'newuser' });
+    });
+
+    it('does not checkpoint when showing the current config', async () => {
+      await runConfig({});
+
+      expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+    });
+
+    it('does not checkpoint when listing keys', async () => {
+      await runConfig({ listKeys: true });
+
+      expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+    });
+
+    it('does not checkpoint when the mutation throws', async () => {
+      await expect(runConfig({ key: 'remove-label', value: 'nonexistent' })).rejects.toThrow();
+
+      expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+    });
+  });
 });

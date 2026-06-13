@@ -64,6 +64,29 @@ function filterValidUrlEntries<T extends { url: string }>(
 }
 
 /**
+ * Fill outcome-ledger timestamps (#1461) missing on an existing stored PR
+ * from a richer re-seen entry. Only fills absent fields — never overwrites —
+ * so an earlier enriched write (and stamps like commentsFetchedAt that live
+ * solely on the stored entry) cannot be clobbered by a later minimal one.
+ * @returns true when at least one field was filled
+ */
+function upgradeLedgerFields(
+  existing: { openedAt?: string; firstMaintainerResponseAt?: string },
+  incoming: { openedAt?: string; firstMaintainerResponseAt?: string },
+): boolean {
+  let changed = false;
+  if (incoming.openedAt && !existing.openedAt) {
+    existing.openedAt = incoming.openedAt;
+    changed = true;
+  }
+  if (incoming.firstMaintainerResponseAt && !existing.firstMaintainerResponseAt) {
+    existing.firstMaintainerResponseAt = incoming.firstMaintainerResponseAt;
+    changed = true;
+  }
+  return changed;
+}
+
+/**
  * Push state to the backing Gist when Gist mode is active. Best-effort:
  * network/auth failures are logged via `warn()` but never propagated —
  * the caller's primary mutation has already succeeded locally and the
@@ -582,7 +605,15 @@ export class StateManager {
    * Entries with URLs that fail {@link parseGitHubUrl} are dropped before
    * persistence (read-side filters in dashboard-data already skip them, but
    * this prevents the bad data from reaching disk in the first place).
-   * @param prs - Merged PRs to add (duplicates by URL are ignored)
+   *
+   * Re-seen URLs are not re-added, but upgrade the stored entry in place
+   * (#1461): outcome-ledger fields (`openedAt`, `firstMaintainerResponseAt`)
+   * missing on the stored entry are filled from the richer incoming one.
+   * Existing values are never overwritten, so stamps that live only on the
+   * stored entry (commentsFetchedAt, learningsExtractedAt) and earlier
+   * enriched writes stay intact.
+   *
+   * @param prs - Merged PRs to add (duplicates by URL upgrade in place)
    * @returns count of entries added vs. dropped (invalid URL)
    */
   addMergedPRs(prs: StoredMergedPR[]): { added: number; dropped: number } {
@@ -590,9 +621,19 @@ export class StateManager {
     const { valid, dropped } = filterValidUrlEntries(prs, 'merged');
     if (valid.length === 0) return { added: 0, dropped };
     if (!this.state.mergedPRs) this.state.mergedPRs = [];
-    const existingUrls = new Set(this.state.mergedPRs.map((pr) => pr.url));
-    const newPRs = valid.filter((pr) => !existingUrls.has(pr.url));
-    if (newPRs.length === 0) return { added: 0, dropped };
+    const byUrl = new Map(this.state.mergedPRs.map((pr) => [pr.url, pr]));
+    const newPRs: StoredMergedPR[] = [];
+    let upgraded = false;
+    for (const pr of valid) {
+      const existing = byUrl.get(pr.url);
+      if (existing) {
+        upgraded = upgradeLedgerFields(existing, pr) || upgraded;
+      } else {
+        newPRs.push(pr);
+        byUrl.set(pr.url, pr);
+      }
+    }
+    if (newPRs.length === 0 && !upgraded) return { added: 0, dropped };
     this.state.mergedPRs.push(...newPRs);
     this.state.mergedPRs.sort((a, b) => b.mergedAt.localeCompare(a.mergedAt));
     debug(MODULE, `Added ${newPRs.length} merged PRs (total: ${this.state.mergedPRs.length})`);
@@ -617,7 +658,11 @@ export class StateManager {
    * Entries with URLs that fail {@link parseGitHubUrl} are dropped before
    * persistence (read-side filters in dashboard-data already skip them, but
    * this prevents the bad data from reaching disk in the first place).
-   * @param prs - Closed PRs to add (duplicates by URL are ignored)
+   *
+   * Re-seen URLs upgrade the stored entry's missing ledger fields in place
+   * (#1461) — see {@link addMergedPRs} for the full semantics.
+   *
+   * @param prs - Closed PRs to add (duplicates by URL upgrade in place)
    * @returns count of entries added vs. dropped (invalid URL)
    */
   addClosedPRs(prs: StoredClosedPR[]): { added: number; dropped: number } {
@@ -625,9 +670,19 @@ export class StateManager {
     const { valid, dropped } = filterValidUrlEntries(prs, 'closed');
     if (valid.length === 0) return { added: 0, dropped };
     if (!this.state.closedPRs) this.state.closedPRs = [];
-    const existingUrls = new Set(this.state.closedPRs.map((pr) => pr.url));
-    const newPRs = valid.filter((pr) => !existingUrls.has(pr.url));
-    if (newPRs.length === 0) return { added: 0, dropped };
+    const byUrl = new Map(this.state.closedPRs.map((pr) => [pr.url, pr]));
+    const newPRs: StoredClosedPR[] = [];
+    let upgraded = false;
+    for (const pr of valid) {
+      const existing = byUrl.get(pr.url);
+      if (existing) {
+        upgraded = upgradeLedgerFields(existing, pr) || upgraded;
+      } else {
+        newPRs.push(pr);
+        byUrl.set(pr.url, pr);
+      }
+    }
+    if (newPRs.length === 0 && !upgraded) return { added: 0, dropped };
     this.state.closedPRs.push(...newPRs);
     this.state.closedPRs.sort((a, b) => b.closedAt.localeCompare(a.closedAt));
     debug(MODULE, `Added ${newPRs.length} closed PRs (total: ${this.state.closedPRs.length})`);
@@ -1052,7 +1107,16 @@ export async function getStateManagerAsync(token?: string): Promise<StateManager
   // this call is the retry that must be allowed to upgrade it. The old
   // unconditional early return made every retry a dead no-op, permanently
   // latching gist-configured processes into silent local-only writes.
-  if (stateManager && (!token || stateManager.isGistMode())) return stateManager;
+  //
+  // #1443: a gist-DEGRADED singleton is the same latch through another door.
+  // A degraded bootstrap disarms the store (null gistId) but still assigns
+  // gistStore, so isGistMode() alone reported it healthy and the early
+  // return made re-bootstrap impossible (refreshFromGist short-circuits
+  // forever on the null gistId). A later token-bearing call must be allowed
+  // to replace it with a freshly bootstrapped manager.
+  if (stateManager && (!token || (stateManager.isGistMode() && !stateManager.isGistDegraded()))) {
+    return stateManager;
+  }
   if (asyncManagerPromise) return asyncManagerPromise;
 
   if (token) {
@@ -1064,6 +1128,13 @@ export async function getStateManagerAsync(token?: string): Promise<StateManager
         // NOT merged into it by this upgrade (bootstrapWithMigration seeds a
         // Gist from local state only on first creation). The per-call MCP
         // warning is the signal that those writes were at risk.
+        //
+        // The same data boundary applies when replacing a gist-DEGRADED
+        // singleton (#1443): its mutations were saved to the local cache
+        // file only (a degraded store never pushes), and a successful
+        // re-bootstrap pulls the existing Gist — those cache-only writes
+        // are NOT merged into it. The degraded-window warnings each
+        // mutation surfaced (maybeCheckpoint) are the honest record.
         stateManager = mgr;
         asyncManagerPromise = null;
         return mgr;
@@ -1119,10 +1190,14 @@ export type GistPersistenceStatus =
   | 'state-unreadable'
   /** Gist mode is configured but no token was available for this attempt. */
   | 'no-token'
-  /** Gist mode active: the singleton is gist-backed. */
+  /** Gist mode active: the singleton is gist-backed AND the store is armed
+   * (the bootstrap actually verified its Gist — not a degraded fallback). */
   | 'gist'
-  /** Gist mode is configured and a token was available, but init fell back
-   * to local-only (transient network failure). A later call may recover. */
+  /** Gist mode is configured and a token was available, but this process is
+   * not writing to the Gist: init either fell back to a local-only manager
+   * (transient network failure) or bootstrapped DEGRADED off the local
+   * cache (#1443 — gist-backed but disarmed, reads stale and pushes fail).
+   * A later call may recover. */
   | 'degraded';
 
 export async function ensureGistPersistence(token: string | null): Promise<GistPersistenceStatus> {
@@ -1158,7 +1233,11 @@ export async function ensureGistPersistence(token: string | null): Promise<GistP
   // long-lived caller must keep retrying instead of memoizing the outcome.
   if (!token) return 'no-token';
   const mgr = await getStateManagerAsync(token);
-  return mgr.isGistMode() ? 'gist' : 'degraded';
+  // #1443: a DEGRADED bootstrap still assigns gistStore (isGistMode() is
+  // true) but the store is disarmed — reads serve the stale cache and
+  // pushes fail. Reporting it 'gist' memoized the failure as success in
+  // every long-lived caller (MCP init memo, dashboard recovery gate).
+  return mgr.isGistMode() && !mgr.isGistDegraded() ? 'gist' : 'degraded';
 }
 
 /**

@@ -125,7 +125,6 @@ export type DailyWarningPhase =
   | 'fetch'
   | 'repo-scores'
   | 'analytics'
-  | 'scout-sync'
   | 'partition'
   | 'dismiss-filter'
   | 'gist-init'
@@ -137,7 +136,7 @@ export type DailyWarningPhase =
  * A single non-fatal failure surfaced from the `daily` pipeline. Unlike
  * `PRCheckFailure` (which is scoped to per-PR fetch errors), this covers
  * ancillary fetches that previously demoted to a log-only `warn()` — repo
- * metadata, monthly analytics, scout sync, Gist checkpoint, etc.
+ * metadata, monthly analytics, Gist checkpoint, etc.
  *
  * `timestamp` and `details` are optional structured extensions added in
  * #1193 so staleness warnings can carry `lastSuccessfulRefresh` /
@@ -190,7 +189,7 @@ export interface DailyOutput {
   failures: PRCheckFailure[]; // PRs that failed to fetch (e.g., rate limits, network errors)
   /**
    * Non-fatal warnings from ancillary pipeline phases (repo metadata,
-   * analytics, scout sync, Gist checkpoint, etc.). Always an array — empty
+   * analytics, Gist checkpoint, etc.). Always an array — empty
    * on clean runs. See #1042.
    */
   warnings: DailyWarning[];
@@ -309,7 +308,6 @@ const DailyWarningPhaseSchema = z.enum([
   'fetch',
   'repo-scores',
   'analytics',
-  'scout-sync',
   'partition',
   'dismiss-filter',
   'gist-init',
@@ -749,6 +747,8 @@ export const ClaimOutputSchema = z.object({
 export const InitOutputSchema = z.object({
   username: z.string(),
   message: z.string(),
+  // Post-mutation Gist checkpoint failure (#1440). Optional: absent on clean runs.
+  gistSyncWarning: z.string().optional(),
 });
 
 // ── #1190: plugin → CLI contract ─────────────────────────────────────
@@ -776,6 +776,8 @@ const SetupSetOutputSchema = z.object({
   success: z.literal(true),
   settings: z.record(z.string(), z.string()),
   warnings: z.array(z.string()).optional(),
+  // Post-mutation Gist checkpoint failure (#1440). Optional: absent on clean runs.
+  gistSyncWarning: z.string().optional(),
 });
 
 const SetupCompleteOutputSchema = z.object({
@@ -820,6 +822,8 @@ const ConfigSetOutputSchema = z.object({
   success: z.literal(true),
   key: z.string(),
   value: z.string(),
+  // Post-mutation Gist checkpoint failure (#1440). Optional: absent on clean runs.
+  gistSyncWarning: z.string().optional(),
 });
 
 const ConfigListKeysOutputSchema = z.object({

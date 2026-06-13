@@ -7,8 +7,14 @@
 import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { runStatus, runConfig } from '@oss-autopilot/core/commands';
-import { getStateManager, splitRepo, fenceFetchedPR } from '@oss-autopilot/core';
-import { ensureGistInit } from './tools.js';
+import {
+  getStateManager,
+  splitRepo,
+  fenceFetchedPR,
+  fenceFetchedPRTitles,
+  labelGuidelinesContent,
+} from '@oss-autopilot/core';
+import { ensureGistInit, reloadExternalState } from './tools.js';
 
 /** Build a standard MCP resource response with a single JSON content entry. */
 function resourceContent(uri: URL, data: unknown) {
@@ -52,6 +58,11 @@ async function resourceGistInit(): Promise<void> {
   } catch (e) {
     console.error('[MCP] Resource read proceeding on local state; gist init failed:', e);
   }
+  // #1439: reads have the same staleness problem as tool calls — a long-lived
+  // process otherwise serves boot-time state forever after any external CLI
+  // write (local mode) or remote push (gist mode). Reload failures degrade to
+  // cached state inside the helper; they never fail the read.
+  await reloadExternalState();
 }
 
 /**
@@ -105,7 +116,12 @@ export function registerResources(server: McpServer): void {
     },
     // lastMaintainerComment.body is attacker-controllable; fence it at this
     // agent-facing boundary (#1420) — the persisted digest keeps raw bodies.
-    wrapResource(async () => (getStateManager().getState().lastDigest?.openPRs ?? []).map(fenceFetchedPR)),
+    // Titles and branch-ref names are fenced too (#1455): the MCP host LLM
+    // never sees the agents' injection-awareness blocks that cover the raw
+    // titles in the CLI --json envelope.
+    wrapResource(async () =>
+      (getStateManager().getState().lastDigest?.openPRs ?? []).map((pr) => fenceFetchedPRTitles(fenceFetchedPR(pr))),
+    ),
   );
 
   // 4. shelved-prs — Shelved PRs from the last daily digest
@@ -135,7 +151,9 @@ export function registerResources(server: McpServer): void {
               return {
                 uri: `oss://pr/${owner}/${repo}/${pr.number}`,
                 name: `${pr.repo}#${pr.number}`,
-                description: pr.title,
+                // The listing description reaches the host LLM as metadata —
+                // same untrusted-title surface as the resource body (#1455).
+                description: fenceFetchedPRTitles(pr).title,
                 mimeType: 'application/json' as const,
               };
             }),
@@ -171,8 +189,8 @@ export function registerResources(server: McpServer): void {
         if (!pr) {
           throw new Error(`PR ${fullRepo}#${prNumber} not found in last daily digest`);
         }
-        // Same fencing as oss://prs (#1420).
-        return resourceContent(uri, fenceFetchedPR(pr));
+        // Same fencing as oss://prs (#1420), including title/refs (#1455).
+        return resourceContent(uri, fenceFetchedPRTitles(fenceFetchedPR(pr)));
       } catch (e) {
         console.error('[MCP] PR detail error:', e);
         throw e;
@@ -220,7 +238,10 @@ export function registerResources(server: McpServer): void {
         if (!content) {
           throw new Error(`No guidelines stored for ${fullRepo}`);
         }
-        return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: content }] };
+        // Guidelines are LLM-distilled from public PR comments; label the
+        // provenance so the host treats them as guidance, not instructions
+        // (#1455). Stored content stays raw.
+        return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: labelGuidelinesContent(content) }] };
       } catch (e) {
         console.error('[MCP] repo-guidelines resource error:', e);
         throw e;

@@ -3,7 +3,13 @@
  * Interactive setup / configuration
  */
 
-import { getStateManager, DEFAULT_CONFIG, formatUnknownKeyError, getSetupKeys } from '../core/index.js';
+import {
+  getStateManager,
+  DEFAULT_CONFIG,
+  formatUnknownKeyError,
+  getSetupKeys,
+  maybeCheckpoint,
+} from '../core/index.js';
 import { ValidationError } from '../core/errors.js';
 import { validateGitHubUsername } from './validation.js';
 import {
@@ -14,6 +20,8 @@ import {
   DIFF_TOOLS,
   type DiffTool,
 } from '../core/types.js';
+
+const MODULE = 'setup';
 
 /** Parse and validate a positive integer setting value. */
 function parsePositiveInt(value: string, settingName: string): number {
@@ -33,6 +41,8 @@ export interface SetupSetOutput {
   success: true;
   settings: Record<string, string>;
   warnings?: string[];
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1440). */
+  gistSyncWarning?: string;
 }
 
 export interface SetupCompleteOutput {
@@ -232,6 +242,51 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = valid.length > 0 ? valid.join(', ') : '(empty)';
             break;
           }
+          case 'avoidRepos': {
+            // Same owner/repo validation as aiPolicyBlocklist: skip (and warn
+            // about) malformed entries instead of failing the whole set.
+            const entries = value
+              .split(',')
+              .map((r) => r.trim())
+              .filter(Boolean);
+            const valid: string[] = [];
+            const invalid: string[] = [];
+            for (const entry of entries) {
+              const normalized = entry.replace(/\s+/g, '');
+              if (/^[\w.-]+\/[\w.-]+$/.test(normalized)) {
+                valid.push(normalized);
+              } else {
+                invalid.push(entry);
+              }
+            }
+            if (invalid.length > 0) {
+              warnings.push(`Warning: Skipping invalid entries (expected "owner/repo" format): ${invalid.join(', ')}`);
+            }
+            if (valid.length === 0 && entries.length > 0) {
+              warnings.push('Warning: All entries were invalid. avoidRepos not updated.');
+              results[key] = '(all entries invalid)';
+              break;
+            }
+            const dedupedRepos = [...new Set(valid)];
+            stateManager.updateConfig({ avoidRepos: dedupedRepos });
+            results[key] = dedupedRepos.length > 0 ? dedupedRepos.join(', ') : '(empty)';
+            break;
+          }
+          case 'boostIssueTypes': {
+            // Free-form issue labels (scout matches them case-insensitively);
+            // an empty value clears the list.
+            const types = [
+              ...new Set(
+                value
+                  .split(',')
+                  .map((t) => t.trim())
+                  .filter(Boolean),
+              ),
+            ];
+            stateManager.updateConfig({ boostIssueTypes: types });
+            results[key] = types.length > 0 ? types.join(', ') : '(empty)';
+            break;
+          }
           case 'projectCategories': {
             const categories = value
               .split(',')
@@ -341,7 +396,16 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
       }
     });
 
-    return { success: true, settings: results, warnings: warnings.length > 0 ? warnings : undefined };
+    // Push the settings mutation to the Gist in gist mode (no-op locally).
+    // Without this the change only hits the local cache and the next
+    // bootstrap reverts it from the Gist (#1440).
+    const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
+    return {
+      success: true,
+      settings: results,
+      warnings: warnings.length > 0 ? warnings : undefined,
+      ...(gistSyncWarning ? { gistSyncWarning } : {}),
+    };
   }
 
   // Show setup status

@@ -39,7 +39,6 @@ import { wrapUntrustedContent } from '../core/untrusted-content.js';
 import { computeStrategy, shouldComputeStrategy, type StrategyResult } from '../core/strategy.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
-import { createAutopilotScout } from './scout-bridge.js';
 import { updateMonthlyAnalytics } from './dashboard-data.js';
 import {
   deduplicateDigest,
@@ -111,7 +110,7 @@ export {
 // reuse it without crossing the commands → sibling-command boundary
 // (#1208 M7). Re-exported here for backward compatibility with anyone
 // importing from this module.
-import { buildStarFilter } from '../core/daily-logic.js';
+import { buildStarFilter, firstMaintainerResponseFromDigest } from '../core/daily-logic.js';
 export { buildStarFilter };
 
 /**
@@ -792,7 +791,10 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // never bootstrapped) writes mutations that will not sync. Previously the
   // only signal was a stderr warn, invisible to --json consumers.
   const smForGistCheck = getStateManager();
-  if (smForGistCheck.getState().config.persistence === 'gist' && !smForGistCheck.isGistMode()) {
+  if (
+    smForGistCheck.getState().config.persistence === 'gist' &&
+    (!smForGistCheck.isGistMode() || smForGistCheck.isGistDegraded())
+  ) {
     recordWarning(
       warnings,
       'gist-init',
@@ -845,6 +847,10 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // Phase 3: Persist monthly analytics and store merged/closed PR history.
   // try-catch: analytics are supplementary — save failure should not crash the daily check.
   try {
+    // Previous run's digest — read BEFORE Phase 4 overwrites it. If a
+    // just-merged/closed PR was open during a prior enriched run, its
+    // openPRs entry carries firstMaintainerResponseAt for the ledger (#1461).
+    const previousDigest = getStateManager().getState().lastDigest;
     getStateManager().batch(() => {
       const analyticsFailures = updateMonthlyAnalytics(
         prs,
@@ -863,15 +869,30 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
       // Store recently merged/closed PRs in the persistent arrays.
       // This ensures the mergedPRs/closedPRs ledger is populated even when
       // the dashboard is never opened (which has its own fetch path).
-      // addMergedPRs/addClosedPRs deduplicate by URL, so overlaps are safe.
+      // addMergedPRs/addClosedPRs deduplicate by URL (re-seen entries upgrade
+      // missing ledger fields in place), so overlaps are safe. openedAt comes
+      // free from the search result; firstMaintainerResponseAt is best-effort
+      // from the previous run's enriched digest — zero new API calls (#1461).
       if (recentlyMergedPRs.length > 0) {
         getStateManager().addMergedPRs(
-          recentlyMergedPRs.map((pr) => ({ url: pr.url, title: pr.title, mergedAt: pr.mergedAt })),
+          recentlyMergedPRs.map((pr) => ({
+            url: pr.url,
+            title: pr.title,
+            mergedAt: pr.mergedAt,
+            openedAt: pr.openedAt,
+            firstMaintainerResponseAt: firstMaintainerResponseFromDigest(previousDigest, pr.url),
+          })),
         );
       }
       if (recentlyClosedPRs.length > 0) {
         getStateManager().addClosedPRs(
-          recentlyClosedPRs.map((pr) => ({ url: pr.url, title: pr.title, closedAt: pr.closedAt })),
+          recentlyClosedPRs.map((pr) => ({
+            url: pr.url,
+            title: pr.title,
+            closedAt: pr.closedAt,
+            openedAt: pr.openedAt,
+            firstMaintainerResponseAt: firstMaintainerResponseFromDigest(previousDigest, pr.url),
+          })),
         );
       }
     });
@@ -879,21 +900,14 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     recordWarning(warnings, 'analytics', 'persist monthly analytics', error);
   }
 
-  // Phase 3.5: Feed merged/closed PRs to oss-scout for cross-tool state sync.
-  if (recentlyMergedPRs.length > 0 || recentlyClosedPRs.length > 0) {
-    try {
-      const scout = await createAutopilotScout();
-      for (const pr of recentlyMergedPRs) {
-        scout.recordMergedPR({ url: pr.url, title: pr.title, mergedAt: pr.mergedAt, repo: pr.repo });
-      }
-      for (const pr of recentlyClosedPRs) {
-        scout.recordClosedPR({ url: pr.url, title: pr.title, closedAt: pr.closedAt, repo: pr.repo });
-      }
-      await scout.checkpoint();
-    } catch (error) {
-      recordWarning(warnings, 'scout-sync', 'sync PR data to oss-scout', error);
-    }
-  }
+  // No scout pass here (#1458): the former Phase 3.5 fed recentlyMerged/ClosedPRs
+  // to an oss-scout instance and called scout.checkpoint(). Both halves were dead:
+  // scout's recordMergedPR/recordClosedPR deduplicate by URL against the ledger
+  // that Phase 3 just wrote (buildScoutState maps state.mergedPRs/closedPRs into
+  // the scout state), so they returned before touching any repo score; and under
+  // persistence:'provided' checkpoint() has no gist store and no local store, so
+  // it persisted nothing. Cross-tool sharing happens through buildScoutState
+  // reading AgentState, not through pushing events at scout.
 
   // Capture lastDigestAt BEFORE Phase 4 overwrites it with the current run's timestamp.
   // Used by collectActionableIssues to determine which PRs are "new" (created since last digest).

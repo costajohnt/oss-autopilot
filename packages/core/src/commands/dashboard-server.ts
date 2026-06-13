@@ -359,6 +359,15 @@ function sendError(res: http.ServerResponse, statusCode: number, message: string
 }
 
 /**
+ * Collapse CR/LF in a string destined for an HTTP header value — Node's
+ * setHeader throws on embedded newlines, and staleness reasons are built
+ * from arbitrary error messages (#1446 item 2).
+ */
+function sanitizeHeaderValue(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ').trim();
+}
+
+/**
  * True when an error is an optimistic-concurrency conflict on state.json
  * (local mtime CAS) or the state Gist (ETag CAS). Both carry the
  * CONCURRENCY_ERROR code and the same recovery contract: reload, re-apply,
@@ -450,7 +459,15 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
               'fix the Gist setup (check the token gist scope, or run state-show), then restart the dashboard.',
       );
     } else if (gistBootstrapDegraded()) {
-      extras.push(GIST_STALE_BOOTSTRAP_WARNING);
+      // Same halt surfacing as the local-only branch (#1443): a permanent
+      // recovery failure must reach the banner here too, or the stale data
+      // promise below would dangle forever with no visible reason.
+      extras.push(
+        recoveryHaltedReason === null
+          ? GIST_STALE_BOOTSTRAP_WARNING
+          : `Gist persistence is degraded and recovery FAILED permanently: ${recoveryHaltedReason} — ` +
+              'fix the Gist setup (check the token gist scope, or run state-show), then restart the dashboard.',
+      );
     }
     if (extras.length === 0) return failures;
     const base = failures ?? [];
@@ -497,9 +514,13 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     'changes made here will NOT sync and may be overwritten by the next successful Gist read. ' +
     'Recovery is retried automatically.';
 
+  // #1443: a degraded bootstrap disarms the store, so "the next successful
+  // Gist read" can never arrive on its own — maybeRecoverGist re-bootstraps
+  // (the gate below treats this state as recoverable), which is the retry
+  // this banner now promises.
   const GIST_STALE_BOOTSTRAP_WARNING =
     'Gist persistence is active but the last Gist read fell back to the local cache; ' +
-    'data shown may be stale until the next successful Gist read.';
+    'data shown may be stale. Recovery is retried automatically.';
 
   // Recovery throttling + halt (#1433 review): a PERMANENT failure (token
   // lacks gist scope, corrupt Gist) must not turn every dashboard poll into
@@ -517,15 +538,47 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
   let degradedMutationCount = 0;
   let recoveryLossNotices: string[] = [];
 
+  /** A successful PULL (refresh, or a recovery re-bootstrap) wholesale-
+   * replaces in-memory state. If push warnings are still pending at that
+   * moment, the mutations they describe are gone from the working state and
+   * a LATER push can never carry them — so an unrelated future push must not
+   * be allowed to "resolve" them (#1443). Convert the prospective warnings
+   * into a retrospective loss notice. Lifecycle invariants from #1417/#1433
+   * are unchanged: pending warnings still clear only via recordGistSyncOutcome
+   * on a successful push, and loss notices still clear at the start of the
+   * next refresh cycle. */
+  function convertPendingWarningsToLossNotices(): void {
+    if (pendingGistSyncWarnings.length === 0) return;
+    recoveryLossNotices.push(
+      `A Gist read replaced local state while ${pendingGistSyncWarnings.length} change(s) were still un-pushed — ` +
+        'they were NOT synced to the Gist and may have been reverted in this view. Re-apply anything missing.',
+    );
+    pendingGistSyncWarnings = [];
+  }
+
+  /** Pull from the Gist, converting still-pending push warnings into a loss
+   * notice when the pull actually replaced state (#1443). All dashboard pull
+   * sites go through here; callers flush pending pushes first (#1417), so a
+   * warning that is still pending at pull time means the flush failed. */
+  async function pullFromGist(): Promise<boolean> {
+    const refreshed = await stateManager.refreshFromGist();
+    if (refreshed) convertPendingWarningsToLossNotices();
+    return refreshed;
+  }
+
   /** Re-attempt gist init while degraded (#1433). The serve process used to
    * bootstrap exactly once at CLI preAction — with its stderr discarded by
    * the detached spawn — and never retry, so one blip at startup meant
    * local-only writes for the server's lifetime. Never throws. Transient
    * failures retry no more often than RECOVERY_RETRY_INTERVAL_MS; permanent
    * (ConfigurationError-class) failures halt retries and surface the reason
-   * in the banner. */
+   * in the banner.
+   *
+   * Covers BOTH degraded shapes (#1443): a local-only manager under a gist
+   * config, and a gist-backed manager whose bootstrap fell back to the local
+   * cache (disarmed store — refreshFromGist can never heal it on its own). */
   async function maybeRecoverGist(): Promise<void> {
-    if (!gistConfiguredButLocal()) return;
+    if (!gistConfiguredButLocal() && !gistBootstrapDegraded()) return;
     if (recoveryHaltedReason !== null) return;
     const now = Date.now();
     if (now - lastRecoveryAttemptAt < RECOVERY_RETRY_INTERVAL_MS) return;
@@ -538,7 +591,16 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       await ensureGistPersistence(currentToken);
       // The upgrade replaced the core singleton — re-resolve our reference.
       stateManager = getStateManager();
-      if (stateManager.isGistMode() && degradedMutationCount > 0) {
+      // Genuinely armed only: a retry can resolve via ANOTHER degraded
+      // bootstrap (isGistMode() true, store disarmed) — that is not a
+      // recovery and must not produce a recovery notice (#1443).
+      const recovered = stateManager.isGistMode() && !stateManager.isGistDegraded();
+      if (recovered) {
+        // The re-bootstrap pulled the existing Gist: un-pushed mutations
+        // from the degraded window are not in the replacement state.
+        convertPendingWarningsToLossNotices();
+      }
+      if (recovered && degradedMutationCount > 0) {
         recoveryLossNotices.push(
           `Gist persistence recovered, but ${degradedMutationCount} change(s) made while degraded were ` +
             'saved locally only and were NOT merged into the Gist — they may have been reverted in this view. ' +
@@ -611,17 +673,25 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         // Expose the CSRF token to the SPA on every data fetch so the client
         // can attach it on subsequent POSTs. Fresh fetch → fresh token view.
         res.setHeader('X-CSRF-Token', csrfToken);
-        // Re-read state if modified externally (file mtime for local, Gist API for Gist mode)
-        let stateChanged = false;
-        if (stateManager.isGistMode()) {
-          await flushPendingGistSync();
-          stateChanged = await stateManager.refreshFromGist();
-        } else {
-          stateChanged = stateManager.reloadIfChanged();
-          await maybeRecoverGist();
-          // A successful recovery is a state-source change: rebuild so the
-          // degraded banner clears without waiting for another edit.
-          if (stateManager.isGistMode()) stateChanged = true;
+        // Re-read state if modified externally (file mtime for local, Gist
+        // API for Gist mode). Shared with the POST paths via reloadState()
+        // so the recoveryHaltedReason un-halt lives in exactly one place —
+        // this GET path used to hand-duplicate the sequence minus the
+        // un-halt and had already drifted once (#1446 item 5). The #1443
+        // degraded-bootstrap recovery (and its banner-clearing stateChanged
+        // signal) lives inside reloadState too — do NOT add a second
+        // maybeRecoverGist call here or recovery would double-run per poll.
+        const stateChanged = await reloadState();
+        // Gist-mode staleness (#1446 item 2): refreshFromGist() returns
+        // false on BOTH "no change" and "fetch failed", so the boolean can't
+        // signal failure. getStateStaleness() is the API built for exactly
+        // this — StateManager sets the marker when in-memory state diverged
+        // from the canonical Gist (refresh failure, invalid payload,
+        // degraded bootstrap) and clears it on a successful pull.
+        const staleness = stateManager.getStateStaleness();
+        if (staleness !== null) {
+          res.setHeader('X-Dashboard-Stale', '1');
+          res.setHeader('X-Dashboard-Stale-Reason', sanitizeHeaderValue(`state-stale: ${staleness.reason}`));
         }
         // Also rebuild when the vetted issue list file was edited outside this server (#924)
         const currentIssueListMtimeMs = getIssueListMtimeMs();
@@ -650,7 +720,10 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         // is recorded — successful refreshes clear it.
         if (lastBackgroundRefreshError !== null) {
           res.setHeader('X-Dashboard-Stale', '1');
-          res.setHeader('X-Dashboard-Stale-Reason', `background-refresh-failed: ${lastBackgroundRefreshError}`);
+          res.setHeader(
+            'X-Dashboard-Stale-Reason',
+            sanitizeHeaderValue(`background-refresh-failed: ${lastBackgroundRefreshError}`),
+          );
         }
         sendJson(res, 200, cachedJsonData);
         return;
@@ -716,22 +789,65 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
   // ── POST /api/action handler ─────────────────────────────────────────────
 
-  /** Re-read state written by external processes (CLI) before mutating. */
-  async function reloadState(): Promise<void> {
+  /** A gist pull wholesale-replaces state, and the pulled state.lastDigest
+   * may be NEWER than this server's long-lived cachedDigest (another machine
+   * ran its daily check). Adopt it when its generatedAt is strictly newer so
+   * cross-machine results appear without a manual full refresh (#1446
+   * item 6). Unparsable timestamps compare as NaN and never adopt —
+   * conservative: keep what we have. */
+  function adoptNewerPulledDigest(): void {
+    const pulled = stateManager.getState().lastDigest;
+    if (!pulled) return;
+    if (Date.parse(pulled.generatedAt) > Date.parse(cachedDigest.generatedAt)) {
+      cachedDigest = pulled;
+    }
+  }
+
+  /** Re-read state written by external processes (CLI) before mutating.
+   * Returns true when the state source changed (gist pull refreshed, local
+   * file reloaded, or a gist recovery completed) — GET /api/data uses this
+   * to decide whether to rebuild the cached payload (#1446 item 5). */
+  async function reloadState(): Promise<boolean> {
     if (stateManager.isGistMode()) {
       await flushPendingGistSync();
-      await stateManager.refreshFromGist();
-    } else {
-      if (stateManager.reloadIfChanged()) {
-        // An external config edit may BE the fix for a permanently-halted
-        // recovery (new token scope, repaired gist id) — give it one fresh
-        // attempt cycle (#1433 pass-2).
-        recoveryHaltedReason = null;
+      // Both post-pull steps consume the same refreshFromGist outcome, in
+      // this order: pullFromGist (#1443) settles the LOSS side first —
+      // still-pending push warnings become a loss notice at the instant the
+      // pull replaces state — then adoptNewerPulledDigest harvests the GAIN
+      // side (#1446 item 6) by reading the freshly replaced state, so it
+      // cannot run before the pull. Adoption stays out of pullFromGist
+      // because the background-refresh path also pulls but replaces
+      // cachedDigest unconditionally right after — adoption is a
+      // reloadState-path concern only.
+      const refreshed = await pullFromGist();
+      if (refreshed) adoptNewerPulledDigest();
+      if (gistBootstrapDegraded()) {
+        // #1443: a degraded bootstrap keeps isGistMode() true while the
+        // store is disarmed, so refreshFromGist() short-circuits forever
+        // and the local-branch recovery below never sees it. Same
+        // throttle/halt machinery applies inside maybeRecoverGist.
+        await maybeRecoverGist();
+        // A successful recovery replaced the singleton with state pulled
+        // from the Gist — report a change so callers rebuild and the
+        // stale-bootstrap banner clears now.
+        if (!gistBootstrapDegraded()) return true;
       }
-      // reloadIfChanged may have just pulled a persistence=gist flip made
-      // from a terminal, and a degraded server heals here too (#1433).
-      await maybeRecoverGist();
+      return refreshed;
     }
+    let changed = stateManager.reloadIfChanged();
+    if (changed) {
+      // An external config edit may BE the fix for a permanently-halted
+      // recovery (new token scope, repaired gist id) — give it one fresh
+      // attempt cycle (#1433 pass-2).
+      recoveryHaltedReason = null;
+    }
+    // reloadIfChanged may have just pulled a persistence=gist flip made
+    // from a terminal, and a degraded server heals here too (#1433).
+    await maybeRecoverGist();
+    // A successful recovery is a state-source change: rebuild so the
+    // degraded banner clears without waiting for another edit.
+    if (stateManager.isGistMode()) changed = true;
+    return changed;
   }
 
   async function handleAction(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -1024,7 +1140,9 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         recoveryLossNotices = [];
         if (stateManager.isGistMode()) {
           await flushPendingGistSync();
-          await stateManager.refreshFromGist();
+          await pullFromGist();
+          // Heal a degraded bootstrap from the background refresh too (#1443).
+          if (gistBootstrapDegraded()) await maybeRecoverGist();
         } else {
           stateManager.reloadIfChanged();
           await maybeRecoverGist();

@@ -6,8 +6,22 @@
 import { createScout, type LinkedPR as ScoutLinkedPR, type OssScout, type ScoutState } from '@oss-scout/core';
 import { getStateManager, isLinkedPRStalled, requireGitHubToken } from '../core/index.js';
 import type { LinkedPR } from '../core/linked-pr-classification.js';
+import { computeStrategy } from '../core/strategy.js';
 import type { CandidateLinkedPR } from '../formatters/json.js';
 import { loadSkippedIssuesDetailed } from './skip-file-parser.js';
+
+/**
+ * Fraction of search slots reserved for candidates that matched neither
+ * strategy-preferred languages nor repos (#1244). Counterweight against
+ * echo-chamber bias: without it, strategy-boosted searches return more of
+ * what already merged, which merges more of the same, and the profile
+ * narrows over time. Scout clamps to [0, 1]; 0.2 is the issue's proposal.
+ *
+ * Lives here (not `search.ts`, which re-exports it) since #1464: the same
+ * ratio is baked into the `ScoutPreferences` built by {@link buildScoutState}
+ * so every scout surface shares one policy.
+ */
+export const SEARCH_DIVERSITY_RATIO = 0.2;
 
 /**
  * Degradation signals collected while building a scout state (#1448).
@@ -91,6 +105,16 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
     diagnostics.skipListUnavailable = true;
   }
 
+  // Strategy-derived personalization (#1464). `computeStrategy` returns null
+  // below the merged-PR floor — empty lists then read as "no bias" on scout's
+  // side. Baking the bias into the preferences (rather than only per-call
+  // search options, #1244) makes every scout surface share it: `search()`
+  // falls back to these when no per-call override is passed, and `features()`
+  // exposes no per-call bias knobs at all (scout 1.1.0 accepts only
+  // count/anchorThreshold/splitRatio/broad), so preferences are the only
+  // channel by which bias can reach the features path.
+  const strategy = computeStrategy(state);
+
   return {
     version: 1,
     preferences: {
@@ -121,15 +145,31 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       // `--split-ratio` flags for overrides.
       featuresAnchorThreshold: 3,
       featuresSplitRatio: 0.6,
-      // Personalization-bias prefs, likewise required on the inferred type
-      // (scout #1244 / #168). Autopilot doesn't surface these as settings yet,
-      // so we pass scout's documented "no bias" defaults.
-      preferLanguages: [],
-      preferRepos: [],
-      diversityRatio: 0,
-      avoidRepos: [],
-      boostIssueTypes: [],
+      // Personalization-bias prefs (scout #1244 / #168 / #1464).
+      // preferLanguages/preferRepos mirror the strategy derivation the search
+      // command uses per-call; avoidRepos/boostIssueTypes are user settings
+      // (config-registry keys); diversityRatio matches the search policy.
+      preferLanguages: strategy?.recommendations.languages ?? [],
+      preferRepos: strategy?.recommendations.repos ?? [],
+      diversityRatio: SEARCH_DIVERSITY_RATIO,
+      avoidRepos: config.avoidRepos ?? [],
+      boostIssueTypes: config.boostIssueTypes ?? [],
     },
+    // CONTRACT (#1458): repoScores is passed BY REFERENCE, not copied. Scout's
+    // updateRepoScore mutates entries of this shared object in place, so scout
+    // calls that touch scores (e.g. search's hasActiveMaintainers feedback,
+    // scout #167) write straight into the in-memory AgentState. Those writes
+    // reach disk only if a later StateManager mutation triggers a save —
+    // scout's own checkpoint() persists nothing under persistence:'provided'.
+    // Nothing may RELY on this alias for persistence: daily's former Phase 3.5
+    // did, and was deleted in #1458 (its record* calls were also dedup no-ops
+    // against the ledger Phase 3 had just written; see
+    // scout-bridge.repo-scores.test.ts for the pinning tests). Also note scout
+    // recalculates `score` with its own formula (linear merge bonus, no
+    // recency term), which differs from autopilot's repo-score-manager
+    // formula; daily Phase 2 recomputes every repo it touches with the
+    // autopilot formula each run, so the persisted history scores reflect
+    // autopilot's model.
     repoScores: state.repoScores,
     // Scout #117 added tombstones (deletion records for gist merge). Autopilot
     // synthesizes a fresh ScoutState per operation and tracks no deletions, so
