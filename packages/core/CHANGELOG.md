@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.13.4...core-v3.14.0) (2026-06-16)
+
+
+### Features
+
+* **config:** surface avoidRepos and boostIssueTypes; thread bias into features ([#1464](https://github.com/costajohnt/oss-autopilot/issues/1464)) ([#1489](https://github.com/costajohnt/oss-autopilot/issues/1489)) ([723792b](https://github.com/costajohnt/oss-autopilot/commit/723792b9404ce9cd3792e209f527ebd20db20f7b))
+* **daily:** close the merge loop — auto mark-done list entries + extract-learnings nudge ([#1463](https://github.com/costajohnt/oss-autopilot/issues/1463)) ([#1495](https://github.com/costajohnt/oss-autopilot/issues/1495)) ([b31b2fb](https://github.com/costajohnt/oss-autopilot/commit/b31b2fbf8ea1d15f0a66dfcb507567397d4889d4))
+* **daily:** follow_up action-menu item for stuck-CI and dormant PRs ([#1462](https://github.com/costajohnt/oss-autopilot/issues/1462)) ([#1484](https://github.com/costajohnt/oss-autopilot/issues/1484)) ([9761958](https://github.com/costajohnt/oss-autopilot/commit/97619581c20f313c87dbf8ec7f16c8cc3df1d42b))
+* **repo-vet:** name both repo scores; merge the scoring docs ([#1465](https://github.com/costajohnt/oss-autopilot/issues/1465)) ([#1482](https://github.com/costajohnt/oss-autopilot/issues/1482)) ([f52ad4d](https://github.com/costajohnt/oss-autopilot/commit/f52ad4d9114385fbb08d0f4c241357227d4f669b))
+* **state:** persist openedAt and firstMaintainerResponseAt on the PR outcome ledger ([#1461](https://github.com/costajohnt/oss-autopilot/issues/1461)) ([#1488](https://github.com/costajohnt/oss-autopilot/issues/1488)) ([8833671](https://github.com/costajohnt/oss-autopilot/commit/8833671e045d883d7627db957adfea8a9899663f))
+
+
+### Bug Fixes
+
+* **cli:** match curated-list URLs on a digit boundary shared by both list commands ([#1442](https://github.com/costajohnt/oss-autopilot/issues/1442)) ([#1468](https://github.com/costajohnt/oss-autopilot/issues/1468)) ([8b2dbe0](https://github.com/costajohnt/oss-autopilot/commit/8b2dbe0e42032a568d695fbdf9ec1af6e648daeb))
+* **core:** checkpoint config/setup/init mutations to the Gist ([#1440](https://github.com/costajohnt/oss-autopilot/issues/1440)) ([#1472](https://github.com/costajohnt/oss-autopilot/issues/1472)) ([d6f3cab](https://github.com/costajohnt/oss-autopilot/commit/d6f3cab307eccdb73a8896f6c42ba95bb09fb67c))
+* **core:** pagination truncation signal, case-insensitive own-filter, digest guards ([#1456](https://github.com/costajohnt/oss-autopilot/issues/1456)) ([#1483](https://github.com/costajohnt/oss-autopilot/issues/1483)) ([176503c](https://github.com/costajohnt/oss-autopilot/commit/176503ce93c19371b302251062c8ed4f5a80d1d7))
+* **core:** surface remaining stderr-only failures in --json envelopes ([#1448](https://github.com/costajohnt/oss-autopilot/issues/1448)) ([#1479](https://github.com/costajohnt/oss-autopilot/issues/1479)) ([87e8985](https://github.com/costajohnt/oss-autopilot/commit/87e89856f503c148e1e82252d5d848eeafbf75d8))
+* **daily:** persist the raw-status digest; overrides stay a view-layer concern ([#1445](https://github.com/costajohnt/oss-autopilot/issues/1445)) ([#1473](https://github.com/costajohnt/oss-autopilot/issues/1473)) ([65ab28f](https://github.com/costajohnt/oss-autopilot/commit/65ab28f7fa7e1a755cbd842c8cc4a0f3fce503f7))
+* **dashboard:** end-to-end staleness and error visibility ([#1446](https://github.com/costajohnt/oss-autopilot/issues/1446)) ([#1485](https://github.com/costajohnt/oss-autopilot/issues/1485)) ([6ed85c1](https://github.com/costajohnt/oss-autopilot/commit/6ed85c12918931380fe50957a1920d42504fec97))
+* **dashboard:** surface persistence failures in partialFailures ([#1447](https://github.com/costajohnt/oss-autopilot/issues/1447)) ([#1475](https://github.com/costajohnt/oss-autopilot/issues/1475)) ([afdcd78](https://github.com/costajohnt/oss-autopilot/commit/afdcd78debc7ce5afc621330136b3d8b8f49a231))
+* **mcp:** reload state per tool call and keep repair tools usable on hard gist-init errors ([#1439](https://github.com/costajohnt/oss-autopilot/issues/1439), [#1441](https://github.com/costajohnt/oss-autopilot/issues/1441)) ([#1471](https://github.com/costajohnt/oss-autopilot/issues/1471)) ([4820fc2](https://github.com/costajohnt/oss-autopilot/commit/4820fc2ff98ca55ff2fa9c4cb4e8c5b8cb76465e))
+* **security:** fence titles on MCP surfaces; label guidelines provenance; pin the posts-guard matcher ([#1455](https://github.com/costajohnt/oss-autopilot/issues/1455)) ([#1493](https://github.com/costajohnt/oss-autopilot/issues/1493)) ([a4bb7d4](https://github.com/costajohnt/oss-autopilot/commit/a4bb7d493cb78013fe1269093f21f2e3e3e4823d))
+* **state:** keep the migrating machine in gist mode after state.json is renamed away ([#1438](https://github.com/costajohnt/oss-autopilot/issues/1438)) ([#1467](https://github.com/costajohnt/oss-autopilot/issues/1467)) ([19e1f31](https://github.com/costajohnt/oss-autopilot/commit/19e1f317726d7666be40d640ea9660592eeeb7bd))
+* **state:** report and recover the gist-degraded bootstrap honestly ([#1443](https://github.com/costajohnt/oss-autopilot/issues/1443)) ([#1492](https://github.com/costajohnt/oss-autopilot/issues/1492)) ([c43b2c5](https://github.com/costajohnt/oss-autopilot/commit/c43b2c59ffbf3b1cfb9656a9ffff16fd7b354073))
+
 ## [3.13.4](https://github.com/costajohnt/oss-autopilot/compare/core-v3.13.3...core-v3.13.4) (2026-06-12)
 
 
