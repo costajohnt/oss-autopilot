@@ -1518,11 +1518,28 @@ describe('dashboard-server', () => {
       expect(result.headers['x-dashboard-stale-reason']).toContain('first line second line');
     });
 
-    it('adopts a NEWER pulled lastDigest after a successful gist refresh (item 6)', async () => {
-      // Cross-machine scenario: another machine ran its daily check and the
-      // gist pull just replaced state — the rebuild must use the pulled
-      // digest, not the long-lived cachedDigest baked at server start.
-      const pulledDigest = makeDigest({
+    // Reset the shared server's cachedDigest to a known baseline via a full
+    // refresh (handleRefresh replaces cachedDigest unconditionally). Lets each
+    // adopt/not-adopt case seed its own digest so the pair survives
+    // vitest --shuffle instead of depending on definition-order execution
+    // sharing one server instance + mocked clock.
+    async function seedCachedDigest(digest: DailyDigest): Promise<void> {
+      mockStateManager.isGistMode.mockReturnValue(false);
+      mockStateManager.refreshFromGist.mockResolvedValue(false);
+      mockStateManager.getState.mockReturnValue(makeState({ lastDigest: digest }));
+      vi.mocked(getGitHubToken).mockReturnValue('test-token');
+      vi.mocked(fetchDashboardData).mockResolvedValue({
+        digest,
+        commentedIssues: [],
+        allMergedPRs: [],
+        allClosedPRs: [],
+        partialFailures: [],
+      });
+      await sendRequest('POST', '/api/refresh');
+    }
+
+    const otherMachineDigest = (): DailyDigest =>
+      makeDigest({
         generatedAt: '2026-02-01T00:00:00Z',
         recentlyMergedPRs: [
           {
@@ -1534,23 +1551,42 @@ describe('dashboard-server', () => {
           },
         ],
       });
-      mockStateManager.getState.mockReturnValue(makeState({ lastDigest: pulledDigest }));
-      mockStateManager.isGistMode.mockReturnValue(true);
-      mockStateManager.refreshFromGist.mockResolvedValue(true);
 
-      const result = await sendRequest('GET', '/api/data');
+    it('adopts a NEWER pulled lastDigest after a successful gist refresh (item 6)', async () => {
+      // Self-seed an OLD cachedDigest so this case does not depend on whatever
+      // ran before it under --shuffle.
+      await seedCachedDigest(makeDigest({ generatedAt: '2026-01-01T00:00:00Z' }));
+      try {
+        // Cross-machine scenario: another machine ran its daily check and the
+        // gist pull just replaced state — the rebuild must use the pulled
+        // digest, not the long-lived cachedDigest baked at server start.
+        const pulledDigest = otherMachineDigest();
+        mockStateManager.getState.mockReturnValue(makeState({ lastDigest: pulledDigest }));
+        mockStateManager.isGistMode.mockReturnValue(true);
+        mockStateManager.refreshFromGist.mockResolvedValue(true);
 
-      expect(result.statusCode).toBe(200);
-      const body = JSON.parse(result.body);
-      expect(body.recentlyMergedPRs.map((pr: { url: string }) => pr.url)).toContain(
-        'https://github.com/other/machine/pull/777',
-      );
+        const result = await sendRequest('GET', '/api/data');
+
+        expect(result.statusCode).toBe(200);
+        const body = JSON.parse(result.body);
+        expect(body.recentlyMergedPRs.map((pr: { url: string }) => pr.url)).toContain(
+          'https://github.com/other/machine/pull/777',
+        );
+      } finally {
+        // Restore the default cachedDigest so a shuffle that runs this case
+        // last does not leave a 2026-02-01 digest for downstream tests.
+        await seedCachedDigest(makeDigest());
+        mockStateManager.isGistMode.mockReturnValue(false);
+      }
     });
 
     it('does NOT adopt an OLDER pulled lastDigest (item 6)', async () => {
-      // cachedDigest is now the 2026-02-01 digest adopted by the previous
-      // case — the server instance is shared across the file. A pull that
-      // resurrects an older digest must not roll the dashboard back.
+      // Self-seed the NEWER cachedDigest this case compares against, instead
+      // of depending on the prior 'adopts a NEWER' test having run first — the
+      // pair shared one server instance, so under --shuffle this test
+      // previously saw whatever digest the run order happened to leave.
+      await seedCachedDigest(otherMachineDigest());
+      // A pull that resurrects an older digest must not roll the dashboard back.
       const olderDigest = makeDigest({
         generatedAt: '2026-01-20T00:00:00Z',
         recentlyMergedPRs: [
@@ -1574,23 +1610,88 @@ describe('dashboard-server', () => {
         const body = JSON.parse(result.body);
         const urls = body.recentlyMergedPRs.map((pr: { url: string }) => pr.url);
         expect(urls).not.toContain('https://github.com/stale/machine/pull/1');
-        // Still the adopted newer digest from the previous test.
+        // Still the self-seeded newer digest.
         expect(urls).toContain('https://github.com/other/machine/pull/777');
       } finally {
-        // Restore the default cachedDigest for the rest of the file via a
-        // full refresh (handleRefresh replaces cachedDigest unconditionally).
+        // Restore the default cachedDigest for the rest of the file.
+        await seedCachedDigest(makeDigest());
         mockStateManager.isGistMode.mockReturnValue(false);
-        mockStateManager.getState.mockReturnValue(makeState({ lastDigest: makeDigest() }));
-        vi.mocked(getGitHubToken).mockReturnValue('test-token');
-        vi.mocked(fetchDashboardData).mockResolvedValue({
-          digest: makeDigest(),
-          commentedIssues: [],
-          allMergedPRs: [],
-          allClosedPRs: [],
-          partialFailures: [],
-        });
-        await sendRequest('POST', '/api/refresh');
       }
+    });
+
+    // ── #1487: POST responses carry the stale header too ──────────────────
+    // The setters used to be GET-only, but the SPA clears its `stale` flag on
+    // ANY applied response. A POST /api/refresh or /api/action that succeeds
+    // while the gist stays stale must still surface the staleness, or the SPA
+    // flips back to "healthy" until the next GET.
+
+    it('POST /api/refresh carries X-Dashboard-Stale when state is stale (#1487)', async () => {
+      // The bug scenario: the GitHub fetch succeeds but the gist pull failed,
+      // so getStateStaleness() still reports divergence after the refresh.
+      mockStateManager.isGistMode.mockReturnValue(true);
+      mockStateManager.refreshFromGist.mockResolvedValue(false);
+      mockStateManager.getStateStaleness.mockReturnValue({
+        source: 'cache',
+        reason: 'gist pull failed: 503',
+        lastSuccessfulRefresh: '2026-01-15T11:00:00Z',
+        detectedAt: '2026-01-15T12:00:00Z',
+      });
+      vi.mocked(getGitHubToken).mockReturnValue('test-token');
+      vi.mocked(fetchDashboardData).mockResolvedValue({
+        digest: makeDigest(),
+        commentedIssues: [],
+        allMergedPRs: [],
+        allClosedPRs: [],
+        partialFailures: [],
+      });
+
+      const result = await sendRequest('POST', '/api/refresh');
+
+      expect(result.statusCode).toBe(200);
+      expect(result.headers['x-dashboard-stale']).toBe('1');
+      expect(result.headers['x-dashboard-stale-reason']).toContain('gist pull failed: 503');
+    });
+
+    it('POST /api/action carries X-Dashboard-Stale when state is stale (#1487)', async () => {
+      // A dismiss succeeds locally while the gist stays unreachable — the
+      // mutation response must not let the SPA clear a previously-stale flag.
+      mockStateManager.getStateStaleness.mockReturnValue({
+        source: 'cache',
+        reason: 'gist pull failed: 503',
+        lastSuccessfulRefresh: '2026-01-15T11:00:00Z',
+        detectedAt: '2026-01-15T12:00:00Z',
+      });
+
+      const result = await sendRequest(
+        'POST',
+        '/api/action',
+        JSON.stringify({ action: 'dismiss_issue_response', url: 'https://github.com/owner/repo/issues/5' }),
+      );
+
+      expect(result.statusCode).toBe(200);
+      expect(result.headers['x-dashboard-stale']).toBe('1');
+      expect(result.headers['x-dashboard-stale-reason']).toContain('gist pull failed: 503');
+    });
+
+    it('POST /api/refresh does NOT carry X-Dashboard-Stale when state is healthy (#1487)', async () => {
+      // The successful manual refresh clears a prior background-refresh error
+      // (mirrors the background path) and getStateStaleness is null, so the
+      // SPA correctly drops the stale flag.
+      mockStateManager.getStateStaleness.mockReturnValue(null);
+      vi.mocked(getGitHubToken).mockReturnValue('test-token');
+      vi.mocked(fetchDashboardData).mockResolvedValue({
+        digest: makeDigest(),
+        commentedIssues: [],
+        allMergedPRs: [],
+        allClosedPRs: [],
+        partialFailures: [],
+      });
+
+      const result = await sendRequest('POST', '/api/refresh');
+
+      expect(result.statusCode).toBe(200);
+      expect(result.headers['x-dashboard-stale']).toBeUndefined();
+      expect(result.headers['x-dashboard-stale-reason']).toBeUndefined();
     });
 
     it('GET /api/data un-halts a permanently-failed gist recovery after an external state edit (item 5)', async () => {
