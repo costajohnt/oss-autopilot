@@ -49,6 +49,11 @@
   "engines": {
     "node": ">=22.0.0"
   },
+  "pnpm": {
+    "overrides": {
+      "hono": ">=4.12.25"
+    }
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@vitest/eslint-plugin": "^1.6.20",
