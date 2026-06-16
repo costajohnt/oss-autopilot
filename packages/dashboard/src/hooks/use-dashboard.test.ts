@@ -341,6 +341,31 @@ describe('useDashboard', () => {
       expect(result.current.stale).toBe(false);
       expect(result.current.staleReason).toBe(null);
     });
+
+    it('keeps stale set when a POST /api/refresh response carries the stale header (#1487)', async () => {
+      // The #1487 fix makes the server set X-Dashboard-Stale on POST responses
+      // too. Mount healthy, then a background-stale POST refresh: applyResult
+      // must thread the POST's header into `stale`, not clear it because the
+      // response happened to be a POST.
+      const data = makeDashboardData();
+      mockFetchOk(data); // mount GET /api/data — healthy
+
+      const { result } = renderHook(() => useDashboard());
+      await vi.waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.stale).toBe(false);
+
+      // Manual refresh succeeds (POST) but the gist is still stale.
+      mockFetchOk(data, 'test-token', {
+        'X-Dashboard-Stale': '1',
+        'X-Dashboard-Stale-Reason': 'state-stale: gist pull failed: 503',
+      });
+      await act(async () => {
+        await result.current.refresh();
+      });
+
+      expect(result.current.stale).toBe(true);
+      expect(result.current.staleReason).toBe('state-stale: gist pull failed: 503');
+    });
   });
 
   describe('auto-refresh failure counter (#1446)', () => {

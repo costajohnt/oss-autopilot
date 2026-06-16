@@ -309,17 +309,6 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         // signal) lives inside reloadState too — do NOT add a second
         // maybeRecoverGist call here or recovery would double-run per poll.
         const stateChanged = await reloadState();
-        // Gist-mode staleness (#1446 item 2): refreshFromGist() returns
-        // false on BOTH "no change" and "fetch failed", so the boolean can't
-        // signal failure. getStateStaleness() is the API built for exactly
-        // this — StateManager sets the marker when in-memory state diverged
-        // from the canonical Gist (refresh failure, invalid payload,
-        // degraded bootstrap) and clears it on a successful pull.
-        const staleness = gistSync.stateManager.getStateStaleness();
-        if (staleness !== null) {
-          res.setHeader('X-Dashboard-Stale', '1');
-          res.setHeader('X-Dashboard-Stale-Reason', sanitizeHeaderValue(`state-stale: ${staleness.reason}`));
-        }
         // Also rebuild when the vetted issue list file was edited outside this server (#924)
         const currentIssueListMtimeMs = getIssueListMtimeMs();
         const issueListChanged = currentIssueListMtimeMs !== cache.issueListMtimeMs;
@@ -333,17 +322,10 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
             res.setHeader('X-Dashboard-Stale', '1');
           }
         }
-        // Surface staleness from a failed background refresh too (#1205) so
-        // token expiry / GitHub outage produces a client-visible signal
-        // rather than silent stale data. Only set the header when a failure
-        // is recorded — successful refreshes clear it.
-        if (cache.lastBackgroundRefreshError !== null) {
-          res.setHeader('X-Dashboard-Stale', '1');
-          res.setHeader(
-            'X-Dashboard-Stale-Reason',
-            sanitizeHeaderValue(`background-refresh-failed: ${cache.lastBackgroundRefreshError}`),
-          );
-        }
+        // Gist-divergence + background-refresh staleness (#1446 item 2, #1205)
+        // via the shared helper so this GET and the POST mutators emit the
+        // same headers (#1487). The rebuild-failure flag above is GET-only.
+        applyStalenessHeaders(res);
         sendJson(res, 200, cache.jsonData);
         return;
       }
@@ -453,6 +435,40 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     // degraded banner clears without waiting for another edit.
     if (gistSync.stateManager.isGistMode()) changed = true;
     return changed;
+  }
+
+  /**
+   * Emit the X-Dashboard-Stale / X-Dashboard-Stale-Reason headers from the
+   * two server-lived staleness sources so EVERY response — GET /api/data and
+   * the POST mutators — reflects the same truth (#1487).
+   *
+   * Before this the setters were GET-only, but the SPA's applyResult clears
+   * its `stale` flag on ANY successfully-applied response. A dashboard whose
+   * gist pulls keep failing while POST /api/refresh and /api/action succeed
+   * would flip back to "healthy" until the next GET (mount or CSRF re-prime).
+   * Carrying the headers on the POST paths keeps the flag honest.
+   *
+   * Reads the same two probes the GET path used inline: the StateManager's
+   * gist-divergence marker (getStateStaleness, #1446 item 2) — set on a
+   * refresh failure / invalid payload / degraded bootstrap and cleared on a
+   * successful pull — and the cache's last background-refresh error (#1205).
+   * When both are set the background-refresh reason wins, matching the prior
+   * GET ordering. The GET path's third, transient source — an inline rebuild
+   * failure (#994) — is specific to that handler and stays inline there.
+   */
+  function applyStalenessHeaders(res: http.ServerResponse): void {
+    const staleness = gistSync.stateManager.getStateStaleness();
+    if (staleness !== null) {
+      res.setHeader('X-Dashboard-Stale', '1');
+      res.setHeader('X-Dashboard-Stale-Reason', sanitizeHeaderValue(`state-stale: ${staleness.reason}`));
+    }
+    if (cache.lastBackgroundRefreshError !== null) {
+      res.setHeader('X-Dashboard-Stale', '1');
+      res.setHeader(
+        'X-Dashboard-Stale-Reason',
+        sanitizeHeaderValue(`background-refresh-failed: ${cache.lastBackgroundRefreshError}`),
+      );
+    }
   }
 
   async function handleAction(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -575,6 +591,10 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
     // refresh clears it.
     cache.rebuild(gistSync.stateManager.getState());
 
+    // Carry the same staleness signal a GET would (#1487): a mutation that
+    // succeeds locally while the gist stays unreachable must not let the SPA
+    // clear a previously-stale flag.
+    applyStalenessHeaders(res);
     sendJson(res, 200, cache.jsonData);
   }
 
@@ -598,6 +618,14 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
       const result = await fetchDashboardData(currentToken);
       cache.adoptFetchResult(result);
       cache.rebuild(gistSync.stateManager.getState(), result.allMergedPRs, result.allClosedPRs);
+      // This manual refresh just fetched GitHub successfully, so a prior
+      // background-refresh failure is no longer current (#1487) — clear it as
+      // the background success path does, then emit the staleness headers. A
+      // gist-divergence marker that survived a failed pull inside reloadState
+      // still surfaces via getStateStaleness, so the SPA stays honest even
+      // when the GitHub fetch succeeds but the gist remains unreachable.
+      cache.lastBackgroundRefreshError = null;
+      applyStalenessHeaders(res);
       sendJson(res, 200, cache.jsonData);
     } catch (error) {
       // No server-side retry here (unlike handleAction): a refresh re-run is a
