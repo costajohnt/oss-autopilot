@@ -612,7 +612,9 @@ export const commands: CLICommandDef[] = [
             (data) => {
               console.log(`\nRe-vetted ${data.summary.total} issues:\n`);
               console.log(`  Still available: ${data.summary.stillAvailable}`);
+              console.log(`  At risk:         ${data.summary.atRisk}`);
               console.log(`  Claimed:         ${data.summary.claimed}`);
+              console.log(`  Own open PR:     ${data.summary.ownOpenPr}`);
               console.log(`  Closed:          ${data.summary.closed}`);
               console.log(`  Has PR:          ${data.summary.hasPR}`);
               console.log(`  Stalled PR:      ${data.summary.hasStalledPR}`);
@@ -625,7 +627,14 @@ export const commands: CLICommandDef[] = [
                     : result.listStatus === 'error'
                       ? '\u274c'
                       : '\u26a0\ufe0f';
-                const annotation = result.listStatus === 'has_stalled_pr' ? ' (stalled PR, revive opportunity)' : '';
+                const annotation =
+                  result.listStatus === 'has_stalled_pr'
+                    ? ' (stalled PR, revive opportunity)'
+                    : result.listStatus === 'at_risk'
+                      ? ' (at risk, mention only)'
+                      : result.listStatus === 'own_open_pr'
+                        ? ' (you already have an open PR)'
+                        : '';
                 console.log(
                   `${status} [${result.listStatus}] ${result.issue.repo}#${result.issue.number}: ${result.issue.title}${annotation}`,
                 );

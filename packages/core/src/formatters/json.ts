@@ -24,6 +24,7 @@ import type {
 import type { ContributionStats } from '../core/stats.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import type { CIFormatterDiagnosis, FormatterDetectionResult } from '../core/formatter-detection.js';
+import type { IssueAvailabilityVerdict, IssueVerification, VerifiedLinkedPR } from '../core/issue-verification.js';
 
 // Re-export the daily aggregation types from their canonical home in core/types.
 // External consumers and downstream tests have historically imported them from
@@ -1325,13 +1326,28 @@ export interface CheckIntegrationOutput {
 }
 
 /**
- * Status of a re-vetted issue from the curated list (#764).
+ * Status of a re-vetted issue from the curated list (#764, #1494).
  *
- * `has_stalled_pr` (scout 0.9.0 #97) distinguishes open-but-stalled linked
- * PRs from cleanly-claimed `has_pr` issues — the issue is still actionable
- * as a revive opportunity rather than something to drop.
+ * As of #1494 the status is driven by the deterministic verify-issue verdict
+ * (closing-vs-mention aware) rather than scout's substring heuristic:
+ * - `at_risk` — verify found an open *mention* (cross-reference, not a closing
+ *   PR) or a merged closing PR awaiting issue close. Previously collapsed into
+ *   `claimed`/`has_pr`; the point of #1353.
+ * - `own_open_pr` — the authenticated user already has an open closing PR.
+ *
+ * `has_pr` / `has_stalled_pr` (scout 0.9.0 #97) now only arise on the fallback
+ * path when verify itself errored and we drop back to scout's heuristic; they
+ * are kept for back-compat.
  */
-export type VetListItemStatus = 'still_available' | 'claimed' | 'closed' | 'has_pr' | 'has_stalled_pr' | 'error';
+export type VetListItemStatus =
+  | 'still_available'
+  | 'claimed'
+  | 'closed'
+  | 'has_pr'
+  | 'has_stalled_pr'
+  | 'at_risk'
+  | 'own_open_pr'
+  | 'error';
 
 /** Output of the vet-list command (#764). */
 export interface VetListOutput {
@@ -1339,6 +1355,28 @@ export interface VetListOutput {
     VetOutput & {
       listStatus: VetListItemStatus;
       errorMessage?: string;
+      /**
+       * Set when the deterministic verify-issue check itself failed for this
+       * entry (#1494). Its presence is the explicit signal that `listStatus`
+       * is NOT authoritative — it came from the scout heuristic fallback (or is
+       * `error`), and the row should be re-verified before acting on it. Pairs
+       * with an absent `verification`; never set when `verification` is present.
+       */
+      verifyError?: string;
+      /**
+       * The deterministic verify-issue facts behind `listStatus` (#1494).
+       * Present whenever verification succeeded for the entry; absent only when
+       * verify itself errored (then `listStatus` comes from the scout fallback
+       * and `verifyError` records why).
+       */
+      verification?: {
+        verdict: IssueAvailabilityVerdict;
+        verdictReason: string;
+        state: IssueVerification['state'];
+        stateReason: IssueVerification['stateReason'];
+        assignees: string[];
+        linkedPRs: VerifiedLinkedPR[];
+      };
     }
   >;
   summary: {
@@ -1349,6 +1387,10 @@ export interface VetListOutput {
     hasPR: number;
     /** Open linked PRs that haven't been touched in 30+ days (scout 0.9.0 #97). Surfaced as revive opportunities, not auto-dropped. */
     hasStalledPR: number;
+    /** Open mention-only cross-references or a merged closing PR awaiting issue close (#1494 / #1353). */
+    atRisk: number;
+    /** The authenticated user already has an open closing PR (#1494 / #1354). */
+    ownOpenPr: number;
     errors: number;
   };
   pruneResult?: {

@@ -458,7 +458,7 @@ export function registerTools(server: McpServer): void {
     'vet-list',
     {
       description:
-        'Re-vet all available issues in the curated issue list for freshness. Checks if issues are still open, unassigned, and have no linked PRs.',
+        'Re-vet all available issues in the curated issue list for freshness. Runs the deterministic verify-issue check per entry (closing-vs-mention aware), so each row carries the authoritative availability verdict and a verification sub-object — no per-entry re-check needed.',
       inputSchema: {
         issueListPath: z.string().optional().describe('Path to issue list file (auto-detected if not specified)'),
         concurrency: z.number().optional().describe('Max parallel vet operations (default: 5)'),

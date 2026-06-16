@@ -3,7 +3,13 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { classifyIssueAvailability, fetchIssueVerification, type VerifiedLinkedPR } from './issue-verification.js';
+import {
+  classifyIssueAvailability,
+  fetchIssueVerification,
+  verifyIssuesBatch,
+  MAX_VERIFY_CONCURRENCY,
+  type VerifiedLinkedPR,
+} from './issue-verification.js';
 import type { Octokit } from '@octokit/rest';
 
 const USER = 'octocat';
@@ -411,5 +417,151 @@ describe('fetchIssueVerification', () => {
     const boom = new Error('API rate limit exceeded');
     const octokit = { graphql: vi.fn().mockRejectedValue(boom) } as unknown as Octokit;
     await expect(fetchIssueVerification(octokit, params)).rejects.toThrow(/rate limit/);
+  });
+});
+
+describe('verifyIssuesBatch', () => {
+  /** Single-page GraphQL response for an issue keyed by its number. */
+  function issueResponse(
+    number: number,
+    overrides: { state?: 'OPEN' | 'CLOSED'; stateReason?: string | null; assignees?: string[] } = {},
+  ) {
+    return {
+      viewer: { login: USER },
+      repository: {
+        issue: {
+          number,
+          title: `issue ${number}`,
+          url: `https://github.com/foo/bar/issues/${number}`,
+          state: overrides.state ?? 'OPEN',
+          stateReason: overrides.stateReason ?? null,
+          closedAt: null,
+          assignees: { nodes: (overrides.assignees ?? []).map((login) => ({ login })) },
+          timelineItems: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] },
+        },
+      },
+    };
+  }
+
+  const item = (number: number) => ({ owner: 'foo', repo: 'bar', number });
+
+  it('returns an empty array for no items without touching the API', async () => {
+    const graphql = vi.fn();
+    const octokit = { graphql } as unknown as Octokit;
+
+    const results = await verifyIssuesBatch(octokit, []);
+
+    expect(results).toEqual([]);
+    expect(graphql).not.toHaveBeenCalled();
+  });
+
+  it('verifies each item and aligns results with the input order', async () => {
+    const byNumber: Record<number, unknown> = {
+      1: issueResponse(1), // open, unassigned -> available
+      2: issueResponse(2, { state: 'CLOSED', stateReason: 'COMPLETED' }), // closed
+      3: issueResponse(3, { assignees: ['rival'] }), // taken
+    };
+    const graphql = vi.fn(async (_q: string, vars: { number: number }) => byNumber[vars.number]);
+    const octokit = { graphql } as unknown as Octokit;
+
+    const results = await verifyIssuesBatch(octokit, [item(1), item(2), item(3)], { concurrency: 3 });
+
+    expect(results).toHaveLength(3);
+    expect(results.map((r) => r.params.number)).toEqual([1, 2, 3]);
+    expect(results[0].verification?.verdict).toBe('available');
+    expect(results[1].verification?.verdict).toBe('closed');
+    expect(results[2].verification?.verdict).toBe('taken');
+    expect(results.every((r) => r.error === undefined)).toBe(true);
+  });
+
+  it('isolates per-item failures without aborting the batch', async () => {
+    const graphql = vi.fn(async (_q: string, vars: { number: number }) => {
+      if (vars.number === 2) throw new Error('boom on 2');
+      return issueResponse(vars.number);
+    });
+    const octokit = { graphql } as unknown as Octokit;
+
+    const results = await verifyIssuesBatch(octokit, [item(1), item(2), item(3)], { concurrency: 3 });
+
+    expect(results[0].verification?.verdict).toBe('available');
+    expect(results[0].error).toBeUndefined();
+    expect(results[1].verification).toBeUndefined();
+    expect(results[1].error).toBeInstanceOf(Error);
+    expect((results[1].error as Error).message).toBe('boom on 2');
+    expect(results[2].verification?.verdict).toBe('available');
+  });
+
+  it('surfaces a NOT_FOUND as that item’s error, leaving siblings intact', async () => {
+    const gqlError = Object.assign(new Error('Could not resolve to an Issue'), {
+      errors: [{ type: 'NOT_FOUND', path: ['repository', 'issue'] }],
+    });
+    const graphql = vi.fn(async (_q: string, vars: { number: number }) => {
+      if (vars.number === 9) throw gqlError;
+      return issueResponse(vars.number);
+    });
+    const octokit = { graphql } as unknown as Octokit;
+
+    const results = await verifyIssuesBatch(octokit, [item(9), item(1)], { concurrency: 2 });
+
+    expect(results[0].error).toMatchObject({ name: 'ValidationError' });
+    expect(results[1].verification?.verdict).toBe('available');
+  });
+
+  it('never runs more than MAX_VERIFY_CONCURRENCY in flight, even when more is requested', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const graphql = vi.fn(async (_q: string, vars: { number: number }) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active--;
+      return issueResponse(vars.number);
+    });
+    const octokit = { graphql } as unknown as Octokit;
+
+    const items = Array.from({ length: 12 }, (_, i) => item(i + 1));
+    const results = await verifyIssuesBatch(octokit, items, { concurrency: 100 });
+
+    expect(results).toHaveLength(12);
+    expect(maxActive).toBe(MAX_VERIFY_CONCURRENCY);
+  });
+
+  it('floors a zero/negative concurrency request at a single worker', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const graphql = vi.fn(async (_q: string, vars: { number: number }) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      active--;
+      return issueResponse(vars.number);
+    });
+    const octokit = { graphql } as unknown as Octokit;
+
+    const results = await verifyIssuesBatch(octokit, [item(1), item(2), item(3)], { concurrency: 0 });
+
+    expect(results).toHaveLength(3);
+    expect(maxActive).toBe(1);
+  });
+
+  it('treats a non-finite concurrency request as the default cap', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const graphql = vi.fn(async (_q: string, vars: { number: number }) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 3));
+      active--;
+      return issueResponse(vars.number);
+    });
+    const octokit = { graphql } as unknown as Octokit;
+
+    const items = Array.from({ length: 8 }, (_, i) => item(i + 1));
+    const results = await verifyIssuesBatch(octokit, items, { concurrency: Number.NaN });
+
+    expect(results).toHaveLength(8);
+    // NaN is not finite -> falls back to MAX_VERIFY_CONCURRENCY rather than
+    // collapsing to zero/one workers.
+    expect(maxActive).toBe(MAX_VERIFY_CONCURRENCY);
   });
 });

@@ -35,23 +35,97 @@
         "letter": "B",
         "reason": "3-day avg response"
       },
-      "listStatus": "still_available"
+      "listStatus": "still_available",
+      "verification": {
+        "verdict": "available",
+        "verdictReason": "verdict: available",
+        "state": "open",
+        "stateReason": null,
+        "assignees": [],
+        "linkedPRs": []
+      }
     },
     {
       "issue": {
         "repo": "owner/repo-b",
         "number": 2,
-        "title": "Already claimed",
+        "title": "issue 2",
         "url": "https://github.com/owner/repo-b/issues/2",
         "labels": []
       },
       "recommendation": "skip",
       "reasonsToApprove": [],
       "reasonsToSkip": [
-        "Issue is already claimed by another user"
+        "open PR by rival closes this issue"
+      ],
+      "projectHealth": {},
+      "vettingResult": {},
+      "grade": {
+        "letter": "F",
+        "reason": "unknown maintainer responsiveness, merge rate, activity"
+      },
+      "listStatus": "claimed",
+      "verification": {
+        "verdict": "taken",
+        "verdictReason": "open PR by rival closes this issue",
+        "state": "open",
+        "stateReason": null,
+        "assignees": [],
+        "linkedPRs": [
+          {
+            "number": 99,
+            "url": "https://github.com/owner/repo/pull/99",
+            "title": "a closing PR",
+            "state": "open",
+            "isDraft": false,
+            "author": "rival",
+            "isOwn": false,
+            "linkType": "closing",
+            "updatedAt": "2026-06-01T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "issue": {
+        "repo": "owner/repo-c",
+        "number": 3,
+        "title": "Will error",
+        "url": "https://github.com/owner/repo-c/issues/3",
+        "labels": []
+      },
+      "recommendation": "skip",
+      "reasonsToApprove": [],
+      "reasonsToSkip": [
+        "Error: Issue not found: owner/repo-c#3. Check the URL — it may point at a pull request or a deleted/private issue."
+      ],
+      "projectHealth": {},
+      "vettingResult": {},
+      "grade": {
+        "letter": "F",
+        "reason": "unknown maintainer responsiveness, merge rate, activity"
+      },
+      "listStatus": "error",
+      "errorMessage": "Issue not found: owner/repo-c#3. Check the URL — it may point at a pull request or a deleted/private issue.",
+      "verifyError": "Issue not found: owner/repo-c#3. Check the URL — it may point at a pull request or a deleted/private issue."
+    },
+    {
+      "issue": {
+        "repo": "owner/repo-d",
+        "number": 4,
+        "title": "At risk",
+        "url": "https://github.com/owner/repo-d/issues/4",
+        "labels": []
+      },
+      "recommendation": "needs_review",
+      "reasonsToApprove": [
+        "Looks reasonable"
+      ],
+      "reasonsToSkip": [
+        "Open PR mentions this issue"
       ],
       "projectHealth": {
-        "repo": "owner/repo-b",
+        "repo": "owner/repo-d",
         "lastCommitAt": "2026-04-15T00:00:00.000Z",
         "daysSinceLastCommit": 3,
         "openIssuesCount": 10,
@@ -70,20 +144,40 @@
         "letter": "B",
         "reason": "3-day avg response"
       },
-      "listStatus": "claimed"
+      "listStatus": "at_risk",
+      "verification": {
+        "verdict": "at-risk",
+        "verdictReason": "open PR cross-references this issue (mention only)",
+        "state": "open",
+        "stateReason": null,
+        "assignees": [],
+        "linkedPRs": [
+          {
+            "number": 41,
+            "url": "https://github.com/owner/repo-d/pull/41",
+            "title": "a closing PR",
+            "state": "open",
+            "isDraft": false,
+            "author": "rival",
+            "isOwn": false,
+            "linkType": "cross-referenced",
+            "updatedAt": "2026-06-01T00:00:00.000Z"
+          }
+        ]
+      }
     },
     {
       "issue": {
-        "repo": "owner/repo-c",
-        "number": 3,
-        "title": "Will error",
-        "url": "https://github.com/owner/repo-c/issues/3",
+        "repo": "owner/repo-e",
+        "number": 5,
+        "title": "issue 5",
+        "url": "https://github.com/owner/repo-e/issues/5",
         "labels": []
       },
       "recommendation": "skip",
       "reasonsToApprove": [],
       "reasonsToSkip": [
-        "Error: Network timeout"
+        "you already have an open PR for this issue"
       ],
       "projectHealth": {},
       "vettingResult": {},
@@ -91,17 +185,67 @@
         "letter": "F",
         "reason": "unknown maintainer responsiveness, merge rate, activity"
       },
-      "listStatus": "error",
-      "errorMessage": "Network timeout"
+      "listStatus": "own_open_pr",
+      "verification": {
+        "verdict": "own-open-pr",
+        "verdictReason": "you already have an open PR for this issue",
+        "state": "open",
+        "stateReason": null,
+        "assignees": [],
+        "linkedPRs": [
+          {
+            "number": 51,
+            "url": "https://github.com/owner/repo-e/pull/51",
+            "title": "a closing PR",
+            "state": "open",
+            "isDraft": false,
+            "author": "costajohnt",
+            "isOwn": true,
+            "linkType": "closing",
+            "updatedAt": "2026-06-01T00:00:00.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "issue": {
+        "repo": "owner/repo-f",
+        "number": 6,
+        "title": "issue 6",
+        "url": "https://github.com/owner/repo-f/issues/6",
+        "labels": []
+      },
+      "recommendation": "skip",
+      "reasonsToApprove": [],
+      "reasonsToSkip": [
+        "verdict: closed"
+      ],
+      "projectHealth": {},
+      "vettingResult": {},
+      "grade": {
+        "letter": "F",
+        "reason": "unknown maintainer responsiveness, merge rate, activity"
+      },
+      "listStatus": "closed",
+      "verification": {
+        "verdict": "closed",
+        "verdictReason": "verdict: closed",
+        "state": "closed",
+        "stateReason": "completed",
+        "assignees": [],
+        "linkedPRs": []
+      }
     }
   ],
   "summary": {
-    "total": 3,
+    "total": 6,
     "stillAvailable": 1,
     "claimed": 1,
-    "closed": 0,
+    "closed": 1,
     "hasPR": 0,
     "hasStalledPR": 0,
+    "atRisk": 1,
+    "ownOpenPr": 1,
     "errors": 1
   }
 }

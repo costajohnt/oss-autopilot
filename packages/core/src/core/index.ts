@@ -109,6 +109,9 @@ export {
 export {
   classifyIssueAvailability,
   fetchIssueVerification,
+  verifyIssuesBatch,
+  MAX_VERIFY_CONCURRENCY,
+  type BatchVerificationResult,
   type IssueAvailabilityVerdict,
   type IssueVerification,
   type LinkedPRLinkType,

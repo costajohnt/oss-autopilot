@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { VetOutput } from '../formatters/json.js';
 
 const mockVetIssue = vi.fn();
+const mockVerifyIssuesBatch = vi.hoisted(() => vi.fn());
 
 vi.mock('./scout-bridge.js', async () => {
   const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
@@ -21,6 +22,10 @@ vi.mock('../core/index.js', async () => {
   const actual = await vi.importActual<typeof import('../core/index.js')>('../core/index.js');
   return {
     ...actual,
+    // parseGitHubUrl stays real (from actual) so verify targets resolve.
+    getOctokit: () => ({}),
+    requireGitHubToken: () => 'fake-token',
+    verifyIssuesBatch: mockVerifyIssuesBatch,
     getStateManager: () => ({
       getRepoScore: () => undefined,
       getState: () => ({ config: { githubUsername: 'costajohnt' } }),
@@ -299,6 +304,319 @@ describe('extractSkipReason', () => {
 describe('runVetList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: verify errors for every entry, exercising the scout-heuristic
+    // fallback path so the plumbing tests below (detect/parse/concurrency/prune)
+    // keep their pre-#1494 behavior. The verdict-primary path has its own tests
+    // here and full coverage in vet-list.contract.test.ts.
+    mockVerifyIssuesBatch.mockImplementation(
+      async (_octokit: unknown, items: Array<{ owner: string; repo: string; number: number }>) =>
+        items.map((params) => ({ params, error: new Error('verify unavailable in test') })),
+    );
+  });
+
+  it('uses the verify verdict and skips scout for ruled-out issues (#1494)', async () => {
+    mockDetectIssueList.mockReturnValue({
+      path: '/tmp/issues.md',
+      source: 'configured',
+      availableCount: 2,
+      completedCount: 0,
+    });
+    mockRunParseList.mockResolvedValue({
+      available: [
+        {
+          repo: 'owner/repo',
+          number: 1,
+          title: 'Closed one',
+          tier: 'Pursue',
+          url: 'https://github.com/owner/repo/issues/1',
+        },
+        {
+          repo: 'other/lib',
+          number: 2,
+          title: 'Available one',
+          tier: 'Maybe',
+          url: 'https://github.com/other/lib/issues/2',
+        },
+      ],
+      completed: [],
+      availableCount: 2,
+      completedCount: 0,
+    });
+    mockVerifyIssuesBatch.mockResolvedValue([
+      {
+        params: { owner: 'owner', repo: 'repo', number: 1 },
+        verification: {
+          url: 'https://github.com/owner/repo/issues/1',
+          owner: 'owner',
+          repo: 'repo',
+          number: 1,
+          title: 'Closed one',
+          state: 'closed',
+          stateReason: 'completed',
+          closedAt: null,
+          assignees: [],
+          linkedPRs: [],
+          verdict: 'closed',
+          verdictReason: 'issue closed (completed)',
+          userLogin: 'costajohnt',
+        },
+      },
+      {
+        params: { owner: 'other', repo: 'lib', number: 2 },
+        verification: {
+          url: 'https://github.com/other/lib/issues/2',
+          owner: 'other',
+          repo: 'lib',
+          number: 2,
+          title: 'Available one',
+          state: 'open',
+          stateReason: null,
+          closedAt: null,
+          assignees: [],
+          linkedPRs: [],
+          verdict: 'available',
+          verdictReason: 'open, unassigned, no claiming PRs',
+          userLogin: 'costajohnt',
+        },
+      },
+    ]);
+    mockVetIssue.mockResolvedValueOnce({
+      issue: {
+        repo: 'other/lib',
+        number: 2,
+        title: 'Available one',
+        url: 'https://github.com/other/lib/issues/2',
+        labels: [],
+      },
+      recommendation: 'approve' as const,
+      reasonsToApprove: ['OK'],
+      reasonsToSkip: [],
+      projectHealth: {},
+      vettingResult: {},
+    });
+
+    const result = await runVetList({ concurrency: 1 });
+
+    expect(result.results[0].listStatus).toBe('closed');
+    expect(result.results[0].verification?.verdict).toBe('closed');
+    expect(result.results[1].listStatus).toBe('still_available');
+    // Scout was consulted only for the available issue, not the closed one.
+    expect(mockVetIssue).toHaveBeenCalledTimes(1);
+    expect(mockVetIssue).toHaveBeenCalledWith('https://github.com/other/lib/issues/2');
+  });
+
+  it('tags scout-fallback rows with verifyError when verify failed transiently (#1494)', async () => {
+    mockDetectIssueList.mockReturnValue({
+      path: '/tmp/issues.md',
+      source: 'configured',
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockRunParseList.mockResolvedValue({
+      available: [
+        {
+          repo: 'owner/repo',
+          number: 1,
+          title: 'Fix bug',
+          tier: 'Pursue',
+          url: 'https://github.com/owner/repo/issues/1',
+        },
+      ],
+      completed: [],
+      availableCount: 1,
+      completedCount: 0,
+    });
+    // beforeEach default: verify errors transiently for every entry.
+    mockVetIssue.mockResolvedValueOnce({
+      issue: {
+        repo: 'owner/repo',
+        number: 1,
+        title: 'Fix bug',
+        url: 'https://github.com/owner/repo/issues/1',
+        labels: [],
+      },
+      recommendation: 'approve' as const,
+      reasonsToApprove: ['OK'],
+      reasonsToSkip: [],
+      projectHealth: {},
+      vettingResult: {},
+    });
+
+    const result = await runVetList({ concurrency: 1 });
+
+    // Heuristic still drives listStatus, but verifyError makes the failed
+    // authoritative check visible and verification stays absent.
+    expect(result.results[0].listStatus).toBe('still_available');
+    expect(result.results[0].verifyError).toBe('verify unavailable in test');
+    expect(result.results[0].verification).toBeUndefined();
+  });
+
+  it('tags non-issue (PR) URLs as not verified, still falling back to scout (#1494)', async () => {
+    mockDetectIssueList.mockReturnValue({
+      path: '/tmp/issues.md',
+      source: 'configured',
+      availableCount: 1,
+      completedCount: 0,
+    });
+    // parse-list also accepts PR URLs; verify-issue can't classify them, so they
+    // are never enrolled in the verify batch.
+    mockRunParseList.mockResolvedValue({
+      available: [
+        {
+          repo: 'owner/repo',
+          number: 7,
+          title: 'A PR link',
+          tier: 'Pursue',
+          url: 'https://github.com/owner/repo/pull/7',
+        },
+      ],
+      completed: [],
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockVerifyIssuesBatch.mockResolvedValue([]); // no issue targets enrolled
+    mockVetIssue.mockResolvedValueOnce({
+      issue: {
+        repo: 'owner/repo',
+        number: 7,
+        title: 'A PR link',
+        url: 'https://github.com/owner/repo/pull/7',
+        labels: [],
+      },
+      recommendation: 'approve' as const,
+      reasonsToApprove: ['OK'],
+      reasonsToSkip: [],
+      projectHealth: {},
+      vettingResult: {},
+    });
+
+    const result = await runVetList({ concurrency: 1 });
+
+    expect(result.results[0].listStatus).toBe('still_available');
+    expect(result.results[0].verification).toBeUndefined();
+    expect(result.results[0].verifyError).toContain('not a verifiable issue URL');
+    // Scout is still consulted for the PR URL — pre-#1494 behavior preserved.
+    expect(mockVetIssue).toHaveBeenCalledWith('https://github.com/owner/repo/pull/7');
+  });
+
+  it('keeps the verification when scout grading throws on an in-play issue (#1494)', async () => {
+    mockDetectIssueList.mockReturnValue({
+      path: '/tmp/issues.md',
+      source: 'configured',
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockRunParseList.mockResolvedValue({
+      available: [
+        {
+          repo: 'owner/repo',
+          number: 4,
+          title: 'At risk',
+          tier: 'Pursue',
+          url: 'https://github.com/owner/repo/issues/4',
+        },
+      ],
+      completed: [],
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockVerifyIssuesBatch.mockResolvedValue([
+      {
+        params: { owner: 'owner', repo: 'repo', number: 4 },
+        verification: {
+          url: 'https://github.com/owner/repo/issues/4',
+          owner: 'owner',
+          repo: 'repo',
+          number: 4,
+          title: 'At risk',
+          state: 'open',
+          stateReason: null,
+          closedAt: null,
+          assignees: [],
+          linkedPRs: [],
+          verdict: 'at-risk',
+          verdictReason: 'open PR cross-references this issue',
+          userLogin: 'costajohnt',
+        },
+      },
+    ]);
+    // Verify succeeded (at-risk → in play), but scout grading then fails.
+    mockVetIssue.mockRejectedValueOnce(new Error('grading blew up'));
+
+    const result = await runVetList({ concurrency: 1 });
+
+    // The row is an error (grading failed) BUT the authoritative verdict facts
+    // survive, and there is no verifyError (verify itself succeeded).
+    expect(result.results[0].listStatus).toBe('error');
+    expect(result.results[0].errorMessage).toBe('grading blew up');
+    expect(result.results[0].verification?.verdict).toBe('at-risk');
+    expect(result.results[0].verifyError).toBeUndefined();
+  });
+
+  it('lets the verify verdict override scout when they disagree (#1494)', async () => {
+    mockDetectIssueList.mockReturnValue({
+      path: '/tmp/issues.md',
+      source: 'configured',
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockRunParseList.mockResolvedValue({
+      available: [
+        {
+          repo: 'owner/repo',
+          number: 1,
+          title: 'Available',
+          tier: 'Pursue',
+          url: 'https://github.com/owner/repo/issues/1',
+        },
+      ],
+      completed: [],
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockVerifyIssuesBatch.mockResolvedValue([
+      {
+        params: { owner: 'owner', repo: 'repo', number: 1 },
+        verification: {
+          url: 'https://github.com/owner/repo/issues/1',
+          owner: 'owner',
+          repo: 'repo',
+          number: 1,
+          title: 'Available',
+          state: 'open',
+          stateReason: null,
+          closedAt: null,
+          assignees: [],
+          linkedPRs: [],
+          verdict: 'available',
+          verdictReason: 'open, unassigned, no claiming PRs',
+          userLogin: 'costajohnt',
+        },
+      },
+    ]);
+    // Scout's heuristic would say "closed" — but the verdict is authoritative.
+    mockVetIssue.mockResolvedValueOnce({
+      issue: {
+        repo: 'owner/repo',
+        number: 1,
+        title: 'Available',
+        url: 'https://github.com/owner/repo/issues/1',
+        labels: [],
+      },
+      recommendation: 'skip' as const,
+      reasonsToApprove: [],
+      reasonsToSkip: ['Issue is closed'],
+      projectHealth: {},
+      vettingResult: {},
+    });
+
+    const result = await runVetList({ concurrency: 1 });
+
+    // Verdict wins: still_available, NOT closed (which the old heuristic gave).
+    expect(result.results[0].listStatus).toBe('still_available');
+    expect(result.results[0].verification?.verdict).toBe('available');
+    // Scout's recommendation still flows through for context.
+    expect(result.results[0].recommendation).toBe('skip');
   });
 
   it('should throw when no issue list is found and no path provided', async () => {
@@ -326,6 +644,8 @@ describe('runVetList', () => {
       closed: 0,
       hasPR: 0,
       hasStalledPR: 0,
+      atRisk: 0,
+      ownOpenPr: 0,
       errors: 0,
     });
   });

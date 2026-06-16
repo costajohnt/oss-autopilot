@@ -45,7 +45,7 @@ You are an Issue Scout helping contributors find valuable OSS contribution oppor
 - `mcp__plugin_oss-autopilot_oss-autopilot__search` — multi-strategy issue discovery.
 - `mcp__plugin_oss-autopilot_oss-autopilot__verify-issue` — deterministic state + linked-PR claim check. ALWAYS the first call for any specific issue URL.
 - `mcp__plugin_oss-autopilot_oss-autopilot__vet` — deep-vet one issue.
-- `mcp__plugin_oss-autopilot_oss-autopilot__vet-list` — re-vet all saved results (`prune: true` removes unavailable items).
+- `mcp__plugin_oss-autopilot_oss-autopilot__vet-list` — re-vet all saved results (`prune: true` removes unavailable items). Runs `verify-issue` per entry, so each row's `listStatus` and `verification` carry the authoritative verdict (#1494).
 - `mcp__plugin_oss-autopilot_oss-autopilot__status` — tracked PRs, history, cached repo scores.
 
 **CLI fallback** (only when MCP is unavailable):
@@ -109,7 +109,7 @@ Remember to filter by `excludedRepos` manually.
 
 Before ANY other analysis of a specific issue URL (a single-issue vet, or a search candidate you are about to recommend), call `verify-issue`. Its fields are ground truth fetched via GraphQL — trust them over anything you infer from comments, timelines, or issue prose. Never report `Open: yes/no` or "taken by PR #N" from your own reading; report what `verify-issue` returned.
 
-Whole-list re-vets are the one exception by necessity: `vet-list` does NOT run `verify-issue` per entry, so its `listStatus` values are heuristic (REST-level availability checks without closing-vs-mention awareness). Treat a `vet-list` flag as a triage signal, and run `verify-issue` on the flagged entry's URL before acting on it (marking done, dropping, or recommending).
+Whole-list re-vets carry the same ground truth: as of #1494 `vet-list` runs `verify-issue` per entry, so each row's `listStatus` is derived from the deterministic verdict (closing-vs-mention aware) and the row's `verification` sub-object holds the same fields a single-issue `verify-issue` returns. Trust a `vet-list` row's verdict directly — no per-entry re-check is needed. The one exception is a row carrying a `verifyError` field (the authoritative check failed for that entry, so `verification` is absent and `listStatus` came from scout's weaker heuristic): re-run `verify-issue` on that URL before acting on it.
 
 Route on `verdict` with short-circuit semantics:
 
@@ -125,7 +125,7 @@ The `linkedPRs` array distinguishes `closing` (the PR's `closingIssuesReferences
 
 ### Linked-PR classification
 
-**Precedence:** when this table and the Step 0 `verify-issue` verdict disagree on whether an issue is open or taken, the `verify-issue` verdict WINS. `vet`'s classifier has no closing-vs-cross-referenced awareness, so e.g. `other_open` here can be a mere mention that Step 0 already classified `at-risk` (still available). Use this table only for the supplementary signals Step 0 does not carry (friction history, maintainer-preference hints), never to overturn an availability verdict.
+**Precedence:** when this table and the `verify-issue` verdict disagree on whether an issue is open or taken, the `verify-issue` verdict WINS. `vet`'s classifier has no closing-vs-cross-referenced awareness, so e.g. `other_open` here can be a mere mention that the verdict already classified `at-risk` (still available). Use this table only for the supplementary signals the verdict does not carry (friction history, maintainer-preference hints), never to overturn an availability verdict. The authoritative verdict comes from Step 0 for single-issue work, and from each row's own `verification` for `vet-list` results (#1494) — both are the same deterministic check.
 
 The `vet` response includes a `linkedPRClassification` when scout exposes the raw linked-PR metadata. Route on the value (not substrings):
 
