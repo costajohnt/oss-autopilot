@@ -310,6 +310,32 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
   const watermark = stateManager.getMergedPRWatermark();
   const closedWatermark = stateManager.getClosedPRWatermark();
 
+  // Self-heal a ledger stranded behind a recent watermark (#1504). The
+  // incremental fetch only asks for merges newer than the newest stored one,
+  // so once the recent-merge feed (daily's recentlyMergedPRs) seeds the ledger
+  // before any full historical fetch ran, the older history can never be
+  // recovered. When the stored detail count is materially below the known
+  // all-time merged count, drop the watermark for a one-shot full backfill
+  // (bounded by the existing pagination cap); once the ledger catches up the
+  // watermark resumes incremental fetching. Closed PRs are not seeded ahead of
+  // their backfill in practice, so only merged needs the guard.
+  const storedMergedCount = stateManager.getMergedPRs().length;
+  const knownMergedAllTime = stateManager.getState().lastDigest?.summary?.totalMergedAllTime ?? 0;
+  // A full backfill can only ever return up to fetchMergedPRsSince's pagination
+  // cap (MAX_PAGINATION_PAGES * 100 = 300). Stop forcing one once the ledger has
+  // reached that ceiling, so a contributor whose star-filtered all-time count
+  // legitimately exceeds 300 doesn't trigger a full refetch on every poll.
+  const MERGED_BACKFILL_CEILING = 300;
+  const mergedNeedsBackfill = storedMergedCount < knownMergedAllTime && storedMergedCount < MERGED_BACKFILL_CEILING;
+  const mergedFetchSince = mergedNeedsBackfill ? undefined : watermark;
+  if (mergedNeedsBackfill) {
+    warn(
+      MODULE,
+      `Merged-PR ledger has ${storedMergedCount} of ~${knownMergedAllTime} known merges; ` +
+        'running a full backfill (watermark dropped) to recover history (#1504).',
+    );
+  }
+
   // Track which non-critical sub-fetches degraded to fallbacks so the SPA
   // can surface a "partial data" banner instead of silently showing zeros.
   // Rate-limit / auth errors still rethrow via isRateLimitOrAuthError —
@@ -358,7 +384,7 @@ export async function fetchDashboardData(token: string): Promise<DashboardFetchR
         failures: [{ issueUrl: 'N/A', error: `Issue conversation fetch failed: ${msg}` }],
       };
     }),
-    fetchMergedPRsSince(octokit, config, watermark).catch(
+    fetchMergedPRsSince(octokit, config, mergedFetchSince).catch(
       trackingCatch('fetch merged PRs for storage', [] as StoredMergedPR[]),
     ),
     fetchClosedPRsSince(octokit, config, closedWatermark).catch(

@@ -975,6 +975,61 @@ describe('fetchDashboardData', () => {
     expect(mockSetLastDigest).toHaveBeenCalled();
   });
 
+  describe('merged-ledger backfill self-heal (#1504)', () => {
+    function digestWithMergedCount(total: number): DailyDigest {
+      return makeDailyDigest({
+        generatedAt: '2026-03-11T10:00:00Z',
+        openPRs: [],
+        summary: { totalActivePRs: 0, totalNeedingAttention: 0, totalMergedAllTime: total, mergeRate: 80 },
+      });
+    }
+
+    it('drops the watermark for a full backfill when the ledger trails the known merged count', async () => {
+      mockGetState.mockReturnValue(makeDefaultState({ lastDigest: digestWithMergedCount(124) }));
+      // Only 3 stored, watermark sits at the newest — the stranded-history case.
+      mockGetMergedPRs.mockReturnValue([
+        { url: 'https://github.com/o/r/pull/3', title: 'c', mergedAt: '2026-06-15T00:00:00Z' },
+        { url: 'https://github.com/o/r/pull/2', title: 'b', mergedAt: '2026-06-13T00:00:00Z' },
+        { url: 'https://github.com/o/r/pull/1', title: 'a', mergedAt: '2026-06-12T00:00:00Z' },
+      ]);
+      mockGetMergedPRWatermark.mockReturnValue('2026-06-15T00:00:00Z');
+
+      await fetchDashboardData('test-token');
+
+      // since-arg (3rd) must be undefined → full backfill, NOT the recent watermark.
+      expect(mockFetchMergedPRsSince).toHaveBeenCalled();
+      expect(mockFetchMergedPRsSince.mock.calls[0][2]).toBeUndefined();
+    });
+
+    it('keeps the incremental watermark once the ledger has caught up', async () => {
+      mockGetState.mockReturnValue(makeDefaultState({ lastDigest: digestWithMergedCount(124) }));
+      // 200 stored >= 124 known → no backfill needed.
+      mockGetMergedPRs.mockReturnValue(
+        Array.from({ length: 200 }, (_, i) => ({
+          url: `https://github.com/o/r/pull/${i}`,
+          title: `pr ${i}`,
+          mergedAt: '2026-06-15T00:00:00Z',
+        })),
+      );
+      mockGetMergedPRWatermark.mockReturnValue('2026-06-15T00:00:00Z');
+
+      await fetchDashboardData('test-token');
+
+      expect(mockFetchMergedPRsSince.mock.calls[0][2]).toBe('2026-06-15T00:00:00Z');
+    });
+
+    it('does not force a backfill when there is no known count yet (no digest)', async () => {
+      mockGetState.mockReturnValue(makeDefaultState({ lastDigest: null }));
+      mockGetMergedPRs.mockReturnValue([]);
+      mockGetMergedPRWatermark.mockReturnValue('2026-06-15T00:00:00Z');
+
+      await fetchDashboardData('test-token');
+
+      // 0 < 0 is false → keep the watermark, no spurious full refetch every poll.
+      expect(mockFetchMergedPRsSince.mock.calls[0][2]).toBe('2026-06-15T00:00:00Z');
+    });
+  });
+
   describe('partitions on post-override status (#1416)', () => {
     const PR_URL = 'https://github.com/owner/repo/pull/7';
 
