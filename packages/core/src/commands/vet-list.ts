@@ -9,7 +9,17 @@ import { type VetListOutput, type VetOutput, type VetListItemStatus } from '../f
 import { runParseList, pruneIssueList } from './parse-list.js';
 import { detectIssueList } from './startup.js';
 import { computeSuccessGrade, gradeFromCandidate } from '../core/issue-grading.js';
-import { getStateManager, classifyLinkedPR } from '../core/index.js';
+import {
+  getStateManager,
+  classifyLinkedPR,
+  getOctokit,
+  requireGitHubToken,
+  parseGitHubUrl,
+  verifyIssuesBatch,
+  type BatchVerificationResult,
+  type IssueAvailabilityVerdict,
+  type IssueVerification,
+} from '../core/index.js';
 
 const UNKNOWN_GRADE = computeSuccessGrade({ avgResponseDays: null, mergeRate: null, daysSinceLastCommit: null });
 
@@ -123,6 +133,66 @@ export function classifyListStatus(vetResult: VetOutput, skipReason?: ScoutSkipR
 }
 
 /**
+ * Map a deterministic verify-issue verdict onto the vet-list status taxonomy
+ * (#1494). This is the authoritative path: the GraphQL verdict knows the
+ * closing-vs-mention distinction (#1353) that scout's substring heuristic
+ * cannot, so `at_risk` (mention only) no longer collapses into `claimed`.
+ */
+export function listStatusFromVerdict(verdict: IssueAvailabilityVerdict): VetListItemStatus {
+  switch (verdict) {
+    case 'closed': {
+      return 'closed';
+    }
+    case 'own-open-pr': {
+      return 'own_open_pr';
+    }
+    case 'taken': {
+      return 'claimed';
+    }
+    case 'at-risk': {
+      return 'at_risk';
+    }
+    case 'available': {
+      return 'still_available';
+    }
+  }
+}
+
+/**
+ * Verdicts that conclusively rule an issue out as a new opportunity. For these
+ * we skip scout's grade/health vet entirely — there is nothing to grade — and
+ * build the result row straight from the verification.
+ */
+const RULED_OUT_VERDICTS: ReadonlySet<IssueAvailabilityVerdict> = new Set(['closed', 'taken', 'own-open-pr']);
+
+/** The per-row `verification` sub-object: the authoritative facts behind the
+ * status, projected from the full {@link IssueVerification}. */
+function toVerificationSummary(v: IssueVerification): NonNullable<VetListOutput['results'][number]['verification']> {
+  return {
+    verdict: v.verdict,
+    verdictReason: v.verdictReason,
+    state: v.state,
+    stateReason: v.stateReason,
+    assignees: v.assignees,
+    linkedPRs: v.linkedPRs,
+  };
+}
+
+/** Minimal VetOutput for a ruled-out issue (no scout vet was run). The
+ * verification carries the real reason; scout-derived fields are left empty. */
+function ruledOutVetOutput(v: IssueVerification): VetOutput {
+  return {
+    issue: { repo: `${v.owner}/${v.repo}`, number: v.number, title: v.title, url: v.url, labels: [] },
+    recommendation: 'skip',
+    reasonsToApprove: [],
+    reasonsToSkip: [v.verdictReason],
+    projectHealth: {},
+    vettingResult: {},
+    grade: UNKNOWN_GRADE,
+  };
+}
+
+/**
  * Re-vet all available issues in a curated issue list.
  * Reads the list file, extracts available (non-done) issues,
  * and vets each in parallel with concurrency control.
@@ -130,6 +200,9 @@ export function classifyListStatus(vetResult: VetOutput, skipReason?: ScoutSkipR
  * @param options - Vet-list options
  * @returns Consolidated vetting results with list status for each issue
  */
+type VetListResult = VetListOutput['results'][number];
+type ParsedIssueItem = { repo: string; number: number; title: string; url: string };
+
 export async function runVetList(options: VetListOptions = {}): Promise<VetListOutput> {
   const concurrency = options.concurrency ?? 5;
 
@@ -148,80 +221,145 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   if (parsed.available.length === 0) {
     return {
       results: [],
-      summary: { total: 0, stillAvailable: 0, claimed: 0, closed: 0, hasPR: 0, hasStalledPR: 0, errors: 0 },
+      summary: {
+        total: 0,
+        stillAvailable: 0,
+        claimed: 0,
+        closed: 0,
+        hasPR: 0,
+        hasStalledPR: 0,
+        atRisk: 0,
+        ownOpenPr: 0,
+        errors: 0,
+      },
     };
   }
 
-  // 2. Vet each available issue in parallel with concurrency limit
+  const items: ParsedIssueItem[] = parsed.available;
+
+  // 2. Verify FIRST (#1494): one deterministic GraphQL check per entry, in a
+  //    bounded batch. The verdict is closing-vs-mention aware, so it carries
+  //    the authoritative status — and ruling issues out here means we skip
+  //    scout's search-driven vet (a net REDUCTION in /search/issues calls).
+  const octokit = getOctokit(requireGitHubToken());
+  const verifyTargets: Array<{ index: number; params: { owner: string; repo: string; number: number } }> = [];
+  items.forEach((item, i) => {
+    const ghUrl = parseGitHubUrl(item.url);
+    if (ghUrl && ghUrl.type === 'issues') {
+      verifyTargets.push({ index: i, params: { owner: ghUrl.owner, repo: ghUrl.repo, number: ghUrl.number } });
+    }
+  });
+  const batch = await verifyIssuesBatch(
+    octokit,
+    verifyTargets.map((t) => t.params),
+    { concurrency },
+  );
+  const verificationByIndex = new Map<number, BatchVerificationResult>();
+  verifyTargets.forEach((t, k) => verificationByIndex.set(t.index, batch[k]));
+
+  // 3. Vet only the issues still in play; build each row.
   const scout = await createAutopilotScout();
-  const results: VetListOutput['results'] = [];
 
-  // Simple concurrency limiter
-  const items = parsed.available;
-  let index = 0;
+  /** Run scout's grade/health vet for an issue (the search-driven path). */
+  async function runScoutVet(item: ParsedIssueItem): Promise<{ vetResult: VetOutput; skipReason?: ScoutSkipReason }> {
+    const candidate = await scout.vetIssue(item.url);
+    const grade = gradeFromCandidate({
+      repo: candidate.issue.repo,
+      projectHealth: candidate.projectHealth,
+      getRepoScore: (repo) => getStateManager().getRepoScore(repo),
+    });
+    const userLogin = getStateManager().getState().config.githubUsername;
+    const linkedPRClassification = classifyLinkedPR({
+      linkedPR: adaptScoutLinkedPR(candidate.vettingResult.linkedPR),
+      userLogin,
+    });
+    const linkedPR = buildCandidateLinkedPR(candidate.vettingResult.linkedPR);
+    const vetResult: VetOutput = {
+      issue: {
+        repo: candidate.issue.repo,
+        number: candidate.issue.number,
+        title: candidate.issue.title,
+        url: candidate.issue.url,
+        labels: candidate.issue.labels,
+      },
+      recommendation: candidate.recommendation,
+      reasonsToApprove: candidate.reasonsToApprove,
+      reasonsToSkip: candidate.reasonsToSkip,
+      projectHealth: candidate.projectHealth,
+      vettingResult: candidate.vettingResult,
+      antiLLMPolicy: candidate.antiLLMPolicy,
+      linkedPRClassification,
+      ...(linkedPR ? { linkedPR } : {}),
+      slmTriage: candidate.slmTriage ?? null,
+      grade,
+    };
+    return { vetResult, skipReason: extractSkipReason(candidate) };
+  }
 
-  async function processNext(): Promise<void> {
-    while (index < items.length) {
-      const item = items[index++];
+  function errorRow(item: ParsedIssueItem, error: unknown): VetListResult {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      issue: { repo: item.repo, number: item.number, title: item.title, url: item.url, labels: [] },
+      recommendation: 'skip',
+      reasonsToApprove: [],
+      reasonsToSkip: [`Error: ${message}`],
+      projectHealth: {},
+      vettingResult: {},
+      grade: UNKNOWN_GRADE,
+      listStatus: 'error',
+      errorMessage: message,
+    };
+  }
+
+  async function processItem(
+    item: ParsedIssueItem,
+    verification: BatchVerificationResult | undefined,
+  ): Promise<VetListResult> {
+    // Verify errored (or the URL didn't parse): fall back to scout's heuristic,
+    // exactly as before #1494. No `verification` sub-object on these rows.
+    if (!verification || verification.verification === undefined) {
       try {
-        const candidate = await scout.vetIssue(item.url);
-        const grade = gradeFromCandidate({
-          repo: candidate.issue.repo,
-          projectHealth: candidate.projectHealth,
-          getRepoScore: (repo) => getStateManager().getRepoScore(repo),
-        });
-        const userLogin = getStateManager().getState().config.githubUsername;
-        const linkedPRClassification = classifyLinkedPR({
-          linkedPR: adaptScoutLinkedPR(candidate.vettingResult.linkedPR),
-          userLogin,
-        });
-        const linkedPR = buildCandidateLinkedPR(candidate.vettingResult.linkedPR);
-        const vetResult: VetOutput = {
-          issue: {
-            repo: candidate.issue.repo,
-            number: candidate.issue.number,
-            title: candidate.issue.title,
-            url: candidate.issue.url,
-            labels: candidate.issue.labels,
-          },
-          recommendation: candidate.recommendation,
-          reasonsToApprove: candidate.reasonsToApprove,
-          reasonsToSkip: candidate.reasonsToSkip,
-          projectHealth: candidate.projectHealth,
-          vettingResult: candidate.vettingResult,
-          antiLLMPolicy: candidate.antiLLMPolicy,
-          linkedPRClassification,
-          ...(linkedPR ? { linkedPR } : {}),
-          slmTriage: candidate.slmTriage ?? null,
-          grade,
-        };
-
-        results.push({
-          ...vetResult,
-          listStatus: classifyListStatus(vetResult, extractSkipReason(candidate)),
-        });
+        const { vetResult, skipReason } = await runScoutVet(item);
+        return { ...vetResult, listStatus: classifyListStatus(vetResult, skipReason) };
       } catch (error) {
-        // Per-issue errors don't fail the batch
-        results.push({
-          issue: { repo: item.repo, number: item.number, title: item.title, url: item.url, labels: [] },
-          recommendation: 'skip',
-          reasonsToApprove: [],
-          reasonsToSkip: [`Error: ${error instanceof Error ? error.message : String(error)}`],
-          projectHealth: {},
-          vettingResult: {},
-          grade: UNKNOWN_GRADE,
-          listStatus: 'error',
-          errorMessage: error instanceof Error ? error.message : String(error),
-        });
+        return errorRow(item, error);
       }
+    }
+
+    const v = verification.verification;
+    const summary = toVerificationSummary(v);
+    const listStatus = listStatusFromVerdict(v.verdict);
+
+    // Conclusively ruled out — skip the scout vet entirely.
+    if (RULED_OUT_VERDICTS.has(v.verdict)) {
+      return { ...ruledOutVetOutput(v), listStatus, verification: summary };
+    }
+
+    // available / at-risk: still worth grading. The verdict stays authoritative
+    // for listStatus; scout only supplies grade/health/recommendation.
+    try {
+      const { vetResult } = await runScoutVet(item);
+      return { ...vetResult, listStatus, verification: summary };
+    } catch (error) {
+      // Verify succeeded, so keep its verdict facts even though grading failed.
+      return { ...errorRow(item, error), verification: summary };
     }
   }
 
-  // Start `concurrency` workers
+  const results: VetListResult[] = new Array<VetListResult>(items.length);
+  let index = 0;
+  async function processNext(): Promise<void> {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await processItem(items[i], verificationByIndex.get(i));
+    }
+  }
+
+  // Start `concurrency` workers (bounds the scout-vet fan-out).
   const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => processNext());
   await Promise.all(workers);
 
-  // 3. Compute summary
+  // 4. Compute summary
   const summary = {
     total: results.length,
     stillAvailable: results.filter((r) => r.listStatus === 'still_available').length,
@@ -229,6 +367,8 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     closed: results.filter((r) => r.listStatus === 'closed').length,
     hasPR: results.filter((r) => r.listStatus === 'has_pr').length,
     hasStalledPR: results.filter((r) => r.listStatus === 'has_stalled_pr').length,
+    atRisk: results.filter((r) => r.listStatus === 'at_risk').length,
+    ownOpenPr: results.filter((r) => r.listStatus === 'own_open_pr').length,
     errors: results.filter((r) => r.listStatus === 'error').length,
   };
 

@@ -7,6 +7,8 @@
     "closed": 0,
     "hasPR": 0,
     "hasStalledPR": 0,
+    "atRisk": 0,
+    "ownOpenPr": 0,
     "errors": 0
   }
 }
