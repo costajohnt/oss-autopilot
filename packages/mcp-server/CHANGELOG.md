@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.7.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.6.3...mcp-v5.7.0) (2026-06-16)
+
+
+### Features
+
+* **repo-vet:** name both repo scores; merge the scoring docs ([#1465](https://github.com/costajohnt/oss-autopilot/issues/1465)) ([#1482](https://github.com/costajohnt/oss-autopilot/issues/1482)) ([f52ad4d](https://github.com/costajohnt/oss-autopilot/commit/f52ad4d9114385fbb08d0f4c241357227d4f669b))
+
+
+### Bug Fixes
+
+* **mcp:** reload state per tool call and keep repair tools usable on hard gist-init errors ([#1439](https://github.com/costajohnt/oss-autopilot/issues/1439), [#1441](https://github.com/costajohnt/oss-autopilot/issues/1441)) ([#1471](https://github.com/costajohnt/oss-autopilot/issues/1471)) ([4820fc2](https://github.com/costajohnt/oss-autopilot/commit/4820fc2ff98ca55ff2fa9c4cb4e8c5b8cb76465e))
+* **security:** fence titles on MCP surfaces; label guidelines provenance; pin the posts-guard matcher ([#1455](https://github.com/costajohnt/oss-autopilot/issues/1455)) ([#1493](https://github.com/costajohnt/oss-autopilot/issues/1493)) ([a4bb7d4](https://github.com/costajohnt/oss-autopilot/commit/a4bb7d493cb78013fe1269093f21f2e3e3e4823d))
+* **state:** report and recover the gist-degraded bootstrap honestly ([#1443](https://github.com/costajohnt/oss-autopilot/issues/1443)) ([#1492](https://github.com/costajohnt/oss-autopilot/issues/1492)) ([c43b2c5](https://github.com/costajohnt/oss-autopilot/commit/c43b2c59ffbf3b1cfb9656a9ffff16fd7b354073))
+
 ## [5.6.3](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.6.2...mcp-v5.6.3) (2026-06-12)
 
 
