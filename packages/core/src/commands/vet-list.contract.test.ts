@@ -51,6 +51,7 @@ vi.mock('../core/index.js', async () => {
 });
 
 import { runVetList } from './vet-list.js';
+import { ValidationError } from '../core/errors.js';
 import type { BatchVerificationResult, IssueAvailabilityVerdict } from '../core/index.js';
 
 const HEALTH_APPROVE = {
@@ -122,15 +123,20 @@ describe('vet-list --json contract', () => {
   });
 
   it('mixed-status batch output matches the golden shape', async () => {
-    // Verify FIRST: one entry per available issue, aligned by order. #3 errors
-    // (forces the scout fallback path); the rest carry deterministic verdicts.
+    // Verify FIRST: one entry per available issue, aligned by order. #3 fails
+    // with a definitive ValidationError (deleted/private issue) — it becomes an
+    // error row WITHOUT re-grading via scout, tagged with verifyError. The rest
+    // carry deterministic verdicts.
     mocks.verifyIssuesBatch.mockResolvedValue([
       verified('owner/repo-a', 1, 'available'),
       verified('owner/repo-b', 2, 'taken', {
         verdictReason: 'open PR by rival closes this issue',
         linkedPRs: [CLOSING_PR],
       }),
-      { params: { owner: 'owner', repo: 'repo-c', number: 3 }, error: new Error('verify failed') },
+      {
+        params: { owner: 'owner', repo: 'repo-c', number: 3 },
+        error: new ValidationError('Issue not found: owner/repo-c#3. Check the URL.'),
+      },
       verified('owner/repo-d', 4, 'at-risk', {
         verdictReason: 'open PR cross-references this issue (mention only)',
         linkedPRs: [
@@ -152,10 +158,10 @@ describe('vet-list --json contract', () => {
       verified('owner/repo-f', 6, 'closed'),
     ] satisfies BatchVerificationResult[]);
 
-    // Scout is only consulted for the in-play (available/at-risk) issues and
-    // the verify-error fallback — never for closed/taken/own_open_pr. With
-    // concurrency 1 the calls are deterministic: #1 (available), #3 (fallback,
-    // errors), #4 (at-risk).
+    // Scout is only consulted for the in-play (available/at-risk) issues —
+    // never for closed/taken/own_open_pr, and never for the definitive
+    // ValidationError row (#3). With concurrency 1 the calls are deterministic:
+    // #1 (available), #4 (at-risk).
     mocks.vetIssue
       .mockResolvedValueOnce({
         issue: {
@@ -171,7 +177,6 @@ describe('vet-list --json contract', () => {
         projectHealth: HEALTH_APPROVE,
         vettingResult: { passedAllChecks: true, checks: {}, notes: [] },
       })
-      .mockRejectedValueOnce(new Error('Network timeout'))
       .mockResolvedValueOnce({
         issue: {
           repo: 'owner/repo-d',

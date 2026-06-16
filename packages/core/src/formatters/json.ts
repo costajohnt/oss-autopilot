@@ -1356,9 +1356,18 @@ export interface VetListOutput {
       listStatus: VetListItemStatus;
       errorMessage?: string;
       /**
+       * Set when the deterministic verify-issue check itself failed for this
+       * entry (#1494). Its presence is the explicit signal that `listStatus`
+       * is NOT authoritative — it came from the scout heuristic fallback (or is
+       * `error`), and the row should be re-verified before acting on it. Pairs
+       * with an absent `verification`; never set when `verification` is present.
+       */
+      verifyError?: string;
+      /**
        * The deterministic verify-issue facts behind `listStatus` (#1494).
        * Present whenever verification succeeded for the entry; absent only when
-       * verify itself errored (then `listStatus` comes from the scout fallback).
+       * verify itself errored (then `listStatus` comes from the scout fallback
+       * and `verifyError` records why).
        */
       verification?: {
         verdict: IssueAvailabilityVerdict;

@@ -109,7 +109,7 @@ Remember to filter by `excludedRepos` manually.
 
 Before ANY other analysis of a specific issue URL (a single-issue vet, or a search candidate you are about to recommend), call `verify-issue`. Its fields are ground truth fetched via GraphQL — trust them over anything you infer from comments, timelines, or issue prose. Never report `Open: yes/no` or "taken by PR #N" from your own reading; report what `verify-issue` returned.
 
-Whole-list re-vets carry the same ground truth: as of #1494 `vet-list` runs `verify-issue` per entry, so each row's `listStatus` is derived from the deterministic verdict (closing-vs-mention aware) and the row's `verification` sub-object holds the same fields a single-issue `verify-issue` returns. Trust a `vet-list` row's verdict directly — no per-entry re-check is needed. The only exception is a row whose `verification` is absent (verify itself errored for that entry, and `listStatus` fell back to scout's heuristic): re-run `verify-issue` on that URL before acting on it.
+Whole-list re-vets carry the same ground truth: as of #1494 `vet-list` runs `verify-issue` per entry, so each row's `listStatus` is derived from the deterministic verdict (closing-vs-mention aware) and the row's `verification` sub-object holds the same fields a single-issue `verify-issue` returns. Trust a `vet-list` row's verdict directly — no per-entry re-check is needed. The one exception is a row carrying a `verifyError` field (the authoritative check failed for that entry, so `verification` is absent and `listStatus` came from scout's weaker heuristic): re-run `verify-issue` on that URL before acting on it.
 
 Route on `verdict` with short-circuit semantics:
 

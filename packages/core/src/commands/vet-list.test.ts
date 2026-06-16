@@ -405,6 +405,52 @@ describe('runVetList', () => {
     expect(mockVetIssue).toHaveBeenCalledWith('https://github.com/other/lib/issues/2');
   });
 
+  it('tags scout-fallback rows with verifyError when verify failed transiently (#1494)', async () => {
+    mockDetectIssueList.mockReturnValue({
+      path: '/tmp/issues.md',
+      source: 'configured',
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockRunParseList.mockResolvedValue({
+      available: [
+        {
+          repo: 'owner/repo',
+          number: 1,
+          title: 'Fix bug',
+          tier: 'Pursue',
+          url: 'https://github.com/owner/repo/issues/1',
+        },
+      ],
+      completed: [],
+      availableCount: 1,
+      completedCount: 0,
+    });
+    // beforeEach default: verify errors transiently for every entry.
+    mockVetIssue.mockResolvedValueOnce({
+      issue: {
+        repo: 'owner/repo',
+        number: 1,
+        title: 'Fix bug',
+        url: 'https://github.com/owner/repo/issues/1',
+        labels: [],
+      },
+      recommendation: 'approve' as const,
+      reasonsToApprove: ['OK'],
+      reasonsToSkip: [],
+      projectHealth: {},
+      vettingResult: {},
+    });
+
+    const result = await runVetList({ concurrency: 1 });
+
+    // Heuristic still drives listStatus, but verifyError makes the failed
+    // authoritative check visible and verification stays absent.
+    expect(result.results[0].listStatus).toBe('still_available');
+    expect(result.results[0].verifyError).toBe('verify unavailable in test');
+    expect(result.results[0].verification).toBeUndefined();
+  });
+
   it('should throw when no issue list is found and no path provided', async () => {
     mockDetectIssueList.mockReturnValue(undefined);
 

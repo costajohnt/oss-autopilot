@@ -9,6 +9,7 @@ import { type VetListOutput, type VetOutput, type VetListItemStatus } from '../f
 import { runParseList, pruneIssueList } from './parse-list.js';
 import { detectIssueList } from './startup.js';
 import { computeSuccessGrade, gradeFromCandidate } from '../core/issue-grading.js';
+import { ValidationError } from '../core/errors.js';
 import {
   getStateManager,
   classifyLinkedPR,
@@ -203,6 +204,10 @@ function ruledOutVetOutput(v: IssueVerification): VetOutput {
 type VetListResult = VetListOutput['results'][number];
 type ParsedIssueItem = { repo: string; number: number; title: string; url: string };
 
+function toMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function runVetList(options: VetListOptions = {}): Promise<VetListOutput> {
   const concurrency = options.concurrency ?? 5;
 
@@ -297,7 +302,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
   }
 
   function errorRow(item: ParsedIssueItem, error: unknown): VetListResult {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = toMessage(error);
     return {
       issue: { repo: item.repo, number: item.number, title: item.title, url: item.url, labels: [] },
       recommendation: 'skip',
@@ -315,14 +320,27 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     item: ParsedIssueItem,
     verification: BatchVerificationResult | undefined,
   ): Promise<VetListResult> {
-    // Verify errored (or the URL didn't parse): fall back to scout's heuristic,
-    // exactly as before #1494. No `verification` sub-object on these rows.
+    // Verify errored (or the URL didn't parse): the authoritative check is not
+    // available for this row. Surface that explicitly via `verifyError` so the
+    // fallback's `listStatus` is never mistaken for a confirmed verdict.
     if (!verification || verification.verification === undefined) {
+      const verifyError = verification?.error;
+
+      // A ValidationError means the issue definitively doesn't exist (deleted,
+      // private, or the URL points at a PR). Don't re-grade it via scout — that
+      // could mislabel a dead issue as available. Report it as an error row.
+      if (verifyError instanceof ValidationError) {
+        return { ...errorRow(item, verifyError), verifyError: toMessage(verifyError) };
+      }
+
+      // Transient verify failure (rate limit, network, truncated timeline): fall
+      // back to scout's heuristic, but tag the row so it's re-verified later.
+      const verifyErrorTag = verifyError === undefined ? {} : { verifyError: toMessage(verifyError) };
       try {
         const { vetResult, skipReason } = await runScoutVet(item);
-        return { ...vetResult, listStatus: classifyListStatus(vetResult, skipReason) };
+        return { ...vetResult, listStatus: classifyListStatus(vetResult, skipReason), ...verifyErrorTag };
       } catch (error) {
-        return errorRow(item, error);
+        return { ...errorRow(item, error), ...verifyErrorTag };
       }
     }
 
