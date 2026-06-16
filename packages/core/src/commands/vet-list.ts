@@ -320,9 +320,11 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     item: ParsedIssueItem,
     verification: BatchVerificationResult | undefined,
   ): Promise<VetListResult> {
-    // Verify errored (or the URL didn't parse): the authoritative check is not
-    // available for this row. Surface that explicitly via `verifyError` so the
-    // fallback's `listStatus` is never mistaken for a confirmed verdict.
+    // No authoritative verdict for this row: either verify errored, or the URL
+    // was never enrolled (parse-list also accepts PR URLs, which `verify-issue`
+    // can't classify). Either way `listStatus` falls back to scout's heuristic,
+    // so we ALWAYS tag the row with `verifyError` — the explicit signal that the
+    // status is not authoritative and must be re-verified before acting.
     if (!verification || verification.verification === undefined) {
       const verifyError = verification?.error;
 
@@ -333,9 +335,15 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
         return { ...errorRow(item, verifyError), verifyError: toMessage(verifyError) };
       }
 
-      // Transient verify failure (rate limit, network, truncated timeline): fall
-      // back to scout's heuristic, but tag the row so it's re-verified later.
-      const verifyErrorTag = verifyError === undefined ? {} : { verifyError: toMessage(verifyError) };
+      // Transient verify failure (rate limit, network, truncated timeline), or a
+      // non-issue URL that was never sent to verify. Fall back to scout's
+      // heuristic, tagged so the row is re-verified later.
+      const verifyErrorTag = {
+        verifyError:
+          verifyError === undefined
+            ? `not verified: ${item.url} is not a verifiable issue URL`
+            : toMessage(verifyError),
+      };
       try {
         const { vetResult, skipReason } = await runScoutVet(item);
         return { ...vetResult, listStatus: classifyListStatus(vetResult, skipReason), ...verifyErrorTag };

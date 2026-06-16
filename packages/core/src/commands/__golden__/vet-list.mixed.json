@@ -97,7 +97,7 @@
       "recommendation": "skip",
       "reasonsToApprove": [],
       "reasonsToSkip": [
-        "Error: Issue not found: owner/repo-c#3. Check the URL."
+        "Error: Issue not found: owner/repo-c#3. Check the URL — it may point at a pull request or a deleted/private issue."
       ],
       "projectHealth": {},
       "vettingResult": {},
@@ -106,8 +106,8 @@
         "reason": "unknown maintainer responsiveness, merge rate, activity"
       },
       "listStatus": "error",
-      "errorMessage": "Issue not found: owner/repo-c#3. Check the URL.",
-      "verifyError": "Issue not found: owner/repo-c#3. Check the URL."
+      "errorMessage": "Issue not found: owner/repo-c#3. Check the URL — it may point at a pull request or a deleted/private issue.",
+      "verifyError": "Issue not found: owner/repo-c#3. Check the URL — it may point at a pull request or a deleted/private issue."
     },
     {
       "issue": {

@@ -451,6 +451,54 @@ describe('runVetList', () => {
     expect(result.results[0].verification).toBeUndefined();
   });
 
+  it('tags non-issue (PR) URLs as not verified, still falling back to scout (#1494)', async () => {
+    mockDetectIssueList.mockReturnValue({
+      path: '/tmp/issues.md',
+      source: 'configured',
+      availableCount: 1,
+      completedCount: 0,
+    });
+    // parse-list also accepts PR URLs; verify-issue can't classify them, so they
+    // are never enrolled in the verify batch.
+    mockRunParseList.mockResolvedValue({
+      available: [
+        {
+          repo: 'owner/repo',
+          number: 7,
+          title: 'A PR link',
+          tier: 'Pursue',
+          url: 'https://github.com/owner/repo/pull/7',
+        },
+      ],
+      completed: [],
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockVerifyIssuesBatch.mockResolvedValue([]); // no issue targets enrolled
+    mockVetIssue.mockResolvedValueOnce({
+      issue: {
+        repo: 'owner/repo',
+        number: 7,
+        title: 'A PR link',
+        url: 'https://github.com/owner/repo/pull/7',
+        labels: [],
+      },
+      recommendation: 'approve' as const,
+      reasonsToApprove: ['OK'],
+      reasonsToSkip: [],
+      projectHealth: {},
+      vettingResult: {},
+    });
+
+    const result = await runVetList({ concurrency: 1 });
+
+    expect(result.results[0].listStatus).toBe('still_available');
+    expect(result.results[0].verification).toBeUndefined();
+    expect(result.results[0].verifyError).toContain('not a verifiable issue URL');
+    // Scout is still consulted for the PR URL — pre-#1494 behavior preserved.
+    expect(mockVetIssue).toHaveBeenCalledWith('https://github.com/owner/repo/pull/7');
+  });
+
   it('should throw when no issue list is found and no path provided', async () => {
     mockDetectIssueList.mockReturnValue(undefined);
 

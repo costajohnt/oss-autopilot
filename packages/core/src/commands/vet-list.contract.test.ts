@@ -135,7 +135,9 @@ describe('vet-list --json contract', () => {
       }),
       {
         params: { owner: 'owner', repo: 'repo-c', number: 3 },
-        error: new ValidationError('Issue not found: owner/repo-c#3. Check the URL.'),
+        error: new ValidationError(
+          'Issue not found: owner/repo-c#3. Check the URL — it may point at a pull request or a deleted/private issue.',
+        ),
       },
       verified('owner/repo-d', 4, 'at-risk', {
         verdictReason: 'open PR cross-references this issue (mention only)',
