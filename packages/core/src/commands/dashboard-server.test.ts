@@ -401,6 +401,26 @@ describe('dashboard-server', () => {
     return result;
   }
 
+  // Shared monotonic clock for the gist-recovery tests (#1433 / #1443 / #1446).
+  // `lastRecoveryAttemptAt` is throttle state on the one shared server instance,
+  // so a test that stamps it must use a Date.now strictly later than any prior
+  // test's — otherwise under `vitest --shuffle` an earlier-defined test that
+  // happens to run later sees `now < stamped` and gets spuriously throttled.
+  // Hand each acquiring test a fresh epoch one day past the previous (strictly
+  // increasing by EXECUTION order, not definition order), with a private
+  // within-day window to advance in. Restore the spy in the test's finally.
+  let recoveryClockCursorMs = Date.parse('2030-01-01T00:00:00Z');
+  function acquireRecoveryClock(): {
+    spy: ReturnType<typeof vi.spyOn>;
+    /** Move Date.now to base + offsetMs; keep offsets under one day. */
+    advance: (offsetMs: number) => void;
+  } {
+    recoveryClockCursorMs += 86_400_000; // +1 day per acquire
+    const base = recoveryClockCursorMs;
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(base);
+    return { spy, advance: (offsetMs: number) => spy.mockReturnValue(base + offsetMs) };
+  }
+
   // ── Static file serving ──────────────────────────────────────────
 
   describe('static file serving', () => {
@@ -1323,6 +1343,9 @@ describe('dashboard-server', () => {
         const digest = makeDigest();
         const degradedState = makeState({ config: { persistence: 'gist' }, lastDigest: digest });
         mockStateManager.getState.mockReturnValue(degradedState);
+        // Escape the shared recovery throttle with an execution-ordered clock so
+        // this case is not throttled by another recovery test under --shuffle.
+        const { spy: nowSpy } = acquireRecoveryClock();
         try {
           // No token: recovery cannot run, the banner must still show.
           mockStateManager.reloadIfChanged.mockReturnValueOnce(true);
@@ -1344,6 +1367,7 @@ describe('dashboard-server', () => {
           const recoveredBody = JSON.parse(recovered.body);
           expect(recoveredBody.partialFailures?.some((m: string) => m.includes('LOCAL-ONLY'))).toBeFalsy();
         } finally {
+          nowSpy.mockRestore();
           vi.mocked(getGitHubToken).mockReturnValue(null as never);
           mockStateManager.isGistMode.mockReset();
           mockStateManager.isGistMode.mockReturnValue(false);
@@ -1363,8 +1387,9 @@ describe('dashboard-server', () => {
         const degradedState = makeState({ config: { persistence: 'gist' }, lastDigest: digest });
         mockStateManager.getState.mockReturnValue(degradedState);
         // The recovery throttle is shared server state and an earlier test's
-        // attempt may have stamped it — jump past the 30s window.
-        const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date('2030-01-01T00:00:00Z').getTime());
+        // attempt may have stamped it — take an execution-ordered clock that is
+        // strictly past any prior test's stamp (shuffle-safe).
+        const { spy: nowSpy } = acquireRecoveryClock();
         try {
           // A mutation lands while degraded (no token, recovery impossible).
           await sendRequest(
@@ -1701,8 +1726,9 @@ describe('dashboard-server', () => {
       mockStateManager.getState.mockReturnValue(
         makeState({ config: { persistence: 'gist' }, lastDigest: makeDigest() }),
       );
-      // Jump far past the 30s recovery throttle (shared server state).
-      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date('2031-01-01T00:00:00Z').getTime());
+      // Execution-ordered clock past the 30s recovery throttle (shared server
+      // state); advance within this test's own window for the staged polls.
+      const { spy: nowSpy, advance } = acquireRecoveryClock();
       try {
         vi.mocked(getGitHubToken).mockReturnValue('test-token');
         // Permanent (ConfigurationError-class) failure → recovery halts.
@@ -1711,14 +1737,14 @@ describe('dashboard-server', () => {
         expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(1);
 
         // While halted, even a poll past the throttle window does not retry.
-        nowSpy.mockReturnValue(new Date('2031-01-01T01:00:00Z').getTime());
+        advance(3_600_000); // +1h
         await sendRequest('GET', '/api/data');
         expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(1);
 
         // An external state edit (reloadIfChanged → true) un-halts via the
         // shared reloadState() and the next attempt cycle runs.
         mockStateManager.reloadIfChanged.mockReturnValueOnce(true);
-        nowSpy.mockReturnValue(new Date('2031-01-01T02:00:00Z').getTime());
+        advance(7_200_000); // +2h
         await sendRequest('GET', '/api/data');
         expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
       } finally {
@@ -1744,10 +1770,9 @@ describe('dashboard-server', () => {
       mockStateManager.getState.mockReturnValue(degradedState);
       mockStateManager.isGistMode.mockReturnValue(true);
       mockStateManager.isGistDegraded.mockReturnValue(true);
-      // Earlier recovery tests stamp lastRecoveryAttemptAt at mocked clocks
-      // up to 2031-01-01T02:00 (the #1446 un-halt case above) — jump past
-      // them so the shared throttle cannot mask the attempt.
-      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(new Date('2031-02-01T00:00:00Z').getTime());
+      // Execution-ordered clock strictly past any other recovery test's stamp,
+      // so the shared throttle cannot mask the attempt under --shuffle.
+      const { spy: nowSpy } = acquireRecoveryClock();
       try {
         // No token: recovery cannot run, but any rebuild (here: an action)
         // must carry the stale-bootstrap banner.
