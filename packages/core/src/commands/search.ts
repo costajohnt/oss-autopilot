@@ -70,6 +70,34 @@ function sanitizeViabilityScore(raw: unknown): number {
   return raw;
 }
 
+/**
+ * Read a non-negative integer scout-delay override from an env var.
+ *
+ * Scout spaces its multi-phase `/search/issues` calls with an inter-phase
+ * delay (default 30s) and a broad-phase delay (default 90s) to stay under
+ * GitHub's secondary rate limit (see `buildScoutState`). Those delays make a
+ * single `search` invocation take ~100s, which is fine in normal use but makes
+ * the live-API e2e suite (`search.e2e.test.ts`, run only in the nightly
+ * workflow — see #1452) impractically slow. These env vars let that suite
+ * collapse the delays so the test completes in a realistic CI window.
+ *
+ * Returns `undefined` when the var is unset/empty or not a parseable
+ * non-negative integer, so scout falls back to its preference value and
+ * production behavior is unchanged. Only the live test/nightly run sets them.
+ */
+function readScoutDelayOverride(envVar: string): number | undefined {
+  const raw = process.env[envVar];
+  if (raw === undefined || raw === '') {
+    return undefined;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    warn(MODULE, `Ignoring invalid ${envVar}="${raw}" (expected a non-negative integer); using scout's default delay`);
+    return undefined;
+  }
+  return parsed;
+}
+
 export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
   // Collect bridge-level degradation signals (#1448): an unreadable skip file
   // means scout searched with an empty skip list, so explicitly-skipped
@@ -96,11 +124,19 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
     );
   }
 
+  // Live-API test/nightly affordance (#1452): collapse scout's inter-phase
+  // delays so the e2e suite finishes in a realistic window. Unset in normal
+  // use → undefined → scout falls back to the 30s/90s preference defaults.
+  const interPhaseDelayMs = readScoutDelayOverride('OSS_AUTOPILOT_SCOUT_INTER_PHASE_DELAY_MS');
+  const broadPhaseDelayMs = readScoutDelayOverride('OSS_AUTOPILOT_SCOUT_BROAD_PHASE_DELAY_MS');
+
   const result = await scout.search({
     maxResults: options.maxResults,
     preferLanguages,
     preferRepos,
     diversityRatio: SEARCH_DIVERSITY_RATIO,
+    ...(interPhaseDelayMs !== undefined ? { interPhaseDelayMs } : {}),
+    ...(broadPhaseDelayMs !== undefined ? { broadPhaseDelayMs } : {}),
   });
 
   // #1354: never surface issues the user already has an open PR for. Uses
