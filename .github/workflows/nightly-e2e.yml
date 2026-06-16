@@ -1,0 +1,74 @@
+name: Nightly E2E (live GitHub API)
+
+# Runs the two token-gated CLI e2e suites against the live GitHub API. The
+# per-PR CI (ci.yml) deliberately SKIPS these: they need a real GITHUB_TOKEN
+# (Actions does not auto-export one to the test step there) and they hit
+# GitHub's rate-limited /search/issues, which made them slow and flaky across
+# the 3-way PR matrix. See #1452 for the full rationale and the decision to
+# move them to a single-leg, serialized nightly run instead.
+#
+# These suites are READ-ONLY against GitHub: `search` calls /search/issues +
+# repos.get, `daily` calls issues.listForRepo / PR reads via the bundled CLI.
+# Nothing posts, comments, or mutates, so the job-level `contents: read`
+# permission (which is what scopes the ambient GITHUB_TOKEN) is sufficient.
+on:
+  schedule:
+    # 07:00 UTC daily — off-peak for the Americas (late night) so a transient
+    # rate-limit backoff doesn't compete with daytime interactive usage.
+    - cron: '0 7 * * *'
+  workflow_dispatch: {}
+
+# Read-only token is all these tests need (see header). This also scopes the
+# ambient GITHUB_TOKEN the test step receives.
+permissions:
+  contents: read
+
+# Never let two nightly runs (e.g. a scheduled run overlapping a manual
+# dispatch) race against the same rate-limited search API.
+concurrency:
+  group: nightly-e2e
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: Live-API e2e (Node 22 / ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build core types
+        run: pnpm --filter @oss-autopilot/core run build
+
+      # The e2e suites execute dist/cli.bundle.cjs and skip if it is absent
+      # (same gate as #1366), so the bundle MUST exist before tests run.
+      - name: Build CLI bundle (required by e2e suites, #1366)
+        run: pnpm --filter @oss-autopilot/core run bundle
+
+      - name: Run token-gated e2e suites (serialized, live GitHub API)
+        env:
+          # Read-only ambient token (scoped by `permissions: contents: read`).
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Marker that flips the suites' loud-skip guard on: if the token is
+          # somehow absent here, the guard FAILS the run instead of silently
+          # skipping the tests this workflow exists to run (#1452).
+          OSS_AUTOPILOT_NIGHTLY: '1'
+        # --no-file-parallelism runs the two suites sequentially so they don't
+        # compound each other's /search/issues rate-limit pressure.
+        run: >-
+          pnpm --filter @oss-autopilot/core exec vitest run
+          src/commands/search.e2e.test.ts
+          src/commands/daily.e2e.test.ts
+          --no-file-parallelism
