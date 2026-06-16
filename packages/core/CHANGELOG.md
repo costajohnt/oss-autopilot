@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.0...core-v3.14.1) (2026-06-16)
+
+
+### Features
+
+* **vet-list:** consolidate availability verdicts onto the deterministic verify-issue classifier ([#1494](https://github.com/costajohnt/oss-autopilot/issues/1494)) ([#1500](https://github.com/costajohnt/oss-autopilot/issues/1500)) ([96c2ba2](https://github.com/costajohnt/oss-autopilot/commit/96c2ba298471650f5f0c157f676b978d7712c603))
+
+
+### Bug Fixes
+
+* **dashboard:** carry staleness headers on POST mutator responses ([#1487](https://github.com/costajohnt/oss-autopilot/issues/1487)) ([#1501](https://github.com/costajohnt/oss-autopilot/issues/1501)) ([510d556](https://github.com/costajohnt/oss-autopilot/commit/510d556e0bcbf8bb0143b0f1aad411cf53e82042))
+* **dashboard:** self-heal the merged-PR ledger when stranded behind a watermark ([#1504](https://github.com/costajohnt/oss-autopilot/issues/1504)) ([#1505](https://github.com/costajohnt/oss-autopilot/issues/1505)) ([49e792c](https://github.com/costajohnt/oss-autopilot/commit/49e792ce0cac868459aa9bcf79c794543011f2fc))
+* **deps:** override hono to &gt;=4.12.25 to clear the high CORS advisory ([#1506](https://github.com/costajohnt/oss-autopilot/issues/1506)) ([1365591](https://github.com/costajohnt/oss-autopilot/commit/1365591f1030415e1ef057c6de5a9e67f3634481))
+
 ## [3.14.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.13.4...core-v3.14.0) (2026-06-16)
 
 
