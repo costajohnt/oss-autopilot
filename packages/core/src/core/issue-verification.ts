@@ -410,3 +410,76 @@ export async function fetchIssueVerification(octokit: Octokit, params: VerifyIss
     userLogin,
   };
 }
+
+// ── Batched verification ───────────────────────────────────────────────
+
+/**
+ * Hard ceiling on concurrent in-flight verifications. Each issue runs its own
+ * GraphQL round-trip (point-heavy, with timeline pagination), so we never run
+ * more than this many at once regardless of what the caller requests. The
+ * single-issue path already leans on ThrottledOctokit's secondary-rate-limit
+ * backoff — this cap keeps us from spraying enough parallel queries to trip it.
+ */
+export const MAX_VERIFY_CONCURRENCY = 5;
+
+/**
+ * Per-item outcome of a batched verification run. Aligned by index with the
+ * input `items`. Error isolation: one item's failure lands as `{ error }` and
+ * never aborts the batch, so a single NOT_FOUND (or transient network error)
+ * does not poison every other entry — unlike an aliased mega-query would.
+ */
+export interface BatchVerificationResult {
+  params: VerifyIssueParams;
+  /** Present when verification succeeded for this item. */
+  verification?: IssueVerification;
+  /** Present when `fetchIssueVerification` threw for this item. */
+  error?: unknown;
+}
+
+/**
+ * Verify many issues with bounded concurrent fan-out of the single-issue
+ * {@link fetchIssueVerification}.
+ *
+ * This is a deliberately thin worker pool, NOT one aliased GraphQL query:
+ * per-issue timeline cursors make aliasing unmanageable, and all-or-nothing
+ * failure (one bad issue poisoning the batch) is exactly what we want to
+ * avoid. No retry layer is added here — `octokit` is expected to be a
+ * ThrottledOctokit whose backoff already covers secondary rate limits.
+ *
+ * @param octokit - Throttled Octokit instance (see `getOctokit`).
+ * @param items - Issues to verify; results align with this order.
+ * @param options.concurrency - Desired parallelism; capped at
+ *   {@link MAX_VERIFY_CONCURRENCY} and floored at 1.
+ */
+export async function verifyIssuesBatch(
+  octokit: Octokit,
+  items: readonly VerifyIssueParams[],
+  options: { concurrency?: number } = {},
+): Promise<BatchVerificationResult[]> {
+  const results: BatchVerificationResult[] = new Array<BatchVerificationResult>(items.length);
+  if (items.length === 0) return results;
+
+  const requested = options.concurrency ?? MAX_VERIFY_CONCURRENCY;
+  // Floor at 1 so a 0/negative/NaN request can never produce zero workers
+  // (which would leave the results array full of holes).
+  const concurrency = Math.max(
+    1,
+    Math.min(Number.isFinite(requested) ? requested : MAX_VERIFY_CONCURRENCY, MAX_VERIFY_CONCURRENCY, items.length),
+  );
+
+  let index = 0;
+  async function worker(): Promise<void> {
+    while (index < items.length) {
+      const i = index++;
+      const params = items[i];
+      try {
+        results[i] = { params, verification: await fetchIssueVerification(octokit, params) };
+      } catch (error) {
+        results[i] = { params, error };
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return results;
+}
