@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [3.14.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.0...core-v3.14.1) (2026-06-16)
 
 
+### Features
+
+* **vet-list:** consolidate availability verdicts onto the deterministic verify-issue classifier ([#1494](https://github.com/costajohnt/oss-autopilot/issues/1494)) ([#1500](https://github.com/costajohnt/oss-autopilot/issues/1500)) ([96c2ba2](https://github.com/costajohnt/oss-autopilot/commit/96c2ba298471650f5f0c157f676b978d7712c603))
+
+
 ### Bug Fixes
 
 * **dashboard:** carry staleness headers on POST mutator responses ([#1487](https://github.com/costajohnt/oss-autopilot/issues/1487)) ([#1501](https://github.com/costajohnt/oss-autopilot/issues/1501)) ([510d556](https://github.com/costajohnt/oss-autopilot/commit/510d556e0bcbf8bb0143b0f1aad411cf53e82042))
