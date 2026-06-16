@@ -5,7 +5,12 @@
 
 import * as fs from 'node:fs';
 import { adaptScoutLinkedPR, buildCandidateLinkedPR, createAutopilotScout } from './scout-bridge.js';
-import { type VetListOutput, type VetOutput, type VetListItemStatus } from '../formatters/json.js';
+import {
+  type VetListOutput,
+  type VetOutput,
+  type VetListItemStatus,
+  type ParsedIssueItem,
+} from '../formatters/json.js';
 import { runParseList, pruneIssueList } from './parse-list.js';
 import { detectIssueList } from './startup.js';
 import { computeSuccessGrade, gradeFromCandidate } from '../core/issue-grading.js';
@@ -202,7 +207,6 @@ function ruledOutVetOutput(v: IssueVerification): VetOutput {
  * @returns Consolidated vetting results with list status for each issue
  */
 type VetListResult = VetListOutput['results'][number];
-type ParsedIssueItem = { repo: string; number: number; title: string; url: string };
 
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -240,7 +244,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
     };
   }
 
-  const items: ParsedIssueItem[] = parsed.available;
+  const items = parsed.available;
 
   // 2. Verify FIRST (#1494): one deterministic GraphQL check per entry, in a
   //    bounded batch. The verdict is closing-vs-mention aware, so it carries

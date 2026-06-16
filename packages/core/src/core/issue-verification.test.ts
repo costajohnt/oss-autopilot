@@ -543,4 +543,25 @@ describe('verifyIssuesBatch', () => {
     expect(results).toHaveLength(3);
     expect(maxActive).toBe(1);
   });
+
+  it('treats a non-finite concurrency request as the default cap', async () => {
+    let active = 0;
+    let maxActive = 0;
+    const graphql = vi.fn(async (_q: string, vars: { number: number }) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 3));
+      active--;
+      return issueResponse(vars.number);
+    });
+    const octokit = { graphql } as unknown as Octokit;
+
+    const items = Array.from({ length: 8 }, (_, i) => item(i + 1));
+    const results = await verifyIssuesBatch(octokit, items, { concurrency: Number.NaN });
+
+    expect(results).toHaveLength(8);
+    // NaN is not finite -> falls back to MAX_VERIFY_CONCURRENCY rather than
+    // collapsing to zero/one workers.
+    expect(maxActive).toBe(MAX_VERIFY_CONCURRENCY);
+  });
 });

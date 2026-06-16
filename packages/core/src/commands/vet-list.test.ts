@@ -499,6 +499,126 @@ describe('runVetList', () => {
     expect(mockVetIssue).toHaveBeenCalledWith('https://github.com/owner/repo/pull/7');
   });
 
+  it('keeps the verification when scout grading throws on an in-play issue (#1494)', async () => {
+    mockDetectIssueList.mockReturnValue({
+      path: '/tmp/issues.md',
+      source: 'configured',
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockRunParseList.mockResolvedValue({
+      available: [
+        {
+          repo: 'owner/repo',
+          number: 4,
+          title: 'At risk',
+          tier: 'Pursue',
+          url: 'https://github.com/owner/repo/issues/4',
+        },
+      ],
+      completed: [],
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockVerifyIssuesBatch.mockResolvedValue([
+      {
+        params: { owner: 'owner', repo: 'repo', number: 4 },
+        verification: {
+          url: 'https://github.com/owner/repo/issues/4',
+          owner: 'owner',
+          repo: 'repo',
+          number: 4,
+          title: 'At risk',
+          state: 'open',
+          stateReason: null,
+          closedAt: null,
+          assignees: [],
+          linkedPRs: [],
+          verdict: 'at-risk',
+          verdictReason: 'open PR cross-references this issue',
+          userLogin: 'costajohnt',
+        },
+      },
+    ]);
+    // Verify succeeded (at-risk → in play), but scout grading then fails.
+    mockVetIssue.mockRejectedValueOnce(new Error('grading blew up'));
+
+    const result = await runVetList({ concurrency: 1 });
+
+    // The row is an error (grading failed) BUT the authoritative verdict facts
+    // survive, and there is no verifyError (verify itself succeeded).
+    expect(result.results[0].listStatus).toBe('error');
+    expect(result.results[0].errorMessage).toBe('grading blew up');
+    expect(result.results[0].verification?.verdict).toBe('at-risk');
+    expect(result.results[0].verifyError).toBeUndefined();
+  });
+
+  it('lets the verify verdict override scout when they disagree (#1494)', async () => {
+    mockDetectIssueList.mockReturnValue({
+      path: '/tmp/issues.md',
+      source: 'configured',
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockRunParseList.mockResolvedValue({
+      available: [
+        {
+          repo: 'owner/repo',
+          number: 1,
+          title: 'Available',
+          tier: 'Pursue',
+          url: 'https://github.com/owner/repo/issues/1',
+        },
+      ],
+      completed: [],
+      availableCount: 1,
+      completedCount: 0,
+    });
+    mockVerifyIssuesBatch.mockResolvedValue([
+      {
+        params: { owner: 'owner', repo: 'repo', number: 1 },
+        verification: {
+          url: 'https://github.com/owner/repo/issues/1',
+          owner: 'owner',
+          repo: 'repo',
+          number: 1,
+          title: 'Available',
+          state: 'open',
+          stateReason: null,
+          closedAt: null,
+          assignees: [],
+          linkedPRs: [],
+          verdict: 'available',
+          verdictReason: 'open, unassigned, no claiming PRs',
+          userLogin: 'costajohnt',
+        },
+      },
+    ]);
+    // Scout's heuristic would say "closed" — but the verdict is authoritative.
+    mockVetIssue.mockResolvedValueOnce({
+      issue: {
+        repo: 'owner/repo',
+        number: 1,
+        title: 'Available',
+        url: 'https://github.com/owner/repo/issues/1',
+        labels: [],
+      },
+      recommendation: 'skip' as const,
+      reasonsToApprove: [],
+      reasonsToSkip: ['Issue is closed'],
+      projectHealth: {},
+      vettingResult: {},
+    });
+
+    const result = await runVetList({ concurrency: 1 });
+
+    // Verdict wins: still_available, NOT closed (which the old heuristic gave).
+    expect(result.results[0].listStatus).toBe('still_available');
+    expect(result.results[0].verification?.verdict).toBe('available');
+    // Scout's recommendation still flows through for context.
+    expect(result.results[0].recommendation).toBe('skip');
+  });
+
   it('should throw when no issue list is found and no path provided', async () => {
     mockDetectIssueList.mockReturnValue(undefined);
 
