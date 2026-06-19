@@ -87,6 +87,42 @@ not-a-valid-line
     expect(warnCalls).toBeGreaterThanOrEqual(3);
   });
 
+  it('should parse entries with a trailing "# reason" comment (dedup must not break on reasons)', () => {
+    // Regression for the silent dedup failure: the writers (the /oss-search
+    // workflow and manual triage) append "date url  # reason" because the
+    // reason is useful for humans. The parser must treat the trailing comment
+    // as a comment, not reject the whole line as malformed.
+    const content = `2026-06-19 https://github.com/sindresorhus/eslint-plugin-unicorn/issues/3374  # 3/10 self-fix-race risk
+2026-06-19 https://github.com/elastic/eui/issues/9734  # skip: grade F docs tweak
+`;
+    const result = parseSkippedIssuesContent(content);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({
+      url: 'https://github.com/sindresorhus/eslint-plugin-unicorn/issues/3374',
+      repo: 'sindresorhus/eslint-plugin-unicorn',
+      number: 3374,
+      title: '',
+      skippedAt: '2026-06-19T00:00:00.000Z',
+    });
+    expect(result[1].url).toBe('https://github.com/elastic/eui/issues/9734');
+    // A well-formed entry with a comment must not warn.
+    expect(mockWarn).not.toHaveBeenCalled();
+  });
+
+  it('should not let comment-stripping truncate a URL fragment', () => {
+    // A "#fragment" inside the URL has no preceding whitespace, so it is part
+    // of the URL token and must NOT be treated as a comment delimiter.
+    const content = `2026-06-19 https://github.com/owner/repo/issues/42#issuecomment-99  # has both fragment and comment
+`;
+    const result = parseSkippedIssuesContent(content);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].url).toBe('https://github.com/owner/repo/issues/42#issuecomment-99');
+    expect(result[0].repo).toBe('owner/repo');
+    expect(result[0].number).toBe(42);
+  });
+
   it('should handle PR URLs as well as issue URLs', () => {
     const content = `2026-04-15 https://github.com/owner/repo/pull/42
 `;
