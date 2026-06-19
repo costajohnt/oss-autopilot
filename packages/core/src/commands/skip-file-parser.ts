@@ -3,7 +3,11 @@
  *
  * The file format is one entry per line:
  *   2026-04-15 https://github.com/owner/repo/issues/123
- * Lines starting with `#` and blank lines are ignored.
+ * Lines starting with `#` and blank lines are ignored. A trailing inline
+ * comment is also allowed and ignored:
+ *   2026-04-15 https://github.com/owner/repo/issues/123  # reason for skipping
+ * The comment delimiter is whitespace followed by `#`, so a `#fragment` inside
+ * the URL (no preceding whitespace) is preserved, not treated as a comment.
  *
  * Produces SkippedIssue entries that plug directly into oss-scout's ScoutState
  * so the search engine filters already-skipped URLs out of results.
@@ -31,8 +35,10 @@ export function parseSkippedIssuesContent(content: string): SkippedIssue[] {
     const line = lines[i].trim();
     if (line === '' || line.startsWith('#')) continue;
 
-    // Split on first whitespace run: "YYYY-MM-DD <url>"
-    const match = line.match(/^(\S+)\s+(\S+)\s*$/);
+    // Parse "YYYY-MM-DD <url>" with an optional trailing "# comment". The
+    // comment delimiter is whitespace followed by `#`, so a `#fragment` inside
+    // the URL (no preceding whitespace) stays part of the URL token.
+    const match = line.match(/^(\S+)\s+(\S+)(?:\s+#.*)?$/);
     if (!match) {
       warn('skip-file-parser', `Line ${lineNumber}: malformed (expected "<date> <url>"): ${line}`);
       continue;
