@@ -14,17 +14,25 @@
  *  6. Cache all Gist file contents in memory for session-scoped reads
  *  7. Write state to a local cache file for fallback
  *
- * Concurrency model (#1115, #1235):
+ * Concurrency model (#1115, #1235, #1510):
  *
  *  Each fetch captures the response's `ETag` and stores it as
- *  `lastFetchedEtag`. The next `push()` sends that ETag back as
- *  `If-Match` so the GitHub Gist API rejects the write with 412 Precondition
- *  Failed if another machine pushed in the interval.
+ *  `lastFetchedEtag`. Originally this ETag was replayed as an `If-Match`
+ *  header on `push()` so the GitHub Gist API would reject a stale write with
+ *  412 Precondition Failed. That mechanism never worked against real GitHub:
+ *  the Gist `PATCH` endpoint rejects conditional request headers on unsafe
+ *  methods with HTTP 400 ("Conditional request headers are not allowed in
+ *  unsafe requests unless supported by the endpoint"), which made every Gist
+ *  write fail (#1510). The `If-Match` header is therefore no longer sent, and
+ *  cross-machine writes are effectively last-write-wins.
  *
- *  On 412, the store attempts a single merge: it re-fetches the Gist
- *  (refreshing the ETag), re-applies the in-memory dirty content on top of
- *  the now-current remote state, and pushes once more. If that second push
- *  also returns 412, `push()` throws {@link GistConcurrencyError}.
+ *  The 412 merge path described below is retained as defensive handling but
+ *  is unreachable in normal operation now that no conditional header is sent.
+ *  If a 412 ever does surface, the store attempts a single merge: it
+ *  re-fetches the Gist (refreshing the ETag), re-applies the in-memory dirty
+ *  content on top of the now-current remote state, and pushes once more. If
+ *  that second push also returns 412, `push()` throws
+ *  {@link GistConcurrencyError}.
  *
  *  Per-file conflict policy on the merge re-apply step:
  *
@@ -184,10 +192,13 @@ export class GistStateStore {
   private baselineFiles: Map<string, string> = new Map();
   /**
    * ETag captured from the most recent successful Gist fetch (#1115).
-   * Sent back as `If-Match` on `update` so concurrent writes from another
-   * machine surface as 412 Precondition Failed instead of silently winning
-   * the last-write-wins race. `null` when the SDK didn't surface the header
-   * (e.g. test mocks without headers) — in that case we skip the check.
+   *
+   * Historically replayed as `If-Match` on `update` to detect concurrent
+   * writes, but the Gist `PATCH` endpoint rejects conditional headers with
+   * HTTP 400 (#1510), so it is no longer sent on writes. Still captured on
+   * reads (and on the response of a successful write) so the defensive 412
+   * merge path can roll it back correctly. `null` when the SDK didn't
+   * surface the header (e.g. test mocks without headers).
    */
   private lastFetchedEtag: string | null = null;
   private readonly octokit: OctokitLike;
@@ -464,13 +475,15 @@ export class GistStateStore {
    * Push all dirty files to the backing Gist.
    *
    * Behavior:
-   *  - When an ETag is available from the previous fetch, sends `If-Match`
-   *    so a 412 surfaces if another machine pushed since we last fetched.
-   *  - On 412, attempts a single merge: re-fetches the Gist (refreshing the
-   *    ETag), re-applies the in-memory dirty content on top of the remote,
-   *    and pushes once more. If the second push also 412s, throws
-   *    {@link GistConcurrencyError} — the caller can decide whether to
-   *    refreshFromGist + retry.
+   *  - Writes are sent WITHOUT a conditional `If-Match` header (#1510). The
+   *    Gist `PATCH` endpoint rejects conditional headers on unsafe methods
+   *    with HTTP 400, so replaying the fetched ETag broke every write.
+   *    Cross-machine writes are therefore last-write-wins.
+   *  - The 412 merge path below is retained as defensive handling but is
+   *    unreachable against real GitHub now that `If-Match` is never sent.
+   *    If a 412 ever does surface, it re-fetches, re-applies the in-memory
+   *    dirty content, and pushes once more; a second 412 throws
+   *    {@link GistConcurrencyError}.
    *  - On any other error, retries once (existing behavior). If the retry
    *    also fails, returns `false`.
    *
@@ -499,18 +512,22 @@ export class GistStateStore {
       return out;
     };
 
-    /** Attempt a single push, capturing the response ETag for the next push. */
-    const attempt = async (
-      etag: string | null,
-    ): Promise<{ ok: true } | { ok: false; status?: number; err: unknown }> => {
+    /**
+     * Attempt a single push, capturing the response ETag for the next push.
+     *
+     * Deliberately does NOT send an `If-Match` conditional header (#1510).
+     * GitHub's REST API rejects conditional request headers on unsafe methods
+     * (`PATCH /gists/{id}` among them) with HTTP 400 ("Conditional request
+     * headers are not allowed in unsafe requests unless supported by the
+     * endpoint"), which made every Gist write fail. Reads still capture the
+     * ETag, but it is no longer replayed on the write.
+     */
+    const attempt = async (): Promise<{ ok: true } | { ok: false; status?: number; err: unknown }> => {
       try {
         const params: Parameters<OctokitLike['gists']['update']>[0] = {
           gist_id: this.gistId as string,
           files: buildFiles(),
         };
-        if (etag) {
-          params.headers = { 'if-match': etag };
-        }
         const response = await this.octokit.gists.update(params);
         // Refresh our cached ETag so the next push uses the post-update value.
         const newEtag = extractEtag(response.headers);
@@ -522,10 +539,14 @@ export class GistStateStore {
       }
     };
 
-    // ── Phase 1: best-shot push with current ETag ─────────────────────
-    let result = await attempt(this.lastFetchedEtag);
+    // ── Phase 1: best-shot push ───────────────────────────────────────
+    let result = await attempt();
 
     // ── Phase 2: ETag mismatch — try to merge once ────────────────────
+    // Defensive only: the write no longer sends `If-Match` (#1510), so a
+    // real GitHub Gist PATCH cannot return 412. This block is retained for
+    // the (currently unreachable) case where the endpoint surfaces a 412 by
+    // some other means; downstream callers still handle GistConcurrencyError.
     if (!result.ok && result.status === 412) {
       const expectedEtag = this.lastFetchedEtag;
       debug(MODULE, `push hit 412 (ETag mismatch); attempting merge — refreshing and retrying once`);
@@ -591,7 +612,7 @@ export class GistStateStore {
       }
       // Re-apply our staged dirty contents on top of the refreshed remote.
       reapplyStaged();
-      result = await attempt(this.lastFetchedEtag);
+      result = await attempt();
       if (!result.ok && result.status === 412) {
         warn(MODULE, 'Second push after merge also returned 412; surfacing GistConcurrencyError');
         throw new GistConcurrencyError(expectedEtag, this.lastFetchedEtag);
@@ -601,7 +622,7 @@ export class GistStateStore {
     // ── Phase 3: any other failure — retry once (existing behavior) ───
     if (!result.ok) {
       debug(MODULE, `push failed on first attempt, retrying: ${result.err}`);
-      result = await attempt(this.lastFetchedEtag);
+      result = await attempt();
       if (!result.ok) {
         warn(MODULE, `push failed after retry, giving up: ${result.err}`);
         return false;

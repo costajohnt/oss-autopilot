@@ -1074,8 +1074,11 @@ describe('GistStateStore', () => {
     });
   });
 
-  describe('ETag-based optimistic concurrency (#1115)', () => {
-    it('captures the ETag from a fetch and sends If-Match on the next push', async () => {
+  describe('ETag-based optimistic concurrency (#1115, #1510)', () => {
+    it('never sends an If-Match header on the write even when an ETag was fetched (#1510)', async () => {
+      // The Gist PATCH endpoint rejects conditional request headers with HTTP
+      // 400, so the captured ETag must not be replayed as `If-Match` on the
+      // write. Reads may still capture the ETag, but the write is unconditional.
       const gistId = 'etag-capture';
       const stateJson = makeStateJson();
       fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
@@ -1094,11 +1097,13 @@ describe('GistStateStore', () => {
       const ok = await store.push();
 
       expect(ok).toBe(true);
+      // Exactly gist_id + files — no `headers`/`if-match` field.
       expect(octokit.gists.update).toHaveBeenCalledWith({
         gist_id: gistId,
         files: { [STATE_FILE_NAME]: { content: stateJson } },
-        headers: { 'if-match': 'W/"abc123"' },
       });
+      const [params] = octokit.gists.update.mock.calls[0] as [{ headers?: Record<string, string> }];
+      expect(params.headers).toBeUndefined();
     });
 
     it('omits the If-Match header when the SDK does not surface an ETag (test mocks)', async () => {
@@ -1155,17 +1160,16 @@ describe('GistStateStore', () => {
       const ok = await store.push();
 
       expect(ok).toBe(true);
-      // First call sent If-Match: v1, second call sent If-Match: v2 (post-refresh).
+      // Both attempts are unconditional — no `If-Match` header is ever sent
+      // (#1510), even on the defensive 412 retry path.
       expect(octokit.gists.update).toHaveBeenCalledTimes(2);
       expect(octokit.gists.update).toHaveBeenNthCalledWith(1, {
         gist_id: gistId,
         files: { [STATE_FILE_NAME]: { content: stateJson } },
-        headers: { 'if-match': 'W/"v1"' },
       });
       expect(octokit.gists.update).toHaveBeenNthCalledWith(2, {
         gist_id: gistId,
         files: { [STATE_FILE_NAME]: { content: stateJson } },
-        headers: { 'if-match': 'W/"v2"' },
       });
     });
 
