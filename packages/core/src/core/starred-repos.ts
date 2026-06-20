@@ -29,20 +29,15 @@ export interface StarredReposState {
 }
 
 /** Page through the authenticated user's stars, collecting `owner/repo` names. */
-async function collectStarredRepoNames(
-  octokit: ReturnType<typeof getOctokit>,
-): Promise<string[]> {
+async function collectStarredRepoNames(octokit: ReturnType<typeof getOctokit>): Promise<string[]> {
   const repos: string[] = [];
   let page = 0;
-  for await (const response of octokit.paginate.iterator(
-    octokit.activity.listReposStarredByAuthenticatedUser,
-    {
-      per_page: PER_PAGE,
-      // Default media type returns the repo object directly (with full_name);
-      // the star+timestamp media type would wrap it in { repo, starred_at }.
-      headers: { accept: 'application/vnd.github.v3+json' },
-    },
-  )) {
+  for await (const response of octokit.paginate.iterator(octokit.activity.listReposStarredByAuthenticatedUser, {
+    per_page: PER_PAGE,
+    // Default media type returns the repo object directly (with full_name);
+    // the star+timestamp media type would wrap it in { repo, starred_at }.
+    headers: { accept: 'application/vnd.github.v3+json' },
+  })) {
     for (const repo of response.data as Array<{ full_name?: string }>) {
       if (repo.full_name) repos.push(repo.full_name);
     }
@@ -61,9 +56,7 @@ async function collectStarredRepoNames(
  * number of repos cached after the call (freshly fetched, or the existing list
  * when fresh / on error).
  */
-export async function refreshStarredReposIfStale(
-  state: StarredReposState,
-): Promise<number> {
+export async function refreshStarredReposIfStale(state: StarredReposState): Promise<number> {
   if (!state.isStarredReposStale()) {
     return state.getStarredRepos().length;
   }

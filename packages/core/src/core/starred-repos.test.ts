@@ -59,19 +59,14 @@ describe('refreshStarredReposIfStale', () => {
     });
     const { state, setStarredRepos } = makeState({ stale: true, cached: [] });
 
-    await expect(refreshStarredReposIfStale(state)).rejects.toThrow(
-      'GitHub authentication required',
-    );
+    await expect(refreshStarredReposIfStale(state)).rejects.toThrow('GitHub authentication required');
     expect(mockGetOctokit).not.toHaveBeenCalled();
     expect(setStarredRepos).not.toHaveBeenCalled();
   });
 
   it('fetches and caches starred repos when the cache is stale', async () => {
     mockGetOctokit.mockReturnValue(
-      fakeOctokit([
-        [{ full_name: 'a/one' }, { full_name: 'b/two' }],
-        [{ full_name: 'c/three' }],
-      ]),
+      fakeOctokit([[{ full_name: 'a/one' }, { full_name: 'b/two' }], [{ full_name: 'c/three' }]]),
     );
     const { state, setStarredRepos } = makeState({ stale: true });
 
@@ -95,9 +90,7 @@ describe('refreshStarredReposIfStale', () => {
   });
 
   it('drops entries without a full_name', async () => {
-    mockGetOctokit.mockReturnValue(
-      fakeOctokit([[{ full_name: 'a/one' }, {}, { full_name: 'b/two' }]]),
-    );
+    mockGetOctokit.mockReturnValue(fakeOctokit([[{ full_name: 'a/one' }, {}, { full_name: 'b/two' }]]));
     const { state, setStarredRepos } = makeState({ stale: true });
 
     await refreshStarredReposIfStale(state);
