@@ -44,6 +44,23 @@ vi.mock('./paths.js', async (importOriginal) => {
     },
     getLegacyStatePath: () => path.join(mockTmpDir, 'legacy-data', 'state.json'),
     getLegacyBackupDir: () => path.join(mockTmpDir, 'legacy-data', 'backups'),
+    // Without these, `peekGistArtifacts()` (the ENOENT fallback inside
+    // `ensureGistPersistence`) reads the developer's real `~/.oss-autopilot/`
+    // state-cache.json / gist-id. On a machine that ever enabled gist mode the
+    // cache carries `persistence: gist`, so the "local-mode" tests below would
+    // (a) misclassify as gist and (b) make a live `GET /gists` call that 401s
+    // when the ambient token lacks gist scope. Redirect both into the tmp dir
+    // so the suite is hermetic regardless of the host's gist artifacts.
+    getStateCachePath: () => {
+      if (!mockTmpDir) throw new Error('mockTmpDir not set');
+      if (!fs.existsSync(mockTmpDir)) fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
+      return path.join(mockTmpDir, 'state-cache.json');
+    },
+    getGistIdPath: () => {
+      if (!mockTmpDir) throw new Error('mockTmpDir not set');
+      if (!fs.existsSync(mockTmpDir)) fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
+      return path.join(mockTmpDir, 'gist-id');
+    },
   };
 });
 
