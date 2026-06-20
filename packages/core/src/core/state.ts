@@ -382,7 +382,15 @@ export class StateManager {
   async checkpoint(): Promise<boolean> {
     if (!this.gistStore) return true; // not in Gist mode
     this.gistStore.setState(JSON.stringify(this.state, null, 2));
-    return this.gistStore.push();
+    const pushed = await this.gistStore.push();
+    // A push that fails after its internal retry means the Gist is no longer
+    // the authoritative copy of our in-memory state — surface that as degraded
+    // so `state --show`, the daily check, and doctor stop reporting healthy
+    // (#1510). A later successful refresh/checkpoint can clear it.
+    if (!pushed) {
+      this.gistDegraded = true;
+    }
+    return pushed;
   }
 
   /** Whether this StateManager is backed by a Gist. */

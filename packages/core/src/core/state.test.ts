@@ -1227,3 +1227,35 @@ describe('maybeCheckpoint (#1370)', () => {
     expect(warning).toMatch(/socket hang up/);
   });
 });
+
+describe('StateManager.checkpoint gistDegraded (#1510)', () => {
+  const makeMockGistStore = (push: ReturnType<typeof vi.fn>) => ({
+    setState: vi.fn(),
+    push,
+  });
+
+  it('flips gistDegraded to true when push fails after retries', async () => {
+    const manager = new StateManager(true);
+    const mockGistStore = makeMockGistStore(vi.fn().mockResolvedValue(false));
+    (manager as unknown as { gistStore: unknown }).gistStore = mockGistStore;
+
+    expect(manager.isGistDegraded()).toBe(false);
+
+    const pushed = await manager.checkpoint();
+
+    expect(pushed).toBe(false);
+    expect(manager.isGistDegraded()).toBe(true);
+    expect(mockGistStore.setState).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves gistDegraded false on a successful push', async () => {
+    const manager = new StateManager(true);
+    const mockGistStore = makeMockGistStore(vi.fn().mockResolvedValue(true));
+    (manager as unknown as { gistStore: unknown }).gistStore = mockGistStore;
+
+    const pushed = await manager.checkpoint();
+
+    expect(pushed).toBe(true);
+    expect(manager.isGistDegraded()).toBe(false);
+  });
+});
