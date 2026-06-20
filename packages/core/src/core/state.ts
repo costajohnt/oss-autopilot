@@ -386,10 +386,13 @@ export class StateManager {
     // A push that fails after its internal retry means the Gist is no longer
     // the authoritative copy of our in-memory state — surface that as degraded
     // so `state --show`, the daily check, and doctor stop reporting healthy
-    // (#1510). A later successful refresh/checkpoint can clear it.
-    if (!pushed) {
-      this.gistDegraded = true;
-    }
+    // (#1510). A later successful checkpoint clears it again: without that, a
+    // single transient blip would latch a long-lived process (MCP server /
+    // dashboard) into "degraded" for its whole lifetime and could trigger an
+    // unnecessary re-bootstrap. A thrown GistConcurrencyError is deliberately
+    // left untouched here — a concurrent remote write is recoverable (refresh +
+    // retry), not a degradation of the Gist itself.
+    this.gistDegraded = !pushed;
     return pushed;
   }
 
