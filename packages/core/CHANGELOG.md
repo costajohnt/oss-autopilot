@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.4](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.3...core-v3.14.4) (2026-06-20)
+
+
+### Bug Fixes
+
+* **gist:** clear gistDegraded on recovery and pass through rate-limit re-read failures ([#1519](https://github.com/costajohnt/oss-autopilot/issues/1519)) ([be7256c](https://github.com/costajohnt/oss-autopilot/commit/be7256c2b1cea8b2c6060766f6ca361b432637bb))
+
 ## [3.14.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.2...core-v3.14.3) (2026-06-20)
 
 
