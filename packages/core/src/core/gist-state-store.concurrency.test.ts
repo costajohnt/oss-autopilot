@@ -1,19 +1,20 @@
 /**
  * Concurrency stress tests for GistStateStore (#1191, #1510).
  *
- * HISTORY: the production push path used to implement optimistic concurrency
- * via ETag / `If-Match` and a single merge-and-retry on 412. That mechanism
- * was removed in #1510 because the Gist `PATCH` endpoint rejects conditional
- * request headers with HTTP 400, which made every Gist write fail. Writes are
- * now unconditional, so cross-machine contention resolves last-write-wins
- * rather than surfacing 412 / GistConcurrencyError.
+ * HISTORY: the push path used to enforce optimistic concurrency by replaying
+ * the fetched ETag as an `If-Match` header so the Gist API would reject a
+ * stale write with 412. That never worked against real GitHub — the Gist
+ * `PATCH` endpoint rejects conditional request headers with HTTP 400 (#1510).
+ * The header was dropped and concurrency is now enforced client-side: when
+ * `state.json` is dirty, `push()` re-reads the Gist and compares the remote
+ * `state.json` against the baseline from the last fetch, throwing
+ * GistConcurrencyError if it moved under the writer (#1235). Freeform
+ * documents keep last-write-wins (the Gist `files` param is a partial update).
  *
- * The stateful mock below still tracks an ETag and a (now never-triggered)
- * `If-Match` precondition so it can assert the production code does NOT send
- * the header. These tests therefore exercise convergence under last-write-wins
- * for DISJOINT files (the common real-world case: each machine owns its own
- * guidelines doc). The defensive 412 merge path that remains in production is
- * unit-tested directly in gist-state-store.test.ts via injected 412 responses.
+ * The stateful mock below tracks an ETag and a (now never-triggered)
+ * `If-Match` precondition so the convergence test can assert production never
+ * sends the header. `get` always returns the current canonical content, which
+ * is what drives the read-before-write conflict detection.
  *
  * `cachedFiles` and `dirtyFiles` are public readonly handles on the store, so
  * the test can mutate them as the app layer does without reaching into private
@@ -309,13 +310,11 @@ describe('GistStateStore concurrency (#1191)', () => {
   });
 
   // NOTE (#1510): the former "loses two consecutive races surfaces
-  // GistConcurrencyError", "two writers modifying state.json — second fails
-  // loud", and "mixed dirty set" tests were removed here. Each relied on the
-  // Gist PATCH returning 412 in response to a stale `If-Match`. That header is
-  // no longer sent (the endpoint rejects it with HTTP 400), so contended
-  // writes now resolve last-write-wins rather than failing loud. The defensive
-  // 412 merge path that survives in production is still unit-tested with
-  // injected 412 responses in gist-state-store.test.ts.
+  // GistConcurrencyError" test was removed here. It relied on the writer
+  // hitting two consecutive 412s through the mid-push refresh — a path that
+  // only existed under the dropped `If-Match` server-side concurrency. The
+  // state.json fail-loud guarantee it protected is now covered by the two
+  // read-before-write tests below.
 
   it('after a contended push sequence, refreshFromGist returns the canonical state', async () => {
     const mock = makeStatefulGistMock(GIST_ID, makeInitialStateJson());
@@ -355,5 +354,75 @@ describe('GistStateStore concurrency (#1191)', () => {
     const finalFiles = mock.readAllFiles();
     expect(finalFiles['guidelines--writer-a.md']).toBe('a content');
     expect(finalFiles['guidelines--writer-b.md']).toBe('b content');
+  });
+
+  // Pins the per-file conflict policy from #1235 under the read-before-write
+  // mechanism (#1510): when two writers modify state.json on the same base,
+  // the second writer's pre-write re-read sees the first writer's edit on
+  // remote, so it fails loud (GistConcurrencyError) instead of clobbering.
+  it('two writers modifying state.json on the same base — second push fails loud (#1235)', async () => {
+    const mock = makeStatefulGistMock(GIST_ID, makeInitialStateJson());
+    const a = new GistStateStore(mock.octokit);
+    const b = new GistStateStore(mock.octokit);
+    await Promise.all([a.bootstrap(), b.bootstrap()]);
+
+    // a writes url-a; b writes url-b. Both based on the same bootstrap-time
+    // base state (no URLs).
+    const stateA = JSON.parse(a.cachedFiles.get(STATE_FILE_NAME)!) as Record<string, unknown>;
+    (stateA.config as { shelvedPRUrls: string[] }).shelvedPRUrls.push('url-a');
+    a.setState(JSON.stringify(stateA, null, 2));
+    await a.push();
+
+    const stateB = JSON.parse(b.cachedFiles.get(STATE_FILE_NAME)!) as Record<string, unknown>;
+    (stateB.config as { shelvedPRUrls: string[] }).shelvedPRUrls.push('url-b');
+    b.setState(JSON.stringify(stateB, null, 2));
+    // b's pre-write re-read finds the remote state.json has changed since b's
+    // baseline (a's url-a edit), so the store surfaces GistConcurrencyError
+    // instead of clobbering.
+    await expect(b.push()).rejects.toBeInstanceOf(GistConcurrencyError);
+
+    // Canonical state retains a's write.
+    const finalState = mock.readState() as { config: { shelvedPRUrls: string[] } };
+    expect(finalState.config.shelvedPRUrls).toEqual(['url-a']);
+
+    // b's local mutation is preserved in memory so the caller can refresh and
+    // reapply manually if desired.
+    expect(b.dirtyFiles.has(STATE_FILE_NAME)).toBe(true);
+    const bStaged = JSON.parse(b.cachedFiles.get(STATE_FILE_NAME)!) as {
+      config: { shelvedPRUrls: string[] };
+    };
+    expect(bStaged.config.shelvedPRUrls).toEqual(['url-b']);
+  });
+
+  // Companion: a mixed dirty set (state.json + a guidelines file) fails loud as
+  // a whole when state.json conflicted — the pre-write check gates the entire
+  // push, so the guidelines file does not land either (#1235, #1510).
+  it('mixed dirty set surfaces GistConcurrencyError when state.json conflicted (#1235)', async () => {
+    const mock = makeStatefulGistMock(GIST_ID, makeInitialStateJson());
+    const peer = new GistStateStore(mock.octokit);
+    const writer = new GistStateStore(mock.octokit);
+    await Promise.all([peer.bootstrap(), writer.bootstrap()]);
+
+    // Peer pushes a state.json change, moving state.json off the writer's
+    // baseline.
+    const peerState = JSON.parse(peer.cachedFiles.get(STATE_FILE_NAME)!) as Record<string, unknown>;
+    (peerState.config as { shelvedPRUrls: string[] }).shelvedPRUrls.push('peer-url');
+    peer.setState(JSON.stringify(peerState, null, 2));
+    await peer.push();
+
+    // Writer stages BOTH a guidelines file and a state.json edit on the
+    // pre-peer base. The pre-write re-read sees state.json moved under it; per
+    // #1235 the whole push fails loud.
+    const writerState = JSON.parse(writer.cachedFiles.get(STATE_FILE_NAME)!) as Record<string, unknown>;
+    (writerState.config as { shelvedPRUrls: string[] }).shelvedPRUrls.push('writer-url');
+    writer.setDocument('guidelines--writer.md', 'writer content');
+    writer.setState(JSON.stringify(writerState, null, 2));
+    await expect(writer.push()).rejects.toBeInstanceOf(GistConcurrencyError);
+
+    // Canonical state retains peer's write; writer's guidelines did NOT land
+    // (the failed push aborted the whole batch).
+    const finalState = mock.readState() as { config: { shelvedPRUrls: string[] } };
+    expect(finalState.config.shelvedPRUrls).toEqual(['peer-url']);
+    expect(mock.readAllFiles()['guidelines--writer.md']).toBeUndefined();
   });
 });
