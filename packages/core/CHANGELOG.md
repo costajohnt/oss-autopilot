@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.2...core-v3.14.3) (2026-06-20)
+
+
+### Bug Fixes
+
+* **gist:** stop sending unsupported If-Match header on Gist PATCH ([#1510](https://github.com/costajohnt/oss-autopilot/issues/1510)) ([#1518](https://github.com/costajohnt/oss-autopilot/issues/1518)) ([fc51ae8](https://github.com/costajohnt/oss-autopilot/commit/fc51ae84fbfd1301af04b58af5f9fd25214d3320))
+* **test:** stop nightly e2e from failing on GitHub secondary rate limits ([#1514](https://github.com/costajohnt/oss-autopilot/issues/1514)) ([fb454b8](https://github.com/costajohnt/oss-autopilot/commit/fb454b8d35fb5faec8ce3395cec931a0da349328))
+
 ## [3.14.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.1...core-v3.14.2) (2026-06-19)
 
 
