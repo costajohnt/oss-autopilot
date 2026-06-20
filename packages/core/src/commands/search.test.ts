@@ -24,6 +24,13 @@ vi.mock('../core/index.js', async () => {
   };
 });
 
+// The starred-repo refresh has its own test (starred-repos.test.ts); stub it
+// here so runSearch tests stay offline and independent of the state-manager
+// mock shape used per-test.
+vi.mock('../core/starred-repos.js', () => ({
+  refreshStarredReposIfStale: vi.fn().mockResolvedValue(0),
+}));
+
 import { getStateManager } from '../core/index.js';
 import { createAutopilotScout, type ScoutBridgeDiagnostics } from './scout-bridge.js';
 import { runSearch } from './search.js';
