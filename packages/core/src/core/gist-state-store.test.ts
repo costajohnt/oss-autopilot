@@ -1232,6 +1232,30 @@ describe('GistStateStore', () => {
       expect(octokit.gists.update).not.toHaveBeenCalled();
     });
 
+    it('rethrows a rate-limit re-read failure unchanged instead of masking it as a concurrency conflict (#1510)', async () => {
+      const gistId = 'reread-rate-limited';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+
+      octokit.gists.get
+        .mockResolvedValueOnce({ ...makeGistResponse(gistId, stateJson), headers: { etag: 'W/"v1"' } })
+        .mockRejectedValueOnce(Object.assign(new Error('API rate limit exceeded'), { status: 429 }));
+
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      store.markDirty(STATE_FILE_NAME);
+
+      // A rate limit during the re-read is not a concurrency conflict. Surfacing
+      // it as one tells the caller to "refresh and retry", which just hits the
+      // same limit — the rate-limit error must propagate unchanged so the
+      // rate-limit contract handles it.
+      const { GistConcurrencyError } = await import('./errors.js');
+      const err = await store.push().catch((e: unknown) => e);
+      expect((err as Error).message).toContain('API rate limit exceeded');
+      expect(err).not.toBeInstanceOf(GistConcurrencyError);
+      expect(octokit.gists.update).not.toHaveBeenCalled();
+    });
+
     it('on corrupt remote during the pre-write re-read, rolls back ETag/baseline and propagates GistCorruptError (#1235)', async () => {
       // The pre-write re-read returns a corrupt state.json, so
       // parseStateFromCache throws GistCorruptError after `cachedFiles` /

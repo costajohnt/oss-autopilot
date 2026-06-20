@@ -588,9 +588,13 @@ export class GistStateStore {
         this.lastFetchedEtag = preReadEtag;
         reapplyStaged();
         // Preserve GistCorruptError so callers don't retry against a corrupt
-        // remote. Any other failure surfaces as a concurrency error — the
-        // gist content is still likely fine, the caller can refresh + retry.
+        // remote, and let rate-limit errors propagate unchanged so they aren't
+        // mistaken for a concurrency conflict — a "refresh + retry" remediation
+        // would just hit the same limit (#1510). Any other failure surfaces as
+        // a concurrency error — the gist content is still likely fine, the
+        // caller can refresh + retry.
         if (readErr instanceof GistCorruptError) throw readErr;
+        if (isRateLimitError(readErr)) throw readErr;
         throw new GistConcurrencyError(preReadEtag, null);
       }
 

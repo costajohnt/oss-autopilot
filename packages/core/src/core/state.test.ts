@@ -1258,4 +1258,21 @@ describe('StateManager.checkpoint gistDegraded (#1510)', () => {
     expect(pushed).toBe(true);
     expect(manager.isGistDegraded()).toBe(false);
   });
+
+  it('clears gistDegraded on a successful push after a prior failure (#1510)', async () => {
+    const push = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const manager = new StateManager(true);
+    const mockGistStore = makeMockGistStore(push);
+    (manager as unknown as { gistStore: unknown }).gistStore = mockGistStore;
+
+    // A transient push failure latches degraded...
+    await manager.checkpoint();
+    expect(manager.isGistDegraded()).toBe(true);
+
+    // ...but the next successful push proves the Gist is authoritative again
+    // and must clear it, otherwise one blip degrades the process for its
+    // whole lifetime and can trigger an unnecessary re-bootstrap.
+    await manager.checkpoint();
+    expect(manager.isGistDegraded()).toBe(false);
+  });
 });
