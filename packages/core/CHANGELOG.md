@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.5](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.4...core-v3.14.5) (2026-06-21)
+
+
+### Bug Fixes
+
+* **search:** populate starred-repo cache so scout's starred phase fires ([#1524](https://github.com/costajohnt/oss-autopilot/issues/1524)) ([37d66b1](https://github.com/costajohnt/oss-autopilot/commit/37d66b164fc966a94beaab5964568cf4f90e5a50))
+
 ## [3.14.4](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.3...core-v3.14.4) (2026-06-20)
 
 
