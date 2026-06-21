@@ -42,6 +42,13 @@ vi.mock('../core/index.js', async () => {
   };
 });
 
+// The starred-repo refresh has its own test (starred-repos.test.ts); stub it
+// here so the contract test stays offline and independent of the minimal
+// state-manager mock above (which has no starred methods).
+vi.mock('../core/starred-repos.js', () => ({
+  refreshStarredReposIfStale: vi.fn().mockResolvedValue(0),
+}));
+
 import { runSearch } from './search.js';
 import { SearchOutputSchema } from '../formatters/json.js';
 import { schemaIssues } from '../core/test-utils.js';

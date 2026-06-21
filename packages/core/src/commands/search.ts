@@ -14,6 +14,7 @@ import { classifyLinkedPR, getStateManager } from '../core/index.js';
 import { type SearchOutput } from '../formatters/json.js';
 import { gradeFromCandidate } from '../core/issue-grading.js';
 import { computeStrategy } from '../core/strategy.js';
+import { refreshStarredReposIfStale } from '../core/starred-repos.js';
 import { debug, warn } from '../core/logger.js';
 
 export { type SearchOutput } from '../formatters/json.js';
@@ -103,8 +104,17 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
   // means scout searched with an empty skip list, so explicitly-skipped
   // issues may resurface — the envelope must say so, not just stderr.
   const bridgeDiagnostics: ScoutBridgeDiagnostics = {};
-  const scout = await createAutopilotScout(bridgeDiagnostics);
   const stateManager = getStateManager();
+
+  // Populate the starred-repo cache before the scout is created. Scout's
+  // discovery runs a starred-repo search phase, but it only fires when
+  // config.starredRepos is non-empty, and createAutopilotScout snapshots that
+  // config into the ScoutState. Without this refresh the starred phase is a
+  // silent no-op and discovery recycles the merged-PR repos every run. Fails
+  // soft, so a GitHub hiccup never blocks the search.
+  await refreshStarredReposIfStale(stateManager);
+
+  const scout = await createAutopilotScout(bridgeDiagnostics);
 
   // Derive personalization from local history (#1244). `computeStrategy`
   // returns null below the merged-PR floor — in that case we pass nothing
