@@ -33,7 +33,7 @@ vi.mock('../core/starred-repos.js', () => ({
 
 import { getStateManager } from '../core/index.js';
 import { createAutopilotScout, type ScoutBridgeDiagnostics } from './scout-bridge.js';
-import { runSearch } from './search.js';
+import { runSearch, recordSearchSeen, SEARCH_SEEN_RETENTION_DAYS } from './search.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
 
@@ -48,6 +48,8 @@ describe('runSearch', () => {
         },
       }),
       getRepoScore: vi.fn().mockReturnValue(null),
+      getSearchSeen: vi.fn().mockReturnValue([]),
+      setSearchSeen: vi.fn(),
     } as any);
   });
 
@@ -178,6 +180,8 @@ describe('runSearch', () => {
         signals: { isResponsive: true },
         lastMergedAt: '2026-01-10T00:00:00Z',
       }),
+      getSearchSeen: vi.fn().mockReturnValue([]),
+      setSearchSeen: vi.fn(),
     } as any);
 
     const result = await runSearch({ maxResults: 5 });
@@ -337,6 +341,8 @@ describe('runSearch', () => {
         avgResponseDays: 2,
         signals: { isResponsive: true },
       }),
+      getSearchSeen: vi.fn().mockReturnValue([]),
+      setSearchSeen: vi.fn(),
     } as any);
 
     const result = await runSearch({ maxResults: 5 });
@@ -484,6 +490,8 @@ describe('runSearch', () => {
           config: { excludeRepos: [], aiPolicyBlocklist: [], ...(githubUsername ? { githubUsername } : {}) },
         }),
         getRepoScore: vi.fn().mockReturnValue(null),
+        getSearchSeen: vi.fn().mockReturnValue([]),
+        setSearchSeen: vi.fn(),
       } as any);
     }
 
@@ -550,5 +558,63 @@ describe('runSearch', () => {
       expect(result.hiddenOwnPRCount).toBe(0);
       expect(result.candidates).toHaveLength(1);
     });
+  });
+});
+
+describe('recordSearchSeen (#1528)', () => {
+  function fakeStateManager(initial: Array<{ url: string; lastSeenAt: string }>) {
+    let seen = initial;
+    return {
+      getSearchSeen: () => seen,
+      setSearchSeen: vi.fn((s: Array<{ url: string; lastSeenAt: string }>) => {
+        seen = s;
+      }),
+      _current: () => seen,
+    } as unknown as ReturnType<typeof getStateManager> & {
+      _current: () => Array<{ url: string; lastSeenAt: string }>;
+      setSearchSeen: ReturnType<typeof vi.fn>;
+    };
+  }
+
+  const U1 = 'https://github.com/o/r/issues/1';
+  const U2 = 'https://github.com/o/r/issues/2';
+
+  it('adds newly surfaced URLs with a recent timestamp and persists', () => {
+    const sm = fakeStateManager([]);
+    recordSearchSeen(sm, [U1, U2]);
+
+    const seen = (sm as unknown as { _current: () => Array<{ url: string; lastSeenAt: string }> })._current();
+    expect(seen.map((e) => e.url).sort()).toEqual([U1, U2]);
+    for (const e of seen) {
+      expect(Date.now() - Date.parse(e.lastSeenAt)).toBeLessThan(60_000);
+    }
+    expect((sm as unknown as { setSearchSeen: ReturnType<typeof vi.fn> }).setSearchSeen).toHaveBeenCalledOnce();
+  });
+
+  it('refreshes the timestamp of an already-seen URL', () => {
+    const old = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    const sm = fakeStateManager([{ url: U1, lastSeenAt: old }]);
+
+    recordSearchSeen(sm, [U1]);
+
+    const entry = (sm as unknown as { _current: () => Array<{ url: string; lastSeenAt: string }> })._current()[0];
+    expect(Date.parse(entry.lastSeenAt)).toBeGreaterThan(Date.parse(old));
+  });
+
+  it('culls entries older than the retention window (empty surfaced still culls)', () => {
+    const stale = new Date(Date.now() - (SEARCH_SEEN_RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000).toISOString();
+    const fresh = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
+    const sm = fakeStateManager([
+      { url: 'https://github.com/o/r/issues/stale', lastSeenAt: stale },
+      { url: 'https://github.com/o/r/issues/fresh', lastSeenAt: fresh },
+    ]);
+
+    recordSearchSeen(sm, []);
+
+    const urls = (sm as unknown as { _current: () => Array<{ url: string; lastSeenAt: string }> })
+      ._current()
+      .map((e) => e.url);
+    expect(urls).toContain('https://github.com/o/r/issues/fresh');
+    expect(urls).not.toContain('https://github.com/o/r/issues/stale');
   });
 });
