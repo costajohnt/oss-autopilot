@@ -270,4 +270,33 @@ describe('loadSkippedIssuesDetailed', () => {
     expect(result.issues).toHaveLength(1);
     expect(result.issues[0].url).toBe('https://github.com/owncast/owncast/issues/4883');
   });
+
+  it('flags notFound (not readError) and warns with a resolved path when a configured file is missing (#1528)', () => {
+    mockExistsSync.mockReturnValue(false);
+
+    const result = loadSkippedIssuesDetailed('/missing/path.md');
+
+    expect(result.issues).toEqual([]);
+    expect(result.readError).toBeUndefined();
+    expect(result.notFound).toBe(true);
+    expect(result.resolvedPath).toBe('/missing/path.md');
+    // A configured-but-missing skip list must be loud, not silent.
+    expect(mockWarn).toHaveBeenCalled();
+  });
+
+  it('resolves a relative configured path to absolute for the lookup (#1528)', () => {
+    mockExistsSync.mockReturnValue(false);
+
+    const result = loadSkippedIssuesDetailed('open-source/skipped-issues.md');
+
+    expect(result.notFound).toBe(true);
+    expect(result.resolvedPath?.startsWith('/')).toBe(true);
+    expect(result.resolvedPath?.endsWith('open-source/skipped-issues.md')).toBe(true);
+  });
+
+  it('does not flag notFound or warn when no path is configured', () => {
+    const result = loadSkippedIssuesDetailed(undefined);
+    expect(result.notFound).toBeUndefined();
+    expect(mockWarn).not.toHaveBeenCalled();
+  });
 });

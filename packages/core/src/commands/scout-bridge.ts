@@ -31,9 +31,11 @@ export const SEARCH_DIVERSITY_RATIO = 0.2;
  */
 export interface ScoutBridgeDiagnostics {
   /**
-   * Set when a configured skipped-issues file exists but could not be read.
-   * The scout state was built with an EMPTY skip list, so explicitly-skipped
-   * issues may resurface in results.
+   * Set when a configured skipped-issues file could not be loaded — either it
+   * exists but is unreadable (#1448), or a path is configured but no file
+   * exists at the resolved location (#1528, the relative-path-vs-CWD case). The
+   * scout state was built with an EMPTY skip list, so explicitly-skipped issues
+   * may resurface in results.
    */
   skipListUnavailable?: boolean;
 }
@@ -89,19 +91,22 @@ export function buildCandidateLinkedPR(scoutLinkedPR: ScoutLinkedPR | null | und
  * Build a ScoutState from the current AgentState.
  * Maps oss-autopilot's config and state fields to oss-scout's state format.
  *
- * @param diagnostics - Optional collector for degradation signals (#1448);
- *   `skipListUnavailable` is set when the skipped-issues file exists but
- *   could not be read.
+ * @param diagnostics - Optional collector for degradation signals (#1448,
+ *   #1528); `skipListUnavailable` is set when the configured skipped-issues
+ *   file is unreadable or missing at its resolved path.
  */
 export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutState {
   const state = getStateManager().getState();
   const { config } = state;
 
-  // Read failure (not absence) of the skip file means scout will see an empty
-  // skip list and may resurface explicitly-skipped issues — flag it so the
-  // search envelope can carry the signal instead of only stderr (#1448).
+  // A configured skip file that is unreadable (#1448) OR missing (#1528) leaves
+  // scout with an empty skip list and may resurface explicitly-skipped issues
+  // — flag both so the search envelope carries the signal instead of failing
+  // silently. The missing case is the common one: a relative skippedIssuesPath
+  // resolves against the CWD, so running /oss outside the directory that holds
+  // it found nothing and the skip list loaded empty without any warning.
   const skippedIssuesLoad = loadSkippedIssuesDetailed(config.skippedIssuesPath);
-  if (skippedIssuesLoad.readError !== undefined && diagnostics) {
+  if ((skippedIssuesLoad.readError !== undefined || skippedIssuesLoad.notFound) && diagnostics) {
     diagnostics.skipListUnavailable = true;
   }
 

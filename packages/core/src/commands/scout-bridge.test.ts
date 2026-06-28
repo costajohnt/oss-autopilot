@@ -343,6 +343,24 @@ describe('buildScoutState', () => {
     expect(result.skippedIssues).toEqual([]);
   });
 
+  it('sets diagnostics.skipListUnavailable when the configured skip file is missing (#1528)', () => {
+    const state = makeAgentState({
+      config: { skippedIssuesPath: 'open-source/skipped-issues.md' },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+    mockLoadSkippedIssuesDetailed.mockReturnValueOnce({
+      issues: [],
+      notFound: true,
+      resolvedPath: '/somewhere/open-source/skipped-issues.md',
+    });
+
+    const diagnostics: ScoutBridgeDiagnostics = {};
+    const result = buildScoutState(diagnostics);
+
+    expect(diagnostics.skipListUnavailable).toBe(true);
+    expect(result.skippedIssues).toEqual([]);
+  });
+
   it('leaves diagnostics.skipListUnavailable unset when the skip file loads cleanly (#1448)', () => {
     const state = makeAgentState({
       config: { skippedIssuesPath: '/vault/open-source/skipped-issues.md' },

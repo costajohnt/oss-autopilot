@@ -67,6 +67,8 @@ Task(general-purpose, "Run the CLI search command and return the raw JSON output
 **Parsing the response:**
 
 1. Check the JSON `success` field. If `success: false`, display the `error` field and offer retry/done.
+1a. **Skip-list health (#1528):** If `data.skipListUnavailable` is `true`, the configured skip file could not be loaded (missing or unreadable at its resolved path), so scout searched with an EMPTY skip list and previously-skipped issues may reappear in these results. Warn the user prominently before presenting candidates:
+   > ⚠️ Skip list could not be loaded — already-skipped issues may reappear. Check `skippedIssuesPath` (a relative path resolves against the current directory) or run `/oss` from the directory that contains your skip file. See stderr for the exact resolved path.
 2. If `success: true`, each entry in `data.candidates` has this shape:
    ```
    {
