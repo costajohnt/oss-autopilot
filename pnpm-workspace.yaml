@@ -34,3 +34,7 @@ overrides:
   # Clears the high TLS-validation / WebSocket-DoS / SOCKS5 advisories in
   # undici <7.28.0 (GHSA-vmh5-mc38-953g, GHSA-vxpw-j846-p89q, GHSA-vh2q-...).
   undici: '>=7.28.0'
+  # Dev-only, transitive via @oss-autopilot/core -> typedoc -> markdown-it.
+  # Quadratic-complexity ReDoS advisory GHSA-22p9-wv53-3rq4 in linkify-it
+  # <=5.0.0; patched in 5.0.1.
+  linkify-it: '>=5.0.1'
