@@ -73,7 +73,7 @@ Task(general-purpose, "Run the CLI search command and return the raw JSON output
      issue: { repo, repoUrl, number, title, url, labels },
      recommendation: "approve" | "skip" | "needs_review",
      viabilityScore: number,
-     grade: { letter: "A" | "B" | "C" | "F", reason: string },
+     grade: { score: number /* 1-10 */, reason: string },
      searchPriority: "merged_pr" | "preferred_org" | "starred" | "normal",
      reasonsToApprove: string[],
      reasonsToSkip: string[],

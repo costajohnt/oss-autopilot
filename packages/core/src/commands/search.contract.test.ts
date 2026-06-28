@@ -135,7 +135,9 @@ describe('search --json contract', () => {
       expect(candidate.viabilityScore).toBeGreaterThanOrEqual(0);
       expect(candidate.viabilityScore).toBeLessThanOrEqual(100);
       expect(candidate.issue.url).toMatch(/^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+$/);
-      expect(candidate.grade.letter).toMatch(/^[A-CF]$/);
+      expect(Number.isFinite(candidate.grade.score)).toBe(true);
+      expect(candidate.grade.score).toBeGreaterThanOrEqual(1);
+      expect(candidate.grade.score).toBeLessThanOrEqual(10);
     }
 
     expect(schemaIssues(SearchOutputSchema, result)).toEqual([]);

@@ -632,7 +632,7 @@ const SearchCandidateSchema = z.object({
   searchPriority: SearchPrioritySchema,
   viabilityScore: z.number(),
   grade: z.object({
-    letter: z.enum(['A', 'B', 'C', 'F']),
+    score: z.number().min(1).max(10),
     reason: z.string(),
   }),
   repoScore: z
@@ -1125,12 +1125,13 @@ export interface SearchCandidate {
   /** 0-100 scale composite viability score. Sanitized on the boundary (#1043): out-of-contract values are coerced to 0 and logged. */
   viabilityScore: number;
   /**
-   * Letter grade (A/B/C/F) computed from the autopilot-tracked repoScore.
-   * Scout's `search` does not emit per-candidate projectHealth, so scout-side
-   * signals are treated as unknown; unscored repos grade 'F'. See #1043.
+   * Success-likelihood score (1-10) computed from the autopilot-tracked
+   * repoScore. Scout's `search` does not emit per-candidate projectHealth, so
+   * scout-side signals are treated as unknown; unscored repos score 1. See
+   * #1043.
    */
   grade: {
-    letter: 'A' | 'B' | 'C' | 'F';
+    score: number;
     reason: string;
   };
   repoScore?: {
@@ -1458,9 +1459,9 @@ export interface VetOutput {
     reasons: string[];
     modelVersion: string;
   } | null;
-  /** Success-likelihood grade (#858): predicts whether a PR will merge. */
+  /** Success-likelihood score (#858, 1-10): predicts whether a PR will merge. */
   grade: {
-    letter: 'A' | 'B' | 'C' | 'F';
+    score: number;
     reason: string;
   };
 }

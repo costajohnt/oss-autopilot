@@ -32,7 +32,7 @@
       "linkedPRClassification": "none",
       "slmTriage": null,
       "grade": {
-        "letter": "B",
+        "score": 7,
         "reason": "3-day avg response"
       },
       "listStatus": "still_available",
@@ -61,7 +61,7 @@
       "projectHealth": {},
       "vettingResult": {},
       "grade": {
-        "letter": "F",
+        "score": 1,
         "reason": "unknown maintainer responsiveness, merge rate, activity"
       },
       "listStatus": "claimed",
@@ -102,7 +102,7 @@
       "projectHealth": {},
       "vettingResult": {},
       "grade": {
-        "letter": "F",
+        "score": 1,
         "reason": "unknown maintainer responsiveness, merge rate, activity"
       },
       "listStatus": "error",
@@ -141,7 +141,7 @@
       "linkedPRClassification": "none",
       "slmTriage": null,
       "grade": {
-        "letter": "B",
+        "score": 7,
         "reason": "3-day avg response"
       },
       "listStatus": "at_risk",
@@ -182,7 +182,7 @@
       "projectHealth": {},
       "vettingResult": {},
       "grade": {
-        "letter": "F",
+        "score": 1,
         "reason": "unknown maintainer responsiveness, merge rate, activity"
       },
       "listStatus": "own_open_pr",
@@ -223,7 +223,7 @@
       "projectHealth": {},
       "vettingResult": {},
       "grade": {
-        "letter": "F",
+        "score": 1,
         "reason": "unknown maintainer responsiveness, merge rate, activity"
       },
       "listStatus": "closed",
