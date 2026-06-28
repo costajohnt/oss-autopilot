@@ -18,7 +18,7 @@ A repo where you merged four PRs two years ago can carry a history score of 9 wh
 - `rubricScore` — the fresh **health score** (the field name predates this page and is kept for back-compat).
 - `historyScore` — the cached **history score** for the same repo, included when the user has one in local state; absent otherwise.
 
-The success-likelihood grade (`grade: {letter, reason}`) is a third, letter-valued signal: on the multi-issue `search` surface it is derived from history-side signals only (repo health is not fetched per candidate there), while `vet` re-grades with freshly fetched health. Same letter scale, different inputs — see [Success Likelihood Grade](#success-likelihood-grade).
+The success-likelihood score (`grade: {score, reason}`) is a third signal on a 1-10 scale: on the multi-issue `search` surface it is derived from history-side signals only (repo health is not fetched per candidate there), while `vet` re-grades with freshly fetched health. Same 1-10 scale, different inputs — see [Success Likelihood Score](#success-likelihood-score).
 
 ## History score (yours)
 
@@ -121,9 +121,9 @@ Issue-scout adds two scout-specific layers on top of it (issue quality and user-
 
 **Tooling note:** "time to first review" is *not* available from `gh pr list --json`. If you want that metric, fetch `gh api repos/OWNER/REPO/pulls/PULL_NUMBER/reviews` per PR — otherwise omit the metric. Don't fabricate it from list metadata.
 
-### Success Likelihood Grade
+### Success Likelihood Score
 
-The CLI returns `grade: {letter, reason}` (`'A' | 'B' | 'C' | 'F'`) in `vet --json`. Algorithm: worst-of-three (PR speed, merge rate, responsiveness), with unknown values degrading one step. Source: `packages/core/src/core/issue-grading.ts`. Display the grade verbatim — e.g., `A (~2-day avg response)`, `F (unresponsive maintainers)`.
+The CLI returns `grade: {score, reason}` (a 1-10 number) in `vet --json`. Algorithm: each signal (PR speed, merge rate, responsiveness) lands in a band — 10 / 7 / 4 / 1 (best→worst) — the overall score is the worst of the three, dropping one band if any value is unknown. Source: `packages/core/src/core/issue-grading.ts`. Display the score verbatim — e.g., `10/10 (~2-day avg response)`, `1/10 (unresponsive maintainers)`.
 
 ### Red Flags
 

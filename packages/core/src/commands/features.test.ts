@@ -189,8 +189,8 @@ describe('runFeatures', () => {
     const result = await runFeatures({ maxResults: 5 });
 
     // Repo has no autopilot-tracked score and projectHealth is sentinel-unknown,
-    // so the grader degrades to 'F' — same policy as runSearch (#1043).
-    expect(result.quickWins[0].grade.letter).toBe('F');
+    // so the grader scores 1 — same policy as runSearch (#1043).
+    expect(result.quickWins[0].grade.score).toBe(1);
   });
 
   it('returns the scout-side message verbatim when no anchors qualify', async () => {

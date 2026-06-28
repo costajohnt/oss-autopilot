@@ -545,7 +545,7 @@ export const commands: CLICommandDef[] = [
               console.log(`\nVetting issue: ${issueUrl}\n`);
               console.log(`[${recommendation.toUpperCase()}] ${issue.repo}#${issue.number}: ${issue.title}`);
               console.log(`  URL: ${issue.url}`);
-              console.log(`  Success grade: ${grade.letter} (${grade.reason})`);
+              console.log(`  Success score: ${grade.score}/10 (${grade.reason})`);
               if (reasonsToApprove.length > 0) console.log(`  Approve: ${reasonsToApprove.join(', ')}`);
               if (reasonsToSkip.length > 0) console.log(`  Skip: ${reasonsToSkip.join(', ')}`);
             },

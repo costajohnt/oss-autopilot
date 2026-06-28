@@ -301,8 +301,8 @@ describe('runSearch', () => {
     const result = await runSearch({ maxResults: 5 });
 
     // Repo has no autopilot-tracked score, scout-side signals are treated as
-    // unknown — every signal missing degrades to F per issue-grading policy.
-    expect(result.candidates[0].grade.letter).toBe('F');
+    // unknown — every signal missing scores 1 per issue-grading policy.
+    expect(result.candidates[0].grade.score).toBe(1);
     expect(result.candidates[0].grade.reason).toMatch(/unknown/i);
   });
 
@@ -341,9 +341,9 @@ describe('runSearch', () => {
 
     const result = await runSearch({ maxResults: 5 });
 
-    // High merge rate (20/23 ≈ 87%) + fast response → at worst C after the
-    // one-step degrade for unknown commit activity. Assert it beat F.
-    expect(result.candidates[0].grade.letter).not.toBe('F');
+    // High merge rate (20/23 ≈ 87%) + fast response → at worst 4 after the
+    // one-band drop for unknown commit activity. Assert it beat the floor of 1.
+    expect(result.candidates[0].grade.score).toBeGreaterThan(1);
   });
 
   it('surfaces a linkedPR slice with isStalled=true for an open PR last updated >30 days ago', async () => {
