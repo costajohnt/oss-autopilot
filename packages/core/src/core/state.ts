@@ -16,6 +16,7 @@ import {
   FetchedPRStatus,
   StoredMergedPR,
   StoredClosedPR,
+  SearchSeenEntry,
 } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
 import {
@@ -972,6 +973,24 @@ export class StateManager {
    * @param status - The overridden status
    * @param lastActivityAt - ISO timestamp of PR's last activity when override was set
    */
+  /**
+   * The durable search seen-set (#1528) — issue URLs surfaced by recent
+   * searches, fed into oss-scout for result rotation. Returns `[]` when none
+   * recorded yet.
+   */
+  getSearchSeen(): SearchSeenEntry[] {
+    return this.state.searchSeen ?? [];
+  }
+
+  /**
+   * Replace the search seen-set (#1528). Callers merge the just-surfaced URLs
+   * and cull stale entries before calling this; the manager only persists.
+   */
+  setSearchSeen(seen: SearchSeenEntry[]): void {
+    this.state.searchSeen = seen;
+    this.autoSave();
+  }
+
   setStatusOverride(url: string, status: FetchedPRStatus, lastActivityAt: string): void {
     if (!this.state.config.statusOverrides) {
       this.state.config.statusOverrides = {};

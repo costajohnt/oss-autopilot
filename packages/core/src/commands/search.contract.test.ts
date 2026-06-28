@@ -38,6 +38,8 @@ vi.mock('../core/index.js', async () => {
       // A minimal-merged-PR state ensures computeStrategy returns null and the
       // search behaves exactly as before personalization (#1244).
       getState: () => ({ mergedPRs: [], closedPRs: [], repoScores: {}, lastDigest: null }),
+      getSearchSeen: () => [],
+      setSearchSeen: () => {},
     }),
   };
 });

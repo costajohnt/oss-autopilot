@@ -199,7 +199,26 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       title: pr.title,
       openedAt: pr.createdAt,
     })),
-    savedResults: [],
+    // Seen-set for result rotation (#1528). Scout's search() excludes issues
+    // whose lastSeenAt is within its rotation TTL, so consecutive searches
+    // surface fresh candidates instead of the same set. Autopilot runs scout
+    // in persistence:'provided', so this durable AgentState-backed list is what
+    // makes the rotation survive between separate /oss invocations. Only
+    // issueUrl + lastSeenAt drive the exclusion; the remaining SavedCandidate
+    // fields are unused by rotation and filled with neutral placeholders.
+    savedResults: (state.searchSeen ?? []).map((s) => ({
+      issueUrl: s.url,
+      repo: '',
+      number: 0,
+      title: '',
+      labels: [],
+      recommendation: 'skip' as const,
+      viabilityScore: 0,
+      searchPriority: 'normal' as const,
+      firstSeenAt: s.lastSeenAt,
+      lastSeenAt: s.lastSeenAt,
+      lastScore: 0,
+    })),
     skippedIssues: skippedIssuesLoad.issues,
     lastRunAt: state.lastRunAt,
   };

@@ -287,13 +287,28 @@ describe('buildScoutState', () => {
     expect(result.openPRs).toEqual([]);
   });
 
-  it('should always set savedResults to an empty array', () => {
+  it('sets savedResults to an empty array when the seen-set is empty', () => {
     const state = makeAgentState();
     mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
 
     const result = buildScoutState();
 
     expect(result.savedResults).toEqual([]);
+  });
+
+  it('maps the search seen-set into savedResults for rotation (#1528)', () => {
+    const lastSeenAt = '2026-06-20T00:00:00.000Z';
+    const state = makeAgentState({
+      searchSeen: [{ url: 'https://github.com/o/r/issues/1', lastSeenAt }],
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const result = buildScoutState();
+
+    expect(result.savedResults).toHaveLength(1);
+    // Only issueUrl + lastSeenAt drive scout's rotation; both must round-trip.
+    expect(result.savedResults[0].issueUrl).toBe('https://github.com/o/r/issues/1');
+    expect(result.savedResults[0].lastSeenAt).toBe(lastSeenAt);
   });
 
   it('should populate skippedIssues from the parsed skip file', () => {
