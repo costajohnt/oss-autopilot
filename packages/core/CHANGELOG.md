@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.15.0...core-v3.15.1) (2026-06-29)
+
+
+### Bug Fixes
+
+* **commands:** rebuild stale CLI bundle before standalone bundle calls ([#1535](https://github.com/costajohnt/oss-autopilot/issues/1535)) ([ff0d1b5](https://github.com/costajohnt/oss-autopilot/commit/ff0d1b53924e32998ebdc503faf99e6a8070096e))
+
 ## [3.15.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.5...core-v3.15.0) (2026-06-28)
 
 
