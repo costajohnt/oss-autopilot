@@ -19,6 +19,8 @@ the full extraction.
 
 ## What it does
 
+> **Bundle freshness:** the steps below prefer the MCP tools (no bundle needed). If you fall back to a `cli.bundle.cjs` call, first ensure the bundle reflects the installed plugin version — the plugin ships no prebuilt bundle, so a stale one can persist after an update. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}"` once before the first bundle call (exit 2 = build failed: stop and surface it). Skip this entirely when using the MCP tools.
+
 1. **Resolve the target repo.**
    - If an argument was passed, use it verbatim.
    - Otherwise, enumerate repos with stored guidelines via the
