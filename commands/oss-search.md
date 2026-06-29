@@ -36,6 +36,20 @@ Route based on choice:
 
 ## Run Search
 
+### Pre-Search: Ensure the CLI bundle is current
+
+The plugin ships **no** prebuilt bundle (`packages/*/dist/` is gitignored), so a stale or missing `cli.bundle.cjs` from a previous version can persist in the plugin cache after an update. `/oss` rebuilds on startup, but this command runs the bundle directly — so rebuild it here first, or a freshly-updated plugin would run old code (e.g. the pre-1-10 grade or pre-skip-list-fix behavior). Run the canonical helper before any bundle invocation:
+
+```bash
+CLI_BUILD_RC=0
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-cli-if-stale.sh" "${CLAUDE_PLUGIN_ROOT}" >/tmp/oss-search-cli-build.log 2>&1 || CLI_BUILD_RC=$?
+if [ "$CLI_BUILD_RC" = "2" ]; then
+  echo "CLI_BUILD_FAILED"; tail -5 /tmp/oss-search-cli-build.log
+fi
+```
+
+If the output contains `CLI_BUILD_FAILED` (helper exit code 2), the bundle is stale and could not be rebuilt — **stop**, show the build error, and suggest `cd "${CLAUDE_PLUGIN_ROOT}/packages/core" && npm install && npm run bundle`. Do NOT run the search against a stale bundle. Exit codes 0 (current) and 1 (rebuilt) are both fine — proceed.
+
 ### Pre-Search: Cull Skip File
 
 If a skipped issues file exists (from startup data's `skippedIssuesPath`, or probe `skipped-issues.md` in the same directory as the issue list), auto-cull entries older than 90 days:
