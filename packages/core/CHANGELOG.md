@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.15.1...core-v3.15.2) (2026-06-29)
+
+
+### Bug Fixes
+
+* **deps:** bump @oss-scout/core to ^1.2.3 for the linked-PR quality gate ([#1537](https://github.com/costajohnt/oss-autopilot/issues/1537)) ([3b4723c](https://github.com/costajohnt/oss-autopilot/commit/3b4723c104e9b52311b7e443c6167588722b272c))
+
 ## [3.15.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.15.0...core-v3.15.1) (2026-06-29)
 
 
