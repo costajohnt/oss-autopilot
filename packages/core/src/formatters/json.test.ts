@@ -498,7 +498,7 @@ describe('SearchOutputSchema (#1147)', () => {
       reasonsToSkip: [],
       searchPriority: 'starred' as const,
       viabilityScore: 88,
-      grade: { letter: 'A' as const, reason: 'fast merges' },
+      grade: { score: 10, reason: 'fast merges' },
       repoScore: {
         score: 9.2,
         mergedPRCount: 3,
@@ -524,11 +524,11 @@ describe('SearchOutputSchema (#1147)', () => {
     expect(formatJson(SearchOutputSchema, data).success).toBe(true);
   });
 
-  it('rejects drift: invalid grade letter', () => {
+  it('rejects drift: out-of-range grade score', () => {
     const candidate = makeSearchCandidate();
-    (candidate.grade as { letter: string; reason: string }).letter = 'D';
+    (candidate.grade as { score: number; reason: string }).score = 0;
     const data = { candidates: [candidate], excludedRepos: [], aiPolicyBlocklist: [] };
-    expect(() => formatJson(SearchOutputSchema, data)).toThrow(/contract drift.*letter/i);
+    expect(() => formatJson(SearchOutputSchema, data)).toThrow(/contract drift.*score/i);
   });
 
   it('rejects drift: missing reasonsToApprove', () => {

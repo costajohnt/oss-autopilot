@@ -39,7 +39,7 @@
   "linkedPRClassification": "none",
   "slmTriage": null,
   "grade": {
-    "letter": "B",
+    "score": 7,
     "reason": "4-day avg response"
   }
 }

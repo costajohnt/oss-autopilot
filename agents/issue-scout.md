@@ -121,7 +121,7 @@ Route on `verdict` with short-circuit semantics:
 
 The `linkedPRs` array distinguishes `closing` (the PR's `closingIssuesReferences` names this issue — a real claim) from `cross-referenced` (timeline mention only). Only `closing` PRs may drive a Taken verdict. `isOwn: true` flags the authenticated user's own PRs.
 
-**Primary:** call `vet` (MCP tool or CLI). It runs the full checklist: availability (assignment, linked PRs, author classification via `linked-pr-classification.ts`), contribution guidelines (CONTRIBUTING.md, CLA, PR templates), existing PR analysis, issue quality, repo health — and returns `grade: {letter, reason}` alongside the score.
+**Primary:** call `vet` (MCP tool or CLI). It runs the full checklist: availability (assignment, linked PRs, author classification via `linked-pr-classification.ts`), contribution guidelines (CONTRIBUTING.md, CLA, PR templates), existing PR analysis, issue quality, repo health — and returns `grade: {score, reason}` (1-10) alongside the viability score.
 
 ### Linked-PR classification
 
@@ -190,7 +190,7 @@ The composite score is **issue quality + repo quality + relationship modifiers**
 
 **Two different 1–10 "repo scores" exist — do not present them as the same number.** The cached `repoScore` you surface from `search` / `status` is the **history score**: the user's own merge outcomes in that repo (`docs/repo-scores.md` §History score). `repo-evaluator`'s `repo-vet` computes the **health score**: the fresh weighted rubric over the repo's current public signals (`rubricScore` in its output). They diverge whenever repo health changed since the user's last merge there — a 9 history score does not imply a healthy repo today. When quoting a number, name which one it is. See [`docs/repo-scores.md`](../docs/repo-scores.md).
 
-**Success likelihood grade (#858):** CLI returns `grade: {letter: 'A'|'B'|'C'|'F', reason}` in `vet --json`. Display verbatim — e.g. `A (~2-day avg response)`, `F (unresponsive maintainers)`. Algorithm and source: [`docs/repo-scores.md` §Success Likelihood Grade](../docs/repo-scores.md#success-likelihood-grade).
+**Success likelihood score (#858):** CLI returns `grade: {score, reason}` (1-10) in `vet --json`. Display verbatim — e.g. `10/10 (~2-day avg response)`, `1/10 (unresponsive maintainers)`. Algorithm and source: [`docs/repo-scores.md` §Success Likelihood Score](../docs/repo-scores.md#success-likelihood-score).
 
 ## Output Format
 
@@ -199,9 +199,9 @@ The composite score is **issue quality + repo quality + relationship modifiers**
 
 ### From Your Starred/Trusted Repos ⭐
 
-#### 1. [acme/widgets#123](https://…) — title (Score: 12, Grade: A)
+#### 1. [acme/widgets#123](https://…) — title (Score: 12, Success: 10/10)
 **Your history:** merged 2 PRs here — great relationship!
-**Success likelihood:** A (merges 85% of PRs, 2-day avg response)
+**Success likelihood:** 10/10 (merges 85% of PRs, 2-day avg response)
 **Why:** clarity [yes/somewhat/no] · scope [yes/maybe/no] · active [yes/somewhat/no] · no linked PRs [yes/no]
 **Quick start:** [1–2 sentences on how to approach]
 
@@ -209,9 +209,9 @@ The composite score is **issue quality + repo quality + relationship modifiers**
 
 ### New Repos to Explore 🔍
 
-#### 2. [cool-org/toolkit#456](…) — title (Score: 7, Grade: B)
+#### 2. [cool-org/toolkit#456](…) — title (Score: 7, Success: 7/10)
 **Your history:** no prior relationship
-**Success likelihood:** B (60% merge rate, 8-day avg response)
+**Success likelihood:** 7/10 (60% merge rate, 8-day avg response)
 **Why:** …
 **Note:** consider running repo-evaluator before committing.
 

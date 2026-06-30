@@ -217,6 +217,10 @@ export function makeStateManagerMock(
     setStatusOverride: () => {},
     clearStatusOverride: () => false,
     getStatusOverride: () => undefined,
+    getSearchSeen: () => state.searchSeen ?? [],
+    setSearchSeen: (seen: AgentState['searchSeen']) => {
+      state.searchSeen = seen;
+    },
     getRepoScore: () => undefined,
     updateRepoScore: () => {},
     incrementMergedCount: () => {},

@@ -14,6 +14,7 @@
  */
 
 import * as fs from 'node:fs';
+import * as nodePath from 'node:path';
 import type { SkippedIssue } from '@oss-scout/core';
 import { warn } from '../core/logger.js';
 import { errorMessage } from '../core/errors.js';
@@ -102,6 +103,22 @@ export interface SkippedIssuesLoadResult {
    * exist, or the read succeeded.
    */
   readError?: string;
+  /**
+   * Set when a path WAS configured but no file exists at the resolved location
+   * (#1528). `issues` is `[]`. This is the silent-failure mode that resurfaced
+   * already-skipped issues: a relative `skippedIssuesPath` resolves against the
+   * process CWD, so running from the wrong directory found nothing and the skip
+   * list loaded empty without any signal. Callers raise the same
+   * `skipListUnavailable` diagnostic for this as for `readError`. Absent when
+   * the path is unset or the file was found.
+   */
+  notFound?: boolean;
+  /**
+   * The absolute path the loader actually checked (relative paths resolved
+   * against CWD). Present whenever a path was configured, so diagnostics can
+   * show exactly where the lookup looked. Absent when no path was configured.
+   */
+  resolvedPath?: string;
 }
 
 /**
@@ -113,17 +130,34 @@ export interface SkippedIssuesLoadResult {
  */
 export function loadSkippedIssuesDetailed(path: string | undefined): SkippedIssuesLoadResult {
   if (!path) return { issues: [] };
-  if (!fs.existsSync(path)) return { issues: [] };
+
+  // Resolve to absolute so a relative `skippedIssuesPath` is interpreted
+  // against the CWD explicitly (#1528) and the diagnostics can report the
+  // exact location that was checked.
+  const resolvedPath = nodePath.resolve(path);
+
+  if (!fs.existsSync(resolvedPath)) {
+    // A configured-but-missing skip file used to be silent, which resurfaced
+    // already-skipped issues whenever `/oss` ran from a directory other than
+    // the one holding a relative skip path. Make it loud.
+    warn(
+      'skip-file-parser',
+      `Configured skipped-issues file not found at ${resolvedPath} (cwd ${process.cwd()}); ` +
+        `proceeding with an EMPTY skip list — previously skipped issues may resurface. ` +
+        `Use an absolute skippedIssuesPath, or run from the directory that contains "${path}".`,
+    );
+    return { issues: [], notFound: true, resolvedPath };
+  }
 
   let content: string;
   try {
-    content = fs.readFileSync(path, 'utf8');
+    content = fs.readFileSync(resolvedPath, 'utf8');
   } catch (err) {
-    warn('skip-file-parser', `Failed to read skipped-issues file at ${path}: ${errorMessage(err)}`);
-    return { issues: [], readError: errorMessage(err) };
+    warn('skip-file-parser', `Failed to read skipped-issues file at ${resolvedPath}: ${errorMessage(err)}`);
+    return { issues: [], readError: errorMessage(err), resolvedPath };
   }
 
-  return { issues: parseSkippedIssuesContent(content) };
+  return { issues: parseSkippedIssuesContent(content), resolvedPath };
 }
 
 /**

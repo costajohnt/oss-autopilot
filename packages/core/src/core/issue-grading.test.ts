@@ -1,51 +1,54 @@
 import { describe, it, expect } from 'vitest';
 import { computeSuccessGrade, deriveGradeSignals } from './issue-grading.js';
 
+// Success score is on a 1-10 scale (#249 follow-up). The three signal bands
+// map to 10 / 7 / 4 / 1 (best→worst); the overall score is the worst of the
+// three and drops one band if any signal is unknown.
 describe('computeSuccessGrade', () => {
   describe('responsiveness signal', () => {
-    it('grades A when maintainers respond in under 3 days', () => {
+    it('scores 10 when maintainers respond in under 3 days', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 2,
         mergeRate: 0.9,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('A');
+      expect(result.score).toBe(10);
     });
 
-    it('grades B for 3–14 day responsiveness', () => {
+    it('scores 7 for 3–14 day responsiveness', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 10,
         mergeRate: 0.9,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('B');
+      expect(result.score).toBe(7);
     });
 
-    it('grades C for 14–60 day responsiveness', () => {
+    it('scores 4 for 14–60 day responsiveness', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 40,
         mergeRate: 0.9,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('C');
+      expect(result.score).toBe(4);
     });
 
-    it('grades F when responsiveness exceeds 60 days', () => {
+    it('scores 1 when responsiveness exceeds 60 days', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 90,
         mergeRate: 0.9,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('F');
+      expect(result.score).toBe(1);
     });
 
-    it('grades exactly 60 days as C (boundary inclusive)', () => {
+    it('scores exactly 60 days as 4 (boundary inclusive)', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 60,
         mergeRate: 0.9,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('C');
+      expect(result.score).toBe(4);
     });
 
     it('treats NaN, negative, or infinite response days as unknown', () => {
@@ -54,133 +57,134 @@ describe('computeSuccessGrade', () => {
         mergeRate: 0.9,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('B');
+      // Known signals score 10; one unknown drops one band → 7.
+      expect(result.score).toBe(7);
       expect(result.reason).toMatch(/unknown/i);
     });
   });
 
   describe('merge-rate signal', () => {
-    it('grades A when merge rate exceeds 70%', () => {
+    it('scores 10 when merge rate exceeds 70%', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 1,
         mergeRate: 0.85,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('A');
+      expect(result.score).toBe(10);
     });
 
-    it('grades B for 40–70% merge rate', () => {
+    it('scores 7 for 40–70% merge rate', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 1,
         mergeRate: 0.55,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('B');
+      expect(result.score).toBe(7);
     });
 
-    it('grades C for 10–40% merge rate', () => {
+    it('scores 4 for 10–40% merge rate', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 1,
         mergeRate: 0.2,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('C');
+      expect(result.score).toBe(4);
     });
 
-    it('grades F below 10% merge rate', () => {
+    it('scores 1 below 10% merge rate', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 1,
         mergeRate: 0.05,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('F');
+      expect(result.score).toBe(1);
     });
   });
 
   describe('activity signal', () => {
-    it('grades A for commits within 7 days', () => {
+    it('scores 10 for commits within 7 days', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 1,
         mergeRate: 0.9,
         daysSinceLastCommit: 3,
       });
-      expect(result.letter).toBe('A');
+      expect(result.score).toBe(10);
     });
 
-    it('grades B for commits 7–30 days', () => {
+    it('scores 7 for commits 7–30 days', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 1,
         mergeRate: 0.9,
         daysSinceLastCommit: 20,
       });
-      expect(result.letter).toBe('B');
+      expect(result.score).toBe(7);
     });
 
-    it('grades C for commits 30–90 days', () => {
+    it('scores 4 for commits 30–90 days', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 1,
         mergeRate: 0.9,
         daysSinceLastCommit: 60,
       });
-      expect(result.letter).toBe('C');
+      expect(result.score).toBe(4);
     });
 
-    it('grades F for no commits in 90+ days', () => {
+    it('scores 1 for no commits in 90+ days', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 1,
         mergeRate: 0.9,
         daysSinceLastCommit: 120,
       });
-      expect(result.letter).toBe('F');
+      expect(result.score).toBe(1);
     });
   });
 
   describe('worst-of-three aggregation', () => {
-    it('lets a single F dominate', () => {
+    it('lets a single low signal dominate', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 1,
         mergeRate: 0.05,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('F');
+      expect(result.score).toBe(1);
     });
 
-    it('picks worst across mixed letters', () => {
+    it('picks worst across mixed scores', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 10,
         mergeRate: 0.2,
         daysSinceLastCommit: 3,
       });
-      expect(result.letter).toBe('C');
+      expect(result.score).toBe(4);
     });
   });
 
   describe('unknown-degrades rule', () => {
-    it('degrades A to B when one signal is unknown', () => {
+    it('drops 10 to 7 when one signal is unknown', () => {
       const result = computeSuccessGrade({
         avgResponseDays: null,
         mergeRate: 0.9,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('B');
+      expect(result.score).toBe(7);
     });
 
-    it('degrades C to F when one signal is unknown', () => {
+    it('drops 4 to 1 when one signal is unknown', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 40,
         mergeRate: null,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('F');
+      expect(result.score).toBe(1);
     });
 
-    it('leaves F at F when a signal is unknown', () => {
+    it('leaves 1 at 1 when a signal is unknown', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 90,
         mergeRate: null,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('F');
+      expect(result.score).toBe(1);
     });
 
     it('treats multiple unknowns the same as a single unknown', () => {
@@ -189,8 +193,18 @@ describe('computeSuccessGrade', () => {
         mergeRate: null,
         daysSinceLastCommit: 1,
       });
-      // Known signal is A, degrade once for unknowns → B
-      expect(result.letter).toBe('B');
+      // Known signal scores 10, drop one band for unknowns → 7
+      expect(result.score).toBe(7);
+    });
+
+    it('scores 1 when every signal is unknown', () => {
+      const result = computeSuccessGrade({
+        avgResponseDays: null,
+        mergeRate: null,
+        daysSinceLastCommit: null,
+      });
+      expect(result.score).toBe(1);
+      expect(result.reason).toMatch(/unknown/i);
     });
   });
 
@@ -264,23 +278,23 @@ describe('computeSuccessGrade', () => {
   });
 
   describe('reason string', () => {
-    it('mentions the driving signal for a failing grade', () => {
+    it('mentions the driving signal for a low score', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 90,
         mergeRate: 0.9,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('F');
+      expect(result.score).toBe(1);
       expect(result.reason).toMatch(/respons/i);
     });
 
-    it('mentions the driving signal for a C', () => {
+    it('mentions the driving signal for a mid score', () => {
       const result = computeSuccessGrade({
         avgResponseDays: 40,
         mergeRate: 0.9,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('C');
+      expect(result.score).toBe(4);
       expect(result.reason).toMatch(/40.*day|respons/i);
     });
 
@@ -290,7 +304,7 @@ describe('computeSuccessGrade', () => {
         mergeRate: null,
         daysSinceLastCommit: 1,
       });
-      expect(result.letter).toBe('B');
+      expect(result.score).toBe(7);
       expect(result.reason).toMatch(/unknown|missing/i);
     });
   });
