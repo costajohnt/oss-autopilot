@@ -35,6 +35,7 @@ describe('CONFIG_KEY_REGISTRY', () => {
     const scoutBridgeReads = [
       'maxIssueAgeDays',
       'minRepoScoreThreshold',
+      'skipBroadWhenSufficientResults',
       'starredRepos',
       'starredReposLastFetched',
       'skippedIssuesPath',

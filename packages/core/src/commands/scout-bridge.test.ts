@@ -53,6 +53,7 @@ describe('buildScoutState', () => {
         projectCategories: ['devtools', 'infrastructure'],
         minStars: 100,
         maxIssueAgeDays: 30,
+        skipBroadWhenSufficientResults: 3,
         includeDocIssues: false,
         minRepoScoreThreshold: 6,
         persistence: 'local',
@@ -87,6 +88,8 @@ describe('buildScoutState', () => {
     expect(result.preferences.projectCategories).toEqual(['devtools', 'infrastructure']);
     expect(result.preferences.minStars).toBe(100);
     expect(result.preferences.maxIssueAgeDays).toBe(30);
+    // Read from config (not the old hardcoded 15) so users can tune/disable it.
+    expect(result.preferences.skipBroadWhenSufficientResults).toBe(3);
     expect(result.preferences.includeDocIssues).toBe(false);
     expect(result.preferences.minRepoScoreThreshold).toBe(6);
     expect(result.preferences.persistence).toBe('local');

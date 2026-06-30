@@ -132,7 +132,7 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       minRepoScoreThreshold: config.minRepoScoreThreshold,
       interPhaseDelayMs: 30_000,
       broadPhaseDelayMs: 90_000,
-      skipBroadWhenSufficientResults: 15,
+      skipBroadWhenSufficientResults: config.skipBroadWhenSufficientResults,
       persistence: config.persistence as 'local' | 'gist',
       slmTriageModel: config.slmTriageModel,
       slmTriageHost: config.slmTriageHost,
