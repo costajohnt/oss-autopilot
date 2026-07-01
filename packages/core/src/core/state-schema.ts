@@ -227,6 +227,10 @@ export const AgentConfigSchema = z.object({
   dormantThresholdDays: z.number().default(30),
   approachingDormantDays: z.number().default(25),
   maxIssueAgeDays: z.number().default(90),
+  // Skip the broad discovery phase once this many candidates from NEW repos are
+  // found (0 disables — broad always runs). Affinity/starred-repo candidates do
+  // not count, so the broad phase still surfaces repos you haven't touched.
+  skipBroadWhenSufficientResults: z.number().min(0).default(8),
 
   languages: z.array(z.string()).default(['typescript', 'javascript']),
   labels: z.array(z.string()).default(['good first issue', 'help wanted']),
