@@ -44,6 +44,20 @@ vi.mock('./paths.js', async (importOriginal) => {
     },
     getLegacyStatePath: () => path.join(mockTmpDir, 'legacy-data', 'state.json'),
     getLegacyBackupDir: () => path.join(mockTmpDir, 'legacy-data', 'backups'),
+    // `peekGistArtifacts()` reads these; without redirecting them the ...actual
+    // versions resolve against the real ~/.oss-autopilot (their internal
+    // getDataDir reference is not the mocked one), so the suite fails on any
+    // machine with a real gist config. Point them into mockTmpDir like the rest.
+    getStateCachePath: () => {
+      if (!mockTmpDir) throw new Error('mockTmpDir not set');
+      if (!fs.existsSync(mockTmpDir)) fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
+      return path.join(mockTmpDir, 'state-cache.json');
+    },
+    getGistIdPath: () => {
+      if (!mockTmpDir) throw new Error('mockTmpDir not set');
+      if (!fs.existsSync(mockTmpDir)) fs.mkdirSync(mockTmpDir, { recursive: true, mode: 0o700 });
+      return path.join(mockTmpDir, 'gist-id');
+    },
   };
 });
 
