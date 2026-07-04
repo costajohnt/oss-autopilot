@@ -20,7 +20,7 @@ vi.mock('./validation.js', () => ({
   validateGitHubUsername: vi.fn(),
 }));
 
-import { getStateManager, maybeCheckpoint } from '../core/index.js';
+import { getStateManager, maybeCheckpoint, getSetupKeys } from '../core/index.js';
 import { runSetup, runCheckSetup } from './setup.js';
 import type { SetupSetOutput, SetupRequiredOutput } from './setup.js';
 
@@ -176,6 +176,58 @@ describe('runSetup', () => {
   it('should handle dormantDays setting', async () => {
     await runSetup({ set: ['dormantDays=14'] });
     expect(mockUpdateConfig).toHaveBeenCalledWith({ dormantThresholdDays: 14 });
+  });
+
+  // Regression: every key the registry advertises as `settableVia: 'setup'` must
+  // have a switch handler in runSetup. Three keys (skipBroadWhenSufficientResults,
+  // healthCheckFreshnessMinutes, reviewMaxPasses) shipped advertised-but-unhandled,
+  // so `setup --set <key>=…` hit the `default` branch and threw the self-referential
+  // "Unknown setting … Did you mean <same key>?" error. Probe with '1' (a valid
+  // value for the numeric keys, harmless for the rest): a handled key never yields
+  // the unknown-key error; an unhandled key always does.
+  it('handles every settableVia:setup registry key (no unknown-key error)', async () => {
+    const unhandled: string[] = [];
+    for (const key of getSetupKeys()) {
+      try {
+        await runSetup({ set: [`${key}=1`] });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (/Unknown setting|Did you mean/.test(message)) {
+          unhandled.push(key);
+        }
+      }
+    }
+    expect(unhandled).toEqual([]);
+  });
+
+  it('should handle skipBroadWhenSufficientResults setting', async () => {
+    const result = (await runSetup({ set: ['skipBroadWhenSufficientResults=5'] })) as SetupSetOutput;
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ skipBroadWhenSufficientResults: 5 });
+    expect(result.settings.skipBroadWhenSufficientResults).toBe('5');
+  });
+
+  it('should allow skipBroadWhenSufficientResults=0 (always run broad phase)', async () => {
+    await runSetup({ set: ['skipBroadWhenSufficientResults=0'] });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ skipBroadWhenSufficientResults: 0 });
+  });
+
+  it('should reject a negative skipBroadWhenSufficientResults', async () => {
+    await expect(runSetup({ set: ['skipBroadWhenSufficientResults=-1'] })).rejects.toThrow(/non-negative integer/);
+    expect(mockUpdateConfig).not.toHaveBeenCalled();
+  });
+
+  it('should handle healthCheckFreshnessMinutes setting', async () => {
+    await runSetup({ set: ['healthCheckFreshnessMinutes=45'] });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ healthCheckFreshnessMinutes: 45 });
+  });
+
+  it('should reject a non-positive healthCheckFreshnessMinutes', async () => {
+    await expect(runSetup({ set: ['healthCheckFreshnessMinutes=0'] })).rejects.toThrow(/positive integer/);
+  });
+
+  it('should handle reviewMaxPasses setting', async () => {
+    await runSetup({ set: ['reviewMaxPasses=4'] });
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ reviewMaxPasses: 4 });
   });
 
   it('should handle approachingDays setting', async () => {
