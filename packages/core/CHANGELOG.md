@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.16.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.16.0...core-v3.16.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* **setup:** make skipBroadWhenSufficientResults and two other keys settable ([#1548](https://github.com/costajohnt/oss-autopilot/issues/1548)) ([9d01791](https://github.com/costajohnt/oss-autopilot/commit/9d0179145a9610e73f11070189d258b15a1e83c2))
+
 ## [3.16.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.15.2...core-v3.16.0) (2026-07-01)
 
 
