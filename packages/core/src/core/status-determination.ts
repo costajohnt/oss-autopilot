@@ -129,8 +129,13 @@ function collectAllActionReasons(input: DetermineStatusInput): ActionReason[] | 
   const commitDate = resolveContributorCommitDate(input);
   const reasons: ActionReason[] = [];
 
+  // An unresponded maintainer comment on an already-approved, passing/unknown
+  // PR is an approval/LGTM note, not a request for action — it needs no
+  // contributor response and the PR is just awaiting merge (#1507).
+  const approvedAndMergeable = reviewDecision === 'approved' && (ciStatus === 'passing' || ciStatus === 'unknown');
   if (
     hasUnrespondedComment &&
+    !approvedAndMergeable &&
     !isCommentAddressedByCommit(commitDate, lastMaintainerCommentDate, latestChangesRequestedDate)
   ) {
     reasons.push('needs_response');
@@ -203,6 +208,13 @@ function determinePrimaryStatus(input: DetermineStatusInput): DetermineStatusRes
       // Non-actionable CI failures (infrastructure, fork, auth) don't block changes_addressed —
       // the contributor can't fix them, so the relevant status is "waiting for re-review" (#502)
       return { status: 'waiting_on_maintainer', waitReason: 'changes_addressed', stalenessTier };
+    }
+    // An unresponded comment on an already-approved, passing/unknown PR is an
+    // approval/LGTM note (e.g. a re-approval dated after the contributor's last
+    // commit), not a request for changes. It needs no contributor response, so
+    // the PR is waiting to be merged — don't trap it in needs_response (#1507).
+    if (reviewDecision === 'approved' && (ciStatus === 'passing' || ciStatus === 'unknown')) {
+      return { status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier };
     }
     return { status: 'needs_addressing', actionReason: 'needs_response', stalenessTier };
   }
