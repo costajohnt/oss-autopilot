@@ -12,8 +12,13 @@ set -euo pipefail
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 
+# Matches `git commit`, optionally with a `-C <path>` global option inserted
+# before the subcommand (e.g. `git -C /some/worktree commit -m ...`).
+QPATH='("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]]+)'
+GIT_COMMIT_RE="git([[:space:]]+-C[[:space:]]+${QPATH})?[[:space:]]+commit([[:space:]]|\$)"
+
 # Only validate on git commit commands
-if ! echo "$COMMAND" | grep -q "git commit"; then
+if ! [[ "$COMMAND" =~ $GIT_COMMIT_RE ]]; then
   exit 0
 fi
 
