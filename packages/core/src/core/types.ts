@@ -46,6 +46,7 @@ export type {
   MergedPR,
   DailyDigest,
   AgentState,
+  SearchSeenEntry,
 } from './state-schema.js';
 
 // ── Ephemeral types (never persisted, hand-written) ──────────────────

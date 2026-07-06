@@ -1,19 +1,17 @@
 /**
- * Issue success-likelihood grade (#858).
+ * Issue success-likelihood score (#858, rescaled to 1-10 per #249 follow-up).
  *
  * Predicts the probability that a contribution to a given repo will be
  * accepted and merged, using signals already collected during vetting.
  *
- * The grade is letter-based (A/B/C/F — no D). Each signal is graded
- * independently; the overall grade is the worst of the three, and is
- * further degraded one step if any signal is unknown (missing data is
- * treated as a risk, not ignored). This matches the policy previously
- * described as prose in agents/issue-scout.md.
+ * The score is on a 1-10 scale. Each signal lands in one of four bands —
+ * 10 / 7 / 4 / 1 (best→worst) — graded independently; the overall score is
+ * the worst of the three, and drops one band if any signal is unknown
+ * (missing data is treated as a risk, not ignored). This matches the policy
+ * previously described as prose in agents/issue-scout.md.
  */
 
 import type { ProjectHealth } from '@oss-scout/core';
-
-export type GradeLetter = 'A' | 'B' | 'C' | 'F';
 
 export interface GradeSignals {
   /** Average maintainer response time in days; null if unknown. */
@@ -25,22 +23,27 @@ export interface GradeSignals {
 }
 
 export interface GradeResult {
-  letter: GradeLetter;
-  /** Short human-readable explanation of what drove the grade. */
+  /** Success-likelihood score on a 1-10 scale (higher is better). */
+  score: number;
+  /** Short human-readable explanation of what drove the score. */
   reason: string;
 }
 
-type SignalGrade = { letter: GradeLetter; detail: string };
+type SignalScore = { score: number; detail: string };
 
-const SEVERITY: Record<GradeLetter, number> = { A: 0, B: 1, C: 2, F: 3 };
-const LETTERS: readonly GradeLetter[] = ['A', 'B', 'C', 'F'];
+// Band values, best→worst. A signal always resolves to one of these, so
+// degradeOneStep can step down the ladder by index.
+const BANDS: readonly number[] = [10, 7, 4, 1];
 
-function worst(grades: SignalGrade[]): SignalGrade {
-  return grades.reduce((acc, g) => (SEVERITY[g.letter] > SEVERITY[acc.letter] ? g : acc));
+function worst(scores: SignalScore[]): SignalScore {
+  return scores.reduce((acc, s) => (s.score < acc.score ? s : acc));
 }
 
-function degradeOneStep(letter: GradeLetter): GradeLetter {
-  return LETTERS[Math.min(SEVERITY[letter] + 1, LETTERS.length - 1)];
+function degradeOneStep(score: number): number {
+  const i = BANDS.indexOf(score);
+  // Unrecognized score (shouldn't happen) is treated as already-worst.
+  if (i === -1) return BANDS[BANDS.length - 1];
+  return BANDS[Math.min(i + 1, BANDS.length - 1)];
 }
 
 /**
@@ -55,26 +58,26 @@ function sanitize(value: number | null | undefined, min: number, max: number): n
   return value;
 }
 
-function gradeResponsiveness(avgResponseDays: number): SignalGrade {
-  if (avgResponseDays < 3) return { letter: 'A', detail: `~${Math.round(avgResponseDays)}-day avg response` };
-  if (avgResponseDays < 14) return { letter: 'B', detail: `${Math.round(avgResponseDays)}-day avg response` };
-  if (avgResponseDays <= 60) return { letter: 'C', detail: `${Math.round(avgResponseDays)}-day avg response` };
-  return { letter: 'F', detail: 'unresponsive maintainers' };
+function gradeResponsiveness(avgResponseDays: number): SignalScore {
+  if (avgResponseDays < 3) return { score: 10, detail: `~${Math.round(avgResponseDays)}-day avg response` };
+  if (avgResponseDays < 14) return { score: 7, detail: `${Math.round(avgResponseDays)}-day avg response` };
+  if (avgResponseDays <= 60) return { score: 4, detail: `${Math.round(avgResponseDays)}-day avg response` };
+  return { score: 1, detail: 'unresponsive maintainers' };
 }
 
-function gradeMergeRate(mergeRate: number): SignalGrade {
+function gradeMergeRate(mergeRate: number): SignalScore {
   const pct = Math.round(mergeRate * 100);
-  if (mergeRate > 0.7) return { letter: 'A', detail: `merges ${pct}% of PRs` };
-  if (mergeRate >= 0.4) return { letter: 'B', detail: `merges ${pct}% of PRs` };
-  if (mergeRate >= 0.1) return { letter: 'C', detail: `merges ${pct}% of PRs` };
-  return { letter: 'F', detail: `merges ${pct}% of PRs` };
+  if (mergeRate > 0.7) return { score: 10, detail: `merges ${pct}% of PRs` };
+  if (mergeRate >= 0.4) return { score: 7, detail: `merges ${pct}% of PRs` };
+  if (mergeRate >= 0.1) return { score: 4, detail: `merges ${pct}% of PRs` };
+  return { score: 1, detail: `merges ${pct}% of PRs` };
 }
 
-function gradeActivity(daysSinceLastCommit: number): SignalGrade {
-  if (daysSinceLastCommit < 7) return { letter: 'A', detail: 'commits in last week' };
-  if (daysSinceLastCommit < 30) return { letter: 'B', detail: 'commits in last month' };
-  if (daysSinceLastCommit < 90) return { letter: 'C', detail: 'commits in last 90 days' };
-  return { letter: 'F', detail: `no commits in ${daysSinceLastCommit}+ days` };
+function gradeActivity(daysSinceLastCommit: number): SignalScore {
+  if (daysSinceLastCommit < 7) return { score: 10, detail: 'commits in last week' };
+  if (daysSinceLastCommit < 30) return { score: 7, detail: 'commits in last month' };
+  if (daysSinceLastCommit < 90) return { score: 4, detail: 'commits in last 90 days' };
+  return { score: 1, detail: `no commits in ${daysSinceLastCommit}+ days` };
 }
 
 /**
@@ -142,7 +145,7 @@ export function deriveGradeSignals(params: {
  * rubric. The fresh side only enters through `projectHealth`, and only when
  * scout actually fetched it: the `search` surface passes a `checkFailed`
  * sentinel (health not fetched per candidate), so search grades purely from
- * history-side signals, while `vet` re-grades with fresh health. Same letter
+ * history-side signals, while `vet` re-grades with fresh health. Same 1-10
  * scale, different inputs — the two surfaces can legitimately disagree.
  */
 export function gradeFromCandidate(params: {
@@ -186,7 +189,7 @@ export function gradeFromCandidate(params: {
 }
 
 export function computeSuccessGrade(signals: GradeSignals): GradeResult {
-  const graded: SignalGrade[] = [];
+  const graded: SignalScore[] = [];
   const unknowns: string[] = [];
 
   const resp = sanitize(signals.avgResponseDays, 0, Number.MAX_SAFE_INTEGER);
@@ -201,17 +204,17 @@ export function computeSuccessGrade(signals: GradeSignals): GradeResult {
   if (act === null) unknowns.push('activity');
   else graded.push(gradeActivity(act));
 
-  // No signal available at all — give F so callers see missing data as a
-  // strong negative rather than a neutral grade.
+  // No signal available at all — score the lowest band so callers see missing
+  // data as a strong negative rather than a neutral score.
   if (graded.length === 0) {
-    return { letter: 'F', reason: `unknown ${unknowns.join(', ')}` };
+    return { score: BANDS[BANDS.length - 1], reason: `unknown ${unknowns.join(', ')}` };
   }
 
   const worstKnown = worst(graded);
-  const finalLetter = unknowns.length > 0 ? degradeOneStep(worstKnown.letter) : worstKnown.letter;
+  const finalScore = unknowns.length > 0 ? degradeOneStep(worstKnown.score) : worstKnown.score;
 
   const reasonParts = [worstKnown.detail];
   if (unknowns.length > 0) reasonParts.push(`unknown ${unknowns.join(', ')}`);
 
-  return { letter: finalLetter, reason: reasonParts.join(', ') };
+  return { score: finalScore, reason: reasonParts.join(', ') };
 }

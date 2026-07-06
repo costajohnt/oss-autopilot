@@ -5,6 +5,79 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.16.1...core-v3.17.0) (2026-07-06)
+
+
+### Features
+
+* **monitor:** batch per-PR enrichment via GraphQL to cut daily REST usage ~6x ([#1551](https://github.com/costajohnt/oss-autopilot/issues/1551)) ([5df1ec2](https://github.com/costajohnt/oss-autopilot/commit/5df1ec27c41eeed7b8af3f17157ddf300a34b3f1))
+
+
+### Bug Fixes
+
+* **github:** retry transient 5xx/network errors via @octokit/plugin-retry ([#1553](https://github.com/costajohnt/oss-autopilot/issues/1553)) ([75ce78c](https://github.com/costajohnt/oss-autopilot/commit/75ce78ce88a900777e36807bea33f33b2835372b))
+
+
+### Performance Improvements
+
+* **daily:** use ETag conditional requests for commented-issue comment fetches ([#1550](https://github.com/costajohnt/oss-autopilot/issues/1550)) ([6d85638](https://github.com/costajohnt/oss-autopilot/commit/6d85638db7e9d963ac54dbf0674bce16c3a895c2))
+
+## [3.16.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.16.0...core-v3.16.1) (2026-07-04)
+
+
+### Bug Fixes
+
+* **setup:** make skipBroadWhenSufficientResults and two other keys settable ([#1548](https://github.com/costajohnt/oss-autopilot/issues/1548)) ([9d01791](https://github.com/costajohnt/oss-autopilot/commit/9d0179145a9610e73f11070189d258b15a1e83c2))
+
+## [3.16.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.15.2...core-v3.16.0) (2026-07-01)
+
+
+### Features
+
+* **search:** run broad discovery for affinity-heavy users; expose skipBroadWhenSufficientResults ([#1539](https://github.com/costajohnt/oss-autopilot/issues/1539)) ([b460123](https://github.com/costajohnt/oss-autopilot/commit/b460123f11eac9efd1a65233ef058b173199b91e))
+
+## [3.15.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.15.1...core-v3.15.2) (2026-06-29)
+
+
+### Bug Fixes
+
+* **deps:** bump @oss-scout/core to ^1.2.3 for the linked-PR quality gate ([#1537](https://github.com/costajohnt/oss-autopilot/issues/1537)) ([3b4723c](https://github.com/costajohnt/oss-autopilot/commit/3b4723c104e9b52311b7e443c6167588722b272c))
+
+## [3.15.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.15.0...core-v3.15.1) (2026-06-29)
+
+
+### Bug Fixes
+
+* **commands:** rebuild stale CLI bundle before standalone bundle calls ([#1535](https://github.com/costajohnt/oss-autopilot/issues/1535)) ([ff0d1b5](https://github.com/costajohnt/oss-autopilot/commit/ff0d1b53924e32998ebdc503faf99e6a8070096e))
+
+## [3.15.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.5...core-v3.15.0) (2026-06-28)
+
+
+### Features
+
+* **grading:** replace A/B/C/F success grade with a 1-10 score ([#1529](https://github.com/costajohnt/oss-autopilot/issues/1529)) ([c96d034](https://github.com/costajohnt/oss-autopilot/commit/c96d0347658bf60b477d7678b8cf43ffc85af173))
+* **scout:** persist a search seen-set so result rotation survives across runs ([#1528](https://github.com/costajohnt/oss-autopilot/issues/1528)) ([#1532](https://github.com/costajohnt/oss-autopilot/issues/1532)) ([a757b6a](https://github.com/costajohnt/oss-autopilot/commit/a757b6af7e5b8f9df3a94d89eb6628a7e5783002))
+
+
+### Bug Fixes
+
+* **deps:** bump @oss-scout/core to ^1.2.2 to pick up search result rotation ([#1534](https://github.com/costajohnt/oss-autopilot/issues/1534)) ([42a7ac7](https://github.com/costajohnt/oss-autopilot/commit/42a7ac7c606593f68faf21d89007c53166b54031))
+* **scout:** surface a missing skip file instead of silently searching with an empty skip list ([#1528](https://github.com/costajohnt/oss-autopilot/issues/1528)) ([#1530](https://github.com/costajohnt/oss-autopilot/issues/1530)) ([91b16e3](https://github.com/costajohnt/oss-autopilot/commit/91b16e3f5ef296741c99247629d21e5bf2dc01c8))
+
+## [3.14.5](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.4...core-v3.14.5) (2026-06-21)
+
+
+### Bug Fixes
+
+* **search:** populate starred-repo cache so scout's starred phase fires ([#1524](https://github.com/costajohnt/oss-autopilot/issues/1524)) ([37d66b1](https://github.com/costajohnt/oss-autopilot/commit/37d66b164fc966a94beaab5964568cf4f90e5a50))
+
+## [3.14.4](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.3...core-v3.14.4) (2026-06-20)
+
+
+### Bug Fixes
+
+* **gist:** clear gistDegraded on recovery and pass through rate-limit re-read failures ([#1519](https://github.com/costajohnt/oss-autopilot/issues/1519)) ([be7256c](https://github.com/costajohnt/oss-autopilot/commit/be7256c2b1cea8b2c6060766f6ca361b432637bb))
+
 ## [3.14.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.14.2...core-v3.14.3) (2026-06-20)
 
 

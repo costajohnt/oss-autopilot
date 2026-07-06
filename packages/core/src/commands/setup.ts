@@ -32,6 +32,14 @@ function parsePositiveInt(value: string, settingName: string): number {
   return parsed;
 }
 
+function parseNonNegativeInt(value: string, settingName: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new ValidationError(`Invalid value for ${settingName}: "${value}". Must be a non-negative integer.`);
+  }
+  return parsed;
+}
+
 interface SetupOptions {
   reset?: boolean;
   set?: string[];
@@ -380,6 +388,26 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
           case 'diffToolCustomCommand': {
             stateManager.updateConfig({ diffToolCustomCommand: value || undefined });
             results[key] = value || '(cleared)';
+            break;
+          }
+          case 'skipBroadWhenSufficientResults': {
+            // 0 is valid and meaningful ("always run the broad phase"), so this
+            // key allows zero unlike the positive-int keys above.
+            const threshold = parseNonNegativeInt(value, 'skipBroadWhenSufficientResults');
+            stateManager.updateConfig({ skipBroadWhenSufficientResults: threshold });
+            results[key] = String(threshold);
+            break;
+          }
+          case 'healthCheckFreshnessMinutes': {
+            const minutes = parsePositiveInt(value, 'healthCheckFreshnessMinutes');
+            stateManager.updateConfig({ healthCheckFreshnessMinutes: minutes });
+            results[key] = String(minutes);
+            break;
+          }
+          case 'reviewMaxPasses': {
+            const passes = parsePositiveInt(value, 'reviewMaxPasses');
+            stateManager.updateConfig({ reviewMaxPasses: passes });
+            results[key] = String(passes);
             break;
           }
           case 'complete': {

@@ -227,6 +227,10 @@ export const AgentConfigSchema = z.object({
   dormantThresholdDays: z.number().default(30),
   approachingDormantDays: z.number().default(25),
   maxIssueAgeDays: z.number().default(90),
+  // Skip the broad discovery phase once this many candidates from NEW repos are
+  // found (0 disables — broad always runs). Affinity/starred-repo candidates do
+  // not count, so the broad phase still surfaces repos you haven't touched.
+  skipBroadWhenSufficientResults: z.number().min(0).default(8),
 
   languages: z.array(z.string()).default(['typescript', 'javascript']),
   labels: z.array(z.string()).default(['good first issue', 'help wanted']),
@@ -433,6 +437,21 @@ export const DailyDigestSchema = z.object({
 
 // ── 8. Root schema ───────────────────────────────────────────────────
 
+/**
+ * One entry in the search seen-set (#1528). Records that an issue URL was
+ * surfaced by a recent `search` so the next search can rotate past it instead
+ * of returning the same candidates every time. oss-scout's `search()` excludes
+ * URLs whose `lastSeenAt` is within its rotation TTL (default 7 days); this is
+ * the durable backing store that lets that exclusion survive between separate
+ * `/oss` invocations (autopilot runs scout in `persistence: 'provided'` mode,
+ * so scout persists nothing itself). Deliberately lean — only the two fields
+ * scout's rotation reads — so the state file stays small.
+ */
+export const SearchSeenEntrySchema = z.object({
+  url: z.string(),
+  lastSeenAt: z.string(),
+});
+
 export const AgentStateSchema = z.object({
   version: z.literal(4),
   gistId: z.string().optional(),
@@ -488,6 +507,15 @@ export const AgentStateSchema = z.object({
    * Restart / Discard when present.
    */
   workflowState: WorkflowStateSchema.optional(),
+
+  /**
+   * Durable search seen-set for result rotation (#1528). Issue URLs surfaced
+   * by recent searches, with the timestamp they were last surfaced. Fed into
+   * oss-scout as `savedResults` so its rotation excludes recently-surfaced
+   * issues, and updated after each search. Culled past the rotation window so
+   * it cannot grow without bound.
+   */
+  searchSeen: z.array(SearchSeenEntrySchema).default([]),
 });
 
 // ── Inferred types ───────────────────────────────────────────────────
@@ -497,6 +525,7 @@ export type FetchedPRStatus = z.infer<typeof FetchedPRStatusSchema>;
 export type ProjectCategory = z.infer<typeof ProjectCategorySchema>;
 export type IssueScope = z.infer<typeof IssueScopeSchema>;
 export type DiffTool = z.infer<typeof DiffToolSchema>;
+export type SearchSeenEntry = z.infer<typeof SearchSeenEntrySchema>;
 export type RepoSignals = z.infer<typeof RepoSignalsSchema>;
 export type RepoScore = z.infer<typeof RepoScoreSchema>;
 export type StoredMergedPR = z.infer<typeof StoredMergedPRSchema>;

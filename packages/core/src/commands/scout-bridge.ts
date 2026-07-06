@@ -31,9 +31,11 @@ export const SEARCH_DIVERSITY_RATIO = 0.2;
  */
 export interface ScoutBridgeDiagnostics {
   /**
-   * Set when a configured skipped-issues file exists but could not be read.
-   * The scout state was built with an EMPTY skip list, so explicitly-skipped
-   * issues may resurface in results.
+   * Set when a configured skipped-issues file could not be loaded — either it
+   * exists but is unreadable (#1448), or a path is configured but no file
+   * exists at the resolved location (#1528, the relative-path-vs-CWD case). The
+   * scout state was built with an EMPTY skip list, so explicitly-skipped issues
+   * may resurface in results.
    */
   skipListUnavailable?: boolean;
 }
@@ -89,19 +91,22 @@ export function buildCandidateLinkedPR(scoutLinkedPR: ScoutLinkedPR | null | und
  * Build a ScoutState from the current AgentState.
  * Maps oss-autopilot's config and state fields to oss-scout's state format.
  *
- * @param diagnostics - Optional collector for degradation signals (#1448);
- *   `skipListUnavailable` is set when the skipped-issues file exists but
- *   could not be read.
+ * @param diagnostics - Optional collector for degradation signals (#1448,
+ *   #1528); `skipListUnavailable` is set when the configured skipped-issues
+ *   file is unreadable or missing at its resolved path.
  */
 export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutState {
   const state = getStateManager().getState();
   const { config } = state;
 
-  // Read failure (not absence) of the skip file means scout will see an empty
-  // skip list and may resurface explicitly-skipped issues — flag it so the
-  // search envelope can carry the signal instead of only stderr (#1448).
+  // A configured skip file that is unreadable (#1448) OR missing (#1528) leaves
+  // scout with an empty skip list and may resurface explicitly-skipped issues
+  // — flag both so the search envelope carries the signal instead of failing
+  // silently. The missing case is the common one: a relative skippedIssuesPath
+  // resolves against the CWD, so running /oss outside the directory that holds
+  // it found nothing and the skip list loaded empty without any warning.
   const skippedIssuesLoad = loadSkippedIssuesDetailed(config.skippedIssuesPath);
-  if (skippedIssuesLoad.readError !== undefined && diagnostics) {
+  if ((skippedIssuesLoad.readError !== undefined || skippedIssuesLoad.notFound) && diagnostics) {
     diagnostics.skipListUnavailable = true;
   }
 
@@ -132,7 +137,7 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       minRepoScoreThreshold: config.minRepoScoreThreshold,
       interPhaseDelayMs: 30_000,
       broadPhaseDelayMs: 90_000,
-      skipBroadWhenSufficientResults: 15,
+      skipBroadWhenSufficientResults: config.skipBroadWhenSufficientResults,
       persistence: config.persistence as 'local' | 'gist',
       slmTriageModel: config.slmTriageModel,
       slmTriageHost: config.slmTriageHost,
@@ -194,7 +199,26 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       title: pr.title,
       openedAt: pr.createdAt,
     })),
-    savedResults: [],
+    // Seen-set for result rotation (#1528). Scout's search() excludes issues
+    // whose lastSeenAt is within its rotation TTL, so consecutive searches
+    // surface fresh candidates instead of the same set. Autopilot runs scout
+    // in persistence:'provided', so this durable AgentState-backed list is what
+    // makes the rotation survive between separate /oss invocations. Only
+    // issueUrl + lastSeenAt drive the exclusion; the remaining SavedCandidate
+    // fields are unused by rotation and filled with neutral placeholders.
+    savedResults: (state.searchSeen ?? []).map((s) => ({
+      issueUrl: s.url,
+      repo: '',
+      number: 0,
+      title: '',
+      labels: [],
+      recommendation: 'skip' as const,
+      viabilityScore: 0,
+      searchPriority: 'normal' as const,
+      firstSeenAt: s.lastSeenAt,
+      lastSeenAt: s.lastSeenAt,
+      lastScore: 0,
+    })),
     skippedIssues: skippedIssuesLoad.issues,
     lastRunAt: state.lastRunAt,
   };

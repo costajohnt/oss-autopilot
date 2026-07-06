@@ -75,7 +75,7 @@ function makeVetOutput(overrides: Partial<VetOutput> = {}): VetOutput {
     reasonsToSkip: [],
     projectHealth: { stars: 500 },
     vettingResult: { isViable: true },
-    grade: { letter: 'B', reason: 'test fixture' },
+    grade: { score: 7, reason: 'test fixture' },
     ...overrides,
   };
 }

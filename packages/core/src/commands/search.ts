@@ -14,6 +14,7 @@ import { classifyLinkedPR, getStateManager } from '../core/index.js';
 import { type SearchOutput } from '../formatters/json.js';
 import { gradeFromCandidate } from '../core/issue-grading.js';
 import { computeStrategy } from '../core/strategy.js';
+import { refreshStarredReposIfStale } from '../core/starred-repos.js';
 import { debug, warn } from '../core/logger.js';
 
 export { type SearchOutput } from '../formatters/json.js';
@@ -98,13 +99,52 @@ function readScoutDelayOverride(envVar: string): number | undefined {
   return parsed;
 }
 
+/**
+ * Retention window for the search seen-set (#1528). Entries older than this are
+ * culled so the list stays bounded. Set well beyond oss-scout's rotation TTL
+ * (default 7 days) so an entry scout would still exclude is never dropped early.
+ */
+export const SEARCH_SEEN_RETENTION_DAYS = 30;
+
+/**
+ * Record the issues surfaced by a search into the durable seen-set (#1528) so
+ * the next search rotates past them, and cull entries older than
+ * {@link SEARCH_SEEN_RETENTION_DAYS}. Re-surfacing an issue refreshes its
+ * timestamp. No-op-safe: an empty `surfacedUrls` still culls stale entries.
+ */
+export function recordSearchSeen(stateManager: ReturnType<typeof getStateManager>, surfacedUrls: string[]): void {
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const cutoff = now - SEARCH_SEEN_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+  const byUrl = new Map(stateManager.getSearchSeen().map((e) => [e.url, e]));
+  for (const url of surfacedUrls) {
+    byUrl.set(url, { url, lastSeenAt: nowIso });
+  }
+
+  const next = [...byUrl.values()].filter((e) => {
+    const seen = Date.parse(e.lastSeenAt);
+    return Number.isNaN(seen) ? false : seen >= cutoff;
+  });
+  stateManager.setSearchSeen(next);
+}
+
 export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
   // Collect bridge-level degradation signals (#1448): an unreadable skip file
   // means scout searched with an empty skip list, so explicitly-skipped
   // issues may resurface — the envelope must say so, not just stderr.
   const bridgeDiagnostics: ScoutBridgeDiagnostics = {};
-  const scout = await createAutopilotScout(bridgeDiagnostics);
   const stateManager = getStateManager();
+
+  // Populate the starred-repo cache before the scout is created. Scout's
+  // discovery runs a starred-repo search phase, but it only fires when
+  // config.starredRepos is non-empty, and createAutopilotScout snapshots that
+  // config into the ScoutState. Without this refresh the starred phase is a
+  // silent no-op and discovery recycles the merged-PR repos every run. Fails
+  // soft, so a GitHub hiccup never blocks the search.
+  await refreshStarredReposIfStale(stateManager);
+
+  const scout = await createAutopilotScout(bridgeDiagnostics);
 
   // Derive personalization from local history (#1244). `computeStrategy`
   // returns null below the merged-PR floor — in that case we pass nothing
@@ -138,6 +178,14 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
     ...(interPhaseDelayMs !== undefined ? { interPhaseDelayMs } : {}),
     ...(broadPhaseDelayMs !== undefined ? { broadPhaseDelayMs } : {}),
   });
+
+  // Record everything scout surfaced this round into the durable seen-set so
+  // the next search rotates past it (#1528). Done before the own-PR filter so
+  // hidden-but-surfaced issues also rotate out. Persists to AgentState.
+  recordSearchSeen(
+    stateManager,
+    result.candidates.map((c) => c.issue.url),
+  );
 
   // #1354: never surface issues the user already has an open PR for. Uses
   // scout's structured linked-PR metadata when present; candidates without it

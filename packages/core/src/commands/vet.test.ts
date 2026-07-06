@@ -63,7 +63,7 @@ describe('runVet', () => {
       antiLLMPolicy: undefined,
       linkedPRClassification: 'none',
       slmTriage: null,
-      grade: { letter: 'A', reason: expect.stringMatching(/respons|merge|commit/i) },
+      grade: { score: 10, reason: expect.stringMatching(/respons|merge|commit/i) },
     });
   });
 
@@ -81,8 +81,8 @@ describe('runVet', () => {
 
     const result = await runVet({ issueUrl: TEST_ISSUE_URL });
 
-    // Two A signals + one unknown → degraded to B
-    expect(result.grade.letter).toBe('B');
+    // Two 10 signals + one unknown → dropped one band to 7
+    expect(result.grade.score).toBe(7);
     expect(result.grade.reason).toMatch(/unknown/i);
   });
 

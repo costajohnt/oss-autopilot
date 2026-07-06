@@ -38,9 +38,18 @@ vi.mock('../core/index.js', async () => {
       // A minimal-merged-PR state ensures computeStrategy returns null and the
       // search behaves exactly as before personalization (#1244).
       getState: () => ({ mergedPRs: [], closedPRs: [], repoScores: {}, lastDigest: null }),
+      getSearchSeen: () => [],
+      setSearchSeen: () => {},
     }),
   };
 });
+
+// The starred-repo refresh has its own test (starred-repos.test.ts); stub it
+// here so the contract test stays offline and independent of the minimal
+// state-manager mock above (which has no starred methods).
+vi.mock('../core/starred-repos.js', () => ({
+  refreshStarredReposIfStale: vi.fn().mockResolvedValue(0),
+}));
 
 import { runSearch } from './search.js';
 import { SearchOutputSchema } from '../formatters/json.js';
@@ -128,7 +137,9 @@ describe('search --json contract', () => {
       expect(candidate.viabilityScore).toBeGreaterThanOrEqual(0);
       expect(candidate.viabilityScore).toBeLessThanOrEqual(100);
       expect(candidate.issue.url).toMatch(/^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+$/);
-      expect(candidate.grade.letter).toMatch(/^[A-CF]$/);
+      expect(Number.isFinite(candidate.grade.score)).toBe(true);
+      expect(candidate.grade.score).toBeGreaterThanOrEqual(1);
+      expect(candidate.grade.score).toBeLessThanOrEqual(10);
     }
 
     expect(schemaIssues(SearchOutputSchema, result)).toEqual([]);
