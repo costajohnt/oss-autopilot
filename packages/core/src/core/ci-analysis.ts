@@ -342,6 +342,53 @@ export function mergeStatuses(
   return unknownCIStatus();
 }
 
+/** Minimal check-run shape consumed by {@link computeCIStatus} — shared by the
+ *  REST (`checks.listForRef`) and GraphQL (`statusCheckRollup`) enrichment paths. */
+export interface RawCheckRun {
+  name: string;
+  conclusion: string | null;
+  status: string;
+  /** ISO timestamp used to pick the most recent run when a name repeats. */
+  started_at?: string | null;
+}
+
+/** Minimal combined-status shape consumed by {@link computeCIStatus} — mirrors
+ *  `repos.getCombinedStatusForRef` and GraphQL `commit.status`. */
+export interface RawCombinedStatus {
+  state: string;
+  statuses: Array<{ state: string; context: string; description: string | null }>;
+}
+
+/**
+ * Compute a {@link CIStatusResult} from raw check runs and combined-status data.
+ *
+ * Extracted so the REST path ({@link getCIStatus}) and the batched GraphQL
+ * enrichment path (`pr-graphql.ts`) share identical status derivation — the
+ * only difference between the two is where the raw check-run / combined-status
+ * data comes from, guaranteeing CI-status parity by construction.
+ *
+ * Deduplicates check runs by name (keeping the most recent run per name), then
+ * merges the check-run and combined-status analyses.
+ */
+export function computeCIStatus(checkRuns: RawCheckRun[], combinedStatus: RawCombinedStatus): CIStatusResult {
+  // Deduplicate check runs by name, keeping only the most recent run per unique name.
+  // GitHub returns all historical runs (including re-runs), so without deduplication
+  // a superseded failure will incorrectly flag the PR as failing even after a re-run passes.
+  const latestCheckRunsByName = new Map<string, RawCheckRun>();
+  for (const check of checkRuns) {
+    const existing = latestCheckRunsByName.get(check.name);
+    if (!existing || new Date(check.started_at ?? 0) > new Date(existing.started_at ?? 0)) {
+      latestCheckRunsByName.set(check.name, check);
+    }
+  }
+  const deduped = [...latestCheckRunsByName.values()];
+
+  const checkRunAnalysis = analyzeCheckRuns(deduped);
+  const combinedAnalysis = analyzeCombinedStatus(combinedStatus);
+
+  return mergeStatuses(checkRunAnalysis, combinedAnalysis, deduped.length);
+}
+
 /**
  * Get CI status for a commit SHA by querying both the combined status API and check runs API.
  * Returns the merged status and names of any failing checks for diagnostics.
@@ -377,22 +424,7 @@ export async function getCIStatus(octokit: Octokit, owner: string, repo: string,
     const combinedStatus = statusResponse.data;
     const allCheckRuns = checksResponse?.data?.check_runs || [];
 
-    // Deduplicate check runs by name, keeping only the most recent run per unique name.
-    // GitHub returns all historical runs (including re-runs), so without deduplication
-    // a superseded failure will incorrectly flag the PR as failing even after a re-run passes.
-    const latestCheckRunsByName = new Map<string, (typeof allCheckRuns)[0]>();
-    for (const check of allCheckRuns) {
-      const existing = latestCheckRunsByName.get(check.name);
-      if (!existing || new Date(check.started_at ?? 0) > new Date(existing.started_at ?? 0)) {
-        latestCheckRunsByName.set(check.name, check);
-      }
-    }
-    const checkRuns = [...latestCheckRunsByName.values()];
-
-    const checkRunAnalysis = analyzeCheckRuns(checkRuns);
-    const combinedAnalysis = analyzeCombinedStatus(combinedStatus);
-
-    return mergeStatuses(checkRunAnalysis, combinedAnalysis, checkRuns.length);
+    return computeCIStatus(allCheckRuns, combinedStatus);
   } catch (error) {
     const statusCode = getHttpStatusCode(error);
 
