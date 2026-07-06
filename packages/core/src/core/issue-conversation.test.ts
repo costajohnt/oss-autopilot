@@ -30,6 +30,38 @@ vi.mock('./state.js', () => ({
   })),
 }));
 
+// In-memory stand-in for HttpCache: exercises the real `cachedRequest` ETag
+// logic (imported via importActual) without touching the filesystem. Reset
+// in beforeEach so cache entries never leak between tests.
+function makeMemoryCache() {
+  const store = new Map<string, { etag: string; url: string; body: unknown; cachedAt: string }>();
+  const inflight = new Map<string, Promise<unknown>>();
+  return {
+    get: (url: string) => store.get(url) ?? null,
+    set: (url: string, etag: string, body: unknown) => {
+      store.set(url, { etag, url, body, cachedAt: new Date().toISOString() });
+    },
+    getIfFresh: () => null,
+    hasInflight: (url: string) => inflight.has(url),
+    getInflight: (url: string) => inflight.get(url),
+    setInflight: (url: string, promise: Promise<unknown>) => {
+      inflight.set(url, promise);
+      return () => inflight.delete(url);
+    },
+    store,
+  };
+}
+
+let mockHttpCache = makeMemoryCache();
+
+vi.mock('./http-cache.js', async () => {
+  const actual = await vi.importActual<typeof import('./http-cache.js')>('./http-cache.js');
+  return {
+    ...actual,
+    getHttpCache: vi.fn(() => mockHttpCache),
+  };
+});
+
 const { IssueConversationMonitor } = await import('./issue-conversation.js');
 const { isAcknowledgmentComment } = await import('./comment-utils.js');
 
@@ -90,6 +122,7 @@ describe('isAcknowledgmentComment', () => {
 describe('IssueConversationMonitor', () => {
   beforeEach(() => {
     mockState = defaultState();
+    mockHttpCache = makeMemoryCache();
     mockOctokitInstance = {
       search: {
         issuesAndPullRequests: vi.fn().mockResolvedValue({
@@ -896,5 +929,92 @@ describe('IssueConversationMonitor', () => {
     expect(failures).toHaveLength(1);
     expect(failures[0].issueUrl).toBe('https://github.com/owner/repo/issues/42');
     expect(failures[0].error).toContain('No user comment found');
+  });
+
+  describe('ETag caching for comment fetches', () => {
+    it('caches comments on first fetch and reuses them on a 304 without re-parsing stale headers', async () => {
+      mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+        data: { items: [makeSearchItem()], total_count: 1 },
+      });
+
+      const comments = [
+        makeComment('testuser', 'Can I work on this?', '2026-02-01T10:00:00Z'),
+        makeComment('maintainer', 'Sure, go ahead!', '2026-02-02T10:00:00Z', 'MEMBER'),
+      ];
+
+      mockOctokitInstance.issues.listComments.mockImplementation(
+        async (params: { headers?: Record<string, string> }) => {
+          if (params.headers?.['if-none-match']) {
+            const err = new Error('Not Modified') as Error & { status: number };
+            err.status = 304;
+            throw err;
+          }
+          return { data: comments, headers: { etag: 'W/"abc123"' } };
+        },
+      );
+
+      const monitor = new IssueConversationMonitor('fake-token');
+
+      const first = await monitor.fetchCommentedIssues();
+      expect(first.issues).toHaveLength(1);
+      expect(first.issues[0].lastResponseAuthor).toBe('maintainer');
+      expect(mockHttpCache.store.size).toBe(1);
+
+      const second = await monitor.fetchCommentedIssues();
+      expect(second.issues).toHaveLength(1);
+      expect(second.issues[0].lastResponseAuthor).toBe('maintainer');
+
+      const calls = mockOctokitInstance.issues.listComments.mock.calls;
+      expect(calls).toHaveLength(2);
+      expect(calls[0][0].headers).toEqual({});
+      expect(calls[1][0].headers).toEqual({ 'if-none-match': 'W/"abc123"' });
+    });
+
+    it('caches each page separately so a >100-comment issue gets conditional-request savings on every page', async () => {
+      mockOctokitInstance.search.issuesAndPullRequests.mockResolvedValue({
+        data: { items: [makeSearchItem()], total_count: 1 },
+      });
+
+      // A full first page (100 items) forces paginateAllDetailed to fetch a second page.
+      const page1Comments = Array.from({ length: 100 }, (_, i) =>
+        makeComment(`commenter${i}`, `filler comment ${i}`, `2026-01-01T00:00:${String(i).padStart(2, '0')}Z`),
+      );
+      const page2Comments = [
+        makeComment('testuser', 'Can I work on this?', '2026-02-01T10:00:00Z'),
+        makeComment('maintainer', 'Sure, go ahead!', '2026-02-02T10:00:00Z', 'MEMBER'),
+      ];
+
+      mockOctokitInstance.issues.listComments.mockImplementation(
+        async (params: { page: number; headers?: Record<string, string> }) => {
+          if (params.headers?.['if-none-match']) {
+            const err = new Error('Not Modified') as Error & { status: number };
+            err.status = 304;
+            throw err;
+          }
+          if (params.page === 1) return { data: page1Comments, headers: { etag: 'W/"page1"' } };
+          return { data: page2Comments, headers: { etag: 'W/"page2"' } };
+        },
+      );
+
+      const monitor = new IssueConversationMonitor('fake-token');
+      const first = await monitor.fetchCommentedIssues();
+      expect(first.issues).toHaveLength(1);
+      expect(first.issues[0].lastResponseAuthor).toBe('maintainer');
+
+      // Each page is keyed by its own URL, so both get their own cache entry.
+      expect(mockHttpCache.store.size).toBe(2);
+      const urls = [...mockHttpCache.store.keys()];
+      expect(urls.some((u) => u.includes('page=1'))).toBe(true);
+      expect(urls.some((u) => u.includes('page=2'))).toBe(true);
+
+      const second = await monitor.fetchCommentedIssues();
+      expect(second.issues).toHaveLength(1);
+      expect(second.issues[0].lastResponseAuthor).toBe('maintainer');
+
+      const calls = mockOctokitInstance.issues.listComments.mock.calls;
+      expect(calls).toHaveLength(4);
+      expect(calls[2][0].headers).toEqual({ 'if-none-match': 'W/"page1"' });
+      expect(calls[3][0].headers).toEqual({ 'if-none-match': 'W/"page2"' });
+    });
   });
 });
