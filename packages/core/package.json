@@ -1,6 +1,6 @@
 {
   "name": "@oss-autopilot/core",
-  "version": "3.16.1",
+  "version": "3.17.0",
   "description": "CLI and core library for managing open source contributions",
   "type": "module",
   "bin": {
@@ -65,6 +65,7 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
+    "@octokit/plugin-retry": "^8.1.0",
     "@octokit/plugin-throttling": "^11.0.3",
     "@octokit/rest": "^22.0.1",
     "@oss-scout/core": "^1.2.4",

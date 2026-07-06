@@ -10,6 +10,7 @@ import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { isBotAuthor, isAcknowledgmentComment } from './comment-utils.js';
 import { paginateAllDetailed } from './pagination.js';
+import { getHttpCache, cachedRequest } from './http-cache.js';
 import { getStateManager } from './state.js';
 import { daysBetween } from './dates.js';
 import { splitRepo, extractOwnerRepo, isOwnRepo } from './urls.js';
@@ -186,15 +187,29 @@ export class IssueConversationMonitor {
   ): Promise<CommentedIssue | null> {
     const { owner, repo } = splitRepo(repoFullName);
 
-    const { items: allComments, truncated } = await paginateAllDetailed((page) =>
-      this.octokit.issues.listComments({
-        owner,
-        repo,
-        issue_number: item.number,
-        per_page: 100,
-        page,
-      }),
-    );
+    const cache = getHttpCache();
+    // Each page gets its own cache entry (URL includes `page`) so issues with
+    // >100 comments still get conditional-request savings on every page, not
+    // just the first.
+    const { items: allComments, truncated } = await paginateAllDetailed((page) => {
+      const url = `/repos/${owner}/${repo}/issues/${item.number}/comments?per_page=100&page=${page}`;
+      return cachedRequest(
+        cache,
+        url,
+        (headers) =>
+          this.octokit.issues.listComments({
+            owner,
+            repo,
+            issue_number: item.number,
+            per_page: 100,
+            page,
+            headers,
+          }) as Promise<{
+            data: Awaited<ReturnType<Octokit['issues']['listComments']>>['data'];
+            headers: Record<string, string>;
+          }>,
+      ).then((data) => ({ data }));
+    });
     if (truncated) {
       // Comments arrive oldest-first, so hitting the pagination cap drops
       // the NEWEST responses — conversation status for this issue may be

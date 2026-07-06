@@ -5,12 +5,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 let mockOctokitInstance: any;
+let lastOctokitOptions: any;
 
 vi.mock('@octokit/rest', () => ({
   Octokit: {
     plugin: () =>
       class MockOctokit {
-        constructor() {
+        constructor(options: unknown) {
+          lastOctokitOptions = options;
           return mockOctokitInstance;
         }
       },
@@ -19,6 +21,10 @@ vi.mock('@octokit/rest', () => ({
 
 vi.mock('@octokit/plugin-throttling', () => ({
   throttling: {},
+}));
+
+vi.mock('@octokit/plugin-retry', () => ({
+  retry: {},
 }));
 
 // Must import after mocks are set up
@@ -108,6 +114,11 @@ describe('getOctokit', () => {
     expect(first).toBeDefined();
     const second = getOctokit('token-y');
     expect(second).toBeDefined();
+  });
+
+  it('should exclude 429 (and other non-retryable statuses) from plugin-retry so it never fights the throttling plugin', () => {
+    getOctokit('token-retry-config');
+    expect(lastOctokitOptions.retry.doNotRetry).toEqual([400, 401, 403, 404, 410, 422, 429, 451]);
   });
 });
 

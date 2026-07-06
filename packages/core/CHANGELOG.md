@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.16.1...core-v3.17.0) (2026-07-06)
+
+
+### Features
+
+* **monitor:** batch per-PR enrichment via GraphQL to cut daily REST usage ~6x ([#1551](https://github.com/costajohnt/oss-autopilot/issues/1551)) ([5df1ec2](https://github.com/costajohnt/oss-autopilot/commit/5df1ec27c41eeed7b8af3f17157ddf300a34b3f1))
+
+
+### Bug Fixes
+
+* **github:** retry transient 5xx/network errors via @octokit/plugin-retry ([#1553](https://github.com/costajohnt/oss-autopilot/issues/1553)) ([75ce78c](https://github.com/costajohnt/oss-autopilot/commit/75ce78ce88a900777e36807bea33f33b2835372b))
+
+
+### Performance Improvements
+
+* **daily:** use ETag conditional requests for commented-issue comment fetches ([#1550](https://github.com/costajohnt/oss-autopilot/issues/1550)) ([6d85638](https://github.com/costajohnt/oss-autopilot/commit/6d85638db7e9d963ac54dbf0674bce16c3a895c2))
+
 ## [3.16.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.16.0...core-v3.16.1) (2026-07-04)
 
 

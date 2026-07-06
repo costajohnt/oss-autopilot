@@ -56,6 +56,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@octokit/plugin-retry':
+        specifier: ^8.1.0
+        version: 8.1.0(@octokit/core@7.0.6)
       '@octokit/plugin-throttling':
         specifier: ^11.0.3
         version: 11.0.3(@octokit/core@7.0.6)
@@ -670,6 +673,12 @@ packages:
     engines: {node: '>= 20'}
     peerDependencies:
       '@octokit/core': '>=6'
+
+  '@octokit/plugin-retry@8.1.0':
+    resolution: {integrity: sha512-O1FZgXeiGb2sowEr/hYTr6YunGdSAFWnr2fyW39Ah85H8O33ELASQxcvOFF5LE6Tjekcyu2ms4qAzJVhSaJxTw==}
+    engines: {node: '>= 20'}
+    peerDependencies:
+      '@octokit/core': '>=7'
 
   '@octokit/plugin-throttling@11.0.3':
     resolution: {integrity: sha512-34eE0RkFCKycLl2D2kq7W+LovheM/ex3AwZCYN8udpi6bxsyjZidb2McXs69hZhLmJlDqTSP8cH+jSRpiaijBg==}
@@ -3290,6 +3299,13 @@ snapshots:
     dependencies:
       '@octokit/core': 7.0.6
       '@octokit/types': 16.0.0
+
+  '@octokit/plugin-retry@8.1.0(@octokit/core@7.0.6)':
+    dependencies:
+      '@octokit/core': 7.0.6
+      '@octokit/request-error': 7.1.0
+      '@octokit/types': 16.0.0
+      bottleneck: 2.19.5
 
   '@octokit/plugin-throttling@11.0.3(@octokit/core@7.0.6)':
     dependencies:
