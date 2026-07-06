@@ -97,6 +97,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     valueHint: 'positive integer',
   },
   {
+    key: 'skipBroadWhenSufficientResults',
+    description:
+      'Skip the broad discovery phase once this many candidates from new repos are found (0 = always run the broad phase). Affinity/starred-repo candidates do not count toward it.',
+    settableVia: 'setup',
+    valueHint: 'non-negative integer (0 disables)',
+  },
+  {
     key: 'minRepoScoreThreshold',
     description: 'Minimum repo maintainer-health score required for discovery (0–10).',
     settableVia: 'setup',

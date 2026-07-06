@@ -16,11 +16,9 @@
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
-import { daysBetween } from './dates.js';
 import { parseGitHubUrl, extractOwnerRepo, isOwnRepo } from './urls.js';
 import { DEFAULT_CONCURRENCY, runWorkerPool } from './concurrency.js';
 import { FetchedPR, DailyDigest, ClosedPR, MergedPR, StarFilter } from './types.js';
-import { determineStatus } from './status-determination.js';
 import {
   ConfigurationError,
   ValidationError,
@@ -33,17 +31,10 @@ import { paginateAllDetailed, type PaginateAllResult } from './pagination.js';
 import { debug, warn, timed } from './logger.js';
 import { getHttpCache, cachedRequest } from './http-cache.js';
 
-import { categorizeCIStatus, classifyFailingChecks, getCIStatus } from './ci-analysis.js';
-import {
-  type ReviewComment,
-  determineReviewDecision,
-  getLatestChangesRequestedDate,
-  checkUnrespondedComments,
-  getFirstMaintainerResponseAt,
-} from './review-analysis.js';
-import { analyzeChecklist } from './checklist-analysis.js';
-import { extractMaintainerActionHints } from './maintainer-analysis.js';
-import { computeDisplayLabel } from './display-utils.js';
+import { getCIStatus } from './ci-analysis.js';
+import { type ReviewComment } from './review-analysis.js';
+import { assembleFetchedPR, type CommitInfo } from './pr-assembly.js';
+import { batchFetchPRDetails, type PRRef, type NormalizedPRData, type BatchPRResult } from './pr-graphql.js';
 import {
   type PRCountsResult,
   fetchUserMergedPRCounts as fetchUserMergedPRCountsImpl,
@@ -301,19 +292,63 @@ export class PRMonitor {
 
     debug('pr-monitor', `Filtered to ${filteredItems.length} PRs after excluding own repos`);
 
-    // Fetch detailed info using a worker pool for bounded concurrency.
-    await timed('pr-monitor', `Fetch details for ${filteredItems.length} PRs`, async () => {
+    // Build PR references for the batched GraphQL enrichment. `parseGitHubUrl`
+    // is the authoritative parser (the filter above used `extractOwnerRepo`);
+    // anything it can't parse as a PR is skipped with a warning.
+    const refs: PRRef[] = [];
+    const refByUrl = new Map<string, PRRef>();
+    for (const item of filteredItems) {
+      const parsed = parseGitHubUrl(item.html_url);
+      if (!parsed || parsed.type !== 'pull') {
+        warn(MODULE, `Skipping PR with unparseable URL: ${item.html_url}`);
+        continue;
+      }
+      const ref: PRRef = { owner: parsed.owner, repo: parsed.repo, number: parsed.number, url: item.html_url };
+      refs.push(ref);
+      refByUrl.set(item.html_url, ref);
+    }
+
+    // Enrich PRs. The batched GraphQL path (separate 5000-point/hr bucket) handles
+    // the common case in a handful of ~1-point queries; anything it can't resolve
+    // (connection cap overflow, missing node, GraphQL outage) falls back to the
+    // per-PR REST path via the worker pool.
+    await timed('pr-monitor', `Fetch details for ${refs.length} PRs`, async () => {
+      let batch: BatchPRResult;
+      try {
+        batch = await batchFetchPRDetails(this.octokit, refs);
+      } catch (error) {
+        // A fatal batch-level GraphQL error (rate limit / auth). Don't crash the
+        // run — route every PR to the REST path, which surfaces per-PR failures
+        // exactly as the pre-GraphQL implementation did.
+        warn(MODULE, `GraphQL batch enrichment failed (${errorMessage(error)}); falling back to REST for all PRs`);
+        batch = { resolved: new Map(), restFallbackUrls: refs.map((r) => r.url) };
+      }
+
+      // Assemble GraphQL-resolved PRs (no additional network calls).
+      for (const [url, data] of batch.resolved) {
+        const ref = refByUrl.get(url);
+        if (!ref) continue;
+        try {
+          prs.push(await this.assembleFromNormalized(ref, data));
+        } catch (error) {
+          const errMsg = errorMessage(error);
+          warn('pr-monitor', `Error assembling ${url}: ${errMsg}`);
+          failures.push({ prUrl: url, error: errMsg });
+        }
+      }
+
+      // REST fallback for the remainder, using a worker pool for bounded concurrency.
       await runWorkerPool(
-        filteredItems,
-        async (item) => {
+        batch.restFallbackUrls,
+        async (url) => {
           try {
-            debug('pr-monitor', `Fetching details for ${item.html_url}`);
-            const pr = await this.fetchPRDetails(item.html_url, warnings);
+            debug('pr-monitor', `Fetching details for ${url} (REST fallback)`);
+            const pr = await this.fetchPRDetails(url, warnings);
             if (pr) prs.push(pr);
           } catch (error) {
             const errMsg = errorMessage(error);
-            warn('pr-monitor', `Error fetching ${item.html_url}: ${errMsg}`);
-            failures.push({ prUrl: item.html_url, error: errMsg });
+            warn('pr-monitor', `Error fetching ${url}: ${errMsg}`);
+            failures.push({ prUrl: url, error: errMsg });
           }
         },
         MAX_CONCURRENT_REQUESTS,
@@ -330,7 +365,13 @@ export class PRMonitor {
   }
 
   /**
-   * Fetch detailed information for a single PR
+   * Fetch detailed information for a single PR via the REST enrichment path.
+   *
+   * This is the fallback path in the GraphQL-batched architecture (#1539
+   * lineage): PRs that the batched GraphQL query couldn't resolve (a connection
+   * cap, a missing/inaccessible node, or a GraphQL outage) are enriched here.
+   * Both paths funnel through the shared {@link assembleFetchedPR} pipeline, so
+   * the computed status is identical regardless of transport.
    */
   private async fetchPRDetails(prUrl: string, warnings?: string[]): Promise<FetchedPR | null> {
     const parsed = parseGitHubUrl(prUrl);
@@ -397,155 +438,89 @@ export class PRMonitor {
     const ghPR = prResponse.data;
     const reviews = reviewsResponse.data;
 
-    // Determine review decision (delegated to review-analysis module)
-    const reviewDecision = determineReviewDecision(reviews);
+    const ciStatus = await getCIStatus(this.octokit, owner, repo, ghPR.head.sha);
 
-    // Check for merge conflict
-    const mergeConflict = hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state);
-
-    // Check if there's an unresponded maintainer comment (delegated to review-analysis module)
-    const { hasUnrespondedComment, lastMaintainerComment } = checkUnrespondedComments(
-      comments,
-      reviews,
-      reviewComments,
-      config.githubUsername,
+    // The commit date is only consulted (and only fetched) when the PR has an
+    // unresponded maintainer comment or a changes-requested review — the shared
+    // pipeline decides via `needCommitDate` and invokes this thunk lazily.
+    return assembleFetchedPR(
+      {
+        prUrl,
+        owner,
+        repo,
+        number,
+        id: ghPR.id,
+        title: ghPR.title,
+        body: ghPR.body || '',
+        createdAt: ghPR.created_at,
+        updatedAt: ghPR.updated_at,
+        hasMergeConflict: hasMergeConflict(ghPR.mergeable, ghPR.mergeable_state),
+        comments,
+        reviews,
+        reviewComments,
+        ciStatus,
+      },
+      config,
+      () => this.fetchCommitInfo(owner, repo, ghPR.head.sha),
     );
-
-    // Earliest maintainer response, computed from the comment/review timeline
-    // already in memory (#1461). Rides into the persisted digest so the
-    // outcome ledger can recover it after the PR merges or closes.
-    const firstMaintainerResponseAt = getFirstMaintainerResponseAt(comments, reviews, config.githubUsername);
-
-    // Fetch CI status and (conditionally) latest commit date in parallel
-    // We need the commit date when hasUnrespondedComment is true (to distinguish
-    // "needs_response" from "waiting_on_maintainer") OR when reviewDecision is "changes_requested"
-    // (to detect needs_changes: review requested changes but no new commits pushed)
-    const ciPromise = getCIStatus(this.octokit, owner, repo, ghPR.head.sha);
-    const needCommitDate = hasUnrespondedComment || reviewDecision === 'changes_requested';
-    const commitInfoPromise = needCommitDate
-      ? this.octokit.repos
-          .getCommit({ owner, repo, ref: ghPR.head.sha })
-          .then((res) => ({
-            date: res.data.commit.author?.date,
-            // GitHub user login of the commit author (may differ from git author)
-            author: res.data.author?.login,
-          }))
-          .catch((err: unknown) => {
-            // Rate limit errors must propagate — silently swallowing them produces
-            // misleading status (e.g. needs_changes when changes were addressed) (#469).
-            const status = getHttpStatusCode(err);
-            if (status === 429) throw err;
-            if (status === 403) {
-              const msg = errorMessage(err).toLowerCase();
-              if (msg.includes('rate limit') || msg.includes('abuse detection')) throw err;
-              // Non-rate-limit 403 (DMCA, private repo, SSO) — degrade gracefully
-              warn(
-                'pr-monitor',
-                `403 fetching commit date for ${owner}/${repo}@${ghPR.head.sha.slice(0, 7)}: ${errorMessage(err)}`,
-              );
-              return undefined;
-            }
-            warn(
-              'pr-monitor',
-              `Failed to fetch commit date for ${owner}/${repo}@${ghPR.head.sha.slice(0, 7)}: ${errorMessage(err)}`,
-            );
-            return undefined;
-          })
-      : Promise.resolve(undefined);
-
-    const [{ status: ciStatus, failingCheckNames, failingCheckConclusions }, commitInfo] = await Promise.all([
-      ciPromise,
-      commitInfoPromise,
-    ]);
-    const latestCommitDate = commitInfo?.date;
-    const latestCommitAuthor = commitInfo?.author;
-
-    // Analyze PR body for incomplete checklists (delegated to checklist-analysis module)
-    const { hasIncompleteChecklist, checklistStats } = analyzeChecklist(ghPR.body || '');
-
-    // Extract maintainer action hints from comments (delegated to maintainer-analysis module)
-    const maintainerActionHints = extractMaintainerActionHints(lastMaintainerComment?.body, reviewDecision);
-
-    // Calculate days since activity
-    const daysSinceActivity = daysBetween(new Date(ghPR.updated_at), new Date());
-
-    // Find the date of the latest changes_requested review (delegated to review-analysis module)
-    const latestChangesRequestedDate = getLatestChangesRequestedDate(reviews);
-
-    // Classify failing checks (delegated to ci-analysis module)
-    const classifiedChecks = classifyFailingChecks(failingCheckNames, failingCheckConclusions);
-
-    // Aggregate 5-state CI categorization (#1272). Computed once here so
-    // agents read pr.ciCategorization rather than re-deriving the truth
-    // table in three separate prose forms.
-    const ciCategorization = categorizeCIStatus({ ciStatus, failingCheckNames, classifiedChecks });
-
-    // Determine status
-    const hasActionableCIFailure = ciStatus === 'failing' && classifiedChecks.some((c) => c.category === 'actionable');
-    const { status, actionReason, waitReason, stalenessTier, actionReasons } = determineStatus({
-      ciStatus,
-      hasMergeConflict: mergeConflict,
-      hasUnrespondedComment,
-      hasIncompleteChecklist,
-      reviewDecision,
-      daysSinceActivity,
-      dormantThreshold: config.dormantThresholdDays,
-      approachingThreshold: config.approachingDormantDays,
-      latestCommitDate,
-      latestCommitAuthor,
-      contributorUsername: config.githubUsername,
-      lastMaintainerCommentDate: lastMaintainerComment?.createdAt,
-      latestChangesRequestedDate,
-      hasActionableCIFailure,
-    });
-
-    return this.buildFetchedPR({
-      id: ghPR.id,
-      url: prUrl,
-      repo: `${owner}/${repo}`,
-      number,
-      title: ghPR.title,
-      status,
-      actionReason,
-      waitReason,
-      stalenessTier,
-      actionReasons,
-      createdAt: ghPR.created_at,
-      updatedAt: ghPR.updated_at,
-      firstMaintainerResponseAt,
-      daysSinceActivity,
-      ciStatus,
-      failingCheckNames,
-      classifiedChecks,
-      ciCategorization,
-      hasMergeConflict: mergeConflict,
-      reviewDecision,
-      hasUnrespondedComment,
-      lastMaintainerComment,
-      latestCommitDate,
-      hasIncompleteChecklist,
-      checklistStats,
-      maintainerActionHints,
-    });
   }
 
   /**
-   * Build a FetchedPR object from computed fields and attach display labels.
-   * Centralizes PR construction and display label computation (#79).
+   * Fetch the HEAD commit's author date and login via REST `repos.getCommit`.
+   * Rate-limit errors propagate (silently swallowing them produces misleading
+   * status, e.g. needs_changes when changes were addressed) (#469); other
+   * failures degrade to `undefined` so the PR is still returned.
    */
-  private buildFetchedPR(fields: Omit<FetchedPR, 'displayLabel' | 'displayDescription'>): FetchedPR {
-    const pr: FetchedPR = {
-      ...fields,
-      displayLabel: '', // computed below
-      displayDescription: '', // computed below
-    };
+  private async fetchCommitInfo(owner: string, repo: string, sha: string): Promise<CommitInfo | undefined> {
+    try {
+      const res = await this.octokit.repos.getCommit({ owner, repo, ref: sha });
+      return {
+        date: res.data.commit.author?.date,
+        // GitHub user login of the commit author (may differ from git author)
+        author: res.data.author?.login,
+      };
+    } catch (err) {
+      const status = getHttpStatusCode(err);
+      if (status === 429) throw err;
+      if (status === 403) {
+        const msg = errorMessage(err).toLowerCase();
+        if (msg.includes('rate limit') || msg.includes('abuse detection')) throw err;
+        // Non-rate-limit 403 (DMCA, private repo, SSO) — degrade gracefully
+        warn('pr-monitor', `403 fetching commit date for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage(err)}`);
+        return undefined;
+      }
+      warn('pr-monitor', `Failed to fetch commit date for ${owner}/${repo}@${sha.slice(0, 7)}: ${errorMessage(err)}`);
+      return undefined;
+    }
+  }
 
-    // Compute display labels (#79) — delegated to display-utils module
-    const { displayLabel, displayDescription } = computeDisplayLabel(pr);
-    pr.displayLabel = displayLabel;
-    pr.displayDescription = displayDescription;
-
-    return pr;
+  /**
+   * Assemble a {@link FetchedPR} from GraphQL-batched {@link NormalizedPRData}.
+   * No network calls: the batch already carries the commit info, so the shared
+   * pipeline's lazy commit thunk just returns it.
+   */
+  private assembleFromNormalized(ref: PRRef, data: NormalizedPRData): Promise<FetchedPR> {
+    const config = this.stateManager.getState().config;
+    return assembleFetchedPR(
+      {
+        prUrl: ref.url,
+        owner: ref.owner,
+        repo: ref.repo,
+        number: ref.number,
+        id: data.id,
+        title: data.title,
+        body: data.body,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        hasMergeConflict: data.hasMergeConflict,
+        comments: data.comments,
+        reviews: data.reviews,
+        reviewComments: data.reviewComments,
+        ciStatus: data.ciStatus,
+      },
+      config,
+      async () => data.commitInfo,
+    );
   }
 
   /**

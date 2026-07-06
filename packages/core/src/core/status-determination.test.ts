@@ -89,6 +89,52 @@ describe('determineStatus changes_addressed detection', () => {
       }),
     ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier: 'active' });
   });
+
+  it('classifies an approved PR with a later approval comment as pending_merge, not needs_response (#1507)', () => {
+    // Maintainer re-approved AFTER the contributor's last commit, so it surfaces
+    // as an unresponded comment. The PR is approved + CI passing, so it needs no
+    // contributor response — it is waiting to be merged, not "needs response".
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'approved',
+        ciStatus: 'passing',
+        latestCommitDate: '2026-02-06T10:00:00Z', // older
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z', // newer (the re-approval)
+      }),
+    ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier: 'active' });
+  });
+
+  it('treats approved + later comment with unknown CI as pending_merge too (#1507)', () => {
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'approved',
+        ciStatus: 'unknown',
+        latestCommitDate: '2026-02-06T10:00:00Z',
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toEqual({ status: 'waiting_on_maintainer', waitReason: 'pending_merge', stalenessTier: 'active' });
+  });
+
+  it('still flags needs_response for a non-approved PR with a later comment (#1507 guard is scoped)', () => {
+    // The carve-out must not leak to review_required PRs: an unresponded comment
+    // there is still a genuine action item.
+    expect(
+      callDetermineStatus({
+        hasUnrespondedComment: true,
+        reviewDecision: 'review_required',
+        ciStatus: 'passing',
+        latestCommitDate: '2026-02-06T10:00:00Z',
+        lastMaintainerCommentDate: '2026-02-07T10:00:00Z',
+      }),
+    ).toEqual({
+      status: 'needs_addressing',
+      actionReason: 'needs_response',
+      stalenessTier: 'active',
+      actionReasons: ['needs_response'],
+    });
+  });
 });
 
 describe('determineStatus commit author filtering (#547, #568)', () => {
