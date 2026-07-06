@@ -4,11 +4,15 @@
 
 import { Octokit } from '@octokit/rest';
 import { throttling } from '@octokit/plugin-throttling';
+import { retry } from '@octokit/plugin-retry';
 import { warn } from './logger.js';
 
 const MODULE = 'github';
 
-const ThrottledOctokit = Octokit.plugin(throttling);
+// Plugin order matches octokit.js's own composition (retry, then throttling):
+// throttling must be the outermost layer so its Bottleneck-based queueing sees
+// rate-limit errors first, before plugin-retry's own request-level retries.
+const ThrottledOctokit = Octokit.plugin(retry, throttling);
 
 /** Rate limit info returned by {@link checkRateLimit}. */
 export interface RateLimitInfo {
@@ -74,7 +78,8 @@ export function getRateLimitCallbacks() {
  * Returns a cached instance if the token matches, otherwise creates a new one.
  *
  * The client retries on primary rate limits (up to 2 retries) and
- * secondary rate limits (up to 3 retries).
+ * secondary rate limits (up to 3 retries), and separately retries
+ * transient 5xx/network errors (up to 3 retries) via `@octokit/plugin-retry`.
  *
  * @param token - GitHub personal access token
  * @returns Authenticated Octokit instance with rate limit throttling
@@ -95,6 +100,10 @@ export function getOctokit(token: string): Octokit {
   _octokit = new ThrottledOctokit({
     auth: token,
     throttle: callbacks,
+    // Mirrors plugin-retry's own default doNotRetry list (keep in sync on
+    // upgrade) plus 429, so primary rate limits stay owned by the throttling
+    // callbacks above instead of being retried again here with a shorter backoff.
+    retry: { doNotRetry: [400, 401, 403, 404, 410, 422, 429, 451] },
   });
 
   _currentToken = token;

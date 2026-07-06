@@ -65,6 +65,7 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
+    "@octokit/plugin-retry": "^8.1.0",
     "@octokit/plugin-throttling": "^11.0.3",
     "@octokit/rest": "^22.0.1",
     "@oss-scout/core": "^1.2.4",
