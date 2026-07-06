@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.17.0...core-v3.17.1) (2026-07-06)
+
+
+### Bug Fixes
+
+* **hooks:** resolve git target dir so worktree commits aren't misjudged by branch guards ([#1555](https://github.com/costajohnt/oss-autopilot/issues/1555)) ([7c7335c](https://github.com/costajohnt/oss-autopilot/commit/7c7335c63c0dcbd912e95ae4fd468be9005b30f9))
+* **status:** don't flag approved+passing PRs with a later approval comment as needs_response ([#1507](https://github.com/costajohnt/oss-autopilot/issues/1507)) ([#1523](https://github.com/costajohnt/oss-autopilot/issues/1523)) ([c8991cd](https://github.com/costajohnt/oss-autopilot/commit/c8991cdfb349210b1f5b55ac10520401f2ab59b5))
+
 ## [3.17.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.16.1...core-v3.17.0) (2026-07-06)
 
 
