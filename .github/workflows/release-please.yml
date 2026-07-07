@@ -39,7 +39,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout tagged release
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.release-please.outputs.core-tag }}
 
@@ -74,7 +74,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout tagged release
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.release-please.outputs.mcp-tag }}
 
