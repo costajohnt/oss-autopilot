@@ -11,7 +11,11 @@
 /** Issue types the action menu surfaces. Match the strings the CLI emits in
  * `data.daily.actionableIssues[*].type`. */
 export type ActionableIssueType =
-  'needs_response' | 'needs_changes' | 'incomplete_checklist' | 'ci_failing' | 'merge_conflict';
+  | 'needs_response'
+  | 'needs_changes'
+  | 'incomplete_checklist'
+  | 'ci_failing'
+  | 'merge_conflict';
 
 export type IssueEffort = 'small' | 'medium' | 'large';
 

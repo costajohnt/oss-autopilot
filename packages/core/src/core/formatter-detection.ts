@@ -12,7 +12,15 @@ import { debug } from './logger.js';
 const MODULE = 'formatter-detection';
 
 export type FormatterName =
-  'prettier' | 'eslint' | 'biome' | 'black' | 'ruff' | 'rustfmt' | 'gofmt' | 'clang-format' | 'rubocop';
+  | 'prettier'
+  | 'eslint'
+  | 'biome'
+  | 'black'
+  | 'ruff'
+  | 'rustfmt'
+  | 'gofmt'
+  | 'clang-format'
+  | 'rubocop';
 
 export interface DetectedFormatter {
   name: FormatterName;

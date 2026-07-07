@@ -27,7 +27,14 @@
  */
 
 export type ContributingCategory =
-  'tests' | 'documentation' | 'changelog' | 'code_style' | 'commit_format' | 'cla_dco' | 'branch_target' | 'scope';
+  | 'tests'
+  | 'documentation'
+  | 'changelog'
+  | 'code_style'
+  | 'commit_format'
+  | 'cla_dco'
+  | 'branch_target'
+  | 'scope';
 
 export interface ContributingRequirement {
   category: ContributingCategory;

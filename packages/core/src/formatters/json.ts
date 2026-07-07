@@ -1341,7 +1341,14 @@ export interface CheckIntegrationOutput {
  * are kept for back-compat.
  */
 export type VetListItemStatus =
-  'still_available' | 'claimed' | 'closed' | 'has_pr' | 'has_stalled_pr' | 'at_risk' | 'own_open_pr' | 'error';
+  | 'still_available'
+  | 'claimed'
+  | 'closed'
+  | 'has_pr'
+  | 'has_stalled_pr'
+  | 'at_risk'
+  | 'own_open_pr'
+  | 'error';
 
 /** Output of the vet-list command (#764). */
 export interface VetListOutput {
@@ -1428,7 +1435,13 @@ export interface VetOutput {
    * already has work in flight vs. a competing contributor.
    */
   linkedPRClassification?:
-    'none' | 'user_open' | 'user_closed' | 'user_merged' | 'other_open' | 'other_closed' | 'other_merged';
+    | 'none'
+    | 'user_open'
+    | 'user_closed'
+    | 'user_merged'
+    | 'other_open'
+    | 'other_closed'
+    | 'other_merged';
   /**
    * Compact linked-PR summary (#97 / scout 0.9.0). Present when the issue
    * has a linked PR; absent otherwise. `isStalled` flags open PRs that

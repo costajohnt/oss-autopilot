@@ -47,7 +47,12 @@ interface VetListOptions {
  * covers the transition period.
  */
 export type ScoutSkipReason =
-  'issue_closed' | 'has_linked_pr' | 'claimed' | 'score_too_low' | 'anti_llm_policy' | 'other';
+  | 'issue_closed'
+  | 'has_linked_pr'
+  | 'claimed'
+  | 'score_too_low'
+  | 'anti_llm_policy'
+  | 'other';
 
 const KNOWN_SKIP_REASONS: ReadonlySet<ScoutSkipReason> = new Set([
   'issue_closed',
