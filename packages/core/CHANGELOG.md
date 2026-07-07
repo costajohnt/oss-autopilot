@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.17.2...core-v3.17.3) (2026-07-07)
+
+
+### Bug Fixes
+
+* **core:** supply searchRotation in buildScoutState for scout 1.4.0 ([#1559](https://github.com/costajohnt/oss-autopilot/issues/1559)) ([7d67d3c](https://github.com/costajohnt/oss-autopilot/commit/7d67d3cd0a77db6a0da45bbf031db5d0ece2b60a))
+
 ## [3.17.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.17.1...core-v3.17.2) (2026-07-07)
 
 
