@@ -9,11 +9,7 @@
  */
 
 export type MaintainerHint =
-  | 'demo_requested'
-  | 'tests_requested'
-  | 'changes_requested'
-  | 'docs_requested'
-  | 'rebase_requested';
+  'demo_requested' | 'tests_requested' | 'changes_requested' | 'docs_requested' | 'rebase_requested';
 
 /**
  * Display labels the action-menu workflow renders for each hint type.
