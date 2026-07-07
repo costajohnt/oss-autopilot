@@ -461,11 +461,7 @@ export interface CapacityAssessment {
 }
 
 export type ActionableIssueType =
-  | 'ci_failing'
-  | 'merge_conflict'
-  | 'needs_response'
-  | 'needs_changes'
-  | 'incomplete_checklist';
+  'ci_failing' | 'merge_conflict' | 'needs_response' | 'needs_changes' | 'incomplete_checklist';
 
 export interface ActionableIssue {
   type: ActionableIssueType;

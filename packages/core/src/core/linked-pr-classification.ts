@@ -13,13 +13,7 @@
  */
 
 export type LinkedPRClassification =
-  | 'none'
-  | 'user_open'
-  | 'user_closed'
-  | 'user_merged'
-  | 'other_open'
-  | 'other_closed'
-  | 'other_merged';
+  'none' | 'user_open' | 'user_closed' | 'user_merged' | 'other_open' | 'other_closed' | 'other_merged';
 
 export type LinkedPRState = 'open' | 'closed' | 'merged';
 
