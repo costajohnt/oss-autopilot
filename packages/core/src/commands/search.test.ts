@@ -33,7 +33,7 @@ vi.mock('../core/starred-repos.js', () => ({
 
 import { getStateManager } from '../core/index.js';
 import { createAutopilotScout, type ScoutBridgeDiagnostics } from './scout-bridge.js';
-import { runSearch, recordSearchSeen, SEARCH_SEEN_RETENTION_DAYS } from './search.js';
+import { runSearch, recordSearchSeen, parseSearchStrategies, SEARCH_SEEN_RETENTION_DAYS } from './search.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
 
@@ -64,6 +64,32 @@ describe('runSearch', () => {
     await runSearch({ maxResults: 5 });
 
     expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({ diversityRatio: 0.2 }));
+  });
+
+  it('forwards selected strategies to scout (#1244 selector passthrough)', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+
+    await runSearch({ maxResults: 5, strategies: ['broad'] });
+
+    expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({ strategies: ['broad'] }));
+  });
+
+  it('omits strategies from the scout call when unset (default staged pipeline)', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['merged', 'starred', 'broad', 'maintained'],
+    });
+
+    await runSearch({ maxResults: 5 });
+
+    expect(mockSearch).toHaveBeenCalledWith(expect.not.objectContaining({ strategies: expect.anything() }));
   });
 
   it('surfaces diversitySlot on candidates and omits it when absent (#1244)', async () => {
@@ -616,5 +642,33 @@ describe('recordSearchSeen (#1528)', () => {
       .map((e) => e.url);
     expect(urls).toContain('https://github.com/o/r/issues/fresh');
     expect(urls).not.toContain('https://github.com/o/r/issues/stale');
+  });
+});
+
+describe('parseSearchStrategies (#1244 selector)', () => {
+  it('returns undefined for an absent value (default staged pipeline)', () => {
+    expect(parseSearchStrategies(undefined)).toBeUndefined();
+  });
+
+  it('returns undefined for an empty / whitespace-only value', () => {
+    expect(parseSearchStrategies('')).toBeUndefined();
+    expect(parseSearchStrategies('  , ,')).toBeUndefined();
+  });
+
+  it('parses a single strategy', () => {
+    expect(parseSearchStrategies('broad')).toEqual(['broad']);
+  });
+
+  it('parses a comma-separated list, trimming whitespace', () => {
+    expect(parseSearchStrategies('merged, starred ,broad')).toEqual(['merged', 'starred', 'broad']);
+  });
+
+  it('accepts the "all" sentinel', () => {
+    expect(parseSearchStrategies('all')).toEqual(['all']);
+  });
+
+  it('throws with a helpful message on an unknown strategy', () => {
+    expect(() => parseSearchStrategies('bogus')).toThrow(/Unknown search strategy "bogus"/);
+    expect(() => parseSearchStrategies('broad,nope')).toThrow(/Valid strategies:/);
   });
 });
