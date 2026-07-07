@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.17.1...core-v3.17.2) (2026-07-07)
+
+
+### Bug Fixes
+
+* **core:** keep the bundled @oss-scout/core fresh within its semver range ([#1557](https://github.com/costajohnt/oss-autopilot/issues/1557)) ([c01de89](https://github.com/costajohnt/oss-autopilot/commit/c01de89b48b5af47b0cc2e11ae728d5a23479eac))
+
 ## [3.17.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.17.0...core-v3.17.1) (2026-07-06)
 
 
