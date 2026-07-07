@@ -368,12 +368,17 @@ export const commands: CLICommandDef[] = [
         .command('search [count]')
         .description('Search for new issues to work on')
         .option('--json', 'Output as JSON')
+        .option(
+          '--strategy <strategies>',
+          "Comma-separated discovery phases to run (merged,starred,broad,maintained,all). Omit to run scout's default staged pipeline.",
+        )
         .action(async (count, options) => {
           const { SearchOutputSchema } = await import('./formatters/json.js');
           await executeAction(
             options,
             async () => {
-              const { runSearch, MAX_SEARCH_RESULTS } = await import('./commands/search.js');
+              const { runSearch, MAX_SEARCH_RESULTS, parseSearchStrategies } = await import('./commands/search.js');
+              const strategies = parseSearchStrategies(options.strategy);
               let maxResults = 5;
               if (count !== undefined) {
                 const parsed = Number(count);
@@ -389,7 +394,7 @@ export const commands: CLICommandDef[] = [
               if (!options.json) {
                 console.log(`\nSearching for issues (max ${maxResults})...\n`);
               }
-              return runSearch({ maxResults });
+              return runSearch({ maxResults, strategies });
             },
             (data) => {
               if (data.hiddenOwnPRCount > 0) {

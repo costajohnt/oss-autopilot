@@ -10,6 +10,7 @@ import {
   SEARCH_DIVERSITY_RATIO,
   type ScoutBridgeDiagnostics,
 } from './scout-bridge.js';
+import { SearchStrategySchema, type SearchStrategy } from '@oss-scout/core';
 import { classifyLinkedPR, getStateManager } from '../core/index.js';
 import { type SearchOutput } from '../formatters/json.js';
 import { gradeFromCandidate } from '../core/issue-grading.js';
@@ -37,6 +38,39 @@ export { SEARCH_DIVERSITY_RATIO } from './scout-bridge.js';
 
 interface SearchOptions {
   maxResults: number;
+  /**
+   * Restrict discovery to specific scout phases (#1244 selector surface).
+   * Undefined runs scout's default staged pipeline (all phases). Passed
+   * straight through to `scout.search`, which gates each phase on the set.
+   */
+  strategies?: SearchStrategy[];
+}
+
+/**
+ * Parse and validate a comma-separated `--strategy` value into scout strategies.
+ *
+ * Mirrors oss-scout's own CLI validation so an unknown token fails fast with a
+ * clear message instead of silently running all phases. Returns `undefined`
+ * for an absent/empty value so scout falls back to its default (all phases).
+ *
+ * @throws {Error} If any token is not a valid scout strategy.
+ */
+export function parseSearchStrategies(raw: string | undefined): SearchStrategy[] | undefined {
+  if (raw === undefined) return undefined;
+  const tokens = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (tokens.length === 0) return undefined;
+  const strategies: SearchStrategy[] = [];
+  for (const token of tokens) {
+    const parsed = SearchStrategySchema.safeParse(token);
+    if (!parsed.success) {
+      throw new Error(`Unknown search strategy "${token}". Valid strategies: merged, starred, broad, maintained, all`);
+    }
+    strategies.push(parsed.data);
+  }
+  return strategies;
 }
 
 /**
@@ -172,6 +206,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
 
   const result = await scout.search({
     maxResults: options.maxResults,
+    ...(options.strategies ? { strategies: options.strategies } : {}),
     preferLanguages,
     preferRepos,
     diversityRatio: SEARCH_DIVERSITY_RATIO,
