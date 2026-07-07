@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.18.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.17.3...core-v3.18.0) (2026-07-07)
+
+
+### Features
+
+* **search:** add --strategy flag to select scout discovery phases ([#1561](https://github.com/costajohnt/oss-autopilot/issues/1561)) ([3182e51](https://github.com/costajohnt/oss-autopilot/commit/3182e513569659c120fa3b246bb811586269abe0))
+
 ## [3.17.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.17.2...core-v3.17.3) (2026-07-07)
 
 
