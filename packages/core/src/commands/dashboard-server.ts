@@ -96,7 +96,7 @@ function readBody(req: http.IncomingMessage, maxBytes: number = MAX_BODY_BYTES):
     req.on('end', () => {
       if (!aborted) resolve(Buffer.concat(chunks).toString('utf8'));
     });
-    req.on('error', (err) => {
+    req.on('error', (err: Error) => {
       if (!aborted) reject(err);
     });
   });
