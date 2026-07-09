@@ -1,6 +1,6 @@
 ---
 name: pr-ready
-description: Run the project's pre-commit review loop to determine whether the current branch is ready to push — lint, tests, parallel pr-review-toolkit agents, fix-and-re-run until convergence
+description: Run the project's pre-commit review loop to determine whether the current branch is ready to push — lint, tests, parallel pr-review-toolkit agents plus an over-engineering audit, fix-and-re-run until convergence
 allowed-tools: Bash, Read, Glob, Grep, Agent, TaskCreate, TaskUpdate, Edit, Write
 ---
 
@@ -42,12 +42,15 @@ For the diff currently uncommitted-and-staged or already on the local branch (wh
    - `pr-review-toolkit:comment-analyzer` — outdated/over-explanatory comments
    - `pr-review-toolkit:type-design-analyzer` — when new types are introduced
 
+   **Over-engineering audit (always).** While the agents run, apply the `ponytail-review` skill (ponytail plugin) to the same diff. If the plugin isn't installed, apply its format by hand — one line per finding, `<file>:L<line>: <tag> <what>. <replacement>.` with tags `delete:` (dead code, speculative flexibility), `stdlib:` (hand-rolled thing the standard library ships), `native:` (dependency doing what the platform does), `yagni:` (abstraction with one implementation, config nobody sets), `shrink:` (same logic, fewer lines). Scope is complexity only; correctness stays with the agents above. Before triage, drop any finding that duplicates a `code-simplifier` finding — keep whichever line is more specific.
+
 5. **Triage findings**:
    - **Critical** and **Recommended** findings: report inline; the loop is not converged until they're resolved.
    - **Minor** findings: report but do not block.
+   - Over-engineering findings map in: `delete`/`yagni`/`stdlib`/`native` → Recommended (they remove code or a dependency); `shrink` → Minor. For an OSS PR to an external repo, cap all of them at Minor — unrequested refactors widen the diff and annoy maintainers.
    - **Out-of-scope** findings (e.g., a pre-existing issue in adjacent code): list them as "deferred" and recommend filing follow-up issues.
 
-6. **Iterate**: after the user fixes findings (or asks the command to fix straightforward ones), **re-run only the agents that had findings** plus `code-reviewer` as a baseline. Do NOT re-run all five every loop — that's wasteful and slow.
+6. **Iterate**: after the user fixes findings (or asks the command to fix straightforward ones), **re-run only the agents that had findings** plus `code-reviewer` as a baseline. Same for the over-engineering audit: re-run it only if it had findings. Do NOT re-run everything every loop — that's wasteful and slow.
 
 7. **Convergence**: stop when zero Critical/Recommended findings remain. Hard cap at 5 iterations; if the loop hasn't converged, stop and report.
 
