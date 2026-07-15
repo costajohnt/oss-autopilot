@@ -30,6 +30,15 @@ const MODULE = 'search';
 export const MAX_SEARCH_RESULTS = 100;
 
 /**
+ * Default issue-search result count when no count is passed (#1571). Sized to
+ * leave headroom past scout's affinity phases (merged-PR + starred), which can
+ * fill a small cap on their own and starve the broad/maintained phases via the
+ * `allCandidates.length < maxResults` gate. Shared between CLI
+ * (`cli-registry.ts`), MCP tool (`tools.ts`), and MCP prompt (`prompts.ts`).
+ */
+export const DEFAULT_SEARCH_RESULTS = 15;
+
+/**
  * Diversity-counterweight ratio (#1244). Moved to `scout-bridge.ts` in #1464
  * (it is now also baked into the bridge-built `ScoutPreferences`); re-exported
  * here so existing importers keep working.

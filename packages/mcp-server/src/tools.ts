@@ -37,6 +37,7 @@ import {
   runGuidelinesReset,
   runFetchCorpus,
   MAX_SEARCH_RESULTS,
+  DEFAULT_SEARCH_RESULTS,
   MAX_FEATURES_RESULTS,
 } from '@oss-autopilot/core/commands';
 import {
@@ -364,13 +365,13 @@ export function registerTools(server: McpServer): void {
           .max(MAX_SEARCH_RESULTS)
           .optional()
           .describe(
-            `Maximum number of issues to return (default: 5, max: ${MAX_SEARCH_RESULTS}). Must be a positive integer.`,
+            `Maximum number of issues to return (default: ${DEFAULT_SEARCH_RESULTS}, max: ${MAX_SEARCH_RESULTS}). Must be a positive integer.`,
           ),
       },
       annotations: { readOnlyHint: true },
     },
     wrapTool((args: { maxResults?: number }) => {
-      const maxResults = args.maxResults ?? 5;
+      const maxResults = args.maxResults ?? DEFAULT_SEARCH_RESULTS;
       return runSearch({ maxResults });
     }),
   );

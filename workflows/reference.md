@@ -38,7 +38,7 @@ Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-fo
 ### Issue Discovery
 
 ```bash
-# Search for issues (n = number of results, default 5)
+# Search for issues (n = number of results, default 15)
 <prefix> search [n] --json
 
 # Surface feature-scoped opportunities in repos with 3+ merged PRs (n = total, default 10)

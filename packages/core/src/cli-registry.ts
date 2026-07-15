@@ -377,9 +377,10 @@ export const commands: CLICommandDef[] = [
           await executeAction(
             options,
             async () => {
-              const { runSearch, MAX_SEARCH_RESULTS, parseSearchStrategies } = await import('./commands/search.js');
+              const { runSearch, MAX_SEARCH_RESULTS, DEFAULT_SEARCH_RESULTS, parseSearchStrategies } =
+                await import('./commands/search.js');
               const strategies = parseSearchStrategies(options.strategy);
-              let maxResults = 5;
+              let maxResults = DEFAULT_SEARCH_RESULTS;
               if (count !== undefined) {
                 const parsed = Number(count);
                 if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {

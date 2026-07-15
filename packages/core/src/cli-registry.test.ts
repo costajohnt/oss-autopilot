@@ -65,6 +65,7 @@ const mockRunSearch = vi.fn();
 vi.mock('./commands/search.js', () => ({
   runSearch: mockRunSearch,
   MAX_SEARCH_RESULTS: 100,
+  DEFAULT_SEARCH_RESULTS: 15,
   parseSearchStrategies: (raw?: string) => (raw === undefined ? undefined : [raw]),
 }));
 
@@ -183,13 +184,14 @@ describe('handleCommandError', () => {
 describe('search count validation', () => {
   const emptySearchResult = { candidates: [], excludedRepos: [], aiPolicyBlocklist: [] };
 
-  it('should default to 5 results when no count is provided', async () => {
+  it('should default to 15 results when no count is provided', async () => {
     mockRunSearch.mockResolvedValue(emptySearchResult);
     const program = buildProgram('search');
 
     await program.parseAsync(['node', 'cli', 'search', '--json']);
 
-    expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 5 });
+    // 15 leaves headroom past scout's affinity phases (#1571)
+    expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 15 });
     // search routes through outputJsonValidated (#1147); the second arg is the result
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), emptySearchResult);
   });

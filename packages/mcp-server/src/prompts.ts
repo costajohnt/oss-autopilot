@@ -10,7 +10,13 @@
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { runDaily, runComments, runSearch, MAX_SEARCH_RESULTS } from '@oss-autopilot/core/commands';
+import {
+  runDaily,
+  runComments,
+  runSearch,
+  MAX_SEARCH_RESULTS,
+  DEFAULT_SEARCH_RESULTS,
+} from '@oss-autopilot/core/commands';
 import { ensureGistInit } from './tools.js';
 import { errorMessage, wrapUntrustedContent, fenceFetchedPRTitles, type PRCommentBundle } from '@oss-autopilot/core';
 
@@ -97,13 +103,13 @@ export function registerPrompts(server: McpServer): void {
       title: 'Find Issues to Work On',
       description: 'Search for good issues to contribute to, ranked by viability',
       argsSchema: {
-        maxResults: z.coerce.number().optional().describe('Max issues to return (default: 5)'),
+        maxResults: z.coerce.number().optional().describe(`Max issues to return (default: ${DEFAULT_SEARCH_RESULTS})`),
       },
     },
     async ({ maxResults }) => {
       try {
-        let capped = maxResults ?? 5;
-        if (!Number.isInteger(capped) || capped < 1) capped = 5;
+        let capped = maxResults ?? DEFAULT_SEARCH_RESULTS;
+        if (!Number.isInteger(capped) || capped < 1) capped = DEFAULT_SEARCH_RESULTS;
         if (capped > MAX_SEARCH_RESULTS) capped = MAX_SEARCH_RESULTS;
         await ensureGistInit();
         const data = await runSearch({ maxResults: capped });
