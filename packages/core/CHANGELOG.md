@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.18.0...core-v3.19.0) (2026-07-15)
+
+
+### Features
+
+* **pr-ready:** add over-engineering audit layer to the review loop ([#1565](https://github.com/costajohnt/oss-autopilot/issues/1565)) ([eddb03a](https://github.com/costajohnt/oss-autopilot/commit/eddb03a088725d65beada075e7c72868fe66a71c))
+
+
+### Bug Fixes
+
+* raise bare search default from 5 to 15 so broad/maintained phases can run ([#1572](https://github.com/costajohnt/oss-autopilot/issues/1572)) ([4962160](https://github.com/costajohnt/oss-autopilot/commit/496216057da8ea043c4953d50592cadb47c40c76))
+
 ## [3.18.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.17.3...core-v3.18.0) (2026-07-07)
 
 
