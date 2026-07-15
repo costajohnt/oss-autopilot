@@ -34,6 +34,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runMove: vi.fn(),
   runFeatures: vi.fn(),
   MAX_SEARCH_RESULTS: 100,
+  DEFAULT_SEARCH_RESULTS: 15,
   MAX_FEATURES_RESULTS: 100,
 }));
 

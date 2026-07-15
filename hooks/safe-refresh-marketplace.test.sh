@@ -40,7 +40,7 @@ setup() {
 
     git init --quiet --initial-branch=main "${WORK}/seed"
     (
-        cd "${WORK}/seed"
+        cd "${WORK}/seed" || exit 1
         git config user.email test@example.com
         git config user.name Test
         echo "v1" >README.md
@@ -56,7 +56,7 @@ setup() {
 
     # Advance the remote so a fetch sees a new commit.
     (
-        cd "${WORK}/seed"
+        cd "${WORK}/seed" || exit 1
         echo "v2" >README.md
         git commit --quiet -am "bump"
         git push --quiet origin main

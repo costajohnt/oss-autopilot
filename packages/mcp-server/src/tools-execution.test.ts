@@ -54,6 +54,7 @@ vi.mock('@oss-autopilot/core/commands', () => ({
   runFetchCorpus: mockRunFetchCorpus,
   runFeatures: vi.fn(),
   MAX_SEARCH_RESULTS: 100,
+  DEFAULT_SEARCH_RESULTS: 15,
   MAX_FEATURES_RESULTS: 100,
 }));
 
@@ -138,12 +139,12 @@ describe('tool execution', () => {
   });
 
   describe('search validation', () => {
-    it('uses default maxResults of 5 when not provided', async () => {
+    it('uses default maxResults of 15 when not provided', async () => {
       mockRunSearch.mockResolvedValueOnce({ candidates: [] });
 
       await client.callTool({ name: 'search', arguments: {} });
 
-      expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 5 });
+      expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 15 });
     });
 
     // Previously the handler silently clamped maxResults > 100 to the cap.

@@ -27,7 +27,7 @@ export { runStatus } from './status.js';
 /** On-demand strategy snapshot via the typed `computeStrategy` core function (#1243 step 4). */
 export { runStrategy } from './strategy.js';
 /** Search GitHub for contributable issues using multi-strategy discovery. */
-export { runSearch, MAX_SEARCH_RESULTS } from './search.js';
+export { runSearch, MAX_SEARCH_RESULTS, DEFAULT_SEARCH_RESULTS } from './search.js';
 /** Surface feature-scoped opportunities in repos with 3+ merged PRs (scout 0.9.0). */
 export { runFeatures, MAX_FEATURES_RESULTS } from './features.js';
 /** Vet a single GitHub issue for claimability (open, unassigned, no linked PRs, repo health). */
