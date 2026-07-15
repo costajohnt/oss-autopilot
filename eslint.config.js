@@ -43,7 +43,20 @@ export default tseslint.config(
   downgradeToWarn(sonarjs.configs.recommended),
   eslintConfigPrettier,
   {
-    ignores: ['packages/*/dist/**', 'packages/*/docs/**', 'packages/*/coverage/**', 'node_modules/**', '*.cjs'],
+    // Root tooling scripts (and this config file) sit outside every package
+    // tsconfig, so the type-aware projectService can't parse them and a
+    // repo-root `eslint .` fails even though `eslint packages/` (the lint
+    // script) passes. They were never part of the lint gate — ignore them so
+    // both invocations agree.
+    ignores: [
+      'packages/*/dist/**',
+      'packages/*/docs/**',
+      'packages/*/coverage/**',
+      'node_modules/**',
+      '**/*.cjs',
+      'eslint.config.js',
+      'scripts/**',
+    ],
   },
   {
     languageOptions: {
