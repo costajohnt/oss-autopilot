@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.7.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.0...mcp-v5.7.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* raise bare search default from 5 to 15 so broad/maintained phases can run ([#1572](https://github.com/costajohnt/oss-autopilot/issues/1572)) ([4962160](https://github.com/costajohnt/oss-autopilot/commit/496216057da8ea043c4953d50592cadb47c40c76))
+
 ## [5.7.0](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.6.3...mcp-v5.7.0) (2026-06-16)
 
 
