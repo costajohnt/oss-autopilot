@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.19.0...core-v3.19.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **grading:** grade new repos on intrinsic merge rate; reconcile approve with grade ([#1579](https://github.com/costajohnt/oss-autopilot/issues/1579)) ([682b002](https://github.com/costajohnt/oss-autopilot/commit/682b002057dbe5a8804b427eb1b7307fac6153b4))
+
 ## [3.19.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.18.0...core-v3.19.0) (2026-07-15)
 
 
