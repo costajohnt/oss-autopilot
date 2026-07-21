@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeSuccessGrade, deriveGradeSignals } from './issue-grading.js';
+import { computeSuccessGrade, deriveGradeSignals, reconcileRecommendation } from './issue-grading.js';
 
 // Success score is on a 1-10 scale (#249 follow-up). The three signal bands
 // map to 10 / 7 / 4 / 1 (best→worst); the overall score is the worst of the
@@ -274,6 +274,76 @@ describe('computeSuccessGrade', () => {
         repoScore: { mergedPRCount: -3, closedWithoutMergeCount: 10 },
       });
       expect(signals.mergeRate).toBeNull();
+    });
+
+    // #248: prefer scout's repo-intrinsic merge rate so a healthy repo we've
+    // never contributed to grades on its own merits instead of collapsing to F.
+    it('prefers repo-intrinsic recentMergeRate over relationship counts', () => {
+      const signals = deriveGradeSignals({
+        projectHealth: {
+          avgIssueResponseDays: 1,
+          daysSinceLastCommit: 1,
+          recentMergeRate: 0.85,
+        },
+        // Relationship says 0.2, but the repo-intrinsic rate must win.
+        repoScore: { mergedPRCount: 1, closedWithoutMergeCount: 4 },
+      });
+      expect(signals.mergeRate).toBeCloseTo(0.85);
+    });
+
+    it('gives a new repo (no repoScore) a merge rate from recentMergeRate', () => {
+      const signals = deriveGradeSignals({
+        projectHealth: {
+          avgIssueResponseDays: 2,
+          daysSinceLastCommit: 1,
+          recentMergeRate: 0.9,
+        },
+        repoScore: null,
+      });
+      // Previously null → grade collapsed to F; now a real, healthy rate.
+      expect(signals.mergeRate).toBeCloseTo(0.9);
+      expect(computeSuccessGrade(signals).score).toBeGreaterThan(4);
+    });
+
+    it('falls back to relationship counts when recentMergeRate is absent', () => {
+      const signals = deriveGradeSignals({
+        projectHealth: { avgIssueResponseDays: 1, daysSinceLastCommit: 1 },
+        repoScore: { mergedPRCount: 17, closedWithoutMergeCount: 3 },
+      });
+      expect(signals.mergeRate).toBeCloseTo(17 / 20);
+    });
+
+    it('ignores recentMergeRate when the health check failed', () => {
+      const signals = deriveGradeSignals({
+        projectHealth: {
+          avgIssueResponseDays: 0,
+          daysSinceLastCommit: 999,
+          recentMergeRate: 0.9,
+          checkFailed: true,
+        },
+        repoScore: null,
+      });
+      expect(signals.mergeRate).toBeNull();
+    });
+  });
+
+  describe('reconcileRecommendation (#1575 defect 2)', () => {
+    it('downgrades approve to needs_review at the bottom grade band', () => {
+      expect(reconcileRecommendation('approve', { score: 1, reason: 'unknown' })).toBe('needs_review');
+    });
+
+    it('keeps approve when the grade is trustworthy', () => {
+      expect(reconcileRecommendation('approve', { score: 7, reason: 'merges 80%' })).toBe('approve');
+    });
+
+    it('keeps approve exactly at the keep threshold (score 4)', () => {
+      expect(reconcileRecommendation('approve', { score: 4, reason: 'merges 30%' })).toBe('approve');
+    });
+
+    it('leaves non-approve recommendations unchanged', () => {
+      const worst = { score: 1, reason: 'unknown' };
+      expect(reconcileRecommendation('skip', worst)).toBe('skip');
+      expect(reconcileRecommendation('needs_review', worst)).toBe('needs_review');
     });
   });
 
