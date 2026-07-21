@@ -6,7 +6,7 @@
 import { adaptScoutLinkedPR, buildCandidateLinkedPR, createAutopilotScout } from './scout-bridge.js';
 import { type VetOutput } from '../formatters/json.js';
 import { ISSUE_URL_PATTERN, validateGitHubUrl, validateUrl } from './validation.js';
-import { gradeFromCandidate } from '../core/issue-grading.js';
+import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
 import { getStateManager, classifyLinkedPR } from '../core/index.js';
 
 export { type VetOutput } from '../formatters/json.js';
@@ -51,7 +51,7 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
       url: candidate.issue.url,
       labels: candidate.issue.labels,
     },
-    recommendation: candidate.recommendation,
+    recommendation: reconcileRecommendation(candidate.recommendation, grade),
     reasonsToApprove: candidate.reasonsToApprove,
     reasonsToSkip: candidate.reasonsToSkip,
     projectHealth: candidate.projectHealth,
