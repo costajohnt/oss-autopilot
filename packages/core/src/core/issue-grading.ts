@@ -211,12 +211,10 @@ export function gradeFromCandidate(params: {
     : {
         avgIssueResponseDays: ph.avgIssueResponseDays,
         daysSinceLastCommit: ph.daysSinceLastCommit,
-        // Repo-intrinsic recent merge rate (#248). The cast is a forward-compat
-        // bridge: the field ships in the @oss-scout/core release that pairs with
-        // this change but isn't in the current pinned dep's types yet. Absent →
-        // null → deriveGradeSignals falls back to the relationship-derived rate,
-        // preserving prior behavior. Drop the cast once the dep is bumped.
-        recentMergeRate: (ph as { recentMergeRate?: number | null }).recentMergeRate ?? null,
+        // Repo-intrinsic recent merge rate (#248). Absent → null →
+        // deriveGradeSignals falls back to the relationship-derived rate,
+        // preserving prior behavior for repos with contribution history.
+        recentMergeRate: ph.recentMergeRate ?? null,
         checkFailed: false,
       };
   return computeSuccessGrade(
