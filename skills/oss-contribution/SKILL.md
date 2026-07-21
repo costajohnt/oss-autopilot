@@ -37,6 +37,18 @@ Every line in a PR diff must be directly related to the issue being fixed. Unrel
 
 **When formatting IS the fix:** If the issue itself is about formatting (e.g., "run prettier on codebase", "fix inconsistent indentation"), then formatting changes are in scope. In all other cases, they are not.
 
+## Minimize Public API Surface
+
+A narrow fix should not widen what the project must support forever. Prefer correcting behavior inside an existing public API over adding a new option, flag, method, or parameter. Every new surface is something maintainers have to document, test, and keep backward-compatible — reach for one only when the existing API genuinely cannot express the fix, and say so explicitly rather than defaulting to a new knob.
+
+## Fix the Root Cause, Not a Workaround
+
+Trace a bug to where it actually originates before patching. If the cause lives in an upstream dependency, fix or report it there rather than working around it downstream. If the maintainer rejects the root-cause fix as a known limitation, offer a documentation note that warns other users — don't submit a second local patch that papers over the same underlying problem.
+
+## Regression Tests Must Actually Regress
+
+A test added alongside a bug fix only earns its place if it fails without the fix. Before including it, check out the base branch (or revert your fix), run the new test, and confirm it FAILS; then restore the fix and confirm it passes. A test that passes on the unpatched base isn't guarding the bug — it's noise.
+
 ## Working on Issues
 
 ### Before Starting
