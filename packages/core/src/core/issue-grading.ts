@@ -29,6 +29,34 @@ export interface GradeResult {
   reason: string;
 }
 
+/** Recommendation verdict, mirroring `@oss-scout/core`'s candidate field. */
+export type IssueRecommendation = 'approve' | 'skip' | 'needs_review';
+
+/**
+ * Grade bands are 10/7/4/1. At or above this an "approve" is trustworthy;
+ * below it (the bottom band, 1 — "unknown/worst") the grade and an "approve"
+ * contradict each other.
+ */
+export const KEEP_GRADE_THRESHOLD = 4;
+
+/**
+ * Reconcile a scout recommendation with the computed grade (#1575 defect 2).
+ * Scout derives "approve" from its own checks without consulting the grade, so
+ * an "approve" can coexist with a bottom-band grade. Downgrade such an
+ * "approve" to "needs_review" — never a hard skip — so the two signals a caller
+ * sees can't flatly contradict. Any non-approve recommendation is returned
+ * unchanged.
+ *
+ * Apply this ONLY where the grade is high-fidelity — i.e. computed from freshly
+ * fetched health (the `vet` / `vet-list` surfaces). The `search` and `features`
+ * surfaces pass a `checkFailed` health sentinel and grade from history alone, so
+ * any repo we lack history with scores the bottom band for missing data, not for
+ * being bad; reconciling there would wrongly downgrade well-vetted candidates.
+ */
+export function reconcileRecommendation(recommendation: IssueRecommendation, grade: GradeResult): IssueRecommendation {
+  return recommendation === 'approve' && grade.score < KEEP_GRADE_THRESHOLD ? 'needs_review' : recommendation;
+}
+
 type SignalScore = { score: number; detail: string };
 
 // Band values, best→worst. A signal always resolves to one of these, so
@@ -102,6 +130,14 @@ export function deriveGradeSignals(params: {
   projectHealth: {
     avgIssueResponseDays: number | null;
     daysSinceLastCommit: number | null;
+    /**
+     * Repo-intrinsic recent merge rate from `@oss-scout/core`'s
+     * `projectHealth.recentMergeRate` (repo-wide merged / closed over 90 days).
+     * Preferred over the relationship-derived rate so a healthy repo we've never
+     * contributed to grades on its own merits instead of collapsing to F (#248).
+     * Absent (undefined/null) until the scout release that supplies it.
+     */
+    recentMergeRate?: number | null;
     checkFailed?: boolean;
   };
   repoScore: {
@@ -121,8 +157,11 @@ export function deriveGradeSignals(params: {
     ? sanitize(projectHealth.daysSinceLastCommit, 0, Number.MAX_SAFE_INTEGER)
     : null;
 
-  let mergeRate: number | null = null;
-  if (repoScore) {
+  // Prefer scout's repo-intrinsic merge rate (#248); fall back to the
+  // relationship-derived rate (our own merged/closed counts) when scout didn't
+  // supply one, preserving prior behavior for repos with contribution history.
+  let mergeRate: number | null = healthTrusted ? sanitize(projectHealth.recentMergeRate, 0, 1) : null;
+  if (mergeRate === null && repoScore) {
     const merged = sanitize(repoScore.mergedPRCount, 0, Number.MAX_SAFE_INTEGER);
     const closed = sanitize(repoScore.closedWithoutMergeCount, 0, Number.MAX_SAFE_INTEGER);
     if (merged !== null && closed !== null) {
@@ -172,6 +211,10 @@ export function gradeFromCandidate(params: {
     : {
         avgIssueResponseDays: ph.avgIssueResponseDays,
         daysSinceLastCommit: ph.daysSinceLastCommit,
+        // Repo-intrinsic recent merge rate (#248). Absent → null →
+        // deriveGradeSignals falls back to the relationship-derived rate,
+        // preserving prior behavior for repos with contribution history.
+        recentMergeRate: ph.recentMergeRate ?? null,
         checkFailed: false,
       };
   return computeSuccessGrade(
