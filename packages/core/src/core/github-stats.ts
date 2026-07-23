@@ -259,6 +259,14 @@ export function fetchUserClosedPRCounts(
 
 /**
  * Shared helper: search for recent PRs and filter out own repos.
+ *
+ * Callers pass an `updated:>={since}` query rather than `closed:`/`merged:`.
+ * GitHub's search index populates the close/merge date facets separately from
+ * the `closed_at`/`merged_at` payload fields, and a PR can be indexed for
+ * `updated:` while its close-date facet is missing — such a PR silently
+ * vanishes from any `closed:>=X` filter even though the API returns a correct
+ * `closed_at`. `updated` is the sort key, so it is always indexed. We narrow to
+ * the real window here with `dateOf`.
  */
 async function fetchRecentPRs<T>(
   octokit: Octokit,
@@ -276,6 +284,10 @@ async function fetchRecentPRs<T>(
     },
     parsed: { owner: string; repo: string; number: number },
   ) => T,
+  dateOf: (item: {
+    closed_at: string | null;
+    pull_request?: { merged_at?: string | null };
+  }) => string | null | undefined,
 ): Promise<T[]> {
   if (!config.githubUsername) {
     warn(MODULE, `Skipping recently ${label} PRs fetch: no githubUsername configured. Run /setup-oss to configure.`);
@@ -307,6 +319,11 @@ async function fetchRecentPRs<T>(
     // Skip own repos
     if (isOwnRepo(parsed.owner, config.githubUsername)) continue;
 
+    // The query bounds on `updated`, so an old PR that just got a comment can
+    // come back. Narrow to the actual close/merge window here.
+    const date = dateOf(item);
+    if (!date || date < since) continue;
+
     const repo = `${parsed.owner}/${parsed.repo}`;
     results.push(mapItem(item, { owner: parsed.owner, repo, number: parsed.number }));
   }
@@ -327,7 +344,7 @@ export async function fetchRecentlyClosedPRs(
   return fetchRecentPRs<ClosedPR>(
     octokit,
     config,
-    'is:pr is:closed is:unmerged is:public author:{username} closed:>={since}',
+    'is:pr is:closed is:unmerged is:public author:{username} updated:>={since}',
     'closed',
     days,
     (item, { repo, number }) => ({
@@ -339,6 +356,7 @@ export async function fetchRecentlyClosedPRs(
       // Free on the search result — feeds the outcome ledger (#1461).
       openedAt: item.created_at || undefined,
     }),
+    (item) => item.closed_at,
   );
 }
 
@@ -354,7 +372,7 @@ export async function fetchRecentlyMergedPRs(
   return fetchRecentPRs<MergedPR>(
     octokit,
     config,
-    'is:pr is:merged is:public author:{username} merged:>={since}',
+    'is:pr is:merged is:public author:{username} updated:>={since}',
     'merged',
     days,
     (item, { repo, number }) => {
@@ -375,6 +393,7 @@ export async function fetchRecentlyMergedPRs(
         openedAt: item.created_at || undefined,
       };
     },
+    (item) => item.pull_request?.merged_at || item.closed_at,
   );
 }
 
