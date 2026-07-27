@@ -96,13 +96,12 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix:
-        os: [ubuntu-latest]
-        node-version: [22, 24]
-        # macOS bills at 10x Linux, so the macOS leg runs on push-to-main only.
-        # "Node 22 / macos-latest" must NOT be a required status check while
-        # this conditional exists — a PR never reports it and would block.
-        include: ${{ github.event_name == 'push' && fromJSON('[{"os": "macos-latest", "node-version": 22}]') || fromJSON('[]') }}
+      # macOS bills at 10x Linux, so the macOS leg runs on push-to-main only.
+      # "Node 22 / macos-latest" must NOT be a required status check while
+      # this conditional exists — a PR never reports it and would block.
+      # Whole-matrix expression: GitHub rejects an expression on `include:`
+      # alone, only the full matrix value or a single key's list may be one.
+      matrix: ${{ github.event_name == 'push' && fromJSON('{"os": ["ubuntu-latest"], "node-version": [22, 24], "include": [{"os": "macos-latest", "node-version": 22}]}') || fromJSON('{"os": ["ubuntu-latest"], "node-version": [22, 24]}') }}
 
     steps:
       - name: Checkout code
