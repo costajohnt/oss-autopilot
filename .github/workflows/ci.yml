@@ -99,9 +99,10 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         node-version: [22, 24]
-        include:
-          - os: macos-latest
-            node-version: 22
+        # macOS bills at 10x Linux, so the macOS leg runs on push-to-main only.
+        # "Node 22 / macos-latest" must NOT be a required status check while
+        # this conditional exists — a PR never reports it and would block.
+        include: ${{ github.event_name == 'push' && fromJSON('[{"os": "macos-latest", "node-version": 22}]') || fromJSON('[]') }}
 
     steps:
       - name: Checkout code
