@@ -178,6 +178,12 @@ jobs:
         # a regression here silently disables all of them.
         run: bash hooks/pre-tool-use-dispatcher.test.sh
 
+      - name: Test hook JSON output shape
+        # Claude Code discards a hookSpecificOutput block that omits
+        # hookEventName, so a guard can emit a "deny" that never takes
+        # effect while still exiting 0. Covers every emitting hook script.
+        run: bash hooks/hook-json-shape.test.sh
+
       - name: Guard against phantom config field regressions
         # These keys were deleted from the v3 state schema (see
         # state-persistence.ts migrateV2ToV3). They must NOT reappear in

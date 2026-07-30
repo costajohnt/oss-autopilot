@@ -26,6 +26,7 @@ if echo "$command" | grep -qE 'git\s+push\b' && echo "$command" | grep -qE '(\s-
   cat <<'EOF'
 {
   "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
     "permissionDecision": "deny",
     "updatedInput": {}
   },
@@ -40,6 +41,7 @@ if echo "$command" | grep -qE 'git\s+rebase\b'; then
   cat <<'EOF'
 {
   "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
     "permissionDecision": "ask",
     "updatedInput": {}
   },
@@ -56,6 +58,7 @@ if echo "$command" | grep -qE 'git\s+pull\b' && echo "$command" | grep -qE '(\s-
   cat <<'EOF'
 {
   "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
     "permissionDecision": "ask",
     "updatedInput": {}
   },
@@ -70,6 +73,7 @@ if echo "$command" | grep -qE 'git\s+push\b.*--force-with-lease'; then
   cat <<'EOF'
 {
   "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
     "permissionDecision": "ask",
     "updatedInput": {}
   },
@@ -87,6 +91,7 @@ if echo "$command" | grep -qE 'git\s+reset\s+--hard\b'; then
   cat <<'EOF'
 {
   "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
     "permissionDecision": "ask",
     "updatedInput": {}
   },
