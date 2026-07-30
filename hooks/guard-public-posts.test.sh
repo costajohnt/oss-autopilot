@@ -34,10 +34,17 @@ expect_ask() {
     local out
     out=$(printf '%s' "$payload" | "$SUBJECT" 2>/dev/null)
     # Accept both compact and pretty-printed JSON shapes.
-    if echo "$out" | grep -qE '"permissionDecision"[[:space:]]*:[[:space:]]*"ask"'; then
+    if ! echo "$out" | grep -qE '"permissionDecision"[[:space:]]*:[[:space:]]*"ask"'; then
+        fail "$name" "expected ask decision; got: $out"
+        return
+    fi
+    # Claude Code discards the whole hookSpecificOutput block when
+    # hookEventName is absent, so an "ask" without it silently allows the
+    # post. Assert the field is present or the guard is decorative.
+    if echo "$out" | grep -qE '"hookEventName"[[:space:]]*:[[:space:]]*"PreToolUse"'; then
         pass "$name"
     else
-        fail "$name" "expected ask decision; got: $out"
+        fail "$name" "ask decision is missing hookEventName; got: $out"
     fi
 }
 

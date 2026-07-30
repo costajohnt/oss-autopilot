@@ -23,6 +23,7 @@ warn_and_exit() {
   cat <<WARN_EOF
 {
   "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
     "permissionDecision": "allow",
     "updatedInput": {}
   },
@@ -238,6 +239,7 @@ fi
 cat <<EOF
 {
   "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
     "permissionDecision": "allow",
     "updatedInput": {}
   },
