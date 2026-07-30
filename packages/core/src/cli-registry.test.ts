@@ -33,6 +33,7 @@ vi.mock('./formatters/json.js', () => ({
   outputJson: vi.fn(),
   outputJsonError: vi.fn(),
   outputJsonValidated: vi.fn(),
+  toCompactDailyOutput: vi.fn((data: unknown) => ({ compacted: data })),
   // Schemas referenced by command actions — exported as opaque markers; the
   // mocked outputJsonValidated above doesn't actually validate.
   StatusOutputSchema: {},
@@ -57,6 +58,8 @@ vi.mock('./formatters/json.js', () => ({
   DetectFormattersOutputSchema: {},
   LocalReposOutputSchema: {},
   ManifestOutputSchema: {},
+  StrategyOutputSchema: {},
+  ComplianceScoreOutputSchema: {},
 }));
 
 // ─── Mock dynamic command-module imports ────────────────────────────────────
@@ -90,6 +93,36 @@ vi.mock('./commands/skip-add.js', () => ({ runSkipAdd: mockRunSkipAdd }));
 
 const mockRunVerifyIssue = vi.fn();
 vi.mock('./commands/verify-issue.js', () => ({ runVerifyIssue: mockRunVerifyIssue }));
+
+const mockRunStatus = vi.fn();
+vi.mock('./commands/status.js', () => ({ runStatus: mockRunStatus }));
+
+const mockRunStrategy = vi.fn();
+vi.mock('./commands/strategy.js', () => ({ runStrategy: mockRunStrategy }));
+
+const mockRunDaily = vi.fn();
+const mockRunDailyForDisplay = vi.fn();
+const mockPrintDigest = vi.fn();
+vi.mock('./commands/daily.js', () => ({
+  runDaily: mockRunDaily,
+  runDailyForDisplay: mockRunDailyForDisplay,
+  printDigest: mockPrintDigest,
+}));
+
+const mockRunTrack = vi.fn();
+vi.mock('./commands/track.js', () => ({ runTrack: mockRunTrack }));
+
+const mockRunComplianceScore = vi.fn();
+vi.mock('./commands/compliance-score.js', () => ({ runComplianceScore: mockRunComplianceScore }));
+
+const mockRunComments = vi.fn();
+const mockRunPost = vi.fn();
+const mockRunClaim = vi.fn();
+vi.mock('./commands/comments.js', () => ({
+  runComments: mockRunComments,
+  runPost: mockRunPost,
+  runClaim: mockRunClaim,
+}));
 
 // ─── Import after mocks ────────────────────────────────────────────────────
 
@@ -685,5 +718,380 @@ describe('manifest command (#1190)', () => {
 
     expect(mockOutputJsonValidated).not.toHaveBeenCalled();
     expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringMatching(/^oss-autopilot v\S+ \(\d+ commands\)$/));
+  });
+});
+
+// ─── status command display/json branching (#1586) ─────────────────────────
+
+describe('status command', () => {
+  const statusData = {
+    stats: { mergedPRs: 12, closedPRs: 3, mergeRate: '80%', needsResponse: 2 },
+    offline: false,
+    lastRunAt: '2026-07-24T00:00:00Z',
+  };
+
+  /** Concatenate everything written via console.log for content assertions. */
+  const logged = () => consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+
+  it('routes --json through outputJsonValidated with the schema', async () => {
+    mockRunStatus.mockResolvedValue(statusData);
+    const program = buildProgram('status');
+
+    await program.parseAsync(['node', 'cli', 'status', '--json']);
+
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), statusData);
+    expect(consoleLogSpy).not.toHaveBeenCalled();
+  });
+
+  it('renders stats and lastRunAt in display mode', async () => {
+    mockRunStatus.mockResolvedValue(statusData);
+    const program = buildProgram('status');
+
+    await program.parseAsync(['node', 'cli', 'status']);
+
+    expect(mockRunStatus).toHaveBeenCalledWith({ offline: undefined });
+    const out = logged();
+    expect(out).toContain('Merged PRs: 12');
+    expect(out).toContain('Merge Rate: 80%');
+    expect(out).toContain('Last Run: 2026-07-24T00:00:00Z');
+    expect(out).not.toContain('Last Updated:');
+  });
+
+  it('renders cache-freshness metadata with --offline', async () => {
+    mockRunStatus.mockResolvedValue({ ...statusData, offline: true, lastUpdated: '2026-07-23T00:00:00Z' });
+    const program = buildProgram('status');
+
+    await program.parseAsync(['node', 'cli', 'status', '--offline']);
+
+    expect(mockRunStatus).toHaveBeenCalledWith({ offline: true });
+    const out = logged();
+    expect(out).toContain('Last Updated: 2026-07-23T00:00:00Z');
+    expect(out).toContain('no GitHub API calls');
+  });
+
+  it('falls back to "Never" when lastRunAt is absent', async () => {
+    mockRunStatus.mockResolvedValue({ ...statusData, lastRunAt: undefined });
+    const program = buildProgram('status');
+
+    await program.parseAsync(['node', 'cli', 'status']);
+
+    expect(logged()).toContain('Last Run: Never');
+  });
+});
+
+// ─── strategy command display/json branching (#1586) ───────────────────────
+
+describe('strategy command', () => {
+  const logged = () => consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+
+  const fullStrategy = {
+    strategy: {
+      profile: {
+        style: 'bug-fixer',
+        totalPRs: 20,
+        mergedCount: 15,
+        mergeRate: 0.75,
+        primaryLanguages: ['TypeScript', 'Ruby'],
+        favoriteRepos: ['org/repo'],
+      },
+      capacity: {
+        openPRCount: 4,
+        dormantPRCount: 2,
+        dormantRepoCount: 1,
+        overExtended: true,
+        suggestedAction: 'nudge dormant PRs',
+      },
+      patterns: {
+        trajectoryDirection: 'improving',
+        prTypeDistribution: { fix: 10, feat: 5, docs: 0 },
+      },
+      recommendations: { avoidPatterns: ['large refactors'] },
+    },
+  };
+
+  it('routes --json through outputJsonValidated', async () => {
+    mockRunStrategy.mockResolvedValue(fullStrategy);
+    const program = buildProgram('strategy');
+
+    await program.parseAsync(['node', 'cli', 'strategy', '--json']);
+
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), fullStrategy);
+  });
+
+  it('prints the fallback message when strategy is null', async () => {
+    mockRunStrategy.mockResolvedValue({ strategy: null, message: 'Not enough tracked PRs.' });
+    const program = buildProgram('strategy');
+
+    await program.parseAsync(['node', 'cli', 'strategy']);
+
+    expect(logged()).toContain('Not enough tracked PRs.');
+    expect(logged()).not.toContain('Profile:');
+  });
+
+  it('renders profile, capacity, trajectory, and recommendations in display mode', async () => {
+    mockRunStrategy.mockResolvedValue(fullStrategy);
+    const program = buildProgram('strategy');
+
+    await program.parseAsync(['node', 'cli', 'strategy']);
+
+    const out = logged();
+    expect(out).toContain('Profile: bug-fixer');
+    expect(out).toContain('20 PRs tracked, 15 merged (75% merge rate).');
+    expect(out).toContain('Top languages: TypeScript, Ruby');
+    expect(out).toContain('Top repos: org/repo');
+    expect(out).toContain('Capacity: 4 open, 2 dormant across 1 repo(s).');
+    expect(out).toContain('Overextended — suggested action: nudge dormant PRs.');
+    expect(out).toContain('Trajectory: improving');
+    // Zero-count PR types are filtered from the distribution line.
+    expect(out).toContain('PR types (recent): fix=10, feat=5');
+    expect(out).not.toContain('docs=0');
+    expect(out).toContain('Watch for: large refactors');
+  });
+});
+
+// ─── daily command branching (#1586) ────────────────────────────────────────
+
+describe('daily command', () => {
+  it('routes --json through outputJsonValidated with the full payload', async () => {
+    const data = { prs: [], summary: { total: 0 } };
+    mockRunDaily.mockResolvedValue(data);
+    const program = buildProgram('daily');
+
+    await program.parseAsync(['node', 'cli', 'daily', '--json']);
+
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), data);
+    expect(mockRunDailyForDisplay).not.toHaveBeenCalled();
+  });
+
+  it('routes --json --compact through toCompactDailyOutput', async () => {
+    const data = { prs: [], summary: { total: 0 } };
+    mockRunDaily.mockResolvedValue(data);
+    const program = buildProgram('daily');
+
+    await program.parseAsync(['node', 'cli', 'daily', '--json', '--compact']);
+
+    // The mocked toCompactDailyOutput wraps the payload; the wrapped shape
+    // must be what reaches outputJsonValidated.
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), { compacted: data });
+  });
+
+  it('prints the digest via printDigest in display mode', async () => {
+    const digest = { needsResponse: [] };
+    const capacity = { openPRCount: 1 };
+    const commentedIssues = [{ url: ISSUE_URL }];
+    mockRunDailyForDisplay.mockResolvedValue({ digest, capacity, commentedIssues });
+    const program = buildProgram('daily');
+
+    await program.parseAsync(['node', 'cli', 'daily']);
+
+    expect(mockRunDaily).not.toHaveBeenCalled();
+    expect(mockPrintDigest).toHaveBeenCalledWith(digest, capacity, commentedIssues);
+  });
+
+  it('routes errors through handleCommandError in JSON mode', async () => {
+    mockRunDaily.mockRejectedValue(new Error('rate limited'));
+    const program = buildProgram('daily');
+
+    await expect(program.parseAsync(['node', 'cli', 'daily', '--json'])).rejects.toThrow('process.exit called');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith('rate limited', 'UNKNOWN');
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+// ─── track command (#1586) ──────────────────────────────────────────────────
+
+describe('track command', () => {
+  const trackData = { pr: { repo: 'org/repo', number: 1, title: 'Fix bug' } };
+
+  it('routes --json through outputJson (tier-2, no schema)', async () => {
+    mockRunTrack.mockResolvedValue(trackData);
+    const program = buildProgram('track');
+
+    await program.parseAsync(['node', 'cli', 'track', PR_URL, '--json']);
+
+    expect(mockRunTrack).toHaveBeenCalledWith({ prUrl: PR_URL });
+    expect(mockOutputJson).toHaveBeenCalledWith(trackData);
+  });
+
+  it('prints PR metadata and the not-persisted note in display mode', async () => {
+    mockRunTrack.mockResolvedValue(trackData);
+    const program = buildProgram('track');
+
+    await program.parseAsync(['node', 'cli', 'track', PR_URL]);
+
+    const out = consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+    expect(out).toContain('PR: org/repo#1 - Fix bug');
+    expect(out).toContain('Nothing is persisted locally.');
+  });
+});
+
+// ─── compliance-score command (#1586) ───────────────────────────────────────
+
+describe('compliance-score command', () => {
+  const scoreData = {
+    emoji: '🟢',
+    pr: { repo: 'org/repo', number: 7, title: 'Add docs' },
+    score: 85,
+    rating: 'very_good',
+    checks: {
+      description: { status: 'pass', weight: 30, detail: 'has description' },
+      tests: { status: 'warn', weight: 40, detail: 'partial coverage' },
+      size: { status: 'fail', weight: 30, detail: 'too large' },
+    },
+  };
+
+  it('routes --json through outputJsonValidated', async () => {
+    mockRunComplianceScore.mockResolvedValue(scoreData);
+    const program = buildProgram('compliance-score');
+
+    await program.parseAsync(['node', 'cli', 'compliance-score', PR_URL, '--json']);
+
+    expect(mockRunComplianceScore).toHaveBeenCalledWith({ prUrl: PR_URL });
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), scoreData);
+  });
+
+  it('renders the score line and one status-tagged line per check', async () => {
+    mockRunComplianceScore.mockResolvedValue(scoreData);
+    const program = buildProgram('compliance-score');
+
+    await program.parseAsync(['node', 'cli', 'compliance-score', PR_URL]);
+
+    const out = consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+    expect(out).toContain('PR org/repo#7: Add docs');
+    // rating underscores become spaces
+    expect(out).toContain('Score: 85/100 — very good');
+    expect(out).toContain('[OK ] description (30%) — has description');
+    expect(out).toContain('[WARN] tests (40%) — partial coverage');
+    expect(out).toContain('[FAIL] size (30%) — too large');
+  });
+});
+
+// ─── comments / post / claim commands (#1586) ───────────────────────────────
+
+describe('comments command', () => {
+  const logged = () => consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+
+  const basePR = {
+    title: 'Fix flaky test',
+    state: 'open',
+    mergeable: true,
+    head: 'fix/flaky',
+    base: 'main',
+    url: PR_URL,
+  };
+  const emptyComments = {
+    pr: basePR,
+    reviews: [],
+    reviewComments: [],
+    issueComments: [],
+    summary: { reviewCount: 0, inlineCommentCount: 0, discussionCommentCount: 0 },
+  };
+
+  it('routes --json through outputJson (tier-2, no schema)', async () => {
+    mockRunComments.mockResolvedValue(emptyComments);
+    const program = buildProgram('comments');
+
+    await program.parseAsync(['node', 'cli', 'comments', PR_URL, '--json']);
+
+    expect(mockRunComments).toHaveBeenCalledWith({ prUrl: PR_URL, showBots: undefined });
+    expect(mockOutputJson).toHaveBeenCalledWith(emptyComments);
+  });
+
+  it('passes --bots through to runComments', async () => {
+    mockRunComments.mockResolvedValue(emptyComments);
+    const program = buildProgram('comments');
+
+    await program.parseAsync(['node', 'cli', 'comments', PR_URL, '--bots', '--json']);
+
+    expect(mockRunComments).toHaveBeenCalledWith({ prUrl: PR_URL, showBots: true });
+  });
+
+  it('prints the no-comments fallback when everything is empty', async () => {
+    mockRunComments.mockResolvedValue(emptyComments);
+    const program = buildProgram('comments');
+
+    await program.parseAsync(['node', 'cli', 'comments', PR_URL]);
+
+    const out = logged();
+    expect(out).toContain('## Fix flaky test');
+    expect(out).toContain('No comments from other users.');
+    expect(out).toContain('**Summary:** 0 reviews, 0 inline comments, 0 discussion comments');
+  });
+
+  it('renders reviews, inline comments, and discussion sections', async () => {
+    mockRunComments.mockResolvedValue({
+      pr: basePR,
+      reviews: [
+        { state: 'APPROVED', user: 'alice', submittedAt: new Date().toISOString(), body: 'LGTM' },
+        { state: 'COMMENTED', user: 'bob', submittedAt: null, body: '' },
+      ],
+      reviewComments: [
+        { user: 'carol', path: 'src/index.ts', createdAt: new Date().toISOString(), body: 'nit: rename' },
+      ],
+      issueComments: [{ user: 'dave', createdAt: new Date().toISOString(), body: null }],
+      summary: { reviewCount: 2, inlineCommentCount: 1, discussionCommentCount: 1 },
+    });
+    const program = buildProgram('comments');
+
+    await program.parseAsync(['node', 'cli', 'comments', PR_URL]);
+
+    const out = logged();
+    expect(out).toContain('### Reviews (newest first)');
+    expect(out).toContain('[Approved] **@alice** (APPROVED)');
+    // Unknown review states fall back to the [Comment] label.
+    expect(out).toContain('[Comment] **@bob** (COMMENTED)');
+    expect(out).toContain('> LGTM');
+    expect(out).toContain('### Inline Comments (newest first)');
+    expect(out).toContain('**@carol** on `src/index.ts`');
+    expect(out).toContain('> nit: rename');
+    expect(out).toContain('### Discussion (newest first)');
+    expect(out).toContain('**@dave**');
+    expect(out).not.toContain('No comments from other users.');
+    expect(out).toContain('**Summary:** 2 reviews, 1 inline comments, 1 discussion comments');
+  });
+});
+
+describe('post command', () => {
+  it('joins message parts and prints the comment URL', async () => {
+    mockRunPost.mockResolvedValue({ commentUrl: `${PR_URL}#issuecomment-1` });
+    const program = buildProgram('post');
+
+    await program.parseAsync(['node', 'cli', 'post', PR_URL, 'thanks', 'for', 'the', 'review']);
+
+    expect(mockRunPost).toHaveBeenCalledWith({ url: PR_URL, message: 'thanks for the review' });
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Comment posted: ${PR_URL}#issuecomment-1`);
+  });
+
+  it('routes --json through outputJsonValidated', async () => {
+    const data = { commentUrl: `${PR_URL}#issuecomment-2` };
+    mockRunPost.mockResolvedValue(data);
+    const program = buildProgram('post');
+
+    await program.parseAsync(['node', 'cli', 'post', PR_URL, 'hi', '--json']);
+
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), data);
+    expect(consoleLogSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('claim command', () => {
+  it('passes undefined message when no message parts are given', async () => {
+    mockRunClaim.mockResolvedValue({ commentUrl: `${ISSUE_URL}#issuecomment-3` });
+    const program = buildProgram('claim');
+
+    await program.parseAsync(['node', 'cli', 'claim', ISSUE_URL]);
+
+    expect(mockRunClaim).toHaveBeenCalledWith({ issueUrl: ISSUE_URL, message: undefined });
+    expect(consoleLogSpy).toHaveBeenCalledWith(`Issue claimed: ${ISSUE_URL}#issuecomment-3`);
+  });
+
+  it('joins message parts when provided', async () => {
+    mockRunClaim.mockResolvedValue({ commentUrl: `${ISSUE_URL}#issuecomment-4` });
+    const program = buildProgram('claim');
+
+    await program.parseAsync(['node', 'cli', 'claim', ISSUE_URL, 'I', 'can', 'take', 'this']);
+
+    expect(mockRunClaim).toHaveBeenCalledWith({ issueUrl: ISSUE_URL, message: 'I can take this' });
   });
 });

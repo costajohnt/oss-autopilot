@@ -12,13 +12,18 @@ onlyBuiltDependencies:
 # resolution. Revisit periodically with `pnpm why <pkg>` to confirm each
 # override is still hit by the dep graph (#963).
 overrides:
-  # Transitive via @modelcontextprotocol/sdk. Pin to avoid the pre-4.12.7
-  # security advisory family.
-  hono: '>=4.12.7'
-  # Transitive via @modelcontextprotocol/sdk. Pinned alongside hono.
-  '@hono/node-server': '>=1.19.10'
+  # Transitive via @modelcontextprotocol/sdk. Floor at the lowest
+  # non-vulnerable version for the advisory family through GHSA ranges
+  # < 4.12.27 (see #1587).
+  hono: '>=4.12.27'
+  # Transitive via @modelcontextprotocol/sdk. Advisories affect < 1.19.13.
+  '@hono/node-server': '>=1.19.13'
   # Transitive via @modelcontextprotocol/sdk. Known advisory.
   express-rate-limit: '>=8.2.2'
+  # Transitive via @modelcontextprotocol/sdk -> express-rate-limit, which
+  # exact-pins 10.1.0. XSS advisory in Address6 HTML-emitting methods;
+  # patched in 10.1.1.
+  ip-address: '>=10.1.1'
   # Dev-only, transitive via eslint -> flat-cache. ReDoS advisory.
   flatted: '>=3.4.2'
   # Dev-only, transitive via typescript-eslint -> tinyglobby. ReDoS advisory.

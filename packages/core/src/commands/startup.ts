@@ -18,7 +18,7 @@ import { executeDailyCheck } from './daily.js';
 import { launchDashboardServer, type LaunchResult } from './dashboard-lifecycle.js';
 import { recordBrowserOpened } from './dashboard-process.js';
 import { parseIssueList } from './parse-list.js';
-import { detectIssueListPath } from './locate-issue-list.js';
+import { detectIssueListPath, persistConfigPath } from './locate-issue-list.js';
 
 // Path detection moved to locate-issue-list.ts (#1463) so the daily
 // merge-loop can use it without an import cycle through this module.
@@ -67,12 +67,24 @@ export function detectIssueList(): IssueListInfo | undefined {
   // 5. Detect skipped issues file
   let skippedIssuesPath: string | undefined;
 
-  // Check config first
+  // Check config first. A relative skippedIssuesPath is anchored to the issue
+  // list's (now absolute) directory — a stable base — not CWD, and upgraded to
+  // absolute in config so the skip list isn't silently dropped when /oss runs
+  // from a different directory (#1577). Anchoring to the list dir (rather than
+  // CWD) avoids baking in a coincidentally-named skipped-issues.md from an
+  // unrelated working directory. A multi-segment relative that doesn't resolve
+  // here safely falls through to the list-dir default probe below.
   try {
     const stateManager = getStateManager();
     const configuredSkipPath = stateManager.getState().config.skippedIssuesPath;
-    if (configuredSkipPath && fs.existsSync(configuredSkipPath)) {
-      skippedIssuesPath = configuredSkipPath;
+    if (configuredSkipPath) {
+      const resolvedSkip = path.isAbsolute(configuredSkipPath)
+        ? configuredSkipPath
+        : path.resolve(path.dirname(issueListPath), configuredSkipPath);
+      if (fs.existsSync(resolvedSkip)) {
+        skippedIssuesPath = resolvedSkip;
+        if (resolvedSkip !== configuredSkipPath) persistConfigPath('skippedIssuesPath', resolvedSkip);
+      }
     }
   } catch (err) {
     // State access can fail on a degraded state file (corrupt JSON, EACCES).
