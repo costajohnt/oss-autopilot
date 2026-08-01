@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.19.2...core-v3.19.3) (2026-07-30)
+
+
+### Bug Fixes
+
+* **deps:** unblock Dependabot updates; test(core): start cli-registry coverage ratchet ([#1588](https://github.com/costajohnt/oss-autopilot/issues/1588)) ([ad14b9f](https://github.com/costajohnt/oss-autopilot/commit/ad14b9f5d7943c8bb8a399af48acbd4ad3ec674b))
+* **hooks:** add missing hookEventName so guard decisions take effect ([#1595](https://github.com/costajohnt/oss-autopilot/issues/1595)) ([0f590db](https://github.com/costajohnt/oss-autopilot/commit/0f590db506668b50b35402085303140810417ac5))
+
 ## [3.19.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.19.1...core-v3.19.2) (2026-07-22)
 
 
