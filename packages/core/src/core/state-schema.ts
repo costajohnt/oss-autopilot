@@ -298,6 +298,15 @@ export const AgentConfigSchema = z.object({
   autoFormatBeforePush: z.boolean().default(false),
 
   /**
+   * Opt-in gate for own-repo writes in the guard-public-posts hook. Default
+   * false: every GitHub-mutating command asks for approval. When true, writes
+   * whose target repo is owned by `githubUsername` skip the ask; anything the
+   * hook cannot prove is own-repo (forks, other owners, chained commands)
+   * still asks.
+   */
+  trustOwnRepoWrites: z.boolean().default(false),
+
+  /**
    * Threshold (in minutes) for the SessionStart PR health one-liner (#1255).
    * The cached digest only refreshes when the user runs `/oss`; SessionStart
    * fires every session. Without a freshness gate the line drifts arbitrarily

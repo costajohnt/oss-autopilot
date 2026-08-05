@@ -256,6 +256,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     valueHint: 'true|false',
   },
   {
+    key: 'trustOwnRepoWrites',
+    description:
+      'Opt-in: skip the guard-public-posts approval prompt for GitHub writes (PR merge, issue close, comments) targeting repos owned by your own githubUsername. Off by default. Writes to any other owner, to a fork whose parent belongs to someone else, or from a chained command still ask.',
+    settableVia: 'setup',
+    valueHint: 'true|false',
+  },
+  {
     key: 'healthCheckFreshnessMinutes',
     description:
       'Suppress the SessionStart PR health one-liner when the cached digest is older than this many minutes. The line silently disappears between /oss runs, so what remains is always current. Defaults to 30 minutes (#1255).',
