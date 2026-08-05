@@ -17,6 +17,28 @@ fi
 PASS=0
 FAIL=0
 
+# Every case runs against a fixture HOME so the developer's own
+# ~/.oss-autopilot/state.json can never change what these tests assert.
+# TEST_HOME defaults to a config-less dir, i.e. own-repo trust off.
+FIXTURE_ROOT=$(mktemp -d)
+trap 'rm -rf "$FIXTURE_ROOT"' EXIT
+
+# make_home <name> <state-json-config-object|"">  → prints the HOME path
+make_home() {
+    local name="$1" config="$2" home="${FIXTURE_ROOT}/$1"
+    mkdir -p "${home}/.oss-autopilot"
+    if [ -n "$config" ]; then
+        printf '{"config":%s}' "$config" > "${home}/.oss-autopilot/state.json"
+    fi
+    printf '%s' "$home"
+}
+
+HOME_NO_CONFIG=$(make_home no-config '')
+HOME_TRUST_OFF=$(make_home trust-off '{"githubUsername":"octocat","trustOwnRepoWrites":false}')
+HOME_TRUST_ON=$(make_home trust-on '{"githubUsername":"octocat","trustOwnRepoWrites":true}')
+HOME_TRUST_ON_NO_USER=$(make_home trust-on-no-user '{"trustOwnRepoWrites":true}')
+TEST_HOME="$HOME_NO_CONFIG"
+
 pass() {
     echo "  PASS: $1"
     PASS=$((PASS + 1))
@@ -32,7 +54,7 @@ expect_ask() {
     local name="$1"
     local payload="$2"
     local out
-    out=$(printf '%s' "$payload" | "$SUBJECT" 2>/dev/null)
+    out=$(printf '%s' "$payload" | HOME="$TEST_HOME" "$SUBJECT" 2>/dev/null)
     # Accept both compact and pretty-printed JSON shapes.
     if ! echo "$out" | grep -qE '"permissionDecision"[[:space:]]*:[[:space:]]*"ask"'; then
         fail "$name" "expected ask decision; got: $out"
@@ -54,7 +76,7 @@ expect_allow() {
     local name="$1"
     local payload="$2"
     local out
-    out=$(printf '%s' "$payload" | "$SUBJECT" 2>/dev/null)
+    out=$(printf '%s' "$payload" | HOME="$TEST_HOME" "$SUBJECT" 2>/dev/null)
     if [ -z "$out" ]; then
         pass "$name"
     else
@@ -68,10 +90,24 @@ bash_payload() {
     printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(jq -Rn --arg c "$cmd" '$c')"
 }
 
+# Helper to build a Bash payload with the cwd Claude Code reports.
+bash_payload_cwd() {
+    local cmd="$1" cwd="$2"
+    printf '{"tool_name":"Bash","tool_input":{"command":%s},"cwd":%s}' \
+        "$(jq -Rn --arg c "$cmd" '$c')" "$(jq -Rn --arg d "$cwd" '$d')"
+}
+
 # Helper to build an MCP tool payload.
 mcp_payload() {
     local tool="$1"
     printf '{"tool_name":%s,"tool_input":{}}' "$(jq -Rn --arg t "$tool" '$t')"
+}
+
+# Helper to build an MCP tool payload carrying a target repo owner.
+mcp_payload_owner() {
+    local tool="$1" owner="$2"
+    printf '{"tool_name":%s,"tool_input":{"owner":%s,"repo":"dash"}}' \
+        "$(jq -Rn --arg t "$tool" '$t')" "$(jq -Rn --arg o "$owner" '$o')"
 }
 
 echo "Running guard-public-posts.sh tests..."
@@ -185,6 +221,48 @@ expect_allow "missing tool_name allows through"    '{}'
 # ── Mutating MCP tools NOT scoped to this guard (they do not post) ────
 expect_allow "MCP move tool is not guarded by this hook"   "$(mcp_payload 'mcp__plugin_oss-autopilot_oss-autopilot__move')"
 expect_allow "MCP track tool is not guarded by this hook"  "$(mcp_payload 'mcp__plugin_oss-autopilot_oss-autopilot__track')"
+
+# ── Own-repo trust (config.trustOwnRepoWrites) ────────────────────────
+# Default off: identical commands keep asking until the user opts in.
+TEST_HOME="$HOME_TRUST_OFF"
+expect_ask  "own-repo write asks while trust is off" \
+            "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash')"
+
+TEST_HOME="$HOME_TRUST_ON"
+expect_allow "own-repo pr merge passes with -R"      "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash')"
+expect_allow "own-repo issue close passes with -R"   "$(bash_payload 'gh issue close 18 --repo octocat/dash')"
+expect_allow "own-repo issue comment passes with -R" "$(bash_payload 'gh issue comment 18 --repo octocat/dash --body hi')"
+
+# Everything the hook cannot prove is own-repo keeps asking.
+expect_ask  "another owner still asks"               "$(bash_payload 'gh pr merge 20 -R someoneelse/dash --squash')"
+expect_ask  "two -R targets still ask"               "$(bash_payload 'gh issue close 1 -R octocat/dash -R someoneelse/dash')"
+expect_ask  "chained commands still ask"             "$(bash_payload 'gh issue close 1 -R octocat/dash && gh issue close 2 -R someoneelse/dash')"
+expect_ask  "piped commands still ask"               "$(bash_payload 'gh issue list -R octocat/dash | gh issue close -R someoneelse/dash')"
+expect_ask  "command substitution still asks"        "$(bash_payload 'gh pr merge $(cat n) -R octocat/dash')"
+expect_ask  "account-level gh repo create still asks" "$(bash_payload 'gh repo create dash --public')"
+expect_ask  "gh api still asks even for an own repo" "$(bash_payload 'gh api -X POST repos/octocat/dash/issues/1/comments -f body=hi')"
+expect_ask  "oss-autopilot post still asks"          "$(bash_payload 'oss-autopilot post https://github.com/octocat/dash/issues/1 hi')"
+# No -R: the target comes from the cwd's repo, and a cwd that resolves to
+# nothing (not a checkout, or a fork whose parent is someone else's) asks.
+expect_ask  "unresolvable cwd asks"                  "$(bash_payload_cwd 'gh pr merge 20 --squash' "${FIXTURE_ROOT}/not-a-repo")"
+expect_ask  "missing cwd asks"                       "$(bash_payload 'gh pr merge 20 --squash')"
+
+TEST_HOME="$HOME_TRUST_ON_NO_USER"
+expect_ask  "trust on but no githubUsername asks"    "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash')"
+
+# The github MCP family names its target owner in tool_input.
+TEST_HOME="$HOME_TRUST_ON"
+expect_allow "MCP own-repo merge passes"             "$(mcp_payload_owner 'mcp__github__merge_pull_request' 'octocat')"
+expect_ask   "MCP other-owner merge asks"            "$(mcp_payload_owner 'mcp__github__merge_pull_request' 'someoneelse')"
+expect_ask   "MCP tool without an owner asks"        "$(mcp_payload 'mcp__github__create_repository')"
+expect_ask   "MCP oss-autopilot post asks even for own repos" \
+             "$(mcp_payload 'mcp__plugin_oss-autopilot_oss-autopilot__post')"
+
+TEST_HOME="$HOME_TRUST_OFF"
+expect_ask   "MCP own-repo merge asks while trust is off" \
+             "$(mcp_payload_owner 'mcp__github__merge_pull_request' 'octocat')"
+
+TEST_HOME="$HOME_NO_CONFIG"
 
 echo
 echo "Results: ${PASS} passed, ${FAIL} failed."
