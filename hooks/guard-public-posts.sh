@@ -72,12 +72,29 @@ fi
 # than one target, chained/substituted commands, an unresolvable target, or a
 # fork (where `gh pr create` targets the parent — someone else's repo — by
 # default). Fail-closed is the whole point; a missed ask is a public post.
-STATE_FILE="${HOME}/.oss-autopilot/state.json"
+# Config source. Under `persistence: gist` the authoritative copy is the gist
+# mirror (state-cache.json) and state.json is a stale local leftover; under
+# local persistence it's the other way round. Reading the mode to decide is
+# circular — it lives in the file being chosen — so take whichever was written
+# last. Reading only state.json is what made an enabled trustOwnRepoWrites look
+# unset on gist-backed setups.
+state_file() {
+    local local_state="${HOME}/.oss-autopilot/state.json"
+    local gist_cache="${HOME}/.oss-autopilot/state-cache.json"
+    [ -f "$gist_cache" ] || { printf '%s' "$local_state"; return 0; }
+    [ -f "$local_state" ] || { printf '%s' "$gist_cache"; return 0; }
+    if [ "$gist_cache" -nt "$local_state" ]; then
+        printf '%s' "$gist_cache"
+    else
+        printf '%s' "$local_state"
+    fi
+}
 
 read_config() {
-    local key="$1" default="$2"
-    [ -f "$STATE_FILE" ] || { printf '%s' "$default"; return 0; }
-    jq -r --arg d "$default" ".config.${key} // \$d" "$STATE_FILE" 2>/dev/null || printf '%s' "$default"
+    local key="$1" default="$2" file
+    file=$(state_file)
+    [ -f "$file" ] || { printf '%s' "$default"; return 0; }
+    jq -r --arg d "$default" ".config.${key} // \$d" "$file" 2>/dev/null || printf '%s' "$default"
 }
 
 # Owner whose repos may be written without an ask. Empty output means "ask

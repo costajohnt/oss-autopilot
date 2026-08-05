@@ -23,6 +23,19 @@ FAIL=0
 FIXTURE_ROOT=$(mktemp -d)
 trap 'rm -rf "$FIXTURE_ROOT"' EXIT
 
+# make_gist_home <name> <stale-state-config> <fresh-cache-config> → HOME path
+# Mirrors a `persistence: gist` setup: state.json is a stale local leftover and
+# state-cache.json is the newer gist mirror that holds the live config.
+make_gist_home() {
+    local name="$1" stale="$2" fresh="$3" home="${FIXTURE_ROOT}/$1"
+    mkdir -p "${home}/.oss-autopilot"
+    printf '{"config":%s}' "$stale" > "${home}/.oss-autopilot/state.json"
+    # Backdate state.json so the cache is unambiguously newer.
+    touch -t 202001010000 "${home}/.oss-autopilot/state.json"
+    printf '{"config":%s}' "$fresh" > "${home}/.oss-autopilot/state-cache.json"
+    printf '%s' "$home"
+}
+
 # make_home <name> <state-json-config-object|"">  → prints the HOME path
 make_home() {
     local name="$1" config="$2" home="${FIXTURE_ROOT}/$1"
@@ -37,6 +50,12 @@ HOME_NO_CONFIG=$(make_home no-config '')
 HOME_TRUST_OFF=$(make_home trust-off '{"githubUsername":"octocat","trustOwnRepoWrites":false}')
 HOME_TRUST_ON=$(make_home trust-on '{"githubUsername":"octocat","trustOwnRepoWrites":true}')
 HOME_TRUST_ON_NO_USER=$(make_home trust-on-no-user '{"trustOwnRepoWrites":true}')
+HOME_GIST_ON=$(make_gist_home gist-on \
+    '{"githubUsername":"octocat"}' \
+    '{"githubUsername":"octocat","persistence":"gist","trustOwnRepoWrites":true}')
+HOME_GIST_OFF=$(make_gist_home gist-off \
+    '{"githubUsername":"octocat","trustOwnRepoWrites":true}' \
+    '{"githubUsername":"octocat","persistence":"gist","trustOwnRepoWrites":false}')
 TEST_HOME="$HOME_NO_CONFIG"
 
 pass() {
@@ -261,6 +280,17 @@ expect_ask   "MCP oss-autopilot post asks even for own repos" \
 TEST_HOME="$HOME_TRUST_OFF"
 expect_ask   "MCP own-repo merge asks while trust is off" \
              "$(mcp_payload_owner 'mcp__github__merge_pull_request' 'octocat')"
+
+# Gist persistence: the live config is the newer state-cache.json, and reading
+# the stale state.json instead made an enabled key look unset.
+TEST_HOME="$HOME_GIST_ON"
+expect_allow "gist config enables own-repo trust"    "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash')"
+expect_ask   "gist config still asks for other owners" "$(bash_payload 'gh pr merge 20 -R someoneelse/dash --squash')"
+
+# ...and a newer cache that turns the key back off wins over a stale local
+# state.json that still says true.
+TEST_HOME="$HOME_GIST_OFF"
+expect_ask   "newer gist config disabling trust wins" "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash')"
 
 TEST_HOME="$HOME_NO_CONFIG"
 
