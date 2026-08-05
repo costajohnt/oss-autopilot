@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.20.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.19.3...core-v3.20.0) (2026-08-05)
+
+
+### Features
+
+* opt-in own-repo trust for the public-post guard ([#1603](https://github.com/costajohnt/oss-autopilot/issues/1603)) ([c5aa504](https://github.com/costajohnt/oss-autopilot/commit/c5aa504209193686a09af3af898d889a0e4f9aec))
+
 ## [3.19.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.19.2...core-v3.19.3) (2026-07-30)
 
 
