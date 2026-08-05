@@ -24,8 +24,7 @@ warn_and_exit() {
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
-    "permissionDecision": "allow",
-    "updatedInput": {}
+    "permissionDecision": "allow"
   },
   "systemMessage": "Auto-format hook: ${msg}"
 }
@@ -240,8 +239,7 @@ cat <<EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
-    "permissionDecision": "allow",
-    "updatedInput": {}
+    "permissionDecision": "allow"
   },
   "systemMessage": "Auto-formatted changed files (${format_result}) and committed as 'style: auto-format before push'. The push will include this formatting commit."
 }

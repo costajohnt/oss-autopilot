@@ -39,14 +39,14 @@ emit_ask() {
     # for jq at startup below).
     if command -v jq >/dev/null 2>&1; then
         jq -nc --arg msg "$1" '{
-          hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", updatedInput: {}},
+          hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask"},
           systemMessage: $msg
         }'
     else
         # If jq is missing, we already emit a loud ask from the startup
         # check below; this branch is a last-resort fallback.
         cat <<EOF
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","updatedInput":{}},"systemMessage":"guard-public-posts: refusing to parse tool input without jq. Install jq and retry."}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask"},"systemMessage":"guard-public-posts: refusing to parse tool input without jq. Install jq and retry."}
 EOF
     fi
 }

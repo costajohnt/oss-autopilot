@@ -34,6 +34,21 @@ for subject in "$SCRIPT_DIR"/*.sh; do
         echo "  FAIL: ${name}: ${blocks} hookSpecificOutput block(s) but only ${events} hookEventName field(s) — the missing ones are discarded at runtime"
         FAIL=$((FAIL + 1))
     fi
+
+    # An empty "updatedInput": {} is not a no-op — it REPLACES the tool's
+    # arguments with nothing. On a Bash call the harness rejects the result
+    # ("required parameter `command` is missing") and the call dies before
+    # reaching a permission prompt; on an MCP call the server receives {}
+    # and fails on its own required fields. A guard that only wants to ask
+    # or warn must omit the field entirely.
+    empties=$(grep -cE '"?updatedInput"?[[:space:]]*:[[:space:]]*\{\}' "$subject" 2>/dev/null || true)
+    if [ "${empties:-0}" -eq 0 ]; then
+        echo "  PASS: ${name} (no empty updatedInput)"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: ${name}: ${empties} empty updatedInput block(s) — this wipes the tool input instead of passing it through"
+        FAIL=$((FAIL + 1))
+    fi
 done
 
 echo "Results: ${PASS} passed, ${FAIL} failed."
