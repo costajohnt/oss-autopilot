@@ -82,11 +82,20 @@ expect_ask() {
     # Claude Code discards the whole hookSpecificOutput block when
     # hookEventName is absent, so an "ask" without it silently allows the
     # post. Assert the field is present or the guard is decorative.
-    if echo "$out" | grep -qE '"hookEventName"[[:space:]]*:[[:space:]]*"PreToolUse"'; then
-        pass "$name"
-    else
+    if ! echo "$out" | grep -qE '"hookEventName"[[:space:]]*:[[:space:]]*"PreToolUse"'; then
         fail "$name" "ask decision is missing hookEventName; got: $out"
+        return
     fi
+    # Claude Code treats a present `updatedInput` as a wholesale replacement
+    # of the tool input, so emitting an empty object erased the original
+    # parameters and every gated call failed schema validation ("required
+    # parameter `command` is missing") instead of prompting the user. The ask
+    # payload must not carry the field at all.
+    if echo "$out" | grep -q 'updatedInput'; then
+        fail "$name" "ask payload carries updatedInput, which replaces the tool input; got: $out"
+        return
+    fi
+    pass "$name"
 }
 
 # expect_allow <case-name> <stdin-json>  — passes when the hook emits no output

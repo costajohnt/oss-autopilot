@@ -33,20 +33,27 @@
 set -uo pipefail
 
 emit_ask() {
+    # NEVER emit `updatedInput` here. Claude Code treats a present
+    # updatedInput as a WHOLESALE REPLACEMENT of the tool input, so an empty
+    # object wipes the original parameters and the gated call fails schema
+    # validation ("required parameter `command` is missing") instead of
+    # prompting the user. The ask payload carries only hookEventName and
+    # permissionDecision.
+    #
     # Use jq -n when possible so future dynamic messages get proper JSON
     # escaping for free. Falls back to a handcrafted heredoc if jq is
     # broken (very unlikely by the time we reach this path — we check
     # for jq at startup below).
     if command -v jq >/dev/null 2>&1; then
         jq -nc --arg msg "$1" '{
-          hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask", updatedInput: {}},
+          hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask"},
           systemMessage: $msg
         }'
     else
         # If jq is missing, we already emit a loud ask from the startup
         # check below; this branch is a last-resort fallback.
         cat <<EOF
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","updatedInput":{}},"systemMessage":"guard-public-posts: refusing to parse tool input without jq. Install jq and retry."}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask"},"systemMessage":"guard-public-posts: refusing to parse tool input without jq. Install jq and retry."}
 EOF
     fi
 }
