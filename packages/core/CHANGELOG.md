@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.20.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.20.2...core-v3.20.3) (2026-08-08)
+
+
+### Bug Fixes
+
+* bound recent PR fetches on updated, not closed/merged ([#1585](https://github.com/costajohnt/oss-autopilot/issues/1585)) ([7abdc00](https://github.com/costajohnt/oss-autopilot/commit/7abdc00f473ec249b6f925a8fa79c9cd5a11b657))
+* **test:** give startup e2e tests headroom over the subprocess timeout ([#1613](https://github.com/costajohnt/oss-autopilot/issues/1613)) ([0e6069c](https://github.com/costajohnt/oss-autopilot/commit/0e6069c10685b3f000501b3d309e3333d5ae6e8b))
+
 ## [3.20.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.20.1...core-v3.20.2) (2026-08-08)
 
 

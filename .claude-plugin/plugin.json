@@ -1,6 +1,6 @@
 {
   "name": "oss-autopilot",
-  "version": "3.20.2",
+  "version": "3.20.3",
   "description": "AI-powered autopilot for managing open source contributions - track PRs, respond to maintainers, discover issues, and maintain contribution velocity",
   "author": {
     "name": "John Costa",
