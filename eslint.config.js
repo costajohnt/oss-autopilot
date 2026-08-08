@@ -137,6 +137,11 @@ export default tseslint.config(
       'unicorn/no-null': 'off',
       // wants `(error)` not `(err)` — bikeshed; codebase uses both
       'unicorn/catch-error-name': 'off',
+      // CSS-only rule (added in unicorn 73) that recommended turns on for every
+      // language. ESLint 10 hard-errors when a rule is applied to a language it
+      // does not support, so leaving it on fails the whole lint run on "js/js".
+      // We lint no CSS, so turn it off rather than scope it to a files glob.
+      'unicorn/prefer-explicit-viewport-units': 'off',
       // wants `(arg) => ...` over `arg => ...` — prettier already enforces
       'sonarjs/arrow-function-convention': 'off',
       // flags any string literal repeated 3+ times — false positive heaven
