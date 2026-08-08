@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r run build",
-    "bundle": "pnpm -r run bundle",
+    "bundle": "pnpm --filter @oss-autopilot/core run build && pnpm -r run bundle",
     "start": "pnpm --filter @oss-autopilot/core run start",
     "test": "pnpm -r run test",
     "test:watch": "pnpm -r run test:watch",
