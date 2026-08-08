@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.20.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.20.1...core-v3.20.2) (2026-08-08)
+
+
+### Bug Fixes
+
+* **deps:** bump @oss-scout/core to ^1.5.2 ([#1612](https://github.com/costajohnt/oss-autopilot/issues/1612)) ([5a5f418](https://github.com/costajohnt/oss-autopilot/commit/5a5f4188924bddfd24688b8a5d11cd8b7d308d9f))
+
+## [3.20.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.20.0...core-v3.20.1) (2026-08-06)
+
+
+### Bug Fixes
+
+* drop empty updatedInput from hook permission payloads ([#1607](https://github.com/costajohnt/oss-autopilot/issues/1607)) ([9074f11](https://github.com/costajohnt/oss-autopilot/commit/9074f11c6bf58c6813406df7fad37f47d09a79b1))
+* read hook config from the gist mirror when it is newer ([#1605](https://github.com/costajohnt/oss-autopilot/issues/1605)) ([b9b1d39](https://github.com/costajohnt/oss-autopilot/commit/b9b1d39fd3957038c58281d522f3147b0b7123e2))
+
+## [3.20.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.19.3...core-v3.20.0) (2026-08-05)
+
+
+### Features
+
+* opt-in own-repo trust for the public-post guard ([#1603](https://github.com/costajohnt/oss-autopilot/issues/1603)) ([c5aa504](https://github.com/costajohnt/oss-autopilot/commit/c5aa504209193686a09af3af898d889a0e4f9aec))
+
 ## [3.19.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.19.2...core-v3.19.3) (2026-07-30)
 
 
