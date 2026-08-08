@@ -76,8 +76,8 @@ importers:
         specifier: ^22.0.1
         version: 22.0.1
       '@oss-scout/core':
-        specifier: ^1.5.2
-        version: 1.5.2(@octokit/core@7.0.6)
+        specifier: ^1.5.0
+        version: 1.5.0(@octokit/core@7.0.6)
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -758,8 +758,8 @@ packages:
   '@octokit/types@16.0.0':
     resolution: {integrity: sha512-sKq+9r1Mm4efXW1FCk7hFSeJo4QKreL/tTbR0rz/qx/r1Oa2VV83LTA/H/MuCOX7uCIJmQVRKBcbmWoySjAnSg==}
 
-  '@oss-scout/core@1.5.2':
-    resolution: {integrity: sha512-KrogL+wN5U4aCnvqexP8hc7PTbbpeVxuDTQ/sHcD4v5BlU0UdJh0wau3tZepgXybMvvC+VsK+K/fEUnPKCrwrg==}
+  '@oss-scout/core@1.5.0':
+    resolution: {integrity: sha512-08r5r9kaFBjBsBMm4qEBkYaBNIM8d53/N80LLkvvGsDE3in/sy6kV5ebvHXZAVd0t3EeEZmfCso18lpgJpXsgQ==}
     engines: {node: '>=20.0.0'}
     hasBin: true
 
@@ -3551,7 +3551,7 @@ snapshots:
     dependencies:
       '@octokit/openapi-types': 27.0.0
 
-  '@oss-scout/core@1.5.2(@octokit/core@7.0.6)':
+  '@oss-scout/core@1.5.0(@octokit/core@7.0.6)':
     dependencies:
       '@octokit/plugin-retry': 8.1.0(@octokit/core@7.0.6)
       '@octokit/plugin-throttling': 11.0.3(@octokit/core@7.0.6)
