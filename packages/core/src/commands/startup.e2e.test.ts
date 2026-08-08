@@ -15,12 +15,23 @@ const BUNDLE_PATH = path.resolve(__dirname, '../../dist/cli.bundle.cjs');
 const BUNDLE_EXISTS = fs.existsSync(BUNDLE_PATH);
 const TEST_HOME = '/tmp/oss-autopilot-e2e-test-' + process.pid;
 
+/** Budget for the CLI subprocess itself. Exceeding it is a real failure. */
+const STARTUP_BUDGET_MS = 5000;
+
+/**
+ * Vitest timeout for each test. Must stay comfortably above STARTUP_BUDGET_MS:
+ * if the two are equal, vitest aborts the test before the subprocess timeout
+ * fires, so a slow runner reports a bare "test timed out" instead of the
+ * diagnostics runStartup collects.
+ */
+const TEST_TIMEOUT_MS = 15_000;
+
 async function runStartup(env?: Record<string, string>): Promise<{ stdout: string; stderr: string; json: any }> {
   let exitCode: number | null = 0;
   let signal: string | null = null;
 
   const result = await execFileAsync('node', [BUNDLE_PATH, 'startup', '--json'], {
-    timeout: 5000,
+    timeout: STARTUP_BUDGET_MS,
     env: { ...process.env, ...env, HOME: TEST_HOME },
     cwd: TEST_HOME,
   }).catch((err: any) => {
@@ -48,7 +59,7 @@ async function runStartup(env?: Record<string, string>): Promise<{ stdout: strin
   return { stdout: result.stdout, stderr: result.stderr, json };
 }
 
-describe.skipIf(!BUNDLE_EXISTS)('startup --json E2E', () => {
+describe.skipIf(!BUNDLE_EXISTS)('startup --json E2E', { timeout: TEST_TIMEOUT_MS }, () => {
   beforeAll(() => {
     fs.mkdirSync(TEST_HOME, { recursive: true });
   });
@@ -87,10 +98,10 @@ describe.skipIf(!BUNDLE_EXISTS)('startup --json E2E', () => {
     expect(json.data.setupComplete).toBe(false);
   });
 
-  it('should complete within 5 seconds', async () => {
+  it('should complete within the startup budget', async () => {
     const start = Date.now();
     await runStartup({ GITHUB_TOKEN: '' });
     const duration = Date.now() - start;
-    expect(duration).toBeLessThan(5000);
+    expect(duration).toBeLessThan(STARTUP_BUDGET_MS);
   });
 });
