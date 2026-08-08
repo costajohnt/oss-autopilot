@@ -844,6 +844,12 @@ describe('PRMonitor generateDigest', () => {
   });
 });
 
+/** Recent-PR fetches filter on a live window, so these must stay near now. */
+const isoDaysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+const RECENT_MERGED_AT = isoDaysAgo(2);
+const RECENT_MERGED_AT_EARLIER = isoDaysAgo(3);
+const RECENT_CLOSED_AT = isoDaysAgo(3);
+
 describe('PRMonitor fetchRecentlyMergedPRs', () => {
   beforeEach(() => {
     mockOctokitInstance = {};
@@ -863,8 +869,8 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
               {
                 html_url: 'https://github.com/owner/repo/pull/42',
                 title: 'Fix the thing',
-                pull_request: { merged_at: '2026-02-15T12:00:00Z' },
-                closed_at: '2026-02-15T12:00:00Z',
+                pull_request: { merged_at: RECENT_MERGED_AT },
+                closed_at: RECENT_MERGED_AT,
               },
             ],
           },
@@ -881,7 +887,7 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
       repo: 'owner/repo',
       number: 42,
       title: 'Fix the thing',
-      mergedAt: '2026-02-15T12:00:00Z',
+      mergedAt: RECENT_MERGED_AT,
     });
   });
 
@@ -894,8 +900,8 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
               {
                 html_url: 'https://github.com/testuser/my-repo/pull/1',
                 title: 'Self PR',
-                pull_request: { merged_at: '2026-02-15T12:00:00Z' },
-                closed_at: '2026-02-15T12:00:00Z',
+                pull_request: { merged_at: RECENT_MERGED_AT },
+                closed_at: RECENT_MERGED_AT,
               },
             ],
           },
@@ -923,8 +929,8 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
               {
                 html_url: 'https://github.com/excluded/repo/pull/1',
                 title: 'Excluded repo PR',
-                pull_request: { merged_at: '2026-02-15T12:00:00Z' },
-                closed_at: '2026-02-15T12:00:00Z',
+                pull_request: { merged_at: RECENT_MERGED_AT },
+                closed_at: RECENT_MERGED_AT,
               },
             ],
           },
@@ -961,8 +967,8 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
               {
                 html_url: 'https://github.com/owner/repo/pull/10',
                 title: 'PR with merged_at',
-                pull_request: { merged_at: '2026-02-14T08:00:00Z' },
-                closed_at: '2026-02-14T09:00:00Z',
+                pull_request: { merged_at: RECENT_MERGED_AT_EARLIER },
+                closed_at: RECENT_CLOSED_AT,
               },
             ],
           },
@@ -973,7 +979,7 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
     const monitor = new PRMonitor('fake-token');
     const result = await monitor.fetchRecentlyMergedPRs();
 
-    expect(result[0].mergedAt).toBe('2026-02-14T08:00:00Z');
+    expect(result[0].mergedAt).toBe(RECENT_MERGED_AT_EARLIER);
   });
 
   it('should fall back to closed_at when merged_at is absent', async () => {
@@ -986,7 +992,7 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
                 html_url: 'https://github.com/owner/repo/pull/10',
                 title: 'PR without merged_at',
                 pull_request: {},
-                closed_at: '2026-02-14T09:00:00Z',
+                closed_at: RECENT_CLOSED_AT,
               },
             ],
           },
@@ -997,7 +1003,7 @@ describe('PRMonitor fetchRecentlyMergedPRs', () => {
     const monitor = new PRMonitor('fake-token');
     const result = await monitor.fetchRecentlyMergedPRs();
 
-    expect(result[0].mergedAt).toBe('2026-02-14T09:00:00Z');
+    expect(result[0].mergedAt).toBe(RECENT_CLOSED_AT);
   });
 });
 
