@@ -64,5 +64,12 @@
     "prettier": "^3.9.6",
     "simple-git-hooks": "^2.13.1",
     "typescript-eslint": "^8.65.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "brace-expansion": ">=5.0.9",
+      "hono": ">=4.12.34",
+      "@babel/core": ">=7.29.6"
+    }
   }
 }
