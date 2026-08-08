@@ -52,6 +52,11 @@ function makeMergedItem(owner: string, repo: string, mergedAt: string) {
   };
 }
 
+/** ISO timestamp N days before now — recent-PR fetches filter on a live window. */
+function isoDaysAgo(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function makeClosedItem(owner: string, repo: string, closedAt: string) {
   return {
     html_url: `https://github.com/${owner}/${repo}/pull/1`,
@@ -542,12 +547,13 @@ describe('fetchRecentlyMergedPRs', () => {
   });
 
   it('should return recently merged PRs excluding own repos', async () => {
+    const mergedAt = isoDaysAgo(2);
     const items = [
       {
         html_url: 'https://github.com/org/repo/pull/7',
         title: 'Recent merge',
-        pull_request: { merged_at: '2025-06-15T12:00:00Z' },
-        closed_at: '2025-06-15T12:00:00Z',
+        pull_request: { merged_at: mergedAt },
+        closed_at: mergedAt,
       },
     ];
     const octokit = makeOctokit(items);
@@ -557,7 +563,23 @@ describe('fetchRecentlyMergedPRs', () => {
     expect(result).toHaveLength(1);
     expect(result[0].repo).toBe('org/repo');
     expect(result[0].number).toBe(7);
-    expect(result[0].mergedAt).toBe('2025-06-15T12:00:00Z');
+    expect(result[0].mergedAt).toBe(mergedAt);
+  });
+
+  it('should drop PRs merged before the window even when recently updated (#1567)', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/7',
+        title: 'Old merge, new comment',
+        pull_request: { merged_at: isoDaysAgo(90) },
+        closed_at: isoDaysAgo(90),
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchRecentlyMergedPRs(octokit, { githubUsername: 'testuser' }, 7);
+
+    expect(result).toEqual([]);
   });
 
   it('should return empty when no username configured', async () => {
@@ -567,20 +589,22 @@ describe('fetchRecentlyMergedPRs', () => {
   });
 
   it('should carry openedAt from the search result created_at (#1461)', async () => {
+    const openedAt = isoDaysAgo(30);
+    const mergedAt = isoDaysAgo(2);
     const items = [
       {
         html_url: 'https://github.com/org/repo/pull/7',
         title: 'Recent merge',
-        created_at: '2025-06-01T08:00:00Z',
-        pull_request: { merged_at: '2025-06-15T12:00:00Z' },
-        closed_at: '2025-06-15T12:00:00Z',
+        created_at: openedAt,
+        pull_request: { merged_at: mergedAt },
+        closed_at: mergedAt,
       },
     ];
     const octokit = makeOctokit(items);
 
     const result = await fetchRecentlyMergedPRs(octokit, { githubUsername: 'testuser' }, 7);
 
-    expect(result[0].openedAt).toBe('2025-06-01T08:00:00Z');
+    expect(result[0].openedAt).toBe(openedAt);
   });
 });
 
@@ -595,11 +619,12 @@ describe('fetchRecentlyClosedPRs', () => {
   });
 
   it('should return recently closed PRs excluding own repos', async () => {
+    const closedAt = isoDaysAgo(1);
     const items = [
       {
         html_url: 'https://github.com/org/repo/pull/3',
         title: 'Closed without merge',
-        closed_at: '2025-07-01T10:00:00Z',
+        closed_at: closedAt,
       },
     ];
     const octokit = makeOctokit(items);
@@ -609,23 +634,55 @@ describe('fetchRecentlyClosedPRs', () => {
     expect(result).toHaveLength(1);
     expect(result[0].repo).toBe('org/repo');
     expect(result[0].number).toBe(3);
-    expect(result[0].closedAt).toBe('2025-07-01T10:00:00Z');
+    expect(result[0].closedAt).toBe(closedAt);
   });
 
   it('should carry openedAt from the search result created_at (#1461)', async () => {
+    const openedAt = isoDaysAgo(20);
+    const closedAt = isoDaysAgo(1);
     const items = [
       {
         html_url: 'https://github.com/org/repo/pull/3',
         title: 'Closed without merge',
-        created_at: '2025-06-20T08:00:00Z',
-        closed_at: '2025-07-01T10:00:00Z',
+        created_at: openedAt,
+        closed_at: closedAt,
       },
     ];
     const octokit = makeOctokit(items);
 
     const result = await fetchRecentlyClosedPRs(octokit, { githubUsername: 'testuser' }, 7);
 
-    expect(result[0].openedAt).toBe('2025-06-20T08:00:00Z');
+    expect(result[0].openedAt).toBe(openedAt);
+  });
+
+  // Regression (#1567): apache/superset#37458 was closed within the window but
+  // its close-date facet was missing from GitHub's search index, so a
+  // `closed:>={since}` query returned nothing while `updated:>={since}` found
+  // it with a correct closed_at. Bounding on `updated` is what makes such a PR
+  // visible at all.
+  it('should bound the search on updated, not closed (#1567)', async () => {
+    const octokit = makeOctokit([]);
+
+    await fetchRecentlyClosedPRs(octokit, { githubUsername: 'testuser' }, 7);
+
+    const searchCall = vi.mocked(octokit.search.issuesAndPullRequests).mock.calls[0][0];
+    expect(searchCall.q).toContain('updated:>=');
+    expect(searchCall.q).not.toContain('closed:>=');
+  });
+
+  it('should drop PRs closed before the window even when recently updated (#1567)', async () => {
+    const items = [
+      {
+        html_url: 'https://github.com/org/repo/pull/3',
+        title: 'Old close, new comment',
+        closed_at: isoDaysAgo(90),
+      },
+    ];
+    const octokit = makeOctokit(items);
+
+    const result = await fetchRecentlyClosedPRs(octokit, { githubUsername: 'testuser' }, 7);
+
+    expect(result).toEqual([]);
   });
 });
 
@@ -653,8 +710,8 @@ describe('fetchRecentlyMergedPRs uses is:public query (#792)', () => {
       {
         html_url: 'https://github.com/excluded-org/private-repo/pull/5',
         title: 'Excluded repo PR',
-        pull_request: { merged_at: '2025-06-15T12:00:00Z' },
-        closed_at: '2025-06-15T12:00:00Z',
+        pull_request: { merged_at: isoDaysAgo(2) },
+        closed_at: isoDaysAgo(2),
       },
     ];
     const octokit = makeOctokit(items);

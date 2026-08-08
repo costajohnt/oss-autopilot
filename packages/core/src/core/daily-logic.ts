@@ -303,6 +303,12 @@ export function assessCapacity(
  * Note: Recently closed PRs are informational only and excluded from this list.
  * They are available separately in digest.recentlyClosedPRs (#156).
  *
+ * A maintainer question in a closing comment therefore never raises
+ * needs_response — the closed PR is listed, but nobody is told it asked
+ * something. ponytail: closed PRs surface in recentlyClosedPRs only; add a
+ * closing-comment scan (own fetch path, own dismiss semantics) when a closing
+ * comment gets missed a second time.
+ *
  * @param prs - Active (non-shelved) PRs to check
  * @param lastDigestAt - ISO timestamp of previous digest (for "new contribution" detection)
  * @returns Ordered actionable issues grouped by priority
