@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.20.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.20.1...core-v3.20.2) (2026-08-08)
+
+
+### Bug Fixes
+
+* **deps:** bump @oss-scout/core to ^1.5.2 ([#1612](https://github.com/costajohnt/oss-autopilot/issues/1612)) ([5a5f418](https://github.com/costajohnt/oss-autopilot/commit/5a5f4188924bddfd24688b8a5d11cd8b7d308d9f))
+
+## [3.20.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.20.0...core-v3.20.1) (2026-08-06)
+
+
+### Bug Fixes
+
+* drop empty updatedInput from hook permission payloads ([#1607](https://github.com/costajohnt/oss-autopilot/issues/1607)) ([9074f11](https://github.com/costajohnt/oss-autopilot/commit/9074f11c6bf58c6813406df7fad37f47d09a79b1))
+* read hook config from the gist mirror when it is newer ([#1605](https://github.com/costajohnt/oss-autopilot/issues/1605)) ([b9b1d39](https://github.com/costajohnt/oss-autopilot/commit/b9b1d39fd3957038c58281d522f3147b0b7123e2))
+
+## [3.20.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.19.3...core-v3.20.0) (2026-08-05)
+
+
+### Features
+
+* opt-in own-repo trust for the public-post guard ([#1603](https://github.com/costajohnt/oss-autopilot/issues/1603)) ([c5aa504](https://github.com/costajohnt/oss-autopilot/commit/c5aa504209193686a09af3af898d889a0e4f9aec))
+
+## [3.19.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.19.2...core-v3.19.3) (2026-07-30)
+
+
+### Bug Fixes
+
+* **deps:** unblock Dependabot updates; test(core): start cli-registry coverage ratchet ([#1588](https://github.com/costajohnt/oss-autopilot/issues/1588)) ([ad14b9f](https://github.com/costajohnt/oss-autopilot/commit/ad14b9f5d7943c8bb8a399af48acbd4ad3ec674b))
+* **hooks:** add missing hookEventName so guard decisions take effect ([#1595](https://github.com/costajohnt/oss-autopilot/issues/1595)) ([0f590db](https://github.com/costajohnt/oss-autopilot/commit/0f590db506668b50b35402085303140810417ac5))
+
+## [3.19.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.19.1...core-v3.19.2) (2026-07-22)
+
+
+### Bug Fixes
+
+* **startup:** resolve and persist absolute issue-list and skip paths ([#1583](https://github.com/costajohnt/oss-autopilot/issues/1583)) ([04035ee](https://github.com/costajohnt/oss-autopilot/commit/04035ee160b9a1b84da9c1ed6dc1d123db1d2d39))
+
+## [3.19.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.19.0...core-v3.19.1) (2026-07-21)
+
+
+### Bug Fixes
+
+* **grading:** grade new repos on intrinsic merge rate; reconcile approve with grade ([#1579](https://github.com/costajohnt/oss-autopilot/issues/1579)) ([682b002](https://github.com/costajohnt/oss-autopilot/commit/682b002057dbe5a8804b427eb1b7307fac6153b4))
+
 ## [3.19.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.18.0...core-v3.19.0) (2026-07-15)
 
 

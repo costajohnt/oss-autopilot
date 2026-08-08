@@ -13,7 +13,7 @@ import {
 } from '../formatters/json.js';
 import { runParseList, pruneIssueList } from './parse-list.js';
 import { detectIssueList } from './startup.js';
-import { computeSuccessGrade, gradeFromCandidate } from '../core/issue-grading.js';
+import { computeSuccessGrade, gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
 import { ValidationError } from '../core/errors.js';
 import {
   getStateManager,
@@ -286,7 +286,7 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
         url: candidate.issue.url,
         labels: candidate.issue.labels,
       },
-      recommendation: candidate.recommendation,
+      recommendation: reconcileRecommendation(candidate.recommendation, grade),
       reasonsToApprove: candidate.reasonsToApprove,
       reasonsToSkip: candidate.reasonsToSkip,
       projectHealth: candidate.projectHealth,

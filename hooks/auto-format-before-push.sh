@@ -15,7 +15,18 @@
 # No set -e: this hook must never abort mid-execution and leave a dirty tree.
 set -uo pipefail
 
-STATE_FILE="${HOME}/.oss-autopilot/state.json"
+# Config source. Under `persistence: gist` the live config is the gist mirror
+# (state-cache.json) and state.json is a stale local leftover; under local
+# persistence it's the other way round. The persistence mode itself lives in
+# the file being chosen, so pick whichever was written last — reading only
+# state.json makes an enabled autoFormatBeforePush look unset on gist setups.
+if [ -f "${HOME}/.oss-autopilot/state-cache.json" ] &&
+  { [ ! -f "${HOME}/.oss-autopilot/state.json" ] ||
+    [ "${HOME}/.oss-autopilot/state-cache.json" -nt "${HOME}/.oss-autopilot/state.json" ]; }; then
+  STATE_FILE="${HOME}/.oss-autopilot/state-cache.json"
+else
+  STATE_FILE="${HOME}/.oss-autopilot/state.json"
+fi
 FORMAT_ERROR_LOG="${HOME}/.oss-autopilot/last-format-error.log"
 
 warn_and_exit() {
@@ -23,8 +34,8 @@ warn_and_exit() {
   cat <<WARN_EOF
 {
   "hookSpecificOutput": {
-    "permissionDecision": "allow",
-    "updatedInput": {}
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "allow"
   },
   "systemMessage": "Auto-format hook: ${msg}"
 }
@@ -238,8 +249,8 @@ fi
 cat <<EOF
 {
   "hookSpecificOutput": {
-    "permissionDecision": "allow",
-    "updatedInput": {}
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "allow"
   },
   "systemMessage": "Auto-formatted changed files (${format_result}) and committed as 'style: auto-format before push'. The push will include this formatting commit."
 }

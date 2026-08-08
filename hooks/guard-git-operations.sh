@@ -26,8 +26,8 @@ if echo "$command" | grep -qE 'git\s+push\b' && echo "$command" | grep -qE '(\s-
   cat <<'EOF'
 {
   "hookSpecificOutput": {
-    "permissionDecision": "deny",
-    "updatedInput": {}
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny"
   },
   "systemMessage": "BLOCKED: Never use `git push --force`. Use `git push --force-with-lease` instead — it prevents overwriting commits pushed by others. Before pushing, always fetch the remote branch first: `git fetch <remote> <branch>`."
 }
@@ -40,8 +40,8 @@ if echo "$command" | grep -qE 'git\s+rebase\b'; then
   cat <<'EOF'
 {
   "hookSpecificOutput": {
-    "permissionDecision": "ask",
-    "updatedInput": {}
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "ask"
   },
   "systemMessage": "Before rebasing, you MUST fetch the remote tracking branch to avoid overwriting commits pushed by others (e.g. maintainer cleanup commits). Run `git fetch <remote> <branch>` first and verify no new remote commits exist. If the remote has commits you don't have locally, incorporate them before rebasing."
 }
@@ -56,8 +56,8 @@ if echo "$command" | grep -qE 'git\s+pull\b' && echo "$command" | grep -qE '(\s-
   cat <<'EOF'
 {
   "hookSpecificOutput": {
-    "permissionDecision": "ask",
-    "updatedInput": {}
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "ask"
   },
   "systemMessage": "Before pulling with --rebase, you MUST fetch the remote tracking branch first to see what you're rebasing over. `git pull --rebase` rebases your local commits onto the latest remote head; if the remote has commits you didn't expect, this can rewrite history past them. Run `git fetch` and inspect `git log HEAD..@{u}` first."
 }
@@ -70,8 +70,8 @@ if echo "$command" | grep -qE 'git\s+push\b.*--force-with-lease'; then
   cat <<'EOF'
 {
   "hookSpecificOutput": {
-    "permissionDecision": "ask",
-    "updatedInput": {}
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "ask"
   },
   "systemMessage": "Before force-pushing (even with --force-with-lease), verify you fetched the remote branch and incorporated any new commits. Maintainers may push directly to your PR branch. If you haven't fetched, --force-with-lease may still overwrite their work if your local remote-tracking ref is stale."
 }
@@ -87,8 +87,8 @@ if echo "$command" | grep -qE 'git\s+reset\s+--hard\b'; then
   cat <<'EOF'
 {
   "hookSpecificOutput": {
-    "permissionDecision": "ask",
-    "updatedInput": {}
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "ask"
   },
   "systemMessage": "`git reset --hard` discards uncommitted work AND any local commits not in the target ref. If you have unpushed commits on this branch you want to keep, stash them first (`git stash`) or note them on a recovery branch (`git branch wip-recovery`). Confirm you've reviewed `git status` and `git log @{u}..HEAD` before proceeding."
 }

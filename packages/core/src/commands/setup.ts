@@ -217,6 +217,15 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = String(enabled);
             break;
           }
+          case 'trustOwnRepoWrites': {
+            if (value !== 'true' && value !== 'false') {
+              throw new ValidationError(`Invalid value for trustOwnRepoWrites: "${value}". Must be "true" or "false".`);
+            }
+            const trusted = value === 'true';
+            stateManager.updateConfig({ trustOwnRepoWrites: trusted });
+            results[key] = String(trusted);
+            break;
+          }
           case 'includeDocIssues': {
             stateManager.updateConfig({ includeDocIssues: value === 'true' });
             results[key] = value === 'true' ? 'true' : 'false';

@@ -33,20 +33,27 @@
 set -uo pipefail
 
 emit_ask() {
+    # NEVER emit `updatedInput` here. Claude Code treats a present
+    # updatedInput as a WHOLESALE REPLACEMENT of the tool input, so an empty
+    # object wipes the original parameters and the gated call fails schema
+    # validation ("required parameter `command` is missing") instead of
+    # prompting the user. The ask payload carries only hookEventName and
+    # permissionDecision.
+    #
     # Use jq -n when possible so future dynamic messages get proper JSON
     # escaping for free. Falls back to a handcrafted heredoc if jq is
     # broken (very unlikely by the time we reach this path — we check
     # for jq at startup below).
     if command -v jq >/dev/null 2>&1; then
         jq -nc --arg msg "$1" '{
-          hookSpecificOutput: {permissionDecision: "ask", updatedInput: {}},
+          hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "ask"},
           systemMessage: $msg
         }'
     else
         # If jq is missing, we already emit a loud ask from the startup
         # check below; this branch is a last-resort fallback.
         cat <<EOF
-{"hookSpecificOutput":{"permissionDecision":"ask","updatedInput":{}},"systemMessage":"guard-public-posts: refusing to parse tool input without jq. Install jq and retry."}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask"},"systemMessage":"guard-public-posts: refusing to parse tool input without jq. Install jq and retry."}
 EOF
     fi
 }
@@ -59,6 +66,82 @@ if ! command -v jq >/dev/null 2>&1; then
     emit_ask "guard-public-posts: the 'jq' utility is required to inspect tool input. Install it (brew install jq / apt-get install jq) and retry. Treating this invocation as 'ask' to avoid silently bypassing the public-post guard."
     exit 0
 fi
+
+# --- Own-repo trust (opt-in, default off) ------------------------------------
+# The guard exists to stop unattended posts into repos owned by *other* people.
+# A user who also maintains their own repos hits the same gate on every
+# `gh pr merge` / `gh issue close` against their own work, where there is no
+# maintainer to show a draft to. `config.trustOwnRepoWrites` lets those through
+# when the target repo is owned by the configured `githubUsername`.
+#
+# Every path that cannot PROVE the target is owned by that user falls back to
+# the ask: feature off, no username configured, non-repo-scoped command, more
+# than one target, chained/substituted commands, an unresolvable target, or a
+# fork (where `gh pr create` targets the parent — someone else's repo — by
+# default). Fail-closed is the whole point; a missed ask is a public post.
+# Config source. Under `persistence: gist` the authoritative copy is the gist
+# mirror (state-cache.json) and state.json is a stale local leftover; under
+# local persistence it's the other way round. Reading the mode to decide is
+# circular — it lives in the file being chosen — so take whichever was written
+# last. Reading only state.json is what made an enabled trustOwnRepoWrites look
+# unset on gist-backed setups.
+state_file() {
+    local local_state="${HOME}/.oss-autopilot/state.json"
+    local gist_cache="${HOME}/.oss-autopilot/state-cache.json"
+    [ -f "$gist_cache" ] || { printf '%s' "$local_state"; return 0; }
+    [ -f "$local_state" ] || { printf '%s' "$gist_cache"; return 0; }
+    if [ "$gist_cache" -nt "$local_state" ]; then
+        printf '%s' "$gist_cache"
+    else
+        printf '%s' "$local_state"
+    fi
+}
+
+read_config() {
+    local key="$1" default="$2" file
+    file=$(state_file)
+    [ -f "$file" ] || { printf '%s' "$default"; return 0; }
+    jq -r --arg d "$default" ".config.${key} // \$d" "$file" 2>/dev/null || printf '%s' "$default"
+}
+
+# Owner whose repos may be written without an ask. Empty output means "ask
+# about everything" — the default.
+trusted_owner() {
+    [ "$(read_config trustOwnRepoWrites false)" = "true" ] || return 0
+    read_config githubUsername ""
+}
+
+# Target repo of a `gh` invocation as owner/repo, or empty when it cannot be
+# resolved unambiguously. Mirrors gh's own precedence: an explicit -R/--repo
+# flag wins, otherwise the repo the cwd belongs to.
+gh_target_repo() {
+    local cmd="$1" cwd="$2" flags count
+    flags=$(printf '%s\n' "$cmd" | grep -oE '(^|[[:space:]])(-R|--repo)[[:space:]]+[^[:space:]]+' | awk '{print $NF}')
+    count=$(printf '%s' "$flags" | grep -c '[^[:space:]]' 2>/dev/null || true)
+    if [ "${count:-0}" -gt 1 ]; then return 0; fi
+    if [ "${count:-0}" -eq 1 ]; then printf '%s' "$flags"; return 0; fi
+    [ -n "$cwd" ] && [ -d "$cwd" ] || return 0
+    # `select(.parent == null)` prints nothing for a fork, so a fork checkout
+    # resolves to "unknown" and keeps the ask.
+    (cd "$cwd" && gh repo view --json nameWithOwner,parent -q 'select(.parent == null) | .nameWithOwner' 2>/dev/null) || true
+}
+
+# True when this Bash command writes only to a repo owned by the trusted user.
+own_repo_write() {
+    local cmd="$1" cwd="$2" owner target
+    owner=$(trusted_owner)
+    [ -n "$owner" ] || return 1
+    # Only repo-scoped verbs can be attributed to a single target repo.
+    # Account-level commands (`gh repo create`, `gh gist`), `hub`, raw curl and
+    # the oss-autopilot CLI keep asking unconditionally.
+    printf '%s' "$cmd" | grep -qE 'gh[[:space:]]+(pr|issue|release)[[:space:]]' || return 1
+    # Chaining or substitution can hide a second, untrusted target in the same
+    # invocation; the static analysis here only describes one command.
+    case "$cmd" in *';'*|*'&&'*|*'||'*|*'|'*|*'$('*|*'`'*) return 1 ;; esac
+    target=$(gh_target_repo "$cmd" "$cwd")
+    [ -n "$target" ] || return 1
+    [ "${target%%/*}" = "$owner" ]
+}
 
 input=$(cat 2>/dev/null || echo "")
 tool_name=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || true)
@@ -97,6 +180,9 @@ case "$tool_name" in
         #     false-positives on names like `oss-autopilot-post-processor`.
         if printf '%s' "$normalized" | grep -qE \
             '(gh[[:space:]]+api[^|&;]*(-X[[:space:]]*(POST|PATCH|PUT|DELETE)|--method[[:space:]]+(POST|PATCH|PUT|DELETE)|-XPOST|-XPATCH|-XPUT|-XDELETE))|(gh[[:space:]]+api[^|&;]*([[:space:]]|^)(-f|-F|--field|--raw-field)[[:space:]])|(gh[[:space:]]+pr[[:space:]]+(comment|review|create|close|reopen|ready|merge|edit))|(gh[[:space:]]+issue[[:space:]]+(create|comment|close|reopen))|(gh[[:space:]]+release[[:space:]]+(create|edit|delete))|(gh[[:space:]]+repo[[:space:]]+(create|delete|fork|edit|transfer))|(gh[[:space:]]+gist[[:space:]]+(create|edit|delete))|(hub[[:space:]]+(pull-request|issue|release|api))|(curl[[:space:]][^|&;]*-X[[:space:]]*(POST|PATCH|PUT|DELETE)[^|&;]*api\.github\.com/[^[:space:]|&;]*(comments|issues|pulls|releases|reviews))|((^|[[:space:]])(oss-autopilot|cli\.bundle\.cjs)[[:space:]][^|&;]*[[:space:]](post|claim)([[:space:]]|$))|((^|[[:space:]])(oss-autopilot|cli\.bundle\.cjs)[[:space:]](post|claim)([[:space:]]|$))'; then
+            if own_repo_write "$normalized" "$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)"; then
+                exit 0
+            fi
             emit_ask "This command produces a public GitHub event (post / merge / close / create / release). Draft the content and present it to the user before running. The user must explicitly approve each external post per the global CLAUDE.md rule."
             exit 0
         fi
@@ -121,6 +207,15 @@ case "$tool_name" in
         # this script. Anything not in the read-only exclusion list above is
         # treated as mutating — including tools that did not exist when this
         # guard was written (fail-closed).
+        #
+        # These tools name their target repo in a structured `owner` argument,
+        # so own-repo trust needs no parsing here. Tools with no `owner` (e.g.
+        # create_repository) never match and keep asking.
+        mcp_owner=$(printf '%s' "$input" | jq -r '.tool_input.owner // empty' 2>/dev/null || true)
+        trusted=$(trusted_owner)
+        if [ -n "$trusted" ] && [ -n "$mcp_owner" ] && [ "$mcp_owner" = "$trusted" ]; then
+            exit 0
+        fi
         emit_ask "The '${tool_name}' MCP tool produces a public GitHub event (post / merge / close / create / push / fork / delete) under the user's identity. Show the user what will happen and wait for explicit approval before invoking. See draft-review-post for the canonical approval flow."
         exit 0
         ;;

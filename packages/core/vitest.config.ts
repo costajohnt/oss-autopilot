@@ -17,9 +17,9 @@ export default defineConfig({
       // carved out), so the gate is expressed as two glob sets instead:
       //   - everything except cli-registry.ts keeps the original 80% gate
       //     (picomatch negation; both sets are aggregate, not per-file);
-      //   - cli-registry.ts gets honest floors at its current level
-      //     (stmts 25.67 / branch 17.41 / funcs 41.57 / lines 25.73) so
-      //     regressions fail CI. Ratchet these up as direct tests are added.
+      //   - cli-registry.ts gets honest floors at its current level so
+      //     regressions fail CI. Ratchet these up as direct tests are added
+      //     (tracked in #1586).
       thresholds: {
         '!src/cli-registry.ts': {
           statements: 80,
@@ -27,13 +27,14 @@ export default defineConfig({
           functions: 80,
           lines: 80,
         },
-        // Floors re-measured after #1466 retired the override/shelve
-        // registrations and their registry tests (24.49/16.51/41.35/24.51).
+        // First ratchet (#1586): direct handler tests for status, strategy,
+        // daily, track, compliance-score, comments, post, and claim lifted
+        // measured coverage to 42.85/30.81/55.55/43.06.
         'src/cli-registry.ts': {
-          statements: 24,
-          branches: 16,
-          functions: 41,
-          lines: 24,
+          statements: 42,
+          branches: 30,
+          functions: 55,
+          lines: 42,
         },
       },
     },

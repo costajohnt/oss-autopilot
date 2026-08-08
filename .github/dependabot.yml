@@ -1,11 +1,13 @@
 version: 2
 updates:
   - package-ecosystem: "npm"
+    # pnpm workspace: Dependabot must update from the workspace root only.
+    # Listing package subdirectories made update jobs fail with
+    # misconfigured_tooling ("Updating workspaces from inside a workspace
+    # subdirectory is not supported") — see #1587. The root directory covers
+    # every workspace package's manifest.
     directories:
       - "/"
-      - "/packages/core"
-      - "/packages/mcp-server"
-      - "/packages/dashboard"
     schedule:
       interval: "weekly"
     commit-message:
