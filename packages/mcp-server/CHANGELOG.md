@@ -2,10 +2,18 @@
 
 ## [5.7.2](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.1...mcp-v5.7.2) (2026-08-08)
 
+No functional change to the MCP server.
 
-### Bug Fixes
+This version was published as a side effect of release tooling. An empty
+`fix(deps):` commit ([#1609](https://github.com/costajohnt/oss-autopilot/issues/1609))
+was created to mark the `@oss-scout/core` bump in `@oss-autopilot/core` as
+releasable. Having no file paths, it could not be attributed by path, and
+release-please assigned it to this package instead. The entry previously shown
+here credited that bump to `@oss-autopilot/mcp`, which does not depend on
+`@oss-scout/core` — only `@oss-autopilot/core` does.
 
-* **deps:** bump @oss-scout/core to ^1.5.2 ([#1609](https://github.com/costajohnt/oss-autopilot/issues/1609)) ([3c014cf](https://github.com/costajohnt/oss-autopilot/commit/3c014cfe426b9f941c7694a043e2d51b4a345e54))
+The bump was subsequently re-landed correctly and shipped in
+`@oss-autopilot/core` 3.20.2 ([#1612](https://github.com/costajohnt/oss-autopilot/issues/1612)).
 
 ## [5.7.1](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.0...mcp-v5.7.1) (2026-07-15)
 
