@@ -484,6 +484,105 @@ describe('pruneIssueList — keyword followed by whitespace+word is NOT deletabl
   });
 });
 
+describe('pruneIssueList — keyword continuing as a hyphenated word is NOT deletable', () => {
+  // "Done-ish", "Merged-in-part" etc. are hedged prose, not status tags.
+  // Fixtures include a Score 9/10 sub-bullet so score-pruning is never the cause.
+  it('does NOT delete "**Done-ish** still worth a look"', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Done-ish** still worth a look
+  - **Score 9/10**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/1');
+  });
+
+  it('does NOT delete "**Done-for-now, revisit**"', () => {
+    const content = `### Repo
+- [#2](https://github.com/owner/repo/issues/2) — Fix bug
+  - **Done-for-now, revisit**
+  - **Score 9/10**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/2');
+  });
+
+  it('does NOT delete "**Merged-in-part; keep**"', () => {
+    const content = `### Repo
+- [#3](https://github.com/owner/repo/issues/3) — Fix bug
+  - **Merged-in-part; keep**
+  - **Score 9/10**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/3');
+  });
+
+  it('does NOT delete "**Closed-loop analysis pending**"', () => {
+    const content = `### Repo
+- [#4](https://github.com/owner/repo/issues/4) — Fix bug
+  - **Closed-loop analysis pending**
+  - **Score 9/10**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/4');
+  });
+
+  it('still deletes "**Done — merged.**"', () => {
+    const content = `### Repo
+- [#5](https://github.com/owner/repo/issues/5) — Shipped
+  - **Done — merged.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('issues/5');
+  });
+});
+
+describe('parseIssueList — URL-less sub-bullet at equal indent to parent', () => {
+  it('treats an equal-indent URL-less status line as a sub-bullet of the previous item', () => {
+    const content = `### Repo
+  - [#13](https://github.com/o/r/issues/13) a
+  - **Done** meant as sub-bullet
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(0);
+    expect(result.completedCount).toBe(1);
+    expect(result.completed[0].number).toBe(13);
+  });
+});
+
+describe('pruneIssueList — tab-indented sub-bullets', () => {
+  it('removes a tab-indented URL-less sub-bullet together with its struck parent', () => {
+    const content = `### Repo
+- ~~[#1](https://github.com/owner/repo/issues/1) — Done thing~~
+\t- notes about the fix
+- [#2](https://github.com/owner/repo/issues/2) — Keep me
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('issues/1');
+    expect(pruned).not.toContain('notes about the fix');
+    expect(pruned).toContain('issues/2');
+  });
+
+  it('removes an unstruck parent when its tab-indented sub-bullet says **Done**', () => {
+    const content = `### Repo
+- [#3](https://github.com/owner/repo/issues/3) — Shipped
+\t- **Done**
+- [#4](https://github.com/owner/repo/issues/4) — Keep me
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('issues/3');
+    expect(pruned).not.toContain('**Done**');
+    expect(pruned).toContain('issues/4');
+  });
+});
+
 describe('parseIssueList — URL deduplication (#1179)', () => {
   it('dedupes the same URL appearing in two sections to one available entry', () => {
     const content = `## Pursue

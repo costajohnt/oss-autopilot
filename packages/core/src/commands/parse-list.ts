@@ -52,8 +52,9 @@ function isCompleted(line: string): boolean {
   if (/~~.+~~/.test(line)) return true;
   // Checked checkbox: [x] or [X]
   if (/\[x\]/i.test(line)) return true;
-  // "Done" marker (standalone word, case insensitive)
-  if (/\bdone\b/i.test(line)) return true;
+  // "Done" marker (standalone word, case insensitive). Hyphenated
+  // continuations ("Done-ish", "well-done") are prose, not markers.
+  if (/(?<!-)\bdone\b(?!-)/i.test(line)) return true;
   return false;
 }
 
@@ -138,7 +139,9 @@ function isSubBulletTerminal(line: string): boolean {
 function isSubBulletDeletable(line: string): boolean {
   const kw = normalizedBoldSpan(line);
   if (!kw) return false;
-  return /^(?:Skip|Done|Dropped|Merged|Closed)\s*(?:$|[—–\-:.,;()!])/iu.test(kw);
+  // Negative lookahead: the keyword must not continue as a hyphenated word
+  // ("Done-ish", "Merged-in-part" are hedged prose, not status tags).
+  return /^(?:Skip|Done|Dropped|Merged|Closed)(?![\p{L}\p{N}-])\s*(?:$|[—–\-:.,;()!])/iu.test(kw);
 }
 
 /**
@@ -152,6 +155,11 @@ function isSubBulletInProgress(line: string): boolean {
     line,
     /^(?:In Progress|Waiting|Wait|Post findings first|Ship now|Viable not urgent|PR OPEN|IMPLEMENTED)(?![\p{L}\p{N}])/iu,
   );
+}
+
+/** Leading-whitespace width with tabs expanded to two columns. */
+function indentWidth(line: string): number {
+  return line.match(/^\s*/)![0].replace(/\t/g, '  ').length;
 }
 
 /** Parse a markdown string into structured issue items */
@@ -184,14 +192,17 @@ export function parseIssueList(content: string): ParseIssueListOutput {
       continue;
     }
 
-    // Lines indented deeper than the previous item are sub-bullets and NEVER
-    // create a new item, even when they contain GitHub URLs (merged-PR links,
-    // competitor PRs, cross-references in status annotations). Lines at the
-    // parent's own indent (siblings in wholly-indented lists) fall through
-    // and are treated as items, matching pre-existing behavior.
+    // Indented lines are sub-bullets and NEVER create a new item. For
+    // URL-bearing lines (merged-PR links, competitor PRs, cross-references)
+    // the line must be indented DEEPER than its parent — lines at the
+    // parent's own indent are siblings in wholly-indented lists and fall
+    // through to create items. URL-less lines can't create items anyway, so
+    // any >=2-space indent makes them sub-bullets, even at the parent's own
+    // indent (a `  - **Done**` status line beside an equally-indented item).
     // Tabs count as two columns so `\t- ...` sub-bullets nest correctly.
-    const indent = line.match(/^\s*/)![0].replace(/\t/g, '  ').length;
-    if (lastItem && indent >= 2 && indent > lastItemIndent) {
+    const indent = indentWidth(line);
+    const ghUrl = extractGitHubUrl(line);
+    if (lastItem && indent >= 2 && (ghUrl ? indent > lastItemIndent : true)) {
       const score = extractScore(line);
       if (score !== undefined) {
         lastItem.score = score;
@@ -209,8 +220,7 @@ export function parseIssueList(content: string): ParseIssueListOutput {
       continue;
     }
 
-    // Extract GitHub URL -- skip top-level lines without one
-    const ghUrl = extractGitHubUrl(line);
+    // Skip top-level lines without a GitHub URL
     if (!ghUrl) {
       continue;
     }
@@ -297,7 +307,7 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
     }
 
     // Sub-bullet of a removed item — skip it
-    if (skipSubBullets && /^\s{2,}/.test(line)) {
+    if (skipSubBullets && indentWidth(line) >= 2) {
       continue;
     }
     skipSubBullets = false;
@@ -317,7 +327,7 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
       // Look ahead at sub-bullets for terminal status or low score
       let shouldRemove = false;
       let j = i + 1;
-      while (j < lines.length && /^\s{2,}/.test(lines[j])) {
+      while (j < lines.length && indentWidth(lines[j]) >= 2) {
         if (isSubBulletDeletable(lines[j])) {
           shouldRemove = true;
         }
