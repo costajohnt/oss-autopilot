@@ -370,7 +370,7 @@ export const commands: CLICommandDef[] = [
         .option('--json', 'Output as JSON')
         .option(
           '--strategy <strategies>',
-          "Comma-separated discovery phases to run (merged,starred,broad,maintained,all). Omit to run scout's default staged pipeline.",
+          "Comma-separated discovery phases to run (merged,orgs,starred,broad,maintained,all). Omit to run scout's default staged pipeline.",
         )
         .action(async (count, options) => {
           const { SearchOutputSchema } = await import('./formatters/json.js');
