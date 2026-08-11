@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.21.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.20.5...core-v3.21.0) (2026-08-11)
+
+
+### Features
+
+* pass preferredOrgs config through to oss-scout's orgs search phase ([#1622](https://github.com/costajohnt/oss-autopilot/issues/1622)) ([3388766](https://github.com/costajohnt/oss-autopilot/commit/33887667fd311db4faad65e884ac5a56ec93b4c7))
+
 ## [3.20.5](https://github.com/costajohnt/oss-autopilot/compare/core-v3.20.4...core-v3.20.5) (2026-08-11)
 
 
