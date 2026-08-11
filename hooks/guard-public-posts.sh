@@ -133,25 +133,41 @@ safe_reader_sink() {
     local sink="$1"
     # A second pipe means a pipeline this analysis does not describe.
     case "$sink" in *'|'*|*'>'*|*';'*|*'&'*|*'$('*|*'`'*) return 1 ;; esac
+    # awk and sed are NOT allowlisted: awk's system() and GNU sed's e command
+    # execute arbitrary shell, and quote-stripped / paren-prefixed `gh` inside
+    # their scripts slips past the word guard below. Only readers with no
+    # exec primitive qualify.
     printf '%s' "$sink" | grep -qE \
-        '^[[:space:]]*(tail|head|cat|grep|jq|awk|sed[[:space:]]+-n)([[:space:]]|$)' || return 1
-    # No gh/hub/curl anywhere in the sink, even as an argument.
-    ! printf '%s' "$sink" | grep -qE '(^|[[:space:]/])(gh|hub|curl)([[:space:]]|$)'
+        '^[[:space:]]*(tail|head|cat|grep|jq)([[:space:]]|$)' || return 1
+    # No gh/hub/curl anywhere in the sink, even as an argument; and no
+    # -R/--repo token, which full-command target resolution would count
+    # while gh itself ignores it (target spoofing).
+    ! printf '%s' "$sink" | grep -qE \
+        '(^|[[:space:]/])(gh|hub|curl)([[:space:]]|$)|(^|[[:space:]])(-R|--repo)([[:space:]]|$)'
 }
 
 # True when this Bash command writes only to a repo owned by the trusted user.
 own_repo_write() {
-    local cmd="$1" cwd="$2" owner target
+    local cmd="$1" cwd="$2" owner target full
     owner=$(trusted_owner)
     [ -n "$owner" ] || return 1
     # Chaining or substitution can hide a second, untrusted command in the same
     # invocation; the static analysis here only describes one command. `;`,
-    # `&&` and `||` chains stay refused even when the follow-up looks
-    # read-only — parsing shell soundly in grep is not worth it.
-    case "$cmd" in *';'*|*'&&'*|*'||'*|*'$('*|*'`'*) return 1 ;; esac
+    # `&` (background chain), `&&` and `||` stay refused even when the
+    # follow-up looks read-only — parsing shell soundly in grep is not worth
+    # it. `>&` redirections (2>&1) are stripped first so they don't trip the
+    # bare-& refusal.
+    case "${cmd//>&/}" in *';'*|*'&'*|*'||'*|*'$('*|*'`'*) return 1 ;; esac
     # One trailing safe reader pipe (`| tail -1`, `| grep merged`, ...) is
     # allowed: strip it and analyze the gh write on the left. Anything the
     # sink allowlist does not positively clear keeps the ask.
+    #
+    # Keep the FULL command for target resolution: a quoted pipe inside e.g.
+    # --body would otherwise truncate away a later --repo flag and let the
+    # cwd fallback resolve a spoofed own-repo target (fail-open). The verb
+    # grep stays on the truncated left segment so a sink cannot fabricate a
+    # repo-scoped verb.
+    full="$cmd"
     case "$cmd" in
         *'|'*)
             safe_reader_sink "${cmd#*|}" || return 1
@@ -162,7 +178,7 @@ own_repo_write() {
     # Account-level commands (`gh repo create`, `gh gist`), `hub`, raw curl and
     # the oss-autopilot CLI keep asking unconditionally.
     printf '%s' "$cmd" | grep -qE 'gh[[:space:]]+(pr|issue|release)[[:space:]]' || return 1
-    target=$(gh_target_repo "$cmd" "$cwd")
+    target=$(gh_target_repo "$full" "$cwd")
     [ -n "$target" ] || return 1
     [ "${target%%/*}" = "$owner" ]
 }

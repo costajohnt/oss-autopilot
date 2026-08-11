@@ -58,6 +58,18 @@ HOME_GIST_OFF=$(make_gist_home gist-off \
     '{"githubUsername":"octocat","persistence":"gist","trustOwnRepoWrites":false}')
 TEST_HOME="$HOME_NO_CONFIG"
 
+# Optional PATH override so a test can stub `gh` (cwd-based repo resolution).
+TEST_PATH="$PATH"
+
+# Fake gh that resolves every cwd to a non-fork checkout of octocat/dash.
+FAKE_BIN="${FIXTURE_ROOT}/fakebin"
+mkdir -p "$FAKE_BIN"
+cat > "${FAKE_BIN}/gh" <<'EOF'
+#!/bin/sh
+echo "octocat/dash"
+EOF
+chmod +x "${FAKE_BIN}/gh"
+
 pass() {
     echo "  PASS: $1"
     PASS=$((PASS + 1))
@@ -73,7 +85,7 @@ expect_ask() {
     local name="$1"
     local payload="$2"
     local out
-    out=$(printf '%s' "$payload" | HOME="$TEST_HOME" "$SUBJECT" 2>/dev/null)
+    out=$(printf '%s' "$payload" | HOME="$TEST_HOME" PATH="$TEST_PATH" "$SUBJECT" 2>/dev/null)
     # Accept both compact and pretty-printed JSON shapes.
     if ! echo "$out" | grep -qE '"permissionDecision"[[:space:]]*:[[:space:]]*"ask"'; then
         fail "$name" "expected ask decision; got: $out"
@@ -104,7 +116,7 @@ expect_allow() {
     local name="$1"
     local payload="$2"
     local out
-    out=$(printf '%s' "$payload" | HOME="$TEST_HOME" "$SUBJECT" 2>/dev/null)
+    out=$(printf '%s' "$payload" | HOME="$TEST_HOME" PATH="$TEST_PATH" "$SUBJECT" 2>/dev/null)
     if [ -z "$out" ]; then
         pass "$name"
     else
@@ -276,7 +288,7 @@ expect_ask  "unresolvable cwd asks"                  "$(bash_payload_cwd 'gh pr 
 expect_ask  "missing cwd asks"                       "$(bash_payload 'gh pr merge 20 --squash')"
 
 # ── Trailing safe reader pipe through the own-repo exemption ──────────
-# A single trailing read-only pipe sink (tail/head/cat/grep/jq/awk/sed -n)
+# A single trailing read-only pipe sink (tail/head/cat/grep/jq)
 # must not defeat the exemption; anything else keeps the ask.
 expect_allow "own-repo merge with 2>&1 | tail passes" \
              "$(bash_payload 'gh pr merge 322 --repo octocat/oss-scout --squash 2>&1 | tail -1')"
@@ -299,6 +311,31 @@ expect_ask   "semicolon chain still asks even with own repo" \
 # Regression: a plain redirect has no pipe and already passes own-repo analysis.
 expect_allow "own-repo merge with plain redirect passes" \
              "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash > /tmp/x')"
+
+# ── Exec-capable sinks and target spoofing (security regressions) ─────
+# awk and sed can execute arbitrary shell (awk system(), GNU sed e), and
+# quote-stripping plus paren-prefixing defeats the gh word guard — neither
+# may pass as a safe reader sink.
+expect_ask   "awk system() exec sink asks" \
+             "$(bash_payload "gh pr merge 20 -R octocat/dash --squash | awk '{system(\"gh pr merge 2 --repo victim/y\")}'")"
+expect_ask   "awk string-concat gh sink asks" \
+             "$(bash_payload "gh pr merge 20 -R octocat/dash --squash | awk 'BEGIN{system(\"g\"\"h\"\" pr merge 2 --repo victim/y\")}'")"
+expect_ask   "sed -n e-command exec sink asks" \
+             "$(bash_payload "gh pr merge 20 -R octocat/dash --squash | sed -n '1e(gh pr merge 2 --repo victim/y)'")"
+
+# A quoted pipe inside --body must not truncate away a later --repo flag and
+# let cwd resolution (own repo) mask the real external target.
+TEST_PATH="${FAKE_BIN}:$PATH"
+expect_allow "own-repo write via cwd resolution passes" \
+             "$(bash_payload_cwd 'gh pr comment 1 --body hi' "$FIXTURE_ROOT")"
+expect_ask   "quoted pipe in --body with external --repo asks" \
+             "$(bash_payload_cwd 'gh pr comment 1 --body "note | cat" --repo victim/y' "$FIXTURE_ROOT")"
+TEST_PATH="$PATH"
+
+# A bare & backgrounds the first command and runs a second one that resolves
+# via cwd — chained just like && and must keep the ask.
+expect_ask   "bare & chain asks" \
+             "$(bash_payload 'gh pr merge 1 --repo octocat/x & gh pr close 5')"
 
 # Trailing safe pipe never widens trust to other owners.
 expect_ask   "other-owner merge with tail sink still asks" \
