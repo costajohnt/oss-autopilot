@@ -275,6 +275,39 @@ expect_ask  "oss-autopilot post still asks"          "$(bash_payload 'oss-autopi
 expect_ask  "unresolvable cwd asks"                  "$(bash_payload_cwd 'gh pr merge 20 --squash' "${FIXTURE_ROOT}/not-a-repo")"
 expect_ask  "missing cwd asks"                       "$(bash_payload 'gh pr merge 20 --squash')"
 
+# ── Trailing safe reader pipe through the own-repo exemption ──────────
+# A single trailing read-only pipe sink (tail/head/cat/grep/jq/awk/sed -n)
+# must not defeat the exemption; anything else keeps the ask.
+expect_allow "own-repo merge with 2>&1 | tail passes" \
+             "$(bash_payload 'gh pr merge 322 --repo octocat/oss-scout --squash 2>&1 | tail -1')"
+expect_allow "own-repo issue list-adjacent grep sink passes" \
+             "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash | grep -i merged')"
+expect_allow "own-repo merge with jq sink passes" \
+             "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash | jq -r .state')"
+expect_ask   "two pipes still ask" \
+             "$(bash_payload 'gh pr merge 322 --repo octocat/oss-scout --squash 2>&1 | tail -1 | cat')"
+expect_ask   "gh in the pipe sink still asks" \
+             "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash | gh pr view 20 -R octocat/dash')"
+expect_ask   "tee sink is not allowlisted" \
+             "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash | tee /tmp/x')"
+expect_ask   "redirect inside the sink still asks" \
+             "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash | tail -1 > /tmp/x')"
+expect_ask   "sed without -n is not allowlisted" \
+             "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash | sed s/a/b/')"
+expect_ask   "semicolon chain still asks even with own repo" \
+             "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash ; gh pr view 20')"
+# Regression: a plain redirect has no pipe and already passes own-repo analysis.
+expect_allow "own-repo merge with plain redirect passes" \
+             "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash > /tmp/x')"
+
+# Trailing safe pipe never widens trust to other owners.
+expect_ask   "other-owner merge with tail sink still asks" \
+             "$(bash_payload 'gh pr merge 20 -R someoneelse/dash --squash 2>&1 | tail -1')"
+
+TEST_HOME="$HOME_TRUST_OFF"
+expect_ask   "own-repo merge with tail sink asks while trust is off" \
+             "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash 2>&1 | tail -1')"
+
 TEST_HOME="$HOME_TRUST_ON_NO_USER"
 expect_ask  "trust on but no githubUsername asks"    "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash')"
 

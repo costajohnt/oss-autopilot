@@ -126,18 +126,42 @@ gh_target_repo() {
     (cd "$cwd" && gh repo view --json nameWithOwner,parent -q 'select(.parent == null) | .nameWithOwner' 2>/dev/null) || true
 }
 
+# True when the pipe sink segment (everything after the first `|`) is a single
+# read-only reader: starts with an allowlisted binary and contains nothing that
+# could write, spawn, or hit the network. Fail-closed on anything else.
+safe_reader_sink() {
+    local sink="$1"
+    # A second pipe means a pipeline this analysis does not describe.
+    case "$sink" in *'|'*|*'>'*|*';'*|*'&'*|*'$('*|*'`'*) return 1 ;; esac
+    printf '%s' "$sink" | grep -qE \
+        '^[[:space:]]*(tail|head|cat|grep|jq|awk|sed[[:space:]]+-n)([[:space:]]|$)' || return 1
+    # No gh/hub/curl anywhere in the sink, even as an argument.
+    ! printf '%s' "$sink" | grep -qE '(^|[[:space:]/])(gh|hub|curl)([[:space:]]|$)'
+}
+
 # True when this Bash command writes only to a repo owned by the trusted user.
 own_repo_write() {
     local cmd="$1" cwd="$2" owner target
     owner=$(trusted_owner)
     [ -n "$owner" ] || return 1
+    # Chaining or substitution can hide a second, untrusted command in the same
+    # invocation; the static analysis here only describes one command. `;`,
+    # `&&` and `||` chains stay refused even when the follow-up looks
+    # read-only — parsing shell soundly in grep is not worth it.
+    case "$cmd" in *';'*|*'&&'*|*'||'*|*'$('*|*'`'*) return 1 ;; esac
+    # One trailing safe reader pipe (`| tail -1`, `| grep merged`, ...) is
+    # allowed: strip it and analyze the gh write on the left. Anything the
+    # sink allowlist does not positively clear keeps the ask.
+    case "$cmd" in
+        *'|'*)
+            safe_reader_sink "${cmd#*|}" || return 1
+            cmd="${cmd%%|*}"
+            ;;
+    esac
     # Only repo-scoped verbs can be attributed to a single target repo.
     # Account-level commands (`gh repo create`, `gh gist`), `hub`, raw curl and
     # the oss-autopilot CLI keep asking unconditionally.
     printf '%s' "$cmd" | grep -qE 'gh[[:space:]]+(pr|issue|release)[[:space:]]' || return 1
-    # Chaining or substitution can hide a second, untrusted target in the same
-    # invocation; the static analysis here only describes one command.
-    case "$cmd" in *';'*|*'&&'*|*'||'*|*'|'*|*'$('*|*'`'*) return 1 ;; esac
     target=$(gh_target_repo "$cmd" "$cwd")
     [ -n "$target" ] || return 1
     [ "${target%%/*}" = "$owner" ]
