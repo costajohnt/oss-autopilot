@@ -320,6 +320,16 @@ describe('parseIssueList — indented sub-bullets with URLs (nested-URL defect)'
     expect(result.completedCount).toBe(0);
   });
 
+  it('does not count a tab-indented URL-bearing sub-bullet as a new item', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+\t- **Maybe** — Competitor PR: [#99](https://github.com/owner/repo/pull/99)
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(1);
+    expect(result.available[0].number).toBe(1);
+  });
+
   it('URL-bearing sub-bullet still contributes score to the parent', () => {
     const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug
   - **Maybe** — Score 8/10. Competitor PR: [#99](https://github.com/owner/repo/pull/99)
@@ -359,6 +369,25 @@ describe('parseIssueList — decorated status keyword matching', () => {
     expect(result.completed).toHaveLength(1);
   });
 
+  it('moves unstruck parent to completed on "**Score 8/10 — ✅ MERGED (confirmed ...).**" sub-bullet', () => {
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Score 8/10 — ✅ MERGED (confirmed 2026-08-07).** PR [#2](https://github.com/owner/repo/pull/2)
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(0);
+    expect(result.completed).toHaveLength(1);
+    expect(result.completed[0].number).toBe(1);
+  });
+
+  it('treats "**Skipped — ...**" as terminal', () => {
+    const content = `- [#9](https://github.com/owner/repo/issues/9) — Feature
+  - **Skipped — existing PR covers it.**
+`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(0);
+    expect(result.completed).toHaveLength(1);
+  });
+
   it('does not match keyword prefixes of longer words (Holding is not Hold)', () => {
     const content = `- [#3](https://github.com/owner/repo/issues/3) — Feature
   - **Holding pattern notes** — Score 8/10
@@ -383,6 +412,71 @@ describe('pruneIssueList — decorated status keywords', () => {
     const content = `### Repo
 - [#5](https://github.com/owner/repo/issues/5) — Shipped item
   - **✅ Done — merged 2026-08-01.** Score 8/10
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('issues/5');
+  });
+});
+
+describe('pruneIssueList — keyword followed by whitespace+word is NOT deletable', () => {
+  // pruneIssueList overwrites the file on disk. A status keyword followed by
+  // ordinary prose ("Merged upstream fix doesn't cover our case") is a
+  // sentence, not a status tag — deleting on it loses curator entries.
+  it('does NOT delete "**Merged upstream fix ... — still pursue.**"', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Merged upstream fix doesn't cover our case — still pursue.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/1');
+  });
+
+  it('does NOT delete "**Skip? Actually pursue — maintainer replied.**"', () => {
+    const content = `### Repo
+- [#2](https://github.com/owner/repo/issues/2) — Fix bug
+  - **Skip? Actually pursue — maintainer replied.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/2');
+  });
+
+  it('does NOT delete "**Closed the duplicate; this one is still open — pursue.**"', () => {
+    const content = `### Repo
+- [#3](https://github.com/owner/repo/issues/3) — Fix bug
+  - **Closed the duplicate; this one is still open — pursue.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/3');
+  });
+
+  it('still deletes "**✅ Done — merged 2026-08-01.**"', () => {
+    const content = `### Repo
+- [#4](https://github.com/owner/repo/issues/4) — Shipped
+  - **✅ Done — merged 2026-08-01.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('issues/4');
+  });
+
+  it('does NOT delete "**Skipped — ...**" (terminal in memory, parked on disk)', () => {
+    const content = `### Repo
+- [#6](https://github.com/owner/repo/issues/6) — Feature
+  - **Skipped — existing PR covers it.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/6');
+  });
+
+  it('still deletes bare "**Merged.**"', () => {
+    const content = `### Repo
+- [#5](https://github.com/owner/repo/issues/5) — Shipped
+  - **Merged.**
 `;
     const { pruned, removedCount } = pruneIssueList(content);
     expect(removedCount).toBe(1);

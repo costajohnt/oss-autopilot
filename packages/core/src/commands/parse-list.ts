@@ -89,11 +89,16 @@ function normalizedBoldSpan(line: string): string | null {
  * Match a status keyword as a PREFIX of the normalized bold span, ending at a
  * word boundary (end of span, whitespace, or punctuation). Real curator spans
  * look like `✅ MERGED — re-vet 2026-08-07: ...`, not a bare keyword.
+ *
+ * Curators also commonly lead with the score
+ * (`**Score 8/10 — ✅ MERGED (confirmed ...).**`), so a `Score N/10` +
+ * separator prefix is stripped before testing keywords.
  */
 function spanStartsWithKeyword(line: string, keywords: RegExp): boolean {
   const kw = normalizedBoldSpan(line);
   if (!kw) return false;
-  return keywords.test(kw);
+  const stripped = kw.replace(/^Score\s+\d+(?:\.\d+)?\/10\s*[—–\-:.,;]?\s*/iu, '').replace(/^[^\p{L}\p{N}]+/u, '');
+  return keywords.test(stripped);
 }
 
 /**
@@ -114,7 +119,7 @@ function spanStartsWithKeyword(line: string, keywords: RegExp): boolean {
 function isSubBulletTerminal(line: string): boolean {
   return spanStartsWithKeyword(
     line,
-    /^(?:Skip|Done|Dropped|Merged|Closed|Hold|Continue watch|Downgrade)(?![\p{L}\p{N}])/iu,
+    /^(?:Skipped|Skip|Done|Dropped|Merged|Closed|Hold|Continue watch|Downgrade)(?![\p{L}\p{N}])/iu,
   );
 }
 
@@ -123,9 +128,17 @@ function isSubBulletTerminal(line: string): boolean {
  * Strictly the original five keywords — `pruneIssueList` mutates the
  * markdown file in place, and a curator's `**Hold**` annotation means
  * "park", not "delete" (#1179).
+ *
+ * Stricter than the in-memory matchers: the keyword must be followed by
+ * end-of-span or a separator character, never whitespace + another word.
+ * `**Merged upstream fix doesn't cover our case — still pursue.**` is a
+ * sentence, not a status tag; deleting on it destroys curator entries.
+ * Under-counting availability is acceptable, disk deletion is not.
  */
 function isSubBulletDeletable(line: string): boolean {
-  return spanStartsWithKeyword(line, /^(?:Skip|Done|Dropped|Merged|Closed)(?![\p{L}\p{N}])/iu);
+  const kw = normalizedBoldSpan(line);
+  if (!kw) return false;
+  return /^(?:Skip|Done|Dropped|Merged|Closed)\s*(?:$|[—–\-:.,;()!])/iu.test(kw);
 }
 
 /**
@@ -176,7 +189,8 @@ export function parseIssueList(content: string): ParseIssueListOutput {
     // competitor PRs, cross-references in status annotations). Lines at the
     // parent's own indent (siblings in wholly-indented lists) fall through
     // and are treated as items, matching pre-existing behavior.
-    const indent = line.match(/^\s*/)![0].length;
+    // Tabs count as two columns so `\t- ...` sub-bullets nest correctly.
+    const indent = line.match(/^\s*/)![0].replace(/\t/g, '  ').length;
     if (lastItem && indent >= 2 && indent > lastItemIndent) {
       const score = extractScore(line);
       if (score !== undefined) {
