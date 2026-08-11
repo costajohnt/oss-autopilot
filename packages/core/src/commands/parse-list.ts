@@ -76,6 +76,27 @@ function firstBoldSpan(line: string): string | null {
 }
 
 /**
+ * First bold span with leading decoration (emoji, checkmarks, punctuation)
+ * stripped, so `**✅ MERGED — re-vet...**` normalizes to `MERGED — re-vet...`.
+ */
+function normalizedBoldSpan(line: string): string | null {
+  const span = firstBoldSpan(line);
+  if (!span) return null;
+  return span.replace(/^[^\p{L}\p{N}]+/u, '');
+}
+
+/**
+ * Match a status keyword as a PREFIX of the normalized bold span, ending at a
+ * word boundary (end of span, whitespace, or punctuation). Real curator spans
+ * look like `✅ MERGED — re-vet 2026-08-07: ...`, not a bare keyword.
+ */
+function spanStartsWithKeyword(line: string, keywords: RegExp): boolean {
+  const kw = normalizedBoldSpan(line);
+  if (!kw) return false;
+  return keywords.test(kw);
+}
+
+/**
  * Check if a sub-bullet's first bold span is a terminal status — completed,
  * abandoned, or being held back from pursuit (#1179). Used by
  * `parseIssueList` for in-memory bucketing.
@@ -91,9 +112,10 @@ function firstBoldSpan(line: string): string | null {
  * explicitly parked.
  */
 function isSubBulletTerminal(line: string): boolean {
-  const kw = firstBoldSpan(line);
-  if (!kw) return false;
-  return /^(?:Skip|Done|Dropped|Merged|Closed|Hold|Continue watch|Downgrade)$/i.test(kw);
+  return spanStartsWithKeyword(
+    line,
+    /^(?:Skip|Done|Dropped|Merged|Closed|Hold|Continue watch|Downgrade)(?![\p{L}\p{N}])/iu,
+  );
 }
 
 /**
@@ -103,9 +125,7 @@ function isSubBulletTerminal(line: string): boolean {
  * "park", not "delete" (#1179).
  */
 function isSubBulletDeletable(line: string): boolean {
-  const kw = firstBoldSpan(line);
-  if (!kw) return false;
-  return /^(?:Skip|Done|Dropped|Merged|Closed)$/i.test(kw);
+  return spanStartsWithKeyword(line, /^(?:Skip|Done|Dropped|Merged|Closed)(?![\p{L}\p{N}])/iu);
 }
 
 /**
@@ -115,9 +135,10 @@ function isSubBulletDeletable(line: string): boolean {
  * (#1179).
  */
 function isSubBulletInProgress(line: string): boolean {
-  const kw = firstBoldSpan(line);
-  if (!kw) return false;
-  return /^(?:In Progress|Wait|Waiting|Post findings first|Ship now|Viable not urgent)$/i.test(kw);
+  return spanStartsWithKeyword(
+    line,
+    /^(?:In Progress|Waiting|Wait|Post findings first|Ship now|Viable not urgent|PR OPEN|IMPLEMENTED)(?![\p{L}\p{N}])/iu,
+  );
 }
 
 /** Parse a markdown string into structured issue items */
@@ -129,6 +150,10 @@ export function parseIssueList(content: string): ParseIssueListOutput {
   let lastItem: ParsedIssueItem | null = null;
   // Track which array the last item was placed in so sub-bullets can move it
   let lastItemInAvailable = false;
+  // Indentation of the line that created lastItem — a line is a sub-bullet
+  // only when indented deeper than its parent (handles wholly-indented lists
+  // whose sibling items share the same indent).
+  let lastItemIndent = 0;
 
   for (const line of lines) {
     // Check for section headings (# or ##)
@@ -139,31 +164,40 @@ export function parseIssueList(content: string): ParseIssueListOutput {
       continue;
     }
 
-    // Skip empty lines and non-list items
-    if (!line.trim() || !/^\s*[-*+]|\s*\d+\.|\s*\[[ x]\]/i.test(line)) {
+    // Skip empty lines and non-list items. Bullet markers need trailing
+    // whitespace so a `**bold**`-opening paragraph isn't mistaken for a
+    // `*` bullet; each alternative is anchored to line start.
+    if (!line.trim() || !/^\s*(?:[-*+]\s|\d+\.\s|\[[ x]\])/i.test(line)) {
       continue;
     }
 
-    // Extract GitHub URL -- skip lines without one
-    const ghUrl = extractGitHubUrl(line);
-    if (!ghUrl) {
-      // No URL — check if this is a sub-bullet for the previous item
-      if (lastItem && /^\s{2,}/.test(line)) {
-        const score = extractScore(line);
-        if (score !== undefined) {
-          lastItem.score = score;
-        }
-        // Check if sub-bullet marks item as terminal or in-progress
-        if (lastItemInAvailable && (isSubBulletTerminal(line) || isSubBulletInProgress(line))) {
-          // Move from available to completed
-          const idx = available.indexOf(lastItem);
-          if (idx !== -1) {
-            available.splice(idx, 1);
-            completed.push(lastItem);
-            lastItemInAvailable = false;
-          }
+    // Lines indented deeper than the previous item are sub-bullets and NEVER
+    // create a new item, even when they contain GitHub URLs (merged-PR links,
+    // competitor PRs, cross-references in status annotations). Lines at the
+    // parent's own indent (siblings in wholly-indented lists) fall through
+    // and are treated as items, matching pre-existing behavior.
+    const indent = line.match(/^\s*/)![0].length;
+    if (lastItem && indent >= 2 && indent > lastItemIndent) {
+      const score = extractScore(line);
+      if (score !== undefined) {
+        lastItem.score = score;
+      }
+      // Check if sub-bullet marks item as terminal or in-progress
+      if (lastItemInAvailable && (isSubBulletTerminal(line) || isSubBulletInProgress(line))) {
+        // Move from available to completed
+        const idx = available.indexOf(lastItem);
+        if (idx !== -1) {
+          available.splice(idx, 1);
+          completed.push(lastItem);
+          lastItemInAvailable = false;
         }
       }
+      continue;
+    }
+
+    // Extract GitHub URL -- skip top-level lines without one
+    const ghUrl = extractGitHubUrl(line);
+    if (!ghUrl) {
       continue;
     }
 
@@ -184,6 +218,7 @@ export function parseIssueList(content: string): ParseIssueListOutput {
       lastItemInAvailable = true;
     }
     lastItem = item;
+    lastItemIndent = indent;
   }
 
   // Dedupe by URL across both buckets (#1179). Curated lists routinely
