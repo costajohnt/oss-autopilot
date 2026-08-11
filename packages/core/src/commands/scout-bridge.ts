@@ -129,6 +129,7 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       scope: config.scope,
       excludeRepos: config.excludeRepos,
       excludeOrgs: config.excludeOrgs ?? [],
+      preferredOrgs: config.preferredOrgs ?? [],
       aiPolicyBlocklist: config.aiPolicyBlocklist,
       projectCategories: config.projectCategories ?? [],
       minStars: config.minStars,
