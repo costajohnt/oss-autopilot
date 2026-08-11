@@ -52,8 +52,9 @@ function isCompleted(line: string): boolean {
   if (/~~.+~~/.test(line)) return true;
   // Checked checkbox: [x] or [X]
   if (/\[x\]/i.test(line)) return true;
-  // "Done" marker (standalone word, case insensitive)
-  if (/\bdone\b/i.test(line)) return true;
+  // "Done" marker (standalone word, case insensitive). Hyphenated
+  // continuations ("Done-ish", "well-done") are prose, not markers.
+  if (/(?<!-)\bdone\b(?!-)/i.test(line)) return true;
   return false;
 }
 
@@ -76,6 +77,32 @@ function firstBoldSpan(line: string): string | null {
 }
 
 /**
+ * First bold span with leading decoration (emoji, checkmarks, punctuation)
+ * stripped, so `**✅ MERGED — re-vet...**` normalizes to `MERGED — re-vet...`.
+ */
+function normalizedBoldSpan(line: string): string | null {
+  const span = firstBoldSpan(line);
+  if (!span) return null;
+  return span.replace(/^[^\p{L}\p{N}]+/u, '');
+}
+
+/**
+ * Match a status keyword as a PREFIX of the normalized bold span, ending at a
+ * word boundary (end of span, whitespace, or punctuation). Real curator spans
+ * look like `✅ MERGED — re-vet 2026-08-07: ...`, not a bare keyword.
+ *
+ * Curators also commonly lead with the score
+ * (`**Score 8/10 — ✅ MERGED (confirmed ...).**`), so a `Score N/10` +
+ * separator prefix is stripped before testing keywords.
+ */
+function spanStartsWithKeyword(line: string, keywords: RegExp): boolean {
+  const kw = normalizedBoldSpan(line);
+  if (!kw) return false;
+  const stripped = kw.replace(/^Score\s+\d+(?:\.\d+)?\/10\s*[—–\-:.,;]?\s*/iu, '').replace(/^[^\p{L}\p{N}]+/u, '');
+  return keywords.test(stripped);
+}
+
+/**
  * Check if a sub-bullet's first bold span is a terminal status — completed,
  * abandoned, or being held back from pursuit (#1179). Used by
  * `parseIssueList` for in-memory bucketing.
@@ -91,9 +118,10 @@ function firstBoldSpan(line: string): string | null {
  * explicitly parked.
  */
 function isSubBulletTerminal(line: string): boolean {
-  const kw = firstBoldSpan(line);
-  if (!kw) return false;
-  return /^(?:Skip|Done|Dropped|Merged|Closed|Hold|Continue watch|Downgrade)$/i.test(kw);
+  return spanStartsWithKeyword(
+    line,
+    /^(?:Skipped|Skip|Done|Dropped|Merged|Closed|Hold|Continue watch|Downgrade)(?![\p{L}\p{N}])/iu,
+  );
 }
 
 /**
@@ -101,11 +129,19 @@ function isSubBulletTerminal(line: string): boolean {
  * Strictly the original five keywords — `pruneIssueList` mutates the
  * markdown file in place, and a curator's `**Hold**` annotation means
  * "park", not "delete" (#1179).
+ *
+ * Stricter than the in-memory matchers: the keyword must be followed by
+ * end-of-span or a separator character, never whitespace + another word.
+ * `**Merged upstream fix doesn't cover our case — still pursue.**` is a
+ * sentence, not a status tag; deleting on it destroys curator entries.
+ * Under-counting availability is acceptable, disk deletion is not.
  */
 function isSubBulletDeletable(line: string): boolean {
-  const kw = firstBoldSpan(line);
+  const kw = normalizedBoldSpan(line);
   if (!kw) return false;
-  return /^(?:Skip|Done|Dropped|Merged|Closed)$/i.test(kw);
+  // Negative lookahead: the keyword must not continue as a hyphenated word
+  // ("Done-ish", "Merged-in-part" are hedged prose, not status tags).
+  return /^(?:Skip|Done|Dropped|Merged|Closed)(?![\p{L}\p{N}-])\s*(?:$|[—–\-:.,;()!])/iu.test(kw);
 }
 
 /**
@@ -115,9 +151,15 @@ function isSubBulletDeletable(line: string): boolean {
  * (#1179).
  */
 function isSubBulletInProgress(line: string): boolean {
-  const kw = firstBoldSpan(line);
-  if (!kw) return false;
-  return /^(?:In Progress|Wait|Waiting|Post findings first|Ship now|Viable not urgent)$/i.test(kw);
+  return spanStartsWithKeyword(
+    line,
+    /^(?:In Progress|Waiting|Wait|Post findings first|Ship now|Viable not urgent|PR OPEN|IMPLEMENTED)(?![\p{L}\p{N}])/iu,
+  );
+}
+
+/** Leading-whitespace width with tabs expanded to two columns. */
+function indentWidth(line: string): number {
+  return line.match(/^\s*/)![0].replace(/\t/g, '  ').length;
 }
 
 /** Parse a markdown string into structured issue items */
@@ -129,6 +171,10 @@ export function parseIssueList(content: string): ParseIssueListOutput {
   let lastItem: ParsedIssueItem | null = null;
   // Track which array the last item was placed in so sub-bullets can move it
   let lastItemInAvailable = false;
+  // Indentation of the line that created lastItem — a line is a sub-bullet
+  // only when indented deeper than its parent (handles wholly-indented lists
+  // whose sibling items share the same indent).
+  let lastItemIndent = 0;
 
   for (const line of lines) {
     // Check for section headings (# or ##)
@@ -139,31 +185,43 @@ export function parseIssueList(content: string): ParseIssueListOutput {
       continue;
     }
 
-    // Skip empty lines and non-list items
-    if (!line.trim() || !/^\s*[-*+]|\s*\d+\.|\s*\[[ x]\]/i.test(line)) {
+    // Skip empty lines and non-list items. Bullet markers need trailing
+    // whitespace so a `**bold**`-opening paragraph isn't mistaken for a
+    // `*` bullet; each alternative is anchored to line start.
+    if (!line.trim() || !/^\s*(?:[-*+]\s|\d+\.\s|\[[ x]\])/i.test(line)) {
       continue;
     }
 
-    // Extract GitHub URL -- skip lines without one
+    // Indented lines are sub-bullets and NEVER create a new item. For
+    // URL-bearing lines (merged-PR links, competitor PRs, cross-references)
+    // the line must be indented DEEPER than its parent — lines at the
+    // parent's own indent are siblings in wholly-indented lists and fall
+    // through to create items. URL-less lines can't create items anyway, so
+    // any >=2-space indent makes them sub-bullets, even at the parent's own
+    // indent (a `  - **Done**` status line beside an equally-indented item).
+    // Tabs count as two columns so `\t- ...` sub-bullets nest correctly.
+    const indent = indentWidth(line);
     const ghUrl = extractGitHubUrl(line);
-    if (!ghUrl) {
-      // No URL — check if this is a sub-bullet for the previous item
-      if (lastItem && /^\s{2,}/.test(line)) {
-        const score = extractScore(line);
-        if (score !== undefined) {
-          lastItem.score = score;
-        }
-        // Check if sub-bullet marks item as terminal or in-progress
-        if (lastItemInAvailable && (isSubBulletTerminal(line) || isSubBulletInProgress(line))) {
-          // Move from available to completed
-          const idx = available.indexOf(lastItem);
-          if (idx !== -1) {
-            available.splice(idx, 1);
-            completed.push(lastItem);
-            lastItemInAvailable = false;
-          }
+    if (lastItem && indent >= 2 && (ghUrl ? indent > lastItemIndent : true)) {
+      const score = extractScore(line);
+      if (score !== undefined) {
+        lastItem.score = score;
+      }
+      // Check if sub-bullet marks item as terminal or in-progress
+      if (lastItemInAvailable && (isSubBulletTerminal(line) || isSubBulletInProgress(line))) {
+        // Move from available to completed
+        const idx = available.indexOf(lastItem);
+        if (idx !== -1) {
+          available.splice(idx, 1);
+          completed.push(lastItem);
+          lastItemInAvailable = false;
         }
       }
+      continue;
+    }
+
+    // Skip top-level lines without a GitHub URL
+    if (!ghUrl) {
       continue;
     }
 
@@ -184,6 +242,7 @@ export function parseIssueList(content: string): ParseIssueListOutput {
       lastItemInAvailable = true;
     }
     lastItem = item;
+    lastItemIndent = indent;
   }
 
   // Dedupe by URL across both buckets (#1179). Curated lists routinely
@@ -248,7 +307,7 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
     }
 
     // Sub-bullet of a removed item — skip it
-    if (skipSubBullets && /^\s{2,}/.test(line)) {
+    if (skipSubBullets && indentWidth(line) >= 2) {
       continue;
     }
     skipSubBullets = false;
@@ -268,7 +327,7 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
       // Look ahead at sub-bullets for terminal status or low score
       let shouldRemove = false;
       let j = i + 1;
-      while (j < lines.length && /^\s{2,}/.test(lines[j])) {
+      while (j < lines.length && indentWidth(lines[j]) >= 2) {
         if (isSubBulletDeletable(lines[j])) {
           shouldRemove = true;
         }

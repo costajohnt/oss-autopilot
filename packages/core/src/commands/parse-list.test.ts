@@ -300,6 +300,289 @@ describe('parseIssueList — sub-bullet status detection', () => {
   });
 });
 
+describe('parseIssueList — indented sub-bullets with URLs (nested-URL defect)', () => {
+  it('does not count a URL-bearing sub-bullet under a struck parent as available', () => {
+    const content = `### Repo
+- ~~[owncast/owncast#4950](https://github.com/owncast/owncast/issues/4950) (11k★) — title~~
+  - **Score 8/10 — ✅ MERGED (confirmed 2026-08-07).** **PR [#4956](https://github.com/owncast/owncast/pull/4956)** (branch ...)
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(0);
+    expect(result.completedCount).toBe(1);
+    expect(result.completed[0].number).toBe(4950);
+  });
+
+  it('does not count a bold-starting paragraph with a URL as a list item', () => {
+    const content = `**Dropped this round:** [go-git#827](https://github.com/go-git/go-git/issues/827) — someone else diagnosed it.
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(0);
+    expect(result.completedCount).toBe(0);
+  });
+
+  it('does not count a tab-indented URL-bearing sub-bullet as a new item', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+\t- **Maybe** — Competitor PR: [#99](https://github.com/owner/repo/pull/99)
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(1);
+    expect(result.available[0].number).toBe(1);
+  });
+
+  it('URL-bearing sub-bullet still contributes score to the parent', () => {
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Maybe** — Score 8/10. Competitor PR: [#99](https://github.com/owner/repo/pull/99)
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(1);
+    expect(result.available[0].number).toBe(1);
+    expect(result.available[0].score).toBe(8);
+  });
+});
+
+describe('parseIssueList — decorated status keyword matching', () => {
+  it('moves parent to completed on decorated "✅ MERGED — ..." sub-bullet', () => {
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **✅ MERGED — re-vet 2026-08-07: PR #5042 merged 2026-07-20, issue closed.**
+`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(0);
+    expect(result.completed).toHaveLength(1);
+  });
+
+  it('moves parent out of available on "✅ PR OPEN ..." sub-bullet (in-progress)', () => {
+    const content = `- [#765](https://github.com/vadimdemedes/ink/issues/765) — Feature
+  - **✅ PR OPEN 2026-08-09: #988**
+`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(0);
+    expect(result.completed).toHaveLength(1);
+  });
+
+  it('moves parent out of available on IMPLEMENTED sub-bullet (in-progress)', () => {
+    const content = `- [#2](https://github.com/owner/repo/issues/2) — Feature
+  - **IMPLEMENTED — awaiting review**
+`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(0);
+    expect(result.completed).toHaveLength(1);
+  });
+
+  it('moves unstruck parent to completed on "**Score 8/10 — ✅ MERGED (confirmed ...).**" sub-bullet', () => {
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Score 8/10 — ✅ MERGED (confirmed 2026-08-07).** PR [#2](https://github.com/owner/repo/pull/2)
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(0);
+    expect(result.completed).toHaveLength(1);
+    expect(result.completed[0].number).toBe(1);
+  });
+
+  it('treats "**Skipped — ...**" as terminal', () => {
+    const content = `- [#9](https://github.com/owner/repo/issues/9) — Feature
+  - **Skipped — existing PR covers it.**
+`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(0);
+    expect(result.completed).toHaveLength(1);
+  });
+
+  it('does not match keyword prefixes of longer words (Holding is not Hold)', () => {
+    const content = `- [#3](https://github.com/owner/repo/issues/3) — Feature
+  - **Holding pattern notes** — Score 8/10
+`;
+    const result = parseIssueList(content);
+    expect(result.available).toHaveLength(1);
+  });
+});
+
+describe('pruneIssueList — decorated status keywords', () => {
+  it('does NOT delete decorated "**Hold — ...**" items', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Held back
+  - **Hold — author has 2 PRs in flight.** Score 8/10
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/1');
+  });
+
+  it('deletes decorated "**Done — ...**" items', () => {
+    const content = `### Repo
+- [#5](https://github.com/owner/repo/issues/5) — Shipped item
+  - **✅ Done — merged 2026-08-01.** Score 8/10
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('issues/5');
+  });
+});
+
+describe('pruneIssueList — keyword followed by whitespace+word is NOT deletable', () => {
+  // pruneIssueList overwrites the file on disk. A status keyword followed by
+  // ordinary prose ("Merged upstream fix doesn't cover our case") is a
+  // sentence, not a status tag — deleting on it loses curator entries.
+  it('does NOT delete "**Merged upstream fix ... — still pursue.**"', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Merged upstream fix doesn't cover our case — still pursue.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/1');
+  });
+
+  it('does NOT delete "**Skip? Actually pursue — maintainer replied.**"', () => {
+    const content = `### Repo
+- [#2](https://github.com/owner/repo/issues/2) — Fix bug
+  - **Skip? Actually pursue — maintainer replied.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/2');
+  });
+
+  it('does NOT delete "**Closed the duplicate; this one is still open — pursue.**"', () => {
+    const content = `### Repo
+- [#3](https://github.com/owner/repo/issues/3) — Fix bug
+  - **Closed the duplicate; this one is still open — pursue.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/3');
+  });
+
+  it('still deletes "**✅ Done — merged 2026-08-01.**"', () => {
+    const content = `### Repo
+- [#4](https://github.com/owner/repo/issues/4) — Shipped
+  - **✅ Done — merged 2026-08-01.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('issues/4');
+  });
+
+  it('does NOT delete "**Skipped — ...**" (terminal in memory, parked on disk)', () => {
+    const content = `### Repo
+- [#6](https://github.com/owner/repo/issues/6) — Feature
+  - **Skipped — existing PR covers it.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/6');
+  });
+
+  it('still deletes bare "**Merged.**"', () => {
+    const content = `### Repo
+- [#5](https://github.com/owner/repo/issues/5) — Shipped
+  - **Merged.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('issues/5');
+  });
+});
+
+describe('pruneIssueList — keyword continuing as a hyphenated word is NOT deletable', () => {
+  // "Done-ish", "Merged-in-part" etc. are hedged prose, not status tags.
+  // Fixtures include a Score 9/10 sub-bullet so score-pruning is never the cause.
+  it('does NOT delete "**Done-ish** still worth a look"', () => {
+    const content = `### Repo
+- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Done-ish** still worth a look
+  - **Score 9/10**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/1');
+  });
+
+  it('does NOT delete "**Done-for-now, revisit**"', () => {
+    const content = `### Repo
+- [#2](https://github.com/owner/repo/issues/2) — Fix bug
+  - **Done-for-now, revisit**
+  - **Score 9/10**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/2');
+  });
+
+  it('does NOT delete "**Merged-in-part; keep**"', () => {
+    const content = `### Repo
+- [#3](https://github.com/owner/repo/issues/3) — Fix bug
+  - **Merged-in-part; keep**
+  - **Score 9/10**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/3');
+  });
+
+  it('does NOT delete "**Closed-loop analysis pending**"', () => {
+    const content = `### Repo
+- [#4](https://github.com/owner/repo/issues/4) — Fix bug
+  - **Closed-loop analysis pending**
+  - **Score 9/10**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(0);
+    expect(pruned).toContain('issues/4');
+  });
+
+  it('still deletes "**Done — merged.**"', () => {
+    const content = `### Repo
+- [#5](https://github.com/owner/repo/issues/5) — Shipped
+  - **Done — merged.**
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('issues/5');
+  });
+});
+
+describe('parseIssueList — URL-less sub-bullet at equal indent to parent', () => {
+  it('treats an equal-indent URL-less status line as a sub-bullet of the previous item', () => {
+    const content = `### Repo
+  - [#13](https://github.com/o/r/issues/13) a
+  - **Done** meant as sub-bullet
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(0);
+    expect(result.completedCount).toBe(1);
+    expect(result.completed[0].number).toBe(13);
+  });
+});
+
+describe('pruneIssueList — tab-indented sub-bullets', () => {
+  it('removes a tab-indented URL-less sub-bullet together with its struck parent', () => {
+    const content = `### Repo
+- ~~[#1](https://github.com/owner/repo/issues/1) — Done thing~~
+\t- notes about the fix
+- [#2](https://github.com/owner/repo/issues/2) — Keep me
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('issues/1');
+    expect(pruned).not.toContain('notes about the fix');
+    expect(pruned).toContain('issues/2');
+  });
+
+  it('removes an unstruck parent when its tab-indented sub-bullet says **Done**', () => {
+    const content = `### Repo
+- [#3](https://github.com/owner/repo/issues/3) — Shipped
+\t- **Done**
+- [#4](https://github.com/owner/repo/issues/4) — Keep me
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('issues/3');
+    expect(pruned).not.toContain('**Done**');
+    expect(pruned).toContain('issues/4');
+  });
+});
+
 describe('parseIssueList — URL deduplication (#1179)', () => {
   it('dedupes the same URL appearing in two sections to one available entry', () => {
     const content = `## Pursue
