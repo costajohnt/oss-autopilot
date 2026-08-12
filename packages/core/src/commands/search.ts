@@ -75,7 +75,9 @@ export function parseSearchStrategies(raw: string | undefined): SearchStrategy[]
   for (const token of tokens) {
     const parsed = SearchStrategySchema.safeParse(token);
     if (!parsed.success) {
-      throw new Error(`Unknown search strategy "${token}". Valid strategies: merged, starred, broad, maintained, all`);
+      throw new Error(
+        `Unknown search strategy "${token}". Valid strategies: merged, orgs, starred, broad, maintained, all`,
+      );
     }
     strategies.push(parsed.data);
   }

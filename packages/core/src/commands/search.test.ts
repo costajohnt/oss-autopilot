@@ -663,12 +663,18 @@ describe('parseSearchStrategies (#1244 selector)', () => {
     expect(parseSearchStrategies('merged, starred ,broad')).toEqual(['merged', 'starred', 'broad']);
   });
 
+  it('accepts the orgs strategy (scout 1.6.0)', () => {
+    expect(parseSearchStrategies('orgs')).toEqual(['orgs']);
+  });
+
   it('accepts the "all" sentinel', () => {
     expect(parseSearchStrategies('all')).toEqual(['all']);
   });
 
   it('throws with a helpful message on an unknown strategy', () => {
     expect(() => parseSearchStrategies('bogus')).toThrow(/Unknown search strategy "bogus"/);
-    expect(() => parseSearchStrategies('broad,nope')).toThrow(/Valid strategies:/);
+    expect(() => parseSearchStrategies('broad,nope')).toThrow(
+      /Valid strategies: merged, orgs, starred, broad, maintained, all/,
+    );
   });
 });
