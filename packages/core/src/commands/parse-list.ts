@@ -14,15 +14,17 @@ interface ParseListOptions {
 
 export type { ParseIssueListOutput, ParsedIssueItem };
 
-/** Extract GitHub issue/PR URLs from a markdown line */
+/**
+ * Extract a GitHub issue URL from a markdown line.
+ *
+ * Guard 1: PR URLs (/pull/) are intentionally excluded. A pull-request URL is
+ * never a valid issue candidate — collecting them inflates `availableCount` and
+ * causes `vet-list` to spend API calls on URLs that cannot resolve as issues.
+ */
 function extractGitHubUrl(line: string): { repo: string; number: number; url: string } | null {
   const match = line.match(/https:\/\/github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)/);
   if (match) {
     return { repo: match[1], number: parseInt(match[2], 10), url: match[0] };
-  }
-  const prMatch = line.match(/https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/);
-  if (prMatch) {
-    return { repo: prMatch[1], number: parseInt(prMatch[2], 10), url: prMatch[0] };
   }
   return null;
 }

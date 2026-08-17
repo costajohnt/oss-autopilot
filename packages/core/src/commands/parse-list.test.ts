@@ -107,14 +107,15 @@ describe('parseIssueList', () => {
     expect(result.available[0].number).toBe(804);
   });
 
-  it('should handle PR URLs alongside issue URLs', () => {
+  it('should not collect top-level PR URLs as issue candidates (Guard 1)', () => {
+    // PR URLs (/pull/) are never valid issue candidates. Collecting them inflates
+    // availableCount and causes vet-list to burn API calls on 404s.
     const content = `# PRs
 - https://github.com/owner/repo/pull/42 My PR
 `;
     const result = parseIssueList(content);
-    expect(result.availableCount).toBe(1);
-    expect(result.available[0].number).toBe(42);
-    expect(result.available[0].url).toBe('https://github.com/owner/repo/pull/42');
+    expect(result.availableCount).toBe(0);
+    expect(result.completedCount).toBe(0);
   });
 
   it('should skip lines without GitHub URLs', () => {
@@ -338,6 +339,83 @@ describe('parseIssueList — indented sub-bullets with URLs (nested-URL defect)'
     expect(result.availableCount).toBe(1);
     expect(result.available[0].number).toBe(1);
     expect(result.available[0].score).toBe(8);
+  });
+});
+
+describe('parseIssueList — Guard 1: PR URLs never collected as candidates', () => {
+  it('does not collect a top-level PR URL entry as an issue candidate', () => {
+    const content = `## Open PRs
+- https://github.com/owner/repo/pull/42 My PR description
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(0);
+    expect(result.completedCount).toBe(0);
+  });
+
+  it('does not collect a struck PR URL as a completed issue', () => {
+    const content = `## Done
+- ~~https://github.com/owner/repo/pull/7 Merged PR~~
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(0);
+    expect(result.completedCount).toBe(0);
+  });
+
+  it('collects issue URL on the same line as a PR URL in a sub-bullet note (issue wins)', () => {
+    // The parent entry has an issue URL; the sub-bullet has a PR URL.
+    // Only the issue URL should produce a candidate.
+    const content = `## Pursue
+- [#100](https://github.com/owner/repo/issues/100) — Fix something
+  - **MERGED** — PR: https://github.com/owner/repo/pull/101
+`;
+    const result = parseIssueList(content);
+    // Parent issue is moved to completed by the MERGED sub-bullet.
+    expect(result.availableCount).toBe(0);
+    expect(result.completedCount).toBe(1);
+    expect(result.completed[0].number).toBe(100);
+  });
+
+  it('does not inflate availableCount when completion sub-bullet contains only a PR URL', () => {
+    // Curated lists often have struck entries followed by "MERGED PR #N" sub-bullets.
+    // The PR URL must not create an additional available candidate.
+    const content = `## Done
+- ~~[#50](https://github.com/owner/repo/issues/50) — Some feature~~
+  - **MERGED** — https://github.com/owner/repo/pull/51
+- [#52](https://github.com/owner/repo/issues/52) — Another feature
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(1);
+    expect(result.available[0].number).toBe(52);
+    expect(result.completedCount).toBe(1);
+    expect(result.completed[0].number).toBe(50);
+  });
+});
+
+describe('parseIssueList — Guard 2: URLs only from entry lines, not sub-bullets or prose', () => {
+  it('does not collect a prose paragraph URL even when it looks like a GitHub issue link', () => {
+    // Non-list lines are already filtered; this confirms the behavior is intentional.
+    const content = `## Notes
+See https://github.com/owner/repo/issues/99 for background.
+- [#1](https://github.com/owner/repo/issues/1) — Actual issue
+`;
+    const result = parseIssueList(content);
+    expect(result.availableCount).toBe(1);
+    expect(result.available[0].number).toBe(1);
+  });
+
+  it('does not collect an issue URL from a sub-bullet that is indented deeper than its parent', () => {
+    // A cross-reference in a sub-bullet ("see also #99") must not create a second candidate.
+    const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug
+  - **Maybe** — Score 8/10. Also relevant: https://github.com/owner/repo/issues/99
+`;
+    const result = parseIssueList(content);
+    // Only the parent should be collected; the cross-reference in the sub-bullet is ignored
+    // because the sub-bullet is processed as a sub-bullet (indent > parent indent), and the
+    // issue URL extracted from the sub-bullet is not used to create a new item.
+    // The sub-bullet's URL resolution: extractGitHubUrl returns the issues/99 URL,
+    // but the sub-bullet branch `continue`s without creating an item.
+    expect(result.availableCount).toBe(1);
+    expect(result.available[0].number).toBe(1);
   });
 });
 
