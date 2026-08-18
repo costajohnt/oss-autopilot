@@ -172,6 +172,11 @@ jobs:
       - name: Test guard-public-posts hook
         run: bash hooks/guard-public-posts.test.sh
 
+      - name: Test guard-git-operations hook
+        # Own-repo trust must skip rebase asks only when origin is provably
+        # owned by githubUsername, and never relax force-push / reset --hard.
+        run: bash hooks/guard-git-operations.test.sh
+
       - name: Test pre-tool-use dispatcher hook (#1449)
         # The dispatcher is the fan-out point for every PreToolUse Bash guard
         # (guard-public-posts, guard-git-operations, auto-format-before-push);
