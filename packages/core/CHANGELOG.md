@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.21.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.21.0...core-v3.21.1) (2026-08-18)
+
+
+### Bug Fixes
+
+* allow a trailing safe reader pipe through the own-repo trust exemption ([#1624](https://github.com/costajohnt/oss-autopilot/issues/1624)) ([7cac432](https://github.com/costajohnt/oss-autopilot/commit/7cac43293174997c385986d3e93cf3315c89b8c9))
+* **hooks:** skip rebase asks on the user's own repos when trustOwnRepoWrites is on ([#1633](https://github.com/costajohnt/oss-autopilot/issues/1633)) ([65100f0](https://github.com/costajohnt/oss-autopilot/commit/65100f056a61befb198c72b9160ac9c6c715131c))
+* **parser:** skip PR URLs and sub-bullet URLs from issue-list candidates ([#1632](https://github.com/costajohnt/oss-autopilot/issues/1632)) ([a41c04d](https://github.com/costajohnt/oss-autopilot/commit/a41c04d71e498a0d2163b1333880f80b1a4c59a1))
+
 ## [3.21.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.20.5...core-v3.21.0) (2026-08-11)
 
 
