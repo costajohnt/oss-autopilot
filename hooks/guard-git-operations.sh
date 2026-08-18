@@ -20,6 +20,53 @@ if [ -z "$command" ]; then
   exit 0
 fi
 
+# --- Own-repo trust (opt-in, shares config with guard-public-posts.sh) -------
+# The rebase asks below exist so a contributor fetches before rewriting a PR
+# branch a maintainer may have pushed to. On a repo the user owns there is no
+# maintainer, so `config.trustOwnRepoWrites` skips them when the working repo's
+# `origin` belongs to `githubUsername`. Force pushes and `git reset --hard`
+# keep their guards regardless: they destroy history whoever owns the remote.
+state_file() {
+  local local_state="${HOME}/.oss-autopilot/state.json"
+  local gist_cache="${HOME}/.oss-autopilot/state-cache.json"
+  [ -f "$gist_cache" ] || { printf '%s' "$local_state"; return 0; }
+  [ -f "$local_state" ] || { printf '%s' "$gist_cache"; return 0; }
+  if [ "$gist_cache" -nt "$local_state" ]; then printf '%s' "$gist_cache"; else printf '%s' "$local_state"; fi
+}
+
+read_config() {
+  local key="$1" default="$2" file
+  file=$(state_file)
+  [ -f "$file" ] || { printf '%s' "$default"; return 0; }
+  jq -r --arg d "$default" ".config.${key} // \$d" "$file" 2>/dev/null || printf '%s' "$default"
+}
+
+# Directory the git command runs in: a leading `cd <dir> &&` wins (the hook's
+# cwd is the session's, not the subshell's), then `git -C <dir>`, then cwd.
+git_workdir() {
+  local cmd="$1" cwd="$2" dir
+  dir=$(printf '%s' "$cmd" | grep -oE '^[[:space:]]*cd[[:space:]]+[^[:space:];&|]+' | awk '{print $2}')
+  [ -n "$dir" ] || dir=$(printf '%s' "$cmd" | grep -oE 'git[[:space:]]+-C[[:space:]]+[^[:space:];&|]+' | head -1 | awk '{print $3}')
+  [ -n "$dir" ] || dir="$cwd"
+  printf '%s' "${dir/#\~/$HOME}"
+}
+
+# True when `origin` of the working repo is owned by the trusted user.
+# Anything unresolvable (no owner, no repo, non-GitHub remote) fails closed.
+own_repo() {
+  local owner dir url
+  [ "$(read_config trustOwnRepoWrites false)" = "true" ] || return 1
+  owner=$(read_config githubUsername "")
+  [ -n "$owner" ] || return 1
+  dir=$(git_workdir "$command" "$(echo "$input" | jq -r '.cwd // empty')")
+  [ -d "$dir" ] || return 1
+  url=$(git -C "$dir" remote get-url origin 2>/dev/null) || return 1
+  case "$url" in
+    https://github.com/"$owner"/*|git@github.com:"$owner"/*|ssh://git@github.com/"$owner"/*) return 0 ;;
+  esac
+  return 1
+}
+
 # Block `git push --force` (without --force-with-lease)
 # Match --force or -f but NOT --force-with-lease
 if echo "$command" | grep -qE 'git\s+push\b' && echo "$command" | grep -qE '(\s--force\b|\s-f\b)' && ! echo "$command" | grep -qE '\s--force-with-lease'; then
@@ -35,8 +82,8 @@ EOF
   exit 0
 fi
 
-# Warn before rebase: remind to fetch first
-if echo "$command" | grep -qE 'git\s+rebase\b'; then
+# Warn before rebase: remind to fetch first (skipped on the user's own repos)
+if echo "$command" | grep -qE 'git\s+rebase\b' && ! own_repo; then
   cat <<'EOF'
 {
   "hookSpecificOutput": {
@@ -52,7 +99,7 @@ fi
 # Warn before `git pull --rebase` (#1259) — same risk profile as `git rebase`.
 # `git\s+rebase\b` above doesn't match the `pull --rebase` form because the
 # verb is "pull". Local commits silently rebased over remote changes here too.
-if echo "$command" | grep -qE 'git\s+pull\b' && echo "$command" | grep -qE '(\s--rebase\b|\s-r\b)'; then
+if echo "$command" | grep -qE 'git\s+pull\b' && echo "$command" | grep -qE '(\s--rebase\b|\s-r\b)' && ! own_repo; then
   cat <<'EOF'
 {
   "hookSpecificOutput": {
