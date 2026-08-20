@@ -3,7 +3,9 @@
 # otherwise produces an externally-visible event (create/merge/close PRs,
 # create/close issues, create releases, invoke MCP `post` / `claim`).
 # Returns "ask" so Claude Code prompts the user for approval; does NOT
-# block silently.
+# block silently. Writes to a repo owned by the trusted user (config
+# `trustOwnRepoWrites`) return an explicit "allow" instead, which is what
+# stops the auto-mode classifier asking again downstream (#1637).
 #
 # This hook is wired to two PreToolUse matchers in hooks.json:
 #   - Bash — inspects `tool_input.command` against a regex of gh/CLI patterns
@@ -54,6 +56,29 @@ emit_ask() {
         # check below; this branch is a last-resort fallback.
         cat <<EOF
 {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask"},"systemMessage":"guard-public-posts: refusing to parse tool input without jq. Install jq and retry."}
+EOF
+    fi
+}
+
+emit_allow() {
+    # An own-repo write used to pass by emitting nothing. Empty stdout means
+    # "this hook has no opinion", NOT "allow": Claude Code then falls through
+    # to its own permission check, and under `defaultMode: auto` the
+    # classifier asks about the very gh write the exemption just cleared. Only
+    # an explicit allow decision ends the check (#1637).
+    #
+    # Same updatedInput prohibition as emit_ask — see the note above.
+    if command -v jq >/dev/null 2>&1; then
+        jq -nc --arg msg "$1" '{
+          hookSpecificOutput: {
+            hookEventName: "PreToolUse",
+            permissionDecision: "allow",
+            permissionDecisionReason: $msg
+          }
+        }'
+    else
+        cat <<EOF
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"guard-public-posts: write to a repo owned by the trusted user."}}
 EOF
     fi
 }
@@ -198,6 +223,8 @@ case "$tool_name" in
         # - remain conservative on other shell metacharacters (they would
         #   usually require a subshell to take effect)
         normalized=$(printf '%s' "$command" | tr -d "\"'")
+        owner_label=$(trusted_owner)
+        owner_label=${owner_label:-the trusted user}
 
         # Public-post patterns. This is intentionally permissive — false
         # positives ("ask" on a benign command) are preferable to misses.
@@ -221,6 +248,12 @@ case "$tool_name" in
         if printf '%s' "$normalized" | grep -qE \
             '(gh[[:space:]]+api[^|&;]*(-X[[:space:]]*(POST|PATCH|PUT|DELETE)|--method[[:space:]]+(POST|PATCH|PUT|DELETE)|-XPOST|-XPATCH|-XPUT|-XDELETE))|(gh[[:space:]]+api[^|&;]*([[:space:]]|^)(-f|-F|--field|--raw-field)[[:space:]])|(gh[[:space:]]+pr[[:space:]]+(comment|review|create|close|reopen|ready|merge|edit))|(gh[[:space:]]+issue[[:space:]]+(create|comment|close|reopen))|(gh[[:space:]]+release[[:space:]]+(create|edit|delete))|(gh[[:space:]]+repo[[:space:]]+(create|delete|fork|edit|transfer))|(gh[[:space:]]+gist[[:space:]]+(create|edit|delete))|(hub[[:space:]]+(pull-request|issue|release|api))|(curl[[:space:]][^|&;]*-X[[:space:]]*(POST|PATCH|PUT|DELETE)[^|&;]*api\.github\.com/[^[:space:]|&;]*(comments|issues|pulls|releases|reviews))|((^|[[:space:]])(oss-autopilot|cli\.bundle\.cjs)[[:space:]][^|&;]*[[:space:]](post|claim)([[:space:]]|$))|((^|[[:space:]])(oss-autopilot|cli\.bundle\.cjs)[[:space:]](post|claim)([[:space:]]|$))'; then
             if own_repo_write "$normalized" "$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)"; then
+                # Safe to short-circuit the rest of the dispatcher: own_repo_write
+                # only clears `gh pr|issue|release` and refuses any command
+                # carrying `;`, `&`, `&&`, `||`, `$(` or a backtick, so a command
+                # reaching here can never also be the `git push|rebase|pull|reset`
+                # that guard-git-operations.sh and auto-format-before-push.sh match.
+                emit_allow "Write to ${owner_label}-owned repo; trustOwnRepoWrites is on, so no approval is needed. External repos still ask."
                 exit 0
             fi
             emit_ask "This command produces a public GitHub event (post / merge / close / create / release). Draft the content and present it to the user before running. The user must explicitly approve each external post per the global CLAUDE.md rule."
@@ -254,6 +287,9 @@ case "$tool_name" in
         mcp_owner=$(printf '%s' "$input" | jq -r '.tool_input.owner // empty' 2>/dev/null || true)
         trusted=$(trusted_owner)
         if [ -n "$trusted" ] && [ -n "$mcp_owner" ] && [ "$mcp_owner" = "$trusted" ]; then
+            # Explicit allow, not a silent pass — same reason as the Bash
+            # branch: silence leaves the auto-mode classifier free to ask.
+            emit_allow "Write to ${trusted}-owned repo; trustOwnRepoWrites is on, so no approval is needed. External repos still ask."
             exit 0
         fi
         emit_ask "The '${tool_name}' MCP tool produces a public GitHub event (post / merge / close / create / push / fork / delete) under the user's identity. Show the user what will happen and wait for explicit approval before invoking. See draft-review-post for the canonical approval flow."

@@ -110,9 +110,12 @@ expect_ask() {
     pass "$name"
 }
 
-# expect_allow <case-name> <stdin-json>  — passes when the hook emits no output
-# (exit 0, empty stdout) which Claude Code treats as "no opinion / allow".
-expect_allow() {
+# expect_pass <case-name> <stdin-json>  — passes when the hook emits no output.
+# Empty stdout is "this hook has no opinion", which leaves Claude Code's own
+# permission check (and, under `defaultMode: auto`, its classifier) free to run.
+# Correct for commands this guard was never meant to gate; NOT correct for an
+# own-repo write the guard has positively cleared — those use expect_trusted_allow.
+expect_pass() {
     local name="$1"
     local payload="$2"
     local out
@@ -121,6 +124,34 @@ expect_allow() {
         pass "$name"
     else
         fail "$name" "expected no-op (allow); got: $out"
+    fi
+}
+
+# expect_trusted_allow <case-name> <stdin-json>  — passes when the hook emits an
+# EXPLICIT allow decision. Silence would not do: it only means "no opinion", and
+# the auto-mode classifier then asks about the very write the exemption cleared
+# (#1637). Asserts the decision, the required hookEventName, and the absence of
+# updatedInput (which would replace the tool input wholesale).
+expect_trusted_allow() {
+    local name="$1"
+    local payload="$2"
+    local out decision event updated
+    out=$(printf '%s' "$payload" | HOME="$TEST_HOME" PATH="$TEST_PATH" "$SUBJECT" 2>/dev/null)
+    if [ -z "$out" ]; then
+        fail "$name" "expected an explicit allow decision; got no output (silence lets the classifier ask)"
+        return
+    fi
+    decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
+    event=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.hookEventName // empty' 2>/dev/null)
+    updated=$(printf '%s' "$out" | jq -r 'has("updatedInput") or (.hookSpecificOutput | has("updatedInput"))' 2>/dev/null)
+    if [ "$decision" != "allow" ]; then
+        fail "$name" "expected permissionDecision=allow; got: $out"
+    elif [ "$event" != "PreToolUse" ]; then
+        fail "$name" "allow is discarded at runtime without hookEventName=PreToolUse; got: $out"
+    elif [ "$updated" = "true" ]; then
+        fail "$name" "emitted updatedInput, which replaces the tool input wholesale; got: $out"
+    else
+        pass "$name"
     fi
 }
 
@@ -189,10 +220,10 @@ expect_ask  "gh gist create is guarded"       "$(bash_payload 'gh gist create fi
 expect_ask  "gh gist edit is guarded"         "$(bash_payload 'gh gist edit abc123')"
 expect_ask  "gh gist delete is guarded"       "$(bash_payload 'gh gist delete abc123 --yes')"
 
-expect_allow "gh repo view is not guarded"    "$(bash_payload 'gh repo view owner/repo')"
-expect_allow "gh repo list is not guarded"    "$(bash_payload 'gh repo list owner')"
-expect_allow "gh gist list is not guarded"    "$(bash_payload 'gh gist list')"
-expect_allow "gh gist view is not guarded"    "$(bash_payload 'gh gist view abc123')"
+expect_pass "gh repo view is not guarded"    "$(bash_payload 'gh repo view owner/repo')"
+expect_pass "gh repo list is not guarded"    "$(bash_payload 'gh repo list owner')"
+expect_pass "gh gist list is not guarded"    "$(bash_payload 'gh gist list')"
+expect_pass "gh gist view is not guarded"    "$(bash_payload 'gh gist view abc123')"
 
 # ── GitHub MCP family (#1260, #1455) ──────────────────────────────────
 # The hooks.json matcher is the broad `mcp__github__.*`, so EVERY github
@@ -213,14 +244,14 @@ expect_ask  "MCP github unknown future tool is guarded (fail-closed)" \
             "$(mcp_payload 'mcp__github__brand_new_mutating_tool')"
 
 # Read-only github MCP tools pass through silently (exclusion list, #1455).
-expect_allow "MCP github get_me is not guarded"                "$(mcp_payload 'mcp__github__get_me')"
-expect_allow "MCP github get_file_contents is not guarded"     "$(mcp_payload 'mcp__github__get_file_contents')"
-expect_allow "MCP github list_issues is not guarded"           "$(mcp_payload 'mcp__github__list_issues')"
-expect_allow "MCP github list_pull_requests is not guarded"    "$(mcp_payload 'mcp__github__list_pull_requests')"
-expect_allow "MCP github search_code is not guarded"           "$(mcp_payload 'mcp__github__search_code')"
-expect_allow "MCP github search_issues is not guarded"         "$(mcp_payload 'mcp__github__search_issues')"
-expect_allow "MCP github issue_read is not guarded"            "$(mcp_payload 'mcp__github__issue_read')"
-expect_allow "MCP github pull_request_read is not guarded"     "$(mcp_payload 'mcp__github__pull_request_read')"
+expect_pass "MCP github get_me is not guarded"                "$(mcp_payload 'mcp__github__get_me')"
+expect_pass "MCP github get_file_contents is not guarded"     "$(mcp_payload 'mcp__github__get_file_contents')"
+expect_pass "MCP github list_issues is not guarded"           "$(mcp_payload 'mcp__github__list_issues')"
+expect_pass "MCP github list_pull_requests is not guarded"    "$(mcp_payload 'mcp__github__list_pull_requests')"
+expect_pass "MCP github search_code is not guarded"           "$(mcp_payload 'mcp__github__search_code')"
+expect_pass "MCP github search_issues is not guarded"         "$(mcp_payload 'mcp__github__search_issues')"
+expect_pass "MCP github issue_read is not guarded"            "$(mcp_payload 'mcp__github__issue_read')"
+expect_pass "MCP github pull_request_read is not guarded"     "$(mcp_payload 'mcp__github__pull_request_read')"
 
 # Silent-failure hunter regression tests — real bypasses addressed in this PR.
 expect_ask  "hub pull-request is guarded"     "$(bash_payload 'hub pull-request -m title')"
@@ -236,9 +267,9 @@ expect_ask  "gh pr double-quoted verb is guarded" \
             "$(bash_payload 'gh pr "merge" 1')"
 
 # False-positive regression: lookalike commands must NOT be flagged.
-expect_allow "oss-autopilot-post-processor is not guarded (word boundary)" \
+expect_pass "oss-autopilot-post-processor is not guarded (word boundary)" \
              "$(bash_payload 'oss-autopilot-post-processor --run')"
-expect_allow "npm run post-build is not guarded" \
+expect_pass "npm run post-build is not guarded" \
              "$(bash_payload 'npm run post-build')"
 
 # ── MCP tool matcher (#1032) ──────────────────────────────────────────
@@ -246,21 +277,21 @@ expect_ask  "MCP post tool is guarded"        "$(mcp_payload 'mcp__plugin_oss-au
 expect_ask  "MCP claim tool is guarded"       "$(mcp_payload 'mcp__plugin_oss-autopilot_oss-autopilot__claim')"
 
 # ── Safe commands — must pass through untouched ───────────────────────
-expect_allow "gh pr view is not guarded"      "$(bash_payload 'gh pr view 123')"
-expect_allow "gh pr list is not guarded"      "$(bash_payload 'gh pr list')"
-expect_allow "gh api GET is not guarded"      "$(bash_payload 'gh api user')"
-expect_allow "gh issue view is not guarded"   "$(bash_payload 'gh issue view 123')"
-expect_allow "npm install is not guarded"     "$(bash_payload 'npm install lodash')"
-expect_allow "git commit is not guarded"      "$(bash_payload 'git commit -m chore: x')"
+expect_pass "gh pr view is not guarded"      "$(bash_payload 'gh pr view 123')"
+expect_pass "gh pr list is not guarded"      "$(bash_payload 'gh pr list')"
+expect_pass "gh api GET is not guarded"      "$(bash_payload 'gh api user')"
+expect_pass "gh issue view is not guarded"   "$(bash_payload 'gh issue view 123')"
+expect_pass "npm install is not guarded"     "$(bash_payload 'npm install lodash')"
+expect_pass "git commit is not guarded"      "$(bash_payload 'git commit -m chore: x')"
 
 # ── Corrupt input must not crash ──────────────────────────────────────
-expect_allow "malformed JSON stdin does not crash" 'not json at all {{{'
-expect_allow "empty stdin does not crash"          ''
-expect_allow "missing tool_name allows through"    '{}'
+expect_pass "malformed JSON stdin does not crash" 'not json at all {{{'
+expect_pass "empty stdin does not crash"          ''
+expect_pass "missing tool_name allows through"    '{}'
 
 # ── Mutating MCP tools NOT scoped to this guard (they do not post) ────
-expect_allow "MCP move tool is not guarded by this hook"   "$(mcp_payload 'mcp__plugin_oss-autopilot_oss-autopilot__move')"
-expect_allow "MCP track tool is not guarded by this hook"  "$(mcp_payload 'mcp__plugin_oss-autopilot_oss-autopilot__track')"
+expect_pass "MCP move tool is not guarded by this hook"   "$(mcp_payload 'mcp__plugin_oss-autopilot_oss-autopilot__move')"
+expect_pass "MCP track tool is not guarded by this hook"  "$(mcp_payload 'mcp__plugin_oss-autopilot_oss-autopilot__track')"
 
 # ── Own-repo trust (config.trustOwnRepoWrites) ────────────────────────
 # Default off: identical commands keep asking until the user opts in.
@@ -269,9 +300,9 @@ expect_ask  "own-repo write asks while trust is off" \
             "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash')"
 
 TEST_HOME="$HOME_TRUST_ON"
-expect_allow "own-repo pr merge passes with -R"      "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash')"
-expect_allow "own-repo issue close passes with -R"   "$(bash_payload 'gh issue close 18 --repo octocat/dash')"
-expect_allow "own-repo issue comment passes with -R" "$(bash_payload 'gh issue comment 18 --repo octocat/dash --body hi')"
+expect_trusted_allow "own-repo pr merge passes with -R"      "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash')"
+expect_trusted_allow "own-repo issue close passes with -R"   "$(bash_payload 'gh issue close 18 --repo octocat/dash')"
+expect_trusted_allow "own-repo issue comment passes with -R" "$(bash_payload 'gh issue comment 18 --repo octocat/dash --body hi')"
 
 # Everything the hook cannot prove is own-repo keeps asking.
 expect_ask  "another owner still asks"               "$(bash_payload 'gh pr merge 20 -R someoneelse/dash --squash')"
@@ -290,11 +321,11 @@ expect_ask  "missing cwd asks"                       "$(bash_payload 'gh pr merg
 # ── Trailing safe reader pipe through the own-repo exemption ──────────
 # A single trailing read-only pipe sink (tail/head/cat/grep/jq)
 # must not defeat the exemption; anything else keeps the ask.
-expect_allow "own-repo merge with 2>&1 | tail passes" \
+expect_trusted_allow "own-repo merge with 2>&1 | tail passes" \
              "$(bash_payload 'gh pr merge 322 --repo octocat/oss-scout --squash 2>&1 | tail -1')"
-expect_allow "own-repo issue list-adjacent grep sink passes" \
+expect_trusted_allow "own-repo issue list-adjacent grep sink passes" \
              "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash | grep -i merged')"
-expect_allow "own-repo merge with jq sink passes" \
+expect_trusted_allow "own-repo merge with jq sink passes" \
              "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash | jq -r .state')"
 expect_ask   "two pipes still ask" \
              "$(bash_payload 'gh pr merge 322 --repo octocat/oss-scout --squash 2>&1 | tail -1 | cat')"
@@ -309,7 +340,7 @@ expect_ask   "sed without -n is not allowlisted" \
 expect_ask   "semicolon chain still asks even with own repo" \
              "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash ; gh pr view 20')"
 # Regression: a plain redirect has no pipe and already passes own-repo analysis.
-expect_allow "own-repo merge with plain redirect passes" \
+expect_trusted_allow "own-repo merge with plain redirect passes" \
              "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash > /tmp/x')"
 
 # ── Exec-capable sinks and target spoofing (security regressions) ─────
@@ -326,7 +357,7 @@ expect_ask   "sed -n e-command exec sink asks" \
 # A quoted pipe inside --body must not truncate away a later --repo flag and
 # let cwd resolution (own repo) mask the real external target.
 TEST_PATH="${FAKE_BIN}:$PATH"
-expect_allow "own-repo write via cwd resolution passes" \
+expect_trusted_allow "own-repo write via cwd resolution passes" \
              "$(bash_payload_cwd 'gh pr comment 1 --body hi' "$FIXTURE_ROOT")"
 expect_ask   "quoted pipe in --body with external --repo asks" \
              "$(bash_payload_cwd 'gh pr comment 1 --body "note | cat" --repo victim/y' "$FIXTURE_ROOT")"
@@ -350,7 +381,7 @@ expect_ask  "trust on but no githubUsername asks"    "$(bash_payload 'gh pr merg
 
 # The github MCP family names its target owner in tool_input.
 TEST_HOME="$HOME_TRUST_ON"
-expect_allow "MCP own-repo merge passes"             "$(mcp_payload_owner 'mcp__github__merge_pull_request' 'octocat')"
+expect_trusted_allow "MCP own-repo merge passes"             "$(mcp_payload_owner 'mcp__github__merge_pull_request' 'octocat')"
 expect_ask   "MCP other-owner merge asks"            "$(mcp_payload_owner 'mcp__github__merge_pull_request' 'someoneelse')"
 expect_ask   "MCP tool without an owner asks"        "$(mcp_payload 'mcp__github__create_repository')"
 expect_ask   "MCP oss-autopilot post asks even for own repos" \
@@ -363,7 +394,7 @@ expect_ask   "MCP own-repo merge asks while trust is off" \
 # Gist persistence: the live config is the newer state-cache.json, and reading
 # the stale state.json instead made an enabled key look unset.
 TEST_HOME="$HOME_GIST_ON"
-expect_allow "gist config enables own-repo trust"    "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash')"
+expect_trusted_allow "gist config enables own-repo trust"    "$(bash_payload 'gh pr merge 20 -R octocat/dash --squash')"
 expect_ask   "gist config still asks for other owners" "$(bash_payload 'gh pr merge 20 -R someoneelse/dash --squash')"
 
 # ...and a newer cache that turns the key back off wins over a stale local
