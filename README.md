@@ -1,3 +1,5 @@
+
+
 <p align="center">
   <img src="assets/hero-light.svg" alt="OSS Autopilot" width="600">
 </p>
@@ -56,7 +58,7 @@ OSS Autopilot monitors all your open PRs across GitHub, alerts you when maintain
 
 ![dashboard-demo](https://github.com/user-attachments/assets/680ce6d6-8192-499a-b85e-f2686319b961)
 
-A Preact SPA that auto-opens when you run `/oss` — PR management, charts, contribution stats, and status overrides. Also available standalone: `npx @oss-autopilot/core dashboard serve`.
+A Preact SPA that auto-opens when you run `/oss-dashboard` — PR management, charts, contribution stats, and status overrides. Also available standalone: `npx @oss-autopilot/core dashboard serve`.
 
 ---
 
