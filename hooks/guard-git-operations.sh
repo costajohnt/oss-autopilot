@@ -43,8 +43,18 @@ read_config() {
 
 # Directory the git command runs in: a leading `cd <dir> &&` wins (the hook's
 # cwd is the session's, not the subshell's), then `git -C <dir>`, then cwd.
+# Fail-closed when the working directory is ambiguous: if both a leading cd
+# and git -C are present (git runs in the -C path, not the cd path), or if
+# more than one cd appears in the command, return empty so own_repo() fails.
 git_workdir() {
   local cmd="$1" cwd="$2" dir
+  local _has_cd=0 _has_git_c=0 _cd_count
+  printf '%s' "$cmd" | grep -qE '^[[:space:]]*cd[[:space:]]+' && _has_cd=1 || true
+  printf '%s' "$cmd" | grep -qE 'git[[:space:]]+-C[[:space:]]+' && _has_git_c=1 || true
+  _cd_count=$(printf '%s' "$cmd" | grep -oE '(^|[[:space:];&|]+)cd[[:space:]]+' | wc -l | tr -d '[:space:]')
+  if { [ "$_has_cd" -eq 1 ] && [ "$_has_git_c" -eq 1 ]; } || [ "${_cd_count:-0}" -gt 1 ]; then
+    return 0
+  fi
   dir=$(printf '%s' "$cmd" | grep -oE '^[[:space:]]*cd[[:space:]]+[^[:space:];&|]+' | awk '{print $2}')
   [ -n "$dir" ] || dir=$(printf '%s' "$cmd" | grep -oE 'git[[:space:]]+-C[[:space:]]+[^[:space:];&|]+' | head -1 | awk '{print $3}')
   [ -n "$dir" ] || dir="$cwd"

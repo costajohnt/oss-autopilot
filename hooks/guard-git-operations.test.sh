@@ -49,6 +49,7 @@ check "own repo (ssh remote) rebase passes"    pass "$TMP/own-ssh" "git rebase m
 check "own repo pull --rebase passes"          pass "$TMP/own"     "git pull --rebase"
 check "own repo via leading cd passes"         pass "$TMP"         "cd $TMP/own && git rebase --continue"
 check "own repo via git -C passes"             pass "$TMP"         "git -C $TMP/own rebase main"
+check "multiple cd fails closed (ambiguous)"   ask  "$TMP"         "cd $TMP/own && cd $TMP/own && git rebase main"
 check "own repo reset --hard still asks"       ask  "$TMP/own"     "git reset --hard HEAD"
 check "own repo force-with-lease still asks"   ask  "$TMP/own"     "git push --force-with-lease"
 check "own repo bare force push still denied"  deny "$TMP/own"     "git push --force"
