@@ -5,7 +5,6 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { getStatePath } from '@oss-autopilot/core';
 import { createServer } from './server.js';
 
-
 /** All registered tool names (untrack and read removed in v4 — #1133;
  * compliance-score added in #1245). */
 const EXPECTED_TOOLS = [
