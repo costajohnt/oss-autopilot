@@ -6,15 +6,13 @@ wildcard. Wildcards grant access to every MCP server the user has installed
 plugin's own MCP server — and that includes tools that post publicly on the
 user's behalf.
 
-The global CLAUDE.md rule "never post without showing a draft first" has
-two enforcement layers working together: (1) this per-agent allowlist, which
-prevents MCP-mediated posting, and (2) the PreToolUse hooks in
-`hooks/hooks.json`: `pre-tool-use-dispatcher.sh` runs on every Bash call and
-fans out to `guard-public-posts.sh`, `guard-git-operations.sh`, and
-`auto-format-before-push.sh` (intercepting Bash-based `gh pr comment`,
-`gh issue comment`, etc.), and `guard-public-posts.sh` is additionally
-registered directly on an MCP-tool matcher covering the posting tools.
-Prose in the agent body is advisory; both hard gates must be kept narrow.
+The global CLAUDE.md rule "never post without showing a draft first" is
+enforced here by this per-agent allowlist, which keeps MCP-mediated posting
+tools out of agents' hands. The plugin previously also shipped PreToolUse
+hooks that intercepted Bash-based posting (`gh pr comment`, `gh issue
+comment`, etc.); those were removed, so Bash-level posting is now governed by
+workflow discipline — the `draft-review-post` skill — rather than a hard gate.
+Prose in the agent body is advisory; the allowlist must be kept narrow.
 
 ## Deliberate exclusions
 

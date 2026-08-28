@@ -62,8 +62,7 @@ workflow is the lightweight load → edit → store path.
      redirect to `guidelines reset` instead, which has the right
      tombstone semantics).
    - Under the 8 KB byte budget (the Gist storage cap from #867).
-   - No raw secrets pattern matches (the same regex set
-     `guard-public-posts.sh` uses; defense-in-depth, not authoritative).
+   - No raw secrets pattern matches (defense-in-depth, not authoritative).
 
 5. **Store via the CLI** —
    `cat <draft-path> | cli.bundle.cjs guidelines store --repo OWNER/REPO`.

@@ -328,7 +328,6 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 ├── agents/                      # 7 specialized agents (PR responder, issue scout, etc.)
 ├── skills/                      # Contribution best practices
 ├── workflows/                   # Delegated logic loaded by commands on demand
-├── hooks/                       # Plugin hooks (session-start + PreToolUse guards)
 ├── packages/
 │   ├── core/                    # @oss-autopilot/core — CLI + core library
 │   │   ├── src/commands/        # CLI subcommands
