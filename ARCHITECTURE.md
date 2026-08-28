@@ -75,15 +75,6 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 - `pr-etiquette/SKILL.md` — Review-feedback responses, PR descriptions, dormant-PR follow-up cadence, PR quality checklist, communication style.
 - `contribution-ethics/SKILL.md` — AI attribution rules, AI-tell avoidance in maintainer-visible writing, when to defer to a human contributor.
 
-### Hooks (`hooks/`)
-
-- `hooks.json` — Registers one `SessionStart` hook and two `PreToolUse` matchers: a `Bash` matcher pointing at `pre-tool-use-dispatcher.sh`, and an MCP-tool matcher (covering `post`, `claim`, and the mutating `mcp__github__*` tools) pointing directly at `guard-public-posts.sh`.
-- `session-start.sh` — Runs on every Claude Code session start. Auto-pulls marketplace updates (via `safe-refresh-marketplace.sh`), rebuilds stale CLI bundles, checks for version updates, and runs a quick PR health check. Outputs JSON with `systemMessage` for Claude Code to display.
-- `pre-tool-use-dispatcher.sh` — Single entry point for the Bash-matcher PreToolUse guards (#1111). Runs the three guards below in order on a shared stdin payload; the first guard that emits output short-circuits the rest.
-- `guard-public-posts.sh` — Intercepts externally-visible actions (`gh pr comment`, `gh issue comment`, PR create/merge/close, MCP `post`/`claim`, etc.) and returns an "ask" decision so the user approves before anything posts publicly.
-- `guard-git-operations.sh` — Blocks bare `git push --force` (requires `--force-with-lease`), requires an explicit fetch before rebase or force-with-lease push, and warns before `git reset --hard`.
-- `auto-format-before-push.sh` — Opt-in via `config.autoFormatBeforePush`: formats changed files and commits the result before a `git push` proceeds. Never blocks the push.
-
 ## CLI Layer
 
 ### Entry Point (`packages/core/src/cli.ts`)

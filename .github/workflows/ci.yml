@@ -139,9 +139,6 @@ jobs:
       - name: Run tests
         run: pnpm run test
 
-      - name: Test session-start hook helpers
-        run: bash hooks/safe-refresh-marketplace.test.sh
-
       - name: Test build-cli-if-stale helper (#1292)
         run: bash scripts/build-cli-if-stale.test.sh
 
@@ -168,26 +165,6 @@ jobs:
             echo "::error::workflows/reference.md is out of sync. Run 'pnpm run generate:reference' and commit the result."
             exit 1
           fi
-
-      - name: Test guard-public-posts hook
-        run: bash hooks/guard-public-posts.test.sh
-
-      - name: Test guard-git-operations hook
-        # Own-repo trust must skip rebase asks only when origin is provably
-        # owned by githubUsername, and never relax force-push / reset --hard.
-        run: bash hooks/guard-git-operations.test.sh
-
-      - name: Test pre-tool-use dispatcher hook (#1449)
-        # The dispatcher is the fan-out point for every PreToolUse Bash guard
-        # (guard-public-posts, guard-git-operations, auto-format-before-push);
-        # a regression here silently disables all of them.
-        run: bash hooks/pre-tool-use-dispatcher.test.sh
-
-      - name: Test hook JSON output shape
-        # Claude Code discards a hookSpecificOutput block that omits
-        # hookEventName, so a guard can emit a "deny" that never takes
-        # effect while still exiting 0. Covers every emitting hook script.
-        run: bash hooks/hook-json-shape.test.sh
 
       - name: Guard against phantom config field regressions
         # These keys were deleted from the v3 state schema (see

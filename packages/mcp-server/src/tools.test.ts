@@ -1,14 +1,10 @@
 import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { getStatePath } from '@oss-autopilot/core';
 import { createServer } from './server.js';
 
-const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
-const HOOKS_JSON_PATH = path.resolve(TESTS_DIR, '../../../hooks/hooks.json');
 
 /** All registered tool names (untrack and read removed in v4 — #1133;
  * compliance-score added in #1245). */
@@ -222,108 +218,6 @@ describe('MCP tool registrations', () => {
     it.each(['post', 'claim'])('destructive tool "%s" description warns about irreversibility', (name) => {
       const tool = tools.find((t) => t.name === name);
       expect(tool!.description).toMatch(/irreversible/i);
-    });
-  });
-
-  // ── hooks.json guard-public-posts matcher consistency (#1302 item 2) ──
-  //
-  // The guard-public-posts.sh hook fires on a PreToolUse matcher in
-  // hooks/hooks.json. Today the matcher is hand-curated; this contract
-  // makes it drift-resistant by pinning it to the tool registry's
-  // `destructiveHint` annotation: every plugin tool with
-  // `destructiveHint: true` that produces an externally-visible event
-  // MUST be in the matcher, and every plugin tool in the matcher MUST
-  // carry the destructiveHint annotation. New gating tools therefore get
-  // covered automatically — adding a tool with `destructiveHint: true`
-  // and forgetting to update the matcher fails CI.
-  //
-  // Tools that are destructive to LOCAL state but don't post publicly
-  // (the canonical example today is `guidelines-reset`, which tombstones
-  // the user's gist file) are listed below as explicit exclusions. The
-  // exclusion is a rare exception, not the default — the bar is "this
-  // tool is destructive but does not produce an externally-visible
-  // GitHub event under the user's identity."
-  describe('hooks.json guard-public-posts matcher (#1302 item 2)', () => {
-    /** Plugin tools with destructiveHint:true that operate on local state only. */
-    const LOCAL_ONLY_DESTRUCTIVE = new Set(['guidelines-reset']);
-    const PLUGIN_TOOL_PREFIX = 'mcp__plugin_oss-autopilot_oss-autopilot__';
-
-    function loadGuardMatcher(): string {
-      const hooksJson = JSON.parse(fs.readFileSync(HOOKS_JSON_PATH, 'utf8'));
-      const preToolUse = hooksJson.hooks.PreToolUse as Array<{
-        matcher: string;
-        hooks: Array<{ command: string }>;
-      }>;
-      const guardEntry = preToolUse.find((entry) =>
-        entry.hooks.some((h) => h.command.includes('guard-public-posts.sh')),
-      );
-      if (!guardEntry) {
-        throw new Error('hooks.json has no PreToolUse entry pointing at guard-public-posts.sh');
-      }
-      return guardEntry.matcher;
-    }
-
-    function pluginToolsInMatcher(matcher: string): string[] {
-      return matcher
-        .split('|')
-        .map((m) => m.trim())
-        .filter((m) => m.startsWith(PLUGIN_TOOL_PREFIX))
-        .map((m) => m.slice(PLUGIN_TOOL_PREFIX.length));
-    }
-
-    it('every destructive plugin tool that posts publicly is in the matcher', () => {
-      const matcher = loadGuardMatcher();
-      const missing: string[] = [];
-      for (const tool of tools) {
-        const ann = (tool.annotations ?? {}) as Record<string, unknown>;
-        if (ann.destructiveHint !== true) continue;
-        if (LOCAL_ONLY_DESTRUCTIVE.has(tool.name)) continue;
-        const fullName = `${PLUGIN_TOOL_PREFIX}${tool.name}`;
-        if (!matcher.includes(fullName)) missing.push(tool.name);
-      }
-      expect(missing, `Tools missing from guard-public-posts matcher: ${missing.join(', ')}`).toEqual([]);
-    });
-
-    it('every plugin tool in the matcher has destructiveHint:true', () => {
-      const matcher = loadGuardMatcher();
-      const matchedNames = pluginToolsInMatcher(matcher);
-      for (const name of matchedNames) {
-        const tool = tools.find((t) => t.name === name);
-        expect(tool, `Matcher references "${name}" but no such tool is registered`).toBeDefined();
-        const ann = (tool!.annotations ?? {}) as Record<string, unknown>;
-        expect(
-          ann.destructiveHint,
-          `"${name}" is in the matcher but lacks destructiveHint:true — either add the annotation or remove from matcher`,
-        ).toBe(true);
-      }
-    });
-
-    it('matches the github MCP family broadly so new mutating tools fail closed (#1455)', () => {
-      // The github MCP server is an external dependency that grows tools we
-      // don't control. A hand-enumerated alternation silently misses new
-      // mutating tools, so the matcher must stay the broad family pattern —
-      // guard-public-posts.sh holds the read-only exclusion list and asks
-      // for everything else (see hooks/guard-public-posts.test.sh).
-      const matcher = loadGuardMatcher();
-      const entries = matcher.split('|').map((m) => m.trim());
-      expect(entries).toContain('mcp__github__.*');
-      // No stale per-tool github entries left behind — the broad pattern is
-      // the single source of github coverage.
-      expect(entries.filter((e) => e.startsWith('mcp__github__'))).toEqual(['mcp__github__.*']);
-    });
-
-    it('LOCAL_ONLY_DESTRUCTIVE entries actually exist as registered tools with destructiveHint:true', () => {
-      // Guard against the exclusion list going stale (a tool gets renamed
-      // or de-flagged but still appears here).
-      for (const name of LOCAL_ONLY_DESTRUCTIVE) {
-        const tool = tools.find((t) => t.name === name);
-        expect(tool, `LOCAL_ONLY_DESTRUCTIVE entry "${name}" is not a registered tool`).toBeDefined();
-        const ann = (tool!.annotations ?? {}) as Record<string, unknown>;
-        expect(
-          ann.destructiveHint,
-          `LOCAL_ONLY_DESTRUCTIVE entry "${name}" must have destructiveHint:true (or remove from list)`,
-        ).toBe(true);
-      }
     });
   });
 
