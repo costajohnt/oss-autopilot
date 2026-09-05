@@ -251,21 +251,21 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
   {
     key: 'autoFormatBeforePush',
     description:
-      'Opt-in: run the project formatter and append a `style:` commit before every `git push`. Off by default because formatting commits surprise OSS maintainers; the hook also skips automatically when the branch tracks a fork upstream.',
+      'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',
     settableVia: 'setup',
     valueHint: 'true|false',
   },
   {
     key: 'trustOwnRepoWrites',
     description:
-      'Opt-in: skip the guard-public-posts approval prompt for GitHub writes (PR merge, issue close, comments) targeting repos owned by your own githubUsername. Off by default. Writes to any other owner, to a fork whose parent belongs to someone else, or from a chained command still ask.',
+      'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',
     settableVia: 'setup',
     valueHint: 'true|false',
   },
   {
     key: 'healthCheckFreshnessMinutes',
     description:
-      'Suppress the SessionStart PR health one-liner when the cached digest is older than this many minutes. The line silently disappears between /oss runs, so what remains is always current. Defaults to 30 minutes (#1255).',
+      'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',
     settableVia: 'setup',
     valueHint: 'positive integer',
   },
