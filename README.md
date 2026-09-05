@@ -24,7 +24,7 @@
 
 ---
 
-**Built and used daily by [costajohnt](https://github.com/costajohnt)** — 3rd biggest contributor to [Ink](https://github.com/vadimdemedes/ink) (the React CLI framework behind Claude Code, Gemini CLI, and Codex — 32k+ stars) and repeat contributor to [Homebrew](https://github.com/Homebrew/homebrew-cask).
+**Built and used daily by [costajohnt](https://github.com/costajohnt)** — 3rd-largest contributor to [Ink](https://github.com/vadimdemedes/ink) by commits (the React CLI framework behind Claude Code, Gemini CLI, and Codex — 39k+ stars) and repeat contributor to [Homebrew](https://github.com/Homebrew/brew).
 
 <p align="center">
 <a href="https://github.com/costajohnt/oss-autopilot">
