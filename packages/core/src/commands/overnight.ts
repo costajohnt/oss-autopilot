@@ -73,7 +73,7 @@ export interface OvernightFreshness {
 }
 
 // ponytail: static table, not a classifier. Every ActionableIssueType is
-// listed so a new type fails typecheck here instead of silently defaulting.
+// listed: the Record key type makes a new variant fail typecheck here.
 const BUCKET_BY_TYPE: Record<ActionableIssueType, { bucket: OvernightBucket; reason: string }> = {
   ci_failing: { bucket: 'prepare', reason: 'CI is red: an agent can diagnose and prepare a fix branch' },
   merge_conflict: { bucket: 'prepare', reason: 'merge conflict: an agent can rebase in a worktree' },
@@ -92,7 +92,6 @@ export function bucketize(daily: Pick<DailyOutput, 'actionableIssues' | 'comment
 
   for (const issue of daily.actionableIssues) {
     const rule = BUCKET_BY_TYPE[issue.type];
-    if (!rule) throw new Error(`Unknown actionable issue type "${issue.type}" for ${issue.prUrl}`);
     (rule.bucket === 'prepare' ? prepare : judgment).push({
       url: issue.prUrl,
       type: issue.type,
@@ -152,7 +151,7 @@ export function renderReport(out: ReportBody, prepared: OvernightPrepared[] = []
   lines.push('');
 
   if (out.failures.length > 0 || out.warnings.length > 0) {
-    lines.push(`## Check problems`, '');
+    lines.push('## Check problems', '');
     for (const f of out.failures) lines.push(`- ${f.prUrl} could not be fetched (not bucketed): ${f.error}`);
     for (const w of out.warnings) lines.push(`- [${w.phase}] ${w.operation}: ${w.message}`);
     lines.push('');
@@ -435,8 +434,9 @@ export function resolveClaudePath(claudePath: string, envPath: string | undefine
     return claudePath;
   }
   for (const dir of (envPath ?? '').split(path.delimiter)) {
+    if (!dir) continue;
     const candidate = path.join(dir, claudePath);
-    if (dir && fs.existsSync(candidate)) return candidate;
+    if (fs.existsSync(candidate)) return candidate;
   }
   throw new Error(`Could not find "${claudePath}" on PATH; ${hint}`);
 }
