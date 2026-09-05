@@ -63,7 +63,7 @@ function fakeStateManager(initial?: OvernightRecord) {
     setLastOvernight: vi.fn((r: OvernightRecord) => {
       last = r;
     }),
-  } as unknown as ReturnType<typeof getStateManager>;
+  } as unknown as ReturnType<typeof getStateManager> & { setLastOvernight: ReturnType<typeof vi.fn> };
 }
 
 const pr = (type: string, n: number) => ({
