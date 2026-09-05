@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.22.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.21.1...core-v3.22.0) (2026-09-05)
+
+
+### Features
+
+* **overnight:** prepare-and-queue overnight mode with a morning report ([#1656](https://github.com/costajohnt/oss-autopilot/issues/1656)) ([acd7b2c](https://github.com/costajohnt/oss-autopilot/commit/acd7b2c7955c64a3b76696269fb2b50ac34fea60))
+
+
+### Bug Fixes
+
+* **deps:** override fast-uri, qs, and nanoid to patched versions ([#1648](https://github.com/costajohnt/oss-autopilot/issues/1648)) ([be9f2a4](https://github.com/costajohnt/oss-autopilot/commit/be9f2a4c69795665fa2ff2d05267a9df1c37809d))
+* **parse-list:** let pruneIssueList remove top-level PR-URL entries again ([#1652](https://github.com/costajohnt/oss-autopilot/issues/1652)) ([b331a0c](https://github.com/costajohnt/oss-autopilot/commit/b331a0cade4393eb1f402f00517d7e63d8e6bece)), closes [#1637](https://github.com/costajohnt/oss-autopilot/issues/1637)
+* **search:** checkpoint the Gist after recording the search seen-set ([#1653](https://github.com/costajohnt/oss-autopilot/issues/1653)) ([adf86ad](https://github.com/costajohnt/oss-autopilot/commit/adf86ad29a0264b7bfcb6bac9238b085118d9d6b)), closes [#1629](https://github.com/costajohnt/oss-autopilot/issues/1629)
+* **search:** persist scout's broad-phase language rotation cursor ([#1655](https://github.com/costajohnt/oss-autopilot/issues/1655)) ([92274f9](https://github.com/costajohnt/oss-autopilot/commit/92274f94e5a8fb4f0d1cfe3321c1a7b80143ea66))
+
 ## [3.21.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.21.0...core-v3.21.1) (2026-08-18)
 
 
