@@ -55,7 +55,6 @@ describe('runSearch', () => {
       getSearchSeen: vi.fn().mockReturnValue([]),
       setSearchSeen: vi.fn(),
       setSearchRotation: vi.fn(),
-      setSearchRotation: vi.fn(),
     } as any);
     mockScoutState.searchRotation = { languageOffset: 0 };
   });
