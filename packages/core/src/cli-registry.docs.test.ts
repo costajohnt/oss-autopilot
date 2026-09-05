@@ -69,7 +69,7 @@ describe('cli-registry ↔ .claude-plugin/expected-cli-contract.json parity (#11
     expect(
       unlisted,
       `New CLI commands not yet pinned in the plugin contract: ${unlisted.join(', ')}. ` +
-        `Add them to .claude-plugin/expected-cli-contract.json so plugin/markdown drift is caught at session start.`,
+        `Add them to .claude-plugin/expected-cli-contract.json so plugin/markdown drift is caught here at CI time.`,
     ).toEqual([]);
   });
 
