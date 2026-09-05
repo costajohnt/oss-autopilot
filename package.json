@@ -62,8 +62,8 @@
     "eslint-plugin-sonarjs": "^4.2.0",
     "eslint-plugin-unicorn": "^73.0.0",
     "prettier": "^3.9.6",
-    "simple-git-hooks": "^2.13.1",
-    "typescript-eslint": "^8.65.0"
+    "simple-git-hooks": "^2.14.0",
+    "typescript-eslint": "^8.68.0"
   },
   "pnpm": {
     "overrides": {
