@@ -36,8 +36,8 @@ env:
   #   - **Don't bump for a flaky measurement:** esbuild output is
   #     deterministic. If the threshold trips on a no-op rebuild, it's a
   #     real increase somewhere upstream — not noise.
-  BUNDLE_MAX_CORE: 1100000 # ~1074 KB (raised for zod 4.4.3 -> 4.5.4, which grew its in-bundle share 330 -> 437 KB: JIT compile, json-schema processors, locales; current ~998 KB)
-  BUNDLE_MAX_MCP: 2000000 # ~1953 KB
+  BUNDLE_MAX_CORE: 920000 # ~898 KB (lowered after scripts/bundle.mjs dropped zod's unused locales, 1009 -> 762 KB; #1651)
+  BUNDLE_MAX_MCP: 1160000 # ~1133 KB (lowered for the same reason, 1237 -> 990 KB; #1651)
   STARTUP_WARN_MS: 500 # Warn if CLI startup exceeds 500ms
 
 jobs:

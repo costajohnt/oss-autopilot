@@ -48,6 +48,8 @@ setup() {
 }
 EOF
     echo "{}" >"${PLUGIN}/packages/core/tsconfig.json"
+    mkdir -p "${PLUGIN}/scripts"
+    echo "// bundle script stub" >"${PLUGIN}/scripts/bundle.mjs"
     echo "// existing bundle" >"${PLUGIN}/packages/core/dist/cli.bundle.cjs"
     echo "export const x = 1;" >"${PLUGIN}/packages/core/src/index.ts"
     cat >"${PLUGIN}/packages/core/node_modules/@oss-scout/core/package.json" <<'EOF'
@@ -210,6 +212,29 @@ EOF
     rc=$?
     rm -rf "$fake_bin"
     [ "$rc" = 1 ] && pass || fail "expected exit 1 when package.json is newer, got $rc"
+}
+
+case_bundle_script_newer_triggers_rebuild() {
+    # A change to the esbuild build script (e.g. its plugins) must rebuild
+    # even when src/ and package.json are untouched.
+    sleep 1
+    touch "${PLUGIN}/scripts/bundle.mjs"
+
+    fake_bin=$(mktemp -d)
+    cat >"${fake_bin}/pnpm" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    cat >"${fake_bin}/npm" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "${fake_bin}/pnpm" "${fake_bin}/npm"
+
+    PATH="${fake_bin}:${PATH}" "$SUBJECT" "$PLUGIN" >/dev/null 2>&1
+    rc=$?
+    rm -rf "$fake_bin"
+    [ "$rc" = 1 ] && pass || fail "expected exit 1 when scripts/bundle.mjs is newer, got $rc"
 }
 
 case_dep_missing_triggers_install() {
@@ -403,6 +428,7 @@ run case_missing_bundle_triggers_rebuild  case_missing_bundle_triggers_rebuild
 run case_swap_files_do_not_trigger_rebuild case_swap_files_do_not_trigger_rebuild
 run case_build_failure_returns_2          case_build_failure_returns_2
 run case_package_json_newer_triggers_rebuild case_package_json_newer_triggers_rebuild
+run case_bundle_script_newer_triggers_rebuild case_bundle_script_newer_triggers_rebuild
 run case_dep_missing_triggers_install         case_dep_missing_triggers_install
 run case_dep_stamp_fresh_skips_check          case_dep_stamp_fresh_skips_check
 run case_dep_versions_match_no_rebuild        case_dep_versions_match_no_rebuild

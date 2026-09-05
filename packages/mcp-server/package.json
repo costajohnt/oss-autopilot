@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "bundle": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --minify --outfile=dist/mcp-server.bundle.cjs",
+    "bundle": "node ../../scripts/bundle.mjs src/index.ts dist/mcp-server.bundle.cjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
