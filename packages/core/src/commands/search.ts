@@ -232,6 +232,10 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
     stateManager,
     result.candidates.map((c) => c.issue.url),
   );
+  // Scout advanced its broad-phase language cursor in its own (provided,
+  // non-persisted) state; copy it back so the next run starts from the next
+  // language slice instead of offset 0 every time (#1630).
+  stateManager.setSearchRotation(scout.getState().searchRotation);
   // In Gist mode setSearchSeen only writes the local cache; without a
   // checkpoint the seen-set never reaches the Gist and the next startup's
   // Gist refetch overwrites the cache with the empty remote copy (#1629).

@@ -24,7 +24,10 @@ vi.mock('./scout-bridge.js', async () => {
   const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
   return {
     ...actual,
-    createAutopilotScout: vi.fn(async () => ({ search: mocks.search })),
+    createAutopilotScout: vi.fn(async () => ({
+      search: mocks.search,
+      getState: () => ({ searchRotation: { languageOffset: 0 } }),
+    })),
   };
 });
 
@@ -40,6 +43,7 @@ vi.mock('../core/index.js', async () => {
       getState: () => ({ mergedPRs: [], closedPRs: [], repoScores: {}, lastDigest: null }),
       getSearchSeen: () => [],
       setSearchSeen: () => {},
+      setSearchRotation: () => {},
       // Local-file mode: maybeCheckpoint (#1629) no-ops, golden shape unchanged.
       isGistMode: () => false,
     }),

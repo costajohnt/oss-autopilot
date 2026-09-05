@@ -221,6 +221,10 @@ export function makeStateManagerMock(
     setSearchSeen: (seen: AgentState['searchSeen']) => {
       state.searchSeen = seen;
     },
+    getSearchRotation: () => state.searchRotation,
+    setSearchRotation: (rotation: NonNullable<AgentState['searchRotation']>) => {
+      state.searchRotation = rotation;
+    },
     getRepoScore: () => undefined,
     updateRepoScore: () => {},
     incrementMergedCount: () => {},
