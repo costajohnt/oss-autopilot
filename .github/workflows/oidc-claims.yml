@@ -1,0 +1,34 @@
+name: OIDC claims (diagnostic)
+
+# Prints the claims of the GitHub OIDC token that npm trusted publishing
+# matches against (repository, job_workflow_ref, environment, ref). Run by
+# hand when a publish answers "OIDC permission denied for this action" to
+# compare with the publisher registered on npmjs.com. No secrets involved:
+# the token is decoded locally and only the non-secret claims are echoed.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  claims:
+    name: Print OIDC claims
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request and decode the npm-audience token
+        run: |
+          set -euo pipefail
+          resp=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=npm:registry.npmjs.org")
+          token=$(printf '%s' "$resp" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).value))')
+          payload=$(printf '%s' "$token" | cut -d. -f2 | tr '_-' '/+')
+          pad=$(( (4 - ${#payload} % 4) % 4 )); payload="$payload$(printf '=%.0s' $(seq 1 $pad 2>/dev/null))"
+          printf '%s' "$payload" | base64 -d | node -e '
+            let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+              const c=JSON.parse(s);
+              for (const k of ["iss","aud","sub","repository","repository_owner","repository_id","repository_owner_id","workflow","workflow_ref","job_workflow_ref","environment","ref","ref_type","event_name","runner_environment"])
+                console.log(k.padEnd(20), c[k] ?? "(absent)");
+            })'
