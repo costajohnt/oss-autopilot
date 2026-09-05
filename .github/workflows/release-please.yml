@@ -55,10 +55,22 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # npm trusted publishing (OIDC): the job's id-token mints the credential,
+      # so no long-lived NPM_TOKEN is needed. The 3.22.0 publish failed with
+      # `404 Not Found - PUT` on a fresh granular token after npm restricted
+      # 2FA-bypassing tokens; the trusted publisher for both packages is
+      # registered on npmjs.com (owner costajohnt, repo oss-autopilot, this
+      # workflow file). Needs npm >= 11.5.1, newer than Node 22's bundled npm.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest && npm --version
+
+      - name: Build and pack @oss-autopilot/core
+        run: |
+          pnpm --filter @oss-autopilot/core run prepublishOnly
+          pnpm --filter @oss-autopilot/core pack --pack-destination "$RUNNER_TEMP/pkg-core"
+
       - name: Publish @oss-autopilot/core
-        run: pnpm --filter @oss-autopilot/core publish --access public --no-git-checks --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish "$RUNNER_TEMP"/pkg-core/*.tgz --access public --provenance
 
   publish-mcp-npm:
     name: Publish MCP server to npm
@@ -93,7 +105,15 @@ jobs:
       - name: Build core (required by mcp-server)
         run: pnpm --filter @oss-autopilot/core run build
 
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest && npm --version
+
+      # `pnpm pack` rewrites the `workspace:^` dependency on core to the
+      # released version; `npm publish <tarball>` then needs no pnpm at all.
+      - name: Build and pack @oss-autopilot/mcp
+        run: |
+          pnpm --filter @oss-autopilot/mcp run prepublishOnly
+          pnpm --filter @oss-autopilot/mcp pack --pack-destination "$RUNNER_TEMP/pkg-mcp"
+
       - name: Publish @oss-autopilot/mcp
-        run: pnpm --filter @oss-autopilot/mcp publish --access public --no-git-checks --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish "$RUNNER_TEMP"/pkg-mcp/*.tgz --access public --provenance
