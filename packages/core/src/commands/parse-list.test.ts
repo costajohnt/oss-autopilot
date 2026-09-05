@@ -475,6 +475,23 @@ describe('parseIssueList — decorated status keyword matching', () => {
   });
 });
 
+describe('pruneIssueList — top-level PR-URL entries (#1637)', () => {
+  it('prunes a PR entry whose sub-bullet says MERGED, and its sub-bullets', () => {
+    const content = `## Open PRs
+- https://github.com/owner/repo/pull/42 My PR
+  - **Merged** 2026-08-01
+- https://github.com/owner/repo/pull/43 Still open
+  - waiting on review
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('pull/42');
+    expect(pruned).not.toContain('2026-08-01');
+    expect(pruned).toContain('pull/43');
+    expect(pruned).toContain('waiting on review');
+  });
+});
+
 describe('pruneIssueList — decorated status keywords', () => {
   it('does NOT delete decorated "**Hold — ...**" items', () => {
     const content = `### Repo

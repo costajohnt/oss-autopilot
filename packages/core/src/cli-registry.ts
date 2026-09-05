@@ -120,10 +120,10 @@ function printRepos(repos: Record<string, { path: string; currentBranch: string 
 
 export const commands: CLICommandDef[] = [
   // ── Manifest (#1190) ───────────────────────────────────────────────────
-  // Lets the plugin's session-start hook verify CLI/plugin contract drift —
-  // it diffs the registered commands against `.claude-plugin/expected-cli-contract.json`
-  // and warns when the markdown layer references commands the CLI no longer
-  // exposes. Local-only: no GitHub access needed.
+  // Exposes the registered commands for CLI/plugin contract checks —
+  // cli-registry.docs.test.ts diffs them against `.claude-plugin/expected-cli-contract.json`
+  // at CI time and fails when the markdown layer references commands the CLI no
+  // longer exposes. Local-only: no GitHub access needed.
   {
     name: 'manifest',
     localOnly: true,

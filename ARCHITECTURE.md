@@ -146,7 +146,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 esbuild src/cli.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/cli.bundle.cjs  # run from packages/core/
 ```
 
-The bundle is a single CommonJS file (gitignored, auto-generated). The `SessionStart` hook rebuilds it if `package.json` is newer than the bundle.
+The bundle is a single CommonJS file (gitignored, auto-generated). Commands rebuild it on demand via `scripts/build-cli-if-stale.sh` when the sources or `package.json` are newer than the bundle.
 
 ## Core Domain Layer (`packages/core/src/core/`)
 
