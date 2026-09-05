@@ -31,7 +31,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "bundle": "esbuild src/cli.ts --bundle --platform=node --target=node22 --format=cjs --minify --sourcemap --outfile=dist/cli.bundle.cjs",
+    "bundle": "node ../../scripts/bundle.mjs src/cli.ts dist/cli.bundle.cjs --sourcemap",
     "start": "tsx src/cli.ts",
     "dev": "tsx watch src/cli.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json",

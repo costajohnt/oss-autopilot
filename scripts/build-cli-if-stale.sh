@@ -5,6 +5,7 @@
 # newer than the built artifact:
 #   packages/core/src/**         (source files)
 #   packages/core/package.json   (dep changes)
+#   scripts/bundle.mjs           (the esbuild build script)
 #   packages/core/tsconfig.json  (compiler config changes)
 #
 # It is also considered stale when the installed @oss-scout/core dependency
@@ -62,6 +63,7 @@ else
     "${PLUGIN_ROOT}/packages/core/src" \
     "${PLUGIN_ROOT}/packages/core/package.json" \
     "${PLUGIN_ROOT}/packages/core/tsconfig.json" \
+    "${PLUGIN_ROOT}/scripts/bundle.mjs" \
     -type f \
     ! -path '*/node_modules/*' \
     ! -path '*/.git/*' \

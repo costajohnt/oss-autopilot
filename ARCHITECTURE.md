@@ -143,7 +143,7 @@ Debug and warning output goes to stderr via the logger, so it never contaminates
 ### Build
 
 ```
-esbuild src/cli.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/cli.bundle.cjs  # run from packages/core/
+pnpm run bundle  # from packages/core/; runs the repo-root scripts/bundle.mjs (esbuild, plus a plugin that keeps only zod's `en` locale out of the ~40 it re-exports)
 ```
 
 The bundle is a single CommonJS file (gitignored, auto-generated). Commands rebuild it on demand via `scripts/build-cli-if-stale.sh` when the sources or `package.json` are newer than the bundle.
