@@ -324,8 +324,10 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
       continue;
     }
 
-    const ghUrl = extractGitHubUrl(line);
-    if (ghUrl) {
+    // Prune looks at issue AND PR entries: a curator's PR line with a MERGED
+    // sub-bullet must still be removable even though extractGitHubUrl (Guard 1)
+    // refuses PR URLs as issue candidates (#1637).
+    if (/https:\/\/github\.com\/[^/]+\/[^/]+\/(?:issues|pull)\/\d+/.test(line)) {
       // Look ahead at sub-bullets for terminal status or low score
       let shouldRemove = false;
       let j = i + 1;
