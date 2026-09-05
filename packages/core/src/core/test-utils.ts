@@ -225,6 +225,10 @@ export function makeStateManagerMock(
     setLastOvernight: (record: NonNullable<AgentState['lastOvernight']>) => {
       state.lastOvernight = record;
     },
+    getSearchRotation: () => state.searchRotation,
+    setSearchRotation: (rotation: NonNullable<AgentState['searchRotation']>) => {
+      state.searchRotation = rotation;
+    },
     getRepoScore: () => undefined,
     updateRepoScore: () => {},
     incrementMergedCount: () => {},

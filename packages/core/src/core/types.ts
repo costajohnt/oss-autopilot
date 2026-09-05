@@ -49,6 +49,7 @@ export type {
   SearchSeenEntry,
   OvernightPrepared,
   OvernightRecord,
+  SearchRotation,
 } from './state-schema.js';
 
 // ── Ephemeral types (never persisted, hand-written) ──────────────────

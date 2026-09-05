@@ -472,6 +472,12 @@ export const OvernightRecordSchema = z.object({
   prepared: z.array(OvernightPreparedSchema).default([]),
 });
 
+/** Mirrors oss-scout's `searchRotation` (broad-phase language cursor). */
+export const SearchRotationSchema = z.object({
+  languageOffset: z.number().int().nonnegative().default(0),
+  lastRotatedAt: z.string().optional(),
+});
+
 export const AgentStateSchema = z.object({
   version: z.literal(4),
   gistId: z.string().optional(),
@@ -539,6 +545,13 @@ export const AgentStateSchema = z.object({
 
   /** Latest overnight run (#1574). Absent until the first `overnight`. */
   lastOvernight: OvernightRecordSchema.optional(),
+  /**
+   * Broad-phase language rotation cursor (#1630), oss-scout's `searchRotation`.
+   * Scout advances it after every search whose broad phase ran; autopilot runs
+   * scout in persistence:'provided', so the advanced cursor is written back
+   * here and fed into the next scout state. Absent until the first search.
+   */
+  searchRotation: SearchRotationSchema.optional(),
 });
 
 // ── Inferred types ───────────────────────────────────────────────────
@@ -551,6 +564,7 @@ export type DiffTool = z.infer<typeof DiffToolSchema>;
 export type SearchSeenEntry = z.infer<typeof SearchSeenEntrySchema>;
 export type OvernightPrepared = z.infer<typeof OvernightPreparedSchema>;
 export type OvernightRecord = z.infer<typeof OvernightRecordSchema>;
+export type SearchRotation = z.infer<typeof SearchRotationSchema>;
 export type RepoSignals = z.infer<typeof RepoSignalsSchema>;
 export type RepoScore = z.infer<typeof RepoScoreSchema>;
 export type StoredMergedPR = z.infer<typeof StoredMergedPRSchema>;

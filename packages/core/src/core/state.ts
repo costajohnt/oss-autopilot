@@ -18,6 +18,7 @@ import {
   StoredClosedPR,
   SearchSeenEntry,
   OvernightRecord,
+  SearchRotation,
 } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
 import {
@@ -1000,6 +1001,17 @@ export class StateManager {
   /** Replace the overnight record (#1574): a new run, or a run plus a recorded branch. */
   setLastOvernight(record: OvernightRecord): void {
     this.state.lastOvernight = record;
+    this.autoSave();
+  }
+
+  /** Broad-phase language rotation cursor (#1630); `undefined` before the first search. */
+  getSearchRotation(): SearchRotation | undefined {
+    return this.state.searchRotation;
+  }
+
+  /** Persist the cursor scout advanced during a search (#1630). */
+  setSearchRotation(rotation: SearchRotation): void {
+    this.state.searchRotation = rotation;
     this.autoSave();
   }
 
