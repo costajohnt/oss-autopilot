@@ -11,7 +11,7 @@ import {
   type ScoutBridgeDiagnostics,
 } from './scout-bridge.js';
 import { SearchStrategySchema, type SearchStrategy } from '@oss-scout/core';
-import { classifyLinkedPR, getStateManager } from '../core/index.js';
+import { classifyLinkedPR, getStateManager, maybeCheckpoint } from '../core/index.js';
 import { type SearchOutput } from '../formatters/json.js';
 import { gradeFromCandidate } from '../core/issue-grading.js';
 import { computeStrategy } from '../core/strategy.js';
@@ -232,6 +232,10 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
     stateManager,
     result.candidates.map((c) => c.issue.url),
   );
+  // In Gist mode setSearchSeen only writes the local cache; without a
+  // checkpoint the seen-set never reaches the Gist and the next startup's
+  // Gist refetch overwrites the cache with the empty remote copy (#1629).
+  const gistSyncWarning = await maybeCheckpoint(stateManager, MODULE);
 
   // #1354: never surface issues the user already has an open PR for. Uses
   // scout's structured linked-PR metadata when present; candidates without it
@@ -321,6 +325,9 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
     aiPolicyBlocklist: result.aiPolicyBlocklist,
     hiddenOwnPRCount,
   };
+  if (gistSyncWarning) {
+    searchOutput.gistSyncWarning = gistSyncWarning;
+  }
   if (result.rateLimitWarning) {
     searchOutput.rateLimitWarning = result.rateLimitWarning;
   }

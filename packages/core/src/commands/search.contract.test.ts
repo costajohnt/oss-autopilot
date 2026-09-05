@@ -40,6 +40,8 @@ vi.mock('../core/index.js', async () => {
       getState: () => ({ mergedPRs: [], closedPRs: [], repoScores: {}, lastDigest: null }),
       getSearchSeen: () => [],
       setSearchSeen: () => {},
+      // Local-file mode: maybeCheckpoint (#1629) no-ops, golden shape unchanged.
+      isGistMode: () => false,
     }),
   };
 });
