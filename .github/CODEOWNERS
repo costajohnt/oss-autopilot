@@ -13,9 +13,8 @@
 /.github/ @costajohnt
 /workflows/ @costajohnt
 
-# Plugin manifest and hooks
+# Plugin manifest
 /.claude-plugin/ @costajohnt
-/hooks/ @costajohnt
 
 # Documentation
 /docs/ @costajohnt
