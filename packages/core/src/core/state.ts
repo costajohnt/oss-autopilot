@@ -17,6 +17,7 @@ import {
   StoredMergedPR,
   StoredClosedPR,
   SearchSeenEntry,
+  SearchRotation,
 } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
 import {
@@ -988,6 +989,17 @@ export class StateManager {
    */
   setSearchSeen(seen: SearchSeenEntry[]): void {
     this.state.searchSeen = seen;
+    this.autoSave();
+  }
+
+  /** Broad-phase language rotation cursor (#1630); `undefined` before the first search. */
+  getSearchRotation(): SearchRotation | undefined {
+    return this.state.searchRotation;
+  }
+
+  /** Persist the cursor scout advanced during a search (#1630). */
+  setSearchRotation(rotation: SearchRotation): void {
+    this.state.searchRotation = rotation;
     this.autoSave();
   }
 

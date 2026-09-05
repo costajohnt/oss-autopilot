@@ -222,15 +222,12 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
     })),
     skippedIssues: skippedIssuesLoad.issues,
     lastRunAt: state.lastRunAt,
-    // Scout 1.4.0 added `searchRotation` (persisted language-rotation cursor
-    // for the broad phase) as a required field on the inferred ScoutState type
-    // — its ZodDefault still applies at parse time, but a hand-built literal
-    // like this one must supply it. Autopilot runs scout in
-    // persistence:'provided' and synthesizes a fresh ScoutState per operation,
-    // so there is no durable cursor to carry across runs; scout's documented
-    // default (offset 0) is correct here, same as the ScoutPreferences
-    // defaults above.
-    searchRotation: { languageOffset: 0 },
+    // Broad-phase language rotation cursor (#1630). Scout advances it in its
+    // own state after a search whose broad phase ran; under
+    // persistence:'provided' that write is discarded with the process, so
+    // search.ts copies it back into AgentState and it is fed in from there.
+    // Scout's documented default (offset 0) applies until the first search.
+    searchRotation: state.searchRotation ?? { languageOffset: 0 },
   };
 }
 
