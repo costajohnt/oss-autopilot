@@ -33,12 +33,18 @@ overrides:
   # Dev-only, transitive via vitest -> vite. Code-execution advisory.
   yaml: '>=2.8.3'
   # Transitive via @modelcontextprotocol/sdk -> ajv. Path-traversal advisory
-  # GHSA-q3j6-qgpj-74h6.
-  fast-uri: '>=3.1.1'
+  # GHSA-q3j6-qgpj-74h6, plus later advisories patched in 3.1.6.
+  fast-uri: '>=3.1.6'
+  # Transitive via @modelcontextprotocol/sdk -> express/body-parser.
+  # Advisory affects >=6.14.2 <=6.15.3; patched in 6.16.0.
+  qs: '>=6.16.0'
   # Dev-only, transitive via @oss-autopilot/dashboard -> jsdom -> undici.
   # Clears the high TLS-validation / WebSocket-DoS / SOCKS5 advisories in
   # undici <7.28.0 (GHSA-vmh5-mc38-953g, GHSA-vxpw-j846-p89q, GHSA-vh2q-...).
   undici: '>=7.28.0'
+  # Dev-only, transitive via vite -> postcss. Advisory: custom generators
+  # can loop indefinitely when size is zero; patched in 3.3.18.
+  nanoid: '>=3.3.18'
   # Dev-only, transitive via @oss-autopilot/core -> typedoc -> markdown-it.
   # Quadratic-complexity ReDoS advisory GHSA-22p9-wv53-3rq4 in linkify-it
   # <=5.0.0; patched in 5.0.1.
