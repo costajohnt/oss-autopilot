@@ -17,9 +17,11 @@ export default defineConfig({
       // carved out), so the gate is expressed as two glob sets instead:
       //   - everything except cli-registry.ts keeps the original 80% gate
       //     (picomatch negation; both sets are aggregate, not per-file);
-      //   - cli-registry.ts gets honest floors at its current level so
-      //     regressions fail CI. Ratchet these up as direct tests are added
-      //     (tracked in #1586).
+      //   - cli-registry.ts has its own floors, set ~2 points under the
+      //     measured value. That slack is ~45 statements, so the gate catches
+      //     an untested new command or a deleted describe block, not a single
+      //     dropped `it`. When a new command lands, add its
+      //     cli-registry.test.ts cases in the same PR so the floors hold.
       thresholds: {
         '!src/cli-registry.ts': {
           statements: 80,
@@ -27,14 +29,15 @@ export default defineConfig({
           functions: 80,
           lines: 80,
         },
-        // First ratchet (#1586): direct handler tests for status, strategy,
-        // daily, track, compliance-score, comments, post, and claim lifted
-        // measured coverage to 42.85/30.81/55.55/43.06.
+        // Ratchet history (#1586): first pass (status, strategy, daily, track,
+        // compliance-score, comments, post, claim) measured 42.85/30.81/55.55/43.06;
+        // second pass covered every remaining handler plus executeAction's
+        // schema-mismatch and stdin paths and measured 99.68/90.33/100/99.84.
         'src/cli-registry.ts': {
-          statements: 42,
-          branches: 30,
-          functions: 55,
-          lines: 42,
+          statements: 97,
+          branches: 88,
+          functions: 98,
+          lines: 97,
         },
       },
     },
