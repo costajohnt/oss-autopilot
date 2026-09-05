@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockSearch = vi.fn();
+const mockScoutState = { searchRotation: { languageOffset: 0 } as { languageOffset: number; lastRotatedAt?: string } };
 
 vi.mock('./scout-bridge.js', async () => {
   const actual = await vi.importActual<typeof import('./scout-bridge.js')>('./scout-bridge.js');
@@ -12,6 +13,7 @@ vi.mock('./scout-bridge.js', async () => {
     ...actual,
     createAutopilotScout: vi.fn(async () => ({
       search: mockSearch,
+      getState: () => mockScoutState,
     })),
   };
 });
@@ -52,7 +54,27 @@ describe('runSearch', () => {
       getRepoScore: vi.fn().mockReturnValue(null),
       getSearchSeen: vi.fn().mockReturnValue([]),
       setSearchSeen: vi.fn(),
+      setSearchRotation: vi.fn(),
     } as any);
+    mockScoutState.searchRotation = { languageOffset: 0 };
+  });
+
+  it('writes back the rotation cursor scout advanced, before the Gist checkpoint (#1630)', async () => {
+    mockScoutState.searchRotation = { languageOffset: 3, lastRotatedAt: '2026-09-05T00:00:00.000Z' };
+    mockSearch.mockResolvedValue({
+      candidates: [],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+
+    await runSearch({ maxResults: 5 });
+
+    const sm = mockGetStateManager.mock.results[0].value;
+    expect(sm.setSearchRotation).toHaveBeenCalledWith({ languageOffset: 3, lastRotatedAt: '2026-09-05T00:00:00.000Z' });
+    expect(sm.setSearchRotation.mock.invocationCallOrder[0]).toBeLessThan(
+      mockMaybeCheckpoint.mock.invocationCallOrder[0],
+    );
   });
 
   it('checkpoints the Gist after recording the seen-set and surfaces a failed push (#1629)', async () => {
@@ -241,6 +263,7 @@ describe('runSearch', () => {
       }),
       getSearchSeen: vi.fn().mockReturnValue([]),
       setSearchSeen: vi.fn(),
+      setSearchRotation: vi.fn(),
     } as any);
 
     const result = await runSearch({ maxResults: 5 });
@@ -296,7 +319,7 @@ describe('runSearch', () => {
     // Degraded run: bridge flags the unreadable skip file via the diagnostics out-param.
     vi.mocked(createAutopilotScout).mockImplementationOnce(async (diagnostics?: ScoutBridgeDiagnostics) => {
       if (diagnostics) diagnostics.skipListUnavailable = true;
-      return { search: mockSearch } as any;
+      return { search: mockSearch, getState: () => mockScoutState } as any;
     });
     const degradedResult = await runSearch({ maxResults: 10 });
     expect(degradedResult.skipListUnavailable).toBe(true);
@@ -402,6 +425,7 @@ describe('runSearch', () => {
       }),
       getSearchSeen: vi.fn().mockReturnValue([]),
       setSearchSeen: vi.fn(),
+      setSearchRotation: vi.fn(),
     } as any);
 
     const result = await runSearch({ maxResults: 5 });
@@ -551,6 +575,7 @@ describe('runSearch', () => {
         getRepoScore: vi.fn().mockReturnValue(null),
         getSearchSeen: vi.fn().mockReturnValue([]),
         setSearchSeen: vi.fn(),
+        setSearchRotation: vi.fn(),
       } as any);
     }
 

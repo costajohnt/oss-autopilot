@@ -47,6 +47,7 @@ export type {
   DailyDigest,
   AgentState,
   SearchSeenEntry,
+  SearchRotation,
 } from './state-schema.js';
 
 // ── Ephemeral types (never persisted, hand-written) ──────────────────
