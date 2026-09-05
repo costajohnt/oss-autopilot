@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.7.3](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.2...mcp-v5.7.3) (2026-09-05)
+
+
+### Performance Improvements
+
+* **bundle:** ship only zod's English locale in the core and MCP bundles ([#1658](https://github.com/costajohnt/oss-autopilot/issues/1658)) ([56ae27b](https://github.com/costajohnt/oss-autopilot/commit/56ae27b8265ee8ae57f4b72cbd550a3311e6ee1f)), closes [#1651](https://github.com/costajohnt/oss-autopilot/issues/1651)
+
 ## [5.7.2](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.1...mcp-v5.7.2) (2026-08-08)
 
 No functional change to the MCP server.
