@@ -67,8 +67,8 @@ A Preact SPA that auto-opens when you run `/oss-dashboard` — PR management, ch
 ```
 ┌──────────────────────────────────────────────────┐
 │  Claude Code Plugin Layer                        │
-│  8 slash commands (/oss, /oss-search, …)         │
-│  7 specialized agents, contribution skills       │
+│  9 slash commands (/oss, /oss-search, …)         │
+│  8 specialized agents, contribution skills       │
 ├──────────────────────────────────────────────────┤
 │                                                  │
 │  ┌──────────────┐  ┌──────────────────────────┐  │
@@ -92,7 +92,7 @@ A Preact SPA that auto-opens when you run `/oss-dashboard` — PR management, ch
 
 **Monorepo with three npm packages** — pnpm workspaces with each package independently publishable to npm. Core library, MCP server, and interactive Preact dashboard with shared types.
 
-**Three deployment models** — Claude Code plugin with 7 specialized agents, MCP server for Cursor/Claude Desktop/Codex/Windsurf, and a standalone CLI with `--json` structured output. Same core, different interfaces.
+**Three deployment models** — Claude Code plugin with 8 specialized agents, MCP server for Cursor/Claude Desktop/Codex/Windsurf, and a standalone CLI with `--json` structured output. Same core, different interfaces.
 
 **Deterministic core, AI orchestration layer** — Critical logic (PR status classification, CI failure analysis, state management) lives in tested TypeScript, not in prompts. The CLI returns structured JSON that agents consume. CI failures are categorized into a deterministic taxonomy — actionable vs. fork limitation vs. auth gate vs. infrastructure — rather than asking an LLM each time. 2,600+ tests validate the core independently of any LLM.
 
@@ -181,7 +181,9 @@ All commands return `{ success, data, error, timestamp }` with `--json`.
 2. Work through critical issues (CI failures, maintainer comments, conflicts)
 3. Done for now
 
-**Commands:** `/oss` (daily check), `/oss-search` (find issues), `/oss-dashboard` (interactive dashboard), `/oss-guidelines` (per-repo guidelines), `/pr-ready` (pre-push review loop), `/plan-ready` (plan review loop), `/setup-oss` (configure), `/oss-help` (reference)
+**Overnight mode:** `/oss-overnight` runs the same check unattended, prepares fix branches in local worktrees (CI failures, conflicts, requested changes), and writes a morning report to `~/.oss-autopilot/reports/`. It never pushes, posts, or merges; the next `/oss` shows the report and you decide what ships. Schedule it with `oss-autopilot overnight schedule --install` (launchd).
+
+**Commands:** `/oss` (daily check), `/oss-overnight` (unattended prepare-and-queue run), `/oss-search` (find issues), `/oss-dashboard` (interactive dashboard), `/oss-guidelines` (per-repo guidelines), `/pr-ready` (pre-push review loop), `/plan-ready` (plan review loop), `/setup-oss` (configure), `/oss-help` (reference)
 
 ---
 
@@ -324,8 +326,8 @@ pnpm run bundle              # Rebuild CLI bundle (esbuild)
 **Project structure:**
 
 ```
-├── commands/                    # 8 plugin slash commands (/oss, /oss-search, /pr-ready, …)
-├── agents/                      # 7 specialized agents (PR responder, issue scout, etc.)
+├── commands/                    # 9 plugin slash commands (/oss, /oss-search, /pr-ready, …)
+├── agents/                      # 8 specialized agents (PR responder, issue scout, etc.)
 ├── skills/                      # Contribution best practices
 ├── workflows/                   # Delegated logic loaded by commands on demand
 ├── packages/

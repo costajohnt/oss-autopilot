@@ -19,6 +19,7 @@ import { launchDashboardServer, type LaunchResult } from './dashboard-lifecycle.
 import { recordBrowserOpened } from './dashboard-process.js';
 import { parseIssueList } from './parse-list.js';
 import { detectIssueListPath, persistConfigPath } from './locate-issue-list.js';
+import { overnightFreshness } from './overnight.js';
 
 // Path detection moved to locate-issue-list.ts (#1463) so the daily
 // merge-loop can use it without an import cycle through this module.
@@ -361,5 +362,8 @@ export async function runStartup(): Promise<StartupOutput> {
     dashboardBuildStatus,
     dashboardBuildErrorTail,
     issueList,
+    // State is already loaded and schema-parsed by this point (getStateManager
+    // above), so this is an in-memory read that cannot fail (#1574).
+    overnight: overnightFreshness(),
   };
 }

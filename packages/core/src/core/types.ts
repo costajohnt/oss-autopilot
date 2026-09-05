@@ -47,6 +47,8 @@ export type {
   DailyDigest,
   AgentState,
   SearchSeenEntry,
+  OvernightPrepared,
+  OvernightRecord,
   SearchRotation,
 } from './state-schema.js';
 

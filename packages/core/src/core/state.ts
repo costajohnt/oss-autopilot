@@ -17,6 +17,7 @@ import {
   StoredMergedPR,
   StoredClosedPR,
   SearchSeenEntry,
+  OvernightRecord,
   SearchRotation,
 } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
@@ -989,6 +990,17 @@ export class StateManager {
    */
   setSearchSeen(seen: SearchSeenEntry[]): void {
     this.state.searchSeen = seen;
+    this.autoSave();
+  }
+
+  /** Latest overnight run (#1574); `undefined` before the first one. */
+  getLastOvernight(): OvernightRecord | undefined {
+    return this.state.lastOvernight;
+  }
+
+  /** Replace the overnight record (#1574): a new run, or a run plus a recorded branch. */
+  setLastOvernight(record: OvernightRecord): void {
+    this.state.lastOvernight = record;
     this.autoSave();
   }
 

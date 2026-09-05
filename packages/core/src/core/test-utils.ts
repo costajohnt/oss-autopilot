@@ -221,6 +221,10 @@ export function makeStateManagerMock(
     setSearchSeen: (seen: AgentState['searchSeen']) => {
       state.searchSeen = seen;
     },
+    getLastOvernight: () => state.lastOvernight,
+    setLastOvernight: (record: NonNullable<AgentState['lastOvernight']>) => {
+      state.lastOvernight = record;
+    },
     getSearchRotation: () => state.searchRotation,
     setSearchRotation: (rotation: NonNullable<AgentState['searchRotation']>) => {
       state.searchRotation = rotation;

@@ -190,6 +190,15 @@ vi.mock('./commands/stats.js', () => ({
   formatStatsBadge: vi.fn(() => ({ schemaVersion: 1, label: 'merged', message: '3' })),
 }));
 
+const mockRunOvernight = vi.fn();
+const mockRunOvernightRecord = vi.fn();
+const mockRunOvernightSchedule = vi.fn();
+vi.mock('./commands/overnight.js', () => ({
+  runOvernight: mockRunOvernight,
+  runOvernightRecord: mockRunOvernightRecord,
+  runOvernightSchedule: mockRunOvernightSchedule,
+}));
+
 const mockGuidelinesList = vi.fn();
 const mockGuidelinesView = vi.fn();
 const mockGuidelinesStore = vi.fn();
@@ -2281,5 +2290,176 @@ describe('guidelines subcommands', () => {
 
     expect(mockFetchCorpus).toHaveBeenCalledWith({ repo: REPO, limit: undefined, forceRefetch: undefined });
     expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining('Skipped'));
+  });
+});
+
+// ─── overnight (#1574) ──────────────────────────────────────────────────────
+
+describe('overnight subcommands', () => {
+  const runData = {
+    runAt: '2026-09-05T02:00:00.000Z',
+    reportPath: '/r/overnight-2026-09-05.md',
+    prepare: [{ url: 'u1', type: 'ci_failing', label: '[CI]', reason: 'red' }],
+    judgment: [],
+    attention: { needsAttention: 1, stuckCI: 1, dormantFollowup: 0, waiting: 0 },
+    failures: [],
+    warnings: [],
+    carriedPrepared: 0,
+  };
+
+  it('run is the default subcommand and prints the report path and counts', async () => {
+    mockRunOvernight.mockResolvedValue(runData);
+
+    await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight']);
+
+    expect(mockRunOvernight).toHaveBeenCalledTimes(1);
+    expect(consoleLogSpy).toHaveBeenCalledWith('Overnight report: /r/overnight-2026-09-05.md');
+    expect(consoleLogSpy).toHaveBeenCalledWith('  1 to prepare, 0 need your judgment');
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining('carried over'));
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining('could not be fetched'));
+  });
+
+  it('run prints carry-over, fetch failures, and the gist warning when present', async () => {
+    mockRunOvernight.mockResolvedValue({
+      ...runData,
+      carriedPrepared: 2,
+      failures: [{ prUrl: 'u9', error: 'boom' }],
+      gistSyncWarning: 'push failed',
+    });
+
+    await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'run']);
+
+    expect(consoleLogSpy).toHaveBeenCalledWith('  2 branch(es) carried over from an earlier run today');
+    expect(consoleLogSpy).toHaveBeenCalledWith('  1 PR(s) could not be fetched (listed in the report)');
+    expect(consoleLogSpy).toHaveBeenCalledWith('  Warning: push failed');
+  });
+
+  it('run --json routes through outputJson (tier-2)', async () => {
+    mockRunOvernight.mockResolvedValue(runData);
+
+    await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'run', '--json']);
+
+    expect(mockOutputJson).toHaveBeenCalledWith(runData);
+  });
+
+  it('record forwards every flag and prints the recreated and gist notes', async () => {
+    mockRunOvernightRecord.mockResolvedValueOnce({ reportPath: '/r.md', preparedCount: 1 });
+    await buildProgram('overnight').parseAsync([
+      'node',
+      'cli',
+      'overnight',
+      'record',
+      '--url',
+      'u1',
+      '--branch',
+      'b1',
+      '--worktree',
+      '/w',
+      '--note',
+      'fixed lint',
+    ]);
+    expect(mockRunOvernightRecord).toHaveBeenCalledWith({
+      url: 'u1',
+      branch: 'b1',
+      worktree: '/w',
+      note: 'fixed lint',
+    });
+    expect(consoleLogSpy).toHaveBeenCalledWith('Recorded (1 prepared): /r.md');
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining('recreated'));
+
+    mockRunOvernightRecord.mockResolvedValueOnce({
+      reportPath: '/r.md',
+      preparedCount: 2,
+      reportRecreated: true,
+      gistSyncWarning: 'push failed',
+    });
+    await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'record', '--url', 'u2', '--branch', 'b2']);
+    expect(mockRunOvernightRecord).toHaveBeenLastCalledWith({
+      url: 'u2',
+      branch: 'b2',
+      worktree: undefined,
+      note: undefined,
+    });
+    expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('recreated with only the prepared section'));
+    expect(consoleLogSpy).toHaveBeenCalledWith('  Warning: push failed');
+  });
+
+  it('record --json routes through outputJson (tier-2)', async () => {
+    const data = { reportPath: '/r.md', preparedCount: 1 };
+    mockRunOvernightRecord.mockResolvedValue(data);
+
+    await buildProgram('overnight').parseAsync([
+      'node',
+      'cli',
+      'overnight',
+      'record',
+      '--url',
+      'u',
+      '--branch',
+      'b',
+      '--json',
+    ]);
+
+    expect(mockOutputJson).toHaveBeenCalledWith(data);
+  });
+
+  it('schedule defaults hour 2 and a bare claude, prints the plist without --install', async () => {
+    mockRunOvernightSchedule.mockResolvedValue({
+      plist: '<plist/>',
+      plistPath: '/p.plist',
+      installed: false,
+      loadCommand: 'launchctl bootstrap x',
+    });
+
+    await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'schedule']);
+
+    expect(mockRunOvernightSchedule).toHaveBeenCalledWith({ hour: 2, claudePath: 'claude', install: false });
+    expect(consoleLogSpy).toHaveBeenCalledWith('<plist/>');
+    expect(consoleLogSpy).toHaveBeenCalledWith('\nLoad it with:\n  launchctl bootstrap x');
+  });
+
+  it('schedule --install with overrides prints the written path instead of the plist', async () => {
+    mockRunOvernightSchedule.mockResolvedValue({
+      plist: '<plist/>',
+      plistPath: '/p.plist',
+      installed: true,
+      loadCommand: 'launchctl bootstrap x',
+    });
+
+    await buildProgram('overnight').parseAsync([
+      'node',
+      'cli',
+      'overnight',
+      'schedule',
+      '--hour',
+      '3',
+      '--claude-path',
+      '/opt/claude',
+      '--install',
+    ]);
+
+    expect(mockRunOvernightSchedule).toHaveBeenCalledWith({ hour: 3, claudePath: '/opt/claude', install: true });
+    expect(consoleLogSpy).toHaveBeenCalledWith('Wrote /p.plist');
+    expect(consoleLogSpy).not.toHaveBeenCalledWith('<plist/>');
+  });
+
+  it('schedule --json routes through outputJson (tier-2)', async () => {
+    const data = { plist: '<plist/>', plistPath: '/p.plist', installed: false, loadCommand: 'x' };
+    mockRunOvernightSchedule.mockResolvedValue(data);
+
+    await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'schedule', '--json']);
+
+    expect(mockOutputJson).toHaveBeenCalledWith(data);
+  });
+
+  it('a thrown run error routes through the JSON error envelope and exit(1)', async () => {
+    mockRunOvernight.mockRejectedValue(new Error('daily check failed'));
+
+    await expect(buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'run', '--json'])).rejects.toThrow(
+      'process.exit called',
+    );
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith('daily check failed', expect.anything());
+    expect(processExitSpy).toHaveBeenCalledWith(1);
   });
 });

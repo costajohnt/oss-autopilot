@@ -22,6 +22,8 @@ export { runDailyForDisplay } from './daily.js';
 export { executeDailyCheck } from './daily.js';
 /** Combined startup: auth check, setup check, daily fetch, dashboard launch, version detection. */
 export { runStartup } from './startup.js';
+/** Overnight prepare-and-queue run, branch recording, launchd schedule rendering (#1574). */
+export { runOvernight, runOvernightRecord, runOvernightSchedule } from './overnight.js';
 /** Return contribution statistics (merge rate, PR counts, repo breakdown) from local state. */
 export { runStatus } from './status.js';
 /** On-demand strategy snapshot via the typed `computeStrategy` core function (#1243 step 4). */

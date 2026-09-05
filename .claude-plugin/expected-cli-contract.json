@@ -20,6 +20,7 @@
     "manifest",
     "move",
     "orphan-files",
+    "overnight",
     "parse-issue-list",
     "post",
     "pr-template",
