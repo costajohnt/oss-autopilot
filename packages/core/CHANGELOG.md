@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.22.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.22.0...core-v3.22.1) (2026-09-05)
+
+
+### Performance Improvements
+
+* **bundle:** ship only zod's English locale in the core and MCP bundles ([#1658](https://github.com/costajohnt/oss-autopilot/issues/1658)) ([56ae27b](https://github.com/costajohnt/oss-autopilot/commit/56ae27b8265ee8ae57f4b72cbd550a3311e6ee1f)), closes [#1651](https://github.com/costajohnt/oss-autopilot/issues/1651)
+
 ## [3.22.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.21.1...core-v3.22.0) (2026-09-05)
 
 
