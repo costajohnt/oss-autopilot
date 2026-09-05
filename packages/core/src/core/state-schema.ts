@@ -292,27 +292,20 @@ export const AgentConfigSchema = z.object({
   diffToolCustomCommand: z.string().optional(),
 
   /**
-   * Opt-in gate for the auto-format-before-push hook (#1045). Default false:
-   * the hook does nothing on every push unless the user explicitly enables it.
+   * No effect since the hook was removed in #1642; kept for state-file
+   * compatibility.
    */
   autoFormatBeforePush: z.boolean().default(false),
 
   /**
-   * Opt-in gate for own-repo writes in the guard-public-posts hook. Default
-   * false: every GitHub-mutating command asks for approval. When true, writes
-   * whose target repo is owned by `githubUsername` skip the ask; anything the
-   * hook cannot prove is own-repo (forks, other owners, chained commands)
-   * still asks.
+   * No effect since the hook was removed in #1642; kept for state-file
+   * compatibility.
    */
   trustOwnRepoWrites: z.boolean().default(false),
 
   /**
-   * Threshold (in minutes) for the SessionStart PR health one-liner (#1255).
-   * The cached digest only refreshes when the user runs `/oss`; SessionStart
-   * fires every session. Without a freshness gate the line drifts arbitrarily
-   * stale between runs. When the cache is older than this many minutes (and
-   * not yet 7 days old, which keeps the existing catch-up nudge), the line is
-   * suppressed entirely. Default 30 minutes.
+   * No effect since the hook was removed in #1642; kept for state-file
+   * compatibility.
    */
   healthCheckFreshnessMinutes: z.number().int().positive().default(30),
 
