@@ -21,6 +21,7 @@ vi.mock('../core/index.js', async () => {
   return {
     ...actual,
     getStateManager: vi.fn(),
+    maybeCheckpoint: vi.fn().mockResolvedValue(null),
   };
 });
 
@@ -31,11 +32,12 @@ vi.mock('../core/starred-repos.js', () => ({
   refreshStarredReposIfStale: vi.fn().mockResolvedValue(0),
 }));
 
-import { getStateManager } from '../core/index.js';
+import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { createAutopilotScout, type ScoutBridgeDiagnostics } from './scout-bridge.js';
 import { runSearch, recordSearchSeen, parseSearchStrategies, SEARCH_SEEN_RETENTION_DAYS } from './search.js';
 
 const mockGetStateManager = vi.mocked(getStateManager);
+const mockMaybeCheckpoint = vi.mocked(maybeCheckpoint);
 
 describe('runSearch', () => {
   beforeEach(() => {
@@ -51,6 +53,37 @@ describe('runSearch', () => {
       getSearchSeen: vi.fn().mockReturnValue([]),
       setSearchSeen: vi.fn(),
     } as any);
+  });
+
+  it('checkpoints the Gist after recording the seen-set and surfaces a failed push (#1629)', async () => {
+    mockMaybeCheckpoint.mockResolvedValueOnce('Gist checkpoint push failed');
+    mockSearch.mockResolvedValue({
+      candidates: [],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+
+    const out = await runSearch({ maxResults: 5 });
+
+    const sm = mockGetStateManager.mock.results[0].value;
+    expect(mockMaybeCheckpoint).toHaveBeenCalledWith(sm, 'search');
+    expect(sm.setSearchSeen.mock.invocationCallOrder[0]).toBeLessThan(mockMaybeCheckpoint.mock.invocationCallOrder[0]);
+    expect(out.gistSyncWarning).toBe('Gist checkpoint push failed');
+  });
+
+  it('omits gistSyncWarning when the checkpoint succeeds (#1629)', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+
+    const out = await runSearch({ maxResults: 5 });
+
+    expect(mockMaybeCheckpoint).toHaveBeenCalledTimes(1);
+    expect(out).not.toHaveProperty('gistSyncWarning');
   });
 
   it('passes the diversity counterweight ratio to scout (#1244)', async () => {
