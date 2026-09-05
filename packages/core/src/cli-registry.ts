@@ -1558,6 +1558,89 @@ export const commands: CLICommandDef[] = [
     },
   },
 
+  // ── Overnight (#1574) ─────────────────────────────────────────────────
+  {
+    name: 'overnight',
+    register(program) {
+      const group = program
+        .command('overnight')
+        .description('Overnight prepare-and-queue run: daily check, morning report, no external side effects (#1574)');
+
+      group
+        .command('run', { isDefault: true })
+        .description('Run the check, bucket items into prepare vs judgment, write the morning report')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () => (await import('./commands/overnight.js')).runOvernight(),
+            (data) => {
+              console.log(`Overnight report: ${data.reportPath}`);
+              console.log(`  ${data.prepare.length} to prepare, ${data.judgment.length} need your judgment`);
+              if (data.carriedPrepared > 0)
+                console.log(`  ${data.carriedPrepared} branch(es) carried over from an earlier run today`);
+              if (data.failures.length > 0)
+                console.log(`  ${data.failures.length} PR(s) could not be fetched (listed in the report)`);
+              if (data.gistSyncWarning) console.log(`  Warning: ${data.gistSyncWarning}`);
+            },
+          );
+        });
+
+      group
+        .command('record')
+        .description('Record a branch an agent prepared for the latest overnight run')
+        .requiredOption('--url <url>', 'PR or issue URL the branch is for')
+        .requiredOption('--branch <name>', 'Local branch name')
+        .option('--worktree <path>', 'Worktree path holding the branch')
+        .option('--note <text>', 'One-line summary of what was prepared')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () =>
+              (await import('./commands/overnight.js')).runOvernightRecord({
+                url: options.url,
+                branch: options.branch,
+                worktree: options.worktree,
+                note: options.note,
+              }),
+            (data) => {
+              console.log(`Recorded (${data.preparedCount} prepared): ${data.reportPath}`);
+              if (data.reportRecreated)
+                console.log('  Report file was missing and has been recreated with only the prepared section');
+              if (data.gistSyncWarning) console.log(`  Warning: ${data.gistSyncWarning}`);
+            },
+          );
+        });
+
+      group
+        .command('schedule')
+        .description('Render (or with --install, write) the launchd plist that runs /oss-overnight nightly')
+        .option('--hour <n>', 'Local hour to run, 0-23', '2')
+        .option('--claude-path <path>', 'Path to the claude binary', 'claude')
+        .option('--install', 'Write the plist to ~/Library/LaunchAgents (does not load it)')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () =>
+              (await import('./commands/overnight.js')).runOvernightSchedule({
+                hour: Number(options.hour),
+                claudePath: options.claudePath,
+                install: Boolean(options.install),
+              }),
+            (data) => {
+              if (data.installed) console.log(`Wrote ${data.plistPath}`);
+              else console.log(data.plist);
+              console.log(`
+Load it with:
+  ${data.loadCommand}`);
+            },
+          );
+        });
+    },
+  },
+
   // ── Stats ─────────────────────────────────────────────────────────────
   {
     name: 'stats',

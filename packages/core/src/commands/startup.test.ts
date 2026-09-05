@@ -11,6 +11,7 @@ import { parseIssueListPathFromConfig, countIssueListItems } from './startup.js'
 vi.mock('../core/index.js', () => ({
   getStateManager: vi.fn(() => ({
     isSetupComplete: vi.fn(() => true),
+    getLastOvernight: vi.fn(() => undefined),
   })),
   getGitHubToken: vi.fn(() => 'fake-token'),
   getGitHubTokenAsync: vi.fn(() => Promise.resolve('fake-token')),
@@ -323,6 +324,7 @@ describe('detectIssueList', () => {
     const { getStateManager } = await import('../core/index.js');
     vi.mocked(getStateManager).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
       getState: vi.fn(() => ({ config: { issueListPath: 'state/issues.md' } })),
       updateConfig: vi.fn(),
     } as any);
@@ -343,6 +345,7 @@ describe('detectIssueList', () => {
     const { getStateManager } = await import('../core/index.js');
     vi.mocked(getStateManager).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
       getState: vi.fn(() => ({ config: { issueListPath: 'state/issues.md' } })),
       updateConfig: vi.fn(),
     } as any);
@@ -377,6 +380,7 @@ describe('detectIssueList', () => {
     const { getStateManager } = await import('../core/index.js');
     vi.mocked(getStateManager).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
       getState: vi.fn(() => ({ config: { issueListPath: 'open-source/issues.md' } })),
       updateConfig: vi.fn(),
     } as any);
@@ -415,6 +419,7 @@ describe('detectIssueList', () => {
     const { getStateManager } = await import('../core/index.js');
     vi.mocked(getStateManager).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
       // No skippedIssuesPath in config yet — the auto-detect must persist it.
       getState: vi.fn(() => ({ config: { issueListPath: 'open-source/issues.md' } })),
       updateConfig: updateConfigSpy,
@@ -443,6 +448,7 @@ describe('detectIssueList', () => {
     const { getStateManager } = await import('../core/index.js');
     vi.mocked(getStateManager).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
       getState: vi.fn(() => ({
         config: { issueListPath: absList, skippedIssuesPath: absSkip },
       })),
@@ -459,6 +465,7 @@ describe('detectIssueList', () => {
     const { getStateManager } = await import('../core/index.js');
     vi.mocked(getStateManager).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
       getState: vi.fn(() => ({ config: {} })),
       updateConfig: updateConfigSpy,
     } as any);
@@ -481,6 +488,7 @@ describe('detectIssueList', () => {
     const { getStateManager } = await import('../core/index.js');
     vi.mocked(getStateManager).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
       getState: vi.fn(() => ({ config: { issueListPath: 'state/issues.md' } })),
       updateConfig: updateConfigSpy,
     } as any);
@@ -496,6 +504,7 @@ describe('detectIssueList', () => {
     const { getStateManager } = await import('../core/index.js');
     vi.mocked(getStateManager).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
       getState: vi.fn(() => ({ config: { issueListPath: 'gone/list.md' } })),
       updateConfig: vi.fn(),
     } as any);
@@ -508,6 +517,7 @@ describe('detectIssueList', () => {
     const { getStateManager } = await import('../core/index.js');
     vi.mocked(getStateManager).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
       getState: vi.fn(() => ({ config: { issueListPath: '/data/oss/issues.md' } })),
       updateConfig: updateConfigSpy,
     } as any);
@@ -531,6 +541,7 @@ describe('detectIssueList', () => {
     const { getStateManager } = await import('../core/index.js');
     vi.mocked(getStateManager).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
       getState: vi.fn(() => ({ config: { issueListPath: absList, skippedIssuesPath: 'skipped-issues.md' } })),
       updateConfig: updateConfigSpy,
     } as any);
@@ -620,6 +631,43 @@ describe('runStartup behavior', () => {
   function expectBrowserOpenedWith(url: string): void {
     expect(execFile).toHaveBeenCalledWith(expect.any(String), expect.arrayContaining([url]), expect.any(Function));
   }
+
+  it('surfaces the latest overnight run as freshness (#1574)', async () => {
+    executeDailyCheck.mockResolvedValue(makeDailyOutput(0));
+    const core = await import('../core/index.js');
+    const sm = vi.mocked(core.getStateManager);
+    sm.mockReturnValue({
+      isSetupComplete: vi.fn(() => true),
+      getState: vi.fn(() => ({ config: {} })),
+      getLastOvernight: () => ({
+        runAt: new Date(Date.now() - 3 * 36e5).toISOString(),
+        reportPath: '/r/overnight-today.md',
+        prepareCount: 2,
+        judgmentCount: 1,
+        prepared: [{ url: 'u', branch: 'b', recordedAt: 'x' }],
+      }),
+    } as never);
+    try {
+      const result = await runStartup();
+      expect(result.overnight).toEqual({
+        runAt: expect.any(String),
+        reportPath: '/r/overnight-today.md',
+        ageHours: 3,
+        prepareCount: 2,
+        judgmentCount: 1,
+        preparedCount: 1,
+      });
+    } finally {
+      sm.mockReturnValue({ isSetupComplete: vi.fn(() => true), getLastOvernight: vi.fn(() => undefined) } as never);
+    }
+  });
+
+  it('omits overnight before the first overnight run (#1574)', async () => {
+    executeDailyCheck.mockResolvedValue(makeDailyOutput(0));
+    const result = await runStartup();
+    expect(result.overnight).toBeUndefined();
+    expect(result).not.toHaveProperty('overnightError');
+  });
 
   it('should still launch SPA when totalActivePRs is 0 (dashboard empty-state is fine)', async () => {
     // Regression: the old `> 0` gate swallowed the dashboard for misconfigured
@@ -713,6 +761,7 @@ describe('runStartup behavior', () => {
     const { getStateManager } = await import('../core/index.js');
     const mockGetStateManager = getStateManager as ReturnType<typeof vi.fn>;
     mockGetStateManager.mockReturnValue({
+      getLastOvernight: vi.fn(() => undefined),
       isSetupComplete: vi.fn(() => false),
     });
 
@@ -727,6 +776,7 @@ describe('runStartup behavior', () => {
     const mockGetGitHubTokenAsync = getGitHubTokenAsync as ReturnType<typeof vi.fn>;
     mockGetStateManager.mockReturnValue({
       isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
     });
     mockGetGitHubTokenAsync.mockResolvedValue(null);
 
@@ -744,6 +794,7 @@ describe('runStartup behavior', () => {
     const { getStateManager, getGitHubToken, getGitHubTokenAsync } = await import('../core/index.js');
     (getStateManager as ReturnType<typeof vi.fn>).mockReturnValue({
       isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
     });
     (getGitHubToken as ReturnType<typeof vi.fn>).mockReturnValue(null); // env var unset
     (getGitHubTokenAsync as ReturnType<typeof vi.fn>).mockResolvedValue('token-from-gh-cli');
@@ -759,7 +810,10 @@ describe('runStartup behavior', () => {
   it('should propagate daily check failure to caller', async () => {
     // Reset mocks to ensure auth passes
     const { getStateManager: gsm, getGitHubTokenAsync: ghtAsync } = await import('../core/index.js');
-    (gsm as ReturnType<typeof vi.fn>).mockReturnValue({ isSetupComplete: vi.fn(() => true) });
+    (gsm as ReturnType<typeof vi.fn>).mockReturnValue({
+      isSetupComplete: vi.fn(() => true),
+      getLastOvernight: vi.fn(() => undefined),
+    });
     (ghtAsync as ReturnType<typeof vi.fn>).mockResolvedValue('fake-token');
 
     executeDailyCheck.mockRejectedValue(new Error('Network error'));
@@ -1029,6 +1083,7 @@ describe('runStartup behavior', () => {
       const { getStateManager: gsm, getGitHubToken: ght, detectGitHubUsername: dgu } = await import('../core/index.js');
       let setupComplete = false;
       (gsm as ReturnType<typeof vi.fn>).mockReturnValue({
+        getLastOvernight: vi.fn(() => undefined),
         isSetupComplete: vi.fn(() => setupComplete),
         initializeWithDefaults: vi.fn((_username: string) => {
           setupComplete = true;

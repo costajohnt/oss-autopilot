@@ -35,6 +35,7 @@ agent's body instructs with is actually granted (#1377).
 - `contribution-strategist` — `Bash`, `Read`, `AskUserQuestion`, `mcp__...__strategy` (read-only analyzer; emits a markdown report in chat).
 - `issue-scout` — `Bash`, `Read`, `AskUserQuestion`, `mcp__...__search`, `mcp__...__verify-issue`, `mcp__...__vet`, `mcp__...__vet-list`, `mcp__...__status`.
 - `pr-compliance-checker` — `Bash`, `Read`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__compliance-score`, `mcp__...__guidelines-get`.
+- `overnight-preparer` — `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep` (unattended: no question tool and no MCP tools; the plist deny list blocks git push and every gh write underneath it).
 - `pr-health-checker` — `Bash`, `Read`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`. (Reads config via the CLI `config --json`; the MCP config tool is a get-or-set mutator and is deliberately not granted.)
 - `pr-responder` — `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__track`, `mcp__...__comments`, `mcp__...__guidelines-get` (keeps `Write` for drafting response files under `/tmp` and `Edit` for formatting reverts; posting still routes through `draft-review-post`).
 - `pre-commit-reviewer` — `Bash`, `Read`, `Glob`, `Grep`, `AskUserQuestion`, `mcp__...__guidelines-get` (local git/diff review).
@@ -68,6 +69,7 @@ Opus should not burn tokens on `pr-compliance-checker`'s deterministic rubric.
 | `contribution-strategist` | `haiku` | Aggregates `status --json` into a markdown summary. Bounded scope, no judgment calls. |
 | `issue-scout` | `sonnet` | Judgment on issue viability + anti-AI policy detection; reads scout-bridge output and filters. |
 | `pr-compliance-checker` | `haiku` | Deterministic 6-weight rubric emission against a PR. Structured output, minimal ambiguity. |
+| `overnight-preparer` | `sonnet` | CI log diagnosis, conflict resolution and requested-change edits in a worktree, unattended; needs to reason about failures and know when to stop. |
 | `pr-health-checker` | `sonnet` | Git rebase flow + CI log diagnosis; needs to reason about error messages and suggest fixes. |
 | `pr-responder` | `sonnet` | Claim verification + tone calibration + multi-step draft-accuracy procedure. Heavy reasoning. |
 | `pre-commit-reviewer` | `sonnet` | Five-phase diff review including security scan. Heavy reasoning. |

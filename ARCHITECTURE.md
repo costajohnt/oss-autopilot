@@ -28,6 +28,7 @@ The plugin layer consists of markdown files that Claude Code discovers and execu
 | `oss.md` | `/oss` | Core router — startup, summary, action menu, execution |
 | `setup-oss.md` | `/setup-oss` | First-run configuration wizard |
 | `oss-search.md` | `/oss-search` | Issue discovery with multi-strategy search |
+| `oss-overnight.md` | `/oss-overnight` | Unattended prepare-and-queue run with a morning report; never pushes, posts, or merges (#1574) |
 | `oss-help.md` | `/oss-help` | Quick reference card for commands, agents, and workflows |
 | `oss-dashboard.md` | `/oss-dashboard` | Open the interactive SPA dashboard in the browser |
 | `oss-guidelines.md` | `/oss-guidelines` | View / edit / reset per-repo contribution guidelines stored by extract-learnings |
@@ -57,7 +58,7 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 
 ### Agents (`agents/`)
 
-7 specialized agents handle specific tasks autonomously:
+8 specialized agents handle specific tasks autonomously:
 
 | Agent | Role |
 |-------|------|
@@ -68,6 +69,7 @@ Workflows contain delegated logic that commands read on demand. They are not sta
 | `repo-evaluator` | Score repository health and responsiveness |
 | `contribution-strategist` | Analyze contribution patterns and advise on strategy |
 | `pre-commit-reviewer` | Fallback code review (when toolkit unavailable) |
+| `overnight-preparer` | Prepare one fix branch locally for `/oss-overnight`; never pushes, posts, or asks |
 
 ### Skills (`skills/`)
 

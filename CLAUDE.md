@@ -70,7 +70,7 @@ The system has three layers:
 ```
 Repo root (also the Claude Code plugin directory):
 ├── commands/oss.md, setup-oss.md       # Plugin slash commands
-├── agents/*.md                          # 7 specialized agents
+├── agents/*.md                          # 8 specialized agents
 ├── skills/oss-contribution/SKILL.md     # Contribution index (universal rules)
 ├── skills/pr-etiquette/SKILL.md         # Review responses, PR descriptions, dormant follow-up
 ├── skills/contribution-ethics/SKILL.md  # AI attribution, AI-tell avoidance, defer-to-human

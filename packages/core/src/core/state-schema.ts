@@ -454,6 +454,24 @@ export const SearchSeenEntrySchema = z.object({
   lastSeenAt: z.string(),
 });
 
+/** One branch an overnight agent prepared locally (#1574). Never pushed by the run. */
+export const OvernightPreparedSchema = z.object({
+  url: z.string(),
+  branch: z.string(),
+  worktree: z.string().optional(),
+  note: z.string().optional(),
+  recordedAt: z.string(),
+});
+
+/** The latest overnight run (#1574); `startup` surfaces its freshness. */
+export const OvernightRecordSchema = z.object({
+  runAt: z.string(),
+  reportPath: z.string(),
+  prepareCount: z.number().int().nonnegative(),
+  judgmentCount: z.number().int().nonnegative(),
+  prepared: z.array(OvernightPreparedSchema).default([]),
+});
+
 export const AgentStateSchema = z.object({
   version: z.literal(4),
   gistId: z.string().optional(),
@@ -518,6 +536,9 @@ export const AgentStateSchema = z.object({
    * it cannot grow without bound.
    */
   searchSeen: z.array(SearchSeenEntrySchema).default([]),
+
+  /** Latest overnight run (#1574). Absent until the first `overnight`. */
+  lastOvernight: OvernightRecordSchema.optional(),
 });
 
 // ── Inferred types ───────────────────────────────────────────────────
@@ -528,6 +549,8 @@ export type ProjectCategory = z.infer<typeof ProjectCategorySchema>;
 export type IssueScope = z.infer<typeof IssueScopeSchema>;
 export type DiffTool = z.infer<typeof DiffToolSchema>;
 export type SearchSeenEntry = z.infer<typeof SearchSeenEntrySchema>;
+export type OvernightPrepared = z.infer<typeof OvernightPreparedSchema>;
+export type OvernightRecord = z.infer<typeof OvernightRecordSchema>;
 export type RepoSignals = z.infer<typeof RepoSignalsSchema>;
 export type RepoScore = z.infer<typeof RepoScoreSchema>;
 export type StoredMergedPR = z.infer<typeof StoredMergedPRSchema>;

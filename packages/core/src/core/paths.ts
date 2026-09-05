@@ -86,6 +86,15 @@ export function getCacheDir(): string {
   return dir;
 }
 
+/** Returns `~/.oss-autopilot/reports`, creating it (overnight morning reports, #1574). */
+export function getReportsDir(): string {
+  const dir = path.join(getDataDir(), 'reports');
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
+  return dir;
+}
+
 /**
  * Returns the path to the local Gist ID file (`~/.oss-autopilot/gist-id`).
  *

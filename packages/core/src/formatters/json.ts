@@ -1268,6 +1268,12 @@ export interface StartupOutput {
    */
   dashboardBuildErrorTail?: string;
   issueList?: IssueListInfo;
+  /**
+   * Freshness of the latest overnight run (#1574): when it ran, where the
+   * morning report is, and how much it prepared or queued. Absent until the
+   * first `overnight` run.
+   */
+  overnight?: import('../commands/overnight.js').OvernightFreshness;
 }
 
 /**

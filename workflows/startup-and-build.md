@@ -1,6 +1,6 @@
 # Startup and Build
 
-> **Session state:** No inputs required. Produces: `version`, `data.daily`, `dashboardUrl`, `issueList`, `setupComplete`, `autoDetected`, `authError`.
+> **Session state:** No inputs required. Produces: `version`, `data.daily`, `dashboardUrl`, `issueList`, `overnight`, `setupComplete`, `autoDetected`, `authError`.
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
 
 ---
@@ -94,6 +94,7 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 | `data.dashboardBuildStatus` | `'fresh' \| 'rebuilt' \| 'failed' \| 'missing-pnpm'` (when set by the workflow) | If `'failed'` or `'missing-pnpm'`, render the warning below before the action menu |
 | `data.dashboardBuildErrorTail` | Last few lines of the dashboard build log when `dashboardBuildStatus` is a failure | Quote in the warning so the user sees what broke |
 | `data.issueList` | Issue list info (if detected) | `hasIssueList` = present; extract `path`, `source`, `availableCount`, `completedCount` |
+| `data.overnight` | Latest `/oss-overnight` run (#1574): `runAt`, `reportPath`, `ageHours` (absent with `runAtInvalid: true` when the timestamp is unparseable), `prepareCount`, `judgmentCount`, `preparedCount` | If present and `ageHours < 24`, show one line before the action menu: `Overnight report (<ageHours>h ago): <preparedCount> branches prepared, <judgmentCount> need your judgment — <reportPath>`. Older than 24h or `runAtInvalid`: say nothing. |
 
 **Routing based on parsed data:**
 - `data.authError` is present → Tell the user: show `data.authError` message. Then offer recovery: "Run `gh auth login` to authenticate, then run `/oss` again." End the session — do not continue to Summary or Action Menu without valid auth.

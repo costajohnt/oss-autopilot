@@ -33,6 +33,14 @@ Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-fo
 # state; returns null + message when fewer than the minimum tracked PRs are
 # available.
 <prefix> strategy --json
+
+# Overnight prepare-and-queue run (#1574): daily check, prepare/judgment
+# buckets, morning report under ~/.oss-autopilot/reports/. Never pushes,
+# posts, or merges. `record` appends a branch an agent prepared; `schedule`
+# renders (or with --install writes) the launchd plist for /oss-overnight.
+<prefix> overnight run --json
+<prefix> overnight record --url <url> --branch <name> [--worktree <path>] [--note <text>] --json
+<prefix> overnight schedule [--hour <n>] [--claude-path <path>] [--install] --json
 ```
 
 ### Issue Discovery
@@ -210,6 +218,7 @@ rejected with a did-you-mean suggestion.
 | `pr-health-checker` | Diagnose CI failures, merge conflicts, rebase status |
 | `pr-compliance-checker` | Validate PRs against opensource.guide |
 | `pre-commit-reviewer` | Review code changes before committing (fallback for PR review toolkit) |
+| `overnight-preparer` | Prepare one fix branch locally for the overnight run, with no external side effects |
 | `issue-scout` | Find and vet new issues |
 | `repo-evaluator` | Analyze repository health |
 | `contribution-strategist` | Strategic OSS advice |
