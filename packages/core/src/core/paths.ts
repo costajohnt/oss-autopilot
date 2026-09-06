@@ -128,12 +128,16 @@ export function stateFileExists(): boolean {
 
 /**
  * Read the CLI package version from package.json relative to the running CLI bundle.
- * Resolves `../package.json` from `process.argv[1]` (the bundle entry point).
+ * Resolves `../package.json` from the real path of `process.argv[1]` (the bundle
+ * entry point). An npm install runs the CLI through the `node_modules/.bin/oss-autopilot`
+ * symlink, and Node leaves `process.argv[1]` as the symlink, so without `realpathSync`
+ * the lookup lands on `node_modules/package.json` and every caller sees `0.0.0` (#1664).
  * Falls back to '0.0.0' if the file is unreadable.
  */
 export function getCLIVersion(): string {
   try {
-    const pkgPath = path.join(path.dirname(process.argv[1]), '..', 'package.json');
+    const entry = fs.realpathSync(process.argv[1]);
+    const pkgPath = path.join(path.dirname(entry), '..', 'package.json');
     return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
   } catch {
     return '0.0.0';
