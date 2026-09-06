@@ -100,7 +100,8 @@ nothing that mutates remote state: file tools, Task, git subcommands except
 `issue view`, `repo view`; no `gh api`), and `node`/`pnpm`/`npm` for the CLI
 and test suites. No `bash`, `sh`, or `npx`. A deny list (`--disallowedTools`,
 deny beats allow) additionally names `git push`, every `gh pr`/`gh issue`
-write, `gh run rerun`, `gh api`, and `AskUserQuestion`. The preparer agent's
+write, `gh run rerun`, `gh api`, the npm/pnpm registry writes
+(`publish`/`unpublish`/`deprecate`), and `AskUserQuestion`. The preparer agent's
 charter repeats the gate so an interactive `/oss-overnight` behaves the same. If running a repo's test
 suite under your own credentials is more trust than you want, run the job as
 a dedicated user with no push credentials. Two caveats
