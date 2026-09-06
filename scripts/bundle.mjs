@@ -17,12 +17,17 @@
  *
  * Set BUNDLE_METAFILE=<path> to also write an esbuild metafile for size work.
  */
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
 // esbuild is a devDependency of each package, not of the workspace root.
 const { build } = createRequire(path.join(process.cwd(), 'package.json'))('esbuild');
+
+// Read the version from the package that owns this bundle entry (packages/core).
+// This is used to inline __CLI_VERSION__ at build time so --version is correct
+// regardless of whether the binary is invoked directly or via a bin symlink.
+const { version: CLI_VERSION } = JSON.parse(readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
 
 const [entry, outfile, ...flags] = process.argv.slice(2);
 if (!entry || !outfile) {
@@ -55,5 +60,13 @@ const result = await build({
   outfile,
   metafile: Boolean(process.env.BUNDLE_METAFILE),
   plugins: [onlyEnLocale],
+  define: {
+    // Inline the package version at build time so getCLIVersion() returns the
+    // correct value even when the binary is invoked through a bin symlink
+    // (e.g. node_modules/.bin/oss-autopilot), where process.argv[1] does not
+    // point at the bundle file and the filesystem fallback resolves the wrong
+    // package.json (#1664).
+    __CLI_VERSION__: JSON.stringify(CLI_VERSION),
+  },
 });
 if (process.env.BUNDLE_METAFILE) writeFileSync(process.env.BUNDLE_METAFILE, JSON.stringify(result.metafile));

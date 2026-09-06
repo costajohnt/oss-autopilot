@@ -17,7 +17,7 @@ import {
   resetGitHubTokenCache,
   detectGitHubUsername,
 } from './auth.js';
-import { getDataDir, getStatePath, getBackupDir, stateFileExists } from './paths.js';
+import { getDataDir, getStatePath, getBackupDir, stateFileExists, getCLIVersion } from './paths.js';
 import { execFileSync, execFile } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -620,5 +620,35 @@ describe('detectGitHubUsername', () => {
     });
     const username = await detectGitHubUsername();
     expect(username).toBeNull();
+  });
+});
+
+// ─── getCLIVersion (#1664) ────────────────────────────────────────────────────
+
+describe('getCLIVersion', () => {
+  afterEach(() => {
+    // Clean up any global we set during tests
+    delete (globalThis as Record<string, unknown>).__CLI_VERSION__;
+  });
+
+  it('returns the compile-time constant when __CLI_VERSION__ is defined (bundle path)', () => {
+    // Simulate esbuild's define replacement by setting the global before calling.
+    (globalThis as Record<string, unknown>).__CLI_VERSION__ = '9.8.7';
+    expect(getCLIVersion()).toBe('9.8.7');
+  });
+
+  it('does not return "0.0.0" when __CLI_VERSION__ is defined as a real version', () => {
+    (globalThis as Record<string, unknown>).__CLI_VERSION__ = '3.22.1';
+    expect(getCLIVersion()).not.toBe('0.0.0');
+    expect(getCLIVersion()).toMatch(/^\d+\.\d+\.\d+/);
+  });
+
+  it('falls back gracefully when __CLI_VERSION__ is not defined (dev/test path)', () => {
+    // No global set — the fallback runs. It either reads a local package.json
+    // (dev mode) or catches and returns the '0.0.0' sentinel. Either result is
+    // a semver-like string; the important thing is it does not throw.
+    expect(() => getCLIVersion()).not.toThrow();
+    expect(typeof getCLIVersion()).toBe('string');
+    expect(getCLIVersion().length).toBeGreaterThan(0);
   });
 });

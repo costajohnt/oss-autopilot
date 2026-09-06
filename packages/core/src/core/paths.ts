@@ -126,12 +126,25 @@ export function stateFileExists(): boolean {
   return fs.existsSync(stateFile);
 }
 
+// Injected by esbuild at bundle time via the `define` option in scripts/bundle.mjs.
+// Undefined in dev mode (tsx) and test environments.
+declare const __CLI_VERSION__: string | undefined;
+
 /**
- * Read the CLI package version from package.json relative to the running CLI bundle.
- * Resolves `../package.json` from `process.argv[1]` (the bundle entry point).
- * Falls back to '0.0.0' if the file is unreadable.
+ * Read the CLI package version.
+ *
+ * When running from the published bundle, esbuild inlines the version string as
+ * `__CLI_VERSION__` at build time, so no filesystem access is needed and the
+ * result is correct regardless of how the binary is invoked (direct path or bin
+ * symlink). In dev mode (tsx) or tests, falls back to reading package.json
+ * relative to process.argv[1].
  */
 export function getCLIVersion(): string {
+  // Bundle path: esbuild replaces __CLI_VERSION__ with the literal version string.
+  if (typeof __CLI_VERSION__ !== 'undefined') {
+    return __CLI_VERSION__;
+  }
+  // Dev/test fallback: resolve package.json from the entry point.
   try {
     const pkgPath = path.join(path.dirname(process.argv[1]), '..', 'package.json');
     return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).version;
