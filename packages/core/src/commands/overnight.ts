@@ -351,6 +351,15 @@ export const OVERNIGHT_DISALLOWED_TOOLS = [
   'Bash(gh issue close *)',
   'Bash(gh run rerun *)',
   'Bash(gh api *)',
+  // `npm`/`pnpm` are allowed for builds and tests, but a token in ~/.npmrc
+  // would let their registry writes ship a release unattended — exactly the
+  // credential-bearing writes the gate exists to keep out.
+  'Bash(npm publish)',
+  'Bash(npm publish *)',
+  'Bash(npm unpublish *)',
+  'Bash(npm deprecate *)',
+  'Bash(pnpm publish)',
+  'Bash(pnpm publish *)',
   'AskUserQuestion',
 ].join(',');
 

@@ -402,6 +402,12 @@ describe('schedule', () => {
       'Bash(gh pr merge *)',
       'Bash(gh pr comment *)',
       'Bash(gh api *)',
+      'Bash(npm publish)',
+      'Bash(npm publish *)',
+      'Bash(npm unpublish *)',
+      'Bash(npm deprecate *)',
+      'Bash(pnpm publish)',
+      'Bash(pnpm publish *)',
       'AskUserQuestion',
     ]) {
       expect(denied).toContain(must);
