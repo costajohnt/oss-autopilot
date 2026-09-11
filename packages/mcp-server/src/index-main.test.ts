@@ -97,7 +97,7 @@ vi.mock('./auth.js', () => ({
   ),
 }));
 
-import { main, ENTRY_SUFFIXES } from './index.js';
+import { main, ENTRY_SUFFIXES, isEntryPoint } from './index.js';
 
 // Sentinel error for mocked process.exit
 class ExitError extends Error {
@@ -354,5 +354,27 @@ describe('ENTRY_SUFFIXES', () => {
     expect(ENTRY_SUFFIXES).toContain('/mcp-server.bundle.cjs');
     expect(ENTRY_SUFFIXES).toContain('/oss-autopilot-mcp');
     expect(ENTRY_SUFFIXES).toHaveLength(4);
+  });
+});
+
+describe('isEntryPoint', () => {
+  it.each([
+    // POSIX paths
+    ['/tmp/node_modules/@oss-autopilot/mcp/dist/mcp-server.bundle.cjs', true],
+    ['/home/user/.local/share/oss-autopilot-mcp', true],
+    ['/path/to/mcp-server/src/index.ts', true],
+    ['/path/to/mcp-server/dist/index.js', true],
+    // Windows paths (backslashes)
+    ['C:\\tmp\\node_modules\\@oss-autopilot\\mcp\\dist\\mcp-server.bundle.cjs', true],
+    ['C:\\Users\\dev\\AppData\\Roaming\\npm\\oss-autopilot-mcp', true],
+    ['C:\\projects\\mcp-server\\src\\index.ts', true],
+    // Non-matching paths
+    ['/some/other/script.ts', false],
+    ['C:\\Windows\\System32\\cmd.exe', false],
+    // Edge cases
+    [undefined, false],
+    ['', false],
+  ])('isEntryPoint(%s) === %s', (argv1, expected) => {
+    expect(isEntryPoint(argv1)).toBe(expected);
   });
 });
