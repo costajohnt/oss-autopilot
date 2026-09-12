@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.22.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.22.2...core-v3.22.3) (2026-09-12)
+
+
+### Bug Fixes
+
+* correct multiline descriptions in agent frontmatter ([be89830](https://github.com/costajohnt/oss-autopilot/commit/be89830e5f001cd1bda9676bfa2a528670e6dfd8))
+* correct multiline descriptions in agent frontmatter ([a5c7aca](https://github.com/costajohnt/oss-autopilot/commit/a5c7aca432d2a46d76c5d618ac109ebe94707bd7))
+* **local-repos:** bound the directory scan to the old 30s timeout ([db9ec79](https://github.com/costajohnt/oss-autopilot/commit/db9ec79653dba33b0a019bb8ed042bdd3a782032))
+* **local-repos:** use portable filesystem traversal ([817f345](https://github.com/costajohnt/oss-autopilot/commit/817f345336be1079d8979879cadab331e74ef95c))
+* **local-repos:** use portable filesystem traversal ([70f2fd3](https://github.com/costajohnt/oss-autopilot/commit/70f2fd330040958ccb6f7e087ca2a7c89a4376f3))
+* **overnight:** deny npm/pnpm registry writes in the headless tool list ([2797515](https://github.com/costajohnt/oss-autopilot/commit/2797515b4d4d1ce8946ca251837cb7f07ceb2c5a))
+* **overnight:** deny npm/pnpm registry writes in the headless tool list ([67d4a91](https://github.com/costajohnt/oss-autopilot/commit/67d4a91bc46fc9d3f21039ac35461e38d9559285))
+
 ## [3.22.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.22.1...core-v3.22.2) (2026-09-06)
 
 

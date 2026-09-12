@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.7.4](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.3...mcp-v5.7.4) (2026-09-12)
+
+
+### Bug Fixes
+
+* **mcp:** detect Windows entry-point paths ([d7f5bcf](https://github.com/costajohnt/oss-autopilot/commit/d7f5bcf231d967a608d7cb760490fc5eccbd48f1))
+* **mcp:** detect Windows entry-point paths ([5eeb1ad](https://github.com/costajohnt/oss-autopilot/commit/5eeb1ad5f335c526637e83b90a6908fea81df8d8))
+
 ## [5.7.3](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.2...mcp-v5.7.3) (2026-09-05)
 
 
