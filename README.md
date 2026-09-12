@@ -20,6 +20,7 @@
   <a href="https://www.npmjs.com/package/@oss-autopilot/core"><img src="https://img.shields.io/npm/v/@oss-autopilot/core" alt="npm @oss-autopilot/core"></a>
   <a href="https://www.npmjs.com/package/@oss-autopilot/core"><img src="https://img.shields.io/npm/dw/@oss-autopilot/core" alt="npm downloads"></a>
   <a href="https://www.npmjs.com/package/@oss-autopilot/mcp"><img src="https://img.shields.io/npm/v/@oss-autopilot/mcp" alt="npm @oss-autopilot/mcp"></a>
+  <a href="https://github.com/hesreallyhim/awesome-claude-code"><img src="https://awesome.re/mentioned-badge.svg" alt="Mentioned in Awesome Claude Code"></a>
 </p>
 
 ---
