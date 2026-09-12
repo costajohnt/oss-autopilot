@@ -4,7 +4,7 @@
  */
 
 import * as fs from 'node:fs';
-import * as path from 'node:path';
+import path from 'node:path';
 import * as os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { getStateManager, debug } from '../core/index.js';
@@ -27,6 +27,66 @@ const DEFAULT_SCAN_PATHS = [
   path.join(os.homedir(), 'code'),
   path.join(os.homedir(), 'repos'),
 ];
+
+// Maximum depth for `.git` directories, matching the previous `find -maxdepth 4` behavior.
+const MAX_GIT_DIR_DEPTH = 4;
+// Wall-clock bound per scan root, matching the previous `execFileSync` timeout. A scan root like
+// `~` can hold millions of entries within four levels; a partial result beats a hung process.
+const SCAN_TIMEOUT_MS = 30_000;
+
+interface PendingDirectory {
+  directory: string;
+  depth: number;
+}
+
+function collectGitDirectoryEntries(
+  entries: fs.Dirent[],
+  directory: string,
+  depth: number,
+  pending: PendingDirectory[],
+  gitDirectories: string[],
+): void {
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+
+    const childPath = path.join(directory, entry.name);
+    const childDepth = depth + 1;
+
+    if (entry.name === '.git') {
+      gitDirectories.push(childPath);
+    } else if (childDepth < MAX_GIT_DIR_DEPTH) {
+      pending.push({ directory: childPath, depth: childDepth });
+    }
+  }
+}
+
+// Find `.git` directories without platform-specific shell tools. Directory symlinks are not
+// followed, matching GNU find's default behavior.
+function findGitDirectories(scanPath: string): string[] {
+  const gitDirectories: string[] = [];
+  const pending = [{ directory: scanPath, depth: 0 }];
+  const deadline = Date.now() + SCAN_TIMEOUT_MS;
+
+  while (pending.length > 0) {
+    if (Date.now() > deadline) {
+      debug('local-repos', `Scan of ${scanPath} exceeded ${SCAN_TIMEOUT_MS}ms; returning partial results`);
+      break;
+    }
+    const { directory, depth } = pending.pop()!;
+    let entries: fs.Dirent[];
+
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch (error) {
+      debug('local-repos', `Failed to read directory ${directory}`, error);
+      continue;
+    }
+
+    collectGitDirectoryEntries(entries, directory, depth, pending, gitDirectories);
+  }
+
+  return gitDirectories;
+}
 
 /** Extract the GitHub "owner/repo" remote from a git directory */
 function getGitHubRemote(repoPath: string): string | null {
@@ -77,23 +137,11 @@ export function scanForRepos(scanPaths: string[]): Record<string, LocalRepoInfo>
   for (const scanPath of scanPaths) {
     if (!fs.existsSync(scanPath)) continue;
 
-    // Find git repos up to 3 levels deep
-    let gitDirs: string[];
-    try {
-      const output = execFileSync('find', [scanPath, '-maxdepth', '4', '-name', '.git', '-type', 'd'], {
-        encoding: 'utf8',
-        timeout: 30_000,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      }).trim();
-      gitDirs = output ? output.split('\n').filter(Boolean) : [];
-    } catch (err) {
-      // find command failed for this scan path (permission denied, path gone, etc.) — skip it
-      debug('local-repos', `find failed for scan path ${scanPath}`, err);
-      continue;
-    }
+    // Find `.git` directories up to 4 levels beneath the scan root (repos up to 3 levels deep).
+    const gitDirectories = findGitDirectories(scanPath);
 
-    for (const gitDir of gitDirs) {
-      const repoPath = path.dirname(gitDir);
+    for (const gitDirectory of gitDirectories) {
+      const repoPath = path.dirname(gitDirectory);
       const remote = getGitHubRemote(repoPath);
       if (!remote) continue;
 
