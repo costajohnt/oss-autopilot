@@ -74,7 +74,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.0",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.13",
     "typedoc": "^0.28.20",
