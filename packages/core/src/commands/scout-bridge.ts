@@ -4,7 +4,7 @@
  */
 
 import { createScout, type LinkedPR as ScoutLinkedPR, type OssScout, type ScoutState } from '@oss-scout/core';
-import { getStateManager, isLinkedPRStalled, requireGitHubToken } from '../core/index.js';
+import { getStateManager, isLinkedPRStalled, parseGitHubUrl, requireGitHubToken } from '../core/index.js';
 import type { LinkedPR } from '../core/linked-pr-classification.js';
 import { computeStrategy } from '../core/strategy.js';
 import type { CandidateLinkedPR } from '../formatters/json.js';
@@ -110,6 +110,27 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
     diagnostics.skipListUnavailable = true;
   }
 
+  // Dismissed issues (`/oss dismiss`, dashboard) count as skipped for scout too.
+  // Without this, scout's own recently-surfaced window (7 days) was the only
+  // thing keeping a dismissed issue out of `search`, so it came back once the
+  // window lapsed. `undismiss` deletes the map entry, so only current
+  // dismissals are merged. Scout filters by URL alone; repo/number are
+  // best-effort from the URL and title is unknown, same as the skip file.
+  const skippedIssues = [...skippedIssuesLoad.issues];
+  const skippedUrls = new Set(skippedIssues.map((s) => s.url));
+  for (const [url, dismissedAt] of Object.entries(config.dismissedIssues ?? {})) {
+    if (skippedUrls.has(url)) continue;
+    const parsed = parseGitHubUrl(url);
+    skippedIssues.push({
+      url,
+      repo: parsed ? `${parsed.owner}/${parsed.repo}` : '',
+      number: parsed?.number ?? 0,
+      title: '',
+      skippedAt: dismissedAt,
+      reason: 'dismissed',
+    });
+  }
+
   // Strategy-derived personalization (#1464). `computeStrategy` returns null
   // below the merged-PR floor — empty lists then read as "no bias" on scout's
   // side. Baking the bias into the preferences (rather than only per-call
@@ -136,8 +157,15 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       maxIssueAgeDays: config.maxIssueAgeDays,
       includeDocIssues: config.includeDocIssues,
       minRepoScoreThreshold: config.minRepoScoreThreshold,
-      interPhaseDelayMs: 30_000,
-      broadPhaseDelayMs: 90_000,
+      // No inter-phase or broad-phase cooldown. Scout's broad phase runs on
+      // GraphQL now (its schema default for broadPhaseDelayMs is 0), and the
+      // 30s/90s pins formerly here cost ~2 minutes per search. Both must be
+      // passed explicitly: scout does not schema-parse a provided initialState,
+      // so an omitted field falls through to its hard-coded 30s/90s fallbacks.
+      // OSS_AUTOPILOT_SCOUT_{INTER,BROAD}_PHASE_DELAY_MS (search.ts) override
+      // per call for hosts that need spacing.
+      interPhaseDelayMs: 0,
+      broadPhaseDelayMs: 0,
       skipBroadWhenSufficientResults: config.skipBroadWhenSufficientResults,
       persistence: config.persistence as 'local' | 'gist',
       slmTriageModel: config.slmTriageModel,
@@ -220,7 +248,7 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       lastSeenAt: s.lastSeenAt,
       lastScore: 0,
     })),
-    skippedIssues: skippedIssuesLoad.issues,
+    skippedIssues,
     lastRunAt: state.lastRunAt,
     // Broad-phase language rotation cursor (#1630). Scout advances it in its
     // own state after a search whose broad phase ran; under
