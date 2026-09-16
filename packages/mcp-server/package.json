@@ -28,7 +28,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@oss-autopilot/core": "workspace:^",
-    "zod": "^4.5.4"
+    "zod": "^4.6.4"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
