@@ -1716,7 +1716,7 @@ export const commands: CLICommandDef[] = [
                 install: Boolean(options.install),
               }),
             (data) => {
-              if (data.installed) console.log(`Wrote ${data.plistPath}`);
+              if (data.installed) console.log(`Wrote ${data.plistPath} and ${data.settingsPath}`);
               else console.log(data.plist);
               console.log(`
 Load it with:

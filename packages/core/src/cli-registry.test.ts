@@ -2568,6 +2568,7 @@ describe('overnight subcommands', () => {
     mockRunOvernightSchedule.mockResolvedValue({
       plist: '<plist/>',
       plistPath: '/p.plist',
+      settingsPath: '/s.json',
       installed: true,
       loadCommand: 'launchctl bootstrap x',
     });
@@ -2585,7 +2586,7 @@ describe('overnight subcommands', () => {
     ]);
 
     expect(mockRunOvernightSchedule).toHaveBeenCalledWith({ hour: 3, claudePath: '/opt/claude', install: true });
-    expect(consoleLogSpy).toHaveBeenCalledWith('Wrote /p.plist');
+    expect(consoleLogSpy).toHaveBeenCalledWith('Wrote /p.plist and /s.json');
     expect(consoleLogSpy).not.toHaveBeenCalledWith('<plist/>');
   });
 
