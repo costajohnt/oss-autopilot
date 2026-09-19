@@ -149,6 +149,17 @@ describe('daily --json contract', () => {
     expect(JSON.stringify(result)).not.toContain('listUpdates');
   });
 
+  it('pendingLearnings passes through full and compact output and validates (#1696)', () => {
+    const pending = { repos: ['octocat/spoon-knife'], prCount: 2 };
+    const result = toDailyOutput(makeFixture({ pendingLearnings: pending }));
+    expectSchemaValid(result);
+    expect(result.pendingLearnings).toEqual(pending);
+    const compact = toCompactDailyOutput(result);
+    expect(compact.pendingLearnings).toEqual(pending);
+    expect(CompactDailyOutputSchema.parse(compact).pendingLearnings).toEqual(pending);
+    expect('pendingLearnings' in toDailyOutput(makeFixture())).toBe(false);
+  });
+
   it('auto-marked list entries pass through and validate against the schema (#1463)', () => {
     const result = toDailyOutput(
       makeFixture({

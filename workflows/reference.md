@@ -97,6 +97,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-fo
 
 # Fetch raw PR comment bundles for the host's extract-learnings prompt to consume
 <prefix> guidelines fetch-corpus --repo <owner/repo> [--limit N] [--force] --json
+
+# Stamp fetched PRs as extracted so daily stops reporting them (#1696)
+<prefix> guidelines mark-extracted --repo <owner/repo> --json
 ```
 
 The full extraction workflow lives at [`workflows/extract-learnings.md`](extract-learnings.md). Guidelines require Gist persistence; standalone-mode users see `'local-unavailable'` storage mode.
