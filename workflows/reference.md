@@ -70,7 +70,7 @@ Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-fo
 # Parse an issue list from a file
 <prefix> parse-issue-list <path> --json
 
-# Append an issue URL to the skipped-issues file (auto-culled after 90 days)
+# Append an issue URL to the skipped-issues file (permanent, #343)
 <prefix> skip-add <issue-url> --json [--path <file>]
 
 # Move an issue between Pursue / Maybe / Skip sections of a curated list (#1107)

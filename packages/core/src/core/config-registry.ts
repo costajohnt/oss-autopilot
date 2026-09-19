@@ -218,7 +218,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
   },
   {
     key: 'skippedIssuesPath',
-    description: 'Path to the skipped-issues file (auto-culls entries older than 90 days).',
+    description: 'Path to the skipped-issues file (entries are permanent).',
     settableVia: 'setup',
     valueHint: 'filesystem path',
   },
