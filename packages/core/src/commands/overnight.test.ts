@@ -351,7 +351,9 @@ describe('schedule', () => {
     expect(plist).toContain('<string>dontAsk</string>');
     expect(plist).toContain('<string>--disallowedTools</string>');
     expect(plist).toContain(`<string>${OVERNIGHT_DISALLOWED_TOOLS}</string>`);
-    expect(plist).toContain('<string>Read,Edit,Write,Glob,Grep,Task,Bash(git clone *)');
+    expect(plist).toContain(
+      '<string>Read,Edit,Write,Glob,Grep,Task,Bash(git clone),Bash(git clone *),Bash(git -C * clone)',
+    );
     expect(plist).toContain('<string>/log</string>');
     // argv order, not just presence: a flag/value swap must fail here.
     const argv = [...plist.matchAll(/<string>([^<]*)<\/string>/g)].map((m) => m[1]);
@@ -409,13 +411,19 @@ describe('schedule', () => {
     expect(rules).toContain('Bash(git rebase *)');
     expect(rules).not.toContain('Bash');
     expect(rules).not.toContain('Bash(*)');
-    // Every Bash rule is a fixed-prefix rule for one of the five allowed programs.
+    // Every Bash rule names one of the five allowed programs and a fixed
+    // subcommand; the only wildcard before the subcommand is git's `-C <dir>`.
     for (const r of rules.filter((x) => x.startsWith('Bash('))) {
-      expect(r).toMatch(/^Bash\((git|gh|node|pnpm|npm)( [\w-]+)* \*\)$/);
+      expect(r).toMatch(/^Bash\((git(?: -C \*)?|gh|node|pnpm|npm)( [\w-]+)*( \*)?\)$/);
     }
+    // Directory-scoped work is allowed, directory-scoped push is not.
+    expect(rules).toContain('Bash(git -C * fetch *)');
+    expect(rules).toContain('Bash(git -C * worktree *)');
+    expect(rules.some((r) => /push/.test(r))).toBe(false);
     const denied = OVERNIGHT_DISALLOWED_TOOLS.split(',');
     for (const must of [
       'Bash(git push *)',
+      'Bash(git * push *)',
       'Bash(gh pr merge *)',
       'Bash(gh pr comment *)',
       'Bash(gh api *)',

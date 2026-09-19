@@ -362,6 +362,10 @@ const GH_READ_SUBCOMMANDS = [
 export const OVERNIGHT_DISALLOWED_TOOLS = [
   'Bash(git push)',
   'Bash(git push *)',
+  // The -C form of push: `git -C <dir> push` would otherwise slip past a
+  // prefix rule on `git push`.
+  'Bash(git * push)',
+  'Bash(git * push *)',
   'Bash(gh pr create *)',
   'Bash(gh pr comment *)',
   'Bash(gh pr merge *)',
@@ -392,7 +396,15 @@ export const OVERNIGHT_ALLOWED_TOOLS = [
   'Glob',
   'Grep',
   'Task',
-  ...GIT_SUBCOMMANDS.map((sub) => `Bash(git ${sub} *)`),
+  // Both the bare and the `-C <dir>` forms: a preparer's worktree is never its
+  // cwd, and `cd <dir> && git ...` is denied under dontAsk, so without `-C`
+  // every preparer blocks (#1697).
+  ...GIT_SUBCOMMANDS.flatMap((sub) => [
+    `Bash(git ${sub})`,
+    `Bash(git ${sub} *)`,
+    `Bash(git -C * ${sub})`,
+    `Bash(git -C * ${sub} *)`,
+  ]),
   ...GH_READ_SUBCOMMANDS.map((sub) => `Bash(gh ${sub} *)`),
   'Bash(node *)',
   'Bash(pnpm *)',
