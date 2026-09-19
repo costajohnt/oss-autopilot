@@ -48,6 +48,7 @@ import {
   runOvernightReport,
   runOvernightImplementBlocked,
   pickImplementCandidate,
+  toolchainSkipReason,
   IMPLEMENT_TIER,
   publishReport,
   readReport,
@@ -67,6 +68,9 @@ const mockGetStateManager = vi.mocked(getStateManager);
 const mockDaily = vi.mocked(executeDailyCheck);
 const mockCheckpoint = vi.mocked(maybeCheckpoint);
 
+/** Per-repo score stubs the fake state manager answers `getRepoScore` with; tests set entries. */
+const repoLanguages: Record<string, { language: string | null } | undefined> = {};
+
 function fakeStateManager(initial?: OvernightRecord, gistMode = false) {
   let last = initial;
   let doc: string | null = null;
@@ -76,6 +80,7 @@ function fakeStateManager(initial?: OvernightRecord, gistMode = false) {
       last = r;
     }),
     isGistMode: () => gistMode,
+    getRepoScore: (repo: string) => repoLanguages[repo.toLowerCase()],
     getOvernightReportDocument: () => doc,
     setOvernightReportDocument: vi.fn((c: string) => {
       doc = c;
@@ -98,6 +103,7 @@ const attention = { needsAttention: 2, stuckCI: 1, dormantFollowup: 0, waiting: 
 beforeEach(() => {
   tmp.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'overnight-'));
   listPath.current = undefined;
+  for (const k of Object.keys(repoLanguages)) delete repoLanguages[k];
   vi.clearAllMocks();
 });
 
@@ -735,5 +741,66 @@ describe('implement tonight (#1715)', () => {
       { outcome: 'blocked', note: 'needs design' },
     ]);
     expect(mockCheckpoint).toHaveBeenCalled();
+  });
+});
+
+describe('toolchain gate (#1697)', () => {
+  it('lets JS/TS and unknown languages through, names the rest', () => {
+    expect(toolchainSkipReason('TypeScript')).toBeNull();
+    expect(toolchainSkipReason('javascript')).toBeNull();
+    expect(toolchainSkipReason(null)).toBeNull();
+    expect(toolchainSkipReason(undefined)).toBeNull();
+    expect(toolchainSkipReason('Rust')).toMatch(/^Rust repo: the headless run cannot execute its test suite/);
+  });
+
+  it('bucketize sends a CI failure on a Rust repo to judgment but still prepares its rebase', () => {
+    const lang = (repo: string) => (repo === 'o/rusty' ? 'Rust' : 'TypeScript');
+    const { prepare, judgment } = bucketize(
+      {
+        actionableIssues: [
+          { type: 'ci_failing', prUrl: 'https://github.com/o/rusty/pull/1', label: '[CI]', isNewContribution: false },
+          {
+            type: 'merge_conflict',
+            prUrl: 'https://github.com/o/rusty/pull/2',
+            label: '[MC]',
+            isNewContribution: false,
+          },
+          { type: 'ci_failing', prUrl: 'https://github.com/o/ts/pull/3', label: '[CI]', isNewContribution: false },
+        ] as never,
+        commentedIssues: [],
+      },
+      lang,
+    );
+    expect(prepare.map((i) => i.url)).toEqual(['https://github.com/o/rusty/pull/2', 'https://github.com/o/ts/pull/3']);
+    expect(judgment).toHaveLength(1);
+    expect(judgment[0].reason).toMatch(/Rust repo.*rerun or fix it from a machine that can/);
+  });
+
+  it('pickImplementCandidate skips Pursue items on repos it cannot verify', () => {
+    const items = [
+      { repo: 'o/rusty', number: 1, title: 't', tier: IMPLEMENT_TIER, url: 'https://github.com/o/rusty/issues/1' },
+      { repo: 'o/ts', number: 2, title: 't', tier: IMPLEMENT_TIER, url: 'https://github.com/o/ts/issues/2' },
+    ];
+    const lang = (repo: string) => (repo === 'o/rusty' ? 'Rust' : null);
+    expect(pickImplementCandidate(items, [], [], '/l.md', lang)?.url).toBe('https://github.com/o/ts/issues/2');
+  });
+
+  it('runOvernight reads the language from repo scores', async () => {
+    repoLanguages['o/rusty'] = { language: 'Rust' };
+    const sm = fakeStateManager();
+    mockGetStateManager.mockReturnValue(sm);
+    mockDaily.mockResolvedValue({
+      actionableIssues: [
+        { type: 'ci_failing', prUrl: 'https://github.com/o/rusty/pull/1', label: '[CI]', isNewContribution: false },
+      ],
+      commentedIssues: [],
+      attention,
+      digest: { openPRs: [] },
+      failures: [],
+      warnings: [],
+    } as never);
+    const out = await runOvernight();
+    expect(out.prepare).toHaveLength(0);
+    expect(out.judgment[0].reason).toMatch(/Rust repo/);
   });
 });

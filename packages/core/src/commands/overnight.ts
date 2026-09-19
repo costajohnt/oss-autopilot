@@ -22,7 +22,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { errorMessage, getStateManager, maybeCheckpoint, requireGitHubToken } from '../core/index.js';
+import { errorMessage, getStateManager, maybeCheckpoint, parseGitHubUrl, requireGitHubToken } from '../core/index.js';
 import { warn } from '../core/logger.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import { getReportsDir } from '../core/paths.js';
@@ -107,6 +107,25 @@ const BUCKET_BY_TYPE: Record<ActionableIssueType, { bucket: OvernightBucket; rea
   needs_response: { bucket: 'judgment', reason: 'a maintainer is waiting on your reply' },
 };
 
+/**
+ * Languages whose test suites the headless allowlist can actually run: it
+ * grants node, pnpm and npm and nothing else (OVERNIGHT_ALLOWED_TOOLS). A
+ * preparer on a Rust or Python repo can diagnose but never reach "Verify", so
+ * two nights of that ended blocked (#1697). Repos with a known primary
+ * language outside this set go to judgment instead of burning a preparer;
+ * a repo whose language is unknown (never scored) is given the benefit of
+ * the doubt. GitHub's `language` names, case-insensitive.
+ */
+export const VERIFIABLE_LANGUAGES = ['javascript', 'typescript'];
+
+/** Pure: null when the repo's suite can be run, else why not. */
+export function toolchainSkipReason(language: string | null | undefined): string | null {
+  if (!language) return null;
+  return VERIFIABLE_LANGUAGES.includes(language.toLowerCase())
+    ? null
+    : `${language} repo: the headless run cannot execute its test suite (node/pnpm/npm only)`;
+}
+
 /** A curated-list issue picked for implementation (#1715). */
 export interface OvernightImplementItem {
   url: string;
@@ -131,6 +150,7 @@ export function pickImplementCandidate(
   openPRs: { repo: string }[],
   attempts: OvernightImplementAttempt[],
   listPath: string,
+  languageOf: (repo: string) => string | null | undefined = () => undefined,
 ): OvernightImplementItem | null {
   const busyRepos = new Set(openPRs.map((p) => p.repo.toLowerCase()));
   const tried = new Set(attempts.map((a) => a.url));
@@ -138,6 +158,7 @@ export function pickImplementCandidate(
     if (it.tier !== IMPLEMENT_TIER) continue;
     if (tried.has(it.url)) continue;
     if (busyRepos.has(it.repo.toLowerCase())) continue;
+    if (toolchainSkipReason(languageOf(it.repo))) continue;
     return {
       url: it.url,
       repo: it.repo,
@@ -162,7 +183,10 @@ function loadListItems(): { items: ReturnType<typeof parseIssueList>['available'
 }
 
 /** Pure: split the daily check into prepare vs judgment items. */
-export function bucketize(daily: Pick<DailyOutput, 'actionableIssues' | 'commentedIssues'>): {
+export function bucketize(
+  daily: Pick<DailyOutput, 'actionableIssues' | 'commentedIssues'>,
+  languageOf: (repo: string) => string | null | undefined = () => undefined,
+): {
   prepare: OvernightItem[];
   judgment: OvernightItem[];
 } {
@@ -171,11 +195,15 @@ export function bucketize(daily: Pick<DailyOutput, 'actionableIssues' | 'comment
 
   for (const issue of daily.actionableIssues) {
     const rule = BUCKET_BY_TYPE[issue.type];
-    (rule.bucket === 'prepare' ? prepare : judgment).push({
+    // A CI fix needs the suite to run; a rebase or a requested edit can still
+    // be prepared and verified by hand in the morning.
+    const parsed = issue.type === 'ci_failing' ? parseGitHubUrl(issue.prUrl) : null;
+    const noToolchain = parsed ? toolchainSkipReason(languageOf(`${parsed.owner}/${parsed.repo}`)) : null;
+    (rule.bucket === 'prepare' && !noToolchain ? prepare : judgment).push({
       url: issue.prUrl,
       type: issue.type,
       label: issue.label,
-      reason: rule.reason,
+      reason: noToolchain ? `${noToolchain}; rerun or fix it from a machine that can` : rule.reason,
     });
   }
 
@@ -280,13 +308,16 @@ export async function runOvernight(): Promise<OvernightOutput> {
   const daily = await executeDailyCheck(requireGitHubToken());
   const now = new Date();
   const runAt = now.toISOString();
-  const { prepare, judgment } = bucketize(daily);
+  const languageOf = (repo: string) => sm.getRepoScore(repo)?.language;
+  const { prepare, judgment } = bucketize(daily, languageOf);
   const previous = sm.getLastOvernight();
   const list = loadListItems();
   // Attempts survive across runs; the ones whose issue left the list are
   // dropped so a re-added issue can be tried again.
   const attempts = (previous?.implementAttempts ?? []).filter((a) => !list || list.items.some((i) => i.url === a.url));
-  const implement = list ? pickImplementCandidate(list.items, daily.digest.openPRs, attempts, list.path) : null;
+  const implement = list
+    ? pickImplementCandidate(list.items, daily.digest.openPRs, attempts, list.path, languageOf)
+    : null;
   const body: ReportBody = {
     runAt,
     prepare,
