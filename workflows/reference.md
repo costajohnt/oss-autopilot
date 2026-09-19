@@ -38,8 +38,11 @@ Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-fo
 # buckets, morning report under ~/.oss-autopilot/reports/. Never pushes,
 # posts, or merges. `record` appends a branch an agent prepared; `schedule`
 # renders (or with --install writes) the launchd plist for /oss-overnight.
+# `push-prep` (#1698) is the post-tick scheduler step, never run by the model:
+# pushes each recorded branch to prep/<branch> on the user's fork only.
 <prefix> overnight run --json
 <prefix> overnight record --url <url> --branch <name> [--worktree <path>] [--note <text>] --json
+<prefix> overnight push-prep [--dry-run] --json
 <prefix> overnight schedule [--hour <n>] [--claude-path <path>] [--install] --json
 ```
 

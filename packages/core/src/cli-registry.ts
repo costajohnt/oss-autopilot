@@ -1614,6 +1614,36 @@ export const commands: CLICommandDef[] = [
         });
 
       group
+        .command('push-prep')
+        .description(
+          'Push the prepared branches of the latest run to prep/* on your fork (#1698). Post-tick step for a scheduler; the model never runs it',
+        )
+        .option('--dry-run', 'Resolve targets and print the plan without pushing')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          const { OvernightPushPrepOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
+            options,
+            async () =>
+              (await import('./commands/overnight-push-prep.js')).runOvernightPushPrep({
+                dryRun: Boolean(options.dryRun),
+              }),
+            (data) => {
+              console.log(
+                `${data.dryRun ? 'Plan' : 'Pushed'} as @${data.login}: ${data.pushed} pushed, ${data.planned} planned, ${data.skipped} skipped`,
+              );
+              for (const r of data.results) {
+                const where = r.ref ? ` -> ${r.remote} ${r.ref}` : '';
+                console.log(`  [${r.status}] ${r.url} (${r.branch})${where}${r.reason ? `: ${r.reason}` : ''}`);
+                if (r.compareUrl) console.log(`    compare: ${r.compareUrl}`);
+              }
+              if (data.gistSyncWarning) console.log(`  Warning: ${data.gistSyncWarning}`);
+            },
+            OvernightPushPrepOutputSchema,
+          );
+        });
+
+      group
         .command('schedule')
         .description('Render (or with --install, write) the launchd plist that runs /oss-overnight nightly')
         .option('--hour <n>', 'Local hour to run, 0-23', '2')

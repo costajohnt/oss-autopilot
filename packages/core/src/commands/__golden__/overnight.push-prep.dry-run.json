@@ -1,0 +1,25 @@
+{
+  "dryRun": true,
+  "login": "octocat",
+  "reportPath": "/home/user/.oss-autopilot/reports/overnight-2026-09-18.md",
+  "results": [
+    {
+      "url": "https://github.com/upstream-org/widget/pull/42",
+      "branch": "overnight/42-2026-09-18",
+      "remote": "origin",
+      "repo": "octocat/widget",
+      "ref": "refs/heads/prep/overnight/42-2026-09-18",
+      "compareUrl": "https://github.com/octocat/widget/compare/fix-lint...prep/overnight/42-2026-09-18",
+      "status": "planned"
+    },
+    {
+      "url": "https://github.com/upstream-org/widget/pull/43",
+      "branch": "overnight/43-2026-09-18",
+      "status": "skipped",
+      "reason": "no worktree recorded"
+    }
+  ],
+  "pushed": 0,
+  "planned": 1,
+  "skipped": 1
+}

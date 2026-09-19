@@ -454,13 +454,22 @@ export const SearchSeenEntrySchema = z.object({
   lastSeenAt: z.string(),
 });
 
-/** One branch an overnight agent prepared locally (#1574). Never pushed by the run. */
+/**
+ * One branch an overnight agent prepared locally (#1574). Never pushed by the
+ * run; `overnight push-prep` (#1698) may later stage it under `prep/*` on the
+ * user's fork and fills in `pushedRef`, `pushedAt` and `compareUrl`.
+ */
 export const OvernightPreparedSchema = z.object({
   url: z.string(),
   branch: z.string(),
   worktree: z.string().optional(),
   note: z.string().optional(),
   recordedAt: z.string(),
+  /** Branch name on the fork (`prep/<branch>`), set by `overnight push-prep`. */
+  pushedRef: z.string().optional(),
+  pushedAt: z.string().optional(),
+  /** `<fork>/compare/<pr-head>...prep/<branch>`; absent when the PR head could not be read. */
+  compareUrl: z.string().optional(),
 });
 
 /** The latest overnight run (#1574); `startup` surfaces its freshness. */
