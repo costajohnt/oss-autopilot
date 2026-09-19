@@ -186,9 +186,16 @@ The CLI renders the launchd job:
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" overnight schedule --hour 2 --claude-path "$(command -v claude)" --install
 ```
 
-It writes `~/Library/LaunchAgents/com.oss-autopilot.overnight.plist` and prints
-the `launchctl bootstrap` command to load it. The job runs
-`claude -p "/oss-overnight" --permission-mode dontAsk --allowedTools "<list>"`:
+It writes `~/Library/LaunchAgents/com.oss-autopilot.overnight.plist`, a
+settings file `~/.oss-autopilot/reports/overnight-settings.json` that enables
+only this plugin, and prints the `launchctl bootstrap` command to load it. The
+job runs `claude -p "/oss-overnight" --permission-mode dontAsk
+--setting-sources "" --settings <that file> --allowedTools "<list>"`. The empty
+`--setting-sources` matters: permission allow rules union across settings
+layers, so a user whose own settings allow bare `Bash` would otherwise void the
+enumerated allowlist and keep only the deny list. Dropping the user's settings
+also drops their CLAUDE.md and hooks for this job; the plugin's own charter is
+what the run follows.
 headless runs start in manual permission mode where any unapproved tool call
 fails, so the plist pre-approves exactly the tools this command uses and
 nothing that mutates remote state: file tools, Task, git subcommands except

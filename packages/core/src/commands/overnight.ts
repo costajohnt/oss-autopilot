@@ -629,17 +629,39 @@ function xmlEscape(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/**
+ * The settings layer the scheduled job runs with instead of the user's own
+ * (#1697). Permission allow rules union across settings layers, and a user
+ * whose day-to-day settings allow bare `Bash` would otherwise void the
+ * enumerated allowlist entirely: only the deny list would apply. So the job
+ * drops user, project and local settings (`--setting-sources ""`) and gets
+ * this file, which carries only what it needs from them: the plugin itself.
+ */
+export function renderOvernightSettings(): string {
+  return `${JSON.stringify({ enabledPlugins: { 'oss-autopilot@oss-autopilot': true } }, null, 2)}\n`;
+}
+
 /** Pure: the launchd plist that runs `/oss-overnight` headlessly. */
-export function renderLaunchdPlist(options: Pick<ScheduleOptions, 'hour' | 'claudePath'>, logPath: string): string {
+export function renderLaunchdPlist(
+  options: Pick<ScheduleOptions, 'hour' | 'claudePath'>,
+  logPath: string,
+  settingsPath: string,
+): string {
   // Headless `-p` starts in manual permission mode, where any unapproved tool
   // call fails (nobody can answer). `dontAsk` + the enumerated allowlist above
-  // is the documented unattended shape and the enforcement half of the gate.
+  // is the documented unattended shape and the enforcement half of the gate,
+  // and only holds with the user's own settings out of the picture (see
+  // renderOvernightSettings).
   const args = [
     options.claudePath,
     '-p',
     '/oss-overnight',
     '--permission-mode',
     'dontAsk',
+    '--setting-sources',
+    '',
+    '--settings',
+    settingsPath,
     '--allowedTools',
     OVERNIGHT_ALLOWED_TOOLS,
     '--disallowedTools',
@@ -674,6 +696,8 @@ export function renderLaunchdPlist(options: Pick<ScheduleOptions, 'hour' | 'clau
 export interface ScheduleOutput {
   plist: string;
   plistPath: string;
+  /** The settings layer the job runs with (see renderOvernightSettings); written with --install. */
+  settingsPath: string;
   installed: boolean;
   /** The one command the user runs to (re)load the job. */
   loadCommand: string;
@@ -705,14 +729,18 @@ export function runOvernightSchedule(options: ScheduleOptions): ScheduleOutput {
   const claudePath = resolveClaudePath(options.claudePath);
   const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', `${LAUNCHD_LABEL}.plist`);
   const logPath = path.join(getReportsDir(), 'overnight-launchd.log');
-  const plist = renderLaunchdPlist({ hour: options.hour, claudePath }, logPath);
+  const settingsPath = path.join(getReportsDir(), 'overnight-settings.json');
+  const plist = renderLaunchdPlist({ hour: options.hour, claudePath }, logPath, settingsPath);
   if (options.install) {
     fs.mkdirSync(path.dirname(plistPath), { recursive: true });
     fs.writeFileSync(plistPath, plist, { mode: 0o644 });
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(settingsPath, renderOvernightSettings(), { mode: 0o600 });
   }
   return {
     plist,
     plistPath,
+    settingsPath,
     installed: options.install,
     loadCommand: `launchctl bootout gui/$(id -u) ${plistPath} 2>/dev/null; launchctl bootstrap gui/$(id -u) ${plistPath}`,
   };

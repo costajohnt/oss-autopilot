@@ -392,7 +392,7 @@ describe('schedule', () => {
   });
 
   it('renders a plist that runs the plugin command at the given hour', () => {
-    const plist = renderLaunchdPlist({ hour: 3, claudePath: '/opt/homebrew/bin/claude' }, '/log');
+    const plist = renderLaunchdPlist({ hour: 3, claudePath: '/opt/homebrew/bin/claude' }, '/log', '/settings.json');
     expect(plist).toContain(`<string>${LAUNCHD_LABEL}</string>`);
     expect(plist).toContain('<string>/opt/homebrew/bin/claude</string>');
     expect(plist).toContain('<string>/oss-overnight</string>');
@@ -406,12 +406,17 @@ describe('schedule', () => {
     expect(plist).toContain('<string>/log</string>');
     // argv order, not just presence: a flag/value swap must fail here.
     const argv = [...plist.matchAll(/<string>([^<]*)<\/string>/g)].map((m) => m[1]);
-    expect(argv.slice(1, 12)).toEqual([
+    expect(argv.slice(1, 16)).toEqual([
       '/opt/homebrew/bin/claude',
       '-p',
       '/oss-overnight',
       '--permission-mode',
       'dontAsk',
+      // The user's own settings would union their `Bash` allow into the list (#1697).
+      '--setting-sources',
+      '',
+      '--settings',
+      '/settings.json',
       '--allowedTools',
       OVERNIGHT_ALLOWED_TOOLS,
       '--disallowedTools',
@@ -422,7 +427,7 @@ describe('schedule', () => {
   });
 
   it('XML-escapes paths so launchd can parse the plist', () => {
-    const plist = renderLaunchdPlist({ hour: 2, claudePath: '/tmp/a&b/claude' }, '/log <x>');
+    const plist = renderLaunchdPlist({ hour: 2, claudePath: '/tmp/a&b/claude' }, '/log <x>', '/s.json');
     expect(plist).toContain('<string>/tmp/a&amp;b/claude</string>');
     expect(plist).toContain('<string>/log &lt;x&gt;</string>');
     expect(plist).not.toContain('a&b');
@@ -435,6 +440,12 @@ describe('schedule', () => {
     expect(out.plistPath).toBe(path.join(tmp.dir, 'Library', 'LaunchAgents', `${LAUNCHD_LABEL}.plist`));
     expect(fs.readFileSync(out.plistPath, 'utf8')).toBe(out.plist);
     expect(fs.statSync(out.plistPath).mode & 0o777).toBe(0o644);
+    // The settings layer the job runs with: only the plugin enablement, nothing from the user's own settings.
+    expect(out.plist).toContain(`<string>${out.settingsPath}</string>`);
+    expect(JSON.parse(fs.readFileSync(out.settingsPath, 'utf8'))).toEqual({
+      enabledPlugins: { 'oss-autopilot@oss-autopilot': true },
+    });
+    expect(fs.statSync(out.settingsPath).mode & 0o777).toBe(0o600);
   });
 
   it('allowlist enforces the no-side-effects gate: no push, no gh writes, no shell escapes', () => {
