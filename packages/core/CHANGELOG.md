@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.23.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.22.3...core-v3.23.0) (2026-09-19)
+
+
+### Features
+
+* **overnight:** push-prep stages prepared branches on the fork under prep/* ([#1699](https://github.com/costajohnt/oss-autopilot/issues/1699)) ([acf1738](https://github.com/costajohnt/oss-autopilot/commit/acf1738bb48dfe240dd3d7a14bd253e48b5b60a7))
+
+
+### Bug Fixes
+
+* **scout-bridge:** feed dismissed issues into scout skip list, drop 30s/90s delay pins ([#1690](https://github.com/costajohnt/oss-autopilot/issues/1690)) ([d3def1a](https://github.com/costajohnt/oss-autopilot/commit/d3def1a215c24127e3a7a43463d8cb71d9ab91ea))
+
 ## [3.22.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.22.2...core-v3.22.3) (2026-09-12)
 
 
