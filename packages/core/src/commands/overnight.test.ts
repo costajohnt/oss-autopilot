@@ -120,12 +120,13 @@ describe('bucketize', () => {
       ] as never,
     });
 
-    expect(prepare.map((i) => i.url)).toEqual([1, 2, 3, 4].map((n) => `https://github.com/o/r/pull/${n}`));
+    expect(prepare.map((i) => i.url)).toEqual([1, 2, 3].map((n) => `https://github.com/o/r/pull/${n}`));
     expect(judgment.map((i) => [i.type, i.url])).toEqual([
+      ['incomplete_checklist', 'https://github.com/o/r/pull/4'],
       ['needs_response', 'https://github.com/o/r/pull/5'],
       ['issue_reply', 'https://github.com/o/r/issues/9'],
     ]);
-    expect(judgment[1].reason).toContain('a maintainer');
+    expect(judgment[2].reason).toContain('a maintainer');
   });
 });
 

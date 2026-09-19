@@ -85,7 +85,14 @@ const BUCKET_BY_TYPE: Record<ActionableIssueType, { bucket: OvernightBucket; rea
   ci_failing: { bucket: 'prepare', reason: 'CI is red: an agent can diagnose and prepare a fix branch' },
   merge_conflict: { bucket: 'prepare', reason: 'merge conflict: an agent can rebase in a worktree' },
   needs_changes: { bucket: 'prepare', reason: 'changes requested: an agent can prepare the requested edits' },
-  incomplete_checklist: { bucket: 'prepare', reason: 'checklist incomplete: an agent can fill in the missing items' },
+  // The gaps are PR-body checkboxes, and the only way to tick them is
+  // `gh pr edit --body`, a write the unattended run must not make. Two
+  // nights of preparers spent on these both ended blocked with a suggested
+  // body edit for the morning, so that suggestion is now the judgment item.
+  incomplete_checklist: {
+    bucket: 'judgment',
+    reason: 'checklist incomplete: the gaps are PR-body checkboxes, which only you can edit',
+  },
   needs_response: { bucket: 'judgment', reason: 'a maintainer is waiting on your reply' },
 };
 

@@ -39,8 +39,8 @@ Parse the JSON envelope. `data` has:
 | Field | Meaning |
 |-------|---------|
 | `reportPath` | The morning report (markdown). Everything below appends to it. |
-| `prepare` | Items an agent can work on without external side effects: `ci_failing`, `merge_conflict`, `needs_changes`, `incomplete_checklist`. Each has `url`, `label`, `reason`. |
-| `judgment` | Items that need you: maintainer replies to answer, issue conversations with a new response. Already in the report; do nothing with them. |
+| `prepare` | Items an agent can work on without external side effects: `ci_failing`, `merge_conflict`, `needs_changes`. Each has `url`, `label`, `reason`. |
+| `judgment` | Items that need you: maintainer replies to answer, issue conversations with a new response, PR checklists with unticked boxes (ticking them is a `gh pr edit` write). Already in the report; do nothing with them. |
 | `failures`, `warnings` | Already in the report, one line per PR that could not be fetched. |
 | `carriedPrepared` | Branches kept from an earlier run today; a re-run never drops recorded work. |
 | `gistSyncWarning` | Present when the run could not be pushed to the Gist. Append it under "Check problems". |
