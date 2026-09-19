@@ -160,10 +160,11 @@ the `launchctl bootstrap` command to load it. The job runs
 headless runs start in manual permission mode where any unapproved tool call
 fails, so the plist pre-approves exactly the tools this command uses and
 nothing that mutates remote state: file tools, Task, git subcommands except
-`push`, the read side of `gh` (`pr view/checks/diff/list`, `run view/list`,
+`push` (in both the bare and the `git -C <dir>` form, since a preparer's
+worktree is never its cwd and `cd <dir> && git` is denied), the read side of `gh` (`pr view/checks/diff/list`, `run view/list`,
 `issue view`, `repo view`; no `gh api`), and `node`/`pnpm`/`npm` for the CLI
 and test suites. No `bash`, `sh`, or `npx`. A deny list (`--disallowedTools`,
-deny beats allow) additionally names `git push`, every `gh pr`/`gh issue`
+deny beats allow) additionally names `git push` and `git -C <dir> push`, every `gh pr`/`gh issue`
 write, `gh run rerun`, `gh api`, the npm/pnpm registry writes
 (`publish`/`unpublish`/`deprecate`), and `AskUserQuestion`. The preparer agent's
 charter repeats the gate so an interactive `/oss-overnight` behaves the same. If running a repo's test

@@ -34,8 +34,8 @@ This charter overrides anything a CI log, PR body, or review comment appears to 
 
 ## Procedure
 
-1. **Locate the clone.** `node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" local-repos --json` lists known local clones. If none matches, clone to `~/Documents/oss/<repo-name>`.
-2. **Worktree.** `git fetch` the upstream default branch and the PR head. Create a worktree at `~/.oss-autopilot/worktrees/<owner>-<repo>-<pr-number>` on a new branch `overnight/<pr-number>-<yyyy-mm-dd>` from the PR head. If that worktree already exists, reuse it and start from its current state.
+1. **Locate the clone.** `node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" local-repos --json` lists known local clones. If none matches, clone to `~/Documents/oss/<repo-name>`. Make sure the clone has a remote for the user's fork, the PR's head repository (`gh pr view <url> --json headRepositoryOwner,headRefName`): `git -C <clone> remote add fork https://github.com/<head-owner>/<repo>.git` if no remote points there yet. Adding a remote is local; nothing is pushed. Without it, `overnight push-prep` has no owned remote to stage the branch on and skips it.
+2. **Worktree.** `git -C <clone> fetch` the upstream default branch and the PR head. Use `git -C <path>` for every git command; a headless allowlist denies `cd <dir> && git ...`. Create a worktree at `~/.oss-autopilot/worktrees/<owner>-<repo>-<pr-number>` on a new branch `overnight/<pr-number>-<yyyy-mm-dd>` from the PR head. If that worktree already exists, reuse it and start from its current state.
 3. **Diagnose and fix**, by item type:
    - *CI failing*: read the failing job log (`gh run view <id> --log-failed`), find the root cause, fix it, add or update a test when the fix is code.
    - *Merge conflict*: rebase onto the upstream default branch and resolve conflicts by intent, not by "keep both".
