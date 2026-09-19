@@ -13,7 +13,10 @@
  * the launchd plist that runs the plugin command headlessly.
  *
  * Hard gate: nothing in this module pushes, posts, or merges. That gate is the
- * feature, not a limitation.
+ * feature, not a limitation. The one deliberate exception, `overnight
+ * push-prep` (#1698), lives in `overnight-push-prep.ts` and is never run by
+ * the model: a scheduler runs it after the tick, and it only pushes to
+ * `prep/*` on the user's own fork.
  */
 
 import * as fs from 'node:fs';
@@ -120,12 +123,31 @@ export function renderPreparedSection(prepared: OvernightPrepared[]): string {
   const lines = [`${PREPARED_HEADING}${prepared.length})`, ''];
   if (prepared.length === 0) lines.push('_None recorded yet._');
   for (const p of prepared) {
+    const pushed = p.pushedRef
+      ? ` (pushed to \`${p.pushedRef}\`${p.compareUrl ? `, compare ${p.compareUrl}` : ''})`
+      : p.pushProblem
+        ? ` (NOT pushed: ${p.pushProblem})`
+        : '';
     lines.push(
-      `- ${p.url} — branch \`${p.branch}\`${p.worktree ? ` at ${p.worktree}` : ''}${p.note ? `: ${p.note}` : ''}`,
+      `- ${p.url} — branch \`${p.branch}\`${p.worktree ? ` at ${p.worktree}` : ''}${pushed}${p.note ? `: ${p.note}` : ''}`,
     );
   }
   lines.push('');
   return lines.join('\n');
+}
+
+/**
+ * Rewrite the "Prepared branches" section of `reportPath` from `prepared`
+ * (state is the source of truth for the list, so the heading count stays
+ * right). A report someone deleted is recreated with just this section
+ * rather than failing the caller; `reportRecreated` says so.
+ */
+export function writePreparedSection(reportPath: string, prepared: OvernightPrepared[]): { reportRecreated: boolean } {
+  const reportExists = fs.existsSync(reportPath);
+  if (!reportExists) warn(MODULE, `Report ${reportPath} is missing; recreating it with only the prepared section`);
+  const reportBody = reportExists ? fs.readFileSync(reportPath, 'utf8') : '';
+  fs.writeFileSync(reportPath, replacePreparedSection(reportBody, renderPreparedSection(prepared)), { mode: 0o600 });
+  return { reportRecreated: !reportExists };
 }
 
 /** Pure: the morning report. Prepared branches are appended by `record`. */
@@ -236,21 +258,13 @@ export async function runOvernightRecord(options: OvernightRecordOptions): Promi
   const prepared = [...last.prepared, entry];
   sm.setLastOvernight({ ...last, prepared });
 
-  // Rewrite the section in place (state is the source of truth for the
-  // list) so its heading count stays right; a report someone deleted is
-  // recreated with just this section rather than failing the record.
-  const reportExists = fs.existsSync(last.reportPath);
-  if (!reportExists) warn(MODULE, `Report ${last.reportPath} is missing; recreating it with only the prepared section`);
-  const reportBody = reportExists ? fs.readFileSync(last.reportPath, 'utf8') : '';
-  fs.writeFileSync(last.reportPath, replacePreparedSection(reportBody, renderPreparedSection(prepared)), {
-    mode: 0o600,
-  });
+  const { reportRecreated } = writePreparedSection(last.reportPath, prepared);
   const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
 
   return {
     reportPath: last.reportPath,
     preparedCount: prepared.length,
-    ...(reportExists ? {} : { reportRecreated: true as const }),
+    ...(reportRecreated ? { reportRecreated: true as const } : {}),
     ...(gistSyncWarning ? { gistSyncWarning } : {}),
   };
 }

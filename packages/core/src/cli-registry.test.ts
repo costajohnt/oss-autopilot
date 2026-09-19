@@ -59,6 +59,7 @@ vi.mock('./formatters/json.js', () => ({
   CheckIntegrationOutputSchema: { name: 'CheckIntegrationOutputSchema' },
   DetectFormattersOutputSchema: { name: 'DetectFormattersOutputSchema' },
   LocalReposOutputSchema: { name: 'LocalReposOutputSchema' },
+  OvernightPushPrepOutputSchema: { name: 'OvernightPushPrepOutputSchema' },
   ManifestOutputSchema: { name: 'ManifestOutputSchema' },
   StrategyOutputSchema: { name: 'StrategyOutputSchema' },
   ComplianceScoreOutputSchema: { name: 'ComplianceScoreOutputSchema' },
@@ -199,6 +200,11 @@ vi.mock('./commands/overnight.js', () => ({
   runOvernightSchedule: mockRunOvernightSchedule,
 }));
 
+const mockRunOvernightPushPrep = vi.fn();
+vi.mock('./commands/overnight-push-prep.js', () => ({
+  runOvernightPushPrep: mockRunOvernightPushPrep,
+}));
+
 const mockGuidelinesList = vi.fn();
 const mockGuidelinesView = vi.fn();
 const mockGuidelinesStore = vi.fn();
@@ -228,6 +234,7 @@ import {
   InitOutputSchema,
   ListMarkDoneOutputSchema,
   MoveOutputSchema,
+  OvernightPushPrepOutputSchema,
   ParseIssueListOutputSchema,
   PRTemplateOutputSchema,
   RepoVetOutputSchema,
@@ -2401,6 +2408,87 @@ describe('overnight subcommands', () => {
     ]);
 
     expect(mockOutputJson).toHaveBeenCalledWith(data);
+  });
+
+  const pushPrepData = {
+    dryRun: false,
+    login: 'octocat',
+    reportPath: '/r.md',
+    results: [
+      {
+        url: 'https://github.com/o/r/pull/1',
+        branch: 'overnight/1-2026-09-18',
+        status: 'pushed',
+        remote: 'origin',
+        repo: 'octocat/r',
+        ref: 'refs/heads/prep/overnight/1-2026-09-18',
+        compareUrl: 'https://github.com/octocat/r/compare/feat...prep/overnight/1-2026-09-18',
+      },
+      { url: 'https://github.com/o/r/pull/2', branch: 'b2', status: 'skipped', reason: 'no worktree recorded' },
+    ],
+    pushed: 1,
+    planned: 0,
+    skipped: 1,
+    failed: 0,
+  };
+
+  it('push-prep exits 1 when a push failed, so a scheduler sees it, and 0 for skips alone', async () => {
+    const before = process.exitCode;
+    try {
+      process.exitCode = undefined;
+      mockRunOvernightPushPrep.mockResolvedValue(pushPrepData);
+      await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'push-prep']);
+      expect(process.exitCode).toBeUndefined();
+
+      mockRunOvernightPushPrep.mockResolvedValue({ ...pushPrepData, failed: 1 });
+      await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'push-prep', '--json']);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = before;
+    }
+  });
+
+  it('push-prep defaults to a real push and prints one line per result', async () => {
+    mockRunOvernightPushPrep.mockResolvedValue(pushPrepData);
+
+    await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'push-prep']);
+
+    expect(mockRunOvernightPushPrep).toHaveBeenCalledWith({ dryRun: false });
+    expect(consoleLogSpy).toHaveBeenCalledWith('Pushed as @octocat: 1 pushed, 0 planned, 1 skipped, 0 failed');
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '  [pushed] https://github.com/o/r/pull/1 (overnight/1-2026-09-18) -> origin refs/heads/prep/overnight/1-2026-09-18',
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '    compare: https://github.com/octocat/r/compare/feat...prep/overnight/1-2026-09-18',
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith('  [skipped] https://github.com/o/r/pull/2 (b2): no worktree recorded');
+    expect(consoleLogSpy).not.toHaveBeenCalledWith(expect.stringContaining('Warning:'));
+  });
+
+  it('push-prep --dry-run forwards the flag, labels the output as a plan, and prints the gist warning', async () => {
+    mockRunOvernightPushPrep.mockResolvedValue({
+      ...pushPrepData,
+      dryRun: true,
+      results: [],
+      pushed: 0,
+      skipped: 0,
+      gistSyncWarning: 'push failed',
+    });
+
+    await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'push-prep', '--dry-run']);
+
+    expect(mockRunOvernightPushPrep).toHaveBeenCalledWith({ dryRun: true });
+    expect(consoleLogSpy).toHaveBeenCalledWith('Plan as @octocat: 0 pushed, 0 planned, 0 skipped, 0 failed');
+    expect(consoleLogSpy).toHaveBeenCalledWith('  Warning: push failed');
+  });
+
+  it('push-prep --json validates against OvernightPushPrepOutputSchema', async () => {
+    mockRunOvernightPushPrep.mockResolvedValue(pushPrepData);
+
+    await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'push-prep', '--json']);
+
+    expect(mockOutputJsonValidated).toHaveBeenCalledWith(OvernightPushPrepOutputSchema, pushPrepData);
+    expect(mockOutputJson).not.toHaveBeenCalled();
   });
 
   it('schedule defaults hour 2 and a bare claude, prints the plist without --install', async () => {

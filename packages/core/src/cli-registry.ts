@@ -1614,6 +1614,45 @@ export const commands: CLICommandDef[] = [
         });
 
       group
+        .command('push-prep')
+        .description(
+          'Push the prepared branches of the latest run to prep/* on your fork (#1698). Post-tick step for a scheduler; the model never runs it',
+        )
+        .option('--dry-run', 'Resolve targets and print the plan without pushing')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          const { OvernightPushPrepOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
+            options,
+            async () => {
+              const data = await (
+                await import('./commands/overnight-push-prep.js')
+              ).runOvernightPushPrep({
+                dryRun: Boolean(options.dryRun),
+              });
+              // Unattended: a scheduler only sees the exit code. The output
+              // (JSON or text) still prints in full.
+              if (data.failed > 0) process.exitCode = 1;
+              return data;
+            },
+            (data) => {
+              console.log(
+                `${data.dryRun ? 'Plan' : 'Pushed'} as @${data.login}: ${data.pushed} pushed, ${data.planned} planned, ${data.skipped} skipped, ${data.failed} failed`,
+              );
+              for (const r of data.results) {
+                const where = r.ref ? ` -> ${r.remote} ${r.ref}` : '';
+                console.log(`  [${r.status}] ${r.url} (${r.branch})${where}${r.reason ? `: ${r.reason}` : ''}`);
+                if (r.compareUrl) console.log(`    compare: ${r.compareUrl}`);
+              }
+              if (data.reportRecreated) console.log('  Warning: the report was missing and has been recreated');
+              if (data.reportWarning) console.log(`  Warning: ${data.reportWarning}`);
+              if (data.gistSyncWarning) console.log(`  Warning: ${data.gistSyncWarning}`);
+            },
+            OvernightPushPrepOutputSchema,
+          );
+        });
+
+      group
         .command('schedule')
         .description('Render (or with --install, write) the launchd plist that runs /oss-overnight nightly')
         .option('--hour <n>', 'Local hour to run, 0-23', '2')

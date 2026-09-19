@@ -1084,6 +1084,37 @@ export const LocalReposOutputSchema = z.object({
   fromCache: z.boolean(),
 });
 
+/** One prepared branch as `overnight push-prep` (#1698) handled it. */
+const PushPrepResultSchema = z.object({
+  url: z.string(),
+  branch: z.string(),
+  /** `skipped`: a gate said no (nothing to fix tonight). `failed`: the push itself broke. */
+  status: z.enum(['pushed', 'planned', 'skipped', 'failed']),
+  remote: z.string().optional(),
+  repo: z.string().optional(),
+  /** Always under `refs/heads/prep/`. */
+  ref: z.string().startsWith('refs/heads/prep/').optional(),
+  compareUrl: z.string().optional(),
+  reason: z.string().optional(),
+});
+
+export const OvernightPushPrepOutputSchema = z.object({
+  dryRun: z.boolean(),
+  login: z.string(),
+  reportPath: z.string(),
+  results: z.array(PushPrepResultSchema),
+  pushed: z.number().int().nonnegative(),
+  planned: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  /** Any failed push makes the CLI exit 1, so a scheduler sees it. */
+  failed: z.number().int().nonnegative(),
+  /** The report file was missing and has been recreated with only the prepared section. */
+  reportRecreated: z.literal(true).optional(),
+  /** The pushes and state are recorded, but the report file could not be rewritten. */
+  reportWarning: z.string().optional(),
+  gistSyncWarning: z.string().optional(),
+});
+
 /**
  * Compact summary of an issue's first linked PR, surfaced on candidate
  * outputs (#97 / scout 0.9.0). `isStalled` is `true` when the PR is open

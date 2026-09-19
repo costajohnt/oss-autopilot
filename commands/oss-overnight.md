@@ -82,6 +82,52 @@ Print, in this order:
 
 Then stop. `/oss` surfaces this report at the next startup.
 
+## After the tick: `overnight push-prep` (not a step of this command)
+
+When the overnight run happens on a headless box (a container on a home
+server), the worktrees and the report live there, and the machine where you
+run `/oss` cannot see them. `overnight push-prep` (#1698) is a deterministic
+CLI step that stages each recorded branch on **your fork** under `prep/*` so
+the other machine can fetch and compare it:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" overnight push-prep --json
+```
+
+**You (the model) never run this.** It is not in any step above, it is not in
+the headless allowlist (`git push` is denied there), and this command must
+not add it. A scheduler runs it after the model tick has ended: a systemd
+`ExecStartPost=`, or a second job after the launchd one. That split is the
+point: the model prepares, a fixed program pushes, and only to a namespace
+nobody reviews from.
+
+What it does, for each entry recorded with a `--worktree`:
+
+1. Reads the worktree's remotes and picks the one whose URL owner is the
+   authenticated login (case-insensitive on the parsed URL; remote names are
+   never trusted). The URL read is the effective one, after any `pushurl` or
+   `insteadOf` rewrite, and a remote with more than one push URL never
+   qualifies, because `git push` would send to all of them. No such remote:
+   skipped with a reason.
+2. Refuses unless that repo is a fork (`fork: true` on the repo) that the login
+   owns, so your own source repos never get `prep/*` branches.
+3. Pushes the recorded branch to `refs/heads/prep/<branch>`. Never the PR's
+   head branch, never `--force`, never tags; a non-fast-forward is a skip with
+   a reason.
+4. Records `pushedRef` and a compare URL (`<fork>/compare/<pr-head>...prep/<branch>`)
+   on the entry, rewrites the "Prepared branches" section, checkpoints the Gist.
+
+A gate saying no is `skipped` (exit 0). A push that breaks (auth, hook,
+timeout) is `failed`, and any failure makes the command exit 1 so the
+scheduler sees it. Either way the reason is written next to the branch in the
+report as `NOT pushed: ...`. A GitHub rate limit stops the run with an error;
+branches already pushed by then are still recorded.
+
+`--dry-run` resolves the targets and prints the plan without pushing or
+writing anything. In the morning, `/oss` on the other machine shows the
+compare URL; fetching `prep/<branch>`, fast-forwarding the PR branch, and
+pushing stay inside the normal draft-approval flow there.
+
 ## Scheduling
 
 The CLI renders the launchd job:
