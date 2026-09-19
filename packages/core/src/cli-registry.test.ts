@@ -200,9 +200,11 @@ vi.mock('./commands/overnight.js', () => ({
   runOvernightRecord: mockRunOvernightRecord,
   runOvernightSchedule: mockRunOvernightSchedule,
   runOvernightReport: mockRunOvernightReport,
+  runOvernightImplementBlocked: mockRunOvernightImplementBlocked,
 }));
 
 const mockRunOvernightReport = vi.fn();
+const mockRunOvernightImplementBlocked = vi.fn();
 const mockRunOvernightPushPrep = vi.fn();
 vi.mock('./commands/overnight-push-prep.js', () => ({
   runOvernightPushPrep: mockRunOvernightPushPrep,

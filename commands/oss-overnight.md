@@ -43,6 +43,7 @@ Parse the JSON envelope. `data` has:
 | `judgment` | Items that need you: maintainer replies to answer, issue conversations with a new response, PR checklists with unticked boxes (ticking them is a `gh pr edit` write). Already in the report; do nothing with them. |
 | `failures`, `warnings` | Already in the report, one line per PR that could not be fetched. |
 | `carriedPrepared` | Branches kept from an earlier run today; a re-run never drops recorded work. |
+| `implement` | The one curated-list issue to implement tonight (#1715): `url`, `repo`, `number`, `title`, `reason`; `null` when the list is absent, its Pursue tier is exhausted, or every Pursue repo has an open PR of yours. See Step 2a. |
 | `gistSyncWarning` | Present when the run could not be pushed to the Gist. Append it under "Check problems". |
 | `pendingLearnings` | Present when recently merged PRs have review feedback not yet distilled into per-repo guidelines (`repos`, `prCount`). Handled in Step 2b. |
 
@@ -73,6 +74,31 @@ After the agent returns:
 - `STATUS: blocked` → append one line to the report file under a `## Blocked` heading
   (create it if missing): `- {label} {url} — {NOTE}`. Do not retry.
 - Agent failed or returned nothing → same as blocked, with the note `agent returned no result`.
+
+## Step 2a: Implement tonight's list issue (at most one)
+
+If `data.implement` is not null, it is the one curated-list issue picked for
+tonight (#1715): first item of the list's Pursue tier with no open PR of the
+user's on that repo and no earlier attempt. Dispatch **one** more
+`overnight-preparer`, after the Step 2 items, with:
+
+```
+OVERNIGHT IMPLEMENT MODE for {implement.url} ({implement.repo}#{implement.number}: {implement.title}). Report in your four-line shape.
+```
+
+After it returns:
+
+- `STATUS: prepared` → `overnight record` exactly as in Step 2. Recording the
+  branch for this URL is what marks the attempt done, so tomorrow moves on.
+- `STATUS: blocked` (or no result) → the Blocked line as in Step 2, and also:
+  ```bash
+  node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" overnight implement-blocked \
+    --url "{implement.url}" --note "{NOTE}" --json
+  ```
+  so the next run picks the next Pursue item instead of retrying this one.
+
+The preparer never opens a PR. The branch is staged by `push-prep` like any
+other; opening the PR is the morning's decision.
 
 ## Step 2b: Extract learnings from merged PRs
 

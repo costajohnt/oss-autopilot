@@ -30,6 +30,11 @@ vi.mock('../core/index.js', async () => {
 });
 
 vi.mock('./daily.js', () => ({ executeDailyCheck: vi.fn() }));
+// The curated list is a file the run reads; tests point it at a temp file or nowhere.
+const listPath = { current: undefined as string | undefined };
+vi.mock('./locate-issue-list.js', () => ({
+  detectIssueListPath: () => (listPath.current ? { path: listPath.current, source: 'configured' } : undefined),
+}));
 
 import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { executeDailyCheck } from './daily.js';
@@ -41,6 +46,9 @@ import {
   runOvernight,
   runOvernightRecord,
   runOvernightReport,
+  runOvernightImplementBlocked,
+  pickImplementCandidate,
+  IMPLEMENT_TIER,
   publishReport,
   readReport,
   overnightFreshness,
@@ -89,6 +97,7 @@ const attention = { needsAttention: 2, stuckCI: 1, dormantFollowup: 0, waiting: 
 
 beforeEach(() => {
   tmp.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'overnight-'));
+  listPath.current = undefined;
   vi.clearAllMocks();
 });
 
@@ -137,6 +146,7 @@ describe('renderReport', () => {
       prepare: [{ url: 'u1', type: 'ci_failing', label: '[CI]', reason: 'red' }],
       judgment: [],
       attention,
+      digest: { openPRs: [] },
       failures: [{ prUrl: 'https://github.com/o/r/pull/9', error: 'rate limited' }],
       warnings: [{ phase: 'repo-metadata', operation: 'fetch', message: 'boom' } as never],
     });
@@ -179,6 +189,7 @@ describe('runOvernight', () => {
       actionableIssues: [pr('ci_failing', 1), pr('needs_response', 2)],
       commentedIssues: [],
       attention,
+      digest: { openPRs: [] },
       failures: [{ prUrl: 'u9', error: 'boom' }],
       warnings: [],
     } as never);
@@ -202,6 +213,7 @@ describe('runOvernight', () => {
       prepareCount: 1,
       judgmentCount: 1,
       prepared: [],
+      implementAttempts: [],
     });
   });
 
@@ -219,6 +231,7 @@ describe('runOvernight', () => {
       actionableIssues: [],
       commentedIssues: [],
       attention,
+      digest: { openPRs: [] },
       failures: [],
       warnings: [],
     } as never);
@@ -241,6 +254,7 @@ describe('runOvernight', () => {
       actionableIssues: [],
       commentedIssues: [],
       attention,
+      digest: { openPRs: [] },
       failures: [],
       warnings: [],
     } as never);
@@ -259,6 +273,7 @@ describe('runOvernight', () => {
       actionableIssues: [],
       commentedIssues: [],
       attention,
+      digest: { openPRs: [] },
       failures: [],
       warnings: [],
       pendingLearnings: pending,
@@ -501,6 +516,7 @@ describe('lastOvernight schema', () => {
       prepareCount: 1,
       judgmentCount: 0,
       prepared: [],
+      implementAttempts: [],
     });
     expect(() =>
       AgentStateSchema.parse({
@@ -546,6 +562,7 @@ describe('report publishing (#1698)', () => {
       actionableIssues: [],
       commentedIssues: [],
       attention,
+      digest: { openPRs: [] },
       failures: [],
       warnings: [],
     } as never);
@@ -586,5 +603,136 @@ describe('report publishing (#1698)', () => {
       source: 'gist',
       content: '# from gist',
     });
+  });
+});
+
+describe('implement tonight (#1715)', () => {
+  const item = (repo: string, n: number, tier = IMPLEMENT_TIER) => ({
+    repo,
+    number: n,
+    title: `t${n}`,
+    tier,
+    url: `https://github.com/${repo}/issues/${n}`,
+  });
+  const LIST = `# Vetted Issue List
+
+## Pursue
+
+- [#1](https://github.com/o/a/issues/1) — first
+- [#2](https://github.com/o/b/issues/2) — second
+
+## Maybe
+
+- [#3](https://github.com/o/c/issues/3) — third
+`;
+
+  it('picks the first Pursue item with no open PR of yours on its repo and no earlier attempt', () => {
+    const items = [item('o/a', 1), item('o/b', 2), item('o/c', 3, 'Maybe')];
+    expect(pickImplementCandidate(items, [], [], '/l.md')?.url).toBe('https://github.com/o/a/issues/1');
+    expect(pickImplementCandidate(items, [{ repo: 'O/A' }], [], '/l.md')?.url).toBe('https://github.com/o/b/issues/2');
+    expect(
+      pickImplementCandidate(
+        items,
+        [],
+        [{ url: 'https://github.com/o/a/issues/1', attemptedAt: 'x', outcome: 'blocked' }],
+        '/l.md',
+      )?.url,
+    ).toBe('https://github.com/o/b/issues/2');
+    expect(pickImplementCandidate(items, [{ repo: 'o/a' }, { repo: 'o/b' }], [], '/l.md')).toBeNull();
+    expect(pickImplementCandidate([item('o/c', 3, 'Maybe')], [], [], '/l.md')).toBeNull();
+  });
+
+  it('runOvernight queues one, remembers it, prunes attempts for issues that left the list, and reports it', async () => {
+    listPath.current = path.join(tmp.dir, 'list.md');
+    fs.writeFileSync(listPath.current, LIST);
+    const sm = fakeStateManager({
+      runAt: 'earlier',
+      reportPath: '/old.md',
+      prepareCount: 0,
+      judgmentCount: 0,
+      prepared: [],
+      implementAttempts: [
+        { url: 'https://github.com/o/a/issues/1', attemptedAt: 'x', outcome: 'blocked' },
+        { url: 'https://github.com/o/gone/issues/9', attemptedAt: 'x', outcome: 'blocked' },
+      ],
+    });
+    mockGetStateManager.mockReturnValue(sm);
+    mockDaily.mockResolvedValue({
+      actionableIssues: [],
+      commentedIssues: [],
+      attention,
+      digest: { openPRs: [] },
+      failures: [],
+      warnings: [],
+    } as never);
+
+    const out = await runOvernight();
+
+    expect(out.implement?.url).toBe('https://github.com/o/b/issues/2');
+    const saved = sm.setLastOvernight.mock.calls[0][0];
+    expect(saved.implementUrl).toBe('https://github.com/o/b/issues/2');
+    expect(saved.implementAttempts.map((a) => a.url)).toEqual(['https://github.com/o/a/issues/1']);
+    expect(fs.readFileSync(out.reportPath, 'utf8')).toContain(
+      '## Implement tonight (1)\n\n- o/b#2 https://github.com/o/b/issues/2',
+    );
+  });
+
+  it('runOvernight with no readable list queues nothing and keeps attempts', async () => {
+    const sm = fakeStateManager({
+      runAt: 'earlier',
+      reportPath: '/old.md',
+      prepareCount: 0,
+      judgmentCount: 0,
+      prepared: [],
+      implementAttempts: [{ url: 'u', attemptedAt: 'x', outcome: 'prepared' }],
+    });
+    mockGetStateManager.mockReturnValue(sm);
+    mockDaily.mockResolvedValue({
+      actionableIssues: [],
+      commentedIssues: [],
+      attention,
+      digest: { openPRs: [] },
+      failures: [],
+      warnings: [],
+    } as never);
+    const out = await runOvernight();
+    expect(out.implement).toBeNull();
+    expect(sm.setLastOvernight.mock.calls[0][0]).not.toHaveProperty('implementUrl');
+    expect(sm.setLastOvernight.mock.calls[0][0].implementAttempts).toHaveLength(1);
+    expect(fs.readFileSync(out.reportPath, 'utf8')).toContain('## Implement tonight (0)');
+  });
+
+  it('record marks the implement attempt prepared; implement-blocked marks it blocked; other URLs do neither', async () => {
+    const reportPath = path.join(tmp.dir, 'r.md');
+    fs.writeFileSync(reportPath, '# r\n');
+    const base = {
+      runAt: 'now',
+      reportPath,
+      prepareCount: 0,
+      judgmentCount: 0,
+      prepared: [],
+      implementUrl: 'https://github.com/o/b/issues/2',
+      implementAttempts: [],
+    };
+    let sm = fakeStateManager({ ...base });
+    mockGetStateManager.mockReturnValue(sm);
+    await runOvernightRecord({ url: 'https://github.com/o/x/pull/7', branch: 'b' });
+    expect(sm.setLastOvernight.mock.calls[0][0].implementAttempts).toEqual([]);
+    await runOvernightRecord({ url: 'https://github.com/o/b/issues/2', branch: 'overnight/issue-2' });
+    expect(sm.setLastOvernight.mock.calls[1][0].implementAttempts).toMatchObject([
+      { url: 'https://github.com/o/b/issues/2', outcome: 'prepared' },
+    ]);
+
+    sm = fakeStateManager({ ...base });
+    mockGetStateManager.mockReturnValue(sm);
+    await expect(runOvernightImplementBlocked({ url: 'https://github.com/o/other/issues/1' })).rejects.toThrow(
+      /not tonight's implement item/,
+    );
+    const out = await runOvernightImplementBlocked({ url: 'https://github.com/o/b/issues/2', note: 'needs design' });
+    expect(out.attemptCount).toBe(1);
+    expect(sm.setLastOvernight.mock.calls[0][0].implementAttempts).toMatchObject([
+      { outcome: 'blocked', note: 'needs design' },
+    ]);
+    expect(mockCheckpoint).toHaveBeenCalled();
   });
 });

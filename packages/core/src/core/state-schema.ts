@@ -482,12 +482,27 @@ export const OvernightPreparedSchema = z.object({
 });
 
 /** The latest overnight run (#1574); `startup` surfaces its freshness. */
+/**
+ * One list issue the overnight run tried to implement (#1715). Kept across
+ * runs so a blocked issue is not retried every night; cleared when the
+ * issue leaves the list.
+ */
+export const OvernightImplementAttemptSchema = z.object({
+  url: z.string(),
+  attemptedAt: z.string(),
+  outcome: z.enum(['prepared', 'blocked']),
+  note: z.string().optional(),
+});
+
 export const OvernightRecordSchema = z.object({
   runAt: z.string(),
   reportPath: z.string(),
   prepareCount: z.number().int().nonnegative(),
   judgmentCount: z.number().int().nonnegative(),
   prepared: z.array(OvernightPreparedSchema).default([]),
+  /** The one curated-list issue picked for implementation this run, if any (#1715). */
+  implementUrl: z.string().optional(),
+  implementAttempts: z.array(OvernightImplementAttemptSchema).default([]),
 });
 
 /**
@@ -592,6 +607,7 @@ export type DiffTool = z.infer<typeof DiffToolSchema>;
 export type SearchSeenEntry = z.infer<typeof SearchSeenEntrySchema>;
 export type OvernightPrepared = z.infer<typeof OvernightPreparedSchema>;
 export type OvernightRecord = z.infer<typeof OvernightRecordSchema>;
+export type OvernightImplementAttempt = z.infer<typeof OvernightImplementAttemptSchema>;
 export type SearchRotation = z.infer<typeof SearchRotationSchema>;
 export type RepoSignals = z.infer<typeof RepoSignalsSchema>;
 export type RepoScore = z.infer<typeof RepoScoreSchema>;
