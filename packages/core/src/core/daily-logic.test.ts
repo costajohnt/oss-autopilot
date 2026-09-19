@@ -18,6 +18,7 @@ import {
   groupPRsByRepo,
   computeActionMenu,
   applyStatusOverrides,
+  latestActivityAt,
   firstMaintainerResponseFromDigest,
   CRITICAL_STATUSES,
   STALE_STATUSES,
@@ -903,6 +904,51 @@ describe('applyStatusOverrides', () => {
     expect(result[0].status).toBe('needs_addressing');
     // Auto-clear persistence is handled by clearStatusOverride's autoSave()
     // inside the batch — the mock's getStatusOverride doesn't trigger it
+  });
+
+  it('keys the auto-clear on commit/comment activity, not on updatedAt (#1713)', () => {
+    const prUrl = 'https://github.com/owner/repo/pull/1';
+    const prs = [
+      makePR({
+        repo: 'owner/repo',
+        number: 1,
+        status: 'needs_addressing',
+        // updatedAt moved (base branch advanced) but nothing a person can act on happened
+        updatedAt: '2026-02-01T00:00:00Z',
+        latestCommitDate: '2026-01-10T00:00:00Z',
+        lastMaintainerComment: { author: 'm', body: 'ok', createdAt: '2026-01-12T00:00:00Z' },
+      }),
+    ];
+    const state = makeState({
+      [prUrl]: {
+        status: 'waiting_on_maintainer',
+        setAt: '2026-01-15T00:00:00Z',
+        lastActivityAt: '2026-01-15T00:00:00Z',
+      },
+    });
+    mockGetStatusOverride.mockReturnValue({
+      status: 'waiting_on_maintainer',
+      setAt: '2026-01-15T00:00:00Z',
+      lastActivityAt: '2026-01-15T00:00:00Z',
+    });
+
+    applyStatusOverrides(prs, state);
+
+    expect(mockGetStatusOverride).toHaveBeenCalledWith(prUrl, '2026-01-12T00:00:00Z');
+  });
+
+  it('latestActivityAt picks the newest of commit and maintainer comment, else updatedAt', () => {
+    expect(
+      latestActivityAt({
+        updatedAt: '2026-03-01T00:00:00Z',
+        latestCommitDate: '2026-01-10T00:00:00Z',
+        lastMaintainerComment: { author: 'm', body: '', createdAt: '2026-01-12T00:00:00Z' },
+      }),
+    ).toBe('2026-01-12T00:00:00Z');
+    expect(latestActivityAt({ updatedAt: '2026-03-01T00:00:00Z', latestCommitDate: '2026-02-01T00:00:00Z' })).toBe(
+      '2026-02-01T00:00:00Z',
+    );
+    expect(latestActivityAt({ updatedAt: '2026-03-01T00:00:00Z' })).toBe('2026-03-01T00:00:00Z');
   });
 
   it('should not change PR when override matches current status', () => {

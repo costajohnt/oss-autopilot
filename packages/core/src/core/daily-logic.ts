@@ -85,6 +85,21 @@ const VALID_OVERRIDE_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_ad
  *   wrong status is visible in the envelope, not just stderr.
  * @returns New PR array with overrides applied (original array is not mutated)
  */
+/**
+ * When the PR last had activity a person can act on: a commit or a maintainer
+ * comment/review. GitHub's `updatedAt` also moves on invisible events (merge
+ * state recomputed after the base branch advances, label churn), which on a
+ * busy repo cleared a fresh manual override within hours (#1713). Falls back
+ * to `updatedAt` only when neither signal is present.
+ */
+export function latestActivityAt(
+  pr: Pick<FetchedPR, 'updatedAt' | 'latestCommitDate' | 'lastMaintainerComment'>,
+): string {
+  const candidates = [pr.latestCommitDate, pr.lastMaintainerComment?.createdAt].filter((d): d is string => !!d);
+  if (candidates.length === 0) return pr.updatedAt;
+  return candidates.reduce((a, b) => (a > b ? a : b));
+}
+
 export function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentState>, failures?: string[]): FetchedPR[] {
   const overrides = state.config.statusOverrides;
   if (!overrides || Object.keys(overrides).length === 0) return prs;
@@ -97,7 +112,7 @@ export function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentStat
   stateManager.batch(() => {
     result = prs.map((pr) => {
       try {
-        const override = stateManager.getStatusOverride(pr.url, pr.updatedAt);
+        const override = stateManager.getStatusOverride(pr.url, latestActivityAt(pr));
         if (!override) {
           return pr;
         }
