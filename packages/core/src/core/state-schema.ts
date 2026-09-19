@@ -470,6 +470,8 @@ export const OvernightPreparedSchema = z.object({
   pushedAt: z.string().optional(),
   /** `<fork>/compare/<pr-head>...prep/<branch>`; absent when the PR head could not be read. */
   compareUrl: z.string().optional(),
+  /** Why the last `overnight push-prep` did not push this branch; cleared once it is pushed. */
+  pushProblem: z.string().optional(),
 });
 
 /** The latest overnight run (#1574); `startup` surfaces its freshness. */

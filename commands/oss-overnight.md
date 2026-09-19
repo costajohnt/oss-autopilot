@@ -114,6 +114,12 @@ What it does, for each entry recorded with a `--worktree`:
 4. Records `pushedRef` and a compare URL (`<fork>/compare/<pr-head>...prep/<branch>`)
    on the entry, rewrites the "Prepared branches" section, checkpoints the Gist.
 
+A gate saying no is `skipped` (exit 0). A push that breaks (auth, hook,
+timeout) is `failed`, and any failure makes the command exit 1 so the
+scheduler sees it. Either way the reason is written next to the branch in the
+report as `NOT pushed: ...`. A GitHub rate limit stops the run with an error;
+branches already pushed by then are still recorded.
+
 `--dry-run` resolves the targets and prints the plan without pushing or
 writing anything. In the morning, `/oss` on the other machine shows the
 compare URL; fetching `prep/<branch>`, fast-forwarding the PR branch, and

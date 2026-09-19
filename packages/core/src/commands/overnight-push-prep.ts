@@ -23,6 +23,7 @@ import {
   errorMessage,
   getOctokit,
   getStateManager,
+  isRateLimitError,
   maybeCheckpoint,
   parseGitHubUrl,
   requireGitHubToken,
@@ -52,7 +53,8 @@ export interface PushTarget extends RemoteOwnerRepo {
   remote: string;
 }
 
-export type PushPrepStatus = 'pushed' | 'planned' | 'skipped';
+/** `skipped`: a gate said no, nothing to fix tonight. `failed`: the push itself broke; the CLI exits 1. */
+export type PushPrepStatus = 'pushed' | 'planned' | 'skipped' | 'failed';
 
 export interface PushPrepResult {
   url: string;
@@ -63,7 +65,7 @@ export interface PushPrepResult {
   repo?: string;
   ref?: string;
   compareUrl?: string;
-  /** Why a `skipped` entry was not pushed. */
+  /** Why a `skipped` or `failed` entry was not pushed. */
   reason?: string;
 }
 
@@ -76,6 +78,11 @@ export interface OvernightPushPrepOutput {
   pushed: number;
   planned: number;
   skipped: number;
+  failed: number;
+  /** The report file was missing and has been recreated with only the prepared section. */
+  reportRecreated?: true;
+  /** The pushes and state are recorded, but the report file could not be rewritten. */
+  reportWarning?: string;
   gistSyncWarning?: string;
 }
 
@@ -178,21 +185,47 @@ function git(worktree: string, args: string[]): string {
   });
 }
 
-function isNonFastForward(err: unknown): boolean {
+function gitStderr(err: unknown): string {
   const stderr = (err as { stderr?: unknown })?.stderr;
-  return typeof stderr === 'string' && /non-fast-forward|fetch first|\[rejected\]/.test(stderr);
+  return typeof stderr === 'string' ? stderr.trim() : '';
 }
 
-function skip(entry: OvernightPrepared, reason: string, target?: PushTarget, ref?: string): PushPrepResult {
-  warn(MODULE, `Skipping ${entry.branch} for ${entry.url}: ${reason}`);
+// Only git's two non-fast-forward hints. A bare `[rejected]` also covers
+// stale-info and hook rejections, which are failures, not divergence.
+function isNonFastForward(err: unknown): boolean {
+  return /non-fast-forward|fetch first/.test(gitStderr(err));
+}
+
+/** errorMessage alone is "Command failed: git ..."; git's own last lines say why (auth, hook, timeout). */
+function pushFailureReason(err: unknown): string {
+  const timedOut = (err as { code?: unknown })?.code === 'ETIMEDOUT';
+  const tail = gitStderr(err).split('\n').slice(-3).join(' | ');
+  const why = timedOut
+    ? `timed out after ${GIT_TIMEOUT_MS / 1000}s (the ref may still have landed; the next run re-checks)`
+    : errorMessage(err);
+  return `push failed: ${why}${tail ? ` [git: ${tail}]` : ''}`;
+}
+
+function notPushed(
+  status: 'skipped' | 'failed',
+  entry: OvernightPrepared,
+  reason: string,
+  target?: PushTarget,
+  ref?: string,
+): PushPrepResult {
+  warn(MODULE, `${status === 'failed' ? 'Failed' : 'Skipping'} ${entry.branch} for ${entry.url}: ${reason}`);
   return {
     url: entry.url,
     branch: entry.branch,
-    status: 'skipped',
+    status,
     ...(target ? { remote: target.remote, repo: `${target.owner}/${target.repo}` } : {}),
     ...(ref ? { ref } : {}),
     reason,
   };
+}
+
+function skip(entry: OvernightPrepared, reason: string, target?: PushTarget, ref?: string): PushPrepResult {
+  return notPushed('skipped', entry, reason, target, ref);
 }
 
 /** Push every prepared branch of the latest overnight run to `prep/*` on the user's fork. */
@@ -200,6 +233,7 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
   const sm = getStateManager();
   const last = sm.getLastOvernight();
   if (!last) throw new Error('No overnight run recorded yet; run `overnight` first.');
+  const lastRun = last; // narrowed binding for the closures below
 
   const octokit = getOctokit(requireGitHubToken());
   const { data: viewer } = await octokit.users.getAuthenticated();
@@ -232,6 +266,10 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
         reason = `${target.owner}/${target.repo} resolved to ${data.full_name}, not owned by ${login}`;
       else reason = null;
     } catch (err) {
+      // Same convention as the rest of core (errors.ts): a rate limit must
+      // propagate, or every entry repeats the doomed call and the run reads
+      // as "all skipped".
+      if (isRateLimitError(err)) throw err;
       reason = `could not read ${target.owner}/${target.repo}: ${errorMessage(err)}`;
     }
     forkVerdicts.set(key, reason);
@@ -246,6 +284,7 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
       const { data } = await octokit.pulls.get({ owner: parsed.owner, repo: parsed.repo, pull_number: parsed.number });
       return data.head.ref;
     } catch (err) {
+      if (isRateLimitError(err)) throw err;
       warn(MODULE, `Could not read the head branch of ${url}; no compare URL: ${errorMessage(err)}`);
       return undefined;
     }
@@ -261,7 +300,14 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
     const notFork = await forkSkipReason(target);
     if (notFork) return skip(entry, notFork, target);
 
-    const ref = buildPrepRef(entry.branch);
+    // A recorded name git would reject is a gate saying no, not a broken push.
+    let ref: string;
+    try {
+      ref = buildPrepRef(entry.branch);
+    } catch (err) {
+      if (err instanceof PrepNamespaceError) throw err;
+      return skip(entry, errorMessage(err), target);
+    }
     const prepBranch = prepBranchName(ref);
     const head = await prHeadFor(entry.url);
     const base = {
@@ -289,39 +335,59 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
             target,
             ref,
           )
-        : skip(entry, `push failed: ${errorMessage(err)}`, target, ref);
+        : notPushed('failed', entry, pushFailureReason(err), target, ref);
     }
     return { ...base, status: 'pushed' };
   }
 
   const results: PushPrepResult[] = [];
-  const prepared: OvernightPrepared[] = [];
-  for (const entry of last.prepared) {
-    let result: PushPrepResult;
+  // A copy of the whole list, updated in place: if the run stops early, the
+  // entries it never reached are kept as they were, not dropped.
+  const prepared: OvernightPrepared[] = [...last.prepared];
+  let reportRecreated = false;
+  let reportWarning: string | null = null;
+  let gistSyncWarning: string | null = null;
+
+  /** Record what happened so far. Runs even when the loop throws, so a ref that is live on the fork is never missing from state. */
+  async function persist(): Promise<void> {
+    if (options.dryRun) return;
+    sm.setLastOvernight({ ...lastRun, prepared });
     try {
-      result = await pushOne(entry);
+      reportRecreated = writePreparedSection(lastRun.reportPath, prepared).reportRecreated;
     } catch (err) {
-      if (err instanceof PrepNamespaceError) throw err;
-      result = skip(entry, errorMessage(err));
+      // State already has the pushes; a report that cannot be written must
+      // not also cost the Gist checkpoint.
+      reportWarning = `could not rewrite ${lastRun.reportPath}: ${errorMessage(err)}`;
+      warn(MODULE, reportWarning);
     }
-    results.push(result);
-    prepared.push(
-      result.status === 'pushed' && result.ref
-        ? {
-            ...entry,
-            pushedRef: prepBranchName(result.ref),
-            pushedAt: new Date().toISOString(),
-            ...(result.compareUrl ? { compareUrl: result.compareUrl } : {}),
-          }
-        : entry,
-    );
+    gistSyncWarning = await maybeCheckpoint(sm, MODULE);
   }
 
-  let gistSyncWarning: string | null = null;
-  if (!options.dryRun) {
-    sm.setLastOvernight({ ...last, prepared });
-    writePreparedSection(last.reportPath, prepared);
-    gistSyncWarning = await maybeCheckpoint(sm, MODULE);
+  try {
+    for (const [i, entry] of last.prepared.entries()) {
+      let result: PushPrepResult;
+      try {
+        result = await pushOne(entry);
+      } catch (err) {
+        if (err instanceof PrepNamespaceError || isRateLimitError(err)) throw err;
+        result = notPushed('failed', entry, errorMessage(err));
+      }
+      results.push(result);
+      if (result.status === 'pushed' && result.ref) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { pushProblem: _cleared, ...rest } = entry;
+        prepared[i] = {
+          ...rest,
+          pushedRef: prepBranchName(result.ref),
+          pushedAt: new Date().toISOString(),
+          ...(result.compareUrl ? { compareUrl: result.compareUrl } : {}),
+        };
+      } else if (result.status !== 'planned' && result.reason) {
+        prepared[i] = { ...entry, pushProblem: result.reason };
+      }
+    }
+  } finally {
+    await persist();
   }
 
   const count = (status: PushPrepStatus) => results.filter((r) => r.status === status).length;
@@ -333,6 +399,9 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
     pushed: count('pushed'),
     planned: count('planned'),
     skipped: count('skipped'),
+    failed: count('failed'),
+    ...(reportRecreated ? { reportRecreated: true as const } : {}),
+    ...(reportWarning ? { reportWarning } : {}),
     ...(gistSyncWarning ? { gistSyncWarning } : {}),
   };
 }

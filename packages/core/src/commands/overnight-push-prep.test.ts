@@ -428,7 +428,7 @@ describe('runOvernightPushPrep', () => {
     expect(mockGetStateManager().getLastOvernight()!.prepared[0]).not.toHaveProperty('pushedRef');
   });
 
-  it('any other push failure is a skip with the git error, and other entries still proceed', async () => {
+  it("any other push failure is `failed` with git's own stderr, and other entries still proceed", async () => {
     mockGetStateManager.mockReturnValue(fakeStateManager(record([entry({ branch: 'a' }), entry({ branch: 'b' })])));
     fakeOctokit();
     let calls = 0;
@@ -440,8 +440,110 @@ describe('runOvernightPushPrep', () => {
 
     const out = await runOvernightPushPrep({ dryRun: false });
 
-    expect(out.results.map((r) => r.status)).toEqual(['skipped', 'pushed']);
-    expect(out.results[0].reason).toMatch(/^push failed: boom/);
+    expect(out.results.map((r) => r.status)).toEqual(['failed', 'pushed']);
+    expect(out.results[0].reason).toMatch(/^push failed: boom \[git: fatal: unable to access\]/);
+    expect(out).toMatchObject({ failed: 1, pushed: 1, skipped: 0 });
+  });
+
+  it('a `[rejected]` that is not a non-fast-forward (stale info, hook) is `failed`, not mislabelled as divergence', async () => {
+    mockGetStateManager.mockReturnValue(fakeStateManager(record([entry()])));
+    fakeOctokit();
+    fakeGit(forkRemotes, Object.assign(new Error('x'), { stderr: ' ! [rejected] a -> prep/a (stale info)' }));
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results[0].status).toBe('failed');
+    expect(out.results[0].reason).not.toMatch(/non-fast-forward/);
+  });
+
+  it('a git timeout says so, and that the ref may still have landed', async () => {
+    mockGetStateManager.mockReturnValue(fakeStateManager(record([entry()])));
+    fakeOctokit();
+    fakeGit(forkRemotes, Object.assign(new Error('spawnSync git ETIMEDOUT'), { code: 'ETIMEDOUT' }));
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.results[0]).toMatchObject({ status: 'failed', reason: expect.stringMatching(/timed out after 60s/) });
+  });
+
+  it('records why a branch was not pushed, and clears it once the branch is pushed', async () => {
+    const sm = fakeStateManager(record([entry({ branch: 'a' }), entry({ branch: 'b', pushProblem: 'old reason' })]));
+    mockGetStateManager.mockReturnValue(sm);
+    fakeOctokit();
+    let calls = 0;
+    mockExecFileSync.mockImplementation(((_cmd: string, args: string[]) => {
+      if (args[2] === 'remote') return forkRemotes;
+      if (++calls === 1) throw Object.assign(new Error('boom'), { stderr: 'remote: Permission denied' });
+      return '';
+    }) as never);
+
+    await runOvernightPushPrep({ dryRun: false });
+
+    const saved = sm.setLastOvernight.mock.calls[0][0].prepared as OvernightPrepared[];
+    expect(saved[0].pushProblem).toMatch(/Permission denied/);
+    expect(saved[0].pushedRef).toBeUndefined();
+    expect(saved[1]).toMatchObject({ pushedRef: 'prep/b' });
+    expect(saved[1].pushProblem).toBeUndefined();
+    expect(fs.readFileSync(path.join(tmp, 'r.md'), 'utf8')).toMatch(/NOT pushed: push failed: boom/);
+  });
+
+  it('a rate limit propagates, but what was already pushed is recorded and unreached entries are kept', async () => {
+    const sm = fakeStateManager(
+      record([
+        entry({ branch: 'a' }),
+        entry({ branch: 'b', url: 'https://github.com/vuejs/core/pull/9' }),
+        entry({ branch: 'c' }),
+      ]),
+    );
+    mockGetStateManager.mockReturnValue(sm);
+    const octokit = fakeOctokit();
+    // entry b is the first to need a second PR-head lookup: make that one hit the limit
+    octokit.pulls.get
+      .mockResolvedValueOnce({ data: { head: { ref: 'fix-lint' } } })
+      .mockRejectedValueOnce(Object.assign(new Error('API rate limit exceeded'), { status: 403 }));
+    fakeGit(forkRemotes);
+
+    await expect(runOvernightPushPrep({ dryRun: false })).rejects.toThrow(/rate limit/);
+
+    const saved = sm.setLastOvernight.mock.calls[0][0].prepared as OvernightPrepared[];
+    expect(saved).toHaveLength(3);
+    expect(saved[0].pushedRef).toBe('prep/a');
+    expect(saved[1].pushedRef).toBeUndefined();
+    expect(saved[2]).toEqual(entry({ branch: 'c' }));
+    expect(mockCheckpoint).toHaveBeenCalledTimes(1);
+  });
+
+  it('a rate limit on the fork lookup propagates instead of reading as a skip', async () => {
+    mockGetStateManager.mockReturnValue(fakeStateManager(record([entry()])));
+    fakeOctokit({ repoError: Object.assign(new Error('too many'), { status: 429 }) });
+    fakeGit(forkRemotes);
+
+    await expect(runOvernightPushPrep({ dryRun: false })).rejects.toThrow(/too many/);
+    expect(pushCalls()).toHaveLength(0);
+  });
+
+  it('a report that cannot be rewritten is a warning: state is saved and the Gist is still checkpointed', async () => {
+    const sm = fakeStateManager({ ...record([entry()]), reportPath: path.join(tmp, 'no-such-dir', 'r.md') });
+    mockGetStateManager.mockReturnValue(sm);
+    fakeOctokit();
+    fakeGit(forkRemotes);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.pushed).toBe(1);
+    expect(out.reportWarning).toMatch(/could not rewrite/);
+    expect(sm.setLastOvernight).toHaveBeenCalledTimes(1);
+    expect(mockCheckpoint).toHaveBeenCalledTimes(1);
+  });
+
+  it('says so when the report was missing and had to be recreated', async () => {
+    mockGetStateManager.mockReturnValue(fakeStateManager(record([entry()])));
+    fakeOctokit();
+    fakeGit(forkRemotes);
+
+    const out = await runOvernightPushPrep({ dryRun: false });
+
+    expect(out.reportRecreated).toBe(true);
   });
 
   it('an invalid branch name is a skip, and the fork verdict is fetched once per repo', async () => {

@@ -2429,7 +2429,24 @@ describe('overnight subcommands', () => {
     pushed: 1,
     planned: 0,
     skipped: 1,
+    failed: 0,
   };
+
+  it('push-prep exits 1 when a push failed, so a scheduler sees it, and 0 for skips alone', async () => {
+    const before = process.exitCode;
+    try {
+      process.exitCode = undefined;
+      mockRunOvernightPushPrep.mockResolvedValue(pushPrepData);
+      await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'push-prep']);
+      expect(process.exitCode).toBeUndefined();
+
+      mockRunOvernightPushPrep.mockResolvedValue({ ...pushPrepData, failed: 1 });
+      await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'push-prep', '--json']);
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = before;
+    }
+  });
 
   it('push-prep defaults to a real push and prints one line per result', async () => {
     mockRunOvernightPushPrep.mockResolvedValue(pushPrepData);
@@ -2437,7 +2454,7 @@ describe('overnight subcommands', () => {
     await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'push-prep']);
 
     expect(mockRunOvernightPushPrep).toHaveBeenCalledWith({ dryRun: false });
-    expect(consoleLogSpy).toHaveBeenCalledWith('Pushed as @octocat: 1 pushed, 0 planned, 1 skipped');
+    expect(consoleLogSpy).toHaveBeenCalledWith('Pushed as @octocat: 1 pushed, 0 planned, 1 skipped, 0 failed');
     expect(consoleLogSpy).toHaveBeenCalledWith(
       '  [pushed] https://github.com/o/r/pull/1 (overnight/1-2026-09-18) -> origin refs/heads/prep/overnight/1-2026-09-18',
     );
@@ -2461,7 +2478,7 @@ describe('overnight subcommands', () => {
     await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'push-prep', '--dry-run']);
 
     expect(mockRunOvernightPushPrep).toHaveBeenCalledWith({ dryRun: true });
-    expect(consoleLogSpy).toHaveBeenCalledWith('Plan as @octocat: 0 pushed, 0 planned, 0 skipped');
+    expect(consoleLogSpy).toHaveBeenCalledWith('Plan as @octocat: 0 pushed, 0 planned, 0 skipped, 0 failed');
     expect(consoleLogSpy).toHaveBeenCalledWith('  Warning: push failed');
   });
 

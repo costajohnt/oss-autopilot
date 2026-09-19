@@ -22,5 +22,7 @@
   "pushed": 1,
   "planned": 0,
   "skipped": 1,
+  "failed": 0,
+  "reportRecreated": true,
   "gistSyncWarning": "Gist checkpoint push failed after retry"
 }

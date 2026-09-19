@@ -125,7 +125,9 @@ export function renderPreparedSection(prepared: OvernightPrepared[]): string {
   for (const p of prepared) {
     const pushed = p.pushedRef
       ? ` (pushed to \`${p.pushedRef}\`${p.compareUrl ? `, compare ${p.compareUrl}` : ''})`
-      : '';
+      : p.pushProblem
+        ? ` (NOT pushed: ${p.pushProblem})`
+        : '';
     lines.push(
       `- ${p.url} — branch \`${p.branch}\`${p.worktree ? ` at ${p.worktree}` : ''}${pushed}${p.note ? `: ${p.note}` : ''}`,
     );

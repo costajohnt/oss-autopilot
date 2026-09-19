@@ -1088,7 +1088,8 @@ export const LocalReposOutputSchema = z.object({
 const PushPrepResultSchema = z.object({
   url: z.string(),
   branch: z.string(),
-  status: z.enum(['pushed', 'planned', 'skipped']),
+  /** `skipped`: a gate said no (nothing to fix tonight). `failed`: the push itself broke. */
+  status: z.enum(['pushed', 'planned', 'skipped', 'failed']),
   remote: z.string().optional(),
   repo: z.string().optional(),
   /** Always under `refs/heads/prep/`. */
@@ -1105,6 +1106,12 @@ export const OvernightPushPrepOutputSchema = z.object({
   pushed: z.number().int().nonnegative(),
   planned: z.number().int().nonnegative(),
   skipped: z.number().int().nonnegative(),
+  /** Any failed push makes the CLI exit 1, so a scheduler sees it. */
+  failed: z.number().int().nonnegative(),
+  /** The report file was missing and has been recreated with only the prepared section. */
+  reportRecreated: z.literal(true).optional(),
+  /** The pushes and state are recorded, but the report file could not be rewritten. */
+  reportWarning: z.string().optional(),
   gistSyncWarning: z.string().optional(),
 });
 
