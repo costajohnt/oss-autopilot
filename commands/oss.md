@@ -138,7 +138,37 @@ If `data.dashboardUrl` is present, show it on a separate line so the user can re
 Dashboard: data.dashboardUrl
 ```
 
-Then check for auto-detected welcome (below), first-run, or proceed to **Action Menu**.
+Then run **Auto-extract learnings** (below), check for auto-detected welcome, first-run, or proceed to **Action Menu**.
+
+---
+
+### Auto-extract learnings (#1696)
+
+**If `data.daily.pendingLearnings` is present**, the CLI found recently merged PRs whose review feedback has not been distilled into per-repo guidelines, and `autoExtractLearnings` is on. Dispatch the extraction now, in the background, and keep going; never ask first.
+
+Print one line so the user knows it started:
+
+```
+Extracting learnings from {prCount} merged PR(s) in {repos.join(", ")} in the background...
+```
+
+Then dispatch **one** agent (Task tool, `subagent_type: "general-purpose"`, `run_in_background: true`) with this prompt, substituting the repo list:
+
+```
+AUTO MODE: read ${CLAUDE_PLUGIN_ROOT}/workflows/extract-learnings.md and run it in auto mode for each of these repos, one after another (never in parallel): {repos}. Auto mode means: no questions, no confirmation step, store the guidelines directly, then run `guidelines mark-extracted --repo <repo>`. If a repo's corpus has no signal, still run `guidelines mark-extracted` for it. Report one line per repo: "<repo>: updated (<n> PRs)" or "<repo>: no signal (<n> PRs)" or "<repo>: failed — <reason>".
+```
+
+One agent, repos sequential: this respects the host's subagent cap and keeps the token cost bounded. Do not dispatch a second extraction agent while one is running.
+
+When the agent's result arrives (it lands as a task notification while you are doing other things), show a single line and continue whatever you were doing:
+
+```
+Learnings updated for {repos that reported updated or no signal} ({total PRs}).
+```
+
+A repo that reported `failed` keeps its PRs unstamped, so the next `/oss` run retries it; mention it in the same line ("owner/repo failed: <reason>; set autoExtractLearnings=false to stop retrying") and move on. If the agent crashed or returned no per-repo lines, print `Learnings: extraction returned no result for {repos}; retried next run`. Never block the action menu on extraction.
+
+**If `data.daily.pendingLearnings` is absent**, there is nothing to extract (or `autoExtractLearnings` is `false`, in which case the action menu carries an `extract_learnings` item instead). A `merge-loop` warning with operation `auto-extract learnings` means Gist persistence is off; surface it like any other warning, once.
 
 ---
 
@@ -236,7 +266,7 @@ When the user selects an action from the menu above, **read the relevant workflo
 | Specific PR selection (via "Other") | `${CLAUDE_PLUGIN_ROOT}/workflows/work-through-issues.md` | "Handle Specific PR Selection" |
 | "Review issue replies" | `${CLAUDE_PLUGIN_ROOT}/workflows/review-issue-replies.md` | "Handle Review Issue Replies" |
 | "Follow up on stuck-CI / dormant PRs" (`follow_up`) | `${CLAUDE_PLUGIN_ROOT}/workflows/dormant-pr-follow-up.md` | "Trigger" |
-| "Extract learnings from recently merged PRs" (`extract_learnings`) | `${CLAUDE_PLUGIN_ROOT}/workflows/extract-learnings.md` | "Steps" |
+| "Extract learnings from recently merged PRs" (`extract_learnings`, only when `autoExtractLearnings` is `false`) | `${CLAUDE_PLUGIN_ROOT}/workflows/extract-learnings.md` | "Steps" |
 | "Search for new issues" | Handled in core (below) | "Handle Find New Issues" |
 | "Done for now" | Handled in core (below) | "Session End" |
 
