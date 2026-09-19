@@ -233,6 +233,20 @@ export interface DailyOutput {
    * omit the field entirely so existing consumers and goldens see no change.
    */
   listUpdates?: MergedPRListUpdate[];
+  /**
+   * Recently merged PRs whose learnings the host extracts in the background
+   * at startup (#1696). Present only in auto mode with Gist persistence and
+   * at least one unextracted merge; see {@link PendingLearnings}.
+   */
+  pendingLearnings?: PendingLearnings;
+}
+
+/** Work order for the host's background learnings extraction (#1696). */
+export interface PendingLearnings {
+  /** `owner/repo` slugs with at least one unextracted recent merge, sorted. */
+  repos: string[];
+  /** Total unextracted recently merged PRs across those repos. */
+  prCount: number;
 }
 
 /**
@@ -265,6 +279,8 @@ export interface CompactDailyOutput {
   strategySummary?: import('../core/strategy.js').StrategyResult | null;
   /** Curated-list entries auto-marked done this run (#1463). See {@link DailyOutput.listUpdates}. */
   listUpdates?: MergedPRListUpdate[];
+  /** Background extraction work order (#1696). See {@link DailyOutput.pendingLearnings}. */
+  pendingLearnings?: PendingLearnings;
 }
 
 /**
@@ -285,6 +301,7 @@ export function toCompactDailyOutput(output: DailyOutput): CompactDailyOutput {
     warnings: output.warnings,
     strategySummary: output.strategySummary,
     listUpdates: output.listUpdates,
+    pendingLearnings: output.pendingLearnings,
   };
 }
 
@@ -564,6 +581,11 @@ export const AttentionSummarySchema = z.object({
 });
 
 /** Mirrors {@link MergedPRListUpdate} (#1463). */
+const PendingLearningsSchema = z.object({
+  repos: z.array(z.string()),
+  prCount: z.number().int().nonnegative(),
+});
+
 const MergedPRListUpdateSchema = z.object({
   prUrl: z.string(),
   issueUrl: z.string(),
@@ -585,6 +607,7 @@ export const DailyOutputSchema = z.object({
   warnings: z.array(DailyWarningSchema),
   strategySummary: StrategyResultSchema.nullable().optional(),
   listUpdates: z.array(MergedPRListUpdateSchema).optional(),
+  pendingLearnings: PendingLearningsSchema.optional(),
 });
 
 export const CompactDailyOutputSchema = z.object({
@@ -599,6 +622,7 @@ export const CompactDailyOutputSchema = z.object({
   warnings: z.array(DailyWarningSchema),
   strategySummary: StrategyResultSchema.nullable().optional(),
   listUpdates: z.array(MergedPRListUpdateSchema).optional(),
+  pendingLearnings: PendingLearningsSchema.optional(),
 });
 
 // ── Search output schema (#1147) ─────────────────────────────────────

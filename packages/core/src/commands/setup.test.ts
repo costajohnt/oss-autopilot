@@ -335,6 +335,17 @@ describe('runSetup', () => {
     expect(result.settings).toMatchObject({ skippedIssuesPath: '(cleared)' });
   });
 
+  it('should set autoExtractLearnings to false (#1696)', async () => {
+    const result = (await runSetup({ set: ['autoExtractLearnings=false'] })) as SetupSetOutput;
+
+    expect(mockUpdateConfig).toHaveBeenCalledWith({ autoExtractLearnings: false });
+    expect(result.settings).toMatchObject({ autoExtractLearnings: 'false' });
+  });
+
+  it('should reject a non-boolean autoExtractLearnings', async () => {
+    await expect(runSetup({ set: ['autoExtractLearnings=maybe'] })).rejects.toThrow(/Must be "true" or "false"/);
+  });
+
   it('should set autoFormatBeforePush to true', async () => {
     const result = (await runSetup({ set: ['autoFormatBeforePush=true'] })) as SetupSetOutput;
 
