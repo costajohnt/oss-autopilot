@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.26.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.25.1...core-v3.26.0) (2026-09-19)
+
+
+### Features
+
+* **overnight:** implement one curated-list issue per run, staged as a prep/* branch ([#1716](https://github.com/costajohnt/oss-autopilot/issues/1716)) ([09142f4](https://github.com/costajohnt/oss-autopilot/commit/09142f48493004c2864d49f65e8a25dd80a6c29a))
+
+
+### Bug Fixes
+
+* **overnight:** route work the headless run cannot verify to judgment ([#1720](https://github.com/costajohnt/oss-autopilot/issues/1720)) ([b92642a](https://github.com/costajohnt/oss-autopilot/commit/b92642a6604145a1f77b4a1f22de2274081a9344))
+
 ## [3.25.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.25.0...core-v3.25.1) (2026-09-19)
 
 
