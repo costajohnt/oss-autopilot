@@ -502,7 +502,7 @@ export const OvernightRecordSchema = z.object({
   prepared: z.array(OvernightPreparedSchema).default([]),
   /** The one curated-list issue picked for implementation this run, if any (#1715). */
   implementUrl: z.string().optional(),
-  implementAttempts: z.array(OvernightImplementAttemptSchema).default([]),
+  implementAttempts: z.array(OvernightImplementAttemptSchema).optional(),
 });
 
 /**

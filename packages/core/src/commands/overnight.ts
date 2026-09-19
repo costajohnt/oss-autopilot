@@ -352,7 +352,7 @@ export async function runOvernightImplementBlocked(
     throw new Error(`${options.url} is not tonight's implement item (${last.implementUrl ?? 'none queued'})`);
   }
   const implementAttempts = [
-    ...last.implementAttempts,
+    ...(last.implementAttempts ?? []),
     { url: options.url, attemptedAt: new Date().toISOString(), outcome: 'blocked' as const, note: options.note },
   ];
   sm.setLastOvernight({ ...last, implementAttempts });
@@ -393,7 +393,10 @@ export async function runOvernightRecord(options: OvernightRecordOptions): Promi
   // as prepared, so the next run moves on to the next Pursue item.
   const implementAttempts =
     options.url === last.implementUrl
-      ? [...last.implementAttempts, { url: options.url, attemptedAt: entry.recordedAt, outcome: 'prepared' as const }]
+      ? [
+          ...(last.implementAttempts ?? []),
+          { url: options.url, attemptedAt: entry.recordedAt, outcome: 'prepared' as const },
+        ]
       : last.implementAttempts;
   sm.setLastOvernight({ ...last, prepared, implementAttempts });
 

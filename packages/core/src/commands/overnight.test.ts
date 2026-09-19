@@ -146,7 +146,7 @@ describe('renderReport', () => {
       prepare: [{ url: 'u1', type: 'ci_failing', label: '[CI]', reason: 'red' }],
       judgment: [],
       attention,
-      digest: { openPRs: [] },
+      implement: null,
       failures: [{ prUrl: 'https://github.com/o/r/pull/9', error: 'rate limited' }],
       warnings: [{ phase: 'repo-metadata', operation: 'fetch', message: 'boom' } as never],
     });
@@ -516,7 +516,6 @@ describe('lastOvernight schema', () => {
       prepareCount: 1,
       judgmentCount: 0,
       prepared: [],
-      implementAttempts: [],
     });
     expect(() =>
       AgentStateSchema.parse({
@@ -671,7 +670,9 @@ describe('implement tonight (#1715)', () => {
     expect(out.implement?.url).toBe('https://github.com/o/b/issues/2');
     const saved = sm.setLastOvernight.mock.calls[0][0];
     expect(saved.implementUrl).toBe('https://github.com/o/b/issues/2');
-    expect(saved.implementAttempts.map((a) => a.url)).toEqual(['https://github.com/o/a/issues/1']);
+    expect((saved.implementAttempts ?? []).map((a: { url: string }) => a.url)).toEqual([
+      'https://github.com/o/a/issues/1',
+    ]);
     expect(fs.readFileSync(out.reportPath, 'utf8')).toContain(
       '## Implement tonight (1)\n\n- o/b#2 https://github.com/o/b/issues/2',
     );
