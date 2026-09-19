@@ -138,7 +138,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             break;
           }
           case 'maxActivePRs': {
-            const maxPRs = parsePositiveInt(value, 'maxActivePRs');
+            const maxPRs = parseNonNegativeInt(value, 'maxActivePRs');
             stateManager.updateConfig({ maxActivePRs: maxPRs });
             results[key] = String(maxPRs);
             break;
