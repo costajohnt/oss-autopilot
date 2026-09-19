@@ -483,9 +483,19 @@ export const OvernightRecordSchema = z.object({
   prepared: z.array(OvernightPreparedSchema).default([]),
 });
 
-/** Mirrors oss-scout's `searchRotation` (broad-phase language cursor). */
+/**
+ * Mirrors oss-scout's `searchRotation`: the broad-phase language cursor, the
+ * repo-window cursors of the capped phases, and the round-robin strategy
+ * cursor (oss-scout 1.7.0). Every field must be listed: z.object strips
+ * unknown keys, so a cursor missing here would be dropped on every load and
+ * scout's rotation would restart from 0 each search.
+ */
 export const SearchRotationSchema = z.object({
   languageOffset: z.number().int().nonnegative().default(0),
+  phase0Offset: z.number().int().nonnegative().default(0),
+  starredOffset: z.number().int().nonnegative().default(0),
+  maintainedOffset: z.number().int().nonnegative().default(0),
+  strategyOffset: z.number().int().nonnegative().default(0),
   lastRotatedAt: z.string().optional(),
 });
 

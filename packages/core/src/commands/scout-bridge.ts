@@ -6,6 +6,7 @@
 import { createScout, type LinkedPR as ScoutLinkedPR, type OssScout, type ScoutState } from '@oss-scout/core';
 import { getStateManager, isLinkedPRStalled, parseGitHubUrl, requireGitHubToken } from '../core/index.js';
 import type { LinkedPR } from '../core/linked-pr-classification.js';
+import { SearchRotationSchema } from '../core/state-schema.js';
 import { computeStrategy } from '../core/strategy.js';
 import type { CandidateLinkedPR } from '../formatters/json.js';
 import { loadSkippedIssuesDetailed } from './skip-file-parser.js';
@@ -250,12 +251,13 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
     })),
     skippedIssues,
     lastRunAt: state.lastRunAt,
-    // Broad-phase language rotation cursor (#1630). Scout advances it in its
-    // own state after a search whose broad phase ran; under
+    // Scout's rotation cursors (#1630): the broad-phase language cursor, the
+    // capped phases' repo windows, and the round-robin strategy cursor. Scout
+    // advances them in its own state after a search; under
     // persistence:'provided' that write is discarded with the process, so
     // search.ts copies it back into AgentState and it is fed in from there.
-    // Scout's documented default (offset 0) applies until the first search.
-    searchRotation: state.searchRotation ?? { languageOffset: 0 },
+    // The schema defaults (all offsets 0) apply until the first search.
+    searchRotation: state.searchRotation ?? SearchRotationSchema.parse({}),
   };
 }
 
