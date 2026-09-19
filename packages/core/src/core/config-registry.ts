@@ -249,6 +249,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     valueHint: 'one of: local,gist',
   },
   {
+    key: 'autoExtractLearnings',
+    description:
+      'Extract per-repo learnings from freshly merged PRs automatically at /oss startup and overnight (#1696). false restores the extract_learnings action-menu item.',
+    settableVia: 'setup',
+    valueHint: 'true|false',
+  },
+  {
     key: 'autoFormatBeforePush',
     description:
       'No effect. The hook that used this setting was removed in #1642; the key is kept in the schema for state-file compatibility.',

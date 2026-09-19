@@ -206,6 +206,17 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = value || '(cleared)';
             break;
           }
+          case 'autoExtractLearnings': {
+            if (value !== 'true' && value !== 'false') {
+              throw new ValidationError(
+                `Invalid value for autoExtractLearnings: "${value}". Must be "true" or "false".`,
+              );
+            }
+            const enabled = value === 'true';
+            stateManager.updateConfig({ autoExtractLearnings: enabled });
+            results[key] = String(enabled);
+            break;
+          }
           case 'autoFormatBeforePush': {
             if (value !== 'true' && value !== 'false') {
               throw new ValidationError(

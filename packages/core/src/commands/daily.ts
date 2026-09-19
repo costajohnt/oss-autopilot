@@ -9,6 +9,7 @@
 
 import {
   getStateManager,
+  parseGitHubUrl,
   PRMonitor,
   IssueConversationMonitor,
   requireGitHubToken,
@@ -53,6 +54,7 @@ import {
   type ActionableIssue,
   type ActionMenu,
   type MergedPRListUpdate,
+  type PendingLearnings,
 } from '../formatters/json.js';
 import { reconcileMergedPRsWithList } from './merge-loop.js';
 
@@ -148,6 +150,13 @@ export interface DailyCheckResult {
    * omit it so serialized output (and contract goldens) stay unchanged.
    */
   listUpdates?: MergedPRListUpdate[];
+  /**
+   * Recently merged PRs whose learnings the host should extract now, without
+   * asking (#1696). Set only when `config.autoExtractLearnings` is on, Gist
+   * persistence is available, and at least one such PR exists; otherwise
+   * absent, so goldens and merge-free runs are unchanged.
+   */
+  pendingLearnings?: PendingLearnings;
 }
 
 // ---------------------------------------------------------------------------
@@ -768,6 +777,7 @@ export function toDailyOutput(result: DailyCheckResult): DailyOutput {
     // Conditional spread (not a plain assignment) so merge-free runs carry
     // no `listUpdates` key at all — serialized output and goldens unchanged.
     ...(result.listUpdates ? { listUpdates: result.listUpdates } : {}),
+    ...(result.pendingLearnings ? { pendingLearnings: result.pendingLearnings } : {}),
   };
 }
 
@@ -930,10 +940,34 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   // nudge: it stays up for the whole recently-merged window (7 days) until
   // the user runs the extraction, then self-clears.
   let unextractedMergeCount = 0;
+  let pendingLearnings: PendingLearnings | undefined;
   try {
-    const ledger = getStateManager().getState().mergedPRs ?? [];
+    const sm = getStateManager();
+    const ledger = sm.getState().mergedPRs ?? [];
     const recentUrls = new Set(recentlyMergedPRs.map((pr) => pr.url));
-    unextractedMergeCount = ledger.filter((pr) => recentUrls.has(pr.url) && !pr.learningsExtractedAt).length;
+    const unextracted = ledger.filter((pr) => recentUrls.has(pr.url) && !pr.learningsExtractedAt);
+    unextractedMergeCount = unextracted.length;
+    // Auto mode (#1696): hand the repos to the host for a background
+    // extraction instead of a menu item. Guidelines live in the Gist, so
+    // local-only persistence gets one warning per run and no menu item —
+    // the manual path would only tell the user the same thing.
+    if (unextractedMergeCount > 0 && sm.getState().config.autoExtractLearnings) {
+      unextractedMergeCount = 0;
+      if (sm.isGistMode()) {
+        const repos = new Set<string>();
+        for (const pr of unextracted) {
+          const parsed = parseGitHubUrl(pr.url);
+          if (parsed) repos.add(`${parsed.owner}/${parsed.repo}`);
+        }
+        pendingLearnings = { repos: [...repos].sort(), prCount: unextracted.length };
+      } else {
+        warnings.push({
+          phase: 'merge-loop',
+          operation: 'auto-extract learnings',
+          message: `${unextracted.length} recently merged PR(s) have unextracted learnings; per-repo guidelines need Gist persistence (run setup to enable Gist sync, or set autoExtractLearnings=false to hide this)`,
+        });
+      }
+    }
   } catch (error) {
     recordWarning(warnings, 'merge-loop', 'count unextracted merged PRs', error);
   }
@@ -973,6 +1007,9 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   );
   if (listUpdates) {
     result.listUpdates = listUpdates;
+  }
+  if (pendingLearnings) {
+    result.pendingLearnings = pendingLearnings;
   }
 
   // Checkpoint: push state to Gist if in Gist mode.

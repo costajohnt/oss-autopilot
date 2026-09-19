@@ -27,7 +27,7 @@ import { warn } from '../core/logger.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import { getReportsDir } from '../core/paths.js';
 import type { ActionableIssueType, OvernightPrepared } from '../core/types.js';
-import type { DailyOutput, DailyWarning } from '../formatters/json.js';
+import type { DailyOutput, DailyWarning, PendingLearnings } from '../formatters/json.js';
 import type { AttentionSummary } from '../core/pr-attention.js';
 import { executeDailyCheck } from './daily.js';
 
@@ -56,6 +56,8 @@ export interface OvernightOutput {
   carriedPrepared: number;
   /** Set when the run could not be pushed to the Gist; the local cache has it. */
   gistSyncWarning?: string;
+  /** Repos whose merged-PR learnings the overnight run should extract (#1696); absent when none. */
+  pendingLearnings?: PendingLearnings;
 }
 
 const MODULE = 'overnight';
@@ -224,7 +226,13 @@ export async function runOvernight(): Promise<OvernightOutput> {
   // and in Gist mode setLastOvernight only reaches the local cache (#1629 class).
   const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
 
-  return { ...body, reportPath, carriedPrepared: carried.length, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
+  return {
+    ...body,
+    reportPath,
+    carriedPrepared: carried.length,
+    ...(gistSyncWarning ? { gistSyncWarning } : {}),
+    ...(daily.pendingLearnings ? { pendingLearnings: daily.pendingLearnings } : {}),
+  };
 }
 
 export interface OvernightRecordOptions {

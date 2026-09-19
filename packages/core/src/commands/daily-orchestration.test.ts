@@ -1263,6 +1263,7 @@ describe('executeDailyCheck() — merge loop (#1463)', () => {
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    mockIsGistMode.mockReturnValue(false);
   });
 
   /** State wired for the merge loop: configured list path + unextracted ledger entry. */
@@ -1295,7 +1296,9 @@ describe('executeDailyCheck() — merge loop (#1463)', () => {
   });
 
   it('adds the extract_learnings menu item for recent merges without extracted learnings', async () => {
-    mockGetState.mockReturnValue(stateWithListAndLedger());
+    const state = stateWithListAndLedger();
+    (state.config as Record<string, unknown>).autoExtractLearnings = false;
+    mockGetState.mockReturnValue(state);
     mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
 
     const result = await executeDailyCheck('test-token');
@@ -1303,6 +1306,50 @@ describe('executeDailyCheck() — merge loop (#1463)', () => {
     const item = result.actionMenu.items.find((i) => i.key === 'extract_learnings');
     expect(item).toBeDefined();
     expect(item!.label).toBe('Extract learnings from 1 recently merged PR');
+  });
+
+  it('in auto mode with Gist persistence, hands the repos to the host instead of a menu item (#1696)', async () => {
+    const state = stateWithListAndLedger();
+    (state.config as Record<string, unknown>).autoExtractLearnings = true;
+    mockGetState.mockReturnValue(state);
+    mockIsGistMode.mockReturnValue(true);
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.actionMenu.items.find((i) => i.key === 'extract_learnings')).toBeUndefined();
+    expect(result.pendingLearnings).toEqual({ repos: ['foo/bar'], prCount: 1 });
+    expect(result.warnings.find((w) => w.operation === 'auto-extract learnings')).toBeUndefined();
+  });
+
+  it('in auto mode without Gist persistence, warns once per run and offers no menu item (#1696)', async () => {
+    const state = stateWithListAndLedger();
+    (state.config as Record<string, unknown>).autoExtractLearnings = true;
+    mockGetState.mockReturnValue(state);
+    mockIsGistMode.mockReturnValue(false);
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect(result.actionMenu.items.find((i) => i.key === 'extract_learnings')).toBeUndefined();
+    expect('pendingLearnings' in result).toBe(false);
+    expect(result.warnings).toEqual([
+      expect.objectContaining({ phase: 'merge-loop', operation: 'auto-extract learnings' }),
+    ]);
+  });
+
+  it('omits pendingLearnings in auto mode when every merge is already extracted (#1696)', async () => {
+    const state = stateWithListAndLedger();
+    (state.config as Record<string, unknown>).autoExtractLearnings = true;
+    (state.mergedPRs as Array<Record<string, unknown>>)[0].learningsExtractedAt = '2026-06-11T00:00:00.000Z';
+    mockGetState.mockReturnValue(state);
+    mockIsGistMode.mockReturnValue(true);
+    mockFetchRecentlyMergedPRs.mockResolvedValue([mergedPR]);
+
+    const result = await executeDailyCheck('test-token');
+
+    expect('pendingLearnings' in result).toBe(false);
+    expect(result.warnings.find((w) => w.operation === 'auto-extract learnings')).toBeUndefined();
   });
 
   it('omits extract_learnings when the merge already has learnings extracted', async () => {

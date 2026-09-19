@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getMergedPRs: vi.fn(),
   getClosedPRs: vi.fn(),
   markPRCommentsFetched: vi.fn(),
+  markPRLearningsExtracted: vi.fn(),
   maybeCheckpoint: vi.fn(),
   username: vi.fn(() => 'me'),
 }));
@@ -33,6 +34,7 @@ vi.mock('../core/index.js', async () => {
       getMergedPRs: mocks.getMergedPRs,
       getClosedPRs: mocks.getClosedPRs,
       markPRCommentsFetched: mocks.markPRCommentsFetched,
+      markPRLearningsExtracted: mocks.markPRLearningsExtracted,
       getState: () => ({ config: { githubUsername: mocks.username() } }),
     }),
     requireGitHubToken: () => 'ghp_test',
@@ -58,6 +60,7 @@ import {
   runGuidelinesStore,
   runGuidelinesReset,
   runFetchCorpus,
+  runMarkExtracted,
 } from './guidelines.js';
 import { GuidelinesNotAvailableError } from '../core/index.js';
 
@@ -192,6 +195,47 @@ describe('runGuidelinesReset', () => {
   it('throws GuidelinesNotAvailableError in local mode', async () => {
     mockIsGuidelinesAvailable.mockReturnValue(false);
     await expect(runGuidelinesReset({ repo: 'owner/repo' })).rejects.toThrow(/Per-repo guidelines require/);
+  });
+});
+
+describe('runMarkExtracted (#1696)', () => {
+  it('stamps only fetched, unstamped PRs of the repo and checkpoints', async () => {
+    mocks.getMergedPRs.mockReturnValue([
+      { url: 'https://github.com/owner/repo/pull/1', commentsFetchedAt: '2026-06-01T00:00:00.000Z' },
+      { url: 'https://github.com/owner/repo/pull/2' }, // never fetched
+      {
+        url: 'https://github.com/owner/repo/pull/3',
+        commentsFetchedAt: '2026-06-01T00:00:00.000Z',
+        learningsExtractedAt: '2026-06-02T00:00:00.000Z',
+      },
+      { url: 'https://github.com/other/repo/pull/4', commentsFetchedAt: '2026-06-01T00:00:00.000Z' },
+    ]);
+    mocks.getClosedPRs.mockReturnValue([
+      { url: 'https://github.com/owner/repo/pull/5', commentsFetchedAt: '2026-06-01T00:00:00.000Z' },
+    ]);
+    mocks.maybeCheckpoint.mockResolvedValue(null);
+
+    const out = await runMarkExtracted({ repo: 'owner/repo' });
+
+    expect(out).toEqual({ repo: 'owner/repo', marked: 2 });
+    const stamped = mocks.markPRLearningsExtracted.mock.calls.map((c) => c[0]);
+    expect(stamped).toEqual(['https://github.com/owner/repo/pull/1', 'https://github.com/owner/repo/pull/5']);
+    expect(mocks.maybeCheckpoint).toHaveBeenCalledOnce();
+  });
+
+  it('is a no-op without a checkpoint when nothing needs stamping', async () => {
+    mocks.getMergedPRs.mockReturnValue([{ url: 'https://github.com/owner/repo/pull/2' }]);
+    mocks.getClosedPRs.mockReturnValue([]);
+
+    const out = await runMarkExtracted({ repo: 'owner/repo' });
+
+    expect(out.marked).toBe(0);
+    expect(mocks.markPRLearningsExtracted).not.toHaveBeenCalled();
+    expect(mocks.maybeCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed repo identifier', async () => {
+    await expect(runMarkExtracted({ repo: 'not-a-repo' })).rejects.toThrow(/Invalid repo identifier/);
   });
 });
 

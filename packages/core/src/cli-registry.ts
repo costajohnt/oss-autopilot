@@ -69,7 +69,7 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    the goldens were last updated.
  *    Commands: state (show/sync/unlink), vet, vet-list, track, comments,
  *    startup, dismiss, undismiss, stats, and the five
- *    guidelines subcommands (list/view/store/reset/fetch-corpus).
+ *    guidelines subcommands (list/view/store/reset/fetch-corpus/mark-extracted).
  *
  * (`dashboard serve` is exempt: it has no `--json` mode.)
  *
@@ -1791,6 +1791,23 @@ Load it with:
             },
             (data) => {
               console.log(`Stored ${data.byteSize} bytes of guidelines for ${data.repo}.`);
+            },
+          );
+        });
+
+      group
+        .command('mark-extracted')
+        .description(
+          'Stamp learningsExtractedAt on fetched PRs of a repo so daily stops reporting them as unextracted (#1696)',
+        )
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () => (await import('./commands/guidelines.js')).runMarkExtracted({ repo: options.repo }),
+            (data) => {
+              console.log(`Marked ${data.marked} PR(s) in ${data.repo} as extracted.`);
             },
           );
         });

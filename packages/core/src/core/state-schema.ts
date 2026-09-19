@@ -292,6 +292,13 @@ export const AgentConfigSchema = z.object({
   diffToolCustomCommand: z.string().optional(),
 
   /**
+   * Extract per-repo learnings from freshly merged PRs automatically at
+   * `/oss` startup and in `/oss-overnight` (#1696). When false, `daily`
+   * offers the extraction as an `extract_learnings` action-menu item instead.
+   */
+  autoExtractLearnings: z.boolean().default(true),
+
+  /**
    * No effect since the hook was removed in #1642; kept for state-file
    * compatibility.
    */

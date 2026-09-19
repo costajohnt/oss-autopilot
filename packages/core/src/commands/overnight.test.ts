@@ -178,6 +178,7 @@ describe('runOvernight', () => {
     expect(out.failures).toEqual([{ prUrl: 'u9', error: 'boom' }]);
     expect(out.carriedPrepared).toBe(0);
     expect(out).not.toHaveProperty('gistSyncWarning');
+    expect(out).not.toHaveProperty('pendingLearnings');
     expect(mockCheckpoint).toHaveBeenCalledWith(sm, 'overnight');
     expect(sm.setLastOvernight.mock.invocationCallOrder[0]).toBeLessThan(mockCheckpoint.mock.invocationCallOrder[0]);
     expect(out.reportPath).toBe(path.join(tmp.dir, `overnight-${reportDateFor(new Date(out.runAt))}.md`));
@@ -237,6 +238,22 @@ describe('runOvernight', () => {
     expect(out.gistSyncWarning).toBe('push failed');
     expect(sm.getLastOvernight()?.prepared).toEqual(prepared);
     expect(fs.readFileSync(reportPath, 'utf8')).toContain('## Prepared branches (1)');
+  });
+
+  it('forwards pendingLearnings from the daily check (#1696)', async () => {
+    const pending = { repos: ['a/b'], prCount: 1 };
+    mockDaily.mockResolvedValue({
+      actionableIssues: [],
+      commentedIssues: [],
+      attention,
+      failures: [],
+      warnings: [],
+      pendingLearnings: pending,
+    } as never);
+
+    const out = await runOvernight();
+
+    expect(out.pendingLearnings).toEqual(pending);
   });
 });
 
