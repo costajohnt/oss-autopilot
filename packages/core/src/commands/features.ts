@@ -13,11 +13,11 @@
  * formatter.
  */
 
-import type { LinkedPR as ScoutLinkedPR } from '@oss-scout/core';
+import type { LinkedPR as ScoutLinkedPR, ProjectHealth } from '@oss-scout/core';
 import { buildCandidateLinkedPR, createAutopilotScout } from './scout-bridge.js';
 import { getStateManager } from '../core/index.js';
 import { type FeaturesOutput, type FeaturesCandidate, type SearchCandidate } from '../formatters/json.js';
-import { gradeFromCandidate } from '../core/issue-grading.js';
+import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
 import { warn } from '../core/logger.js';
 
 export { type FeaturesOutput, type FeaturesCandidate } from '../formatters/json.js';
@@ -69,23 +69,19 @@ function toFeaturesCandidate(
     horizon: FeaturesCandidate['horizon'];
     /** Optional — present on real scout candidates, omitted in some test fixtures. */
     vettingResult?: { linkedPR?: ScoutLinkedPR | null };
+    /** Health scout fetched while vetting; a fixture without one grades from history alone. */
+    projectHealth?: ProjectHealth;
   },
   getState: ReturnType<typeof getStateManager>,
 ): FeaturesCandidate {
   const repoScoreRecord = getState.getRepoScore(scoutCandidate.issue.repo);
-  // Same `checkFailed: true` sentinel `runSearch` uses — scout's `features`
-  // pipeline reuses the same vetting code that does emit projectHealth on
-  // `vetIssue`, but on this surface scout returns the multi-issue list view
-  // which today does not propagate per-candidate health into IssueCandidate.
-  // Treating health as unknown grades from the autopilot-tracked repoScore
-  // alone, falling to 'F' for unfamiliar repos — an honest "we haven't seen
-  // this repo" rather than a fabricated score.
+  // Grade from the health scout fetched while vetting (#332); see runSearch.
   const grade = gradeFromCandidate({
     repo: scoutCandidate.issue.repo,
-    projectHealth: {
+    projectHealth: scoutCandidate.projectHealth ?? {
       repo: scoutCandidate.issue.repo,
       checkFailed: true,
-      failureReason: 'health not fetched on the multi-issue feature surface',
+      failureReason: 'health not supplied by the caller',
     },
     getRepoScore: (repo) => {
       const score = getState.getRepoScore(repo);
@@ -108,7 +104,7 @@ function toFeaturesCandidate(
       url: scoutCandidate.issue.url,
       labels: scoutCandidate.issue.labels,
     },
-    recommendation: scoutCandidate.recommendation,
+    recommendation: reconcileRecommendation(scoutCandidate.recommendation, grade),
     reasonsToApprove: scoutCandidate.reasonsToApprove,
     reasonsToSkip: scoutCandidate.reasonsToSkip,
     searchPriority: scoutCandidate.searchPriority,

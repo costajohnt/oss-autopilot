@@ -13,7 +13,7 @@ import {
 import { SearchStrategySchema, type SearchStrategy } from '@oss-scout/core';
 import { classifyLinkedPR, getStateManager, maybeCheckpoint } from '../core/index.js';
 import { type SearchOutput } from '../formatters/json.js';
-import { gradeFromCandidate } from '../core/issue-grading.js';
+import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
 import { computeStrategy } from '../core/strategy.js';
 import { refreshStarredReposIfStale } from '../core/starred-repos.js';
 import { debug, warn } from '../core/logger.js';
@@ -258,23 +258,19 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
   const searchOutput: SearchOutput = {
     candidates: visibleCandidates.map((c) => {
       const repoScoreRecord = stateManager.getRepoScore(c.issue.repo);
-      // Scout's `search` does not emit per-candidate projectHealth (only
-      // `vetIssue` does). Pass a sentinel `checkFailed: true` so the grader
-      // correctly treats scout-side signals as unknown and grades purely from
-      // the autopilot-tracked repoScore. Candidates without a repoScore
-      // receive 'F' — that's an honest signal for "we haven't seen this repo
-      // before" rather than a fabricated score.
-      //
-      // Note (#1465): repoScore here is the cached HISTORY score (the user's
-      // own merge outcomes — docs/repo-scores.md §History score), so this
-      // grade reflects history only; `vet` later re-grades the same issue
-      // with freshly fetched repo health and can legitimately disagree.
+      // Grade from the health scout fetched while vetting this candidate
+      // (#332). Search used to pass a `checkFailed` sentinel and grade from
+      // the user's own history alone, so every repo without a merged PR of
+      // ours scored the bottom band regardless of how healthy it was, and a
+      // grade-1 "approve" looked like a contradiction. `repoScore` is still
+      // the cached HISTORY score (#1465); `vet` re-grades with fresh health.
+      // Scout always supplies health; the fallback only serves bare fixtures.
       const grade = gradeFromCandidate({
         repo: c.issue.repo,
-        projectHealth: {
+        projectHealth: c.projectHealth ?? {
           repo: c.issue.repo,
           checkFailed: true,
-          failureReason: 'health not fetched on the multi-issue search surface',
+          failureReason: 'health not supplied by the caller',
         },
         getRepoScore: (repo) => {
           const score = stateManager.getRepoScore(repo);
@@ -297,7 +293,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
           url: c.issue.url,
           labels: c.issue.labels,
         },
-        recommendation: c.recommendation,
+        recommendation: reconcileRecommendation(c.recommendation, grade),
         reasonsToApprove: c.reasonsToApprove,
         reasonsToSkip: c.reasonsToSkip,
         searchPriority: c.searchPriority,
