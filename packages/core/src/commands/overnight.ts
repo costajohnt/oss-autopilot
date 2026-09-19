@@ -26,7 +26,9 @@ import { errorMessage, getStateManager, maybeCheckpoint, requireGitHubToken } fr
 import { warn } from '../core/logger.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import { getReportsDir } from '../core/paths.js';
-import type { ActionableIssueType, OvernightPrepared } from '../core/types.js';
+import type { ActionableIssueType, OvernightImplementAttempt, OvernightPrepared } from '../core/types.js';
+import { detectIssueListPath } from './locate-issue-list.js';
+import { parseIssueList } from './parse-list.js';
 import type { DailyOutput, DailyWarning, PendingLearnings } from '../formatters/json.js';
 import type { AttentionSummary } from '../core/pr-attention.js';
 import { executeDailyCheck } from './daily.js';
@@ -54,6 +56,12 @@ export interface OvernightOutput {
   warnings: DailyWarning[];
   /** Branches carried over from an earlier run on the same date (a re-run never drops recorded work). */
   carriedPrepared: number;
+  /**
+   * The one curated-list issue to implement tonight (#1715): first item of
+   * the list's Pursue tier whose repo has no open PR of yours and that no
+   * earlier run has attempted. Null when the list is absent or exhausted.
+   */
+  implement: OvernightImplementItem | null;
   /** Set when the run could not be pushed to the Gist; the local cache has it. */
   gistSyncWarning?: string;
   /** Repos whose merged-PR learnings the overnight run should extract (#1696); absent when none. */
@@ -62,7 +70,10 @@ export interface OvernightOutput {
 
 const MODULE = 'overnight';
 
-type ReportBody = Pick<OvernightOutput, 'runAt' | 'prepare' | 'judgment' | 'attention' | 'failures' | 'warnings'>;
+type ReportBody = Pick<
+  OvernightOutput,
+  'runAt' | 'prepare' | 'judgment' | 'attention' | 'failures' | 'warnings' | 'implement'
+>;
 
 /** Freshness block `startup` surfaces (#1574). */
 export interface OvernightFreshness {
@@ -95,6 +106,60 @@ const BUCKET_BY_TYPE: Record<ActionableIssueType, { bucket: OvernightBucket; rea
   },
   needs_response: { bucket: 'judgment', reason: 'a maintainer is waiting on your reply' },
 };
+
+/** A curated-list issue picked for implementation (#1715). */
+export interface OvernightImplementItem {
+  url: string;
+  repo: string;
+  number: number;
+  title: string;
+  /** Why this one: the tier it came from and the list path. */
+  reason: string;
+}
+
+/** The tier name the curated list uses for issues John already vetted and wants done. */
+export const IMPLEMENT_TIER = 'Pursue';
+
+/**
+ * Pure: the one list issue to implement tonight, or null. First Pursue item
+ * (list order is the user's priority order) whose repo has no open PR of the
+ * user's (one PR per repo at a time keeps maintainers' review load sane and
+ * respects repos with a one-open-PR rule) and that no earlier run attempted.
+ */
+export function pickImplementCandidate(
+  items: { url: string; repo: string; number: number; title: string; tier: string }[],
+  openPRs: { repo: string }[],
+  attempts: OvernightImplementAttempt[],
+  listPath: string,
+): OvernightImplementItem | null {
+  const busyRepos = new Set(openPRs.map((p) => p.repo.toLowerCase()));
+  const tried = new Set(attempts.map((a) => a.url));
+  for (const it of items) {
+    if (it.tier !== IMPLEMENT_TIER) continue;
+    if (tried.has(it.url)) continue;
+    if (busyRepos.has(it.repo.toLowerCase())) continue;
+    return {
+      url: it.url,
+      repo: it.repo,
+      number: it.number,
+      title: it.title,
+      reason: `${IMPLEMENT_TIER} tier of ${listPath}, no open PR of yours on ${it.repo}`,
+    };
+  }
+  return null;
+}
+
+/** The curated list's available items, or null when there is no readable list. */
+function loadListItems(): { items: ReturnType<typeof parseIssueList>['available']; path: string } | null {
+  const located = detectIssueListPath();
+  if (!located) return null;
+  try {
+    return { items: parseIssueList(fs.readFileSync(located.path, 'utf8')).available, path: located.path };
+  } catch (err) {
+    warn(MODULE, `Could not read the issue list at ${located.path}: ${errorMessage(err)}`);
+    return null;
+  }
+}
 
 /** Pure: split the daily check into prepare vs judgment items. */
 export function bucketize(daily: Pick<DailyOutput, 'actionableIssues' | 'commentedIssues'>): {
@@ -173,6 +238,13 @@ export function renderReport(out: ReportBody, prepared: OvernightPrepared[] = []
 
   lines.push(renderPreparedSection(prepared));
 
+  lines.push(`## Implement tonight (${out.implement ? 1 : 0})`, '');
+  if (out.implement)
+    lines.push(`- ${out.implement.repo}#${out.implement.number} ${out.implement.url} — ${out.implement.reason}`);
+  else
+    lines.push('_No list issue queued: the Pursue tier is empty, exhausted, or every repo has an open PR of yours._');
+  lines.push('');
+
   lines.push(`## Queued for preparation (${out.prepare.length})`, '');
   if (out.prepare.length === 0) lines.push('_Nothing to prepare._');
   for (const i of out.prepare) lines.push(`- ${i.label} ${i.url} — ${i.reason}`);
@@ -209,10 +281,17 @@ export async function runOvernight(): Promise<OvernightOutput> {
   const now = new Date();
   const runAt = now.toISOString();
   const { prepare, judgment } = bucketize(daily);
+  const previous = sm.getLastOvernight();
+  const list = loadListItems();
+  // Attempts survive across runs; the ones whose issue left the list are
+  // dropped so a re-added issue can be tried again.
+  const attempts = (previous?.implementAttempts ?? []).filter((a) => !list || list.items.some((i) => i.url === a.url));
+  const implement = list ? pickImplementCandidate(list.items, daily.digest.openPRs, attempts, list.path) : null;
   const body: ReportBody = {
     runAt,
     prepare,
     judgment,
+    implement,
     attention: daily.attention,
     failures: daily.failures,
     warnings: daily.warnings,
@@ -220,7 +299,6 @@ export async function runOvernight(): Promise<OvernightOutput> {
   const reportPath = reportPathFor(now);
   // A re-run on the same date (launchd retry, manual) must not drop branches
   // already recorded: they are still on disk, so keep them in state and report.
-  const previous = sm.getLastOvernight();
   const carried = previous?.reportPath === reportPath ? previous.prepared : [];
   fs.writeFileSync(reportPath, renderReport(body, carried), { mode: 0o600 });
   publishReport(sm, reportPath);
@@ -231,6 +309,8 @@ export async function runOvernight(): Promise<OvernightOutput> {
     prepareCount: prepare.length,
     judgmentCount: judgment.length,
     prepared: carried,
+    ...(implement ? { implementUrl: implement.url } : {}),
+    implementAttempts: attempts,
   });
   // executeDailyCheck already checkpointed the Gist; this write came after it,
   // and in Gist mode setLastOvernight only reaches the local cache (#1629 class).
@@ -243,6 +323,41 @@ export async function runOvernight(): Promise<OvernightOutput> {
     ...(gistSyncWarning ? { gistSyncWarning } : {}),
     ...(daily.pendingLearnings ? { pendingLearnings: daily.pendingLearnings } : {}),
   };
+}
+
+export interface OvernightImplementBlockedOptions {
+  url: string;
+  note?: string;
+}
+
+export interface OvernightImplementBlockedOutput {
+  url: string;
+  attemptCount: number;
+  gistSyncWarning?: string;
+}
+
+/**
+ * `overnight implement-blocked` (#1715): the preparer could not produce a
+ * branch for tonight's list issue. Remember that so the next run picks the
+ * next Pursue item instead of retrying this one every night; the note lands
+ * in the report's Blocked section like any other blocked item.
+ */
+export async function runOvernightImplementBlocked(
+  options: OvernightImplementBlockedOptions,
+): Promise<OvernightImplementBlockedOutput> {
+  const sm = getStateManager();
+  const last = sm.getLastOvernight();
+  if (!last) throw new Error('No overnight run recorded yet; run `overnight` first.');
+  if (options.url !== last.implementUrl) {
+    throw new Error(`${options.url} is not tonight's implement item (${last.implementUrl ?? 'none queued'})`);
+  }
+  const implementAttempts = [
+    ...(last.implementAttempts ?? []),
+    { url: options.url, attemptedAt: new Date().toISOString(), outcome: 'blocked' as const, note: options.note },
+  ];
+  sm.setLastOvernight({ ...last, implementAttempts });
+  const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
+  return { url: options.url, attemptCount: implementAttempts.length, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
 }
 
 export interface OvernightRecordOptions {
@@ -274,7 +389,16 @@ export async function runOvernightRecord(options: OvernightRecordOptions): Promi
     recordedAt: new Date().toISOString(),
   };
   const prepared = [...last.prepared, entry];
-  sm.setLastOvernight({ ...last, prepared });
+  // Recording the branch for tonight's list issue is what marks the attempt
+  // as prepared, so the next run moves on to the next Pursue item.
+  const implementAttempts =
+    options.url === last.implementUrl
+      ? [
+          ...(last.implementAttempts ?? []),
+          { url: options.url, attemptedAt: entry.recordedAt, outcome: 'prepared' as const },
+        ]
+      : last.implementAttempts;
+  sm.setLastOvernight({ ...last, prepared, implementAttempts });
 
   const { reportRecreated } = writePreparedSection(last.reportPath, prepared);
   publishReport(sm, last.reportPath);

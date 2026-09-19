@@ -1614,6 +1614,27 @@ export const commands: CLICommandDef[] = [
         });
 
       group
+        .command('implement-blocked')
+        .description("Record that tonight's list issue could not be implemented, so the next run moves on (#1715)")
+        .requiredOption('--url <url>', 'The issue URL from the report\'s "Implement tonight" line')
+        .option('--note <text>', 'Why it was blocked')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () =>
+              (await import('./commands/overnight.js')).runOvernightImplementBlocked({
+                url: options.url,
+                note: options.note,
+              }),
+            (data) => {
+              console.log(`Recorded as blocked (${data.attemptCount} attempts on the list): ${data.url}`);
+              if (data.gistSyncWarning) console.log(`  Warning: ${data.gistSyncWarning}`);
+            },
+          );
+        });
+
+      group
         .command('report')
         .description(
           'Print the latest morning report: the local file, or the copy the overnight machine published to the Gist (#1698)',

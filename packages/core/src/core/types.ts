@@ -49,6 +49,7 @@ export type {
   SearchSeenEntry,
   OvernightPrepared,
   OvernightRecord,
+  OvernightImplementAttempt,
   SearchRotation,
 } from './state-schema.js';
 
