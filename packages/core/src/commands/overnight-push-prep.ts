@@ -30,7 +30,7 @@ import {
 } from '../core/index.js';
 import { warn } from '../core/logger.js';
 import type { OvernightPrepared } from '../core/types.js';
-import { writePreparedSection } from './overnight.js';
+import { publishReport, writePreparedSection } from './overnight.js';
 
 const MODULE = 'overnight-push-prep';
 
@@ -366,6 +366,9 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
       reportWarning = `could not rewrite ${lastRun.reportPath}: ${errorMessage(err)}`;
       warn(MODULE, reportWarning);
     }
+    // Outside the try: publishReport warns on its own and must never be
+    // mistaken for a failed report write.
+    if (!reportWarning) publishReport(sm, lastRun.reportPath);
     gistSyncWarning = await maybeCheckpoint(sm, MODULE);
   }
 

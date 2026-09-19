@@ -1614,6 +1614,32 @@ export const commands: CLICommandDef[] = [
         });
 
       group
+        .command('report')
+        .description(
+          'Print the latest morning report: the local file, or the copy the overnight machine published to the Gist (#1698)',
+        )
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          const { OvernightReportOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
+            options,
+            async () => (await import('./commands/overnight.js')).runOvernightReport(),
+            (data) => {
+              if (data.content === null) {
+                console.log(
+                  `No overnight report readable: ${data.reportPath} is not on this machine and nothing has been published to the Gist`,
+                );
+                return;
+              }
+              if (data.source === 'gist')
+                console.log(`(from the Gist; the file lives on the overnight machine at ${data.reportPath})\n`);
+              process.stdout.write(data.content.endsWith('\n') ? data.content : `${data.content}\n`);
+            },
+            OvernightReportOutputSchema,
+          );
+        });
+
+      group
         .command('push-prep')
         .description(
           'Push the prepared branches of the latest run to prep/* on your fork (#1698). Post-tick step for a scheduler; the model never runs it',
