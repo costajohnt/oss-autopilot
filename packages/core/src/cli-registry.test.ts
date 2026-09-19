@@ -60,6 +60,7 @@ vi.mock('./formatters/json.js', () => ({
   DetectFormattersOutputSchema: { name: 'DetectFormattersOutputSchema' },
   LocalReposOutputSchema: { name: 'LocalReposOutputSchema' },
   OvernightPushPrepOutputSchema: { name: 'OvernightPushPrepOutputSchema' },
+  OvernightReportOutputSchema: { name: 'OvernightReportOutputSchema' },
   ManifestOutputSchema: { name: 'ManifestOutputSchema' },
   StrategyOutputSchema: { name: 'StrategyOutputSchema' },
   ComplianceScoreOutputSchema: { name: 'ComplianceScoreOutputSchema' },
@@ -198,8 +199,10 @@ vi.mock('./commands/overnight.js', () => ({
   runOvernight: mockRunOvernight,
   runOvernightRecord: mockRunOvernightRecord,
   runOvernightSchedule: mockRunOvernightSchedule,
+  runOvernightReport: mockRunOvernightReport,
 }));
 
+const mockRunOvernightReport = vi.fn();
 const mockRunOvernightPushPrep = vi.fn();
 vi.mock('./commands/overnight-push-prep.js', () => ({
   runOvernightPushPrep: mockRunOvernightPushPrep,
@@ -2431,6 +2434,19 @@ describe('overnight subcommands', () => {
     skipped: 1,
     failed: 0,
   };
+
+  it('report prints the Gist copy with a note, and says so when nothing is readable', async () => {
+    mockRunOvernightReport.mockResolvedValue({ runAt: 'now', reportPath: '/r.md', source: 'gist', content: '# hi\n' });
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'report']);
+    expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('from the Gist'));
+    expect(writeSpy).toHaveBeenCalledWith('# hi\n');
+    writeSpy.mockRestore();
+
+    mockRunOvernightReport.mockResolvedValue({ runAt: 'now', reportPath: '/r.md', source: 'none', content: null });
+    await buildProgram('overnight').parseAsync(['node', 'cli', 'overnight', 'report']);
+    expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('No overnight report readable'));
+  });
 
   it('push-prep exits 1 when a push failed, so a scheduler sees it, and 0 for skips alone', async () => {
     const before = process.exitCode;

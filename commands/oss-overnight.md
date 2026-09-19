@@ -39,8 +39,8 @@ Parse the JSON envelope. `data` has:
 | Field | Meaning |
 |-------|---------|
 | `reportPath` | The morning report (markdown). Everything below appends to it. |
-| `prepare` | Items an agent can work on without external side effects: `ci_failing`, `merge_conflict`, `needs_changes`, `incomplete_checklist`. Each has `url`, `label`, `reason`. |
-| `judgment` | Items that need you: maintainer replies to answer, issue conversations with a new response. Already in the report; do nothing with them. |
+| `prepare` | Items an agent can work on without external side effects: `ci_failing`, `merge_conflict`, `needs_changes`. Each has `url`, `label`, `reason`. |
+| `judgment` | Items that need you: maintainer replies to answer, issue conversations with a new response, PR checklists with unticked boxes (ticking them is a `gh pr edit` write). Already in the report; do nothing with them. |
 | `failures`, `warnings` | Already in the report, one line per PR that could not be fetched. |
 | `carriedPrepared` | Branches kept from an earlier run today; a re-run never drops recorded work. |
 | `gistSyncWarning` | Present when the run could not be pushed to the Gist. Append it under "Check problems". |
@@ -142,7 +142,13 @@ report as `NOT pushed: ...`. A GitHub rate limit stops the run with an error;
 branches already pushed by then are still recorded.
 
 `--dry-run` resolves the targets and prints the plan without pushing or
-writing anything. In the morning, `/oss` on the other machine shows the
+writing anything.
+
+The report itself travels too: in Gist mode, `overnight run`, `overnight
+record` and `overnight push-prep` each publish the rendered report as the
+Gist file `overnight-report.md`, and `overnight report` prints it on any
+machine (the local file when it exists, else the Gist copy). `startup`'s
+`overnight.reportAvailable` says which (`local`, `gist`, `none`). In the morning, `/oss` on the other machine shows the
 compare URL; fetching `prep/<branch>`, fast-forwarding the PR branch, and
 pushing stay inside the normal draft-approval flow there.
 

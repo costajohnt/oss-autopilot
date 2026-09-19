@@ -22,7 +22,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { getStateManager, maybeCheckpoint, requireGitHubToken } from '../core/index.js';
+import { errorMessage, getStateManager, maybeCheckpoint, requireGitHubToken } from '../core/index.js';
 import { warn } from '../core/logger.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import { getReportsDir } from '../core/paths.js';
@@ -75,6 +75,8 @@ export interface OvernightFreshness {
   judgmentCount: number;
   /** Branches recorded via `overnight record` since the run. */
   preparedCount: number;
+  /** `local`: the file at `reportPath` is here. `gist`: only the published copy, read it with `overnight report`. */
+  reportAvailable: ReportAvailability;
 }
 
 // ponytail: static table, not a classifier. Every ActionableIssueType is
@@ -83,7 +85,14 @@ const BUCKET_BY_TYPE: Record<ActionableIssueType, { bucket: OvernightBucket; rea
   ci_failing: { bucket: 'prepare', reason: 'CI is red: an agent can diagnose and prepare a fix branch' },
   merge_conflict: { bucket: 'prepare', reason: 'merge conflict: an agent can rebase in a worktree' },
   needs_changes: { bucket: 'prepare', reason: 'changes requested: an agent can prepare the requested edits' },
-  incomplete_checklist: { bucket: 'prepare', reason: 'checklist incomplete: an agent can fill in the missing items' },
+  // The gaps are PR-body checkboxes, and the only way to tick them is
+  // `gh pr edit --body`, a write the unattended run must not make. Two
+  // nights of preparers spent on these both ended blocked with a suggested
+  // body edit for the morning, so that suggestion is now the judgment item.
+  incomplete_checklist: {
+    bucket: 'judgment',
+    reason: 'checklist incomplete: the gaps are PR-body checkboxes, which only you can edit',
+  },
   needs_response: { bucket: 'judgment', reason: 'a maintainer is waiting on your reply' },
 };
 
@@ -214,6 +223,7 @@ export async function runOvernight(): Promise<OvernightOutput> {
   const previous = sm.getLastOvernight();
   const carried = previous?.reportPath === reportPath ? previous.prepared : [];
   fs.writeFileSync(reportPath, renderReport(body, carried), { mode: 0o600 });
+  publishReport(sm, reportPath);
 
   sm.setLastOvernight({
     runAt,
@@ -267,6 +277,7 @@ export async function runOvernightRecord(options: OvernightRecordOptions): Promi
   sm.setLastOvernight({ ...last, prepared });
 
   const { reportRecreated } = writePreparedSection(last.reportPath, prepared);
+  publishReport(sm, last.reportPath);
   const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
 
   return {
@@ -285,6 +296,53 @@ export function replacePreparedSection(report: string, section: string): string 
   return report.slice(0, start) + section + (next === -1 ? '' : report.slice(next));
 }
 
+/**
+ * Stage the report file's current contents as the Gist's `overnight-report.md`
+ * (#1698), so `/oss` on another machine can read what a headless box wrote.
+ * Callers checkpoint right after. A report that cannot be read is a warning,
+ * not a failure: the run itself succeeded.
+ */
+export function publishReport(sm: ReturnType<typeof getStateManager>, reportPath: string): void {
+  if (!sm.isGistMode()) return;
+  try {
+    sm.setOvernightReportDocument(fs.readFileSync(reportPath, 'utf8'));
+  } catch (err) {
+    warn(MODULE, `Could not publish ${reportPath} to the Gist: ${errorMessage(err)}`);
+  }
+}
+
+/** Where `overnight report` can read the morning report from. */
+export type ReportAvailability = 'local' | 'gist' | 'none';
+
+/**
+ * The morning report's text and where it came from: the local file when it
+ * exists (the machine that ran overnight), else the Gist copy (any other
+ * machine in Gist mode), else nothing.
+ */
+export function readReport(
+  sm: ReturnType<typeof getStateManager>,
+  reportPath: string,
+): { source: ReportAvailability; content: string | null } {
+  if (fs.existsSync(reportPath)) return { source: 'local', content: fs.readFileSync(reportPath, 'utf8') };
+  const gist = sm.getOvernightReportDocument();
+  return gist ? { source: 'gist', content: gist } : { source: 'none', content: null };
+}
+
+export interface OvernightReportOutput {
+  runAt: string;
+  reportPath: string;
+  source: ReportAvailability;
+  content: string | null;
+}
+
+/** `overnight report`: print the latest morning report from wherever it is readable. */
+export function runOvernightReport(): OvernightReportOutput {
+  const sm = getStateManager();
+  const last = sm.getLastOvernight();
+  if (!last) throw new Error('No overnight run recorded yet; run `overnight` first.');
+  return { runAt: last.runAt, reportPath: last.reportPath, ...readReport(sm, last.reportPath) };
+}
+
 /** Freshness for `startup` (#1574); undefined before the first overnight run. */
 export function overnightFreshness(now: Date = new Date()): OvernightFreshness | undefined {
   const last = getStateManager().getLastOvernight();
@@ -296,6 +354,7 @@ export function overnightFreshness(now: Date = new Date()): OvernightFreshness |
     prepareCount: last.prepareCount,
     judgmentCount: last.judgmentCount,
     preparedCount: last.prepared.length,
+    reportAvailable: readReport(getStateManager(), last.reportPath).source,
   };
   // Never emit a non-finite number into the JSON contract (Infinity serialises as null).
   return Number.isNaN(ageMs)

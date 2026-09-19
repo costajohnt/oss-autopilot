@@ -644,6 +644,7 @@ describe('runStartup behavior', () => {
     sm.mockReturnValue({
       isSetupComplete: vi.fn(() => true),
       getState: vi.fn(() => ({ config: {} })),
+      getOvernightReportDocument: () => null,
       getLastOvernight: () => ({
         runAt: new Date(Date.now() - 3 * 36e5).toISOString(),
         reportPath: '/r/overnight-today.md',
@@ -661,6 +662,7 @@ describe('runStartup behavior', () => {
         prepareCount: 2,
         judgmentCount: 1,
         preparedCount: 1,
+        reportAvailable: 'none',
       });
     } finally {
       sm.mockReturnValue({ isSetupComplete: vi.fn(() => true), getLastOvernight: vi.fn(() => undefined) } as never);

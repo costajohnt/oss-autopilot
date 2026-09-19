@@ -30,6 +30,7 @@ vi.mock('../core/index.js', async () => {
         state.last = r;
       },
       getState: () => ({ config: { githubUsername: 'octocat' } }),
+      isGistMode: () => false,
     }),
     getOctokit: () => ({
       users: { getAuthenticated: async () => ({ data: { login: 'octocat' } }) },

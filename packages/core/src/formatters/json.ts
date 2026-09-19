@@ -1122,6 +1122,14 @@ const PushPrepResultSchema = z.object({
   reason: z.string().optional(),
 });
 
+/** `overnight report` (#1698): the morning report from wherever it is readable. */
+export const OvernightReportOutputSchema = z.object({
+  runAt: z.string(),
+  reportPath: z.string(),
+  source: z.enum(['local', 'gist', 'none']),
+  content: z.string().nullable(),
+});
+
 export const OvernightPushPrepOutputSchema = z.object({
   dryRun: z.boolean(),
   login: z.string(),
