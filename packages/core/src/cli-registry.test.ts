@@ -2437,6 +2437,46 @@ describe('overnight subcommands', () => {
     failed: 0,
   };
 
+  it('implement-blocked forwards the url and note and prints the attempt count and gist warning', async () => {
+    mockRunOvernightImplementBlocked.mockResolvedValue({
+      url: 'https://github.com/o/r/issues/2',
+      attemptCount: 3,
+      gistSyncWarning: 'push failed',
+    });
+    await buildProgram('overnight').parseAsync([
+      'node',
+      'cli',
+      'overnight',
+      'implement-blocked',
+      '--url',
+      'https://github.com/o/r/issues/2',
+      '--note',
+      'needs design',
+    ]);
+    expect(mockRunOvernightImplementBlocked).toHaveBeenCalledWith({
+      url: 'https://github.com/o/r/issues/2',
+      note: 'needs design',
+    });
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      'Recorded as blocked (3 attempts on the list): https://github.com/o/r/issues/2',
+    );
+    expect(consoleLogSpy).toHaveBeenCalledWith('  Warning: push failed');
+  });
+
+  it('implement-blocked --json emits the envelope', async () => {
+    mockRunOvernightImplementBlocked.mockResolvedValue({ url: 'u', attemptCount: 1 });
+    await buildProgram('overnight').parseAsync([
+      'node',
+      'cli',
+      'overnight',
+      'implement-blocked',
+      '--url',
+      'u',
+      '--json',
+    ]);
+    expect(mockOutputJson).toHaveBeenCalledWith({ url: 'u', attemptCount: 1 });
+  });
+
   it('report prints the Gist copy with a note, and says so when nothing is readable', async () => {
     mockRunOvernightReport.mockResolvedValue({ runAt: 'now', reportPath: '/r.md', source: 'gist', content: '# hi\n' });
     const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
