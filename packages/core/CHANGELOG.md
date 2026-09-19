@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.24.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.23.0...core-v3.24.0) (2026-09-19)
+
+
+### Features
+
+* extract learnings from merged PRs automatically at startup and overnight ([#1705](https://github.com/costajohnt/oss-autopilot/issues/1705)) ([1bf5ea7](https://github.com/costajohnt/oss-autopilot/commit/1bf5ea7ae9a95f03e8236093e9e61aa70837e12b)), closes [#1696](https://github.com/costajohnt/oss-autopilot/issues/1696)
+
+
+### Bug Fixes
+
+* grade search and features candidates from scout's fetched repo health ([#1701](https://github.com/costajohnt/oss-autopilot/issues/1701)) ([8580c22](https://github.com/costajohnt/oss-autopilot/commit/8580c229763f7569dc9b01c873eb573e7855919a))
+
 ## [3.23.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.22.3...core-v3.23.0) (2026-09-19)
 
 
