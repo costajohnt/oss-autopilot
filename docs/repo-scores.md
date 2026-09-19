@@ -18,7 +18,7 @@ A repo where you merged four PRs two years ago can carry a history score of 9 wh
 - `rubricScore` — the fresh **health score** (the field name predates this page and is kept for back-compat).
 - `historyScore` — the cached **history score** for the same repo, included when the user has one in local state; absent otherwise.
 
-The success-likelihood score (`grade: {score, reason}`) is a third signal on a 1-10 scale: on the multi-issue `search` surface it is derived from history-side signals only (repo health is not fetched per candidate there), while `vet` re-grades with freshly fetched health. Same 1-10 scale, different inputs — see [Success Likelihood Score](#success-likelihood-score).
+The success-likelihood score (`grade: {score, reason}`) is a third signal on a 1-10 scale, derived on every surface from the repo health scout fetches while vetting each candidate (merge rate, commit activity) plus the history score's response time where one exists; `vet` re-fetches health, so it can disagree with an earlier `search` grade when the repo changed in between. An `approve` whose grade is the bottom band is downgraded to `needs_review` (#332). See [Success Likelihood Score](#success-likelihood-score).
 
 ## History score (yours)
 
