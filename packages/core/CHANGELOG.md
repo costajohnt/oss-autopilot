@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.25.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.24.0...core-v3.25.0) (2026-09-19)
+
+
+### Features
+
+* **overnight:** publish the morning report to the Gist and add `overnight report` ([#1710](https://github.com/costajohnt/oss-autopilot/issues/1710)) ([04171a4](https://github.com/costajohnt/oss-autopilot/commit/04171a471d223f61eabeb015dadb5f87e388d3a5))
+
+
+### Bug Fixes
+
+* **deps:** bump @oss-scout/core to 1.8.0 ([#1712](https://github.com/costajohnt/oss-autopilot/issues/1712)) ([5ea6f35](https://github.com/costajohnt/oss-autopilot/commit/5ea6f3572bdc7fa3108133c3d92d096e8e3c7f00))
+* **graphql:** restore the [bot] login suffix on Bot actors ([#1703](https://github.com/costajohnt/oss-autopilot/issues/1703)) ([a6353d1](https://github.com/costajohnt/oss-autopilot/commit/a6353d1bfcbcb62d60e7c60956093190243575d3))
+* **overnight:** allow directory-scoped git for preparers, deny every push form, add the fork remote ([#1708](https://github.com/costajohnt/oss-autopilot/issues/1708)) ([943955a](https://github.com/costajohnt/oss-autopilot/commit/943955aaae089e7e5908c40c7386ad54a237f3f3))
+* **overnight:** route incomplete-checklist items to judgment, not prepare ([#1711](https://github.com/costajohnt/oss-autopilot/issues/1711)) ([0db8073](https://github.com/costajohnt/oss-autopilot/commit/0db8073d5ee1c22370bbfbe3149cdd83897d3e48))
+* **startup:** prime the CSRF token before hitting /api/refresh ([#1704](https://github.com/costajohnt/oss-autopilot/issues/1704)) ([467a9a9](https://github.com/costajohnt/oss-autopilot/commit/467a9a948293b0dba0460353afb744c21f387cfe))
+
 ## [3.24.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.23.0...core-v3.24.0) (2026-09-19)
 
 
