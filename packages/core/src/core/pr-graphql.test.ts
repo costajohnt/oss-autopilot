@@ -202,6 +202,55 @@ describe('normalizePRNode', () => {
     expect(outcome.data.reviews[0].state).toBe('APPROVED');
   });
 
+  it('restores the REST [bot] suffix on Bot actors so isBotAuthor() still matches', () => {
+    const node = makeNode({
+      comments: {
+        totalCount: 2,
+        nodes: [
+          { author: { login: 'greptile-apps', __typename: 'Bot' }, body: 'summary', createdAt: '2026-02-03T00:00:00Z' },
+          { author: { login: 'maintainer', __typename: 'User' }, body: 'ok', createdAt: '2026-02-04T00:00:00Z' },
+        ],
+      },
+      reviews: {
+        totalCount: 1,
+        nodes: [
+          {
+            databaseId: 3,
+            state: 'COMMENTED',
+            body: 'no issues',
+            submittedAt: '2026-02-05T00:00:00Z',
+            author: { login: 'pullfrog', __typename: 'Bot' },
+          },
+        ],
+      },
+      reviewThreads: {
+        totalCount: 1,
+        nodes: [
+          {
+            comments: {
+              totalCount: 1,
+              nodes: [
+                {
+                  databaseId: 7,
+                  body: 'inline',
+                  createdAt: '2026-02-05T00:00:00Z',
+                  author: { login: 'boring-cyborg', __typename: 'Bot' },
+                  replyTo: null,
+                  pullRequestReview: { databaseId: 3 },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const outcome = normalizePRNode(node);
+    if (outcome.kind !== 'ok') throw new Error('expected ok');
+    expect(outcome.data.comments.map((c) => c.user?.login)).toEqual(['greptile-apps[bot]', 'maintainer']);
+    expect(outcome.data.reviews[0].user?.login).toBe('pullfrog[bot]');
+    expect(outcome.data.reviewComments[0].user?.login).toBe('boring-cyborg[bot]');
+  });
+
   it('signals overflow when any connection exceeds its cap', () => {
     expect(normalizePRNode(makeNode({ comments: { totalCount: 101, nodes: [] } })).kind).toBe('overflow');
     expect(normalizePRNode(makeNode({ reviews: { totalCount: 51, nodes: [] } })).kind).toBe('overflow');
