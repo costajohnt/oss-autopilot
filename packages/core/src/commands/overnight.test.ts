@@ -40,6 +40,9 @@ import {
   replacePreparedSection,
   runOvernight,
   runOvernightRecord,
+  runOvernightReport,
+  publishReport,
+  readReport,
   overnightFreshness,
   renderLaunchdPlist,
   runOvernightSchedule,
@@ -56,14 +59,23 @@ const mockGetStateManager = vi.mocked(getStateManager);
 const mockDaily = vi.mocked(executeDailyCheck);
 const mockCheckpoint = vi.mocked(maybeCheckpoint);
 
-function fakeStateManager(initial?: OvernightRecord) {
+function fakeStateManager(initial?: OvernightRecord, gistMode = false) {
   let last = initial;
+  let doc: string | null = null;
   return {
     getLastOvernight: () => last,
     setLastOvernight: vi.fn((r: OvernightRecord) => {
       last = r;
     }),
-  } as unknown as ReturnType<typeof getStateManager> & { setLastOvernight: ReturnType<typeof vi.fn> };
+    isGistMode: () => gistMode,
+    getOvernightReportDocument: () => doc,
+    setOvernightReportDocument: vi.fn((c: string) => {
+      doc = c;
+    }),
+  } as unknown as ReturnType<typeof getStateManager> & {
+    setLastOvernight: ReturnType<typeof vi.fn>;
+    setOvernightReportDocument: ReturnType<typeof vi.fn>;
+  };
 }
 
 const pr = (type: string, n: number) => ({
@@ -323,7 +335,22 @@ describe('overnightFreshness', () => {
       prepareCount: 3,
       judgmentCount: 2,
       preparedCount: 1,
+      reportAvailable: 'none',
     });
+  });
+
+  it('says where the report can be read from: the file here, else the Gist copy', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'overnight-fresh-'));
+    const reportPath = path.join(dir, 'r.md');
+    const record = { runAt: '2026-09-05T02:00:00.000Z', reportPath, prepareCount: 0, judgmentCount: 0, prepared: [] };
+    const sm = fakeStateManager(record, true);
+    mockGetStateManager.mockReturnValue(sm);
+    expect(overnightFreshness()?.reportAvailable).toBe('none');
+    sm.setOvernightReportDocument('# published elsewhere');
+    expect(overnightFreshness()?.reportAvailable).toBe('gist');
+    fs.writeFileSync(reportPath, '# local');
+    expect(overnightFreshness()?.reportAvailable).toBe('local');
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it('marks an unparseable runAt instead of emitting a non-finite ageHours', () => {
@@ -481,5 +508,82 @@ describe('lastOvernight schema', () => {
       }),
     ).toThrow();
     expect(AgentStateSchema.parse({ version: 4 }).lastOvernight).toBeUndefined();
+  });
+});
+
+describe('report publishing (#1698)', () => {
+  let dir = '';
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'overnight-report-'));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('publishReport stages the file as the Gist document only in Gist mode', () => {
+    const reportPath = path.join(dir, 'r.md');
+    fs.writeFileSync(reportPath, '# report');
+    const local = fakeStateManager(undefined, false);
+    publishReport(local, reportPath);
+    expect(local.setOvernightReportDocument).not.toHaveBeenCalled();
+
+    const gist = fakeStateManager(undefined, true);
+    publishReport(gist, reportPath);
+    expect(gist.setOvernightReportDocument).toHaveBeenCalledWith('# report');
+  });
+
+  it('publishReport on a missing file is a warning, not a throw', () => {
+    const gist = fakeStateManager(undefined, true);
+    expect(() => publishReport(gist, path.join(dir, 'missing.md'))).not.toThrow();
+    expect(gist.setOvernightReportDocument).not.toHaveBeenCalled();
+  });
+
+  it('runOvernight and runOvernightRecord publish after writing the report', async () => {
+    const sm = fakeStateManager(undefined, true);
+    mockGetStateManager.mockReturnValue(sm);
+    mockDaily.mockResolvedValue({
+      actionableIssues: [],
+      commentedIssues: [],
+      attention,
+      failures: [],
+      warnings: [],
+    } as never);
+    await runOvernight();
+    expect(sm.setOvernightReportDocument).toHaveBeenCalledTimes(1);
+    expect(sm.setOvernightReportDocument.mock.calls[0][0]).toContain('## Prepared branches (0)');
+
+    sm.setOvernightReportDocument.mockClear();
+    const last = sm.getLastOvernight()!;
+    await runOvernightRecord({ url: 'u', branch: 'b' });
+    expect(sm.setOvernightReportDocument).toHaveBeenCalledTimes(1);
+    expect(sm.setOvernightReportDocument.mock.calls[0][0]).toContain('branch `b`');
+    expect(fs.existsSync(last.reportPath)).toBe(true);
+  });
+
+  it('readReport prefers the local file, falls back to the Gist copy, else none', () => {
+    const reportPath = path.join(dir, 'r.md');
+    const sm = fakeStateManager(undefined, true);
+    expect(readReport(sm, reportPath)).toEqual({ source: 'none', content: null });
+    sm.setOvernightReportDocument('# from gist');
+    expect(readReport(sm, reportPath)).toEqual({ source: 'gist', content: '# from gist' });
+    fs.writeFileSync(reportPath, '# local');
+    expect(readReport(sm, reportPath)).toEqual({ source: 'local', content: '# local' });
+  });
+
+  it('runOvernightReport needs a run and returns the report with its source', () => {
+    mockGetStateManager.mockReturnValue(fakeStateManager());
+    expect(() => runOvernightReport()).toThrow(/No overnight run/);
+    const sm = fakeStateManager(
+      { runAt: 'now', reportPath: path.join(dir, 'gone.md'), prepareCount: 0, judgmentCount: 0, prepared: [] },
+      true,
+    );
+    sm.setOvernightReportDocument('# from gist');
+    mockGetStateManager.mockReturnValue(sm);
+    expect(runOvernightReport()).toEqual({
+      runAt: 'now',
+      reportPath: path.join(dir, 'gone.md'),
+      source: 'gist',
+      content: '# from gist',
+    });
   });
 });

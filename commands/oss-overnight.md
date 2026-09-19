@@ -142,7 +142,13 @@ report as `NOT pushed: ...`. A GitHub rate limit stops the run with an error;
 branches already pushed by then are still recorded.
 
 `--dry-run` resolves the targets and prints the plan without pushing or
-writing anything. In the morning, `/oss` on the other machine shows the
+writing anything.
+
+The report itself travels too: in Gist mode, `overnight run`, `overnight
+record` and `overnight push-prep` each publish the rendered report as the
+Gist file `overnight-report.md`, and `overnight report` prints it on any
+machine (the local file when it exists, else the Gist copy). `startup`'s
+`overnight.reportAvailable` says which (`local`, `gist`, `none`). In the morning, `/oss` on the other machine shows the
 compare URL; fetching `prep/<branch>`, fast-forwarding the PR branch, and
 pushing stay inside the normal draft-approval flow there.
 

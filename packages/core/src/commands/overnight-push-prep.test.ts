@@ -54,6 +54,7 @@ function fakeStateManager(initial: OvernightRecord | undefined, githubUsername =
       last = r;
     }),
     getState: () => ({ config: { githubUsername } }),
+    isGistMode: () => false,
   } as unknown as ReturnType<typeof getStateManager> & { setLastOvernight: ReturnType<typeof vi.fn> };
 }
 
@@ -495,13 +496,14 @@ describe('runOvernightPushPrep', () => {
       return '';
     }) as never);
 
-    await runOvernightPushPrep({ dryRun: false });
+    const out = await runOvernightPushPrep({ dryRun: false });
 
     const saved = sm.setLastOvernight.mock.calls[0][0].prepared as OvernightPrepared[];
     expect(saved[0].pushProblem).toMatch(/Permission denied/);
     expect(saved[0].pushedRef).toBeUndefined();
     expect(saved[1]).toMatchObject({ pushedRef: 'prep/b' });
     expect(saved[1].pushProblem).toBeUndefined();
+    expect(out.reportWarning).toBeUndefined();
     expect(fs.readFileSync(path.join(tmp, 'r.md'), 'utf8')).toMatch(/NOT pushed: push failed: boom/);
   });
 
