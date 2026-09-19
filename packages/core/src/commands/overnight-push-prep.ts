@@ -125,9 +125,15 @@ export function parseRemotesOutput(stdout: string): GitRemote[] {
  * for `<login>-mirror` or `org/<login>` does not qualify.
  */
 export function resolvePushRemote(remotes: GitRemote[], login: string): PushTarget | null {
+  // `git push <name>` pushes to EVERY push URL of that remote, so a name with
+  // more than one (`git remote set-url --add --push`) can never qualify:
+  // validating the first URL would say nothing about the others.
+  const pushUrlCount = new Map<string, number>();
+  for (const r of remotes) pushUrlCount.set(r.name, (pushUrlCount.get(r.name) ?? 0) + 1);
   for (const r of remotes) {
     // A remote named like an option would reach git's argv; never pick one.
     if (r.name.startsWith('-')) continue;
+    if (pushUrlCount.get(r.name) !== 1) continue;
     const parsed = parseRemoteOwner(r.url);
     if (parsed && parsed.owner.toLowerCase() === login.toLowerCase()) return { remote: r.name, ...parsed };
   }

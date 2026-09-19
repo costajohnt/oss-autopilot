@@ -105,7 +105,10 @@ What it does, for each entry recorded with a `--worktree`:
 
 1. Reads the worktree's remotes and picks the one whose URL owner is the
    authenticated login (case-insensitive on the parsed URL; remote names are
-   never trusted). No such remote: skipped with a reason.
+   never trusted). The URL read is the effective one, after any `pushurl` or
+   `insteadOf` rewrite, and a remote with more than one push URL never
+   qualifies, because `git push` would send to all of them. No such remote:
+   skipped with a reason.
 2. Refuses unless that repo is a fork (`fork: true` on the repo) that the login
    owns, so your own source repos never get `prep/*` branches.
 3. Pushes the recorded branch to `refs/heads/prep/<branch>`. Never the PR's

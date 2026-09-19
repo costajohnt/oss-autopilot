@@ -143,6 +143,24 @@ describe('parseRemoteOwner', () => {
   });
 });
 
+describe('resolvePushRemote: multiple push URLs', () => {
+  it('never picks a remote with more than one push URL, even when the first one is ours', () => {
+    // `git push origin` would push to both; `git remote -v` prints one (push) line per URL.
+    const remotes = parseRemotesOutput(
+      'origin\thttps://github.com/octocat/react.git (fetch)\norigin\thttps://github.com/octocat/react.git (push)\norigin\thttps://github.com/victim/react.git (push)\n',
+    );
+    expect(remotes).toHaveLength(2);
+    expect(resolvePushRemote(remotes, 'octocat')).toBeNull();
+  });
+
+  it('still picks a second, clean remote owned by the login', () => {
+    const remotes = parseRemotesOutput(
+      'origin\thttps://github.com/octocat/react.git (push)\norigin\thttps://github.com/victim/react.git (push)\nfork\tgit@github.com:octocat/react.git (push)\n',
+    );
+    expect(resolvePushRemote(remotes, 'octocat')).toEqual({ remote: 'fork', owner: 'octocat', repo: 'react' });
+  });
+});
+
 describe('parseRemotesOutput', () => {
   it('keeps one push URL per remote', () => {
     expect(parseRemotesOutput(forkRemotes)).toEqual([
