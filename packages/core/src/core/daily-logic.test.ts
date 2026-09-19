@@ -96,6 +96,16 @@ describe('assessCapacity', () => {
     expect(result.reason).toContain('at PR limit');
   });
 
+  it('treats maxActivePRs of 0 as no limit', () => {
+    const prs = Array.from({ length: 40 }, (_, i) =>
+      makePR({ repo: 'owner/repo', number: i + 1, status: 'waiting_on_maintainer' }),
+    );
+    const result = assessCapacity(prs, 0, 3);
+
+    expect(result.hasCapacity).toBe(true);
+    expect(result.reason).toBe('You have capacity: 40 active PRs (no limit) + 3 shelved, no critical issues');
+  });
+
   it('should report no capacity when critical issues exist', () => {
     const prs = [makePR({ repo: 'owner/repo', status: 'needs_addressing', actionReason: 'needs_response' })];
     const result = assessCapacity(prs, 10, 0);
@@ -653,6 +663,16 @@ describe('computeActionMenu (core)', () => {
 
     expect(searchItem).toBeDefined();
     expect(searchItem!.capacityWarning).toBe("You're at 5/5 active PRs. Claiming a new issue will exceed your limit.");
+  });
+
+  it('never warns about the PR count when maxActivePRs is 0, only about critical issues', () => {
+    const capacity = makeCapacity({ hasCapacity: false, activePRCount: 40, maxActivePRs: 0, criticalIssueCount: 2 });
+    const menu = computeActionMenu([], capacity);
+    const searchItem = menu.items.find((i) => i.key === 'search');
+
+    expect(searchItem!.capacityWarning).toBe(
+      'You have 2 critical issue(s) needing attention. Resolve them before claiming new issues.',
+    );
   });
 
   it('should not add capacityWarning to search item when capacity.hasCapacity is true', () => {

@@ -42,9 +42,9 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
   // ── Capacity / dormancy ──────────────────────────────────────────────
   {
     key: 'maxActivePRs',
-    description: 'Soft cap on how many active PRs you want to juggle at once.',
+    description: 'Soft cap on how many active PRs you want to juggle at once. 0 disables the cap.',
     settableVia: 'setup',
-    valueHint: 'positive integer',
+    valueHint: 'non-negative integer (0 = no limit)',
   },
   {
     key: 'dormantDays',
