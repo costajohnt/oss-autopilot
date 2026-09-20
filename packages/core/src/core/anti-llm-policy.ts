@@ -67,7 +67,7 @@ const PATTERNS: Pattern[] = [
   {
     category: 'explicit_ban',
     regex:
-      /\b(ai|llm|generative\s+ai)\b[^.!?\n]{0,80}?\bforbidden\b|\bforbidden\b[^.!?\n]{0,80}?\b(ai|llm|generative\s+ai)\b/i,
+      /\b(ai|llm|generative\s+ai)\b[^.!?\n]{1,80}?\bforbidden\b|\bforbidden\b[^.!?\n]{1,80}?\b(ai|llm|generative\s+ai)\b/i,
   },
 
   // Named-tool bans. Optionally match a "-generated/-authored/-…"
