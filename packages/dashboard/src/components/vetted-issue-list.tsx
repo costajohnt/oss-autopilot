@@ -35,8 +35,9 @@ export function VettedIssueList({ vettedIssues, repoMetadata, onBack }: VettedIs
   const [search, setSearch] = useState('');
 
   const items = useMemo(() => {
-    // Filter out items with score < 6, then sort by score descending
-    const filtered = vettedIssues.available.filter((item) => item.score === undefined || item.score >= 6);
+    // Only scored items at 6 or above: an unscored item has not been vetted yet, so it has no
+    // business on the vetted list (it still shows up in the daily output).
+    const filtered = vettedIssues.available.filter((item) => item.score !== undefined && item.score >= 6);
     return filtered.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   }, [vettedIssues.available]);
 
