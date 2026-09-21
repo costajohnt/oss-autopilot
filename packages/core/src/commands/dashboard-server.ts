@@ -254,7 +254,7 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
 
   if (!initialDigest) {
     throw new Error(
-      'No dashboard data available. Run the daily check first: GITHUB_TOKEN=$(gh auth token) npm start -- daily',
+      'No dashboard data available. Run the daily check first: oss-autopilot daily (or /oss in Claude Code)',
     );
   }
 

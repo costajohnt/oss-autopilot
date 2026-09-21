@@ -14,8 +14,8 @@ interface ServeOptions {
 }
 
 /**
- * Resolve the SPA assets directory from packages/dashboard/dist/.
- * Tries multiple strategies to locate it across dev (tsx) and bundled (cjs) modes.
+ * Resolve the SPA assets directory. Tries packages/dashboard/dist/ in a
+ * checkout (dev via tsx, or the bundle), then the copy shipped in the npm package.
  */
 export function resolveAssetsDir(): string | null {
   // Strategy 1: relative to this source file (works in dev with tsx)
@@ -30,7 +30,16 @@ export function resolveAssetsDir(): string | null {
     return bundlePath;
   }
 
-  // Strategy 3: resolve the dashboard package via require.resolve
+  // Strategy 3: assets shipped inside the published package. `prepublishOnly`
+  // copies packages/dashboard/dist to dist/dashboard, next to the CLI bundle,
+  // because @oss-autopilot/dashboard itself is private and never on npm. Kept
+  // after the checkout paths so a working tree serves its own fresh build.
+  const packagedPath = path.resolve(__dirname, 'dashboard');
+  if (fs.existsSync(path.join(packagedPath, 'index.html'))) {
+    return packagedPath;
+  }
+
+  // Strategy 4: resolve the dashboard package via require.resolve
   try {
     const dashboardPkgPath = require.resolve('@oss-autopilot/dashboard/package.json');
     const dashboardDist = path.join(path.dirname(dashboardPkgPath), 'dist');
@@ -51,8 +60,8 @@ export async function serveDashboard(options: ServeOptions): Promise<void> {
   const assetsDir = resolveAssetsDir();
   if (!assetsDir) {
     console.error('Could not find dashboard SPA assets.');
-    console.error('Make sure packages/dashboard has been built:');
-    console.error('  cd packages/dashboard && pnpm run build');
+    console.error('From a git checkout, build them: cd packages/dashboard && pnpm run build');
+    console.error('From npm, update to the latest @oss-autopilot/core; older releases did not include them.');
     process.exit(1);
   }
 
