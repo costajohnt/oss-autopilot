@@ -338,6 +338,57 @@ describe('buildScoutState', () => {
     expect(result.skippedIssues).toEqual(skipped);
   });
 
+  it('merges dismissed issues into skippedIssues so search does not resurface them', () => {
+    const state = makeAgentState({
+      config: {
+        skippedIssuesPath: undefined,
+        dismissedIssues: { 'https://github.com/owner/repo/issues/42': '2026-05-01T10:00:00.000Z' },
+      },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+    mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: [] });
+
+    const result = buildScoutState();
+
+    expect(result.skippedIssues).toEqual([
+      {
+        url: 'https://github.com/owner/repo/issues/42',
+        repo: 'owner/repo',
+        number: 42,
+        title: '',
+        skippedAt: '2026-05-01T10:00:00.000Z',
+        reason: 'dismissed',
+      },
+    ]);
+  });
+
+  it('lists a URL that is both in the skip file and dismissed exactly once', () => {
+    const url = 'https://github.com/owner/repo/issues/42';
+    const state = makeAgentState({
+      config: {
+        skippedIssuesPath: '/vault/open-source/skipped-issues.md',
+        dismissedIssues: { [url]: '2026-05-01T10:00:00.000Z' },
+      },
+    });
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+    const fromFile = { url, repo: 'owner/repo', number: 42, title: '', skippedAt: '2026-04-15T00:00:00.000Z' };
+    mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: [fromFile] });
+
+    const result = buildScoutState();
+
+    expect(result.skippedIssues).toEqual([fromFile]);
+  });
+
+  it('passes zero phase delays instead of the old 30s/90s pins', () => {
+    const state = makeAgentState();
+    mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
+
+    const result = buildScoutState();
+
+    expect(result.preferences.interPhaseDelayMs).toBe(0);
+    expect(result.preferences.broadPhaseDelayMs).toBe(0);
+  });
+
   it('should default skippedIssues to [] when parser returns empty', () => {
     const state = makeAgentState({ config: { skippedIssuesPath: undefined } });
     mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));

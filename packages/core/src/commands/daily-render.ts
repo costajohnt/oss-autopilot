@@ -160,9 +160,11 @@ export function formatSummary(
   const capacityIcon = capacity.hasCapacity ? '✅' : '⚠️';
   const capacityLabel = capacity.hasCapacity ? 'Ready for new work' : 'Focus on existing PRs';
   const shelvedNote = capacity.shelvedPRCount > 0 ? ` + ${capacity.shelvedPRCount} shelved` : '';
-  lines.push(
-    `**Capacity:** ${capacityIcon} ${capacityLabel} (${capacity.activePRCount}/${capacity.maxActivePRs} PRs${shelvedNote})`,
-  );
+  const countLabel =
+    capacity.maxActivePRs > 0
+      ? `${capacity.activePRCount}/${capacity.maxActivePRs} PRs`
+      : `${capacity.activePRCount} PRs, no limit`;
+  lines.push(`**Capacity:** ${capacityIcon} ${capacityLabel} (${countLabel}${shelvedNote})`);
 
   return lines.join('\n');
 }

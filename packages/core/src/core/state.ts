@@ -35,6 +35,9 @@ import { debug, warn } from './logger.js';
 import { errorMessage, ConfigurationError, ConcurrencyError, isTransientNetworkError } from './errors.js';
 import { GistStateStore, type OctokitLike } from './gist-state-store.js';
 import * as guidelinesStoreModule from './guidelines-store.js';
+
+/** Gist file that carries the rendered overnight report across machines (#1698). */
+export const OVERNIGHT_REPORT_DOCUMENT = 'overnight-report.md';
 import { renderGistWarning, type GistHealth, type GistWarningCause } from './gist-health.js';
 import { getStatePath, getStateCachePath, getGistIdPath } from './paths.js';
 import { parseGitHubUrl } from './urls.js';
@@ -991,6 +994,25 @@ export class StateManager {
   setSearchSeen(seen: SearchSeenEntry[]): void {
     this.state.searchSeen = seen;
     this.autoSave();
+  }
+
+  /**
+   * The rendered morning report as last published to the Gist (#1698), so a
+   * machine other than the one that ran overnight can read it. Null in local
+   * mode or before the first publish.
+   */
+  getOvernightReportDocument(): string | null {
+    const content = this.gistStore?.getDocument(OVERNIGHT_REPORT_DOCUMENT) ?? null;
+    return content === '' ? null : content;
+  }
+
+  /**
+   * Stage the rendered morning report for the next Gist push (#1698).
+   * Freeform document, last-write-wins like guidelines. No-op in local mode:
+   * the file on disk is the only copy there, which is fine on one machine.
+   */
+  setOvernightReportDocument(content: string): void {
+    this.gistStore?.setDocument(OVERNIGHT_REPORT_DOCUMENT, content);
   }
 
   /** Latest overnight run (#1574); `undefined` before the first one. */

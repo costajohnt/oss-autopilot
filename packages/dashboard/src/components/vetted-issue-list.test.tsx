@@ -123,6 +123,13 @@ describe('VettedIssueList', () => {
     expect(screen.queryByText('owner/repo#3')).toBeNull();
   });
 
+  it('hides an item with no score at all: unscored means not vetted', () => {
+    const items = [makeItem({ number: 1, score: 8 }), makeItem({ number: 2, score: undefined })];
+    render(<VettedIssueList vettedIssues={makeOutput(items)} onBack={() => {}} />);
+    expect(screen.getByText('owner/repo#1')).toBeTruthy();
+    expect(screen.queryByText('owner/repo#2')).toBeNull();
+  });
+
   it('search filters by title and repo', () => {
     const items = [
       makeItem({

@@ -13,7 +13,7 @@ import {
 import { SearchStrategySchema, type SearchStrategy } from '@oss-scout/core';
 import { classifyLinkedPR, getStateManager, maybeCheckpoint } from '../core/index.js';
 import { type SearchOutput } from '../formatters/json.js';
-import { gradeFromCandidate } from '../core/issue-grading.js';
+import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-grading.js';
 import { computeStrategy } from '../core/strategy.js';
 import { refreshStarredReposIfStale } from '../core/starred-repos.js';
 import { debug, warn } from '../core/logger.js';
@@ -119,17 +119,16 @@ function sanitizeViabilityScore(raw: unknown): number {
 /**
  * Read a non-negative integer scout-delay override from an env var.
  *
- * Scout spaces its multi-phase `/search/issues` calls with an inter-phase
- * delay (default 30s) and a broad-phase delay (default 90s) to stay under
- * GitHub's secondary rate limit (see `buildScoutState`). Those delays make a
- * single `search` invocation take ~100s, which is fine in normal use but makes
- * the live-API e2e suite (`search.e2e.test.ts`, run only in the nightly
- * workflow — see #1452) impractically slow. These env vars let that suite
- * collapse the delays so the test completes in a realistic CI window.
+ * Scout can space its multi-phase `/search/issues` calls with an inter-phase
+ * delay and a broad-phase delay to stay under GitHub's secondary rate limit.
+ * `buildScoutState` sets both to 0 (the broad phase runs on GraphQL now), so
+ * these env vars are the knob for hosts that still need spacing, including
+ * the live-API e2e suite (`search.e2e.test.ts`, nightly only, see #1452),
+ * which restores a modest gap on shared CI runner IPs.
  *
  * Returns `undefined` when the var is unset/empty or not a parseable
  * non-negative integer, so scout falls back to its preference value and
- * production behavior is unchanged. Only the live test/nightly run sets them.
+ * production behavior is unchanged.
  */
 function readScoutDelayOverride(envVar: string): number | undefined {
   const raw = process.env[envVar];
@@ -209,9 +208,8 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
     );
   }
 
-  // Live-API test/nightly affordance (#1452): collapse scout's inter-phase
-  // delays so the e2e suite finishes in a realistic window. Unset in normal
-  // use → undefined → scout falls back to the 30s/90s preference defaults.
+  // Per-call delay override (#1452). Unset in normal use → undefined → scout
+  // uses the bridge preferences (0/0, see buildScoutState).
   const interPhaseDelayMs = readScoutDelayOverride('OSS_AUTOPILOT_SCOUT_INTER_PHASE_DELAY_MS');
   const broadPhaseDelayMs = readScoutDelayOverride('OSS_AUTOPILOT_SCOUT_BROAD_PHASE_DELAY_MS');
 
@@ -260,23 +258,19 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
   const searchOutput: SearchOutput = {
     candidates: visibleCandidates.map((c) => {
       const repoScoreRecord = stateManager.getRepoScore(c.issue.repo);
-      // Scout's `search` does not emit per-candidate projectHealth (only
-      // `vetIssue` does). Pass a sentinel `checkFailed: true` so the grader
-      // correctly treats scout-side signals as unknown and grades purely from
-      // the autopilot-tracked repoScore. Candidates without a repoScore
-      // receive 'F' — that's an honest signal for "we haven't seen this repo
-      // before" rather than a fabricated score.
-      //
-      // Note (#1465): repoScore here is the cached HISTORY score (the user's
-      // own merge outcomes — docs/repo-scores.md §History score), so this
-      // grade reflects history only; `vet` later re-grades the same issue
-      // with freshly fetched repo health and can legitimately disagree.
+      // Grade from the health scout fetched while vetting this candidate
+      // (#332). Search used to pass a `checkFailed` sentinel and grade from
+      // the user's own history alone, so every repo without a merged PR of
+      // ours scored the bottom band regardless of how healthy it was, and a
+      // grade-1 "approve" looked like a contradiction. `repoScore` is still
+      // the cached HISTORY score (#1465); `vet` re-grades with fresh health.
+      // Scout always supplies health; the fallback only serves bare fixtures.
       const grade = gradeFromCandidate({
         repo: c.issue.repo,
-        projectHealth: {
+        projectHealth: c.projectHealth ?? {
           repo: c.issue.repo,
           checkFailed: true,
-          failureReason: 'health not fetched on the multi-issue search surface',
+          failureReason: 'health not supplied by the caller',
         },
         getRepoScore: (repo) => {
           const score = stateManager.getRepoScore(repo);
@@ -299,7 +293,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
           url: c.issue.url,
           labels: c.issue.labels,
         },
-        recommendation: c.recommendation,
+        recommendation: reconcileRecommendation(c.recommendation, grade),
         reasonsToApprove: c.reasonsToApprove,
         reasonsToSkip: c.reasonsToSkip,
         searchPriority: c.searchPriority,

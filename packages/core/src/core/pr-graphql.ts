@@ -91,6 +91,16 @@ export interface BatchPRResult {
 
 interface GraphQLActor {
   login: string;
+  __typename?: string;
+}
+
+/**
+ * GraphQL reports a GitHub App as `__typename: 'Bot'` with a bare login, where
+ * REST reports the same account as `login: 'name[bot]'`. Restore the REST spelling
+ * so `isBotAuthor()` and every downstream consumer see one form of the login.
+ */
+function restLogin(actor: GraphQLActor): string {
+  return actor.__typename === 'Bot' && !actor.login.endsWith('[bot]') ? `${actor.login}[bot]` : actor.login;
 }
 
 interface GraphQLCheckRunNode {
@@ -181,11 +191,11 @@ const PR_FIELDS = `
   updatedAt
   comments(last: ${COMMENTS_CAP}) {
     totalCount
-    nodes { author { login } body createdAt }
+    nodes { author { login __typename } body createdAt }
   }
   reviews(last: ${REVIEWS_CAP}) {
     totalCount
-    nodes { databaseId state body submittedAt author { login } }
+    nodes { databaseId state body submittedAt author { login __typename } }
   }
   reviewThreads(last: ${REVIEW_THREADS_CAP}) {
     totalCount
@@ -196,7 +206,7 @@ const PR_FIELDS = `
           databaseId
           body
           createdAt
-          author { login }
+          author { login __typename }
           replyTo { databaseId }
           pullRequestReview { databaseId }
         }
@@ -311,7 +321,7 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
   }
 
   const comments: AssemblyComment[] = node.comments.nodes.map((c) => ({
-    user: c.author ? { login: c.author.login } : null,
+    user: c.author ? { login: restLogin(c.author) } : null,
     body: c.body,
     created_at: c.createdAt,
   }));
@@ -321,7 +331,7 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
   const reviews: AssemblyReview[] = node.reviews.nodes
     .filter((r) => r.state !== 'PENDING')
     .map((r) => ({
-      user: r.author ? { login: r.author.login } : null,
+      user: r.author ? { login: restLogin(r.author) } : null,
       body: r.body,
       submitted_at: r.submittedAt,
       state: r.state,
@@ -331,7 +341,7 @@ export function normalizePRNode(node: GraphQLPullRequestNode | null | undefined)
   const reviewComments: ReviewComment[] = node.reviewThreads.nodes.flatMap((thread) =>
     thread.comments.nodes.map((c) => ({
       id: c.databaseId ?? 0,
-      user: c.author ? { login: c.author.login } : null,
+      user: c.author ? { login: restLogin(c.author) } : null,
       body: c.body,
       created_at: c.createdAt,
       in_reply_to_id: c.replyTo?.databaseId ?? undefined,

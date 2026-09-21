@@ -40,7 +40,7 @@ describe('runSkipAdd', () => {
     });
 
     const contents = fs.readFileSync(skipFile, 'utf8');
-    expect(contents).toContain('# Skipped Issues — auto-culled after 90 days');
+    expect(contents).toContain('# Skipped Issues — permanent');
     expect(contents).toContain('# Format: YYYY-MM-DD URL');
     expect(contents).toContain('2026-04-19 https://github.com/foo/bar/issues/1');
     expect(result).toEqual({
@@ -55,7 +55,7 @@ describe('runSkipAdd', () => {
   it('appends to an existing file without duplicating the header', () => {
     fs.writeFileSync(
       skipFile,
-      '# Skipped Issues — auto-culled after 90 days\n# Format: YYYY-MM-DD URL\n\n2026-04-15 https://github.com/owner/repo/issues/99\n',
+      '# Skipped Issues — permanent\n# Format: YYYY-MM-DD URL\n\n2026-04-15 https://github.com/owner/repo/issues/99\n',
     );
 
     runSkipAdd({
@@ -74,7 +74,7 @@ describe('runSkipAdd', () => {
   it('is a no-op when the URL is already present (idempotent)', () => {
     fs.writeFileSync(
       skipFile,
-      '# Skipped Issues — auto-culled after 90 days\n# Format: YYYY-MM-DD URL\n\n2026-04-15 https://github.com/foo/bar/issues/1\n',
+      '# Skipped Issues — permanent\n# Format: YYYY-MM-DD URL\n\n2026-04-15 https://github.com/foo/bar/issues/1\n',
     );
     const before = fs.readFileSync(skipFile, 'utf8');
 

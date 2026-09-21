@@ -564,6 +564,11 @@ describe('runStartup behavior', () => {
   let execFile: ReturnType<typeof vi.fn>;
   let launchDashboardServer: ReturnType<typeof vi.fn>;
 
+  /** A 200 carrying the CSRF token GET /api/data issues; the refresh trigger primes it before POSTing. */
+  function okResponse(): Response {
+    return new Response('{}', { status: 200, headers: { 'X-CSRF-Token': 'csrf-test-token' } });
+  }
+
   function makeDailyOutput(totalActivePRs: number) {
     return {
       digest: {
@@ -639,6 +644,7 @@ describe('runStartup behavior', () => {
     sm.mockReturnValue({
       isSetupComplete: vi.fn(() => true),
       getState: vi.fn(() => ({ config: {} })),
+      getOvernightReportDocument: () => null,
       getLastOvernight: () => ({
         runAt: new Date(Date.now() - 3 * 36e5).toISOString(),
         reportPath: '/r/overnight-today.md',
@@ -656,6 +662,7 @@ describe('runStartup behavior', () => {
         prepareCount: 2,
         judgmentCount: 1,
         preparedCount: 1,
+        reportAvailable: 'none',
       });
     } finally {
       sm.mockReturnValue({ isSetupComplete: vi.fn(() => true), getLastOvernight: vi.fn(() => undefined) } as never);
@@ -849,15 +856,19 @@ describe('runStartup behavior', () => {
     const daily = makeDailyOutput(3);
     executeDailyCheck.mockResolvedValue(daily);
     launchDashboardServer.mockResolvedValue({ url: 'http://oss.localhost:3001', port: 3001, alreadyRunning: true });
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okResponse());
 
     const result = await runStartup();
 
     expect(result.dashboardUrl).toBe('http://oss.localhost:3001');
-    // Should trigger a refresh on the running server
+    // Should prime the CSRF token from /api/data, then refresh with it
+    expect(fetchSpy).toHaveBeenCalledWith('http://127.0.0.1:3001/api/data', expect.anything());
     expect(fetchSpy).toHaveBeenCalledWith(
       'http://127.0.0.1:3001/api/refresh',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-test-token' }),
+      }),
     );
     // No `lastBrowserOpenedAt` recorded yet → falls outside throttle window,
     // so the OS browser-opener still runs to surface the dashboard for users
@@ -924,7 +935,7 @@ describe('runStartup behavior', () => {
       alreadyRunning: true,
       lastBrowserOpenedAt: new Date(Date.now() - 60_000).toISOString(), // 1 minute ago
     });
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okResponse());
 
     const result = await runStartup();
 
@@ -949,7 +960,7 @@ describe('runStartup behavior', () => {
       alreadyRunning: true,
       lastBrowserOpenedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
     });
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okResponse());
 
     await runStartup();
 
@@ -982,7 +993,7 @@ describe('runStartup behavior', () => {
       alreadyRunning: true,
       lastBrowserOpenedAt: new Date(Date.now() - 5_000).toISOString(), // 5s ago — well within default
     });
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okResponse());
     process.env.OSS_DASHBOARD_REOPEN_THROTTLE_MS = '0';
 
     try {
@@ -1020,7 +1031,7 @@ describe('runStartup behavior', () => {
       alreadyRunning: true,
       lastBrowserOpenedAt: new Date(Date.now() - 60_000).toISOString(),
     });
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(okResponse());
 
     await runStartup();
 

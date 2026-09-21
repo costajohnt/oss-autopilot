@@ -127,6 +127,34 @@ describe('AgentStateSchema', () => {
     });
   });
 
+  describe('searchRotation (oss-scout cursors)', () => {
+    // z.object strips unknown keys, so any scout cursor missing from the schema
+    // is silently dropped on load and scout's rotation restarts at 0 each run.
+    it('keeps every oss-scout rotation cursor across a parse', () => {
+      const searchRotation = {
+        languageOffset: 3,
+        phase0Offset: 1,
+        starredOffset: 2,
+        maintainedOffset: 4,
+        strategyOffset: 5,
+        lastRotatedAt: '2026-09-19T00:00:00.000Z',
+      };
+      const result = AgentStateSchema.parse({ version: 4, searchRotation });
+      expect(result.searchRotation).toEqual(searchRotation);
+    });
+
+    it('defaults the new cursors on state written before oss-scout 1.7.0', () => {
+      const result = AgentStateSchema.parse({ version: 4, searchRotation: { languageOffset: 2 } });
+      expect(result.searchRotation).toEqual({
+        languageOffset: 2,
+        phase0Offset: 0,
+        starredOffset: 0,
+        maintainedOffset: 0,
+        strategyOffset: 0,
+      });
+    });
+  });
+
   describe('new v4 fields', () => {
     it('should accept StoredMergedPR with learningsExtractedAt', () => {
       const result = AgentStateSchema.parse({

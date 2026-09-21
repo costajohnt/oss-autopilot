@@ -85,6 +85,21 @@ const VALID_OVERRIDE_STATUSES: ReadonlySet<FetchedPRStatus> = new Set(['needs_ad
  *   wrong status is visible in the envelope, not just stderr.
  * @returns New PR array with overrides applied (original array is not mutated)
  */
+/**
+ * When the PR last had activity a person can act on: a commit or a maintainer
+ * comment/review. GitHub's `updatedAt` also moves on invisible events (merge
+ * state recomputed after the base branch advances, label churn), which on a
+ * busy repo cleared a fresh manual override within hours (#1713). Falls back
+ * to `updatedAt` only when neither signal is present.
+ */
+export function latestActivityAt(
+  pr: Pick<FetchedPR, 'updatedAt' | 'latestCommitDate' | 'lastMaintainerComment'>,
+): string {
+  const candidates = [pr.latestCommitDate, pr.lastMaintainerComment?.createdAt].filter((d): d is string => !!d);
+  if (candidates.length === 0) return pr.updatedAt;
+  return candidates.reduce((a, b) => (a > b ? a : b));
+}
+
 export function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentState>, failures?: string[]): FetchedPR[] {
   const overrides = state.config.statusOverrides;
   if (!overrides || Object.keys(overrides).length === 0) return prs;
@@ -97,7 +112,7 @@ export function applyStatusOverrides(prs: FetchedPR[], state: Readonly<AgentStat
   stateManager.batch(() => {
     result = prs.map((pr) => {
       try {
-        const override = stateManager.getStatusOverride(pr.url, pr.updatedAt);
+        const override = stateManager.getStatusOverride(pr.url, latestActivityAt(pr));
         if (!override) {
           return pr;
         }
@@ -265,16 +280,20 @@ export function assessCapacity(
     (pr) => pr.status === 'needs_addressing' && pr.actionReason && CRITICAL_ACTION_REASONS.has(pr.actionReason),
   ).length;
 
-  // Has capacity if: under PR limit AND no critical issues
-  const underPRLimit = activePRCount < maxActivePRs;
+  // Has capacity if: under PR limit AND no critical issues. A limit of 0 means no limit.
+  const unlimited = maxActivePRs <= 0;
+  const underPRLimit = unlimited || activePRCount < maxActivePRs;
   const noCriticalIssues = criticalIssueCount === 0;
   const hasCapacity = underPRLimit && noCriticalIssues;
 
   // Generate reason
   let reason: string;
   const shelvedNote = shelvedPRCount > 0 ? ` + ${shelvedPRCount} shelved` : '';
+  const countLabel = unlimited
+    ? `${activePRCount} active PRs (no limit)`
+    : `${activePRCount}/${maxActivePRs} active PRs`;
   if (hasCapacity) {
-    reason = `You have capacity: ${activePRCount}/${maxActivePRs} active PRs${shelvedNote}, no critical issues`;
+    reason = `You have capacity: ${countLabel}${shelvedNote}, no critical issues`;
   } else {
     const reasons: string[] = [];
     if (!underPRLimit) {
@@ -489,7 +508,7 @@ export function computeActionMenu(
     description: 'Look for new contribution opportunities',
   };
   if (!capacity.hasCapacity) {
-    const atLimit = capacity.activePRCount >= capacity.maxActivePRs;
+    const atLimit = capacity.maxActivePRs > 0 && capacity.activePRCount >= capacity.maxActivePRs;
     const hasCritical = capacity.criticalIssueCount > 0;
     if (atLimit && hasCritical) {
       searchItem.capacityWarning = `You're at ${capacity.activePRCount}/${capacity.maxActivePRs} active PRs and have ${capacity.criticalIssueCount} critical issue(s). Resolve existing work before claiming new issues.`;

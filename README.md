@@ -262,6 +262,7 @@ Configuration is stored in `~/.oss-autopilot/state.json` (inside the `config` fi
 | `avoidRepos` | `[]` | Repos to softly downrank in discovery (milder than `excludeRepos`) |
 | `boostIssueTypes` | `[]` | Issue label types to softly boost in discovery ranking (e.g., `bug`) |
 | `includeDocIssues` | `true` | Include documentation issues in discovery |
+| `autoExtractLearnings` | `true` | Extract per-repo learnings from freshly merged PRs in the background at `/oss` startup and overnight; `false` offers it as an action-menu item instead |
 | `issueListPath` | (optional) | Path to curated issue list file |
 | `projectCategories` | `[]` | Project categories to prioritize (nonprofit, devtools, etc.) |
 | `preferredOrgs` | `[]` | GitHub organizations to prioritize |

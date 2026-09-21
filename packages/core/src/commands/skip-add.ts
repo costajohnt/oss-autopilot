@@ -8,7 +8,7 @@ import { getStateManager } from '../core/index.js';
 // eslint-disable-next-line regexp/no-unused-capturing-group
 const GITHUB_URL_RE = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/(?:issues|pull)\/(\d+)(?:[#/?].*)?$/;
 
-const FILE_HEADER = '# Skipped Issues — auto-culled after 90 days\n# Format: YYYY-MM-DD URL\n\n';
+const FILE_HEADER = '# Skipped Issues — permanent\n# Format: YYYY-MM-DD URL\n\n';
 
 export interface SkipAddOptions {
   issueUrl: string;
