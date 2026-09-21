@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "The /oss Daily Check",
+    "subtitle": "Deterministic fetch and triage, AI drafts, you approve",
+    "output": "daily-workflow.html"
+  },
+  "lanes": [
+    {
+      "id": "you",
+      "label": "You"
+    },
+    {
+      "id": "plugin",
+      "label": "Claude Code plugin"
+    },
+    {
+      "id": "core",
+      "label": "Core CLI (TypeScript)"
+    },
+    {
+      "id": "github",
+      "label": "GitHub"
+    }
+  ],
+  "phases": [
+    {
+      "id": "fetch",
+      "label": "Fetch + triage",
+      "fromCol": 0,
+      "toCol": 2
+    },
+    {
+      "id": "act",
+      "label": "Draft",
+      "fromCol": 3,
+      "toCol": 4,
+      "variant": "emphasis"
+    },
+    {
+      "id": "ship",
+      "label": "Approve",
+      "fromCol": 5,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "run",
+    "startup",
+    "fetch",
+    "classify",
+    "menu",
+    "pick",
+    "agent",
+    "approve",
+    "post"
+  ],
+  "nodes": [
+    {
+      "id": "run",
+      "lane": "you",
+      "col": 0,
+      "type": "external",
+      "label": "Run /oss",
+      "sublabel": "about 5 min"
+    },
+    {
+      "id": "pick",
+      "lane": "you",
+      "col": 2,
+      "type": "external",
+      "label": "Pick action",
+      "sublabel": "or stop here"
+    },
+    {
+      "id": "approve",
+      "lane": "you",
+      "col": 5,
+      "type": "security",
+      "label": "Approve",
+      "sublabel": "per action",
+      "tag": "required"
+    },
+    {
+      "id": "menu",
+      "lane": "plugin",
+      "col": 2,
+      "type": "frontend",
+      "label": "Action menu",
+      "sublabel": "triaged list"
+    },
+    {
+      "id": "agent",
+      "lane": "plugin",
+      "col": 4,
+      "type": "frontend",
+      "label": "Agent drafts",
+      "sublabel": "reply, fix"
+    },
+    {
+      "id": "startup",
+      "lane": "core",
+      "col": 0,
+      "type": "backend",
+      "label": "startup",
+      "sublabel": "--json"
+    },
+    {
+      "id": "classify",
+      "lane": "core",
+      "col": 2,
+      "type": "backend",
+      "label": "Classify PRs",
+      "sublabel": "CI, reviews"
+    },
+    {
+      "id": "fetch",
+      "lane": "github",
+      "col": 1,
+      "type": "cloud",
+      "label": "Search API",
+      "sublabel": "your open PRs"
+    },
+    {
+      "id": "post",
+      "lane": "github",
+      "col": 5,
+      "type": "cloud",
+      "label": "Push / comment",
+      "sublabel": "after approval"
+    }
+  ],
+  "edges": [
+    {
+      "from": "run",
+      "to": "startup",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "drop"
+    },
+    {
+      "from": "startup",
+      "to": "fetch",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "route": "drop"
+    },
+    {
+      "from": "fetch",
+      "to": "classify",
+      "label": "live data",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "route": "drop"
+    },
+    {
+      "from": "classify",
+      "to": "menu",
+      "label": "JSON",
+      "variant": "emphasis",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "route": "drop"
+    },
+    {
+      "from": "menu",
+      "to": "pick",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "route": "straight"
+    },
+    {
+      "from": "pick",
+      "to": "agent",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "drop",
+      "bias": 0.3
+    },
+    {
+      "from": "agent",
+      "to": "approve",
+      "label": "draft",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "route": "drop",
+      "bias": 0.7
+    },
+    {
+      "from": "approve",
+      "to": "post",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "right",
+      "route": "outside-right"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Deterministic",
+      "items": [
+        "PR status computed in tested TypeScript",
+        "CI failures sorted into a fixed taxonomy",
+        "PRs fetched fresh each run"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "AI layer",
+      "items": [
+        "Agents read the JSON, not raw pages",
+        "Drafts replies and prepares fixes",
+        "Claims checked against the real diff"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Guardrail",
+      "items": [
+        "No push or comment without approval",
+        "Approval is per action, not per session",
+        "Overnight mode never pushes or posts"
+      ]
+    }
+  ]
+}
