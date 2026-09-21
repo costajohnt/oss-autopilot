@@ -493,6 +493,20 @@ describe('schedule', () => {
       'Bash(npm deprecate *)',
       'Bash(pnpm publish)',
       'Bash(pnpm publish *)',
+      // Direct shell escapes inside the allowed programs (#1728): each can
+      // spawn `git push` and void the push denies.
+      'Bash(npm exec *)',
+      'Bash(npm x *)',
+      'Bash(pnpm dlx *)',
+      'Bash(pnpm exec *)',
+      'Bash(node -e *)',
+      'Bash(node --eval *)',
+      'Bash(node -p *)',
+      'Bash(node --print *)',
+      'Bash(node -pe *)',
+      'Bash(node * -e *)',
+      'Bash(npm * exec *)',
+      'Bash(pnpm * exec *)',
       'AskUserQuestion',
     ]) {
       expect(denied).toContain(must);

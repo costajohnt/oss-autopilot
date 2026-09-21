@@ -115,6 +115,9 @@ vi.mock('./commands/daily.js', () => ({
   printDigest: mockPrintDigest,
 }));
 
+const mockStopStaleDashboardServer = vi.fn();
+vi.mock('./commands/dashboard-lifecycle.js', () => ({ stopStaleDashboardServer: mockStopStaleDashboardServer }));
+
 const mockRunTrack = vi.fn();
 vi.mock('./commands/track.js', () => ({ runTrack: mockRunTrack }));
 
@@ -1012,6 +1015,18 @@ describe('daily command', () => {
 
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), data);
     expect(mockRunDailyForDisplay).not.toHaveBeenCalled();
+  });
+
+  it('stops a stale-version dashboard server before running the check (#1709)', async () => {
+    mockRunDaily.mockResolvedValue({ prs: [] });
+    const program = buildProgram('daily');
+
+    await program.parseAsync(['node', 'cli', 'daily', '--json']);
+
+    expect(mockStopStaleDashboardServer).toHaveBeenCalledTimes(1);
+    expect(mockStopStaleDashboardServer.mock.invocationCallOrder[0]).toBeLessThan(
+      mockRunDaily.mock.invocationCallOrder[0],
+    );
   });
 
   it('routes --json --compact through toCompactDailyOutput', async () => {
