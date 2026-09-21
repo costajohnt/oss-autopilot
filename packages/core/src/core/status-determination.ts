@@ -164,7 +164,16 @@ function collectAllActionReasons(input: DetermineStatusInput): ActionReason[] | 
  * Determine the overall status of a PR based on its signals.
  */
 export function determineStatus(input: DetermineStatusInput): DetermineStatusResult {
-  const primary = determinePrimaryStatus(input);
+  let primary = determinePrimaryStatus(input);
+  // A merge conflict is always the contributor's to fix, and nothing can merge
+  // until it is. The priority tree returns several waiting statuses
+  // (changes_addressed, pending_merge, ci_blocked, stale_ci_failure) before it
+  // reaches its conflict check, which hid the conflict: consumers only act on
+  // `needs_addressing`, and a dormant PR in that state was auto-shelved. One
+  // guard here covers every early return, present and future.
+  if (primary.status === 'waiting_on_maintainer' && input.hasMergeConflict) {
+    primary = { status: 'needs_addressing', actionReason: 'merge_conflict', stalenessTier: primary.stalenessTier };
+  }
   const actionReasons = collectAllActionReasons(input);
   if (actionReasons) {
     return { ...primary, actionReasons };
