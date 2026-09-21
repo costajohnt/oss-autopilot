@@ -5,6 +5,8 @@
  */
 
 import { spawn } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {
   findRunningDashboardServer,
   isDashboardServerRunning,
@@ -29,6 +31,18 @@ export interface LaunchResult {
    * Always undefined for fresh launches.
    */
   lastBrowserOpenedAt?: string;
+}
+
+/**
+ * The script to spawn `dashboard serve` with. From the CLI that is argv[1]
+ * (cli.bundle.cjs in production, cli.ts in dev). From another host process
+ * such as the MCP server, argv[1] is that host's own entry, so use the core
+ * CLI bundle that ships beside the dashboard assets instead (#1735).
+ */
+export function resolveCliEntry(argv1: string, assetsDir: string): string {
+  if (/^cli\.(?:bundle\.cjs|ts|js)$/.test(path.basename(argv1))) return argv1;
+  const coreBundle = path.resolve(assetsDir, '../../core/dist/cli.bundle.cjs');
+  return fs.existsSync(coreBundle) ? coreBundle : argv1;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -110,8 +124,7 @@ export async function launchDashboardServer(options?: { port?: number }): Promis
 
   // 3. Launch as detached child process
   const port = options?.port ?? DEFAULT_PORT;
-  // process.argv[1] is the CLI entry point (cli.bundle.cjs in production, cli.ts in dev)
-  const cliPath = process.argv[1];
+  const cliPath = resolveCliEntry(process.argv[1], assetsDir);
 
   const child = spawn('node', [cliPath, 'dashboard', 'serve', '--port', String(port), '--no-open'], {
     detached: true,
