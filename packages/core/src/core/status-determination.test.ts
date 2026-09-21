@@ -922,3 +922,65 @@ describe('determineStatus fails closed on malformed dates (#1044)', () => {
     expect(result.actionReason).toBe('needs_changes');
   });
 });
+
+describe('determineStatus: a merge conflict is never hidden behind a waiting status', () => {
+  const conflicted = { hasMergeConflict: true } as const;
+  const waitingStates: Array<[string, Partial<DetermineStatusInput>]> = [
+    [
+      'changes_addressed via an unresponded comment answered by a later commit',
+      {
+        hasUnrespondedComment: true,
+        lastMaintainerCommentDate: '2026-01-01T00:00:00Z',
+        latestCommitDate: '2026-01-02T00:00:00Z',
+      },
+    ],
+    [
+      'changes_addressed via a changes-requested review answered by a later commit',
+      {
+        reviewDecision: 'changes_requested',
+        latestChangesRequestedDate: '2026-01-01T00:00:00Z',
+        latestCommitDate: '2026-01-02T00:00:00Z',
+      },
+    ],
+    [
+      'pending_merge: approved with an LGTM-style unresponded comment',
+      { hasUnrespondedComment: true, reviewDecision: 'approved' },
+    ],
+    ['ci_blocked: failing CI the contributor cannot fix', { ciStatus: 'failing', hasActionableCIFailure: false }],
+    [
+      'stale_ci_failure: CI red for days with no activity',
+      { ciStatus: 'failing', hasActionableCIFailure: true, daysSinceActivity: 10 },
+    ],
+  ];
+
+  it.each(waitingStates)('%s', (_name, overrides) => {
+    // Sanity: without the conflict this really is a waiting state.
+    expect(callDetermineStatus(overrides).status).toBe('waiting_on_maintainer');
+
+    const result = callDetermineStatus({ ...conflicted, ...overrides });
+    expect(result.status).toBe('needs_addressing');
+    expect(result.actionReason).toBe('merge_conflict');
+    expect(result.waitReason).toBeUndefined();
+    expect(result.actionReasons).toContain('merge_conflict');
+  });
+
+  it('keeps the staleness tier, so a dormant conflicted PR still reads as dormant', () => {
+    const result = callDetermineStatus({
+      ...conflicted,
+      reviewDecision: 'changes_requested',
+      latestChangesRequestedDate: '2026-01-01T00:00:00Z',
+      latestCommitDate: '2026-01-02T00:00:00Z',
+      daysSinceActivity: 40,
+    });
+    expect(result).toMatchObject({
+      status: 'needs_addressing',
+      actionReason: 'merge_conflict',
+      stalenessTier: 'dormant',
+    });
+  });
+
+  it('does not outrank a higher-priority action reason', () => {
+    const result = callDetermineStatus({ ...conflicted, hasUnrespondedComment: true });
+    expect(result.actionReason).toBe('needs_response');
+  });
+});
