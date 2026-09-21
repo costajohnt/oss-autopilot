@@ -166,6 +166,10 @@ export const commands: CLICommandDef[] = [
         .option('--compact', 'Reduce JSON payload by omitting summary, repoGroups, and full failure details')
         .action(async (options) => {
           try {
+            // Stop an old-version dashboard server before it can overwrite
+            // this run's classifications with its own refresh (#1709).
+            const { stopStaleDashboardServer } = await import('./commands/dashboard-lifecycle.js');
+            await stopStaleDashboardServer();
             if (options.json) {
               const { runDaily } = await import('./commands/daily.js');
               const data = await runDaily();
