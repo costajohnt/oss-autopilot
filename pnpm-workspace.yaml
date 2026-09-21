@@ -13,9 +13,13 @@ onlyBuiltDependencies:
 # override is still hit by the dep graph (#963).
 overrides:
   # Transitive via @modelcontextprotocol/sdk. Floor at the lowest
-  # non-vulnerable version for the advisory family through GHSA ranges
-  # < 4.12.27 (see #1587).
-  hono: '>=4.12.27'
+  # non-vulnerable version for the advisory family, currently the
+  # 2026-09 advisories affecting < 4.13.5 (previously < 4.12.27, #1587).
+  hono: '>=4.13.5'
+  # Moved from the dead package.json `pnpm.overrides` block (ignored by
+  # pnpm v10, see note above).
+  brace-expansion: '>=5.0.9'
+  '@babel/core': '>=7.29.6'
   # Transitive via @modelcontextprotocol/sdk. Advisories affect < 1.19.13.
   '@hono/node-server': '>=1.19.13'
   # Transitive via @modelcontextprotocol/sdk. Known advisory.
