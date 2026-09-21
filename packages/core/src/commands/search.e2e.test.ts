@@ -34,16 +34,16 @@ const HAS_GITHUB_TOKEN = !!process.env.GITHUB_TOKEN;
 const IS_NIGHTLY = process.env.OSS_AUTOPILOT_NIGHTLY === '1';
 
 // A single live `search` invocation walks several `/search/issues` phases that
-// scout normally spaces 30s/90s apart to dodge GitHub's secondary rate limit
-// (see scout-bridge buildScoutState). #1452 originally collapsed those delays to
-// 0 to make the run fast — but firing the phases as a burst RELIABLY trips
+// scout used to space 30s/90s apart to dodge GitHub's secondary rate limit
+// (scout-bridge buildScoutState now passes 0/0). #1452 originally collapsed
+// those delays to 0 to make the run fast — but firing the phases as a burst RELIABLY trips
 // GitHub's secondary rate limit on the shared CI runner IPs. Each hit costs a
 // fixed 60s backoff (see core/github.ts onSecondaryRateLimit), and two parallel
 // phases backing off blew past the old 120s exec ceiling, so the nightly job
 // failed every night with "Hook timed out" / "Test timed out" (#1452).
 //
 // Three layers fix it:
-//   1. Restore a MODEST non-zero inter-phase spacing (not the full 30s/90s) to
+//   1. Restore a MODEST non-zero inter-phase spacing (not the old 30s/90s) to
 //      lower the overall request rate. This helps on a fresh IP, but does not
 //      reliably beat the secondary limit on already-throttled shared CI IPs (the
 //      scout fires a few /search/issues concurrently WITHIN a phase, which the

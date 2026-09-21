@@ -47,11 +47,11 @@ export const KEEP_GRADE_THRESHOLD = 4;
  * sees can't flatly contradict. Any non-approve recommendation is returned
  * unchanged.
  *
- * Apply this ONLY where the grade is high-fidelity — i.e. computed from freshly
- * fetched health (the `vet` / `vet-list` surfaces). The `search` and `features`
- * surfaces pass a `checkFailed` health sentinel and grade from history alone, so
- * any repo we lack history with scores the bottom band for missing data, not for
- * being bad; reconciling there would wrongly downgrade well-vetted candidates.
+ * Every surface grades from the health scout fetched while vetting (`search`
+ * and `features` included since #332), so the grade is high-fidelity
+ * everywhere and this applies everywhere. A `checkFailed` health (transient API
+ * error) still grades the bottom band for missing data; that downgrade to
+ * "needs_review" is the honest answer for an unverified repo.
  */
 export function reconcileRecommendation(recommendation: IssueRecommendation, grade: GradeResult): IssueRecommendation {
   return recommendation === 'approve' && grade.score < KEEP_GRADE_THRESHOLD ? 'needs_review' : recommendation;
@@ -181,11 +181,9 @@ export function deriveGradeSignals(params: {
  * Which "repo score" this grades from (#1465): the `getRepoScore` input is
  * the cached HISTORY record (the user's own merge outcomes, see
  * docs/repo-scores.md §History score) — NOT `repo-vet`'s fresh health
- * rubric. The fresh side only enters through `projectHealth`, and only when
- * scout actually fetched it: the `search` surface passes a `checkFailed`
- * sentinel (health not fetched per candidate), so search grades purely from
- * history-side signals, while `vet` re-grades with fresh health. Same 1-10
- * scale, different inputs — the two surfaces can legitimately disagree.
+ * rubric. The fresh side enters through `projectHealth`, which scout fetches
+ * per candidate on every surface (#332); `vet` re-fetches it later, so the
+ * two surfaces can still disagree when the repo changed in between.
  */
 export function gradeFromCandidate(params: {
   repo: string;

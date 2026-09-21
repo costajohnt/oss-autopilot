@@ -5,6 +5,77 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.27.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.26.0...core-v3.27.0) (2026-09-19)
+
+
+### Features
+
+* **capacity:** treat maxActivePRs of 0 as no limit ([#1723](https://github.com/costajohnt/oss-autopilot/issues/1723)) ([5c6a781](https://github.com/costajohnt/oss-autopilot/commit/5c6a78166a2152730936fcc748b086ebd16345df))
+
+
+### Bug Fixes
+
+* **overnight:** scheduled job runs without the user's settings so its allowlist is a real fence ([#1721](https://github.com/costajohnt/oss-autopilot/issues/1721)) ([eaef34f](https://github.com/costajohnt/oss-autopilot/commit/eaef34f54bea2036f32db48afc00dd0df12c93f8))
+
+## [3.26.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.25.1...core-v3.26.0) (2026-09-19)
+
+
+### Features
+
+* **overnight:** implement one curated-list issue per run, staged as a prep/* branch ([#1716](https://github.com/costajohnt/oss-autopilot/issues/1716)) ([09142f4](https://github.com/costajohnt/oss-autopilot/commit/09142f48493004c2864d49f65e8a25dd80a6c29a))
+
+
+### Bug Fixes
+
+* **overnight:** route work the headless run cannot verify to judgment ([#1720](https://github.com/costajohnt/oss-autopilot/issues/1720)) ([b92642a](https://github.com/costajohnt/oss-autopilot/commit/b92642a6604145a1f77b4a1f22de2274081a9344))
+
+## [3.25.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.25.0...core-v3.25.1) (2026-09-19)
+
+
+### Bug Fixes
+
+* **overrides:** auto-clear on commit/comment activity, not on updatedAt ([#1714](https://github.com/costajohnt/oss-autopilot/issues/1714)) ([dee53b1](https://github.com/costajohnt/oss-autopilot/commit/dee53b1172d46ad27b9225eaaa32bd40af9edb8e)), closes [#1713](https://github.com/costajohnt/oss-autopilot/issues/1713)
+
+## [3.25.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.24.0...core-v3.25.0) (2026-09-19)
+
+
+### Features
+
+* **overnight:** publish the morning report to the Gist and add `overnight report` ([#1710](https://github.com/costajohnt/oss-autopilot/issues/1710)) ([04171a4](https://github.com/costajohnt/oss-autopilot/commit/04171a471d223f61eabeb015dadb5f87e388d3a5))
+
+
+### Bug Fixes
+
+* **deps:** bump @oss-scout/core to 1.8.0 ([#1712](https://github.com/costajohnt/oss-autopilot/issues/1712)) ([5ea6f35](https://github.com/costajohnt/oss-autopilot/commit/5ea6f3572bdc7fa3108133c3d92d096e8e3c7f00))
+* **graphql:** restore the [bot] login suffix on Bot actors ([#1703](https://github.com/costajohnt/oss-autopilot/issues/1703)) ([a6353d1](https://github.com/costajohnt/oss-autopilot/commit/a6353d1bfcbcb62d60e7c60956093190243575d3))
+* **overnight:** allow directory-scoped git for preparers, deny every push form, add the fork remote ([#1708](https://github.com/costajohnt/oss-autopilot/issues/1708)) ([943955a](https://github.com/costajohnt/oss-autopilot/commit/943955aaae089e7e5908c40c7386ad54a237f3f3))
+* **overnight:** route incomplete-checklist items to judgment, not prepare ([#1711](https://github.com/costajohnt/oss-autopilot/issues/1711)) ([0db8073](https://github.com/costajohnt/oss-autopilot/commit/0db8073d5ee1c22370bbfbe3149cdd83897d3e48))
+* **startup:** prime the CSRF token before hitting /api/refresh ([#1704](https://github.com/costajohnt/oss-autopilot/issues/1704)) ([467a9a9](https://github.com/costajohnt/oss-autopilot/commit/467a9a948293b0dba0460353afb744c21f387cfe))
+
+## [3.24.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.23.0...core-v3.24.0) (2026-09-19)
+
+
+### Features
+
+* extract learnings from merged PRs automatically at startup and overnight ([#1705](https://github.com/costajohnt/oss-autopilot/issues/1705)) ([1bf5ea7](https://github.com/costajohnt/oss-autopilot/commit/1bf5ea7ae9a95f03e8236093e9e61aa70837e12b)), closes [#1696](https://github.com/costajohnt/oss-autopilot/issues/1696)
+
+
+### Bug Fixes
+
+* grade search and features candidates from scout's fetched repo health ([#1701](https://github.com/costajohnt/oss-autopilot/issues/1701)) ([8580c22](https://github.com/costajohnt/oss-autopilot/commit/8580c229763f7569dc9b01c873eb573e7855919a))
+
+## [3.23.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.22.3...core-v3.23.0) (2026-09-19)
+
+
+### Features
+
+* **overnight:** push-prep stages prepared branches on the fork under prep/* ([#1699](https://github.com/costajohnt/oss-autopilot/issues/1699)) ([acf1738](https://github.com/costajohnt/oss-autopilot/commit/acf1738bb48dfe240dd3d7a14bd253e48b5b60a7))
+
+
+### Bug Fixes
+
+* **scout-bridge:** feed dismissed issues into scout skip list, drop 30s/90s delay pins ([#1690](https://github.com/costajohnt/oss-autopilot/issues/1690)) ([d3def1a](https://github.com/costajohnt/oss-autopilot/commit/d3def1a215c24127e3a7a43463d8cb71d9ab91ea))
+
 ## [3.22.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.22.2...core-v3.22.3) (2026-09-12)
 
 

@@ -38,8 +38,11 @@ Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-fo
 # buckets, morning report under ~/.oss-autopilot/reports/. Never pushes,
 # posts, or merges. `record` appends a branch an agent prepared; `schedule`
 # renders (or with --install writes) the launchd plist for /oss-overnight.
+# `push-prep` (#1698) is the post-tick scheduler step, never run by the model:
+# pushes each recorded branch to prep/<branch> on the user's fork only.
 <prefix> overnight run --json
 <prefix> overnight record --url <url> --branch <name> [--worktree <path>] [--note <text>] --json
+<prefix> overnight push-prep [--dry-run] --json
 <prefix> overnight schedule [--hour <n>] [--claude-path <path>] [--install] --json
 ```
 
@@ -67,7 +70,7 @@ Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-fo
 # Parse an issue list from a file
 <prefix> parse-issue-list <path> --json
 
-# Append an issue URL to the skipped-issues file (auto-culled after 90 days)
+# Append an issue URL to the skipped-issues file (permanent, #343)
 <prefix> skip-add <issue-url> --json [--path <file>]
 
 # Move an issue between Pursue / Maybe / Skip sections of a curated list (#1107)
@@ -94,6 +97,9 @@ Local-only commands (no GitHub token needed): `checkSetup`, `config`, `detect-fo
 
 # Fetch raw PR comment bundles for the host's extract-learnings prompt to consume
 <prefix> guidelines fetch-corpus --repo <owner/repo> [--limit N] [--force] --json
+
+# Stamp fetched PRs as extracted so daily stops reporting them (#1696)
+<prefix> guidelines mark-extracted --repo <owner/repo> --json
 ```
 
 The full extraction workflow lives at [`workflows/extract-learnings.md`](extract-learnings.md). Guidelines require Gist persistence; standalone-mode users see `'local-unavailable'` storage mode.

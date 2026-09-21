@@ -138,7 +138,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             break;
           }
           case 'maxActivePRs': {
-            const maxPRs = parsePositiveInt(value, 'maxActivePRs');
+            const maxPRs = parseNonNegativeInt(value, 'maxActivePRs');
             stateManager.updateConfig({ maxActivePRs: maxPRs });
             results[key] = String(maxPRs);
             break;
@@ -204,6 +204,17 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
           case 'skippedIssuesPath': {
             stateManager.updateConfig({ skippedIssuesPath: value || undefined });
             results[key] = value || '(cleared)';
+            break;
+          }
+          case 'autoExtractLearnings': {
+            if (value !== 'true' && value !== 'false') {
+              throw new ValidationError(
+                `Invalid value for autoExtractLearnings: "${value}". Must be "true" or "false".`,
+              );
+            }
+            const enabled = value === 'true';
+            stateManager.updateConfig({ autoExtractLearnings: enabled });
+            results[key] = String(enabled);
             break;
           }
           case 'autoFormatBeforePush': {

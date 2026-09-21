@@ -50,23 +50,6 @@ fi
 
 If the output contains `CLI_BUILD_FAILED` (helper exit code 2), the bundle is stale and could not be rebuilt — **stop**, show the build error, and suggest `cd "${CLAUDE_PLUGIN_ROOT}/packages/core" && npm install && npm run bundle`. Do NOT run the search against a stale bundle. Exit codes 0 (current) and 1 (rebuilt) are both fine — proceed.
 
-### Pre-Search: Cull Skip File
-
-If a skipped issues file exists (from startup data's `skippedIssuesPath`, or probe `skipped-issues.md` in the same directory as the issue list), auto-cull entries older than 90 days:
-
-```bash
-SKIP_FILE="{skippedIssuesPath}"
-if [ -f "$SKIP_FILE" ]; then
-  CUTOFF=$(date -v-90d +%Y-%m-%d 2>/dev/null || date -d '90 days ago' +%Y-%m-%d)
-  BEFORE=$(grep -cv '^#\|^$' "$SKIP_FILE" 2>/dev/null || echo 0)
-  awk -v cutoff="$CUTOFF" '/^#/ || /^$/ { print; next } $1 >= cutoff { print }' "$SKIP_FILE" > "${SKIP_FILE}.tmp" && mv "${SKIP_FILE}.tmp" "$SKIP_FILE"
-  AFTER=$(grep -cv '^#\|^$' "$SKIP_FILE" 2>/dev/null || echo 0)
-  if [ "$BEFORE" != "$AFTER" ]; then
-    echo "Culled $((BEFORE - AFTER)) expired entries from skip list (>90 days old)"
-  fi
-fi
-```
-
 ### Dispatch Scout Search
 
 Run the CLI search command — one call replaces the old 3-strategy orchestration. Scout handles rate-limit budgeting, skip-list integration, exclude-list filtering, spam detection, and deduplication internally:
@@ -177,7 +160,7 @@ Use AskUserQuestion:
    ```bash
    SKIP_FILE="{skippedIssuesPath}"
    if [ ! -f "$SKIP_FILE" ]; then
-     printf '# Skipped Issues — auto-culled after 90 days\n# Format: YYYY-MM-DD URL\n\n' > "$SKIP_FILE"
+     printf '# Skipped Issues — permanent\n# Format: YYYY-MM-DD URL\n\n' > "$SKIP_FILE"
    fi
    echo "$(date +%Y-%m-%d) {issue_url}" >> "$SKIP_FILE"
    ```
@@ -206,7 +189,7 @@ Use AskUserQuestion:
   ```bash
   SKIP_FILE="{skippedIssuesPath}"
   if [ ! -f "$SKIP_FILE" ]; then
-    printf '# Skipped Issues — auto-culled after 90 days\n# Format: YYYY-MM-DD URL\n\n' > "$SKIP_FILE"
+    printf '# Skipped Issues — permanent\n# Format: YYYY-MM-DD URL\n\n' > "$SKIP_FILE"
   fi
   echo "$(date +%Y-%m-%d) {issue_url}" >> "$SKIP_FILE"
   ```

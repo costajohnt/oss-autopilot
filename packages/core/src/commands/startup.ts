@@ -209,9 +209,19 @@ function shouldOpenBrowser(spaResult: LaunchResult, throttleMs: number): boolean
 
 async function triggerDashboardRefresh(port: number): Promise<boolean> {
   try {
-    const res = await fetch(`http://127.0.0.1:${port}/api/refresh`, {
+    const base = `http://127.0.0.1:${port}`;
+    // POST /api/refresh is CSRF-gated and the token is only issued on the
+    // X-CSRF-Token header of GET /api/data, so prime it first.
+    const prime = await fetch(`${base}/api/data`, { signal: AbortSignal.timeout(5000) });
+    const csrfToken = prime.headers.get('x-csrf-token');
+    await prime.text().catch(() => {});
+    if (!prime.ok || !csrfToken) {
+      console.error(`[STARTUP] Dashboard refresh returned ${prime.status}: no CSRF token from /api/data`);
+      return false;
+    }
+    const res = await fetch(`${base}/api/refresh`, {
       method: 'POST',
-      headers: { Origin: `http://oss.localhost:${port}` },
+      headers: { Origin: `http://oss.localhost:${port}`, 'X-CSRF-Token': csrfToken },
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {

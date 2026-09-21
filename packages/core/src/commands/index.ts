@@ -24,6 +24,8 @@ export { executeDailyCheck } from './daily.js';
 export { runStartup } from './startup.js';
 /** Overnight prepare-and-queue run, branch recording, launchd schedule rendering (#1574). */
 export { runOvernight, runOvernightRecord, runOvernightSchedule } from './overnight.js';
+/** Post-tick step that stages prepared branches under `prep/*` on the user's fork (#1698). */
+export { runOvernightPushPrep } from './overnight-push-prep.js';
 /** Return contribution statistics (merge rate, PR counts, repo breakdown) from local state. */
 export { runStatus } from './status.js';
 /** On-demand strategy snapshot via the typed `computeStrategy` core function (#1243 step 4). */
