@@ -398,6 +398,8 @@ describe('schedule', () => {
     expect(plist).toContain('<string>/oss-overnight</string>');
     expect(plist).toContain('<key>Hour</key><integer>3</integer>');
     expect(plist).toContain('<string>dontAsk</string>');
+    // The CLI's own post/claim/push-prep refuse while this is set.
+    expect(plist).toContain('<key>OSS_AUTOPILOT_UNATTENDED</key><string>1</string>');
     expect(plist).toContain('<string>--disallowedTools</string>');
     expect(plist).toContain(`<string>${OVERNIGHT_DISALLOWED_TOOLS}</string>`);
     expect(plist).toContain(

@@ -34,6 +34,35 @@ export class ConfigurationError extends OssAutopilotError {
 }
 
 /**
+ * Set by the scheduled overnight job (see `renderLaunchdPlist`). Any defined
+ * value, even an empty one, marks the run as unattended. Nobody
+ * is present to approve anything in that run, so the commands that write to
+ * GitHub refuse while it is set.
+ */
+export const UNATTENDED_ENV = 'OSS_AUTOPILOT_UNATTENDED';
+
+/**
+ * Refuse a GitHub-writing action during an unattended run.
+ *
+ * The overnight allowlist has to permit `node`, because the run itself calls
+ * this CLI, so a deny rule on the command line cannot keep the model away from
+ * `post`, `claim` or `overnight push-prep`. The check lives here instead, where
+ * every route to the write (CLI, MCP tool, library import) passes through it.
+ * This closes the direct path; it is not a sandbox against arbitrary code.
+ */
+export function assertAttended(action: string): void {
+  // Any defined value counts, including '' and '0'. If a value could switch the
+  // guard off, prefixing the command with `${UNATTENDED_ENV}=0` would be the
+  // shortest way around it.
+  if (process.env[UNATTENDED_ENV] !== undefined) {
+    throw new ConfigurationError(
+      `Refusing to ${action} during an unattended run (${UNATTENDED_ENV} is set). ` +
+        'Run it yourself in an interactive session.',
+    );
+  }
+}
+
+/**
  * Input validation errors (invalid URLs, out-of-range values).
  */
 export class ValidationError extends OssAutopilotError {

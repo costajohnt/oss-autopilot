@@ -23,6 +23,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { errorMessage, getStateManager, maybeCheckpoint, parseGitHubUrl, requireGitHubToken } from '../core/index.js';
+import { UNATTENDED_ENV } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import { getReportsDir } from '../core/paths.js';
@@ -710,7 +711,12 @@ export function renderLaunchdPlist(
     '  <key>EnvironmentVariables</key>',
     // launchd inherits no shell PATH; include the dir of the node that ran
     // `schedule` so a version-manager node resolves for the CLI and tests.
-    `  <dict><key>PATH</key><string>${xmlEscape(`${path.dirname(process.execPath)}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`)}</string></dict>`,
+    '  <dict>',
+    `    <key>PATH</key><string>${xmlEscape(`${path.dirname(process.execPath)}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`)}</string>`,
+    // The CLI's own GitHub-writing commands refuse while this is set (see
+    // assertAttended): `Bash(node *)` has to stay allowed, so the gate is in code.
+    `    <key>${UNATTENDED_ENV}</key><string>1</string>`,
+    '  </dict>',
     '</dict>',
     '</plist>',
     '',

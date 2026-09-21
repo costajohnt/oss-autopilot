@@ -5,7 +5,7 @@
 
 import { getStateManager, getOctokit, parseGitHubUrl, requireGitHubToken, maybeCheckpoint } from '../core/index.js';
 import { wrapUntrustedContent } from '../core/untrusted-content.js';
-import { ValidationError, isRateLimitOrAuthError } from '../core/errors.js';
+import { ValidationError, assertAttended, isRateLimitOrAuthError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 
 const MODULE = 'comments';
@@ -203,6 +203,7 @@ export async function runComments(options: CommentsOptions): Promise<CommentsOut
  * @throws {ValidationError} If the URL or message is invalid
  */
 export async function runPost(options: PostOptions): Promise<PostOutput> {
+  assertAttended('post a comment');
   validateUrl(options.url);
   validateGitHubUrl(options.url, ISSUE_OR_PR_URL_PATTERN, 'issue or PR');
 
@@ -246,6 +247,7 @@ export async function runPost(options: PostOptions): Promise<PostOutput> {
  * @throws {ValidationError} If the URL or message is invalid
  */
 export async function runClaim(options: ClaimOptions): Promise<ClaimOutput> {
+  assertAttended('claim an issue');
   validateUrl(options.issueUrl);
   validateGitHubUrl(options.issueUrl, ISSUE_URL_PATTERN, 'issue');
 
