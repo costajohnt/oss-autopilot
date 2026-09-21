@@ -13,6 +13,14 @@ import reactHooks from 'eslint-plugin-react-hooks';
 // Helper: take a flat-config preset and downgrade every rule it sets to 'warn'.
 // Used to onboard opinionated plugins (unicorn, sonarjs) without gating CI
 // while we triage. Ratchet to 'error' as warning counts drop.
+//
+// The ratchet is `--max-warnings` in the root `lint` script. It is set about
+// 1% above the count CI sees, and CI lints WITHOUT building, where unresolved
+// cross-package types add ~500 no-unsafe-* warnings over a built tree. So
+// measure it the same way before changing it:
+//   git worktree add /tmp/lint-count origin/main && cd /tmp/lint-count
+//   pnpm install --frozen-lockfile && pnpm exec eslint packages/
+// Lower the cap when the count drops. Raise it only with a reason in the PR.
 function downgradeToWarn(config) {
   return {
     ...config,
@@ -137,6 +145,17 @@ export default tseslint.config(
       'unicorn/no-null': 'off',
       // wants `(error)` not `(err)` — bikeshed; codebase uses both
       'unicorn/catch-error-name': 'off',
+      // Same bikeshed as catch-error-name, wider net: flags every `err`, `e`,
+      // `args`, `opts`. Was the single largest warning source (~1,200).
+      'unicorn/name-replacements': 'off',
+      // Comment layout only: leading ` * ` in JSDoc bodies and `/* x */` vs
+      // `// x`. Prettier leaves comments alone and so do we (~1,650 combined).
+      'unicorn/no-asterisk-prefix-in-documentation-comments': 'off',
+      'unicorn/single-line-block-comment-style': 'off',
+      // `() => x` vs `() => { return x; }` — style, no defect class behind it.
+      'unicorn/consistent-arrow-return-style': 'off',
+      // Temporal is not available in the Node versions we support (>=22).
+      'unicorn/prefer-temporal': 'off',
       // CSS-only rule (added in unicorn 73) that recommended turns on for every
       // language. ESLint 10 hard-errors when a rule is applied to a language it
       // does not support, so leaving it on fails the whole lint run on "js/js".
