@@ -205,7 +205,11 @@ worktree is never its cwd and `cd <dir> && git` is denied), the read side of `gh
 and test suites. No `bash`, `sh`, or `npx`. A deny list (`--disallowedTools`,
 deny beats allow) additionally names `git push` and `git -C <dir> push`, every `gh pr`/`gh issue`
 write, `gh run rerun`, `gh api`, the npm/pnpm registry writes
-(`publish`/`unpublish`/`deprecate`), and `AskUserQuestion`. The preparer agent's
+(`publish`/`unpublish`/`deprecate`), the direct shell escapes inside the
+allowed programs (`npm exec`/`npm x`, `pnpm dlx`/`pnpm exec`, `node
+-e`/`--eval`/`-p`/`--print`), and `AskUserQuestion`. The one escape tool rules
+cannot close is a repo's own test scripts, which run arbitrary code — hence
+the dedicated-user advice below. The preparer agent's
 charter repeats the gate so an interactive `/oss-overnight` behaves the same. If running a repo's test
 suite under your own credentials is more trust than you want, run the job as
 a dedicated user with no push credentials. Two caveats
