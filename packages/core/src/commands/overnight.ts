@@ -625,6 +625,16 @@ export const OVERNIGHT_DISALLOWED_TOOLS = [
   // `pnpm --dir x exec`), mirroring the `git * push` deny.
   'Bash(node * -e *)',
   'Bash(node * --eval *)',
+  'Bash(node * -p *)',
+  'Bash(node * -pe *)',
+  'Bash(node * --print *)',
+  'Bash(npm * x *)',
+  // The `=` forms take no space, so the space-delimited denies above miss
+  // them: `node --eval=<js>` runs exactly like `node --eval <js>`.
+  'Bash(node --eval=*)',
+  'Bash(node * --eval=*)',
+  'Bash(node --print=*)',
+  'Bash(node * --print=*)',
   'AskUserQuestion',
 ].join(',');
 
