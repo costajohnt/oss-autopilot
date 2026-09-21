@@ -7,6 +7,7 @@ import type { Octokit } from '@octokit/rest';
 import { CIFailureCategory, ClassifiedCheck, CIStatusResult, CIStatus, CIStatusCategorization } from './types.js';
 import { getHttpStatusCode, errorMessage } from './errors.js';
 import { debug, warn } from './logger.js';
+import { paginateAll } from './pagination.js';
 
 /** Return a fresh unknown CI status (avoids shared mutable state between callers). */
 function unknownCIStatus(): CIStatusResult {
@@ -398,10 +399,18 @@ export async function getCIStatus(octokit: Octokit, owner: string, repo: string,
 
   try {
     // Fetch both combined status and check runs in parallel
-    const [statusResponse, checksResponse] = await Promise.all([
-      octokit.repos.getCombinedStatusForRef({ owner, repo, ref: sha }),
+    const [statusResponse, checkRuns] = await Promise.all([
+      // per_page 100: the default page holds 30 statuses, and analyzeCombinedStatus
+      // only sees the page it is given.
+      octokit.repos.getCombinedStatusForRef({ owner, repo, ref: sha, per_page: 100 }),
       // 404 is expected for repos without check runs configured; log other errors for debugging
-      octokit.checks.listForRef({ owner, repo, ref: sha }).catch((err: unknown) => {
+      // Paginated: the default page is 30 check runs, and a failing check on a
+      // later page would otherwise read as passing.
+      paginateAll((page) =>
+        octokit.checks
+          .listForRef({ owner, repo, ref: sha, per_page: 100, page })
+          .then((res) => ({ data: res.data.check_runs })),
+      ).catch((err: unknown) => {
         const status = getHttpStatusCode(err);
         // Rate limit errors must propagate — matches listReviewComments pattern (#481)
         if (status === 429) throw err;
@@ -422,7 +431,7 @@ export async function getCIStatus(octokit: Octokit, owner: string, repo: string,
     ]);
 
     const combinedStatus = statusResponse.data;
-    const allCheckRuns = checksResponse?.data?.check_runs || [];
+    const allCheckRuns = checkRuns ?? [];
 
     return computeCIStatus(allCheckRuns, combinedStatus);
   } catch (error) {

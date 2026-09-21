@@ -19,8 +19,12 @@ export interface ReviewComment {
 
 /**
  * Determine review decision from reviews list.
- * Groups reviews by user, keeping only the latest from each user,
- * then checks for CHANGES_REQUESTED or APPROVED states.
+ * Groups reviews by user, keeping each user's latest verdict, then checks
+ * for CHANGES_REQUESTED or APPROVED states.
+ *
+ * Only APPROVED, CHANGES_REQUESTED and DISMISSED change a reviewer's standing
+ * verdict on GitHub. COMMENTED is also what GitHub records for every inline
+ * reply, so it must not overwrite an earlier verdict from the same reviewer.
  */
 export function determineReviewDecision(
   reviews: Array<{ state?: string | null; user?: { login?: string } | null }>,
@@ -29,12 +33,15 @@ export function determineReviewDecision(
     return 'review_required';
   }
 
-  // Group reviews by user, keeping only the latest from each user
+  // Group reviews by user, keeping each user's latest verdict
   const latestByUser = new Map<string, string>();
   for (const review of reviews) {
     const login = review.user?.login;
     const state = review.state;
-    if (login && state) {
+    if (!login || !state) continue;
+    if (state === 'DISMISSED') {
+      latestByUser.delete(login);
+    } else if (state === 'APPROVED' || state === 'CHANGES_REQUESTED') {
       latestByUser.set(login, state);
     }
   }

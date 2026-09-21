@@ -1,6 +1,6 @@
 # Action Menu
 
-> **Session state:** Expects `data.daily` (including `actionMenu`, `actionableIssues`, `digest`, `commentedIssues`), `hasIssueList`, `availableCount`, `completedCount` from core router.
+> **Session state:** Expects `data.daily` (including `actionMenu`, `actionableIssues`, `digest`, `commentedIssues`), `hasIssueList`, `availableCount`, `completedCount`, `blockedCount` from core router. `availableCount` already excludes blocked items (`## Queued ...` sections, `**... blocked ...**` / `**... wait ...**` sub-bullets); `blockedCount` counts them separately.
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
 
 ---
@@ -16,9 +16,14 @@ When `data.daily.actionMenu` is present and `data.daily.actionMenu.context.hasAc
 All PRs are on track — nothing needs your attention right now.
 ```
 
-If `hasIssueList && availableCount === 0`:
+If `hasIssueList && availableCount === 0 && blockedCount === 0`:
 ```
 Your curated issue list is depleted ({completedCount} done). Time to find new issues!
+```
+
+If `hasIssueList && availableCount === 0 && blockedCount > 0`:
+```
+Your curated issue list has {blockedCount} queued, all blocked. Time to find new issues!
 ```
 
 ### Display All PRs First (Information Before Prompt)
@@ -105,7 +110,8 @@ Use `data.daily.actionMenu.items` directly as AskUserQuestion options. Each item
 |-----------|-------------|
 | `hasIssueList && availableCount >= 5` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} ready)"`, Description: `"You have {availableCount} vetted issues ready to work on — starting one would be higher ROI than searching for more"` |
 | `hasIssueList && availableCount > 0 && availableCount < 5` | Key: `pick_from_list`, Label: `"Pick from your issue list ({availableCount} available)"`, Description: `"Choose from your curated list of vetted issues"` |
-| `hasIssueList && availableCount === 0` | Key: `replenish_list`, Label: `"Replenish your issue list"`, Description: `"All {completedCount} issues done — search for fresh ones"`. Also **remove** the `search` item (replenish replaces it). |
+| `hasIssueList && availableCount === 0 && blockedCount === 0` | Key: `replenish_list`, Label: `"Replenish your issue list"`, Description: `"All {completedCount} issues done — search for fresh ones"`. Also **remove** the `search` item (replenish replaces it). |
+| `hasIssueList && availableCount === 0 && blockedCount > 0` | Key: `replenish_list`, Label: `"Replenish your issue list"`, Description: `"{blockedCount} queued, all blocked — search for fresh ones"`. Also **remove** the `search` item. Never offer `pick_from_list` or mark the list as recommended when nothing is ready. |
 
 When inserting issue-list items, keep within the 4-option limit (the 5th is the auto "Other").
 

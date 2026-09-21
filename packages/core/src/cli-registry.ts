@@ -166,6 +166,10 @@ export const commands: CLICommandDef[] = [
         .option('--compact', 'Reduce JSON payload by omitting summary, repoGroups, and full failure details')
         .action(async (options) => {
           try {
+            // Stop an old-version dashboard server before it can overwrite
+            // this run's classifications with its own refresh (#1709).
+            const { stopStaleDashboardServer } = await import('./commands/dashboard-lifecycle.js');
+            await stopStaleDashboardServer();
             if (options.json) {
               const { runDaily } = await import('./commands/daily.js');
               const data = await runDaily();
@@ -1176,10 +1180,18 @@ export const commands: CLICommandDef[] = [
               const path = await import('node:path');
               const resolvedPath = path.resolve(filePath);
               console.log(`\n\ud83d\udccb Issue List: ${resolvedPath}\n`);
-              console.log(`Available: ${data.availableCount} | Completed: ${data.completedCount}\n`);
+              console.log(
+                `Available: ${data.availableCount} | Completed: ${data.completedCount} | Blocked: ${data.blockedCount}\n`,
+              );
               if (data.available.length > 0) {
                 console.log('--- Available ---');
                 for (const item of data.available) {
+                  console.log(`  [${item.tier}] ${item.repo}#${item.number}: ${item.title}`);
+                }
+              }
+              if (data.blocked.length > 0) {
+                console.log('\n--- Blocked ---');
+                for (const item of data.blocked) {
                   console.log(`  [${item.tier}] ${item.repo}#${item.number}: ${item.title}`);
                 }
               }

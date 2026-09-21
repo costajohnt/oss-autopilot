@@ -5,6 +5,8 @@
  */
 
 import { spawn } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {
   findRunningDashboardServer,
   isDashboardServerRunning,
@@ -31,8 +33,70 @@ export interface LaunchResult {
   lastBrowserOpenedAt?: string;
 }
 
+/**
+ * The script to spawn `dashboard serve` with. From the CLI that is argv[1]
+ * (cli.bundle.cjs in production, cli.ts in dev). From another host process
+ * such as the MCP server, argv[1] is that host's own entry, so use the core
+ * CLI bundle that ships beside the dashboard assets instead (#1735).
+ */
+export function resolveCliEntry(argv1: string, assetsDir: string): string {
+  if (/^cli\.(?:bundle\.cjs|ts|js)$/.test(path.basename(argv1))) return argv1;
+  const coreBundle = path.resolve(assetsDir, '../../core/dist/cli.bundle.cjs');
+  return fs.existsSync(coreBundle) ? coreBundle : argv1;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Stop the running dashboard server if a different CLI version launched it (#548).
+ *
+ * The server's refresh path re-classifies PRs with its own bundled code and
+ * writes the result to state, so an old-version server overwrites whatever a
+ * newer `daily` just wrote (#1709). The server cannot detect this itself:
+ * plugin updates install into a new versioned directory, so the old server's
+ * own package.json never changes. Callers running the current CLI (startup,
+ * `daily`) therefore make the check.
+ *
+ * Returns the running server when it is left up (same or unknown version, or
+ * the kill failed), or null when none is running or the stale one was stopped.
+ */
+export async function stopStaleDashboardServer(): Promise<LaunchResult | null> {
+  const existing = await findRunningDashboardServer();
+  if (!existing) return null;
+
+  const info = readDashboardServerInfo();
+  // PID file disappeared between health check and now (race condition).
+  if (!info) return null;
+
+  const running: LaunchResult = {
+    url: existing.url,
+    port: existing.port,
+    alreadyRunning: true,
+    lastBrowserOpenedAt: info.lastBrowserOpenedAt,
+  };
+  const currentVersion = getCLIVersion();
+  if (!info.version || currentVersion === '0.0.0' || info.version === currentVersion) {
+    return running;
+  }
+
+  console.error(
+    `[DASHBOARD] Dashboard server version mismatch (running: ${info.version}, current: ${currentVersion}). Stopping it...`,
+  );
+  try {
+    process.kill(info.pid, 'SIGTERM');
+  } catch (err) {
+    // ESRCH = already exited
+    if ((err as NodeJS.ErrnoException).code !== 'ESRCH') {
+      console.error(`[DASHBOARD] Could not kill outdated dashboard (PID ${info.pid}): ${(err as Error).message}`);
+      // Could not kill old server (e.g. EPERM); report it as running rather
+      // than letting the caller attempt a doomed spawn on the same port.
+      return running;
+    }
+  }
+  removeDashboardServerInfo();
+  return null;
 }
 
 /**
@@ -41,69 +105,26 @@ function sleep(ms: number): Promise<void> {
  * Returns the server URL if launched successfully, or null if the SPA assets
  * are not available (dashboard is skipped).
  *
- * If a server is already running (detected via PID file + health probe),
- * returns its URL without launching a new one.
+ * If a server from the current version is already running (detected via PID
+ * file + health probe), returns its URL without launching a new one. A server
+ * from another version is stopped first, even when the assets are missing and
+ * no replacement can be launched (#1709).
  */
 export async function launchDashboardServer(options?: { port?: number }): Promise<LaunchResult | null> {
   // 1. Check if SPA assets exist
   const assetsDir = resolveAssetsDir();
   if (!assetsDir) {
+    await stopStaleDashboardServer();
     return null;
   }
 
-  // 2. Check if a server is already running
-  const existing = await findRunningDashboardServer();
-  if (existing) {
-    // If the running server is from a different CLI version, kill it and relaunch
-    // so the dashboard uses the current version's code (#548)
-    const info = readDashboardServerInfo();
-    const currentVersion = getCLIVersion();
-    if (!info) {
-      // PID file disappeared between health check and now (race condition).
-      // Fall through to launch a new server.
-    } else if (info.version && currentVersion !== '0.0.0' && info.version !== currentVersion) {
-      console.error(
-        `[STARTUP] Dashboard server version mismatch (running: ${info.version}, current: ${currentVersion}). Restarting...`,
-      );
-      let killed = false;
-      try {
-        process.kill(info.pid, 'SIGTERM');
-        killed = true;
-      } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
-        if (code === 'ESRCH') {
-          killed = true; // Already exited
-        } else {
-          console.error(`[STARTUP] Could not kill outdated dashboard (PID ${info.pid}): ${(err as Error).message}`);
-        }
-      }
-      if (killed) {
-        removeDashboardServerInfo();
-      } else {
-        // Could not kill old server (e.g. EPERM); return it rather than
-        // attempting a doomed spawn on the same port.
-        return {
-          url: existing.url,
-          port: existing.port,
-          alreadyRunning: true,
-          lastBrowserOpenedAt: info?.lastBrowserOpenedAt,
-        };
-      }
-      // Fall through to launch a new server
-    } else {
-      return {
-        url: existing.url,
-        port: existing.port,
-        alreadyRunning: true,
-        lastBrowserOpenedAt: info.lastBrowserOpenedAt,
-      };
-    }
-  }
+  // 2. Reuse a running server unless it is from a different CLI version
+  const running = await stopStaleDashboardServer();
+  if (running) return running;
 
   // 3. Launch as detached child process
   const port = options?.port ?? DEFAULT_PORT;
-  // process.argv[1] is the CLI entry point (cli.bundle.cjs in production, cli.ts in dev)
-  const cliPath = process.argv[1];
+  const cliPath = resolveCliEntry(process.argv[1], assetsDir);
 
   const child = spawn('node', [cliPath, 'dashboard', 'serve', '--port', String(port), '--no-open'], {
     detached: true,

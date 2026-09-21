@@ -237,6 +237,112 @@ describe('parseIssueList — score extraction', () => {
   });
 });
 
+describe('parseIssueList — (N/10) score shapes and blocked items (#1730)', () => {
+  it('extracts N/10 from the first bold span in the shapes vet sessions write', () => {
+    const content = `## Pursue
+- [#1](https://github.com/o/r/issues/1) — A
+  - **Pursue (7/10)** — small, clear repro.
+- [#2](https://github.com/o/r/issues/2) — B
+  - **Maybe (6.5/10)** — needs a maintainer nod.
+- [#3](https://github.com/o/r/issues/3) — C
+  - **Vetted 2026-09-16: 8/10, pursue first after the other PR.** Notes.
+- [#4](https://github.com/o/r/issues/4) — D
+  - **Low complexity** — touches 3/10 files, not a score.`;
+    const result = parseIssueList(content);
+    expect(result.available.map((i) => i.score)).toEqual([7, 6.5, 8, undefined]);
+  });
+
+  it('prunes on a (N/10) score below the minimum', () => {
+    const content = `## Maybe
+- [#1](https://github.com/o/r/issues/1) — A
+  - **Maybe (5/10)** — thin.
+- [#2](https://github.com/o/r/issues/2) — B
+  - **Pursue (7/10)** — good.
+`;
+    const { pruned, removedCount } = pruneIssueList(content);
+    expect(removedCount).toBe(1);
+    expect(pruned).not.toContain('issues/1)');
+    expect(pruned).toContain('issues/2)');
+  });
+
+  it('prune ignores a date-like N/10 that is not in the pinned (N/10) form', () => {
+    const content = `## Pursue
+- [#1](https://github.com/o/r/issues/1) — A
+  - **Re-checked 3/10: still open, pursue**
+`;
+    expect(pruneIssueList(content).removedCount).toBe(0);
+  });
+
+  it('buckets items under a Queued/blocked section or with a blocked/wait span as blocked', () => {
+    const content = `## Pursue
+- [#1](https://github.com/o/r/issues/1) — ready
+  - **Pursue (7/10)** — go.
+- [#2](https://github.com/o/r/issues/2) — blocked by span
+  - **Pursue (7/10), blocked on approved label** — later.
+
+## Queued (vetted, blocked until a condition clears)
+
+### o/r: PRs auto-close unless the issue carries the approved label; wait for it
+- [#3](https://github.com/o/r/issues/3) — queued
+  - **Pursue (8/10)** — ready once labeled.
+
+## Maybe
+- [#4](https://github.com/o/r/issues/4) — waiting
+  - **Maybe (6/10), wait 30 days for the one-PR rule** — reopen later.
+- [#5](https://github.com/o/r/issues/5) — merged
+  - **Merged** — done.
+`;
+    const result = parseIssueList(content);
+    expect(result.available.map((i) => i.number)).toEqual([1]);
+    expect(result.blocked.map((i) => i.number)).toEqual([2, 3, 4]);
+    expect(result.completed.map((i) => i.number)).toEqual([5]);
+    expect(result.availableCount).toBe(1);
+    expect(result.blockedCount).toBe(3);
+    expect(result.blocked[1].score).toBe(8);
+  });
+
+  it('keeps the ## heading as tier and exposes a nested ### heading as group', () => {
+    const content = `## Queued (vetted, blocked)
+
+### o/r: wait for the approved label
+- [#1](https://github.com/o/r/issues/1) — A
+
+## Pursue
+
+### [o/r](https://github.com/o/r) (1.2k★) — desc
+- [#2](https://github.com/o/r/issues/2) — B
+`;
+    const result = parseIssueList(content);
+    expect(result.blocked[0].tier).toBe('Queued (vetted, blocked)');
+    expect(result.blocked[0].group).toBe('o/r: wait for the approved label');
+    expect(result.available[0].tier).toBe('Pursue');
+    expect(result.available[0].group).toBe('[o/r](https://github.com/o/r) (1.2k★) — desc');
+  });
+
+  it('a ### under a # title is still the tier (the overnight picker reads `Pursue` from it)', () => {
+    const result = parseIssueList(`# My list
+
+### Pursue
+- [#1](https://github.com/o/r/issues/1) — A`);
+    expect(result.available[0].tier).toBe('Pursue');
+  });
+
+  it('still uses a ### heading as tier when no # or ## heading precedes it', () => {
+    const result = parseIssueList(`### Repo
+- [#1](https://github.com/o/r/issues/1) — A`);
+    expect(result.available[0].tier).toBe('Repo');
+    expect(result.available[0].group).toBeUndefined();
+  });
+
+  it('a terminal sub-bullet still wins over a blocked section', () => {
+    const result = parseIssueList(`## Queued
+- [#1](https://github.com/o/r/issues/1) — A
+  - **Closed** — upstream fixed it.`);
+    expect(result.blockedCount).toBe(0);
+    expect(result.completedCount).toBe(1);
+  });
+});
+
 describe('parseIssueList — sub-bullet status detection', () => {
   it('moves Skip items to completed', () => {
     const content = `- [#1](https://github.com/owner/repo/issues/1) — Fix bug

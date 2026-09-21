@@ -288,7 +288,7 @@ describe('toCompactStartupOutput (#763)', () => {
       autoDetected: true,
       daily: makeMockDailyOutput(),
       dashboardUrl: 'http://localhost:3000',
-      issueList: { path: 'issues.md', source: 'configured', availableCount: 5, completedCount: 3 },
+      issueList: { path: 'issues.md', source: 'configured', availableCount: 5, completedCount: 3, blockedCount: 0 },
     };
     const compact = toCompactStartupOutput(full);
 
@@ -771,8 +771,10 @@ describe('Misc command schemas (#1155)', () => {
     const data = {
       available: [{ repo: 'a/b', number: 1, title: 't', tier: 'pursue', url: 'u', score: 8 }],
       completed: [],
+      blocked: [],
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     };
     expect(formatJson(ParseIssueListOutputSchema, data).success).toBe(true);
   });

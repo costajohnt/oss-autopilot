@@ -38,7 +38,37 @@ vi.mock('../core/index.js', () => ({
 
 // ── Import after mocks ──────────────────────────────────────────────
 
-const { launchDashboardServer } = await import('./dashboard-lifecycle.js');
+const { launchDashboardServer, resolveCliEntry } = await import('./dashboard-lifecycle.js');
+const fs = await import('node:fs');
+const os = await import('node:os');
+const path = await import('node:path');
+
+describe('resolveCliEntry (#1735)', () => {
+  it('keeps argv[1] when it is the core CLI entry', () => {
+    expect(resolveCliEntry('/x/core/dist/cli.bundle.cjs', '/nowhere/dashboard/dist')).toBe(
+      '/x/core/dist/cli.bundle.cjs',
+    );
+    expect(resolveCliEntry('/x/core/src/cli.ts', '/nowhere/dashboard/dist')).toBe('/x/core/src/cli.ts');
+  });
+
+  it('uses the core bundle beside the assets when another host (MCP) is running', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cli-entry-'));
+    try {
+      const bundle = path.join(root, 'core', 'dist', 'cli.bundle.cjs');
+      fs.mkdirSync(path.dirname(bundle), { recursive: true });
+      fs.writeFileSync(bundle, '');
+      expect(resolveCliEntry('/x/mcp-server/dist/mcp-server.bundle.cjs', path.join(root, 'dashboard', 'dist'))).toBe(
+        bundle,
+      );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to argv[1] when no core bundle sits beside the assets', () => {
+    expect(resolveCliEntry('/x/mcp.bundle.cjs', '/nowhere/dashboard/dist')).toBe('/x/mcp.bundle.cjs');
+  });
+});
 
 // ── Tests ────────────────────────────────────────────────────────────
 
@@ -66,6 +96,42 @@ describe('launchDashboardServer', () => {
 
     expect(result).toBeNull();
     expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it('should stop an old-version server even when SPA assets are missing (#1709)', async () => {
+    mockResolveAssetsDir.mockReturnValue(null);
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
+    mockReadDashboardServerInfo.mockReturnValue({
+      pid: 12_345,
+      port: 3000,
+      startedAt: '2026-01-01T00:00:00Z',
+      version: '0.44.4',
+    });
+    mockGetCLIVersion.mockReturnValue('0.44.6');
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const result = await launchDashboardServer();
+    consoleSpy.mockRestore();
+
+    expect(result).toBeNull();
+    expect(processKillSpy).toHaveBeenCalledWith(12_345, 'SIGTERM');
+    expect(mockRemoveDashboardServerInfo).toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it('should leave a same-version server running when SPA assets are missing', async () => {
+    mockResolveAssetsDir.mockReturnValue(null);
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
+    mockReadDashboardServerInfo.mockReturnValue({
+      pid: 12_345,
+      port: 3000,
+      startedAt: '2026-01-01T00:00:00Z',
+      version: '0.44.6',
+    });
+    mockGetCLIVersion.mockReturnValue('0.44.6');
+
+    expect(await launchDashboardServer()).toBeNull();
+    expect(processKillSpy).not.toHaveBeenCalled();
   });
 
   it('should return existing server when already running with same version', async () => {

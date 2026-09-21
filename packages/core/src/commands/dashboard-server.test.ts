@@ -591,6 +591,7 @@ describe('dashboard-server', () => {
         source: 'configured',
         availableCount: 0,
         completedCount: 0,
+        blockedCount: 0,
       });
 
       const data = buildDashboardJson(digest, state, [], undefined, undefined, ['fetch recently merged PRs']);
