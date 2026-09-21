@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -19,6 +19,7 @@ describe('getCLIVersion', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     process.argv[1] = savedArgv1;
     fs.rmSync(tmp, { recursive: true, force: true });
   });
@@ -38,5 +39,12 @@ describe('getCLIVersion', () => {
   it('falls back to 0.0.0 when no package.json sits beside the entry', () => {
     process.argv[1] = path.join(tmp, 'bin', 'missing.cjs');
     expect(getCLIVersion()).toBe('0.0.0');
+  });
+
+  it('prefers the bundle-injected core version over the package.json beside argv[1] (#1732)', () => {
+    // Inside the MCP server bundle, argv[1] points at the mcp-server package.
+    process.argv[1] = path.join(tmp, 'pkg', 'dist', 'cli.bundle.cjs');
+    vi.stubGlobal('__OSS_AUTOPILOT_CORE_VERSION__', '3.1.4');
+    expect(getCLIVersion()).toBe('3.1.4');
   });
 });
