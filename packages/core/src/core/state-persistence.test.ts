@@ -1064,6 +1064,107 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
     expect(final.config.githubUsername).toBe('bob-wrote-this-from-another-process');
   });
 
+  it('does not pair stale content with a fresh mtime when a write lands mid-load', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const ours = createFreshState();
+    ours.config.githubUsername = 'alice';
+    saveState(ours, null);
+
+    // Another process writes after loadState has read the file but before it
+    // has recorded the baseline mtime. JSON.parse sits exactly in that gap.
+    const realParse = JSON.parse;
+    let landed = false;
+    const parseSpy = vi.spyOn(JSON, 'parse').mockImplementation((text: string, ...rest: []) => {
+      if (!landed) {
+        landed = true;
+        const theirs = createFreshState();
+        theirs.config.githubUsername = 'bob-wrote-mid-load';
+        fs.writeFileSync(statePath, JSON.stringify(theirs, null, 2));
+        const future = new Date(Date.now() + 5000);
+        fs.utimesSync(statePath, future, future);
+      }
+      return realParse(text, ...rest) as unknown;
+    });
+
+    let loaded: ReturnType<typeof loadState>;
+    try {
+      loaded = loadState();
+    } finally {
+      parseSpy.mockRestore();
+    }
+
+    // We hold alice's content. Saving it must not silently replace bob's write.
+    expect(loaded.state.config.githubUsername).toBe('alice');
+    expect(() => saveState(loaded.state, loaded.mtimeMs)).toThrow(ConcurrencyError);
+    expect(realParse(fs.readFileSync(statePath, 'utf8')).config.githubUsername).toBe('bob-wrote-mid-load');
+  });
+
+  it('reloadIfChanged before a batch keeps both writers\u2019 changes; without it the batch is rejected', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const sm = new StateManager(false);
+    sm.updateConfig({ githubUsername: 'alice' });
+
+    const externalWrite = (maxActivePRs: number) => {
+      const onDisk = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+      onDisk.config.maxActivePRs = maxActivePRs;
+      fs.writeFileSync(statePath, JSON.stringify(onDisk, null, 2));
+      const future = new Date(Date.now() + 5000 * maxActivePRs);
+      fs.utimesSync(statePath, future, future);
+    };
+
+    // The dashboard (say) writes while a long daily run is on the network.
+    externalWrite(3);
+    expect(() => sm.batch(() => sm.updateConfig({ dormantThresholdDays: 45 }))).toThrow(ConcurrencyError);
+
+    // The pattern daily uses: refresh the baseline, then batch.
+    externalWrite(4);
+    expect(sm.reloadIfChanged()).toBe(true);
+    sm.batch(() => sm.updateConfig({ dormantThresholdDays: 60 }));
+
+    const final = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    expect(final.config.maxActivePRs).toBe(4); // the other writer's change survived
+    expect(final.config.dormantThresholdDays).toBe(60); // and so did ours
+  });
+
+  it('reloadIfChanged keeps the pre-read baseline too, so a write landing mid-reload is not overwritten', () => {
+    const statePath = path.join(mockTmpDir, 'state.json');
+    const sm = new StateManager(false);
+    sm.updateConfig({ githubUsername: 'alice' });
+
+    const externalWrite = (username: string, aheadMs: number) => {
+      const onDisk = realParse(fs.readFileSync(statePath, 'utf8'));
+      onDisk.config.githubUsername = username;
+      fs.writeFileSync(statePath, JSON.stringify(onDisk, null, 2));
+      const future = new Date(Date.now() + aheadMs);
+      fs.utimesSync(statePath, future, future);
+    };
+    const realParse = JSON.parse;
+
+    // First writer: this is what makes reloadIfChanged reload at all.
+    externalWrite('bob', 5000);
+
+    // Second writer lands while that reload is between its read and its return.
+    let landed = false;
+    const parseSpy = vi.spyOn(JSON, 'parse').mockImplementation((text: string, ...rest: []) => {
+      const out = realParse(text, ...rest) as unknown;
+      if (!landed) {
+        landed = true;
+        externalWrite('carol-wrote-mid-reload', 10_000);
+      }
+      return out;
+    });
+    try {
+      expect(sm.reloadIfChanged()).toBe(true);
+    } finally {
+      parseSpy.mockRestore();
+    }
+
+    // We hold bob's content. Saving over carol must be refused, not silent.
+    expect(sm.getState().config.githubUsername).toBe('bob');
+    expect(() => sm.updateConfig({ maxActivePRs: 7 })).toThrow(ConcurrencyError);
+    expect(realParse(fs.readFileSync(statePath, 'utf8')).config.githubUsername).toBe('carol-wrote-mid-reload');
+  });
+
   it('saveState bypasses the check when expectedMtimeMs is null (first write path)', () => {
     const fresh = createFreshState();
     // No file on disk; passing null means "skip CAS" — should succeed.
