@@ -17,12 +17,17 @@
  *
  * Set BUNDLE_METAFILE=<path> to also write an esbuild metafile for size work.
  */
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
 // esbuild is a devDependency of each package, not of the workspace root.
 const { build } = createRequire(path.join(process.cwd(), 'package.json'))('esbuild');
+
+// Every bundle inlines core, so inject core's version for getCLIVersion() (#1732).
+const coreVersion = JSON.parse(
+  readFileSync(new URL('../packages/core/package.json', import.meta.url), 'utf8'),
+).version;
 
 const [entry, outfile, ...flags] = process.argv.slice(2);
 if (!entry || !outfile) {
@@ -55,5 +60,6 @@ const result = await build({
   outfile,
   metafile: Boolean(process.env.BUNDLE_METAFILE),
   plugins: [onlyEnLocale],
+  define: { __OSS_AUTOPILOT_CORE_VERSION__: JSON.stringify(coreVersion) },
 });
 if (process.env.BUNDLE_METAFILE) writeFileSync(process.env.BUNDLE_METAFILE, JSON.stringify(result.metafile));

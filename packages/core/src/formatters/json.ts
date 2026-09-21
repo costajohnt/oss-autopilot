@@ -1038,6 +1038,7 @@ const ParsedIssueItemSchema = z.object({
   number: z.number(),
   title: z.string(),
   tier: z.string(),
+  group: z.string().optional(),
   url: z.string(),
   score: z.number().optional(),
 });
@@ -1045,8 +1046,10 @@ const ParsedIssueItemSchema = z.object({
 export const ParseIssueListOutputSchema = z.object({
   available: z.array(ParsedIssueItemSchema),
   completed: z.array(ParsedIssueItemSchema),
+  blocked: z.array(ParsedIssueItemSchema),
   availableCount: z.number().int().nonnegative(),
   completedCount: z.number().int().nonnegative(),
+  blockedCount: z.number().int().nonnegative(),
 });
 
 const NewFileInfoSchema = z.object({
@@ -1280,6 +1283,8 @@ export interface IssueListInfo {
   source: 'configured' | 'auto-detected';
   availableCount: number;
   completedCount: number;
+  /** Vetted items blocked on an outside condition; not counted in `availableCount` (#1730). */
+  blockedCount: number;
   skippedIssuesPath?: string;
   /**
    * Set when the issue list file was detected but could not be read (#1448).
@@ -1372,6 +1377,8 @@ export interface ParsedIssueItem {
   number: number;
   title: string;
   tier: string;
+  /** Text of a `###` heading nested under the `##` tier (repo heading, blocker note) (#1730). */
+  group?: string;
   url: string;
   score?: number;
 }
@@ -1380,8 +1387,11 @@ export interface ParsedIssueItem {
 export interface ParseIssueListOutput {
   available: ParsedIssueItem[];
   completed: ParsedIssueItem[];
+  /** Vetted but blocked on an outside condition; excluded from `availableCount` (#1730). */
+  blocked: ParsedIssueItem[];
   availableCount: number;
   completedCount: number;
+  blockedCount: number;
 }
 
 /** Info about a new file's integration status (#83) */

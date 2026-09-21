@@ -96,7 +96,7 @@ export function VettedIssueList({ vettedIssues, repoMetadata, onBack }: VettedIs
           <tbody>
             {searched.map((item) => {
               const meta = repoMetadata?.[item.repo];
-              const tierMeta = !meta?.stars || !meta?.language ? parseTierMeta(item.tier) : null;
+              const tierMeta = !meta?.stars || !meta?.language ? parseTierMeta(item.group ?? item.tier) : null;
               const stars = meta?.stars ?? tierMeta?.stars;
               const language = meta?.language ?? tierMeta?.language;
               return (

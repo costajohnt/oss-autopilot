@@ -118,6 +118,7 @@ describe('vet-list --json contract', () => {
         { repo: 'owner/repo-e', number: 5, title: 'My open PR', url: 'https://github.com/owner/repo-e/issues/5' },
         { repo: 'owner/repo-f', number: 6, title: 'Closed upstream', url: 'https://github.com/owner/repo-f/issues/6' },
       ],
+      blocked: [],
     });
     mocks.getRepoScore.mockReturnValue({ mergedPRCount: 4, closedWithoutMergeCount: 1, avgResponseDays: 3 });
   });
@@ -199,7 +200,7 @@ describe('vet-list --json contract', () => {
   });
 
   it('empty list output matches the golden shape', async () => {
-    mocks.runParseList.mockResolvedValue({ available: [] });
+    mocks.runParseList.mockResolvedValue({ available: [], blocked: [] });
 
     const result = await runVetList({});
     await expect(JSON.stringify(result, null, 2)).toMatchFileSnapshot('./__golden__/vet-list.empty.json');

@@ -111,7 +111,7 @@ The CLI returns structured data with new fields for the action-first flow:
       }
     },
     "dashboardUrl": "http://localhost:3000",
-    "issueList": { "path": "open-source/potential-issue-list.md", "source": "auto-detected", "availableCount": 5, "completedCount": 3 }
+    "issueList": { "path": "open-source/potential-issue-list.md", "source": "auto-detected", "availableCount": 5, "completedCount": 3, "blockedCount": 0 }
   }
 }
 ```
