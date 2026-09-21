@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.28.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.27.0...core-v3.28.0) (2026-09-21)
+
+
+### Features
+
+* **anti-llm-policy:** add modal prohibition pattern for "LLMs must not" ([#1725](https://github.com/costajohnt/oss-autopilot/issues/1725)) ([2b10d50](https://github.com/costajohnt/oss-autopilot/commit/2b10d505e3ab9e84823504b03c19dc3e1d47bce5))
+
+
+### Bug Fixes
+
+* **core:** report the core version from getCLIVersion inside the MCP bundle ([#1734](https://github.com/costajohnt/oss-autopilot/issues/1734)) ([a73f01e](https://github.com/costajohnt/oss-autopilot/commit/a73f01e408669efbb7eaf7af3f4befee9506a4b5)), closes [#1732](https://github.com/costajohnt/oss-autopilot/issues/1732)
+* **dashboard:** spawn the core CLI, not the host's entry, when launching from the MCP server ([#1736](https://github.com/costajohnt/oss-autopilot/issues/1736)) ([4ab7785](https://github.com/costajohnt/oss-autopilot/commit/4ab7785a3030dfaebbae9ed1acd3dee2ae4783f2))
+* **dashboard:** stop old-version dashboard server from daily and when SPA assets are missing ([#1731](https://github.com/costajohnt/oss-autopilot/issues/1731)) ([bbd9c78](https://github.com/costajohnt/oss-autopilot/commit/bbd9c787607e55816c165759cb03667eb7bf499c)), closes [#1709](https://github.com/costajohnt/oss-autopilot/issues/1709)
+* **dashboard:** vetted list hides unscored issues ([#1726](https://github.com/costajohnt/oss-autopilot/issues/1726)) ([13858d9](https://github.com/costajohnt/oss-autopilot/commit/13858d95daa5f7c6b4e3236a768e2895246a932e))
+* **deps:** floor hono at 4.13.5 and retire the dead package.json overrides block ([#1688](https://github.com/costajohnt/oss-autopilot/issues/1688)) ([1805d61](https://github.com/costajohnt/oss-autopilot/commit/1805d61148beaca8627b0a7dbd25cbcce10b2d05))
+* **overnight:** deny the direct shell escapes inside allowed programs ([#1729](https://github.com/costajohnt/oss-autopilot/issues/1729)) ([7dbd50e](https://github.com/costajohnt/oss-autopilot/commit/7dbd50e67bb8ee3a3c34c12f322bbf4d1e7b38f0))
+* **parse-list:** read (N/10) scores and keep blocked items out of the ready count ([#1733](https://github.com/costajohnt/oss-autopilot/issues/1733)) ([6831b24](https://github.com/costajohnt/oss-autopilot/commit/6831b24a9d7fd627dd3685301bb5ad701ba2e004))
+* **pr-classification:** skip type-of-change radio boxes and leave-unchecked groups in checklist check ([#1724](https://github.com/costajohnt/oss-autopilot/issues/1724)) ([1f0429f](https://github.com/costajohnt/oss-autopilot/commit/1f0429ff611604145fdc8bdcb21dfa9d4af3b121))
+
 ## [3.27.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.26.0...core-v3.27.0) (2026-09-19)
 
 
