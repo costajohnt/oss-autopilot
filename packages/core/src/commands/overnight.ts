@@ -600,6 +600,30 @@ export const OVERNIGHT_DISALLOWED_TOOLS = [
   'Bash(npm deprecate *)',
   'Bash(pnpm publish)',
   'Bash(pnpm publish *)',
+  // Direct shell escapes inside the allowed programs (#1728): `npm exec` IS
+  // npx, `pnpm dlx`/`pnpm exec` run arbitrary packages, and `node -e` runs
+  // arbitrary JS — each can spawn `git push` and void the push denies above.
+  // The residual (a repo's own test scripts run arbitrary code) is documented
+  // in commands/oss-overnight.md and cannot be closed by tool rules.
+  'Bash(npm exec)',
+  'Bash(npm exec *)',
+  'Bash(npm x)',
+  'Bash(npm x *)',
+  'Bash(npm * exec *)',
+  'Bash(pnpm dlx *)',
+  'Bash(pnpm * dlx *)',
+  'Bash(pnpm exec)',
+  'Bash(pnpm exec *)',
+  'Bash(pnpm * exec *)',
+  'Bash(node -e *)',
+  'Bash(node --eval *)',
+  'Bash(node -p *)',
+  'Bash(node -pe *)',
+  'Bash(node --print *)',
+  // The same escapes after a leading flag (`node --no-warnings -e`,
+  // `pnpm --dir x exec`), mirroring the `git * push` deny.
+  'Bash(node * -e *)',
+  'Bash(node * --eval *)',
   'AskUserQuestion',
 ].join(',');
 
