@@ -125,29 +125,18 @@ export function analyzeChecklist(body: string): {
   const sections = parseSections(body);
   let totalChecked = 0;
   let totalNonConditionalUnchecked = 0;
-  let hasAnyCheckboxes = false;
 
   for (const section of sections) {
-    const result = analyzeSectionItems(section);
     // null means no checkboxes or section is intentionally skipped
-    if (result === null) {
-      // Still check whether this section had any checkboxes so we know if the PR has a checklist
-      const sectionText = section.lines.join('\n');
-      if ((sectionText.match(/- \[x\]/gi) ?? []).length > 0 || /- \[ \]/.test(sectionText)) {
-        hasAnyCheckboxes = true;
-      }
-    } else {
-      hasAnyCheckboxes = true;
-      totalChecked += result.checked;
-      totalNonConditionalUnchecked += result.nonConditionalUnchecked;
-    }
+    const result = analyzeSectionItems(section);
+    if (result === null) continue;
+    totalChecked += result.checked;
+    totalNonConditionalUnchecked += result.nonConditionalUnchecked;
   }
-
-  if (!hasAnyCheckboxes) return { hasIncompleteChecklist: false };
 
   const effectiveTotal = totalChecked + totalNonConditionalUnchecked;
 
-  // All sections were either skipped (leave-unchecked) or fully conditional — nothing to report
+  // No checkboxes, or every section was skipped (leave-unchecked) or fully conditional
   if (effectiveTotal === 0) return { hasIncompleteChecklist: false };
 
   return {
