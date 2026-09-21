@@ -922,3 +922,62 @@ describe('determineStatus fails closed on malformed dates (#1044)', () => {
     expect(result.actionReason).toBe('needs_changes');
   });
 });
+
+describe('determineStatus: a merge conflict is never hidden behind a waiting status', () => {
+  const conflicted = { hasMergeConflict: true } as const;
+  const expectConflict = (overrides: Partial<DetermineStatusInput>) => {
+    const result = callDetermineStatus({ ...conflicted, ...overrides });
+    expect(result.status).toBe('needs_addressing');
+    expect(result.actionReason).toBe('merge_conflict');
+    expect(result.waitReason).toBeUndefined();
+    expect(result.actionReasons).toContain('merge_conflict');
+  };
+
+  it('changes_addressed via an unresponded comment answered by a later commit', () => {
+    expectConflict({
+      hasUnrespondedComment: true,
+      lastMaintainerCommentDate: '2026-01-01T00:00:00Z',
+      latestCommitDate: '2026-01-02T00:00:00Z',
+    });
+  });
+
+  it('changes_addressed via a changes-requested review answered by a later commit', () => {
+    expectConflict({
+      reviewDecision: 'changes_requested',
+      latestChangesRequestedDate: '2026-01-01T00:00:00Z',
+      latestCommitDate: '2026-01-02T00:00:00Z',
+    });
+  });
+
+  it('pending_merge: approved with an LGTM-style unresponded comment', () => {
+    expectConflict({ hasUnrespondedComment: true, reviewDecision: 'approved' });
+  });
+
+  it('ci_blocked: failing CI the contributor cannot fix', () => {
+    expectConflict({ ciStatus: 'failing', hasActionableCIFailure: false });
+  });
+
+  it('stale_ci_failure: CI red for days with no activity', () => {
+    expectConflict({ ciStatus: 'failing', hasActionableCIFailure: true, daysSinceActivity: 10 });
+  });
+
+  it('keeps the staleness tier, so a dormant conflicted PR still reads as dormant', () => {
+    const result = callDetermineStatus({
+      ...conflicted,
+      reviewDecision: 'changes_requested',
+      latestChangesRequestedDate: '2026-01-01T00:00:00Z',
+      latestCommitDate: '2026-01-02T00:00:00Z',
+      daysSinceActivity: 40,
+    });
+    expect(result).toMatchObject({
+      status: 'needs_addressing',
+      actionReason: 'merge_conflict',
+      stalenessTier: 'dormant',
+    });
+  });
+
+  it('does not outrank a higher-priority action reason', () => {
+    const result = callDetermineStatus({ ...conflicted, hasUnrespondedComment: true });
+    expect(result.actionReason).toBe('needs_response');
+  });
+});
