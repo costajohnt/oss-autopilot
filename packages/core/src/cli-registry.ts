@@ -1602,9 +1602,13 @@ export const commands: CLICommandDef[] = [
         .command('record')
         .description('Record a branch an agent prepared for the latest overnight run')
         .requiredOption('--url <url>', 'PR or issue URL the branch is for')
-        .requiredOption('--branch <name>', 'Local branch name')
+        .option('--branch <name>', 'Local branch name (required unless --from-report supplies it)')
         .option('--worktree <path>', 'Worktree path holding the branch')
         .option('--note <text>', 'One-line summary of what was prepared')
+        .option(
+          '--from-report <file>',
+          "File holding the preparer's four-line report; supplies branch, worktree and note without putting agent text on the command line",
+        )
         .option('--json', 'Output as JSON')
         .action(async (options) => {
           await executeAction(
@@ -1615,6 +1619,7 @@ export const commands: CLICommandDef[] = [
                 branch: options.branch,
                 worktree: options.worktree,
                 note: options.note,
+                fromReport: options.fromReport,
               }),
             (data) => {
               console.log(`Recorded (${data.preparedCount} prepared): ${data.reportPath}`);
@@ -1630,6 +1635,7 @@ export const commands: CLICommandDef[] = [
         .description("Record that tonight's list issue could not be implemented, so the next run moves on (#1715)")
         .requiredOption('--url <url>', 'The issue URL from the report\'s "Implement tonight" line')
         .option('--note <text>', 'Why it was blocked')
+        .option('--from-report <file>', "File holding the preparer's four-line report; supplies the note")
         .option('--json', 'Output as JSON')
         .action(async (options) => {
           await executeAction(
@@ -1638,6 +1644,7 @@ export const commands: CLICommandDef[] = [
               (await import('./commands/overnight.js')).runOvernightImplementBlocked({
                 url: options.url,
                 note: options.note,
+                fromReport: options.fromReport,
               }),
             (data) => {
               console.log(`Recorded as blocked (${data.attemptCount} attempts on the list): ${data.url}`);

@@ -66,11 +66,18 @@ OVERNIGHT PREPARE-ONLY MODE for {url} ({label}: {reason}). Report in your four-l
 
 After the agent returns:
 
+Save the agent's report, exactly as returned, to `{data.reportPath}.preparer.txt`
+**with the Write tool** (overwrite it for each item). The preparer has read CI
+logs and review comments from other people's repos, so nothing from its report
+goes on a command line: inside double quotes the shell would run any backticks
+or `$(...)` it contains. The CLI reads the file instead.
+
 - `STATUS: prepared` → record it:
   ```bash
   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" overnight record \
-    --url "{url}" --branch "{BRANCH}" --worktree "{WORKTREE}" --note "{NOTE}" --json
+    --url "{url}" --from-report "{data.reportPath}.preparer.txt" --json
   ```
+  `{url}` and `{data.reportPath}` come from the CLI's own JSON, not from the agent.
 - `STATUS: blocked` → append one line to the report file under a `## Blocked` heading
   (create it if missing): `- {label} {url} — {NOTE}`. Do not retry.
 - Agent failed or returned nothing → same as blocked, with the note `agent returned no result`.
@@ -83,8 +90,12 @@ user's on that repo and no earlier attempt. Dispatch **one** more
 `overnight-preparer`, after the Step 2 items, with:
 
 ```
-OVERNIGHT IMPLEMENT MODE for {implement.url} ({implement.repo}#{implement.number}: {implement.title}). Report in your four-line shape.
+OVERNIGHT IMPLEMENT MODE for {implement.url} ({implement.repo}#{implement.number}). Report in your four-line shape.
 ```
+
+The issue title is left out on purpose. Anyone can write it, and this line is
+an instruction to an agent that runs unattended with Bash and Write. The
+preparer reads the issue itself, through the fenced `gh issue view` path.
 
 After it returns:
 
@@ -93,7 +104,7 @@ After it returns:
 - `STATUS: blocked` (or no result) → the Blocked line as in Step 2, and also:
   ```bash
   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" overnight implement-blocked \
-    --url "{implement.url}" --note "{NOTE}" --json
+    --url "{implement.url}" --from-report "{data.reportPath}.preparer.txt" --json
   ```
   so the next run picks the next Pursue item instead of retrying this one.
 
