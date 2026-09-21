@@ -36,6 +36,14 @@ describe('scanForAntiLLMPolicy', () => {
       expect(result.matched).toBe(true);
       expect(result.matches.some((m) => m.category === 'explicit_ban')).toBe(true);
     });
+
+    it('matches "LLMs must not be used" modal prohibition phrasing', () => {
+      const result = scanForAntiLLMPolicy(
+        'Use of generative AI\n\nLLMs must not be used to fix GitHub issues labelled good first issue. This is forbidden, and those PRs will be closed automatically.',
+      );
+      expect(result.matched).toBe(true);
+      expect(result.matches.some((m) => m.category === 'explicit_ban')).toBe(true);
+    });
   });
 
   describe('tool-specific bans', () => {
@@ -136,6 +144,15 @@ describe('scanForAntiLLMPolicy', () => {
 
     it('does not match "does not accept AI suggestions from your IDE"', () => {
       const result = scanForAntiLLMPolicy('This plugin does not accept AI suggestions from your IDE as-is.');
+      expect(result.matched).toBe(false);
+    });
+
+    it('does not match "forbidden" and "AI" separated by a sentence boundary', () => {
+      // The dot between "forbidden after push." and "We use AI" prevents the
+      // forbidden pattern from crossing sentence boundaries.
+      const result = scanForAntiLLMPolicy(
+        'Commit message rewriting is forbidden after push. We use AI tools internally.',
+      );
       expect(result.matched).toBe(false);
     });
   });
