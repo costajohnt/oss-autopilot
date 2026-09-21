@@ -68,6 +68,42 @@ describe('launchDashboardServer', () => {
     expect(mockSpawn).not.toHaveBeenCalled();
   });
 
+  it('should stop an old-version server even when SPA assets are missing (#1709)', async () => {
+    mockResolveAssetsDir.mockReturnValue(null);
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
+    mockReadDashboardServerInfo.mockReturnValue({
+      pid: 12_345,
+      port: 3000,
+      startedAt: '2026-01-01T00:00:00Z',
+      version: '0.44.4',
+    });
+    mockGetCLIVersion.mockReturnValue('0.44.6');
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const result = await launchDashboardServer();
+    consoleSpy.mockRestore();
+
+    expect(result).toBeNull();
+    expect(processKillSpy).toHaveBeenCalledWith(12_345, 'SIGTERM');
+    expect(mockRemoveDashboardServerInfo).toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it('should leave a same-version server running when SPA assets are missing', async () => {
+    mockResolveAssetsDir.mockReturnValue(null);
+    mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
+    mockReadDashboardServerInfo.mockReturnValue({
+      pid: 12_345,
+      port: 3000,
+      startedAt: '2026-01-01T00:00:00Z',
+      version: '0.44.6',
+    });
+    mockGetCLIVersion.mockReturnValue('0.44.6');
+
+    expect(await launchDashboardServer()).toBeNull();
+    expect(processKillSpy).not.toHaveBeenCalled();
+  });
+
   it('should return existing server when already running with same version', async () => {
     mockFindRunningDashboardServer.mockResolvedValue({ port: 3000, url: 'http://oss.localhost:3000' });
     mockReadDashboardServerInfo.mockReturnValue({
