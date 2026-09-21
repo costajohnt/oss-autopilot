@@ -826,9 +826,13 @@ export function registerTools(server: McpServer): void {
     // Label provenance at this read boundary (#1455): stored guidelines were
     // distilled from an untrusted public-comment corpus, and re-injecting
     // them unlabeled grants them instruction-level authority. The CLI
-    // `guidelines view` path stays raw (goldens + human display).
+    // `guidelines view` keeps `content` raw (goldens, human display, and the
+    // edit flow that writes it back) and carries the labeled text separately
+    // as `agentContent`, which is what the workflows hand to agents.
     wrapTool(async (args: { repo: string }) => {
-      const result = await runGuidelinesView({ repo: args.repo });
+      // MCP keeps its one-field shape: `content` is the labeled text. Drop the
+      // CLI-only `agentContent` twin rather than send the markdown twice.
+      const { agentContent: _cliOnly, ...result } = await runGuidelinesView({ repo: args.repo });
       if (typeof result.content !== 'string') return result;
       // byteSize stays the STORED size — the provenance preamble is a read-time
       // label, not stored content, so it is excluded on purpose (#1455 review).
