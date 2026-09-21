@@ -293,6 +293,27 @@ describe('runPost', () => {
     );
   });
 
+  it('refuses during an unattended run and never reaches GitHub', async () => {
+    vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', '1');
+    try {
+      await expect(runPost({ url: TEST_PR_URL, message: 'Thanks!' })).rejects.toThrow(/unattended run/);
+      expect(mockRequireGitHubToken).not.toHaveBeenCalled();
+      expect(mockGetOctokit).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each(['0', '', 'false'])('still refuses when the variable is set to %j', async (value) => {
+    vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', value);
+    try {
+      await expect(runPost({ url: TEST_PR_URL, message: 'Thanks!' })).rejects.toThrow(/unattended run/);
+      expect(mockGetOctokit).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('should post a comment and return result', async () => {
     mockRequireGitHubToken.mockReturnValue('ghp_test123');
     mockParseGitHubUrl.mockReturnValue({ owner: 'owner', repo: 'repo', number: 42, type: 'pull' });
@@ -334,6 +355,17 @@ describe('runPost', () => {
 describe('runClaim', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('refuses during an unattended run and never reaches GitHub', async () => {
+    vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', '1');
+    try {
+      await expect(runClaim({ issueUrl: TEST_ISSUE_URL })).rejects.toThrow(/unattended run/);
+      expect(mockRequireGitHubToken).not.toHaveBeenCalled();
+      expect(mockGetOctokit).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('should throw error for non-issue URL', async () => {

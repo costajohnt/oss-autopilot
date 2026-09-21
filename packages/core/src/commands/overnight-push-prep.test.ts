@@ -245,6 +245,16 @@ describe('compareUrlFor', () => {
 });
 
 describe('runOvernightPushPrep', () => {
+  it('refuses inside an unattended run before touching state, GitHub or git', async () => {
+    vi.stubEnv('OSS_AUTOPILOT_UNATTENDED', '1');
+    try {
+      await expect(runOvernightPushPrep({ dryRun: false })).rejects.toThrow(/unattended run/);
+      expect(mockGetOctokit).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('refuses before any run', async () => {
     mockGetStateManager.mockReturnValue(fakeStateManager(undefined));
     fakeOctokit();

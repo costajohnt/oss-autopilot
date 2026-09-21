@@ -28,6 +28,7 @@ import {
   parseGitHubUrl,
   requireGitHubToken,
 } from '../core/index.js';
+import { assertAttended } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import type { OvernightPrepared } from '../core/types.js';
 import { publishReport, writePreparedSection } from './overnight.js';
@@ -236,6 +237,9 @@ function skip(entry: OvernightPrepared, reason: string, target?: PushTarget, ref
 
 /** Push every prepared branch of the latest overnight run to `prep/*` on the user's fork. */
 export async function runOvernightPushPrep(options: OvernightPushPrepOptions): Promise<OvernightPushPrepOutput> {
+  // A scheduler runs this after the model tick has ended, in its own
+  // environment. Inside the tick it must not run at all.
+  assertAttended('push prepared branches');
   const sm = getStateManager();
   const last = sm.getLastOvernight();
   if (!last) throw new Error('No overnight run recorded yet; run `overnight` first.');

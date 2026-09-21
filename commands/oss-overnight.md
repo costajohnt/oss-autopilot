@@ -138,12 +138,20 @@ the other machine can fetch and compare it:
 node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" overnight push-prep --json
 ```
 
-**You (the model) never run this.** It is not in any step above, it is not in
-the headless allowlist (`git push` is denied there), and this command must
-not add it. A scheduler runs it after the model tick has ended: a systemd
-`ExecStartPost=`, or a second job after the launchd one. That split is the
-point: the model prepares, a fixed program pushes, and only to a namespace
-nobody reviews from.
+**You (the model) never run this.** It is not in any step above, and this
+command must not add it. The headless allowlist cannot keep it out by name,
+because `node` has to stay allowed for the CLI calls above, so the refusal is
+in code: the scheduled job sets `OSS_AUTOPILOT_UNATTENDED=1`, and while it is
+set `overnight push-prep`, `post` and `claim` exit with an error before they
+touch GitHub or git. A scheduler runs push-prep after the model tick has
+ended: a systemd `ExecStartPost=`, or a second job after the launchd one.
+That split is the point: the model prepares, a fixed program pushes, and only
+to a namespace nobody reviews from.
+
+If you write your own unit, set the variable on the tick command only
+(`ExecStart=/usr/bin/env OSS_AUTOPILOT_UNATTENDED=1 claude -p /oss-overnight ...`),
+not with a unit-wide `Environment=`, or the `ExecStartPost=` push-prep step
+inherits it and refuses too.
 
 What it does, for each entry recorded with a `--worktree`:
 
