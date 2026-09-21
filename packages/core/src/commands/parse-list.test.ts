@@ -319,6 +319,14 @@ describe('parseIssueList — (N/10) score shapes and blocked items (#1730)', () 
     expect(result.available[0].group).toBe('[o/r](https://github.com/o/r) (1.2k★) — desc');
   });
 
+  it('a ### under a # title is still the tier (the overnight picker reads `Pursue` from it)', () => {
+    const result = parseIssueList(`# My list
+
+### Pursue
+- [#1](https://github.com/o/r/issues/1) — A`);
+    expect(result.available[0].tier).toBe('Pursue');
+  });
+
   it('still uses a ### heading as tier when no # or ## heading precedes it', () => {
     const result = parseIssueList(`### Repo
 - [#1](https://github.com/o/r/issues/1) — A`);

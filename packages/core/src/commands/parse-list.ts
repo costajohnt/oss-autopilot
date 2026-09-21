@@ -195,7 +195,7 @@ export function parseIssueList(content: string): ParseIssueListOutput {
   const completed: ParsedIssueItem[] = [];
   const blocked: ParsedIssueItem[] = [];
   let currentTier = 'Uncategorized';
-  // Heading level that set currentTier. A `###` under a `#`/`##` tier is a
+  // Heading level that set currentTier. A `###` under a `##` tier is a
   // sub-group (repo heading, blocker note) and must not clobber the tier (#1730).
   let tierLevel = 0;
   let currentGroup: string | undefined;
@@ -220,7 +220,7 @@ export function parseIssueList(content: string): ParseIssueListOutput {
     if (headingMatch) {
       const level = headingMatch[1].length;
       const text = headingMatch[2].trim();
-      if (level === 3 && tierLevel > 0 && tierLevel < 3) {
+      if (level === 3 && tierLevel === 2) {
         currentGroup = text;
       } else {
         currentTier = text;
