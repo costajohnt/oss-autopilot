@@ -8,6 +8,11 @@ export default defineConfig({
       reporter: ['text', 'text-summary'],
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.test.ts', 'src/**/*.e2e.test.ts', 'src/cli.ts', 'src/**/index.ts', 'src/test-lib/**'],
+      // src/cli.ts stays excluded: it parses argv and may call process.exit on
+      // import, so it cannot be loaded in-process. It is kept to wiring only
+      // (program setup, first-run banner, parseAsync); the preAction hook lives
+      // in cli-pre-action.ts, which IS instrumented and tested directly.
+      //
       // cli-registry.ts was fully excluded from coverage until #1454, hiding
       // ~1,700 lines (including executeAction's branching) from the gate. Its
       // handlers are mostly exercised through the e2e suites, which run the
