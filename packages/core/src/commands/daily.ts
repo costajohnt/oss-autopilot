@@ -61,6 +61,27 @@ import { reconcileMergedPRsWithList } from './merge-loop.js';
 const MODULE = 'daily';
 
 /**
+ * Run a batch against a baseline that is fresh as of right now.
+ *
+ * A daily run spends tens of seconds on the network between loading state and
+ * each of its saves. If the dashboard, `move`, or another CLI call writes
+ * state.json in that time, the compare-and-swap in `saveState` rejects the
+ * save, and because the baseline never moved, every later batch in the run is
+ * rejected too: repo scores, analytics, the merged/closed ledger and lastDigest
+ * were all dropped, surfacing only as warnings. Reloading first picks up the
+ * other writer's change and shrinks the window to the batch itself.
+ *
+ * Only safe where the callback reads state live through the manager, as the
+ * batches in this file do. A callback that writes from a snapshot taken
+ * earlier would overwrite the other writer's fields, which is why this is not
+ * done inside `StateManager.batch` for every caller.
+ */
+function batchOnFreshBaseline(stateManager: ReturnType<typeof getStateManager>, fn: () => void): void {
+  stateManager.reloadIfChanged();
+  stateManager.batch(fn);
+}
+
+/**
  * Record a non-fatal failure: push a structured entry into the run's warnings
  * collector AND emit the existing log line. Consumers (dashboard, MCP, tests)
  * inspect `DailyOutput.warnings` so a partial run is visible beyond log noise.
@@ -332,7 +353,7 @@ async function updateRepoScores(
   // Per-repo try-catch: a single corrupted repo should not prevent updates to others.
   // Outer try-catch: save failure should not crash the daily check (in-memory mutations still apply).
   try {
-    stateManager.batch(() => {
+    batchOnFreshBaseline(stateManager, () => {
       // Reset stale repos first (so excluded/removed repos get zeroed).
       // Guard: if the API returned zero results but we have existing repos with merged PRs,
       // skip the reset to avoid wiping scores due to transient API failures.
@@ -452,7 +473,7 @@ async function updateRepoScores(
   }
   // Batch metadata + trust sync mutations for a single disk write
   try {
-    stateManager.batch(() => {
+    batchOnFreshBaseline(stateManager, () => {
       let metadataUpdateFailures = 0;
       for (const [repo, { stars, language }] of repoMetadata) {
         try {
@@ -520,6 +541,10 @@ function partitionPRs(
   // are respected by the CLI pipeline.
   // Override-application failures (#1448) mean a PR silently shows its
   // un-overridden status — record each into the run's warnings[].
+  // Reload first: the overrides read here decide what the batch below writes
+  // (unshelve, lastDigest). Reading them from the state loaded before the
+  // network phases would persist decisions the dashboard already superseded.
+  stateManager.reloadIfChanged();
   const overrideFailures: string[] = [];
   const overriddenPRs = applyStatusOverrides(prs, stateManager.getState(), overrideFailures);
   for (const failure of overrideFailures) {
@@ -535,7 +560,7 @@ function partitionPRs(
   // Outer try-catch: save failure should not crash the daily check (in-memory mutations still apply).
   let digest: DailyDigest | undefined;
   try {
-    stateManager.batch(() => {
+    batchOnFreshBaseline(stateManager, () => {
       for (const pr of overriddenPRs) {
         if (stateManager.isPRShelved(pr.url)) {
           if (CRITICAL_STATUSES.has(pr.status)) {
@@ -621,14 +646,16 @@ function generateDigestOutput(
 ): DailyCheckResult {
   const stateManager = getStateManager();
 
-  // Assess capacity from active PRs only (shelved PRs excluded)
+  // Assess capacity from active PRs only (shelved PRs excluded). Reload first
+  // so maxActivePRs reflects a config change made while the run was fetching.
+  stateManager.reloadIfChanged();
   const capacity = assessCapacity(activePRs, stateManager.getState().config.maxActivePRs, shelvedPRs.length);
 
   // Filter dismissed issues: suppress if dismissed after last response, resurface + auto-undismiss if new activity.
   // Batch: undismissIssue calls trigger autoSave — batch produces a single disk write for all auto-undismisses.
   let filteredCommentedIssues: typeof commentedIssues = [];
   try {
-    stateManager.batch(() => {
+    batchOnFreshBaseline(stateManager, () => {
       filteredCommentedIssues = commentedIssues.filter((issue) => {
         const dismissedAt = stateManager.getIssueDismissedAt(issue.url);
         if (!dismissedAt) return true; // Not dismissed — include
@@ -878,7 +905,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     // just-merged/closed PR was open during a prior enriched run, its
     // openPRs entry carries firstMaintainerResponseAt for the ledger (#1461).
     const previousDigest = getStateManager().getState().lastDigest;
-    getStateManager().batch(() => {
+    batchOnFreshBaseline(getStateManager(), () => {
       const analyticsFailures = updateMonthlyAnalytics(
         prs,
         monthlyCounts,
