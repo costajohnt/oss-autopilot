@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "OSS Autopilot",
+    "subtitle": "Three interfaces over one deterministic core",
+    "output": "architecture.html"
+  },
+  "components": [
+    {
+      "id": "plugin",
+      "type": "frontend",
+      "label": "Claude Code Plugin",
+      "sublabel": "9 commands, 8 agents",
+      "pos": [
+        40,
+        110
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "mcp",
+      "type": "frontend",
+      "label": "MCP Server",
+      "sublabel": "@oss-autopilot/mcp",
+      "pos": [
+        40,
+        250
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "30 tools"
+    },
+    {
+      "id": "dash",
+      "type": "frontend",
+      "label": "Dashboard",
+      "sublabel": "Preact SPA",
+      "pos": [
+        40,
+        390
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "core",
+      "type": "backend",
+      "label": "Core + CLI",
+      "sublabel": "@oss-autopilot/core",
+      "pos": [
+        340,
+        250
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "--json contract"
+    },
+    {
+      "id": "scout",
+      "type": "backend",
+      "label": "oss-scout",
+      "sublabel": "issue search + vetting",
+      "pos": [
+        340,
+        110
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": "~/.oss-autopilot",
+      "sublabel": "state.json, cache, reports",
+      "pos": [
+        340,
+        390
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "0600 perms"
+    },
+    {
+      "id": "github",
+      "type": "external",
+      "label": "GitHub API",
+      "sublabel": "Search, PRs, checks",
+      "pos": [
+        640,
+        250
+      ],
+      "size": [
+        140,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Your machine",
+      "wraps": [
+        "plugin",
+        "mcp",
+        "dash",
+        "core",
+        "scout",
+        "state"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "plugin",
+      "to": "core",
+      "label": "CLI --json",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h",
+      "labelAt": [
+        262,
+        130
+      ]
+    },
+    {
+      "from": "mcp",
+      "to": "core",
+      "label": "imports"
+    },
+    {
+      "from": "dash",
+      "to": "core",
+      "label": "localhost:3000",
+      "fromSide": "right",
+      "toSide": "left",
+      "route": "orthogonal-h",
+      "labelAt": [
+        270,
+        430
+      ]
+    },
+    {
+      "from": "core",
+      "to": "scout",
+      "label": "bridge",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [
+        450,
+        210
+      ]
+    },
+    {
+      "from": "core",
+      "to": "state",
+      "label": "Zod-validated",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        473,
+        350
+      ]
+    },
+    {
+      "from": "core",
+      "to": "github",
+      "label": "Octokit + ETag cache",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Interfaces",
+      "items": [
+        "Plugin: slash commands and agents in Claude Code",
+        "MCP: Cursor, Claude Desktop, Codex, Windsurf",
+        "CLI: every command supports --json"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Core",
+      "items": [
+        "PR status classification in tested TypeScript",
+        "PRs fetched fresh each run, never stored",
+        "Rate-limit backoff and bounded concurrency"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Data",
+      "items": [
+        "Everything stays in ~/.oss-autopilot",
+        "Only outbound traffic is the GitHub API",
+        "Nothing posts without your approval"
+      ]
+    }
+  ]
+}
