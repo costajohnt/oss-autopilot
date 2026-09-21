@@ -93,7 +93,7 @@ Issue list updated automatically (PR merged):
 
 If an entry's `repoHeadingStruck` is `true`, append "(all issues for this repo are now done)". No action needed; the field is absent on runs where nothing was marked. Failures to update the list appear in `data.daily.warnings` under the `merge-loop` phase — surface those like any other warning.
 
-The action menu may also contain an `extract_learnings` item (key: `extract_learnings`) when recently merged PRs have no learnings extracted yet — present it like any other pre-computed item; it routes to `workflows/extract-learnings.md` via the Phase Routing Table in `commands/oss.md`.
+The action menu may also contain an `extract_learnings` item (key: `extract_learnings`) when recently merged PRs have no learnings extracted yet **and** `autoExtractLearnings` is `false` — present it like any other pre-computed item; it routes to `workflows/extract-learnings.md` via the Phase Routing Table in `commands/oss.md`. With the default `autoExtractLearnings: true` the item never appears: `data.daily.pendingLearnings` carries the repos instead and `commands/oss.md` extracts them in the background at startup (#1696).
 
 ### Ask for Action (Using Pre-Computed Menu)
 

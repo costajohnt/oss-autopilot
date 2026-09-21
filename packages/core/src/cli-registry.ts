@@ -69,7 +69,7 @@ export function handleCommandError(err: unknown, json?: boolean): never {
  *    the goldens were last updated.
  *    Commands: state (show/sync/unlink), vet, vet-list, track, comments,
  *    startup, dismiss, undismiss, stats, and the five
- *    guidelines subcommands (list/view/store/reset/fetch-corpus).
+ *    guidelines subcommands (list/view/store/reset/fetch-corpus/mark-extracted).
  *
  * (`dashboard serve` is exempt: it has no `--json` mode.)
  *
@@ -1614,6 +1614,92 @@ export const commands: CLICommandDef[] = [
         });
 
       group
+        .command('implement-blocked')
+        .description("Record that tonight's list issue could not be implemented, so the next run moves on (#1715)")
+        .requiredOption('--url <url>', 'The issue URL from the report\'s "Implement tonight" line')
+        .option('--note <text>', 'Why it was blocked')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () =>
+              (await import('./commands/overnight.js')).runOvernightImplementBlocked({
+                url: options.url,
+                note: options.note,
+              }),
+            (data) => {
+              console.log(`Recorded as blocked (${data.attemptCount} attempts on the list): ${data.url}`);
+              if (data.gistSyncWarning) console.log(`  Warning: ${data.gistSyncWarning}`);
+            },
+          );
+        });
+
+      group
+        .command('report')
+        .description(
+          'Print the latest morning report: the local file, or the copy the overnight machine published to the Gist (#1698)',
+        )
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          const { OvernightReportOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
+            options,
+            async () => (await import('./commands/overnight.js')).runOvernightReport(),
+            (data) => {
+              if (data.content === null) {
+                console.log(
+                  `No overnight report readable: ${data.reportPath} is not on this machine and nothing has been published to the Gist`,
+                );
+                return;
+              }
+              if (data.source === 'gist')
+                console.log(`(from the Gist; the file lives on the overnight machine at ${data.reportPath})\n`);
+              process.stdout.write(data.content.endsWith('\n') ? data.content : `${data.content}\n`);
+            },
+            OvernightReportOutputSchema,
+          );
+        });
+
+      group
+        .command('push-prep')
+        .description(
+          'Push the prepared branches of the latest run to prep/* on your fork (#1698). Post-tick step for a scheduler; the model never runs it',
+        )
+        .option('--dry-run', 'Resolve targets and print the plan without pushing')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          const { OvernightPushPrepOutputSchema } = await import('./formatters/json.js');
+          await executeAction(
+            options,
+            async () => {
+              const data = await (
+                await import('./commands/overnight-push-prep.js')
+              ).runOvernightPushPrep({
+                dryRun: Boolean(options.dryRun),
+              });
+              // Unattended: a scheduler only sees the exit code. The output
+              // (JSON or text) still prints in full.
+              if (data.failed > 0) process.exitCode = 1;
+              return data;
+            },
+            (data) => {
+              console.log(
+                `${data.dryRun ? 'Plan' : 'Pushed'} as @${data.login}: ${data.pushed} pushed, ${data.planned} planned, ${data.skipped} skipped, ${data.failed} failed`,
+              );
+              for (const r of data.results) {
+                const where = r.ref ? ` -> ${r.remote} ${r.ref}` : '';
+                console.log(`  [${r.status}] ${r.url} (${r.branch})${where}${r.reason ? `: ${r.reason}` : ''}`);
+                if (r.compareUrl) console.log(`    compare: ${r.compareUrl}`);
+              }
+              if (data.reportRecreated) console.log('  Warning: the report was missing and has been recreated');
+              if (data.reportWarning) console.log(`  Warning: ${data.reportWarning}`);
+              if (data.gistSyncWarning) console.log(`  Warning: ${data.gistSyncWarning}`);
+            },
+            OvernightPushPrepOutputSchema,
+          );
+        });
+
+      group
         .command('schedule')
         .description('Render (or with --install, write) the launchd plist that runs /oss-overnight nightly')
         .option('--hour <n>', 'Local hour to run, 0-23', '2')
@@ -1630,7 +1716,7 @@ export const commands: CLICommandDef[] = [
                 install: Boolean(options.install),
               }),
             (data) => {
-              if (data.installed) console.log(`Wrote ${data.plistPath}`);
+              if (data.installed) console.log(`Wrote ${data.plistPath} and ${data.settingsPath}`);
               else console.log(data.plist);
               console.log(`
 Load it with:
@@ -1752,6 +1838,23 @@ Load it with:
             },
             (data) => {
               console.log(`Stored ${data.byteSize} bytes of guidelines for ${data.repo}.`);
+            },
+          );
+        });
+
+      group
+        .command('mark-extracted')
+        .description(
+          'Stamp learningsExtractedAt on fetched PRs of a repo so daily stops reporting them as unextracted (#1696)',
+        )
+        .requiredOption('--repo <owner/repo>', 'Repository identifier')
+        .option('--json', 'Output as JSON')
+        .action(async (options) => {
+          await executeAction(
+            options,
+            async () => (await import('./commands/guidelines.js')).runMarkExtracted({ repo: options.repo }),
+            (data) => {
+              console.log(`Marked ${data.marked} PR(s) in ${data.repo} as extracted.`);
             },
           );
         });

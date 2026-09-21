@@ -42,9 +42,9 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
   // ── Capacity / dormancy ──────────────────────────────────────────────
   {
     key: 'maxActivePRs',
-    description: 'Soft cap on how many active PRs you want to juggle at once.',
+    description: 'Soft cap on how many active PRs you want to juggle at once. 0 disables the cap.',
     settableVia: 'setup',
-    valueHint: 'positive integer',
+    valueHint: 'non-negative integer (0 = no limit)',
   },
   {
     key: 'dormantDays',
@@ -218,7 +218,7 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
   },
   {
     key: 'skippedIssuesPath',
-    description: 'Path to the skipped-issues file (auto-culls entries older than 90 days).',
+    description: 'Path to the skipped-issues file (entries are permanent).',
     settableVia: 'setup',
     valueHint: 'filesystem path',
   },
@@ -247,6 +247,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     description: 'Where to store state.json — local file or GitHub Gist.',
     settableVia: 'setup',
     valueHint: 'one of: local,gist',
+  },
+  {
+    key: 'autoExtractLearnings',
+    description:
+      'Extract per-repo learnings from freshly merged PRs automatically at /oss startup and overnight (#1696). false restores the extract_learnings action-menu item.',
+    settableVia: 'setup',
+    valueHint: 'true|false',
   },
   {
     key: 'autoFormatBeforePush',

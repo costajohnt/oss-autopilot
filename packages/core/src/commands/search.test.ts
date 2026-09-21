@@ -38,6 +38,24 @@ import { getStateManager, maybeCheckpoint } from '../core/index.js';
 import { createAutopilotScout, type ScoutBridgeDiagnostics } from './scout-bridge.js';
 import { runSearch, recordSearchSeen, parseSearchStrategies, SEARCH_SEEN_RETENTION_DAYS } from './search.js';
 
+/** A scout `ProjectHealth` success snapshot for a healthy, active repo. */
+function healthyProjectHealth(repo: string) {
+  return {
+    repo,
+    isActive: true,
+    lastCommitAt: '2026-09-17T00:00:00Z',
+    daysSinceLastCommit: 2,
+    ciStatus: 'passing' as const,
+    openIssuesCount: 10,
+    stargazersCount: 500,
+    forksCount: 50,
+    avgIssueResponseDays: 0,
+    recentMergedPRCount: 9,
+    recentMergeRate: 0.9,
+    checkFailed: false as const,
+  };
+}
+
 const mockGetStateManager = vi.mocked(getStateManager);
 const mockMaybeCheckpoint = vi.mocked(maybeCheckpoint);
 
@@ -197,6 +215,7 @@ describe('runSearch', () => {
           reasonsToSkip: [],
           searchPriority: 'high',
           viabilityScore: 85,
+          projectHealth: healthyProjectHealth('owner/repo'),
         },
       ],
       excludedRepos: ['excluded/repo'],
@@ -433,6 +452,68 @@ describe('runSearch', () => {
     // High merge rate (20/23 ≈ 87%) + fast response → at worst 4 after the
     // one-band drop for unknown commit activity. Assert it beat the floor of 1.
     expect(result.candidates[0].grade.score).toBeGreaterThan(1);
+  });
+
+  it('grades a never-contributed repo from the health scout fetched while vetting (#332)', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [
+        {
+          issue: {
+            repo: 'new/repo',
+            number: 1,
+            title: 'Issue',
+            url: 'https://github.com/new/repo/issues/1',
+            labels: [],
+          },
+          recommendation: 'approve',
+          reasonsToApprove: [],
+          reasonsToSkip: [],
+          searchPriority: 'high',
+          viabilityScore: 88,
+          projectHealth: healthyProjectHealth('new/repo'),
+        },
+      ],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+
+    const result = await runSearch({ maxResults: 5 });
+
+    // No repoScore (never contributed), but scout's health says 90% merge rate
+    // and commits this week: 10 for both, one-band drop for unknown response → 7.
+    expect(result.candidates[0].grade.score).toBe(7);
+    expect(result.candidates[0].recommendation).toBe('approve');
+  });
+
+  it('downgrades an approve whose grade is the bottom band (#332)', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [
+        {
+          issue: {
+            repo: 'dead/repo',
+            number: 1,
+            title: 'Issue',
+            url: 'https://github.com/dead/repo/issues/1',
+            labels: [],
+          },
+          recommendation: 'approve',
+          reasonsToApprove: [],
+          reasonsToSkip: [],
+          searchPriority: 'high',
+          viabilityScore: 95,
+          projectHealth: { ...healthyProjectHealth('dead/repo'), recentMergeRate: 0.05, daysSinceLastCommit: 200 },
+        },
+      ],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+
+    const result = await runSearch({ maxResults: 5 });
+
+    expect(result.candidates[0].grade.score).toBe(1);
+    expect(result.candidates[0].recommendation).toBe('needs_review');
   });
 
   it('surfaces a linkedPR slice with isStalled=true for an open PR last updated >30 days ago', async () => {

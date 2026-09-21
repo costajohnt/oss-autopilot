@@ -63,6 +63,14 @@ export interface GuidelinesStoreOutput {
   gistSyncWarning?: string;
 }
 
+export interface MarkExtractedOutput {
+  repo: string;
+  /** PRs stamped `learningsExtractedAt` this call. */
+  marked: number;
+  /** Set when the post-mutation Gist checkpoint failed; the local mutation succeeded (#1370). */
+  gistSyncWarning?: string;
+}
+
 export interface GuidelinesResetOutput {
   repo: string;
   /** True when an existing file was tombstoned, false when no file existed. */
@@ -168,6 +176,28 @@ export async function runGuidelinesStore(options: StoreOptions): Promise<Guideli
     stored: true,
     ...(gistSyncWarning ? { gistSyncWarning } : {}),
   };
+}
+
+/**
+ * Stamp `learningsExtractedAt` on every merged/closed PR of `repo` whose
+ * comment bundle was fetched (`commentsFetchedAt` set) but not yet marked
+ * extracted (#1696). The host calls this after storing guidelines, or after
+ * deciding a corpus carried no signal, so `daily` stops reporting those PRs
+ * as unextracted. Idempotent: already-stamped PRs are left alone.
+ */
+export async function runMarkExtracted(options: RepoOption): Promise<MarkExtractedOutput> {
+  validateRepo(options.repo);
+  const sm = getStateManager();
+  const repoUrlPrefix = `https://github.com/${options.repo}/`;
+  const now = new Date().toISOString();
+  let marked = 0;
+  for (const pr of [...(sm.getMergedPRs() ?? []), ...(sm.getClosedPRs() ?? [])]) {
+    if (!pr.url.startsWith(repoUrlPrefix) || !pr.commentsFetchedAt || pr.learningsExtractedAt) continue;
+    sm.markPRLearningsExtracted(pr.url, now);
+    marked++;
+  }
+  const gistSyncWarning = marked > 0 ? await maybeCheckpoint(sm, MODULE) : null;
+  return { repo: options.repo, marked, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
 }
 
 /** Tombstone the guidelines file for `repo`. */

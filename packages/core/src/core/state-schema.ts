@@ -292,6 +292,13 @@ export const AgentConfigSchema = z.object({
   diffToolCustomCommand: z.string().optional(),
 
   /**
+   * Extract per-repo learnings from freshly merged PRs automatically at
+   * `/oss` startup and in `/oss-overnight` (#1696). When false, `daily`
+   * offers the extraction as an `extract_learnings` action-menu item instead.
+   */
+  autoExtractLearnings: z.boolean().default(true),
+
+  /**
    * No effect since the hook was removed in #1642; kept for state-file
    * compatibility.
    */
@@ -454,27 +461,63 @@ export const SearchSeenEntrySchema = z.object({
   lastSeenAt: z.string(),
 });
 
-/** One branch an overnight agent prepared locally (#1574). Never pushed by the run. */
+/**
+ * One branch an overnight agent prepared locally (#1574). Never pushed by the
+ * run; `overnight push-prep` (#1698) may later stage it under `prep/*` on the
+ * user's fork and fills in `pushedRef`, `pushedAt` and `compareUrl`.
+ */
 export const OvernightPreparedSchema = z.object({
   url: z.string(),
   branch: z.string(),
   worktree: z.string().optional(),
   note: z.string().optional(),
   recordedAt: z.string(),
+  /** Branch name on the fork (`prep/<branch>`), set by `overnight push-prep`. */
+  pushedRef: z.string().optional(),
+  pushedAt: z.string().optional(),
+  /** `<fork>/compare/<pr-head>...prep/<branch>`; absent when the PR head could not be read. */
+  compareUrl: z.string().optional(),
+  /** Why the last `overnight push-prep` did not push this branch; cleared once it is pushed. */
+  pushProblem: z.string().optional(),
 });
 
 /** The latest overnight run (#1574); `startup` surfaces its freshness. */
+/**
+ * One list issue the overnight run tried to implement (#1715). Kept across
+ * runs so a blocked issue is not retried every night; cleared when the
+ * issue leaves the list.
+ */
+export const OvernightImplementAttemptSchema = z.object({
+  url: z.string(),
+  attemptedAt: z.string(),
+  outcome: z.enum(['prepared', 'blocked']),
+  note: z.string().optional(),
+});
+
 export const OvernightRecordSchema = z.object({
   runAt: z.string(),
   reportPath: z.string(),
   prepareCount: z.number().int().nonnegative(),
   judgmentCount: z.number().int().nonnegative(),
   prepared: z.array(OvernightPreparedSchema).default([]),
+  /** The one curated-list issue picked for implementation this run, if any (#1715). */
+  implementUrl: z.string().optional(),
+  implementAttempts: z.array(OvernightImplementAttemptSchema).optional(),
 });
 
-/** Mirrors oss-scout's `searchRotation` (broad-phase language cursor). */
+/**
+ * Mirrors oss-scout's `searchRotation`: the broad-phase language cursor, the
+ * repo-window cursors of the capped phases, and the round-robin strategy
+ * cursor (oss-scout 1.7.0). Every field must be listed: z.object strips
+ * unknown keys, so a cursor missing here would be dropped on every load and
+ * scout's rotation would restart from 0 each search.
+ */
 export const SearchRotationSchema = z.object({
   languageOffset: z.number().int().nonnegative().default(0),
+  phase0Offset: z.number().int().nonnegative().default(0),
+  starredOffset: z.number().int().nonnegative().default(0),
+  maintainedOffset: z.number().int().nonnegative().default(0),
+  strategyOffset: z.number().int().nonnegative().default(0),
   lastRotatedAt: z.string().optional(),
 });
 
@@ -564,6 +607,7 @@ export type DiffTool = z.infer<typeof DiffToolSchema>;
 export type SearchSeenEntry = z.infer<typeof SearchSeenEntrySchema>;
 export type OvernightPrepared = z.infer<typeof OvernightPreparedSchema>;
 export type OvernightRecord = z.infer<typeof OvernightRecordSchema>;
+export type OvernightImplementAttempt = z.infer<typeof OvernightImplementAttemptSchema>;
 export type SearchRotation = z.infer<typeof SearchRotationSchema>;
 export type RepoSignals = z.infer<typeof RepoSignalsSchema>;
 export type RepoScore = z.infer<typeof RepoScoreSchema>;
