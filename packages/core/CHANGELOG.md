@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.28.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.28.0...core-v3.28.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* **core:** ship the dashboard assets in the npm package ([#1741](https://github.com/costajohnt/oss-autopilot/issues/1741)) ([05b5970](https://github.com/costajohnt/oss-autopilot/commit/05b5970c14e1024f768ce58d0381e3562265dde0))
+* **overnight:** refuse post, claim and push-prep during an unattended run ([#1740](https://github.com/costajohnt/oss-autopilot/issues/1740)) ([dc84dad](https://github.com/costajohnt/oss-autopilot/commit/dc84dadad10e5fc60a03a57d6912286d3f1ae39f))
+* **pr-monitor:** keep a reviewer's verdict when they later comment, and paginate reviews and check runs ([#1738](https://github.com/costajohnt/oss-autopilot/issues/1738)) ([a2dfa40](https://github.com/costajohnt/oss-autopilot/commit/a2dfa40127740fa6fc75739abe322f52ac9f189a))
+
 ## [3.28.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.27.0...core-v3.28.0) (2026-09-21)
 
 
