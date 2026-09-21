@@ -22,8 +22,10 @@ function makeOutput(available: ParsedIssueItem[] = [], completed: ParsedIssueIte
   return {
     available,
     completed,
+    blocked: [],
     availableCount: available.length,
     completedCount: completed.length,
+    blockedCount: 0,
   };
 }
 
@@ -39,6 +41,13 @@ describe('VettedIssueList', () => {
     const backBtn = screen.getByRole('button', { name: /back/i });
     fireEvent.click(backBtn);
     expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it('reads stars and language from the ### group heading when repoMetadata is missing (#1730)', () => {
+    const item = makeItem({ tier: 'Pursue', group: '[owner/repo](https://github.com/owner/repo) (1.5k★) (Rust)' });
+    render(<VettedIssueList vettedIssues={makeOutput([item])} onBack={() => {}} />);
+    expect(screen.getByText('★ 1.5k')).toBeTruthy();
+    expect(screen.getByText('Rust')).toBeTruthy();
   });
 
   it('renders empty state when no items', () => {

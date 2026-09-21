@@ -222,7 +222,11 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
 
   const parsed = await runParseList({ filePath: issueListPath });
 
-  if (parsed.available.length === 0) {
+  // Blocked items (#1730) are re-vetted too: they wait longest, so they are the
+  // likeliest to be closed or claimed in the meantime.
+  const items = [...parsed.available, ...parsed.blocked];
+
+  if (items.length === 0) {
     return {
       results: [],
       summary: {
@@ -238,8 +242,6 @@ export async function runVetList(options: VetListOptions = {}): Promise<VetListO
       },
     };
   }
-
-  const items = parsed.available;
 
   // 2. Verify FIRST (#1494): one deterministic GraphQL check per entry, in a
   //    bounded batch. The verdict is closing-vs-mention aware, so it carries
