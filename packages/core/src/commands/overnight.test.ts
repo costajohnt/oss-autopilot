@@ -503,6 +503,10 @@ describe('schedule', () => {
       'Bash(node --eval *)',
       'Bash(node -p *)',
       'Bash(node --print *)',
+      'Bash(node -pe *)',
+      'Bash(node * -e *)',
+      'Bash(npm * exec *)',
+      'Bash(pnpm * exec *)',
       'AskUserQuestion',
     ]) {
       expect(denied).toContain(must);

@@ -609,13 +609,21 @@ export const OVERNIGHT_DISALLOWED_TOOLS = [
   'Bash(npm exec *)',
   'Bash(npm x)',
   'Bash(npm x *)',
+  'Bash(npm * exec *)',
   'Bash(pnpm dlx *)',
+  'Bash(pnpm * dlx *)',
   'Bash(pnpm exec)',
   'Bash(pnpm exec *)',
+  'Bash(pnpm * exec *)',
   'Bash(node -e *)',
   'Bash(node --eval *)',
   'Bash(node -p *)',
+  'Bash(node -pe *)',
   'Bash(node --print *)',
+  // The same escapes after a leading flag (`node --no-warnings -e`,
+  // `pnpm --dir x exec`), mirroring the `git * push` deny.
+  'Bash(node * -e *)',
+  'Bash(node * --eval *)',
   'AskUserQuestion',
 ].join(',');
 
