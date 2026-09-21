@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.7.5](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.4...mcp-v5.7.5) (2026-09-21)
+
+
+### Bug Fixes
+
+* **guidelines:** label stored guidelines on the CLI path the workflows use ([#1751](https://github.com/costajohnt/oss-autopilot/issues/1751)) ([06429d6](https://github.com/costajohnt/oss-autopilot/commit/06429d6d95c7dbdc6510e8e04b92e88bf16b2c80))
+
 ## [5.7.4](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.3...mcp-v5.7.4) (2026-09-12)
 
 

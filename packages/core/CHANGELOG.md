@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.28.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.28.1...core-v3.28.2) (2026-09-21)
+
+
+### Bug Fixes
+
+* **guidelines:** label stored guidelines on the CLI path the workflows use ([#1751](https://github.com/costajohnt/oss-autopilot/issues/1751)) ([06429d6](https://github.com/costajohnt/oss-autopilot/commit/06429d6d95c7dbdc6510e8e04b92e88bf16b2c80))
+* **overnight:** keep agent and third-party text off shell command lines ([#1748](https://github.com/costajohnt/oss-autopilot/issues/1748)) ([cee0b72](https://github.com/costajohnt/oss-autopilot/commit/cee0b722e0c9e997b520eb3bfa2b26871f845db6))
+* **repo-score:** let a low score expire for someone who runs daily ([#1750](https://github.com/costajohnt/oss-autopilot/issues/1750)) ([5dde1e4](https://github.com/costajohnt/oss-autopilot/commit/5dde1e476c4ef60b89d37a43bd2e731d3372f0b5))
+* **state:** take the compare-and-swap baseline before the read, and refresh it in daily ([#1746](https://github.com/costajohnt/oss-autopilot/issues/1746)) ([d02dcc7](https://github.com/costajohnt/oss-autopilot/commit/d02dcc7d3d6d700af4c2780db818ab6fcf173f07))
+* **status:** never hide a merge conflict behind a waiting status ([#1749](https://github.com/costajohnt/oss-autopilot/issues/1749)) ([ac57482](https://github.com/costajohnt/oss-autopilot/commit/ac574829b372c9f53c8c90f8abdca44a777975b0))
+
 ## [3.28.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.28.0...core-v3.28.1) (2026-09-21)
 
 
