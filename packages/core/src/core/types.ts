@@ -133,7 +133,7 @@ export interface RepoGroup {
   prs: FetchedPR[];
 }
 
-/** GitHub's pull request review decision (from the reviewDecision GraphQL field). */
+/** Pull request review decision, computed from the PR's reviews by `determineReviewDecision`. */
 export type ReviewDecision = 'approved' | 'changes_requested' | 'review_required' | 'unknown';
 
 /** Input options for `determineStatus()` (see status-determination.ts). */
