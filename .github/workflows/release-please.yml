@@ -69,6 +69,13 @@ jobs:
           pnpm --filter @oss-autopilot/core run prepublishOnly
           pnpm --filter @oss-autopilot/core pack --pack-destination "$RUNNER_TEMP/pkg-core"
 
+      # `dashboard serve` from npm needs the SPA inside this tarball: the
+      # dashboard package is private. Fail here rather than ship without it.
+      - name: Verify the tarball carries the dashboard assets
+        # No `grep -q`: it exits at the first match, tar dies of SIGPIPE, and
+        # the step's `pipefail` shell would fail a good tarball.
+        run: tar -tzf "$RUNNER_TEMP"/pkg-core/*.tgz | grep -x 'package/dist/dashboard/index.html'
+
       - name: Publish @oss-autopilot/core
         run: npm publish "$RUNNER_TEMP"/pkg-core/*.tgz --access public --provenance
 

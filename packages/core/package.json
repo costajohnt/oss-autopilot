@@ -40,7 +40,8 @@
     "test:watch": "vitest",
     "docs": "typedoc",
     "docs:check": "typedoc --emit none",
-    "prepublishOnly": "pnpm run build && pnpm run bundle"
+    "bundle:dashboard": "pnpm --filter @oss-autopilot/dashboard run build && node -e \"const fs=require('fs');fs.rmSync('dist/dashboard',{recursive:true,force:true});fs.cpSync('../dashboard/dist','dist/dashboard',{recursive:true})\"",
+    "prepublishOnly": "pnpm run build && pnpm run bundle && pnpm run bundle:dashboard"
   },
   "keywords": [
     "open-source",
