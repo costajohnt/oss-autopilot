@@ -109,6 +109,42 @@ describe('PRMonitor CI status deduplication', () => {
     expect(result.failingCheckNames).toEqual([]);
   });
 
+  it('should see a failing check that sits beyond the first page of check runs', async () => {
+    const passing = (i: number) => ({
+      name: `check-${i}`,
+      status: 'completed',
+      conclusion: 'success',
+      started_at: '2026-02-07T02:02:00Z',
+    });
+    const listForRef = vi.fn().mockImplementation(({ page }: { page: number }) =>
+      Promise.resolve({
+        data: {
+          check_runs:
+            page === 1
+              ? Array.from({ length: 100 }, (_, i) => passing(i))
+              : [
+                  {
+                    name: 'late-failure',
+                    status: 'completed',
+                    conclusion: 'failure',
+                    started_at: '2026-02-07T02:02:00Z',
+                  },
+                ],
+        },
+      }),
+    );
+    mockOctokitInstance = {
+      repos: { getCombinedStatusForRef: vi.fn().mockResolvedValue(emptyCombinedStatus) },
+      checks: { listForRef },
+    };
+
+    const result = await getCIStatus(mockOctokitInstance, 'owner', 'repo', 'abc123');
+
+    expect(listForRef).toHaveBeenCalledWith(expect.objectContaining({ per_page: 100, page: 2 }));
+    expect(result.status).toBe('failing');
+    expect(result.failingCheckNames).toEqual(['late-failure']);
+  });
+
   it('should report failing when the latest run of a check is a failure', async () => {
     mockOctokitInstance = {
       repos: {
@@ -2997,6 +3033,85 @@ describe('fetchPRDetails firstMaintainerResponseAt (#1461)', () => {
 
     expect(prs).toHaveLength(1);
     expect(prs[0].firstMaintainerResponseAt).toBeUndefined();
+  });
+});
+
+describe('fetchPRDetails review pagination', () => {
+  beforeEach(() => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: { githubUsername: 'testuser', excludeRepos: [], excludeOrgs: [] },
+      }),
+    );
+  });
+
+  it('reads a CHANGES_REQUESTED review that sits beyond the first page', async () => {
+    const prUrl = 'https://github.com/owner/repo/pull/1';
+    const commented = (i: number) => ({
+      state: 'COMMENTED',
+      user: { login: `bystander-${i}` },
+      submitted_at: '2026-02-02T00:00:00Z',
+    });
+    const listReviews = vi.fn().mockImplementation(({ page }: { page: number }) =>
+      Promise.resolve({
+        data:
+          page === 1
+            ? Array.from({ length: 100 }, (_, i) => commented(i))
+            : [{ state: 'CHANGES_REQUESTED', user: { login: 'maintainer' }, submitted_at: '2026-02-06T00:00:00Z' }],
+      }),
+    );
+    mockOctokitInstance = {
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: {
+            total_count: 1,
+            items: [
+              {
+                html_url: prUrl,
+                title: 'Test PR',
+                pull_request: { html_url: prUrl },
+                created_at: '2026-02-01T00:00:00Z',
+                updated_at: '2026-02-07T00:00:00Z',
+              },
+            ],
+          },
+        }),
+      },
+      pulls: {
+        get: vi.fn().mockResolvedValue({
+          data: {
+            id: 1,
+            title: 'Test PR',
+            created_at: '2026-02-01T00:00:00Z',
+            updated_at: '2026-02-07T00:00:00Z',
+            head: { sha: 'abc123' },
+            mergeable: true,
+            mergeable_state: 'clean',
+            body: '',
+            draft: false,
+            review_comments: 0,
+            commits: 1,
+          },
+        }),
+        listReviews,
+        listReviewComments: vi.fn().mockResolvedValue({ data: [] }),
+      },
+      issues: { listComments: vi.fn().mockResolvedValue({ data: [] }) },
+      repos: {
+        getCombinedStatusForRef: vi.fn().mockResolvedValue({ data: { state: 'success', statuses: [] } }),
+        getCommit: vi.fn().mockResolvedValue({
+          data: { commit: { author: { date: '2026-02-01T00:00:00Z' } }, author: { login: 'testuser' } },
+        }),
+      },
+      checks: { listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [] } }) },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
+
+    expect(listReviews).toHaveBeenCalledWith(expect.objectContaining({ per_page: 100, page: 2 }));
+    expect(prs).toHaveLength(1);
+    expect(prs[0].reviewDecision).toBe('changes_requested');
   });
 });
 

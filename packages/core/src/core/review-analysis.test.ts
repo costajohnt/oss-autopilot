@@ -89,6 +89,30 @@ describe('determineReviewDecision', () => {
     expect(result).toBe('approved');
   });
 
+  it('keeps CHANGES_REQUESTED when the same reviewer later leaves a COMMENTED review', () => {
+    const result = determineReviewDecision([
+      { state: 'CHANGES_REQUESTED', user: { login: 'reviewer1' } },
+      { state: 'COMMENTED', user: { login: 'reviewer1' } },
+    ]);
+    expect(result).toBe('changes_requested');
+  });
+
+  it('keeps APPROVED when the same reviewer later leaves a COMMENTED review', () => {
+    const result = determineReviewDecision([
+      { state: 'APPROVED', user: { login: 'reviewer1' } },
+      { state: 'COMMENTED', user: { login: 'reviewer1' } },
+    ]);
+    expect(result).toBe('approved');
+  });
+
+  it('clears a reviewer verdict when their review is DISMISSED', () => {
+    const result = determineReviewDecision([
+      { state: 'CHANGES_REQUESTED', user: { login: 'reviewer1' } },
+      { state: 'DISMISSED', user: { login: 'reviewer1' } },
+    ]);
+    expect(result).toBe('review_required');
+  });
+
   it('should return review_required for COMMENTED-only reviews', () => {
     expect(determineReviewDecision([{ state: 'COMMENTED', user: { login: 'reviewer1' } }])).toBe('review_required');
   });
