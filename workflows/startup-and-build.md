@@ -93,7 +93,7 @@ The output is a single JSON object with the standard envelope: `{ success: boole
 | `data.dashboardUrl` | URL of interactive dashboard SPA (e.g., `http://localhost:3000`) | Show `Dashboard: <url>` so user can re-open it |
 | `data.dashboardBuildStatus` | `'fresh' \| 'rebuilt' \| 'failed' \| 'missing-pnpm'` (when set by the workflow) | If `'failed'` or `'missing-pnpm'`, render the warning below before the action menu |
 | `data.dashboardBuildErrorTail` | Last few lines of the dashboard build log when `dashboardBuildStatus` is a failure | Quote in the warning so the user sees what broke |
-| `data.issueList` | Issue list info (if detected) | `hasIssueList` = present; extract `path`, `source`, `availableCount`, `completedCount` |
+| `data.issueList` | Issue list info (if detected) | `hasIssueList` = present; extract `path`, `source`, `availableCount`, `completedCount`, `blockedCount` (blocked items are not in `availableCount`) |
 | `data.overnight` | Latest `/oss-overnight` run (#1574): `runAt`, `reportPath`, `ageHours` (absent with `runAtInvalid: true` when the timestamp is unparseable), `prepareCount`, `judgmentCount`, `preparedCount`, `reportAvailable` (`local`, `gist` or `none`, #1698) | If present and `ageHours < 24`, show one line before the action menu: `Overnight report (<ageHours>h ago): <preparedCount> branches prepared, <judgmentCount> need your judgment — <reportPath>`. When `reportAvailable` is `gist`, the run happened on another machine: say `(published from another machine; read it with \`overnight report\`)` instead of the path. Older than 24h or `runAtInvalid`: say nothing. |
 
 **Routing based on parsed data:**

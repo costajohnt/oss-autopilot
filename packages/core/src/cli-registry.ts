@@ -1176,10 +1176,18 @@ export const commands: CLICommandDef[] = [
               const path = await import('node:path');
               const resolvedPath = path.resolve(filePath);
               console.log(`\n\ud83d\udccb Issue List: ${resolvedPath}\n`);
-              console.log(`Available: ${data.availableCount} | Completed: ${data.completedCount}\n`);
+              console.log(
+                `Available: ${data.availableCount} | Completed: ${data.completedCount} | Blocked: ${data.blockedCount}\n`,
+              );
               if (data.available.length > 0) {
                 console.log('--- Available ---');
                 for (const item of data.available) {
+                  console.log(`  [${item.tier}] ${item.repo}#${item.number}: ${item.title}`);
+                }
+              }
+              if (data.blocked.length > 0) {
+                console.log('\n--- Blocked ---');
+                for (const item of data.blocked) {
                   console.log(`  [${item.tier}] ${item.repo}#${item.number}: ${item.title}`);
                 }
               }

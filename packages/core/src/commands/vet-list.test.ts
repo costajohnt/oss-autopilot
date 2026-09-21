@@ -320,6 +320,7 @@ describe('runVetList', () => {
       source: 'configured',
       availableCount: 2,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockRunParseList.mockResolvedValue({
       available: [
@@ -339,8 +340,10 @@ describe('runVetList', () => {
         },
       ],
       completed: [],
+      blocked: [],
       availableCount: 2,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockVerifyIssuesBatch.mockResolvedValue([
       {
@@ -405,12 +408,63 @@ describe('runVetList', () => {
     expect(mockVetIssue).toHaveBeenCalledWith('https://github.com/other/lib/issues/2');
   });
 
+  it('re-vets blocked items even when nothing is available (#1730)', async () => {
+    const blockedItem = {
+      repo: 'owner/repo',
+      number: 1,
+      title: 'Queued one',
+      tier: 'Queued',
+      url: 'https://github.com/owner/repo/issues/1',
+    };
+    mockDetectIssueList.mockReturnValue({
+      path: '/tmp/issues.md',
+      source: 'configured',
+      availableCount: 0,
+      completedCount: 0,
+      blockedCount: 1,
+    });
+    mockRunParseList.mockResolvedValue({
+      available: [],
+      completed: [],
+      blocked: [blockedItem],
+      availableCount: 0,
+      completedCount: 0,
+      blockedCount: 1,
+    });
+    mockVerifyIssuesBatch.mockResolvedValue([
+      {
+        params: { owner: 'owner', repo: 'repo', number: 1 },
+        verification: {
+          url: blockedItem.url,
+          owner: 'owner',
+          repo: 'repo',
+          number: 1,
+          title: 'Queued one',
+          state: 'closed',
+          stateReason: 'completed',
+          closedAt: null,
+          assignees: [],
+          linkedPRs: [],
+          verdict: 'closed',
+          verdictReason: 'issue closed (completed)',
+          userLogin: 'costajohnt',
+        },
+      },
+    ]);
+
+    const result = await runVetList({ concurrency: 1 });
+
+    expect(result.summary.total).toBe(1);
+    expect(result.results[0].listStatus).toBe('closed');
+  });
+
   it('tags scout-fallback rows with verifyError when verify failed transiently (#1494)', async () => {
     mockDetectIssueList.mockReturnValue({
       path: '/tmp/issues.md',
       source: 'configured',
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockRunParseList.mockResolvedValue({
       available: [
@@ -423,8 +477,10 @@ describe('runVetList', () => {
         },
       ],
       completed: [],
+      blocked: [],
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     });
     // beforeEach default: verify errors transiently for every entry.
     mockVetIssue.mockResolvedValueOnce({
@@ -457,6 +513,7 @@ describe('runVetList', () => {
       source: 'configured',
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     });
     // parse-list also accepts PR URLs; verify-issue can't classify them, so they
     // are never enrolled in the verify batch.
@@ -471,8 +528,10 @@ describe('runVetList', () => {
         },
       ],
       completed: [],
+      blocked: [],
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockVerifyIssuesBatch.mockResolvedValue([]); // no issue targets enrolled
     mockVetIssue.mockResolvedValueOnce({
@@ -505,6 +564,7 @@ describe('runVetList', () => {
       source: 'configured',
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockRunParseList.mockResolvedValue({
       available: [
@@ -517,8 +577,10 @@ describe('runVetList', () => {
         },
       ],
       completed: [],
+      blocked: [],
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockVerifyIssuesBatch.mockResolvedValue([
       {
@@ -559,6 +621,7 @@ describe('runVetList', () => {
       source: 'configured',
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockRunParseList.mockResolvedValue({
       available: [
@@ -571,8 +634,10 @@ describe('runVetList', () => {
         },
       ],
       completed: [],
+      blocked: [],
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockVerifyIssuesBatch.mockResolvedValue([
       {
@@ -631,8 +696,16 @@ describe('runVetList', () => {
       source: 'configured',
       availableCount: 0,
       completedCount: 0,
+      blockedCount: 0,
     });
-    mockRunParseList.mockResolvedValue({ available: [], completed: [], availableCount: 0, completedCount: 0 });
+    mockRunParseList.mockResolvedValue({
+      available: [],
+      completed: [],
+      blocked: [],
+      availableCount: 0,
+      completedCount: 0,
+      blockedCount: 0,
+    });
 
     const result = await runVetList();
 
@@ -656,6 +729,7 @@ describe('runVetList', () => {
       source: 'configured',
       availableCount: 2,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockRunParseList.mockResolvedValue({
       available: [
@@ -675,8 +749,10 @@ describe('runVetList', () => {
         },
       ],
       completed: [],
+      blocked: [],
       availableCount: 2,
       completedCount: 0,
+      blockedCount: 0,
     });
 
     const candidate1 = {
@@ -727,6 +803,7 @@ describe('runVetList', () => {
       source: 'configured',
       availableCount: 2,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockRunParseList.mockResolvedValue({
       available: [
@@ -746,8 +823,10 @@ describe('runVetList', () => {
         },
       ],
       completed: [],
+      blocked: [],
       availableCount: 2,
       completedCount: 0,
+      blockedCount: 0,
     });
 
     const candidate1 = {
@@ -778,7 +857,14 @@ describe('runVetList', () => {
   });
 
   it('should use provided path instead of auto-detecting', async () => {
-    mockRunParseList.mockResolvedValue({ available: [], completed: [], availableCount: 0, completedCount: 0 });
+    mockRunParseList.mockResolvedValue({
+      available: [],
+      completed: [],
+      blocked: [],
+      availableCount: 0,
+      completedCount: 0,
+      blockedCount: 0,
+    });
 
     await runVetList({ issueListPath: '/custom/path.md' });
 
@@ -792,8 +878,16 @@ describe('runVetList', () => {
       source: 'auto-detected',
       availableCount: 0,
       completedCount: 0,
+      blockedCount: 0,
     });
-    mockRunParseList.mockResolvedValue({ available: [], completed: [], availableCount: 0, completedCount: 0 });
+    mockRunParseList.mockResolvedValue({
+      available: [],
+      completed: [],
+      blocked: [],
+      availableCount: 0,
+      completedCount: 0,
+      blockedCount: 0,
+    });
 
     await runVetList();
 
@@ -807,6 +901,7 @@ describe('runVetList', () => {
       source: 'configured',
       availableCount: 3,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockRunParseList.mockResolvedValue({
       available: [
@@ -815,8 +910,10 @@ describe('runVetList', () => {
         { repo: 'e/f', number: 3, title: 'Three', tier: 'T1', url: 'https://github.com/e/f/issues/3' },
       ],
       completed: [],
+      blocked: [],
       availableCount: 3,
       completedCount: 0,
+      blockedCount: 0,
     });
 
     const makeCandidate = (repo: string, num: number, title: string, url: string) => ({
@@ -846,6 +943,7 @@ describe('runVetList', () => {
       source: 'configured',
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockRunParseList.mockResolvedValue({
       available: [
@@ -858,8 +956,10 @@ describe('runVetList', () => {
         },
       ],
       completed: [],
+      blocked: [],
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     });
 
     mockVetIssue.mockRejectedValueOnce('string error');
@@ -878,6 +978,7 @@ describe('runVetList', () => {
       source: 'configured',
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockRunParseList.mockResolvedValue({
       available: [
@@ -890,8 +991,10 @@ describe('runVetList', () => {
         },
       ],
       completed: [],
+      blocked: [],
       availableCount: 1,
       completedCount: 0,
+      blockedCount: 0,
     });
     mockVetIssue.mockResolvedValueOnce({
       issue: {

@@ -60,9 +60,17 @@ function isCompleted(line: string): boolean {
   return false;
 }
 
-/** Extract a score from a sub-bullet line (e.g., "Score 8/10" or "Score 7.5/10") */
-function extractScore(line: string): number | undefined {
-  const match = line.match(/Score\s+(\d+(?:\.\d+)?)\/10/i);
+/**
+ * Extract a score from a sub-bullet line. Accepts `Score 8/10` anywhere in the
+ * line, or any bare `N/10` / `N.N/10` inside the first bold span
+ * (`**Pursue (7/10)**`, `**Vetted 2026-09-16: 7/10, pursue first.**`) (#1730).
+ *
+ * `strict` (used by the on-disk prune) accepts only `Score N/10` and the pinned
+ * `(N/10)` form, so a date-like `3/10` in a span never deletes an entry.
+ */
+function extractScore(line: string, strict = false): number | undefined {
+  const bare = strict ? /\((\d+(?:\.\d+)?)\/10\)/ : /(?<![\d.])(\d+(?:\.\d+)?)\/10\b/;
+  const match = line.match(/Score\s+(\d+(?:\.\d+)?)\/10/i) ?? firstBoldSpan(line)?.match(bare);
   return match ? parseFloat(match[1]) : undefined;
 }
 
@@ -159,6 +167,22 @@ function isSubBulletInProgress(line: string): boolean {
   );
 }
 
+/**
+ * Check if a sub-bullet's first bold span says the item is blocked on
+ * something outside the user's control (#1730). Runs after the terminal /
+ * in-progress checks, so a span that STARTS with `Wait` still lands in
+ * `completed` as before; this catches `blocked` / `wait` later in the span.
+ */
+function isSubBulletBlocked(line: string): boolean {
+  const span = firstBoldSpan(line);
+  return span !== null && /\b(?:blocked|wait(?:ing|s)?)\b/i.test(span);
+}
+
+/** A `##` section whose items are vetted but blocked (`## Queued ...`, `## Blocked on ...`) (#1730). */
+function isBlockedSection(heading: string): boolean {
+  return /^Queued\b/i.test(heading) || /\bblocked\b/i.test(heading);
+}
+
 /** Leading-whitespace width with tabs expanded to two columns. */
 function indentWidth(line: string): number {
   return line.match(/^\s*/)![0].replace(/\t/g, '  ').length;
@@ -169,10 +193,22 @@ export function parseIssueList(content: string): ParseIssueListOutput {
   const lines = content.split('\n');
   const available: ParsedIssueItem[] = [];
   const completed: ParsedIssueItem[] = [];
+  const blocked: ParsedIssueItem[] = [];
   let currentTier = 'Uncategorized';
+  // Heading level that set currentTier. A `###` under a `#`/`##` tier is a
+  // sub-group (repo heading, blocker note) and must not clobber the tier (#1730).
+  let tierLevel = 0;
+  let currentGroup: string | undefined;
+  let sectionBlocked = false;
   let lastItem: ParsedIssueItem | null = null;
   // Track which array the last item was placed in so sub-bullets can move it
-  let lastItemInAvailable = false;
+  let lastBucket: ParsedIssueItem[] | null = null;
+  const moveLastItem = (to: ParsedIssueItem[]): void => {
+    const idx = lastBucket!.indexOf(lastItem!);
+    if (idx !== -1) lastBucket!.splice(idx, 1);
+    to.push(lastItem!);
+    lastBucket = to;
+  };
   // Indentation of the line that created lastItem — a line is a sub-bullet
   // only when indented deeper than its parent (handles wholly-indented lists
   // whose sibling items share the same indent).
@@ -180,9 +216,18 @@ export function parseIssueList(content: string): ParseIssueListOutput {
 
   for (const line of lines) {
     // Check for section headings (# or ##)
-    const headingMatch = line.match(/^#{1,3}\s+(.+)/);
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)/);
     if (headingMatch) {
-      currentTier = headingMatch[1].trim();
+      const level = headingMatch[1].length;
+      const text = headingMatch[2].trim();
+      if (level === 3 && tierLevel > 0 && tierLevel < 3) {
+        currentGroup = text;
+      } else {
+        currentTier = text;
+        tierLevel = level;
+        currentGroup = undefined;
+        sectionBlocked = isBlockedSection(text);
+      }
       lastItem = null;
       continue;
     }
@@ -209,15 +254,11 @@ export function parseIssueList(content: string): ParseIssueListOutput {
       if (score !== undefined) {
         lastItem.score = score;
       }
-      // Check if sub-bullet marks item as terminal or in-progress
-      if (lastItemInAvailable && (isSubBulletTerminal(line) || isSubBulletInProgress(line))) {
-        // Move from available to completed
-        const idx = available.indexOf(lastItem);
-        if (idx !== -1) {
-          available.splice(idx, 1);
-          completed.push(lastItem);
-          lastItemInAvailable = false;
-        }
+      // Check if sub-bullet marks item as terminal/in-progress, or blocked
+      if (lastBucket !== completed && (isSubBulletTerminal(line) || isSubBulletInProgress(line))) {
+        moveLastItem(completed);
+      } else if (lastBucket === available && isSubBulletBlocked(line)) {
+        moveLastItem(blocked);
       }
       continue;
     }
@@ -233,16 +274,12 @@ export function parseIssueList(content: string): ParseIssueListOutput {
       number: ghUrl.number,
       title: title || `#${ghUrl.number}`,
       tier: currentTier,
+      ...(currentGroup !== undefined ? { group: currentGroup } : {}),
       url: ghUrl.url,
     };
 
-    if (isCompleted(line)) {
-      completed.push(item);
-      lastItemInAvailable = false;
-    } else {
-      available.push(item);
-      lastItemInAvailable = true;
-    }
+    lastBucket = isCompleted(line) ? completed : sectionBlocked ? blocked : available;
+    lastBucket.push(item);
     lastItem = item;
     lastItemIndent = indent;
   }
@@ -255,30 +292,29 @@ export function parseIssueList(content: string): ParseIssueListOutput {
   //     `available[]`. Curators add a terminal annotation (`**hold**`,
   //     `Done`, etc.) on a later occurrence precisely to override an
   //     earlier "pursue" line; the terminal classification wins.
+  //   - Likewise a URL in `blocked[]` is filtered out of `available[]`,
+  //     and a URL in `completed[]` out of `blocked[]` (#1730).
   //   - Within each bucket, the first occurrence is kept (preserves the
   //     parse order and the tier of the original entry).
-  const completedUrls = new Set(completed.map((item) => item.url));
-  const dedupedAvailable: ParsedIssueItem[] = [];
-  const seenAvailable = new Set<string>();
-  for (const item of available) {
-    if (completedUrls.has(item.url)) continue;
-    if (seenAvailable.has(item.url)) continue;
-    seenAvailable.add(item.url);
-    dedupedAvailable.push(item);
-  }
-  const dedupedCompleted: ParsedIssueItem[] = [];
-  const seenCompleted = new Set<string>();
-  for (const item of completed) {
-    if (seenCompleted.has(item.url)) continue;
-    seenCompleted.add(item.url);
-    dedupedCompleted.push(item);
-  }
+  const dedupe = (items: ParsedIssueItem[], ...exclude: ParsedIssueItem[][]): ParsedIssueItem[] => {
+    const seen = new Set(exclude.flatMap((bucket) => bucket.map((item) => item.url)));
+    return items.filter((item) => {
+      if (seen.has(item.url)) return false;
+      seen.add(item.url);
+      return true;
+    });
+  };
+  const dedupedCompleted = dedupe(completed);
+  const dedupedBlocked = dedupe(blocked, completed);
+  const dedupedAvailable = dedupe(available, completed, blocked);
 
   return {
     available: dedupedAvailable,
     completed: dedupedCompleted,
+    blocked: dedupedBlocked,
     availableCount: dedupedAvailable.length,
     completedCount: dedupedCompleted.length,
+    blockedCount: dedupedBlocked.length,
   };
 }
 
@@ -335,7 +371,7 @@ export function pruneIssueList(content: string, minScore: number = 6): { pruned:
         if (isSubBulletDeletable(lines[j])) {
           shouldRemove = true;
         }
-        const score = extractScore(lines[j]);
+        const score = extractScore(lines[j], true);
         if (score !== undefined && score < minScore) {
           shouldRemove = true;
         }

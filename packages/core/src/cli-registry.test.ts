@@ -1827,8 +1827,10 @@ describe('parse-issue-list command', () => {
     mockRunParseList.mockResolvedValue({
       availableCount: 1,
       completedCount: 1,
+      blockedCount: 1,
       available: [item],
       completed: [{ ...item, tier: 'maybe', number: 2 }],
+      blocked: [{ ...item, tier: 'Queued', number: 3 }],
     });
 
     await buildProgram('parse-issue-list').parseAsync(['node', 'cli', 'parse-issue-list', '/tmp/list.md']);
@@ -1836,7 +1838,9 @@ describe('parse-issue-list command', () => {
     expect(mockRunParseList).toHaveBeenCalledWith({ filePath: '/tmp/list.md' });
     const out = consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
     expect(out).toContain('Issue List: /tmp/list.md');
-    expect(out).toContain('Available: 1 | Completed: 1');
+    expect(out).toContain('Available: 1 | Completed: 1 | Blocked: 1');
+    expect(out).toContain('--- Blocked ---');
+    expect(out).toContain('[Queued] octo/alpha#3: T');
     expect(out).toContain('--- Available ---');
     expect(out).toContain('[pursue] octo/alpha#1: T');
     expect(out).toContain('--- Completed ---');
@@ -1844,7 +1848,7 @@ describe('parse-issue-list command', () => {
   });
 
   it('--json routes through outputJsonValidated', async () => {
-    const data = { availableCount: 0, completedCount: 0, available: [], completed: [] };
+    const data = { availableCount: 0, completedCount: 0, blockedCount: 0, available: [], completed: [], blocked: [] };
     mockRunParseList.mockResolvedValue(data);
 
     await buildProgram('parse-issue-list').parseAsync(['node', 'cli', 'parse-issue-list', '/tmp/list.md', '--json']);
