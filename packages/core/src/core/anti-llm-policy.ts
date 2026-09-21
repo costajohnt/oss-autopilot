@@ -57,6 +57,19 @@ const PATTERNS: Pattern[] = [
   { category: 'explicit_ban', regex: /\bno\s+(ai|llm)[\s-](generated|authored|written|assisted|contributions?)/i },
   { category: 'explicit_ban', regex: /\b(ban|banned|banning)\s+(ai|llm)\b/i },
 
+  // Modal prohibition: "LLMs must not be used", "AI must not be submitted", etc.
+  // Scoped to the noun immediately before "must not" to avoid matching
+  // unrelated prohibitions that happen to mention AI elsewhere in the sentence.
+  { category: 'explicit_ban', regex: /\b(ai|llm)s?\s+must\s+not\b/i },
+
+  // "this is forbidden" or "is forbidden" scoped to a sentence containing an AI/LLM noun.
+  // Use a sentence-fragment bound ([^.!\n?]) to avoid matching "AI is useful. Plagiarism is forbidden."
+  {
+    category: 'explicit_ban',
+    regex:
+      /\b(ai|llm|generative\s+ai)\b[^.!?\n]{1,80}?\bforbidden\b|\bforbidden\b[^.!?\n]{1,80}?\b(ai|llm|generative\s+ai)\b/i,
+  },
+
   // Named-tool bans. Optionally match a "-generated/-authored/-…"
   // continuation (clear ban wording), and use a negative lookahead to
   // reject unrelated hyphen-words like "no copilot-style autocomplete"
