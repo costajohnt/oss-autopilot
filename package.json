@@ -11,7 +11,7 @@
     "test:watch": "pnpm -r run test:watch",
     "test:coverage": "pnpm -r run test:coverage",
     "typecheck": "pnpm -r run typecheck",
-    "lint": "eslint packages/",
+    "lint": "eslint packages/ --max-warnings 3550",
     "lint:fix": "eslint packages/ --fix",
     "format": "prettier --write packages/",
     "format:check": "prettier --check packages/",
