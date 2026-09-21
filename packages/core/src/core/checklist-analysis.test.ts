@@ -81,4 +81,87 @@ describe('analyzeChecklist', () => {
     expect(result.hasIncompleteChecklist).toBe(false);
     expect(result.checklistStats).toEqual({ checked: 2, total: 2 });
   });
+
+  describe('type-of-change radio groups (#1718)', () => {
+    it('should not flag incomplete when at least one box is checked in a "Type of Change" section', () => {
+      const body = [
+        '## Type of Change',
+        '- [x] Bug fix',
+        '- [ ] Feature',
+        '- [ ] Documentation',
+        '- [ ] Performance improvement',
+        '- [ ] Refactor',
+        '- [ ] Other',
+        '',
+        '## Checklist',
+        '- [x] Tests added',
+        '- [x] Docs updated',
+        '- [x] Linted',
+        '- [x] Changelog updated',
+        '- [x] Code review done',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(false);
+    });
+
+    it('should flag incomplete when no box is checked in a "Type of Change" section', () => {
+      const body = ['## Type of Change', '- [ ] Bug fix', '- [ ] Feature', '- [ ] Other'].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(true);
+    });
+
+    it('should treat "Kind of Change" heading as a radio group', () => {
+      const body = ['## Kind of Change', '- [x] Enhancement', '- [ ] Bug fix', '- [ ] Other'].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(false);
+    });
+  });
+
+  describe('leave-unchecked sections (#1718)', () => {
+    it('should skip all boxes in a section preceded by "Leave unchecked where not applicable"', () => {
+      // Directus-style: blockquote note at top of section, most boxes unchecked by design
+      const body = [
+        '## Checklist',
+        '',
+        '> Leave unchecked where not applicable',
+        '',
+        '- [x] I have read the contributing guidelines',
+        '- [ ] Tests have been added',
+        '- [ ] Documentation has been updated',
+        '- [ ] Migration script included',
+        '- [ ] Breaking change noted',
+        '- [ ] Changelog entry added',
+        '- [ ] Screenshots attached',
+        '- [ ] Performance impact assessed',
+        '- [ ] Security review done',
+        '- [ ] Accessibility checked',
+        '- [ ] i18n strings updated',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(false);
+    });
+
+    it('should skip boxes when note says "leave unchecked if not applicable"', () => {
+      const body = [
+        '## Checklist',
+        '> Leave unchecked if not applicable',
+        '- [x] Tests added',
+        '- [ ] Migration included',
+        '- [ ] Screenshots attached',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(false);
+    });
+
+    it('should still flag a normal incomplete checklist without a leave-unchecked note', () => {
+      const body = [
+        '## Checklist',
+        '- [x] Tests added',
+        '- [ ] Documentation updated',
+        '- [ ] Changelog entry added',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(true);
+    });
+  });
 });

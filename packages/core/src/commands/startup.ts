@@ -32,10 +32,16 @@ export { parseIssueListPathFromConfig } from './locate-issue-list.js';
  * actionable pool — strikethrough, `**Done**`, and sub-bullet markers like
  * `**Skip**`, `**Merged**`, `**Dropped**`, `**Closed**`, `**In Progress**`,
  * `**Waiting**`. Matches the parse-issue-list command's classification (#907).
+ * Blocked items (`## Queued ...` sections, `**... blocked ...**` sub-bullets)
+ * are counted separately in `blockedCount` (#1730).
  */
-export function countIssueListItems(content: string): { availableCount: number; completedCount: number } {
-  const { availableCount, completedCount } = parseIssueList(content);
-  return { availableCount, completedCount };
+export function countIssueListItems(content: string): {
+  availableCount: number;
+  completedCount: number;
+  blockedCount: number;
+} {
+  const { availableCount, completedCount, blockedCount } = parseIssueList(content);
+  return { availableCount, completedCount, blockedCount };
 }
 
 /**
@@ -53,10 +59,11 @@ export function detectIssueList(): IssueListInfo | undefined {
   // 4. Count available/completed items
   let availableCount = 0;
   let completedCount = 0;
+  let blockedCount = 0;
   let readError: string | undefined;
   try {
     const content = fs.readFileSync(issueListPath, 'utf8');
-    ({ availableCount, completedCount } = countIssueListItems(content));
+    ({ availableCount, completedCount, blockedCount } = countIssueListItems(content));
   } catch (error) {
     // Surface the failure in the envelope (#1448): a 0/0 count from an
     // unreadable list is indistinguishable from a genuinely empty list, and
@@ -128,6 +135,7 @@ export function detectIssueList(): IssueListInfo | undefined {
     source,
     availableCount,
     completedCount,
+    blockedCount,
     skippedIssuesPath,
     ...(readError !== undefined ? { readError } : {}),
   };

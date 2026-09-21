@@ -178,6 +178,14 @@ Use AskUserQuestion:
 
    The command preserves blank lines and sub-bullets between entries, is idempotent (re-running with the same tier is a no-op), and creates the target tier section if it doesn't already exist. It does NOT create list entries: if the issue URL is missing from the list (e.g. step 1 was skipped or wrote a different URL), the command exits non-zero with `success: false` (#1355) — add the entry under `## Pending Vet` first, then re-run the move.
 
+   After the move, replace the entry's `**Pending vet**` sub-bullet with a status line in this exact format, which `parse-issue-list` reads the score from:
+
+   ```markdown
+     - **<Tier> (N/10)** — {one-line reason}
+   ```
+
+   `<Tier>` is `Pursue`, `Maybe`, or `Skip`; `N` is the vet score (decimals like `7.5/10` are fine). If the issue is vetted but blocked on something outside your control (a required label, a one-open-PR rule, a repo policy), put it under a `## Queued (vetted, blocked until a condition clears)` section with a `###` heading naming the blocker, or write `blocked` / `wait` in the bold span, so it is not counted as ready.
+
 5. Track round scores: `searchRoundScores.push(mean of all scores)` (unfiltered — includes scores below threshold)
 
 6. Present summary, then proceed to **Diminishing Returns Check**

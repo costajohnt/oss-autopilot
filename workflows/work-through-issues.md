@@ -325,7 +325,7 @@ Only available when `hasIssueList` is true and `availableCount > 0`.
 
 ### 1. Read and parse the list file
 
-Re-read the file at `issueListPath` (it may have been updated since initial detection). Parse available issues — those NOT struck through and NOT marked "**Done**".
+Re-read the file at `issueListPath` (it may have been updated since initial detection). Parse available issues — those NOT struck through and NOT marked "**Done**". Also leave out blocked items: anything under a `##` heading that starts with `Queued` or contains `blocked`, and any item whose sub-bullet opens with a bold span containing `blocked` or `wait` (these are counted in `blockedCount`, not `availableCount`).
 
 ### 2. Display available issues grouped by priority tier
 
