@@ -126,8 +126,20 @@ export function stateFileExists(): boolean {
   return fs.existsSync(stateFile);
 }
 
+// Replaced with the core package version by scripts/bundle.mjs (esbuild `define`).
+// Undefined in unbundled runs (tsx, tsc output, vitest).
+declare const __OSS_AUTOPILOT_CORE_VERSION__: string | undefined;
+
 /**
- * Read the CLI package version from package.json relative to the running CLI bundle.
+ * Return the @oss-autopilot/core version.
+ *
+ * Bundled builds (the CLI bundle and the MCP server bundle, which inlines core)
+ * get it injected at bundle time. That matters for the MCP server: its argv[1]
+ * is the mcp-server bundle, so the package.json lookup below would return the
+ * mcp-server version, never equal to the core version the dashboard server
+ * records in its PID file (#1732).
+ *
+ * Unbundled runs fall back to package.json relative to the running entry point.
  * Resolves `../package.json` from the real path of `process.argv[1]` (the bundle
  * entry point). An npm install runs the CLI through the `node_modules/.bin/oss-autopilot`
  * symlink, and Node leaves `process.argv[1]` as the symlink, so without `realpathSync`
@@ -135,6 +147,7 @@ export function stateFileExists(): boolean {
  * Falls back to '0.0.0' if the file is unreadable.
  */
 export function getCLIVersion(): string {
+  if (typeof __OSS_AUTOPILOT_CORE_VERSION__ === 'string') return __OSS_AUTOPILOT_CORE_VERSION__;
   try {
     const entry = fs.realpathSync(process.argv[1]);
     const pkgPath = path.join(path.dirname(entry), '..', 'package.json');
