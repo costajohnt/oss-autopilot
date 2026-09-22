@@ -191,15 +191,16 @@ describe('tick side', () => {
   });
 });
 
-describe('push-prep from the handoff', () => {
-  function stage(over: Partial<OvernightRecord['prepared'][number]> = {}) {
-    const { dir, sha } = tickClone();
-    writeHandoffBundle(drop, dir, BRANCH);
-    fs.writeFileSync(path.join(tmp, 'tick-report.md'), '# Overnight\n');
-    exportHandoff(drop, { ...handoffRecord(over), reportPath: path.join(tmp, 'tick-report.md') });
-    return sha;
-  }
+/** What the tick leaves behind: one bundled branch, the state file and a report. */
+function stage(over: Partial<OvernightRecord['prepared'][number]> = {}): string {
+  const { dir, sha } = tickClone();
+  writeHandoffBundle(drop, dir, BRANCH);
+  fs.writeFileSync(path.join(tmp, 'tick-report.md'), '# Overnight\n');
+  exportHandoff(drop, { ...handoffRecord(over), reportPath: path.join(tmp, 'tick-report.md') });
+  return sha;
+}
 
+describe('push-prep from the handoff', () => {
   it("pushes the bundle's branch to prep/* without running anything the tick planted", async () => {
     const sha = stage();
     const sm = fakeStateManager();
