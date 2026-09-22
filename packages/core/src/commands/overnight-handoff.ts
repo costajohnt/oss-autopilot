@@ -100,31 +100,37 @@ export function pruneHandoffBundles(dir: string, keepBranches: string[]): void {
 // ── Pusher side: everything below reads files the tick wrote ─────────
 
 /**
- * Open a drop-dir file the tick wrote. No symlinks (O_NOFOLLOW), no FIFO that
- * would block the open (O_NONBLOCK), regular files only, no hard link to a
- * file the tick could not read itself, and a size cap.
+ * Stream a drop-dir file the tick wrote to `onChunk`. No symlinks
+ * (O_NOFOLLOW), no FIFO that would block the open (O_NONBLOCK), regular files
+ * only, no hard link to a file the tick could not read itself, a size cap, and
+ * exactly the size checked is read: the tick owns the file and could keep
+ * appending to it while it is read.
  */
-function openUntrusted(file: string, maxBytes: number): { fd: number; size: number } {
+function streamUntrusted(file: string, maxBytes: number, onChunk: (chunk: Buffer) => void): void {
   const fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
   try {
     const st = fs.fstatSync(fd);
     if (!st.isFile()) throw new Error(`${file} is not a regular file`);
     if (st.nlink !== 1) throw new Error(`${file} has ${st.nlink} links; refusing a hard-linked file`);
     if (st.size > maxBytes) throw new Error(`${file} is ${st.size} bytes, over the ${maxBytes} byte cap`);
-    return { fd, size: st.size };
-  } catch (err) {
+    const buf = Buffer.alloc(Math.max(1, Math.min(st.size, 1 << 20)));
+    let left = st.size;
+    while (left > 0) {
+      const n = fs.readSync(fd, buf, 0, Math.min(buf.length, left), null);
+      if (n === 0) throw new Error(`${file} shrank while being read`);
+      onChunk(buf.subarray(0, n));
+      left -= n;
+    }
+    if (fs.readSync(fd, buf, 0, 1, null) > 0) throw new Error(`${file} grew while being read`);
+  } finally {
     fs.closeSync(fd);
-    throw err;
   }
 }
 
 function readUntrusted(file: string, maxBytes: number): string {
-  const { fd } = openUntrusted(file, maxBytes);
-  try {
-    return fs.readFileSync(fd, 'utf8');
-  } finally {
-    fs.closeSync(fd);
-  }
+  const chunks: Buffer[] = [];
+  streamUntrusted(file, maxBytes, (c) => chunks.push(Buffer.from(c)));
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 /**
@@ -184,18 +190,11 @@ export function importHandoffBundle(dir: string, branch: string): { repo: string
   const cleanup = () => fs.rmSync(tmp, { recursive: true, force: true });
   try {
     const copy = path.join(tmp, 'in.bundle');
-    const { fd } = openUntrusted(path.join(dir, bundleFileFor(branch)), MAX_BUNDLE_BYTES);
+    const out = fs.openSync(copy, 'wx', 0o600);
     try {
-      const out = fs.openSync(copy, 'wx', 0o600);
-      try {
-        const buf = Buffer.alloc(1 << 20);
-        let n: number;
-        while ((n = fs.readSync(fd, buf)) > 0) fs.writeSync(out, buf, 0, n);
-      } finally {
-        fs.closeSync(out);
-      }
+      streamUntrusted(path.join(dir, bundleFileFor(branch)), MAX_BUNDLE_BYTES, (c) => fs.writeSync(out, c));
     } finally {
-      fs.closeSync(fd);
+      fs.closeSync(out);
     }
     const repo = path.join(tmp, 'repo.git');
     gitRun(['init', '-q', '--bare', repo]);
