@@ -189,6 +189,31 @@ branches already pushed by then are still recorded.
 `--dry-run` resolves the targets and prints the plan without pushing or
 writing anything.
 
+### Split users: `OSS_AUTOPILOT_HANDOFF_DIR`
+
+The allowlist is not a sandbox: `node` stays allowed, so text a preparer reads
+can still run code as whoever runs the tick. The real boundary is to run the
+tick as a unix user that holds no write-capable GitHub token (a zero-scope
+token covers the public reads) and push-prep as the user that holds one.
+Those two users must not share a git directory: push-prep running git in a
+repo the tick can write would run the tick's hooks, `core.fsmonitor`,
+`core.sshCommand` or `insteadOf` rewrites with the token.
+
+So the handoff is data only. Set `OSS_AUTOPILOT_HANDOFF_DIR` to the same
+directory for both users (writable by the tick, readable by the pusher):
+
+- `overnight run`, `record` and `implement-blocked` write `last-overnight.json`
+  (the state record, without local paths), `report.md`, and for each recorded
+  branch a `git bundle` (`record` refuses a branch it cannot bundle, so it
+  needs `--worktree` or a `WORKTREE:` line).
+- `overnight push-prep` treats all of it as untrusted input: no symlinks,
+  FIFOs or hard links, size caps, schema check. It fetches each bundle into a
+  fresh private repo and pushes from there. The target is the PR's head repo
+  (or `<login>/<repo>` for an implement-mode issue), and on top of the gates
+  above it must be a fork of the PR's repo. It then writes the run into its
+  own state and report and publishes both to the Gist, so the tick's user
+  needs no Gist write access either.
+
 The report itself travels too: in Gist mode, `overnight run`, `overnight
 record` and `overnight push-prep` each publish the rendered report as the
 Gist file `overnight-report.md`, and `overnight report` prints it on any
