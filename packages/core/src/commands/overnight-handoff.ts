@@ -21,6 +21,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -46,7 +47,9 @@ export function handoffDir(): string | null {
 
 /** Pure: a flat file name for a branch's bundle; never a path. */
 export function bundleFileFor(branch: string): string {
-  return `${branch.replaceAll(/[^\w.-]/g, '_').replace(/^\.+/, '_')}.bundle`;
+  const stem = branch.replaceAll(/[^\w.-]/g, '_').replace(/^\.+/, '_');
+  const hash = createHash('sha1').update(branch).digest('hex').slice(0, 8);
+  return `${stem}_${hash}.bundle`;
 }
 
 function gitRun(args: string[]): void {

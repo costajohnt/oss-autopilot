@@ -189,6 +189,10 @@ describe('tick side', () => {
   it('bundle file names stay inside the drop dir', () => {
     expect(bundleFileFor('overnight/../../x')).not.toContain('/');
   });
+
+  it('bundle file names are distinct for branches that sanitize to the same stem', () => {
+    expect(bundleFileFor('fix/x')).not.toBe(bundleFileFor('fix_x'));
+  });
 });
 
 /** What the tick leaves behind: one bundled branch, the state file and a report. */
