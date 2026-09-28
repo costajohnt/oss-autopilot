@@ -191,7 +191,7 @@ describe('analyzeChecklist', () => {
       expect(result.hasIncompleteChecklist).toBe(true);
     });
 
-    it('should recognise "one of" phrasing', () => {
+    it('should recognise "pick one of" phrasing (via "pick one" match)', () => {
       const body = [
         '## Change type',
         '<!-- Pick one of the following. -->',
@@ -201,6 +201,19 @@ describe('analyzeChecklist', () => {
       ].join('\n');
       const result = analyzeChecklist(body);
       expect(result.hasIncompleteChecklist).toBe(false);
+    });
+
+    it('should NOT exempt when comment says "one of" without a pick/choose verb (avoids prose false positive)', () => {
+      // "Complete one of the following only if it applies" — explanatory prose, not a radio group
+      const body = [
+        '## Optional steps',
+        '<!-- Complete one of the following only if it applies to your change. -->',
+        '- [x] I added unit tests',
+        '- [ ] I updated integration tests',
+        '- [ ] Existing tests already cover this',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(true);
     });
 
     it('should recognise "pick one" phrasing', () => {

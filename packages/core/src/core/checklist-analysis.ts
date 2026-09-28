@@ -22,10 +22,11 @@ const HEADING_RE = /^#{1,6}\s+(\S.*)/;
 
 /**
  * Matches an HTML comment that introduces a pick-one (single-select) group of
- * checkboxes. Supported phrases: "exactly one", "one of", "pick one", "choose one".
- * (#1760)
+ * checkboxes. Supported phrases: "exactly one", "pick one", "choose one".
+ * Intentionally excludes bare "one of" to avoid false positives on explanatory
+ * prose like "Complete one of the following only if it applies". (#1760)
  */
-const PICK_ONE_COMMENT_RE = /<!--[^>]*(?:exactly\s+one|one\s+of|pick\s+one|choose\s+one)[^>]*-->/i;
+const PICK_ONE_COMMENT_RE = /<!--[^>]*(?:exactly\s+one|pick\s+one|choose\s+one)[^>]*-->/i;
 
 /** Matches any checkbox line (checked or unchecked). */
 const ANY_CHECKBOX_RE = /^.*- \[[ x]\].*$/i;
