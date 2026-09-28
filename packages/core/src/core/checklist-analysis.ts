@@ -21,6 +21,16 @@ export function isConditionalChecklistItem(line: string): boolean {
 const HEADING_RE = /^#{1,6}\s+(\S.*)/;
 
 /**
+ * Matches an HTML comment that introduces a pick-one (single-select) group of
+ * checkboxes. Supported phrases: "exactly one", "one of", "pick one", "choose one".
+ * (#1760)
+ */
+const PICK_ONE_COMMENT_RE = /<!--[^>]*(?:exactly\s+one|one\s+of|pick\s+one|choose\s+one)[^>]*-->/i;
+
+/** Matches any checkbox line (checked or unchecked). */
+const ANY_CHECKBOX_RE = /^.*- \[[ x]\].*$/i;
+
+/**
  * Matches headings that indicate a mutually-exclusive "type of change" radio group
  * where exactly one option should be selected. (#1718)
  */
@@ -77,6 +87,51 @@ function hasLeaveUncheckedNote(section: CheckboxSection): boolean {
   });
 }
 
+/**
+ * Mark unchecked lines in a single pick-one run as exempt if exactly one box is
+ * checked. Extracted to keep `collectPickOneExemptLineIndices` within complexity
+ * limits.
+ */
+function markPickOneRunExempt(lines: string[], runStart: number, runEnd: number, exempt: Set<number>): void {
+  const checkedInRun = lines.slice(runStart, runEnd).filter((l) => /- \[x\]/i.test(l)).length;
+  if (checkedInRun !== 1) return;
+  for (let k = runStart; k < runEnd; k++) {
+    if (/- \[ \]/.test(lines[k])) exempt.add(k);
+  }
+}
+
+/**
+ * Returns the set of line indices (within `lines`) that are unchecked checkbox lines
+ * belonging to a satisfied pick-one group. A pick-one group is a contiguous checkbox
+ * run immediately following an HTML comment matching PICK_ONE_COMMENT_RE. The group is
+ * satisfied when exactly one box in the run is checked; in that case the unchecked
+ * alternatives are intentional and must not be counted as incomplete. (#1760)
+ */
+function collectPickOneExemptLineIndices(lines: string[]): ReadonlySet<number> {
+  const exempt = new Set<number>();
+  let i = 0;
+
+  while (i < lines.length) {
+    if (!PICK_ONE_COMMENT_RE.test(lines[i])) {
+      i++;
+      continue;
+    }
+
+    // Advance past the comment, skipping any blank lines before the checkbox run
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() === '') j++;
+
+    // Collect the contiguous checkbox run
+    const runStart = j;
+    while (j < lines.length && ANY_CHECKBOX_RE.test(lines[j])) j++;
+
+    markPickOneRunExempt(lines, runStart, j, exempt);
+    i = j;
+  }
+
+  return exempt;
+}
+
 interface SectionResult {
   checked: number;
   nonConditionalUnchecked: number;
@@ -99,7 +154,12 @@ function analyzeSectionItems(section: CheckboxSection): SectionResult | null {
   const isTypeOfChange = section.heading !== null && TYPE_OF_CHANGE_RE.test(section.heading);
   if (isTypeOfChange && checked >= 1) return { checked, nonConditionalUnchecked: 0 };
 
-  const nonConditionalUnchecked = uncheckedLines.filter((l) => !isConditionalChecklistItem(l));
+  // Pick-one groups: unchecked alternatives in a satisfied pick-one group are exempt. (#1760)
+  const pickOneExempt = collectPickOneExemptLineIndices(section.lines);
+
+  const nonConditionalUnchecked = section.lines.filter(
+    (l, idx) => /^.*- \[ \].*$/.test(l) && !isConditionalChecklistItem(l) && !pickOneExempt.has(idx),
+  );
   return { checked, nonConditionalUnchecked: nonConditionalUnchecked.length };
 }
 
