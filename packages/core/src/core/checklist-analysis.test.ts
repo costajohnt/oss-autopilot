@@ -164,4 +164,97 @@ describe('analyzeChecklist', () => {
       expect(result.hasIncompleteChecklist).toBe(true);
     });
   });
+
+  describe('pick-one groups (#1760)', () => {
+    it('should not flag incomplete when exactly one box is checked under a pick-one comment', () => {
+      // Scenario from the issue: release-impact section with "Check exactly one."
+      const body = [
+        '## Release impact',
+        '<!-- Check exactly one. -->',
+        '- [ ] **Patch** — bug fix, no new surface',
+        '- [x] **Minor** — additive: new flag/subcommand/...',
+        '- [ ] **Major (breaking)** — ...',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(false);
+    });
+
+    it('should flag incomplete when no box is checked in a pick-one group', () => {
+      const body = [
+        '## Release impact',
+        '<!-- Check exactly one. -->',
+        '- [ ] Patch',
+        '- [ ] Minor',
+        '- [ ] Major',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(true);
+    });
+
+    it('should recognise "pick one of" phrasing (via "pick one" match)', () => {
+      const body = [
+        '## Change type',
+        '<!-- Pick one of the following. -->',
+        '- [x] Bug fix',
+        '- [ ] Feature',
+        '- [ ] Refactor',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(false);
+    });
+
+    it('should NOT exempt when comment says "one of" without a pick/choose verb (avoids prose false positive)', () => {
+      // "Complete one of the following only if it applies" — explanatory prose, not a radio group
+      const body = [
+        '## Optional steps',
+        '<!-- Complete one of the following only if it applies to your change. -->',
+        '- [x] I added unit tests',
+        '- [ ] I updated integration tests',
+        '- [ ] Existing tests already cover this',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(true);
+    });
+
+    it('should recognise "pick one" phrasing', () => {
+      const body = ['## Severity', '<!-- pick one -->', '- [ ] Low', '- [x] Medium', '- [ ] High'].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(false);
+    });
+
+    it('should recognise "choose one" phrasing', () => {
+      const body = ['## Impact', '<!-- choose one -->', '- [ ] Low', '- [ ] Medium', '- [x] High'].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(false);
+    });
+
+    it('should still flag incomplete required items outside the pick-one group', () => {
+      const body = [
+        '## Release impact',
+        '<!-- Check exactly one. -->',
+        '- [ ] Patch',
+        '- [x] Minor',
+        '- [ ] Major',
+        '',
+        '## Checklist',
+        '- [x] Tests added',
+        '- [ ] Docs updated',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(true);
+    });
+
+    it('should tolerate a blank line between the pick-one comment and the checkbox run', () => {
+      const body = [
+        '## Release impact',
+        '<!-- Check exactly one. -->',
+        '',
+        '- [ ] Patch',
+        '- [x] Minor',
+        '- [ ] Major',
+      ].join('\n');
+      const result = analyzeChecklist(body);
+      expect(result.hasIncompleteChecklist).toBe(false);
+    });
+  });
 });
