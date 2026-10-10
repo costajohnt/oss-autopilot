@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.7.6](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.5...mcp-v5.7.6) (2026-10-10)
+
+
+### Bug Fixes
+
+* **deps:** bump @modelcontextprotocol/sdk to ^1.32.1 for the bundled MCP bin ([#1769](https://github.com/costajohnt/oss-autopilot/issues/1769)) ([81d199d](https://github.com/costajohnt/oss-autopilot/commit/81d199d4ad52ec899d5a53b15b58810d318a269d)), closes [#1768](https://github.com/costajohnt/oss-autopilot/issues/1768)
+* **lint:** turn off unicorn 76's CSS-only rules and silence the _cliOnly omit ([#1762](https://github.com/costajohnt/oss-autopilot/issues/1762)) ([b344f8e](https://github.com/costajohnt/oss-autopilot/commit/b344f8edac7b81dc6a99adac8dd7ba59b75ab722))
+
 ## [5.7.5](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.4...mcp-v5.7.5) (2026-09-22)
 
 

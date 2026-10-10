@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.29.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.29.0...core-v3.29.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* build against @oss-scout/core 1.8.1 types ([#1771](https://github.com/costajohnt/oss-autopilot/issues/1771)) ([4938657](https://github.com/costajohnt/oss-autopilot/commit/4938657d66da84929bd31993c6ce7e18165634f8))
+* **checklist:** skip pick-one group alternatives in incomplete_checklist ([#1761](https://github.com/costajohnt/oss-autopilot/issues/1761)) ([f1bd1af](https://github.com/costajohnt/oss-autopilot/commit/f1bd1af1a7c79a7d475a67d065a767de873a4a34))
+* **deps:** bump @modelcontextprotocol/sdk to ^1.32.1 for the bundled MCP bin ([#1769](https://github.com/costajohnt/oss-autopilot/issues/1769)) ([81d199d](https://github.com/costajohnt/oss-autopilot/commit/81d199d4ad52ec899d5a53b15b58810d318a269d)), closes [#1768](https://github.com/costajohnt/oss-autopilot/issues/1768)
+* **lint:** turn off unicorn 76's CSS-only rules and silence the _cliOnly omit ([#1762](https://github.com/costajohnt/oss-autopilot/issues/1762)) ([b344f8e](https://github.com/costajohnt/oss-autopilot/commit/b344f8edac7b81dc6a99adac8dd7ba59b75ab722))
+* make bundleFileFor collision-proof by hashing raw branch name ([#1759](https://github.com/costajohnt/oss-autopilot/issues/1759)) ([8b5d360](https://github.com/costajohnt/oss-autopilot/commit/8b5d360394979feaec05218d051c1b4b232c2bd0))
+* **overnight:** deny the leading-flag and = forms of node eval escapes ([#1742](https://github.com/costajohnt/oss-autopilot/issues/1742)) ([6a874b2](https://github.com/costajohnt/oss-autopilot/commit/6a874b2b49bda6bf5b41404770518552fa897c0f))
+
 ## [3.29.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.28.1...core-v3.29.0) (2026-09-22)
 
 
