@@ -156,6 +156,16 @@ export default tseslint.config(
       'unicorn/consistent-arrow-return-style': 'off',
       // Temporal is not available in the Node versions we support (>=22).
       'unicorn/prefer-temporal': 'off',
+      // Control-flow restyling rules that unicorn 76 added or widened (the
+      // ternary/guard family alone went from 2 to ~120 warnings). Each one
+      // rewrites working if/else, loop and guard shapes with no defect class
+      // behind it, and together they pushed lint past --max-warnings.
+      'unicorn/prefer-ternary': 'off',
+      'unicorn/prefer-minimal-ternary': 'off',
+      'unicorn/prefer-logical-operator-over-ternary': 'off',
+      'unicorn/prefer-combined-guards': 'off',
+      'unicorn/prefer-early-return': 'off',
+      'unicorn/prefer-continue': 'off',
       // CSS-only rules (prefer-explicit-viewport-units added in unicorn 73,
       // the rest in 76) that recommended turns on for every language. ESLint 10
       // hard-errors when a rule is applied to a language it does not support,
