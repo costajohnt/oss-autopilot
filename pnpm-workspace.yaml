@@ -18,7 +18,8 @@ overrides:
   hono: '>=4.13.5'
   # Moved from the dead package.json `pnpm.overrides` block (ignored by
   # pnpm v10, see note above).
-  brace-expansion: '>=5.0.9'
+  # Dev-only, transitive via minimatch. ReDoS advisories patched in 5.0.12.
+  brace-expansion: '>=5.0.12'
   '@babel/core': '>=7.29.6'
   # Transitive via @modelcontextprotocol/sdk. Advisories affect < 1.19.13.
   '@hono/node-server': '>=1.19.13'
@@ -43,9 +44,10 @@ overrides:
   # Advisory affects >=6.14.2 <=6.15.3; patched in 6.16.0.
   qs: '>=6.16.0'
   # Dev-only, transitive via @oss-autopilot/dashboard -> jsdom -> undici.
-  # Clears the high TLS-validation / WebSocket-DoS / SOCKS5 advisories in
-  # undici <7.28.0 (GHSA-vmh5-mc38-953g, GHSA-vxpw-j846-p89q, GHSA-vh2q-...).
-  undici: '>=7.28.0'
+  # jsdom 30 pulls undici 8.x; the 2026-10 advisory family (GHSA-r53p-7pc4-xj5r
+  # and others) affects undici 8.x <8.10.2. Earlier 7.x advisories are
+  # patched in 7.28.0.
+  undici: '>=8.10.2'
   # Dev-only, transitive via vite -> postcss. Advisory: custom generators
   # can loop indefinitely when size is zero; patched in 3.3.18.
   nanoid: '>=3.3.18'
@@ -53,3 +55,9 @@ overrides:
   # Quadratic-complexity ReDoS advisory GHSA-22p9-wv53-3rq4 in linkify-it
   # <=5.0.0; patched in 5.0.1.
   linkify-it: '>=5.0.1'
+  # Dev-only, transitive via @oss-autopilot/core -> typedoc. Advisory
+  # affects markdown-it <14.3.1. Kept on the 14.x line typedoc expects.
+  markdown-it: '^14.3.1'
+  # Dev-only, transitive via eslint-plugin-unicorn -> @eslint/css-tree.
+  # Advisory affects source-map-js <1.2.2.
+  source-map-js: '>=1.2.2'
