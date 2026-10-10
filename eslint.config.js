@@ -156,11 +156,34 @@ export default tseslint.config(
       'unicorn/consistent-arrow-return-style': 'off',
       // Temporal is not available in the Node versions we support (>=22).
       'unicorn/prefer-temporal': 'off',
-      // CSS-only rule (added in unicorn 73) that recommended turns on for every
-      // language. ESLint 10 hard-errors when a rule is applied to a language it
-      // does not support, so leaving it on fails the whole lint run on "js/js".
-      // We lint no CSS, so turn it off rather than scope it to a files glob.
+      // Control-flow restyling rules that unicorn 76 added or widened (the
+      // ternary/guard family alone went from 2 to ~120 warnings). Each one
+      // rewrites working if/else, loop and guard shapes with no defect class
+      // behind it, and together they pushed lint past --max-warnings.
+      'unicorn/prefer-ternary': 'off',
+      'unicorn/prefer-minimal-ternary': 'off',
+      'unicorn/prefer-logical-operator-over-ternary': 'off',
+      'unicorn/prefer-combined-guards': 'off',
+      'unicorn/prefer-early-return': 'off',
+      'unicorn/prefer-continue': 'off',
+      // CSS-only rules (prefer-explicit-viewport-units added in unicorn 73,
+      // the rest in 76) that recommended turns on for every language. ESLint 10
+      // hard-errors when a rule is applied to a language it does not support,
+      // so leaving any of them on fails the whole lint run on "js/js". We lint
+      // no CSS, so turn them off rather than scope them to a files glob. (CSS
+      // rules carry meta.languages: ['css/css']; if this list keeps growing per
+      // major, filter recommended on that instead.)
       'unicorn/prefer-explicit-viewport-units': 'off',
+      'unicorn/no-deprecated-css-features': 'off',
+      'unicorn/no-duplicate-css-selectors': 'off',
+      'unicorn/no-duplicate-font-family-names': 'off',
+      'unicorn/no-invalid-media-features': 'off',
+      'unicorn/no-nesting-with-mixed-specificity': 'off',
+      'unicorn/no-redundant-nested-style-rules': 'off',
+      'unicorn/no-unknown-css-annotations': 'off',
+      'unicorn/no-unknown-pseudo-selectors': 'off',
+      'unicorn/no-unscoped-css-nesting-selector': 'off',
+      'unicorn/prefer-media-feature-range-syntax': 'off',
       // wants `(arg) => ...` over `arg => ...` — prettier already enforces
       'sonarjs/arrow-function-convention': 'off',
       // flags any string literal repeated 3+ times — false positive heaven
