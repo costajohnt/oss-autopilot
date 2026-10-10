@@ -69,7 +69,7 @@ The system has three layers:
 
 ```
 Repo root (also the Claude Code plugin directory):
-├── commands/oss.md, setup-oss.md       # Plugin slash commands
+├── commands/*.md                       # Plugin slash commands (/oss, /setup-oss, /oss-search, ...)
 ├── agents/*.md                          # 8 specialized agents
 ├── skills/oss-contribution/SKILL.md     # Contribution index (universal rules)
 ├── skills/pr-etiquette/SKILL.md         # Review responses, PR descriptions, dormant follow-up
@@ -119,7 +119,7 @@ pnpm start -- daily --json  # Test JSON output format
 
 ### Running a single test
 
-Tests use vitest and are co-located with source (`packages/core/src/core/*.test.ts`). No separate vitest config file — configuration is inferred from package.json.
+Tests use vitest and are co-located with source (`packages/core/src/core/*.test.ts`). Configuration lives in `packages/core/vitest.config.ts`: it excludes `dist/**` and holds the coverage gate (80% for everything except `src/cli-registry.ts`, which has its own higher floors, so a new CLI command needs matching `cli-registry.test.ts` cases in the same PR).
 
 ```bash
 cd packages/core
