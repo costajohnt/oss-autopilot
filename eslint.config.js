@@ -13,6 +13,14 @@ import reactHooks from 'eslint-plugin-react-hooks';
 // Helper: take a flat-config preset and downgrade every rule it sets to 'warn'.
 // Used to onboard opinionated plugins (unicorn, sonarjs) without gating CI
 // while we triage. Ratchet to 'error' as warning counts drop.
+//
+// The ratchet is `--max-warnings` in the root `lint` script. It is set about
+// 1% above the count CI sees, and CI lints WITHOUT building, where unresolved
+// cross-package types add ~500 no-unsafe-* warnings over a built tree. So
+// measure it the same way before changing it:
+//   git worktree add /tmp/lint-count origin/main && cd /tmp/lint-count
+//   pnpm install --frozen-lockfile && pnpm exec eslint packages/
+// Lower the cap when the count drops. Raise it only with a reason in the PR.
 function downgradeToWarn(config) {
   return {
     ...config,
@@ -137,11 +145,45 @@ export default tseslint.config(
       'unicorn/no-null': 'off',
       // wants `(error)` not `(err)` — bikeshed; codebase uses both
       'unicorn/catch-error-name': 'off',
-      // CSS-only rule (added in unicorn 73) that recommended turns on for every
-      // language. ESLint 10 hard-errors when a rule is applied to a language it
-      // does not support, so leaving it on fails the whole lint run on "js/js".
-      // We lint no CSS, so turn it off rather than scope it to a files glob.
+      // Same bikeshed as catch-error-name, wider net: flags every `err`, `e`,
+      // `args`, `opts`. Was the single largest warning source (~1,200).
+      'unicorn/name-replacements': 'off',
+      // Comment layout only: leading ` * ` in JSDoc bodies and `/* x */` vs
+      // `// x`. Prettier leaves comments alone and so do we (~1,650 combined).
+      'unicorn/no-asterisk-prefix-in-documentation-comments': 'off',
+      'unicorn/single-line-block-comment-style': 'off',
+      // `() => x` vs `() => { return x; }` — style, no defect class behind it.
+      'unicorn/consistent-arrow-return-style': 'off',
+      // Temporal is not available in the Node versions we support (>=22).
+      'unicorn/prefer-temporal': 'off',
+      // Control-flow restyling rules that unicorn 76 added or widened (the
+      // ternary/guard family alone went from 2 to ~120 warnings). Each one
+      // rewrites working if/else, loop and guard shapes with no defect class
+      // behind it, and together they pushed lint past --max-warnings.
+      'unicorn/prefer-ternary': 'off',
+      'unicorn/prefer-minimal-ternary': 'off',
+      'unicorn/prefer-logical-operator-over-ternary': 'off',
+      'unicorn/prefer-combined-guards': 'off',
+      'unicorn/prefer-early-return': 'off',
+      'unicorn/prefer-continue': 'off',
+      // CSS-only rules (prefer-explicit-viewport-units added in unicorn 73,
+      // the rest in 76) that recommended turns on for every language. ESLint 10
+      // hard-errors when a rule is applied to a language it does not support,
+      // so leaving any of them on fails the whole lint run on "js/js". We lint
+      // no CSS, so turn them off rather than scope them to a files glob. (CSS
+      // rules carry meta.languages: ['css/css']; if this list keeps growing per
+      // major, filter recommended on that instead.)
       'unicorn/prefer-explicit-viewport-units': 'off',
+      'unicorn/no-deprecated-css-features': 'off',
+      'unicorn/no-duplicate-css-selectors': 'off',
+      'unicorn/no-duplicate-font-family-names': 'off',
+      'unicorn/no-invalid-media-features': 'off',
+      'unicorn/no-nesting-with-mixed-specificity': 'off',
+      'unicorn/no-redundant-nested-style-rules': 'off',
+      'unicorn/no-unknown-css-annotations': 'off',
+      'unicorn/no-unknown-pseudo-selectors': 'off',
+      'unicorn/no-unscoped-css-nesting-selector': 'off',
+      'unicorn/prefer-media-feature-range-syntax': 'off',
       // wants `(arg) => ...` over `arg => ...` — prettier already enforces
       'sonarjs/arrow-function-convention': 'off',
       // flags any string literal repeated 3+ times — false positive heaven

@@ -129,17 +129,38 @@ export function getRepoScore(state: Readonly<AgentState>, repo: string): Readonl
   return state.repoScores[repo];
 }
 
+/** The outcome evidence behind a score, as a comparable string. Excludes stars and language. */
+function outcomeFingerprint(rs: RepoScore): string {
+  return JSON.stringify([
+    rs.mergedPRCount,
+    rs.closedWithoutMergeCount,
+    rs.avgResponseDays ?? null,
+    rs.lastMergedAt ?? null,
+    rs.signals.hasActiveMaintainers,
+    rs.signals.isResponsive,
+    rs.signals.hasHostileComments,
+  ]);
+}
+
 /**
  * Update a repository's score with partial updates. If the repo has no existing score,
  * a default score record is created first (base score 5). After applying updates, the
  * numeric score is recalculated.
  */
 export function updateRepoScore(state: AgentState, repo: string, updates: RepoScoreUpdate): void {
-  if (!state.repoScores[repo]) {
+  const isNew = !state.repoScores[repo];
+  if (isNew) {
     state.repoScores[repo] = createDefaultRepoScore(repo);
   }
 
   const repoScore = state.repoScores[repo];
+
+  // The fields the score is computed from. `lastEvaluatedAt` moves only when
+  // one of them actually changes value: getLowScoringRepos uses it to expire a
+  // low score after 30 days (#487), and daily calls this for every known repo
+  // on every run (star/language refresh, re-writing the same merged counts).
+  // Bumping on every touch meant the expiry could never be reached.
+  const outcomeBefore = outcomeFingerprint(repoScore);
 
   // Apply explicit field updates (skip undefined values to preserve existing data)
   if (updates.mergedPRCount !== undefined) repoScore.mergedPRCount = updates.mergedPRCount;
@@ -155,7 +176,9 @@ export function updateRepoScore(state: AgentState, repo: string, updates: RepoSc
 
   // Recalculate score
   repoScore.score = calculateScore(repoScore);
-  repoScore.lastEvaluatedAt = new Date().toISOString();
+  if (isNew || outcomeFingerprint(repoScore) !== outcomeBefore) {
+    repoScore.lastEvaluatedAt = new Date().toISOString();
+  }
 
   debug(MODULE, `Updated repo score for ${repo}: ${repoScore.score}/10`);
 }

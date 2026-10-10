@@ -249,6 +249,57 @@ describe('updateRepoScore', () => {
 // incrementMergedCount
 // ---------------------------------------------------------------------------
 
+describe('updateRepoScore: lastEvaluatedAt tracks outcome evidence, not touches (#487)', () => {
+  const OLD = '2026-01-01T00:00:00.000Z';
+  const seeded = () =>
+    makeAgentState({
+      repoScores: {
+        'o/r': makeRepoScore({
+          repo: 'o/r',
+          score: 2,
+          mergedPRCount: 0,
+          closedWithoutMergeCount: 3,
+          lastEvaluatedAt: OLD,
+          signals: { hasActiveMaintainers: true, isResponsive: false, hasHostileComments: false },
+        }),
+      },
+    });
+
+  it('a metadata refresh (stars, language) does not move it', () => {
+    const state = seeded();
+    updateRepoScore(state, 'o/r', { stargazersCount: 1200, language: 'TypeScript' });
+    expect(state.repoScores['o/r'].stargazersCount).toBe(1200);
+    expect(state.repoScores['o/r'].lastEvaluatedAt).toBe(OLD);
+  });
+
+  it('re-writing the same counts and signals does not move it', () => {
+    const state = seeded();
+    updateRepoScore(state, 'o/r', { mergedPRCount: 0, closedWithoutMergeCount: 3, signals: { isResponsive: false } });
+    expect(state.repoScores['o/r'].lastEvaluatedAt).toBe(OLD);
+  });
+
+  it.each([
+    ['a new merge', { mergedPRCount: 1 }],
+    ['a new close', { closedWithoutMergeCount: 4 }],
+    ['a signal flip', { signals: { isResponsive: true } }],
+    ['a new lastMergedAt', { lastMergedAt: '2026-09-01T00:00:00.000Z' }],
+    ['a new avgResponseDays', { avgResponseDays: 3 }],
+  ])('%s moves it', (_name, updates) => {
+    const state = seeded();
+    updateRepoScore(state, 'o/r', updates);
+    expect(state.repoScores['o/r'].lastEvaluatedAt > OLD).toBe(true);
+  });
+
+  it('so a low score expires for someone who runs daily, instead of blocking the repo forever', () => {
+    const state = seeded();
+    state.config.minRepoScoreThreshold = 4;
+    // What daily does for every known repo on every run:
+    updateRepoScore(state, 'o/r', { mergedPRCount: 0 });
+    updateRepoScore(state, 'o/r', { stargazersCount: 1200, language: 'TypeScript' });
+    expect(getLowScoringRepos(state)).not.toContain('o/r'); // evidence is >30 days old
+  });
+});
+
 describe('incrementMergedCount', () => {
   it('increments from 0 for a new repo', () => {
     const state = makeAgentState({ repoScores: {} });

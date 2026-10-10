@@ -40,6 +40,7 @@ const mockSetMonthlyClosedCounts = vi.fn();
 const mockSetMonthlyOpenedCounts = vi.fn();
 const mockSetLastDigest = vi.fn();
 const mockSave = vi.fn();
+const mockReloadIfChanged = vi.fn(() => false);
 const mockIsPRShelved = vi.fn();
 const mockUnshelvePR = vi.fn();
 const mockGetStats = vi.fn();
@@ -106,6 +107,7 @@ vi.mock('../core/index.js', async (importOriginal) => {
         return { mode: 'gist', degraded: null };
       }),
       batch: (fn: () => void) => fn(),
+      reloadIfChanged: mockReloadIfChanged,
     })),
     requireGitHubToken: vi.fn(() => 'test-token'),
     formatRelativeTime: vi.fn(() => '2 days ago'),
@@ -135,6 +137,7 @@ vi.mock('../core/state.js', () => ({
     getStatusOverride: mockGetStatusOverride,
     save: mockSave,
     batch: (fn: () => void) => fn(),
+    reloadIfChanged: mockReloadIfChanged,
   })),
 }));
 
@@ -1074,6 +1077,14 @@ describe('executeDailyCheck() — issue conversation', () => {
 // ---------------------------------------------------------------------------
 
 describe('runDaily()', () => {
+  it('refreshes the state baseline before persisting, so an external write mid-run does not sink every save', async () => {
+    mockReloadIfChanged.mockClear();
+    await runDaily();
+    // One reload per daily batch; the exact number tracks the phases, so pin
+    // only that the long-running phases do not save against a load-time baseline.
+    expect(mockReloadIfChanged.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
   it('returns a DailyOutput with deduplicated data', async () => {
     vi.mocked(requireGitHubToken).mockReturnValue('test-token');
 

@@ -23,7 +23,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { errorMessage, getStateManager, maybeCheckpoint, parseGitHubUrl, requireGitHubToken } from '../core/index.js';
-import { UNATTENDED_ENV } from '../core/errors.js';
+import { UNATTENDED_ENV, ValidationError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import type { PRCheckFailure } from '../core/pr-monitor.js';
 import { getReportsDir } from '../core/paths.js';
@@ -33,6 +33,7 @@ import { parseIssueList } from './parse-list.js';
 import type { DailyOutput, DailyWarning, PendingLearnings } from '../formatters/json.js';
 import type { AttentionSummary } from '../core/pr-attention.js';
 import { executeDailyCheck } from './daily.js';
+import { exportHandoff, handoffDir, pruneHandoffBundles, writeHandoffBundle } from './overnight-handoff.js';
 
 type OvernightBucket = 'prepare' | 'judgment';
 
@@ -335,7 +336,7 @@ export async function runOvernight(): Promise<OvernightOutput> {
   fs.writeFileSync(reportPath, renderReport(body, carried), { mode: 0o600 });
   publishReport(sm, reportPath);
 
-  sm.setLastOvernight({
+  const record = {
     runAt,
     reportPath,
     prepareCount: prepare.length,
@@ -343,7 +344,16 @@ export async function runOvernight(): Promise<OvernightOutput> {
     prepared: carried,
     ...(implement ? { implementUrl: implement.url } : {}),
     implementAttempts: attempts,
-  });
+  };
+  sm.setLastOvernight(record);
+  const dropDir = handoffDir();
+  if (dropDir) {
+    pruneHandoffBundles(
+      dropDir,
+      carried.map((p) => p.branch),
+    );
+    exportHandoff(dropDir, record);
+  }
   // executeDailyCheck already checkpointed the Gist; this write came after it,
   // and in Gist mode setLastOvernight only reaches the local cache (#1629 class).
   const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
@@ -357,9 +367,47 @@ export async function runOvernight(): Promise<OvernightOutput> {
   };
 }
 
+/** The fields of the preparer agent's four-line report (agents/overnight-preparer.md). */
+export interface PreparerReport {
+  branch?: string;
+  worktree?: string;
+  status?: string;
+  note?: string;
+}
+
+/**
+ * Parse the preparer's `KEY: value` report. The agent that writes it has read
+ * CI logs and review comments from other people's repos, so its text is
+ * untrusted. The orchestrating command saves the report with the Write tool and
+ * passes the path (`--from-report`); nothing from it is ever spliced into a
+ * shell command line, where `$(...)` or backticks inside double quotes would run.
+ * Unknown lines are ignored and the first occurrence of a key wins.
+ */
+export function parsePreparerReport(text: string): PreparerReport {
+  const report: PreparerReport = {};
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^(BRANCH|WORKTREE|STATUS|NOTE):(.*)$/.exec(line); // value is trimmed below
+    if (!match) continue;
+    const key = match[1].toLowerCase() as keyof PreparerReport;
+    const value = match[2].trim();
+    if (value && report[key] === undefined) report[key] = value;
+  }
+  return report;
+}
+
+function readPreparerReport(reportFile: string): PreparerReport {
+  return parsePreparerReport(fs.readFileSync(reportFile, 'utf8'));
+}
+
+// Conservative on purpose: a preparer branch is `prep/...`-style. Anything
+// outside this set in a name that came from an agent is a reason to stop.
+const SAFE_BRANCH = /^(?!-)[\w./@+-]+$/;
+
 export interface OvernightImplementBlockedOptions {
   url: string;
   note?: string;
+  /** Path to the saved preparer report; supplies `note` when it is not given. */
+  fromReport?: string;
 }
 
 export interface OvernightImplementBlockedOutput {
@@ -383,20 +431,26 @@ export async function runOvernightImplementBlocked(
   if (options.url !== last.implementUrl) {
     throw new Error(`${options.url} is not tonight's implement item (${last.implementUrl ?? 'none queued'})`);
   }
+  const note = options.note ?? (options.fromReport ? readPreparerReport(options.fromReport).note : undefined);
   const implementAttempts = [
     ...(last.implementAttempts ?? []),
-    { url: options.url, attemptedAt: new Date().toISOString(), outcome: 'blocked' as const, note: options.note },
+    { url: options.url, attemptedAt: new Date().toISOString(), outcome: 'blocked' as const, note },
   ];
   sm.setLastOvernight({ ...last, implementAttempts });
+  const dropDir = handoffDir();
+  if (dropDir) exportHandoff(dropDir, { ...last, implementAttempts });
   const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
   return { url: options.url, attemptCount: implementAttempts.length, ...(gistSyncWarning ? { gistSyncWarning } : {}) };
 }
 
 export interface OvernightRecordOptions {
   url: string;
-  branch: string;
+  /** Required unless `fromReport` supplies it. */
+  branch?: string;
   worktree?: string;
   note?: string;
+  /** Path to the saved preparer report; supplies branch, worktree and note when they are not given. */
+  fromReport?: string;
 }
 
 export interface OvernightRecordOutput {
@@ -413,13 +467,27 @@ export async function runOvernightRecord(options: OvernightRecordOptions): Promi
   const last = sm.getLastOvernight();
   if (!last) throw new Error('No overnight run recorded yet; run `overnight` first.');
 
+  const report = options.fromReport ? readPreparerReport(options.fromReport) : {};
+  const branch = options.branch ?? report.branch;
+  if (!branch) throw new ValidationError('No branch to record: pass --branch, or --from-report with a BRANCH: line.');
+  if (!SAFE_BRANCH.test(branch)) throw new ValidationError(`Refusing to record an unusual branch name: ${branch}`);
+
   const entry: OvernightPrepared = {
     url: options.url,
-    branch: options.branch,
-    worktree: options.worktree,
-    note: options.note,
+    branch,
+    worktree: options.worktree ?? report.worktree,
+    note: options.note ?? report.note,
     recordedAt: new Date().toISOString(),
   };
+  // Split-user box: the pusher cannot read this worktree, so the branch
+  // travels as a bundle. Written before state, so a branch that could not be
+  // bundled is never recorded as prepared.
+  const dropDir = handoffDir();
+  if (dropDir) {
+    if (!entry.worktree)
+      throw new ValidationError('No worktree to bundle: pass --worktree, or a report with WORKTREE:.');
+    writeHandoffBundle(dropDir, entry.worktree, branch);
+  }
   const prepared = [...last.prepared, entry];
   // Recording the branch for tonight's list issue is what marks the attempt
   // as prepared, so the next run moves on to the next Pursue item.
@@ -434,6 +502,7 @@ export async function runOvernightRecord(options: OvernightRecordOptions): Promi
 
   const { reportRecreated } = writePreparedSection(last.reportPath, prepared);
   publishReport(sm, last.reportPath);
+  if (dropDir) exportHandoff(dropDir, { ...last, prepared, implementAttempts });
   const gistSyncWarning = await maybeCheckpoint(sm, MODULE);
 
   return {

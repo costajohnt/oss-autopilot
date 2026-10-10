@@ -17,6 +17,7 @@ import {
   requireGitHubToken,
   getOctokit,
   GuidelinesNotAvailableError,
+  labelGuidelinesContent,
   maybeCheckpoint,
 } from '../core/index.js';
 import { fetchPRCommentBundlesBatch, type PRCommentBundle } from '../core/pr-comments-fetcher.js';
@@ -39,6 +40,14 @@ export interface GuidelinesViewOutput {
   repo: string;
   /** Markdown content, or null when the repo has no guidelines stored. */
   content: string | null;
+  /**
+   * `content` prefixed with the provenance note, or null. This is the field to
+   * hand to an agent: stored guidelines were distilled from other people's PR
+   * comments, and re-injected unlabeled they read as project instructions
+   * (#1455). `content` itself stays raw, because the edit flow reads it and
+   * writes it back, and a label in there would be stored as guideline text.
+   */
+  agentContent: string | null;
   /** UTF-8 byte size of `content`, or 0 when content is null. */
   byteSize: number;
   /** Whether a guidelines file exists for this repo. */
@@ -132,6 +141,7 @@ export async function runGuidelinesView(options: RepoOption): Promise<Guidelines
   return {
     repo: options.repo,
     content,
+    agentContent: content === null ? null : labelGuidelinesContent(content),
     byteSize: content === null ? 0 : Buffer.byteLength(content, 'utf8'),
     exists: content !== null,
     storageMode: sm.isGuidelinesAvailable() ? 'gist' : 'local-unavailable',

@@ -208,7 +208,12 @@ oss-autopilot overnight schedule --install --hour 2
 
 `/oss-dashboard` opens a local web UI at `http://localhost:3000` with your PRs by status, contribution charts, and buttons to shelve or re-prioritize a PR. It binds to loopback only.
 
-The dashboard currently works from the plugin install or a git checkout. The npm package does not include the dashboard assets yet, so `npx @oss-autopilot/core dashboard serve` will report that it cannot find them.
+Without Claude Code, run it from the CLI (needs `@oss-autopilot/core` 3.28.1 or newer, and one `daily` run so there is data to show):
+
+```bash
+npx @oss-autopilot/core@latest daily
+npx @oss-autopilot/core@latest dashboard serve
+```
 
 ## Configuration
 
@@ -263,8 +268,8 @@ More detail: [ARCHITECTURE.md](ARCHITECTURE.md). Security model and reporting: [
 | Read your PRs, issues, CI logs | Yes | Yes |
 | Edit files in a local clone or worktree | When you pick an action | Yes, in a worktree it creates |
 | Run a project's tests | When you pick an action | Yes |
-| Push a branch | Only after you approve | Direct `git push` is blocked |
-| Post a comment, open or merge a PR | Only after you approve | Direct `gh` writes are blocked |
+| Push a branch | Only after you approve | Direct `git push` is blocked; the CLI's own `overnight push-prep` refuses |
+| Post a comment, open or merge a PR | Only after you approve | Direct `gh` writes are blocked; the CLI's own `post` and `claim` refuse |
 | Send data anywhere other than GitHub | No | No |
 
 In interactive use, approval is per action. Approving one reply does not approve the next one.
@@ -314,7 +319,6 @@ Found a bug? [Open an issue](https://github.com/costajohnt/oss-autopilot/issues)
 - **GitHub only.** No GitLab, Bitbucket, or other forges.
 - **1,000-result cap.** GitHub's Search API returns at most 1,000 results per query. If you have more than 1,000 open, merged, or closed PRs, the oldest are not counted.
 - **Single user.** It tracks one person's PRs. No team views or shared state.
-- **Dashboard is not in the npm package yet.** Plugin install or git checkout only.
 - **Overnight scheduling is macOS only** out of the box.
 
 ## Contributing

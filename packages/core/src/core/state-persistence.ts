@@ -420,6 +420,13 @@ export function loadState(): LoadStateResult {
 
   try {
     if (fs.existsSync(statePath)) {
+      // Baseline mtime for saveState's compare-and-swap. Taken BEFORE the read:
+      // if another process writes in between, we end up with a baseline older
+      // than our content, and the next save fails with a ConcurrencyError the
+      // caller can recover from by reloading. Taken after the read, the same
+      // race pairs stale content with the new mtime and the save silently
+      // overwrites the other writer.
+      let mtimeMs = safeGetMtimeMs(statePath);
       const data = fs.readFileSync(statePath, 'utf8');
       let raw: unknown = JSON.parse(data);
 
@@ -466,6 +473,7 @@ export function loadState(): LoadStateResult {
       // Save migrated state only after validation succeeds
       if (wasMigrated) {
         atomicWriteFileSync(statePath, JSON.stringify(parsed.data, null, 2), 0o600);
+        mtimeMs = safeGetMtimeMs(statePath); // our own write: what we hold is what is on disk
         debug(MODULE, 'Migrated and validated state saved');
       }
 
@@ -486,15 +494,13 @@ export function loadState(): LoadStateResult {
         }
         if (needsCleanupSave) {
           atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
+          mtimeMs = safeGetMtimeMs(statePath); // our own write, as above
           warn(MODULE, 'Cleaned up dismissed PR URLs from persisted state');
         }
       } catch (cleanupError) {
         warn(MODULE, `Failed to clean up removed features from state: ${errorMessage(cleanupError)}`);
         // Continue with loaded state — cleanup will be retried on next load
       }
-
-      // Record file mtime so reloadIfChanged() can detect external writes
-      const mtimeMs = safeGetMtimeMs(statePath);
 
       // Log appropriate message based on version
       const repoCount = Object.keys(state.repoScores).length;
@@ -651,14 +657,21 @@ export function reloadStateIfChanged(lastLoadedMtimeMs: number): LoadStateResult
     const currentMtimeMs = fs.statSync(statePath).mtimeMs;
     if (currentMtimeMs === lastLoadedMtimeMs) return null;
     const result = loadState();
-    // Ensure mtime is always current after reload (covers backup-restore and fresh-state paths)
-    // to prevent repeated unnecessary reloads on every request.
-    try {
-      result.mtimeMs = fs.statSync(statePath).mtimeMs;
-    } catch (err) {
-      // If file was just loaded, stat should not fail. If it does,
-      // next reloadIfChanged() will simply trigger another reload.
-      debug(MODULE, 'Could not re-read mtime after reload (will retry next cycle)', err);
+    // Re-stat only on the recovery paths. There loadState rewrote the file
+    // itself (backup restore) or returned 0 (fresh state), and a current mtime
+    // stops a reload on every request. On the clean path the baseline was
+    // taken BEFORE the read on purpose: replacing it with a later stat would
+    // pair the content we hold with a newer writer's mtime, and the next save
+    // would overwrite that writer without a ConcurrencyError. A baseline that
+    // is merely old costs one more reload, which converges.
+    if (result.recovery) {
+      try {
+        result.mtimeMs = fs.statSync(statePath).mtimeMs;
+      } catch (err) {
+        // If file was just loaded, stat should not fail. If it does,
+        // next reloadIfChanged() will simply trigger another reload.
+        debug(MODULE, 'Could not re-read mtime after reload (will retry next cycle)', err);
+      }
     }
     return result;
   } catch (error) {

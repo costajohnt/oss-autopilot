@@ -1,12 +1,11 @@
 /**
  * Tests for CLI entry point and command registry
  *
- * Tests the registry pattern (cli-registry.ts) and preAction hook (cli.ts):
+ * Tests the registry pattern (cli-registry.ts) and preAction hook (cli-pre-action.ts):
  * 1. Validates local-only command membership via the registry's localOnly flags
- * 2. Exercises preAction hook behavior via a minimal Commander replica
- * 3. Verifies version detection IIFE graceful fallback
- * 4. Confirms all expected subcommands are registered in the registry
- * 5. Verifies lazy-loading pattern in cli-registry.ts
+ * 2. Exercises the real preAction hook (installPreAction) on a minimal Commander program
+ * 3. Confirms all expected subcommands are registered in the registry
+ * 4. Verifies lazy-loading pattern in cli-registry.ts
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -21,6 +20,9 @@ vi.mock('./core/index.js', () => ({
   enableDebug: vi.fn(),
   debug: vi.fn(),
   getCLIVersion: vi.fn().mockReturnValue('0.0.0-test'),
+  ensureGistPersistence: vi.fn(),
+  renderGistWarning: vi.fn((cause: string) => `gist warning: ${cause}`),
+  bootstrapGistBestEffort: vi.fn(),
 }));
 
 vi.mock('./core/errors.js', () => ({
@@ -31,13 +33,26 @@ vi.mock('./core/errors.js', () => ({
 vi.mock('./formatters/json.js', () => ({
   outputJson: vi.fn(),
   outputJsonError: vi.fn(),
+  setEnvelopeGistWarning: vi.fn(),
 }));
 
-import { getGitHubTokenAsync, enableDebug, debug } from './core/index.js';
+import {
+  getGitHubTokenAsync,
+  enableDebug,
+  debug,
+  ensureGistPersistence,
+  bootstrapGistBestEffort,
+} from './core/index.js';
+import { outputJsonError, setEnvelopeGistWarning } from './formatters/json.js';
+import { installPreAction } from './cli-pre-action.js';
 
 const mockGetGitHubTokenAsync = vi.mocked(getGitHubTokenAsync);
 const mockEnableDebug = vi.mocked(enableDebug);
 const mockDebug = vi.mocked(debug);
+const mockEnsureGistPersistence = vi.mocked(ensureGistPersistence);
+const mockBootstrapGistBestEffort = vi.mocked(bootstrapGistBestEffort);
+const mockOutputJsonError = vi.mocked(outputJsonError);
+const mockSetEnvelopeGistWarning = vi.mocked(setEnvelopeGistWarning);
 
 // ─── Import registry directly ────────────────────────────────────────────────
 //
@@ -48,7 +63,7 @@ import { commands } from './cli-registry.js';
 
 const LOCAL_ONLY_COMMANDS = commands.filter((c) => c.localOnly).map((c) => c.name);
 
-// ─── Helper: build a minimal Commander program with the same preAction hook ──
+// ─── Helper: build a minimal Commander program with the real preAction hook ──
 
 async function noop(): Promise<void> {}
 
@@ -59,7 +74,7 @@ function buildTestProgram(localOnlySet: Set<string>) {
   // Register a representative set of commands: two that require a token (daily, search),
   // two that are LOCAL_ONLY (status, config), and one subcommand group with
   // localOnly inheritance (group → leaf) to cover the parent-walk path.
-  program.command('daily').description('Run daily check').action(noop);
+  program.command('daily').description('Run daily check').option('--json').action(noop);
   program.command('status').description('Show status').action(noop);
   program.command('config').description('Show config').action(noop);
   program.command('search').description('Search').action(noop);
@@ -68,33 +83,8 @@ function buildTestProgram(localOnlySet: Set<string>) {
   group.command('view').action(noop);
   group.command('store').action(noop);
 
-  program.hook('preAction', async (thisCommand, actionCommand) => {
-    const globalOpts = thisCommand.opts();
-    if (globalOpts.debug) {
-      enableDebug();
-      debug('cli', `Running command: ${actionCommand.name()}`);
-    }
-
-    // Walk parent chain so a localOnly group covers all its leaf subcommands
-    // (#1208 M2). Mirrors the production preAction in cli.ts.
-    let cmd: typeof actionCommand | null = actionCommand;
-    let isLocalOnly = false;
-    while (cmd) {
-      if (localOnlySet.has(cmd.name())) {
-        isLocalOnly = true;
-        break;
-      }
-      cmd = cmd.parent;
-    }
-
-    if (!isLocalOnly) {
-      const token = await getGitHubTokenAsync();
-      if (!token) {
-        console.error('Error: GitHub authentication required.');
-        process.exit(1);
-      }
-    }
-  });
+  // The production hook, not a copy of it.
+  installPreAction(program, localOnlySet);
 
   return program;
 }
@@ -171,6 +161,8 @@ describe('preAction hook', () => {
       throw new Error('process.exit called');
     }) as any);
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockEnsureGistPersistence.mockResolvedValue('local' as never);
+    mockBootstrapGistBestEffort.mockResolvedValue(null as never);
   });
 
   afterEach(() => {
@@ -252,6 +244,72 @@ describe('preAction hook', () => {
     expect(errorOutput).toContain('GitHub authentication required');
   });
 
+  it('emits the AUTH_REQUIRED JSON envelope instead of prose when --json is set (#1056)', async () => {
+    mockGetGitHubTokenAsync.mockResolvedValue(null);
+    const program = buildTestProgram(localOnlySet);
+
+    await expect(program.parseAsync(['node', 'cli', 'daily', '--json'])).rejects.toThrow('process.exit called');
+
+    expect(mockOutputJsonError).toHaveBeenCalledWith(
+      expect.stringContaining('authentication required'),
+      'AUTH_REQUIRED',
+    );
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('bootstraps Gist persistence with the token before a gated command runs', async () => {
+    mockGetGitHubTokenAsync.mockResolvedValue('ghp_valid_token');
+    const program = buildTestProgram(localOnlySet);
+
+    await program.parseAsync(['node', 'cli', 'daily']);
+
+    expect(mockEnsureGistPersistence).toHaveBeenCalledWith('ghp_valid_token');
+    expect(mockSetEnvelopeGistWarning).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['degraded', 'init-fallback'],
+    ['state-unreadable', 'state-unreadable'],
+  ])('threads a %s Gist status into the JSON envelope as %s (#1433)', async (status, cause) => {
+    mockGetGitHubTokenAsync.mockResolvedValue('ghp_valid_token');
+    mockEnsureGistPersistence.mockResolvedValue(status as never);
+    const program = buildTestProgram(localOnlySet);
+
+    await program.parseAsync(['node', 'cli', 'daily']);
+
+    expect(mockSetEnvelopeGistWarning).toHaveBeenCalledWith(`gist warning: ${cause}`);
+  });
+
+  it('rejects when Gist bootstrap throws, so cli.ts can route it to handleCommandError (#1386)', async () => {
+    mockGetGitHubTokenAsync.mockResolvedValue('ghp_valid_token');
+    mockEnsureGistPersistence.mockRejectedValue(new Error('gist is corrupt'));
+    const program = buildTestProgram(localOnlySet);
+
+    await expect(program.parseAsync(['node', 'cli', 'daily'])).rejects.toThrow('gist is corrupt');
+  });
+
+  it('best-effort bootstraps Gist persistence for localOnly commands and surfaces the warning (#1431)', async () => {
+    mockBootstrapGistBestEffort.mockResolvedValue('mutation will not sync' as never);
+    const program = buildTestProgram(localOnlySet);
+
+    await program.parseAsync(['node', 'cli', 'status']);
+
+    expect(mockBootstrapGistBestEffort).toHaveBeenCalledWith(getGitHubTokenAsync);
+    expect(mockEnsureGistPersistence).not.toHaveBeenCalled();
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Warning: mutation will not sync');
+    expect(mockSetEnvelopeGistWarning).toHaveBeenCalledWith('mutation will not sync');
+  });
+
+  it('stays quiet for localOnly commands when the best-effort bootstrap has nothing to report', async () => {
+    const program = buildTestProgram(localOnlySet);
+
+    await program.parseAsync(['node', 'cli', 'status']);
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(mockSetEnvelopeGistWarning).not.toHaveBeenCalled();
+  });
+
   it('should allow a non-LOCAL command to run when a token is available', async () => {
     mockGetGitHubTokenAsync.mockResolvedValue('ghp_valid_token');
     const program = buildTestProgram(localOnlySet);
@@ -315,65 +373,6 @@ describe('preAction hook', () => {
     await program.parseAsync(['node', 'cli', '--debug', 'status']);
 
     expect(processExitSpy).not.toHaveBeenCalled();
-  });
-});
-
-// ─── Version detection IIFE ───────────────────────────────────────────────────
-
-describe('Version detection IIFE', () => {
-  it('should return a semver-like string from package.json', () => {
-    // The IIFE reads from the filesystem via require('fs') and require('path').
-    // We test the shape of the result by running equivalent logic directly.
-    let version: string;
-    try {
-      const pkgPath = join(__dirname, '..', 'package.json');
-      version = JSON.parse(readFileSync(pkgPath, 'utf8')).version;
-    } catch {
-      version = '0.0.0';
-    }
-
-    // Should be a non-empty semver-like string
-    expect(typeof version).toBe('string');
-    expect(version.length).toBeGreaterThan(0);
-    expect(version).toMatch(/^\d+\.\d+\.\d+/);
-  });
-
-  it('should fall back to "0.0.0" when package.json cannot be read', () => {
-    // Simulate the IIFE behaviour when the file is missing / unreadable
-    let version: string;
-    try {
-      // Attempt to read a path that does not exist
-      version = JSON.parse(readFileSync('/nonexistent/path/package.json', 'utf8')).version;
-      version = 'should-not-reach';
-    } catch {
-      version = '0.0.0';
-    }
-
-    expect(version).toBe('0.0.0');
-  });
-
-  it('should fall back to "0.0.0" when package.json contains invalid JSON', () => {
-    let version: string;
-    try {
-      version = JSON.parse('not valid json').version;
-      version = 'should-not-reach';
-    } catch {
-      version = '0.0.0';
-    }
-
-    expect(version).toBe('0.0.0');
-  });
-
-  it('should fall back to "0.0.0" when version key is missing from package.json', () => {
-    let version: string | undefined;
-    try {
-      version = JSON.parse('{}').version;
-      if (!version) throw new Error('no version');
-    } catch {
-      version = '0.0.0';
-    }
-
-    expect(version).toBe('0.0.0');
   });
 });
 
@@ -517,8 +516,16 @@ describe('Lazy imports', () => {
     expect(src).toContain("from './cli-registry.js'");
   });
 
-  it('should use getGitHubTokenAsync in preAction hook', () => {
+  it('cli.ts installs the real preAction hook', () => {
+    // The hook's behaviour is tested above through installPreAction. cli.ts
+    // itself cannot be imported (it parses argv on load), so pin the wiring.
     const src = readFileSync(join(__dirname, 'cli.ts'), 'utf8');
+    expect(src).toContain('installPreAction(program, localOnlySet);');
+    expect(src).not.toContain("program.hook('preAction'");
+  });
+
+  it('should use getGitHubTokenAsync in preAction hook', () => {
+    const src = readFileSync(join(__dirname, 'cli-pre-action.ts'), 'utf8');
 
     // The preAction hook should use the async version
     expect(src).toContain('await getGitHubTokenAsync()');

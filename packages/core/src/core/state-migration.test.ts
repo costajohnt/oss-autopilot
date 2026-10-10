@@ -8,6 +8,7 @@ import { StateManager } from './state.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { isRoot } from '../test-lib/is-root.js';
 
 // ─── File-System Persistence Mock Setup ──────────────────────────────────────
 //
@@ -689,7 +690,8 @@ describe('migrateFromLegacyLocation', () => {
     expect(fs.existsSync(legacyStatePath())).toBe(true);
   });
 
-  it('should handle migration failure gracefully', () => {
+  // Root ignores file modes, so the chmod-000 setup cannot make migration fail.
+  it.skipIf(isRoot)('should handle migration failure gracefully', () => {
     createLegacyState(makeCurrentState());
     fs.chmodSync(legacyStatePath(), 0o000);
 

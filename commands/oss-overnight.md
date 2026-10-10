@@ -66,11 +66,18 @@ OVERNIGHT PREPARE-ONLY MODE for {url} ({label}: {reason}). Report in your four-l
 
 After the agent returns:
 
+Save the agent's report, exactly as returned, to `{data.reportPath}.preparer.txt`
+**with the Write tool** (overwrite it for each item). The preparer has read CI
+logs and review comments from other people's repos, so nothing from its report
+goes on a command line: inside double quotes the shell would run any backticks
+or `$(...)` it contains. The CLI reads the file instead.
+
 - `STATUS: prepared` → record it:
   ```bash
   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" overnight record \
-    --url "{url}" --branch "{BRANCH}" --worktree "{WORKTREE}" --note "{NOTE}" --json
+    --url "{url}" --from-report "{data.reportPath}.preparer.txt" --json
   ```
+  `{url}` and `{data.reportPath}` come from the CLI's own JSON, not from the agent.
 - `STATUS: blocked` → append one line to the report file under a `## Blocked` heading
   (create it if missing): `- {label} {url} — {NOTE}`. Do not retry.
 - Agent failed or returned nothing → same as blocked, with the note `agent returned no result`.
@@ -83,8 +90,12 @@ user's on that repo and no earlier attempt. Dispatch **one** more
 `overnight-preparer`, after the Step 2 items, with:
 
 ```
-OVERNIGHT IMPLEMENT MODE for {implement.url} ({implement.repo}#{implement.number}: {implement.title}). Report in your four-line shape.
+OVERNIGHT IMPLEMENT MODE for {implement.url} ({implement.repo}#{implement.number}). Report in your four-line shape.
 ```
+
+The issue title is left out on purpose. Anyone can write it, and this line is
+an instruction to an agent that runs unattended with Bash and Write. The
+preparer reads the issue itself, through the fenced `gh issue view` path.
 
 After it returns:
 
@@ -93,7 +104,7 @@ After it returns:
 - `STATUS: blocked` (or no result) → the Blocked line as in Step 2, and also:
   ```bash
   node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" overnight implement-blocked \
-    --url "{implement.url}" --note "{NOTE}" --json
+    --url "{implement.url}" --from-report "{data.reportPath}.preparer.txt" --json
   ```
   so the next run picks the next Pursue item instead of retrying this one.
 
@@ -177,6 +188,31 @@ branches already pushed by then are still recorded.
 
 `--dry-run` resolves the targets and prints the plan without pushing or
 writing anything.
+
+### Split users: `OSS_AUTOPILOT_HANDOFF_DIR`
+
+The allowlist is not a sandbox: `node` stays allowed, so text a preparer reads
+can still run code as whoever runs the tick. The real boundary is to run the
+tick as a unix user that holds no write-capable GitHub token (a zero-scope
+token covers the public reads) and push-prep as the user that holds one.
+Those two users must not share a git directory: push-prep running git in a
+repo the tick can write would run the tick's hooks, `core.fsmonitor`,
+`core.sshCommand` or `insteadOf` rewrites with the token.
+
+So the handoff is data only. Set `OSS_AUTOPILOT_HANDOFF_DIR` to the same
+directory for both users (writable by the tick, readable by the pusher):
+
+- `overnight run`, `record` and `implement-blocked` write `last-overnight.json`
+  (the state record, without local paths), `report.md`, and for each recorded
+  branch a `git bundle` (`record` refuses a branch it cannot bundle, so it
+  needs `--worktree` or a `WORKTREE:` line).
+- `overnight push-prep` treats all of it as untrusted input: no symlinks,
+  FIFOs or hard links, size caps, schema check. It fetches each bundle into a
+  fresh private repo and pushes from there. The target is the PR's head repo
+  (or `<login>/<repo>` for an implement-mode issue), and on top of the gates
+  above it must be a fork of the PR's repo. It then writes the run into its
+  own state and report and publishes both to the Gist, so the tick's user
+  needs no Gist write access either.
 
 The report itself travels too: in Gist mode, `overnight run`, `overnight
 record` and `overnight push-prep` each publish the rendered report as the

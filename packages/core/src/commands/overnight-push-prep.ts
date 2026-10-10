@@ -15,10 +15,17 @@
  *    so the user's own source repos never grow `prep/*` branches.
  * 3. The ref is always `refs/heads/prep/<branch>` and never `--force`; a
  *    non-fast-forward is a skip with a reason.
+ *
+ * With `OSS_AUTOPILOT_HANDOFF_DIR` set the tick ran as another user, and the
+ * branches arrive as bundles (overnight-handoff.ts). Then there is no
+ * worktree to read remotes from: the target is the PR's head repo (or
+ * `<login>/<repo>` for an issue), which must also be a fork of the PR's repo,
+ * and the push goes out of a private repo filled from the bundle.
  */
 
 import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {
   errorMessage,
   getOctokit,
@@ -30,8 +37,10 @@ import {
 } from '../core/index.js';
 import { assertAttended } from '../core/errors.js';
 import { warn } from '../core/logger.js';
-import type { OvernightPrepared } from '../core/types.js';
-import { publishReport, writePreparedSection } from './overnight.js';
+import { getReportsDir } from '../core/paths.js';
+import type { OvernightPrepared, OvernightRecord } from '../core/types.js';
+import { handoffDir, importHandoffBundle, loadHandoff } from './overnight-handoff.js';
+import { publishReport, reportDateFor, writePreparedSection } from './overnight.js';
 
 const MODULE = 'overnight-push-prep';
 
@@ -51,7 +60,13 @@ export interface GitRemote {
 }
 
 export interface PushTarget extends RemoteOwnerRepo {
+  /** Remote name in the worktree, or the fork's URL in handoff mode. */
   remote: string;
+}
+
+interface PullHead {
+  ref: string;
+  repo: { name: string; full_name: string; owner: { login: string } } | null;
 }
 
 /** `skipped`: a gate said no, nothing to fix tonight. `failed`: the push itself broke; the CLI exits 1. */
@@ -241,9 +256,17 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
   // environment. Inside the tick it must not run at all.
   assertAttended('push prepared branches');
   const sm = getStateManager();
-  const last = sm.getLastOvernight();
+  const dropDir = handoffDir();
+  const handoff = dropDir ? loadHandoff(dropDir) : null;
+  const last: OvernightRecord | undefined = handoff
+    ? {
+        ...handoff.record,
+        reportPath: path.join(getReportsDir(), `overnight-${reportDateFor(new Date(handoff.record.runAt))}.md`),
+      }
+    : sm.getLastOvernight();
   if (!last) throw new Error('No overnight run recorded yet; run `overnight` first.');
   const lastRun = last; // narrowed binding for the closures below
+  if (handoff?.report != null && !options.dryRun) fs.writeFileSync(lastRun.reportPath, handoff.report, { mode: 0o600 });
 
   const octokit = getOctokit(requireGitHubToken());
   const { data: viewer } = await octokit.users.getAuthenticated();
@@ -264,8 +287,8 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
    * GitHub redirects a transferred or renamed repo, so a stale
    * `github.com/<login>/<repo>` URL can resolve to someone else's repo.
    */
-  async function forkSkipReason(target: RemoteOwnerRepo): Promise<string | null> {
-    const key = `${target.owner}/${target.repo}`.toLowerCase();
+  async function forkSkipReason(target: RemoteOwnerRepo, upstream?: string): Promise<string | null> {
+    const key = `${target.owner}/${target.repo}|${upstream ?? ''}`.toLowerCase();
     const cached = forkVerdicts.get(key);
     if (cached !== undefined) return cached;
     let reason: string | null;
@@ -274,6 +297,8 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
       if (!data.fork) reason = `${target.owner}/${target.repo} is not a fork`;
       else if (data.owner.login.toLowerCase() !== login.toLowerCase())
         reason = `${target.owner}/${target.repo} resolved to ${data.full_name}, not owned by ${login}`;
+      else if (upstream && data.parent?.full_name?.toLowerCase() !== upstream.toLowerCase())
+        reason = `${data.full_name} is not a fork of ${upstream}`;
       else reason = null;
     } catch (err) {
       // Same convention as the rest of core (errors.ts): a rate limit must
@@ -286,28 +311,60 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
     return reason;
   }
 
-  /** PR head branch for the compare URL; undefined (with a warning) when it cannot be read. */
-  async function prHeadFor(url: string): Promise<string | undefined> {
+  const pulls = new Map<string, Promise<PullHead | undefined>>();
+  /** The PR's head (branch and repo), read once per URL; undefined (with a warning) when it cannot be read. */
+  function pullFor(url: string): Promise<PullHead | undefined> {
     const parsed = parseGitHubUrl(url);
-    if (!parsed || parsed.type !== 'pull') return undefined;
-    try {
-      const { data } = await octokit.pulls.get({ owner: parsed.owner, repo: parsed.repo, pull_number: parsed.number });
-      return data.head.ref;
-    } catch (err) {
-      if (isRateLimitError(err)) throw err;
-      warn(MODULE, `Could not read the head branch of ${url}; no compare URL: ${errorMessage(err)}`);
-      return undefined;
+    if (!parsed || parsed.type !== 'pull') return Promise.resolve(undefined);
+    let pending = pulls.get(url);
+    if (!pending) {
+      pending = octokit.pulls
+        .get({ owner: parsed.owner, repo: parsed.repo, pull_number: parsed.number })
+        .then(({ data }) => data.head as PullHead)
+        .catch((err: unknown) => {
+          if (isRateLimitError(err)) throw err;
+          warn(MODULE, `Could not read the head of ${url}: ${errorMessage(err)}`);
+          return undefined;
+        });
+      pulls.set(url, pending);
     }
+    return pending;
+  }
+
+  /** Handoff mode: push to the PR's head repo, or `<login>/<repo>` for an issue; a string is a skip reason. */
+  async function handoffTarget(url: string): Promise<{ target: PushTarget; upstream: string } | string> {
+    const parsed = parseGitHubUrl(url);
+    if (!parsed) return `${url} is not a GitHub PR or issue URL`;
+    const upstream = `${parsed.owner}/${parsed.repo}`;
+    let owner = login;
+    let repo = parsed.repo;
+    if (parsed.type === 'pull') {
+      const head = (await pullFor(url))?.repo;
+      if (!head) return `could not read the head repository of ${url}`;
+      if (head.owner.login.toLowerCase() !== login.toLowerCase())
+        return `the head of ${url} is ${head.full_name}, not a repo owned by ${login}`;
+      owner = head.owner.login;
+      repo = head.name;
+    }
+    return { target: { owner, repo, remote: `https://github.com/${owner}/${repo}.git` }, upstream };
   }
 
   async function pushOne(entry: OvernightPrepared): Promise<PushPrepResult> {
-    if (!entry.worktree) return skip(entry, 'no worktree recorded');
-    if (!fs.existsSync(entry.worktree)) return skip(entry, `worktree ${entry.worktree} does not exist`);
+    let target: PushTarget;
+    let upstream: string | undefined;
+    if (dropDir) {
+      const resolved = await handoffTarget(entry.url);
+      if (typeof resolved === 'string') return skip(entry, resolved);
+      ({ target, upstream } = resolved);
+    } else {
+      if (!entry.worktree) return skip(entry, 'no worktree recorded');
+      if (!fs.existsSync(entry.worktree)) return skip(entry, `worktree ${entry.worktree} does not exist`);
+      const found = resolvePushRemote(parseRemotesOutput(git(entry.worktree, ['remote', '-v'])), login);
+      if (!found) return skip(entry, `no remote in ${entry.worktree} is owned by ${login}`);
+      target = found;
+    }
 
-    const target = resolvePushRemote(parseRemotesOutput(git(entry.worktree, ['remote', '-v'])), login);
-    if (!target) return skip(entry, `no remote in ${entry.worktree} is owned by ${login}`);
-
-    const notFork = await forkSkipReason(target);
+    const notFork = await forkSkipReason(target, upstream);
     if (notFork) return skip(entry, notFork, target);
 
     // A recorded name git would reject is a gate saying no, not a broken push.
@@ -319,7 +376,7 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
       return skip(entry, errorMessage(err), target);
     }
     const prepBranch = prepBranchName(ref);
-    const head = await prHeadFor(entry.url);
+    const head = (await pullFor(entry.url))?.ref;
     const base = {
       url: entry.url,
       branch: entry.branch,
@@ -335,8 +392,17 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
     // from writing refs/tags/*; `--` keeps the remote name out of option
     // parsing.
     assertPrepRef(ref);
+    // Handoff: push out of a private repo filled from the bundle, never out
+    // of anything the tick can write. A bundle that cannot be imported is a
+    // failure (the tick recorded a branch it did not deliver), not a gate.
+    let source: { repo: string; cleanup: () => void };
     try {
-      git(entry.worktree, ['push', '--no-follow-tags', '--', target.remote, `refs/heads/${entry.branch}:${ref}`]);
+      source = dropDir ? importHandoffBundle(dropDir, entry.branch) : { repo: entry.worktree!, cleanup: () => {} };
+    } catch (err) {
+      return notPushed('failed', entry, `bundle import failed: ${errorMessage(err)}`, target, ref);
+    }
+    try {
+      git(source.repo, ['push', '--no-follow-tags', '--', target.remote, `refs/heads/${entry.branch}:${ref}`]);
     } catch (err) {
       return isNonFastForward(err)
         ? skip(
@@ -346,6 +412,8 @@ export async function runOvernightPushPrep(options: OvernightPushPrepOptions): P
             ref,
           )
         : notPushed('failed', entry, pushFailureReason(err), target, ref);
+    } finally {
+      source.cleanup();
     }
     return { ...base, status: 'pushed' };
   }

@@ -102,11 +102,13 @@ Options:
 
 If the user approves (with or without edits), persist via `guidelines store`:
 
+First save the final markdown to a temporary file **with the Write tool** (for example `/tmp/oss-guidelines-{owner}-{repo}.md`). Then feed that file to the CLI on stdin:
+
 ```bash
-echo "{final markdown}" | GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" guidelines store --repo {owner}/{repo} --json
+GITHUB_TOKEN=$(gh auth token) node "${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs" guidelines store --repo {owner}/{repo} --json < /tmp/oss-guidelines-{owner}-{repo}.md
 ```
 
-The CLI reads from stdin when `--content` is omitted, which is the expected path for non-trivial markdown to avoid shell-quoting issues.
+Never put the markdown on the command line, whether via `echo "..."`, a heredoc, or `--content`. Guidelines are distilled from other people's PR comments and routinely contain backticks; inside double quotes the shell runs a code span like `` `make x` `` as a command.
 
 If the response is `success: true`, the guidelines are now live for the next claim-time injection. Confirm to the user:
 

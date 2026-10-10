@@ -45,6 +45,7 @@ import {
   replacePreparedSection,
   runOvernight,
   runOvernightRecord,
+  parsePreparerReport,
   runOvernightReport,
   runOvernightImplementBlocked,
   pickImplementCandidate,
@@ -333,6 +334,92 @@ describe('runOvernightRecord', () => {
     expect(md).toContain('- u2 — branch `b2`');
     expect(md).toContain('## Needs your judgment (0)');
     expect(sm.getLastOvernight()?.prepared.map((p) => p.branch)).toEqual(['b1', 'b2']);
+  });
+});
+
+describe('parsePreparerReport', () => {
+  it('reads the four keys and ignores everything else', () => {
+    const report = parsePreparerReport(
+      [
+        'Here is my report.',
+        'BRANCH: prep/o-r-42-ci',
+        'WORKTREE: /w/o-r-42',
+        'STATUS: prepared',
+        'NOTE: fixed lint, 12 tests pass',
+        '',
+      ].join('\n'),
+    );
+    expect(report).toEqual({
+      branch: 'prep/o-r-42-ci',
+      worktree: '/w/o-r-42',
+      status: 'prepared',
+      note: 'fixed lint, 12 tests pass',
+    });
+  });
+
+  it('keeps the first occurrence of a key, so a later line cannot replace the branch', () => {
+    const report = parsePreparerReport('BRANCH: prep/real\nNOTE: see below\nBRANCH: main\n');
+    expect(report.branch).toBe('prep/real');
+  });
+
+  it('handles CRLF and an empty value', () => {
+    expect(parsePreparerReport('BRANCH: b\r\nNOTE:\r\n')).toEqual({ branch: 'b' });
+  });
+});
+
+describe('runOvernightRecord --from-report', () => {
+  const seed = () => {
+    const reportPath = path.join(tmp.dir, 'r.md');
+    fs.writeFileSync(reportPath, '# H\n\n## Prepared branches (0)\n\n_None recorded yet._\n');
+    const sm = fakeStateManager({ runAt: 'now', reportPath, prepareCount: 1, judgmentCount: 0, prepared: [] });
+    mockGetStateManager.mockReturnValue(sm);
+    return { sm, reportPath };
+  };
+
+  it('takes branch, worktree and note from the saved report, verbatim and unexecuted', async () => {
+    const { sm, reportPath } = seed();
+    const agentReport = path.join(tmp.dir, 'preparer.txt');
+    // A note like this inside `--note "..."` on a shell line would run `gh`.
+    const hostileNote = 'fixed `gh api -X POST /repos/o/r/issues/1/comments` and $(git push) "done"';
+    fs.writeFileSync(
+      agentReport,
+      `BRANCH: prep/o-r-42-ci\nWORKTREE: /w/o-r-42\nSTATUS: prepared\nNOTE: ${hostileNote}\n`,
+    );
+
+    await runOvernightRecord({ url: 'https://github.com/o/r/pull/42', fromReport: agentReport });
+
+    const entry = sm.getLastOvernight()?.prepared[0];
+    expect(entry).toMatchObject({ branch: 'prep/o-r-42-ci', worktree: '/w/o-r-42', note: hostileNote });
+    expect(fs.readFileSync(reportPath, 'utf8')).toContain(hostileNote);
+  });
+
+  it('lets an explicit flag win over the report', async () => {
+    const { sm } = seed();
+    const agentReport = path.join(tmp.dir, 'preparer.txt');
+    fs.writeFileSync(agentReport, 'BRANCH: prep/from-report\nNOTE: from report\n');
+
+    await runOvernightRecord({ url: 'u', branch: 'prep/from-flag', fromReport: agentReport });
+
+    expect(sm.getLastOvernight()?.prepared[0]).toMatchObject({ branch: 'prep/from-flag', note: 'from report' });
+  });
+
+  it.each(['prep/x$(git push)', '--upload-pack=x', 'prep/a b', 'prep/`id`'])(
+    'refuses the unusual branch name %j',
+    async (branch) => {
+      seed();
+      const agentReport = path.join(tmp.dir, 'preparer.txt');
+      fs.writeFileSync(agentReport, `BRANCH: ${branch}\n`);
+      await expect(runOvernightRecord({ url: 'u', fromReport: agentReport })).rejects.toThrow(
+        /unusual branch name|No branch to record/,
+      );
+    },
+  );
+
+  it('says what is missing when the report has no BRANCH line', async () => {
+    seed();
+    const agentReport = path.join(tmp.dir, 'preparer.txt');
+    fs.writeFileSync(agentReport, 'STATUS: prepared\n');
+    await expect(runOvernightRecord({ url: 'u', fromReport: agentReport })).rejects.toThrow(/No branch to record/);
   });
 });
 
