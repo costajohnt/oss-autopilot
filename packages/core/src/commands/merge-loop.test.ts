@@ -11,6 +11,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { DailyWarning } from '../formatters/json.js';
+import { isRoot } from '../test-lib/is-root.js';
 
 // detectIssueListPath reads the configured list path from state — mock the
 // barrel so each test can point it at a tmp file (or at nothing).
@@ -167,7 +168,8 @@ describe('reconcileMergedPRsWithList', () => {
     expect(fs.readFileSync(listPath, 'utf8')).toContain('### ~~foo/bar~~');
   });
 
-  it('records a merge-loop warning instead of crashing when the list cannot be written', () => {
+  // Root ignores file modes, so the chmod setup cannot produce the failure.
+  it.skipIf(isRoot)('records a merge-loop warning instead of crashing when the list cannot be written', () => {
     fs.writeFileSync(listPath, makeList(), 'utf8');
     setIssueListPath(listPath);
     // Read succeeds; the tmp-file write inside the read-only directory fails.
@@ -185,7 +187,8 @@ describe('reconcileMergedPRsWithList', () => {
     expect(fs.readFileSync(listPath, 'utf8')).toBe(original);
   });
 
-  it('records a merge-loop warning when the list cannot be read', () => {
+  // Root ignores file modes, so the chmod setup cannot produce the failure.
+  it.skipIf(isRoot)('records a merge-loop warning when the list cannot be read', () => {
     fs.writeFileSync(listPath, makeList(), 'utf8');
     setIssueListPath(listPath);
     fs.chmodSync(listPath, 0o000);
