@@ -832,6 +832,7 @@ export function registerTools(server: McpServer): void {
     wrapTool(async (args: { repo: string }) => {
       // MCP keeps its one-field shape: `content` is the labeled text. Drop the
       // CLI-only `agentContent` twin rather than send the markdown twice.
+      // eslint-disable-next-line sonarjs/no-unused-vars
       const { agentContent: _cliOnly, ...result } = await runGuidelinesView({ repo: args.repo });
       if (typeof result.content !== 'string') return result;
       // byteSize stays the STORED size — the provenance preamble is a read-time

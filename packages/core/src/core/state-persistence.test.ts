@@ -10,6 +10,7 @@ import { ConcurrencyError } from './errors.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { isRoot } from '../test-lib/is-root.js';
 
 // ─── File-System Persistence Mock Setup ──────────────────────────────────────
 //
@@ -819,8 +820,6 @@ describe('loadState rejected-file preservation and recovery metadata (#1371)', (
   });
 
   // Root ignores file modes, so the chmod-000 setup cannot produce EACCES there.
-  const isRoot = process.getuid?.() === 0;
-
   it.skipIf(isRoot)('throws an actionable error on EACCES instead of treating it as corruption', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     const original = JSON.stringify(makeCurrentState({ config: { ...makeBaseConfig(), githubUsername: 'keep-me' } }));
