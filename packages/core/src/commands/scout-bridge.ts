@@ -129,6 +129,8 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
       title: '',
       skippedAt: dismissedAt,
       reason: 'dismissed',
+      // A dismissal is a manual decision: never let scout's TTL cull age it out.
+      permanent: true,
     });
   }
 
@@ -144,6 +146,10 @@ export function buildScoutState(diagnostics?: ScoutBridgeDiagnostics): ScoutStat
 
   return {
     version: 1,
+    // Scout 1.8.1 made this required on the inferred ScoutState type. Scout
+    // does not schema-parse a provided initialState, so pass its current
+    // revision (1) explicitly: that marks the state as already migrated.
+    stateRevision: 1,
     preferences: {
       githubUsername: config.githubUsername,
       languages: config.languages,
