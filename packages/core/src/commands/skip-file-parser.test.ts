@@ -58,6 +58,7 @@ describe('parseSkippedIssuesContent', () => {
       number: 4883,
       title: '',
       skippedAt: '2026-04-15T00:00:00.000Z',
+      permanent: true,
     });
     expect(result[1]).toEqual({
       url: 'https://github.com/super-productivity/super-productivity/issues/7271',
@@ -65,6 +66,7 @@ describe('parseSkippedIssuesContent', () => {
       number: 7271,
       title: '',
       skippedAt: '2026-04-19T00:00:00.000Z',
+      permanent: true,
     });
   });
 
@@ -104,6 +106,7 @@ not-a-valid-line
       number: 3374,
       title: '',
       skippedAt: '2026-06-19T00:00:00.000Z',
+      permanent: true,
     });
     expect(result[1].url).toBe('https://github.com/elastic/eui/issues/9734');
     // A well-formed entry with a comment must not warn.
@@ -135,6 +138,7 @@ not-a-valid-line
       number: 42,
       title: '',
       skippedAt: '2026-04-15T00:00:00.000Z',
+      permanent: true,
     });
   });
 

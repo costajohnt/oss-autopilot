@@ -86,6 +86,9 @@ export function parseSkippedIssuesContent(content: string): SkippedIssue[] {
       number,
       title: '',
       skippedAt: new Date(dateMs).toISOString(),
+      // Skip-file entries are manual skips; scout 1.8.1 only TTL-culls
+      // entries explicitly marked non-permanent.
+      permanent: true,
     });
   }
 

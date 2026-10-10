@@ -328,6 +328,7 @@ describe('buildScoutState', () => {
         number: 4883,
         title: '',
         skippedAt: '2026-04-15T00:00:00.000Z',
+        permanent: true,
       },
     ];
     mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: skipped });
@@ -358,6 +359,7 @@ describe('buildScoutState', () => {
         title: '',
         skippedAt: '2026-05-01T10:00:00.000Z',
         reason: 'dismissed',
+        permanent: true,
       },
     ]);
   });
@@ -371,7 +373,14 @@ describe('buildScoutState', () => {
       },
     });
     mockGetStateManager.mockReturnValue(makeStateManagerMock({ state, config: state.config }));
-    const fromFile = { url, repo: 'owner/repo', number: 42, title: '', skippedAt: '2026-04-15T00:00:00.000Z' };
+    const fromFile = {
+      url,
+      repo: 'owner/repo',
+      number: 42,
+      title: '',
+      skippedAt: '2026-04-15T00:00:00.000Z',
+      permanent: true,
+    };
     mockLoadSkippedIssuesDetailed.mockReturnValueOnce({ issues: [fromFile] });
 
     const result = buildScoutState();
