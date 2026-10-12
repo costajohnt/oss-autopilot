@@ -93,9 +93,8 @@ export interface LinkedIssueInfo {
 export interface RepoContext {
   /**
    * Whether the target repo has any visible test infrastructure
-   * (`test/`, `tests/`, `__tests__/`, `spec/`, etc.). When `false`, the
-   * tests check downgrades from `fail` to `warn` because tests aren't
-   * required by the project.
+   * (`test/`, `tests/`, `__tests__/`, `spec/`, etc.). Only changes the
+   * detail text of a no-tests warn; a PR without tests is never a `fail`.
    */
   hasTestInfrastructure?: boolean;
   /**
@@ -304,7 +303,8 @@ function checkFocusedChanges(meta: PRMetadata): ComplianceCheckResult {
   return { status: 'warn', weight, detail };
 }
 
-const TEST_FILE_PATTERN = /(?:^|\/)(?:tests?|__tests__|spec)\/|\.(?:test|spec)\.[jt]sx?$|\.test_/i;
+const TEST_FILE_PATTERN =
+  /(?:^|\/)(?:tests?|__tests__|spec)\/|\.(?:test|spec)\.[jt]sx?$|\.test_|_test\.(?:go|py|rb)$|(?:^|\/)test_[^/]+\.py$|_spec\.rb$/i;
 
 function checkTests(meta: PRMetadata, repoContext?: RepoContext): ComplianceCheckResult {
   const weight = WEIGHTS.tests;
@@ -319,7 +319,14 @@ function checkTests(meta: PRMetadata, repoContext?: RepoContext): ComplianceChec
       detail: 'no tests, but project has no visible test infrastructure',
     };
   }
-  return { status: 'fail', weight, detail: 'no test files in a test-requiring project' };
+  // Warn, never fail: a fail pushes agents to add filler tests to data-only
+  // changes. Whether a test is needed is a judgment about the diff (does it
+  // guard a nameable regression?), which file names can't make.
+  return {
+    status: 'warn',
+    weight,
+    detail: 'no test files; fine if nothing testable changed, a bug fix needs a regression test',
+  };
 }
 
 const CONVENTIONAL_TITLE = /^(?:feat|fix|chore|docs|refactor|test|perf|build|ci|style|revert)(?:\([^)]+\))?!?:\s+\S/i;

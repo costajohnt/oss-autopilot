@@ -108,7 +108,7 @@ export const PR_QUALITY_RUBRIC: readonly PRQualityCheck[] = [
   {
     id: 'tests',
     label: 'Tests Included',
-    description: 'If project requires tests, add them',
+    description: 'Only when the change has behavior to guard (bug fix, new logic); never filler',
     tier: 'conditional',
     weight: 15,
   },

@@ -28,6 +28,16 @@ describe('extractMaintainerActionHints', () => {
     expect(extractMaintainerActionHints('Write test cases', 'approved')).toContain('tests_requested');
   });
 
+  it('should not detect tests_requested when the request is negated', () => {
+    expect(extractMaintainerActionHints("Don't add tests for this, it's just data", 'approved')).not.toContain(
+      'tests_requested',
+    );
+    expect(extractMaintainerActionHints('No need to add a test here', 'approved')).not.toContain('tests_requested');
+    expect(extractMaintainerActionHints('Not a blocker. Please add tests for the parser', 'approved')).toContain(
+      'tests_requested',
+    );
+  });
+
   it('should detect docs_requested keywords', () => {
     expect(extractMaintainerActionHints('Update the documentation', 'approved')).toContain('docs_requested');
     expect(extractMaintainerActionHints('Add docs for the new API', 'approved')).toContain('docs_requested');

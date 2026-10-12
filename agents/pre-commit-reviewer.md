@@ -122,8 +122,9 @@ Report under **Critical** in Phase 5 — these block commit.
 
 1. Identify the repo's test framework: `ls test/ tests/ __tests__/ spec/`; if nothing, glob for `**/*.test.*` or `**/*.spec.*`. If still nothing, note "No test infrastructure detected."
 2. Check if existing tests cover the changed code paths.
-3. Assess whether new tests are needed: new functions → tests expected; bug fixes → regression test expected; refactoring → existing tests still pass; config/docs → no tests needed.
-4. **Assertion strength:** for each new/modified test, ask "would this test actually catch a regression?" Flag tests that only check `.toBeDefined()` / `.toBeTruthy()` when a specific value is expected, or tests whose names claim broad coverage but only assert a subset.
+3. Assess whether new tests are needed. A test is needed only when you can name the concrete regression it would catch: bug fixes → a regression test that fails on the base branch; new logic with branches or edge cases → tests for those; refactoring → existing tests still pass; data/registry/constant additions, icons, copy, config, docs → no tests. Never flag "no tests added" by itself.
+4. **Necessity:** for each new test, name the regression it guards. If none (restates data, only checks existence or parsing, tests the language or framework), recommend deleting it, not strengthening it.
+5. **Assertion strength:** for each new/modified test, ask "would this test actually catch a regression?" Flag tests that only check `.toBeDefined()` / `.toBeTruthy()` when a specific value is expected, or tests whose names claim broad coverage but only assert a subset.
 
 ## Phase 4.5: Documentation Accuracy
 

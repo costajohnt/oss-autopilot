@@ -52,7 +52,17 @@ export function extractMaintainerActionHints(
     'needs test',
     'need test',
   ];
-  if (testKeywords.some((kw) => lower.includes(kw))) {
+  // Skip a keyword preceded by a negation ("don't add tests", "no need to add test").
+  const negatedBefore = (idx: number) =>
+    /\b(?:no|not|don'?t|without|unnecessary|skip)\b[^.!?\n]{0,20}$/.test(lower.slice(0, idx));
+  if (
+    testKeywords.some((kw) => {
+      for (let i = lower.indexOf(kw); i !== -1; i = lower.indexOf(kw, i + 1)) {
+        if (!negatedBefore(i)) return true;
+      }
+      return false;
+    })
+  ) {
     hints.push('tests_requested');
   }
 

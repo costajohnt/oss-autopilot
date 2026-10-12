@@ -392,7 +392,7 @@ Show the vetting summary, then automatically proceed to investigate the issue. I
 **Complexity:** {Small|Medium|Large}
 **Risk:** {Low|Medium|High — risk of unintended side effects}
 **Files to change:** {list of files that need modification}
-**Tests needed:** {yes/no — whether the repo has test infrastructure and tests should be added}
+**Tests needed:** {yes: the regression the test guards | no: why, e.g. data-only change}
 
 Confidence: {High|Medium|Low — how confident in the diagnosis}
 ```

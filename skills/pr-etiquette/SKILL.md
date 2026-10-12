@@ -143,7 +143,7 @@ Before submitting any PR, verify:
 
 ### Conditional
 
-- [ ] **Tests Included**: If project requires tests, add them
+- [ ] **Tests Included**: Only when the change has behavior to guard (bug fix, new logic); never filler
 - [ ] **Docs Updated**: If behavior changed, update docs
 
 ### Optional

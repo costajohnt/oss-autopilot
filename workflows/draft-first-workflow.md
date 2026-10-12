@@ -120,7 +120,7 @@ Ignore vague guidance (e.g., "be respectful") and focus on concrete, verifiable 
 
 For each extracted requirement, check whether the current changes satisfy it:
 
-- **Tests:** Are there new/updated test files in the diff? If the requirement says "ensure tests pass", run the project's test command (from `package.json` scripts, `Makefile`, or CONTRIBUTING.md instructions) and check the exit code. If no test command is discoverable, mark as "Unable to verify automatically — manual check needed."
+- **Tests:** Are there new/updated test files in the diff? A requirement like "add tests for new functionality" is met by tests that guard real behavior (see Test Coverage Requirements); for a data-only change with nothing to guard, mark it "N/A: no testable behavior" rather than a gap. If the requirement says "ensure tests pass", run the project's test command (from `package.json` scripts, `Makefile`, or CONTRIBUTING.md instructions) and check the exit code. If no test command is discoverable, mark as "Unable to verify automatically — manual check needed."
 - **Documentation:** Are doc files updated if the change is user-facing? Check `git diff --name-only` for files in `docs/`, `doc/`, or matching `*.md`.
 - **Changelog:** Is there a changelog entry? Check `git diff --name-only` for `CHANGELOG*`, `CHANGES*`, `HISTORY*` files.
 - **Code style:** Run the project's formatter/linter command if discoverable (from `package.json` scripts, `Makefile`, or CONTRIBUTING.md instructions) and check the exit code. If the command is not discoverable, mark as "Unable to verify automatically — manual check needed."
@@ -669,10 +669,11 @@ Dispatch the `pr-compliance-checker` agent with the PR URL.
 
 ### Test Coverage Requirements
 
-**Include tests when the repo has test infrastructure and the change involves code (not docs-only, config-only, or trivial typo fixes).**
+**Include a test only when you can name the concrete regression it would catch.** A bug fix gets a regression test that fails on the base branch. New logic with branches or edge cases gets tests for those. Adding entries to a map/list/registry, constants, icons, copy, config, or docs gets no test, even when the repo has test infrastructure.
 
-Before submitting a PR, check if the repo has a test directory:
-- `test/`, `tests/`, `__tests__/`, `spec/`
+Never write a test to satisfy a checklist, a CONTRIBUTING.md line, or a reviewer finding. Maintainers spot tests that restate data or only check that something exists, and they read them as AI filler. If the repo template asks about tests and none apply, say so in the PR body in one line.
+
+To find where tests live, check for `test/`, `tests/`, `__tests__/`, `spec/`, or co-located `*_test.*` / `*.test.*` files.
 
 ---
 

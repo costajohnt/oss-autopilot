@@ -49,6 +49,10 @@ Trace a bug to where it actually originates before patching. If the cause lives 
 
 A test added alongside a bug fix only earns its place if it fails without the fix. Before including it, check out the base branch (or revert your fix), run the new test, and confirm it FAILS; then restore the fix and confirm it passes. A test that passes on the unpatched base isn't guarding the bug — it's noise.
 
+## No Tests Just to Pass a Gate
+
+Before writing any test, name the concrete regression it catches. Can't name one? Don't write it. Adding entries to a map or registry, constants, icons, copy, or config needs no test. A test that restates data, only checks that a file exists or parses, or exercises the language or framework is filler, and maintainers notice. When a reviewer flags a weak test, delete it unless you can name a real regression for it to catch. Never grow it to clear the finding.
+
 ## Working on Issues
 
 ### Before Starting

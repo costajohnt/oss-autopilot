@@ -211,10 +211,13 @@ describe('tests check', () => {
     expect(result2.checks.tests.status).toBe('pass');
     const result3 = computeComplianceScore(meta({ files: ['spec/foo_spec.rb'] }));
     expect(result3.checks.tests.status).toBe('pass');
+    for (const f of ['models/icon_test.go', 'pkg/test_x.py', 'pkg/x_test.py', 'lib/foo_spec.rb']) {
+      expect(computeComplianceScore(meta({ files: [f] })).checks.tests.status).toBe('pass');
+    }
   });
-  it('fails when no test file in a test-requiring project', () => {
+  it('warns, never fails, when no test file in a project with tests', () => {
     const result = computeComplianceScore(meta({ files: ['src/foo.ts'] }));
-    expect(result.checks.tests.status).toBe('fail');
+    expect(result.checks.tests.status).toBe('warn');
   });
   it('warns when project has no test infrastructure', () => {
     const ctx: RepoContext = { hasTestInfrastructure: false };
@@ -279,8 +282,8 @@ describe('rating cutoffs', () => {
     expect(result.rating).toBe('minor');
   });
   it('rates 60–74 as fix_first', () => {
-    // Two failures + a warn: drop title (-10), tests (-15), focused (-10
-    // half) — start from 100, end ~65.
+    // Title fails (-10), tests and focused warn (-7.5, -10): start from
+    // 100, end ~73.
     const result = computeComplianceScore(
       meta({
         title: 'WIP',

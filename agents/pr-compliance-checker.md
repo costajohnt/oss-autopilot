@@ -98,13 +98,12 @@ Compute `files` count, `additions`, `deletions` from the MCP/CLI response or `gh
 ### 4. Tests Included (15%) — Conditional
 Check file list for `test|spec|__tests__`.
 
-Tests expected UNLESS: repo has no test infrastructure, change is docs/config-only, or change is a trivial typo. Detect test infrastructure via `gh api repos/OWNER/REPO/contents` (look for `test/`, `tests/`, `__tests__/`, `spec/`) or via the MCP read response's file list.
+A test belongs only when it guards a nameable regression: a bug fix needs a regression test that fails on the base branch; new logic with branches needs tests for those. Data/registry/constant additions, icons, copy, config, and docs need none. Never recommend adding a test just to raise this score.
 
 - ✅ Test files touched
-- ⚠️ No tests but project doesn't require them
-- ❌ No tests in a test-requiring project
+- ⚠️ No test files (fine when nothing testable changed; call it out only for a bug fix or new logic)
 
-Match the repo's existing test conventions (directory, naming, assertion style).
+If tests were added, check each one guards a real regression. A test that restates data or only checks that something exists is filler: recommend removing it. Match the repo's existing test conventions (directory, naming, assertion style).
 
 ### 5. Title Quality (10%) — Required
 Good: `fix: resolve login timeout`, `feat(api): add auth endpoint`, `docs: update installation`.
@@ -189,7 +188,7 @@ Wiping the upstream PR template is the most common reason a maintainer flags a c
 - **Missing issue ref:** "Add `Closes #X` to your PR description."
 - **Poor description:** "I can draft improvements — want me to suggest a template?"
 - **Unfocused:** "Consider splitting — I can help identify logical groupings."
-- **Missing tests:** "Want help writing tests for this change?"
+- **Missing tests:** offer help only for a bug fix or new logic, naming the regression the test would catch. Never for data, config, or docs changes.
 - **Vague title:** "Suggested: `[type]: [clear description]`."
 
 Use AskUserQuestion to offer assistance.
