@@ -263,6 +263,7 @@ After consolidating findings, automatically fix and re-review until convergence.
 
 **If max passes reached without convergence:**
 > "Review did not converge after 5 passes. {remaining_count} finding(s) remain — presenting for manual review."
+List any rejected findings and their reasons as well.
 
 ## After the Loop
 

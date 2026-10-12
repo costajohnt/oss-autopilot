@@ -270,6 +270,9 @@ Include the test-coverage assessment from `pr-test-analyzer`.
 ### Out-of-Scope (pre-existing)
 - {list, if any Critical-severity pre-existing issues were flagged}
 
+### Rejected Findings
+- {finding — reason, for each Recommended finding rejected during the loop; omit if none}
+
 ### Test Coverage
 - {assessment from pr-test-analyzer}
 ```

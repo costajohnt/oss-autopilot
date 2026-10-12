@@ -34,6 +34,9 @@ describe('extractMaintainerActionHints', () => {
     );
     expect(extractMaintainerActionHints('No need to add a test here', 'approved')).not.toContain('tests_requested');
     expect(extractMaintainerActionHints('Don’t add tests for this', 'approved')).not.toContain('tests_requested');
+    for (const body of ['not necessary to add tests', 'there is no need for you to add tests']) {
+      expect(extractMaintainerActionHints(body, 'approved')).not.toContain('tests_requested');
+    }
     for (const body of [
       'no blockers, add tests please',
       "please don't merge until you add tests",

@@ -114,7 +114,7 @@ Caller-specific inputs for this workflow:
 - `workingDir` is the local repo path.
 - `reviewPass = 1`, `agentsWithFindings = []`.
 
-The template handles the full dispatch + convergence flow. Return here when the loop exits (either converged or max passes reached) with a consolidated report, then proceed to sub-step 4b (scope discipline check when responding to maintainer feedback) and sub-step 6 (user decision point).
+The template handles the full dispatch + convergence flow. Return here when the loop exits (converged, max passes reached, or disputed) with a consolidated report, then proceed to sub-step 4b (scope discipline check when responding to maintainer feedback) and sub-step 6 (user decision point).
 
 ### 4. Consolidate Findings
 
@@ -168,7 +168,9 @@ After consolidating findings (sub-step 4), automatically fix and re-review until
 
 **If max passes reached without convergence:**
 > "Review did not converge after 5 passes. {remaining_count} finding(s) remain — presenting for manual review."
-Present the latest consolidated report and proceed to sub-step 6 with the "unresolved findings" prompt.
+Present the latest consolidated report, including any rejected findings with their reasons, and proceed to sub-step 6 with the "unresolved findings" prompt.
+
+**If a Critical finding is disputed** (you believe it is wrong and will neither fix it nor remove the code): stop the loop, name the disputed finding and why, and proceed to sub-step 6 with the "unresolved findings" prompt.
 
 ### 6. User Decision Point and Action
 
