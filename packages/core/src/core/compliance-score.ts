@@ -304,7 +304,7 @@ function checkFocusedChanges(meta: PRMetadata): ComplianceCheckResult {
 }
 
 const TEST_FILE_PATTERN =
-  /(?:^|\/)(?:tests?|__tests__|spec)\/|\.(?:test|spec)\.[jt]sx?$|\.test_|_test\.(?:go|py|rb)$|(?:^|\/)test_[^/]+\.py$|_spec\.rb$/i;
+  /(?:^|\/)(?:tests?|__tests__|spec)\/|\.(?:test|spec)\.[cm]?[jt]sx?$|\.test_|_test\.(?:go|py|rb)$|(?:^|\/)test_[^/]+\.py$|_spec\.rb$/i;
 
 function checkTests(meta: PRMetadata, repoContext?: RepoContext): ComplianceCheckResult {
   const weight = WEIGHTS.tests;

@@ -51,7 +51,7 @@ A test added alongside a bug fix only earns its place if it fails without the fi
 
 ## No Tests Just to Pass a Gate
 
-Before writing any test, name the concrete regression it catches. Can't name one? Don't write it. Adding entries to a map or registry, constants, icons, copy, or config needs no test. A test that restates data, only checks that a file exists or parses, or exercises the language or framework is filler, and maintainers notice. When a reviewer flags a weak test, delete it unless you can name a real regression for it to catch. Never grow it to clear the finding.
+Before writing any test, name the concrete regression it catches. Can't name one? Don't write it. Adding entries to a map or registry, constants, icons, copy, or config needs no test. A test that restates data, only checks that a file exists or parses, or exercises the language or framework is filler, and maintainers notice. When an automated review agent flags a weak test, delete it unless you can name a real regression for it to catch. Never grow it to clear the finding. A human maintainer's explicit request, or a rule the repo enforces, wins over this: do what they asked, and if it looks like it calls for a filler test, raise it with the user instead of overriding it.
 
 ## Working on Issues
 

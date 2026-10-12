@@ -148,13 +148,14 @@ After consolidating findings (sub-step 4), automatically fix and re-review until
 **Procedure:**
 
 1. **Check for convergence:** If the consolidated report has zero Critical and zero Recommended findings, convergence is reached. Report the pass summary:
-   > "Review converged on pass {reviewPass}. {minor_count} minor finding(s) noted — changes are clean and ready to commit."
+   > "Review converged on pass {reviewPass}. {minor_count} minor finding(s) noted, {rejected_count} rejected with reasons — changes are clean and ready to commit."
+   List each rejected finding and its reason.
    Proceed to sub-step 6 (User Decision Point) with the "clean" prompt.
 
 2. **If Critical or Recommended findings exist:** Report the pass summary:
    > "Pass {reviewPass}: {critical_count} Critical, {recommended_count} Recommended, {minor_count} Minor. Fixing actionable findings..."
 
-3. **Fix all Critical and Recommended findings.** Minor findings are noted but not auto-fixed. Apply fixes using standard editing tools.
+3. **Resolve all Critical and Recommended findings** per step 3 of the convergence loop in `dispatch-review.md`: fix, remove the artifact, or (Recommended only) reject with a one-line reason that is shown to the user. Never add or grow a test just to clear a finding. Minor findings are noted but not auto-fixed.
 
 4. **Increment `reviewPass`.** Loop back to sub-step 2 (Gather Change Context) to re-gather the updated diff after fixes.
 

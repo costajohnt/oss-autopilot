@@ -33,6 +33,14 @@ describe('extractMaintainerActionHints', () => {
       'tests_requested',
     );
     expect(extractMaintainerActionHints('No need to add a test here', 'approved')).not.toContain('tests_requested');
+    expect(extractMaintainerActionHints('Don’t add tests for this', 'approved')).not.toContain('tests_requested');
+    for (const body of [
+      'no blockers, add tests please',
+      "please don't merge until you add tests",
+      'can you skip the refactor and add tests',
+    ]) {
+      expect(extractMaintainerActionHints(body, 'approved')).toContain('tests_requested');
+    }
     expect(extractMaintainerActionHints('Not a blocker. Please add tests for the parser', 'approved')).toContain(
       'tests_requested',
     );

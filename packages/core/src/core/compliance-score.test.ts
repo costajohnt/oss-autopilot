@@ -211,7 +211,7 @@ describe('tests check', () => {
     expect(result2.checks.tests.status).toBe('pass');
     const result3 = computeComplianceScore(meta({ files: ['spec/foo_spec.rb'] }));
     expect(result3.checks.tests.status).toBe('pass');
-    for (const f of ['models/icon_test.go', 'pkg/test_x.py', 'pkg/x_test.py', 'lib/foo_spec.rb']) {
+    for (const f of ['src/foo.test.mjs', 'models/icon_test.go', 'pkg/test_x.py', 'pkg/x_test.py', 'lib/foo_spec.rb']) {
       expect(computeComplianceScore(meta({ files: [f] })).checks.tests.status).toBe('pass');
     }
   });

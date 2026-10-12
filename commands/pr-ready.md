@@ -45,7 +45,7 @@ For the diff currently uncommitted-and-staged or already on the local branch (wh
    **Over-engineering audit (always).** While the agents run, apply the `ponytail-review` skill (ponytail plugin) to the same diff. If the plugin isn't installed, apply its format by hand — one line per finding, `<file>:L<line>: <tag> <what>. <replacement>.` with tags `delete:` (dead code, speculative flexibility), `stdlib:` (hand-rolled thing the standard library ships), `native:` (dependency doing what the platform does), `yagni:` (abstraction with one implementation, config nobody sets), `shrink:` (same logic, fewer lines). Scope is complexity only; correctness stays with the agents above. Before triage, drop any finding that duplicates a `code-simplifier` finding — keep whichever line is more specific.
 
 5. **Triage findings**:
-   - **Critical** and **Recommended** findings: report inline; the loop is not converged until they're resolved. A finding is resolved by fixing it, by removing the code or test it is about, or by rejecting it with a one-line reason. A coverage finding with no nameable regression is rejected, never satisfied with a filler test.
+   - **Critical** and **Recommended** findings: report inline; the loop is not converged until they're resolved. A finding is resolved by fixing it, by removing the code or test it is about, or, for Recommended findings only, by rejecting it with a one-line reason. Critical findings are fixed or the code removed, never rejected. List every rejection with its reason in the final stanza. A coverage finding with no nameable regression is rejected, never satisfied with a filler test.
    - **Minor** findings: report but do not block.
    - Over-engineering findings map in: `delete`/`yagni`/`stdlib`/`native` → Recommended (they remove code or a dependency); `shrink` → Minor. For an OSS PR to an external repo, cap all of them at Minor — unrequested refactors widen the diff and annoy maintainers.
    - **Out-of-scope** findings (e.g., a pre-existing issue in adjacent code): list them as "deferred" and recommend filing follow-up issues.
@@ -79,6 +79,9 @@ Always end with one of these two stanzas:
 
 ```
 ## ✅ Ready to push
+
+Rejected findings (if any):
+  - <file:line> <finding> — <reason>
 
 Suggested commit message:
   <conventional-commit-format-line>

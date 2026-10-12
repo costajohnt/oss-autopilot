@@ -403,7 +403,7 @@ Run the repo's lint and test commands. If they fail, fix and loop. **Soft limit 
 
 If review agents have not been dispatched:
 > "Hold on — running review agents before finalizing..."
-Dispatch the full review suite (see Step 3) and run the convergence loop. If findings are reported, fix and re-run until convergence. **Soft limit after 3 rounds:** report remaining findings and offer: "Proceed to final review anyway" / "Done for now".
+Dispatch the full review suite (see Step 3) and run the convergence loop. If findings are reported, resolve them (fix, remove, or reject with a reason per `dispatch-review.md`) and re-run until convergence. **Soft limit after 3 rounds:** report remaining findings and offer: "Proceed to final review anyway" / "Done for now".
 
 Only proceed to sub-step 2 after all checks pass or the user explicitly chooses to proceed.
 
@@ -671,7 +671,7 @@ Dispatch the `pr-compliance-checker` agent with the PR URL.
 
 **Include a test only when you can name the concrete regression it would catch.** A bug fix gets a regression test that fails on the base branch. New logic with branches or edge cases gets tests for those. Adding entries to a map/list/registry, constants, icons, copy, config, or docs gets no test, even when the repo has test infrastructure.
 
-Never write a test to satisfy a checklist, a CONTRIBUTING.md line, or a reviewer finding. Maintainers spot tests that restate data or only check that something exists, and they read them as AI filler. If the repo template asks about tests and none apply, say so in the PR body in one line.
+Never write a test to satisfy a generic checklist, boilerplate CONTRIBUTING.md wording, or an automated review finding. An explicit maintainer request or a test requirement the repo enforces (CI check, bot) still applies; if it seems to demand a filler test, raise it with the user rather than skipping it. Maintainers spot tests that restate data or only check that something exists, and they read them as AI filler. If the repo template asks about tests and none apply, say so in the PR body in one line.
 
 To find where tests live, check for `test/`, `tests/`, `__tests__/`, `spec/`, or co-located `*_test.*` / `*.test.*` files.
 

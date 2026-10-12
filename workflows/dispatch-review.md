@@ -243,13 +243,14 @@ After consolidating findings, automatically fix and re-review until convergence.
 **Procedure:**
 
 1. **Check convergence.** If zero Critical and zero Recommended: report
-   > "Review converged on pass {reviewPass}. {minor_count} minor finding(s) noted — changes are clean."
+   > "Review converged on pass {reviewPass}. {minor_count} minor finding(s) noted, {rejected_count} rejected with reasons — changes are clean."
+   List each rejected finding and its reason under the summary so the user can overrule it.
    Proceed to the caller's decision step.
 
 2. **If Critical or Recommended exist:** report
    > "Pass {reviewPass}: {critical} Critical, {recommended} Recommended, {minor} Minor. Fixing actionable findings..."
 
-3. **Resolve all Critical and Recommended findings.** Minor findings are noted but not auto-fixed. Each finding is resolved one of three ways: fix it; remove the code, test, or comment the finding is about (prefer this when the artifact was added by this change and isn't needed); or reject it with a one-line reason (e.g. "test would restate data; no regression to guard"). A rejected finding with a reason counts as resolved and is not re-raised in later passes. A test finding (coverage gap or weak assertion) is fixed by writing or strengthening a test only when the finding names a concrete regression that test would catch; otherwise the fix is to delete the test. Never add or grow a test just to clear a finding.
+3. **Resolve all Critical and Recommended findings.** Minor findings are noted but not auto-fixed. Each finding is resolved one of three ways: fix it; remove the code, test, or comment the finding is about (prefer this when the artifact was added by this change and isn't needed); or, for a **Recommended** finding only, reject it with a one-line reason (e.g. "test would restate data; no regression to guard"). Critical findings are never rejected: fix them or remove the code, and if you believe one is wrong, stop the loop with status `disputed` and show it to the user. A rejected finding is recorded in a **Rejected findings** list (finding + reason) that goes in the final report, and is not re-raised in later passes. A test finding (coverage gap or weak assertion) is fixed by writing or strengthening a test only when the finding names a concrete regression that test would catch; otherwise the fix is to delete the test. Never add or grow a test just to clear a finding.
 
 4. **Increment `reviewPass`.** Re-gather the updated diff (caller's context-gather step).
 
@@ -267,7 +268,8 @@ After consolidating findings, automatically fix and re-review until convergence.
 
 Return control to the caller with:
 - final consolidated report
-- convergence status (`converged` or `max_passes_reached`)
+- convergence status (`converged`, `max_passes_reached`, or `disputed`)
+- rejected findings with their reasons (the caller shows these at its decision step)
 - `reviewPass` count
 - `agentsWithFindings` from the final pass
 
