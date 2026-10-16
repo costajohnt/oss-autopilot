@@ -4,7 +4,7 @@
  */
 
 import { Octokit } from '@octokit/rest';
-import { extractOwnerRepo, parseGitHubUrl, isOwnRepo } from './urls.js';
+import { extractOwnerRepo, parseGitHubUrl, isOwnRepo, isUntrackedOrg } from './urls.js';
 import { ClosedPR, MergedPR, StoredMergedPR, StoredClosedPR, isBelowMinStars, type StarFilter } from './types.js';
 import { debug, warn } from './logger.js';
 import { getHttpCache } from './http-cache.js';
@@ -270,7 +270,7 @@ export function fetchUserClosedPRCounts(
  */
 async function fetchRecentPRs<T>(
   octokit: Octokit,
-  config: { githubUsername: string },
+  config: { githubUsername: string; untrackedOrgs?: string[] },
   query: string,
   label: string,
   days: number,
@@ -318,6 +318,7 @@ async function fetchRecentPRs<T>(
 
     // Skip own repos
     if (isOwnRepo(parsed.owner, config.githubUsername)) continue;
+    if (isUntrackedOrg(parsed.owner, config.untrackedOrgs)) continue;
 
     // The query bounds on `updated`, so an old PR that just got a comment can
     // come back. Narrow to the actual close/merge window here.
@@ -338,7 +339,7 @@ async function fetchRecentPRs<T>(
  */
 export async function fetchRecentlyClosedPRs(
   octokit: Octokit,
-  config: { githubUsername: string },
+  config: { githubUsername: string; untrackedOrgs?: string[] },
   days: number = 7,
 ): Promise<ClosedPR[]> {
   return fetchRecentPRs<ClosedPR>(
@@ -366,7 +367,7 @@ export async function fetchRecentlyClosedPRs(
  */
 export async function fetchRecentlyMergedPRs(
   octokit: Octokit,
-  config: { githubUsername: string },
+  config: { githubUsername: string; untrackedOrgs?: string[] },
   days: number = 7,
 ): Promise<MergedPR[]> {
   return fetchRecentPRs<MergedPR>(

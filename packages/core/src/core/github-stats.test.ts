@@ -637,6 +637,18 @@ describe('fetchRecentlyClosedPRs', () => {
     expect(result[0].closedAt).toBe(closedAt);
   });
 
+  it('should drop PRs from untrackedOrgs, case-insensitively', async () => {
+    const closedAt = isoDaysAgo(1);
+    const octokit = makeOctokit([
+      { html_url: 'https://github.com/WorkOrg/api/pull/1', title: 'Work PR', closed_at: closedAt },
+      { html_url: 'https://github.com/org/repo/pull/3', title: 'OSS PR', closed_at: closedAt },
+    ]);
+
+    const result = await fetchRecentlyClosedPRs(octokit, { githubUsername: 'testuser', untrackedOrgs: ['workorg'] }, 7);
+
+    expect(result.map((pr) => pr.repo)).toEqual(['org/repo']);
+  });
+
   it('should carry openedAt from the search result created_at (#1461)', async () => {
     const openedAt = isoDaysAgo(20);
     const closedAt = isoDaysAgo(1);

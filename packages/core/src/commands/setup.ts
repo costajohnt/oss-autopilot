@@ -339,7 +339,8 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             results[key] = dedupedCategories.length > 0 ? dedupedCategories.join(', ') : '(empty)';
             break;
           }
-          case 'preferredOrgs': {
+          case 'preferredOrgs':
+          case 'untrackedOrgs': {
             const orgs = value
               .split(',')
               .map((o) => o.trim())
@@ -357,7 +358,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
               }
             }
             const dedupedOrgs = [...new Set(validOrgs)];
-            stateManager.updateConfig({ preferredOrgs: dedupedOrgs });
+            stateManager.updateConfig({ [key]: dedupedOrgs });
             results[key] = dedupedOrgs.length > 0 ? dedupedOrgs.join(', ') : '(empty)';
             break;
           }

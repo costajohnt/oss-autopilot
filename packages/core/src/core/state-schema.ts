@@ -237,6 +237,12 @@ export const AgentConfigSchema = z.object({
   scope: z.array(IssueScopeSchema).optional(),
   excludeRepos: z.array(z.string()).default([]),
   excludeOrgs: z.array(z.string()).optional(),
+  /**
+   * Orgs whose PRs are left out of PR tracking (open, recently closed and
+   * recently merged lists), e.g. an employer's public repos. Unlike
+   * `excludeOrgs`, which only affects discovery (#591).
+   */
+  untrackedOrgs: z.array(z.string()).default([]),
 
   /**
    * Repos (owner/repo) to softly downrank in discovery results (#1464).

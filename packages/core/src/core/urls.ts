@@ -122,3 +122,9 @@ export function splitRepo(repoFullName: string): { owner: string; repo: string }
 export function isOwnRepo(owner: string, username: string): boolean {
   return owner.toLowerCase() === username.toLowerCase();
 }
+
+/** True when `owner` is listed in `config.untrackedOrgs` (case-insensitive). */
+export function isUntrackedOrg(owner: string, untrackedOrgs: readonly string[] = []): boolean {
+  const ownerLower = owner.toLowerCase();
+  return untrackedOrgs.some((org) => org.toLowerCase() === ownerLower);
+}

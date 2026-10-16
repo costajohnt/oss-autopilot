@@ -16,7 +16,7 @@
 import { Octokit } from '@octokit/rest';
 import { getOctokit } from './github.js';
 import { getStateManager } from './state.js';
-import { parseGitHubUrl, extractOwnerRepo, isOwnRepo } from './urls.js';
+import { parseGitHubUrl, extractOwnerRepo, isOwnRepo, isUntrackedOrg } from './urls.js';
 import { DEFAULT_CONCURRENCY, runWorkerPool } from './concurrency.js';
 import { FetchedPR, DailyDigest, ClosedPR, MergedPR, StarFilter } from './types.js';
 import {
@@ -287,6 +287,7 @@ export class PRMonitor {
         return false;
       }
       if (isOwnRepo(parsed.owner, searchUsername)) return false;
+      if (isUntrackedOrg(parsed.owner, initialConfig.untrackedOrgs)) return false;
       return true;
     });
 

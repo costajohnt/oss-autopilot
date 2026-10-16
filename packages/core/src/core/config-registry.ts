@@ -122,6 +122,13 @@ export const CONFIG_KEY_REGISTRY: readonly ConfigKeyDef[] = [
     valueHint: 'comma-separated list',
   },
   {
+    key: 'untrackedOrgs',
+    description:
+      'GitHub orgs whose PRs are not tracked (e.g. work repos). Discovery is unaffected (whole-list replace).',
+    settableVia: 'setup',
+    valueHint: 'comma-separated list',
+  },
+  {
     key: 'aiPolicyBlocklist',
     description: 'Repos (owner/repo) with anti-AI contribution policies to block from discovery.',
     settableVia: 'setup',
