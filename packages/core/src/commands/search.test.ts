@@ -152,7 +152,17 @@ describe('runSearch', () => {
     expect(mockSearch).toHaveBeenCalledWith(expect.objectContaining({ strategies: ['broad'] }));
   });
 
-  it('omits strategies from the scout call when unset (default staged pipeline)', async () => {
+  it('passes full through to scout only when set', async () => {
+    mockSearch.mockResolvedValue({ candidates: [], excludedRepos: [], aiPolicyBlocklist: [], strategiesUsed: [] });
+
+    await runSearch({ maxResults: 5, full: true });
+    expect(mockSearch).toHaveBeenLastCalledWith(expect.objectContaining({ full: true }));
+
+    await runSearch({ maxResults: 5 });
+    expect(mockSearch).toHaveBeenLastCalledWith(expect.not.objectContaining({ full: expect.anything() }));
+  });
+
+  it('omits strategies from the scout call when unset (default rotation)', async () => {
     mockSearch.mockResolvedValue({
       candidates: [],
       excludedRepos: [],
@@ -785,7 +795,7 @@ describe('recordSearchSeen (#1528)', () => {
 });
 
 describe('parseSearchStrategies (#1244 selector)', () => {
-  it('returns undefined for an absent value (default staged pipeline)', () => {
+  it('returns undefined for an absent value (default rotation)', () => {
     expect(parseSearchStrategies(undefined)).toBeUndefined();
   });
 

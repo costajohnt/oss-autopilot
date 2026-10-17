@@ -374,7 +374,11 @@ export const commands: CLICommandDef[] = [
         .option('--json', 'Output as JSON')
         .option(
           '--strategy <strategies>',
-          "Comma-separated discovery phases to run (merged,orgs,starred,broad,maintained,all). Omit to run scout's default staged pipeline.",
+          'Comma-separated discovery phases to rotate through (merged,orgs,starred,broad,maintained,all). Omit for all. Each search runs one of them in turn unless --full is set.',
+        )
+        .option(
+          '--full',
+          'Run every enabled strategy in this search instead of one per search in rotation. More API calls, can take a few minutes.',
         )
         .action(async (count, options) => {
           const { SearchOutputSchema } = await import('./formatters/json.js');
@@ -399,7 +403,7 @@ export const commands: CLICommandDef[] = [
               if (!options.json) {
                 console.log(`\nSearching for issues (max ${maxResults})...\n`);
               }
-              return runSearch({ maxResults, strategies });
+              return runSearch({ maxResults, strategies, full: options.full });
             },
             (data) => {
               if (data.hiddenOwnPRCount > 0) {

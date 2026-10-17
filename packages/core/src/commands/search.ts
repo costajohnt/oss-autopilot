@@ -49,10 +49,16 @@ interface SearchOptions {
   maxResults: number;
   /**
    * Restrict discovery to specific scout phases (#1244 selector surface).
-   * Undefined runs scout's default staged pipeline (all phases). Passed
-   * straight through to `scout.search`, which gates each phase on the set.
+   * Undefined lets scout rotate through all of them, one strategy per search.
+   * Passed straight through to `scout.search`.
    */
   strategies?: SearchStrategy[];
+  /**
+   * Run every enabled strategy in this one search instead of one per search in
+   * rotation. More API calls (scout's budget tracker paces them), so it suits
+   * an interactive search rather than a scheduled one.
+   */
+  full?: boolean;
 }
 
 /**
@@ -60,7 +66,7 @@ interface SearchOptions {
  *
  * Mirrors oss-scout's own CLI validation so an unknown token fails fast with a
  * clear message instead of silently running all phases. Returns `undefined`
- * for an absent/empty value so scout falls back to its default (all phases).
+ * for an absent/empty value so scout falls back to its default rotation.
  *
  * @throws {Error} If any token is not a valid scout strategy.
  */
@@ -216,6 +222,7 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
   const result = await scout.search({
     maxResults: options.maxResults,
     ...(options.strategies ? { strategies: options.strategies } : {}),
+    ...(options.full ? { full: true } : {}),
     preferLanguages,
     preferRepos,
     diversityRatio: SEARCH_DIVERSITY_RATIO,

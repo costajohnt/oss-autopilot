@@ -6,7 +6,7 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, AskUserQuestion, mcp__
 
 # OSS Issue Search
 
-This command searches for new open source issues to contribute to by delegating to the `@oss-scout/core` package (via the CLI's `search` command). Scout runs a staged multi-phase search (merged-PR repos + open-PR repos → starred → broad → maintained) with built-in rate-limit budgeting, skip-list dedup, spam filtering, and vetting — there is no reason for this skill to duplicate any of that logic (#929).
+This command searches for new open source issues to contribute to by delegating to the `@oss-scout/core` package (via the CLI's `search` command). With `--full`, scout runs every phase in one search (merged-PR repos + open-PR repos → orgs → starred → broad → maintained; without it, one phase per search in rotation) with built-in rate-limit budgeting, skip-list dedup, spam filtering, and vetting — there is no reason for this skill to duplicate any of that logic (#929).
 
 > **Input validation:** See "AskUserQuestion Validation Protocol" in `workflows/reference.md`.
 
@@ -57,7 +57,7 @@ Run the CLI search command — one call replaces the old 3-strategy orchestratio
 ```
 Task(general-purpose, "Run the CLI search command and return the raw JSON output verbatim:
   ```bash
-  GITHUB_TOKEN=$(gh auth token) node \"${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs\" search 25 --json
+  GITHUB_TOKEN=$(gh auth token) node \"${CLAUDE_PLUGIN_ROOT}/packages/core/dist/cli.bundle.cjs\" search 25 --full --json
   ```")
 ```
 
