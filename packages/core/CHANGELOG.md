@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.31.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.31.0...core-v3.31.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* pin .mcp.json to the released @oss-autopilot/mcp version ([#1785](https://github.com/costajohnt/oss-autopilot/issues/1785)) ([ccf250e](https://github.com/costajohnt/oss-autopilot/commit/ccf250e5f2738f7d774d4f67dd2f4d416c1efde3))
+
 ## [3.31.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.30.0...core-v3.31.0) (2026-10-17)
 
 
