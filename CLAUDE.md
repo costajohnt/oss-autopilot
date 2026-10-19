@@ -183,6 +183,7 @@ Always look for opportunities to refactor, simplify, and remove dead code. Fix a
 - Use [conventional commits](https://www.conventionalcommits.org/): `feat:` (minor), `fix:` (patch), `chore:` (no release). Releasable commits (`feat:`, `fix:`) become CHANGELOG entries, so write them descriptively
 - On push to main, release-please opens or updates a release PR that bumps all version-bearing files (configured in `release-please-config.json`)
 - Merge the release-please PR to create a GitHub release, which triggers npm publish
+- `.mcp.json` pins the plugin's MCP server to `@oss-autopilot/mcp@<version>` (not `@latest`). The release-please workflow re-pins it on the release PR branch via `node scripts/sync-mcp-pin.mjs`, and CI fails if the pin differs from `packages/mcp-server/package.json`. If it ever drifts, run that script and commit `.mcp.json`
 - **release-please force-updates its branch** (`release-please--branches--main`) on every push to main. `git pull --rebase` will print a `forced update` notice for that ref — that's expected, ignore it. The notice never affects your branch.
 
 ## AI Attribution Rule (CRITICAL)

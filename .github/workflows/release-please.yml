@@ -29,6 +29,53 @@ jobs:
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.RELEASE_TOKEN }}
 
+      # .mcp.json pins the MCP server the plugin launches to the released
+      # @oss-autopilot/mcp version. release-please cannot maintain that pin:
+      # its json updater would replace the whole "@oss-autopilot/mcp@x.y.z"
+      # string with the bare version, and JSON cannot carry
+      # x-release-please-version markers. So re-pin on the release PR branch
+      # here. release-please force-pushes that branch whenever the release
+      # notes change, which drops this commit; prs_created is true on exactly
+      # those runs, so the step adds it back. CI's MCP metadata guard fails
+      # the release PR if the pin and packages/mcp-server/package.json still
+      # disagree. The config uses one combined release PR, hence prs[0].
+      - name: Find the release PR branch
+        id: release-pr
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          PRS: ${{ steps.release.outputs.prs }}
+        run: |
+          BRANCH=$(node -e 'const prs = JSON.parse(process.env.PRS || "[]"); process.stdout.write(prs[0]?.headBranchName ?? "")')
+          if [ -n "$BRANCH" ] && ! [[ "$BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::Unexpected release PR branch name: $BRANCH"
+            exit 1
+          fi
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the release PR branch
+        if: steps.release-pr.outputs.branch != ''
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.release-pr.outputs.branch }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Pin .mcp.json to the release's MCP server version
+        if: steps.release-pr.outputs.branch != ''
+        env:
+          BRANCH: ${{ steps.release-pr.outputs.branch }}
+        run: |
+          node scripts/sync-mcp-pin.mjs
+          if git diff --quiet -- .mcp.json; then
+            echo ".mcp.json already matches packages/mcp-server/package.json"
+            exit 0
+          fi
+          VERSION=$(node -p "require('./packages/mcp-server/package.json').version")
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .mcp.json
+          git commit -m "chore: pin .mcp.json to @oss-autopilot/mcp@${VERSION}"
+          git push origin "HEAD:${BRANCH}"
+
   publish-npm:
     name: Publish to npm
     needs: release-please

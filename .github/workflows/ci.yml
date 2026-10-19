@@ -145,6 +145,9 @@ jobs:
       - name: Test build-dashboard-if-stale helper (#1292)
         run: bash scripts/build-dashboard-if-stale.test.sh
 
+      - name: Test sync-mcp-pin helper
+        run: bash scripts/sync-mcp-pin.test.sh
+
       - name: Verify generated reference.md is up to date (#1289)
         # Regenerates the auto-managed sections of workflows/reference.md from
         # source (agents/*.md frontmatter, workflows/manifest.json, and the
@@ -180,8 +183,8 @@ jobs:
 
       - name: Guard MCP metadata consistency
         # Catches drift between packages/mcp-server/package.json, server.json,
-        # the registered tool count in tools.ts, and what the README claims.
-        # See issue #1034.
+        # the plugin's .mcp.json pin, the registered tool count in tools.ts,
+        # and what the README claims. See issue #1034.
         run: |
           PKG_VERSION=$(node -p "require('./packages/mcp-server/package.json').version")
           SERVER_JSON_VERSION=$(node -p "require('./packages/mcp-server/server.json').version")
@@ -189,6 +192,14 @@ jobs:
 
           if [ "$PKG_VERSION" != "$SERVER_JSON_VERSION" ] || [ "$PKG_VERSION" != "$PACKAGE_ENTRY_VERSION" ]; then
             echo "::error::MCP server.json version ($SERVER_JSON_VERSION / $PACKAGE_ENTRY_VERSION) does not match package.json ($PKG_VERSION). Bump server.json to match."
+            exit 1
+          fi
+
+          # .mcp.json launches `npx @oss-autopilot/mcp@<version>`; the pin must
+          # track package.json. release-please.yml re-pins it on the release PR
+          # branch; this catches any other drift (hand edits, a skipped step).
+          if ! node scripts/sync-mcp-pin.mjs --check; then
+            echo "::error::.mcp.json pin does not match packages/mcp-server/package.json. Run 'node scripts/sync-mcp-pin.mjs' and commit the result."
             exit 1
           fi
 
