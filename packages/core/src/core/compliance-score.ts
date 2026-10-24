@@ -271,8 +271,16 @@ const CLOSING_REF = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[\w.-]+\/[
 // The body minus template scaffolding (HTML comments, headings) and closing
 // references, so an unfilled template does not count as a description.
 function proseOf(body: string): string {
-  return body
-    .replace(/<!--[\s\S]*?-->/g, '')
+  // Drop everything from each `<!--` to the next `-->` (or to the end when unclosed).
+  const uncommented = body
+    .split('<!--')
+    .map((part, i) => {
+      if (i === 0) return part;
+      const end = part.indexOf('-->');
+      return end < 0 ? '' : part.slice(end + 3);
+    })
+    .join('');
+  return uncommented
     .replace(/^\s*#{1,6}\s.*$/gm, '')
     .replace(CLOSING_REF, '')
     .trim();

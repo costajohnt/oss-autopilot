@@ -176,6 +176,10 @@ describe('description check', () => {
       '## Summary\n<!-- describe what changed -->\n\n## Why\n<!-- explain the motivation for this change here -->\n';
     expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
   });
+  it('warns on an unclosed placeholder comment', () => {
+    const body = '## Summary\n<!-- describe the change in detail here, and why it is needed, please';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
+  });
   it('warns on a long body that is only closing references', () => {
     const body = Array.from({ length: 10 }, (_, i) => `Closes #${i + 1}`).join('\n');
     expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
