@@ -176,9 +176,24 @@ describe('description check', () => {
       '## Summary\n<!-- describe what changed -->\n\n## Why\n<!-- explain the motivation for this change here -->\n';
     expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
   });
-  it('warns on an unclosed placeholder comment', () => {
-    const body = '## Summary\n<!-- describe the change in detail here, and why it is needed, please';
-    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
+  it('passes a non-Latin description under a heading', () => {
+    const body =
+      '## Summary\nページャーの最終ページが欠落する問題を修正しました。件数がちょうど割り切れる場合に発生していました。';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
+  });
+  it('keeps prose after a comment opener quoted in backticks', () => {
+    const body =
+      'Stops the markdown renderer from swallowing text after a literal `<!--` in inline code, which hid the rest of the page from readers.';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
+  });
+  it('keeps a prose line that happens to start with "# "', () => {
+    const body =
+      'Caps the retry loop in the uploader.\n# of retries is now bounded at five, so a dead endpoint no longer hangs the sync worker forever.';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
+  });
+  it('treats an unclosed comment opener as text', () => {
+    const body = '## Summary\n<!-- not closed, and this is the description';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
   });
   it('warns on a long body that is only closing references', () => {
     const body = Array.from({ length: 10 }, (_, i) => `Closes #${i + 1}`).join('\n');

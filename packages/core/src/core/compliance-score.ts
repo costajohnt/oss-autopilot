@@ -271,19 +271,28 @@ const CLOSING_REF = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[\w.-]+\/[
 // The body minus template scaffolding (HTML comments, headings) and closing
 // references, so an unfilled template does not count as a description.
 function proseOf(body: string): string {
-  // Drop everything from each `<!--` to the next `-->` (or to the end when unclosed).
-  const uncommented = body
-    .split('<!--')
-    .map((part, i) => {
-      if (i === 0) return part;
-      const end = part.indexOf('-->');
-      return end < 0 ? '' : part.slice(end + 3);
-    })
-    .join('');
-  return uncommented
-    .replace(/^\s*#{1,6}\s.*$/gm, '')
-    .replace(CLOSING_REF, '')
-    .trim();
+  // Drop closed `<!-- ... -->` comments outside backtick code; an unclosed
+  // opener, or one quoted in code, is text.
+  let uncommented = '';
+  let inCode = false;
+  for (let i = 0; i < body.length; i++) {
+    if (body[i] === '`') inCode = !inCode;
+    if (!inCode && body.startsWith('<!--', i)) {
+      const end = body.indexOf('-->', i + 4);
+      if (end >= 0) {
+        i = end + 2;
+        continue;
+      }
+    }
+    uncommented += body[i];
+  }
+  return (
+    uncommented
+      // A heading is a short title line, not a sentence that starts with "# ".
+      .replace(/^ {0,3}#{1,6}[ \t]+[^\n]{0,60}$/gm, (line) => (/[.!?。]\s*$/.test(line) ? line : ''))
+      .replace(CLOSING_REF, '')
+      .trim()
+  );
 }
 
 // Headings are never required: a sentence or two of what and why is a full
@@ -296,7 +305,7 @@ function checkDescription(meta: PRMetadata): ComplianceCheckResult {
   }
   const prose = proseOf(meta.body);
   const hasHeading = SECTION_WHAT.test(meta.body) || SECTION_WHY.test(meta.body);
-  if (prose.length >= 80 || (hasHeading && /[a-z]/i.test(prose))) {
+  if (prose.length >= 80 || (hasHeading && /\p{L}/u.test(prose))) {
     return { status: 'pass', weight, detail: 'describes the change' };
   }
   return { status: 'warn', weight, detail: 'short description; say what changed and why' };
