@@ -7,7 +7,7 @@
  * batch under throttling can't silently report "no releases".
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../core/index.js', () => ({
   getOctokit: vi.fn(),
@@ -211,5 +211,62 @@ describe('runRepoVet history score (#1465)', () => {
     mockGetStateManager.mockReturnValue(stubStateManager({}));
     const withoutHistory = RepoVetOutputSchema.parse(await runRepoVet({ repo: 'owner/repo' }));
     expect(withoutHistory.historyScore).toBeUndefined();
+  });
+});
+
+// The shared stub returns empty PR and commit lists, so every number above is
+// the empty-input value. This feeds lists that straddle the 30/90-day windows.
+describe('runRepoVet health numbers from non-empty history', () => {
+  const NOW = new Date('2026-06-30T00:00:00Z');
+  const daysAgo = (n: number): string => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000).toISOString();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    mockRequireGitHubToken.mockReturnValue('ghp_test123');
+    mockGetStateManager.mockReturnValue(stubStateManager({}));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('counts merges, opens, commits, and contributors inside their windows only', async () => {
+    const octokit = buildOctokit(vi.fn().mockRejectedValue(NOT_FOUND)) as unknown as {
+      pulls: { list: ReturnType<typeof vi.fn> };
+      repos: { listCommits: ReturnType<typeof vi.fn> };
+    };
+    octokit.pulls.list.mockResolvedValue({
+      data: [
+        // Opened and merged inside the 90-day window: 2 and 4 days to merge.
+        { created_at: daysAgo(10), merged_at: daysAgo(8), updated_at: daysAgo(8) },
+        { created_at: daysAgo(30), merged_at: daysAgo(26), updated_at: daysAgo(26) },
+        // Opened before the window, merged inside it: counts as merged only.
+        { created_at: daysAgo(120), merged_at: daysAgo(60), updated_at: daysAgo(60) },
+        // Opened and merged before the window: ignored.
+        { created_at: daysAgo(200), merged_at: daysAgo(100), updated_at: daysAgo(100) },
+        // Opened inside the window, closed unmerged.
+        { created_at: daysAgo(5), merged_at: null, updated_at: daysAgo(4) },
+      ],
+    });
+    octokit.repos.listCommits.mockResolvedValue({
+      data: [
+        { commit: { author: { date: daysAgo(1) } }, author: { login: 'alice' } },
+        { commit: { author: { date: daysAgo(20) } }, author: { login: 'bob' } },
+        { commit: { author: { date: daysAgo(10) } }, author: null },
+        { commit: { author: { date: daysAgo(45) } }, author: { login: 'alice' } },
+        { commit: { author: { date: daysAgo(100) } }, author: { login: 'carol' } },
+        { commit: { author: null }, author: { login: 'dave' } },
+      ],
+    });
+    mockGetOctokit.mockReturnValue(octokit as unknown as ReturnType<typeof getOctokit>);
+
+    const result = await runRepoVet({ repo: 'owner/repo' });
+
+    expect(result.mergeRate).toMatchObject({ merged: 3, opened: 3, percent: 100 });
+    expect(result.prMergeTime).toMatchObject({ sampleSize: 3, medianDays: 4, avgDays: 22 });
+    expect(result.maintainerActivity.contributorsLast90d).toBe(2);
+    expect(result.maintainerActivity.lastCommitISO).toBe(daysAgo(1));
   });
 });

@@ -62,6 +62,7 @@ vi.mock('../core/paths.js', async (importOriginal) => {
 import { getStateManager, resetStateManager, CRITICAL_STATUSES, toShelvedPRRef } from '../core/index.js';
 import { buildDashboardJson } from './dashboard-server.js';
 import { makeFetchedPR, makeDailyDigest } from '../core/test-utils.js';
+import type { CommentedIssue } from '../core/types.js';
 
 const PR_URL = 'https://github.com/owner/repo/pull/7';
 
@@ -235,5 +236,50 @@ describe('buildDashboardJson partitions on post-override status (#1416)', () => 
     expect(after.shelvedPRUrls).not.toContain(PR_URL);
     expect(after.activePRs[0].status).toBe('needs_addressing');
     expect(after.activePRs[0].attentionBucket).toBe('needs_attention');
+  });
+});
+
+// Same real-StateManager harness, reused for the issue-response filter: every
+// other dashboard test passes `commentedIssues: []`, so the dismissed-issue
+// predicate in buildDashboardJson never ran under test.
+describe('buildDashboardJson omits dismissed issue responses', () => {
+  beforeEach(() => {
+    mockTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-dismissed-'));
+    resetStateManager();
+  });
+
+  afterEach(() => {
+    resetStateManager();
+    fs.rmSync(mockTmpDir, { recursive: true, force: true });
+    mockTmpDir = '';
+  });
+
+  function makeResponse(number: number): CommentedIssue {
+    return {
+      repo: 'owner/repo',
+      number,
+      title: `Issue ${number}`,
+      url: `https://github.com/owner/repo/issues/${number}`,
+      userLastCommentedAt: '2026-05-01T00:00:00Z',
+      userLastCommentBody: 'any update?',
+      labels: [],
+      daysSinceUserComment: 3,
+      status: 'new_response',
+      lastResponseAuthor: 'maintainer',
+      lastResponseBody: 'looking at it',
+      lastResponseAt: '2026-05-02T00:00:00Z',
+      isFromMaintainer: true,
+    };
+  }
+
+  it('keeps only the new_response issues that are not dismissed', () => {
+    const sm = getStateManager();
+    const dismissed = makeResponse(1);
+    const kept = makeResponse(2);
+    sm.dismissIssue(dismissed.url, '2026-05-03T00:00:00Z');
+
+    const data = buildDashboardJson(makeDailyDigest(), sm.getState(), [dismissed, kept], [], []);
+
+    expect(data.issueResponses.map((i) => i.url)).toEqual([kept.url]);
   });
 });
