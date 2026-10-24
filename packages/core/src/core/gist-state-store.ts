@@ -151,6 +151,11 @@ export interface OctokitLike {
       headers?: Record<string, string>;
     }) => Promise<{ data: GistResponseData; headers?: Record<string, string | undefined> }>;
   };
+  /**
+   * Generic request, used only to fetch the `raw_url` of a file the Gist API
+   * truncated. Optional so test mocks that never truncate can omit it.
+   */
+  request?: (route: { method: 'GET'; url: string }) => Promise<{ data: unknown }>;
 }
 
 /** Shape of a single Gist in a list response (subset). */
@@ -163,8 +168,18 @@ interface GistListItem {
 interface GistResponseData {
   id: string;
   description: string | null;
-  files: Record<string, { filename: string; content?: string } | null>;
+  files: Record<string, { filename: string; content?: string; truncated?: boolean; raw_url?: string } | null>;
 }
+
+/**
+ * The Gist API returns at most 1 MB of `content` per file and sets
+ * `truncated: true` past that; the full body (up to 10 MB) is only available
+ * from `raw_url`. Above 10 MB even `raw_url` stops working, so `push()`
+ * refuses to write a file that large and warns as it approaches 1 MB.
+ */
+const GIST_CONTENT_WARN_BYTES = 900 * 1024;
+const GIST_RAW_MAX_BYTES = 10 * 1024 * 1024;
+const GIST_RAW_HOST = 'gist.githubusercontent.com';
 
 /**
  * Gist-backed state store with in-memory file cache and local write-through.
@@ -507,6 +522,8 @@ export class GistStateStore {
       throw new Error('GistStateStore: cannot push before bootstrap — gistId is null');
     }
 
+    this.checkPushSize();
+
     const buildFiles = (): Record<string, { content: string }> => {
       const out: Record<string, { content: string }> = {};
       for (const filename of this.dirtyFiles) {
@@ -573,13 +590,9 @@ export class GistStateStore {
           this.cachedFiles.set(filename, content);
         }
       };
-
-      try {
-        await this.fetchAndCache(this.gistId);
-      } catch (readErr) {
-        warn(MODULE, `Pre-write re-read failed: ${readErr}`);
-        // Roll back any partial mutation so the caller's retry path sees the
-        // prior in-memory state with local mutations re-applied on top.
+      // Restore the pre-read cache, baseline, and ETag, then re-apply the
+      // staged edits on top, so the caller sees the prior in-memory state.
+      const rollBackPreRead = (): void => {
         this.cachedFiles.clear();
         for (const [filename, content] of preReadCache) {
           this.cachedFiles.set(filename, content);
@@ -587,6 +600,15 @@ export class GistStateStore {
         this.baselineFiles = preReadBaseline;
         this.lastFetchedEtag = preReadEtag;
         reapplyStaged();
+      };
+
+      try {
+        await this.fetchAndCache(this.gistId);
+      } catch (readErr) {
+        warn(MODULE, `Pre-write re-read failed: ${readErr}`);
+        // Roll back any partial mutation so the caller's retry path sees the
+        // prior in-memory state with local mutations re-applied on top.
+        rollBackPreRead();
         // Preserve GistCorruptError so callers don't retry against a corrupt
         // remote, and let rate-limit errors propagate unchanged so they aren't
         // mistaken for a concurrency conflict — a "refresh + retry" remediation
@@ -605,9 +627,14 @@ export class GistStateStore {
           'state.json changed remotely since our last fetch; surfacing GistConcurrencyError instead of clobbering (#1235, #1510)',
         );
         // Preserve local state.json (and other staged dirty files) in memory
-        // so the caller can refresh and reapply if appropriate.
-        reapplyStaged();
-        throw new GistConcurrencyError(preReadEtag, this.lastFetchedEtag);
+        // so the caller can refresh and reapply if appropriate. The baseline
+        // must go back to the pre-read snapshot too: leaving it at the remote
+        // we just refused to overwrite would let the next push() pass this
+        // comparison and clobber the other machine's write with the same
+        // stale local state.
+        const remoteEtag = this.lastFetchedEtag;
+        rollBackPreRead();
+        throw new GistConcurrencyError(preReadEtag, remoteEtag);
       }
 
       // No conflict — re-apply our staged dirty contents on top of the
@@ -686,6 +713,32 @@ export class GistStateStore {
   // ── Private helpers ─────────────────────────────────────────────────
 
   /**
+   * Refuse to write a file the Gist could no longer serve back (raw_url stops
+   * at 10 MB), and warn once a file passes ~900 KB so growth is visible before
+   * reads start depending on the truncated-file path.
+   */
+  private checkPushSize(): void {
+    for (const filename of this.dirtyFiles) {
+      const content = this.cachedFiles.get(filename);
+      if (content === undefined) continue;
+      const bytes = Buffer.byteLength(content, 'utf8');
+      if (bytes > GIST_RAW_MAX_BYTES) {
+        throw new Error(
+          `Refusing to push Gist file ${filename}: ${bytes} bytes exceeds the ${GIST_RAW_MAX_BYTES}-byte limit ` +
+            'the Gist API can serve back. The local change is kept in memory but was not synced.',
+        );
+      }
+      if (bytes > GIST_CONTENT_WARN_BYTES) {
+        warn(
+          MODULE,
+          `Gist file ${filename} is ${bytes} bytes, near or past the 1 MB the Gist API returns inline; ` +
+            'reads will fall back to raw_url.',
+        );
+      }
+    }
+  }
+
+  /**
    * Preflight check: verify the token has Gist API scope.
    * Costs one cheap API call; catches permission issues early with a clear message.
    */
@@ -709,16 +762,27 @@ export class GistStateStore {
   private async fetchAndCache(gistId: string): Promise<AgentState> {
     const response = await this.octokit.gists.get({ gist_id: gistId });
     this.gistId = gistId;
+
+    // Resolve every file's full content before touching the cache or ETag, so
+    // a truncated file we cannot read leaves the store as it was.
+    const contents = new Map<string, string>();
+    for (const [filename, file] of Object.entries(response.data.files)) {
+      if (!file) continue;
+      if (file.truncated) {
+        contents.set(filename, await this.fetchRawContent(filename, file.raw_url));
+      } else if (file.content != null) {
+        contents.set(filename, file.content);
+      }
+    }
+
     // Capture the ETag for optimistic-concurrency push (#1115). Header
     // names from Octokit are lower-cased; tolerate both shapes for robustness.
     this.lastFetchedEtag = extractEtag(response.headers);
 
     // Populate in-memory cache with ALL files from the Gist
     this.cachedFiles.clear();
-    for (const [filename, file] of Object.entries(response.data.files)) {
-      if (file && file.content != null) {
-        this.cachedFiles.set(filename, file.content);
-      }
+    for (const [filename, content] of contents) {
+      this.cachedFiles.set(filename, content);
     }
     // Snapshot the just-fetched contents as the per-file baseline (#1235).
     // The 412 merge path uses this to detect whether a concurrent write
@@ -732,6 +796,42 @@ export class GistStateStore {
     this.writeLocalStateCache(state);
 
     return state;
+  }
+
+  /**
+   * Fetch the full body of a file the Gist API truncated (>1 MB of content).
+   *
+   * Throws a plain Error, not a ConfigurationError, when the body cannot be
+   * read: the remote is not known to be corrupt, so bootstrap may still fall
+   * back to the local cache in degraded mode (which never pushes), and a
+   * refresh or pre-write re-read fails without replacing the cache.
+   */
+  private async fetchRawContent(filename: string, rawUrl: string | undefined): Promise<string> {
+    const fail = (reason: string): Error =>
+      new Error(
+        `Gist file ${filename} is larger than the 1 MB the Gist API returns inline and its full content ` +
+          `could not be read from raw_url (${reason}). Local state was left unchanged.`,
+      );
+    if (!this.octokit.request) throw fail('no HTTP client available');
+    if (!rawUrl) throw fail('the API returned no raw_url');
+    let host: string;
+    try {
+      const parsed = new URL(rawUrl);
+      host = parsed.protocol === 'https:' ? parsed.hostname : '';
+    } catch {
+      host = '';
+    }
+    // The request carries the GitHub token, so only send it to the Gist raw host.
+    if (host !== GIST_RAW_HOST) throw fail(`unexpected raw_url host`);
+    let data: unknown;
+    try {
+      ({ data } = await this.octokit.request({ method: 'GET', url: rawUrl }));
+    } catch (err) {
+      if (isRateLimitError(err)) throw err;
+      throw fail(err instanceof Error ? err.message : String(err));
+    }
+    if (typeof data !== 'string') throw fail('response body was not text');
+    return data;
   }
 
   /**

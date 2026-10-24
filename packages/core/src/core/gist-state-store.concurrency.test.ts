@@ -394,6 +394,40 @@ describe('GistStateStore concurrency (#1191)', () => {
     expect(bStaged.config.shelvedPRUrls).toEqual(['url-b']);
   });
 
+  // A conflicted push must not advance the baseline to the remote it refused
+  // to overwrite. Long-lived callers (dashboard flush, MCP tools) re-push
+  // without refreshing, and that second push used to pass the comparison and
+  // clobber the other writer's edit with the same stale state.
+  it('a second push after a conflict still fails loud and keeps the other writer edit', async () => {
+    const mock = makeStatefulGistMock(GIST_ID, makeInitialStateJson());
+    const a = new GistStateStore(mock.octokit);
+    const b = new GistStateStore(mock.octokit);
+    await Promise.all([a.bootstrap(), b.bootstrap()]);
+
+    const stateA = JSON.parse(a.cachedFiles.get(STATE_FILE_NAME)!) as Record<string, unknown>;
+    (stateA.config as { shelvedPRUrls: string[] }).shelvedPRUrls.push('url-a');
+    a.setState(JSON.stringify(stateA, null, 2));
+    await a.push();
+
+    const stateB = JSON.parse(b.cachedFiles.get(STATE_FILE_NAME)!) as Record<string, unknown>;
+    (stateB.config as { shelvedPRUrls: string[] }).shelvedPRUrls.push('url-b');
+    b.setState(JSON.stringify(stateB, null, 2));
+    await expect(b.push()).rejects.toBeInstanceOf(GistConcurrencyError);
+    await expect(b.push()).rejects.toBeInstanceOf(GistConcurrencyError);
+
+    const finalState = mock.readState() as { config: { shelvedPRUrls: string[] } };
+    expect(finalState.config.shelvedPRUrls).toEqual(['url-a']);
+
+    // After an explicit refresh the store adopts the remote and can write again.
+    await b.refreshFromGist();
+    const refreshed = JSON.parse(b.cachedFiles.get(STATE_FILE_NAME)!) as Record<string, unknown>;
+    (refreshed.config as { shelvedPRUrls: string[] }).shelvedPRUrls.push('url-b');
+    b.setState(JSON.stringify(refreshed, null, 2));
+    await expect(b.push()).resolves.toBe(true);
+    const merged = mock.readState() as { config: { shelvedPRUrls: string[] } };
+    expect(merged.config.shelvedPRUrls).toEqual(['url-a', 'url-b']);
+  });
+
   // Companion: a mixed dirty set (state.json + a guidelines file) fails loud as
   // a whole when state.json conflicted — the pre-write check gates the entire
   // push, so the guidelines file does not land either (#1235, #1510).

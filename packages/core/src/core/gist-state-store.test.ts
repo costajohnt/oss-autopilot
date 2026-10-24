@@ -857,6 +857,106 @@ describe('GistStateStore', () => {
     });
   });
 
+  describe('truncated files (Gist API returns at most 1 MB of content)', () => {
+    const RAW_URL = 'https://gist.githubusercontent.com/u/trunc/raw/abc/state.json';
+
+    function makeTruncatedResponse(gistId: string, stateJson: string, rawUrl = RAW_URL) {
+      return {
+        data: {
+          id: gistId,
+          description: GIST_DESCRIPTION,
+          files: {
+            [STATE_FILE_NAME]: {
+              filename: STATE_FILE_NAME,
+              content: stateJson.slice(0, 20),
+              truncated: true,
+              raw_url: rawUrl,
+            },
+          },
+        },
+      };
+    }
+
+    it('reads the full content of a truncated file from raw_url', async () => {
+      const gistId = 'trunc-ok';
+      const stateJson = makeStateJson({ lastRunAt: '2025-07-01T00:00:00.000Z' });
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeTruncatedResponse(gistId, stateJson));
+      const request = vi.fn().mockResolvedValue({ data: stateJson });
+      const store = new GistStateStore({ ...octokit, request });
+
+      const result = await store.bootstrap();
+
+      expect(request).toHaveBeenCalledWith({ method: 'GET', url: RAW_URL });
+      expect(result.degraded).toBeFalsy();
+      expect(result.state.lastRunAt).toBe('2025-07-01T00:00:00.000Z');
+      expect(store.cachedFiles.get(STATE_FILE_NAME)).toBe(stateJson);
+    });
+
+    it('falls back to the local cache, not GistCorruptError, when raw_url cannot be read', async () => {
+      const gistId = 'trunc-unreadable';
+      const cachedState = JSON.parse(makeStateJson({ lastRunAt: '2025-06-01T00:00:00.000Z' }));
+      fs.writeFileSync(path.join(tmpDir, 'state-cache.json'), JSON.stringify(cachedState, null, 2));
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.list.mockResolvedValue({ data: [{ id: gistId, description: GIST_DESCRIPTION }] });
+      octokit.gists.get.mockResolvedValue(makeTruncatedResponse(gistId, makeStateJson()));
+      const request = vi.fn().mockRejectedValue(Object.assign(new Error('Server Error'), { status: 500 }));
+      const store = new GistStateStore({ ...octokit, request });
+
+      const result = await store.bootstrap();
+
+      expect(result.degraded).toBe(true);
+      expect(result.state.lastRunAt).toBe('2025-06-01T00:00:00.000Z');
+      // A degraded store never pushes, and nothing was preserved as corrupt.
+      expect(store.getGistId()).toBeNull();
+      expect(fs.readdirSync(tmpDir).some((f) => f.includes('.rejected-'))).toBe(false);
+    });
+
+    it('does not send the token to a raw_url outside the Gist raw host', async () => {
+      const gistId = 'trunc-bad-host';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(
+        makeTruncatedResponse(gistId, makeStateJson(), 'https://evil.example.com/state.json'),
+      );
+      const request = vi.fn();
+      const store = new GistStateStore({ ...octokit, request });
+
+      const result = await store.bootstrap();
+
+      expect(request).not.toHaveBeenCalled();
+      expect(result.degraded).toBe(true);
+    });
+
+    it('leaves the cache unchanged when a refresh hits an unreadable truncated file', async () => {
+      const gistId = 'trunc-refresh';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValueOnce(makeGistResponse(gistId, stateJson));
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      octokit.gists.get.mockResolvedValueOnce(makeTruncatedResponse(gistId, makeStateJson({ lastRunAt: 'x' })));
+      const result = await store.refreshFromGist();
+
+      expect(result.status).toBe('error');
+      expect(store.cachedFiles.get(STATE_FILE_NAME)).toBe(stateJson);
+    });
+
+    it('refuses to push a file larger than raw_url can serve back', async () => {
+      const gistId = 'too-big';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, makeStateJson()));
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      store.setState('x'.repeat(10 * 1024 * 1024 + 1));
+
+      await expect(store.push()).rejects.toThrow(/exceeds the 10485760-byte limit/);
+      expect(octokit.gists.update).not.toHaveBeenCalled();
+      expect(store.dirtyFiles.has(STATE_FILE_NAME)).toBe(true);
+    });
+  });
+
   describe('graceful degradation', () => {
     it('falls back to local cache when all API calls fail', async () => {
       const cachedState = JSON.parse(makeStateJson({ lastRunAt: '2025-06-01T00:00:00.000Z' }));

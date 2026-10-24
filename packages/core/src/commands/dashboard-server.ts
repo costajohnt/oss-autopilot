@@ -15,7 +15,7 @@ import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
-import { getGitHubToken, getCLIVersion, maybeCheckpoint } from '../core/index.js';
+import { getGitHubToken, getCLIVersion } from '../core/index.js';
 import { errorMessage, ValidationError, ConcurrencyError, GistConcurrencyError } from '../core/errors.js';
 import { warn } from '../core/logger.js';
 import { validateUrl, validateGitHubUrl, PR_URL_PATTERN, ISSUE_URL_PATTERN } from './validation.js';
@@ -527,13 +527,11 @@ export async function startDashboardServer(options: DashboardServerOptions): Pro
         gistSyncWarning = output.gistSyncWarning ?? null;
       };
     } else {
-      // dismiss_issue_response
+      // dismiss_issue_response: same command the CLI and MCP surfaces run.
+      const { runDismiss } = await import('./dismiss.js');
       applyMutation = async () => {
-        gistSync.stateManager.dismissIssue(body.url, new Date().toISOString());
-        // Mirror runMove's contract: every mutating surface checkpoints to
-        // Gist and surfaces the warning. Never throws — failures come back
-        // as the warning string.
-        gistSyncWarning = await maybeCheckpoint(gistSync.stateManager, MODULE);
+        const output = await runDismiss({ url: body.url });
+        gistSyncWarning = output.gistSyncWarning ?? null;
       };
     }
 
