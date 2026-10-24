@@ -266,6 +266,18 @@ function checkIssueReference(meta: PRMetadata, repoContext?: RepoContext): Compl
 const SECTION_WHAT = /(?:^|\n)#{1,3}\s*(?:summary|overview|what(?:\s+changed)?)\b/i;
 const SECTION_WHY = /(?:^|\n)#{1,3}\s*(?:why|motivation|context|background|rationale)\b/i;
 
+const CLOSING_REF = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[\w.-]+\/[\w.-]+)?#\d+/gi;
+
+// The body minus template scaffolding (HTML comments, headings) and closing
+// references, so an unfilled template does not count as a description.
+function proseOf(body: string): string {
+  return body
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/^\s*#{1,6}\s.*$/gm, '')
+    .replace(CLOSING_REF, '')
+    .trim();
+}
+
 // Headings are never required: a sentence or two of what and why is a full
 // description, and requiring a heading set pads small PRs with filler sections.
 function checkDescription(meta: PRMetadata): ComplianceCheckResult {
@@ -274,7 +286,9 @@ function checkDescription(meta: PRMetadata): ComplianceCheckResult {
   if (trimmed.length === 0) {
     return { status: 'fail', weight, detail: 'description is empty' };
   }
-  if (trimmed.length >= 80 || SECTION_WHAT.test(meta.body) || SECTION_WHY.test(meta.body)) {
+  const prose = proseOf(meta.body);
+  const hasHeading = SECTION_WHAT.test(meta.body) || SECTION_WHY.test(meta.body);
+  if (prose.length >= 80 || (hasHeading && /[a-z]/i.test(prose))) {
     return { status: 'pass', weight, detail: 'describes the change' };
   }
   return { status: 'warn', weight, detail: 'short description; say what changed and why' };
