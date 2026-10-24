@@ -191,6 +191,26 @@ describe('description check', () => {
       'Caps the retry loop in the uploader.\n# of retries is now bounded at five, so a dead endpoint no longer hangs the sync worker forever.';
     expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
   });
+  it('warns on an unfilled template after a stray backtick', () => {
+    const body =
+      '`\n## Summary\n<!-- Describe your change in detail here, including the motivation and the context for reviewers. -->\n## Why\n<!-- Link the issue and explain why this is needed. -->';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
+  });
+  it('keeps a comment opener inside a fenced code block as text', () => {
+    const body = '## Summary\n```html\n<!-- the renderer now keeps this -->\n```';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
+  });
+  it('strips comments after an unclosed fence', () => {
+    const body =
+      '```\n## Summary\n<!-- Describe your change in detail here, including the motivation and the context for reviewers. -->';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
+  });
+  it('scores a body of many unclosed comment openers quickly', () => {
+    const body = '<!-- x '.repeat(9000);
+    const start = performance.now();
+    computeComplianceScore(meta({ body }));
+    expect(performance.now() - start).toBeLessThan(200);
+  });
   it('treats an unclosed comment opener as text', () => {
     const body = '## Summary\n<!-- not closed, and this is the description';
     expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');

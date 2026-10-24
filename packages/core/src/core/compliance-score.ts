@@ -270,21 +270,85 @@ const CLOSING_REF = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[\w.-]+\/[
 
 // The body minus template scaffolding (HTML comments, headings) and closing
 // references, so an unfilled template does not count as a description.
-function proseOf(body: string): string {
-  // Drop closed `<!-- ... -->` comments outside backtick code; an unclosed
-  // opener, or one quoted in code, is text.
-  let uncommented = '';
-  let inCode = false;
-  for (let i = 0; i < body.length; i++) {
-    if (body[i] === '`') inCode = !inCode;
-    if (!inCode && body.startsWith('<!--', i)) {
-      const end = body.indexOf('-->', i + 4);
-      if (end >= 0) {
-        i = end + 2;
-        continue;
-      }
+type Span = [start: number, end: number];
+
+// Closed code fences: a line opening with 3+ backticks, closed by a later line
+// opening with at least as many. An unclosed fence is text.
+function fenceSpans(body: string): Span[] {
+  const spans: Span[] = [];
+  let open: { start: number; len: number } | undefined;
+  let offset = 0;
+  for (const line of body.split('\n')) {
+    const len = /^ {0,3}(`{3,})/.exec(line)?.[1].length ?? 0;
+    if (len > 0 && !open) {
+      open = { start: offset, len };
+    } else if (len > 0 && open && len >= open.len) {
+      spans.push([open.start, offset + line.length]);
+      open = undefined;
     }
-    uncommented += body[i];
+    offset += line.length + 1;
+  }
+  return spans;
+}
+
+// Balanced inline code spans in body[from, to): a run of N backticks closes at
+// the next run of exactly N. An unmatched run is text.
+function inlineSpans(body: string, from: number, to: number): Span[] {
+  const runs = [...body.slice(from, to).matchAll(/`+/g)].map((m) => ({ start: from + m.index, len: m[0].length }));
+  const closer = new Map<number, number>();
+  const nextByLen = new Map<number, number>();
+  for (let r = runs.length - 1; r >= 0; r--) {
+    const next = nextByLen.get(runs[r].len);
+    if (next !== undefined) closer.set(r, next);
+    nextByLen.set(runs[r].len, r);
+  }
+  const spans: Span[] = [];
+  let r = 0;
+  while (r < runs.length) {
+    const close = closer.get(r);
+    if (close === undefined) {
+      r += 1;
+    } else {
+      spans.push([runs[r].start, runs[close].start + runs[close].len]);
+      r = close + 1;
+    }
+  }
+  return spans;
+}
+
+// 1 for each character inside code (fenced or inline). Linear time.
+function codeMask(body: string): Uint8Array {
+  const mask = new Uint8Array(body.length);
+  const fences = fenceSpans(body);
+  const gaps: Span[] = [];
+  let from = 0;
+  for (const [start, end] of fences) {
+    gaps.push([from, start]);
+    from = end;
+  }
+  gaps.push([from, body.length]);
+  const inline = gaps.flatMap(([start, end]) => inlineSpans(body, start, end));
+  for (const [start, end] of [...fences, ...inline]) mask.fill(1, start, end);
+  return mask;
+}
+
+function proseOf(body: string): string {
+  // Drop closed `<!-- ... -->` comments outside code; an unclosed opener, or
+  // one in code, is text.
+  const code = codeMask(body);
+  let uncommented = '';
+  let hasClosers = true;
+  let i = 0;
+  while (i < body.length) {
+    const end = hasClosers && code[i] === 0 && body.startsWith('<!--', i) ? body.indexOf('-->', i + 4) : -1;
+    if (end === -1) {
+      // An opener with no closer means no later opener can close either.
+      if (code[i] === 0 && body.startsWith('<!--', i)) hasClosers = false;
+      uncommented += body[i];
+      i += 1;
+    } else {
+      i = end + 3;
+    }
   }
   return (
     uncommented
