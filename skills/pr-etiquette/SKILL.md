@@ -105,12 +105,10 @@ Wiping the template is the most common reason a maintainer flags an autopilot PR
 
 ## Testing
 
-[How you tested the changes]
-
-## Screenshots (if UI changes)
-
-[Before/after screenshots]
+[One line on how you verified it, only if the repo template has a testing heading]
 ```
+
+Add a screenshots section only when the change is visible and the template or a maintainer asks for one.
 
 ### Tips
 
@@ -149,7 +147,7 @@ Before submitting any PR, verify:
 ### Optional
 
 - [ ] **Branch Naming**: Follows convention (`feature/`, `fix/`, `docs/`)
-- [ ] **Screenshots**: Included for UI changes
+- [ ] **Screenshots**: Only for visible changes when the template or a maintainer asks
 
 > **Source of truth:** This checklist mirrors the canonical rubric at `packages/core/src/core/pr-quality-rubric.ts`. The `pr-compliance-checker` agent's scoring (`computeComplianceScore`) reads its weights and the `< 10 files, < 400 lines` threshold from that file. Edit the rubric source first, then update this checklist; a CI test pins that the scored weights total 100.
 

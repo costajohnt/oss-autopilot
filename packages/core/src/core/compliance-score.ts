@@ -265,29 +265,19 @@ function checkIssueReference(meta: PRMetadata, repoContext?: RepoContext): Compl
 
 const SECTION_WHAT = /(?:^|\n)#{1,3}\s*(?:summary|overview|what(?:\s+changed)?)\b/i;
 const SECTION_WHY = /(?:^|\n)#{1,3}\s*(?:why|motivation|context|background|rationale)\b/i;
-const SECTION_TEST = /(?:^|\n)#{1,3}\s*(?:test\s*plan|how\s+to\s+test|testing|tests?)\b/i;
 
+// Headings are never required: a sentence or two of what and why is a full
+// description, and requiring a heading set pads small PRs with filler sections.
 function checkDescription(meta: PRMetadata): ComplianceCheckResult {
   const weight = WEIGHTS.description;
   const trimmed = meta.body.trim();
   if (trimmed.length === 0) {
     return { status: 'fail', weight, detail: 'description is empty' };
   }
-  const what = SECTION_WHAT.test(meta.body);
-  const why = SECTION_WHY.test(meta.body);
-  const test = SECTION_TEST.test(meta.body);
-  const present = [what, why, test].filter(Boolean).length;
-  if (present === 3) {
-    return { status: 'pass', weight, detail: 'what / why / test sections present' };
+  if (trimmed.length >= 80 || SECTION_WHAT.test(meta.body) || SECTION_WHY.test(meta.body)) {
+    return { status: 'pass', weight, detail: 'describes the change' };
   }
-  if (present >= 1 || trimmed.length >= 80) {
-    return {
-      status: 'warn',
-      weight,
-      detail: `${present} of 3 sections present (what/why/test)`,
-    };
-  }
-  return { status: 'fail', weight, detail: 'minimal description, no recognizable sections' };
+  return { status: 'warn', weight, detail: 'short description; say what changed and why' };
 }
 
 function checkFocusedChanges(meta: PRMetadata): ComplianceCheckResult {

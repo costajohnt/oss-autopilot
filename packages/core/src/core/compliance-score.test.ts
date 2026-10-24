@@ -160,17 +160,16 @@ describe('description check', () => {
   it('fails on empty body', () => {
     expect(computeComplianceScore(meta({ body: '   ' })).checks.description.status).toBe('fail');
   });
-  it('passes when all three sections present', () => {
-    const body = '## Summary\nx\n\n## Why\ny\n\n## Test Plan\nz';
+  it('passes on a summary heading without a test plan', () => {
+    const body = '## Summary\nx\n(no why, no test plan)';
     expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
   });
-  it('warns when only some sections present', () => {
-    const body = '## Summary\nx\n(no why, no test plan)';
-    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
+  it('passes on plain prose with no headings', () => {
+    const body = 'Fixes the off-by-one in the pager so the last page is no longer dropped when the count is exact.';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
   });
-  it('warns when length is non-trivial but no sections', () => {
-    const body = 'a'.repeat(100);
-    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
+  it('warns on a short body with no headings', () => {
+    expect(computeComplianceScore(meta({ body: 'Closes #42' })).checks.description.status).toBe('warn');
   });
 });
 
@@ -269,12 +268,12 @@ describe('rating cutoffs', () => {
   });
   it('rates 75–89 as minor', () => {
     // Drop to minor by warning on title (10-pt category, half = 5pt loss
-    // leaves us at 95). Add a second warn (description partial) to push
+    // leaves us at 95). Add a second warn (description too short) to push
     // below 90 but stay above 75.
     const result = computeComplianceScore(
       meta({
         title: 'Adding the login feature with OAuth support', // warn (-5pt)
-        body: '## Summary\nDoes a thing.\n\nCloses #1', // warn (-12.5pt) — partial sections
+        body: 'Closes #1', // warn (-12.5pt) — no description beyond the reference
       }),
     );
     expect(result.score).toBeGreaterThanOrEqual(RATING_CUTOFFS.minor);
