@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { GistStateStore, GIST_DESCRIPTION, STATE_FILE_NAME, type OctokitLike } from './gist-state-store.js';
 import { AgentStateSchema } from './state-schema.js';
-import { GistCorruptError } from './errors.js';
+import { GistCorruptError, GistFileSizeError } from './errors.js';
 import { createFreshState } from './state-persistence.js';
 
 // ── Mock utils.js to redirect path helpers to temp directories ────────────────
@@ -942,6 +942,42 @@ describe('GistStateStore', () => {
       expect(store.cachedFiles.get(STATE_FILE_NAME)).toBe(stateJson);
     });
 
+    it('surfaces GistFileSizeError, not a conflict, when the pre-write re-read cannot read a truncated file', async () => {
+      const gistId = 'trunc-push';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValueOnce(makeGistResponse(gistId, stateJson));
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+
+      const edited = makeStateJson({ lastRunAt: '2025-08-01T00:00:00.000Z' });
+      store.setState(edited);
+      octokit.gists.get.mockResolvedValueOnce(makeTruncatedResponse(gistId, makeStateJson()));
+
+      await expect(store.push()).rejects.toBeInstanceOf(GistFileSizeError);
+      expect(octokit.gists.update).not.toHaveBeenCalled();
+      // The local edit is still staged on top of the pre-read cache.
+      expect(store.cachedFiles.get(STATE_FILE_NAME)).toBe(edited);
+      expect(store.dirtyFiles.has(STATE_FILE_NAME)).toBe(true);
+    });
+
+    it('warns when a pushed file passes ~900 KB', async () => {
+      const gistId = 'big-warn';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, makeStateJson()));
+      octokit.gists.update.mockResolvedValue({ data: { id: gistId, description: GIST_DESCRIPTION, files: {} } });
+      const store = new GistStateStore(octokit);
+      await store.bootstrap();
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      store.setDocument('guidelines--big.md', 'x'.repeat(950 * 1024));
+      await store.push();
+
+      expect(octokit.gists.update).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('guidelines--big.md is 972800 bytes'));
+      errorSpy.mockRestore();
+    });
+
     it('refuses to push a file larger than raw_url can serve back', async () => {
       const gistId = 'too-big';
       fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
@@ -951,6 +987,7 @@ describe('GistStateStore', () => {
 
       store.setState('x'.repeat(10 * 1024 * 1024 + 1));
 
+      await expect(store.push()).rejects.toThrow(GistFileSizeError);
       await expect(store.push()).rejects.toThrow(/exceeds the 10485760-byte limit/);
       expect(octokit.gists.update).not.toHaveBeenCalled();
       expect(store.dirtyFiles.has(STATE_FILE_NAME)).toBe(true);

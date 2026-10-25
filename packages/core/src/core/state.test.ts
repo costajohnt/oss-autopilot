@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { StateManager, getStateManager, resetStateManager, maybeCheckpoint } from './state.js';
+import { GistConcurrencyError, GistFileSizeError } from './errors.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -1256,6 +1257,25 @@ describe('StateManager.checkpoint gistDegraded (#1510)', () => {
     const pushed = await manager.checkpoint();
 
     expect(pushed).toBe(true);
+    expect(manager.isGistDegraded()).toBe(false);
+  });
+
+  it('flips gistDegraded to true and rethrows when a file is too large to sync', async () => {
+    const manager = new StateManager(true);
+    const mockGistStore = makeMockGistStore(vi.fn().mockRejectedValue(new GistFileSizeError('too big')));
+    (manager as unknown as { gistStore: unknown }).gistStore = mockGistStore;
+
+    await expect(manager.checkpoint()).rejects.toBeInstanceOf(GistFileSizeError);
+    expect(manager.isGistDegraded()).toBe(true);
+    expect(await maybeCheckpoint(manager, 'test')).toMatch(/Gist checkpoint failed.*too big/);
+  });
+
+  it('leaves gistDegraded untouched on a GistConcurrencyError', async () => {
+    const manager = new StateManager(true);
+    const mockGistStore = makeMockGistStore(vi.fn().mockRejectedValue(new GistConcurrencyError(null, null)));
+    (manager as unknown as { gistStore: unknown }).gistStore = mockGistStore;
+
+    await expect(manager.checkpoint()).rejects.toBeInstanceOf(GistConcurrencyError);
     expect(manager.isGistDegraded()).toBe(false);
   });
 

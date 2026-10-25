@@ -63,6 +63,7 @@ import {
   GistPermissionError,
   GistConcurrencyError,
   GistCorruptError,
+  GistFileSizeError,
   isRateLimitError,
 } from './errors.js';
 
@@ -616,6 +617,9 @@ export class GistStateStore {
         // a concurrency error — the gist content is still likely fine, the
         // caller can refresh + retry.
         if (readErr instanceof GistCorruptError) throw readErr;
+        // An unreadable oversized file is not a conflict: refresh + retry
+        // would hit the same wall, so surface it as-is.
+        if (readErr instanceof GistFileSizeError) throw readErr;
         if (isRateLimitError(readErr)) throw readErr;
         throw new GistConcurrencyError(preReadEtag, null);
       }
@@ -723,7 +727,7 @@ export class GistStateStore {
       if (content === undefined) continue;
       const bytes = Buffer.byteLength(content, 'utf8');
       if (bytes > GIST_RAW_MAX_BYTES) {
-        throw new Error(
+        throw new GistFileSizeError(
           `Refusing to push Gist file ${filename}: ${bytes} bytes exceeds the ${GIST_RAW_MAX_BYTES}-byte limit ` +
             'the Gist API can serve back. The local change is kept in memory but was not synced.',
         );
@@ -801,14 +805,15 @@ export class GistStateStore {
   /**
    * Fetch the full body of a file the Gist API truncated (>1 MB of content).
    *
-   * Throws a plain Error, not a ConfigurationError, when the body cannot be
-   * read: the remote is not known to be corrupt, so bootstrap may still fall
-   * back to the local cache in degraded mode (which never pushes), and a
-   * refresh or pre-write re-read fails without replacing the cache.
+   * Throws {@link GistFileSizeError} (not a ConfigurationError) when the
+   * body cannot be read: the remote is not known to be corrupt, so bootstrap
+   * may still fall back to the local cache in degraded mode (which never
+   * pushes), and a refresh or pre-write re-read fails without replacing the
+   * cache.
    */
   private async fetchRawContent(filename: string, rawUrl: string | undefined): Promise<string> {
-    const fail = (reason: string): Error =>
-      new Error(
+    const fail = (reason: string): GistFileSizeError =>
+      new GistFileSizeError(
         `Gist file ${filename} is larger than the 1 MB the Gist API returns inline and its full content ` +
           `could not be read from raw_url (${reason}). Local state was left unchanged.`,
       );

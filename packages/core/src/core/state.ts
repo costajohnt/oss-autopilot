@@ -32,7 +32,13 @@ import {
 import * as repoScoring from './repo-score-manager.js';
 import type { Stats } from './repo-score-manager.js';
 import { debug, warn } from './logger.js';
-import { errorMessage, ConfigurationError, ConcurrencyError, isTransientNetworkError } from './errors.js';
+import {
+  errorMessage,
+  ConfigurationError,
+  ConcurrencyError,
+  isTransientNetworkError,
+  GistFileSizeError,
+} from './errors.js';
 import { GistStateStore, type OctokitLike } from './gist-state-store.js';
 import * as guidelinesStoreModule from './guidelines-store.js';
 
@@ -388,7 +394,15 @@ export class StateManager {
   async checkpoint(): Promise<boolean> {
     if (!this.gistStore) return true; // not in Gist mode
     this.gistStore.setState(JSON.stringify(this.state, null, 2));
-    const pushed = await this.gistStore.push();
+    let pushed: boolean;
+    try {
+      pushed = await this.gistStore.push();
+    } catch (err) {
+      // A file too large to sync fails every checkpoint until state shrinks,
+      // so it is a degradation, not a one-off error.
+      if (err instanceof GistFileSizeError) this.gistDegraded = true;
+      throw err;
+    }
     // A push that fails after its internal retry means the Gist is no longer
     // the authoritative copy of our in-memory state — surface that as degraded
     // so `state --show`, the daily check, and doctor stop reporting healthy

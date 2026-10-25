@@ -158,6 +158,21 @@ export class GistConcurrencyError extends OssAutopilotError {
 }
 
 /**
+ * A Gist file is too large to round-trip: it was truncated by the Gist API
+ * (over 1 MB inline) and its full body could not be read from `raw_url`, or
+ * a push would exceed the 10 MB `raw_url` limit. Deliberately not a
+ * {@link ConfigurationError}: the remote is not known to be corrupt, so
+ * bootstrap may still fall back to the local cache. Also not a concurrency
+ * error, because refreshing and retrying cannot fix it.
+ */
+export class GistFileSizeError extends OssAutopilotError {
+  constructor(message: string) {
+    super(message, 'GIST_FILE_SIZE_ERROR');
+    this.name = 'GistFileSizeError';
+  }
+}
+
+/**
  * Extract a human-readable message from an unknown error value.
  */
 export function errorMessage(e: unknown): string {
