@@ -166,6 +166,11 @@ export class GistConcurrencyError extends OssAutopilotError {
  * (config, setup, state-unlink) still run. Transient raw_url failures are
  * not wrapped in this error and stay retryable.
  */
+/** What a user can do about a {@link GistFileSizeError}. Shared by every surface that renders one. */
+export const GIST_FILE_SIZE_REMEDY =
+  'trim the large state fields in the Gist (repoScores and searchSeen are usually the biggest), ' +
+  'or run state-unlink to fall back to local state';
+
 export class GistFileSizeError extends ConfigurationError {
   constructor(message: string) {
     super(message);

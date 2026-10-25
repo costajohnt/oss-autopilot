@@ -50,6 +50,7 @@ import {
   ConcurrencyError,
   GistConcurrencyError,
   GistFileSizeError,
+  GIST_FILE_SIZE_REMEDY,
   ConfigurationError,
 } from '@oss-autopilot/core';
 
@@ -104,7 +105,15 @@ let gistRecoveryNoticePending = false;
  * local-only until process restart. */
 function resetGistInitMemo(): void {
   gistInitPromise = null;
+  gistInitHaltedAt = null;
 }
+
+/** How long a memoized GistFileSizeError init failure is kept before the
+ * next tool call retries init anyway, so a Gist trimmed from another
+ * machine (or a one-off raw_url refusal) heals without a restart. */
+const GIST_SIZE_HALT_TTL_MS = 10 * 60_000;
+/** When the current memoized GistFileSizeError rejection was recorded. */
+let gistInitHaltedAt: number | null = null;
 
 function gistWarningText(cause: GistDegradedCause): string {
   // Prose from the shared core renderer (#1444). The local cause names are
@@ -127,6 +136,9 @@ export async function ensureGistInit(): Promise<GistDegradedCause | null> {
   // (auth returns null, getStateManagerAsync warn-and-falls-back), so
   // rejection-only retry was dead code. Success stays memoized; concurrent
   // first calls share the same promise.
+  if (gistInitHaltedAt !== null && Date.now() - gistInitHaltedAt >= GIST_SIZE_HALT_TTL_MS) {
+    resetGistInitMemo();
+  }
   if (!gistInitPromise) {
     gistInitPromise = (async () => {
       // Hard Gist init errors (GistPermissionError etc.) propagate to wrapTool's catch.
@@ -158,10 +170,14 @@ export async function ensureGistInit(): Promise<GistDegradedCause | null> {
     })();
     gistInitPromise.catch((e: unknown) => {
       // A Gist file too large to read back fails the same way on every
-      // attempt, so keep the rejection memoized instead of re-bootstrapping
-      // on each tool call. Every call reports the same error; the repair
-      // tools (setup/config/init/state-unlink) still run and reset the memo.
-      if (e instanceof GistFileSizeError) return;
+      // attempt, so keep the rejection memoized for GIST_SIZE_HALT_TTL_MS
+      // instead of re-bootstrapping on each tool call. Every call reports the
+      // same error; the repair tools (setup/config/init/state-unlink) still
+      // run and reset the memo early.
+      if (e instanceof GistFileSizeError) {
+        gistInitHaltedAt = Date.now();
+        return;
+      }
       gistInitPromise = null;
     });
   }
@@ -254,12 +270,21 @@ function wrapTool<A>(
       try {
         degradedCause = await ensureGistInit();
       } catch (e) {
+        if (e instanceof GistFileSizeError && !options.gistRepairTool) {
+          throw new Error(
+            `${errorMessage(e)} To fix it, ${GIST_FILE_SIZE_REMEDY}. Gist init is retried after ` +
+              `${GIST_SIZE_HALT_TTL_MS / 60_000} minutes, or right away after config, setup, init, or state-unlink.`,
+            { cause: e },
+          );
+        }
         if (!(options.gistRepairTool && e instanceof ConfigurationError)) throw e;
         degradedCause = null;
         hardInitWarning = renderGistWarning({
           reason:
-            `initialization failed (${errorMessage(e)}) — fix the Gist setup ` +
-            "(check the token's gist scope, or run state-show / setup) before relying on sync",
+            e instanceof GistFileSizeError
+              ? `initialization failed (${errorMessage(e)}). To fix it, ${GIST_FILE_SIZE_REMEDY}`
+              : `initialization failed (${errorMessage(e)}) — fix the Gist setup ` +
+                "(check the token's gist scope, or run state-show / setup) before relying on sync",
         });
       }
       // Pick up external writes (CLI in a terminal, another machine via the

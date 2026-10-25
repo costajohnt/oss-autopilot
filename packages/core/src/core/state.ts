@@ -38,6 +38,7 @@ import {
   ConcurrencyError,
   isTransientNetworkError,
   GistFileSizeError,
+  GIST_FILE_SIZE_REMEDY,
 } from './errors.js';
 import { GistStateStore, type OctokitLike } from './gist-state-store.js';
 import * as guidelinesStoreModule from './guidelines-store.js';
@@ -1427,9 +1428,11 @@ export async function bootstrapGistBestEffort(fetchToken: () => Promise<string |
   } catch (err) {
     cause = {
       reason:
-        err instanceof ConfigurationError
-          ? `Gist initialization failed (${errorMessage(err)}) — fix the Gist setup (check the token's gist scope, or run state-show / setup) before relying on sync`
-          : `Gist initialization failed: ${errorMessage(err)}`,
+        err instanceof GistFileSizeError
+          ? `Gist initialization failed (${errorMessage(err)}). To fix it, ${GIST_FILE_SIZE_REMEDY}.`
+          : err instanceof ConfigurationError
+            ? `Gist initialization failed (${errorMessage(err)}) — fix the Gist setup (check the token's gist scope, or run state-show / setup) before relying on sync`
+            : `Gist initialization failed: ${errorMessage(err)}`,
     };
   }
   if (cause === null) return null;

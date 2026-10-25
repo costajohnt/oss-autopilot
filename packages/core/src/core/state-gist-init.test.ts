@@ -68,7 +68,7 @@ import {
   ensureGistPersistence,
   bootstrapGistBestEffort,
 } from './state.js';
-import { GistPermissionError } from './errors.js';
+import { GistFileSizeError, GistPermissionError } from './errors.js';
 
 function writeGistConfiguredState(): void {
   fs.writeFileSync(
@@ -320,6 +320,17 @@ describe('bootstrapGistBestEffort — localOnly CLI entry points (#1431)', () =>
     fs.writeFileSync(path.join(mockTmpDir, 'state.json'), '{ not json', 'utf8');
     const warning = await bootstrapGistBestEffort(vi.fn().mockResolvedValue('token'));
     expect(warning).toMatch(/state file could not be read/);
+  });
+
+  it('GistFileSizeError: the repair guidance is about state size, not the token scope', async () => {
+    writeGistConfiguredState();
+    createWithGistSpy.mockRejectedValueOnce(new GistFileSizeError('Gist file state.json is too large'));
+    const warning = await bootstrapGistBestEffort(vi.fn().mockResolvedValue('token'));
+    expect(warning).toMatch(/LOCAL-ONLY/);
+    expect(warning).toContain('state.json is too large');
+    expect(warning).toContain('repoScores and searchSeen');
+    expect(warning).toContain('state-unlink');
+    expect(warning).not.toMatch(/gist scope/);
   });
 
   it('hard ConfigurationError: warn-and-proceed with repair guidance, NEVER throws (repair commands must stay usable)', async () => {

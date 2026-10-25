@@ -72,6 +72,7 @@ export {
   ConcurrencyError,
   GistConcurrencyError,
   GistFileSizeError,
+  GIST_FILE_SIZE_REMEDY,
   errorMessage,
   getHttpStatusCode,
   isRateLimitError,
