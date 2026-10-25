@@ -502,8 +502,8 @@ export class PRMonitor {
 
   /**
    * Assemble a {@link FetchedPR} from GraphQL-batched {@link NormalizedPRData}.
-   * No network calls: the batch already carries the commit info, so the shared
-   * pipeline's lazy commit thunk just returns it.
+   * No network calls: the batch already carries the commit info, so it is
+   * passed directly and always recorded on the PR.
    */
   private assembleFromNormalized(ref: PRRef, data: NormalizedPRData): Promise<FetchedPR> {
     const config = this.stateManager.getState().config;
@@ -525,7 +525,7 @@ export class PRMonitor {
         ciStatus: data.ciStatus,
       },
       config,
-      async () => data.commitInfo,
+      data.commitInfo,
     );
   }
 

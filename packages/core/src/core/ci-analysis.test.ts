@@ -10,6 +10,7 @@ import {
   analyzeCheckRuns,
   analyzeCombinedStatus,
   mergeStatuses,
+  computeCIStatus,
 } from './ci-analysis.js';
 import type { ClassifiedCheck } from './types.js';
 
@@ -125,6 +126,26 @@ describe('analyzeCheckRuns', () => {
     const result = analyzeCheckRuns([{ name: 'lint', conclusion: null, status: 'in_progress' }]);
     expect(result.hasPendingChecks).toBe(true);
     expect(result.hasFailingChecks).toBe(false);
+  });
+
+  it.each(['waiting', 'pending', 'requested', 'queued'])(
+    'should treat a %s run with no conclusion as pending',
+    (status) => {
+      const result = analyzeCheckRuns([{ name: 'deploy', conclusion: null, status }]);
+      expect(result.hasPendingChecks).toBe(true);
+      expect(result.hasSuccessfulChecks).toBe(false);
+    },
+  );
+
+  it('should report a deploy job awaiting environment approval as pending, not passing', () => {
+    const result = computeCIStatus(
+      [
+        { name: 'test', conclusion: 'success', status: 'completed', started_at: '2026-02-05T00:00:00Z' },
+        { name: 'deploy', conclusion: null, status: 'waiting', started_at: '2026-02-05T00:01:00Z' },
+      ],
+      { state: 'pending', statuses: [] },
+    );
+    expect(result.status).toBe('pending');
   });
 
   it('should detect action_required as failing (#743)', () => {

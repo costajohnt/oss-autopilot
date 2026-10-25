@@ -234,7 +234,10 @@ export function analyzeCheckRuns(checkRuns: Array<{ name: string; conclusion: st
       hasFailingChecks = true;
       failingCheckNames.push(check.name);
       failingCheckConclusions.set(check.name, check.conclusion);
-    } else if (check.status === 'in_progress' || check.status === 'queued') {
+    } else if (check.conclusion === null && check.status !== 'completed') {
+      // Any run without a conclusion that has not completed is pending:
+      // in_progress and queued, but also waiting (environment approval),
+      // pending (concurrency group), and requested.
       hasPendingChecks = true;
     } else if (check.conclusion === 'success') {
       hasSuccessfulChecks = true;
