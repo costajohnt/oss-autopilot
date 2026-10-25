@@ -122,7 +122,7 @@ For each extracted requirement, check whether the current changes satisfy it:
 
 - **Tests:** Are there new/updated test files in the diff? A requirement like "add tests for new functionality" is met by tests that guard real behavior (see Test Coverage Requirements); for a data-only change with nothing to guard, mark it "N/A: no testable behavior" rather than a gap. If the requirement says "ensure tests pass", run the project's test command (from `package.json` scripts, `Makefile`, or CONTRIBUTING.md instructions) and check the exit code. If no test command is discoverable, mark as "Unable to verify automatically — manual check needed."
 - **Documentation:** Are doc files updated if the change is user-facing? Check `git diff --name-only` for files in `docs/`, `doc/`, or matching `*.md`.
-- **Changelog:** Is there a changelog entry? Check `git diff --name-only` for `CHANGELOG*`, `CHANGES*`, `HISTORY*` files.
+- **Changelog:** Add a changelog/changeset entry when (a) a bot or CI check requires it on this PR, or (b) CONTRIBUTING requires it (CONTRIBUTING alone is sufficient; recent merges never override it). Only when CONTRIBUTING is silent, check 3 recent merged PRs of the same kind (`gh pr list --repo {upstream-owner}/{upstream-repo} --state merged --limit 3 --json files`) and add one if they include one. Many repos generate changelogs from PR titles at release time. Otherwise mark it "N/A", not a gap.
 - **Code style:** Run the project's formatter/linter command if discoverable (from `package.json` scripts, `Makefile`, or CONTRIBUTING.md instructions) and check the exit code. If the command is not discoverable, mark as "Unable to verify automatically — manual check needed."
 - **Commit format:** Does the planned commit message match the required format?
 - **Branch target:** Parse the required branch name from the guidelines (e.g., "branch from `develop`") and compare against the current base branch. If they differ, mark as a gap.
@@ -608,7 +608,7 @@ If a template is returned (`data.template` is non-null), the template body is th
 3. **Insert your generated summary into the right slot:**
    - If the template has a labeled summary/description heading (e.g. `## Summary`, `## Description`, `## What does this PR do?`, `## Motivation`), put your summary text directly under that heading, replacing only any placeholder text (e.g. `<!-- Describe your change here -->`).
    - Otherwise, prepend a `## Summary` block at the very top with your summary text, leaving the template intact below.
-4. **Insert your test plan / verification under any matching template heading** (e.g. `## Testing`, `## How was this tested?`); otherwise append a `## Test plan` block before the template's checklists, again leaving any test-related checklist items in the template untouched.
+4. **If the template has a testing heading** (e.g. `## Testing`, `## How was this tested?`), fill it in one line. Otherwise add nothing: do not append a `## Test plan` block the template does not ask for. Leave any test-related checklist items in the template untouched.
 
 If no template exists or the command fails (network error, API error), use the default format below — template detection is best-effort and must not block PR creation.
 

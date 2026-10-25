@@ -68,25 +68,11 @@ Look in PR body for `Closes #N` / `Fixes #N` (auto-closes) or `Relates to #N` / 
 - ❌ No reference
 
 ### 2. Description Quality (25%) — Required
-PR body should explain **what** changed, **why**, and **how to test**.
+PR body should explain **what** changed and **why**. Headings are never required: a sentence or two of plain prose is a full description. If the repo has a PR template, follow it; do not add sections (Test Plan, Screenshots) the template does not ask for.
 
-- ✅ All three present
-- ⚠️ Some present
-- ❌ Empty or minimal
-
-Ideal template:
-```markdown
-## Summary
-[1–3 bullets — WHAT changed]
-
-## Why
-[Problem or motivation]
-
-## Test Plan
-[How this was tested]
-
-Closes #[issue-number]
-```
+- ✅ Describes the change (a summary/why heading, or at least a sentence of prose)
+- ⚠️ Short body with no description (e.g. only `Closes #N`)
+- ❌ Empty
 
 ### 3. Focused Changes (20%) — Important
 Compute `files` count, `additions`, `deletions` from the MCP/CLI response or `gh pr view --json files,additions,deletions`.
