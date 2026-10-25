@@ -449,6 +449,11 @@ export class PRMonitor {
     // The commit date is only consulted (and only fetched) when the PR has an
     // unresponded maintainer comment or a changes-requested review — the shared
     // pipeline decides via `needCommitDate` and invokes this thunk lazily.
+    // A PR with a status override is the exception: override auto-clear keys
+    // on the commit date (#1713), so fetch it up front for those PRs only.
+    const commitInfo = config.statusOverrides?.[prUrl]
+      ? await this.fetchCommitInfo(owner, repo, ghPR.head.sha)
+      : () => this.fetchCommitInfo(owner, repo, ghPR.head.sha);
     return assembleFetchedPR(
       {
         prUrl,
@@ -467,7 +472,7 @@ export class PRMonitor {
         ciStatus,
       },
       config,
-      () => this.fetchCommitInfo(owner, repo, ghPR.head.sha),
+      commitInfo,
     );
   }
 
