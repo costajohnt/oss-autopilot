@@ -3276,7 +3276,8 @@ describe('fetchPRDetails commit date for overridden PRs', () => {
     );
     mockOctokitInstance = makeMocks();
 
-    const { prs } = await new PRMonitor('fake-token').fetchUserOpenPRs();
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
 
     expect(mockOctokitInstance.repos.getCommit).toHaveBeenCalledTimes(1);
     expect(prs[0].latestCommitDate).toBe('2026-02-03T00:00:00Z');
@@ -3286,7 +3287,8 @@ describe('fetchPRDetails commit date for overridden PRs', () => {
     vi.mocked(getStateManager).mockReturnValue(makeStateManagerMock({ config: { excludeRepos: [], excludeOrgs: [] } }));
     mockOctokitInstance = makeMocks();
 
-    const { prs } = await new PRMonitor('fake-token').fetchUserOpenPRs();
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
 
     expect(mockOctokitInstance.repos.getCommit).not.toHaveBeenCalled();
     expect(prs[0].latestCommitDate).toBeUndefined();
