@@ -34,7 +34,7 @@ const {
   class MockGistFileSizeError extends MockConfigurationError {
     constructor(message: string) {
       super(message);
-      this.name = 'GistFileSizeError';
+      this.name = 'MockGistFileSizeError';
     }
   }
   return {
@@ -420,12 +420,14 @@ describe('ensureGistInit retry semantics (#1368)', () => {
         await client.callTool({ name: 'status', arguments: {} });
 
         vi.setSystemTime(1_000_000 + 10 * 60_000 - 1);
-        expect((await client.callTool({ name: 'status', arguments: {} })).isError).toBe(true);
+        const halted = await client.callTool({ name: 'status', arguments: {} });
+        expect(halted.isError).toBe(true);
         expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(1);
 
         // Trimmed elsewhere in the meantime: the next attempt after the TTL succeeds.
         vi.setSystemTime(1_000_000 + 10 * 60_000);
-        expect((await client.callTool({ name: 'status', arguments: {} })).isError).toBeFalsy();
+        const retried = await client.callTool({ name: 'status', arguments: {} });
+        expect(retried.isError).toBeFalsy();
         expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
       } finally {
         vi.useRealTimers();

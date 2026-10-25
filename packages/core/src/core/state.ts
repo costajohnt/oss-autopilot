@@ -395,9 +395,9 @@ export class StateManager {
   async checkpoint(): Promise<boolean> {
     if (!this.gistStore) return true; // not in Gist mode
     this.gistStore.setState(JSON.stringify(this.state, null, 2));
-    let pushed: boolean;
+    let isPushed: boolean;
     try {
-      pushed = await this.gistStore.push();
+      isPushed = await this.gistStore.push();
     } catch (err) {
       // A file too large to sync fails every checkpoint until state shrinks,
       // so it is a degradation, not a one-off error.
@@ -413,8 +413,8 @@ export class StateManager {
     // unnecessary re-bootstrap. A thrown GistConcurrencyError is deliberately
     // left untouched here — a concurrent remote write is recoverable (refresh +
     // retry), not a degradation of the Gist itself.
-    this.gistDegraded = !pushed;
-    return pushed;
+    this.gistDegraded = !isPushed;
+    return isPushed;
   }
 
   /** Whether this StateManager is backed by a Gist. */
@@ -1426,14 +1426,13 @@ export async function bootstrapGistBestEffort(fetchToken: () => Promise<string |
     else if (status === 'state-unreadable') cause = 'state-unreadable';
     else if (status === 'degraded') cause = 'init-fallback';
   } catch (err) {
-    cause = {
-      reason:
-        err instanceof GistFileSizeError
-          ? `Gist initialization failed (${errorMessage(err)}). To fix it, ${GIST_FILE_SIZE_REMEDY}.`
-          : err instanceof ConfigurationError
-            ? `Gist initialization failed (${errorMessage(err)}) — fix the Gist setup (check the token's gist scope, or run state-show / setup) before relying on sync`
-            : `Gist initialization failed: ${errorMessage(err)}`,
-    };
+    let reason = `Gist initialization failed: ${errorMessage(err)}`;
+    if (err instanceof GistFileSizeError) {
+      reason = `Gist initialization failed (${errorMessage(err)}). To fix it, ${GIST_FILE_SIZE_REMEDY}.`;
+    } else if (err instanceof ConfigurationError) {
+      reason = `Gist initialization failed (${errorMessage(err)}) — fix the Gist setup (check the token's gist scope, or run state-show / setup) before relying on sync`;
+    }
+    cause = { reason };
   }
   if (cause === null) return null;
   return renderGistWarning(cause);

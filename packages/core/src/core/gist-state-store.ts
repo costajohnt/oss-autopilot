@@ -66,6 +66,7 @@ import {
   GistFileSizeError,
   isRateLimitError,
   isTransientNetworkError,
+  errorMessage,
 } from './errors.js';
 
 const MODULE = 'gist-store';
@@ -610,7 +611,7 @@ export class GistStateStore {
       try {
         await this.fetchAndCache(this.gistId);
       } catch (readErr) {
-        warn(MODULE, `Pre-write re-read failed: ${readErr}`);
+        warn(MODULE, `Pre-write re-read failed: ${errorMessage(readErr)}`);
         // Roll back any partial mutation so the caller's retry path sees the
         // prior in-memory state with local mutations re-applied on top.
         rollBackPreRead();
@@ -783,11 +784,8 @@ export class GistStateStore {
     const contents = new Map<string, string>();
     for (const [filename, file] of Object.entries(response.data.files)) {
       if (!file) continue;
-      if (file.truncated) {
-        contents.set(filename, await this.fetchRawContent(filename, file.raw_url));
-      } else if (file.content != null) {
-        contents.set(filename, file.content);
-      }
+      const content = file.truncated ? await this.fetchRawContent(filename, file.raw_url) : file.content;
+      if (content != null) contents.set(filename, content);
     }
 
     // Capture the ETag for optimistic-concurrency push (#1115). Header
@@ -832,13 +830,8 @@ export class GistStateStore {
       );
     if (!this.octokit.request) throw fail('no HTTP client available');
     if (!rawUrl) throw fail('the API returned no raw_url');
-    let host: string;
-    try {
-      const parsed = new URL(rawUrl);
-      host = parsed.protocol === 'https:' ? parsed.hostname : '';
-    } catch {
-      host = '';
-    }
+    const parsed = URL.canParse(rawUrl) ? new URL(rawUrl) : undefined;
+    const host = parsed?.protocol === 'https:' ? parsed.hostname : '';
     // The request carries the GitHub token, so only send it to the Gist raw host.
     if (host !== GIST_RAW_HOST) throw fail(`unexpected raw_url host`);
     let data: unknown;
@@ -846,7 +839,7 @@ export class GistStateStore {
       ({ data } = await this.octokit.request({ method: 'GET', url: rawUrl }));
     } catch (err) {
       if (isRateLimitError(err) || isTransientNetworkError(err)) throw err;
-      throw fail(err instanceof Error ? err.message : String(err));
+      throw fail(errorMessage(err));
     }
     if (typeof data !== 'string') throw fail('response body was not text');
     return data;
