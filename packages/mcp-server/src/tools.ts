@@ -49,6 +49,7 @@ import {
   renderGistWarning,
   ConcurrencyError,
   GistConcurrencyError,
+  GistFileSizeError,
   ConfigurationError,
 } from '@oss-autopilot/core';
 
@@ -155,7 +156,12 @@ export async function ensureGistInit(): Promise<GistDegradedCause | null> {
         gistDegradedCause = null;
       }
     })();
-    gistInitPromise.catch(() => {
+    gistInitPromise.catch((e: unknown) => {
+      // A Gist file too large to read back fails the same way on every
+      // attempt, so keep the rejection memoized instead of re-bootstrapping
+      // on each tool call. Every call reports the same error; the repair
+      // tools (setup/config/init/state-unlink) still run and reset the memo.
+      if (e instanceof GistFileSizeError) return;
       gistInitPromise = null;
     });
   }

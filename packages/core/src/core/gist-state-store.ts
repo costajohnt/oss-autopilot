@@ -65,6 +65,7 @@ import {
   GistCorruptError,
   GistFileSizeError,
   isRateLimitError,
+  isTransientNetworkError,
 } from './errors.js';
 
 const MODULE = 'gist-store';
@@ -181,6 +182,9 @@ interface GistResponseData {
 const GIST_CONTENT_WARN_BYTES = 900 * 1024;
 const GIST_RAW_MAX_BYTES = 10 * 1024 * 1024;
 const GIST_RAW_HOST = 'gist.githubusercontent.com';
+const SIZE_WARN_BAND_BYTES = 100 * 1024;
+/** Highest size band already warned about, per filename, for this process. */
+const warnedSizeBands = new Map<string, number>();
 
 /**
  * Gist-backed state store with in-memory file cache and local write-through.
@@ -733,11 +737,18 @@ export class GistStateStore {
         );
       }
       if (bytes > GIST_CONTENT_WARN_BYTES) {
-        warn(
-          MODULE,
-          `Gist file ${filename} is ${bytes} bytes, near or past the 1 MB the Gist API returns inline; ` +
-            'reads will fall back to raw_url.',
-        );
+        // Once per file per 100 KB band per process, so a long-lived server
+        // warns as the file grows instead of on every push.
+        const band = Math.floor(bytes / SIZE_WARN_BAND_BYTES);
+        if ((warnedSizeBands.get(filename) ?? -1) < band) {
+          warnedSizeBands.set(filename, band);
+          warn(
+            MODULE,
+            `Gist file ${filename} is ${bytes} bytes, near or past the 1 MB the Gist API returns inline. ` +
+              'Reads fall back to raw_url, which works up to 10 MB; to stay well under that, trim large ' +
+              'state fields (repoScores and searchSeen are usually the biggest).',
+          );
+        }
       }
     }
   }
@@ -805,11 +816,13 @@ export class GistStateStore {
   /**
    * Fetch the full body of a file the Gist API truncated (>1 MB of content).
    *
-   * Throws {@link GistFileSizeError} (not a ConfigurationError) when the
-   * body cannot be read: the remote is not known to be corrupt, so bootstrap
-   * may still fall back to the local cache in degraded mode (which never
-   * pushes), and a refresh or pre-write re-read fails without replacing the
-   * cache.
+   * Throws {@link GistFileSizeError} when the body cannot be read for a
+   * reason a retry will not fix (no raw_url, off-host raw_url, a non-text
+   * body, or a non-transient HTTP error such as 404/413). Rate limits and
+   * transient network errors (5xx, ECONNRESET, timeouts) are rethrown as-is
+   * so callers keep treating them as retryable: bootstrap degrades to the
+   * local cache and the pre-write re-read reports a GistConcurrencyError.
+   * Either way the cache is left unchanged.
    */
   private async fetchRawContent(filename: string, rawUrl: string | undefined): Promise<string> {
     const fail = (reason: string): GistFileSizeError =>
@@ -832,7 +845,7 @@ export class GistStateStore {
     try {
       ({ data } = await this.octokit.request({ method: 'GET', url: rawUrl }));
     } catch (err) {
-      if (isRateLimitError(err)) throw err;
+      if (isRateLimitError(err) || isTransientNetworkError(err)) throw err;
       throw fail(err instanceof Error ? err.message : String(err));
     }
     if (typeof data !== 'string') throw fail('response body was not text');

@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
-import { ConfigurationError } from '../core/errors.js';
+import { ConfigurationError, GistFileSizeError } from '../core/errors.js';
 
 // ── Mock the core barrel ──────────────────────────────────────────────
 // Same lazy-dispatch pattern as dashboard-server.test.ts so per-test fakes
@@ -214,6 +214,26 @@ describe('GistSyncCoordinator', () => {
         nowSpy.mockReturnValue(1_000_000 + 30_000);
         await sync.maybeRecoverGist();
         expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(2);
+      } finally {
+        nowSpy.mockRestore();
+      }
+    });
+
+    it('a GistFileSizeError halts retries and names the cause in the banner', async () => {
+      currentManager = makeDegradedLocalManager();
+      mockEnsureGistPersistence.mockRejectedValueOnce(
+        new GistFileSizeError('Gist file state.json is larger than the 1 MB the Gist API returns inline'),
+      );
+      const sync = makeCoordinator('tok');
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      try {
+        await sync.maybeRecoverGist();
+        nowSpy.mockReturnValue(1_000_000 + 600_000);
+        await sync.maybeRecoverGist();
+        expect(mockEnsureGistPersistence).toHaveBeenCalledTimes(1);
+
+        const failures = sync.withPendingGistWarnings(undefined)!;
+        expect(failures.some((m) => m.includes('FAILED permanently') && m.includes('state.json is larger'))).toBe(true);
       } finally {
         nowSpy.mockRestore();
       }

@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { GistStateStore, GIST_DESCRIPTION, STATE_FILE_NAME, type OctokitLike } from './gist-state-store.js';
 import { AgentStateSchema } from './state-schema.js';
-import { GistCorruptError, GistFileSizeError } from './errors.js';
+import { GistConcurrencyError, GistCorruptError, GistFileSizeError } from './errors.js';
 import { createFreshState } from './state-persistence.js';
 
 // ── Mock utils.js to redirect path helpers to temp directories ────────────────
@@ -893,14 +893,14 @@ describe('GistStateStore', () => {
       expect(store.cachedFiles.get(STATE_FILE_NAME)).toBe(stateJson);
     });
 
-    it('falls back to the local cache, not GistCorruptError, when raw_url cannot be read', async () => {
-      const gistId = 'trunc-unreadable';
+    it('falls back to the local cache when raw_url fails transiently', async () => {
+      const gistId = 'trunc-transient';
       const cachedState = JSON.parse(makeStateJson({ lastRunAt: '2025-06-01T00:00:00.000Z' }));
       fs.writeFileSync(path.join(tmpDir, 'state-cache.json'), JSON.stringify(cachedState, null, 2));
       fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
       octokit.gists.list.mockResolvedValue({ data: [{ id: gistId, description: GIST_DESCRIPTION }] });
       octokit.gists.get.mockResolvedValue(makeTruncatedResponse(gistId, makeStateJson()));
-      const request = vi.fn().mockRejectedValue(Object.assign(new Error('Server Error'), { status: 500 }));
+      const request = vi.fn().mockRejectedValue(Object.assign(new Error('Server Error'), { status: 502 }));
       const store = new GistStateStore({ ...octokit, request });
 
       const result = await store.bootstrap();
@@ -909,6 +909,21 @@ describe('GistStateStore', () => {
       expect(result.state.lastRunAt).toBe('2025-06-01T00:00:00.000Z');
       // A degraded store never pushes, and nothing was preserved as corrupt.
       expect(store.getGistId()).toBeNull();
+      expect(fs.readdirSync(tmpDir).some((f) => f.includes('.rejected-'))).toBe(false);
+    });
+
+    it('halts bootstrap with GistFileSizeError when raw_url is refused, without re-searching', async () => {
+      const gistId = 'trunc-refused';
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.list.mockResolvedValue({ data: [{ id: gistId, description: GIST_DESCRIPTION }] });
+      octokit.gists.get.mockResolvedValue(makeTruncatedResponse(gistId, makeStateJson()));
+      const request = vi.fn().mockRejectedValue(Object.assign(new Error('Not Found'), { status: 404 }));
+      const store = new GistStateStore({ ...octokit, request });
+
+      await expect(store.bootstrap()).rejects.toBeInstanceOf(GistFileSizeError);
+      // Searching would only re-find the same Gist: one fetch, one raw read.
+      expect(octokit.gists.get).toHaveBeenCalledTimes(1);
+      expect(request).toHaveBeenCalledTimes(1);
       expect(fs.readdirSync(tmpDir).some((f) => f.includes('.rejected-'))).toBe(false);
     });
 
@@ -921,10 +936,29 @@ describe('GistStateStore', () => {
       const request = vi.fn();
       const store = new GistStateStore({ ...octokit, request });
 
-      const result = await store.bootstrap();
-
+      await expect(store.bootstrap()).rejects.toThrow(/unexpected raw_url host/);
       expect(request).not.toHaveBeenCalled();
-      expect(result.degraded).toBe(true);
+    });
+
+    it('reports a transient raw_url failure during the pre-write re-read as a retryable conflict', async () => {
+      const gistId = 'trunc-econnreset';
+      const stateJson = makeStateJson();
+      fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
+      octokit.gists.get.mockResolvedValueOnce(makeGistResponse(gistId, stateJson));
+      octokit.gists.update.mockResolvedValue({ data: { id: gistId, description: GIST_DESCRIPTION, files: {} } });
+      const request = vi.fn().mockRejectedValueOnce(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
+      const store = new GistStateStore({ ...octokit, request });
+      await store.bootstrap();
+
+      store.setState(makeStateJson({ lastRunAt: '2025-08-01T00:00:00.000Z' }));
+      octokit.gists.get.mockResolvedValue(makeTruncatedResponse(gistId, stateJson));
+      await expect(store.push()).rejects.toBeInstanceOf(GistConcurrencyError);
+      expect(octokit.gists.update).not.toHaveBeenCalled();
+
+      // The raw host answers on the retry and the push lands.
+      request.mockResolvedValue({ data: stateJson });
+      await expect(store.push()).resolves.toBe(true);
+      expect(octokit.gists.update).toHaveBeenCalledTimes(1);
     });
 
     it('leaves the cache unchanged when a refresh hits an unreadable truncated file', async () => {
@@ -961,7 +995,7 @@ describe('GistStateStore', () => {
       expect(store.dirtyFiles.has(STATE_FILE_NAME)).toBe(true);
     });
 
-    it('warns when a pushed file passes ~900 KB', async () => {
+    it('warns once per 100 KB band when a pushed file passes ~900 KB', async () => {
       const gistId = 'big-warn';
       fs.writeFileSync(path.join(tmpDir, 'gist-id'), gistId);
       octokit.gists.get.mockResolvedValue(makeGistResponse(gistId, makeStateJson()));
@@ -969,12 +1003,21 @@ describe('GistStateStore', () => {
       const store = new GistStateStore(octokit);
       await store.bootstrap();
       const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const sizeWarnings = () =>
+        errorSpy.mock.calls.filter((c) => String(c[0]).includes('guidelines--big.md is')).map((c) => String(c[0]));
 
       store.setDocument('guidelines--big.md', 'x'.repeat(950 * 1024));
       await store.push();
+      store.setDocument('guidelines--big.md', 'y'.repeat(950 * 1024));
+      await store.push();
+      expect(sizeWarnings()).toHaveLength(1);
+      expect(sizeWarnings()[0]).toContain('972800 bytes');
+      expect(sizeWarnings()[0]).toContain('repoScores and searchSeen');
 
-      expect(octokit.gists.update).toHaveBeenCalledTimes(1);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('guidelines--big.md is 972800 bytes'));
+      // Growing into the next band warns again.
+      store.setDocument('guidelines--big.md', 'z'.repeat(1050 * 1024));
+      await store.push();
+      expect(sizeWarnings()).toHaveLength(2);
       errorSpy.mockRestore();
     });
 

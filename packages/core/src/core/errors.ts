@@ -158,16 +158,17 @@ export class GistConcurrencyError extends OssAutopilotError {
 }
 
 /**
- * A Gist file is too large to round-trip: it was truncated by the Gist API
- * (over 1 MB inline) and its full body could not be read from `raw_url`, or
- * a push would exceed the 10 MB `raw_url` limit. Deliberately not a
- * {@link ConfigurationError}: the remote is not known to be corrupt, so
- * bootstrap may still fall back to the local cache. Also not a concurrency
- * error, because refreshing and retrying cannot fix it.
+ * A Gist file is too large to round-trip: the Gist API truncated it (over
+ * 1 MB inline) and `raw_url` is missing, off-host, or refused (404/413), or
+ * a push would exceed the 10 MB `raw_url` limit. A {@link ConfigurationError}
+ * because retrying cannot fix it: bootstrap halts with this message instead
+ * of degrading and re-bootstrapping forever, and the repair commands
+ * (config, setup, state-unlink) still run. Transient raw_url failures are
+ * not wrapped in this error and stay retryable.
  */
-export class GistFileSizeError extends OssAutopilotError {
+export class GistFileSizeError extends ConfigurationError {
   constructor(message: string) {
-    super(message, 'GIST_FILE_SIZE_ERROR');
+    super(message);
     this.name = 'GistFileSizeError';
   }
 }
