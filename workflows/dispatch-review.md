@@ -59,7 +59,7 @@ Omit the SCOPE block for generic pre-commit reviews (`pre-commit-review.md` sub-
 
 The roster depends on `mode`:
 
-- **`mode: 'diff'` (default)** — `code-reviewer`, `silent-failure-hunter`, `code-simplifier`, `pr-test-analyzer`, `comment-analyzer`. Conditional: `type-design-analyzer` when the diff includes `.ts`/`.tsx` files (existing rule).
+- **`mode: 'diff'` (default)** — `code-reviewer`, `silent-failure-hunter`, `code-simplifier`, `pr-test-analyzer`. Conditional: `type-design-analyzer` when the diff includes `.ts`/`.tsx` files (existing rule); `comment-analyzer` when the diff adds or changes comments or docstrings, or changes code inside a function or block that carries a docstring or non-trivial comment (the comment-rot case: behavior changed, comment did not).
 - **`mode: 'plan'`** — `code-reviewer` (design-level critique against the plan), `silent-failure-hunter` (edge-case coverage in the plan), `code-simplifier` (scope-shrink opportunities), `devils-advocate` (adversarial scenarios). The plan-mode roster intentionally omits `pr-test-analyzer` and `comment-analyzer` — both are diff-shaped.
 
 The prompt templates below are the diff-mode defaults. Plan-mode dispatch swaps in plan-shaped prompts (see `workflows/plan-review.md` for the per-agent plan-mode prompt text).
@@ -142,11 +142,12 @@ Task(pr-review-toolkit:pr-test-analyzer,
    Diff:
    {reviewDiff}")
 
-Task(pr-review-toolkit:comment-analyzer,
+Task(pr-review-toolkit:comment-analyzer,  # when the diff adds/changes comments, or changes code under an existing docstring/comment
   "[SCOPE block if applicable]
 
-   Review comments in the following code changes for accuracy, completeness, and
-   long-term maintainability.
+   Review the comments and docstrings added or changed in the following code changes, and the
+   existing ones on functions or blocks whose code changed.
+   Flag comments that are wrong or stale against the code. Do not request new comments.
    Working directory: {workingDir}
    Changed files: {changedFiles}
 

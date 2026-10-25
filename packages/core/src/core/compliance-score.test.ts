@@ -160,16 +160,63 @@ describe('description check', () => {
   it('fails on empty body', () => {
     expect(computeComplianceScore(meta({ body: '   ' })).checks.description.status).toBe('fail');
   });
-  it('passes when all three sections present', () => {
-    const body = '## Summary\nx\n\n## Why\ny\n\n## Test Plan\nz';
+  it('passes on a summary heading without a test plan', () => {
+    const body = '## Summary\nx\n(no why, no test plan)';
     expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
   });
-  it('warns when only some sections present', () => {
-    const body = '## Summary\nx\n(no why, no test plan)';
+  it('passes on plain prose with no headings', () => {
+    const body = 'Fixes the off-by-one in the pager so the last page is no longer dropped when the count is exact.';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
+  });
+  it('warns on a short body with no headings', () => {
+    expect(computeComplianceScore(meta({ body: 'Closes #42' })).checks.description.status).toBe('warn');
+  });
+  it('warns on a template left unfilled (headings and placeholder comments only)', () => {
+    const body =
+      '## Summary\n<!-- describe what changed -->\n\n## Why\n<!-- explain the motivation for this change here -->\n';
     expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
   });
-  it('warns when length is non-trivial but no sections', () => {
-    const body = 'a'.repeat(100);
+  it('passes a non-Latin description under a heading', () => {
+    const body =
+      '## Summary\nページャーの最終ページが欠落する問題を修正しました。件数がちょうど割り切れる場合に発生していました。';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
+  });
+  it('keeps prose after a comment opener quoted in backticks', () => {
+    const body =
+      'Stops the markdown renderer from swallowing text after a literal `<!--` in inline code, which hid the rest of the page from readers.';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
+  });
+  it('keeps a prose line that happens to start with "# "', () => {
+    const body =
+      'Caps the retry loop in the uploader.\n# of retries is now bounded at five, so a dead endpoint no longer hangs the sync worker forever.';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
+  });
+  it('warns on an unfilled template after a stray backtick', () => {
+    const body =
+      '`\n## Summary\n<!-- Describe your change in detail here, including the motivation and the context for reviewers. -->\n## Why\n<!-- Link the issue and explain why this is needed. -->';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
+  });
+  it('keeps a comment opener inside a fenced code block as text', () => {
+    const body = '## Summary\n```html\n<!-- the renderer now keeps this -->\n```';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
+  });
+  it('strips comments after an unclosed fence', () => {
+    const body =
+      '```\n## Summary\n<!-- Describe your change in detail here, including the motivation and the context for reviewers. -->';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
+  });
+  it('scores a body of many unclosed comment openers quickly', () => {
+    const body = '<!-- x '.repeat(9000);
+    const start = performance.now();
+    computeComplianceScore(meta({ body }));
+    expect(performance.now() - start).toBeLessThan(200);
+  });
+  it('treats an unclosed comment opener as text', () => {
+    const body = '## Summary\n<!-- not closed, and this is the description';
+    expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('pass');
+  });
+  it('warns on a long body that is only closing references', () => {
+    const body = Array.from({ length: 10 }, (_, i) => `Closes #${i + 1}`).join('\n');
     expect(computeComplianceScore(meta({ body })).checks.description.status).toBe('warn');
   });
 });
@@ -269,12 +316,12 @@ describe('rating cutoffs', () => {
   });
   it('rates 75–89 as minor', () => {
     // Drop to minor by warning on title (10-pt category, half = 5pt loss
-    // leaves us at 95). Add a second warn (description partial) to push
+    // leaves us at 95). Add a second warn (description too short) to push
     // below 90 but stay above 75.
     const result = computeComplianceScore(
       meta({
         title: 'Adding the login feature with OAuth support', // warn (-5pt)
-        body: '## Summary\nDoes a thing.\n\nCloses #1', // warn (-12.5pt) — partial sections
+        body: 'Closes #1', // warn (-12.5pt) — no description beyond the reference
       }),
     );
     expect(result.score).toBeGreaterThanOrEqual(RATING_CUTOFFS.minor);

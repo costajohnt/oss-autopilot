@@ -129,7 +129,7 @@ export const PR_QUALITY_RUBRIC: readonly PRQualityCheck[] = [
   {
     id: 'screenshots',
     label: 'Screenshots',
-    description: 'Included for UI changes',
+    description: 'Only for visible changes when the template or a maintainer asks',
     tier: 'optional',
     weight: null,
   },

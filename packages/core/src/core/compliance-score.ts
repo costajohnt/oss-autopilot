@@ -265,29 +265,114 @@ function checkIssueReference(meta: PRMetadata, repoContext?: RepoContext): Compl
 
 const SECTION_WHAT = /(?:^|\n)#{1,3}\s*(?:summary|overview|what(?:\s+changed)?)\b/i;
 const SECTION_WHY = /(?:^|\n)#{1,3}\s*(?:why|motivation|context|background|rationale)\b/i;
-const SECTION_TEST = /(?:^|\n)#{1,3}\s*(?:test\s*plan|how\s+to\s+test|testing|tests?)\b/i;
 
+const CLOSING_REF = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[\w.-]+\/[\w.-]+)?#\d+/gi;
+
+// The body minus template scaffolding (HTML comments, headings) and closing
+// references, so an unfilled template does not count as a description.
+type Span = [start: number, end: number];
+
+// Closed code fences: a line opening with 3+ backticks, closed by a later line
+// opening with at least as many. An unclosed fence is text.
+function fenceSpans(body: string): Span[] {
+  const spans: Span[] = [];
+  let open: { start: number; len: number } | undefined;
+  let offset = 0;
+  for (const line of body.split('\n')) {
+    const len = /^ {0,3}(`{3,})/.exec(line)?.[1].length ?? 0;
+    if (len > 0 && !open) {
+      open = { start: offset, len };
+    } else if (len > 0 && open && len >= open.len) {
+      spans.push([open.start, offset + line.length]);
+      open = undefined;
+    }
+    offset += line.length + 1;
+  }
+  return spans;
+}
+
+// Balanced inline code spans in body[from, to): a run of N backticks closes at
+// the next run of exactly N. An unmatched run is text.
+function inlineSpans(body: string, from: number, to: number): Span[] {
+  const runs = [...body.slice(from, to).matchAll(/`+/g)].map((m) => ({ start: from + m.index, len: m[0].length }));
+  const closer = new Map<number, number>();
+  const nextByLen = new Map<number, number>();
+  for (let r = runs.length - 1; r >= 0; r--) {
+    const next = nextByLen.get(runs[r].len);
+    if (next !== undefined) closer.set(r, next);
+    nextByLen.set(runs[r].len, r);
+  }
+  const spans: Span[] = [];
+  let r = 0;
+  while (r < runs.length) {
+    const close = closer.get(r);
+    if (close === undefined) {
+      r += 1;
+    } else {
+      spans.push([runs[r].start, runs[close].start + runs[close].len]);
+      r = close + 1;
+    }
+  }
+  return spans;
+}
+
+// 1 for each character inside code (fenced or inline). Linear time.
+function codeMask(body: string): Uint8Array {
+  const mask = new Uint8Array(body.length);
+  const fences = fenceSpans(body);
+  const gaps: Span[] = [];
+  let from = 0;
+  for (const [start, end] of fences) {
+    gaps.push([from, start]);
+    from = end;
+  }
+  gaps.push([from, body.length]);
+  const inline = gaps.flatMap(([start, end]) => inlineSpans(body, start, end));
+  for (const [start, end] of [...fences, ...inline]) mask.fill(1, start, end);
+  return mask;
+}
+
+function proseOf(body: string): string {
+  // Drop closed `<!-- ... -->` comments outside code; an unclosed opener, or
+  // one in code, is text.
+  const code = codeMask(body);
+  let uncommented = '';
+  let hasClosers = true;
+  let i = 0;
+  while (i < body.length) {
+    const end = hasClosers && code[i] === 0 && body.startsWith('<!--', i) ? body.indexOf('-->', i + 4) : -1;
+    if (end === -1) {
+      // An opener with no closer means no later opener can close either.
+      if (code[i] === 0 && body.startsWith('<!--', i)) hasClosers = false;
+      uncommented += body[i];
+      i += 1;
+    } else {
+      i = end + 3;
+    }
+  }
+  return (
+    uncommented
+      // A heading is a short title line, not a sentence that starts with "# ".
+      .replace(/^ {0,3}#{1,6}[ \t]+[^\n]{0,60}$/gm, (line) => (/[.!?。]\s*$/.test(line) ? line : ''))
+      .replace(CLOSING_REF, '')
+      .trim()
+  );
+}
+
+// Headings are never required: a sentence or two of what and why is a full
+// description, and requiring a heading set pads small PRs with filler sections.
 function checkDescription(meta: PRMetadata): ComplianceCheckResult {
   const weight = WEIGHTS.description;
   const trimmed = meta.body.trim();
   if (trimmed.length === 0) {
     return { status: 'fail', weight, detail: 'description is empty' };
   }
-  const what = SECTION_WHAT.test(meta.body);
-  const why = SECTION_WHY.test(meta.body);
-  const test = SECTION_TEST.test(meta.body);
-  const present = [what, why, test].filter(Boolean).length;
-  if (present === 3) {
-    return { status: 'pass', weight, detail: 'what / why / test sections present' };
+  const prose = proseOf(meta.body);
+  const hasHeading = SECTION_WHAT.test(meta.body) || SECTION_WHY.test(meta.body);
+  if (prose.length >= 80 || (hasHeading && /\p{L}/u.test(prose))) {
+    return { status: 'pass', weight, detail: 'describes the change' };
   }
-  if (present >= 1 || trimmed.length >= 80) {
-    return {
-      status: 'warn',
-      weight,
-      detail: `${present} of 3 sections present (what/why/test)`,
-    };
-  }
-  return { status: 'fail', weight, detail: 'minimal description, no recognizable sections' };
+  return { status: 'warn', weight, detail: 'short description; say what changed and why' };
 }
 
 function checkFocusedChanges(meta: PRMetadata): ComplianceCheckResult {

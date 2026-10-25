@@ -83,7 +83,7 @@ For each issue in `actionableIssues`, include a Task tool call grouped by repo:
 | Needs Response | Tier 2 | Analyze maintainer feedback, draft a response (see Code Verification Rules below). DO NOT post — return for approval. |
 | Changes Requested | Tier 2 | Analyze requested changes, identify what's addressed vs outstanding (see Code Verification Rules below). Recommend approach. |
 | Waiting on Maintainer | Info | Note that the ball is in the maintainer's court — either approved and waiting for merge, or changes were pushed after review and awaiting re-review. No contributor action needed. |
-| Missing Required Files | Tier 2 | Identify what's missing (changeset, CLA, etc.), draft the file. DO NOT push. |
+| Missing Required Files | Tier 2 | Only when a bot comment or a check on this PR names it: identify what's missing (changeset, CLA, etc.), draft the file. DO NOT push. |
 
 **Agent dispatch prompt template for comprehensive PR check:**
 
