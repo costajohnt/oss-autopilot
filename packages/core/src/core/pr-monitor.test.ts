@@ -3219,3 +3219,176 @@ describe('commitDatePromise error handling (#469)', () => {
     errorSpy.mockRestore();
   });
 });
+
+// Override auto-clear keys on the commit date (#1713). The REST fallback only
+// fetches the commit when status needs it, so for an overridden PR with no
+// human comments it fetches eagerly; without an override it stays lazy.
+describe('fetchPRDetails commit date for overridden PRs', () => {
+  const prUrl = 'https://github.com/owner/repo/pull/1';
+
+  const makeMocks = () => ({
+    search: {
+      issuesAndPullRequests: vi.fn().mockResolvedValue({
+        data: { total_count: 1, items: [{ html_url: prUrl, pull_request: { html_url: prUrl } }] },
+      }),
+    },
+    pulls: {
+      get: vi.fn().mockResolvedValue({
+        data: {
+          id: 1,
+          title: 'Test PR',
+          created_at: '2026-02-01T00:00:00Z',
+          updated_at: '2026-02-07T00:00:00Z',
+          head: { sha: 'abc123' },
+          mergeable: true,
+          mergeable_state: 'clean',
+          body: '',
+        },
+      }),
+      listReviews: vi.fn().mockResolvedValue({ data: [] }),
+      listReviewComments: vi.fn().mockResolvedValue({ data: [] }),
+    },
+    issues: { listComments: vi.fn().mockResolvedValue({ data: [] }) },
+    repos: {
+      getCombinedStatusForRef: vi.fn().mockResolvedValue({ data: { state: 'success', statuses: [] } }),
+      getCommit: vi.fn().mockResolvedValue({
+        data: { commit: { author: { date: '2026-02-03T00:00:00Z' } }, author: { login: 'testuser' } },
+      }),
+    },
+    checks: { listForRef: vi.fn().mockResolvedValue({ data: { check_runs: [] } }) },
+  });
+
+  it('records the commit date when the PR has a status override', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({
+        config: {
+          excludeRepos: [],
+          excludeOrgs: [],
+          statusOverrides: {
+            [prUrl]: {
+              status: 'waiting_on_maintainer',
+              setAt: '2026-02-04T00:00:00Z',
+              lastActivityAt: '2026-02-03T00:00:00Z',
+            },
+          },
+        },
+      }),
+    );
+    mockOctokitInstance = makeMocks();
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
+
+    expect(mockOctokitInstance.repos.getCommit).toHaveBeenCalledTimes(1);
+    expect(prs[0].latestCommitDate).toBe('2026-02-03T00:00:00Z');
+  });
+
+  it('skips the commit fetch when there is no override and status does not need it', async () => {
+    vi.mocked(getStateManager).mockReturnValue(makeStateManagerMock({ config: { excludeRepos: [], excludeOrgs: [] } }));
+    mockOctokitInstance = makeMocks();
+
+    const monitor = new PRMonitor('fake-token');
+    const { prs } = await monitor.fetchUserOpenPRs();
+
+    expect(mockOctokitInstance.repos.getCommit).not.toHaveBeenCalled();
+    expect(prs[0].latestCommitDate).toBeUndefined();
+  });
+});
+
+// Every other PRMonitor test uses an Octokit without `graphql`, so
+// batchFetchPRDetails routes everything to REST and the batched path that real
+// `daily` runs take never executes. This drives fetchUserOpenPRs through the
+// GraphQL batch and checks the assembled FetchedPR carries the batch signals.
+describe('fetchUserOpenPRs assembles PRs from the batched GraphQL path', () => {
+  it('builds FetchedPR from the GraphQL node without REST enrichment calls', async () => {
+    vi.mocked(getStateManager).mockReturnValue(
+      makeStateManagerMock({ config: { githubUsername: 'contributor', excludeRepos: [], excludeOrgs: [] } }),
+    );
+    const prUrl = 'https://github.com/upstream/project/pull/7';
+    const graphql = vi.fn().mockResolvedValue({
+      pr0: {
+        pullRequest: {
+          databaseId: 12345,
+          number: 7,
+          title: 'Add feature',
+          url: prUrl,
+          state: 'OPEN',
+          isDraft: false,
+          mergeable: 'MERGEABLE',
+          body: 'Fixes #1',
+          createdAt: '2026-02-01T00:00:00Z',
+          updatedAt: '2026-02-07T00:00:00Z',
+          comments: {
+            totalCount: 1,
+            nodes: [{ author: { login: 'maintainer' }, body: 'see review', createdAt: '2026-02-05T00:00:00Z' }],
+          },
+          reviews: {
+            totalCount: 1,
+            nodes: [
+              {
+                databaseId: 900,
+                state: 'CHANGES_REQUESTED',
+                body: 'please fix the test',
+                submittedAt: '2026-02-05T00:00:00Z',
+                author: { login: 'maintainer' },
+              },
+            ],
+          },
+          reviewThreads: { totalCount: 0, nodes: [] },
+          commits: {
+            nodes: [
+              {
+                commit: {
+                  oid: 'sha1',
+                  authoredDate: '2026-02-04T00:00:00Z',
+                  author: { user: { login: 'contributor' } },
+                  status: null,
+                  statusCheckRollup: {
+                    contexts: {
+                      totalCount: 1,
+                      nodes: [
+                        {
+                          __typename: 'CheckRun',
+                          name: 'test',
+                          conclusion: 'FAILURE',
+                          status: 'COMPLETED',
+                          startedAt: '2026-02-05T01:00:00Z',
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        },
+      },
+    });
+    const pullsGet = vi.fn();
+    mockOctokitInstance = {
+      graphql,
+      search: {
+        issuesAndPullRequests: vi.fn().mockResolvedValue({
+          data: { total_count: 1, items: [{ html_url: prUrl, pull_request: {} }] },
+        }),
+      },
+      pulls: { get: pullsGet },
+    };
+
+    const monitor = new PRMonitor('fake-token');
+    const result = await monitor.fetchUserOpenPRs();
+
+    expect(graphql).toHaveBeenCalledTimes(1);
+    expect(pullsGet).not.toHaveBeenCalled();
+    expect(result.failures).toEqual([]);
+    expect(result.prs).toHaveLength(1);
+    const pr = result.prs[0];
+    expect(pr.url).toBe(prUrl);
+    expect(pr.reviewDecision).toBe('changes_requested');
+    expect(pr.ciStatus).toBe('failing');
+    expect(pr.failingCheckNames).toEqual(['test']);
+    expect(pr.hasUnrespondedComment).toBe(true);
+    expect(pr.lastMaintainerComment?.author).toBe('maintainer');
+    expect(pr.status).toBe('needs_addressing');
+  });
+});

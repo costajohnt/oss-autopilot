@@ -162,17 +162,48 @@ function recommendForOverExtension(openPRCount: number, dormantPRCount: number, 
 }
 
 /**
+ * Same activity timestamp as `latestActivityAt` in daily-logic.ts (latest
+ * commit or maintainer comment, falling back to `updatedAt`), over the
+ * loosely typed persisted digest. Kept local so this module stays free of
+ * the state imports daily-logic pulls in.
+ */
+function activityAt(pr: {
+  updatedAt?: unknown;
+  latestCommitDate?: unknown;
+  lastMaintainerComment?: unknown;
+}): string | undefined {
+  const commentAt = (pr.lastMaintainerComment as { createdAt?: unknown } | undefined)?.createdAt;
+  let latest: string | undefined;
+  for (const d of [pr.latestCommitDate, commentAt]) {
+    if (typeof d === 'string' && d !== '' && (latest === undefined || d > latest)) latest = d;
+  }
+  if (latest !== undefined) return latest;
+  return typeof pr.updatedAt === 'string' ? pr.updatedAt : undefined;
+}
+
+/**
  * Read-only mirror of the status-override lookup (#1416): same staleness
- * rule as `StateManager.getStatusOverride` (an override recorded against
- * older activity than the PR's `updatedAt` is ignored), but with NO
+ * rule the daily pipeline applies via `StateManager.getStatusOverride` and
+ * `latestActivityAt` (an override recorded against older activity than the
+ * PR's latest commit or maintainer comment is ignored), but with NO
  * auto-clear write — this module stays pure/no-I/O, and the daily and
  * dashboard pipelines own clearing stale overrides.
  */
-function effectiveStatus(pr: { url?: unknown; status?: unknown; updatedAt?: unknown }, state: AgentState): unknown {
+function effectiveStatus(
+  pr: {
+    url?: unknown;
+    status?: unknown;
+    updatedAt?: unknown;
+    latestCommitDate?: unknown;
+    lastMaintainerComment?: unknown;
+  },
+  state: AgentState,
+): unknown {
   if (typeof pr.url !== 'string') return pr.status;
   const override = state.config.statusOverrides?.[pr.url];
   if (!override) return pr.status;
-  if (typeof pr.updatedAt === 'string' && pr.updatedAt > override.lastActivityAt) return pr.status;
+  const lastActivity = activityAt(pr);
+  if (lastActivity !== undefined && lastActivity > override.lastActivityAt) return pr.status;
   if (override.status !== 'needs_addressing' && override.status !== 'waiting_on_maintainer') return pr.status;
   return override.status;
 }

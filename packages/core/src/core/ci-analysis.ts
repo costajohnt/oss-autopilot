@@ -234,7 +234,20 @@ export function analyzeCheckRuns(checkRuns: Array<{ name: string; conclusion: st
       hasFailingChecks = true;
       failingCheckNames.push(check.name);
       failingCheckConclusions.set(check.name, check.conclusion);
-    } else if (check.status === 'in_progress' || check.status === 'queued') {
+    } else if (check.conclusion === null && check.status === 'waiting') {
+      // `waiting` is an environment protection rule holding the job for a
+      // deployment approval. Like an action_required run, only a maintainer
+      // can clear it, so it is an auth gate: not passing, but not pending
+      // either, which would turn into a stuck-CI rerun nudge the contributor
+      // cannot act on. Recorded as action_required so classifyCICheck files
+      // it under auth_gate.
+      hasFailingChecks = true;
+      failingCheckNames.push(check.name);
+      failingCheckConclusions.set(check.name, 'action_required');
+    } else if (check.conclusion === null && check.status !== 'completed') {
+      // Any other run without a conclusion that has not completed is
+      // pending: in_progress and queued, but also pending (concurrency
+      // group) and requested.
       hasPendingChecks = true;
     } else if (check.conclusion === 'success') {
       hasSuccessfulChecks = true;

@@ -83,18 +83,20 @@ export interface CommitInfo {
 /**
  * Assemble a {@link FetchedPR} from normalized signals.
  *
- * `getCommitInfo` is invoked lazily — and only when the status logic actually
+ * `commitInfo` is either the HEAD commit already in hand (the GraphQL batch
+ * carries it) or a thunk the REST path uses to avoid an extra
+ * `repos.getCommit` call. The thunk is invoked only when the status logic
  * needs the HEAD commit date (an unresponded maintainer comment or a
- * changes-requested review). The REST path uses this to avoid an extra
- * `repos.getCommit` call; the GraphQL path already has the commit in the batch
- * and simply returns it. Because `determineStatus` consults the commit date
- * only in those same branches, always-providing it (GraphQL) versus
- * lazily-providing it (REST) yields an identical result.
+ * changes-requested review). `determineStatus` consults the date only in
+ * those same branches, so status is identical either way; the difference is
+ * that a known commit is always recorded on the PR, which keeps
+ * `latestActivityAt` (override auto-clear, #1713) off `updatedAt` for PRs
+ * with no human comments.
  */
 export async function assembleFetchedPR(
   signals: PRSignals,
   config: AssemblyConfig,
-  getCommitInfo: () => Promise<CommitInfo | undefined>,
+  commitInfo: CommitInfo | undefined | (() => Promise<CommitInfo | undefined>),
 ): Promise<FetchedPR> {
   const { comments, reviews, reviewComments } = signals;
 
@@ -120,9 +122,10 @@ export async function assembleFetchedPR(
   // no new commits pushed). Fetched lazily so the REST path skips the call when
   // it isn't needed.
   const needCommitDate = hasUnrespondedComment || reviewDecision === 'changes_requested';
-  const commitInfo = needCommitDate ? await getCommitInfo() : undefined;
-  const latestCommitDate = commitInfo?.date;
-  const latestCommitAuthor = commitInfo?.author;
+  let headCommit = typeof commitInfo === 'function' ? undefined : commitInfo;
+  if (typeof commitInfo === 'function' && needCommitDate) headCommit = await commitInfo();
+  const latestCommitDate = headCommit?.date;
+  const latestCommitAuthor = headCommit?.author;
 
   // Analyze PR body for incomplete checklists (delegated to checklist-analysis module)
   const { hasIncompleteChecklist, checklistStats } = analyzeChecklist(signals.body || '');

@@ -7,6 +7,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { buildBatchQuery, normalizePRNode, batchFetchPRDetails, BATCH_SIZE, type PRRef } from './pr-graphql.js';
 import { assembleFetchedPR, type PRSignals, type AssemblyConfig } from './pr-assembly.js';
 import { computeCIStatus } from './ci-analysis.js';
+import { latestActivityAt } from './daily-logic.js';
+import { classifyAttentionBucket } from './pr-attention.js';
 
 const CONFIG: AssemblyConfig = {
   githubUsername: 'contributor',
@@ -633,5 +635,87 @@ describe('GraphQL vs REST status parity', () => {
     expect(prGraphql.status).toBe('needs_addressing');
     expect(prGraphql.actionReason).toBe('merge_conflict');
     expect(prGraphql.hasMergeConflict).toBe(true);
+  });
+});
+
+// #1713 follow-up: override auto-clear keys on latestActivityAt, which falls
+// back to updatedAt when latestCommitDate is absent. A PR with no human
+// comments never needed the commit for status, so the GraphQL path used to
+// drop the commit date it already had.
+describe('assembleFetchedPR commit date for PRs without human comments', () => {
+  const signals: PRSignals = {
+    prUrl: 'https://github.com/o/r/pull/7',
+    owner: 'o',
+    repo: 'r',
+    number: 7,
+    id: 12_345,
+    title: 'PR',
+    body: '',
+    createdAt: '2026-02-01T00:00:00Z',
+    updatedAt: '2026-02-09T00:00:00Z',
+    hasMergeConflict: false,
+    comments: [],
+    reviews: [],
+    reviewComments: [],
+    ciStatus: computeCIStatus(
+      [{ name: 'test', conclusion: 'failure', status: 'completed', started_at: '2026-02-05T01:00:00Z' }],
+      { state: 'success', statuses: [] },
+    ),
+  };
+  const commit = { date: '2026-02-04T00:00:00Z', author: 'contributor' };
+
+  it('records a commit it already has, so latestActivityAt ignores updatedAt-only bumps', async () => {
+    const pr = await assembleFetchedPR(signals, CONFIG, commit);
+    expect(pr.latestCommitDate).toBe(commit.date);
+    expect(latestActivityAt(pr)).toBe(commit.date);
+  });
+
+  it('still skips the lazy REST fetch when status does not need the commit, with the same status', async () => {
+    const fetchCommit = vi.fn().mockResolvedValue(commit);
+    const lazy = await assembleFetchedPR(signals, CONFIG, fetchCommit);
+    const known = await assembleFetchedPR(signals, CONFIG, commit);
+    expect(fetchCommit).not.toHaveBeenCalled();
+    expect(lazy.latestCommitDate).toBeUndefined();
+    expect(lazy.status).toBe(known.status);
+    expect(lazy.actionReason).toBe(known.actionReason);
+  });
+});
+
+// A deploy job held by an environment approval is a maintainer-side gate:
+// the PR must not read as passing, and must not age into the stuck-CI
+// rerun bucket the contributor cannot act on.
+describe('assembleFetchedPR with an environment approval gate', () => {
+  it('stays waiting_on_maintainer and out of stuck_ci however long it waits', async () => {
+    const pr = await assembleFetchedPR(
+      {
+        prUrl: 'https://github.com/o/r/pull/7',
+        owner: 'o',
+        repo: 'r',
+        number: 7,
+        id: 12_345,
+        title: 'PR',
+        body: '',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-02T00:00:00Z',
+        hasMergeConflict: false,
+        comments: [],
+        reviews: [],
+        reviewComments: [],
+        ciStatus: computeCIStatus(
+          [
+            { name: 'test', conclusion: 'success', status: 'completed', started_at: '2026-01-01T01:00:00Z' },
+            { name: 'deploy', conclusion: null, status: 'waiting', started_at: '2026-01-01T01:05:00Z' },
+          ],
+          { state: 'success', statuses: [] },
+        ),
+      },
+      CONFIG,
+      { date: '2026-01-01T00:00:00Z', author: 'contributor' },
+    );
+
+    expect(pr.status).toBe('waiting_on_maintainer');
+    expect(pr.ciStatus).not.toBe('passing');
+    expect(pr.daysSinceActivity).toBeGreaterThan(3);
+    expect(classifyAttentionBucket(pr)).not.toBe('stuck_ci');
   });
 });

@@ -301,6 +301,45 @@ describe('computeStrategy — capacity', () => {
     expect(cap?.dormantPRCount).toBe(0);
   });
 
+  it('keeps an override when only updatedAt moved past it, matching daily (#1713)', () => {
+    const state = makeState({
+      mergedPRs: Array.from({ length: 10 }, (_, i) => makeMergedPR('a/r', i + 1)),
+      config: {
+        statusOverrides: {
+          'https://github.com/x/y/pull/1': {
+            status: 'waiting_on_maintainer',
+            setAt: '2026-04-02T00:00:00Z',
+            lastActivityAt: '2026-04-01T00:00:00Z',
+          },
+        },
+      },
+      lastDigest: {
+        generatedAt: new Date().toISOString(),
+        openPRs: [
+          // updatedAt moved (base branch advanced), but the latest commit is
+          // older than the override, so daily's latestActivityAt keeps it.
+          {
+            url: 'https://github.com/x/y/pull/1',
+            repo: 'x/y',
+            number: 1,
+            status: 'needs_addressing',
+            updatedAt: '2026-05-01T00:00:00Z',
+            latestCommitDate: '2026-03-30T00:00:00Z',
+          },
+        ] as any,
+        needsAddressingPRs: [],
+        waitingOnMaintainerPRs: [] as any,
+        recentlyClosedPRs: [],
+        recentlyMergedPRs: [],
+        shelvedPRs: [],
+        autoUnshelvedPRs: [],
+        summary: { totalActivePRs: 1, totalNeedingAttention: 1, totalMergedAllTime: 10, mergeRate: 1 },
+      },
+    });
+    const cap = computeStrategy(state)?.capacity;
+    expect(cap?.dormantPRCount).toBe(1);
+  });
+
   it('suggests open_more when no PRs are open and no dormant follow-ups', () => {
     const state = makeState({
       mergedPRs: Array.from({ length: 10 }, (_, i) => makeMergedPR('a/r', i + 1)),
