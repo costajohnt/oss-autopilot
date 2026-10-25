@@ -8,6 +8,7 @@ import { buildBatchQuery, normalizePRNode, batchFetchPRDetails, BATCH_SIZE, type
 import { assembleFetchedPR, type PRSignals, type AssemblyConfig } from './pr-assembly.js';
 import { computeCIStatus } from './ci-analysis.js';
 import { latestActivityAt } from './daily-logic.js';
+import { classifyAttentionBucket } from './pr-attention.js';
 
 const CONFIG: AssemblyConfig = {
   githubUsername: 'contributor',
@@ -677,5 +678,44 @@ describe('assembleFetchedPR commit date for PRs without human comments', () => {
     expect(lazy.latestCommitDate).toBeUndefined();
     expect(lazy.status).toBe(known.status);
     expect(lazy.actionReason).toBe(known.actionReason);
+  });
+});
+
+// A deploy job held by an environment approval is a maintainer-side gate:
+// the PR must not read as passing, and must not age into the stuck-CI
+// rerun bucket the contributor cannot act on.
+describe('assembleFetchedPR with an environment approval gate', () => {
+  it('stays waiting_on_maintainer and out of stuck_ci however long it waits', async () => {
+    const pr = await assembleFetchedPR(
+      {
+        prUrl: 'https://github.com/o/r/pull/7',
+        owner: 'o',
+        repo: 'r',
+        number: 7,
+        id: 12345,
+        title: 'PR',
+        body: '',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-02T00:00:00Z',
+        hasMergeConflict: false,
+        comments: [],
+        reviews: [],
+        reviewComments: [],
+        ciStatus: computeCIStatus(
+          [
+            { name: 'test', conclusion: 'success', status: 'completed', started_at: '2026-01-01T01:00:00Z' },
+            { name: 'deploy', conclusion: null, status: 'waiting', started_at: '2026-01-01T01:05:00Z' },
+          ],
+          { state: 'success', statuses: [] },
+        ),
+      },
+      CONFIG,
+      { date: '2026-01-01T00:00:00Z', author: 'contributor' },
+    );
+
+    expect(pr.status).toBe('waiting_on_maintainer');
+    expect(pr.ciStatus).not.toBe('passing');
+    expect(pr.daysSinceActivity).toBeGreaterThan(3);
+    expect(classifyAttentionBucket(pr)).not.toBe('stuck_ci');
   });
 });

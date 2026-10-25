@@ -128,16 +128,13 @@ describe('analyzeCheckRuns', () => {
     expect(result.hasFailingChecks).toBe(false);
   });
 
-  it.each(['waiting', 'pending', 'requested', 'queued'])(
-    'should treat a %s run with no conclusion as pending',
-    (status) => {
-      const result = analyzeCheckRuns([{ name: 'deploy', conclusion: null, status }]);
-      expect(result.hasPendingChecks).toBe(true);
-      expect(result.hasSuccessfulChecks).toBe(false);
-    },
-  );
+  it.each(['pending', 'requested', 'queued'])('should treat a %s run with no conclusion as pending', (status) => {
+    const result = analyzeCheckRuns([{ name: 'deploy', conclusion: null, status }]);
+    expect(result.hasPendingChecks).toBe(true);
+    expect(result.hasSuccessfulChecks).toBe(false);
+  });
 
-  it('should report a deploy job awaiting environment approval as pending, not passing', () => {
+  it('should treat a deploy job awaiting environment approval as an auth gate, not passing or pending', () => {
     const result = computeCIStatus(
       [
         { name: 'test', conclusion: 'success', status: 'completed', started_at: '2026-02-05T00:00:00Z' },
@@ -145,7 +142,17 @@ describe('analyzeCheckRuns', () => {
       ],
       { state: 'pending', statuses: [] },
     );
-    expect(result.status).toBe('pending');
+    expect(result.status).toBe('failing');
+    expect(result.failingCheckNames).toEqual(['deploy']);
+    const classified = classifyFailingChecks(result.failingCheckNames, result.failingCheckConclusions);
+    expect(classified).toEqual([expect.objectContaining({ name: 'deploy', category: 'auth_gate' })]);
+    // Not actionable, so no "investigate"; not pending, so no stuck-CI rerun nudge.
+    const categorization = categorizeCIStatus({
+      ciStatus: result.status,
+      failingCheckNames: result.failingCheckNames,
+      classifiedChecks: classified,
+    });
+    expect(categorization).toMatchObject({ category: 'fork_limitation', action: 'informational' });
   });
 
   it('should detect action_required as failing (#743)', () => {
