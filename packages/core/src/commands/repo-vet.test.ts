@@ -268,5 +268,11 @@ describe('runRepoVet health numbers from non-empty history', () => {
     expect(result.prMergeTime).toMatchObject({ sampleSize: 3, medianDays: 4, avgDays: 22 });
     expect(result.maintainerActivity.contributorsLast90d).toBe(2);
     expect(result.maintainerActivity.lastCommitISO).toBe(daysAgo(1));
+    // commitsLast30Days only reaches the output through the rubric score.
+    // 3 commits in 30 days (1, 10, 20 days old) gives activity 3/30; with
+    // merge rate 1.0, PR speed 0 (22-day average), no guidelines, and half
+    // stability (no release): (0.1*0.25 + 0.2 + 0.5*0.05) / 0.85 = 2.9.
+    // 2 or 4 commits would give 2.8 or 3.0.
+    expect(result.rubricScore).toBe(2.9);
   });
 });
