@@ -49,6 +49,7 @@
 import * as fs from 'node:fs';
 import { AgentState } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
+import { serializeState } from './state-prune.js';
 import {
   atomicWriteFileSync,
   createFreshState,
@@ -918,7 +919,7 @@ export class GistStateStore {
    */
   private async createGist(): Promise<{ id: string; state: AgentState }> {
     const freshState = createFreshState();
-    const stateContent = JSON.stringify(freshState, null, 2);
+    const stateContent = serializeState(freshState);
 
     const { data } = await this.octokit.gists.create({
       description: GIST_DESCRIPTION,
@@ -949,7 +950,7 @@ export class GistStateStore {
    * Create a new private Gist seeded with the provided state (for migration).
    */
   private async createGistFromState(seedState: AgentState): Promise<{ id: string; state: AgentState }> {
-    const stateContent = JSON.stringify(seedState, null, 2);
+    const stateContent = serializeState(seedState);
 
     const { data } = await this.octokit.gists.create({
       description: GIST_DESCRIPTION,
@@ -1005,7 +1006,7 @@ export class GistStateStore {
   private writeLocalStateCache(state: AgentState): void {
     try {
       const cachePath = getStateCachePath();
-      atomicWriteFileSync(cachePath, JSON.stringify(state, null, 2), 0o600);
+      atomicWriteFileSync(cachePath, serializeState(state), 0o600);
       debug(MODULE, `Wrote state cache to ${cachePath}`);
     } catch (err) {
       warn(MODULE, `Failed to write local state cache: ${err}`);

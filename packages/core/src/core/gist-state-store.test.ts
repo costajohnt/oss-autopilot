@@ -10,6 +10,7 @@ import { GistStateStore, GIST_DESCRIPTION, STATE_FILE_NAME, type OctokitLike } f
 import { AgentStateSchema } from './state-schema.js';
 import { GistConcurrencyError, GistCorruptError, GistFileSizeError } from './errors.js';
 import { createFreshState } from './state-persistence.js';
+import { serializeState } from './state-prune.js';
 
 // ── Mock utils.js to redirect path helpers to temp directories ────────────────
 
@@ -1123,7 +1124,7 @@ describe('GistStateStore', () => {
       // No local gist-id file, search returns empty
       octokit.gists.list.mockResolvedValue({ data: [] });
 
-      const seededJson = JSON.stringify(existingState, null, 2);
+      const seededJson = serializeState(existingState);
       octokit.gists.create.mockResolvedValue({
         data: {
           id: newGistId,

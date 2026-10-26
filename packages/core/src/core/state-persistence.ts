@@ -8,6 +8,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { AgentState } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
+import { serializeState } from './state-prune.js';
 import { getStatePath, getBackupDir, getDataDir, getLegacyStatePath, getLegacyBackupDir } from './paths.js';
 import { errorMessage, ConcurrencyError } from './errors.js';
 import { debug, warn } from './logger.js';
@@ -335,7 +336,7 @@ function tryRestoreFromBackup(): AgentState | null {
 
         // Overwrite the corrupted main state file with the restored backup (atomic write)
         const statePath = getStatePath();
-        atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
+        atomicWriteFileSync(statePath, serializeState(state), 0o600);
         debug(MODULE, 'Restored backup written to main state file');
 
         return state;
@@ -472,7 +473,7 @@ export function loadState(): LoadStateResult {
 
       // Save migrated state only after validation succeeds
       if (wasMigrated) {
-        atomicWriteFileSync(statePath, JSON.stringify(parsed.data, null, 2), 0o600);
+        atomicWriteFileSync(statePath, serializeState(parsed.data), 0o600);
         mtimeMs = safeGetMtimeMs(statePath); // our own write: what we hold is what is on disk
         debug(MODULE, 'Migrated and validated state saved');
       }
@@ -493,7 +494,7 @@ export function loadState(): LoadStateResult {
           }
         }
         if (needsCleanupSave) {
-          atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
+          atomicWriteFileSync(statePath, serializeState(state), 0o600);
           mtimeMs = safeGetMtimeMs(statePath); // our own write, as above
           warn(MODULE, 'Cleaned up dismissed PR URLs from persisted state');
         }
@@ -637,7 +638,7 @@ export function saveState(state: Readonly<AgentState>, expectedMtimeMs: number |
     }
 
     // Atomic write: write to temp file then rename to prevent corruption on crash
-    atomicWriteFileSync(statePath, JSON.stringify(state, null, 2), 0o600);
+    atomicWriteFileSync(statePath, serializeState(state), 0o600);
     const mtimeMs = safeGetMtimeMs(statePath);
     debug(MODULE, 'State saved successfully');
     return mtimeMs;

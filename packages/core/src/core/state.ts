@@ -21,6 +21,7 @@ import {
   SearchRotation,
 } from './types.js';
 import { AgentStateSchema } from './state-schema.js';
+import { serializeState } from './state-prune.js';
 import {
   loadState,
   saveState,
@@ -369,7 +370,7 @@ export class StateManager {
       // `refreshFromGist()` or `checkpoint()` re-syncs from the authoritative
       // Gist. The trade-off is a transiently-stale offline bootstrap (#1030).
       try {
-        atomicWriteFileSync(getStateCachePath(), JSON.stringify(this.state, null, 2), 0o600);
+        atomicWriteFileSync(getStateCachePath(), serializeState(this.state), 0o600);
       } catch (err) {
         // Cache write failure is non-fatal (Gist remains source of truth), but
         // silent failure masks degraded-mode risk on next offline bootstrap (#994).
@@ -394,7 +395,7 @@ export class StateManager {
   /** Push current state to Gist (async). Call at well-defined moments (end of daily, after claim). */
   async checkpoint(): Promise<boolean> {
     if (!this.gistStore) return true; // not in Gist mode
-    this.gistStore.setState(JSON.stringify(this.state, null, 2));
+    this.gistStore.setState(serializeState(this.state));
     let isPushed: boolean;
     try {
       isPushed = await this.gistStore.push();
