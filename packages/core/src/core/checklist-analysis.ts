@@ -13,8 +13,11 @@ import { FetchedPR } from './types.js';
 const CONDITIONAL_CHECKLIST_PATTERN =
   /\(if\s|\bif applicable\b|\bif needed\b|\bif relevant\b|\bonly if\b|\bwhen applicable\b|\(optional\)|- \[ \]\s*optional\b|\bn\/a\b|\bnot applicable\b|\bif required\b|\bif necessary\b/;
 
+// An explicit trailing status needs a reason; later checklist text must remain required.
+const TRAILING_SKIP_ANNOTATION_RE = /\((?:not run|skipped|not done)\s*[:—-]\s*(?=\S)(?:[^()]|\([^()]*\))+\)\s*$/i;
+
 export function isConditionalChecklistItem(line: string): boolean {
-  return CONDITIONAL_CHECKLIST_PATTERN.test(line.toLowerCase());
+  return CONDITIONAL_CHECKLIST_PATTERN.test(line.toLowerCase()) || TRAILING_SKIP_ANNOTATION_RE.test(line);
 }
 
 // Matches markdown headings; `\S` after whitespace prevents backtracking with `.*` (#1718)
@@ -30,6 +33,8 @@ const PICK_ONE_COMMENT_RE = /<!--[^>]*(?:exactly\s+one|pick\s+one|choose\s+one)[
 
 /** Matches any checkbox line (checked or unchecked). */
 const ANY_CHECKBOX_RE = /^.*- \[[ x]\].*$/i;
+
+const CONDITIONAL_LEAD_IN_RE = /^(?:if|when|only if)\s+\S.*:$/i;
 
 /**
  * Matches headings that indicate a mutually-exclusive "type of change" radio group
@@ -133,6 +138,28 @@ function collectPickOneExemptLineIndices(lines: string[]): ReadonlySet<number> {
   return exempt;
 }
 
+function collectConditionalExemptLineIndices(lines: string[]): ReadonlySet<number> {
+  const exempt = new Set<number>();
+  let i = 0;
+
+  while (i < lines.length) {
+    if (!CONDITIONAL_LEAD_IN_RE.test(lines[i].trim())) {
+      i++;
+      continue;
+    }
+
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() === '') j++;
+    while (j < lines.length && ANY_CHECKBOX_RE.test(lines[j])) {
+      if (/- \[ \]/.test(lines[j])) exempt.add(j);
+      j++;
+    }
+    i = j;
+  }
+
+  return exempt;
+}
+
 interface SectionResult {
   checked: number;
   nonConditionalUnchecked: number;
@@ -157,9 +184,14 @@ function analyzeSectionItems(section: CheckboxSection): SectionResult | null {
 
   // Pick-one groups: unchecked alternatives in a satisfied pick-one group are exempt. (#1760)
   const pickOneExempt = collectPickOneExemptLineIndices(section.lines);
+  const conditionalExempt = collectConditionalExemptLineIndices(section.lines);
 
   const nonConditionalUnchecked = section.lines.filter(
-    (l, idx) => /^.*- \[ \].*$/.test(l) && !isConditionalChecklistItem(l) && !pickOneExempt.has(idx),
+    (l, idx) =>
+      /^.*- \[ \].*$/.test(l) &&
+      !isConditionalChecklistItem(l) &&
+      !pickOneExempt.has(idx) &&
+      !conditionalExempt.has(idx),
   );
   return { checked, nonConditionalUnchecked: nonConditionalUnchecked.length };
 }

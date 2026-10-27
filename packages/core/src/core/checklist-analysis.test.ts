@@ -258,3 +258,122 @@ describe('analyzeChecklist', () => {
     });
   });
 });
+
+describe('conditional checkbox runs (#1796)', () => {
+  it.each([
+    'If user-exposed functionality is added or changed:',
+    'when the code communicates with third-party tools:',
+    'Only if dependencies are updated:',
+  ])('should exempt the checkbox run after "%s"', (leadIn) => {
+    const result = analyzeChecklist(
+      [leadIn, '', '- [x] Applicable work completed', '- [ ] Conditional work'].join('\n'),
+    );
+    expect(result).toEqual({
+      hasIncompleteChecklist: false,
+      checklistStats: { checked: 1, total: 1 },
+    });
+  });
+
+  it('should handle multiple conditional runs in the reported template', () => {
+    const body = [
+      '## Checklist',
+      '- [x] The code change is tested and works locally.',
+      '- [x] Tests have been added.',
+      '',
+      'If user exposed functionality or configuration variables are added/changed:',
+      '',
+      '- [ ] Documentation added/updated for the docs site',
+      '',
+      'If the code communicates with devices, web services, or third-party tools:',
+      '',
+      '- [ ] The manifest file has all fields filled out correctly.',
+      '- [ ] New dependencies have been added to the requirements file.',
+      '- [ ] A diff between dependency versions is included.',
+    ].join('\n');
+    expect(analyzeChecklist(body)).toEqual({
+      hasIncompleteChecklist: false,
+      checklistStats: { checked: 2, total: 2 },
+    });
+  });
+
+  it.each(['', 'Required tasks:', '## Required tasks'])(
+    'should keep required work after a conditional run ending with "%s"',
+    (separator) => {
+      const body = [
+        '- [x] Tests added',
+        'If the public API changes:',
+        '- [ ] Update the API reference',
+        separator,
+        '- [ ] I have reviewed two other open pull requests',
+      ].join('\n');
+      expect(analyzeChecklist(body)).toEqual({
+        hasIncompleteChecklist: true,
+        checklistStats: { checked: 1, total: 2 },
+      });
+    },
+  );
+
+  it.each(['To help with the load of incoming pull requests:', 'If the public API changes'])(
+    'should keep unchecked work under a non-conditional lead-in "%s"',
+    (leadIn) => {
+      expect(analyzeChecklist(['- [x] Tests added', leadIn, '- [ ] Required work'].join('\n'))).toEqual({
+        hasIncompleteChecklist: true,
+        checklistStats: { checked: 1, total: 2 },
+      });
+    },
+  );
+
+  it('should not carry an individual checkbox condition into its next sibling', () => {
+    const body = ['- [x] Tests added', '- [ ] Update docs (if applicable)', '- [ ] Required review'].join('\n');
+    expect(analyzeChecklist(body)).toEqual({
+      hasIncompleteChecklist: true,
+      checklistStats: { checked: 1, total: 2 },
+    });
+  });
+
+  it('should omit stats when every checkbox belongs to a conditional run', () => {
+    expect(
+      analyzeChecklist('If dependencies change:\n\n- [ ] Update requirements\n- [ ] Add a dependency diff'),
+    ).toEqual({
+      hasIncompleteChecklist: false,
+    });
+  });
+});
+
+describe('explained unchecked items (#1796)', () => {
+  it('should keep required work beside an explained skipped item', () => {
+    const body = [
+      '- [x] Unit tests added',
+      '- [ ] Passed the story run. (Not run: no visual change.)',
+      '- [ ] I have reviewed two other open pull requests',
+    ].join('\n');
+    expect(analyzeChecklist(body)).toEqual({
+      hasIncompleteChecklist: true,
+      checklistStats: { checked: 1, total: 2 },
+    });
+  });
+
+  it.each([
+    '(Not run: no visual change, covered by the new UI test.)',
+    '(Skipped — documentation-only change.)',
+    '(Not done - generated files are unchanged.)',
+    '(Not run: no visual change (covered by the new UI test).)',
+  ])('should exclude a trailing status annotation "%s"', (annotation) => {
+    expect(analyzeChecklist(`- [x] Unit tests added\n- [ ] Passed the story run. ${annotation}`)).toEqual({
+      hasIncompleteChecklist: false,
+      checklistStats: { checked: 1, total: 1 },
+    });
+  });
+
+  it.each([
+    '- [ ] Passed the story run. (Not run: )',
+    '- [ ] Tests not run by CI must be added',
+    '- [ ] Validate the skipped tests',
+    '- [ ] Passed the story run. (Skipped: no visual change) and add unit tests',
+  ])('should keep required work without a trailing explanation: "%s"', (unchecked) => {
+    expect(analyzeChecklist(`- [x] Code reviewed\n${unchecked}`)).toEqual({
+      hasIncompleteChecklist: true,
+      checklistStats: { checked: 1, total: 2 },
+    });
+  });
+});
