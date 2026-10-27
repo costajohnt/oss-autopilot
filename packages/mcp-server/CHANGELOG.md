@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.7.7](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.6...mcp-v5.7.7) (2026-10-25)
+
+
+### Bug Fixes
+
+* stop gist conflict retries from clobbering and read truncated gist files ([#1792](https://github.com/costajohnt/oss-autopilot/issues/1792)) ([f64bc9c](https://github.com/costajohnt/oss-autopilot/commit/f64bc9c04116d5b59691ea172881cb9f4c9dcea0))
+
 ## [5.7.6](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.5...mcp-v5.7.6) (2026-10-10)
 
 

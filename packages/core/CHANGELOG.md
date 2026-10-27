@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.31.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.31.0...core-v3.31.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* pin .mcp.json to the released @oss-autopilot/mcp version ([#1785](https://github.com/costajohnt/oss-autopilot/issues/1785)) ([ccf250e](https://github.com/costajohnt/oss-autopilot/commit/ccf250e5f2738f7d774d4f67dd2f4d416c1efde3))
+* stop gist conflict retries from clobbering and read truncated gist files ([#1792](https://github.com/costajohnt/oss-autopilot/issues/1792)) ([f64bc9c](https://github.com/costajohnt/oss-autopilot/commit/f64bc9c04116d5b59691ea172881cb9f4c9dcea0))
+* stop non-test gates from forcing filler ([#1791](https://github.com/costajohnt/oss-autopilot/issues/1791)) ([6b17337](https://github.com/costajohnt/oss-autopilot/commit/6b17337b823e18eb709fc576ba902054430bbfe5))
+* treat waiting check runs as pending and keep commit dates on GraphQL PRs ([#1794](https://github.com/costajohnt/oss-autopilot/issues/1794)) ([83236a3](https://github.com/costajohnt/oss-autopilot/commit/83236a34f0b4c2a8ee6ecc6963422a70c763d0fb))
+
 ## [3.31.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.30.0...core-v3.31.0) (2026-10-17)
 
 
