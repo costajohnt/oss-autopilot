@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.31.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.31.1...core-v3.31.2) (2026-10-27)
+
+
+### Bug Fixes
+
+* prune persisted state so the Gist stays under the 1 MB limit ([#1800](https://github.com/costajohnt/oss-autopilot/issues/1800)) ([809c38f](https://github.com/costajohnt/oss-autopilot/commit/809c38ffc1b01af12c1705dd82621ab273247cf8))
+
 ## [3.31.1](https://github.com/costajohnt/oss-autopilot/compare/core-v3.31.0...core-v3.31.1) (2026-10-25)
 
 
