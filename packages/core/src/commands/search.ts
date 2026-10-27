@@ -17,6 +17,7 @@ import { gradeFromCandidate, reconcileRecommendation } from '../core/issue-gradi
 import { computeStrategy } from '../core/strategy.js';
 import { refreshStarredReposIfStale } from '../core/starred-repos.js';
 import { debug, warn } from '../core/logger.js';
+import { SCOUT_ROTATION_TTL_DAYS, SEARCH_SEEN_RETENTION_DAYS } from '../core/state-prune.js';
 
 export { type SearchOutput } from '../formatters/json.js';
 
@@ -149,12 +150,8 @@ function readScoutDelayOverride(envVar: string): number | undefined {
   return parsed;
 }
 
-/**
- * Retention window for the search seen-set (#1528). Entries older than this are
- * culled so the list stays bounded. Set well beyond oss-scout's rotation TTL
- * (default 7 days) so an entry scout would still exclude is never dropped early.
- */
-export const SEARCH_SEEN_RETENTION_DAYS = 30;
+// Retention for the search seen-set (#1528) lives with the persist-time prune.
+export { SEARCH_SEEN_RETENTION_DAYS } from '../core/state-prune.js';
 
 /**
  * Record the issues surfaced by a search into the durable seen-set (#1528) so
@@ -226,6 +223,8 @@ export async function runSearch(options: SearchOptions): Promise<SearchOutput> {
     preferLanguages,
     preferRepos,
     diversityRatio: SEARCH_DIVERSITY_RATIO,
+    // Pinned so searchSeen's retention (state-prune.ts) always outlives it.
+    recentlySurfacedTtlDays: SCOUT_ROTATION_TTL_DAYS,
     ...(interPhaseDelayMs !== undefined ? { interPhaseDelayMs } : {}),
     ...(broadPhaseDelayMs !== undefined ? { broadPhaseDelayMs } : {}),
   });

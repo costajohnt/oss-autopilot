@@ -432,7 +432,23 @@ export const FetchedPRSchema = z
  */
 const FetchedPRArraySchema = z.array(FetchedPRSchema) as unknown as z.ZodType<FetchedPR[]>;
 
-export const DailyDigestSchema = z.object({
+/**
+ * The status partitions are filters of openPRs (PRMonitor.generateDigest), so
+ * the persisted state stores them empty (state-prune.ts) and they are
+ * re-derived here on load. Each open PR is persisted once.
+ */
+function derivePartitions(raw: unknown): unknown {
+  const openPRs = (raw as { openPRs?: unknown } | null)?.openPRs;
+  // No open PRs: nothing to derive; keep what is stored (legacy digests).
+  if (!Array.isArray(openPRs) || openPRs.length === 0) return raw;
+  return {
+    ...(raw as object),
+    needsAddressingPRs: openPRs.filter((pr: { status?: unknown }) => pr?.status === 'needs_addressing'),
+    waitingOnMaintainerPRs: openPRs.filter((pr: { status?: unknown }) => pr?.status === 'waiting_on_maintainer'),
+  };
+}
+
+const DailyDigestObjectSchema = z.object({
   generatedAt: z.string(),
 
   // FetchedPR arrays — ephemeral, regenerated each run. Validated for the
@@ -449,6 +465,8 @@ export const DailyDigestSchema = z.object({
 
   summary: DailyDigestSummarySchema,
 });
+
+export const DailyDigestSchema = z.preprocess(derivePartitions, DailyDigestObjectSchema);
 
 // ── 8. Root schema ───────────────────────────────────────────────────
 
