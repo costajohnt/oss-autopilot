@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.33.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.32.0...core-v3.33.0) (2026-10-28)
+
+
+### Features
+
+* **search:** add --no-record for headless searches; bump oss-scout to 1.12.0 ([#1814](https://github.com/costajohnt/oss-autopilot/issues/1814)) ([af9f264](https://github.com/costajohnt/oss-autopilot/commit/af9f264c7d2c50a05549e36f71cca418285c0353))
+
 ## [3.32.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.31.6...core-v3.32.0) (2026-10-28)
 
 
