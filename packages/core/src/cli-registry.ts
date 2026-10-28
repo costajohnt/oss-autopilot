@@ -380,6 +380,10 @@ export const commands: CLICommandDef[] = [
           '--full',
           'Run every enabled strategy in this search instead of one per search in rotation. More API calls, can take a few minutes.',
         )
+        .option(
+          '--no-record',
+          "Don't save surfaced issues or the rotation cursor to shared state. For scheduled searches on a second machine, so they don't hide issues from your own searches. Use with --full.",
+        )
         .action(async (count, options) => {
           const { SearchOutputSchema } = await import('./formatters/json.js');
           await executeAction(
@@ -403,7 +407,7 @@ export const commands: CLICommandDef[] = [
               if (!options.json) {
                 console.log(`\nSearching for issues (max ${maxResults})...\n`);
               }
-              return runSearch({ maxResults, strategies, full: options.full });
+              return runSearch({ maxResults, strategies, full: options.full, record: options.record });
             },
             (data) => {
               if (data.hiddenOwnPRCount > 0) {

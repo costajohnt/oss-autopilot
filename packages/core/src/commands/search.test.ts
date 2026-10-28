@@ -77,6 +77,22 @@ describe('runSearch', () => {
     mockScoutState.searchRotation = { languageOffset: 0 };
   });
 
+  it('with record: false, writes no seen-set or rotation and skips the Gist checkpoint', async () => {
+    mockSearch.mockResolvedValue({
+      candidates: [{ issue: { url: 'https://github.com/o/r/issues/1' } }],
+      excludedRepos: [],
+      aiPolicyBlocklist: [],
+      strategiesUsed: ['broad'],
+    });
+
+    await runSearch({ maxResults: 5, full: true, record: false });
+
+    const sm = mockGetStateManager.mock.results[0].value;
+    expect(sm.setSearchSeen).not.toHaveBeenCalled();
+    expect(sm.setSearchRotation).not.toHaveBeenCalled();
+    expect(mockMaybeCheckpoint).not.toHaveBeenCalled();
+  });
+
   it('writes back the rotation cursor scout advanced, before the Gist checkpoint (#1630)', async () => {
     mockScoutState.searchRotation = { languageOffset: 3, lastRotatedAt: '2026-09-05T00:00:00.000Z' };
     mockSearch.mockResolvedValue({
