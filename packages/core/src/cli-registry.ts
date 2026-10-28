@@ -14,6 +14,14 @@ import { errorMessage, resolveErrorCode } from './core/errors.js';
 import { outputJson, outputJsonError, outputJsonValidated } from './formatters/json.js';
 import type { ZodType } from 'zod';
 
+/** Options commander parses for `search`; typed so reads are not `any`. */
+interface SearchCliOptions {
+  json?: boolean;
+  strategy?: string;
+  full?: boolean;
+  record?: boolean;
+}
+
 interface CLICommandDef {
   /** Command name (used to build the local-only set for the preAction hook). */
   name: string;
@@ -384,7 +392,7 @@ export const commands: CLICommandDef[] = [
           '--no-record',
           "Don't save surfaced issues or the rotation cursor to shared state. For scheduled searches on a second machine, so they don't hide issues from your own searches. Use with --full.",
         )
-        .action(async (count, options) => {
+        .action(async (count: string | undefined, options: SearchCliOptions) => {
           const { SearchOutputSchema } = await import('./formatters/json.js');
           await executeAction(
             options,
