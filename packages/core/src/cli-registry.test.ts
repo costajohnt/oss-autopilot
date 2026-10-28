@@ -364,9 +364,18 @@ describe('search count validation', () => {
     await program.parseAsync(['node', 'cli', 'search', '--json']);
 
     // 15 leaves headroom past scout's affinity phases (#1571)
-    expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 15 });
+    expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 15, record: true });
     // search routes through outputJsonValidated (#1147); the second arg is the result
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), emptySearchResult);
+  });
+
+  it('passes record: false for --no-record', async () => {
+    mockRunSearch.mockResolvedValue(emptySearchResult);
+    const program = buildProgram('search');
+
+    await program.parseAsync(['node', 'cli', 'search', '10', '--full', '--no-record', '--json']);
+
+    expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 10, full: true, record: false });
   });
 
   it('should accept a valid positive integer count', async () => {
@@ -375,7 +384,7 @@ describe('search count validation', () => {
 
     await program.parseAsync(['node', 'cli', 'search', '10', '--json']);
 
-    expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 10 });
+    expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 10, record: true });
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), emptySearchResult);
   });
 
@@ -398,7 +407,7 @@ describe('search count validation', () => {
     await program.parseAsync(['node', 'cli', 'search', '150', '--json']);
 
     expect(consoleWarnSpy).toHaveBeenCalledWith('Capping search to 100 results (requested: 150)');
-    expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 100 });
+    expect(mockRunSearch).toHaveBeenCalledWith({ maxResults: 100, record: true });
     expect(mockOutputJsonValidated).toHaveBeenCalledWith(expect.anything(), emptySearchResult);
   });
 });

@@ -14,6 +14,14 @@ import { errorMessage, resolveErrorCode } from './core/errors.js';
 import { outputJson, outputJsonError, outputJsonValidated } from './formatters/json.js';
 import type { ZodType } from 'zod';
 
+/** Options commander parses for `search`; typed so reads are not `any`. */
+interface SearchCliOptions {
+  json?: boolean;
+  strategy?: string;
+  full?: boolean;
+  record?: boolean;
+}
+
 interface CLICommandDef {
   /** Command name (used to build the local-only set for the preAction hook). */
   name: string;
@@ -380,7 +388,11 @@ export const commands: CLICommandDef[] = [
           '--full',
           'Run every enabled strategy in this search instead of one per search in rotation. More API calls, can take a few minutes.',
         )
-        .action(async (count, options) => {
+        .option(
+          '--no-record',
+          "Don't save surfaced issues or the rotation cursor to shared state. For scheduled searches on a second machine, so they don't hide issues from your own searches. Use with --full.",
+        )
+        .action(async (count: string | undefined, options: SearchCliOptions) => {
           const { SearchOutputSchema } = await import('./formatters/json.js');
           await executeAction(
             options,
@@ -403,7 +415,7 @@ export const commands: CLICommandDef[] = [
               if (!options.json) {
                 console.log(`\nSearching for issues (max ${maxResults})...\n`);
               }
-              return runSearch({ maxResults, strategies, full: options.full });
+              return runSearch({ maxResults, strategies, full: options.full, record: options.record });
             },
             (data) => {
               if (data.hiddenOwnPRCount > 0) {
