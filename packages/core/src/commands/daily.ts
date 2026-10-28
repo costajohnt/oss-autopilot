@@ -324,11 +324,11 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
   } = closedResult;
 
   return {
+    searchedPRs: [...mergedResult.searchedPRs, ...closedResult.searchedPRs],
     prs,
     failures,
     mergedCounts,
     closedCounts,
-    searchedPRs: [...mergedResult.searchedPRs, ...closedResult.searchedPRs],
     monthlyCounts,
     monthlyClosedCounts,
     openedFromMerged,

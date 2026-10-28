@@ -95,8 +95,10 @@ describe('fetchUserPRCounts caching', () => {
     const octokit = makeOctokit([item]);
     const expected = [{ url: 'https://github.com/org/repo/pull/1', title: 'fix: thing' }];
 
-    expect((await fetchUserMergedPRCounts(octokit, 'testuser')).searchedPRs).toEqual(expected);
-    expect((await fetchUserMergedPRCounts(octokit, 'testuser')).searchedPRs).toEqual(expected);
+    const fresh = await fetchUserMergedPRCounts(octokit, 'testuser');
+    expect(fresh.searchedPRs).toEqual(expected);
+    const cached = await fetchUserMergedPRCounts(octokit, 'testuser');
+    expect(cached.searchedPRs).toEqual(expected);
 
     testCache.set('pr-counts:v3:merged:testuser', '', {
       reposEntries: [],
@@ -104,7 +106,8 @@ describe('fetchUserPRCounts caching', () => {
       monthlyOpenedCounts: {},
       dailyActivityCounts: {},
     });
-    expect((await fetchUserMergedPRCounts(octokit, 'testuser')).searchedPRs).toEqual([]);
+    const legacy = await fetchUserMergedPRCounts(octokit, 'testuser');
+    expect(legacy.searchedPRs).toEqual([]);
   });
 
   it('should exclude own repos via -user: qualifier in search query', async () => {

@@ -1178,7 +1178,8 @@ export class StateManager {
 
   /** Move a transferred repo's stored PRs and score to its new name. See repoScoring.renameRepo. */
   renameRepo(from: string, to: string): void {
-    if (repoScoring.renameRepo(this.state, from, to)) this.autoSave();
+    repoScoring.renameRepo(this.state, from, to);
+    this.autoSave();
   }
 
   /**

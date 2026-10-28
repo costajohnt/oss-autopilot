@@ -38,7 +38,7 @@ export interface PRCountsResult<R> {
   dailyActivityCounts: Record<string, number>;
   /**
    * Every non-own PR the search returned (before the star filter), as
-   * url + title. Lets the daily run spot repos that were transferred or
+   * URL + title. Lets the daily run spot repos that were transferred or
    * renamed since a stored PR was recorded (see findRepoTransfers).
    */
   searchedPRs: Array<{ url: string; title: string }>;

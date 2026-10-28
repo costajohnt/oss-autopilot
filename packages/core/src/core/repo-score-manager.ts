@@ -362,9 +362,8 @@ export function findRepoTransfers(
 
   const transfers = new Map<string, string>();
   for (const pr of stored) {
-    if (searchedUrls.has(pr.url)) continue;
-    const parsed = parseGitHubUrl(pr.url);
-    if (!parsed || !pr.title) continue;
+    const parsed = searchedUrls.has(pr.url) || !pr.title ? null : parseGitHubUrl(pr.url);
+    if (!parsed) continue;
     const from = `${parsed.owner}/${parsed.repo}`;
     const to = repoByPR.get(`${parsed.number}\0${pr.title}`);
     if (to && to !== from) transfers.set(from, to);
@@ -376,16 +375,14 @@ export function findRepoTransfers(
  * Move a transferred repo's history to its new name: rewrite stored PR URLs
  * and drop (or re-key) the old repoScores entry so it stops double counting.
  * When both names hold the same PR, the rewritten entry wins because it
- * carries the older ledger stamps. Returns true if anything changed.
+ * carries the older ledger stamps.
  */
-export function renameRepo(state: AgentState, from: string, to: string): boolean {
+export function renameRepo(state: AgentState, from: string, to: string): void {
   const fromPrefix = `https://github.com/${from}/`;
   const toPrefix = `https://github.com/${to}/`;
-  let changed = false;
 
   const rewrite = <T extends { url: string }>(prs: T[] | undefined): T[] | undefined => {
     if (!prs?.some((pr) => pr.url.startsWith(fromPrefix))) return prs;
-    changed = true;
     const moved = new Set<string>();
     const out = prs.map((pr) => {
       if (!pr.url.startsWith(fromPrefix)) return pr;
@@ -400,13 +397,11 @@ export function renameRepo(state: AgentState, from: string, to: string): boolean
 
   const oldScore = state.repoScores[from];
   if (oldScore) {
-    if (!state.repoScores[to]) state.repoScores[to] = { ...oldScore, repo: to };
+    if (!Object.hasOwn(state.repoScores, to)) state.repoScores[to] = { ...oldScore, repo: to };
     delete state.repoScores[from];
-    changed = true;
   }
 
-  if (changed) debug(MODULE, `Renamed transferred repo ${from} → ${to}`);
-  return changed;
+  debug(MODULE, `Renamed transferred repo ${from} → ${to}`);
 }
 
 /**

@@ -869,7 +869,7 @@ describe('transferred repos', () => {
     });
     expect(getStats(state).mergedPRs).toBe(4);
 
-    expect(renameRepo(state, 'old-owner/tool', 'new-org/tool')).toBe(true);
+    renameRepo(state, 'old-owner/tool', 'new-org/tool');
     // Load-time reconciliation must not resurrect the old key from stored URLs.
     reconcilePRCounts(state, state.mergedPRs ?? [], []);
 
@@ -900,7 +900,9 @@ describe('transferred repos', () => {
   });
 
   it('is a no-op for a repo with no stored PRs or score', () => {
-    const state = makeAgentState();
-    expect(renameRepo(state, 'old-owner/tool', 'new-org/tool')).toBe(false);
+    const state = makeAgentState({ repoScores: { 'other/repo': makeRepoScore({ repo: 'other/repo' }) } });
+    const before = structuredClone(state);
+    renameRepo(state, 'old-owner/tool', 'new-org/tool');
+    expect(state).toEqual(before);
   });
 });
