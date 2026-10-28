@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.31.6](https://github.com/costajohnt/oss-autopilot/compare/core-v3.31.5...core-v3.31.6) (2026-10-28)
+
+
+### Bug Fixes
+
+* stop double counting merges for transferred or renamed repos ([#1810](https://github.com/costajohnt/oss-autopilot/issues/1810)) ([d9705d9](https://github.com/costajohnt/oss-autopilot/commit/d9705d9d1956a7760a52f905dab58da018807c48))
+
 ## [3.31.5](https://github.com/costajohnt/oss-autopilot/compare/core-v3.31.4...core-v3.31.5) (2026-10-28)
 
 
