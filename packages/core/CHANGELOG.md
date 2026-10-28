@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.32.0](https://github.com/costajohnt/oss-autopilot/compare/core-v3.31.6...core-v3.32.0) (2026-10-28)
+
+
+### Features
+
+* **deps:** bump @oss-scout/core to 1.11.0 for takeability signals ([#1812](https://github.com/costajohnt/oss-autopilot/issues/1812)) ([14a162d](https://github.com/costajohnt/oss-autopilot/commit/14a162da4dea6ab48b48d60993bc19eea93bc569))
+
 ## [3.31.6](https://github.com/costajohnt/oss-autopilot/compare/core-v3.31.5...core-v3.31.6) (2026-10-28)
 
 
