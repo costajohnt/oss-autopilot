@@ -13,6 +13,8 @@ import {
   getLowScoringRepos,
   getStats,
   reconcilePRCounts,
+  findRepoTransfers,
+  renameRepo,
 } from './repo-score-manager.js';
 import { makeAgentState, makeRepoScore } from './test-utils.js';
 
@@ -822,5 +824,83 @@ describe('reconcilePRCounts', () => {
     expect(updated).toBe(true);
     expect(state.repoScores['owner/repo'].mergedPRCount).toBe(3);
     expect(state.repoScores['owner/repo'].closedWithoutMergeCount).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Transferred repos (findRepoTransfers + renameRepo)
+// ---------------------------------------------------------------------------
+
+describe('transferred repos', () => {
+  const OLD = 'https://github.com/old-owner/tool/pull';
+  const NEW = 'https://github.com/new-org/tool/pull';
+
+  it('detects a transfer from a stored PR the search now returns under another repo', () => {
+    const stored = [
+      { url: `${OLD}/7`, title: 'fix: thing' },
+      { url: 'https://github.com/other/repo/pull/1', title: 'unrelated' },
+    ];
+    const searched = [
+      { url: `${NEW}/7`, title: 'fix: thing' },
+      { url: 'https://github.com/other/repo/pull/1', title: 'unrelated' },
+    ];
+    expect(findRepoTransfers(stored, searched)).toEqual(new Map([['old-owner/tool', 'new-org/tool']]));
+  });
+
+  it('ignores a matching number with a different title, and stored PRs the search did not reach', () => {
+    const stored = [
+      { url: `${OLD}/7`, title: 'fix: thing' },
+      { url: `${OLD}/8`, title: 'older PR past the pagination cap' },
+    ];
+    const searched = [{ url: `${NEW}/7`, title: 'fix: other thing' }];
+    expect(findRepoTransfers(stored, searched).size).toBe(0);
+  });
+
+  it('stops the old name double counting in getStats after a rename', () => {
+    const state = makeAgentState({
+      repoScores: {
+        'old-owner/tool': makeRepoScore({ repo: 'old-owner/tool', mergedPRCount: 2, stargazersCount: 1000 }),
+        'new-org/tool': makeRepoScore({ repo: 'new-org/tool', mergedPRCount: 2, stargazersCount: 1000 }),
+      },
+      mergedPRs: [
+        { url: `${OLD}/1`, title: 'a', mergedAt: '2025-01-01T00:00:00Z' },
+        { url: `${OLD}/2`, title: 'b', mergedAt: '2025-01-02T00:00:00Z' },
+      ],
+    });
+    expect(getStats(state).mergedPRs).toBe(4);
+
+    expect(renameRepo(state, 'old-owner/tool', 'new-org/tool')).toBe(true);
+    // Load-time reconciliation must not resurrect the old key from stored URLs.
+    reconcilePRCounts(state, state.mergedPRs ?? [], []);
+
+    expect(state.repoScores['old-owner/tool']).toBeUndefined();
+    expect(state.mergedPRs?.map((pr) => pr.url)).toEqual([`${NEW}/1`, `${NEW}/2`]);
+    expect(getStats(state).mergedPRs).toBe(2);
+  });
+
+  it('re-keys the score when the new name has none, and keeps the stamped entry on URL collision', () => {
+    const state = makeAgentState({
+      repoScores: { 'old-owner/tool': makeRepoScore({ repo: 'old-owner/tool', mergedPRCount: 1 }) },
+      mergedPRs: [
+        { url: `${NEW}/1`, title: 'a', mergedAt: '2025-01-01T00:00:00Z' },
+        {
+          url: `${OLD}/1`,
+          title: 'a',
+          mergedAt: '2025-01-01T00:00:00Z',
+          learningsExtractedAt: '2025-01-05T00:00:00Z',
+        },
+      ],
+    });
+
+    renameRepo(state, 'old-owner/tool', 'new-org/tool');
+
+    expect(state.repoScores['new-org/tool']).toMatchObject({ repo: 'new-org/tool', mergedPRCount: 1 });
+    expect(state.mergedPRs).toHaveLength(1);
+    expect(state.mergedPRs?.[0]).toMatchObject({ url: `${NEW}/1`, learningsExtractedAt: '2025-01-05T00:00:00Z' });
+  });
+
+  it('is a no-op for a repo with no stored PRs or score', () => {
+    const state = makeAgentState();
+    expect(renameRepo(state, 'old-owner/tool', 'new-org/tool')).toBe(false);
   });
 });

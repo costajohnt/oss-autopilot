@@ -41,6 +41,7 @@ import { wrapUntrustedContent } from '../core/untrusted-content.js';
 import { computeStrategy, shouldComputeStrategy, type StrategyResult } from '../core/strategy.js';
 import { warn } from '../core/logger.js';
 import { emptyPRCountsResult } from '../core/github-stats.js';
+import { findRepoTransfers } from '../core/repo-score-manager.js';
 import { updateMonthlyAnalytics } from './dashboard-data.js';
 import {
   deduplicateDigest,
@@ -189,6 +190,8 @@ interface FetchedPRData {
   failures: PRCheckFailure[];
   mergedCounts: Map<string, { count: number; lastMergedAt: string | null }>;
   closedCounts: Map<string, number>;
+  /** Every PR the merged/closed count searches returned, for transfer detection. */
+  searchedPRs: Array<{ url: string; title: string }>;
   monthlyCounts: Record<string, number>;
   monthlyClosedCounts: Record<string, number>;
   openedFromMerged: Record<string, number>;
@@ -325,6 +328,7 @@ async function fetchPRData(prMonitor: PRMonitor, token: string, warnings: DailyW
     failures,
     mergedCounts,
     closedCounts,
+    searchedPRs: [...mergedResult.searchedPRs, ...closedResult.searchedPRs],
     monthlyCounts,
     monthlyClosedCounts,
     openedFromMerged,
@@ -345,6 +349,7 @@ async function updateRepoScores(
   prs: FetchedPR[],
   mergedCounts: Map<string, { count: number; lastMergedAt: string | null }>,
   closedCounts: Map<string, number>,
+  searchedPRs: Array<{ url: string; title: string }>,
   warnings: DailyWarning[],
 ): Promise<void> {
   const stateManager = getStateManager();
@@ -354,6 +359,14 @@ async function updateRepoScores(
   // Outer try-catch: save failure should not crash the daily check (in-memory mutations still apply).
   try {
     batchOnFreshBaseline(stateManager, () => {
+      // Re-key transferred/renamed repos before anything reads repoScores, so
+      // the old name isn't zeroed here and then re-bumped from stored PR URLs
+      // on the next load (which double counted its merges in getStats).
+      const stored = [...stateManager.getMergedPRs(), ...stateManager.getClosedPRs()];
+      for (const [from, to] of findRepoTransfers(stored, searchedPRs)) {
+        stateManager.renameRepo(from, to);
+      }
+
       // Reset stale repos first (so excluded/removed repos get zeroed).
       // Guard: if the API returned zero results but we have existing repos with merged PRs,
       // skip the reset to avoid wiping scores due to transient API failures.
@@ -886,6 +899,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
     failures,
     mergedCounts,
     closedCounts,
+    searchedPRs,
     monthlyCounts,
     monthlyClosedCounts,
     openedFromMerged,
@@ -896,7 +910,7 @@ async function executeDailyCheckInternal(token: string): Promise<DailyCheckResul
   } = await fetchPRData(prMonitor, token, warnings);
 
   // Phase 2: Update repo scores (signals, star counts, trust sync)
-  await updateRepoScores(prMonitor, prs, mergedCounts, closedCounts, warnings);
+  await updateRepoScores(prMonitor, prs, mergedCounts, closedCounts, searchedPRs, warnings);
 
   // Phase 3: Persist monthly analytics and store merged/closed PR history.
   // try-catch: analytics are supplementary — save failure should not crash the daily check.

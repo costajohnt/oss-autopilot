@@ -338,6 +338,78 @@ function reconcileField(
 }
 
 /**
+ * Detect repos that GitHub now reports under a different owner/name.
+ *
+ * Stored PR URLs keep whatever repo name was current when they were
+ * recorded. After a transfer or rename, the search API returns the same PR
+ * under the new name, so the repo is scored under both keys and counted
+ * twice. A stored PR whose URL the search did not return, but whose PR
+ * number and title match a search hit in another repo, marks a transfer.
+ *
+ * @returns map of old repo (`owner/repo`) to the repo GitHub now reports
+ */
+export function findRepoTransfers(
+  stored: ReadonlyArray<{ url: string; title: string }>,
+  searched: ReadonlyArray<{ url: string; title: string }>,
+): Map<string, string> {
+  const searchedUrls = new Set(searched.map((pr) => pr.url));
+  const repoByPR = new Map<string, string>();
+  for (const pr of searched) {
+    const parsed = parseGitHubUrl(pr.url);
+    if (!parsed || !pr.title) continue;
+    repoByPR.set(`${parsed.number}\0${pr.title}`, `${parsed.owner}/${parsed.repo}`);
+  }
+
+  const transfers = new Map<string, string>();
+  for (const pr of stored) {
+    if (searchedUrls.has(pr.url)) continue;
+    const parsed = parseGitHubUrl(pr.url);
+    if (!parsed || !pr.title) continue;
+    const from = `${parsed.owner}/${parsed.repo}`;
+    const to = repoByPR.get(`${parsed.number}\0${pr.title}`);
+    if (to && to !== from) transfers.set(from, to);
+  }
+  return transfers;
+}
+
+/**
+ * Move a transferred repo's history to its new name: rewrite stored PR URLs
+ * and drop (or re-key) the old repoScores entry so it stops double counting.
+ * When both names hold the same PR, the rewritten entry wins because it
+ * carries the older ledger stamps. Returns true if anything changed.
+ */
+export function renameRepo(state: AgentState, from: string, to: string): boolean {
+  const fromPrefix = `https://github.com/${from}/`;
+  const toPrefix = `https://github.com/${to}/`;
+  let changed = false;
+
+  const rewrite = <T extends { url: string }>(prs: T[] | undefined): T[] | undefined => {
+    if (!prs?.some((pr) => pr.url.startsWith(fromPrefix))) return prs;
+    changed = true;
+    const moved = new Set<string>();
+    const out = prs.map((pr) => {
+      if (!pr.url.startsWith(fromPrefix)) return pr;
+      const url = toPrefix + pr.url.slice(fromPrefix.length);
+      moved.add(url);
+      return { ...pr, url };
+    });
+    return out.filter((pr, i) => !moved.has(pr.url) || prs[i].url.startsWith(fromPrefix));
+  };
+  state.mergedPRs = rewrite(state.mergedPRs);
+  state.closedPRs = rewrite(state.closedPRs);
+
+  const oldScore = state.repoScores[from];
+  if (oldScore) {
+    if (!state.repoScores[to]) state.repoScores[to] = { ...oldScore, repo: to };
+    delete state.repoScores[from];
+    changed = true;
+  }
+
+  if (changed) debug(MODULE, `Renamed transferred repo ${from} → ${to}`);
+  return changed;
+}
+
+/**
  * Compute aggregate statistics from the current state.
  */
 export function getStats(state: Readonly<AgentState>): Stats {

@@ -90,6 +90,23 @@ describe('fetchUserPRCounts caching', () => {
     expect(cached).not.toBeNull();
   });
 
+  it('returns searched PRs (url + title) through a cache round-trip, and [] from a pre-searchedPRs cache entry', async () => {
+    const item = { ...makeMergedItem('org', 'repo', '2025-06-01T00:00:00Z'), title: 'fix: thing' };
+    const octokit = makeOctokit([item]);
+    const expected = [{ url: 'https://github.com/org/repo/pull/1', title: 'fix: thing' }];
+
+    expect((await fetchUserMergedPRCounts(octokit, 'testuser')).searchedPRs).toEqual(expected);
+    expect((await fetchUserMergedPRCounts(octokit, 'testuser')).searchedPRs).toEqual(expected);
+
+    testCache.set('pr-counts:v3:merged:testuser', '', {
+      reposEntries: [],
+      monthlyCounts: {},
+      monthlyOpenedCounts: {},
+      dailyActivityCounts: {},
+    });
+    expect((await fetchUserMergedPRCounts(octokit, 'testuser')).searchedPRs).toEqual([]);
+  });
+
   it('should exclude own repos via -user: qualifier in search query', async () => {
     const items = [makeMergedItem('org', 'repo', '2025-06-01T00:00:00Z')];
     const octokit = makeOctokit(items);

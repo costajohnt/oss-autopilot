@@ -1176,6 +1176,11 @@ export class StateManager {
     return repoScoring.getStats(this.state);
   }
 
+  /** Move a transferred repo's stored PRs and score to its new name. See repoScoring.renameRepo. */
+  renameRepo(from: string, to: string): void {
+    if (repoScoring.renameRepo(this.state, from, to)) this.autoSave();
+  }
+
   /**
    * Reconcile repoScores merged/closed counts with the stored PR arrays.
    * Bumps counters when the array has more PRs than the counter tracks.
