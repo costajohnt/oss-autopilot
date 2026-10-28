@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.7.8](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.7...mcp-v5.7.8) (2026-10-28)
+
+
+### Bug Fixes
+
+* **deps:** bump @oss-scout/core to 1.10.0 for API usage logging ([#1804](https://github.com/costajohnt/oss-autopilot/issues/1804)) ([42e0ffe](https://github.com/costajohnt/oss-autopilot/commit/42e0ffec957b66c50fcbd0cceceeb51262440e7e))
+
 ## [5.7.7](https://github.com/costajohnt/oss-autopilot/compare/mcp-v5.7.6...mcp-v5.7.7) (2026-10-25)
 
 
