@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.31.3](https://github.com/costajohnt/oss-autopilot/compare/core-v3.31.2...core-v3.31.3) (2026-10-28)
+
+
+### Bug Fixes
+
+* **deps:** bump @oss-scout/core to 1.10.0 for API usage logging ([#1804](https://github.com/costajohnt/oss-autopilot/issues/1804)) ([42e0ffe](https://github.com/costajohnt/oss-autopilot/commit/42e0ffec957b66c50fcbd0cceceeb51262440e7e))
+
 ## [3.31.2](https://github.com/costajohnt/oss-autopilot/compare/core-v3.31.1...core-v3.31.2) (2026-10-27)
 
 
