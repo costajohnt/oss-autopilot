@@ -9,8 +9,7 @@
  * Pure functions — callers manage state I/O.
  */
 
-import type { AgentState } from './state-schema.js';
-import type { FollowUpEntry } from './state-schema.js';
+import type { AgentState, FollowUpEntry } from './state-schema.js';
 
 export type FollowUpTier = 'light_check_in' | 'direct_check_in' | 'final_check_in';
 
@@ -62,7 +61,7 @@ export function isWithinTierWindow(
   if (last.tier !== tier) return false;
   const ageMs = now.getTime() - Date.parse(last.timestamp);
   if (Number.isNaN(ageMs)) return false;
-  const windowMs = TIER_WINDOW_DAYS[tier] * 86400000;
+  const windowMs = TIER_WINDOW_DAYS[tier] * 86_400_000;
   return ageMs < windowMs;
 }
 

@@ -58,7 +58,7 @@ export async function runVet(options: VetOptions): Promise<VetOutput> {
     vettingResult: candidate.vettingResult,
     antiLLMPolicy: candidate.antiLLMPolicy,
     linkedPRClassification,
-    ...(linkedPR ? { linkedPR } : {}),
+    ...(linkedPR && { linkedPR }),
     slmTriage: candidate.slmTriage ?? null,
     grade,
   };

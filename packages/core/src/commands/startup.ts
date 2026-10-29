@@ -137,7 +137,7 @@ export function detectIssueList(): IssueListInfo | undefined {
     completedCount,
     blockedCount,
     skippedIssuesPath,
-    ...(readError !== undefined ? { readError } : {}),
+    ...(readError !== undefined && { readError }),
   };
 }
 

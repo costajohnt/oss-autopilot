@@ -63,8 +63,8 @@ describe('computeActionMenu', () => {
     const menu1 = computeActionMenu([], makeCapacity());
     const menu2 = computeActionMenu([makeActionableIssue()], makeCapacity({ hasCapacity: false }));
 
-    expect(menu1.items[menu1.items.length - 1].key).toBe('done');
-    expect(menu2.items[menu2.items.length - 1].key).toBe('done');
+    expect(menu1.items.at(-1)?.key).toBe('done');
+    expect(menu2.items.at(-1)?.key).toBe('done');
   });
 
   it('should have correct context flags', () => {
@@ -477,7 +477,7 @@ describe('deduplicateDigest (#287)', () => {
         repo: `owner/repo-${i}`,
         number: i + 1,
         status: i % 2 === 0 ? 'waiting_on_maintainer' : 'needs_addressing',
-        ...(i % 2 !== 0 ? { actionReason: 'failing_ci' as const } : {}),
+        ...(i % 2 !== 0 && { actionReason: 'failing_ci' as const }),
       }),
     );
     const digest = makeDigest(prs);

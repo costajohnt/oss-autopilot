@@ -84,19 +84,21 @@ export function formatSummary(
 ): string {
   const lines: string[] = [];
 
-  lines.push('## OSS Dashboard');
-  lines.push('');
   lines.push(
+    '## OSS Dashboard',
+    '',
     `\u{1F4CA} **${digest.summary.totalActivePRs} Active PRs** | ${digest.summary.totalMergedAllTime} Merged | ${digest.summary.mergeRate}% Merge Rate`,
+    '✓ Dashboard generated — say "open dashboard" to view in browser',
+    '',
   );
-  lines.push('✓ Dashboard generated — say "open dashboard" to view in browser');
-  lines.push('');
 
   if (digest.needsAddressingPRs.length > 0) {
     lines.push('### ❌ Needs Addressing');
     for (const pr of digest.needsAddressingPRs) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-      lines.push(`  └─ ${pr.displayLabel} ${pr.displayDescription}`);
+      lines.push(
+        `- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`,
+        `  └─ ${pr.displayLabel} ${pr.displayDescription}`,
+      );
     }
     lines.push('');
   }
@@ -104,8 +106,7 @@ export function formatSummary(
   if (digest.waitingOnMaintainerPRs.length > 0) {
     lines.push('### ⏳ Waiting on Maintainer');
     for (const pr of digest.waitingOnMaintainerPRs) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`);
-      lines.push(`  └─ ${pr.displayDescription}`);
+      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title}`, `  └─ ${pr.displayDescription}`);
     }
     lines.push('');
   }
@@ -129,10 +130,12 @@ export function formatSummary(
   }
 
   if (digest.autoUnshelvedPRs.length > 0) {
-    lines.push('### \u{1F514} Auto-Unshelved');
-    lines.push('> These PRs were shelved but a maintainer engaged — moved back to active.');
+    lines.push(
+      '### \u{1F514} Auto-Unshelved',
+      '> These PRs were shelved but a maintainer engaged — moved back to active.',
+    );
     for (const pr of digest.autoUnshelvedPRs) {
-      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title} (${pr.status.replace(/_/g, ' ')})`);
+      lines.push(`- [${pr.repo}#${pr.number}](${pr.url}): ${pr.title} (${pr.status.replaceAll('_', ' ')})`);
     }
     lines.push('');
   }
@@ -226,7 +229,7 @@ export function printDigest(
   if (digest.autoUnshelvedPRs.length > 0) {
     console.log('\u{1F514} Auto-Unshelved:');
     for (const pr of digest.autoUnshelvedPRs) {
-      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (${pr.status.replace(/_/g, ' ')})`);
+      console.log(`  - ${pr.repo}#${pr.number}: ${pr.title} (${pr.status.replaceAll('_', ' ')})`);
     }
     console.log('');
   }

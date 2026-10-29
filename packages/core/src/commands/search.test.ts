@@ -677,7 +677,7 @@ describe('runSearch', () => {
     function stateWithUsername(githubUsername?: string) {
       mockGetStateManager.mockReturnValue({
         getState: vi.fn().mockReturnValue({
-          config: { excludeRepos: [], aiPolicyBlocklist: [], ...(githubUsername ? { githubUsername } : {}) },
+          config: { excludeRepos: [], aiPolicyBlocklist: [], ...(githubUsername && { githubUsername }) },
         }),
         getRepoScore: vi.fn().mockReturnValue(null),
         getSearchSeen: vi.fn().mockReturnValue([]),

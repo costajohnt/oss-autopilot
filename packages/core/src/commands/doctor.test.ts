@@ -60,7 +60,7 @@ function stubExecFile(
   let i = 0;
   mockExecFile.mockImplementation(((_cmd: string, _args: string[], _opts: unknown, cb: unknown) => {
     const callback = cb as (err: Error | null, value?: { stdout: string; stderr: string }) => void;
-    const r = responses[i++] ?? responses[responses.length - 1];
+    const r = responses[i++] ?? responses.at(-1);
     if (r.error) {
       callback(r.error);
     } else {

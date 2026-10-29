@@ -52,7 +52,7 @@ export class IssueConversationMonitor {
     const username = config.githubUsername;
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - maxDays);
-    const since = cutoffDate.toISOString().split('T')[0];
+    const since = cutoffDate.toISOString().split('T', 1)[0];
 
     debug(MODULE, `Fetching commented issues for @${username} (last ${maxDays} days)...`);
 

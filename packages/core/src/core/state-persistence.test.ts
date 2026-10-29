@@ -1098,7 +1098,7 @@ describe('saveState optimistic compare-and-swap (#1030)', () => {
     expect(realParse(fs.readFileSync(statePath, 'utf8')).config.githubUsername).toBe('bob-wrote-mid-load');
   });
 
-  it('reloadIfChanged before a batch keeps both writers\u2019 changes; without it the batch is rejected', () => {
+  it('reloadIfChanged before a batch keeps both writers\u{2019} changes; without it the batch is rejected', () => {
     const statePath = path.join(mockTmpDir, 'state.json');
     const sm = new StateManager(false);
     sm.updateConfig({ githubUsername: 'alice' });

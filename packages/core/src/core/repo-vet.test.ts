@@ -24,7 +24,7 @@ function input(overrides: Partial<RepoVetInput> = {}): RepoVetInput {
     openedCount90Days: 60,
     lastCommitISO: new Date().toISOString(),
     contributorsLast90d: 8,
-    lastReleaseISO: new Date(Date.now() - 30 * 86400000).toISOString(),
+    lastReleaseISO: new Date(Date.now() - 30 * 86_400_000).toISOString(),
     hasContributing: true,
     hasIssueTemplates: true,
     hasPRTemplate: true,
@@ -46,7 +46,7 @@ describe('computeRepoVet — verdicts', () => {
   });
 
   it('marks a repo with no commits in 60+ days as avoid (red flag)', () => {
-    const oldCommit = new Date(Date.now() - 90 * 86400000).toISOString();
+    const oldCommit = new Date(Date.now() - 90 * 86_400_000).toISOString();
     const result = computeRepoVet(input({ lastCommitISO: oldCommit }));
     expect(result.rubricVerdict).toBe('avoid');
   });

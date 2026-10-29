@@ -119,7 +119,7 @@ function toFeaturesCandidate(
           lastMergedAt: repoScoreRecord.lastMergedAt,
         }
       : undefined,
-    ...(linkedPR ? { linkedPR } : {}),
+    ...(linkedPR && { linkedPR }),
     horizon: scoutCandidate.horizon,
   };
 }

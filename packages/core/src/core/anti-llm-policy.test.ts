@@ -159,12 +159,12 @@ describe('scanForAntiLLMPolicy', () => {
 
   describe('unicode and whitespace normalization', () => {
     it('matches across non-breaking hyphen (U+2011)', () => {
-      const result = scanForAntiLLMPolicy('Policy: no AI\u2011generated code accepted.');
+      const result = scanForAntiLLMPolicy('Policy: no AI\u{2011}generated code accepted.');
       expect(result.matched).toBe(true);
     });
 
     it('matches across non-breaking space', () => {
-      const result = scanForAntiLLMPolicy('Policy: no\u00a0Copilot allowed.');
+      const result = scanForAntiLLMPolicy('Policy: no\u{A0}Copilot allowed.');
       expect(result.matched).toBe(true);
     });
   });

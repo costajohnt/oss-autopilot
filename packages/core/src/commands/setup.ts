@@ -119,7 +119,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
     // share the StateManager singleton across requests).
     const knownKeys = new Set(getSetupKeys());
     for (const setting of options.set) {
-      const [key] = setting.split('=');
+      const [key] = setting.split('=', 1);
       if (!knownKeys.has(key)) {
         throw new ValidationError(formatUnknownKeyError(key, 'setup'));
       }
@@ -171,7 +171,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
               results[key] = 'ask';
             } else {
               stateManager.updateConfig({ squashByDefault: value !== 'false' });
-              results[key] = value !== 'false' ? 'true' : 'false';
+              results[key] = value === 'false' ? 'false' : 'true';
             }
             break;
           }
@@ -250,7 +250,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             const valid: string[] = [];
             const invalid: string[] = [];
             for (const entry of entries) {
-              const normalized = entry.replace(/\s+/g, '');
+              const normalized = entry.replaceAll(/\s+/g, '');
               if (/^[\w.-]+\/[\w.-]+$/.test(normalized)) {
                 valid.push(normalized);
               } else {
@@ -280,7 +280,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
             const valid: string[] = [];
             const invalid: string[] = [];
             for (const entry of entries) {
-              const normalized = entry.replace(/\s+/g, '');
+              const normalized = entry.replaceAll(/\s+/g, '');
               if (/^[\w.-]+\/[\w.-]+$/.test(normalized)) {
                 valid.push(normalized);
               } else {
@@ -351,10 +351,10 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
                 warnings.push(
                   `"${org}" looks like a repo path. Use org name only (e.g., "vercel" not "vercel/next.js").`,
                 );
-              } else if (!/^[\da-z](?:[\da-z-]*[\da-z])?$/i.test(org)) {
-                warnings.push(`"${org}" is not a valid GitHub organization name. Skipping.`);
-              } else {
+              } else if (/^[\da-z](?:[\da-z-]*[\da-z])?$/i.test(org)) {
                 validOrgs.push(org.toLowerCase());
+              } else {
+                warnings.push(`"${org}" is not a valid GitHub organization name. Skipping.`);
               }
             }
             const dedupedOrgs = [...new Set(validOrgs)];
@@ -453,7 +453,7 @@ export async function runSetup(options: SetupOptions): Promise<SetupOutput> {
       success: true,
       settings: results,
       warnings: warnings.length > 0 ? warnings : undefined,
-      ...(gistSyncWarning ? { gistSyncWarning } : {}),
+      ...(gistSyncWarning && { gistSyncWarning }),
     };
   }
 

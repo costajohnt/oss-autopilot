@@ -11,8 +11,6 @@ interface StatusOptions {
   offline?: boolean;
 }
 
-export type { StatusOutput };
-
 /**
  * Return contribution statistics from local state.
  * No API calls — reads from ~/.oss-autopilot/state.json.
@@ -50,3 +48,5 @@ export async function runStatus(options: StatusOptions): Promise<StatusOutput> {
 
   return output;
 }
+
+export { type StatusOutput } from '../formatters/json.js';

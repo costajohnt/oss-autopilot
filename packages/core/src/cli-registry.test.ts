@@ -670,7 +670,7 @@ describe('printRepos (via local-repos command)', () => {
     await program.parseAsync(['node', 'cli', 'local-repos']);
 
     const logCalls = consoleLogSpy.mock.calls.map((c: unknown[]) => c[0]);
-    expect(logCalls).toContain('\n\ud83d\udcc1 Local Repos (cached 2024-01-01T00:00:00Z)\n');
+    expect(logCalls).toContain('\n\u{1F4C1} Local Repos (cached 2024-01-01T00:00:00Z)\n');
     expect(logCalls).toContain('  owner/repo (main)');
   });
 });
