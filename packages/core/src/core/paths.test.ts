@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { getCLIVersion } from './paths.js';
+import { getCLIVersion, getDataDir } from './paths.js';
 
 // getCLIVersion locates package.json from process.argv[1]. Installed from npm
 // that argv entry is the node_modules/.bin symlink, not the bundle (#1664).
@@ -46,5 +46,28 @@ describe('getCLIVersion', () => {
     process.argv[1] = path.join(tmp, 'pkg', 'dist', 'cli.bundle.cjs');
     vi.stubGlobal('__OSS_AUTOPILOT_CORE_VERSION__', '3.1.4');
     expect(getCLIVersion()).toBe('3.1.4');
+  });
+});
+
+// A test run once rewrote the real ~/.oss-autopilot/state-cache.json (#1801).
+describe('test isolation from the real data dir (#1801)', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('runs every test file under a temp HOME, not the real one', () => {
+    expect(os.homedir()).not.toBe(os.userInfo().homedir);
+    expect(fs.realpathSync(os.homedir()).startsWith(fs.realpathSync(os.tmpdir()))).toBe(true);
+  });
+
+  it('runs with no GitHub token in the environment', () => {
+    expect(process.env.GITHUB_TOKEN).toBeUndefined();
+    expect(process.env.GH_TOKEN).toBeUndefined();
+  });
+
+  it('getDataDir refuses the real home directory under vitest', () => {
+    vi.stubEnv('HOME', os.userInfo().homedir);
+    vi.stubEnv('USERPROFILE', os.userInfo().homedir);
+    expect(() => getDataDir()).toThrow(/real home directory/);
   });
 });

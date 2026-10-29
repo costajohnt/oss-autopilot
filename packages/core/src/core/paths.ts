@@ -24,7 +24,13 @@ import * as os from 'node:os';
  * // "/Users/you/.oss-autopilot"
  */
 export function getDataDir(): string {
-  const dir = path.join(os.homedir(), '.oss-autopilot');
+  const home = os.homedir();
+  // Tests run under a temp HOME (test-lib/isolate-home.ts); reaching the real
+  // one means a test escaped it and could clobber the user's state (#1801).
+  if (process.env.VITEST && path.resolve(home) === path.resolve(os.userInfo().homedir)) {
+    throw new Error(`Refusing to use the real home directory (${home}) under vitest`);
+  }
+  const dir = path.join(home, '.oss-autopilot');
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
